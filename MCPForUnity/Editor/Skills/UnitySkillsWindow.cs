@@ -241,7 +241,18 @@ namespace UnitySkills
             EditorGUILayout.LabelField(L("install_project") + ":", GUILayout.Width(100));
             if (SkillInstaller.IsClaudeProjectInstalled)
             {
-                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel, GUILayout.Width(80));
+                if (GUILayout.Button(L("uninstall"), GUILayout.Width(60)))
+                {
+                    if (EditorUtility.DisplayDialog(L("uninstall"), string.Format(L("uninstall_confirm"), "Claude Code (Project)"), "OK", "Cancel"))
+                    {
+                        var result = SkillInstaller.UninstallClaude(false);
+                        if (result.success)
+                            EditorUtility.DisplayDialog("Success", L("uninstall_success"), "OK");
+                        else
+                            EditorUtility.DisplayDialog("Error", string.Format(L("uninstall_failed"), result.message), "OK");
+                    }
+                }
             }
             else
             {
@@ -260,7 +271,18 @@ namespace UnitySkills
             EditorGUILayout.LabelField(L("install_global") + ":", GUILayout.Width(100));
             if (SkillInstaller.IsClaudeGlobalInstalled)
             {
-                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel, GUILayout.Width(80));
+                if (GUILayout.Button(L("uninstall"), GUILayout.Width(60)))
+                {
+                    if (EditorUtility.DisplayDialog(L("uninstall"), string.Format(L("uninstall_confirm"), "Claude Code (Global)"), "OK", "Cancel"))
+                    {
+                        var result = SkillInstaller.UninstallClaude(true);
+                        if (result.success)
+                            EditorUtility.DisplayDialog("Success", L("uninstall_success"), "OK");
+                        else
+                            EditorUtility.DisplayDialog("Error", string.Format(L("uninstall_failed"), result.message), "OK");
+                    }
+                }
             }
             else
             {
@@ -286,7 +308,18 @@ namespace UnitySkills
             EditorGUILayout.LabelField(L("install_project") + ":", GUILayout.Width(100));
             if (SkillInstaller.IsAntigravityProjectInstalled)
             {
-                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel, GUILayout.Width(80));
+                if (GUILayout.Button(L("uninstall"), GUILayout.Width(60)))
+                {
+                    if (EditorUtility.DisplayDialog(L("uninstall"), string.Format(L("uninstall_confirm"), "Antigravity (Project)"), "OK", "Cancel"))
+                    {
+                        var result = SkillInstaller.UninstallAntigravity(false);
+                        if (result.success)
+                            EditorUtility.DisplayDialog("Success", L("uninstall_success"), "OK");
+                        else
+                            EditorUtility.DisplayDialog("Error", string.Format(L("uninstall_failed"), result.message), "OK");
+                    }
+                }
             }
             else
             {
@@ -305,7 +338,18 @@ namespace UnitySkills
             EditorGUILayout.LabelField(L("install_global") + ":", GUILayout.Width(100));
             if (SkillInstaller.IsAntigravityGlobalInstalled)
             {
-                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel, GUILayout.Width(80));
+                if (GUILayout.Button(L("uninstall"), GUILayout.Width(60)))
+                {
+                    if (EditorUtility.DisplayDialog(L("uninstall"), string.Format(L("uninstall_confirm"), "Antigravity (Global)"), "OK", "Cancel"))
+                    {
+                        var result = SkillInstaller.UninstallAntigravity(true);
+                        if (result.success)
+                            EditorUtility.DisplayDialog("Success", L("uninstall_success"), "OK");
+                        else
+                            EditorUtility.DisplayDialog("Error", string.Format(L("uninstall_failed"), result.message), "OK");
+                    }
+                }
             }
             else
             {

@@ -55,6 +55,10 @@ namespace UnitySkills
             {"not_installed", "Not installed"},
             {"install_success", "Skill installed successfully!"},
             {"install_failed", "Installation failed: {0}"},
+            {"uninstall", "Uninstall"},
+            {"uninstall_success", "Skill uninstalled successfully!"},
+            {"uninstall_failed", "Uninstall failed: {0}"},
+            {"uninstall_confirm", "Are you sure you want to uninstall {0}?"},
             
             // Skill descriptions
             {"scene_create", "Create a new empty scene"},
@@ -158,6 +162,10 @@ namespace UnitySkills
             {"not_installed", "未安装"},
             {"install_success", "Skill 安装成功！"},
             {"install_failed", "安装失败：{0}"},
+            {"uninstall", "卸载"},
+            {"uninstall_success", "Skill 卸载成功！"},
+            {"uninstall_failed", "卸载失败：{0}"},
+            {"uninstall_confirm", "确定要卸载 {0} 吗？"},
             
             // Skill descriptions
             {"scene_create", "创建新的空场景"},

@@ -53,6 +53,42 @@ namespace UnitySkills
             }
         }
 
+        public static (bool success, string message) UninstallClaude(bool global)
+        {
+            try
+            {
+                var targetPath = global ? ClaudeGlobalPath : ClaudeProjectPath;
+                return UninstallSkill(targetPath, "Claude Code");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public static (bool success, string message) UninstallAntigravity(bool global)
+        {
+            try
+            {
+                var targetPath = global ? AntigravityGlobalPath : AntigravityProjectPath;
+                return UninstallSkill(targetPath, "Antigravity");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        private static (bool success, string message) UninstallSkill(string targetPath, string name)
+        {
+            if (!Directory.Exists(targetPath))
+                return (false, $"{name} skill not installed at this location");
+
+            Directory.Delete(targetPath, true);
+            Debug.Log("[UnitySkills] Uninstalled skill from: " + targetPath);
+            return (true, targetPath);
+        }
+
         private static (bool success, string message) InstallSkill(string targetPath, string name)
         {
             if (!Directory.Exists(targetPath))
