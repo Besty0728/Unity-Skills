@@ -12,7 +12,7 @@ namespace UnitySkills
     public static class MaterialSkills
     {
         [UnitySkill("material_create", "Create a new material")]
-        public static object MaterialCreate(string name, string shaderName = "Standard", string savePath = null)
+        public static object MaterialCreate(string name, string shaderName = "Universal Render Pipeline/Lit", string savePath = null)
         {
             var shader = Shader.Find(shaderName);
             if (shader == null)

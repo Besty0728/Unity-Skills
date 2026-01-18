@@ -202,9 +202,9 @@ namespace UnitySkills
             sb.AppendLine();
             sb.AppendLine("UNITY_URL = 'http://localhost:8090'");
             sb.AppendLine();
-            sb.AppendLine("def call_skill(name: str, **kwargs) -> Dict[str, Any]:");
+            sb.AppendLine("def call_skill(skill_name: str, **kwargs) -> Dict[str, Any]:");
             sb.AppendLine("    try:");
-            sb.AppendLine("        response = requests.post(f'{UNITY_URL}/skill/{name}', json=kwargs, timeout=30)");
+            sb.AppendLine("        response = requests.post(f'{UNITY_URL}/skill/{skill_name}', json=kwargs, timeout=30)");
             sb.AppendLine("        return response.json()");
             sb.AppendLine("    except requests.exceptions.ConnectionError:");
             sb.AppendLine("        return {'error': 'Cannot connect to Unity. Is the REST server running?'}");
