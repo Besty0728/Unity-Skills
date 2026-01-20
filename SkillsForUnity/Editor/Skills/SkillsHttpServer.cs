@@ -69,7 +69,6 @@ namespace UnitySkills
             _updateHooked = false;
         }
 
-        [MenuItem("Window/UnitySkills/Start REST Server")]
         public static void Start()
         {
             if (_isRunning)
@@ -107,7 +106,6 @@ namespace UnitySkills
             }
         }
 
-        [MenuItem("Window/UnitySkills/Stop REST Server")]
         public static void Stop()
         {
             if (!_isRunning) return;
