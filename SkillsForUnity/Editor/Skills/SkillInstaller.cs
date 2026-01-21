@@ -126,14 +126,21 @@ namespace UnitySkills
             if (!Directory.Exists(targetPath))
                 Directory.CreateDirectory(targetPath);
 
+            // CRITICAL: Use UTF-8 WITHOUT BOM for Gemini CLI compatibility
+            // Gemini CLI cannot parse YAML frontmatter if BOM (EF BB BF) is present at start of file
+            var utf8NoBom = new UTF8Encoding(false);
+
             var skillMd = GenerateSkillMd();
-            File.WriteAllText(Path.Combine(targetPath, "SKILL.md"), skillMd, Encoding.UTF8);
+            // Normalize line endings to LF for cross-platform compatibility
+            skillMd = skillMd.Replace("\r\n", "\n");
+            File.WriteAllText(Path.Combine(targetPath, "SKILL.md"), skillMd, utf8NoBom);
 
             var pythonHelper = GeneratePythonHelper();
+            pythonHelper = pythonHelper.Replace("\r\n", "\n");
             var scriptsPath = Path.Combine(targetPath, "scripts");
             if (!Directory.Exists(scriptsPath))
                 Directory.CreateDirectory(scriptsPath);
-            File.WriteAllText(Path.Combine(scriptsPath, "unity_skills.py"), pythonHelper, Encoding.UTF8);
+            File.WriteAllText(Path.Combine(scriptsPath, "unity_skills.py"), pythonHelper, utf8NoBom);
 
             Debug.Log("[UnitySkills] Installed skill to: " + targetPath);
             return (true, targetPath);
