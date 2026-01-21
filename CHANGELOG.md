@@ -2,6 +2,43 @@
 
 All notable changes to UnitySkills will be documented in this file.
 
+## [1.3.6] - 2025-01-22
+
+### Fixed - Gemini CLI Skill Auto-Recognition
+
+**Root Cause**: Gemini CLI requires a detailed multi-line `description` field in SKILL.md to determine when to activate a skill. The previous single-line description was too generic for Gemini to understand when to use the skill.
+
+**Fix**: 
+- Updated SKILL.md format to use YAML block scalar (`|`) with detailed multi-line description
+- Description now explicitly lists 12+ use cases (e.g., "Use this skill when the user asks to create GameObjects...")
+- Changed skill name from `unityskills` to `unity-skills` (with dash) for better readability
+
+### Changed - Skill Folder Name
+
+**Breaking Change**: All AI skill folders are now named `unity-skills` (with dash).
+
+**Affected Paths**:
+- Claude Code: `~/.claude/skills/unity-skills/`
+- Antigravity: `~/.gemini/antigravity/skills/unity-skills/`
+- Gemini CLI: `~/.gemini/skills/unity-skills/`
+
+**Action Required**: If you had the old version installed, please uninstall and reinstall using Unity's AI Config tab.
+
+### Changed - SKILL.md Format
+
+New format for Gemini CLI compatibility:
+```yaml
+name: unity-skills
+description: |
+  Expert Unity Editor automation via REST API. Use this skill when the user asks to:
+  - Create, modify, delete, or find GameObjects in Unity scenes
+  - Add, remove, or configure components (Rigidbody, Collider, Light, etc.)
+  - Manage scenes (create, load, save, take screenshots)
+  ... (detailed list of use cases)
+```
+
+---
+
 ## [1.3.5] - 2025-01-21
 
 ### Fixed - YAML Syntax for Gemini CLI

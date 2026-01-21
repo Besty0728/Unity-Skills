@@ -41,9 +41,9 @@ Unity 菜单：`Window > UnitySkills > Start Server`
 
 | AI 工具 | 安装位置 |
 |---------|---------|
-| **Claude Code** | `~/.claude/skills/unityskills/` |
-| **Antigravity** | `~/.gemini/antigravity/skills/unityskills/` |
-| **Gemini CLI** | `~/.gemini/skills/unityskills/` |
+| **Claude Code** | `~/.claude/skills/unity-skills/` |
+| **Antigravity** | `~/.gemini/antigravity/skills/unity-skills/` |
+| **Gemini CLI** | `~/.gemini/skills/unity-skills/` |
 
 > 💡 **Gemini CLI** 需要先启用 Skills 功能（见下方）
 
@@ -87,7 +87,7 @@ gemini
 ```
 ├── SkillsForUnity/           # Unity Package
 │   └── Editor/Skills/        # Skill 实现
-├── unityskills/              # AI Skill 模板
+├── unity-skills/             # AI Skill 模板
 │   ├── SKILL.md              # Skill 定义
 │   └── scripts/              # Python Helper
 └── .gemini/skills/           # Gemini CLI Skill

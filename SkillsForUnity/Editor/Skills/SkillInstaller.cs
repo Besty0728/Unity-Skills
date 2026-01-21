@@ -14,17 +14,17 @@ namespace UnitySkills
     /// </summary>
     public static class SkillInstaller
     {
-        // Claude Code paths
-        public static string ClaudeProjectPath => Path.Combine(Application.dataPath, "..", ".claude", "skills", "unityskills");
-        public static string ClaudeGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "skills", "unityskills");
+        // Claude Code paths - Claude supports any folder name
+        public static string ClaudeProjectPath => Path.Combine(Application.dataPath, "..", ".claude", "skills", "unity-skills");
+        public static string ClaudeGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "skills", "unity-skills");
         
         // Antigravity paths
-        public static string AntigravityProjectPath => Path.Combine(Application.dataPath, "..", ".agent", "skills", "unityskills");
-        public static string AntigravityGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity", "skills", "unityskills");
+        public static string AntigravityProjectPath => Path.Combine(Application.dataPath, "..", ".agent", "skills", "unity-skills");
+        public static string AntigravityGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity", "skills", "unity-skills");
 
-        // Gemini CLI paths - folder name must match SKILL.md name field
-        public static string GeminiProjectPath => Path.Combine(Application.dataPath, "..", ".gemini", "skills", "unityskills");
-        public static string GeminiGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "skills", "unityskills");
+        // Gemini CLI paths - folder name should match SKILL.md name field for proper recognition
+        public static string GeminiProjectPath => Path.Combine(Application.dataPath, "..", ".gemini", "skills", "unity-skills");
+        public static string GeminiGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "skills", "unity-skills");
 
         public static bool IsClaudeProjectInstalled => Directory.Exists(ClaudeProjectPath) && File.Exists(Path.Combine(ClaudeProjectPath, "SKILL.md"));
         public static bool IsClaudeGlobalInstalled => Directory.Exists(ClaudeGlobalPath) && File.Exists(Path.Combine(ClaudeGlobalPath, "SKILL.md"));
@@ -143,59 +143,88 @@ namespace UnitySkills
         {
             var sb = new StringBuilder();
             sb.AppendLine("---");
-            // Gemini CLI requires: lowercase, alphanumeric only (no dashes for simplicity)
-            sb.AppendLine("name: unityskills");
-            sb.AppendLine("description: \"Control Unity Editor via REST API. Create GameObjects, manage scenes, materials, prefabs, scripts.\"");
+            // Gemini CLI requires: lowercase, alphanumeric and dashes only
+            sb.AppendLine("name: unity-skills");
+            // CRITICAL: Description must be detailed enough for Gemini to understand WHEN to activate this skill
+            sb.AppendLine("description: |");
+            sb.AppendLine("  Expert Unity Editor automation via REST API. Use this skill when the user asks to:");
+            sb.AppendLine("  - Create, modify, delete, or find GameObjects in Unity scenes");
+            sb.AppendLine("  - Add, remove, or configure components (Rigidbody, Collider, Light, etc.)");
+            sb.AppendLine("  - Manage scenes (create, load, save, take screenshots)");
+            sb.AppendLine("  - Create and modify materials, textures, colors, and shaders");
+            sb.AppendLine("  - Work with prefabs (create, instantiate, apply changes)");
+            sb.AppendLine("  - Set up lighting (directional, point, spot lights)");
+            sb.AppendLine("  - Create animation controllers and manage animator parameters");
+            sb.AppendLine("  - Build UI elements (Canvas, buttons, text, panels, sliders)");
+            sb.AppendLine("  - Control Unity Editor (play/stop, selection, undo/redo)");
+            sb.AppendLine("  - Create or modify C# scripts and shaders");
+            sb.AppendLine("  - Validate projects and clean up assets");
+            sb.AppendLine("  This skill provides 100+ Unity automation tools accessible via Python scripts in the scripts/ directory.");
             sb.AppendLine("---");
             sb.AppendLine();
             sb.AppendLine("# Unity Editor Control Skill");
             sb.AppendLine();
-            sb.AppendLine("This skill enables AI to control Unity Editor through a REST API.");
+            sb.AppendLine("You are an expert Unity developer. This skill enables you to directly control Unity Editor through a REST API.");
+            sb.AppendLine("Use the Python helper script in `scripts/unity_skills.py` to execute Unity operations.");
             sb.AppendLine();
             sb.AppendLine("## Prerequisites");
             sb.AppendLine();
-            sb.AppendLine("1. Install the UnitySkills package in Unity");
-            sb.AppendLine("2. Start the REST server: Window > UnitySkills > Start Server");
-            sb.AppendLine("3. Server runs at: http://localhost:8090");
+            sb.AppendLine("1. Unity Editor must be running with the UnitySkills package installed");
+            sb.AppendLine("2. REST server must be started: **Window > UnitySkills > Start Server**");
+            sb.AppendLine("3. Server endpoint: `http://localhost:8090`");
             sb.AppendLine();
-            sb.AppendLine("## ⚠️ Important: Server Auto-Restart Behavior");
-            sb.AppendLine();
-            sb.AppendLine("When you create or modify C# scripts using `script_create` skill, Unity will **recompile all scripts**.");
-            sb.AppendLine("During recompilation (Domain Reload), the REST server temporarily stops and automatically restarts.");
-            sb.AppendLine();
-            sb.AppendLine("**What happens:**");
-            sb.AppendLine("1. `script_create` succeeds and returns success");
-            sb.AppendLine("2. Unity starts compiling scripts (2-5 seconds)");
-            sb.AppendLine("3. Server stops briefly → **Connection Refused** errors are NORMAL");
-            sb.AppendLine("4. Server auto-restarts after compilation completes");
-            sb.AppendLine();
-            sb.AppendLine("**How to handle:**");
-            sb.AppendLine("- If you get `Connection Refused` after creating a script, **wait 3-5 seconds and retry**");
-            sb.AppendLine("- Use the `/health` endpoint to check if server is ready: `curl http://localhost:8090/health`");
-            sb.AppendLine("- This is normal Unity behavior, not an error");
+            sb.AppendLine("## Quick Start");
             sb.AppendLine();
             sb.AppendLine("```python");
-            sb.AppendLine("# Recommended: Add retry logic after script creation");
-            sb.AppendLine("import time");
-            sb.AppendLine("result = call_skill('script_create', name='MyScript', template='MonoBehaviour')");
-            sb.AppendLine("if result.get('success'):");
-            sb.AppendLine("    print('Script created, waiting for Unity to recompile...')");
-            sb.AppendLine("    time.sleep(3)  # Wait for Domain Reload");
-            sb.AppendLine("    # Then continue with other operations");
+            sb.AppendLine("# Import the helper from the scripts/ directory");
+            sb.AppendLine("import sys");
+            sb.AppendLine("sys.path.insert(0, 'scripts')  # Adjust path to skill's scripts directory");
+            sb.AppendLine("from unity_skills import call_skill, is_unity_running, wait_for_unity");
+            sb.AppendLine();
+            sb.AppendLine("# Check if Unity is ready");
+            sb.AppendLine("if is_unity_running():");
+            sb.AppendLine("    # Create a cube");
+            sb.AppendLine("    call_skill('gameobject_create', name='MyCube', primitiveType='Cube', x=0, y=1, z=0)");
+            sb.AppendLine("    # Set its color to red");
+            sb.AppendLine("    call_skill('material_set_color', gameObjectName='MyCube', r=1, g=0, b=0)");
             sb.AppendLine("```");
             sb.AppendLine();
-            sb.AppendLine("## Usage");
+            sb.AppendLine("## ⚠️ Important: Script Creation & Domain Reload");
+            sb.AppendLine();
+            sb.AppendLine("When creating C# scripts with `script_create`, Unity recompiles all scripts (Domain Reload).");
+            sb.AppendLine("The server temporarily stops during compilation and auto-restarts.");
             sb.AppendLine();
             sb.AppendLine("```python");
-            sb.AppendLine("import sys");
-            sb.AppendLine("sys.path.insert(0, 'scripts')");
-            sb.AppendLine("from unity_skills import call_skill");
+            sb.AppendLine("# After creating a script, wait for Unity to recompile");
+            sb.AppendLine("result = call_skill('script_create', name='MyScript', template='MonoBehaviour')");
+            sb.AppendLine("if result.get('success'):");
+            sb.AppendLine("    wait_for_unity(timeout=10)  # Wait for server to come back");
+            sb.AppendLine("```");
             sb.AppendLine();
-            sb.AppendLine("# Create a cube");
-            sb.AppendLine("call_skill('gameobject_create', name='MyCube', primitiveType='Cube', x=0, y=1, z=0)");
+            sb.AppendLine("## Workflow Examples");
             sb.AppendLine();
-            sb.AppendLine("# Set color");
-            sb.AppendLine("call_skill('material_set_color', gameObjectName='MyCube', r=1, g=0, b=0)");
+            sb.AppendLine("### Create a Game Scene");
+            sb.AppendLine("```python");
+            sb.AppendLine("# 1. Create ground");
+            sb.AppendLine("call_skill('gameobject_create', name='Ground', primitiveType='Plane', x=0, y=0, z=0)");
+            sb.AppendLine("call_skill('gameobject_set_transform', name='Ground', scaleX=5, scaleY=1, scaleZ=5)");
+            sb.AppendLine();
+            sb.AppendLine("# 2. Create player");
+            sb.AppendLine("call_skill('gameobject_create', name='Player', primitiveType='Capsule', x=0, y=1, z=0)");
+            sb.AppendLine("call_skill('component_add', name='Player', componentType='Rigidbody')");
+            sb.AppendLine();
+            sb.AppendLine("# 3. Add lighting");
+            sb.AppendLine("call_skill('light_create', name='Sun', lightType='Directional', intensity=1.5)");
+            sb.AppendLine();
+            sb.AppendLine("# 4. Save the scene");
+            sb.AppendLine("call_skill('scene_save', scenePath='Assets/Scenes/GameScene.unity')");
+            sb.AppendLine("```");
+            sb.AppendLine();
+            sb.AppendLine("### Create UI Menu");
+            sb.AppendLine("```python");
+            sb.AppendLine("call_skill('ui_create_canvas', name='MainMenu')");
+            sb.AppendLine("call_skill('ui_create_text', name='Title', parent='MainMenu', text='My Game', fontSize=48)");
+            sb.AppendLine("call_skill('ui_create_button', name='PlayBtn', parent='MainMenu', text='Play', width=200, height=50)");
             sb.AppendLine("```");
             sb.AppendLine();
             sb.AppendLine("## Available Skills");
@@ -243,11 +272,28 @@ namespace UnitySkills
             }
 
             sb.AppendLine();
+            sb.AppendLine("## Skill Directory Structure");
+            sb.AppendLine();
+            sb.AppendLine("```");
+            sb.AppendLine("unity-skills/");
+            sb.AppendLine("├── SKILL.md          # This file - skill entry point");
+            sb.AppendLine("└── scripts/");
+            sb.AppendLine("    └── unity_skills.py  # Python helper with call_skill(), is_unity_running(), etc.");
+            sb.AppendLine("```");
+            sb.AppendLine();
             sb.AppendLine("## Direct REST API");
             sb.AppendLine();
             sb.AppendLine("```bash");
+            sb.AppendLine("# Health check");
+            sb.AppendLine("curl http://localhost:8090/health");
+            sb.AppendLine();
+            sb.AppendLine("# List all available skills");
             sb.AppendLine("curl http://localhost:8090/skills");
-            sb.AppendLine("curl -X POST http://localhost:8090/skill/gameobject_create -d '{\"name\":\"Cube\"}'");
+            sb.AppendLine();
+            sb.AppendLine("# Execute a skill");
+            sb.AppendLine("curl -X POST http://localhost:8090/skill/gameobject_create \\");
+            sb.AppendLine("  -H 'Content-Type: application/json' \\");
+            sb.AppendLine("  -d '{\"name\":\"MyCube\", \"primitiveType\":\"Cube\"}'");
             sb.AppendLine("```");
             return sb.ToString();
         }
