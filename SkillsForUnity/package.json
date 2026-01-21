@@ -1,8 +1,8 @@
 {
   "name": "com.besty.unity-skills",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "displayName": "UnitySkills",
-  "description": "AI-powered Unity Editor control via REST API. Features 76+ Skills for scene, asset, prefab, script, material, component management with Chinese/English UI and one-click AI tool configuration. Includes Domain Reload auto-recovery and intelligent object finding.",
+  "description": "AI automation skills specifically designed for Unity",
   "unity": "2021.3",
   "documentationUrl": "https://github.com/Besty0728/unity-mcp-skill",
   "licensesUrl": "https://github.com/Besty0728/unity-mcp-skill/blob/main/LICENSE",
