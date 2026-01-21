@@ -1,19 +1,6 @@
 ---
 name: unity-skills
-description: |
-  Expert Unity Editor automation via REST API. Use this skill when the user asks to:
-  - Create, modify, delete, or find GameObjects in Unity scenes
-  - Add, remove, or configure components (Rigidbody, Collider, Light, etc.)
-  - Manage scenes (create, load, save, take screenshots)
-  - Create and modify materials, textures, colors, and shaders
-  - Work with prefabs (create, instantiate, apply changes)
-  - Set up lighting (directional, point, spot lights)
-  - Create animation controllers and manage animator parameters
-  - Build UI elements (Canvas, buttons, text, panels, sliders)
-  - Control Unity Editor (play/stop, selection, undo/redo)
-  - Create or modify C# scripts and shaders
-  - Validate projects and clean up assets
-  This skill provides 100+ Unity automation tools accessible via Python scripts in the scripts/ directory.
+description: "Control Unity Editor via REST API. Create and manage GameObjects, components, scenes, materials, prefabs, lights, UI elements, scripts, and more. Provides 100+ automation tools for Unity development."
 ---
 
 # Unity MCP Skills Collection

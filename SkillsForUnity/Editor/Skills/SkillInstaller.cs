@@ -145,21 +145,8 @@ namespace UnitySkills
             sb.AppendLine("---");
             // Gemini CLI requires: lowercase, alphanumeric and dashes only
             sb.AppendLine("name: unity-skills");
-            // CRITICAL: Description must be detailed enough for Gemini to understand WHEN to activate this skill
-            sb.AppendLine("description: |");
-            sb.AppendLine("  Expert Unity Editor automation via REST API. Use this skill when the user asks to:");
-            sb.AppendLine("  - Create, modify, delete, or find GameObjects in Unity scenes");
-            sb.AppendLine("  - Add, remove, or configure components (Rigidbody, Collider, Light, etc.)");
-            sb.AppendLine("  - Manage scenes (create, load, save, take screenshots)");
-            sb.AppendLine("  - Create and modify materials, textures, colors, and shaders");
-            sb.AppendLine("  - Work with prefabs (create, instantiate, apply changes)");
-            sb.AppendLine("  - Set up lighting (directional, point, spot lights)");
-            sb.AppendLine("  - Create animation controllers and manage animator parameters");
-            sb.AppendLine("  - Build UI elements (Canvas, buttons, text, panels, sliders)");
-            sb.AppendLine("  - Control Unity Editor (play/stop, selection, undo/redo)");
-            sb.AppendLine("  - Create or modify C# scripts and shaders");
-            sb.AppendLine("  - Validate projects and clean up assets");
-            sb.AppendLine("  This skill provides 100+ Unity automation tools accessible via Python scripts in the scripts/ directory.");
+            // CRITICAL: Description must be single-line double-quoted string for Gemini CLI compatibility
+            sb.AppendLine("description: \"Control Unity Editor via REST API. Create and manage GameObjects, components, scenes, materials, prefabs, lights, UI elements, scripts, and more. Provides 100+ automation tools for Unity development.\"");
             sb.AppendLine("---");
             sb.AppendLine();
             sb.AppendLine("# Unity Editor Control Skill");
