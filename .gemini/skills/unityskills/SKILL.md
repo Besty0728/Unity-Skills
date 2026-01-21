@@ -1,6 +1,6 @@
 ---
-name: unity
-description: Unity Engine game development via REST API. Use for Unity projects, scene manipulation, GameObject creation, and any Unity-specific automation.
+name: unityskills
+description: Control Unity Editor via REST API. Create GameObjects, manage scenes, materials, prefabs, scripts. Use when user asks for Unity projects, scene manipulation, GameObject creation, material setup, UI building, lighting, animation.
 ---
 
 # UnitySkills - Direct Unity Control
@@ -14,41 +14,65 @@ In Unity: **Window > UnitySkills > Start REST Server**
 
 ### 2. Call Skills from Python
 ```python
-import unity_skills
+import requests
+
+def call_skill(skill_name, **params):
+    url = f"http://localhost:8080/skill/{skill_name}"
+    response = requests.post(url, json=params)
+    return response.json()
 
 # Create objects
-unity_skills.call_skill("gameobject_create", name="MyCube", primitiveType="Cube", x=0, y=1, z=0)
-unity_skills.call_skill("gameobject_create", name="MySphere", primitiveType="Sphere", x=2, y=1, z=0)
+call_skill("gameobject_create", name="MyCube", primitiveType="Cube", x=0, y=1, z=0)
 
-# Modify appearance
-unity_skills.call_skill("material_set_color", name="MyCube", r=1, g=0, b=0)  # Red
+# Modify appearance (auto-detects render pipeline)
+call_skill("material_set_color", name="MyCube", r=1, g=0, b=0)
 
 # Query scene
-info = unity_skills.call_skill("scene_get_info")
+info = call_skill("scene_get_info")
 print(info["result"]["rootObjects"])
-
-# Delete objects
-unity_skills.call_skill("gameobject_delete", name="MyCube")
 ```
+
+## 🎨 Render Pipeline Detection
+
+UnitySkills auto-detects the project's render pipeline (Built-in/URP/HDRP):
+
+```python
+# Check current render pipeline
+pipeline = call_skill("project_get_render_pipeline")
+# Returns: { "pipeline": "URP", "shaderName": "Universal Render Pipeline/Lit", ... }
+
+# Create material - auto-selects correct shader
+call_skill("material_create", name="MyMat", path="Assets/Materials/MyMat.mat")
+
+# Set color - auto-uses correct property (_Color or _BaseColor)
+call_skill("material_set_color", name="MyObject", r=1, g=0, b=0)
+```
+
+| Pipeline | Default Shader | Color Property | Texture Property |
+|----------|---------------|----------------|------------------|
+| Built-in | Standard | `_Color` | `_MainTex` |
+| URP | Universal Render Pipeline/Lit | `_BaseColor` | `_BaseMap` |
+| HDRP | HDRP/Lit | `_BaseColor` | `_BaseColorMap` |
 
 ## Skills Categories
 
-| Category | Description |
-|----------|-------------|
-| [GameObject](#gameobject-skills) | Create, delete, find, transform objects |
-| [Component](#component-skills) | Add, remove, configure components |
-| [Scene](#scene-skills) | Scene management |
-| [Material](#material-skills) | Material and shader operations |
-| [Prefab](#prefab-skills) | Prefab operations |
-| [Asset](#asset-skills) | Asset management |
-| [Light](#light-skills) | Light creation and configuration |
-| [Animator](#animator-skills) | Animation controller management |
-| [UI](#ui-skills) | UI element creation |
-| [Editor](#editor-skills) | Editor control |
-| [Console](#console-skills) | Debug and logging |
-| [Script](#script-skills) | Script management |
-| [Shader](#shader-skills) | Shader operations |
-| [Validation](#validation-skills) | Project validation and cleanup |
+| Category | Skills | Description |
+|----------|--------|-------------|
+| **GameObject** | 7 | Create, delete, find, transform objects |
+| **Component** | 5 | Add, remove, configure components |
+| **Scene** | 6 | Scene management, screenshots |
+| **Material** | 5 | Material/shader (smart pipeline detection) |
+| **Prefab** | 4 | Prefab operations |
+| **Asset** | 8 | Asset management |
+| **Light** | 5 | Light creation and configuration |
+| **Animator** | 8 | Animation controller management |
+| **UI** | 10 | UI element creation |
+| **Editor** | 11 | Editor control |
+| **Console** | 5 | Debug and logging |
+| **Script** | 4 | Script management |
+| **Shader** | 3 | Shader operations |
+| **Validation** | 7 | Project validation and cleanup |
+| **Project** | 4 | Project info and pipeline detection |
 
 ---
 
@@ -64,26 +88,7 @@ unity_skills.call_skill("gameobject_delete", name="MyCube")
 | `gameobject_set_active` | Enable/disable GameObject | `name`, `active` |
 | `gameobject_get_info` | Get detailed info | `name`/`instanceId`/`path` |
 
-### Primitive Types
-- `Cube`, `Sphere`, `Capsule`, `Cylinder`, `Plane`, `Quad` - 3D primitives
-- `Empty`, `None`, or omit - Creates an empty GameObject
-
-### Example: Create a Cube
-```python
-unity_skills.call_skill("gameobject_create", 
-    name="Player", 
-    primitiveType="Cube", 
-    x=0, y=1, z=0
-)
-```
-
-### Example: Create an Empty GameObject
-```python
-# All three methods work:
-unity_skills.call_skill("gameobject_create", name="Container", primitiveType="Empty")
-unity_skills.call_skill("gameobject_create", name="Container", primitiveType="None")
-unity_skills.call_skill("gameobject_create", name="Container")  # primitiveType omitted
-```
+**Primitive Types:** `Cube`, `Sphere`, `Capsule`, `Cylinder`, `Plane`, `Quad`, `Empty`/`None` (or omit for empty object)
 
 ---
 
@@ -97,18 +102,7 @@ unity_skills.call_skill("gameobject_create", name="Container")  # primitiveType 
 | `component_set_property` | Set component property | `name`, `componentType`, `propertyName`, `value` |
 | `component_get_properties` | Get all properties | `name`, `componentType` |
 
-### Component Type Formats
-All these formats are supported:
-- Simple name: `"Rigidbody"`, `"MeshRenderer"`, `"Light"`
-- Full namespace: `"UnityEngine.Rigidbody"`, `"UnityEngine.UI.Image"`
-- TMPro components: `"TextMeshProUGUI"`, `"TMPro.TextMeshProUGUI"`
-
-### Example: Add Rigidbody
-```python
-# All formats work:
-unity_skills.call_skill("component_add", name="Player", componentType="Rigidbody")
-unity_skills.call_skill("component_add", name="Player", componentType="UnityEngine.Rigidbody")
-```
+**Component Type Formats:** Simple name `"Rigidbody"` or full namespace `"UnityEngine.Rigidbody"` both work.
 
 ---
 
@@ -125,14 +119,14 @@ unity_skills.call_skill("component_add", name="Player", componentType="UnityEngi
 
 ---
 
-## Material Skills
+## Material Skills (Smart Pipeline Detection)
 
 | Skill | Description | Key Parameters |
 |-------|-------------|----------------|
-| `material_create` | Create a new material | `name`, `shaderName`, `savePath` |
-| `material_set_color` | Set material color | `name`/`path`, `r`, `g`, `b`, `a` |
-| `material_set_texture` | Set material texture | `name`/`path`, `texturePath` |
-| `material_assign` | Assign material to renderer | `name`, `materialPath` |
+| `material_create` | Create material (auto shader) | `name`, `shaderName`(optional), `savePath` |
+| `material_set_color` | Set color (auto property) | `name`/`path`, `r`, `g`, `b`, `a` |
+| `material_set_texture` | Set texture (auto property) | `name`/`path`, `texturePath` |
+| `material_assign` | Assign to renderer | `name`, `materialPath` |
 | `material_set_float` | Set float property | `name`/`path`, `propertyName`, `value` |
 
 ---
@@ -173,24 +167,7 @@ unity_skills.call_skill("component_add", name="Player", componentType="UnityEngi
 | `light_find_all` | Find all lights | `lightType`, `limit` |
 | `light_set_enabled` | Enable/disable light | `name`, `enabled` |
 
-### Light Types
-- `Directional` - Sun-like parallel light
-- `Point` - Omnidirectional light
-- `Spot` - Cone-shaped light
-- `Area` - Rectangle light (baked only)
-
-### Example: Create Point Light
-```python
-unity_skills.call_skill("light_create",
-    name="TorchLight",
-    lightType="Point",
-    x=0, y=3, z=0,
-    r=1, g=0.8, b=0.4,
-    intensity=2,
-    range=10,
-    shadows="soft"
-)
-```
+**Light Types:** `Directional`, `Point`, `Spot`, `Area`
 
 ---
 
@@ -207,27 +184,7 @@ unity_skills.call_skill("light_create",
 | `animator_assign_controller` | Assign controller | `name`, `controllerPath` |
 | `animator_list_states` | List states in controller | `controllerPath`, `layer` |
 
-### Parameter Types
-- `float` - Floating point value
-- `int` - Integer value
-- `bool` - Boolean value
-- `trigger` - One-shot trigger
-
-### Example: Create Animation Controller
-```python
-# Create controller
-unity_skills.call_skill("animator_create_controller",
-    name="PlayerController",
-    folder="Assets/Animations"
-)
-
-# Add parameters
-unity_skills.call_skill("animator_add_parameter",
-    controllerPath="Assets/Animations/PlayerController.controller",
-    paramName="Speed",
-    paramType="float"
-)
-```
+**Parameter Types:** `float`, `int`, `bool`, `trigger`
 
 ---
 
@@ -246,33 +203,7 @@ unity_skills.call_skill("animator_add_parameter",
 | `ui_set_text` | Set text content | `name`, `text` |
 | `ui_find_all` | Find all UI elements | `uiType`, `limit` |
 
-### Render Modes
-- `ScreenSpaceOverlay` - UI rendered on top
-- `ScreenSpaceCamera` - UI rendered by camera
-- `WorldSpace` - UI in 3D world
-
-### Example: Create Simple Menu
-```python
-# Create canvas
-unity_skills.call_skill("ui_create_canvas", name="MainMenu")
-
-# Create title
-unity_skills.call_skill("ui_create_text",
-    name="Title",
-    parent="MainMenu",
-    text="My Game",
-    fontSize=48
-)
-
-# Create start button
-unity_skills.call_skill("ui_create_button",
-    name="StartButton",
-    parent="MainMenu",
-    text="Start Game",
-    width=200,
-    height=50
-)
-```
+**Render Modes:** `ScreenSpaceOverlay`, `ScreenSpaceCamera`, `WorldSpace`
 
 ---
 
@@ -339,20 +270,42 @@ unity_skills.call_skill("ui_create_button",
 | `validate_project_structure` | Get project overview | `rootPath`, `maxDepth` |
 | `validate_fix_missing_scripts` | Remove missing scripts | `dryRun` |
 
-### Example: Validate Project
-```python
-# Check scene for issues
-result = unity_skills.call_skill("validate_scene",
-    checkMissingScripts=True,
-    checkMissingPrefabs=True,
-    checkDuplicateNames=True
-)
+---
 
-# Clean up empty folders (dry run first)
-result = unity_skills.call_skill("validate_cleanup_empty_folders",
-    rootPath="Assets",
-    dryRun=True
-)
+## Project Skills
+
+| Skill | Description | Key Parameters |
+|-------|-------------|----------------|
+| `project_get_info` | Get project information | (none) |
+| `project_get_render_pipeline` | Get render pipeline type | (none) |
+| `project_list_shaders` | List available shaders | `filter`, `limit` |
+| `project_get_quality_settings` | Get quality settings | (none) |
+
+---
+
+## Workflow Examples
+
+### Create a Simple Scene
+```python
+# Create ground
+call_skill("gameobject_create", name="Ground", primitiveType="Plane", x=0, y=0, z=0)
+call_skill("gameobject_set_transform", name="Ground", scaleX=10, scaleZ=10)
+
+# Create player
+call_skill("gameobject_create", name="Player", primitiveType="Cube", x=0, y=1, z=0)
+call_skill("material_set_color", name="Player", r=0, g=0.5, b=1)
+
+# Add lighting
+call_skill("light_create", name="Sun", lightType="Directional", intensity=1)
+call_skill("light_create", name="Fill", lightType="Point", x=5, y=3, z=5, intensity=0.5)
+```
+
+### Build UI Menu
+```python
+call_skill("ui_create_canvas", name="MainMenu")
+call_skill("ui_create_text", name="Title", parent="MainMenu", text="My Game", fontSize=48)
+call_skill("ui_create_button", name="PlayBtn", parent="MainMenu", text="Play")
+call_skill("ui_create_button", name="QuitBtn", parent="MainMenu", text="Quit")
 ```
 
 ---
@@ -361,10 +314,10 @@ result = unity_skills.call_skill("validate_cleanup_empty_folders",
 
 ```bash
 # List all skills
-curl http://localhost:8090/skills
+curl http://localhost:8080/skills
 
 # Execute skill
-curl -X POST http://localhost:8090/skill/gameobject_create \
+curl -X POST http://localhost:8080/skill/gameobject_create \
   -H "Content-Type: application/json" \
   -d '{"name": "Cube1", "primitiveType": "Cube", "x": 1, "y": 2, "z": 3}'
 ```
@@ -383,50 +336,4 @@ curl -X POST http://localhost:8090/skill/gameobject_create \
     "position": {"x": 1, "y": 2, "z": 3}
   }
 }
-```
-
-## Adding Custom Skills
-
-In Unity, create a C# file:
-
-```csharp
-using UnitySkills;
-
-public static class MyCustomSkills
-{
-    [UnitySkill("my_skill", "Description for AI")]
-    public static object MySkill(string param1, float param2 = 0)
-    {
-        // Your logic here
-        return new { success = true, message = "Done!" };
-    }
-}
-```
-
-Restart the REST server to discover new skills.
-
-## Python Client Reference
-
-```python
-import unity_skills
-
-# Generic skill call
-result = unity_skills.call_skill("skill_name", param1="value", param2=123)
-
-# Health check
-if unity_skills.health():
-    print("Unity is running")
-
-# List all skills
-skills = unity_skills.get_skills()
-```
-
-## CLI Usage
-
-```bash
-# List skills
-python unity_skills.py --list
-
-# Call skill
-python unity_skills.py gameobject_create name=MyCube primitiveType=Cube x=1 y=2 z=3
 ```

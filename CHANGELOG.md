@@ -2,7 +2,67 @@
 
 All notable changes to UnitySkills will be documented in this file.
 
-## [1.3.4] - 2025-01-24
+## [1.3.5] - 2025-01-21
+
+### Changed - Unified Skill Folder Name
+
+**Breaking Change**: All AI skill folders are now named `unityskills` (lowercase, no dashes).
+
+**Affected Paths**:
+- Claude Code: `~/.claude/skills/unityskills/`
+- Antigravity: `~/.gemini/antigravity/skills/unityskills/`
+- Gemini CLI: `~/.gemini/skills/unityskills/`
+
+**Action Required**: If you had the old version installed, please uninstall and reinstall using Unity's AI Config tab.
+
+### Changed - Repository Structure
+
+- Renamed `claude_skill_unity/claude_skill_unity/` to `unityskills/` (no more nested directory)
+- Renamed `.gemini/skills/unity-skills/` to `.gemini/skills/unityskills/`
+- All SKILL.md files updated with `name: unityskills`
+- Simplified README.md with cleaner installation guide
+
+### Removed
+
+- Deleted development test scripts from repository root:
+  - `apply_urp_material.py`
+  - `rainbow_cubes.py`
+  - `test_material_v1_3.py`
+  - `verify_urp.py`
+
+## [1.3.4] - 2025-01-21
+
+### Fixed - Gemini CLI Skill Installation
+
+**Problem Solved**: Gemini CLI requires skill folder name to match the `name` field in SKILL.md. Previously the folder was named `unity-skills` but SKILL.md defined `name: unity-editor-control`.
+
+**Changes**:
+- Renamed skill folder from `unity-skills` to `unity-editor-control`
+- Updated all installation paths in `SkillInstaller.cs`
+- Updated README.md with correct folder names
+
+### Fixed - Language Setting Persistence
+
+**Problem Solved**: User's language selection (English/Chinese) was lost after Domain Reload (script compilation). The UI would always reset to English.
+
+**Solution**: Language preference is now persisted to `EditorPrefs` and automatically restored after Domain Reload.
+
+### Added - Domain Reload Documentation in SKILL.md
+
+**Problem Solved**: AI tools would stop working when they encountered `Connection Refused` errors after creating scripts, not knowing this was expected behavior.
+
+**Changes**:
+- Added clear documentation about Domain Reload behavior in generated SKILL.md
+- Added retry guidance and wait time recommendations
+- Updated Python helper with `call_skill_with_retry()`, `wait_for_unity()`, and `create_script()` functions
+
+### Added - Enhanced Python Helper
+
+New functions in `unity_skills.py`:
+- `call_skill_with_retry(skill_name, max_retries=3, retry_delay=2.0, **kwargs)` - Auto-retry on connection errors
+- `wait_for_unity(timeout=10.0)` - Wait for server to become available
+- `get_server_status()` - Get detailed server status
+- `create_script(name, template, wait_for_compile=True)` - Create script with optional wait for recompilation
 
 ### Added - Enhanced Type Conversion System
 

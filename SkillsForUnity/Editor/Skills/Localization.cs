@@ -1,19 +1,38 @@
 using System.Collections.Generic;
+using UnityEditor;
 
 namespace UnitySkills
 {
     /// <summary>
     /// Localization for UnitySkills.
+    /// Persists language preference across Domain Reload.
     /// </summary>
     public static class Localization
     {
         public enum Language { English, Chinese }
         
+        private const string PREF_LANGUAGE = "UnitySkills_Language";
+        private static bool _initialized = false;
         private static Language _current = Language.English;
+        
         public static Language Current
         {
-            get => _current;
-            set => _current = value;
+            get
+            {
+                if (!_initialized)
+                {
+                    // Restore from EditorPrefs on first access
+                    _current = (Language)EditorPrefs.GetInt(PREF_LANGUAGE, (int)Language.English);
+                    _initialized = true;
+                }
+                return _current;
+            }
+            set
+            {
+                _current = value;
+                // Persist to EditorPrefs
+                EditorPrefs.SetInt(PREF_LANGUAGE, (int)value);
+            }
         }
 
         public static string Get(string key)

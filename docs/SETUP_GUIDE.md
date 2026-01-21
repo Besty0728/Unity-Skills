@@ -47,9 +47,9 @@ Unity 菜单：**Window → UnitySkills**，切换到 **AI Config** 标签页
 
 | AI 工具 | 项目安装路径 | 全局安装路径 |
 |---------|------------|------------|
-| Claude Code | `.claude/skills/unity-skills/` | `~/.claude/skills/unity-skills/` |
-| Antigravity | `.agent/skills/unity-skills/` | `~/.gemini/antigravity/skills/unity-skills/` |
-| Gemini CLI | `.gemini/skills/unity-skills/` | `~/.gemini/skills/unity-skills/` |
+| Claude Code | `.claude/skills/unityskills/` | `~/.claude/skills/unityskills/` |
+| Antigravity | `.agent/skills/unityskills/` | `~/.gemini/antigravity/skills/unityskills/` |
+| Gemini CLI | `.gemini/skills/unityskills/` | `~/.gemini/skills/unityskills/` |
 
 ### 一键安装
 1. 在 UnitySkills 窗口的 AI Config 标签页
