@@ -4,6 +4,12 @@ All notable changes to UnitySkills will be documented in this file.
 
 ## [1.3.5] - 2025-01-21
 
+### Fixed - YAML Syntax for Gemini CLI
+
+**Root Cause**: Gemini CLI's YAML parser failed silently because the `description` field was unquoted. Long strings with special characters must be enclosed in double quotes.
+
+**Fix**: Added double quotes around `description` field in all SKILL.md files.
+
 ### Changed - Unified Skill Folder Name
 
 **Breaking Change**: All AI skill folders are now named `unityskills` (lowercase, no dashes).

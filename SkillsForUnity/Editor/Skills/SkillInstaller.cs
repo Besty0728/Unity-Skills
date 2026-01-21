@@ -145,7 +145,7 @@ namespace UnitySkills
             sb.AppendLine("---");
             // Gemini CLI requires: lowercase, alphanumeric only (no dashes for simplicity)
             sb.AppendLine("name: unityskills");
-            sb.AppendLine("description: Control Unity Editor via REST API. Create GameObjects, manage scenes, materials, prefabs, scripts. Use when user asks for Unity projects, scene manipulation, GameObject creation, material setup, UI building, lighting, animation.");
+            sb.AppendLine("description: \"Control Unity Editor via REST API. Create GameObjects, manage scenes, materials, prefabs, scripts.\"");
             sb.AppendLine("---");
             sb.AppendLine();
             sb.AppendLine("# Unity Editor Control Skill");

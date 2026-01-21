@@ -1,6 +1,6 @@
 ---
 name: unityskills
-description: Unity Engine game development via REST API. Use for Unity projects, scene manipulation, GameObject creation, and any Unity-specific automation.
+description: "Control Unity Editor via REST API. Create GameObjects, manage scenes, materials, prefabs, scripts."
 ---
 
 # UnitySkills - Direct Unity Control
