@@ -549,13 +549,96 @@ namespace UnitySkills
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
 
+            EditorGUILayout.Space(10);
+
+            // OpenAI Codex
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("OpenAI Codex", EditorStyles.boldLabel);
+            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(L("install_project") + ":", GUILayout.Width(100));
+            if (SkillInstaller.IsCodexProjectInstalled)
+            {
+                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel, GUILayout.Width(60));
+                if (GUILayout.Button(L("update"), GUILayout.Width(50)))
+                {
+                    var result = SkillInstaller.InstallCodex(false);
+                    if (result.success)
+                        EditorUtility.DisplayDialog("Success", L("update_success"), "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error", string.Format(L("update_failed"), result.message), "OK");
+                }
+                if (GUILayout.Button(L("uninstall"), GUILayout.Width(60)))
+                {
+                    if (EditorUtility.DisplayDialog(L("uninstall"), string.Format(L("uninstall_confirm"), "OpenAI Codex (Project)"), "OK", "Cancel"))
+                    {
+                        var result = SkillInstaller.UninstallCodex(false);
+                        if (result.success)
+                            EditorUtility.DisplayDialog("Success", L("uninstall_success"), "OK");
+                        else
+                            EditorUtility.DisplayDialog("Error", string.Format(L("uninstall_failed"), result.message), "OK");
+                    }
+                }
+            }
+            else
+            {
+                if (GUILayout.Button(L("install_project"), GUILayout.Width(120)))
+                {
+                    var result = SkillInstaller.InstallCodex(false);
+                    if (result.success)
+                        EditorUtility.DisplayDialog("Success", L("install_success") + "\n" + result.message, "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error", string.Format(L("install_failed"), result.message), "OK");
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(L("install_global") + ":", GUILayout.Width(100));
+            if (SkillInstaller.IsCodexGlobalInstalled)
+            {
+                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel, GUILayout.Width(60));
+                if (GUILayout.Button(L("update"), GUILayout.Width(50)))
+                {
+                    var result = SkillInstaller.InstallCodex(true);
+                    if (result.success)
+                        EditorUtility.DisplayDialog("Success", L("update_success"), "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error", string.Format(L("update_failed"), result.message), "OK");
+                }
+                if (GUILayout.Button(L("uninstall"), GUILayout.Width(60)))
+                {
+                    if (EditorUtility.DisplayDialog(L("uninstall"), string.Format(L("uninstall_confirm"), "OpenAI Codex (Global)"), "OK", "Cancel"))
+                    {
+                        var result = SkillInstaller.UninstallCodex(true);
+                        if (result.success)
+                            EditorUtility.DisplayDialog("Success", L("uninstall_success"), "OK");
+                        else
+                            EditorUtility.DisplayDialog("Error", string.Format(L("uninstall_failed"), result.message), "OK");
+                    }
+                }
+            }
+            else
+            {
+                if (GUILayout.Button(L("install_global"), GUILayout.Width(120)))
+                {
+                    var result = SkillInstaller.InstallCodex(true);
+                    if (result.success)
+                        EditorUtility.DisplayDialog("Success", L("install_success") + "\n" + result.message, "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error", string.Format(L("install_failed"), result.message), "OK");
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.EndVertical();
+
             EditorGUILayout.Space(20);
             
             // Help text
             EditorGUILayout.HelpBox(
                 Localization.Current == Localization.Language.Chinese
-                    ? "项目安装：将 Skill 安装到当前 Unity 项目目录\n全局安装：将 Skill 安装到用户目录，所有项目可用\n\n注意：Gemini CLI 需要在 /settings 中启用 experimental.skills"
-                    : "Project Install: Install skill to current Unity project\nGlobal Install: Install skill to user folder, available for all projects\n\nNote: Gemini CLI requires enabling experimental.skills in /settings",
+                    ? "项目安装：将 Skill 安装到当前 Unity 项目目录\n全局安装：将 Skill 安装到用户目录，所有项目可用\n\n注意：Gemini CLI 需要在 /settings 中启用 experimental.skills\n注意：Codex 需要重启后才会加载新 Skill"
+                    : "Project Install: Install skill to current Unity project\nGlobal Install: Install skill to user folder, available for all projects\n\nNote: Gemini CLI requires enabling experimental.skills in /settings\nNote: Codex requires restart to load new skills",
                 MessageType.Info
             );
         }

@@ -50,6 +50,7 @@ Unity 菜单：**Window → UnitySkills**，切换到 **AI Config** 标签页
 | Claude Code | `.claude/skills/unity-skills/` | `~/.claude/skills/unity-skills/` |
 | Antigravity | `.agent/skills/unity-skills/` | `~/.gemini/antigravity/skills/unity-skills/` |
 | Gemini CLI | `.gemini/skills/unity-skills/` | `~/.gemini/skills/unity-skills/` |
+| OpenAI Codex | `.codex/skills/unity-skills/` | `~/.codex/skills/unity-skills/` |
 
 ### 一键安装
 1. 在 UnitySkills 窗口的 AI Config 标签页
@@ -69,6 +70,13 @@ gemini
 # 进入交互模式后输入
 /settings
 # 搜索 "Skills" 并启用 experimental.skills
+```
+
+### OpenAI Codex 特别说明
+安装完成后需要重启 Codex 才能加载新 Skill：
+```bash
+# 重启 Codex 以加载新安装的 Skill
+codex
 ```
 
 ---

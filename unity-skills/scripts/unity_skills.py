@@ -14,12 +14,12 @@ from typing import Any, Dict, Optional
 UNITY_URL = "http://localhost:8090"
 
 
-def call_skill(name: str, **kwargs) -> Dict[str, Any]:
+def call_skill(skill_name: str, **kwargs) -> Dict[str, Any]:
     """
     Call a Unity skill by name.
     
     Args:
-        name: Skill name (e.g., "create_cube")
+        skill_name: Skill name (e.g., "create_cube")
         **kwargs: Skill parameters
         
     Returns:
@@ -27,7 +27,7 @@ def call_skill(name: str, **kwargs) -> Dict[str, Any]:
     """
     try:
         response = requests.post(
-            f"{UNITY_URL}/skill/{name}",
+            f"{UNITY_URL}/skill/{skill_name}",
             json=kwargs,
             timeout=30
         )
