@@ -14,7 +14,9 @@ Manage project assets - import, move, delete, and organize files in your Unity p
 - Create folders
 - Find assets by filter
 - Refresh asset database
+- Refresh asset database
 - Get asset information
+- **Batch Operations**: Efficiently import, delete, and move multiple assets.
 
 ## Skills Reference
 
@@ -27,7 +29,11 @@ Manage project assets - import, move, delete, and organize files in your Unity p
 | `asset_find` | Find assets |
 | `asset_create_folder` | Create folder |
 | `asset_refresh` | Refresh AssetDatabase |
+| `asset_refresh` | Refresh AssetDatabase |
 | `asset_get_info` | Get asset information |
+| `asset_import_batch` | Import multiple assets (Efficient) |
+| `asset_delete_batch` | Delete multiple assets (Efficient) |
+| `asset_move_batch` | Move multiple assets (Efficient) |
 
 ## Parameters
 
@@ -76,6 +82,15 @@ Manage project assets - import, move, delete, and organize files in your Unity p
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `assetPath` | string | Yes | Asset path |
+
+### Batch Operations
+Batch skills take a single `items` parameter which is a JSON array of objects.
+
+| Skill | Item Properties |
+|-------|-----------------|
+| `asset_import_batch` | `sourcePath`, `destinationPath` |
+| `asset_delete_batch` | `path` |
+| `asset_move_batch` | `sourcePath`, `destinationPath` |
 
 ## Search Filter Syntax
 

@@ -12,35 +12,137 @@ namespace UnitySkills
     public static class ScriptSkills
     {
         [UnitySkill("script_create", "Create a new C# script")]
-        public static object ScriptCreate(string scriptName, string folder = "Assets/Scripts", string template = null)
+            if (File.Exists(path))
+                return new { error = $"Script already exists: {path}" };
+
+            // Default template
+            string content = template;
+            if (string.IsNullOrEmpty(content))
+            {
+                content = @"using UnityEngine;
+
+namespace {NAMESPACE}
+{
+    public class {CLASS} : MonoBehaviour
+    {
+        void Start()
+        {
+            
+        }
+
+        void Update()
+        {
+            
+        }
+    }
+}
+";
+                // If no namespace provided, remove namespace wrapper
+                if (string.IsNullOrEmpty(namespaceName))
+                {
+                    content = @"using UnityEngine;
+
+public class {CLASS} : MonoBehaviour
+{
+    void Start()
+    {
+        
+    }
+
+    void Update()
+    {
+        
+    }
+}
+";
+                }
+            }
+
+            content = content.Replace("{CLASS}", scriptName);
+            if (!string.IsNullOrEmpty(namespaceName))
+                content = content.Replace("{NAMESPACE}", namespaceName);
+
+            File.WriteAllText(path, content);
+            AssetDatabase.ImportAsset(path);
+
+            return new { success = true, path, className = scriptName, namespaceName };
+        }
+
+        [UnitySkill("script_create_batch", "Create multiple scripts (Efficient). items: JSON array of {scriptName, folder, template, namespace}")]
+        public static object ScriptCreateBatch(string items)
+        {
+            if (string.IsNullOrEmpty(items))
+                return new { error = "items parameter is required." };
+
+            try
+            {
+                var itemList = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.List<BatchScriptItem>>(items);
+                if (itemList == null || itemList.Count == 0)
+                    return new { error = "items parameter is empty or invalid JSON" };
+
+                var results = new System.Collections.Generic.List<object>();
+                int successCount = 0;
+                int failCount = 0;
+
+                foreach (var item in itemList)
+                {
+                    try
+                    {
+                        var result = ScriptCreate(item.scriptName, item.folder ?? "Assets/Scripts", item.template, item.namespaceName);
+                        
+                        // Check if result is error anonymously
+                        var json = Newtonsoft.Json.JsonConvert.SerializeObject(result);
+                        if (json.Contains("\"error\""))
+                        {
+                            results.Add(new { target = item.scriptName, success = false, error = json });
+                            failCount++;
+                        }
+                        else
+                        {
+                            results.Add(result);
+                            successCount++;
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        results.Add(new { target = item.scriptName, success = false, error = ex.Message });
+                        failCount++;
+                    }
+                }
+
+                // Batch Operations usually trigger Domain Reload.
+                // We let Unity handle it, but warn client that server might restart.
+                return new
+                {
+                    success = failCount == 0,
+                    totalItems = itemList.Count,
+                    successCount,
+                    failCount,
+                    results,
+                    message = "Scripts created. Expect Domain Reload."
+                };
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Failed to parse items JSON: {ex.Message}" };
+            }
+        }
+
+        private class BatchScriptItem
+        {
+            public string scriptName { get; set; }
+            public string folder { get; set; }
+            public string template { get; set; }
+            public string namespaceName { get; set; }
+        }
+
+        [UnitySkill("script_create", "Create a new C# script. Optional: namespace")]
+        public static object ScriptCreate(string scriptName, string folder = "Assets/Scripts", string template = null, string namespaceName = null)
         {
             if (!Directory.Exists(folder))
                 Directory.CreateDirectory(folder);
 
             var path = Path.Combine(folder, scriptName + ".cs");
-            if (File.Exists(path))
-                return new { error = $"Script already exists: {path}" };
-
-            var content = template ?? $@"using UnityEngine;
-
-public class {scriptName} : MonoBehaviour
-{{
-    void Start()
-    {{
-        
-    }}
-
-    void Update()
-    {{
-        
-    }}
-}}
-";
-            File.WriteAllText(path, content);
-            AssetDatabase.ImportAsset(path);
-
-            return new { success = true, path, className = scriptName };
-        }
 
         [UnitySkill("script_read", "Read the contents of a script")]
         public static object ScriptRead(string scriptPath)

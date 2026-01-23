@@ -12,7 +12,9 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 - Create Canvas containers
 - Create UI elements (Button, Text, Image, InputField, Slider, Toggle)
 - Configure UI properties
+- Configure UI properties
 - Find UI elements in scene
+- **Batch Operations**: Create complex UI layouts in a single call.
 
 ## Skills Reference
 
@@ -27,7 +29,10 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | `ui_create_slider` | Create Slider |
 | `ui_create_toggle` | Create Toggle/Checkbox |
 | `ui_set_text` | Set text content |
+| `ui_create_toggle` | Create Toggle/Checkbox |
+| `ui_set_text` | Set text content |
 | `ui_find_all` | Find UI elements |
+| `ui_create_batch` | Create multiple UI elements (Efficient) |
 
 ## Canvas Render Modes
 
@@ -127,7 +132,15 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `uiType` | string | No | null | Filter by type |
+| `uiType` | string | No | null | Filter by type |
 | `limit` | int | No | 100 | Max results |
+
+### Batch Operations
+Batch skills take a single `items` parameter which is a JSON array of objects.
+
+| Skill | Item Properties |
+|-------|-----------------|
+| `ui_create_batch` | `type` (Button/Text/...), `name`, `parent`, `text`, `width`, `height`, etc. |
 
 ## Example Usage
 

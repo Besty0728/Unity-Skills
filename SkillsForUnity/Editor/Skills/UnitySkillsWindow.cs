@@ -184,6 +184,22 @@ namespace UnitySkills
 
             if (_serverRunning)
             {
+                // Identity Section
+                EditorGUILayout.HelpBox(
+                    Localization.Current == Localization.Language.Chinese ? 
+                    $"端口 (Port): {SkillsHttpServer.Port}\nID: {RegistryService.InstanceId}" :
+                    $"Port: {SkillsHttpServer.Port}\nID: {RegistryService.InstanceId}", 
+                    MessageType.Info);
+                
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "复制 ID" : "Copy ID", GUILayout.Width(80)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = RegistryService.InstanceId;
+                    _testResult = $"Copied ID: {RegistryService.InstanceId}"; // Feedback
+                }
+                EditorGUILayout.EndHorizontal();
+
                 EditorGUILayout.SelectableLabel(SkillsHttpServer.Url, EditorStyles.miniLabel, GUILayout.Height(18));
                 
                 // Live Server Statistics
@@ -201,6 +217,10 @@ namespace UnitySkills
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField(L("total_processed") + ":", GUILayout.Width(120));
                 EditorGUILayout.LabelField(SkillsHttpServer.TotalProcessed.ToString());
+                if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "重置" : "Reset", GUILayout.Width(50)))
+                {
+                    SkillsHttpServer.ResetStatistics();
+                }
                 EditorGUILayout.EndHorizontal();
                 
                 EditorGUILayout.BeginHorizontal();

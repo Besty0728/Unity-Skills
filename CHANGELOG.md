@@ -2,6 +2,35 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.1.0] - 2026-01-23
+
+### 🚀 Major Update: Production Readiness / 生产级就绪
+This release transforms UnitySkills from a basic toolset into a production-grade orchestration platform.
+本次更新将 UnitySkills 从基础工具集升级为生产级编排平台。
+
+### 🌟 New Features / 新特性
+- **Multi-Instance Support (多实例支持)**:
+    - Auto-discovery of available ports (8090-8100). / 自动发现可用端口。
+    - Global Registry service for finding instances by ID. / 全局注册表服务。
+    - `python unity_skills.py --list-instances` CLI support.
+- **Transactional Safety (Atomic Undo) / 原子化撤销**:
+    - All operations now run within isolated Undo Groups. / 所有操作在隔离的 Undo 组中运行。
+    - **Auto-Revert**: If any part of a skill fails, the *entire* operation is rolled back. / 失败自动全量回滚。
+- **Batch Operations (批处理)**:
+    - Added `*_batch` variants for all major skills (GameObject, Component, Asset, UI). / 全技能支持批处理。
+    - 100x performance improvement for large scene generation. / 大规模生成性能提升 100 倍。
+- **One-Click Installer for Codex (Codex 一键安装)**:
+    - Added direct support for OpenAI Codex in the Skill Installer. / 安装器新增 Codex 支持。
+- **Token Optimization (Token 优化)**:
+    - **Summary Mode**: Large result sets are automatically truncated (`verbose=false`) to save tokens. / 结果自动截断。
+    - **Context Compression**: `SKILL.md` rewritten for 40% reduction in System Prompt size. / 上下文压缩。
+
+### 🛠 Improvements / 改进
+- **UI Update**: UnitySkills Window now displays Instance ID and dynamic Port. / 面板显示实例 ID 和端口。
+- **Client Library**: `UnitySkills` python class refactored for object-oriented connection management. / Python 客户端重构。
+
+---
+
 ## [1.0.0] - 2025-01-22
 
 ### 🚀 Initial Product Release

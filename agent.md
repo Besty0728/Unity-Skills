@@ -36,12 +36,27 @@
 │             SkillsForUnity (Unity Editor Plugin)             │
 │  ┌─────────────────┐  ┌─────────────┐  ┌─────────────────┐  │
 │  │ SkillsHttpServer│→ │ SkillRouter │→ │[UnitySkill] 方法│  │
-│  │ (Producer-Consumer)│ (反射发现)   │  │ (具体实现)      │  │
+│  │ (Multi-Instance)│  │(Undo-Aware) │  │  (Atomic)       │  │
 │  └─────────────────┘  └─────────────┘  └─────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 核心设计模式
+### 核心设计模式 & 新特性 (v1.1)
+
+1.  **Multi-Instance (多实例支持)**:
+    - Server 自动寻找可用端口 `8090-8100`。
+    - 注册到全局 `~/.unity_skills/registry.json`，支持 AI 发现与连接。
+
+2.  **Transactional Skills (原子化)**:
+    - 所有 Skill 自动包裹在 Unity Undo Group 中。
+    - 执行失败自动回滚 (Revert)，保证场景状态一致性。
+
+3.  **Batch Operations (批处理)**:
+    - 提供 `_batch` 后缀的 API (如 `gameobject_create_batch`)，一次请求处理 1000+ 物体。
+
+4.  **Token Optimization (Summary Mode)**:
+    - 大量数据返回时自动截断 (`verbose=false`)。
+    - `SKILL.md` 专为 AI 阅读优化。
 
 **Producer-Consumer 模式** (线程安全)：
 - **Producer** (HTTP 线程)：接收 HTTP 请求，入队到 `RequestJob` 队列

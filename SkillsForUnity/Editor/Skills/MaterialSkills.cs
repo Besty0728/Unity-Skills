@@ -297,6 +297,100 @@ namespace UnitySkills
             };
         }
 
+        [UnitySkill("material_set_colors_batch", "Set colors on multiple GameObjects in a single call. items is a JSON array like [{name:'Obj1',r:1,g:0,b:0},{name:'Obj2',r:0,g:1,b:0}]. Much more efficient than calling material_set_color multiple times.")]
+        public static object MaterialSetColorsBatch(string items = null, string propertyName = null)
+        {
+            if (string.IsNullOrEmpty(items))
+                return new { error = "items parameter is required. Example: [{\"name\":\"Cube1\",\"r\":1,\"g\":0,\"b\":0},{\"name\":\"Cube2\",\"r\":0,\"g\":1,\"b\":0}]" };
+
+            // Auto-detect color property if not specified
+            if (string.IsNullOrEmpty(propertyName))
+                propertyName = ProjectSkills.GetColorPropertyName();
+
+            try
+            {
+                var itemList = Newtonsoft.Json.JsonConvert.DeserializeObject<List<BatchColorItem>>(items);
+                if (itemList == null || itemList.Count == 0)
+                    return new { error = "items parameter is empty or invalid JSON" };
+
+                var results = new List<object>();
+                int successCount = 0;
+                int failCount = 0;
+
+                foreach (var item in itemList)
+                {
+                    try
+                    {
+                        var (material, go, error) = FindMaterial(item.name, item.instanceId, item.path);
+                        if (error != null)
+                        {
+                            results.Add(new { target = item.name ?? item.path, success = false, error = "Material not found" });
+                            failCount++;
+                            continue;
+                        }
+
+                        var color = new Color(item.r, item.g, item.b, item.a);
+                        
+                        Undo.RecordObject(material, "Batch Set Color");
+
+                        bool colorSet = false;
+                        var propertiesToTry = new[] { propertyName, "_BaseColor", "_Color" };
+                        foreach (var prop in propertiesToTry)
+                        {
+                            if (material.HasProperty(prop))
+                            {
+                                material.SetColor(prop, color);
+                                colorSet = true;
+                                break;
+                            }
+                        }
+
+                        if (colorSet)
+                        {
+                            if (go == null) EditorUtility.SetDirty(material);
+                            results.Add(new { target = go?.name ?? item.path, success = true });
+                            successCount++;
+                        }
+                        else
+                        {
+                            results.Add(new { target = item.name ?? item.path, success = false, error = "No color property found" });
+                            failCount++;
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        results.Add(new { target = item.name ?? item.path, success = false, error = ex.Message });
+                        failCount++;
+                    }
+                }
+
+                return new
+                {
+                    success = failCount == 0,
+                    totalItems = itemList.Count,
+                    successCount,
+                    failCount,
+                    propertyUsed = propertyName,
+                    results
+                };
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Failed to parse items JSON: {ex.Message}", example = "[{\"name\":\"Cube\",\"r\":1,\"g\":0,\"b\":0}]" };
+            }
+        }
+
+        private class BatchColorItem
+        {
+            public string name { get; set; }
+            public int instanceId { get; set; }
+            public string path { get; set; }
+            public float r { get; set; } = 1f;
+            public float g { get; set; } = 1f;
+            public float b { get; set; } = 1f;
+            public float a { get; set; } = 1f;
+        }
+
         [UnitySkill("material_set_emission", "Set emission color with HDR intensity and auto-enable emission")]
         public static object MaterialSetEmission(string name = null, int instanceId = 0, string path = null,
             float r = 1, float g = 1, float b = 1, float intensity = 1.0f, bool enableEmission = true)

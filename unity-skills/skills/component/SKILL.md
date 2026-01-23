@@ -13,7 +13,9 @@ Manage components on GameObjects - add behaviors, physics, rendering, and more.
 - Remove components from GameObjects
 - List all components on an object
 - Get component properties
+- Get component properties
 - Set component property values
+- **Batch Operations**: Efficiently add, remove, and configure components on multiple objects.
 
 ## Skills Reference
 
@@ -24,6 +26,9 @@ Manage components on GameObjects - add behaviors, physics, rendering, and more.
 | `component_list` | List all components |
 | `component_set_property` | Set component property |
 | `component_get_properties` | Get all properties |
+| `component_add_batch` | Add components to multiple objects |
+| `component_set_property_batch` | Set property for multiple objects |
+| `component_remove_batch` | Remove components from multiple objects |
 
 ## Parameters
 
@@ -62,6 +67,15 @@ Manage components on GameObjects - add behaviors, physics, rendering, and more.
 |-----------|------|----------|-------------|
 | `name` | string | Yes | GameObject name |
 | `componentType` | string | Yes | Component type |
+
+### Batch Operations
+Batch skills take a single `items` parameter which is a JSON array of objects.
+
+| Skill | Item Properties |
+|-------|-----------------|
+| `component_add_batch` | `name`, `componentType` |
+| `component_set_property_batch` | `name`, `componentType`, `propertyName`, `value` |
+| `component_remove_batch` | `name`, `componentType` |
 
 ## Common Component Types
 

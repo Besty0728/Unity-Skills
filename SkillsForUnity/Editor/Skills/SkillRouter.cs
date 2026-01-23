@@ -122,21 +122,78 @@ namespace UnitySkills
                     }
                 }
 
+                // Transactional Support: Start Undo Group
+                UnityEditor.Undo.IncrementCurrentGroup();
+                UnityEditor.Undo.SetCurrentGroupName($"Skill: {name}");
+                int undoGroup = UnityEditor.Undo.GetCurrentGroup();
+                
+                // Track objects created to allow reverting if needed
+                // Note: Unity Undo system handles reverting automatically if we use Undo.RegisterCreatedObjectUndo etc inside skills.
+                // Assuming all skills leverage Unity's Undo system properly, we just need to revert the group on error.
+
+                // Verbose control
+                bool verbose = true; // Default to true if not specified to maintain backward compatibility for direct calls
+                if (args.TryGetValue("verbose", StringComparison.OrdinalIgnoreCase, out var verboseToken))
+                {
+                    verbose = verboseToken.ToObject<bool>();
+                }
+                
                 var result = skill.Method.Invoke(null, invoke);
+                
+                // Commit transaction
+                UnityEditor.Undo.CollapseUndoOperations(undoGroup);
+                
+                if (!verbose && result != null)
+                {
+                    // "Summary Mode" Logic
+                    // 1. Convert result to JToken to inspect it
+                    var jsonResult = JToken.FromObject(result);
+                    
+                    // 2. Check if it's a large Array (> 10 items)
+                    if (jsonResult is JArray arr && arr.Count > 10)
+                    {
+                        var truncatedItems = new JArray();
+                        for(int i=0; i<5; i++) truncatedItems.Add(arr[i]);
+                        
+                        // Return a wrapper object instead of the list
+                        // This keeps 'items' clean (same type) while providing meta info
+                        var wrapper = new JObject
+                        {
+                            ["isTruncated"] = true,
+                            ["totalCount"] = arr.Count,
+                            ["showing"] = 5,
+                            ["items"] = truncatedItems,
+                            ["hint"] = "Result is truncated. To see all items, pass 'verbose=true' parameter."
+                        };
+                        
+                        return JsonConvert.SerializeObject(new { status = "success", result = wrapper });
+                    }
+                }
+                
+                // Full Mode (verbose=true OR small result) - Return original result as is
                 return JsonConvert.SerializeObject(new { status = "success", result });
             }
             catch (TargetInvocationException ex)
             {
+                // Revert transaction
+                UnityEditor.Undo.RevertAllInCurrentGroup();
+                
                 var inner = ex.InnerException ?? ex;
                 return JsonConvert.SerializeObject(new
                 {
                     status = "error",
-                    error = inner.Message
+                    error = $"[Transactional Revert] {inner.Message}"
                 });
             }
             catch (Exception ex)
             {
-                return JsonConvert.SerializeObject(new { status = "error", error = ex.Message });
+                // Revert transaction
+                UnityEditor.Undo.RevertAllInCurrentGroup();
+                
+                return JsonConvert.SerializeObject(new { 
+                    status = "error", 
+                    error = $"[Transactional Revert] {ex.Message}" 
+                });
             }
         }
 

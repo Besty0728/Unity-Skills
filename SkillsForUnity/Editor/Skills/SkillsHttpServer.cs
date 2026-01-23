@@ -31,7 +31,9 @@ namespace UnitySkills
         private static Thread _listenerThread;
         private static Thread _keepAliveThread;
         private static volatile bool _isRunning;
-        private static readonly string _prefix = "http://localhost:8090/";
+        private static int _port = 8090;
+        private static readonly string _prefixBase = "http://localhost:";
+        private static string _prefix => $"{_prefixBase}{_port}/";
         
         // Job queue - HTTP thread enqueues, Main thread dequeues and processes
         private static readonly Queue<RequestJob> _jobQueue = new Queue<RequestJob>();
@@ -45,22 +47,35 @@ namespace UnitySkills
         
         // Keep-alive interval (ms)
         private const int KeepAliveIntervalMs = 50;
-        
+        // Heartbeat interval for registry (ms)
+        private const double HeartbeatInterval = 10.0;
+        private static double _lastHeartbeatTime = 0;
+
         // Statistics
         private static long _totalRequestsProcessed = 0;
         private static long _totalRequestsReceived = 0;
         
-        // Persistence keys for Domain Reload recovery
-        private const string PREF_SERVER_SHOULD_RUN = "UnitySkills_ServerShouldRun";
-        private const string PREF_AUTO_START = "UnitySkills_AutoStart";
+        // Persistence keys for Domain Reload recovery (Project Scoped)
+        private static string PrefKey(string key) => $"UnitySkills_{RegistryService.InstanceId}_{key}";
+        
+        private static string PREF_SERVER_SHOULD_RUN => PrefKey("ServerShouldRun");
+        private static string PREF_AUTO_START => PrefKey("AutoStart");
+        private static string PREF_TOTAL_PROCESSED => PrefKey("TotalProcessed");
         
         // Domain Reload tracking
         private static bool _domainReloadPending = false;
 
         public static bool IsRunning => _isRunning;
         public static string Url => _prefix;
+        public static int Port => _port;
         public static int QueuedRequests { get { lock (_queueLock) { return _jobQueue.Count; } } }
         public static long TotalProcessed => _totalRequestsProcessed;
+
+        public static void ResetStatistics()
+        {
+            _totalRequestsProcessed = 0;
+            EditorPrefs.SetString(PREF_TOTAL_PROCESSED, "0");
+        }
         
         /// <summary>
         /// Gets or sets whether the server should auto-start.
@@ -121,9 +136,13 @@ namespace UnitySkills
             // Persist the "should run" state before domain is destroyed
             EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, _isRunning);
             
+            // Persist statistics
+            EditorPrefs.SetString(PREF_TOTAL_PROCESSED, _totalRequestsProcessed.ToString());
+            
             if (_isRunning)
             {
-                Debug.Log("[UnitySkills] Domain Reload detected - server state saved, will auto-restart");
+                Debug.Log($"[UnitySkills] Domain Reload detected - server state saved ({_port}), will auto-restart");
+                RegistryService.Unregister(); // Unregister temporarily
                 // Don't call Stop() here - domain will be destroyed anyway
                 // Just mark as not running to prevent errors
                 _isRunning = false;
@@ -136,6 +155,13 @@ namespace UnitySkills
         private static void OnAfterAssemblyReload()
         {
             _domainReloadPending = false;
+            
+            // Restore statistics from before reload
+            var savedTotal = EditorPrefs.GetString(PREF_TOTAL_PROCESSED, "0");
+            if (long.TryParse(savedTotal, out long parsed))
+            {
+                _totalRequestsProcessed = parsed;
+            }
             // CheckAndRestoreServer will be called via delayCall
         }
         
@@ -163,19 +189,12 @@ namespace UnitySkills
         /// <summary>
         /// Check if server should be restored after Domain Reload.
         /// Called via EditorApplication.delayCall to ensure Unity is ready.
-        /// 
-        /// Logic:
-        /// - If server was running before reload (shouldRun=true) AND AutoStart is enabled → restart
-        /// - If user manually stopped (shouldRun=false) → respect that decision
         /// </summary>
         private static void CheckAndRestoreServer()
         {
             bool shouldRun = EditorPrefs.GetBool(PREF_SERVER_SHOULD_RUN, false);
             bool autoStart = AutoStart;
             
-            // Only auto-restart if:
-            // 1. Server was running before the reload (shouldRun=true), AND
-            // 2. AutoStart feature is enabled
             if (shouldRun && autoStart)
             {
                 if (!_isRunning)
@@ -212,13 +231,44 @@ namespace UnitySkills
             {
                 HookUpdateLoop();
                 
-                _listener = new HttpListener();
-                _listener.Prefixes.Add(_prefix);
-                _listener.Start();
+                // Port Hunting: 8090 -> 8100
+                int startPort = 8090;
+                int endPort = 8100;
+                bool started = false;
+
+                for (int p = startPort; p <= endPort; p++)
+                {
+                    try
+                    {
+                        string prefix = $"{_prefixBase}{p}/";
+                        _listener = new HttpListener();
+                        _listener.Prefixes.Add(prefix);
+                        _listener.Start();
+                        
+                        _port = p;
+                        started = true;
+                        break;
+                    }
+                    catch
+                    {
+                        // Port occupied, try next
+                        try { _listener?.Close(); } catch { }
+                    }
+                }
+
+                if (!started)
+                {
+                    Debug.LogError($"[UnitySkills] Failed to find open port between {startPort} and {endPort}");
+                    return;
+                }
+
                 _isRunning = true;
                 
                 // Persist state for Domain Reload recovery
                 EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, true);
+                
+                // Register to global registry
+                RegistryService.Register(_port);
 
                 // Start listener thread (Producer - ONLY enqueues, no Unity API)
                 _listenerThread = new Thread(ListenLoop) { IsBackground = true, Name = "UnitySkills-Listener" };
@@ -230,7 +280,7 @@ namespace UnitySkills
 
                 // These calls are safe here because Start() is called from Main thread
                 var skillCount = SkillRouter.GetManifest().Split('\n').Length;
-                Debug.Log($"[UnitySkills] REST Server started at {_prefix}");
+                Debug.Log($"[UnitySkills] REST Server started at {_prefix} (Instance: {RegistryService.InstanceId})");
                 Debug.Log($"[UnitySkills] {skillCount} skills available");
                 Debug.Log($"[UnitySkills] Domain Reload Recovery: ENABLED (AutoStart={AutoStart})");
             }
@@ -252,6 +302,9 @@ namespace UnitySkills
             {
                 EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, false);
             }
+            
+            // Unregister from global registry
+            RegistryService.Unregister();
             
             try { _listener?.Stop(); } catch { }
             try { _listener?.Close(); } catch { }
@@ -486,6 +539,17 @@ namespace UnitySkills
                 }
                 
                 processed++;
+            }
+            
+            // Heartbeat for Registry
+            if (_isRunning)
+            {
+                double now = EditorApplication.timeSinceStartup;
+                if (now - _lastHeartbeatTime > HeartbeatInterval)
+                {
+                    _lastHeartbeatTime = now;
+                    RegistryService.Heartbeat(_port);
+                }
             }
         }
 

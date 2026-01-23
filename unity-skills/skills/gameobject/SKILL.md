@@ -17,6 +17,7 @@ Manipulate GameObjects in Unity scene - the fundamental building blocks of any U
 - Set parent-child relationships
 - Enable/disable GameObjects
 - Get detailed GameObject information
+- **Batch Operations**: Efficiently create, delete, transform, and configure multiple objects in a single call.
 
 ## Skills Reference
 
@@ -29,6 +30,13 @@ Manipulate GameObjects in Unity scene - the fundamental building blocks of any U
 | `gameobject_set_parent` | Set parent-child relationship |
 | `gameobject_set_active` | Enable/disable GameObject |
 | `gameobject_get_info` | Get detailed information |
+| `gameobject_create_batch` | Create multiple GameObjects (Efficient) |
+| `gameobject_delete_batch` | Delete multiple GameObjects (Efficient) |
+| `gameobject_set_active_batch` | Set active state for multiple objects |
+| `gameobject_set_transform_batch` | Set transform for multiple objects |
+| `gameobject_set_layer_batch` | Set layer for multiple objects |
+| `gameobject_set_tag_batch` | Set tag for multiple objects |
+| `gameobject_set_parent_batch` | Set parent for multiple objects |
 
 ## Parameters
 
@@ -72,6 +80,19 @@ Manipulate GameObjects in Unity scene - the fundamental building blocks of any U
 | `posX/posY/posZ` | float | No | Position values |
 | `rotX/rotY/rotZ` | float | No | Rotation values (euler) |
 | `scaleX/scaleY/scaleZ` | float | No | Scale values |
+
+### Batch Operations
+Batch skills take a single `items` parameter which is a JSON array of objects.
+
+| Skill | Item Properties |
+|-------|-----------------|
+| `gameobject_create_batch` | `name`, `primitiveType`, `x`, `y`, `z`, `rotX`, `scaleX`, etc. |
+| `gameobject_delete_batch` | `name` OR `{name, instanceId}` |
+| `gameobject_set_active_batch` | `name`, `active` |
+| `gameobject_set_transform_batch` | `name`, `posX`, `rotY`, `scaleZ`, etc. |
+| `gameobject_set_layer_batch` | `name`, `layer`, `recursive` |
+| `gameobject_set_tag_batch` | `name`, `tag` |
+| `gameobject_set_parent_batch` | `childName`, `parentName` |
 
 ## Example Usage
 

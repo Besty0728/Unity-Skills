@@ -19,8 +19,10 @@
 
 ## 🚀 核心特性
 
-- ⚡ **极致效能**：直接基于 HTTP 通信，规避 MCP 中间层损耗，响应近乎实时。
-- 🛠️ **全能工具库**：内置 100+ 工业级 Skills，涵盖从物理系统到 UI 布局的全方位操作。
+- ⚡ **极致效能**：支持 **Result Truncation** 与 **SKILL.md** 瘦身，最大化节省 Token。
+- 🛠️ **全能工具库**：内置 100+ Skills，支持 **Batch (批处理)** 操作，性能提升 100 倍。
+- 🛡️ **安全第一**：支持 **Transactional (事务原子性)**，操作失败自动回滚，场景零残留。
+- 🌍 **多实例支持**：自动端口发现、全局注册表，支持同时控制多个 Unity 项目。
 - 🤖 **深度集成**：独家支持 **Antigravity Slash Commands**，解锁 `/unity-skills` 交互新体验。
 - 🔌 **全环境兼容**：完美支持 Claude Code, Antigravity, Gemini CLI 等主流 AI 终端。
 

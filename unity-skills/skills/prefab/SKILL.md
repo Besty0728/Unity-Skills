@@ -12,7 +12,10 @@ Work with prefabs - reusable GameObject templates for efficient scene building.
 - Create prefabs from scene objects
 - Instantiate prefabs into scene
 - Apply changes to prefab
+- Instantiate prefabs into scene
+- Apply changes to prefab
 - Unpack prefab instances
+- **Batch Operations**: Efficiently instantiate multiple prefabs in one call.
 
 ## Skills Reference
 
@@ -21,7 +24,11 @@ Work with prefabs - reusable GameObject templates for efficient scene building.
 | `prefab_create` | Create prefab from GameObject |
 | `prefab_instantiate` | Instantiate prefab in scene |
 | `prefab_apply` | Apply instance changes to prefab |
+| `prefab_create` | Create prefab from GameObject |
+| `prefab_instantiate` | Instantiate prefab in scene |
+| `prefab_apply` | Apply instance changes to prefab |
 | `prefab_unpack` | Unpack prefab instance |
+| `prefab_instantiate_batch` | Instantiate multiple prefabs (BS) |
 
 ## Parameters
 
@@ -54,7 +61,15 @@ Work with prefabs - reusable GameObject templates for efficient scene building.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `gameObjectName` | string | Yes | - | Prefab instance name |
+| `gameObjectName` | string | Yes | - | Prefab instance name |
 | `completely` | bool | No | false | Unpack all nested |
+
+### Batch Operations
+Batch skills take a single `items` parameter which is a JSON array of objects.
+
+| Skill | Item Properties |
+|-------|-----------------|
+| `prefab_instantiate_batch` | `prefabPath`, `x`, `y`, `z`, `rotX`, `scaleX`, `parentName`, `name` |
 
 ## Example Usage
 

@@ -12,7 +12,10 @@ Work with C# scripts - create, read, delete, and search within scripts.
 - Create C# scripts from templates
 - Read script contents
 - Delete scripts
+- Read script contents
+- Delete scripts
 - Search for patterns in scripts
+- **Batch Operations**: Create multiple scripts in one go, with namespace support.
 
 ## Skills Reference
 
@@ -21,7 +24,11 @@ Work with C# scripts - create, read, delete, and search within scripts.
 | `script_create` | Create C# script |
 | `script_read` | Read script content |
 | `script_delete` | Delete script |
+| `script_create` | Create C# script |
+| `script_read` | Read script content |
+| `script_delete` | Delete script |
 | `script_find_in_file` | Search in scripts |
+| `script_create_batch` | Create multiple scripts (Efficient) |
 
 ## Parameters
 
@@ -31,7 +38,17 @@ Work with C# scripts - create, read, delete, and search within scripts.
 |-----------|------|----------|---------|-------------|
 | `scriptName` | string | Yes | - | Script class name |
 | `folder` | string | No | "Assets/Scripts" | Save folder |
+| `scriptName` | string | Yes | - | Script class name |
+| `folder` | string | No | "Assets/Scripts" | Save folder |
 | `template` | string | No | "MonoBehaviour" | Template type |
+| `namespace` | string | No | null | Optional namespace |
+
+### Batch Operations
+Batch skills take a single `items` parameter which is a JSON array of objects.
+
+| Skill | Item Properties |
+|-------|-----------------|
+| `script_create_batch` | `scriptName`, `folder`, `template`, `namespace` |
 
 ### script_read
 

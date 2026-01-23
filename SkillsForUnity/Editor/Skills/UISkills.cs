@@ -235,6 +235,107 @@ namespace UnitySkills
             return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name };
         }
 
+        [UnitySkill("ui_create_batch", "Create multiple UI elements (Efficient). items: JSON array of {type, name, parent, text, width, height, ...}")]
+        public static object UICreateBatch(string items)
+        {
+             if (string.IsNullOrEmpty(items))
+                return new { error = "items parameter is required. Example: [{\"type\":\"Button\",\"name\":\"Btn1\"},{\"type\":\"Text\",\"name\":\"Txt1\"}]" };
+
+            try
+            {
+                var itemList = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.List<BatchUIItem>>(items);
+                if (itemList == null || itemList.Count == 0)
+                    return new { error = "items parameter is empty or invalid JSON" };
+
+                var results = new System.Collections.Generic.List<object>();
+                int successCount = 0;
+                int failCount = 0;
+
+                foreach (var item in itemList)
+                {
+                    try
+                    {
+                        object result = null;
+                        switch (item.type.ToLower())
+                        {
+                            case "canvas":
+                                result = UICreateCanvas(item.name, item.renderMode ?? "ScreenSpaceOverlay");
+                                break;
+                            case "panel":
+                                result = UICreatePanel(item.name, item.parent, item.r, item.g, item.b, item.a);
+                                break;
+                            case "button":
+                                result = UICreateButton(item.name, item.parent, item.text ?? "Button", item.width, item.height);
+                                break;
+                            case "text":
+                                result = UICreateText(item.name, item.parent, item.text ?? "Text", (int)item.fontSize, item.r, item.g, item.b);
+                                break;
+                            case "image":
+                                result = UICreateImage(item.name, item.parent, item.spritePath, item.width, item.height);
+                                break;
+                            case "inputfield":
+                                result = UICreateInputField(item.name, item.parent, item.placeholder ?? "Enter text...", item.width, item.height);
+                                break;
+                            case "slider":
+                                result = UICreateSlider(item.name, item.parent, item.minValue, item.maxValue, item.value, item.width, item.height);
+                                break;
+                            case "toggle":
+                                result = UICreateToggle(item.name, item.parent, item.label ?? "Toggle", item.isOn);
+                                break;
+                            default:
+                                results.Add(new { target = item.name, success = false, error = $"Unknown UI type: {item.type}" });
+                                failCount++;
+                                continue;
+                        }
+
+                        results.Add(result);
+                        successCount++;
+                    }
+                    catch (System.Exception ex)
+                    {
+                        results.Add(new { target = item.name, success = false, error = ex.Message });
+                        failCount++;
+                    }
+                }
+
+                return new
+                {
+                    success = failCount == 0,
+                    totalItems = itemList.Count,
+                    successCount,
+                    failCount,
+                    results
+                };
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Failed to parse items JSON: {ex.Message}" };
+            }
+        }
+
+        private class BatchUIItem
+        {
+            public string type { get; set; } // Button, Text, Image, etc.
+            public string name { get; set; } = "UI Element";
+            public string parent { get; set; }
+            public string text { get; set; }
+            public float width { get; set; } = 100;
+            public float height { get; set; } = 30;
+            public float fontSize { get; set; } = 14;
+            public float r { get; set; } = 1; // Default white/visible
+            public float g { get; set; } = 1;
+            public float b { get; set; } = 1;
+            public float a { get; set; } = 1;
+            public string spritePath { get; set; }
+            public string placeholder { get; set; }
+            public string label { get; set; }
+            public bool isOn { get; set; }
+            public float minValue { get; set; } = 0;
+            public float maxValue { get; set; } = 1;
+            public float value { get; set; } = 0.5f;
+            public string renderMode { get; set; }
+        }
+
         [UnitySkill("ui_create_inputfield", "Create an InputField UI element")]
         public static object UICreateInputField(string name = "InputField", string parent = null, string placeholder = "Enter text...", float width = 200, float height = 30)
         {

@@ -44,7 +44,117 @@ namespace UnitySkills
                 return new { error };
 
             return new { success = true, from = sourcePath, to = destinationPath };
+            return new { success = true, from = sourcePath, to = destinationPath };
         }
+
+        [UnitySkill("asset_import_batch", "Import multiple assets. items: JSON array of {sourcePath, destinationPath}")]
+        public static object AssetImportBatch(string items)
+        {
+            if (string.IsNullOrEmpty(items)) return new { error = "items parameter is required." };
+            try {
+                var itemList = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.List<BatchImportItem>>(items);
+                if (itemList == null || itemList.Count == 0) return new { error = "items empty" };
+                
+                var results = new System.Collections.Generic.List<object>();
+                int successCount = 0;
+                
+                AssetDatabase.StartAssetEditing();
+                try {
+                    foreach (var item in itemList) {
+                        try {
+                            if (!File.Exists(item.sourcePath)) {
+                                results.Add(new { target = item.sourcePath, success = false, error = "File not found" });
+                                continue;
+                            }
+                            var dir = Path.GetDirectoryName(item.destinationPath);
+                            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                            File.Copy(item.sourcePath, item.destinationPath, true);
+                            AssetDatabase.ImportAsset(item.destinationPath);
+                            results.Add(new { target = item.destinationPath, success = true });
+                            successCount++;
+                        } catch (System.Exception ex) {
+                            results.Add(new { target = item.sourcePath, success = false, error = ex.Message });
+                        }
+                    }
+                } finally {
+                    AssetDatabase.StopAssetEditing();
+                }
+                AssetDatabase.Refresh();
+                
+                return new { success = true, total = itemList.Count, successCount, results };
+            } catch (System.Exception ex) { return new { error = ex.Message }; }
+        }
+
+        private class BatchImportItem { public string sourcePath; public string destinationPath; }
+
+        [UnitySkill("asset_delete_batch", "Delete multiple assets. items: JSON array of {path}")]
+        public static object AssetDeleteBatch(string items)
+        {
+            if (string.IsNullOrEmpty(items)) return new { error = "items parameter is required." };
+            try {
+                var itemList = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.List<BatchDeleteItem>>(items);
+                if (itemList == null || itemList.Count == 0) return new { error = "items empty" };
+                
+                var results = new System.Collections.Generic.List<object>();
+                int successCount = 0;
+                
+                AssetDatabase.StartAssetEditing();
+                try {
+                    foreach (var item in itemList) {
+                        try {
+                            if (AssetDatabase.DeleteAsset(item.path)) {
+                                results.Add(new { target = item.path, success = true });
+                                successCount++;
+                            } else {
+                                results.Add(new { target = item.path, success = false, error = "Delete failed" });
+                            }
+                        } catch (System.Exception ex) {
+                            results.Add(new { target = item.path, success = false, error = ex.Message });
+                        }
+                    }
+                } finally {
+                    AssetDatabase.StopAssetEditing();
+                }
+                AssetDatabase.Refresh();
+                
+                return new { success = true, total = itemList.Count, successCount, results };
+            } catch (System.Exception ex) { return new { error = ex.Message }; }
+        }
+
+        private class BatchDeleteItem { public string path; }
+
+        [UnitySkill("asset_move_batch", "Move multiple assets. items: JSON array of {sourcePath, destinationPath}")]
+        public static object AssetMoveBatch(string items)
+        {
+            if (string.IsNullOrEmpty(items)) return new { error = "items parameter is required." };
+            try {
+                var itemList = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.List<BatchMoveItem>>(items);
+                if (itemList == null || itemList.Count == 0) return new { error = "items empty" };
+                
+                var results = new System.Collections.Generic.List<object>();
+                int successCount = 0;
+                
+                AssetDatabase.StartAssetEditing();
+                try {
+                    foreach (var item in itemList) {
+                        string error = AssetDatabase.MoveAsset(item.sourcePath, item.destinationPath);
+                        if (string.IsNullOrEmpty(error)) {
+                             results.Add(new { target = item.sourcePath, success = true, from = item.sourcePath, to = item.destinationPath });
+                             successCount++;
+                        } else {
+                             results.Add(new { target = item.sourcePath, success = false, error });
+                        }
+                    }
+                } finally {
+                    AssetDatabase.StopAssetEditing();
+                }
+                AssetDatabase.Refresh();
+                
+                return new { success = true, total = itemList.Count, successCount, results };
+            } catch (System.Exception ex) { return new { error = ex.Message }; }
+        }
+
+        private class BatchMoveItem { public string sourcePath; public string destinationPath; }
 
         [UnitySkill("asset_duplicate", "Duplicate an asset")]
         public static object AssetDuplicate(string assetPath)
