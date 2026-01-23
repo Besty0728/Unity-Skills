@@ -1,7 +1,9 @@
 {
     "name": "UnitySkills.Editor",
     "rootNamespace": "UnitySkills",
-    "references": [],
+    "references": [
+        "Newtonsoft.Json"
+    ],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
