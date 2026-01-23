@@ -556,7 +556,13 @@ namespace UnitySkills
             EditorGUILayout.LabelField("Codex", EditorStyles.boldLabel);
             
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(L("install_project") + ":", GUILayout.Width(100));
+            var experimentalStyle = new GUIStyle(EditorStyles.miniLabel);
+            experimentalStyle.normal.textColor = new Color(1f, 0.6f, 0f); // Orange warning color
+            EditorGUILayout.LabelField(L("install_project") + " ⚠️:", GUILayout.Width(100));
+            if (Localization.Current == Localization.Language.Chinese)
+                EditorGUILayout.LabelField("实验性", experimentalStyle, GUILayout.Width(40));
+            else
+                EditorGUILayout.LabelField("Exp.", experimentalStyle, GUILayout.Width(30));
             if (SkillInstaller.IsCodexProjectInstalled)
             {
                 EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel, GUILayout.Width(60));
