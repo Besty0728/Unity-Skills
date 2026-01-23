@@ -49,6 +49,8 @@
 https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity
 ```
 
+> ⚠️ **重要提示**：请不要随意更新 Unity Package，此项目会经常开发测试，请认准 [Releases](https://github.com/Besty0728/Unity-Skills/releases) 版本。`main` 分支为稳定版，`beta` 分支为开发测试版。
+
 ### 2. 启动服务
 在 Unity 中点击菜单：`Window > UnitySkills > Start Server`
 
