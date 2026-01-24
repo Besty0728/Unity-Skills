@@ -26,6 +26,7 @@ Control the Unity Editor itself - enter play mode, manage selection, undo/redo, 
 | `editor_pause` | Toggle pause |
 | `editor_select` | Select GameObject |
 | `editor_get_selection` | Get selected objects |
+| `editor_get_context` | **[NEW]** Get full editor context (selected objects, assets, scene) |
 | `editor_undo` | Undo last action |
 | `editor_redo` | Redo last action |
 | `editor_get_state` | Get editor state |
@@ -49,6 +50,20 @@ Control the Unity Editor itself - enter play mode, manage selection, undo/redo, 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `menuPath` | string | Yes | Menu item path |
+
+### editor_get_context
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `includeComponents` | bool | No | false | Include component list for each GameObject |
+| `includeChildren` | bool | No | false | Include children info for each GameObject |
+
+**Returns:**
+- `selectedGameObjects`: Objects selected in Hierarchy (includes instanceId, path, tag, layer)
+- `selectedAssets`: Assets selected in Project window (includes GUID, path, type, isFolder)
+- `activeScene`: Current scene info (name, path, isDirty)
+- `focusedWindow`: Name of the focused editor window
+- `isPlaying`, `isCompiling`: Editor state
 
 ## Common Menu Paths
 

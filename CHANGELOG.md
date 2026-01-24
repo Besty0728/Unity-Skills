@@ -2,7 +2,44 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.2.0] - 2026-01-24
+
+### 🌟 New Features / 新特性
+
+- **Editor Context Skill (`editor_get_context`) / 编辑器上下文获取**:
+    - Get currently selected GameObjects from Hierarchy with instanceId, path, components. / 获取 Hierarchy 选中物体。
+    - Get currently selected assets from Project window with GUID, path, type. / 获取 Project 窗口选中资源。
+    - Get active scene info, focused window, editor state in one call. / 一次调用获取完整编辑器状态。
+    - **AI can now operate directly on selection without searching!** / AI 可直接操作选中对象无需搜索！
+
+- **Texture Import Settings (3 skills) / 纹理导入设置**:
+    - `texture_get_settings`: Get current texture import settings. / 获取纹理导入设置。
+    - `texture_set_settings`: Set texture type, size, filter mode, compression, etc. / 设置纹理类型、尺寸、过滤模式等。
+    - `texture_set_settings_batch`: Batch process multiple textures. / 批量处理多张纹理。
+
+- **Audio Import Settings (3 skills) / 音频导入设置**:
+    - `audio_get_settings`: Get current audio import settings. / 获取音频导入设置。
+    - `audio_set_settings`: Set load type, compression format, quality, etc. / 设置加载类型、压缩格式、质量等。
+    - `audio_set_settings_batch`: Batch process multiple audio files. / 批量处理多个音频。
+
+- **Model Import Settings (3 skills) / 模型导入设置**:
+    - `model_get_settings`: Get current model import settings. / 获取模型导入设置。
+    - `model_set_settings`: Set mesh compression, animation type, materials, etc. / 设置网格压缩、动画类型、材质等。
+    - `model_set_settings_batch`: Batch process multiple 3D models. / 批量处理多个模型。
+
+### 📦 New Skill Modules / 新增模块
+
+| Module | Skills | Files |
+|--------|--------|-------|
+| **Editor** | +1 | `EditorSkills.cs` |
+| **Texture** | 3 | `TextureSkills.cs` (NEW) |
+| **Audio** | 3 | `AudioSkills.cs` (NEW) |
+| **Model** | 3 | `ModelSkills.cs` (NEW) |
+
+---
+
 ## [1.1.0] - 2026-01-23
+
 
 ### 🚀 Major Update: Production Readiness / 生产级就绪
 This release transforms UnitySkills from a basic toolset into a production-grade orchestration platform.

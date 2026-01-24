@@ -122,5 +122,99 @@ namespace UnitySkills
 
             return new { layers };
         }
+
+        [UnitySkill("editor_get_context", "Get full editor context - selected GameObjects, selected assets, active scene, focused window. Use this to get current selection without searching.")]
+        public static object EditorGetContext(bool includeComponents = false, bool includeChildren = false)
+        {
+            // 1. Hierarchy 选中的 GameObjects
+            var selectedGameObjects = Selection.gameObjects.Select(go =>
+            {
+                var info = new System.Collections.Generic.Dictionary<string, object>
+                {
+                    ["name"] = go.name,
+                    ["instanceId"] = go.GetInstanceID(),
+                    ["path"] = GetGameObjectPath(go),
+                    ["tag"] = go.tag,
+                    ["layer"] = LayerMask.LayerToName(go.layer),
+                    ["isActive"] = go.activeSelf
+                };
+
+                if (includeComponents)
+                {
+                    info["components"] = go.GetComponents<Component>()
+                        .Where(c => c != null)
+                        .Select(c => c.GetType().Name)
+                        .ToArray();
+                }
+
+                if (includeChildren && go.transform.childCount > 0)
+                {
+                    var children = new System.Collections.Generic.List<object>();
+                    foreach (Transform child in go.transform)
+                    {
+                        children.Add(new { name = child.name, instanceId = child.gameObject.GetInstanceID() });
+                    }
+                    info["children"] = children;
+                }
+
+                return info;
+            }).ToArray();
+
+            // 2. Project 窗口选中的资源 (通过 GUID)
+            var selectedAssets = Selection.assetGUIDs.Select(guid =>
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var assetType = AssetDatabase.GetMainAssetTypeAtPath(path);
+                return new
+                {
+                    guid,
+                    path,
+                    type = assetType?.Name ?? "Unknown",
+                    isFolder = AssetDatabase.IsValidFolder(path)
+                };
+            }).ToArray();
+
+            // 3. 当前活动场景
+            var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+
+            // 4. 焦点窗口
+            var focusedWindow = EditorWindow.focusedWindow;
+
+            return new
+            {
+                success = true,
+                selectedGameObjects = new
+                {
+                    count = selectedGameObjects.Length,
+                    objects = selectedGameObjects
+                },
+                selectedAssets = new
+                {
+                    count = selectedAssets.Length,
+                    assets = selectedAssets
+                },
+                activeScene = new
+                {
+                    name = activeScene.name,
+                    path = activeScene.path,
+                    isDirty = activeScene.isDirty
+                },
+                focusedWindow = focusedWindow?.GetType().Name ?? "None",
+                isPlaying = EditorApplication.isPlaying,
+                isCompiling = EditorApplication.isCompiling
+            };
+        }
+
+        private static string GetGameObjectPath(GameObject go)
+        {
+            var path = go.name;
+            var parent = go.transform.parent;
+            while (parent != null)
+            {
+                path = parent.name + "/" + path;
+                parent = parent.parent;
+            }
+            return path;
+        }
     }
 }

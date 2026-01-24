@@ -9,7 +9,7 @@
 | 属性 | 值 |
 |------|-----|
 | **项目名称** | UnitySkills |
-| **版本** | 1.0.0 |
+| **版本** | 1.2.0 |
 | **技术栈** | C# (Unity Editor) + Python (Client) |
 | **Unity 版本** | 2021.3+ |
 | **协议** | MIT |
@@ -188,11 +188,14 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 | **UI** | 10 | Canvas/Button/Text/Slider 创建 |
 | **Prefab** | 4 | 预制体创建/实例化/解包 |
 | **Asset** | 8 | 资产导入/搜索/文件夹管理 |
-| **Editor** | 11 | 播放模式/选择/撤销重做 |
+| **Editor** | 12 | 播放模式/选择/撤销重做/**上下文获取** |
 | **Console** | 5 | 日志捕获/清理/输出 |
 | **Script** | 4 | C# 脚本创建/读取/搜索 |
 | **Shader** | 3 | Shader 创建/列表 |
 | **Validation** | 7 | 项目验证/清理空文件夹/检测未使用资产 |
+| **Texture** | 3 | 纹理类型/尺寸/压缩设置 (v1.2 新增) |
+| **Audio** | 3 | 音频加载类型/压缩格式/质量设置 (v1.2 新增) |
+| **Model** | 3 | 模型网格压缩/动画类型/材质导入 (v1.2 新增) |
 
 ---
 

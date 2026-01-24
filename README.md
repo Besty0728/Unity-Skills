@@ -3,7 +3,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2021.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-100%2B-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-110%2B-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -105,7 +105,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 
 ---
 
-## 📦 Skills 分类概要 (100+)
+## 📦 Skills 分类概要 (110+)
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -114,7 +114,9 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 | **Scene** | 6 | 场景无缝切换、状态保存、高清截图。 |
 | **Material** | 17 | HDR 发光控制、材质球属性批量修改。 |
 | **UI System** | 10 | 响应式 Canvas 构建、Button/Text 组件生成。 |
-| **Others** | 55+ | 涵盖 Animator, Light, Prefab, Validation 等。 |
+| **Editor** | 12 | 播放模式、选择、撤销重做、**上下文获取**。 |
+| **Importer** | 9 | 纹理/音频/模型导入设置调整。 |
+| **Others** | 44+ | 涵盖 Animator, Light, Prefab, Validation 等。 |
 
 ---
 
@@ -122,13 +124,22 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 
 ```bash
 .
-├── SkillsForUnity/           # Unity 编辑器插件 (Package 核心)
-│   └── Editor/Skills/        # 核心 Skill 逻辑与 C# 安装器
-├── unity-skills/             # 跨平台 AI Skill 模板 (核心源码)
-│   ├── SKILL.md              # Skill 定义与 Prompt 设计
-│   └── scripts/              # Python Helper 封装
-├── CHANGELOG.md              # 详尽的更新记录与路线图
-└── LICENSE                   # MIT 开源协议
+├── SkillsForUnity/                 # Unity 编辑器插件 (Package 核心)
+│   └── Editor/Skills/              # 核心 Skill 逻辑与 C# 安装器
+│       ├── EditorSkills.cs         # 编辑器控制 (含 editor_get_context)
+│       ├── TextureSkills.cs        # 纹理导入设置 [v1.2 新增]
+│       ├── AudioSkills.cs          # 音频导入设置 [v1.2 新增]
+│       ├── ModelSkills.cs          # 模型导入设置 [v1.2 新增]
+│       └── ...                     # 其他 Skills 模块
+├── unity-skills/                   # 跨平台 AI Skill 模板 (核心源码)
+│   ├── SKILL.md                    # Skill 定义与 Prompt 设计
+│   ├── scripts/                    # Python Helper 封装
+│   └── skills/                     # 分模块 Skill 文档
+│       ├── editor/SKILL.md
+│       ├── importer/SKILL.md       # [v1.2 新增]
+│       └── ...
+├── CHANGELOG.md                    # 详尽的更新记录与路线图
+└── LICENSE                         # MIT 开源协议
 ```
 
 ---
