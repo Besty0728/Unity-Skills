@@ -79,20 +79,23 @@ Unity-Skills/
 │           ├── UnitySkillsWindow.cs    # 编辑器窗口 UI
 │           ├── SkillInstaller.cs       # AI 工具一键安装器
 │           │
-│           ├── GameObjectSkills.cs     # GameObject 操作 (7 skills)
-│           ├── ComponentSkills.cs      # Component 操作 (5 skills)
+│           ├── GameObjectSkills.cs     # GameObject 操作 (8 skills, +1 batch)
+│           ├── ComponentSkills.cs      # Component 操作 (8 skills)
 │           ├── SceneSkills.cs          # Scene 管理 (6 skills)
 │           ├── MaterialSkills.cs       # Material 操作 (17 skills)
-│           ├── LightSkills.cs          # Light 配置 (5 skills)
+│           ├── LightSkills.cs          # Light 配置 (7 skills, +2 batch)
 │           ├── AnimatorSkills.cs       # Animator 管理 (8 skills)
 │           ├── UISkills.cs             # UI 元素创建 (10 skills)
-│           ├── PrefabSkills.cs         # Prefab 操作 (4 skills)
+│           ├── PrefabSkills.cs         # Prefab 操作 (5 skills)
 │           ├── AssetSkills.cs          # Asset 管理 (8 skills)
-│           ├── EditorSkills.cs         # Editor 控制 (11 skills)
+│           ├── EditorSkills.cs         # Editor 控制 (12 skills)
 │           ├── ConsoleSkills.cs        # Console 日志 (5 skills)
 │           ├── ScriptSkills.cs         # Script 管理 (4 skills)
 │           ├── ShaderSkills.cs         # Shader 操作 (3 skills)
 │           ├── ValidationSkills.cs     # 项目验证 (7 skills)
+│           ├── TextureSkills.cs        # 纹理导入设置 (3 skills) [v1.2]
+│           ├── AudioSkills.cs          # 音频导入设置 (3 skills) [v1.2]
+│           ├── ModelSkills.cs          # 模型导入设置 (3 skills) [v1.2]
 │           └── ...
 │
 ├── unity-skills/                   # 跨平台 AI Skill 模板 (分发给 AI 工具)
@@ -175,18 +178,18 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 
 ---
 
-## 📊 Skills 模块汇总 (100+)
+## 📊 Skills 模块汇总 (115+)
 
 | 模块 | Skills 数量 | 核心功能 |
 |------|:-----------:|----------|
-| **GameObject** | 7 | 创建/删除/查找/变换同步 |
-| **Component** | 5 | 添加/移除/属性配置 |
+| **GameObject** | 8 | 创建/删除/查找/变换同步/**批量复制** |
+| **Component** | 8 | 添加/移除/属性配置/批量操作 |
 | **Scene** | 6 | 场景切换/保存/截图 |
 | **Material** | 17 | HDR 发光/材质属性批量修改 |
-| **Light** | 5 | 灯光创建/属性配置/阴影控制 |
+| **Light** | 7 | 灯光创建/属性配置/**批量开关** |
 | **Animator** | 8 | 动画控制器/参数/状态机 |
 | **UI** | 10 | Canvas/Button/Text/Slider 创建 |
-| **Prefab** | 4 | 预制体创建/实例化/解包 |
+| **Prefab** | 5 | 预制体创建/实例化/**批量实例化** |
 | **Asset** | 8 | 资产导入/搜索/文件夹管理 |
 | **Editor** | 12 | 播放模式/选择/撤销重做/**上下文获取** |
 | **Console** | 5 | 日志捕获/清理/输出 |
@@ -196,6 +199,8 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 | **Texture** | 3 | 纹理类型/尺寸/压缩设置 (v1.2 新增) |
 | **Audio** | 3 | 音频加载类型/压缩格式/质量设置 (v1.2 新增) |
 | **Model** | 3 | 模型网格压缩/动画类型/材质导入 (v1.2 新增) |
+
+> ⚠️ **重要提示**：大部分模块都支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills。
 
 ---
 

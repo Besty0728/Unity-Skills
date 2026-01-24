@@ -583,7 +583,7 @@ namespace UnitySkills
             public float? height { get; set; }
         }
 
-        [UnitySkill("gameobject_duplicate", "Duplicate a GameObject (supports name/instanceId/path)")]
+        [UnitySkill("gameobject_duplicate", "Duplicate a GameObject (supports name/instanceId/path). Returns: originalName, copyName, copyInstanceId, copyPath")]
         public static object GameObjectDuplicate(string name = null, int instanceId = 0, string path = null)
         {
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
@@ -600,6 +600,77 @@ namespace UnitySkills
                 copyInstanceId = copy.GetInstanceID(),
                 copyPath = GameObjectFinder.GetPath(copy)
             };
+        }
+
+        [UnitySkill("gameobject_duplicate_batch", "Duplicate multiple GameObjects in one call (Efficient). items: JSON array of {name, instanceId, path}. Returns array with originalName, copyName, copyInstanceId for each.")]
+        public static object GameObjectDuplicateBatch(string items)
+        {
+            if (string.IsNullOrEmpty(items))
+                return new { error = "items parameter is required. Example: [{\"name\":\"Cube1\"},{\"instanceId\":12345}]" };
+
+            try
+            {
+                var itemList = Newtonsoft.Json.JsonConvert.DeserializeObject<List<BatchDuplicateItem>>(items);
+                if (itemList == null || itemList.Count == 0)
+                    return new { error = "items parameter is empty or invalid JSON" };
+
+                var results = new List<object>();
+                int successCount = 0;
+                int failCount = 0;
+
+                foreach (var item in itemList)
+                {
+                    try
+                    {
+                        var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                        if (error != null)
+                        {
+                            results.Add(new { target = item.name ?? item.path ?? item.instanceId.ToString(), success = false, error = "Object not found" });
+                            failCount++;
+                            continue;
+                        }
+
+                        var copy = Object.Instantiate(go, go.transform.parent);
+                        copy.name = go.name + "_Copy";
+                        Undo.RegisterCreatedObjectUndo(copy, "Batch Duplicate " + go.name);
+
+                        results.Add(new
+                        {
+                            success = true,
+                            originalName = go.name,
+                            copyName = copy.name,
+                            copyInstanceId = copy.GetInstanceID(),
+                            copyPath = GameObjectFinder.GetPath(copy)
+                        });
+                        successCount++;
+                    }
+                    catch (System.Exception ex)
+                    {
+                        results.Add(new { target = item.name ?? item.path, success = false, error = ex.Message });
+                        failCount++;
+                    }
+                }
+
+                return new
+                {
+                    success = failCount == 0,
+                    totalItems = itemList.Count,
+                    successCount,
+                    failCount,
+                    results
+                };
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Failed to parse items JSON: {ex.Message}" };
+            }
+        }
+
+        private class BatchDuplicateItem
+        {
+            public string name { get; set; }
+            public int instanceId { get; set; }
+            public string path { get; set; }
         }
 
         [UnitySkill("gameobject_set_parent", "Set the parent of a GameObject (supports name/instanceId/path)")]

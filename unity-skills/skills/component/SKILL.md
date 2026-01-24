@@ -26,56 +26,83 @@ Manage components on GameObjects - add behaviors, physics, rendering, and more.
 | `component_list` | List all components |
 | `component_set_property` | Set component property |
 | `component_get_properties` | Get all properties |
-| `component_add_batch` | Add components to multiple objects |
-| `component_set_property_batch` | Set property for multiple objects |
-| `component_remove_batch` | Remove components from multiple objects |
+| `component_add_batch` | **Add components to multiple objects (Efficient)** |
+| `component_set_property_batch` | **Set property for multiple objects (Efficient)** |
+| `component_remove_batch` | **Remove components from multiple objects (Efficient)** |
+
+> ⚠️ **IMPORTANT**: When operating on multiple objects, ALWAYS use `*_batch` skills instead of calling single-object skills in a loop!
 
 ## Parameters
 
-### component_add
+### component_add / component_add_batch
+
+**Single Returns**: `{success, gameObject, componentType, added}`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | GameObject name |
+| `name` | string | No* | GameObject name |
+| `instanceId` | int | No* | Instance ID (preferred) |
+| `path` | string | No* | Hierarchy path |
 | `componentType` | string | Yes | Component type (e.g., "Rigidbody") |
 
-### component_remove
+*At least one identifier required
+
+**Batch**: `items` = JSON array of `{name, instanceId, componentType}`
+```json
+[{"instanceId": 12345, "componentType": "Rigidbody"}, {"name": "Enemy", "componentType": "BoxCollider"}]
+```
+
+### component_remove / component_remove_batch
+
+**Single Returns**: `{success, gameObject, componentType, removed}`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | GameObject name |
+| `name` | string | No* | GameObject name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
 | `componentType` | string | Yes | Component type to remove |
+
+**Batch**: `items` = JSON array of `{name, instanceId, componentType}`
 
 ### component_list
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | GameObject name |
-
-### component_set_property
+**Returns**: `{success, gameObject, instanceId, components: [string]}`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | GameObject name |
+| `name` | string | No* | GameObject name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
+
+### component_set_property / component_set_property_batch
+
+**Single Returns**: `{success, gameObject, componentType, property, oldValue, newValue}`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | No* | GameObject name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
 | `componentType` | string | Yes | Component type |
 | `propertyName` | string | Yes | Property to set |
 | `value` | any | Yes | New value |
 
+**Batch**: `items` = JSON array of `{name, instanceId, componentType, propertyName, value}`
+```json
+[{"instanceId": 123, "componentType": "Rigidbody", "propertyName": "mass", "value": 2.0}]
+```
+
 ### component_get_properties
+
+**Returns**: `{success, gameObject, componentType, properties: {name: value}}`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | GameObject name |
+| `name` | string | No* | GameObject name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
 | `componentType` | string | Yes | Component type |
-
-### Batch Operations
-Batch skills take a single `items` parameter which is a JSON array of objects.
-
-| Skill | Item Properties |
-|-------|-----------------|
-| `component_add_batch` | `name`, `componentType` |
-| `component_set_property_batch` | `name`, `componentType`, `propertyName`, `value` |
-| `component_remove_batch` | `name`, `componentType` |
 
 ## Common Component Types
 

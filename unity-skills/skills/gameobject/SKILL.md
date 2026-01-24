@@ -30,13 +30,17 @@ Manipulate GameObjects in Unity scene - the fundamental building blocks of any U
 | `gameobject_set_parent` | Set parent-child relationship |
 | `gameobject_set_active` | Enable/disable GameObject |
 | `gameobject_get_info` | Get detailed information |
+| `gameobject_duplicate` | Duplicate a single GameObject (returns copyName, copyInstanceId) |
 | `gameobject_create_batch` | Create multiple GameObjects (Efficient) |
 | `gameobject_delete_batch` | Delete multiple GameObjects (Efficient) |
+| `gameobject_duplicate_batch` | **Duplicate multiple GameObjects (Efficient, NEW)** |
 | `gameobject_set_active_batch` | Set active state for multiple objects |
 | `gameobject_set_transform_batch` | Set transform for multiple objects |
 | `gameobject_set_layer_batch` | Set layer for multiple objects |
 | `gameobject_set_tag_batch` | Set tag for multiple objects |
 | `gameobject_set_parent_batch` | Set parent for multiple objects |
+
+> ⚠️ **IMPORTANT**: When operating on multiple objects, ALWAYS use `*_batch` skills instead of calling single-object skills in a loop. This reduces API calls from N to 1!
 
 ## Parameters
 
@@ -61,6 +65,21 @@ Manipulate GameObjects in Unity scene - the fundamental building blocks of any U
 
 *At least one identifier required
 
+### gameobject_duplicate / gameobject_duplicate_batch
+
+**Single**: Returns `{originalName, copyName, copyInstanceId, copyPath}`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | No* | Object name |
+| `instanceId` | int | No* | Instance ID (from editor_get_context) |
+| `path` | string | No* | Hierarchy path |
+
+**Batch**: `items` = JSON array of `{name, instanceId, path}`
+```json
+[{"instanceId": 12345}, {"instanceId": 12346}, {"name": "Cube"}]
+```
+
 ### gameobject_find
 
 | Parameter | Type | Required | Default | Description |
@@ -81,15 +100,17 @@ Manipulate GameObjects in Unity scene - the fundamental building blocks of any U
 | `rotX/rotY/rotZ` | float | No | Rotation values (euler) |
 | `scaleX/scaleY/scaleZ` | float | No | Scale values |
 
-### Batch Operations
-Batch skills take a single `items` parameter which is a JSON array of objects.
+### Batch Operations (Use these for multiple objects!)
+
+> 🚀 **Performance Tip**: Use batch skills to reduce 30 API calls to just 1!
 
 | Skill | Item Properties |
 |-------|-----------------|
 | `gameobject_create_batch` | `name`, `primitiveType`, `x`, `y`, `z`, `rotX`, `scaleX`, etc. |
 | `gameobject_delete_batch` | `name` OR `{name, instanceId}` |
+| `gameobject_duplicate_batch` | `name`, `instanceId`, or `path` |
 | `gameobject_set_active_batch` | `name`, `active` |
-| `gameobject_set_transform_batch` | `name`, `posX`, `rotY`, `scaleZ`, etc. |
+| `gameobject_set_transform_batch` | `name` or `instanceId`, `posX`, `rotY`, `scaleZ`, etc. |
 | `gameobject_set_layer_batch` | `name`, `layer`, `recursive` |
 | `gameobject_set_tag_batch` | `name`, `tag` |
 | `gameobject_set_parent_batch` | `childName`, `parentName` |

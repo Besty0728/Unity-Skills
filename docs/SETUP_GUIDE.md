@@ -143,6 +143,8 @@ call_skill("editor_play")
 
 ## 六、完整 Skills 列表
 
+> ⚠️ **提示**：大部分模块支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills。
+
 ### Scene (场景) - 6 skills
 | Skill | 描述 | 参数 |
 |-------|------|------|
@@ -153,7 +155,7 @@ call_skill("editor_play")
 | scene_get_hierarchy | 获取层级树 | maxDepth |
 | scene_screenshot | 截图 | filename, width, height |
 
-### GameObject (物体) - 7 skills
+### GameObject (物体) - 8 skills (含批量)
 | Skill | 描述 | 参数 |
 |-------|------|------|
 | gameobject_create | 创建物体 | name, primitiveType, x, y, z |
@@ -161,25 +163,70 @@ call_skill("editor_play")
 | gameobject_find | 查找物体 | name, tag, component, limit |
 | gameobject_set_transform | 设置变换 | name, posX, posY, posZ, rotX, rotY, rotZ, scaleX, scaleY, scaleZ |
 | gameobject_duplicate | 复制物体 | name, instanceId |
+| gameobject_duplicate_batch | **批量复制** | items (JSON数组) |
 | gameobject_set_parent | 设置父级 | childName, parentName |
 
-### Component (组件) - 5 skills
+### Component (组件) - 8 skills (含批量)
 | Skill | 描述 | 参数 |
 |-------|------|------|
 | component_add | 添加组件 | gameObjectName, componentType |
+| component_add_batch | **批量添加** | items (JSON数组) |
 | component_remove | 移除组件 | gameObjectName, componentType |
+| component_remove_batch | **批量移除** | items (JSON数组) |
 | component_list | 列出组件 | gameObjectName |
 | component_set_property | 设置属性 | gameObjectName, componentType, propertyName, value |
+| component_set_property_batch | **批量设置属性** | items (JSON数组) |
 | component_get_properties | 获取属性 | gameObjectName, componentType |
 
-### Material (材质) - 5 skills
+### Material (材质) - 17 skills
 | Skill | 描述 | 参数 |
 |-------|------|------|
 | material_create | 创建材质 | name, shaderName, savePath |
-| material_set_color | 设置颜色 | gameObjectName, r, g, b, a, propertyName |
+| material_set_color | 设置颜色 | gameObjectName, r, g, b, a, propertyName, intensity |
+| material_set_emission | 设置发光 | gameObjectName, r, g, b, intensity |
 | material_set_texture | 设置贴图 | gameObjectName, texturePath, propertyName |
 | material_assign | 分配材质 | gameObjectName, materialPath |
 | material_set_float | 设置浮点值 | gameObjectName, propertyName, value |
+
+### Light (灯光) - 7 skills (含批量)
+| Skill | 描述 | 参数 |
+|-------|------|------|
+| light_create | 创建灯光 | name, lightType, x, y, z, r, g, b, intensity |
+| light_set_properties | 设置属性 | name, instanceId, r, g, b, intensity, range |
+| light_set_properties_batch | **批量设置属性** | items (JSON数组) |
+| light_set_enabled | 开关灯光 | name, instanceId, enabled |
+| light_set_enabled_batch | **批量开关** | items (JSON数组) |
+| light_get_info | 获取灯光信息 | name, instanceId |
+| light_find_all | 查找所有灯光 | lightType, limit |
+
+### Editor (编辑器) - 12 skills
+| Skill | 描述 | 参数 |
+|-------|------|------|
+| editor_play | 进入播放模式 | - |
+| editor_stop | 停止播放模式 | - |
+| editor_pause | 暂停/继续 | - |
+| editor_select | 选中物体 | gameObjectName, instanceId |
+| editor_get_selection | 获取选中 | - |
+| **editor_get_context** | **获取完整上下文** | includeComponents, includeChildren |
+| editor_undo | 撤销 | - |
+| editor_redo | 重做 | - |
+| editor_get_state | 获取编辑器状态 | - |
+| editor_execute_menu | 执行菜单项 | menuPath |
+| editor_get_tags | 获取所有标签 | - |
+| editor_get_layers | 获取所有图层 | - |
+
+### Importer (导入设置) - 9 skills [v1.2 新增]
+| Skill | 描述 | 参数 |
+|-------|------|------|
+| texture_get_settings | 获取纹理设置 | assetPath |
+| texture_set_settings | 设置纹理导入 | assetPath, textureType, maxSize, filterMode... |
+| texture_set_settings_batch | **批量设置纹理** | items (JSON数组) |
+| audio_get_settings | 获取音频设置 | assetPath |
+| audio_set_settings | 设置音频导入 | assetPath, loadType, compressionFormat, quality... |
+| audio_set_settings_batch | **批量设置音频** | items (JSON数组) |
+| model_get_settings | 获取模型设置 | assetPath |
+| model_set_settings | 设置模型导入 | assetPath, meshCompression, animationType... |
+| model_set_settings_batch | **批量设置模型** | items (JSON数组) |
 
 ### Asset (资产) - 8 skills
 | Skill | 描述 | 参数 |
@@ -193,37 +240,14 @@ call_skill("editor_play")
 | asset_refresh | 刷新资产库 | - |
 | asset_get_info | 获取资产信息 | assetPath |
 
-### Editor (编辑器) - 11 skills
-| Skill | 描述 | 参数 |
-|-------|------|------|
-| editor_play | 进入播放模式 | - |
-| editor_stop | 停止播放模式 | - |
-| editor_pause | 暂停/继续 | - |
-| editor_select | 选中物体 | gameObjectName, instanceId |
-| editor_get_selection | 获取选中 | - |
-| editor_undo | 撤销 | - |
-| editor_redo | 重做 | - |
-| editor_get_state | 获取编辑器状态 | - |
-| editor_execute_menu | 执行菜单项 | menuPath |
-| editor_get_tags | 获取所有标签 | - |
-| editor_get_layers | 获取所有图层 | - |
-
-### Prefab (预制体) - 4 skills
+### Prefab (预制体) - 5 skills
 | Skill | 描述 | 参数 |
 |-------|------|------|
 | prefab_create | 创建预制体 | gameObjectName, savePath |
 | prefab_instantiate | 实例化预制体 | prefabPath, x, y, z, name |
+| prefab_instantiate_batch | **批量实例化** | items (JSON数组) |
 | prefab_apply | 应用修改 | gameObjectName |
 | prefab_unpack | 解包预制体 | gameObjectName, completely |
-
-### Script (脚本) - 5 skills
-| Skill | 描述 | 参数 |
-|-------|------|------|
-| script_create | 创建脚本 | scriptName, folder, template |
-| script_read | 读取脚本 | scriptPath |
-| script_delete | 删除脚本 | scriptPath |
-| script_find_in_file | 搜索脚本内容 | pattern, folder, isRegex, limit |
-| script_append | 追加内容 | scriptPath, content, atLine |
 
 ### Console (控制台) - 5 skills
 | Skill | 描述 | 参数 |

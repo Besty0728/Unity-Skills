@@ -12,8 +12,6 @@ Work with prefabs - reusable GameObject templates for efficient scene building.
 - Create prefabs from scene objects
 - Instantiate prefabs into scene
 - Apply changes to prefab
-- Instantiate prefabs into scene
-- Apply changes to prefab
 - Unpack prefab instances
 - **Batch Operations**: Efficiently instantiate multiple prefabs in one call.
 
@@ -24,22 +22,26 @@ Work with prefabs - reusable GameObject templates for efficient scene building.
 | `prefab_create` | Create prefab from GameObject |
 | `prefab_instantiate` | Instantiate prefab in scene |
 | `prefab_apply` | Apply instance changes to prefab |
-| `prefab_create` | Create prefab from GameObject |
-| `prefab_instantiate` | Instantiate prefab in scene |
-| `prefab_apply` | Apply instance changes to prefab |
 | `prefab_unpack` | Unpack prefab instance |
-| `prefab_instantiate_batch` | Instantiate multiple prefabs (BS) |
+| `prefab_instantiate_batch` | **Instantiate multiple prefabs (Efficient)** |
+
+> ⚠️ **IMPORTANT**: When spawning multiple prefabs, ALWAYS use `prefab_instantiate_batch` instead of calling `prefab_instantiate` in a loop!
 
 ## Parameters
 
 ### prefab_create
 
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `gameObjectName` | string | Yes | - | Source object name |
-| `savePath` | string | Yes | - | Prefab save path |
+**Returns**: `{success, prefabPath, sourceObject}`
 
-### prefab_instantiate
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `gameObjectName` | string | No* | Source object name |
+| `instanceId` | int | No* | Instance ID |
+| `savePath` | string | Yes | Prefab save path |
+
+### prefab_instantiate / prefab_instantiate_batch
+
+**Single Returns**: `{success, name, instanceId, prefabPath, position}`
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -50,26 +52,29 @@ Work with prefabs - reusable GameObject templates for efficient scene building.
 | `z` | float | No | 0 | Z position |
 | `parentName` | string | No | null | Parent object |
 
+**Batch**: `items` = JSON array of `{prefabPath, name, x, y, z, rotX, rotY, rotZ, scaleX, scaleY, scaleZ, parentName}`
+```json
+[{"prefabPath": "Assets/Prefabs/Enemy.prefab", "x": 0, "y": 0, "z": 0}, {"prefabPath": "Assets/Prefabs/Enemy.prefab", "x": 2, "y": 0, "z": 0}]
+```
+
 ### prefab_apply
+
+**Returns**: `{success, gameObject, prefabPath}`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `gameObjectName` | string | Yes | Prefab instance name |
+| `gameObjectName` | string | No* | Prefab instance name |
+| `instanceId` | int | No* | Instance ID |
 
 ### prefab_unpack
 
+**Returns**: `{success, gameObject, mode}`
+
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `gameObjectName` | string | Yes | - | Prefab instance name |
-| `gameObjectName` | string | Yes | - | Prefab instance name |
+| `gameObjectName` | string | No* | - | Prefab instance name |
+| `instanceId` | int | No* | - | Instance ID |
 | `completely` | bool | No | false | Unpack all nested |
-
-### Batch Operations
-Batch skills take a single `items` parameter which is a JSON array of objects.
-
-| Skill | Item Properties |
-|-------|-----------------|
-| `prefab_instantiate_batch` | `prefabPath`, `x`, `y`, `z`, `rotX`, `scaleX`, `parentName`, `name` |
 
 ## Example Usage
 

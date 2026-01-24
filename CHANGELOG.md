@@ -35,6 +35,15 @@ All notable changes to **UnitySkills** will be documented in this file.
 | **Texture** | 3 | `TextureSkills.cs` (NEW) |
 | **Audio** | 3 | `AudioSkills.cs` (NEW) |
 | **Model** | 3 | `ModelSkills.cs` (NEW) |
+| **GameObject** | +1 | `gameobject_duplicate_batch` |
+| **Light** | +2 | `light_set_enabled_batch`, `light_set_properties_batch` |
+
+### 📝 Documentation Improvements / 文档优化
+
+- All SKILL.md now include **Returns** structure for each skill / 所有技能文档现在包含返回结构说明
+- Added ⚠️ batch operation warnings to prevent N-calls loops / 添加批量操作警告避免循环调用
+- Added `instanceId` support documentation / 添加 instanceId 支持说明
+- Fixed duplicate content in prefab SKILL.md / 修复 prefab 文档重复内容
 
 ---
 

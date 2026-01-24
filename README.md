@@ -3,7 +3,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2021.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-110%2B-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-115%2B-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -20,7 +20,7 @@
 ## 🚀 核心特性
 
 - ⚡ **极致效能**：支持 **Result Truncation** 与 **SKILL.md** 瘦身，最大化节省 Token。
-- 🛠️ **全能工具库**：内置 100+ Skills，支持 **Batch (批处理)** 操作，性能提升 100 倍。
+- 🛠️ **全能工具库**：内置 115+ Skills，支持 **Batch (批处理)** 操作，性能提升 100 倍。
 - 🛡️ **安全第一**：支持 **Transactional (事务原子性)**，操作失败自动回滚，场景零残留。
 - 🌍 **多实例支持**：自动端口发现、全局注册表，支持同时控制多个 Unity 项目。
 - 🤖 **深度集成**：独家支持 **Antigravity Slash Commands**，解锁 `/unity-skills` 交互新体验。
@@ -105,18 +105,21 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 
 ---
 
-## 📦 Skills 分类概要 (110+)
+## 📦 Skills 分类概要 (115+)
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
-| **GameObject** | 7 | 增删改查、层级管理、变换同步。 |
-| **Component** | 5 | 智能组件挂载、属性劫持与配置。 |
+| **GameObject** | 8 | 增删改查、层级管理、变换同步、**批量复制**。 |
+| **Component** | 8 | 智能组件挂载、属性劫持与配置、批量操作。 |
 | **Scene** | 6 | 场景无缝切换、状态保存、高清截图。 |
 | **Material** | 17 | HDR 发光控制、材质球属性批量修改。 |
+| **Light** | 7 | 灯光创建/配置、**批量开关/属性设置**。 |
 | **UI System** | 10 | 响应式 Canvas 构建、Button/Text 组件生成。 |
 | **Editor** | 12 | 播放模式、选择、撤销重做、**上下文获取**。 |
 | **Importer** | 9 | 纹理/音频/模型导入设置调整。 |
-| **Others** | 44+ | 涵盖 Animator, Light, Prefab, Validation 等。 |
+| **Others** | 38+ | 涵盖 Animator, Prefab, Validation, Console 等。 |
+
+> ⚠️ 大部分模块支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills 以提升性能。
 
 ---
 

@@ -190,7 +190,7 @@ namespace UnitySkills
             return new { count = results.Length, lights = results };
         }
 
-        [UnitySkill("light_set_enabled", "Enable or disable a light (supports name/instanceId/path)")]
+        [UnitySkill("light_set_enabled", "Enable or disable a light (supports name/instanceId/path). Returns: {success, name, enabled}")]
         public static object LightSetEnabled(string name = null, int instanceId = 0, string path = null, bool enabled = true)
         {
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
@@ -204,6 +204,140 @@ namespace UnitySkills
             light.enabled = enabled;
 
             return new { success = true, name = go.name, enabled };
+        }
+
+        [UnitySkill("light_set_enabled_batch", "Enable/disable multiple lights in one call (Efficient). items: JSON array of {name, instanceId, path, enabled}")]
+        public static object LightSetEnabledBatch(string items)
+        {
+            if (string.IsNullOrEmpty(items))
+                return new { error = "items parameter is required. Example: [{\"name\":\"Light1\",\"enabled\":false}]" };
+
+            try
+            {
+                var itemList = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.List<BatchLightEnabledItem>>(items);
+                if (itemList == null || itemList.Count == 0)
+                    return new { error = "items parameter is empty or invalid JSON" };
+
+                var results = new System.Collections.Generic.List<object>();
+                int successCount = 0;
+                int failCount = 0;
+
+                foreach (var item in itemList)
+                {
+                    var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                    if (error != null)
+                    {
+                        results.Add(new { target = item.name ?? item.path ?? item.instanceId.ToString(), success = false, error = "Object not found" });
+                        failCount++;
+                        continue;
+                    }
+
+                    var light = go.GetComponent<Light>();
+                    if (light == null)
+                    {
+                        results.Add(new { target = go.name, success = false, error = "No Light component" });
+                        failCount++;
+                        continue;
+                    }
+
+                    Undo.RecordObject(light, "Batch Set Light Enabled");
+                    light.enabled = item.enabled;
+                    results.Add(new { target = go.name, success = true, enabled = item.enabled });
+                    successCount++;
+                }
+
+                return new { success = failCount == 0, totalItems = itemList.Count, successCount, failCount, results };
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Failed to parse items JSON: {ex.Message}" };
+            }
+        }
+
+        private class BatchLightEnabledItem
+        {
+            public string name { get; set; }
+            public int instanceId { get; set; }
+            public string path { get; set; }
+            public bool enabled { get; set; }
+        }
+
+        [UnitySkill("light_set_properties_batch", "Set properties for multiple lights in one call (Efficient). items: JSON array of {name, instanceId, r, g, b, intensity, range, shadows}")]
+        public static object LightSetPropertiesBatch(string items)
+        {
+            if (string.IsNullOrEmpty(items))
+                return new { error = "items parameter is required. Example: [{\"name\":\"Light1\",\"intensity\":2.0}]" };
+
+            try
+            {
+                var itemList = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.List<BatchLightPropsItem>>(items);
+                if (itemList == null || itemList.Count == 0)
+                    return new { error = "items parameter is empty or invalid JSON" };
+
+                var results = new System.Collections.Generic.List<object>();
+                int successCount = 0;
+                int failCount = 0;
+
+                foreach (var item in itemList)
+                {
+                    var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                    if (error != null)
+                    {
+                        results.Add(new { target = item.name ?? item.path ?? item.instanceId.ToString(), success = false, error = "Object not found" });
+                        failCount++;
+                        continue;
+                    }
+
+                    var light = go.GetComponent<Light>();
+                    if (light == null)
+                    {
+                        results.Add(new { target = go.name, success = false, error = "No Light component" });
+                        failCount++;
+                        continue;
+                    }
+
+                    Undo.RecordObject(light, "Batch Set Light Properties");
+
+                    if (item.r.HasValue || item.g.HasValue || item.b.HasValue)
+                    {
+                        var c = light.color;
+                        light.color = new Color(item.r ?? c.r, item.g ?? c.g, item.b ?? c.b);
+                    }
+                    if (item.intensity.HasValue) light.intensity = item.intensity.Value;
+                    if (item.range.HasValue) light.range = item.range.Value;
+                    if (!string.IsNullOrEmpty(item.shadows))
+                    {
+                        switch (item.shadows.ToLower())
+                        {
+                            case "hard": light.shadows = LightShadows.Hard; break;
+                            case "soft": light.shadows = LightShadows.Soft; break;
+                            case "none": light.shadows = LightShadows.None; break;
+                        }
+                    }
+
+                    results.Add(new { target = go.name, success = true });
+                    successCount++;
+                }
+
+                return new { success = failCount == 0, totalItems = itemList.Count, successCount, failCount, results };
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Failed to parse items JSON: {ex.Message}" };
+            }
+        }
+
+        private class BatchLightPropsItem
+        {
+            public string name { get; set; }
+            public int instanceId { get; set; }
+            public string path { get; set; }
+            public float? r { get; set; }
+            public float? g { get; set; }
+            public float? b { get; set; }
+            public float? intensity { get; set; }
+            public float? range { get; set; }
+            public string shadows { get; set; }
         }
     }
 }

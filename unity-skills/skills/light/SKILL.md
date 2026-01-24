@@ -24,6 +24,10 @@ Control lighting in your Unity scenes - create atmospheric, dramatic, or functio
 | `light_get_info` | Get light information |
 | `light_find_all` | Find all lights in scene |
 | `light_set_enabled` | Enable/disable light |
+| `light_set_enabled_batch` | **Enable/disable multiple lights (Efficient)** |
+| `light_set_properties_batch` | **Set properties for multiple lights (Efficient)** |
+
+> ⚠️ **IMPORTANT**: When operating on multiple lights, ALWAYS use `*_batch` skills instead of calling single-light skills in a loop!
 
 ## Light Types
 
@@ -37,6 +41,8 @@ Control lighting in your Unity scenes - create atmospheric, dramatic, or functio
 ## Parameters
 
 ### light_create
+
+**Returns**: `{success, name, instanceId, lightType, position, color, intensity, shadows}`
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -53,38 +59,63 @@ Control lighting in your Unity scenes - create atmospheric, dramatic, or functio
 | `spotAngle` | float | No | 30 | Cone angle (Spot only) |
 | `shadows` | string | No | "soft" | none/hard/soft |
 
-### light_set_properties
+### light_set_properties / light_set_properties_batch
+
+**Single Returns**: `{success, name, lightType, color, intensity, range, spotAngle, shadows}`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | Light object name |
+| `name` | string | No* | Light object name |
+| `instanceId` | int | No* | Instance ID (preferred) |
+| `path` | string | No* | Hierarchy path |
 | `r` | float | No | Red (0-1) |
 | `g` | float | No | Green (0-1) |
 | `b` | float | No | Blue (0-1) |
 | `intensity` | float | No | Light intensity |
 | `range` | float | No | Range (Point/Spot) |
-| `spotAngle` | float | No | Cone angle (Spot) |
 | `shadows` | string | No | none/hard/soft |
+
+*At least one identifier required
+
+**Batch**: `items` = JSON array of `{name, instanceId, r, g, b, intensity, range, shadows}`
+```json
+[{"instanceId": 12345, "intensity": 2.0}, {"name": "Light2", "r": 1, "g": 0, "b": 0}]
+```
 
 ### light_get_info
 
+**Returns**: `{name, instanceId, path, lightType, color, intensity, range, spotAngle, shadows, enabled}`
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | Light object name |
+| `name` | string | No* | Light object name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
 
 ### light_find_all
+
+**Returns**: `{count, lights: [{name, instanceId, path, lightType, intensity, enabled}]}`
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `lightType` | string | No | null | Filter by type |
-| `limit` | int | No | 100 | Max results |
+| `limit` | int | No | 50 | Max results |
 
-### light_set_enabled
+### light_set_enabled / light_set_enabled_batch
+
+**Single Returns**: `{success, name, enabled}`
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | Light object name |
+| `name` | string | No* | Light object name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
 | `enabled` | bool | Yes | Enable state |
+
+**Batch**: `items` = JSON array of `{name, instanceId, path, enabled}`
+```json
+[{"name": "Light1", "enabled": false}, {"instanceId": 456, "enabled": true}]
+```
 
 ## Example Usage
 
