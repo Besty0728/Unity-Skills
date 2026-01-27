@@ -1,37 +1,29 @@
 ---
 name: unity-prefab
-description: Create, instantiate, and manage prefabs in Unity Editor via REST API
+description: "Create, instantiate, and manage prefabs. Use prefab_instantiate_batch for spawning 2+ instances."
 ---
 
 # Unity Prefab Skills
 
-Work with prefabs - reusable GameObject templates for efficient scene building.
+> **BATCH-FIRST**: Use `prefab_instantiate_batch` when spawning 2+ prefab instances.
 
-## Capabilities
+## Skills Overview
 
-- Create prefabs from scene objects
-- Instantiate prefabs into scene
-- Apply changes to prefab
-- Unpack prefab instances
-- **Batch Operations**: Efficiently instantiate multiple prefabs in one call.
+| Single Object | Batch Version | Use Batch When |
+|---------------|---------------|----------------|
+| `prefab_instantiate` | `prefab_instantiate_batch` | Spawning 2+ instances |
 
-## Skills Reference
+**No batch needed**:
+- `prefab_create` - Create prefab from scene object
+- `prefab_apply` - Apply instance changes to prefab
+- `prefab_unpack` - Unpack prefab instance
 
-| Skill | Description |
-|-------|-------------|
-| `prefab_create` | Create prefab from GameObject |
-| `prefab_instantiate` | Instantiate prefab in scene |
-| `prefab_apply` | Apply instance changes to prefab |
-| `prefab_unpack` | Unpack prefab instance |
-| `prefab_instantiate_batch` | **Instantiate multiple prefabs (Efficient)** |
+---
 
-> ⚠️ **IMPORTANT**: When spawning multiple prefabs, ALWAYS use `prefab_instantiate_batch` instead of calling `prefab_instantiate` in a loop!
-
-## Parameters
+## Skills
 
 ### prefab_create
-
-**Returns**: `{success, prefabPath, sourceObject}`
+Create a prefab from a scene GameObject.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -39,89 +31,78 @@ Work with prefabs - reusable GameObject templates for efficient scene building.
 | `instanceId` | int | No* | Instance ID |
 | `savePath` | string | Yes | Prefab save path |
 
-### prefab_instantiate / prefab_instantiate_batch
+**Returns**: `{success, prefabPath, sourceObject}`
 
-**Single Returns**: `{success, name, instanceId, prefabPath, position}`
+### prefab_instantiate
+Instantiate a prefab into the scene.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `prefabPath` | string | Yes | - | Prefab asset path |
 | `name` | string | No | prefab name | Instance name |
-| `x` | float | No | 0 | X position |
-| `y` | float | No | 0 | Y position |
-| `z` | float | No | 0 | Z position |
+| `x`, `y`, `z` | float | No | 0 | Position |
 | `parentName` | string | No | null | Parent object |
 
-**Batch**: `items` = JSON array of `{prefabPath, name, x, y, z, rotX, rotY, rotZ, scaleX, scaleY, scaleZ, parentName}`
-```json
-[{"prefabPath": "Assets/Prefabs/Enemy.prefab", "x": 0, "y": 0, "z": 0}, {"prefabPath": "Assets/Prefabs/Enemy.prefab", "x": 2, "y": 0, "z": 0}]
+**Returns**: `{success, name, instanceId, prefabPath, position}`
+
+### prefab_instantiate_batch
+Instantiate multiple prefabs in one call.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `items` | array | Yes | Array of instantiation configs |
+
+**Item properties**: `prefabPath`, `name`, `x`, `y`, `z`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentName`
+
+```python
+unity_skills.call_skill("prefab_instantiate_batch", items=[
+    {"prefabPath": "Assets/Prefabs/Enemy.prefab", "x": 0, "z": 0, "name": "Enemy_01"},
+    {"prefabPath": "Assets/Prefabs/Enemy.prefab", "x": 2, "z": 0, "name": "Enemy_02"},
+    {"prefabPath": "Assets/Prefabs/Enemy.prefab", "x": 4, "z": 0, "name": "Enemy_03"}
+])
 ```
 
 ### prefab_apply
-
-**Returns**: `{success, gameObject, prefabPath}`
+Apply instance changes back to the prefab asset.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `gameObjectName` | string | No* | Prefab instance name |
 | `instanceId` | int | No* | Instance ID |
 
-### prefab_unpack
+**Returns**: `{success, gameObject, prefabPath}`
 
-**Returns**: `{success, gameObject, mode}`
+### prefab_unpack
+Unpack a prefab instance (break prefab connection).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `gameObjectName` | string | No* | - | Prefab instance name |
 | `instanceId` | int | No* | - | Instance ID |
-| `completely` | bool | No | false | Unpack all nested |
+| `completely` | bool | No | false | Unpack all nested prefabs |
 
-## Example Usage
+**Returns**: `{success, gameObject, mode}`
+
+---
+
+## Example: Efficient Enemy Spawning
 
 ```python
 import unity_skills
 
-# Create a complex object
-unity_skills.call_skill("gameobject_create", name="EnemyTemplate", primitiveType="Cube")
-unity_skills.call_skill("component_add", name="EnemyTemplate", componentType="Rigidbody")
-
-# Save as prefab
-unity_skills.call_skill("prefab_create",
-    gameObjectName="EnemyTemplate",
-    savePath="Assets/Prefabs/Enemy.prefab"
-)
-
-# Spawn multiple instances
-for i in range(5):
+# BAD: 10 API calls for 10 enemies
+for i in range(10):
     unity_skills.call_skill("prefab_instantiate",
         prefabPath="Assets/Prefabs/Enemy.prefab",
         name=f"Enemy_{i}",
-        x=i * 2, y=0, z=0
+        x=i * 2
     )
 
-# Modify an instance and apply changes to prefab
-unity_skills.call_skill("component_add", name="Enemy_0", componentType="AudioSource")
-unity_skills.call_skill("prefab_apply", gameObjectName="Enemy_0")
-
-# Unpack instance (break prefab connection)
-unity_skills.call_skill("prefab_unpack",
-    gameObjectName="Enemy_1",
-    completely=True
-)
-```
-
-## Response Format
-
-```json
-{
-  "status": "success",
-  "skill": "prefab_create",
-  "result": {
-    "success": true,
-    "prefabPath": "Assets/Prefabs/Enemy.prefab",
-    "sourceObject": "EnemyTemplate"
-  }
-}
+# GOOD: 1 API call for 10 enemies
+unity_skills.call_skill("prefab_instantiate_batch", items=[
+    {"prefabPath": "Assets/Prefabs/Enemy.prefab", "name": f"Enemy_{i}", "x": i * 2}
+    for i in range(10)
+])
 ```
 
 ## Best Practices
@@ -130,4 +111,4 @@ unity_skills.call_skill("prefab_unpack",
 2. Use prefabs for repeated objects
 3. Apply changes to update all instances
 4. Unpack only when unique modifications needed
-5. Nested prefabs for complex hierarchies
+5. Use batch instantiation for level generation

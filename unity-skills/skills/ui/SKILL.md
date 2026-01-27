@@ -1,57 +1,36 @@
 ---
 name: unity-ui
-description: Create UI elements (Canvas, Button, Text, etc.) in Unity Editor via REST API
+description: "Create UI elements (Canvas, Button, Text, etc.). Use ui_create_batch for 2+ elements."
 ---
 
 # Unity UI Skills
 
-Build user interfaces - menus, HUDs, dialogs, and interactive elements.
+> **BATCH-FIRST**: Use `ui_create_batch` when creating 2+ UI elements.
 
-## Capabilities
+## Skills Overview
 
-- Create Canvas containers
-- Create UI elements (Button, Text, Image, InputField, Slider, Toggle)
-- Configure UI properties
-- Configure UI properties
-- Find UI elements in scene
-- **Batch Operations**: Create complex UI layouts in a single call.
+| Single Object | Batch Version | Use Batch When |
+|---------------|---------------|----------------|
+| `ui_create_*` | `ui_create_batch` | Creating 2+ UI elements |
 
-## Skills Reference
+**Query/Utility Skills**:
+- `ui_set_text` - Update text content
+- `ui_find_all` - Find UI elements
 
-| Skill | Description |
-|-------|-------------|
-| `ui_create_canvas` | Create UI Canvas |
-| `ui_create_panel` | Create Panel container |
-| `ui_create_button` | Create Button |
-| `ui_create_text` | Create Text element |
-| `ui_create_image` | Create Image element |
-| `ui_create_inputfield` | Create InputField |
-| `ui_create_slider` | Create Slider |
-| `ui_create_toggle` | Create Toggle/Checkbox |
-| `ui_set_text` | Set text content |
-| `ui_create_toggle` | Create Toggle/Checkbox |
-| `ui_set_text` | Set text content |
-| `ui_find_all` | Find UI elements |
-| `ui_create_batch` | Create multiple UI elements (Efficient) |
+---
 
-## Canvas Render Modes
-
-| Mode | Description |
-|------|-------------|
-| `ScreenSpaceOverlay` | UI always on top |
-| `ScreenSpaceCamera` | UI rendered by camera |
-| `WorldSpace` | UI in 3D world |
-
-## Parameters
+## Single-Object Skills
 
 ### ui_create_canvas
+Create a UI Canvas container.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No | "Canvas" | Canvas name |
-| `renderMode` | string | No | "ScreenSpaceOverlay" | Render mode |
+| `renderMode` | string | No | "ScreenSpaceOverlay" | ScreenSpaceOverlay/ScreenSpaceCamera/WorldSpace |
 
 ### ui_create_panel
+Create a Panel container.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -61,6 +40,7 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | `width/height` | float | No | 200 | Size in pixels |
 
 ### ui_create_button
+Create a Button.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -71,6 +51,7 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | `x/y` | float | No | 0 | Position offset |
 
 ### ui_create_text
+Create a Text element.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -82,6 +63,7 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | `width/height` | float | No | 200/50 | Size |
 
 ### ui_create_image
+Create an Image element.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -92,6 +74,7 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | `width/height` | float | No | 100 | Size |
 
 ### ui_create_inputfield
+Create an InputField.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -101,6 +84,7 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | `width/height` | float | No | 200/30 | Size |
 
 ### ui_create_slider
+Create a Slider.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -112,6 +96,7 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | `width/height` | float | No | 160/20 | Size |
 
 ### ui_create_toggle
+Create a Toggle/Checkbox.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -121,6 +106,7 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | `isOn` | bool | No | false | Initial state |
 
 ### ui_set_text
+Update text content.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -128,132 +114,67 @@ Build user interfaces - menus, HUDs, dialogs, and interactive elements.
 | `text` | string | Yes | New content |
 
 ### ui_find_all
+Find UI elements in scene.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `uiType` | string | No | null | Filter by type |
-| `uiType` | string | No | null | Filter by type |
+| `uiType` | string | No | null | Filter: Button/Text/Image/etc. |
 | `limit` | int | No | 100 | Max results |
 
-### Batch Operations
-Batch skills take a single `items` parameter which is a JSON array of objects.
+---
 
-| Skill | Item Properties |
-|-------|-----------------|
-| `ui_create_batch` | `type` (Button/Text/...), `name`, `parent`, `text`, `width`, `height`, etc. |
+## Batch Skill
 
-## Example Usage
+### ui_create_batch
+Create multiple UI elements in one call.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `items` | array | Yes | Array of UI element configs |
+
+**Item properties**: `type` (required), `name`, `parent`, `text`, `width`, `height`, `x`, `y`, `r`, `g`, `b`, `a`, etc.
+
+**Supported types**: Button, Text, Image, Panel, Slider, Toggle, InputField
+
+```python
+unity_skills.call_skill("ui_create_batch", items=[
+    {"type": "Button", "name": "StartBtn", "parent": "MenuPanel", "text": "Start", "y": 60},
+    {"type": "Button", "name": "OptionsBtn", "parent": "MenuPanel", "text": "Options", "y": 0},
+    {"type": "Button", "name": "QuitBtn", "parent": "MenuPanel", "text": "Quit", "y": -60}
+])
+```
+
+---
+
+## Example: Efficient Menu Creation
 
 ```python
 import unity_skills
 
-# Create main canvas
-unity_skills.call_skill("ui_create_canvas",
-    name="MainMenu",
-    renderMode="ScreenSpaceOverlay"
-)
+# BAD: 5 API calls
+unity_skills.call_skill("ui_create_canvas", name="MainMenu")
+unity_skills.call_skill("ui_create_panel", name="MenuPanel", parent="MainMenu")
+unity_skills.call_skill("ui_create_button", name="StartBtn", parent="MenuPanel", text="Start", y=60)
+unity_skills.call_skill("ui_create_button", name="OptionsBtn", parent="MenuPanel", text="Options", y=0)
+unity_skills.call_skill("ui_create_button", name="QuitBtn", parent="MenuPanel", text="Quit", y=-60)
 
-# Create title
-unity_skills.call_skill("ui_create_text",
-    name="Title",
-    parent="MainMenu",
-    text="My Awesome Game",
-    fontSize=48,
-    r=1, g=1, b=1
-)
-
-# Create menu panel
-unity_skills.call_skill("ui_create_panel",
-    name="MenuPanel",
-    parent="MainMenu",
-    width=300,
-    height=400,
-    r=0, g=0, b=0, a=0.8
-)
-
-# Create buttons
-unity_skills.call_skill("ui_create_button",
-    name="StartButton",
-    parent="MenuPanel",
-    text="Start Game",
-    width=200,
-    height=50,
-    y=100
-)
-
-unity_skills.call_skill("ui_create_button",
-    name="OptionsButton",
-    parent="MenuPanel",
-    text="Options",
-    width=200,
-    height=50,
-    y=30
-)
-
-unity_skills.call_skill("ui_create_button",
-    name="QuitButton",
-    parent="MenuPanel",
-    text="Quit",
-    width=200,
-    height=50,
-    y=-40
-)
-
-# Create settings slider
-unity_skills.call_skill("ui_create_slider",
-    name="VolumeSlider",
-    parent="MenuPanel",
-    minValue=0,
-    maxValue=100,
-    value=80
-)
-
-# Create input field
-unity_skills.call_skill("ui_create_inputfield",
-    name="PlayerName",
-    parent="MenuPanel",
-    placeholder="Enter your name..."
-)
-
-# Update text dynamically
-unity_skills.call_skill("ui_set_text",
-    name="Title",
-    text="Welcome Back!"
-)
-
-# Find all buttons
-buttons = unity_skills.call_skill("ui_find_all",
-    uiType="Button"
-)
-```
-
-## Response Format
-
-```json
-{
-  "status": "success",
-  "skill": "ui_create_button",
-  "result": {
-    "success": true,
-    "name": "StartButton",
-    "instanceId": 12345,
-    "parent": "MenuPanel",
-    "text": "Start Game",
-    "usingTMP": true
-  }
-}
+# GOOD: 2 API calls
+unity_skills.call_skill("ui_create_canvas", name="MainMenu")
+unity_skills.call_skill("ui_create_batch", items=[
+    {"type": "Panel", "name": "MenuPanel", "parent": "MainMenu", "width": 300, "height": 200},
+    {"type": "Button", "name": "StartBtn", "parent": "MenuPanel", "text": "Start", "y": 60},
+    {"type": "Button", "name": "OptionsBtn", "parent": "MenuPanel", "text": "Options", "y": 0},
+    {"type": "Button", "name": "QuitBtn", "parent": "MenuPanel", "text": "Quit", "y": -60}
+])
 ```
 
 ## TextMeshPro Support
 
-UI Skills 动态检测 TextMeshPro 是否已安装：
+UI Skills auto-detect TextMeshPro:
+- **With TMP**: Uses `TextMeshProUGUI`
+- **Without TMP**: Falls back to legacy `UnityEngine.UI.Text`
 
-| 项目配置 | 文本组件 |
-|---------|---------|
-| 有 TMP 包 | `TextMeshProUGUI` |
-| 无 TMP 包 | Legacy `UnityEngine.UI.Text` |
-
-返回值中的 `usingTMP` 字段指示使用了哪种组件。
+Response includes `usingTMP` field to indicate which was used.
 
 ## Best Practices
 
@@ -261,5 +182,4 @@ UI Skills 动态检测 TextMeshPro 是否已安装：
 2. Use Panels to organize related elements
 3. Use meaningful names for scripting access
 4. Set parent for proper hierarchy
-5. Text components auto-detect TMP availability
-6. WorldSpace canvas for 3D UI (health bars, etc.)
+5. WorldSpace canvas for 3D UI (health bars, etc.)

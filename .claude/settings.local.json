@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.claude.com)",
+      "Bash(find:*)"
+    ]
+  }
+}

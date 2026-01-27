@@ -1,169 +1,124 @@
 ---
 name: unity-script
-description: Create and manage C# scripts in Unity Editor via REST API
+description: "Create and manage C# scripts. Use script_create_batch for 2+ scripts."
 ---
 
 # Unity Script Skills
 
-Work with C# scripts - create, read, delete, and search within scripts.
+> **BATCH-FIRST**: Use `script_create_batch` when creating 2+ scripts.
 
-## Capabilities
+## Skills Overview
 
-- Create C# scripts from templates
-- Read script contents
-- Delete scripts
-- Read script contents
-- Delete scripts
-- Search for patterns in scripts
-- **Batch Operations**: Create multiple scripts in one go, with namespace support.
+| Single Object | Batch Version | Use Batch When |
+|---------------|---------------|----------------|
+| `script_create` | `script_create_batch` | Creating 2+ scripts |
 
-## Skills Reference
+**No batch needed**:
+- `script_read` - Read script content
+- `script_delete` - Delete script
+- `script_find_in_file` - Search in scripts
+- `script_append` - Append content to script
 
-| Skill | Description |
-|-------|-------------|
-| `script_create` | Create C# script |
-| `script_read` | Read script content |
-| `script_delete` | Delete script |
-| `script_create` | Create C# script |
-| `script_read` | Read script content |
-| `script_delete` | Delete script |
-| `script_find_in_file` | Search in scripts |
-| `script_create_batch` | Create multiple scripts (Efficient) |
+---
 
-## Parameters
+## Skills
 
 ### script_create
+Create a C# script from template.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `scriptName` | string | Yes | - | Script class name |
 | `folder` | string | No | "Assets/Scripts" | Save folder |
-| `scriptName` | string | Yes | - | Script class name |
-| `folder` | string | No | "Assets/Scripts" | Save folder |
 | `template` | string | No | "MonoBehaviour" | Template type |
 | `namespace` | string | No | null | Optional namespace |
 
-### Batch Operations
-Batch skills take a single `items` parameter which is a JSON array of objects.
+**Templates**: MonoBehaviour, ScriptableObject, Editor, EditorWindow
 
-| Skill | Item Properties |
-|-------|-----------------|
-| `script_create_batch` | `scriptName`, `folder`, `template`, `namespace` |
+**Returns**: `{success, path, className, template}`
+
+### script_create_batch
+Create multiple scripts in one call.
+
+```python
+unity_skills.call_skill("script_create_batch", items=[
+    {"scriptName": "PlayerController", "folder": "Assets/Scripts/Player", "template": "MonoBehaviour"},
+    {"scriptName": "EnemyAI", "folder": "Assets/Scripts/Enemy", "template": "MonoBehaviour"},
+    {"scriptName": "GameSettings", "folder": "Assets/Scripts/Data", "template": "ScriptableObject"}
+])
+```
 
 ### script_read
+Read script content.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `scriptPath` | string | Yes | Script asset path |
 
+**Returns**: `{success, path, content}`
+
 ### script_delete
+Delete a script.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `scriptPath` | string | Yes | Script to delete |
 
 ### script_find_in_file
+Search for patterns in scripts.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `pattern` | string | Yes | - | Search pattern |
 | `folder` | string | No | "Assets" | Search folder |
 | `isRegex` | bool | No | false | Use regex |
+| `limit` | int | No | 100 | Max results |
 
-## Script Templates
+**Returns**: `{success, pattern, totalMatches, matches: [{file, line, content}]}`
 
-| Template | Description |
-|----------|-------------|
-| `MonoBehaviour` | Standard Unity component |
-| `ScriptableObject` | Data container |
-| `Editor` | Custom editor |
-| `EditorWindow` | Editor window |
+### script_append
+Append content to a script.
 
-## Example Usage
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `scriptPath` | string | Yes | - | Script path |
+| `content` | string | Yes | - | Content to append |
+| `atLine` | int | No | end | Line number to insert at |
+
+---
+
+## Example: Efficient Script Setup
 
 ```python
 import unity_skills
 
-# Create a MonoBehaviour script
-unity_skills.call_skill("script_create",
-    scriptName="PlayerController",
-    folder="Assets/Scripts/Player",
-    template="MonoBehaviour"
-)
+# BAD: 3 API calls + 3 Domain Reloads
+unity_skills.call_skill("script_create", scriptName="PlayerController", folder="Assets/Scripts/Player")
+# Wait for Domain Reload...
+unity_skills.call_skill("script_create", scriptName="EnemyAI", folder="Assets/Scripts/Enemy")
+# Wait for Domain Reload...
+unity_skills.call_skill("script_create", scriptName="GameManager", folder="Assets/Scripts/Core")
+# Wait for Domain Reload...
 
-# Create a ScriptableObject
-unity_skills.call_skill("script_create",
-    scriptName="GameSettings",
-    folder="Assets/Scripts/Data",
-    template="ScriptableObject"
-)
-
-# Read script content
-content = unity_skills.call_skill("script_read",
-    scriptPath="Assets/Scripts/Player/PlayerController.cs"
-)
-print(content['result']['content'])
-
-# Search for usage of a method
-results = unity_skills.call_skill("script_find_in_file",
-    pattern="GetComponent",
-    folder="Assets/Scripts"
-)
-for match in results['result']['matches']:
-    print(f"{match['file']}: Line {match['line']}")
-
-# Search with regex
-results = unity_skills.call_skill("script_find_in_file",
-    pattern="void\\s+Update\\s*\\(",
-    folder="Assets/Scripts",
-    isRegex=True
-)
-
-# Delete a script
-unity_skills.call_skill("script_delete",
-    scriptPath="Assets/Scripts/OldScript.cs"
-)
+# GOOD: 1 API call + 1 Domain Reload
+unity_skills.call_skill("script_create_batch", items=[
+    {"scriptName": "PlayerController", "folder": "Assets/Scripts/Player"},
+    {"scriptName": "EnemyAI", "folder": "Assets/Scripts/Enemy"},
+    {"scriptName": "GameManager", "folder": "Assets/Scripts/Core"}
+])
+# Wait for Domain Reload once...
 ```
 
-## Response Format
+## Important: Domain Reload
 
-### script_create Response
+After creating scripts, Unity triggers a Domain Reload (recompilation). Wait 3-5 seconds before making additional calls.
 
-```json
-{
-  "status": "success",
-  "skill": "script_create",
-  "result": {
-    "success": true,
-    "path": "Assets/Scripts/Player/PlayerController.cs",
-    "className": "PlayerController",
-    "template": "MonoBehaviour"
-  }
-}
-```
+```python
+import time
 
-### script_find_in_file Response
-
-```json
-{
-  "result": {
-    "success": true,
-    "pattern": "GetComponent",
-    "totalMatches": 12,
-    "matches": [
-      {
-        "file": "Assets/Scripts/Player/PlayerController.cs",
-        "line": 25,
-        "content": "rb = GetComponent<Rigidbody>();"
-      },
-      {
-        "file": "Assets/Scripts/Enemy/EnemyAI.cs",
-        "line": 18,
-        "content": "animator = GetComponent<Animator>();"
-      }
-    ]
-  }
-}
+unity_skills.call_skill("script_create", scriptName="MyScript")
+time.sleep(5)  # Wait for Unity to recompile
+unity_skills.call_skill("component_add", name="Player", componentType="MyScript")
 ```
 
 ## Best Practices
@@ -173,3 +128,4 @@ unity_skills.call_skill("script_delete",
 3. Use templates for correct base class
 4. Wait for compilation after creating scripts
 5. Use regex search for complex patterns
+6. **Use batch creation to minimize Domain Reloads**

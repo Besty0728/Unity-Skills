@@ -1,69 +1,102 @@
 ---
 name: unity-asset
-description: Import, manage, and organize assets in Unity Editor via REST API
+description: "Import, manage, and organize assets. Use *_batch skills for 2+ assets."
 ---
 
 # Unity Asset Skills
 
-Manage project assets - import, move, delete, and organize files in your Unity project.
+> **BATCH-FIRST**: Use `*_batch` skills when operating on 2+ assets.
 
-## Capabilities
+## Skills Overview
 
-- Import external files into project
-- Delete, move, duplicate assets
-- Create folders
-- Find assets by filter
-- Refresh asset database
-- Refresh asset database
-- Get asset information
-- **Batch Operations**: Efficiently import, delete, and move multiple assets.
+| Single Object | Batch Version | Use Batch When |
+|---------------|---------------|----------------|
+| `asset_import` | `asset_import_batch` | Importing 2+ files |
+| `asset_delete` | `asset_delete_batch` | Deleting 2+ assets |
+| `asset_move` | `asset_move_batch` | Moving 2+ assets |
 
-## Skills Reference
+**No batch needed**:
+- `asset_duplicate` - Duplicate single asset
+- `asset_find` - Search assets (returns list)
+- `asset_create_folder` - Create folder
+- `asset_refresh` - Refresh AssetDatabase
+- `asset_get_info` - Get asset information
 
-| Skill | Description |
-|-------|-------------|
-| `asset_import` | Import external file |
-| `asset_delete` | Delete an asset |
-| `asset_move` | Move/rename asset |
-| `asset_duplicate` | Duplicate asset |
-| `asset_find` | Find assets |
-| `asset_create_folder` | Create folder |
-| `asset_refresh` | Refresh AssetDatabase |
-| `asset_refresh` | Refresh AssetDatabase |
-| `asset_get_info` | Get asset information |
-| `asset_import_batch` | Import multiple assets (Efficient) |
-| `asset_delete_batch` | Delete multiple assets (Efficient) |
-| `asset_move_batch` | Move multiple assets (Efficient) |
+---
 
-## Parameters
+## Skills
 
-### asset_import
+### asset_import / asset_import_batch
+Import external files into the project.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `sourcePath` | string | Yes | External file path |
 | `destinationPath` | string | Yes | Project destination |
 
-### asset_delete
+```python
+# Single
+unity_skills.call_skill("asset_import",
+    sourcePath="C:/Downloads/texture.png",
+    destinationPath="Assets/Textures/texture.png"
+)
+
+# Batch
+unity_skills.call_skill("asset_import_batch", items=[
+    {"sourcePath": "C:/Downloads/tex1.png", "destinationPath": "Assets/Textures/tex1.png"},
+    {"sourcePath": "C:/Downloads/tex2.png", "destinationPath": "Assets/Textures/tex2.png"}
+])
+```
+
+### asset_delete / asset_delete_batch
+Delete assets from the project.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `assetPath` | string | Yes | Asset path to delete |
 
-### asset_move
+```python
+# Single
+unity_skills.call_skill("asset_delete", assetPath="Assets/Textures/old.png")
+
+# Batch
+unity_skills.call_skill("asset_delete_batch", items=[
+    {"path": "Assets/Textures/old1.png"},
+    {"path": "Assets/Textures/old2.png"}
+])
+```
+
+### asset_move / asset_move_batch
+Move or rename assets.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `sourcePath` | string | Yes | Current asset path |
 | `destinationPath` | string | Yes | New path/name |
 
+```python
+# Single (also works for rename)
+unity_skills.call_skill("asset_move",
+    sourcePath="Assets/Materials/Red.mat",
+    destinationPath="Assets/Materials/Player/RedMetal.mat"
+)
+
+# Batch
+unity_skills.call_skill("asset_move_batch", items=[
+    {"sourcePath": "Assets/Old/mat1.mat", "destinationPath": "Assets/New/mat1.mat"},
+    {"sourcePath": "Assets/Old/mat2.mat", "destinationPath": "Assets/New/mat2.mat"}
+])
+```
+
 ### asset_duplicate
+Duplicate an asset.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `assetPath` | string | Yes | Asset to duplicate |
 
 ### asset_find
+Find assets by search filter.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -71,103 +104,55 @@ Manage project assets - import, move, delete, and organize files in your Unity p
 | `searchInFolders` | string | No | "Assets" | Folder to search |
 | `limit` | int | No | 100 | Max results |
 
+**Search Filter Syntax**:
+| Filter | Example | Description |
+|--------|---------|-------------|
+| `t:Type` | `t:Texture2D` | By type |
+| `l:Label` | `l:Architecture` | By label |
+| `name` | `player` | By name |
+| Combined | `t:Material player` | Multiple filters |
+
+**Returns**: `{success, count, assets: [path]}`
+
 ### asset_create_folder
+Create a folder in the project.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `folderPath` | string | Yes | Full folder path |
 
+### asset_refresh
+Refresh the AssetDatabase after external changes.
+
+No parameters.
+
 ### asset_get_info
+Get information about an asset.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `assetPath` | string | Yes | Asset path |
 
-### Batch Operations
-Batch skills take a single `items` parameter which is a JSON array of objects.
+---
 
-| Skill | Item Properties |
-|-------|-----------------|
-| `asset_import_batch` | `sourcePath`, `destinationPath` |
-| `asset_delete_batch` | `path` |
-| `asset_move_batch` | `sourcePath`, `destinationPath` |
-
-## Search Filter Syntax
-
-| Filter | Description | Example |
-|--------|-------------|---------|
-| `t:Type` | By type | `t:Texture2D` |
-| `l:Label` | By label | `l:Architecture` |
-| `name` | By name | `player` |
-| Combined | Multiple | `t:Material player` |
-
-## Example Usage
+## Example: Efficient Asset Organization
 
 ```python
 import unity_skills
 
-# Create folder structure
-unity_skills.call_skill("asset_create_folder", folderPath="Assets/Textures")
-unity_skills.call_skill("asset_create_folder", folderPath="Assets/Materials")
-unity_skills.call_skill("asset_create_folder", folderPath="Assets/Prefabs")
+# BAD: 4 API calls
+unity_skills.call_skill("asset_move", sourcePath="Assets/tex1.png", destinationPath="Assets/Textures/tex1.png")
+unity_skills.call_skill("asset_move", sourcePath="Assets/tex2.png", destinationPath="Assets/Textures/tex2.png")
+unity_skills.call_skill("asset_move", sourcePath="Assets/tex3.png", destinationPath="Assets/Textures/tex3.png")
+unity_skills.call_skill("asset_move", sourcePath="Assets/tex4.png", destinationPath="Assets/Textures/tex4.png")
 
-# Import external texture
-unity_skills.call_skill("asset_import",
-    sourcePath="C:/Downloads/hero_texture.png",
-    destinationPath="Assets/Textures/hero.png"
-)
-
-# Find all textures
-textures = unity_skills.call_skill("asset_find",
-    searchFilter="t:Texture2D"
-)
-
-# Find materials with "metal" in name
-metals = unity_skills.call_skill("asset_find",
-    searchFilter="t:Material metal"
-)
-
-# Duplicate an asset
-unity_skills.call_skill("asset_duplicate",
-    assetPath="Assets/Materials/Red.mat"
-)
-
-# Move/rename asset
-unity_skills.call_skill("asset_move",
-    sourcePath="Assets/Materials/Red.mat",
-    destinationPath="Assets/Materials/Player/RedMetal.mat"
-)
-
-# Get asset info
-info = unity_skills.call_skill("asset_get_info",
-    assetPath="Assets/Textures/hero.png"
-)
-
-# Delete unused asset
-unity_skills.call_skill("asset_delete",
-    assetPath="Assets/Textures/old_texture.png"
-)
-
-# Refresh after external changes
-unity_skills.call_skill("asset_refresh")
-```
-
-## Response Format
-
-```json
-{
-  "status": "success",
-  "skill": "asset_find",
-  "result": {
-    "success": true,
-    "count": 15,
-    "assets": [
-      "Assets/Textures/hero.png",
-      "Assets/Textures/enemy.png",
-      "Assets/Textures/ground.png"
-    ]
-  }
-}
+# GOOD: 1 API call
+unity_skills.call_skill("asset_move_batch", items=[
+    {"sourcePath": "Assets/tex1.png", "destinationPath": "Assets/Textures/tex1.png"},
+    {"sourcePath": "Assets/tex2.png", "destinationPath": "Assets/Textures/tex2.png"},
+    {"sourcePath": "Assets/tex3.png", "destinationPath": "Assets/Textures/tex3.png"},
+    {"sourcePath": "Assets/tex4.png", "destinationPath": "Assets/Textures/tex4.png"}
+])
 ```
 
 ## Best Practices

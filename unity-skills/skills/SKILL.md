@@ -1,157 +1,51 @@
 ---
-name: unity-skills
-description: "Control Unity Editor via REST API. Create and manage GameObjects, components, scenes, materials, prefabs, lights, UI elements, scripts, and more. Provides 100+ automation tools for Unity development."
+name: unity-skills-index
+description: "Index of all Unity Skills modules. See parent SKILL.md for complete API reference."
 ---
 
-# Unity MCP Skills Collection
+# Unity Skills - Module Index
 
-AI-powered Unity Editor automation through REST API. This skill collection enables intelligent control of Unity Editor including GameObject manipulation, scene management, asset handling, and much more.
+This folder contains detailed documentation for each skill module. For quick reference, see the parent [SKILL.md](../SKILL.md).
 
-## Architecture
+## Modules
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Claude / AI Agent                         │
-│                    (Skill Consumer)                          │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ HTTP REST API
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│                unity_skills.py Client                        │
-│        (Python wrapper for skill invocation)                 │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ HTTP POST to localhost:8080
-                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│             SkillsForUnity (Editor Plugin)                   │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ HTTP Server │→ │Skill Router │→ │ [UnitySkill] Methods│  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
+| Module | Description | Batch Support |
+|--------|-------------|---------------|
+| [gameobject](./gameobject/SKILL.md) | Create, transform, parent GameObjects | Yes (9 batch skills) |
+| [component](./component/SKILL.md) | Add, remove, configure components | Yes (3 batch skills) |
+| [material](./material/SKILL.md) | Materials, colors, emission, textures | Yes (4 batch skills) |
+| [light](./light/SKILL.md) | Lighting setup and configuration | Yes (2 batch skills) |
+| [prefab](./prefab/SKILL.md) | Prefab creation and instantiation | Yes (1 batch skill) |
+| [asset](./asset/SKILL.md) | Asset import, organize, search | Yes (3 batch skills) |
+| [ui](./ui/SKILL.md) | Canvas and UI element creation | Yes (1 batch skill) |
+| [script](./script/SKILL.md) | C# script creation and search | Yes (1 batch skill) |
+| [scene](./scene/SKILL.md) | Scene loading, saving, hierarchy | No |
+| [editor](./editor/SKILL.md) | Play mode, selection, undo/redo | No |
+| [animator](./animator/SKILL.md) | Animation controllers and parameters | No |
+| [shader](./shader/SKILL.md) | Shader creation and listing | No |
+| [console](./console/SKILL.md) | Log capture and debugging | No |
+| [validation](./validation/SKILL.md) | Project validation and cleanup | No |
+| [importer](./importer/SKILL.md) | Texture/Audio/Model import settings | Yes (3 batch skills) |
 
-## Available Skill Modules
+## Batch-First Rule
 
-| Module | Skills | Description |
-|--------|--------|-------------|
-| [gameobject](./gameobject/SKILL.md) | 7 | Create, modify, find GameObjects |
-| [component](./component/SKILL.md) | 5 | Add, remove, configure components |
-| [scene](./scene/SKILL.md) | 6 | Scene loading, saving, management |
-| [material](./material/SKILL.md) | 17 | Material creation, HDR emission, keywords |
-| [light](./light/SKILL.md) | 5 | Lighting setup and configuration |
-| [animator](./animator/SKILL.md) | 8 | Animation controller management |
-| [ui](./ui/SKILL.md) | 10 | UI Canvas and element creation |
-| [validation](./validation/SKILL.md) | 7 | Project validation and checking |
-| [prefab](./prefab/SKILL.md) | 4 | Prefab creation and instantiation |
-| [asset](./asset/SKILL.md) | 8 | Asset import, organize, search |
-| [editor](./editor/SKILL.md) | 11 | Editor state, play mode, selection |
-| [console](./console/SKILL.md) | 5 | Log capture and debugging |
-| [script](./script/SKILL.md) | 4 | C# script creation and search |
-| [shader](./shader/SKILL.md) | 3 | Shader creation and listing |
+> When operating on **2 or more objects**, ALWAYS use `*_batch` skills instead of calling single-object skills multiple times.
 
-**Total: 100 Skills**
-
-## Quick Start
+**Example - Creating 10 cubes:**
 
 ```python
-import unity_skills
+# BAD: 10 API calls
+for i in range(10):
+    unity_skills.call_skill("gameobject_create", name=f"Cube_{i}", primitiveType="Cube", x=i)
 
-# Create a simple object
-unity_skills.call_skill("gameobject_create", 
-    name="Player", 
-    primitiveType="Cube"
+# GOOD: 1 API call
+unity_skills.call_skill("gameobject_create_batch",
+    items=[{"name": f"Cube_{i}", "primitiveType": "Cube", "x": i} for i in range(10)]
 )
-
-# Add a component
-unity_skills.call_skill("component_add",
-    name="Player",
-    componentType="Rigidbody"
-)
-
-# Create a light
-unity_skills.call_skill("light_create",
-    name="MainLight",
-    lightType="Directional"
-)
-
-# Save the scene
-unity_skills.call_skill("scene_save")
 ```
 
-## Use Cases
+## Total Skills: 117+
 
-### Game Development
-- Rapid prototyping
-- Level generation
-- Automated testing
-- Asset management
-
-### Education
-- Interactive Unity tutorials
-- Step-by-step demonstrations
-- Learning automation
-
-### Productivity
-- Batch operations
-- Project validation
-- Documentation generation
-
-## Installation
-
-1. Copy `SkillsForUnity` folder to your Unity project's `Assets/Editor/`
-2. Place `unity_skills.py` in your Python project
-3. Ensure Unity Editor is running with the plugin active
-4. Start making skill calls!
-
-## TextMeshPro Support
-
-UI Skills 动态检测项目中是否安装了 TextMeshPro：
-
-- **有 TMP**：自动使用 `TextMeshProUGUI` 组件
-- **无 TMP**：自动回退到 Legacy `UnityEngine.UI.Text` 组件
-
-返回值中 `usingTMP` 字段指示使用了哪种文本组件：
-
-```json
-{
-  "success": true,
-  "name": "MyText",
-  "usingTMP": true
-}
-```
-
-## Configuration
-
-Default server: `http://localhost:8080`
-
-Configure via environment variable:
-```bash
-export UNITY_MCP_URL=http://localhost:8080
-```
-
-## Error Handling
-
-All skills return consistent response format:
-
-```json
-{
-  "status": "success|error",
-  "skill": "skill_name",
-  "result": {
-    "success": true,
-    "message": "..."
-  }
-}
-```
-
-## Best Practices
-
-1. **Check Editor State**: Verify Unity is not compiling before operations
-2. **Use Undo**: Leverage undo/redo for safe experimentation
-3. **Batch Operations**: Group related operations together
-4. **Validate First**: Run validation skills to check project health
-5. **Organize Assets**: Use consistent folder structures
-
-## Contributing
-
-See [README.md](../../README.md) for contribution guidelines.
+- Single-object skills: ~80
+- Batch skills: ~27
+- Query/utility skills: ~10

@@ -1,275 +1,207 @@
 ---
 name: unity-material
-description: Create and configure materials in Unity Editor via REST API with full HDR, emission, and keyword support
+description: "Create and configure materials with HDR, emission, and texture support. Use *_batch skills for 2+ objects."
 ---
 
 # Unity Material Skills
 
-Control materials - define how objects look with colors, textures, shaders, and advanced properties like HDR emission and shader keywords.
+> **BATCH-FIRST**: Use `*_batch` skills when operating on 2+ objects/materials.
 
-## Capabilities
+## Skills Overview
 
-- Create new materials with auto render pipeline detection
-- Set material colors with HDR intensity support
-- Configure emission with auto-enable keywords
-- Assign textures with tiling and offset
-- Control shader keywords (_EMISSION, _NORMALMAP, etc.)
-- Set float/int/vector properties
-- Configure render queue and GI flags
-- Query all material properties
-- Duplicate existing materials
+| Single Object | Batch Version | Use Batch When |
+|---------------|---------------|----------------|
+| `material_create` | `material_create_batch` | Creating 2+ materials |
+| `material_assign` | `material_assign_batch` | Assigning to 2+ objects |
+| `material_set_color` | `material_set_colors_batch` | Setting colors on 2+ objects |
+| `material_set_emission` | `material_set_emission_batch` | Setting emission on 2+ objects |
 
-## Skills Reference
+**No batch needed**:
+- `material_set_texture` - Set texture
+- `material_set_texture_offset/scale` - Texture tiling
+- `material_set_float/int/vector` - Set properties
+- `material_set_keyword` - Enable/disable shader keywords
+- `material_set_render_queue` - Set render queue
+- `material_set_shader` - Change shader
+- `material_get_properties/keywords` - Query properties
+- `material_duplicate` - Duplicate material
 
-| Skill | Description |
-|-------|-------------|
-| `material_create` | Create a new material (auto-detects render pipeline) |
-| `material_duplicate` | Duplicate an existing material |
-| `material_assign` | Assign material to renderer |
-| `material_set_color` | Set material color with optional HDR intensity |
-| `material_set_emission` | Set emission color with auto-enable |
-| `material_set_texture` | Set material texture |
-| `material_set_texture_offset` | Set texture offset (UV position) |
-| `material_set_texture_scale` | Set texture scale (tiling) |
-| `material_set_float` | Set float property |
-| `material_set_int` | Set integer property |
-| `material_set_vector` | Set vector4 property |
-| `material_set_keyword` | Enable/disable shader keyword |
-| `material_set_render_queue` | Set render queue |
-| `material_set_shader` | Change material shader |
-| `material_set_gi_flags` | Set global illumination flags |
-| `material_get_properties` | Get all material properties |
-| `material_get_keywords` | Get enabled shader keywords |
+---
 
-**Total: 17 Skills**
+## Skills
 
-## Parameters
-
-### material_create
+### material_create / material_create_batch
+Create new materials (auto-detects render pipeline).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | Yes | - | Material name |
-| `shaderName` | string | No | auto-detect | Shader to use (auto-detects URP/HDRP/Standard) |
-| `savePath` | string | No | null | Asset save path (can be folder or full path) |
+| `shaderName` | string | No | auto-detect | Shader (auto-detects URP/HDRP/Standard) |
+| `savePath` | string | No | null | Save path (folder or full path) |
 
-### material_set_color
+```python
+# Single
+unity_skills.call_skill("material_create", name="RedMetal", savePath="Assets/Materials")
+
+# Batch
+unity_skills.call_skill("material_create_batch", items=[
+    {"name": "Red", "savePath": "Assets/Materials"},
+    {"name": "Blue", "savePath": "Assets/Materials"},
+    {"name": "Green", "savePath": "Assets/Materials"}
+])
+```
+
+### material_assign / material_assign_batch
+Assign material to object's renderer.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | No* | GameObject name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Material asset path (for asset) |
+| `materialPath` | string | Yes | Material to assign |
+
+```python
+# Single
+unity_skills.call_skill("material_assign", name="Cube", materialPath="Assets/Materials/Red.mat")
+
+# Batch
+unity_skills.call_skill("material_assign_batch", items=[
+    {"name": "Cube1", "materialPath": "Assets/Materials/Red.mat"},
+    {"name": "Cube2", "materialPath": "Assets/Materials/Blue.mat"}
+])
+```
+
+### material_set_color / material_set_colors_batch
+Set material color with optional HDR intensity.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `name` | string | No* | - | GameObject name |
-| `instanceId` | int | No* | 0 | GameObject instance ID |
-| `path` | string | No* | - | Material asset path |
-| `r` | float | No | 1 | Red (0-1) |
-| `g` | float | No | 1 | Green (0-1) |
-| `b` | float | No | 1 | Blue (0-1) |
-| `a` | float | No | 1 | Alpha (0-1) |
-| `propertyName` | string | No | auto-detect | Color property name |
-| `intensity` | float | No | 1.0 | HDR intensity multiplier (>1 for bloom) |
+| `name` | string | No* | GameObject name |
+| `path` | string | No* | Material asset path |
+| `r`, `g`, `b` | float | No | 1 | Color (0-1) |
+| `a` | float | No | 1 | Alpha |
+| `propertyName` | string | No | auto-detect | Color property |
+| `intensity` | float | No | 1.0 | HDR intensity (>1 for bloom) |
 
-*At least one identifier required
+```python
+# Single
+unity_skills.call_skill("material_set_color", name="Cube", r=1, g=0, b=0)
 
-### material_set_emission
+# Batch
+unity_skills.call_skill("material_set_colors_batch", items=[
+    {"name": "Cube1", "r": 1, "g": 0, "b": 0},
+    {"name": "Cube2", "r": 0, "g": 1, "b": 0},
+    {"name": "Cube3", "r": 0, "g": 0, "b": 1}
+])
+```
+
+### material_set_emission / material_set_emission_batch
+Set emission color with auto-enable keyword.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `name` | string | No* | - | GameObject name |
-| `instanceId` | int | No* | 0 | GameObject instance ID |
-| `path` | string | No* | - | Material asset path |
-| `r` | float | No | 1 | Red (0-1) |
-| `g` | float | No | 1 | Green (0-1) |
-| `b` | float | No | 1 | Blue (0-1) |
-| `intensity` | float | No | 1.0 | HDR intensity (>1 for bloom effect) |
+| `name` | string | No* | GameObject name |
+| `path` | string | No* | Material asset path |
+| `r`, `g`, `b` | float | No | 1 | Emission color (0-1) |
+| `intensity` | float | No | 1.0 | HDR intensity (>1 for bloom) |
 | `enableEmission` | bool | No | true | Auto-enable _EMISSION keyword |
 
-### material_set_keyword
+```python
+# Single - glowing green
+unity_skills.call_skill("material_set_emission",
+    path="Assets/Materials/Glow.mat",
+    r=0, g=1, b=0.5, intensity=3.0
+)
+
+# Batch
+unity_skills.call_skill("material_set_emission_batch", items=[
+    {"name": "Neon1", "r": 1, "g": 0, "b": 1, "intensity": 5.0},
+    {"name": "Neon2", "r": 0, "g": 1, "b": 1, "intensity": 5.0}
+])
+```
+
+### material_set_texture
+Set material texture.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `name` | string | No* | - | GameObject name |
-| `instanceId` | int | No* | 0 | GameObject instance ID |
-| `path` | string | No* | - | Material asset path |
-| `keyword` | string | Yes | - | Keyword name (e.g., "_EMISSION") |
+| `name` | string | No* | GameObject name |
+| `path` | string | No* | Material asset path |
+| `texturePath` | string | Yes | - | Texture asset path |
+| `propertyName` | string | No | auto-detect | Texture property |
+
+### material_set_float / material_set_int
+Set numeric properties.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | No* | GameObject name |
+| `path` | string | No* | Material asset path |
+| `propertyName` | string | Yes | Property name |
+| `value` | float/int | Yes | Value |
+
+### material_set_keyword
+Enable/disable shader keywords.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | GameObject name |
+| `path` | string | No* | Material asset path |
+| `keyword` | string | Yes | - | Keyword name |
 | `enable` | bool | No | true | Enable or disable |
 
-### material_set_render_queue
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| `name` | string | No* | - | GameObject name |
-| `path` | string | No* | - | Material asset path |
-| `renderQueue` | int | No | -1 | Queue value (-1=shader default) |
-
-**Render Queue Values:**
-- 1000: Background
-- 2000: Geometry (default opaque)
-- 2450: AlphaTest
-- 3000: Transparent
-- 4000: Overlay
+**Common Keywords**: `_EMISSION`, `_NORMALMAP`, `_METALLICGLOSSMAP`, `_ALPHATEST_ON`, `_ALPHABLEND_ON`
 
 ### material_get_properties
+Get all material properties.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
 | `path` | string | No* | Material asset path |
 
-Returns all colors, floats, vectors, textures, integers, and keywords.
+**Returns**: `{colors, floats, vectors, textures, integers, keywords, renderQueue}`
 
-## Common Shader Keywords
+---
 
-| Keyword | Description |
-|---------|-------------|
-| `_EMISSION` | Enable emission |
-| `_NORMALMAP` | Enable normal mapping |
-| `_METALLICGLOSSMAP` | Use metallic texture |
-| `_SPECGLOSSMAP` | Use specular texture |
-| `_ALPHATEST_ON` | Alpha cutout mode |
-| `_ALPHABLEND_ON` | Alpha blend mode |
-| `_PARALLAXMAP` | Enable parallax mapping |
-
-## Example Usage
-
-### Basic Material Creation
+## Example: Efficient Material Setup
 
 ```python
 import unity_skills
 
-# Create a red metallic material
-unity_skills.call_skill("material_create",
-    name="RedMetal",
-    savePath="Assets/Materials"  # Can be just a folder!
-)
+# BAD: 6 API calls
+unity_skills.call_skill("material_create", name="Mat1", savePath="Assets/Materials")
+unity_skills.call_skill("material_create", name="Mat2", savePath="Assets/Materials")
+unity_skills.call_skill("material_set_color", path="Assets/Materials/Mat1.mat", r=1, g=0, b=0)
+unity_skills.call_skill("material_set_color", path="Assets/Materials/Mat2.mat", r=0, g=0, b=1)
+unity_skills.call_skill("material_assign", name="Cube1", materialPath="Assets/Materials/Mat1.mat")
+unity_skills.call_skill("material_assign", name="Cube2", materialPath="Assets/Materials/Mat2.mat")
 
-unity_skills.call_skill("material_set_color",
-    path="Assets/Materials/RedMetal.mat",
-    r=1, g=0.2, b=0.2
-)
-
-unity_skills.call_skill("material_set_float",
-    path="Assets/Materials/RedMetal.mat",
-    propertyName="_Metallic",
-    value=0.9
-)
-```
-
-### HDR Emission (Glowing Effect)
-
-```python
-# Create a glowing material
-unity_skills.call_skill("material_create",
-    name="GlowingMat",
-    savePath="Assets/Materials/GlowingMat.mat"
-)
-
-# Method 1: Using material_set_emission (recommended)
-unity_skills.call_skill("material_set_emission",
-    path="Assets/Materials/GlowingMat.mat",
-    r=0, g=1, b=0.5,        # Cyan-ish green
-    intensity=3.0,           # HDR intensity for bloom
-    enableEmission=True      # Auto-enables _EMISSION keyword
-)
-
-# Method 2: Using material_set_color with intensity
-unity_skills.call_skill("material_set_color",
-    path="Assets/Materials/GlowingMat.mat",
-    r=1, g=0.5, b=0,
-    propertyName="_EmissionColor",
-    intensity=5.0  # Creates HDR color, auto-enables emission
-)
-```
-
-### Manual Keyword Control
-
-```python
-# Enable emission manually
-unity_skills.call_skill("material_set_keyword",
-    path="Assets/Materials/MyMat.mat",
-    keyword="_EMISSION",
-    enable=True
-)
-
-# Enable normal mapping
-unity_skills.call_skill("material_set_keyword",
-    name="MyCube",
-    keyword="_NORMALMAP",
-    enable=True
-)
-```
-
-### Texture Tiling
-
-```python
-# Set texture with custom tiling
-unity_skills.call_skill("material_set_texture",
-    path="Assets/Materials/MyMat.mat",
-    texturePath="Assets/Textures/brick.png"
-)
-
-unity_skills.call_skill("material_set_texture_scale",
-    path="Assets/Materials/MyMat.mat",
-    x=4, y=4  # Tile 4x4
-)
-
-unity_skills.call_skill("material_set_texture_offset",
-    path="Assets/Materials/MyMat.mat",
-    x=0.25, y=0  # Offset by 25%
-)
-```
-
-### Query Material Properties
-
-```python
-# Get all properties of a material
-result = unity_skills.call_skill("material_get_properties",
-    path="Assets/Materials/MyMat.mat"
-)
-# Returns: colors, floats, vectors, textures, keywords, renderQueue, etc.
-
-# Get just keywords
-keywords = unity_skills.call_skill("material_get_keywords",
-    name="MyCube"
-)
-```
-
-### Duplicate Material
-
-```python
-# Create a variant of an existing material
-unity_skills.call_skill("material_duplicate",
-    sourcePath="Assets/Materials/BaseMaterial.mat",
-    newName="VariantMaterial",
-    savePath="Assets/Materials/Variants"
-)
-```
-
-## Response Format
-
-```json
-{
-  "status": "success",
-  "skill": "material_set_emission",
-  "result": {
-    "success": true,
-    "target": "Assets/Materials/GlowMat.mat",
-    "emissionColor": { "r": 0, "g": 1, "b": 0.5 },
-    "intensity": 3.0,
-    "hdrColor": { "r": 0, "g": 3.0, "b": 1.5 },
-    "emissionEnabled": true
-  }
-}
+# GOOD: 3 API calls
+unity_skills.call_skill("material_create_batch", items=[
+    {"name": "Mat1", "savePath": "Assets/Materials"},
+    {"name": "Mat2", "savePath": "Assets/Materials"}
+])
+unity_skills.call_skill("material_set_colors_batch", items=[
+    {"path": "Assets/Materials/Mat1.mat", "r": 1, "g": 0, "b": 0},
+    {"path": "Assets/Materials/Mat2.mat", "r": 0, "g": 0, "b": 1}
+])
+unity_skills.call_skill("material_assign_batch", items=[
+    {"name": "Cube1", "materialPath": "Assets/Materials/Mat1.mat"},
+    {"name": "Cube2", "materialPath": "Assets/Materials/Mat2.mat"}
+])
 ```
 
 ## Render Pipeline Compatibility
 
-The skills auto-detect and adapt to your render pipeline:
+Skills auto-detect and adapt to your render pipeline:
 
 | Pipeline | Default Shader | Color Property | Texture Property |
 |----------|---------------|----------------|------------------|
 | Built-in | Standard | `_Color` | `_MainTex` |
 | URP | Universal Render Pipeline/Lit | `_BaseColor` | `_BaseMap` |
 | HDRP | HDRP/Lit | `_BaseColor` | `_BaseColorMap` |
-```
 
 ## Best Practices
 

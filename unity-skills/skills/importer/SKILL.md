@@ -1,106 +1,46 @@
 ---
 name: unity-importer
-description: Get and set import settings for Textures, Audio, and 3D Models in Unity Editor via REST API
+description: "Get and set import settings for Textures, Audio, and Models. Use *_batch skills for 2+ assets."
 ---
 
 # Unity Importer Skills
 
-Manage asset import settings for textures, audio files, and 3D models. Adjust compression, quality, animation types, and more.
+> **BATCH-FIRST**: Use `*_batch` skills when configuring 2+ assets.
 
-## Capabilities
+## Skills Overview
 
-- Get/set texture import settings (type, size, compression, sprite mode)
-- Get/set audio import settings (load type, compression, quality)
-- Get/set model import settings (mesh compression, animation type, materials)
-- Batch operations for efficient bulk processing
+| Single Object | Batch Version | Use Batch When |
+|---------------|---------------|----------------|
+| `texture_set_settings` | `texture_set_settings_batch` | Configuring 2+ textures |
+| `audio_set_settings` | `audio_set_settings_batch` | Configuring 2+ audio files |
+| `model_set_settings` | `model_set_settings_batch` | Configuring 2+ models |
 
-## Skills Reference
-
-| Skill | Description |
-|-------|-------------|
-| `texture_get_settings` | Get texture import settings |
-| `texture_set_settings` | Set texture import settings |
-| `texture_set_settings_batch` | Batch set texture settings |
-| `audio_get_settings` | Get audio import settings |
-| `audio_set_settings` | Set audio import settings |
-| `audio_set_settings_batch` | Batch set audio settings |
-| `model_get_settings` | Get model import settings |
-| `model_set_settings` | Set model import settings |
-| `model_set_settings_batch` | Batch set model settings |
+**Query Skills** (no batch needed):
+- `texture_get_settings` - Get texture import settings
+- `audio_get_settings` - Get audio import settings
+- `model_get_settings` - Get model import settings
 
 ---
 
-## Texture Parameters
+## Texture Skills
 
 ### texture_get_settings / texture_set_settings
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assetPath` | string | Yes | Path like `Assets/Textures/icon.png` |
-| `textureType` | string | No | Default, NormalMap, Sprite, EditorGUI, Cursor, Cookie, Lightmap, SingleChannel |
-| `maxSize` | int | No | 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192 |
-| `filterMode` | string | No | Point, Bilinear, Trilinear |
-| `compression` | string | No | None, LowQuality, Normal, HighQuality |
-| `mipmapEnabled` | bool | No | Generate mipmaps |
-| `sRGB` | bool | No | sRGB color space |
-| `readable` | bool | No | CPU readable (for GetPixel) |
-| `alphaIsTransparency` | bool | No | Treat alpha as transparency |
-| `spritePixelsPerUnit` | float | No | Pixels per unit for Sprite type |
-| `wrapMode` | string | No | Repeat, Clamp, Mirror, MirrorOnce |
-
----
-
-## Audio Parameters
-
-### audio_get_settings / audio_set_settings
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assetPath` | string | Yes | Path like `Assets/Audio/bgm.mp3` |
-| `forceToMono` | bool | No | Force to mono channel |
-| `loadInBackground` | bool | No | Load in background thread |
-| `preloadAudioData` | bool | No | Preload on scene load |
-| `loadType` | string | No | DecompressOnLoad, CompressedInMemory, Streaming |
-| `compressionFormat` | string | No | PCM, Vorbis, ADPCM |
-| `quality` | float | No | 0.0 ~ 1.0 (Vorbis quality) |
-
----
-
-## Model Parameters
-
-### model_get_settings / model_set_settings
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assetPath` | string | Yes | Path like `Assets/Models/char.fbx` |
-| `globalScale` | float | No | Import scale factor |
-| `meshCompression` | string | No | Off, Low, Medium, High |
-| `isReadable` | bool | No | CPU readable mesh data |
-| `generateSecondaryUV` | bool | No | Generate lightmap UVs |
-| `importBlendShapes` | bool | No | Import blend shapes |
-| `importCameras` | bool | No | Import cameras |
-| `importLights` | bool | No | Import lights |
-| `animationType` | string | No | None, Legacy, Generic, Humanoid |
-| `importAnimation` | bool | No | Import animations |
-| `materialImportMode` | string | No | None, ImportViaMaterialDescription, ImportStandard |
-
----
-
-## Example Usage
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `assetPath` | string | Path like `Assets/Textures/icon.png` |
+| `textureType` | string | Default, NormalMap, Sprite, EditorGUI, Cursor, Cookie, Lightmap, SingleChannel |
+| `maxSize` | int | 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192 |
+| `filterMode` | string | Point, Bilinear, Trilinear |
+| `compression` | string | None, LowQuality, Normal, HighQuality |
+| `mipmapEnabled` | bool | Generate mipmaps |
+| `sRGB` | bool | sRGB color space |
+| `readable` | bool | CPU readable (for GetPixel) |
+| `spritePixelsPerUnit` | float | Pixels per unit for Sprite type |
+| `wrapMode` | string | Repeat, Clamp, Mirror, MirrorOnce |
 
 ```python
-import unity_skills
-
-# === Texture Examples ===
-
-# Get current texture settings
-settings = unity_skills.call_skill("texture_get_settings",
-    assetPath="Assets/Textures/icon.png"
-)
-print(f"Type: {settings['result']['textureType']}")
-print(f"Size: {settings['result']['maxTextureSize']}")
-
-# Convert texture to Sprite with 100 pixels per unit
+# Single - convert to sprite
 unity_skills.call_skill("texture_set_settings",
     assetPath="Assets/Textures/ui_button.png",
     textureType="Sprite",
@@ -108,20 +48,32 @@ unity_skills.call_skill("texture_set_settings",
     filterMode="Bilinear"
 )
 
-# Batch convert multiple textures to Sprite
-unity_skills.call_skill("texture_set_settings_batch",
-    items='[{"assetPath":"Assets/Textures/a.png","textureType":"Sprite"},{"assetPath":"Assets/Textures/b.png","textureType":"Sprite"}]'
-)
+# Batch - convert multiple to sprites
+unity_skills.call_skill("texture_set_settings_batch", items=[
+    {"assetPath": "Assets/Textures/icon1.png", "textureType": "Sprite"},
+    {"assetPath": "Assets/Textures/icon2.png", "textureType": "Sprite"},
+    {"assetPath": "Assets/Textures/icon3.png", "textureType": "Sprite"}
+])
+```
 
-# === Audio Examples ===
+---
 
-# Get audio settings
-audio = unity_skills.call_skill("audio_get_settings",
-    assetPath="Assets/Audio/music.mp3"
-)
-print(f"Load Type: {audio['result']['loadType']}")
+## Audio Skills
 
-# Set BGM to streaming for memory efficiency
+### audio_get_settings / audio_set_settings
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `assetPath` | string | Path like `Assets/Audio/bgm.mp3` |
+| `forceToMono` | bool | Force to mono channel |
+| `loadInBackground` | bool | Load in background thread |
+| `preloadAudioData` | bool | Preload on scene load |
+| `loadType` | string | DecompressOnLoad, CompressedInMemory, Streaming |
+| `compressionFormat` | string | PCM, Vorbis, ADPCM |
+| `quality` | float | 0.0 ~ 1.0 (Vorbis quality) |
+
+```python
+# BGM - use streaming for memory efficiency
 unity_skills.call_skill("audio_set_settings",
     assetPath="Assets/Audio/bgm.mp3",
     loadType="Streaming",
@@ -129,22 +81,42 @@ unity_skills.call_skill("audio_set_settings",
     quality=0.7
 )
 
-# Set SFX to decompress on load for low latency
+# SFX - decompress for low latency
 unity_skills.call_skill("audio_set_settings",
     assetPath="Assets/Audio/sfx_hit.wav",
     loadType="DecompressOnLoad",
     forceToMono=True
 )
 
-# === Model Examples ===
+# Batch
+unity_skills.call_skill("audio_set_settings_batch", items=[
+    {"assetPath": "Assets/Audio/sfx1.wav", "loadType": "DecompressOnLoad"},
+    {"assetPath": "Assets/Audio/sfx2.wav", "loadType": "DecompressOnLoad"}
+])
+```
 
-# Get model settings
-model = unity_skills.call_skill("model_get_settings",
-    assetPath="Assets/Models/character.fbx"
-)
-print(f"Animation Type: {model['result']['animationType']}")
+---
 
-# Set up model for humanoid animation
+## Model Skills
+
+### model_get_settings / model_set_settings
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `assetPath` | string | Path like `Assets/Models/char.fbx` |
+| `globalScale` | float | Import scale factor |
+| `meshCompression` | string | Off, Low, Medium, High |
+| `isReadable` | bool | CPU readable mesh data |
+| `generateSecondaryUV` | bool | Generate lightmap UVs |
+| `importBlendShapes` | bool | Import blend shapes |
+| `importCameras` | bool | Import cameras |
+| `importLights` | bool | Import lights |
+| `animationType` | string | None, Legacy, Generic, Humanoid |
+| `importAnimation` | bool | Import animations |
+| `materialImportMode` | string | None, ImportViaMaterialDescription, ImportStandard |
+
+```python
+# Character with humanoid animation
 unity_skills.call_skill("model_set_settings",
     assetPath="Assets/Models/character.fbx",
     animationType="Humanoid",
@@ -152,7 +124,7 @@ unity_skills.call_skill("model_set_settings",
     generateSecondaryUV=True
 )
 
-# Optimize static props
+# Static prop - optimize
 unity_skills.call_skill("model_set_settings",
     assetPath="Assets/Models/prop_barrel.fbx",
     animationType="None",
@@ -161,67 +133,49 @@ unity_skills.call_skill("model_set_settings",
     importLights=False,
     meshCompression="High"
 )
+
+# Batch
+unity_skills.call_skill("model_set_settings_batch", items=[
+    {"assetPath": "Assets/Models/prop1.fbx", "animationType": "None", "meshCompression": "High"},
+    {"assetPath": "Assets/Models/prop2.fbx", "animationType": "None", "meshCompression": "High"}
+])
 ```
 
 ---
 
-## Response Format
+## Example: Efficient Asset Configuration
 
-### texture_get_settings Response
+```python
+import unity_skills
 
-```json
-{
-  "status": "success",
-  "skill": "texture_get_settings",
-  "result": {
-    "success": true,
-    "path": "Assets/Textures/icon.png",
-    "textureType": "Sprite",
-    "maxTextureSize": 2048,
-    "filterMode": "Bilinear",
-    "compression": "Normal",
-    "mipmapEnabled": false,
-    "sRGB": true,
-    "spritePixelsPerUnit": 100
-  }
-}
+# BAD: 5 API calls
+unity_skills.call_skill("texture_set_settings", assetPath="Assets/UI/btn1.png", textureType="Sprite")
+unity_skills.call_skill("texture_set_settings", assetPath="Assets/UI/btn2.png", textureType="Sprite")
+unity_skills.call_skill("texture_set_settings", assetPath="Assets/UI/btn3.png", textureType="Sprite")
+unity_skills.call_skill("texture_set_settings", assetPath="Assets/UI/btn4.png", textureType="Sprite")
+unity_skills.call_skill("texture_set_settings", assetPath="Assets/UI/btn5.png", textureType="Sprite")
+
+# GOOD: 1 API call
+unity_skills.call_skill("texture_set_settings_batch", items=[
+    {"assetPath": f"Assets/UI/btn{i}.png", "textureType": "Sprite", "mipmapEnabled": False}
+    for i in range(1, 6)
+])
 ```
-
-### Batch Response
-
-```json
-{
-  "status": "success",
-  "skill": "texture_set_settings_batch",
-  "result": {
-    "success": true,
-    "totalItems": 5,
-    "successCount": 5,
-    "failCount": 0,
-    "results": [
-      {"path": "Assets/Textures/a.png", "success": true},
-      {"path": "Assets/Textures/b.png", "success": true}
-    ]
-  }
-}
-```
-
----
 
 ## Best Practices
 
-1. **Textures**:
-   - Use `Sprite` type for UI images
-   - Disable mipmaps for UI textures to save memory
-   - Use `Point` filter for pixel art
-   - Set `readable=false` unless you need CPU access
+### Textures
+- Use `Sprite` type for UI images
+- Disable mipmaps for UI textures to save memory
+- Use `Point` filter for pixel art
+- Set `readable=false` unless you need CPU access
 
-2. **Audio**:
-   - Use `Streaming` for long BGM tracks
-   - Use `DecompressOnLoad` for short SFX
-   - Use `Vorbis` compression with quality 0.5-0.7 for good balance
+### Audio
+- Use `Streaming` for long BGM tracks
+- Use `DecompressOnLoad` for short SFX
+- Use `Vorbis` compression with quality 0.5-0.7 for good balance
 
-3. **Models**:
-   - Use `Humanoid` animation type for characters with retargeting
-   - Disable unused imports (cameras, lights) for props
-   - Enable `generateSecondaryUV` for static objects using baked lighting
+### Models
+- Use `Humanoid` animation type for characters with retargeting
+- Disable unused imports (cameras, lights) for props
+- Enable `generateSecondaryUV` for static objects using baked lighting

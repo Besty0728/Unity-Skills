@@ -1,19 +1,13 @@
 ---
 name: unity-shader
-description: Create and manage shaders in Unity Editor via REST API
+description: "Create and manage shaders in Unity Editor."
 ---
 
 # Unity Shader Skills
 
 Work with shaders - create shader files, read source code, and list available shaders.
 
-## Capabilities
-
-- Create shader files from templates
-- Read shader source code
-- List all shaders in project
-
-## Skills Reference
+## Skills Overview
 
 | Skill | Description |
 |-------|-------------|
@@ -21,36 +15,46 @@ Work with shaders - create shader files, read source code, and list available sh
 | `shader_read` | Read shader source |
 | `shader_list` | List all shaders |
 
-## Parameters
+---
+
+## Skills
 
 ### shader_create
+Create a shader file from template.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `shaderName` | string | Yes | - | Shader name |
+| `shaderName` | string | Yes | - | Shader name (e.g., "Custom/MyShader") |
 | `savePath` | string | Yes | - | Save path |
 | `template` | string | No | "Unlit" | Template type |
 
+**Templates**:
+| Template | Description |
+|----------|-------------|
+| `Unlit` | Basic unlit shader |
+| `Standard` | PBR surface shader |
+| `Transparent` | Alpha blended |
+
 ### shader_read
+Read shader source code.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `shaderPath` | string | Yes | Shader asset path |
 
+**Returns**: `{success, path, content}`
+
 ### shader_list
+List all shaders in project.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `filter` | string | No | null | Name filter |
 | `limit` | int | No | 100 | Max results |
 
-## Shader Templates
+**Returns**: `{success, count, shaders: [{name, path}]}`
 
-| Template | Description |
-|----------|-------------|
-| `Unlit` | Basic unlit shader |
-| `Standard` | PBR surface shader |
-| `Transparent` | Alpha blended |
+---
 
 ## Example Usage
 
@@ -75,42 +79,12 @@ unity_skills.call_skill("shader_create",
 source = unity_skills.call_skill("shader_read",
     shaderPath="Assets/Shaders/MyUnlit.shader"
 )
-print(source['result']['content'])
+print(source['content'])
 
 # List all custom shaders
-shaders = unity_skills.call_skill("shader_list",
-    filter="Custom"
-)
-for shader in shaders['result']['shaders']:
+shaders = unity_skills.call_skill("shader_list", filter="Custom")
+for shader in shaders['shaders']:
     print(f"{shader['name']}: {shader['path']}")
-
-# List all Unity standard shaders
-unity_shaders = unity_skills.call_skill("shader_list",
-    filter="Standard"
-)
-```
-
-## Response Format
-
-```json
-{
-  "status": "success",
-  "skill": "shader_list",
-  "result": {
-    "success": true,
-    "count": 5,
-    "shaders": [
-      {
-        "name": "Custom/MyUnlit",
-        "path": "Assets/Shaders/MyUnlit.shader"
-      },
-      {
-        "name": "Custom/MyPBR",
-        "path": "Assets/Shaders/MyPBR.shader"
-      }
-    ]
-  }
-}
 ```
 
 ## Best Practices

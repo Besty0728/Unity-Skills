@@ -1,20 +1,13 @@
 ---
 name: unity-console
-description: Capture and manage Unity console logs via REST API
+description: "Capture and manage Unity console logs."
 ---
 
 # Unity Console Skills
 
 Work with the Unity console - capture logs, write messages, and debug your project.
 
-## Capabilities
-
-- Start/stop log capture
-- Get captured logs with filters
-- Clear console
-- Write custom log messages
-
-## Skills Reference
+## Skills Overview
 
 | Skill | Description |
 |-------|-------------|
@@ -24,97 +17,83 @@ Work with the Unity console - capture logs, write messages, and debug your proje
 | `console_clear` | Clear console |
 | `console_log` | Write log message |
 
-## Parameters
+---
+
+## Skills
+
+### console_start_capture
+Start capturing Unity console logs.
+
+No parameters.
+
+### console_stop_capture
+Stop capturing logs.
+
+No parameters.
 
 ### console_get_logs
+Get captured logs with optional filtering.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `filter` | string | No | null | Log/Warning/Error |
 | `limit` | int | No | 100 | Max results |
 
+**Returns**: `{success, totalLogs, logs: [{type, message, timestamp}]}`
+
+### console_clear
+Clear the Unity console.
+
+No parameters.
+
 ### console_log
+Write a custom log message.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `message` | string | Yes | - | Log message |
 | `type` | string | No | "Log" | Log/Warning/Error |
 
+---
+
 ## Example Usage
 
 ```python
 import unity_skills
 
-# Start capturing logs
+# Start capturing logs before play mode
 unity_skills.call_skill("console_start_capture")
 
-# Do some operations that might generate logs
+# Enter play mode
 unity_skills.call_skill("editor_play")
-# ... wait for some gameplay ...
+# ... gameplay generates logs ...
 unity_skills.call_skill("editor_stop")
 
 # Get all captured logs
 logs = unity_skills.call_skill("console_get_logs")
-for log in logs['result']['logs']:
+for log in logs['logs']:
     print(f"[{log['type']}] {log['message']}")
 
 # Get only errors
-errors = unity_skills.call_skill("console_get_logs",
-    filter="Error"
-)
-
-# Get only warnings
-warnings = unity_skills.call_skill("console_get_logs",
-    filter="Warning"
-)
+errors = unity_skills.call_skill("console_get_logs", filter="Error")
+if errors['totalLogs'] > 0:
+    print(f"Found {errors['totalLogs']} errors!")
 
 # Write custom log
 unity_skills.call_skill("console_log",
-    message="AI Agent: Starting automation task",
+    message="AI Agent: Task completed",
     type="Log"
 )
 
 # Write warning
 unity_skills.call_skill("console_log",
-    message="AI Agent: Performance might be affected",
+    message="AI Agent: Performance issue detected",
     type="Warning"
 )
 
-# Clear console
+# Clear and stop
 unity_skills.call_skill("console_clear")
-
-# Stop capturing
 unity_skills.call_skill("console_stop_capture")
-```
-
-## Response Format
-
-```json
-{
-  "status": "success",
-  "skill": "console_get_logs",
-  "result": {
-    "success": true,
-    "totalLogs": 25,
-    "logs": [
-      {
-        "type": "Log",
-        "message": "Player spawned at position (0, 1, 0)",
-        "timestamp": "2024-01-15T10:30:45"
-      },
-      {
-        "type": "Warning",
-        "message": "Missing reference on Enemy script",
-        "timestamp": "2024-01-15T10:30:46"
-      },
-      {
-        "type": "Error",
-        "message": "NullReferenceException in PlayerController",
-        "timestamp": "2024-01-15T10:30:47"
-      }
-    ]
-  }
-}
 ```
 
 ## Best Practices

@@ -66,7 +66,7 @@ namespace UnitySkills
             Initialize();
             var manifest = new
             {
-                version = "1.1.0",
+                version = "1.3.0",
                 totalSkills = _skills.Count,
                 skills = _skills.Values.Select(s => new
                 {

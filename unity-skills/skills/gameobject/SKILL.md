@@ -1,63 +1,59 @@
 ---
 name: unity-gameobject
-description: Create, delete, find, and transform GameObjects in Unity Editor via REST API
+description: "Create, delete, find, and transform GameObjects. Use *_batch skills for 2+ objects."
 ---
 
 # Unity GameObject Skills
 
-Manipulate GameObjects in Unity scene - the fundamental building blocks of any Unity project.
+> **BATCH-FIRST**: Use `*_batch` skills when operating on 2+ objects to reduce API calls from N to 1.
 
-## Capabilities
+## Skills Overview
 
-- Create primitives (Cube, Sphere, Capsule, Cylinder, Plane, Quad)
-- Create empty GameObjects
-- Delete GameObjects by name, path, or instanceId
-- Find GameObjects with filters (name, tag, layer, component, regex)
-- Set transform (position, rotation, scale)
-- Set parent-child relationships
-- Enable/disable GameObjects
-- Get detailed GameObject information
-- **Batch Operations**: Efficiently create, delete, transform, and configure multiple objects in a single call.
+| Single Object | Batch Version | Use Batch When |
+|---------------|---------------|----------------|
+| `gameobject_create` | `gameobject_create_batch` | Creating 2+ objects |
+| `gameobject_delete` | `gameobject_delete_batch` | Deleting 2+ objects |
+| `gameobject_duplicate` | `gameobject_duplicate_batch` | Duplicating 2+ objects |
+| `gameobject_rename` | `gameobject_rename_batch` | Renaming 2+ objects |
+| `gameobject_set_transform` | `gameobject_set_transform_batch` | Moving 2+ objects |
+| `gameobject_set_active` | `gameobject_set_active_batch` | Toggling 2+ objects |
+| `gameobject_set_parent` | `gameobject_set_parent_batch` | Parenting 2+ objects |
+| - | `gameobject_set_layer_batch` | Setting layer on 2+ objects |
+| - | `gameobject_set_tag_batch` | Setting tag on 2+ objects |
 
-## Skills Reference
+**Query Skills** (no batch needed):
+- `gameobject_find` - Find objects by name/tag/layer/component
+- `gameobject_get_info` - Get detailed object information
 
-| Skill | Description |
-|-------|-------------|
-| `gameobject_create` | Create a new GameObject |
-| `gameobject_delete` | Delete a GameObject |
-| `gameobject_find` | Find GameObjects with filters |
-| `gameobject_set_transform` | Set position/rotation/scale |
-| `gameobject_set_parent` | Set parent-child relationship |
-| `gameobject_set_active` | Enable/disable GameObject |
-| `gameobject_get_info` | Get detailed information |
-| `gameobject_duplicate` | Duplicate a single GameObject (returns copyName, copyInstanceId) |
-| `gameobject_rename` | **Rename a GameObject (returns oldName, newName)** |
-| `gameobject_create_batch` | Create multiple GameObjects (Efficient) |
-| `gameobject_delete_batch` | Delete multiple GameObjects (Efficient) |
-| `gameobject_duplicate_batch` | Duplicate multiple GameObjects (Efficient) |
-| `gameobject_rename_batch` | **Rename multiple GameObjects (Efficient, NEW)** |
-| `gameobject_set_active_batch` | Set active state for multiple objects |
-| `gameobject_set_transform_batch` | Set transform for multiple objects |
-| `gameobject_set_layer_batch` | Set layer for multiple objects |
-| `gameobject_set_tag_batch` | Set tag for multiple objects |
-| `gameobject_set_parent_batch` | Set parent for multiple objects |
+---
 
-> ⚠️ **IMPORTANT**: When operating on multiple objects, ALWAYS use `*_batch` skills instead of calling single-object skills in a loop. This reduces API calls from N to 1!
-
-## Parameters
+## Single-Object Skills
 
 ### gameobject_create
+Create a new GameObject (primitive or empty).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `name` | string | No | "GameObject" | Name for the new object |
-| `primitiveType` | string | No | null | Cube/Sphere/Capsule/Cylinder/Plane/Quad |
-| `x` | float | No | 0 | X position |
-| `y` | float | No | 0 | Y position |
-| `z` | float | No | 0 | Z position |
+| `name` | string | No | "GameObject" | Object name |
+| `primitiveType` | string | No | null | Cube/Sphere/Capsule/Cylinder/Plane/Quad (null=Empty) |
+| `x`, `y`, `z` | float | No | 0 | Position |
 | `parentName` | string | No | null | Parent object name |
 
+**Returns**: `{success, name, instanceId, path, position}`
+
 ### gameobject_delete
+Delete a GameObject.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | No* | Object name |
+| `instanceId` | int | No* | Instance ID (preferred) |
+| `path` | string | No* | Hierarchy path |
+
+*At least one identifier required
+
+### gameobject_duplicate
+Duplicate a GameObject.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -65,40 +61,21 @@ Manipulate GameObjects in Unity scene - the fundamental building blocks of any U
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 
-*At least one identifier required
+**Returns**: `{originalName, copyName, copyInstanceId, copyPath}`
 
-### gameobject_duplicate / gameobject_duplicate_batch
-
-**Single**: Returns `{originalName, copyName, copyInstanceId, copyPath}`
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | No* | Object name |
-| `instanceId` | int | No* | Instance ID (from editor_get_context) |
-| `path` | string | No* | Hierarchy path |
-
-**Batch**: `items` = JSON array of `{name, instanceId, path}`
-```json
-[{"instanceId": 12345}, {"instanceId": 12346}, {"name": "Cube"}]
-```
-
-### gameobject_rename / gameobject_rename_batch
-
-**Single**: Returns `{success, oldName, newName, instanceId, path}`
+### gameobject_rename
+Rename a GameObject.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Current object name |
-| `instanceId` | int | No* | Instance ID (preferred for batch operations) |
-| `path` | string | No* | Hierarchy path |
-| `newName` | string | Yes | New name for the object |
+| `instanceId` | int | No* | Instance ID (preferred) |
+| `newName` | string | Yes | New name |
 
-**Batch**: `items` = JSON array of `{name, instanceId, path, newName}`
-```json
-[{"instanceId": 12345, "newName": "Cube_01"}, {"instanceId": 12346, "newName": "Cube_02"}]
-```
+**Returns**: `{success, oldName, newName, instanceId}`
 
 ### gameobject_find
+Find GameObjects matching criteria.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -109,84 +86,167 @@ Manipulate GameObjects in Unity scene - the fundamental building blocks of any U
 | `useRegex` | bool | No | false | Use regex for name |
 | `limit` | int | No | 100 | Max results |
 
+**Returns**: `{count, objects: [{name, instanceId, path, tag, layer}]}`
+
+### gameobject_get_info
+Get detailed GameObject information.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | No* | Object name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
+
+**Returns**: `{name, instanceId, path, tag, layer, active, position, rotation, scale, components, children}`
+
 ### gameobject_set_transform
+Set position, rotation, and/or scale.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Object name |
-| `posX/posY/posZ` | float | No | Position values |
-| `rotX/rotY/rotZ` | float | No | Rotation values (euler) |
-| `scaleX/scaleY/scaleZ` | float | No | Scale values |
+| `posX/posY/posZ` | float | No | Position |
+| `rotX/rotY/rotZ` | float | No | Rotation (euler) |
+| `scaleX/scaleY/scaleZ` | float | No | Scale |
 
-### Batch Operations (Use these for multiple objects!)
+### gameobject_set_parent
+Set parent-child relationship.
 
-> 🚀 **Performance Tip**: Use batch skills to reduce 30 API calls to just 1!
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Child object name |
+| `parentName` | string | Yes | Parent object name (empty string = unparent) |
 
-| Skill | Item Properties |
-|-------|-----------------|
-| `gameobject_create_batch` | `name`, `primitiveType`, `x`, `y`, `z`, `rotX`, `scaleX`, etc. |
-| `gameobject_delete_batch` | `name` OR `{name, instanceId}` |
-| `gameobject_duplicate_batch` | `name`, `instanceId`, or `path` |
-| `gameobject_set_active_batch` | `name`, `active` |
-| `gameobject_set_transform_batch` | `name` or `instanceId`, `posX`, `rotY`, `scaleZ`, etc. |
-| `gameobject_set_layer_batch` | `name`, `layer`, `recursive` |
-| `gameobject_set_tag_batch` | `name`, `tag` |
-| `gameobject_set_parent_batch` | `childName`, `parentName` |
+### gameobject_set_active
+Enable or disable a GameObject.
 
-## Example Usage
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Object name |
+| `active` | bool | Yes | Enable state |
+
+---
+
+## Batch Skills
+
+### gameobject_create_batch
+Create multiple GameObjects in one call.
+
+```python
+unity_skills.call_skill("gameobject_create_batch", items=[
+    {"name": "Cube1", "primitiveType": "Cube", "x": 0},
+    {"name": "Cube2", "primitiveType": "Cube", "x": 2},
+    {"name": "Cube3", "primitiveType": "Cube", "x": 4}
+])
+```
+
+### gameobject_delete_batch
+Delete multiple GameObjects.
+
+```python
+# By names
+unity_skills.call_skill("gameobject_delete_batch", items=["Cube1", "Cube2", "Cube3"])
+
+# By instanceId (preferred)
+unity_skills.call_skill("gameobject_delete_batch", items=[
+    {"instanceId": 12345},
+    {"instanceId": 12346}
+])
+```
+
+### gameobject_duplicate_batch
+Duplicate multiple GameObjects.
+
+```python
+unity_skills.call_skill("gameobject_duplicate_batch", items=[
+    {"instanceId": 12345},
+    {"instanceId": 12346}
+])
+```
+
+### gameobject_rename_batch
+Rename multiple GameObjects.
+
+```python
+unity_skills.call_skill("gameobject_rename_batch", items=[
+    {"instanceId": 12345, "newName": "Enemy_01"},
+    {"instanceId": 12346, "newName": "Enemy_02"}
+])
+```
+
+### gameobject_set_transform_batch
+Set transforms for multiple objects.
+
+```python
+unity_skills.call_skill("gameobject_set_transform_batch", items=[
+    {"name": "Cube1", "posX": 0, "posY": 1},
+    {"name": "Cube2", "posX": 2, "posY": 1},
+    {"name": "Cube3", "posX": 4, "posY": 1}
+])
+```
+
+### gameobject_set_active_batch
+Toggle multiple objects.
+
+```python
+unity_skills.call_skill("gameobject_set_active_batch", items=[
+    {"name": "Enemy1", "active": False},
+    {"name": "Enemy2", "active": False}
+])
+```
+
+### gameobject_set_parent_batch
+Parent multiple objects.
+
+```python
+unity_skills.call_skill("gameobject_set_parent_batch", items=[
+    {"childName": "Wheel1", "parentName": "Car"},
+    {"childName": "Wheel2", "parentName": "Car"}
+])
+```
+
+### gameobject_set_layer_batch / gameobject_set_tag_batch
+Set layer or tag for multiple objects.
+
+```python
+unity_skills.call_skill("gameobject_set_layer_batch", items=[
+    {"name": "Enemy1", "layer": 8},
+    {"name": "Enemy2", "layer": 8}
+])
+
+unity_skills.call_skill("gameobject_set_tag_batch", items=[
+    {"name": "Enemy1", "tag": "Enemy"},
+    {"name": "Enemy2", "tag": "Enemy"}
+])
+```
+
+---
+
+## Example: Efficient Scene Setup
 
 ```python
 import unity_skills
 
-# Create a cube at position (0, 1, 0)
-unity_skills.call_skill("gameobject_create", 
-    name="Player", 
-    primitiveType="Cube", 
-    x=0, y=1, z=0
-)
+# BAD: 6 API calls
+unity_skills.call_skill("gameobject_create", name="Floor", primitiveType="Plane")
+unity_skills.call_skill("gameobject_create", name="Wall1", primitiveType="Cube")
+unity_skills.call_skill("gameobject_create", name="Wall2", primitiveType="Cube")
+unity_skills.call_skill("gameobject_set_transform", name="Wall1", posX=-5, scaleY=3)
+unity_skills.call_skill("gameobject_set_transform", name="Wall2", posX=5, scaleY=3)
+unity_skills.call_skill("gameobject_set_tag_batch", items=[{"name": "Wall1", "tag": "Wall"}, {"name": "Wall2", "tag": "Wall"}])
 
-# Find all objects with "Enemy" in name
-enemies = unity_skills.call_skill("gameobject_find", 
-    name="Enemy", 
-    useRegex=True
-)
-
-# Move object
-unity_skills.call_skill("gameobject_set_transform",
-    name="Player",
-    posX=5, posY=1, posZ=3
-)
-
-# Set parent
-unity_skills.call_skill("gameobject_set_parent",
-    name="Weapon",
-    parentName="Player"
-)
-
-# Delete object
-unity_skills.call_skill("gameobject_delete", name="Player")
+# GOOD: 3 API calls
+unity_skills.call_skill("gameobject_create_batch", items=[
+    {"name": "Floor", "primitiveType": "Plane"},
+    {"name": "Wall1", "primitiveType": "Cube"},
+    {"name": "Wall2", "primitiveType": "Cube"}
+])
+unity_skills.call_skill("gameobject_set_transform_batch", items=[
+    {"name": "Wall1", "posX": -5, "scaleY": 3},
+    {"name": "Wall2", "posX": 5, "scaleY": 3}
+])
+unity_skills.call_skill("gameobject_set_tag_batch", items=[
+    {"name": "Wall1", "tag": "Wall"},
+    {"name": "Wall2", "tag": "Wall"}
+])
 ```
-
-## Response Format
-
-```json
-{
-  "status": "success",
-  "skill": "gameobject_create",
-  "result": {
-    "success": true,
-    "name": "Player",
-    "instanceId": 12345,
-    "path": "/Player",
-    "position": {"x": 0, "y": 1, "z": 0}
-  }
-}
-```
-
-## Best Practices
-
-1. Use descriptive names for easy identification
-2. Organize with parent-child hierarchies
-3. Use tags and layers for categorization
-4. Query by instanceId for guaranteed uniqueness
-5. Use regex find for batch operations

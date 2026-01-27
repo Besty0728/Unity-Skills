@@ -2,6 +2,26 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.3.0] - 2026-01-27
+
+### 🐛 Bug Fixes / 问题修复
+
+- **Windows Console Encoding / Windows 控制台编码**:
+    - Fixed Chinese character encoding issue in Python client output. / 修复 Python 客户端输出中文字符乱码问题。
+    - Moved encoding fix to module top level before any imports. / 将编码修复移至模块顶部，在任何导入之前执行。
+    - Changed from `io.TextIOWrapper` to `codecs.getwriter` for more reliable UTF-8 output. / 使用 `codecs.getwriter` 替代 `io.TextIOWrapper` 以获得更可靠的 UTF-8 输出。
+
+### 📝 Documentation Improvements / 文档优化
+
+- **SKILL.md Token Optimization / SKILL.md Token 优化**:
+    - Restructured main SKILL.md for AI consumption with batch-first approach. / 重构主 SKILL.md，采用批量优先方式便于 AI 使用。
+    - Unified table format across all skill modules. / 统一所有技能模块的表格格式。
+    - Added complete parameter lists and enum values. / 添加完整的参数列表和枚举值。
+    - Removed redundant content and duplicate entries. / 移除冗余内容和重复条目。
+    - All sub-module SKILL.md files optimized with batch-first rule. / 所有子模块 SKILL.md 文件按批量优先规则优化。
+
+---
+
 ## [1.2.1] - 2026-01-27
 
 ### 🐛 Bug Fixes / 问题修复
