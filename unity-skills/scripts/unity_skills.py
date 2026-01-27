@@ -10,14 +10,19 @@ Usage:
 
 import requests
 import sys
+import os
 import io
 from typing import Any, Dict, Optional
 
-# Windows 控制台 UTF-8 编码设置，解决中文显示乱码
-if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
+# Windows 控制台编码终极修复：
+# 1. 强制将 CMD/PowerShell 代码页切换为 65001 (UTF-8)
+# 2. 强制 Python 标准输出使用 UTF-8
+if sys.platform == 'win32':
     try:
-        sys.stdout.reconfigure(encoding='utf-8')
-        sys.stderr.reconfigure(encoding='utf-8')
+        os.system('chcp 65001 >nul 2>&1')
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8')
+            sys.stderr.reconfigure(encoding='utf-8')
     except Exception:
         pass
 
