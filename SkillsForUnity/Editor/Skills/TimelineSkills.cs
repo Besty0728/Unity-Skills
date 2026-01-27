@@ -56,7 +56,7 @@ namespace UnitySkills
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            return new { success = true, trackName = track.name, trackIndex = track.index };
+            return new { success = true, trackName = track.name };
         }
         
         [UnitySkill("timeline_add_animation_track", "Add an Animation track to a Timeline, optionally binding an object")]
@@ -88,7 +88,7 @@ namespace UnitySkills
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            return new { success = true, trackName = track.name, trackIndex = track.index, boundObject = bindingObjectName ?? "None" };
+            return new { success = true, trackName = track.name, boundObject = bindingObjectName ?? "None" };
         }
     }
 }
