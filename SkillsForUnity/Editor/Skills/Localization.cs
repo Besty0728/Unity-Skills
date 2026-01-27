@@ -399,6 +399,7 @@ namespace UnitySkills
             {"cinemachine_inspect_vcam", "内省虚拟相机 (获取组件与Tooltip)"},
             {"cinemachine_set_vcam_property", "通用设置虚拟相机属性 (支持反射)"},
             {"cinemachine_set_targets", "设置虚拟相机跟随/瞄准目标"},
+            {"cinemachine_set_component", "切换虚拟相机组件 (Body/Aim/Noise)"},
             
             {"debug_get_logs", "获取控制台日志 (按类型筛选)"},
         };

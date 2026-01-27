@@ -4,6 +4,8 @@ using Cinemachine;
 using System.Reflection;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace UnitySkills
 {
@@ -142,17 +144,55 @@ namespace UnitySkills
             var type = target.GetType();
             var flags = BindingFlags.Public | BindingFlags.Instance;
 
+            // Helper for conversion
+            object SafeConvert(object val, System.Type destType)
+            {
+                if (val == null) return null;
+                if (destType.IsAssignableFrom(val.GetType())) return val;
+                
+                // 1. Handle string -> Unity Object (Transform/GameObject) lookup
+                if ((typeof(Component).IsAssignableFrom(destType) || destType == typeof(GameObject)) && val is string nameStr)
+                {
+                    var foundGo = GameObject.Find(nameStr);
+                    if (foundGo != null)
+                    {
+                        if (destType == typeof(GameObject)) return foundGo;
+                        if (destType == typeof(Transform)) return foundGo.transform;
+                        return foundGo.GetComponent(destType);
+                    }
+                }
+                
+                // 2. Handle Enums (from string or int)
+                if (destType.IsEnum)
+                {
+                    try { return System.Enum.Parse(destType, val.ToString(), true); } catch { }
+                }
+
+                // 3. Try Newtonsoft conversion (handles Vectors {x,y,z}, Arrays, etc.)
+                try {
+                    return JToken.FromObject(val).ToObject(destType);
+                } catch {}
+
+                // 4. Fallback to simple conversion
+                try {
+                    return System.Convert.ChangeType(val, destType);
+                } catch { return null; }
+            }
+
             // Try Field first
             var field = type.GetField(name, flags);
             if (field != null)
             {
                 try 
                 {
-                    object safeValue = System.Convert.ChangeType(value, field.FieldType);
-                    field.SetValue(target, safeValue);
-                    return true;
+                    object safeValue = SafeConvert(value, field.FieldType);
+                    if (safeValue != null)
+                    {
+                        field.SetValue(target, safeValue);
+                        return true;
+                    }
                 }
-                catch { return false; }
+                catch { }
             }
 
             // Try Property
@@ -161,11 +201,14 @@ namespace UnitySkills
             {
                 try
                 {
-                    object safeValue = System.Convert.ChangeType(value, prop.PropertyType);
-                    prop.SetValue(target, safeValue);
-                    return true;
+                    object safeValue = SafeConvert(value, prop.PropertyType);
+                    if (safeValue != null)
+                    {
+                        prop.SetValue(target, safeValue);
+                        return true;
+                    }
                 }
-                catch { return false; }
+                catch { }
             }
             
             return false;
@@ -184,6 +227,87 @@ namespace UnitySkills
                 vcam.LookAt = GameObject.Find(lookAtName)?.transform;
                 
             return new { success = true };
+        }
+        [UnitySkill("cinemachine_set_component", "Switch VCam pipeline component (Body/Aim/Noise).")]
+        public static object CinemachineSetComponent(string vcamName, string stage, string componentType)
+        {
+            var go = GameObject.Find(vcamName);
+            if (go == null) return new { error = "GameObject not found" };
+            var vcam = go.GetComponent<CinemachineVirtualCamera>();
+            if (vcam == null) return new { error = "Not a Virtual Camera" };
+            
+            // Normalize stage
+            CinemachineCore.Stage stageEnum;
+            switch(stage.ToLower())
+            {
+                case "body": stageEnum = CinemachineCore.Stage.Body; break;
+                case "aim": stageEnum = CinemachineCore.Stage.Aim; break;
+                case "noise": stageEnum = CinemachineCore.Stage.Noise; break;
+                default: return new { error = "Invalid stage. Use Body, Aim, or Noise." };
+            }
+            
+            // Handle "None" / "Do Nothing"
+            if (componentType.ToLower() == "none" || componentType.ToLower() == "donothing")
+            {
+                var existing = vcam.GetCinemachineComponent(stageEnum);
+                if (existing != null)
+                {
+                    Undo.DestroyObjectImmediate(existing);
+                    return new { success = true, message = $"Removed component at stage {stage}" };
+                }
+                return new { success = true, message = $"No component at stage {stage} to remove" };
+            }
+            
+            // Resolve Type
+            var type = FindCinemachineType(componentType);
+            if (type == null) return new { error = $"Could not find Cinemachine component type: {componentType}" };
+            
+            // Verify stage compatibility (optional, but AddCinemachineComponent handles it)
+            // But AddCinemachineComponent<T> is generic. We have a Type object.
+            // We need to use reflection or the non-generic internal/inspector methods, 
+            // OR just AddComponent and verify?
+            // CinemachineVirtualCamera.AddCinemachineComponent<T>() implementation basically does:
+            // Destroy existing at stage -> Undo.AddComponent<T> -> Invalidate pipeline
+            
+            // IMPORTANT: standard AddComponent might not handle the pipeline replacement and "Hidden" flags correctly if we don't use the VCam helper.
+            // But the VCam helper is Generic only: public T AddCinemachineComponent<T>()
+            // We can invoke it via reflection.
+            
+            var method = typeof(CinemachineVirtualCamera).GetMethod("AddCinemachineComponent", BindingFlags.Public | BindingFlags.Instance);
+            var generic = method.MakeGenericMethod(type);
+            var newComponent = generic.Invoke(vcam, null);
+            
+            return new { success = true, message = $"Set {stage} to {type.Name}" };
+        }
+        
+        private static System.Type FindCinemachineType(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            
+            // Try explicit lookup for common short names
+            var map = new Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase)
+            {
+                { "Transposer", "CinemachineTransposer" },
+                { "FramingTransposer", "CinemachineFramingTransposer" },
+                { "Composer", "CinemachineComposer" },
+                { "Pov", "CinemachinePOV" },
+                { "OrbitalTransposer", "CinemachineOrbitalTransposer" },
+                { "TrackedDolly", "CinemachineTrackedDolly" },
+                { "HardLockToTarget", "CinemachineHardLockToTarget" },
+                { "SameAsFollowTarget", "CinemachineSameAsFollowTarget" },
+                { "BasicMultiChannelPerlin", "CinemachineBasicMultiChannelPerlin" }
+            };
+            
+            if (map.TryGetValue(name, out var fullName)) name = fullName;
+            if (!name.StartsWith("Cinemachine")) name = "Cinemachine" + name;
+            
+            // Search in Cinemachine assembly
+            var cinemachineAssembly = typeof(CinemachineVirtualCamera).Assembly;
+            var type = cinemachineAssembly.GetType("Cinemachine." + name, false, true);
+            if (type != null) return type;
+            
+            // Brute force search all assemblies? unlikely needed if it's a standard component
+            return null;
         }
     }
 }
