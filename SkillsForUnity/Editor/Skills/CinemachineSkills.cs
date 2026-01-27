@@ -107,14 +107,14 @@ namespace UnitySkills
                 // Or handle separately. Let's try direct reflection support for nested paths later.
                 // For this implementation, let's stick to component objects.
                 
-                // For Lens, we can't easily reference the struct box. 
                 // Special handling for Lens:
                 case "lens": 
-                    // Lens is value type, need special handling.
-                    // Reflect on vcam.m_Lens -> set -> vcam.m_Lens = modified_lens
-                    var lens = vcam.m_Lens; // struct copy
-                    if (!SetField(lens, propertyName, value)) return new { error = $"Property {propertyName} not found on LensSettings" };
-                    vcam.m_Lens = lens; // assign back
+                    // LensSettings is a struct. To modify via reflection, we MUST box it first.
+                    object boxedLens = vcam.m_Lens;
+                    if (!SetFieldOrProperty(boxedLens, propertyName, value)) 
+                        return new { error = $"Property {propertyName} not found on LensSettings" };
+                    
+                    vcam.m_Lens = (LensSettings)boxedLens; // Unbox modified value back
                     return new { success = true, message = $"Set Lens.{propertyName} to {value}" };
 
                 case "body": target = vcam.GetCinemachineComponent(CinemachineCore.Stage.Body); break;
@@ -125,11 +125,10 @@ namespace UnitySkills
 
             if (target == null) return new { error = $"Component {componentType} not found on VCam." };
 
-            if (SetField(target, propertyName, value))
+            if (SetFieldOrProperty(target, propertyName, value))
             {
                 // If we modified a component, we might need to tell Editor it's dirty
-                EditorUtility.SetDirty(vcam); // Components are hidden inside VCam mostly or attached. 
-                // Cinemachine components are MonoBehaviour but hidden.
+                EditorUtility.SetDirty(vcam); 
                 if (target is MonoBehaviour mb) EditorUtility.SetDirty(mb);
                 return new { success = true, message = $"Set {componentType}.{propertyName} to {value}" };
             }
@@ -137,27 +136,39 @@ namespace UnitySkills
             return new { error = $"Property {propertyName} not found on {componentType} ({target.GetType().Name})" };
         }
 
-        // Helper to set field via reflection with type conversion
-        private static bool SetField(object target, string fieldName, object value)
+        // Helper to set field OR property via reflection
+        private static bool SetFieldOrProperty(object target, string name, object value)
         {
             var type = target.GetType();
-            var field = type.GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
-            if (field == null) return false;
+            var flags = BindingFlags.Public | BindingFlags.Instance;
 
-            try 
+            // Try Field first
+            var field = type.GetField(name, flags);
+            if (field != null)
             {
-                // Convert value to target type
-                var targetType = field.FieldType;
-                object safeValue = System.Convert.ChangeType(value, targetType);
-                field.SetValue(target, safeValue);
-                return true;
+                try 
+                {
+                    object safeValue = System.Convert.ChangeType(value, field.FieldType);
+                    field.SetValue(target, safeValue);
+                    return true;
+                }
+                catch { return false; }
             }
-            catch
+
+            // Try Property
+            var prop = type.GetProperty(name, flags);
+            if (prop != null && prop.CanWrite)
             {
-                // Try JSON deserialization fallback for complex types if needed, or Vectors?
-                // For now, assume simple types (float, int, bool, string)
-                return false;
+                try
+                {
+                    object safeValue = System.Convert.ChangeType(value, prop.PropertyType);
+                    prop.SetValue(target, safeValue);
+                    return true;
+                }
+                catch { return false; }
             }
+            
+            return false;
         }
 
         [UnitySkill("cinemachine_set_targets", "Set Follow and LookAt targets.")]
