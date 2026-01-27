@@ -13,7 +13,6 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **Chinese Character Support / 中文字符支持**:
     - Fixed JSON serialization escaping Unicode characters, causing Chinese names to display as garbled text in AI terminals. / 修复 JSON 序列化转义 Unicode 字符导致中文名称在 AI 终端显示乱码。
     - Added `charset=utf-8` to HTTP Content-Type header. / HTTP 响应头添加 charset=utf-8 声明。
-    - Added unified `JsonSettings.cs` for consistent JSON serialization. / 新增统一的 JsonSettings.cs 配置。
     - Python client now forces UTF-8 decoding. / Python 客户端强制 UTF-8 解码。
 
 ### 🌟 New Skills / 新增技能

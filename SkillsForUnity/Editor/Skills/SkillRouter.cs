@@ -17,8 +17,10 @@ namespace UnitySkills
         private static bool _initialized;
         
         // JSON 序列化设置，禁用 Unicode 转义确保中文正确显示
-        // JSON serialization now handled by global JsonSettings
-
+        private static readonly JsonSerializerSettings _jsonSettings = new JsonSerializerSettings
+        {
+            StringEscapeHandling = StringEscapeHandling.Default
+        };
 
         private class SkillInfo
         {
@@ -79,7 +81,7 @@ namespace UnitySkills
                     })
                 })
             };
-            return JsonConvert.SerializeObject(manifest, Formatting.Indented, JsonSettings.Default);
+            return JsonConvert.SerializeObject(manifest, Formatting.Indented, _jsonSettings);
         }
 
         public static string Execute(string name, string json)
@@ -92,7 +94,7 @@ namespace UnitySkills
                     status = "error",
                     error = $"Skill '{name}' not found",
                     availableSkills = _skills.Keys.Take(20).ToArray()
-                }, JsonSettings.Default);
+                }, _jsonSettings);
             }
 
             try
@@ -122,7 +124,7 @@ namespace UnitySkills
                         {
                             status = "error",
                             error = $"Missing required parameter: {p.Name}"
-                        }, JsonSettings.Default);
+                        }, _jsonSettings);
                     }
                 }
 
@@ -170,12 +172,12 @@ namespace UnitySkills
                             ["hint"] = "Result is truncated. To see all items, pass 'verbose=true' parameter."
                         };
                         
-                        return JsonConvert.SerializeObject(new { status = "success", result = wrapper }, JsonSettings.Default);
+                        return JsonConvert.SerializeObject(new { status = "success", result = wrapper }, _jsonSettings);
                     }
                 }
                 
                 // Full Mode (verbose=true OR small result) - Return original result as is
-                return JsonConvert.SerializeObject(new { status = "success", result }, JsonSettings.Default);
+                return JsonConvert.SerializeObject(new { status = "success", result }, _jsonSettings);
             }
             catch (TargetInvocationException ex)
             {
@@ -187,7 +189,7 @@ namespace UnitySkills
                 {
                     status = "error",
                     error = $"[Transactional Revert] {inner.Message}"
-                }, JsonSettings.Default);
+                }, _jsonSettings);
             }
             catch (Exception ex)
             {
@@ -197,7 +199,7 @@ namespace UnitySkills
                 return JsonConvert.SerializeObject(new { 
                     status = "error", 
                     error = $"[Transactional Revert] {ex.Message}" 
-                }, JsonSettings.Default);
+                }, _jsonSettings);
             }
         }
 
