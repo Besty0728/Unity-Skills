@@ -25,6 +25,8 @@ def setup_utf8_output():
         except:
             pass  # 如果失败就使用默认编码
 
+# 立即调用，在模块导入时自动设置
+setup_utf8_output()
 
 def get_registry_path():
     import os
