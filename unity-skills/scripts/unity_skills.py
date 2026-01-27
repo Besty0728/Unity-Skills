@@ -14,9 +14,12 @@ import io
 from typing import Any, Dict, Optional
 
 # Windows 控制台 UTF-8 编码设置，解决中文显示乱码
-if sys.platform == 'win32':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 UNITY_URL = "http://localhost:8090"
 DEFAULT_PORT = 8090
@@ -137,6 +140,7 @@ def get_skills() -> Dict[str, Any]:
     """Get list of all available skills."""
     try:
         response = requests.get(f"{UNITY_URL}/skills", timeout=5)
+        response.encoding = 'utf-8'
         return response.json()
     except Exception as e:
         return {"status": "error", "error": str(e)}
