@@ -10,6 +10,11 @@ All notable changes to **UnitySkills** will be documented in this file.
     - Fixed Chinese character encoding issue in Python client output. / 修复 Python 客户端输出中文字符乱码问题。
     - Moved encoding fix to module top level before any imports. / 将编码修复移至模块顶部，在任何导入之前执行。
     - Changed from `io.TextIOWrapper` to `codecs.getwriter` for more reliable UTF-8 output. / 使用 `codecs.getwriter` 替代 `io.TextIOWrapper` 以获得更可靠的 UTF-8 输出。
+- **Chinese Character Support / 中文字符支持**:
+    - Fixed JSON serialization escaping Unicode characters, causing Chinese names to display as garbled text in AI terminals. / 修复 JSON 序列化转义 Unicode 字符导致中文名称在 AI 终端显示乱码。
+    - Added `charset=utf-8` to HTTP Content-Type header. / HTTP 响应头添加 charset=utf-8 声明。
+    - Added unified `JsonSettings.cs` for consistent JSON serialization. / 新增统一的 JsonSettings.cs 配置。
+    - Python client now forces UTF-8 decoding. / Python 客户端强制 UTF-8 解码。
 
 ### 📝 Documentation Improvements / 文档优化
 
@@ -19,18 +24,6 @@ All notable changes to **UnitySkills** will be documented in this file.
     - Added complete parameter lists and enum values. / 添加完整的参数列表和枚举值。
     - Removed redundant content and duplicate entries. / 移除冗余内容和重复条目。
     - All sub-module SKILL.md files optimized with batch-first rule. / 所有子模块 SKILL.md 文件按批量优先规则优化。
-
----
-
-## [1.2.1] - 2026-01-27
-
-### 🐛 Bug Fixes / 问题修复
-
-- **Chinese Character Support / 中文字符支持**:
-    - Fixed JSON serialization escaping Unicode characters, causing Chinese names to display as garbled text in AI terminals. / 修复 JSON 序列化转义 Unicode 字符导致中文名称在 AI 终端显示乱码。
-    - Added `charset=utf-8` to HTTP Content-Type header. / HTTP 响应头添加 charset=utf-8 声明。
-    - Added unified `JsonSettings.cs` for consistent JSON serialization. / 新增统一的 JsonSettings.cs 配置。
-    - Python client now forces UTF-8 decoding. / Python 客户端强制 UTF-8 解码。
 
 ---
 
