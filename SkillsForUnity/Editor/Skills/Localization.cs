@@ -283,6 +283,99 @@ namespace UnitySkills
             {"test_get_result", "获取测试运行结果"},
             {"test_list", "列出可用测试"},
             {"test_cancel", "取消正在运行的测试"},
+            
+            // New Skills (Batch 1.2.0+)
+            {"gameobject_rename", "重命名游戏对象"},
+            {"gameobject_rename_batch", "批量重命名游戏对象"},
+            
+            // Model Skills
+            {"model_get_settings", "获取3D模型(FBX/OBJ)的导入设置"},
+            {"model_set_settings", "设置模型导入属性 (压缩/动画/材质等)"},
+            {"model_set_settings_batch", "批量设置多个模型的导入属性"},
+            
+            // Texture Skills
+            {"texture_get_settings", "获取贴图导入设置"},
+            {"texture_set_settings", "设置贴图导入属性 (类型/压缩/Filter等)"},
+            {"texture_set_settings_batch", "批量设置多个贴图的导入属性"},
+            
+            // Audio Skills
+            {"audio_get_settings", "获取音频导入设置"},
+            {"audio_set_settings", "设置音频导入属性 (加载方式/压缩/质量等)"},
+            {"audio_set_settings_batch", "批量设置多个音频文件的导入属性"},
+            
+            // Animator Skills
+            {"animator_create_controller", "创建新的 Animator Controller"},
+            {"animator_add_parameter", "向 Animator Controller 添加参数"},
+            {"animator_get_parameters", "获取 Animator Controller 的所有参数"},
+            {"animator_set_parameter", "设置 Animator 参数值"},
+            {"animator_play", "播放动画状态"},
+            {"animator_get_info", "获取 Animator 组件信息"},
+            {"animator_assign_controller", "将 Animator Controller 分配给游戏对象"},
+            {"animator_list_states", "列出 Animator 层中的所有状态"},
+
+            // Light Skills
+            {"light_create", "创建新灯光"},
+            {"light_set_properties", "设置灯光属性"},
+            {"light_get_info", "获取灯光信息"},
+            {"light_find_all", "查找场景中所有灯光"},
+            {"light_set_enabled", "启用/禁用灯光"},
+            {"light_set_enabled_batch", "批量启用/禁用灯光"},
+            {"light_set_properties_batch", "批量设置灯光属性"},
+
+            // Project Skills
+            {"project_get_info", "获取项目信息 (渲染管线/版本等)"},
+            {"project_get_render_pipeline", "获取当前渲染管线类型及推荐 Shader"},
+            {"project_list_shaders", "列出项目中所有可用 Shader"},
+            {"project_get_quality_settings", "获取当前质量设置"},
+
+            // Validation Skills
+            {"validate_scene", "验证当前场景常见问题"},
+            {"validate_find_missing_scripts", "查找所有丢失脚本的游戏对象"},
+            {"validate_cleanup_empty_folders", "查找并清理空文件夹"},
+            {"validate_find_unused_assets", "查找可能未使用的资源 (实验性)"},
+            {"validate_texture_sizes", "查找可能需要优化的贴图"},
+            {"validate_project_structure", "获取项目结构概览"},
+            {"validate_fix_missing_scripts", "一键移除游戏对象上丢失的脚本组件"},
+
+            // UI Skills
+            {"ui_create_canvas", "创建新画布(Canvas)"},
+            {"ui_create_panel", "创建面板(Panel)"},
+            {"ui_create_button", "创建按钮(Button)"},
+            {"ui_create_text", "创建文本(Text)"},
+            {"ui_create_image", "创建图像(Image)"},
+            {"ui_create_batch", "批量创建UI元素"},
+            {"ui_create_inputfield", "创建输入框(InputField)"},
+            {"ui_create_slider", "创建滑动条(Slider)"},
+            {"ui_create_toggle", "创建开关(Toggle)"},
+            {"ui_set_text", "设置文本内容"},
+            {"ui_find_all", "查找场景中所有UI元素"},
+            
+            // Prefab Skills (Batch)
+            {"prefab_instantiate_batch", "批量实例化预制体"},
+            
+            // Event Skills
+            {"event_get_listeners", "获取 UnityEvent 的持久化监听器列表"},
+            {"event_add_listener", "添加持久化监听器 (支持 void/int/float/string/bool)"},
+            {"event_remove_listener", "移除持久化监听器"},
+            {"event_invoke", "立即触发事件 (仅运行时)"},
+            
+            // Physics Skills
+            {"physics_raycast", "发射射线检测碰撞"},
+            {"physics_check_overlap", "检测指定区域内的碰撞体"},
+            {"physics_get_gravity", "获取全局重力设置"},
+            {"physics_set_gravity", "设置全局重力"},
+            
+            // NavMesh Skills
+            {"navmesh_bake", "烘焙寻路网格 (可能较慢)"},
+            {"navmesh_clear", "清除寻路网格数据"},
+            {"navmesh_calculate_path", "计算两点简的路径 (检测可达性)"},
+            
+            // Profiler Skills
+            {"profiler_get_stats", "获取性能统计数据 (FPS/内存/DrawCalls)"},
+
+            // Optimization Skills
+            {"optimize_textures", "优化纹理设置 (压缩/最大尺寸)"},
+            {"optimize_mesh_compression", "设置模型网格压缩级别"},
         };
     }
 }

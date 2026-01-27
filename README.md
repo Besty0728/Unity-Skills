@@ -45,11 +45,6 @@
 
 ### 1. 安装 Unity 插件
 通过 Unity Package Manager 直接添加 Git URL：
-```
-https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity
-```
-
-> ⚠️ **重要提示**：请不要随意更新 Unity Package，此项目会经常开发测试，请认准 [Releases](https://github.com/Besty0728/Unity-Skills/releases) 版本。`main` 分支为稳定版，`beta` 分支为开发测试版。
 
 **稳定版安装 (main)**:
 ```
