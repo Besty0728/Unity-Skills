@@ -116,5 +116,73 @@ namespace UnitySkills
 
             return new { success = true, path };
         }
+
+        [UnitySkill("scene_get_loaded", "Get list of all currently loaded scenes")]
+        public static object SceneGetLoaded()
+        {
+            var scenes = new System.Collections.Generic.List<object>();
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                scenes.Add(new
+                {
+                    name = scene.name,
+                    path = scene.path,
+                    isLoaded = scene.isLoaded,
+                    isDirty = scene.isDirty,
+                    isActive = scene == SceneManager.GetActiveScene(),
+                    rootCount = scene.rootCount
+                });
+            }
+            return new { success = true, count = scenes.Count, scenes };
+        }
+
+        [UnitySkill("scene_unload", "Unload a loaded scene (additive)")]
+        public static object SceneUnload(string sceneName)
+        {
+            Scene sceneToUnload = default;
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                if (scene.name == sceneName || scene.path.EndsWith(sceneName + ".unity"))
+                {
+                    sceneToUnload = scene;
+                    break;
+                }
+            }
+
+            if (!sceneToUnload.IsValid())
+                return new { success = false, error = $"Scene '{sceneName}' not found in loaded scenes" };
+
+            if (SceneManager.sceneCount <= 1)
+                return new { success = false, error = "Cannot unload the only loaded scene" };
+
+            if (sceneToUnload.isDirty)
+            {
+                // Auto-save before unload
+                EditorSceneManager.SaveScene(sceneToUnload);
+            }
+
+            EditorSceneManager.CloseScene(sceneToUnload, true);
+            return new { success = true, unloaded = sceneName };
+        }
+
+        [UnitySkill("scene_set_active", "Set the active scene (for multi-scene editing)")]
+        public static object SceneSetActive(string sceneName)
+        {
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                var scene = SceneManager.GetSceneAt(i);
+                if (scene.name == sceneName || scene.path.EndsWith(sceneName + ".unity"))
+                {
+                    if (!scene.isLoaded)
+                        return new { success = false, error = $"Scene '{sceneName}' is not loaded" };
+
+                    SceneManager.SetActiveScene(scene);
+                    return new { success = true, activeScene = scene.name };
+                }
+            }
+            return new { success = false, error = $"Scene '{sceneName}' not found in loaded scenes" };
+        }
     }
 }

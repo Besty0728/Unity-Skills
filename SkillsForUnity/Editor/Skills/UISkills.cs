@@ -669,5 +669,278 @@ namespace UnitySkills
             if (go.GetComponent<RectTransform>()) return "RectTransform";
             return "Unknown";
         }
+
+        // ==================================================================================
+        // Advanced UI Layout Skills
+        // ==================================================================================
+
+        [UnitySkill("ui_set_anchor", "Set anchor preset for a UI element (TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight, StretchHorizontal, StretchVertical, StretchAll)")]
+        public static object UISetAnchor(string name = null, int instanceId = 0, string path = null, string preset = "MiddleCenter", bool setPivot = true)
+        {
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (error != null) return error;
+
+            var rect = go.GetComponent<RectTransform>();
+            if (rect == null) return new { error = "GameObject has no RectTransform" };
+
+            Undo.RecordObject(rect, "Set Anchor");
+
+            Vector2 anchorMin, anchorMax, pivot;
+            switch (preset.ToLower().Replace(" ", ""))
+            {
+                case "topleft":
+                    anchorMin = anchorMax = new Vector2(0, 1); pivot = new Vector2(0, 1); break;
+                case "topcenter":
+                    anchorMin = anchorMax = new Vector2(0.5f, 1); pivot = new Vector2(0.5f, 1); break;
+                case "topright":
+                    anchorMin = anchorMax = new Vector2(1, 1); pivot = new Vector2(1, 1); break;
+                case "middleleft":
+                    anchorMin = anchorMax = new Vector2(0, 0.5f); pivot = new Vector2(0, 0.5f); break;
+                case "middlecenter":
+                    anchorMin = anchorMax = new Vector2(0.5f, 0.5f); pivot = new Vector2(0.5f, 0.5f); break;
+                case "middleright":
+                    anchorMin = anchorMax = new Vector2(1, 0.5f); pivot = new Vector2(1, 0.5f); break;
+                case "bottomleft":
+                    anchorMin = anchorMax = new Vector2(0, 0); pivot = new Vector2(0, 0); break;
+                case "bottomcenter":
+                    anchorMin = anchorMax = new Vector2(0.5f, 0); pivot = new Vector2(0.5f, 0); break;
+                case "bottomright":
+                    anchorMin = anchorMax = new Vector2(1, 0); pivot = new Vector2(1, 0); break;
+                case "stretchhorizontal":
+                    anchorMin = new Vector2(0, 0.5f); anchorMax = new Vector2(1, 0.5f); pivot = new Vector2(0.5f, 0.5f); break;
+                case "stretchvertical":
+                    anchorMin = new Vector2(0.5f, 0); anchorMax = new Vector2(0.5f, 1); pivot = new Vector2(0.5f, 0.5f); break;
+                case "stretchall":
+                    anchorMin = Vector2.zero; anchorMax = Vector2.one; pivot = new Vector2(0.5f, 0.5f); break;
+                default:
+                    return new { error = $"Unknown anchor preset: {preset}" };
+            }
+
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            if (setPivot) rect.pivot = pivot;
+
+            return new { success = true, name = go.name, preset, anchorMin = $"({anchorMin.x}, {anchorMin.y})", anchorMax = $"({anchorMax.x}, {anchorMax.y})" };
+        }
+
+        [UnitySkill("ui_set_rect", "Set RectTransform size, position, and padding (offsets)")]
+        public static object UISetRect(
+            string name = null, int instanceId = 0, string path = null,
+            float? width = null, float? height = null,
+            float? posX = null, float? posY = null,
+            float? left = null, float? right = null, float? top = null, float? bottom = null)
+        {
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (error != null) return error;
+
+            var rect = go.GetComponent<RectTransform>();
+            if (rect == null) return new { error = "GameObject has no RectTransform" };
+
+            Undo.RecordObject(rect, "Set Rect");
+
+            // Size
+            if (width.HasValue || height.HasValue)
+            {
+                var size = rect.sizeDelta;
+                if (width.HasValue) size.x = width.Value;
+                if (height.HasValue) size.y = height.Value;
+                rect.sizeDelta = size;
+            }
+
+            // Position
+            if (posX.HasValue || posY.HasValue)
+            {
+                var pos = rect.anchoredPosition;
+                if (posX.HasValue) pos.x = posX.Value;
+                if (posY.HasValue) pos.y = posY.Value;
+                rect.anchoredPosition = pos;
+            }
+
+            // Offsets (padding for stretched elements)
+            if (left.HasValue || bottom.HasValue)
+            {
+                var min = rect.offsetMin;
+                if (left.HasValue) min.x = left.Value;
+                if (bottom.HasValue) min.y = bottom.Value;
+                rect.offsetMin = min;
+            }
+            if (right.HasValue || top.HasValue)
+            {
+                var max = rect.offsetMax;
+                if (right.HasValue) max.x = -right.Value;
+                if (top.HasValue) max.y = -top.Value;
+                rect.offsetMax = max;
+            }
+
+            return new { success = true, name = go.name, sizeDelta = $"({rect.sizeDelta.x}, {rect.sizeDelta.y})", anchoredPosition = $"({rect.anchoredPosition.x}, {rect.anchoredPosition.y})" };
+        }
+
+        [UnitySkill("ui_layout_children", "Arrange child UI elements in a layout (Vertical, Horizontal, Grid)")]
+        public static object UILayoutChildren(
+            string parentName = null, int parentInstanceId = 0,
+            string layoutType = "Vertical",  // Vertical, Horizontal, Grid
+            float spacing = 10f,
+            float paddingLeft = 0, float paddingRight = 0, float paddingTop = 0, float paddingBottom = 0,
+            int gridColumns = 3,
+            bool childForceExpandWidth = false, bool childForceExpandHeight = false)
+        {
+            GameObject parentGo = null;
+            if (parentInstanceId != 0)
+                parentGo = EditorUtility.InstanceIDToObject(parentInstanceId) as GameObject;
+            else if (!string.IsNullOrEmpty(parentName))
+                parentGo = GameObject.Find(parentName);
+
+            if (parentGo == null) return new { error = "Parent not found" };
+
+            var rect = parentGo.GetComponent<RectTransform>();
+            if (rect == null) return new { error = "Parent has no RectTransform" };
+
+            Undo.RecordObject(parentGo, "Add Layout");
+
+            // Remove existing layout groups
+            var existingV = parentGo.GetComponent<UnityEngine.UI.VerticalLayoutGroup>();
+            var existingH = parentGo.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
+            var existingG = parentGo.GetComponent<UnityEngine.UI.GridLayoutGroup>();
+            if (existingV) Undo.DestroyObjectImmediate(existingV);
+            if (existingH) Undo.DestroyObjectImmediate(existingH);
+            if (existingG) Undo.DestroyObjectImmediate(existingG);
+
+            var padding = new RectOffset((int)paddingLeft, (int)paddingRight, (int)paddingTop, (int)paddingBottom);
+
+            switch (layoutType.ToLower())
+            {
+                case "vertical":
+                    var vLayout = Undo.AddComponent<UnityEngine.UI.VerticalLayoutGroup>(parentGo);
+                    vLayout.spacing = spacing;
+                    vLayout.padding = padding;
+                    vLayout.childForceExpandWidth = childForceExpandWidth;
+                    vLayout.childForceExpandHeight = childForceExpandHeight;
+                    break;
+                case "horizontal":
+                    var hLayout = Undo.AddComponent<UnityEngine.UI.HorizontalLayoutGroup>(parentGo);
+                    hLayout.spacing = spacing;
+                    hLayout.padding = padding;
+                    hLayout.childForceExpandWidth = childForceExpandWidth;
+                    hLayout.childForceExpandHeight = childForceExpandHeight;
+                    break;
+                case "grid":
+                    var gLayout = Undo.AddComponent<UnityEngine.UI.GridLayoutGroup>(parentGo);
+                    gLayout.spacing = new Vector2(spacing, spacing);
+                    gLayout.padding = padding;
+                    gLayout.constraint = UnityEngine.UI.GridLayoutGroup.Constraint.FixedColumnCount;
+                    gLayout.constraintCount = gridColumns;
+                    // Auto-calculate cell size based on first child
+                    if (rect.childCount > 0)
+                    {
+                        var firstChild = rect.GetChild(0).GetComponent<RectTransform>();
+                        if (firstChild != null)
+                            gLayout.cellSize = firstChild.sizeDelta;
+                    }
+                    break;
+                default:
+                    return new { error = $"Unknown layout type: {layoutType}" };
+            }
+
+            // Add ContentSizeFitter if not present
+            if (parentGo.GetComponent<UnityEngine.UI.ContentSizeFitter>() == null)
+            {
+                var fitter = Undo.AddComponent<UnityEngine.UI.ContentSizeFitter>(parentGo);
+                fitter.verticalFit = layoutType.ToLower() == "vertical" 
+                    ? UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize 
+                    : UnityEngine.UI.ContentSizeFitter.FitMode.Unconstrained;
+                fitter.horizontalFit = layoutType.ToLower() == "horizontal" 
+                    ? UnityEngine.UI.ContentSizeFitter.FitMode.PreferredSize 
+                    : UnityEngine.UI.ContentSizeFitter.FitMode.Unconstrained;
+            }
+
+            return new { success = true, parent = parentGo.name, layoutType, childCount = rect.childCount };
+        }
+
+        [UnitySkill("ui_align_selected", "Align selected UI elements (Left, Center, Right, Top, Middle, Bottom)")]
+        public static object UIAlignSelected(string alignment = "Center")
+        {
+            var selected = Selection.gameObjects.Where(g => g.GetComponent<RectTransform>() != null).ToList();
+            if (selected.Count < 2) return new { error = "Select at least 2 UI elements" };
+
+            Undo.RecordObjects(selected.Select(g => g.GetComponent<RectTransform>()).ToArray<Object>(), "Align UI");
+
+            var rects = selected.Select(g => g.GetComponent<RectTransform>()).ToList();
+            
+            switch (alignment.ToLower())
+            {
+                case "left":
+                    float minX = rects.Min(r => r.anchoredPosition.x - r.rect.width * r.pivot.x);
+                    foreach (var r in rects)
+                        r.anchoredPosition = new Vector2(minX + r.rect.width * r.pivot.x, r.anchoredPosition.y);
+                    break;
+                case "right":
+                    float maxX = rects.Max(r => r.anchoredPosition.x + r.rect.width * (1 - r.pivot.x));
+                    foreach (var r in rects)
+                        r.anchoredPosition = new Vector2(maxX - r.rect.width * (1 - r.pivot.x), r.anchoredPosition.y);
+                    break;
+                case "center":
+                    float avgX = rects.Average(r => r.anchoredPosition.x);
+                    foreach (var r in rects)
+                        r.anchoredPosition = new Vector2(avgX, r.anchoredPosition.y);
+                    break;
+                case "top":
+                    float maxY = rects.Max(r => r.anchoredPosition.y + r.rect.height * (1 - r.pivot.y));
+                    foreach (var r in rects)
+                        r.anchoredPosition = new Vector2(r.anchoredPosition.x, maxY - r.rect.height * (1 - r.pivot.y));
+                    break;
+                case "bottom":
+                    float minY = rects.Min(r => r.anchoredPosition.y - r.rect.height * r.pivot.y);
+                    foreach (var r in rects)
+                        r.anchoredPosition = new Vector2(r.anchoredPosition.x, minY + r.rect.height * r.pivot.y);
+                    break;
+                case "middle":
+                    float avgY = rects.Average(r => r.anchoredPosition.y);
+                    foreach (var r in rects)
+                        r.anchoredPosition = new Vector2(r.anchoredPosition.x, avgY);
+                    break;
+                default:
+                    return new { error = $"Unknown alignment: {alignment}" };
+            }
+
+            return new { success = true, alignment, count = selected.Count };
+        }
+
+        [UnitySkill("ui_distribute_selected", "Distribute selected UI elements evenly (Horizontal, Vertical)")]
+        public static object UIDistributeSelected(string direction = "Horizontal")
+        {
+            var selected = Selection.gameObjects
+                .Where(g => g.GetComponent<RectTransform>() != null)
+                .OrderBy(g => direction.ToLower() == "horizontal" 
+                    ? g.GetComponent<RectTransform>().anchoredPosition.x 
+                    : g.GetComponent<RectTransform>().anchoredPosition.y)
+                .ToList();
+
+            if (selected.Count < 3) return new { error = "Select at least 3 UI elements to distribute" };
+
+            Undo.RecordObjects(selected.Select(g => g.GetComponent<RectTransform>()).ToArray<Object>(), "Distribute UI");
+
+            var rects = selected.Select(g => g.GetComponent<RectTransform>()).ToList();
+
+            if (direction.ToLower() == "horizontal")
+            {
+                float minX = rects.First().anchoredPosition.x;
+                float maxX = rects.Last().anchoredPosition.x;
+                float step = (maxX - minX) / (rects.Count - 1);
+                
+                for (int i = 0; i < rects.Count; i++)
+                    rects[i].anchoredPosition = new Vector2(minX + step * i, rects[i].anchoredPosition.y);
+            }
+            else
+            {
+                float minY = rects.First().anchoredPosition.y;
+                float maxY = rects.Last().anchoredPosition.y;
+                float step = (maxY - minY) / (rects.Count - 1);
+                
+                for (int i = 0; i < rects.Count; i++)
+                    rects[i].anchoredPosition = new Vector2(rects[i].anchoredPosition.x, minY + step * i);
+            }
+
+            return new { success = true, direction, count = selected.Count };
+        }
     }
 }

@@ -3,7 +3,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2021.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-200%2B-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-230%2B-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -100,7 +100,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 
 ---
 
-## 📦 Skills 分类概要 (200+)
+## 📦 Skills 分类概要 (230+)
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -115,9 +115,15 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 | **Light** | 7 | 灯光创建/类型配置/强度颜色/批量开关 |
 | **Validation** | 7 | 项目验证/空文件夹清理/引用检测 |
 | **Terrain** | 6 | 地形创建/高度图编辑/纹理绘制 [v1.3.1] |
+| **Perception** | 3 | 场景摘要/层级描述/脚本分析 [v1.5] |
+| **Smart** | 3 | 场景查询/自动布局/引用装配 [v1.5 NEW] |
+| **UI Layout** | 5 | 锚点/尺寸/布局组/对齐/分布 [v1.5 NEW] |
 | **Scene** | 6 | 场景切换/保存/加载/截图 |
 | **Script** | 6 | C# 脚本创建/编译检查/搜索 |
 | **Shader** | 6 | Shader 查找/创建/属性列举 |
+| **Workflow** | 7 | 书签/撤销/重做/历史 [v1.5 NEW] |
+| **DebugEnhance** | 4 | 控制台日志/清空/错误暂停 [v1.5 NEW] |
+| **AssetImport** | 4 | 重新导入/贴图设置/模型设置 [v1.5 NEW] |
 | **Cleaner** | 5 | 未使用资源/重复文件/丢失引用检测 [v1.3.1] |
 | **Others** | 41+ | Prefab, Console, Debug, Cinemachine, Physics, NavMesh, Timeline, Importer 等 |
 

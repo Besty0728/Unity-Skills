@@ -182,5 +182,90 @@ namespace UnitySkills
 
             return new { success = true, unpacked = gameObjectName };
         }
+
+        [UnitySkill("prefab_get_overrides", "Get list of property overrides on a prefab instance")]
+        public static object PrefabGetOverrides(string name = null, int instanceId = 0)
+        {
+            GameObject go = null;
+            if (instanceId != 0)
+                go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+            else if (!string.IsNullOrEmpty(name))
+                go = GameObject.Find(name);
+
+            if (go == null) return new { error = "GameObject not found" };
+
+            var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
+            if (prefabRoot == null) return new { error = "Not a prefab instance" };
+
+            var overrides = PrefabUtility.GetPropertyModifications(prefabRoot);
+            var addedComponents = PrefabUtility.GetAddedComponents(prefabRoot);
+            var removedComponents = PrefabUtility.GetRemovedComponents(prefabRoot);
+            var addedObjects = PrefabUtility.GetAddedGameObjects(prefabRoot);
+
+            var propOverrides = new System.Collections.Generic.List<object>();
+            if (overrides != null)
+            {
+                foreach (var o in overrides)
+                {
+                    if (o.target == null) continue;
+                    propOverrides.Add(new { 
+                        target = o.target.name, 
+                        property = o.propertyPath, 
+                        value = o.value 
+                    });
+                }
+            }
+
+            return new
+            {
+                success = true,
+                prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabRoot),
+                propertyOverrides = propOverrides.Count,
+                addedComponents = addedComponents.Count,
+                removedComponents = removedComponents.Count,
+                addedGameObjects = addedObjects.Count,
+                hasOverrides = propOverrides.Count > 0 || addedComponents.Count > 0 || removedComponents.Count > 0
+            };
+        }
+
+        [UnitySkill("prefab_revert_overrides", "Revert all overrides on a prefab instance back to prefab values")]
+        public static object PrefabRevertOverrides(string name = null, int instanceId = 0)
+        {
+            GameObject go = null;
+            if (instanceId != 0)
+                go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+            else if (!string.IsNullOrEmpty(name))
+                go = GameObject.Find(name);
+
+            if (go == null) return new { error = "GameObject not found" };
+
+            var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
+            if (prefabRoot == null) return new { error = "Not a prefab instance" };
+
+            Undo.RecordObject(prefabRoot, "Revert Prefab Overrides");
+            PrefabUtility.RevertPrefabInstance(prefabRoot, InteractionMode.UserAction);
+
+            return new { success = true, reverted = prefabRoot.name };
+        }
+
+        [UnitySkill("prefab_apply_overrides", "Apply all overrides from instance to source prefab asset")]
+        public static object PrefabApplyOverrides(string name = null, int instanceId = 0)
+        {
+            GameObject go = null;
+            if (instanceId != 0)
+                go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+            else if (!string.IsNullOrEmpty(name))
+                go = GameObject.Find(name);
+
+            if (go == null) return new { error = "GameObject not found" };
+
+            var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
+            if (prefabRoot == null) return new { error = "Not a prefab instance" };
+
+            var prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabRoot);
+            PrefabUtility.ApplyPrefabInstance(prefabRoot, InteractionMode.UserAction);
+
+            return new { success = true, appliedTo = prefabPath };
+        }
     }
 }
