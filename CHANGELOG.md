@@ -2,6 +2,40 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.3.1] - 2026-02-02
+
+### 🌟 New Skills / 新增技能
+
+- **Terrain System (6 skills) / 地形系统**:
+    - `terrain_create`: Create new Terrain with TerrainData asset. / 创建新地形及数据资产。
+    - `terrain_get_info`: Get terrain size, resolution, layers. / 获取地形尺寸、分辨率、纹理层。
+    - `terrain_get_height`: Get height at world position. / 获取世界坐标高度。
+    - `terrain_set_height`: Set height at normalized coordinates. / 设置归一化坐标高度。
+    - `terrain_set_heights_batch`: Batch set heights in rectangular region. / 批量设置矩形区域高度。
+    - `terrain_paint_texture`: Paint terrain texture layer. / 绘制地形纹理层。
+
+- **Cleaner Skills (5 skills) / 资源清洁工**:
+    - `cleaner_find_unused_assets`: Find assets not referenced by others. / 查找未被引用的资源。
+    - `cleaner_find_duplicates`: Find duplicate files by MD5 hash. / 通过哈希查找重复文件。
+    - `cleaner_find_missing_references`: Find missing scripts/asset references. / 查找丢失的脚本/资源引用。
+    - `cleaner_delete_assets`: Delete assets with dryRun protection. / 删除资源（带预览保护）。
+    - `cleaner_get_asset_usage`: Find what references a specific asset. / 查询资源被哪些对象引用。
+
+### 📦 New Skill Modules / 新增模块
+
+| Module | Skills | Files |
+|--------|--------|-------|
+| **Terrain** | 6 | `TerrainSkills.cs` (NEW) |
+| **Cleaner** | 5 | `CleanerSkills.cs` (NEW) |
+
+### 📝 Documentation Updates / 文档更新
+
+- Updated skills count badge to 200+. / 技能数徽章更新至 200+。
+- Added `terrain/SKILL.md` and `cleaner/SKILL.md`. / 新增地形和清洁工技能文档。
+- Updated `agent.md`, `README.md` with new modules. / 更新 agent.md、README.md。
+
+---
+
 ## [1.3.0] - 2026-01-27
 
 ### 🐛 Bug Fixes / 问题修复

@@ -3,7 +3,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2021.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-190%2B-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-200%2B-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -100,7 +100,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 
 ---
 
-## 📦 Skills 分类概要 (190+)
+## 📦 Skills 分类概要 (200+)
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -114,14 +114,12 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 | **Sample** | 8 | 示例场景/测试用例生成 |
 | **Light** | 7 | 灯光创建/类型配置/强度颜色/批量开关 |
 | **Validation** | 7 | 项目验证/空文件夹清理/引用检测 |
+| **Terrain** | 6 | 地形创建/高度图编辑/纹理绘制 [v1.3.1] |
 | **Scene** | 6 | 场景切换/保存/加载/截图 |
 | **Script** | 6 | C# 脚本创建/编译检查/搜索 |
 | **Shader** | 6 | Shader 查找/创建/属性列举 |
-| **Prefab** | 5 | 预制体创建/实例化/应用更改 |
-| **Console** | 5 | 日志捕获/清理/输出监视 |
-| **Debug** | 5 | 调试绘图/射线/Gizmos |
-| **Cinemachine** | 5 | 虚拟相机创建/跟随/噪声配置 |
-| **Others** | 41+ | ScriptableObject, Physics, Project, Camera, NavMesh, Timeline, Importer 等 |
+| **Cleaner** | 5 | 未使用资源/重复文件/丢失引用检测 [v1.3.1] |
+| **Others** | 41+ | Prefab, Console, Debug, Cinemachine, Physics, NavMesh, Timeline, Importer 等 |
 
 > ⚠️ 大部分模块支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills 以提升性能。
 

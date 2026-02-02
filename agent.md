@@ -9,7 +9,7 @@
 | 属性 | 值 |
 |------|-----|
 | **项目名称** | UnitySkills |
-| **版本** | 1.3.0 |
+| **版本** | 1.3.1 |
 | **技术栈** | C# (Unity Editor) + Python (Client) |
 | **Unity 版本** | 2021.3+ |
 | **协议** | MIT |
@@ -178,7 +178,7 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 
 ---
 
-## 📊 Skills 模块汇总 (190+)
+## 📊 Skills 模块汇总 (200+)
 
 | 模块 | Skills 数量 | 核心功能 |
 |------|:-----------:|----------|
@@ -192,6 +192,7 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 | **Sample** | 8 | 示例场景/测试用例生成 |
 | **Light** | 7 | 灯光创建/类型配置/强度颜色/批量开关 |
 | **Validation** | 7 | 项目验证/空文件夹清理/引用检测 |
+| **Terrain** | 6 | 地形创建/高度图编辑/纹理绘制 [v1.3.1] |
 | **Scene** | 6 | 场景切换/保存/加载/截图 |
 | **Script** | 6 | C# 脚本创建/编译检查/搜索 |
 | **Shader** | 6 | Shader 查找/创建/属性列举 |
@@ -200,6 +201,7 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 | **Debug** | 5 | 调试绘图/射线/Gizmos |
 | **Cinemachine** | 5 | 虚拟相机创建/跟随/噪声配置 |
 | **ScriptableObject**| 5 | 创建实例/读写数据 |
+| **Cleaner** | 5 | 未使用资源/重复文件/丢失引用检测 [v1.3.1] |
 | **Physics** | 4 | 物理材质/射线检测/层设置 |
 | **Project** | 4 | 项目设置/质量排查/Tag管理 |
 | **Camera** | 4 | 相机创建/属性配置/截屏 |
@@ -349,3 +351,25 @@ public static class MyCustomSkills
 | [SETUP_GUIDE.md](docs/SETUP_GUIDE.md) | 详细安装使用指南 |
 | [CHANGELOG.md](CHANGELOG.md) | 版本更新记录 |
 | [references/](unity-skills/references/) | Unity 开发参考文档 |
+
+---
+
+## 📌 版本号更新规范
+
+> ⚠️ **重要规则**：每次发布新版本时，必须同步更新以下 **6 处** 版本号：
+
+| 序号 | 文件路径 | 位置 |
+|:----:|----------|------|
+| 1 | `agent.md` | 第 12 行 `\| **版本** \|` 表格 |
+| 2 | `package.json` | 第 3 行 `"version": "x.x.x"` |
+| 3 | `CHANGELOG.md` | 顶部新增 `## [x.x.x] - YYYY-MM-DD` 条目 |
+| 4 | `SkillsHttpServer.cs` | `version = "x.x.x"` (health endpoint) |
+| 5 | `SkillRouter.cs` | `version = "x.x.x"` (manifest) |
+| 6 | `README.md` *(可选)* | 模块表中的 `[vX.X]` 标签 |
+
+### 快速检查命令
+
+```bash
+# 检查所有版本号是否一致
+grep -rn "1.3.1" --include="*.cs" --include="*.json" --include="*.md" | grep -E "version|版本"
+```
