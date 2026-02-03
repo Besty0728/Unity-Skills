@@ -862,7 +862,7 @@ namespace UnitySkills
             var selected = Selection.gameObjects.Where(g => g.GetComponent<RectTransform>() != null).ToList();
             if (selected.Count < 2) return new { error = "Select at least 2 UI elements" };
 
-            Undo.RecordObjects(selected.Select(g => g.GetComponent<RectTransform>()).ToArray<Object>(), "Align UI");
+            Undo.RecordObjects(selected.Select(g => g.GetComponent<RectTransform>()).Cast<UnityEngine.Object>().ToArray(), "Align UI");
 
             var rects = selected.Select(g => g.GetComponent<RectTransform>()).ToList();
             
@@ -917,7 +917,7 @@ namespace UnitySkills
 
             if (selected.Count < 3) return new { error = "Select at least 3 UI elements to distribute" };
 
-            Undo.RecordObjects(selected.Select(g => g.GetComponent<RectTransform>()).ToArray<Object>(), "Distribute UI");
+            Undo.RecordObjects(selected.Select(g => g.GetComponent<RectTransform>()).Cast<UnityEngine.Object>().ToArray(), "Distribute UI");
 
             var rects = selected.Select(g => g.GetComponent<RectTransform>()).ToList();
 
