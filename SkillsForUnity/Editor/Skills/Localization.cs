@@ -133,6 +133,62 @@ namespace UnitySkills
             {"editor_get_state", "Get current editor state"},
             {"editor_execute_menu", "Execute a Unity menu item"},
             {"editor_get_tags", "Get all available tags"},
+            {"debug_get_logs", "Get console logs (filtered by type)"},
+
+            // Asset Import Skills
+            {"asset_reimport", "Force reimport of an asset"},
+            {"asset_reimport_batch", "Reimport multiple assets matching a pattern"},
+            {"texture_set_import_settings", "Set texture import settings (maxSize, compression, readable)"},
+            {"model_set_import_settings", "Set model (FBX) import settings"},
+
+            // Cleaner Skills
+            {"cleaner_find_unused_assets", "Find potentially unused assets of a specific type"},
+            {"cleaner_find_duplicates", "Find duplicate files by content hash"},
+            {"cleaner_find_missing_references", "Find components with missing script or asset references"},
+            {"cleaner_delete_assets", "Delete specified assets safe with preview"},
+            {"cleaner_get_asset_usage", "Find what objects reference a specific asset"},
+
+            // Debug Enhance Skills
+            {"debug_log", "Write a message to the Unity console"},
+            {"editor_set_pause_on_error", "Enable or disable 'Error Pause' in Play mode"},
+            
+            // Perception Skills (NextGen)
+            {"scene_summarize", "Get a structured summary of the current scene"},
+            {"hierarchy_describe", "Get a text tree of the scene hierarchy"},
+            {"script_analyze", "Analyze a MonoBehaviour script's public API"},
+
+            // Smart Skills
+            {"smart_scene_query", "Find objects based on component property values (SQL-like)"},
+            {"smart_scene_layout", "Organize selected objects into a layout"},
+            {"smart_reference_bind", "Auto-fill a List/Array field with objects matching criteria"},
+
+            // Terrain Skills
+            {"terrain_create", "Create a new Terrain with TerrainData asset"},
+            {"terrain_get_info", "Get terrain information including size, resolution, and layers"},
+            {"terrain_get_height", "Get terrain height at world position"},
+            {"terrain_set_height", "Set terrain height at normalized coordinates (0-1)"},
+            {"terrain_set_heights_batch", "Set terrain heights in a rectangular region"},
+            {"terrain_paint_texture", "Paint terrain texture layer"},
+
+            // Workflow Skills
+            {"bookmark_set", "Save current selection and scene view position as a bookmark"},
+            {"bookmark_goto", "Restore selection and scene view from a bookmark"},
+            {"bookmark_list", "List all saved bookmarks"},
+            {"bookmark_delete", "Delete a bookmark"},
+            {"history_undo", "Undo the last operation"},
+            {"history_redo", "Redo the last undone operation"},
+            {"history_get_current", "Get the name of the current undo group"},
+            
+            // UI Skills (Additional)
+            {"ui_set_anchor", "Set anchor preset for a UI element"},
+            {"ui_set_rect", "Set RectTransform size, position, and padding"},
+            {"ui_layout_children", "Arrange child UI elements in a layout"},
+            {"ui_align_selected", "Align selected UI elements"},
+            {"ui_distribute_selected", "Distribute selected UI elements evenly"},
+            
+            // Validation Skills
+            // Already partially present, ensuring completeness if needed
+
             {"editor_get_layers", "Get all available layers"},
             {"prefab_create", "Create a prefab from a GameObject"},
             {"prefab_instantiate", "Instantiate a prefab in the scene"},
@@ -402,6 +458,57 @@ namespace UnitySkills
             {"cinemachine_set_component", "切换虚拟相机组件 (Body/Aim/Noise)"},
             
             {"debug_get_logs", "获取控制台日志 (按类型筛选)"},
+
+            // Asset Import Skills
+            {"asset_reimport", "强制重新导入资源"},
+            {"asset_reimport_batch", "批量重新导入匹配模式的资源"},
+            {"texture_set_import_settings", "设置贴图导入设置 (最大尺寸/压缩/可读性)"},
+            {"model_set_import_settings", "设置模型(FBX)导入设置"},
+
+            // Cleaner Skills
+            {"cleaner_find_unused_assets", "查找指定类型的潜在未使用资源"},
+            {"cleaner_find_duplicates", "通过内容哈希查找重复文件"},
+            {"cleaner_find_missing_references", "查找丢失脚本或资源引用的组件"},
+            {"cleaner_delete_assets", "安全删除指定资源 (带预览)"},
+            {"cleaner_get_asset_usage", "查找引用了特定资源的对象"},
+
+            // Debug Enhance Skills
+            {"debug_log", "向 Unity 控制台写入消息"},
+            {"editor_set_pause_on_error", "启用/禁用播放模式下的'报错暂停'"},
+            
+            // Perception Skills (NextGen)
+            {"scene_summarize", "获取当前场景的结构化摘要"},
+            {"hierarchy_describe", "获取场景层级树的文本描述"},
+            {"script_analyze", "分析 MonoBehaviour 脚本的公共 API"},
+
+            // Smart Skills
+            {"smart_scene_query", "基于组件属性值查找对象 (类SQL查询)"},
+            {"smart_scene_layout", "将选中对象按布局排列 (线性/网格/圆形/弧形)"},
+            {"smart_reference_bind", "自动填充 List/Array 字段 (匹配标签或名称)"},
+
+            // Terrain Skills
+            {"terrain_create", "使用 TerrainData 创建新地形"},
+            {"terrain_get_info", "获取地形信息 (尺寸/分辨率/图层)"},
+            {"terrain_get_height", "获取世界坐标处的地形高度"},
+            {"terrain_set_height", "设置归一化坐标 (0-1) 处的地形高度"},
+            {"terrain_set_heights_batch", "批量设置矩形区域的地形高度"},
+            {"terrain_paint_texture", "绘制地形贴图层"},
+
+            // Workflow Skills
+            {"bookmark_set", "保存当前选中项和场景视图位置为书签"},
+            {"bookmark_goto", "从书签恢复选中项和场景视图"},
+            {"bookmark_list", "列出所有已保存的书签"},
+            {"bookmark_delete", "删除书签"},
+            {"history_undo", "撤销上一次操作"},
+            {"history_redo", "重做上一次撤销的操作"},
+            {"history_get_current", "获取当前撤销组的名称"},
+            
+            // UI Skills (Additional)
+            {"ui_set_anchor", "设置 UI 元素的锚点预设"},
+            {"ui_set_rect", "设置 RectTransform 的尺寸、位置和边距"},
+            {"ui_layout_children", "按布局排列子 UI 元素"},
+            {"ui_align_selected", "对齐选中的 UI 元素"},
+            {"ui_distribute_selected", "均匀分布选中的 UI 元素"},
         };
     }
 }

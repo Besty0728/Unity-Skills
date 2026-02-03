@@ -64,6 +64,8 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 2. 选择对应的终端图标（Claude / Antigravity / Gemini / Codex）。
 3. 点击 **"Install"** 即可完成环境配置，无需手动拷贝代码。
 
+> **自定义安装**: 在安装界面，你可以选择 "Custom Path" 选项，将 Skills 安装到你指定的任意目录（例如 `Assets/MyTools/AI`），方便项目管理。
+
 > 安装器落盘文件说明（生成于目标目录）：
 > - `SKILL.md`
 > - `scripts/unity_skills.py`
