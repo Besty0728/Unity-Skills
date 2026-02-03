@@ -2,6 +2,19 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.3.2] - 2026-02-04
+
+### 🌟 New Features / 新特性
+
+- **Custom Installation Path / 自定义安装路径**:
+    - Added UI in UnitySkills Window to install skills to any arbitrary directory. / 在 UnitySkills 窗口中添加了 UI，支持将 Skills 安装到任意指定目录。
+    - Useful for projects with custom structure or when managing multiple skill deployments. / 适用于自定义结构的项目或管理多个 Skill 部署。
+
+### 📦 Skill Modules / 模块更新
+- **System**: Updated `SkillInstaller.cs` to support custom path installation.
+
+---
+
 ## [1.3.1] - 2026-02-02
 
 ### 🌟 New Skills / 新增技能

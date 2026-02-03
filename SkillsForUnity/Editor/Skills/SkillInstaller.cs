@@ -182,6 +182,21 @@ namespace UnitySkills
             }
         }
 
+        public static (bool success, string message) InstallCustom(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path)) 
+                    return (false, "Path cannot be empty");
+                    
+                return InstallSkill(path, "Custom Path");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
         private static string AgentsMdPath => Path.Combine(Application.dataPath, "..", "AGENTS.md");
         private const string UnitySkillsEntry = "- unity-skills: Unity Editor automation via REST API";
 

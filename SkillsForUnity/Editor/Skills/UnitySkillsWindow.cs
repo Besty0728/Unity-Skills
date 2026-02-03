@@ -27,6 +27,7 @@ namespace UnitySkills
         private double _lastRepaintTime;
         private const double RepaintInterval = 0.5; // Repaint every 0.5s for live stats
         private bool _autoStartServer = true;
+        private string _customInstallPath = "";
 
         private class SkillInfo
         {
@@ -664,6 +665,45 @@ namespace UnitySkills
                 }
             }
             EditorGUILayout.EndHorizontal();
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space(10);
+
+            // Custom Installation
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "自定义安装位置" : "Custom Install Location", EditorStyles.boldLabel);
+            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(L("path") + ":", GUILayout.Width(50));
+            _customInstallPath = EditorGUILayout.TextField(_customInstallPath);
+            if (GUILayout.Button("...", GUILayout.Width(30)))
+            {
+                string selectedPath = EditorUtility.OpenFolderPanel(
+                    Localization.Current == Localization.Language.Chinese ? "选择安装目录" : "Select Install Directory", 
+                    _customInstallPath, 
+                    "");
+                if (!string.IsNullOrEmpty(selectedPath))
+                {
+                    _customInstallPath = selectedPath;
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+
+            if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "安装 / 更新" : "Install / Update"))
+            {
+                if (string.IsNullOrEmpty(_customInstallPath))
+                {
+                    EditorUtility.DisplayDialog("Error", Localization.Current == Localization.Language.Chinese ? "路径不能为空" : "Path cannot be empty", "OK");
+                }
+                else
+                {
+                    var result = SkillInstaller.InstallCustom(_customInstallPath);
+                    if (result.success)
+                        EditorUtility.DisplayDialog("Success", L("install_success"), "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error", string.Format(L("install_failed"), result.message), "OK");
+                }
+            }
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(20);
