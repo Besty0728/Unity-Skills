@@ -22,6 +22,7 @@ namespace UnitySkills
                 return new { error = $"Controller already exists: {path}" };
 
             var controller = AnimatorController.CreateAnimatorControllerAtPath(path);
+            WorkflowManager.SnapshotObject(controller, SnapshotType.Created);
             AssetDatabase.SaveAssets();
 
             return new { success = true, name, path };
@@ -194,7 +195,10 @@ namespace UnitySkills
 
             var animator = go.GetComponent<Animator>();
             if (animator == null)
+            {
                 animator = Undo.AddComponent<Animator>(go);
+                WorkflowManager.SnapshotCreatedComponent(animator);
+            }
 
             var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(controllerPath);
             if (controller == null)

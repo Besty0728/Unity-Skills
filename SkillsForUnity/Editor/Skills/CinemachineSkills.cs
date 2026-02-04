@@ -20,15 +20,21 @@ namespace UnitySkills
             var go = new GameObject(name);
             var vcam = go.AddComponent<CinemachineVirtualCamera>();
             vcam.m_Priority = 10;
-            
+
+            Undo.RegisterCreatedObjectUndo(go, "Create Virtual Camera");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
+
             // Ensure CinemachineBrain exists on Main Camera
             if (Camera.main != null)
             {
                 var brain = Camera.main.gameObject.GetComponent<CinemachineBrain>();
                 if (brain == null)
-                    Camera.main.gameObject.AddComponent<CinemachineBrain>();
+                {
+                    var brainComp = Undo.AddComponent<CinemachineBrain>(Camera.main.gameObject);
+                    WorkflowManager.SnapshotCreatedComponent(brainComp);
+                }
             }
-            
+
             return new { success = true, gameObjectName = go.name, instanceId = go.GetInstanceID() };
         }
 

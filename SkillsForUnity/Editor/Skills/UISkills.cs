@@ -122,6 +122,7 @@ namespace UnitySkills
             }
 
             Undo.RegisterCreatedObjectUndo(go, "Create Canvas");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new
             {
@@ -151,6 +152,7 @@ namespace UnitySkills
             image.color = new Color(r, g, b, a);
 
             Undo.RegisterCreatedObjectUndo(go, "Create Panel");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name };
         }
@@ -184,6 +186,7 @@ namespace UnitySkills
             AddTextComponent(textGo, text, 14, Color.black, TextAnchor.MiddleCenter);
 
             Undo.RegisterCreatedObjectUndo(go, "Create Button");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, text };
         }
@@ -204,6 +207,7 @@ namespace UnitySkills
             AddTextComponent(go, text, fontSize, new Color(r, g, b));
 
             Undo.RegisterCreatedObjectUndo(go, "Create Text");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, usingTMP = IsTMPAvailable() };
         }
@@ -231,6 +235,7 @@ namespace UnitySkills
             }
 
             Undo.RegisterCreatedObjectUndo(go, "Create Image");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name };
         }
@@ -435,6 +440,7 @@ namespace UnitySkills
             }
 
             Undo.RegisterCreatedObjectUndo(go, "Create InputField");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, placeholder, usingTMP = IsTMPAvailable() };
         }
@@ -503,6 +509,7 @@ namespace UnitySkills
             slider.handleRect = handleRect;
 
             Undo.RegisterCreatedObjectUndo(go, "Create Slider");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, minValue, maxValue, value };
         }
@@ -559,6 +566,7 @@ namespace UnitySkills
             AddTextComponent(labelGo, label, 14, Color.black);
 
             Undo.RegisterCreatedObjectUndo(go, "Create Toggle");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, label, isOn };
         }
@@ -644,6 +652,7 @@ namespace UnitySkills
             go.AddComponent<GraphicRaycaster>();
 
             Undo.RegisterCreatedObjectUndo(go, "Create Canvas");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return go;
         }

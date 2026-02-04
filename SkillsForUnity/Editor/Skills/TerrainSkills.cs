@@ -35,6 +35,7 @@ namespace UnitySkills
             terrainGO.transform.position = new Vector3(x, y, z);
 
             Undo.RegisterCreatedObjectUndo(terrainGO, "Create Terrain");
+            WorkflowManager.SnapshotObject(terrainGO, SnapshotType.Created);
             AssetDatabase.SaveAssets();
 
             return new

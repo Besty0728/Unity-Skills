@@ -58,6 +58,7 @@ namespace UnitySkills
             }
 
             Undo.RegisterCreatedObjectUndo(go, "Create Light");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new
             {

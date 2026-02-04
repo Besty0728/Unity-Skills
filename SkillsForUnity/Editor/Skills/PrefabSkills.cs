@@ -38,6 +38,7 @@ namespace UnitySkills
                 instance.name = name;
 
             Undo.RegisterCreatedObjectUndo(instance, "Instantiate Prefab");
+            WorkflowManager.SnapshotObject(instance, SnapshotType.Created);
 
             return new { success = true, name = instance.name, instanceId = instance.GetInstanceID() };
         }
@@ -108,6 +109,7 @@ namespace UnitySkills
                             instance.name = item.name;
 
                         Undo.RegisterCreatedObjectUndo(instance, "Batch Instantiate Prefab");
+                        WorkflowManager.SnapshotObject(instance, SnapshotType.Created);
                         results.Add(new { 
                             success = true, 
                             name = instance.name, 

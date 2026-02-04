@@ -27,6 +27,7 @@ namespace UnitySkills
                 Directory.CreateDirectory(dir);
 
             AssetDatabase.CreateAsset(instance, savePath);
+            WorkflowManager.SnapshotObject(instance, SnapshotType.Created);
             AssetDatabase.SaveAssets();
 
             return new { success = true, type = typeName, path = savePath };
@@ -125,6 +126,10 @@ namespace UnitySkills
 
             var newPath = AssetDatabase.GenerateUniqueAssetPath(assetPath);
             AssetDatabase.CopyAsset(assetPath, newPath);
+
+            var newAsset = AssetDatabase.LoadAssetAtPath<ScriptableObject>(newPath);
+            if (newAsset != null)
+                WorkflowManager.SnapshotObject(newAsset, SnapshotType.Created);
 
             return new { success = true, original = assetPath, copy = newPath };
         }

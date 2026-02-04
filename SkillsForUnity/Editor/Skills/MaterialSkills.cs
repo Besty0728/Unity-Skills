@@ -150,6 +150,7 @@ namespace UnitySkills
                 EnsureDirectoryExists(savePath);
 
                 AssetDatabase.CreateAsset(material, savePath);
+                WorkflowManager.SnapshotObject(material, SnapshotType.Created);
                 AssetDatabase.SaveAssets();
             }
 
@@ -281,6 +282,7 @@ namespace UnitySkills
             
             EnsureDirectoryExists(savePath);
             AssetDatabase.CreateAsset(newMaterial, savePath);
+            WorkflowManager.SnapshotObject(newMaterial, SnapshotType.Created);
             AssetDatabase.SaveAssets();
             
             return new { 

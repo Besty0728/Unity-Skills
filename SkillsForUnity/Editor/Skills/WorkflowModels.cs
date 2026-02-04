@@ -17,6 +17,7 @@ namespace UnitySkills
         public string tag;
         public string description;
         public long timestamp;
+        public string sessionId;  // Groups tasks belonging to the same conversation/session
         public List<ObjectSnapshot> snapshots = new List<ObjectSnapshot>();
 
         public string GetFormattedTime()
@@ -40,6 +41,22 @@ namespace UnitySkills
         public string typeName;       // e.g. "GameObject", "Transform"
         public SnapshotType type = SnapshotType.Modified;
         public string assetPath;      // For assets: path in project (e.g., "Assets/Materials/Red.mat")
+
+        // For Created type component undo - stores extra info for reliable deletion
+        public string componentTypeName;   // Full type name of the component (e.g., "UnityEngine.Rigidbody")
+        public string parentGameObjectId;  // GlobalObjectId of the parent GameObject
     }
 
+    /// <summary>
+    /// Information about a session (conversation-level grouping of tasks).
+    /// </summary>
+    public class SessionInfo
+    {
+        public string sessionId;
+        public int taskCount;
+        public int totalChanges;
+        public string startTime;
+        public string endTime;
+        public List<string> tags;
+    }
 }

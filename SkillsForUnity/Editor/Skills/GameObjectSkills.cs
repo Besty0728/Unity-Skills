@@ -690,11 +690,12 @@ namespace UnitySkills
             var copy = Object.Instantiate(go, go.transform.parent);
             copy.name = go.name + "_Copy";
             Undo.RegisterCreatedObjectUndo(copy, "Duplicate " + go.name);
+            WorkflowManager.SnapshotObject(copy, SnapshotType.Created);
 
-            return new { 
-                success = true, 
-                originalName = go.name, 
-                copyName = copy.name, 
+            return new {
+                success = true,
+                originalName = go.name,
+                copyName = copy.name,
                 copyInstanceId = copy.GetInstanceID(),
                 copyPath = GameObjectFinder.GetPath(copy)
             };
@@ -731,6 +732,7 @@ namespace UnitySkills
                         var copy = Object.Instantiate(go, go.transform.parent);
                         copy.name = go.name + "_Copy";
                         Undo.RegisterCreatedObjectUndo(copy, "Batch Duplicate " + go.name);
+                        WorkflowManager.SnapshotObject(copy, SnapshotType.Created);
 
                         results.Add(new
                         {

@@ -15,6 +15,7 @@ namespace UnitySkills
             cube.name = name;
             cube.transform.position = new Vector3(x, y, z);
             Undo.RegisterCreatedObjectUndo(cube, "Create " + name);
+            WorkflowManager.SnapshotObject(cube, SnapshotType.Created);
             return $"Created {name} at ({x},{y},{z})";
         }
 
@@ -25,6 +26,7 @@ namespace UnitySkills
             sphere.name = name;
             sphere.transform.position = new Vector3(x, y, z);
             Undo.RegisterCreatedObjectUndo(sphere, "Create " + name);
+            WorkflowManager.SnapshotObject(sphere, SnapshotType.Created);
             return $"Created {name} at ({x},{y},{z})";
         }
 
@@ -33,6 +35,7 @@ namespace UnitySkills
         {
             var obj = GameObject.Find(objectName);
             if (obj == null) return $"Not found: {objectName}";
+            WorkflowManager.SnapshotObject(obj);
             Undo.DestroyObjectImmediate(obj);
             return $"Deleted {objectName}";
         }

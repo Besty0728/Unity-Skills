@@ -74,19 +74,19 @@ namespace UnitySkills
                 };
 
             var comp = Undo.AddComponent(go, type);
+
+            // Record created component for workflow undo if recording
+            if (WorkflowManager.IsRecording)
+            {
+                WorkflowManager.SnapshotCreatedComponent(comp);
+            }
+
             EditorUtility.SetDirty(go);
-            
-            return new { 
-                success = true, 
-                gameObject = go.name, 
-                instanceId = go.GetInstanceID(), 
-                component = type.Name,
-                fullTypeName = type.FullName
-            };
-            return new { 
-                success = true, 
-                gameObject = go.name, 
-                instanceId = go.GetInstanceID(), 
+
+            return new {
+                success = true,
+                gameObject = go.name,
+                instanceId = go.GetInstanceID(),
                 component = type.Name,
                 fullTypeName = type.FullName
             };
@@ -144,6 +144,13 @@ namespace UnitySkills
                         }
 
                         var comp = Undo.AddComponent(go, type);
+
+                        // Record created component for workflow undo if recording
+                        if (WorkflowManager.IsRecording)
+                        {
+                            WorkflowManager.SnapshotCreatedComponent(comp);
+                        }
+
                         EditorUtility.SetDirty(go);
                         results.Add(new { target = go.name, success = true, component = type.Name });
                         successCount++;
@@ -211,8 +218,7 @@ namespace UnitySkills
 
             Undo.DestroyObjectImmediate(comp);
             EditorUtility.SetDirty(go);
-            
-            return new { success = true, gameObject = go.name, removed = componentType };
+
             return new { success = true, gameObject = go.name, removed = componentType };
         }
 

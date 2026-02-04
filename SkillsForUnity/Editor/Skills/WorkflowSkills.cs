@@ -217,11 +217,40 @@ namespace UnitySkills
             return new { success = true, count = list.Count, history = list };
         }
 
-        [UnitySkill("workflow_revert_task", "Revert changes from a specific task")]
+        [UnitySkill("workflow_undo_task", "Undo changes from a specific task (restore to previous state)")]
+        public static object WorkflowUndoTask(string taskId)
+        {
+            bool result = WorkflowManager.UndoTask(taskId);
+            return new { success = result, taskId = taskId };
+        }
+
+        [UnitySkill("workflow_revert_task", "Alias for workflow_undo_task (deprecated, use workflow_undo_task instead)")]
         public static object WorkflowRevertTask(string taskId)
         {
-            bool result = WorkflowManager.RevertTask(taskId);
-            return new { success = result, taskId = taskId };
+            return WorkflowUndoTask(taskId);
+        }
+
+        [UnitySkill("workflow_snapshot_created", "Record a newly created object for undo tracking")]
+        public static object WorkflowSnapshotCreated(string name = null, int instanceId = 0)
+        {
+            if (!WorkflowManager.IsRecording)
+                return new { success = false, error = "No active task. Call workflow_task_start first." };
+
+            UnityEngine.Object target = null;
+            if (instanceId != 0)
+                target = EditorUtility.InstanceIDToObject(instanceId);
+            else if (!string.IsNullOrEmpty(name))
+                target = GameObject.Find(name);
+
+            if (target == null)
+                return new { success = false, error = $"Object not found: {name ?? instanceId.ToString()}" };
+
+            if (target is Component comp)
+                WorkflowManager.SnapshotCreatedComponent(comp);
+            else
+                WorkflowManager.SnapshotObject(target, SnapshotType.Created);
+
+            return new { success = true, objectName = target.name, type = target.GetType().Name };
         }
 
         [UnitySkill("workflow_delete_task", "Delete a task from history (does not revert changes)")]
@@ -229,6 +258,93 @@ namespace UnitySkills
         {
             WorkflowManager.DeleteTask(taskId);
             return new { success = true, deletedId = taskId };
+        }
+
+        // --- Session Management (Conversation-Level Undo) ---
+
+        [UnitySkill("workflow_session_start", "Start a new session (conversation-level). All changes will be tracked and can be undone together.")]
+        public static object WorkflowSessionStart(string tag = null)
+        {
+            string sessionId = WorkflowManager.BeginSession(tag);
+            return new
+            {
+                success = true,
+                sessionId = sessionId,
+                message = "Session started. All changes will be tracked for undo."
+            };
+        }
+
+        [UnitySkill("workflow_session_end", "End the current session and save all tracked changes.")]
+        public static object WorkflowSessionEnd()
+        {
+            if (!WorkflowManager.HasActiveSession)
+                return new { success = false, error = "No active session to end" };
+
+            string sessionId = WorkflowManager.CurrentSessionId;
+            WorkflowManager.EndSession();
+            return new
+            {
+                success = true,
+                sessionId = sessionId,
+                message = "Session ended and saved"
+            };
+        }
+
+        [UnitySkill("workflow_session_undo", "Undo all changes made during a specific session (conversation-level undo)")]
+        public static object WorkflowSessionUndo(string sessionId = null)
+        {
+            // If no sessionId provided, try to get the most recent session
+            if (string.IsNullOrEmpty(sessionId))
+            {
+                var sessions = WorkflowManager.GetSessions();
+                if (sessions.Count == 0)
+                    return new { success = false, error = "No sessions found in history" };
+                sessionId = sessions[0].sessionId;
+            }
+
+            bool result = WorkflowManager.UndoSession(sessionId);
+            return new
+            {
+                success = result,
+                sessionId = sessionId,
+                message = result ? "Session changes undone successfully" : "Failed to undo session"
+            };
+        }
+
+        [UnitySkill("workflow_session_list", "List all recorded sessions (conversation-level history)")]
+        public static object WorkflowSessionList()
+        {
+            var sessions = WorkflowManager.GetSessions();
+            return new
+            {
+                success = true,
+                count = sessions.Count,
+                currentSessionId = WorkflowManager.CurrentSessionId,
+                sessions = sessions.Select(s => new
+                {
+                    s.sessionId,
+                    s.taskCount,
+                    s.totalChanges,
+                    s.startTime,
+                    s.endTime,
+                    s.tags
+                }).ToList()
+            };
+        }
+
+        [UnitySkill("workflow_session_status", "Get the current session status")]
+        public static object WorkflowSessionStatus()
+        {
+            return new
+            {
+                success = true,
+                hasActiveSession = WorkflowManager.HasActiveSession,
+                currentSessionId = WorkflowManager.CurrentSessionId,
+                isRecording = WorkflowManager.IsRecording,
+                currentTaskId = WorkflowManager.CurrentTask?.id,
+                currentTaskTag = WorkflowManager.CurrentTask?.tag,
+                snapshotCount = WorkflowManager.CurrentTask?.snapshots.Count ?? 0
+            };
         }
     }
 }
