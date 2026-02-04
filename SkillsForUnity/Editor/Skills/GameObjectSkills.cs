@@ -60,6 +60,7 @@ namespace UnitySkills
                             go.transform.localScale = new Vector3(item.scaleX, item.scaleY, item.scaleZ);
 
                         Undo.RegisterCreatedObjectUndo(go, "Batch Create " + item.name);
+                        WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
                         results.Add(new
                         {
@@ -132,6 +133,7 @@ namespace UnitySkills
 
             go.transform.position = new Vector3(x, y, z);
             Undo.RegisterCreatedObjectUndo(go, "Create " + name);
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             return new
             {
@@ -244,6 +246,7 @@ namespace UnitySkills
             if (error != null) return error;
 
             var deletedName = go.name;
+            WorkflowManager.SnapshotObject(go); // Record pre-deletion state
             Undo.DestroyObjectImmediate(go);
             return new { success = true, deleted = deletedName };
         }
@@ -290,6 +293,7 @@ namespace UnitySkills
                         }
 
                         string name = go.name;
+                        WorkflowManager.SnapshotObject(go); // Record pre-deletion state
                         Undo.DestroyObjectImmediate(go);
                         results.Add(new { target = name, success = true });
                         successCount++;

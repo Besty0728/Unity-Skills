@@ -36,6 +36,9 @@ namespace UnitySkills
                 {
                     string json = File.ReadAllText(HistoryFilePath);
                     _history = JsonUtility.FromJson<WorkflowHistoryData>(json);
+                    
+                    // Cleanup any null tasks if they somehow got in
+                    _history.tasks.RemoveAll(t => t == null);
                 }
                 catch (Exception e)
                 {
@@ -80,12 +83,20 @@ namespace UnitySkills
                 snapshots = new List<ObjectSnapshot>()
             };
 
+            // Hook into Undo system to automatically track changes during the task
+            Undo.postprocessModifications += OnUndoPostprocess;
+            Undo.undoRedoPerformed += OnUndoRedoPerformed;
+
             return _currentTask;
         }
 
         public static void EndTask()
         {
             if (_currentTask == null) return;
+
+            // Unhook hooks
+            Undo.postprocessModifications -= OnUndoPostprocess;
+            Undo.undoRedoPerformed -= OnUndoRedoPerformed;
 
             // Only add to history if there are snapshots or it was a meaningful task
             if (_history == null) LoadHistory();
@@ -96,72 +107,117 @@ namespace UnitySkills
             SaveHistory();
         }
 
+        private static UndoPropertyModification[] OnUndoPostprocess(UndoPropertyModification[] modifications)
+        {
+            if (_currentTask == null) return modifications;
+
+            foreach (var mod in modifications)
+            {
+                if (mod.currentValue != null && mod.currentValue.target != null)
+                {
+                    // If we detect a created object in the undo system, track it
+                    // Note: This is an approximation. Truly new objects are often handled via RegisterCreatedObjectUndo.
+                    SnapshotObject(mod.currentValue.target);
+                }
+            }
+            return modifications;
+        }
+
+        private static void OnUndoRedoPerformed()
+        {
+            // Sync current task if needed, though usually we care about the "Pre-state"
+        }
+
         /// <summary>
         /// Captures the state of an object/component BEFORE modification.
+        /// Supports both scene objects and project assets (Materials, etc.).
         /// </summary>
-        public static void SnapshotObject(UnityEngine.Object obj)
+        public static void SnapshotObject(UnityEngine.Object obj, SnapshotType type = SnapshotType.Modified)
         {
             if (_currentTask == null || obj == null) return;
 
             // Get GlobalObjectId for persistence
             string gid = GlobalObjectId.GetGlobalObjectIdSlow(obj).ToString();
 
-            // Check if already snapshotted in this task (we only want the INITIAL state before this task's changes)
+            // Check if already snapshotted in this task
             if (_currentTask.snapshots.Any(s => s.globalObjectId == gid))
                 return;
 
-            string json = EditorJsonUtility.ToJson(obj);
+            string json = "";
+            string assetPath = "";
+            
+            try 
+            { 
+                json = EditorJsonUtility.ToJson(obj);
+                // For assets, also store the asset path for better restoration
+                assetPath = AssetDatabase.GetAssetPath(obj);
+            } 
+            catch { }
             
             _currentTask.snapshots.Add(new ObjectSnapshot
             {
                 globalObjectId = gid,
                 originalJson = json,
                 objectName = obj.name,
-                typeName = obj.GetType().Name
+                typeName = obj.GetType().Name,
+                type = type,
+                assetPath = assetPath
             });
+            
+            // Incremental save for robustness (in case of crash)
+            if (_currentTask.snapshots.Count % 10 == 0)
+            {
+                SaveHistory();
+            }
         }
 
+
         /// <summary>
-        /// Reverts a specific task (and ideally all subsequent ones if we enforce linear history, 
-        /// but here we implement a simple "restore state" which might be destructive).
-        /// Returns true if successful.
+        /// Reverts a specific task.
+        /// Handle deletion of objects that were marked as 'Created' during the task.
         /// </summary>
         public static bool RevertTask(string taskId)
         {
             var task = History.tasks.FirstOrDefault(t => t.id == taskId);
             if (task == null) return false;
 
-            // Undo snapshots in reverse order (though order doesn't strictly matter for non-overlapping props)
-            // Ideally we should start a new undo group for this revert operation
             Undo.IncrementCurrentGroup();
             Undo.SetCurrentGroupName($"Revert Task: {task.tag}");
             int undoGroup = Undo.GetCurrentGroup();
 
-            foreach (var snapshot in task.snapshots)
+            // Handle snapshots in reverse order (LIFO)
+            var snapshots = new List<ObjectSnapshot>(task.snapshots);
+            snapshots.Reverse();
+
+            foreach (var snapshot in snapshots)
             {
                 if (!GlobalObjectId.TryParse(snapshot.globalObjectId, out GlobalObjectId gid))
                     continue;
 
                 var obj = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid);
                 
-                // If object is null (maybe deleted?), we can't easily restore it purely from JSON 
-                // unless we re-instantiate, which is complex. 
-                // For now, we only support restoring modified objects that still exist.
-                // Improvement: Support re-creation if we had a prefab reference or if it's a simple GO.
-                if (obj == null) 
-                {
-                    Debug.LogWarning($"[UnitySkills] Could not find object {snapshot.objectName} ({snapshot.globalObjectId}) to revert.");
-                    continue;
-                }
+                if (obj == null) continue;
 
-                Undo.RecordObject(obj, "Revert Workflow");
-                EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, obj);
-                
-                // If it's a transform or similar, we might need to verify dirty state
-                EditorUtility.SetDirty(obj);
+                if (snapshot.type == SnapshotType.Created)
+                {
+                    // This was a NEW object created by AI, so we delete it to revert
+                    if (obj is GameObject go) Undo.DestroyObjectImmediate(go);
+                    else if (obj is Component comp) Undo.DestroyObjectImmediate(comp);
+                    else Undo.DestroyObjectImmediate(obj);
+                }
+                else
+                {
+                    // This was an existing object that was modified
+                    Undo.RecordObject(obj, "Revert Workflow Modification");
+                    EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, obj);
+                    EditorUtility.SetDirty(obj);
+                }
             }
 
             Undo.CollapseUndoOperations(undoGroup);
+            
+            // Also update history to mark it as reverted (optional UX improvement)
+            SaveHistory(); 
             return true;
         }
 

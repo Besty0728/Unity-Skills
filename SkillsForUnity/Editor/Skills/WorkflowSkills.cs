@@ -212,7 +212,7 @@ namespace UnitySkills
                 description = t.description,
                 time = t.GetFormattedTime(),
                 changes = t.snapshots.Count
-            }).ToList();
+            }).ToList<object>(); // Cast to object list for JSON serializability
 
             return new { success = true, count = list.Count, history = list };
         }

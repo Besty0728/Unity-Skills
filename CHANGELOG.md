@@ -2,86 +2,38 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
-## [1.3.2] - 2026-02-04
+## [1.4.0] - 2026-02-04
 
-### 🌟 New Features / 新特性
+### 🌟 New Features / 新特性 (Major Update since v1.3.0)
 
-- **Custom Installation Path / 自定义安装路径**:
-    - Added UI in UnitySkills Window to install skills to any arbitrary directory. / 在 UnitySkills 窗口中添加了 UI，支持将 Skills 安装到任意指定目录。
-    - Useful for projects with custom structure or when managing multiple skill deployments. / 适用于自定义结构的项目或管理多个 Skill 部署。
+- **Persistent Workflow History / 持久化工作流历史**:
+    - Introduced "Time Machine" persistent operation history. / 引入了持久化的 AI 操作历史记录。
+    - Support for tagging tasks (`workflow_task_start`), snapshots (`workflow_snapshot_object`), and full rollback (`workflow_revert_task`). / 支持任务标签、对象快照及可视化回滚。
+    - History persists across Editor restarts and Domain Reloads. / 历史记录在编辑器重启和重载后仍然保留。
+    - Added **History Tab** in UnitySkills Window. / 在插件窗口新增“历史”标签页。
 
-### 📦 Skill Modules / 模块更新
-- **System**: Updated `SkillInstaller.cs` to support custom path installation.
+- **High-Level Scene Perception / 高级场景感知**:
+    - `scene_summarize`, `hierarchy_describe`, `script_analyze`: Deeply perceive scene structure and API. / 深度感知场景结构与 API。
 
----
+- **Consolidated Skill Modules / 模块功能补完**:
+    - **Cinemachine / Timeline / NavMesh / Physics / Event / Profiler**: Full documentation and exposure of these critical modules. / 补全并正式开放这些核心模块的功能与文档。
 
-## [1.3.1] - 2026-02-02
+- **Operations & System**:
+    - Customizable Skill Installation path. / 支持自定义安装路径。
+    - Terrain editing and Asset redundancy detection (Cleaner). / 新增地形编辑与资源清理。
 
-### 🌟 New Skills / 新增技能
-
-- **Terrain System (6 skills) / 地形系统**:
-    - `terrain_create`: Create new Terrain with TerrainData asset. / 创建新地形及数据资产。
-    - `terrain_get_info`: Get terrain size, resolution, layers. / 获取地形尺寸、分辨率、纹理层。
-    - `terrain_get_height`: Get height at world position. / 获取世界坐标高度。
-    - `terrain_set_height`: Set height at normalized coordinates. / 设置归一化坐标高度。
-    - `terrain_set_heights_batch`: Batch set heights in rectangular region. / 批量设置矩形区域高度。
-    - `terrain_paint_texture`: Paint terrain texture layer. / 绘制地形纹理层。
-
-- **Cleaner Skills (5 skills) / 资源清洁工**:
-    - `cleaner_find_unused_assets`: Find assets not referenced by others. / 查找未被引用的资源。
-    - `cleaner_find_duplicates`: Find duplicate files by MD5 hash. / 通过哈希查找重复文件。
-    - `cleaner_find_missing_references`: Find missing scripts/asset references. / 查找丢失的脚本/资源引用。
-    - `cleaner_delete_assets`: Delete assets with dryRun protection. / 删除资源（带预览保护）。
-    - `cleaner_get_asset_usage`: Find what references a specific asset. / 查询资源被哪些对象引用。
-
-### 📦 New Skill Modules / 新增模块
-
-| Module | Skills | Files |
-|--------|--------|-------|
-| **Terrain** | 6 | `TerrainSkills.cs` (NEW) |
-| **Cleaner** | 5 | `CleanerSkills.cs` (NEW) |
-
-### 📝 Documentation Updates / 文档更新
-
-- Updated skills count badge to 200+. / 技能数徽章更新至 200+。
-- Added `terrain/SKILL.md` and `cleaner/SKILL.md`. / 新增地形和清洁工技能文档。
-- Updated `agent.md`, `README.md` with new modules. / 更新 agent.md、README.md。
+### 🐞 Bug Fixes / 问题修复
+- **Unicode & Encoding**: Fully fixed Chinese character support in both Python client and Unity server. / 彻底修复中文字符支持及乱码问题。
 
 ---
 
 ## [1.3.0] - 2026-01-27
 
-### 🐛 Bug Fixes / 问题修复
-
-- **Windows Console Encoding / Windows 控制台编码**:
-    - Fixed Chinese character encoding issue in Python client output. / 修复 Python 客户端输出中文字符乱码问题。
-    - Moved encoding fix to module top level before any imports. / 将编码修复移至模块顶部，在任何导入之前执行。
-    - Changed from `io.TextIOWrapper` to `codecs.getwriter` for more reliable UTF-8 output. / 使用 `codecs.getwriter` 替代 `io.TextIOWrapper` 以获得更可靠的 UTF-8 输出。
-- **Chinese Character Support / 中文字符支持**:
-    - Fixed JSON serialization escaping Unicode characters, causing Chinese names to display as garbled text in AI terminals. / 修复 JSON 序列化转义 Unicode 字符导致中文名称在 AI 终端显示乱码。
-    - Added `charset=utf-8` to HTTP Content-Type header. / HTTP 响应头添加 charset=utf-8 声明。
-    - Python client now forces UTF-8 decoding. / Python 客户端强制 UTF-8 解码。
-
-### 🌟 New Skills / 新增技能
-
-- **Cinemachine Support**:
-    - Full control over Virtual Cameras: Create, inspect, and modify properties via reflection. / 支持 Cinemachine 虚拟相机创建、属性深度修改。
-    - `cinemachine_set_vcam_property` allows adjusting almost any value. / 支持任意数值调整。
-- **Timeline Support**:
-    - Create Timelines, add Audio/Animation tracks and bind objects. / 支持创建 Timeline 及添加音轨/动画轨。
-- **Console & Debugging**:
-    - Capture and retrieve Unity console logs for self-correction. / 支持捕获 Unity 控制台日志以进行自我纠错。
-    - `console_get_logs`, `console_clear` allow AI to see errors. / AI 可读取报错信息。
-- **Profiler & Performance**:
-    - Get real-time stats including FPS, memory, draw calls. / 获取实时 FPS、内存、DrawCall 等性能数据。
-- **Physics Perception**:
-    - Spatial awareness via Raycast and OverlapSphere. / 通过射线和重叠球进行空间感知。
-    - `physics_check_overlap` to find nearby objects. / 查找附近物体。
-- **Event System**:
-    - Inspect and modify UnityEvents (e.g. Button.onClick) at runtime/editor. / 运行时/编辑器内省和修改 UnityEvent。
-    - Support for adding listeners with int, float, string, bool, void arguments. / 支持添加各种类型的事件监听。
-- **NavMesh**:
-    - Bake NavMesh, clear data, and calculate paths. / 烘焙导航网格、清除数据、计算路径。
+### 🌟 New Features / 新特性
+- **Multi-Instance Support**: Auto-port discovery (8090-8100) and Global Registry.
+- **Transactional Safety**: Atomic Undo/Redo for skill operations.
+- **Batching**: Broad implementation of `*_batch` variants for improved performance.
+- **Documentation**: Standardized SKILL.md format and token optimization.
 
 ### 📝 Documentation Improvements / 文档优化
 

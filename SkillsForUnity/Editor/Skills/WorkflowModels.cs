@@ -25,6 +25,12 @@ namespace UnitySkills
         }
     }
 
+    public enum SnapshotType
+    {
+        Modified, // Object state changed
+        Created   // Object was newly created in this task
+    }
+
     [Serializable]
     public class ObjectSnapshot
     {
@@ -32,5 +38,8 @@ namespace UnitySkills
         public string originalJson;   // JSON state captured via EditorJsonUtility
         public string objectName;     // Cached name for display
         public string typeName;       // e.g. "GameObject", "Transform"
+        public SnapshotType type = SnapshotType.Modified;
+        public string assetPath;      // For assets: path in project (e.g., "Assets/Materials/Red.mat")
     }
+
 }

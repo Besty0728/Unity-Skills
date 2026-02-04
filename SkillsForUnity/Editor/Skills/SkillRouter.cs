@@ -128,14 +128,19 @@ namespace UnitySkills
                     }
                 }
 
+
                 // Transactional Support: Start Undo Group
                 UnityEditor.Undo.IncrementCurrentGroup();
                 UnityEditor.Undo.SetCurrentGroupName($"Skill: {name}");
                 int undoGroup = UnityEditor.Undo.GetCurrentGroup();
                 
-                // Track objects created to allow reverting if needed
-                // Note: Unity Undo system handles reverting automatically if we use Undo.RegisterCreatedObjectUndo etc inside skills.
-                // Assuming all skills leverage Unity's Undo system properly, we just need to revert the group on error.
+                // ========== UNIVERSAL WORKFLOW TRACKING ==========
+                // Auto-snapshot target objects BEFORE skill execution for rollback support
+                if (WorkflowManager.IsRecording)
+                {
+                    TrySnapshotTargetsFromArgs(args);
+                }
+                // ==================================================
 
                 // Verbose control
                 bool verbose = true; // Default to true if not specified to maintain backward compatibility for direct calls
@@ -148,6 +153,7 @@ namespace UnitySkills
                 
                 // Commit transaction
                 UnityEditor.Undo.CollapseUndoOperations(undoGroup);
+
                 
                 if (!verbose && result != null)
                 {
@@ -223,5 +229,109 @@ namespace UnitySkills
             if (underlying.IsArray) return "array";
             return "object";
         }
+
+        /// <summary>
+        /// Auto-snapshot target objects from skill arguments for universal rollback support.
+        /// Identifies common target parameters (name, instanceId, path, materialPath, etc.) and snapshots them.
+        /// </summary>
+        private static void TrySnapshotTargetsFromArgs(JObject args)
+        {
+            try
+            {
+                // Try to find target GameObject by common parameter names
+                string targetName = null;
+                int targetInstanceId = 0;
+                string targetPath = null;
+
+                if (args.TryGetValue("name", StringComparison.OrdinalIgnoreCase, out var nameToken))
+                    targetName = nameToken.ToString();
+                if (args.TryGetValue("instanceId", StringComparison.OrdinalIgnoreCase, out var idToken))
+                    targetInstanceId = idToken.ToObject<int>();
+                if (args.TryGetValue("path", StringComparison.OrdinalIgnoreCase, out var pathToken))
+                    targetPath = pathToken.ToString();
+
+                // Snapshot GameObject if identifiable
+                if (!string.IsNullOrEmpty(targetName) || targetInstanceId != 0 || !string.IsNullOrEmpty(targetPath))
+                {
+                    var (go, _) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath);
+                    if (go != null)
+                    {
+                        WorkflowManager.SnapshotObject(go);
+                        // Also snapshot Transform which is commonly modified
+                        WorkflowManager.SnapshotObject(go.transform);
+                        // Snapshot Renderer's material if present
+                        var renderer = go.GetComponent<UnityEngine.Renderer>();
+                        if (renderer != null && renderer.sharedMaterial != null)
+                            WorkflowManager.SnapshotObject(renderer.sharedMaterial);
+                    }
+                }
+
+                // Snapshot Material asset if materialPath is provided
+                if (args.TryGetValue("materialPath", StringComparison.OrdinalIgnoreCase, out var matPathToken))
+                {
+                    var matPath = matPathToken.ToString();
+                    if (!string.IsNullOrEmpty(matPath))
+                    {
+                        var mat = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.Material>(matPath);
+                        if (mat != null)
+                            WorkflowManager.SnapshotObject(mat);
+                    }
+                }
+
+                // Snapshot asset if assetPath is provided
+                if (args.TryGetValue("assetPath", StringComparison.OrdinalIgnoreCase, out var assetPathToken))
+                {
+                    var assetPath = assetPathToken.ToString();
+                    if (!string.IsNullOrEmpty(assetPath))
+                    {
+                        var asset = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+                        if (asset != null)
+                            WorkflowManager.SnapshotObject(asset);
+                    }
+                }
+
+                // Handle child/parent operations
+                if (args.TryGetValue("childName", StringComparison.OrdinalIgnoreCase, out var childNameToken))
+                {
+                    var (childGo, _) = GameObjectFinder.FindOrError(childNameToken.ToString(), 0, null);
+                    if (childGo != null)
+                        WorkflowManager.SnapshotObject(childGo.transform);
+                }
+
+                // Handle batch items - snapshot each target in the batch
+                if (args.TryGetValue("items", StringComparison.OrdinalIgnoreCase, out var itemsToken))
+                {
+                    try
+                    {
+                        var items = itemsToken.ToObject<List<Dictionary<string, object>>>();
+                        if (items != null)
+                        {
+                            foreach (var item in items.Take(50)) // Limit to avoid performance issues
+                            {
+                                string itemName = item.ContainsKey("name") ? item["name"]?.ToString() : null;
+                                int itemId = item.ContainsKey("instanceId") ? Convert.ToInt32(item["instanceId"]) : 0;
+                                string itemPath = item.ContainsKey("path") ? item["path"]?.ToString() : null;
+
+                                if (!string.IsNullOrEmpty(itemName) || itemId != 0 || !string.IsNullOrEmpty(itemPath))
+                                {
+                                    var (itemGo, _) = GameObjectFinder.FindOrError(itemName, itemId, itemPath);
+                                    if (itemGo != null)
+                                    {
+                                        WorkflowManager.SnapshotObject(itemGo);
+                                        WorkflowManager.SnapshotObject(itemGo.transform);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch { /* Ignore batch parsing errors */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogWarning($"[UnitySkills] Workflow snapshot failed: {ex.Message}");
+            }
+        }
     }
 }
+
