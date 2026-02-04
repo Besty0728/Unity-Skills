@@ -191,6 +191,264 @@ namespace UnitySkills
             };
         }
 
+        [UnitySkill("terrain_add_hill", "Add a smooth hill to the terrain at normalized position with radius and height")]
+        public static object TerrainAddHill(
+            float normalizedX, float normalizedZ,
+            float radius = 0.2f,
+            float height = 0.5f,
+            float smoothness = 1f,
+            string name = null, int instanceId = 0)
+        {
+            var terrain = FindTerrain(name, instanceId);
+            if (terrain == null)
+                return new { success = false, error = "Terrain not found" };
+
+            var data = terrain.terrainData;
+            Undo.RegisterCompleteObjectUndo(data, "Add Hill to Terrain");
+
+            int resolution = data.heightmapResolution;
+            int centerX = Mathf.RoundToInt(normalizedX * (resolution - 1));
+            int centerZ = Mathf.RoundToInt(normalizedZ * (resolution - 1));
+            int radiusPixels = Mathf.RoundToInt(radius * resolution);
+
+            // Calculate affected area
+            int startX = Mathf.Max(0, centerX - radiusPixels);
+            int startZ = Mathf.Max(0, centerZ - radiusPixels);
+            int endX = Mathf.Min(resolution - 1, centerX + radiusPixels);
+            int endZ = Mathf.Min(resolution - 1, centerZ + radiusPixels);
+
+            int width = endX - startX + 1;
+            int length = endZ - startZ + 1;
+
+            // Get current heights
+            float[,] heights = data.GetHeights(startX, startZ, width, length);
+
+            // Add hill with smooth falloff
+            for (int z = 0; z < length; z++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int worldX = startX + x;
+                    int worldZ = startZ + z;
+
+                    // Calculate distance from center
+                    float dx = (worldX - centerX) / (float)radiusPixels;
+                    float dz = (worldZ - centerZ) / (float)radiusPixels;
+                    float distance = Mathf.Sqrt(dx * dx + dz * dz);
+
+                    if (distance <= 1f)
+                    {
+                        // Smooth falloff using cosine interpolation
+                        float falloff = Mathf.Pow(Mathf.Cos(distance * Mathf.PI * 0.5f), smoothness);
+                        float addHeight = height * falloff;
+                        heights[z, x] = Mathf.Clamp01(heights[z, x] + addHeight);
+                    }
+                }
+            }
+
+            data.SetHeights(startX, startZ, heights);
+
+            return new
+            {
+                success = true,
+                centerX = normalizedX,
+                centerZ = normalizedZ,
+                radius,
+                height,
+                affectedArea = new { startX, startZ, width, length }
+            };
+        }
+
+        [UnitySkill("terrain_generate_perlin", "Generate terrain using Perlin noise for natural-looking landscapes")]
+        public static object TerrainGeneratePerlin(
+            float scale = 20f,
+            float heightMultiplier = 0.3f,
+            int octaves = 4,
+            float persistence = 0.5f,
+            float lacunarity = 2f,
+            int seed = 0,
+            string name = null, int instanceId = 0)
+        {
+            var terrain = FindTerrain(name, instanceId);
+            if (terrain == null)
+                return new { success = false, error = "Terrain not found" };
+
+            var data = terrain.terrainData;
+            Undo.RegisterCompleteObjectUndo(data, "Generate Perlin Terrain");
+
+            int resolution = data.heightmapResolution;
+            float[,] heights = new float[resolution, resolution];
+
+            // Use seed for reproducible results
+            System.Random random = seed != 0 ? new System.Random(seed) : new System.Random();
+            float offsetX = random.Next(-10000, 10000);
+            float offsetZ = random.Next(-10000, 10000);
+
+            for (int z = 0; z < resolution; z++)
+            {
+                for (int x = 0; x < resolution; x++)
+                {
+                    float amplitude = 1f;
+                    float frequency = 1f;
+                    float noiseHeight = 0f;
+
+                    // Generate multiple octaves of Perlin noise
+                    for (int i = 0; i < octaves; i++)
+                    {
+                        float sampleX = (x / (float)resolution * scale + offsetX) * frequency;
+                        float sampleZ = (z / (float)resolution * scale + offsetZ) * frequency;
+
+                        float perlinValue = Mathf.PerlinNoise(sampleX, sampleZ) * 2f - 1f;
+                        noiseHeight += perlinValue * amplitude;
+
+                        amplitude *= persistence;
+                        frequency *= lacunarity;
+                    }
+
+                    heights[z, x] = Mathf.Clamp01(noiseHeight * heightMultiplier + 0.5f);
+                }
+            }
+
+            data.SetHeights(0, 0, heights);
+
+            return new
+            {
+                success = true,
+                resolution,
+                scale,
+                heightMultiplier,
+                octaves,
+                persistence,
+                lacunarity,
+                seed = seed != 0 ? seed : (int?)null
+            };
+        }
+
+        [UnitySkill("terrain_smooth", "Smooth terrain heights in a region to reduce sharp edges")]
+        public static object TerrainSmooth(
+            float normalizedX, float normalizedZ,
+            float radius = 0.1f,
+            int iterations = 1,
+            string name = null, int instanceId = 0)
+        {
+            var terrain = FindTerrain(name, instanceId);
+            if (terrain == null)
+                return new { success = false, error = "Terrain not found" };
+
+            var data = terrain.terrainData;
+            Undo.RegisterCompleteObjectUndo(data, "Smooth Terrain");
+
+            int resolution = data.heightmapResolution;
+            int centerX = Mathf.RoundToInt(normalizedX * (resolution - 1));
+            int centerZ = Mathf.RoundToInt(normalizedZ * (resolution - 1));
+            int radiusPixels = Mathf.RoundToInt(radius * resolution);
+
+            int startX = Mathf.Max(1, centerX - radiusPixels);
+            int startZ = Mathf.Max(1, centerZ - radiusPixels);
+            int endX = Mathf.Min(resolution - 2, centerX + radiusPixels);
+            int endZ = Mathf.Min(resolution - 2, centerZ + radiusPixels);
+
+            int width = endX - startX + 1;
+            int length = endZ - startZ + 1;
+
+            for (int iter = 0; iter < iterations; iter++)
+            {
+                float[,] heights = data.GetHeights(startX - 1, startZ - 1, width + 2, length + 2);
+                float[,] smoothed = new float[length, width];
+
+                for (int z = 0; z < length; z++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        // Average with 8 neighbors
+                        float sum = 0f;
+                        for (int dz = 0; dz <= 2; dz++)
+                        {
+                            for (int dx = 0; dx <= 2; dx++)
+                            {
+                                sum += heights[z + dz, x + dx];
+                            }
+                        }
+                        smoothed[z, x] = sum / 9f;
+                    }
+                }
+
+                data.SetHeights(startX, startZ, smoothed);
+            }
+
+            return new
+            {
+                success = true,
+                centerX = normalizedX,
+                centerZ = normalizedZ,
+                radius,
+                iterations,
+                affectedArea = new { startX, startZ, width, length }
+            };
+        }
+
+        [UnitySkill("terrain_flatten", "Flatten terrain to a specific height in a region")]
+        public static object TerrainFlatten(
+            float normalizedX, float normalizedZ,
+            float targetHeight = 0.5f,
+            float radius = 0.1f,
+            float strength = 1f,
+            string name = null, int instanceId = 0)
+        {
+            var terrain = FindTerrain(name, instanceId);
+            if (terrain == null)
+                return new { success = false, error = "Terrain not found" };
+
+            var data = terrain.terrainData;
+            Undo.RegisterCompleteObjectUndo(data, "Flatten Terrain");
+
+            int resolution = data.heightmapResolution;
+            int centerX = Mathf.RoundToInt(normalizedX * (resolution - 1));
+            int centerZ = Mathf.RoundToInt(normalizedZ * (resolution - 1));
+            int radiusPixels = Mathf.RoundToInt(radius * resolution);
+
+            int startX = Mathf.Max(0, centerX - radiusPixels);
+            int startZ = Mathf.Max(0, centerZ - radiusPixels);
+            int endX = Mathf.Min(resolution - 1, centerX + radiusPixels);
+            int endZ = Mathf.Min(resolution - 1, centerZ + radiusPixels);
+
+            int width = endX - startX + 1;
+            int length = endZ - startZ + 1;
+
+            float[,] heights = data.GetHeights(startX, startZ, width, length);
+
+            for (int z = 0; z < length; z++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int worldX = startX + x;
+                    int worldZ = startZ + z;
+
+                    float dx = (worldX - centerX) / (float)radiusPixels;
+                    float dz = (worldZ - centerZ) / (float)radiusPixels;
+                    float distance = Mathf.Sqrt(dx * dx + dz * dz);
+
+                    if (distance <= 1f)
+                    {
+                        float falloff = Mathf.Cos(distance * Mathf.PI * 0.5f);
+                        heights[z, x] = Mathf.Lerp(heights[z, x], targetHeight, strength * falloff);
+                    }
+                }
+            }
+
+            data.SetHeights(startX, startZ, heights);
+
+            return new
+            {
+                success = true,
+                centerX = normalizedX,
+                centerZ = normalizedZ,
+                targetHeight,
+                radius,
+                strength
+            };
+        }
+
         [UnitySkill("terrain_paint_texture", "Paint terrain texture layer at normalized position. Requires terrain layers to be set up.")]
         public static object TerrainPaintTexture(
             float normalizedX, float normalizedZ,
