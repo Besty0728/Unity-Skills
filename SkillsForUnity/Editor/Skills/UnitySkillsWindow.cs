@@ -140,7 +140,8 @@ namespace UnitySkills
             _selectedTab = GUILayout.Toolbar(_selectedTab, new[] {
                 Localization.Current == Localization.Language.Chinese ? "服务器" : "Server",
                 Localization.Current == Localization.Language.Chinese ? "Skills" : "Skills",
-                Localization.Current == Localization.Language.Chinese ? "AI配置" : "AI Config"
+                Localization.Current == Localization.Language.Chinese ? "AI配置" : "AI Config",
+                Localization.Current == Localization.Language.Chinese ? "历史记录" : "History"
             });
 
             EditorGUILayout.Space(10);
@@ -150,6 +151,7 @@ namespace UnitySkills
                 case 0: DrawServerTab(); break;
                 case 1: DrawSkillsTab(); break;
                 case 2: DrawAIConfigTab(); break;
+                case 3: DrawHistoryTab(); break;
             }
         }
 
@@ -715,6 +717,75 @@ namespace UnitySkills
                     : "Project Install: Install skill to current Unity project\nGlobal Install: Install skill to user folder, available for all projects\n\nNote: Gemini CLI requires enabling experimental.skills in /settings\nNote: Codex requires restart to load new skills",
                 MessageType.Info
             );
+        }
+
+        private void DrawHistoryTab()
+        {
+            var history = WorkflowManager.History;
+            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "AI 操作历史 (持久化)" : "AI Operation History (Persistent)", EditorStyles.boldLabel);
+            if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "刷新" : "Refresh", GUILayout.Width(60)))
+            {
+                WorkflowManager.LoadHistory();
+            }
+            if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "清空" : "Clear", GUILayout.Width(60)))
+            {
+                if (EditorUtility.DisplayDialog("Confirm", "Clear all history?", "Yes", "No"))
+                    WorkflowManager.ClearHistory();
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(5);
+
+            if (history.tasks.Count == 0)
+            {
+                EditorGUILayout.HelpBox(Localization.Current == Localization.Language.Chinese ? "暂无历史记录" : "No history records.", MessageType.Info);
+                return;
+            }
+
+            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
+
+            // Show in reverse order (newest first)
+            for (int i = history.tasks.Count - 1; i >= 0; i--)
+            {
+                var task = history.tasks[i];
+                EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+                
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Label($"[{task.GetFormattedTime()}]", EditorStyles.miniLabel, GUILayout.Width(60));
+                GUILayout.Label(task.tag, EditorStyles.boldLabel);
+                GUILayout.FlexibleSpace();
+                GUILayout.Label($"{task.snapshots.Count} changes", EditorStyles.miniLabel);
+                EditorGUILayout.EndHorizontal();
+
+                if (!string.IsNullOrEmpty(task.description))
+                {
+                    EditorGUILayout.LabelField(task.description, EditorStyles.wordWrappedLabel);
+                }
+
+                EditorGUILayout.Space(2);
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "回滚 (Revert)" : "Revert"))
+                {
+                    if (EditorUtility.DisplayDialog("Confirm", $"Revert '{task.tag}'?\nThis will overwrite current object properties.", "Revert", "Cancel"))
+                    {
+                        bool success = WorkflowManager.RevertTask(task.id);
+                        if (success) EditorUtility.DisplayDialog("Success", "Revert completed!", "OK");
+                        else EditorUtility.DisplayDialog("Error", "Revert failed (objects might be missing).", "OK");
+                    }
+                }
+                if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "删除" : "Delete", GUILayout.Width(60)))
+                {
+                    WorkflowManager.DeleteTask(task.id);
+                }
+                EditorGUILayout.EndHorizontal();
+                
+                EditorGUILayout.EndVertical();
+                EditorGUILayout.Space(2);
+            }
+
+            EditorGUILayout.EndScrollView();
         }
 
         private string L(string key) => Localization.Get(key);

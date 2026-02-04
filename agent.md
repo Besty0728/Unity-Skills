@@ -206,14 +206,20 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 | **UI Layout** | 5 | 锚点/尺寸/布局组/对齐/分布 [v1.5 NEW] |
 | **Cleaner** | 5 | 未使用资源/重复文件/丢失引用检测 [v1.3.1] |
 | **Physics** | 4 | 物理材质/射线检测/层设置 |
-| **Workflow** | 7 | 书签/撤销/重做/历史 [v1.5 NEW] |
+| **Physics** | 4 | 物理材质/射线检测/层设置 |
+| **Workflow** | 6 | **[NEW]** 持久化历史/回滚/快照/标签管理 |
 | **DebugEnhance** | 4 | 控制台日志/清空/错误暂停 [v1.5 NEW] |
 | **AssetImport** | 4 | 重新导入/贴图设置/模型设置 [v1.5 NEW] |
 | **Prefab** | +3 | 获取覆盖/应用覆盖/恢复覆盖 [v1.5] |
 | **Scene** | +3 | 多场景加载/卸载/设置活动 [v1.5] |
-| **Camera** | 4 | 相机创建/属性配置/截屏 |
-| **NavMesh** | 3 | 烘焙设置/代理创建/区域管理 |
+| **Camera** | 4 | 相机创建/属性配置/截屏/视角对齐 |
+| **NavMesh** | 3 | 烘焙设置/代理创建/区域管理/路径计算 |
 | **Timeline** | 3 | 轨道创建/剪辑添加/绑定 |
+| **Cinemachine** | 5 | 虚拟相机创建/属性设置/Follow&LookAt [v1.5 NEW] |
+| **Event** | 4 | UnityEvent 监听器管理/调用 [v1.5 NEW] |
+| **Project** | 4 | 渲染管线检测/Shader列表/质量设置 [v1.5 NEW] |
+| **Optimization** | 2 | 纹理压缩批量优化/模型网格压缩 [v1.5 NEW] |
+| **Profiler** | 1 | 获取性能统计 (FPS/Memory) [v1.5 NEW] |
 | **Texture/Audio/Model**| 9 | 导入设置/压缩格式/质量优化 (v1.2+) |
 
 > ⚠️ **重要提示**：大部分模块都支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills。

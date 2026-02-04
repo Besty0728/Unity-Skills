@@ -198,6 +198,16 @@ paramType: float, int, bool, trigger
 
 template: Unlit, Standard, Transparent
 
+### workflow (Persistent History)
+| Skill | Parameters |
+|-------|------------|
+| `workflow_task_start` | tag, description? |
+| `workflow_task_end` | (none) |
+| `workflow_snapshot_object` | name?, instanceId? |
+| `workflow_list` | (none) |
+| `workflow_revert_task` | taskId |
+| `workflow_delete_task` | taskId |
+
 ### console
 | Skill | Parameters |
 |-------|------------|
@@ -234,6 +244,67 @@ textureType: Default, NormalMap, Sprite, EditorGUI, Cursor, Cookie, Lightmap, Si
 filterMode: Point, Bilinear, Trilinear | compression: None, LowQuality, Normal, HighQuality
 loadType: DecompressOnLoad, CompressedInMemory, Streaming | compressionFormat: PCM, Vorbis, ADPCM
 animationType: None, Legacy, Generic, Humanoid | meshCompression: Off, Low, Medium, High
+
+### physics
+| Skill | Parameters |
+|-------|------------|
+| `physics_raycast` | originX, originY, originZ, dirX, dirY, dirZ, maxDistance?, layerMask? |
+| `physics_check_overlap` | x, y, z, radius, layerMask? |
+| `physics_get_gravity` | (none) |
+| `physics_set_gravity` | x, y, z |
+
+### camera
+| Skill | Parameters |
+|-------|------------|
+| `camera_align_view_to_object` | objectName |
+| `camera_get_info` | (none) |
+| `camera_set_transform` | posX, posY, posZ, rotX, rotY, rotZ, size?, instant? |
+| `camera_look_at` | x, y, z |
+
+### navmesh
+| Skill | Parameters |
+|-------|------------|
+| `navmesh_bake` | (none) |
+| `navmesh_calculate_path` | startX, startY, startZ, endX, endY, endZ, areaMask? |
+
+### timeline
+| Skill | Parameters |
+|-------|------------|
+| `timeline_create` | name, folder? |
+| `timeline_add_audio_track` | directorObjectName, trackName? |
+| `timeline_add_animation_track` | directorObjectName, trackName?, bindingObjectName? |
+
+### cinemachine
+| Skill | Parameters |
+|-------|------------|
+| `cinemachine_create_vcam` | name |
+| `cinemachine_set_vcam_property` | vcamName, componentType, propertyName, value |
+| `cinemachine_set_targets` | vcamName, followName?, lookAtName? |
+
+### event
+| Skill | Parameters |
+|-------|------------|
+| `event_get_listeners` | objectName, componentName, eventName |
+| `event_add_listener` | objectName, componentName, eventName, targetObjectName, ... |
+| `event_invoke` | objectName, componentName, eventName |
+
+### project
+| Skill | Parameters |
+|-------|------------|
+| `project_get_info` | (none) |
+| `project_list_shaders` | filter?, limit? |
+| `project_get_quality_settings` | (none) |
+
+### optimization
+| Skill | Parameters |
+|-------|------------|
+| `optimize_textures` | maxTextureSize?, enableCrunch?, compressionQuality? |
+| `optimize_mesh_compression` | compressionLevel, filter? |
+
+### profiler
+| Skill | Parameters |
+|-------|------------|
+| `profiler_get_stats` | (none) |
 
 ## Notes
 - Response: `{success: true/false, ...data}` or `{success: false, error: "message"}`

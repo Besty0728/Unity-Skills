@@ -147,5 +147,88 @@ namespace UnitySkills
                 groupIndex = Undo.GetCurrentGroup()
             };
         }
+
+        // --- Persistent Workflow Skills ---
+
+        [UnitySkill("workflow_task_start", "Start a new persistent workflow task/session")]
+        public static object WorkflowTaskStart(string tag, string description = "")
+        {
+            var task = WorkflowManager.BeginTask(tag, description);
+            return new
+            {
+                success = true,
+                taskId = task.id,
+                message = $"Started task: {tag}"
+            };
+        }
+
+        [UnitySkill("workflow_task_end", "End the current persistent workflow task")]
+        public static object WorkflowTaskEnd()
+        {
+            if (!WorkflowManager.IsRecording)
+                return new { success = false, error = "No active task to end" };
+            
+            var task = WorkflowManager.CurrentTask;
+            string id = task.id;
+            int count = task.snapshots.Count;
+            
+            WorkflowManager.EndTask();
+            return new
+            {
+                success = true,
+                taskId = id,
+                snapshotCount = count,
+                message = "Task ended and saved"
+            };
+        }
+
+        [UnitySkill("workflow_snapshot_object", "Manually snapshot an object before modification")]
+        public static object WorkflowSnapshotObject(string name = null, int instanceId = 0)
+        {
+            if (!WorkflowManager.IsRecording)
+                return new { success = false, error = "No active task. Call workflow_task_start first." };
+
+            UnityEngine.Object target = null;
+            if (instanceId != 0)
+                target = EditorUtility.InstanceIDToObject(instanceId);
+            else if (!string.IsNullOrEmpty(name))
+                target = GameObject.Find(name);
+
+            if (target == null)
+                return new { success = false, error = $"Object not found: {name ?? instanceId.ToString()}" };
+
+            WorkflowManager.SnapshotObject(target);
+            return new { success = true, objectName = target.name, type = target.GetType().Name };
+        }
+
+        [UnitySkill("workflow_list", "List persistent workflow history")]
+        public static object WorkflowList()
+        {
+            var history = WorkflowManager.History;
+            var list = history.tasks.Select(t => new
+            {
+                id = t.id,
+                tag = t.tag,
+                description = t.description,
+                time = t.GetFormattedTime(),
+                changes = t.snapshots.Count
+            }).ToList();
+
+            return new { success = true, count = list.Count, history = list };
+        }
+
+        [UnitySkill("workflow_revert_task", "Revert changes from a specific task")]
+        public static object WorkflowRevertTask(string taskId)
+        {
+            bool result = WorkflowManager.RevertTask(taskId);
+            return new { success = result, taskId = taskId };
+        }
+
+        [UnitySkill("workflow_delete_task", "Delete a task from history (does not revert changes)")]
+        public static object WorkflowDeleteTask(string taskId)
+        {
+            WorkflowManager.DeleteTask(taskId);
+            return new { success = true, deletedId = taskId };
+        }
     }
 }
