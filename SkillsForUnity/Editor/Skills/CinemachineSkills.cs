@@ -1,6 +1,6 @@
 using UnityEngine;
 using UnityEditor;
-using Cinemachine;
+using Unity.Cinemachine;
 using System.Reflection;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,6 +11,7 @@ namespace UnitySkills
 {
     /// <summary>
     /// Cinemachine skills - Deep control & introspection.
+    /// Updated for Cinemachine 3.x
     /// </summary>
     public static class CinemachineSkills
     {
@@ -18,8 +19,8 @@ namespace UnitySkills
         public static object CinemachineCreateVCam(string name, string folder = "Assets/Settings")
         {
             var go = new GameObject(name);
-            var vcam = go.AddComponent<CinemachineVirtualCamera>();
-            vcam.m_Priority = 10;
+            var vcam = go.AddComponent<CinemachineCamera>(); // CM 3.x: CinemachineVirtualCamera -> CinemachineCamera
+            vcam.Priority = 10; // CM 3.x: m_Priority -> Priority
 
             Undo.RegisterCreatedObjectUndo(go, "Create Virtual Camera");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
@@ -43,33 +44,60 @@ namespace UnitySkills
         {
             var go = GameObject.Find(objectName);
             if (go == null) return new { error = "GameObject not found" };
-            var vcam = go.GetComponent<CinemachineVirtualCamera>();
-            if (vcam == null) return new { error = "Not a Virtual Camera" };
+            
+            var vcam = go.GetComponent<CinemachineCamera>();
+            if (vcam == null) return new { error = "Not a CinemachineCamera" };
 
             // Helper to scrape a component/object
-            object InspectPipelineComponent(object component)
+            object InspectComponent(object component)
             {
                 if (component == null) return null;
                 var type = component.GetType();
                 var fields = new List<object>();
                 
-                // Get all public fields
-                foreach(var field in type.GetFields(BindingFlags.Public | BindingFlags.Instance))
+                // Get all public fields and properties
+                var members = type.GetMembers(BindingFlags.Public | BindingFlags.Instance)
+                    .Where(m => m.MemberType == MemberTypes.Field || m.MemberType == MemberTypes.Property);
+
+                foreach(var member in members)
                 {
-                    // Skip hidden/obsolete if needed, but let's show all
-                    var tooltipAttr = field.GetCustomAttribute<TooltipAttribute>();
-                    var val = field.GetValue(component);
-                    
-                    // Handle Vectors specially for nicer JSON
-                    if (val is Vector3 v3) val = new { v3.x, v3.y, v3.z };
-                    if (val is Vector2 v2) val = new { v2.x, v2.y };
+                    // Skip obsolete
+                    if (member.GetCustomAttribute<System.ObsoleteAttribute>() != null) continue;
+
+                    var tooltipAttr = member.GetCustomAttribute<TooltipAttribute>();
+                    object val = null;
+                    string typeName = "";
+                    bool canWrite = false;
+
+                    try 
+                    {
+                        if (member is FieldInfo f) 
+                        {
+                            val = f.GetValue(component);
+                            typeName = f.FieldType.Name;
+                            canWrite = !f.IsInitOnly;
+                        }
+                        else if (member is PropertyInfo p)
+                        {
+                             if (!p.CanRead) continue;
+                             val = p.GetValue(component);
+                             typeName = p.PropertyType.Name;
+                             canWrite = p.CanWrite;
+                        }
+
+                        // Handle Vectors specially for nicer JSON
+                        if (val is Vector3 v3) val = new { v3.x, v3.y, v3.z };
+                        if (val is Vector2 v2) val = new { v2.x, v2.y };
+                    } 
+                    catch { continue; }
                     
                     fields.Add(new 
                     {
-                        name = field.Name,
-                        type = field.FieldType.Name,
+                        name = member.Name,
+                        type = typeName,
                         value = val,
-                        tooltip = tooltipAttr?.tooltip ?? ""
+                        tooltip = tooltipAttr?.tooltip ?? "",
+                        readOnly = !canWrite
                     });
                 }
                 
@@ -80,68 +108,74 @@ namespace UnitySkills
                 };
             }
 
+            // In CM 3.x, procedural components are separate MonoBehaviours on the same GameObject
+            // We just scrape all Cinemachine components found on the GO
+            var components = go.GetComponents<MonoBehaviour>()
+                               .Where(mb => mb != null && mb.GetType().Namespace != null && mb.GetType().Namespace.Contains("Cinemachine"))
+                               .Select(mb => InspectComponent(mb))
+                               .ToList();
+
             return new
             {
-                name = vcam.Name,
-                priority = vcam.m_Priority,
+                name = vcam.name,
+                priority = vcam.Priority,
                 follow = vcam.Follow ? vcam.Follow.name : "None",
                 lookAt = vcam.LookAt ? vcam.LookAt.name : "None",
-                lens = InspectPipelineComponent(vcam.m_Lens), // Lens is a struct, works fine
-                bodyComponent = InspectPipelineComponent(vcam.GetCinemachineComponent(CinemachineCore.Stage.Body)),
-                aimComponent = InspectPipelineComponent(vcam.GetCinemachineComponent(CinemachineCore.Stage.Aim)),
-                noiseComponent = InspectPipelineComponent(vcam.GetCinemachineComponent(CinemachineCore.Stage.Noise))
+                lens = InspectComponent(vcam.Lens), // Lens is usually property in 3.x too
+                components = components
             };
         }
 
         [UnitySkill("cinemachine_set_vcam_property", "Set any property on VCam or its pipeline components.")]
         public static object CinemachineSetVCamProperty(string vcamName, string componentType, string propertyName, object value)
         {
-            // componentType: "Body", "Aim", "Noise", "Main" (VCam itself), "Lens"
             var go = GameObject.Find(vcamName);
             if (go == null) return new { error = "GameObject not found" };
-            var vcam = go.GetComponent<CinemachineVirtualCamera>();
-            if (vcam == null) return new { error = "Not a Virtual Camera" };
+            var vcam = go.GetComponent<CinemachineCamera>();
+            if (vcam == null) return new { error = "Not a CinemachineCamera" };
 
             object target = null;
             
-            // Determine target object
-            switch(componentType.ToLower())
+            // 1. Check if targeting Main Camera component
+            if (componentType.Equals("Main", System.StringComparison.OrdinalIgnoreCase) || 
+                componentType.Equals("CinemachineCamera", System.StringComparison.OrdinalIgnoreCase))
             {
-                case "main": target = vcam; break;
+                target = vcam;
+            }
+            // 2. Check if targeting Lens (LensSettings struct typically)
+            else if (componentType.Equals("Lens", System.StringComparison.OrdinalIgnoreCase))
+            {
+                // In 3.x, Lens is likely a property returning a struct or class.
+                // Assuming LensSettings struct property "Lens"
+                object boxedLens = vcam.Lens;
+                if (!SetFieldOrProperty(boxedLens, propertyName, value)) 
+                    return new { error = "Property " + propertyName + " not found on Lens" };
                 
-                // Lens is a struct field on VCam, not a Component. 
-                // Setting it requires Getting, Modifying, Setting back.
-                // For simplicity, we might treat Lens properties as "Main" properties accessed via "m_Lens.FieldOfView"?
-                // Or handle separately. Let's try direct reflection support for nested paths later.
-                // For this implementation, let's stick to component objects.
+                vcam.Lens = (LensSettings)boxedLens; // Write back
+                return new { success = true, message = "Set Lens." + propertyName + " to " + value };
+            }
+            else 
+            {
+                // 3. Try to find matching component
+                var comps = go.GetComponents<MonoBehaviour>();
+                target = comps.FirstOrDefault(c => c.GetType().Name.Equals(componentType, System.StringComparison.OrdinalIgnoreCase));
                 
-                // Special handling for Lens:
-                case "lens": 
-                    // LensSettings is a struct. To modify via reflection, we MUST box it first.
-                    object boxedLens = vcam.m_Lens;
-                    if (!SetFieldOrProperty(boxedLens, propertyName, value)) 
-                        return new { error = $"Property {propertyName} not found on LensSettings" };
-                    
-                    vcam.m_Lens = (LensSettings)boxedLens; // Unbox modified value back
-                    return new { success = true, message = $"Set Lens.{propertyName} to {value}" };
-
-                case "body": target = vcam.GetCinemachineComponent(CinemachineCore.Stage.Body); break;
-                case "aim": target = vcam.GetCinemachineComponent(CinemachineCore.Stage.Aim); break;
-                case "noise": target = vcam.GetCinemachineComponent(CinemachineCore.Stage.Noise); break;
-                default: return new { error = "Unknown component type. Use Main, Body, Aim, Noise, or Lens." };
+                // Try with "Cinemachine" prefix if not found
+                if (target == null && !componentType.StartsWith("Cinemachine"))
+                {
+                    target = comps.FirstOrDefault(c => c.GetType().Name.Equals("Cinemachine" + componentType, System.StringComparison.OrdinalIgnoreCase));
+                }
             }
 
-            if (target == null) return new { error = $"Component {componentType} not found on VCam." };
+            if (target == null) return new { error = "Component " + componentType + " not found on Object." };
 
             if (SetFieldOrProperty(target, propertyName, value))
             {
-                // If we modified a component, we might need to tell Editor it's dirty
-                EditorUtility.SetDirty(vcam); 
-                if (target is MonoBehaviour mb) EditorUtility.SetDirty(mb);
-                return new { success = true, message = $"Set {componentType}.{propertyName} to {value}" };
+                if (target is Object unityObj) EditorUtility.SetDirty(unityObj);
+                return new { success = true, message = "Set " + target.GetType().Name + "." + propertyName + " to " + value };
             }
             
-            return new { error = $"Property {propertyName} not found on {componentType} ({target.GetType().Name})" };
+            return new { error = "Property " + propertyName + " not found on " + target.GetType().Name };
         }
 
         // Helper to set field OR property via reflection
@@ -156,7 +190,6 @@ namespace UnitySkills
                 if (val == null) return null;
                 if (destType.IsAssignableFrom(val.GetType())) return val;
                 
-                // 1. Handle string -> Unity Object (Transform/GameObject) lookup
                 if ((typeof(Component).IsAssignableFrom(destType) || destType == typeof(GameObject)) && val is string nameStr)
                 {
                     var foundGo = GameObject.Find(nameStr);
@@ -168,24 +201,21 @@ namespace UnitySkills
                     }
                 }
                 
-                // 2. Handle Enums (from string or int)
                 if (destType.IsEnum)
                 {
                     try { return System.Enum.Parse(destType, val.ToString(), true); } catch { }
                 }
 
-                // 3. Try Newtonsoft conversion (handles Vectors {x,y,z}, Arrays, etc.)
                 try {
                     return JToken.FromObject(val).ToObject(destType);
                 } catch {}
 
-                // 4. Fallback to simple conversion
                 try {
                     return System.Convert.ChangeType(val, destType);
                 } catch { return null; }
             }
 
-            // Try Field first
+            // Try Field
             var field = type.GetField(name, flags);
             if (field != null)
             {
@@ -225,8 +255,9 @@ namespace UnitySkills
         {
             var go = GameObject.Find(vcamName);
             if (go == null) return new { error = "GameObject not found" };
-            var vcam = go.GetComponent<CinemachineVirtualCamera>();
-            
+            var vcam = go.GetComponent<CinemachineCamera>();
+            if (vcam == null) return new { error = "Not a CinemachineCamera" };
+
             if (followName != null) 
                 vcam.Follow = GameObject.Find(followName)?.transform;
             if (lookAtName != null) 
@@ -234,86 +265,51 @@ namespace UnitySkills
                 
             return new { success = true };
         }
-        [UnitySkill("cinemachine_set_component", "Switch VCam pipeline component (Body/Aim/Noise).")]
-        public static object CinemachineSetComponent(string vcamName, string stage, string componentType)
+
+        [UnitySkill("cinemachine_add_component", "Add a Cinemachine component (e.g., OrbitalFollow).")]
+        public static object CinemachineAddComponent(string vcamName, string componentType)
         {
             var go = GameObject.Find(vcamName);
             if (go == null) return new { error = "GameObject not found" };
-            var vcam = go.GetComponent<CinemachineVirtualCamera>();
-            if (vcam == null) return new { error = "Not a Virtual Camera" };
             
-            // Normalize stage
-            CinemachineCore.Stage stageEnum;
-            switch(stage.ToLower())
-            {
-                case "body": stageEnum = CinemachineCore.Stage.Body; break;
-                case "aim": stageEnum = CinemachineCore.Stage.Aim; break;
-                case "noise": stageEnum = CinemachineCore.Stage.Noise; break;
-                default: return new { error = "Invalid stage. Use Body, Aim, or Noise." };
-            }
-            
-            // Handle "None" / "Do Nothing"
-            if (componentType.ToLower() == "none" || componentType.ToLower() == "donothing")
-            {
-                var existing = vcam.GetCinemachineComponent(stageEnum);
-                if (existing != null)
-                {
-                    Undo.DestroyObjectImmediate(existing);
-                    return new { success = true, message = $"Removed component at stage {stage}" };
-                }
-                return new { success = true, message = $"No component at stage {stage} to remove" };
-            }
-            
+            if (string.IsNullOrEmpty(componentType)) return new { error = "Component Type is empty" };
+
             // Resolve Type
             var type = FindCinemachineType(componentType);
-            if (type == null) return new { error = $"Could not find Cinemachine component type: {componentType}" };
-            
-            // Verify stage compatibility (optional, but AddCinemachineComponent handles it)
-            // But AddCinemachineComponent<T> is generic. We have a Type object.
-            // We need to use reflection or the non-generic internal/inspector methods, 
-            // OR just AddComponent and verify?
-            // CinemachineVirtualCamera.AddCinemachineComponent<T>() implementation basically does:
-            // Destroy existing at stage -> Undo.AddComponent<T> -> Invalidate pipeline
-            
-            // IMPORTANT: standard AddComponent might not handle the pipeline replacement and "Hidden" flags correctly if we don't use the VCam helper.
-            // But the VCam helper is Generic only: public T AddCinemachineComponent<T>()
-            // We can invoke it via reflection.
-            
-            var method = typeof(CinemachineVirtualCamera).GetMethod("AddCinemachineComponent", BindingFlags.Public | BindingFlags.Instance);
-            var generic = method.MakeGenericMethod(type);
-            var newComponent = generic.Invoke(vcam, null);
-            
-            return new { success = true, message = $"Set {stage} to {type.Name}" };
+            if (type == null) return new { error = "Could not find Cinemachine component type: " + componentType };
+
+            // In CM3, we just AddComponent
+            var comp = Undo.AddComponent(go, type);
+            if (comp != null)
+            {
+                return new { success = true, message = "Added " + type.Name + " to " + vcamName };
+            }
+            return new { error = "Failed to add component." };
         }
-        
+
         private static System.Type FindCinemachineType(string name)
         {
-            if (string.IsNullOrEmpty(name)) return null;
-            
-            // Try explicit lookup for common short names
-            var map = new Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase)
-            {
-                { "Transposer", "CinemachineTransposer" },
-                { "FramingTransposer", "CinemachineFramingTransposer" },
-                { "Composer", "CinemachineComposer" },
-                { "Pov", "CinemachinePOV" },
-                { "OrbitalTransposer", "CinemachineOrbitalTransposer" },
-                { "TrackedDolly", "CinemachineTrackedDolly" },
-                { "HardLockToTarget", "CinemachineHardLockToTarget" },
-                { "SameAsFollowTarget", "CinemachineSameAsFollowTarget" },
-                { "BasicMultiChannelPerlin", "CinemachineBasicMultiChannelPerlin" }
-            };
-            
-            if (map.TryGetValue(name, out var fullName)) name = fullName;
-            if (!name.StartsWith("Cinemachine")) name = "Cinemachine" + name;
-            
-            // Search in Cinemachine assembly
-            var cinemachineAssembly = typeof(CinemachineVirtualCamera).Assembly;
-            var type = cinemachineAssembly.GetType("Cinemachine." + name, false, true);
-            if (type != null) return type;
-            
-            // Brute force search all assemblies? unlikely needed if it's a standard component
-            return null;
+             if (string.IsNullOrEmpty(name)) return null;
+             
+             // Common short names mapping for CM 3.x
+             var map = new Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase)
+             {
+                 { "OrbitalFollow", "CinemachineOrbitalFollow" },
+                 { "Transposer", "CinemachineTransposer" },
+                 { "Composer", "CinemachineComposer" },
+                 { "HardLockToTarget", "CinemachineHardLockToTarget" }
+             };
+             
+             if (map.TryGetValue(name, out var fullName)) name = fullName;
+             if (!name.StartsWith("Cinemachine")) name = "Cinemachine" + name;
+             
+             // Search in Unity.Cinemachine assembly
+             var cmAssembly = typeof(CinemachineCamera).Assembly;
+             // Trying with standard Namespace
+             var type = cmAssembly.GetType("Unity.Cinemachine." + name, false, true);
+             if (type != null) return type;
+
+             return null;
         }
     }
 }
