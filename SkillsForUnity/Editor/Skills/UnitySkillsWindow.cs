@@ -13,6 +13,7 @@ namespace UnitySkills
     public class UnitySkillsWindow : EditorWindow
     {
         private Vector2 _scrollPosition;
+        private Vector2 _historyScrollPosition;
         private bool _serverRunning;
         private string _testSkillName = "";
         private string _testSkillParams = "{}";
@@ -21,11 +22,10 @@ namespace UnitySkills
         private Dictionary<string, bool> _categoryFoldouts = new Dictionary<string, bool>();
         private bool _showSkillConfig = true;
         private int _selectedTab = 0;
-        private string[] _tabNames = new[] { "Server", "Skills", "AI Config" };
-        
+
         // Server monitoring
         private double _lastRepaintTime;
-        private const double RepaintInterval = 0.5; // Repaint every 0.5s for live stats
+        private const double RepaintInterval = 0.5;
         private bool _autoStartServer = true;
         private string _customInstallPath = "";
 
@@ -40,33 +40,24 @@ namespace UnitySkills
         public static void ShowWindow()
         {
             var window = GetWindow<UnitySkillsWindow>("UnitySkills");
-            window.minSize = new Vector2(450, 550);
+            window.minSize = new Vector2(450, 500);
         }
 
         private void OnEnable()
         {
             RefreshSkillsList();
             _serverRunning = SkillsHttpServer.IsRunning;
-            
-            // Subscribe to editor update for live monitoring
             EditorApplication.update += OnEditorUpdate;
         }
-        
+
         private void OnDisable()
         {
             EditorApplication.update -= OnEditorUpdate;
         }
-        
-        /// <summary>
-        /// Editor update callback - provides backup heartbeat for server
-        /// and auto-repaint for live statistics.
-        /// </summary>
+
         private void OnEditorUpdate()
         {
-            // Sync server status
             _serverRunning = SkillsHttpServer.IsRunning;
-            
-            // Auto-repaint when server is running (shows live stats)
             if (_serverRunning && _selectedTab == 0)
             {
                 double now = EditorApplication.timeSinceStartup;
@@ -116,30 +107,12 @@ namespace UnitySkills
 
         private void OnGUI()
         {
-            EditorGUILayout.Space(10);
-
-            // Header with language toggle
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            GUILayout.Label("UnitySkills", EditorStyles.boldLabel);
-            GUILayout.FlexibleSpace();
-            
-            // Language toggle
-            var langLabel = Localization.Current == Localization.Language.English ? "EN" : "中";
-            if (GUILayout.Button(langLabel, GUILayout.Width(35)))
-            {
-                Localization.Current = Localization.Current == Localization.Language.English 
-                    ? Localization.Language.Chinese 
-                    : Localization.Language.English;
-            }
-            EditorGUILayout.EndHorizontal();
-
             EditorGUILayout.Space(5);
 
             // Tab bar
             _selectedTab = GUILayout.Toolbar(_selectedTab, new[] {
                 Localization.Current == Localization.Language.Chinese ? "服务器" : "Server",
-                Localization.Current == Localization.Language.Chinese ? "Skills" : "Skills",
+                "Skills",
                 Localization.Current == Localization.Language.Chinese ? "AI配置" : "AI Config",
                 Localization.Current == Localization.Language.Chinese ? "历史记录" : "History"
             });
@@ -153,20 +126,33 @@ namespace UnitySkills
                 case 2: DrawAIConfigTab(); break;
                 case 3: DrawHistoryTab(); break;
             }
+
+            // Language toggle at bottom
+            EditorGUILayout.Space(10);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            var langLabel = Localization.Current == Localization.Language.English ? "EN / 中文" : "中文 / EN";
+            if (GUILayout.Button(langLabel, EditorStyles.miniButton, GUILayout.Width(70)))
+            {
+                Localization.Current = Localization.Current == Localization.Language.English
+                    ? Localization.Language.Chinese
+                    : Localization.Language.English;
+            }
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawServerTab()
         {
             // Server Status
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+
             EditorGUILayout.BeginHorizontal();
-            
             var statusStyle = new GUIStyle(EditorStyles.boldLabel);
             statusStyle.normal.textColor = _serverRunning ? Color.green : Color.red;
             GUILayout.Label(_serverRunning ? L("server_running") : L("server_stopped"), statusStyle);
-            
+
             GUILayout.FlexibleSpace();
-            
+
             if (_serverRunning)
             {
                 if (GUILayout.Button(L("stop_server"), GUILayout.Width(100)))
@@ -187,62 +173,47 @@ namespace UnitySkills
 
             if (_serverRunning)
             {
-                // Identity Section
-                EditorGUILayout.HelpBox(
-                    Localization.Current == Localization.Language.Chinese ? 
-                    $"端口 (Port): {SkillsHttpServer.Port}\nID: {RegistryService.InstanceId}" :
-                    $"Port: {SkillsHttpServer.Port}\nID: {RegistryService.InstanceId}", 
-                    MessageType.Info);
-                
+                EditorGUILayout.Space(5);
+
+                // Connection Info
+                var portLabel = Localization.Current == Localization.Language.Chinese ? "端口" : "Port";
+                EditorGUILayout.LabelField($"{portLabel}: {SkillsHttpServer.Port}");
+                EditorGUILayout.LabelField($"ID: {RegistryService.InstanceId}");
+
                 EditorGUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace();
-                if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "复制 ID" : "Copy ID", GUILayout.Width(80)))
+                EditorGUILayout.LabelField("URL:", GUILayout.Width(35));
+                EditorGUILayout.SelectableLabel(SkillsHttpServer.Url, EditorStyles.textField, GUILayout.Height(18));
+                if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "复制" : "Copy", GUILayout.Width(50)))
                 {
                     EditorGUIUtility.systemCopyBuffer = RegistryService.InstanceId;
-                    _testResult = $"Copied ID: {RegistryService.InstanceId}"; // Feedback
                 }
                 EditorGUILayout.EndHorizontal();
 
-                EditorGUILayout.SelectableLabel(SkillsHttpServer.Url, EditorStyles.miniLabel, GUILayout.Height(18));
-                
-                // Live Server Statistics
                 EditorGUILayout.Space(5);
-                EditorGUILayout.LabelField(L("server_stats"), EditorStyles.miniBoldLabel);
-                
+
+                // Statistics
+                EditorGUILayout.LabelField(L("server_stats"), EditorStyles.boldLabel);
+                EditorGUILayout.LabelField($"{L("queued_requests")}: {SkillsHttpServer.QueuedRequests}");
+
                 EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField(L("queued_requests") + ":", GUILayout.Width(120));
-                var queueCount = SkillsHttpServer.QueuedRequests;
-                var queueStyle = new GUIStyle(EditorStyles.label);
-                queueStyle.normal.textColor = queueCount > 10 ? Color.yellow : (queueCount > 0 ? Color.cyan : Color.gray);
-                EditorGUILayout.LabelField(queueCount.ToString(), queueStyle);
-                EditorGUILayout.EndHorizontal();
-                
-                EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField(L("total_processed") + ":", GUILayout.Width(120));
-                EditorGUILayout.LabelField(SkillsHttpServer.TotalProcessed.ToString());
+                EditorGUILayout.LabelField($"{L("total_processed")}: {SkillsHttpServer.TotalProcessed}");
                 if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "重置" : "Reset", GUILayout.Width(50)))
                 {
                     SkillsHttpServer.ResetStatistics();
                 }
                 EditorGUILayout.EndHorizontal();
-                
-                EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField(L("architecture") + ":", GUILayout.Width(120));
-                EditorGUILayout.LabelField("Producer-Consumer", EditorStyles.miniLabel);
-                EditorGUILayout.EndHorizontal();
             }
-            
-            // Auto-restart setting
+
             EditorGUILayout.Space(5);
-            EditorGUILayout.BeginHorizontal();
+
+            // Auto-restart setting
             var newAutoStart = EditorGUILayout.Toggle(L("auto_restart"), SkillsHttpServer.AutoStart);
             if (newAutoStart != SkillsHttpServer.AutoStart)
             {
                 SkillsHttpServer.AutoStart = newAutoStart;
             }
-            EditorGUILayout.EndHorizontal();
             EditorGUILayout.LabelField(L("auto_restart_hint"), EditorStyles.miniLabel);
-            
+
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(10);
@@ -250,11 +221,11 @@ namespace UnitySkills
             // Test Skill Section
             EditorGUILayout.LabelField(L("test_skill"), EditorStyles.boldLabel);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            
+
             _testSkillName = EditorGUILayout.TextField(L("skill_name"), _testSkillName);
             EditorGUILayout.LabelField(L("parameters_json") + ":");
             _testSkillParams = EditorGUILayout.TextArea(_testSkillParams, GUILayout.Height(60));
-            
+
             if (GUILayout.Button(L("execute_skill")))
             {
                 _testResult = SkillRouter.Execute(_testSkillName, _testSkillParams);
@@ -270,7 +241,7 @@ namespace UnitySkills
 
         private void DrawSkillsTab()
         {
-            // Skills List
+            // Header
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(L("available_skills"), EditorStyles.boldLabel);
             if (GUILayout.Button(L("refresh"), GUILayout.Width(60)))
@@ -287,10 +258,12 @@ namespace UnitySkills
                 int totalSkills = _skillsByCategory.Values.Sum(l => l.Count);
                 EditorGUILayout.LabelField(string.Format(L("total_skills"), totalSkills, _skillsByCategory.Count), EditorStyles.miniLabel);
 
+                EditorGUILayout.Space(5);
+
                 foreach (var kvp in _skillsByCategory.OrderBy(k => k.Key))
                 {
                     _categoryFoldouts[kvp.Key] = EditorGUILayout.Foldout(_categoryFoldouts[kvp.Key], $"{kvp.Key} ({kvp.Value.Count})", true);
-                    
+
                     if (_categoryFoldouts[kvp.Key])
                     {
                         EditorGUI.indentLevel++;
@@ -302,15 +275,17 @@ namespace UnitySkills
                             {
                                 _testSkillName = skill.Name;
                                 _testSkillParams = BuildDefaultParams(skill.Method);
-                                _selectedTab = 0; // Switch to server tab
+                                _selectedTab = 0;
                             }
                             EditorGUILayout.EndHorizontal();
-                            
-                            // Use localized description if available
+
                             var desc = Localization.Get(skill.Name);
-                            if (desc == skill.Name) desc = skill.Description; // Fallback to original
-                            EditorGUILayout.LabelField(desc, EditorStyles.miniLabel);
-                            EditorGUILayout.Space(3);
+                            if (desc == skill.Name) desc = skill.Description;
+                            if (!string.IsNullOrEmpty(desc))
+                            {
+                                EditorGUILayout.LabelField(desc, EditorStyles.miniLabel);
+                            }
+                            EditorGUILayout.Space(2);
                         }
                         EditorGUI.indentLevel--;
                     }
@@ -581,7 +556,7 @@ namespace UnitySkills
             EditorGUILayout.BeginHorizontal();
             var experimentalStyle = new GUIStyle(EditorStyles.miniLabel);
             experimentalStyle.normal.textColor = new Color(1f, 0.6f, 0f); // Orange warning color
-            EditorGUILayout.LabelField(L("install_project") + " ⚠️:", GUILayout.Width(100));
+            EditorGUILayout.LabelField(L("install_project") + " (!):", GUILayout.Width(100));
             if (Localization.Current == Localization.Language.Chinese)
                 EditorGUILayout.LabelField("实验性", experimentalStyle, GUILayout.Width(40));
             else
@@ -723,8 +698,9 @@ namespace UnitySkills
         {
             var history = WorkflowManager.History;
 
+            // Header
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "AI 操作历史 (持久化)" : "AI Operation History (Persistent)", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "AI 操作历史" : "AI Operation History", EditorStyles.boldLabel);
             if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "刷新" : "Refresh", GUILayout.Width(60)))
             {
                 WorkflowManager.LoadHistory();
@@ -738,21 +714,20 @@ namespace UnitySkills
 
             EditorGUILayout.Space(5);
 
-            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
+            _historyScrollPosition = EditorGUILayout.BeginScrollView(_historyScrollPosition);
 
             // Active tasks section
             if (history.tasks.Count > 0)
             {
                 EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "活动任务" : "Active Tasks", EditorStyles.miniBoldLabel);
 
-                // Show in reverse order (newest first)
                 for (int i = history.tasks.Count - 1; i >= 0; i--)
                 {
                     var task = history.tasks[i];
                     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
                     EditorGUILayout.BeginHorizontal();
-                    GUILayout.Label($"[{task.GetFormattedTime()}]", EditorStyles.miniLabel, GUILayout.Width(60));
+                    GUILayout.Label($"[{task.GetFormattedTime()}]", EditorStyles.miniLabel, GUILayout.Width(65));
                     GUILayout.Label(task.tag, EditorStyles.boldLabel);
                     GUILayout.FlexibleSpace();
                     GUILayout.Label($"{task.snapshots.Count} changes", EditorStyles.miniLabel);
@@ -760,18 +735,17 @@ namespace UnitySkills
 
                     if (!string.IsNullOrEmpty(task.description))
                     {
-                        EditorGUILayout.LabelField(task.description, EditorStyles.wordWrappedLabel);
+                        EditorGUILayout.LabelField(task.description, EditorStyles.wordWrappedMiniLabel);
                     }
 
-                    EditorGUILayout.Space(2);
                     EditorGUILayout.BeginHorizontal();
-                    if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "撤销 (Undo)" : "Undo"))
+                    if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "撤销" : "Undo"))
                     {
-                        if (EditorUtility.DisplayDialog("Confirm", $"Undo '{task.tag}'?\nThis will restore objects to their previous state.", "Undo", "Cancel"))
+                        if (EditorUtility.DisplayDialog("Confirm", $"Undo '{task.tag}'?", "Undo", "Cancel"))
                         {
                             bool success = WorkflowManager.UndoTask(task.id);
                             if (success) EditorUtility.DisplayDialog("Success", "Undo completed!", "OK");
-                            else EditorUtility.DisplayDialog("Error", "Undo failed (objects might be missing).", "OK");
+                            else EditorUtility.DisplayDialog("Error", "Undo failed.", "OK");
                         }
                     }
                     if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "删除" : "Delete", GUILayout.Width(60)))
@@ -795,48 +769,38 @@ namespace UnitySkills
                 EditorGUILayout.Space(10);
                 EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "已撤销任务 (可恢复)" : "Undone Tasks (Can Redo)", EditorStyles.miniBoldLabel);
 
-                // Show in reverse order (most recently undone first)
                 for (int i = history.undoneStack.Count - 1; i >= 0; i--)
                 {
                     var task = history.undoneStack[i];
                     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
 
                     EditorGUILayout.BeginHorizontal();
-                    var undoneStyle = new GUIStyle(EditorStyles.miniLabel);
-                    undoneStyle.normal.textColor = Color.gray;
-                    GUILayout.Label($"[{task.GetFormattedTime()}]", undoneStyle, GUILayout.Width(60));
-                    var tagStyle = new GUIStyle(EditorStyles.boldLabel);
-                    tagStyle.normal.textColor = Color.gray;
-                    GUILayout.Label(task.tag, tagStyle);
+                    var grayStyle = new GUIStyle(EditorStyles.miniLabel);
+                    grayStyle.normal.textColor = Color.gray;
+                    GUILayout.Label($"[{task.GetFormattedTime()}]", grayStyle, GUILayout.Width(65));
+                    var grayBoldStyle = new GUIStyle(EditorStyles.boldLabel);
+                    grayBoldStyle.normal.textColor = Color.gray;
+                    GUILayout.Label(task.tag, grayBoldStyle);
                     GUILayout.FlexibleSpace();
-                    GUILayout.Label($"{task.snapshots.Count} changes", undoneStyle);
+                    GUILayout.Label($"{task.snapshots.Count} changes", grayStyle);
                     EditorGUILayout.EndHorizontal();
 
                     if (!string.IsNullOrEmpty(task.description))
                     {
-                        var descStyle = new GUIStyle(EditorStyles.wordWrappedLabel);
+                        var descStyle = new GUIStyle(EditorStyles.wordWrappedMiniLabel);
                         descStyle.normal.textColor = Color.gray;
                         EditorGUILayout.LabelField(task.description, descStyle);
                     }
 
-                    EditorGUILayout.Space(2);
-                    EditorGUILayout.BeginHorizontal();
-
-                    // Redo button with green tint
-                    var originalColor = GUI.backgroundColor;
-                    GUI.backgroundColor = new Color(0.6f, 1f, 0.6f);
-                    if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "恢复 (Redo)" : "Redo"))
+                    if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "恢复" : "Redo"))
                     {
-                        if (EditorUtility.DisplayDialog("Confirm", $"Redo '{task.tag}'?\nThis will restore the changes.", "Redo", "Cancel"))
+                        if (EditorUtility.DisplayDialog("Confirm", $"Redo '{task.tag}'?", "Redo", "Cancel"))
                         {
                             bool success = WorkflowManager.RedoTask(task.id);
                             if (success) EditorUtility.DisplayDialog("Success", "Redo completed!", "OK");
-                            else EditorUtility.DisplayDialog("Error", "Redo failed (some objects might not be recoverable).", "OK");
+                            else EditorUtility.DisplayDialog("Error", "Redo failed.", "OK");
                         }
                     }
-                    GUI.backgroundColor = originalColor;
-
-                    EditorGUILayout.EndHorizontal();
 
                     EditorGUILayout.EndVertical();
                     EditorGUILayout.Space(2);

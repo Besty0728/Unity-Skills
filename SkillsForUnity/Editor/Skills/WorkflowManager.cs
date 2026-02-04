@@ -13,6 +13,13 @@ namespace UnitySkills
         private static WorkflowTask _currentTask;
         private static string _currentSessionId;
 
+        // Log prefix constants with colors (Unity rich text)
+        private const string LOG_PREFIX = "<color=#4A9EFF>[UnitySkills]</color>";
+        private const string LOG_SUCCESS = "<color=#5EE05E>[UnitySkills]</color>";
+        private const string LOG_WARNING = "<color=#FFB347>[UnitySkills]</color>";
+        private const string LOG_ERROR = "<color=#FF6B6B>[UnitySkills]</color>";
+        private const string LOG_WORKFLOW = "<color=#E091FF>[UnitySkills]</color>";
+
         // Path to store the history file (Library folder persists but is local)
         private static string HistoryFilePath => Path.Combine(Application.dataPath, "../Library/UnitySkills/workflow_history.json");
 
@@ -45,7 +52,7 @@ namespace UnitySkills
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"[UnitySkills] Failed to load workflow history: {e.Message}");
+                    Debug.LogError($"{LOG_ERROR} Failed to load workflow history: {e.Message}");
                     _history = new WorkflowHistoryData();
                 }
             }
@@ -68,7 +75,7 @@ namespace UnitySkills
             }
             catch (Exception e)
             {
-                Debug.LogError($"[UnitySkills] Failed to save workflow history: {e.Message}");
+                Debug.LogError($"{LOG_ERROR} Failed to save workflow history: {e.Message}");
             }
         }
 
@@ -392,7 +399,7 @@ namespace UnitySkills
                         // Re-create GameObject - this is more complex, we restore from JSON if possible
                         // For now, we can only restore if the object still exists in some form
                         // Full recreation would require storing prefab/primitive type info
-                        Debug.LogWarning($"[UnitySkills] Cannot fully recreate deleted GameObject: {snapshot.objectName}. Consider using Unity's Undo (Ctrl+Z) instead.");
+                        Debug.LogWarning($"{LOG_WARNING} Cannot fully recreate deleted GameObject: {snapshot.objectName}. Consider using Unity's Undo (Ctrl+Z) instead.");
                     }
                 }
                 else
@@ -485,7 +492,7 @@ namespace UnitySkills
             BeginTask(sessionTag ?? "Session", $"Session started at {DateTime.Now:HH:mm:ss}");
             _currentTask.sessionId = _currentSessionId;
 
-            Debug.Log($"[UnitySkills] Session started: {_currentSessionId}");
+            Debug.Log($"{LOG_WORKFLOW} Session started: <b>{_currentSessionId}</b>");
             return _currentSessionId;
         }
 
@@ -503,7 +510,7 @@ namespace UnitySkills
                 EndTask();
             }
 
-            Debug.Log($"[UnitySkills] Session ended: {_currentSessionId}");
+            Debug.Log($"{LOG_WORKFLOW} Session ended: <b>{_currentSessionId}</b>");
             _currentSessionId = null;
         }
 
@@ -522,7 +529,7 @@ namespace UnitySkills
 
             if (sessionTasks.Count == 0)
             {
-                Debug.LogWarning($"[UnitySkills] No tasks found for session: {sessionId}");
+                Debug.LogWarning($"{LOG_WARNING} No tasks found for session: {sessionId}");
                 return false;
             }
 
@@ -565,7 +572,7 @@ namespace UnitySkills
             _history.tasks.RemoveAll(t => t.sessionId == sessionId);
             SaveHistory();
 
-            Debug.Log($"[UnitySkills] Session undone: {sessionId}, {undoneCount} changes reverted");
+            Debug.Log($"{LOG_SUCCESS} Session undone: <b>{sessionId}</b>, {undoneCount} changes reverted");
             return true;
         }
 
@@ -614,7 +621,7 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[UnitySkills] Failed to undo snapshot {snapshot.objectName}: {ex.Message}");
+                Debug.LogWarning($"{LOG_WARNING} Failed to undo snapshot {snapshot.objectName}: {ex.Message}");
                 return false;
             }
         }

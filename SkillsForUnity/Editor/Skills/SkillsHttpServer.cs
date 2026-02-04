@@ -12,21 +12,28 @@ namespace UnitySkills
 {
     /// <summary>
     /// Production-grade HTTP server for UnitySkills REST API.
-    /// 
+    ///
     /// Architecture: Strict Producer-Consumer Pattern
     /// - HTTP Thread (Producer): ONLY receives requests and enqueues them. NO Unity API calls.
     /// - Main Thread (Consumer): Processes ALL logic including routing, rate limiting, and skill execution.
-    /// 
+    ///
     /// Resilience Features:
     /// - Auto-restart after Domain Reload (script compilation)
     /// - Persistent state via EditorPrefs
     /// - Graceful shutdown and recovery
-    /// 
+    ///
     /// This ensures 100% thread safety with Unity's single-threaded architecture.
     /// </summary>
     [InitializeOnLoad]
     public static class SkillsHttpServer
     {
+        // Log prefix constants with colors (Unity rich text)
+        private const string LOG_PREFIX = "<color=#4A9EFF>[UnitySkills]</color>";
+        private const string LOG_SUCCESS = "<color=#5EE05E>[UnitySkills]</color>";
+        private const string LOG_WARNING = "<color=#FFB347>[UnitySkills]</color>";
+        private const string LOG_ERROR = "<color=#FF6B6B>[UnitySkills]</color>";
+        private const string LOG_SERVER = "<color=#9B7EFF>[UnitySkills]</color>";
+        private const string LOG_SKILL = "<color=#5EC8E0>[UnitySkills]</color>";
         private static HttpListener _listener;
         private static Thread _listenerThread;
         private static Thread _keepAliveThread;
@@ -138,16 +145,16 @@ namespace UnitySkills
         private static void OnBeforeAssemblyReload()
         {
             _domainReloadPending = true;
-            
+
             // Persist the "should run" state before domain is destroyed
             EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, _isRunning);
-            
+
             // Persist statistics
             EditorPrefs.SetString(PREF_TOTAL_PROCESSED, _totalRequestsProcessed.ToString());
-            
+
             if (_isRunning)
             {
-                Debug.Log($"[UnitySkills] Domain Reload detected - server state saved ({_port}), will auto-restart");
+                Debug.Log($"{LOG_PREFIX} Domain Reload detected - server state saved (port {_port}), will auto-restart");
                 RegistryService.Unregister(); // Unregister temporarily
                 // Don't call Stop() here - domain will be destroyed anyway
                 // Just mark as not running to prevent errors
@@ -178,7 +185,7 @@ namespace UnitySkills
         {
             if (_isRunning)
             {
-                Debug.Log("[UnitySkills] Compilation started - preparing for Domain Reload...");
+                Debug.Log($"{LOG_PREFIX} Compilation started - preparing for Domain Reload...");
             }
         }
         
@@ -200,12 +207,12 @@ namespace UnitySkills
         {
             bool shouldRun = EditorPrefs.GetBool(PREF_SERVER_SHOULD_RUN, false);
             bool autoStart = AutoStart;
-            
+
             if (shouldRun && autoStart)
             {
                 if (!_isRunning)
                 {
-                    Debug.Log("[UnitySkills] Auto-restoring server after Domain Reload...");
+                    Debug.Log($"{LOG_PREFIX} Auto-restoring server after Domain Reload...");
                     Start();
                 }
             }
@@ -229,14 +236,14 @@ namespace UnitySkills
         {
             if (_isRunning)
             {
-                Debug.Log("[UnitySkills] Server already running at " + _prefix);
+                Debug.Log($"{LOG_PREFIX} Server already running at {_prefix}");
                 return;
             }
 
             try
             {
                 HookUpdateLoop();
-                
+
                 // Port Hunting: 8090 -> 8100
                 int startPort = 8090;
                 int endPort = 8100;
@@ -250,7 +257,7 @@ namespace UnitySkills
                         _listener = new HttpListener();
                         _listener.Prefixes.Add(prefix);
                         _listener.Start();
-                        
+
                         _port = p;
                         started = true;
                         break;
@@ -264,35 +271,35 @@ namespace UnitySkills
 
                 if (!started)
                 {
-                    Debug.LogError($"[UnitySkills] Failed to find open port between {startPort} and {endPort}");
+                    Debug.LogError($"{LOG_ERROR} Failed to find open port between {startPort} and {endPort}");
                     return;
                 }
 
                 _isRunning = true;
-                
+
                 // Persist state for Domain Reload recovery
                 EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, true);
-                
+
                 // Register to global registry
                 RegistryService.Register(_port);
 
                 // Start listener thread (Producer - ONLY enqueues, no Unity API)
                 _listenerThread = new Thread(ListenLoop) { IsBackground = true, Name = "UnitySkills-Listener" };
                 _listenerThread.Start();
-                
+
                 // Start keep-alive thread (forces Unity to update when not focused)
                 _keepAliveThread = new Thread(KeepAliveLoop) { IsBackground = true, Name = "UnitySkills-KeepAlive" };
                 _keepAliveThread.Start();
 
                 // These calls are safe here because Start() is called from Main thread
                 var skillCount = SkillRouter.GetManifest().Split('\n').Length;
-                Debug.Log($"[UnitySkills] REST Server started at {_prefix} (Instance: {RegistryService.InstanceId})");
-                Debug.Log($"[UnitySkills] {skillCount} skills available");
-                Debug.Log($"[UnitySkills] Domain Reload Recovery: ENABLED (AutoStart={AutoStart})");
+                Debug.Log($"{LOG_SERVER} REST Server started at <b>{_prefix}</b>");
+                Debug.Log($"{LOG_SUCCESS} {skillCount} skills loaded | Instance: <b>{RegistryService.InstanceId}</b>");
+                Debug.Log($"{LOG_PREFIX} Domain Reload Recovery: <color=#5EE05E>ENABLED</color> (AutoStart={AutoStart})");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[UnitySkills] Failed to start: {ex.Message}");
+                Debug.LogError($"{LOG_ERROR} Failed to start: {ex.Message}");
                 _isRunning = false;
                 EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, false);
             }
@@ -302,19 +309,19 @@ namespace UnitySkills
         {
             if (!_isRunning) return;
             _isRunning = false;
-            
+
             // If permanent stop, clear the auto-restart flag
             if (permanent)
             {
                 EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, false);
             }
-            
+
             // Unregister from global registry
             RegistryService.Unregister();
-            
+
             try { _listener?.Stop(); } catch { }
             try { _listener?.Close(); } catch { }
-            
+
             // Signal all pending jobs to complete with error
             lock (_queueLock)
             {
@@ -327,8 +334,11 @@ namespace UnitySkills
                     job.CompletionSignal?.Set();
                 }
             }
-            
-            Debug.Log($"[UnitySkills] Server stopped{(permanent ? " (permanent)" : " (will auto-restart after reload)")}");
+
+            if (permanent)
+                Debug.Log($"{LOG_SERVER} Server stopped (permanent)");
+            else
+                Debug.Log($"{LOG_PREFIX} Server stopped (will auto-restart after reload)");
         }
         
         /// <summary>
@@ -535,7 +545,7 @@ namespace UnitySkills
                         error = ex.Message,
                         type = ex.GetType().Name
                     }, _jsonSettings);
-                    Debug.LogWarning($"[UnitySkills] Job processing error: {ex.Message}");
+                    Debug.LogWarning($"{LOG_WARNING} Job processing error: {ex.Message}");
                 }
                 finally
                 {
@@ -635,7 +645,7 @@ namespace UnitySkills
                         suggestion = "If this error persists, check Unity console for details. " +
                                     "For 'Connection Refused' errors, Unity may be reloading scripts - wait 2-3 seconds and retry."
                     }, _jsonSettings);
-                    Debug.LogWarning($"[UnitySkills] Skill '{skillName}' error: {ex.Message}");
+                    Debug.LogWarning($"{LOG_SKILL} Skill '<b>{skillName}</b>' error: {ex.Message}");
                 }
                 return;
             }
