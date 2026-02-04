@@ -151,6 +151,14 @@ namespace UnitySkills
                 
                 var result = skill.Method.Invoke(null, invoke);
                 
+                // ========== UNIVERSAL WORKFLOW AUTO-SAVE ==========
+                // Post-Skill Hook: Force save history immediately after execution
+                if (WorkflowManager.IsRecording)
+                {
+                    WorkflowManager.SaveHistory();
+                }
+                // ==================================================
+
                 // Commit transaction
                 UnityEditor.Undo.CollapseUndoOperations(undoGroup);
 

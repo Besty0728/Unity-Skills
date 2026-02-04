@@ -465,6 +465,7 @@ This file declares available skills for AI agents like Codex.
             sb.AppendLine("| **console** | Log capture and debugging |");
             sb.AppendLine("| **script** | C# script creation and search |");
             sb.AppendLine("| **shader** | Shader creation and listing |");
+            sb.AppendLine("| **workflow** | Time-machine revert, history tracking, auto-save |");
             sb.AppendLine();
             sb.AppendLine("## How to Use");
             sb.AppendLine();
