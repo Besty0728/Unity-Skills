@@ -178,7 +178,7 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 
 ---
 
-## 📊 Skills 模块汇总 (230+)
+## 📊 Skills 模块汇总 (270+)
 
 | 模块 | Skills 数量 | 核心功能 |
 |------|:-----------:|----------|
