@@ -384,6 +384,50 @@ namespace UnitySkills
 
         private static bool SetFieldOrProperty(object target, string name, object value)
         {
+            if (target == null) return false;
+
+            // Handle dot notation for nested properties "Prop.ChildProp"
+            if (name.Contains("."))
+            {
+                var parts = name.Split(new[] { '.' }, 2);
+                string currentName = parts[0];
+                string remainingName = parts[1];
+
+                // Get the current member
+                var type = target.GetType();
+                var flags = BindingFlags.Public | BindingFlags.Instance;
+                object nestedTarget = null;
+                
+                var field = type.GetField(currentName, flags);
+                if (field != null) nestedTarget = field.GetValue(target);
+                else
+                {
+                    var prop = type.GetProperty(currentName, flags);
+                    if (prop != null && prop.CanRead) nestedTarget = prop.GetValue(target);
+                }
+
+                if (nestedTarget == null) return false;
+
+                // Make a copy if it's a value type (struct) because we need to box it to modify it
+                bool isStruct = type.IsValueType;
+                
+                // Recursive call
+                bool success = SetFieldOrProperty(nestedTarget, remainingName, value);
+                
+                // If it was a struct, we must set the modified value back to the parent
+                if (success && (isStruct || field != null)) // Re-assign for structs OR fields (props handled by ref if class, but safe to re-set)
+                {
+                    if (field != null) field.SetValue(target, nestedTarget);
+                    else if (type.GetProperty(currentName, flags) is PropertyInfo p && p.CanWrite) p.SetValue(target, nestedTarget);
+                }
+                return success;
+            }
+
+            return SetFieldOrPropertySimple(target, name, value);
+        }
+
+        private static bool SetFieldOrPropertySimple(object target, string name, object value)
+        {
             var type = target.GetType();
             var flags = BindingFlags.Public | BindingFlags.Instance;
 
@@ -518,6 +562,40 @@ namespace UnitySkills
             dolly.Spline = container;
 
             return new { success = true, message = $"Assigned Spline {splineName} to VCam {vcamName}" };
+        }
+        [UnitySkill("cinemachine_add_extension", "Add a CinemachineExtension. Inputs: vcamName, extensionName (e.g. CinemachineStoryboard).")]
+        public static object CinemachineAddExtension(string vcamName, string extensionName)
+        {
+             var go = GameObject.Find(vcamName);
+             if (go == null) return new { error = "GameObject not found" };
+             var vcam = go.GetComponent<CinemachineCamera>();
+             if (vcam == null) return new { error = "Not a CinemachineCamera" };
+
+             var type = FindCinemachineType(extensionName);
+             if (type == null) return new { error = "Could not find Cinemachine extension type: " + extensionName };
+             if (!typeof(CinemachineExtension).IsAssignableFrom(type)) return new { error = type.Name + " is not a CinemachineExtension" };
+
+             // check if already exists
+             if (go.GetComponent(type) != null) return new { warning = "Extension " + type.Name + " already exists on " + vcamName };
+
+             var ext = Undo.AddComponent(go, type);
+             return new { success = true, message = "Added extension " + type.Name };
+        }
+
+        [UnitySkill("cinemachine_remove_extension", "Remove a CinemachineExtension. Inputs: vcamName, extensionName.")]
+        public static object CinemachineRemoveExtension(string vcamName, string extensionName)
+        {
+             var go = GameObject.Find(vcamName);
+             if (go == null) return new { error = "GameObject not found" };
+             
+             var type = FindCinemachineType(extensionName);
+             if (type == null) return new { error = "Could not find Cinemachine extension type: " + extensionName };
+
+             var ext = go.GetComponent(type);
+             if (ext == null) return new { error = "Extension " + type.Name + " not found on " + vcamName };
+
+             Undo.DestroyObjectImmediate(ext);
+             return new { success = true, message = "Removed extension " + type.Name };
         }
     }
 }

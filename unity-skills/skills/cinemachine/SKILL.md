@@ -90,6 +90,18 @@ Assign a SplineContainer to a VCam's SplineDolly component (Body stage).
 - `vcamName` (string): Name of the VCam.
 - `splineName` (string): Name of the GameObject with SplineContainer.
 
+### `cinemachine_add_extension`
+Add a CinemachineExtension to a VCam.
+**Parameters:**
+- `vcamName` (string): Name of the VCam.
+- `extensionName` (string): Type name of the extension (e.g., "CinemachineStoryboard", "CinemachineImpulseListener").
+
+### `cinemachine_remove_extension`
+Remove a CinemachineExtension from a VCam.
+**Parameters:**
+- `vcamName` (string): Name of the VCam.
+- `extensionName` (string): Type name of the extension.
+
 ### `cinemachine_set_active`
 Force activation of a VCam (SOLO) by setting highest priority.
 **Parameters:**
