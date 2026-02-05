@@ -24,6 +24,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### 🐞 Bug Fixes / 问题修复
 - **Unicode & Encoding**: Fully fixed Chinese character support in both Python client and Unity server. / 彻底修复中文字符支持及乱码问题。
+- **Dependencies**: Added `com.unity.splines` (2.8.0) as a hard dependency to support advanced Cinemachine features. / 新增 Splines (2.8.0) 为硬依赖以支持 Cinemachine 高级功能。
 
 ---
 
