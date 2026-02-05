@@ -4,7 +4,8 @@
     "references": [
         "Newtonsoft.Json",
         "Unity.Timeline",
-        "Unity.Cinemachine"
+        "Unity.Cinemachine",
+        "Unity.Splines"
     ],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
