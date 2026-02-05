@@ -258,16 +258,67 @@ namespace UnitySkills
             return new { success = true, count = componentTypes.Count, components = componentTypes };
         }
 
-        [UnitySkill("cinemachine_impulse_generate", "Trigger an Impulse at location or via Source.")]
+        [UnitySkill("cinemachine_set_component", "Switch VCam pipeline component (Body/Aim/Noise).")]
+        public static object CinemachineSetComponent(string vcamName, string stage, string componentType)
+        {
+            var go = GameObject.Find(vcamName);
+            if (go == null) return new { error = "GameObject not found" };
+            var vcam = go.GetComponent<CinemachineCamera>();
+            if (vcam == null) return new { error = "Not a CinemachineCamera" };
+
+            if (!System.Enum.TryParse<CinemachineCore.Stage>(stage, true, out var stageEnum))
+            {
+                return new { error = "Invalid stage. Use Body, Aim, or Noise." };
+            }
+
+            // 1. Remove existing component at this stage
+            var existing = vcam.GetCinemachineComponent(stageEnum);
+            if (existing != null)
+            {
+                Undo.DestroyObjectImmediate(existing);
+            }
+
+            // 2. Add new component if not "None"
+            if (!string.IsNullOrEmpty(componentType) && !componentType.Equals("None", System.StringComparison.OrdinalIgnoreCase))
+            {
+                var type = FindCinemachineType(componentType);
+                if (type == null) return new { error = "Could not find Cinemachine component type: " + componentType };
+                
+                var comp = Undo.AddComponent(go, type);
+                if (comp == null) return new { error = "Failed to add component " + type.Name };
+            }
+
+            EditorUtility.SetDirty(go);
+            return new { success = true, message = "Set " + stage + " to " + (componentType ?? "None") };
+        }
+
+        [UnitySkill("cinemachine_impulse_generate", "Trigger an Impulse. Params: {velocity: {x,y,z}} or empty.")]
         public static object CinemachineImpulseGenerate(string sourceParams) 
         {
              var sources = Object.FindObjectsOfType<CinemachineImpulseSource>();
-             if (sources.Length > 0)
+             if (sources.Length == 0) return new { success = false, error = "No CinemachineImpulseSource found in scene." };
+             
+             var source = sources[0]; // Default to first found
+             Vector3 velocity = Vector3.down; // Default direction
+
+             // Parse JSON params if provided
+             if (!string.IsNullOrEmpty(sourceParams))
              {
-                 sources[0].GenerateImpulse();
-                 return new { success = true, message = "Generated Impulse from " + sources[0].name };
+                 try 
+                 {
+                     var json = JObject.Parse(sourceParams);
+                     if (json["velocity"] != null)
+                     {
+                         var v = json["velocity"];
+                         velocity = new Vector3((float)v["x"], (float)v["y"], (float)v["z"]);
+                     }
+                      // Can expand for Position/Force later if needed
+                 }
+                 catch { /* If parsing fails, use defaults */ }
              }
-             return new { success = false, error = "No CinemachineImpulseSource found in scene." };
+
+             source.GenerateImpulse(velocity);
+             return new { success = true, message = "Generated Impulse from " + source.name + " with velocity " + velocity };
         }
         
         [UnitySkill("cinemachine_get_brain_info", "Get info about the Active Camera and Blend.")]

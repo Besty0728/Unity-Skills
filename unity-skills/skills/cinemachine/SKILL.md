@@ -30,11 +30,16 @@ Set Follow and LookAt targets.
 - `followName` (string, optional): GameObject name to follow.
 - `lookAtName` (string, optional): GameObject name to look at.
 
-### `cinemachine_add_component`
-Add a Cinemachine component (e.g., OrbitalFollow).
+### `cinemachine_set_component`
+Switch VCam pipeline component (Body/Aim/Noise).
 **Parameters:**
 - `vcamName` (string): Name of the VCam.
-- `componentType` (string): Type name (e.g. "OrbitalFollow", "Composer").
+- `stage` (string): "Body", "Aim", or "Noise".
+- `componentType` (string): Type name (e.g. "OrbitalFollow", "Composer") or "None" to remove.
+
+### `cinemachine_add_component`
+(Deprecated: Use `cinemachine_set_component` for better pipeline control)
+Add a Cinemachine component.
 
 ### `cinemachine_set_lens`
 Quickly configure Lens settings (FOV, Near, Far, OrthoSize).
@@ -53,7 +58,7 @@ List all available Cinemachine component names.
 ### `cinemachine_impulse_generate`
 Trigger an Impulse at location or via Source.
 **Parameters:**
-- `sourceParams` (string): (Currently unused, grabs first source).
+- `sourceParams` (string, optional): JSON string for parameters, e.g., `{"velocity": {"x": 0, "y": -1, "z": 0}}`.
 
 ### `cinemachine_get_brain_info`
 Get info about the Active Camera and Blend.
