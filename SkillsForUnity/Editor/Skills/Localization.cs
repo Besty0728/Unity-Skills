@@ -509,6 +509,115 @@ namespace UnitySkills
             {"ui_layout_children", "按布局排列子 UI 元素"},
             {"ui_align_selected", "对齐选中的 UI 元素"},
             {"ui_distribute_selected", "均匀分布选中的 UI 元素"},
+
+            // Cinemachine Skills (Complete)
+            {"cinemachine_add_component", "添加 Cinemachine 组件 (如 OrbitalFollow)"},
+            {"cinemachine_set_lens", "快速配置镜头设置 (FOV/近裁面/远裁面/正交尺寸)"},
+            {"cinemachine_list_components", "列出所有可用的 Cinemachine 组件名称"},
+            {"cinemachine_impulse_generate", "触发震动脉冲"},
+            {"cinemachine_get_brain_info", "获取活动相机和混合信息"},
+            {"cinemachine_set_active", "强制激活虚拟相机 (设为最高优先级)"},
+            {"cinemachine_set_noise", "配置噪声设置 (Basic Multi Channel Perlin)"},
+            {"cinemachine_create_target_group", "创建 Cinemachine 目标组"},
+            {"cinemachine_target_group_add_member", "向目标组添加/更新成员"},
+            {"cinemachine_target_group_remove_member", "从目标组移除成员"},
+            {"cinemachine_set_spline", "设置虚拟相机的样条轨道"},
+            {"cinemachine_add_extension", "添加 Cinemachine 扩展"},
+            {"cinemachine_remove_extension", "移除 Cinemachine 扩展"},
+            {"cinemachine_create_mixing_camera", "创建 Cinemachine 混合相机"},
+            {"cinemachine_mixing_camera_set_weight", "设置混合相机中子相机的权重"},
+            {"cinemachine_create_clear_shot", "创建 Cinemachine Clear Shot 相机"},
+            {"cinemachine_create_state_driven_camera", "创建 Cinemachine 状态驱动相机"},
+            {"cinemachine_state_driven_camera_add_instruction", "向状态驱动相机添加指令"},
+
+            // GameObject Batch Skills
+            {"gameobject_create_batch", "批量创建游戏对象"},
+            {"gameobject_delete_batch", "批量删除游戏对象"},
+            {"gameobject_set_transform_batch", "批量设置变换属性"},
+            {"gameobject_duplicate_batch", "批量复制游戏对象"},
+            {"gameobject_set_active", "启用/禁用游戏对象"},
+            {"gameobject_set_active_batch", "批量启用/禁用游戏对象"},
+            {"gameobject_set_layer_batch", "批量设置图层"},
+            {"gameobject_set_tag_batch", "批量设置标签"},
+            {"gameobject_set_parent_batch", "批量设置父级"},
+            {"gameobject_get_info", "获取游戏对象详细信息"},
+
+            // Component Batch Skills
+            {"component_add_batch", "批量添加组件"},
+            {"component_remove_batch", "批量移除组件"},
+            {"component_set_property_batch", "批量设置组件属性"},
+
+            // Asset Batch Skills
+            {"asset_import_batch", "批量导入资源"},
+            {"asset_delete_batch", "批量删除资源"},
+            {"asset_move_batch", "批量移动资源"},
+
+            // Material Skills (Complete)
+            {"material_create_batch", "批量创建材质"},
+            {"material_assign_batch", "批量分配材质"},
+            {"material_duplicate", "复制材质"},
+            {"material_set_colors_batch", "批量设置颜色"},
+            {"material_set_emission", "设置自发光颜色 (HDR强度/自动启用)"},
+            {"material_set_emission_batch", "批量设置自发光"},
+            {"material_set_int", "设置材质整数属性"},
+            {"material_set_vector", "设置材质向量属性"},
+            {"material_set_texture_offset", "设置贴图偏移"},
+            {"material_set_texture_scale", "设置贴图缩放"},
+            {"material_set_keyword", "启用/禁用 Shader 关键字"},
+            {"material_set_render_queue", "设置材质渲染队列"},
+            {"material_set_shader", "更改材质的 Shader"},
+            {"material_set_gi_flags", "设置全局光照标志"},
+            {"material_get_properties", "获取材质所有属性"},
+            {"material_get_keywords", "获取材质启用的 Shader 关键字"},
+
+            // Scene Skills (Complete)
+            {"scene_get_loaded", "获取所有已加载场景列表"},
+            {"scene_unload", "卸载场景 (Additive)"},
+            {"scene_set_active", "设置活动场景 (多场景编辑)"},
+
+            // Terrain Skills (Complete)
+            {"terrain_add_hill", "在地形上添加平滑山丘"},
+            {"terrain_generate_perlin", "使用 Perlin 噪声生成自然地形"},
+            {"terrain_smooth", "平滑地形高度"},
+            {"terrain_flatten", "将地形展平到指定高度"},
+
+            // Prefab Skills (Complete)
+            {"prefab_get_overrides", "获取预制体实例的属性覆盖列表"},
+            {"prefab_revert_overrides", "还原预制体实例的所有覆盖"},
+            {"prefab_apply_overrides", "将实例覆盖应用到源预制体"},
+
+            // Workflow Skills (Complete)
+            {"workflow_task_start", "开始新的持久化工作流任务"},
+            {"workflow_task_end", "结束当前工作流任务"},
+            {"workflow_snapshot_object", "手动快照对象 (修改前)"},
+            {"workflow_list", "列出持久化工作流历史"},
+            {"workflow_undo_task", "撤销指定任务的更改"},
+            {"workflow_redo_task", "重做已撤销的任务"},
+            {"workflow_undone_list", "列出可重做的已撤销任务"},
+            {"workflow_revert_task", "workflow_undo_task 的别名 (已弃用)"},
+            {"workflow_snapshot_created", "记录新创建的对象用于撤销追踪"},
+            {"workflow_delete_task", "从历史中删除任务 (不还原更改)"},
+            {"workflow_session_start", "开始新会话 (对话级)"},
+            {"workflow_session_end", "结束当前会话并保存更改"},
+            {"workflow_session_undo", "撤销整个会话的所有更改"},
+            {"workflow_session_list", "列出所有会话历史"},
+            {"workflow_session_status", "获取当前会话状态"},
+
+            // Editor Skills (Complete)
+            {"editor_get_context", "获取完整编辑器上下文 (选中对象/资源/场景/窗口)"},
+
+            // Script Skills (Complete)
+            {"script_create_batch", "批量创建脚本"},
+
+            // Sample Skills
+            {"create_cube", "在指定位置创建立方体"},
+            {"create_sphere", "在指定位置创建球体"},
+            {"delete_object", "按名称删除游戏对象"},
+            {"get_scene_info", "获取当前场景信息"},
+            {"set_object_position", "设置游戏对象位置"},
+            {"set_object_rotation", "设置游戏对象旋转 (欧拉角)"},
+            {"set_object_scale", "设置游戏对象缩放"},
+            {"find_objects_by_name", "按名称查找所有游戏对象"},
         };
     }
 }

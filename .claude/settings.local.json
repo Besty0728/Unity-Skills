@@ -4,7 +4,12 @@
       "Bash(python:*)",
       "WebSearch",
       "WebFetch(domain:docs.claude.com)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(for:*)",
+      "Bash(do curl -s -X POST http://localhost:8090/skill/gameobject_delete -H \"Content-Type: application/json\" -d \"{\"\"name\"\":\"\"$obj\"\"}\")",
+      "Bash(done)"
     ]
   }
 }

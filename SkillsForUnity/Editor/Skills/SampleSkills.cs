@@ -84,7 +84,7 @@ namespace UnitySkills
             return $"Set {objectName} scale to ({x},{y},{z})";
         }
 
-        [UnitySkill("find_objects_by_name", "Find all GameObjects containing a name")]
+        [UnitySkill("find_objects_by_name", "Find all GameObjects containing a name (param: nameContains)")]
         public static object FindObjectsByName(string nameContains)
         {
             var allObjects = Object.FindObjectsOfType<GameObject>();

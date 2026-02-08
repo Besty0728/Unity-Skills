@@ -17,7 +17,7 @@ namespace UnitySkills
         // 1. Smart Query ("The SQL for Unity Scene")
         // ==================================================================================
 
-        [UnitySkill("smart_scene_query", "Find objects based on component property values (SQL-like). e.g. Light.intensity > 10, MeshRenderer.enabled == true")]
+        [UnitySkill("smart_scene_query", "Query objects by component property (params: componentName, propertyName, op, value). e.g. componentName='Light', propertyName='intensity', op='>', value='10'")]
         public static object SmartSceneQuery(
             string componentName, 
             string propertyName, 
