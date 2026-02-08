@@ -72,6 +72,10 @@ public class {CLASS} : MonoBehaviour
             File.WriteAllText(path, content);
             AssetDatabase.ImportAsset(path);
 
+            // 记录新创建的脚本（仅元数据，不备份 .cs 内容）
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+            if (asset != null) WorkflowManager.SnapshotObject(asset, SnapshotType.Created);
+
             return new { success = true, path, className = scriptName, namespaceName };
         }
 
@@ -159,6 +163,10 @@ public class {CLASS} : MonoBehaviour
             if (!File.Exists(scriptPath))
                 return new { error = $"Script not found: {scriptPath}" };
 
+            // 删除前记录脚本元数据
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(scriptPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
+
             AssetDatabase.DeleteAsset(scriptPath);
             return new { success = true, deleted = scriptPath };
         }
@@ -202,6 +210,10 @@ public class {CLASS} : MonoBehaviour
         {
             if (!File.Exists(scriptPath))
                 return new { error = $"Script not found: {scriptPath}" };
+
+            // 修改前记录脚本元数据
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(scriptPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
 
             var lines = File.ReadAllLines(scriptPath).ToList();
 

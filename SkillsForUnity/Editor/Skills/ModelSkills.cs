@@ -80,6 +80,10 @@ namespace UnitySkills
             if (importer == null)
                 return new { error = $"Not a model file or asset not found: {assetPath}" };
 
+            // 修改前记录资产状态
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
+
             var changes = new List<string>();
 
             // Scene settings
@@ -262,6 +266,10 @@ namespace UnitySkills
                                 failCount++;
                                 continue;
                             }
+
+                            // 修改前记录资产状态
+                            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.assetPath);
+                            if (asset != null) WorkflowManager.SnapshotObject(asset);
 
                             // Apply settings
                             if (item.globalScale.HasValue)

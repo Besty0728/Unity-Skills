@@ -22,6 +22,10 @@ namespace UnitySkills
 
             // 使用 SaveAsPrefabAssetAndConnect 将场景物体连接为预制体实例
             var prefab = PrefabUtility.SaveAsPrefabAssetAndConnect(go, savePath, InteractionMode.UserAction);
+
+            // 记录新创建的预制体资产
+            WorkflowManager.SnapshotCreatedAsset(prefab);
+
             return new { success = true, prefabPath = savePath, name = prefab.name };
         }
 

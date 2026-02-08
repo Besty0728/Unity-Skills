@@ -254,6 +254,9 @@ namespace UnitySkills
                     var existed = File.Exists(path) || Directory.Exists(path);
                     if (existed)
                     {
+                        // 删除前记录资产状态（用于恢复）
+                        var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+                        if (asset != null) WorkflowManager.SnapshotObject(asset);
                         AssetDatabase.DeleteAsset(path);
                         deletedCount++;
                     }
