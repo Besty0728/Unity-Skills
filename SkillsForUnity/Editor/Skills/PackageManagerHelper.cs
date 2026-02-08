@@ -208,6 +208,9 @@ namespace UnitySkills
             };
         }
 
+        private static int _autoInstallRetryCount = 0;
+        private const int MaxAutoInstallRetries = 5;
+
         /// <summary>
         /// 自动安装 Cinemachine（如果未安装）
         /// Unity 6+ 默认 CM3，Unity 2022 及以下默认 CM2
@@ -225,9 +228,22 @@ namespace UnitySkills
             InstallCinemachine(useV3, (success, msg) =>
             {
                 if (success)
+                {
                     Debug.Log($"[UnitySkills] Cinemachine {msg} installed successfully!");
+                    _autoInstallRetryCount = 0;
+                }
+                else if (msg != null && msg.Contains("in progress") && _autoInstallRetryCount < MaxAutoInstallRetries)
+                {
+                    // Package Manager 繁忙，延迟重试
+                    _autoInstallRetryCount++;
+                    Debug.Log($"[UnitySkills] Package Manager busy, retrying in 2s... ({_autoInstallRetryCount}/{MaxAutoInstallRetries})");
+                    EditorApplication.delayCall += () => EditorApplication.delayCall += AutoInstallCinemachineIfNeeded;
+                }
                 else
+                {
                     Debug.LogWarning($"[UnitySkills] Failed to auto-install Cinemachine: {msg}");
+                    _autoInstallRetryCount = 0;
+                }
             });
         }
     }
