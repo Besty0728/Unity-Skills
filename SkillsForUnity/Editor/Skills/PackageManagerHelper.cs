@@ -193,12 +193,38 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 初始化（首次加载时刷新包列表）
+        /// 初始化（首次加载时刷新包列表并自动安装 Cinemachine）
         /// </summary>
         [InitializeOnLoadMethod]
         private static void Initialize()
         {
-            RefreshPackageList();
+            RefreshPackageList(success =>
+            {
+                if (success) AutoInstallCinemachineIfNeeded();
+            });
+        }
+
+        /// <summary>
+        /// 自动安装 Cinemachine（如果未安装）
+        /// Unity 6+ 默认 CM3，Unity 2022 及以下默认 CM2
+        /// </summary>
+        private static void AutoInstallCinemachineIfNeeded()
+        {
+            if (IsPackageInstalled(CinemachinePackageId)) return;
+
+#if UNITY_6000_0_OR_NEWER
+            bool useV3 = true;
+#else
+            bool useV3 = false;
+#endif
+            Debug.Log($"[UnitySkills] Auto-installing Cinemachine {(useV3 ? "3.x" : "2.x")}...");
+            InstallCinemachine(useV3, (success, msg) =>
+            {
+                if (success)
+                    Debug.Log($"[UnitySkills] Cinemachine {msg} installed successfully!");
+                else
+                    Debug.LogWarning($"[UnitySkills] Failed to auto-install Cinemachine: {msg}");
+            });
         }
     }
 }
