@@ -209,7 +209,10 @@ namespace UnitySkills
         }
 
         private static int _autoInstallRetryCount = 0;
+        private static bool _autoInstallInProgress = false;
+        private static double _nextRetryTime = 0;
         private const int MaxAutoInstallRetries = 5;
+        private const double RetryDelaySeconds = 3.0;
 
         /// <summary>
         /// 自动安装 Cinemachine（如果未安装）
@@ -217,7 +220,8 @@ namespace UnitySkills
         /// </summary>
         private static void AutoInstallCinemachineIfNeeded()
         {
-            if (IsPackageInstalled(CinemachinePackageId)) return;
+            if (_autoInstallInProgress || IsPackageInstalled(CinemachinePackageId)) return;
+            _autoInstallInProgress = true;
 
 #if UNITY_6000_0_OR_NEWER
             bool useV3 = true;
@@ -231,20 +235,30 @@ namespace UnitySkills
                 {
                     Debug.Log($"[UnitySkills] Cinemachine {msg} installed successfully!");
                     _autoInstallRetryCount = 0;
+                    _autoInstallInProgress = false;
                 }
                 else if (msg != null && msg.Contains("in progress") && _autoInstallRetryCount < MaxAutoInstallRetries)
                 {
-                    // Package Manager 繁忙，延迟重试
                     _autoInstallRetryCount++;
-                    Debug.Log($"[UnitySkills] Package Manager busy, retrying in 2s... ({_autoInstallRetryCount}/{MaxAutoInstallRetries})");
-                    EditorApplication.delayCall += () => EditorApplication.delayCall += AutoInstallCinemachineIfNeeded;
+                    Debug.Log($"[UnitySkills] Package Manager busy, retrying in {RetryDelaySeconds}s... ({_autoInstallRetryCount}/{MaxAutoInstallRetries})");
+                    _nextRetryTime = EditorApplication.timeSinceStartup + RetryDelaySeconds;
+                    _autoInstallInProgress = false;
+                    EditorApplication.update += WaitAndRetryAutoInstall;
                 }
                 else
                 {
                     Debug.LogWarning($"[UnitySkills] Failed to auto-install Cinemachine: {msg}");
                     _autoInstallRetryCount = 0;
+                    _autoInstallInProgress = false;
                 }
             });
+        }
+
+        private static void WaitAndRetryAutoInstall()
+        {
+            if (EditorApplication.timeSinceStartup < _nextRetryTime) return;
+            EditorApplication.update -= WaitAndRetryAutoInstall;
+            AutoInstallCinemachineIfNeeded();
         }
     }
 }
