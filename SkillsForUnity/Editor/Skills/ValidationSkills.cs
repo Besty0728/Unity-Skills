@@ -374,6 +374,7 @@ namespace UnitySkills
 
                     if (!dryRun)
                     {
+                        WorkflowManager.SnapshotObject(go);
                         Undo.RegisterCompleteObjectUndo(go, "Remove Missing Scripts");
                         GameObjectUtility.RemoveMonoBehavioursWithMissingScript(go);
                     }

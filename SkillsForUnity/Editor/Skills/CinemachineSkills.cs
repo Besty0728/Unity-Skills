@@ -182,6 +182,8 @@ namespace UnitySkills
             var vcam = go.GetComponent<CinemachineVirtualCamera>();
             if (vcam == null) return new { error = "Not a CinemachineVirtualCamera" };
 #endif
+            // 记录快照用于撤销
+            WorkflowManager.SnapshotObject(go);
 
             object target = null;
             bool isLens = false;
@@ -257,6 +259,9 @@ namespace UnitySkills
             var go = GameObject.Find(vcamName);
             if (go == null) return new { error = "GameObject not found" };
 
+            // 记录快照用于撤销
+            WorkflowManager.SnapshotObject(go);
+
 #if CINEMACHINE_3
             var vcam = go.GetComponent<CinemachineCamera>();
             if (vcam == null) return new { error = "Not a CinemachineCamera" };
@@ -292,9 +297,13 @@ namespace UnitySkills
             var type = FindCinemachineType(componentType);
             if (type == null) return new { error = "Could not find Cinemachine component type: " + componentType };
 
+            // 记录快照用于撤销
+            WorkflowManager.SnapshotObject(go);
+
             var comp = Undo.AddComponent(go, type);
             if (comp != null)
             {
+                WorkflowManager.SnapshotCreatedComponent(comp);
                 return new { success = true, message = "Added " + type.Name + " to " + vcamName };
             }
             return new { error = "Failed to add component." };
@@ -311,6 +320,9 @@ namespace UnitySkills
 #else
             var go = GameObject.Find(vcamName);
             if (go == null) return new { error = "GameObject not found" };
+
+            // 记录快照用于撤销
+            WorkflowManager.SnapshotObject(go);
 
 #if CINEMACHINE_3
             var vcam = go.GetComponent<CinemachineCamera>();
@@ -390,6 +402,9 @@ namespace UnitySkills
                 return new { error = "Invalid stage. Use Body, Aim, or Noise." };
             }
 
+            // 记录快照用于撤销
+            WorkflowManager.SnapshotObject(go);
+
             // 1. Remove existing component at this stage
             var existing = vcam.GetCinemachineComponent(stageEnum);
             if (existing != null)
@@ -405,6 +420,7 @@ namespace UnitySkills
 
                 var comp = Undo.AddComponent(go, type);
                 if (comp == null) return new { error = "Failed to add component " + type.Name };
+                WorkflowManager.SnapshotCreatedComponent(comp);
             }
 
             EditorUtility.SetDirty(go);
@@ -482,6 +498,9 @@ namespace UnitySkills
             var go = GameObject.Find(vcamName);
             if (go == null) return new { error = "GameObject not found" };
 
+            // 记录快照用于撤销
+            WorkflowManager.SnapshotObject(go);
+
 #if CINEMACHINE_3
             var vcam = go.GetComponent<CinemachineCamera>();
             if (vcam == null) return new { error = "Not a CinemachineCamera" };
@@ -519,8 +538,15 @@ namespace UnitySkills
             var go = GameObject.Find(vcamName);
             if (go == null) return new { error = "GameObject not found" };
 
+            // 记录快照用于撤销
+            WorkflowManager.SnapshotObject(go);
+
             var perlin = go.GetComponent<CinemachineBasicMultiChannelPerlin>();
-            if (perlin == null) perlin = Undo.AddComponent<CinemachineBasicMultiChannelPerlin>(go);
+            if (perlin == null)
+            {
+                perlin = Undo.AddComponent<CinemachineBasicMultiChannelPerlin>(go);
+                WorkflowManager.SnapshotCreatedComponent(perlin);
+            }
 
 #if CINEMACHINE_3
             perlin.AmplitudeGain = amplitudeGain;
@@ -681,6 +707,7 @@ namespace UnitySkills
 #else
              var go = new GameObject(name);
              Undo.RegisterCreatedObjectUndo(go, "Create TargetGroup");
+             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
              var group = Undo.AddComponent<CinemachineTargetGroup>(go);
              return new { success = true, name = go.name };
 #endif
@@ -698,6 +725,7 @@ namespace UnitySkills
              var targetGo = GameObject.Find(targetName);
              if (targetGo == null) return new { error = "Target GameObject not found" };
 
+             WorkflowManager.SnapshotObject(groupGo);
              Undo.RecordObject(group, "Add TargetGroup Member");
              group.RemoveMember(targetGo.transform);
              group.AddMember(targetGo.transform, weight, radius);
@@ -712,6 +740,7 @@ namespace UnitySkills
              var targetGo = GameObject.Find(targetName);
              if (targetGo == null) return new { error = "Target GameObject not found" };
 
+             WorkflowManager.SnapshotObject(groupGo);
              Undo.RecordObject(group, "Add TargetGroup Member");
              group.RemoveMember(targetGo.transform);
              group.AddMember(targetGo.transform, weight, radius);
@@ -734,6 +763,7 @@ namespace UnitySkills
              var targetGo = GameObject.Find(targetName);
              if (targetGo == null) return new { error = "Target GameObject not found" };
 
+             WorkflowManager.SnapshotObject(groupGo);
              Undo.RecordObject(group, "Remove TargetGroup Member");
              group.RemoveMember(targetGo.transform);
 
@@ -747,6 +777,7 @@ namespace UnitySkills
              var targetGo = GameObject.Find(targetName);
              if (targetGo == null) return new { error = "Target GameObject not found" };
 
+             WorkflowManager.SnapshotObject(groupGo);
              Undo.RecordObject(group, "Remove TargetGroup Member");
              group.RemoveMember(targetGo.transform);
 
@@ -776,6 +807,7 @@ namespace UnitySkills
             var container = splineGo.GetComponent<SplineContainer>();
             if (container == null) return new { error = "GameObject does not have a SplineContainer" };
 
+            WorkflowManager.SnapshotObject(vcamGo);
             Undo.RecordObject(dolly, "Set Spline");
             dolly.Spline = container;
 
@@ -811,7 +843,9 @@ namespace UnitySkills
 
              if (go.GetComponent(type) != null) return new { success = true, message = "Extension " + type.Name + " already exists on " + vcamName };
 
+             WorkflowManager.SnapshotObject(go);
              var ext = Undo.AddComponent(go, type);
+             WorkflowManager.SnapshotCreatedComponent(ext);
              return new { success = true, message = "Added extension " + type.Name };
 #endif
         }
@@ -831,6 +865,7 @@ namespace UnitySkills
              var ext = go.GetComponent(type);
              if (ext == null) return new { error = "Extension " + type.Name + " not found on " + vcamName };
 
+             WorkflowManager.SnapshotObject(go);
              Undo.DestroyObjectImmediate(ext);
              return new { success = true, message = "Removed extension " + type.Name };
 #endif
@@ -844,6 +879,7 @@ namespace UnitySkills
 #else
             var go = new GameObject(name);
             Undo.RegisterCreatedObjectUndo(go, "Create Mixing Camera");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             var cam = Undo.AddComponent<CinemachineMixingCamera>(go);
             return new { success = true, name = name };
 #endif
@@ -865,6 +901,7 @@ namespace UnitySkills
             var childVcam = childGo.GetComponent<CinemachineVirtualCameraBase>();
             if (childVcam == null) return new { error = "Child is not a Cinemachine Virtual Camera" };
 
+            WorkflowManager.SnapshotObject(mixerGo);
             Undo.RecordObject(mixer, "Set Mixing Weight");
             mixer.SetWeight(childVcam, weight);
             EditorUtility.SetDirty(mixer);
@@ -881,6 +918,7 @@ namespace UnitySkills
 #else
             var go = new GameObject(name);
             Undo.RegisterCreatedObjectUndo(go, "Create Clear Shot");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             var cam = Undo.AddComponent<CinemachineClearShot>(go);
             return new { success = true, name = name };
 #endif
@@ -894,6 +932,7 @@ namespace UnitySkills
 #else
             var go = new GameObject(name);
             Undo.RegisterCreatedObjectUndo(go, "Create State Driven Camera");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             var cam = Undo.AddComponent<CinemachineStateDrivenCamera>(go);
 
             if (!string.IsNullOrEmpty(targetAnimatorName))
@@ -933,6 +972,7 @@ namespace UnitySkills
 
             int hash = Animator.StringToHash(stateName);
 
+            WorkflowManager.SnapshotObject(go);
             Undo.RecordObject(stateCam, "Add Instruction");
 
             var list = new List<CinemachineStateDrivenCamera.Instruction>();
@@ -964,6 +1004,7 @@ namespace UnitySkills
 
             int hash = Animator.StringToHash(stateName);
 
+            WorkflowManager.SnapshotObject(go);
             Undo.RecordObject(stateCam, "Add Instruction");
 
             var list = new List<CinemachineStateDrivenCamera.Instruction>();

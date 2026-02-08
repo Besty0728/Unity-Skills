@@ -209,7 +209,7 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 
 | 模块 | Skills 数量 | 核心功能 |
 |------|:-----------:|----------|
-| **Cinemachine** | 23 | 3.x全面支持/混合相机/ClearShot/TargetGroup/Spline |
+| **Cinemachine** | 23 | 2.x/3.x双版本支持/自动安装/混合相机/ClearShot/TargetGroup/Spline |
 | **Workflow** | 22 | 持久化历史/任务快照/会话级撤销/回滚 |
 | **Material** | 21 | 材质属性批量修改/HDR/PBR设置 |
 | **GameObject** | 18 | 创建/查找/变换同步/批量操作/层级管理 |

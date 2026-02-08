@@ -25,7 +25,7 @@
 - 🌍 **多实例支持**：自动端口发现、全局注册表，支持同时控制多个 Unity 项目。
 - 🤖 **深度集成**：独家支持 **Antigravity Slash Commands**，解锁 `/unity-skills` 交互新体验。
 - 🔌 **全环境兼容**：完美支持 Claude Code, Antigravity, Gemini CLI 等主流 AI 终端。
-- 🎥 **Cinemachine 3.x 支持**：全面适配 Unity 6 标准，支持 **MixingCamera**, **ClearShot**, **TargetGroup**, **Spline** 等高级相机控制。
+- 🎥 **Cinemachine 2.x/3.x 双版本支持**：自动检测 Unity 版本并安装对应 Cinemachine，支持 **MixingCamera**, **ClearShot**, **TargetGroup**, **Spline** 等高级相机控制。
 
 ---
 
@@ -130,7 +130,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 | **AssetImport** | 4 | 重新导入/贴图设置/模型设置 [v1.4] |
 | **Cleaner** | 5 | 未使用资源/重复文件/丢失引用检测 [v1.4] |
 | **Physics** | 4 | 物理材质/射线检测/层设置 |
-| **Cinemachine** | 10+ | 3.x全面支持/混合相机/TargetGroup/Spline [v1.4.1] |
+| **Cinemachine** | 23 | 2.x/3.x双版本自动安装/混合相机/TargetGroup/Spline [v1.4.2] |
 | **Package** | 7 | 包管理/Cinemachine安装/依赖处理 [v1.4.2 NEW] |
 
 > ⚠️ 大部分模块支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills 以提升性能。

@@ -122,6 +122,7 @@ namespace UnitySkills
             }
 
             // Record Undo
+            WorkflowManager.SnapshotObject(component);
             Undo.RecordObject(component, "Add Event Listener");
 
             // Resolve Method
@@ -219,6 +220,7 @@ namespace UnitySkills
             if (index < 0 || index >= unityEvent.GetPersistentEventCount())
                 return new { error = $"Index {index} out of range (count: {unityEvent.GetPersistentEventCount()})" };
 
+            WorkflowManager.SnapshotObject(component);
             Undo.RecordObject(component, "Remove Event Listener");
             UnityEventTools.RemovePersistentListener(unityEvent, index);
 

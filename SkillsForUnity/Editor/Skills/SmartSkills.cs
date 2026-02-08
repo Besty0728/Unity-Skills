@@ -80,6 +80,10 @@ namespace UnitySkills
             if (selected.Count == 0) 
                 return new { success = false, error = "No GameObjects selected. Select objects in Hierarchy first." };
 
+            // Workflow 支持
+            foreach (var go in selected)
+                WorkflowManager.SnapshotObject(go.transform);
+
             Undo.RecordObjects(selected.Select(g => g.transform).ToArray(), "Smart Layout");
 
             var startPos = selected[0].transform.position;
@@ -178,9 +182,10 @@ namespace UnitySkills
             bool isList = fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() == typeof(List<>);
             bool isArray = fieldType.IsArray;
 
-            if (!isList && !isArray) 
+            if (!isList && !isArray)
                 return new { success = false, error = $"Field '{fieldName}' is not a List<> or Array type" };
 
+            WorkflowManager.SnapshotObject(comp);
             Undo.RecordObject(comp, "Smart Bind");
 
             // Element Type

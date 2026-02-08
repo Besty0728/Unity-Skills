@@ -15,11 +15,22 @@ All notable changes to **UnitySkills** will be documented in this file.
   - `package_install_cinemachine` - 安装 Cinemachine（支持版本 2 或 3）
   - `package_get_cinemachine_status` - 获取 Cinemachine 安装状态
 
-### 🎬 Cinemachine 安装 UI
-- **UnitySkillsWindow**: 在 AI Config 标签页添加 Cinemachine 安装区域
-  - 显示当前安装状态
-  - 版本选择下拉框（2.10.5 / 3.1.3）
-  - CM3 自动安装 Splines 2.8.0 依赖
+### 🎬 Cinemachine 自动安装
+- **全自动安装**: 移除手动安装 UI，改为编辑器启动时自动安装
+  - Unity 6+: 自动安装 CM 3.1.3 + Splines 2.8.0
+  - Unity 2022 及以下: 自动安装 CM 2.10.5
+- **重试机制**: Package Manager 繁忙时自动重试（最多 5 次，间隔 3 秒）
+
+### 🔧 CM2/CM3 兼容性
+- **条件编译**: 通过 `CINEMACHINE_2` / `CINEMACHINE_3` 宏区分版本
+- **API 适配**: 修复 `CinemachineBrain.UpdateMethod` vs `m_UpdateMethod` 等 API 差异
+- **双版本测试**: 在 Unity 2022 (CM2) 和 Unity 6 (CM3) 上验证所有 Cinemachine Skills
+
+### 📝 Workflow 支持完善
+- **SmartSkills**: `smart_scene_layout`, `smart_reference_bind` 添加 Workflow 支持
+- **EventSkills**: `event_add_listener`, `event_remove_listener` 添加 Workflow 支持
+- **ValidationSkills**: `validate_fix_missing_scripts` 添加 Workflow 支持
+- 所有使用 Undo 的模块现已完整支持 Workflow 撤销/重做
 
 ---
 
