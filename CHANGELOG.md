@@ -2,6 +2,27 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.4.2] - 2026-02-09
+
+### 🆕 Package Manager Skills
+- **新增 `PackageManagerHelper.cs`**: 封装 Unity Package Manager API，支持包的安装、移除、刷新等操作。
+- **新增 `PackageSkills.cs`**: AI 可调用的包管理技能：
+  - `package_list` - 列出已安装包
+  - `package_check` - 检查包是否已安装
+  - `package_install` - 安装指定包
+  - `package_remove` - 移除包
+  - `package_refresh` - 刷新包列表缓存
+  - `package_install_cinemachine` - 安装 Cinemachine（支持版本 2 或 3）
+  - `package_get_cinemachine_status` - 获取 Cinemachine 安装状态
+
+### 🎬 Cinemachine 安装 UI
+- **UnitySkillsWindow**: 在 AI Config 标签页添加 Cinemachine 安装区域
+  - 显示当前安装状态
+  - 版本选择下拉框（2.10.5 / 3.1.3）
+  - CM3 自动安装 Splines 2.8.0 依赖
+
+---
+
 ## [1.4.1] - 2026-02-05
 
 *> This PR upgrades the project to support Cinemachine 3.x (Unity.Cinemachine namespace), which is standard in Unity 6.*

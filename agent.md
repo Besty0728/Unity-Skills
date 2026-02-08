@@ -9,7 +9,7 @@
 | 属性 | 值 |
 |------|-----|
 | **项目名称** | UnitySkills |
-| **版本** | 1.4.1 |
+| **版本** | 1.4.2 |
 | **技术栈** | C# (Unity Editor) + Python (Client) |
 | **Unity 版本** | 2021.3+ |
 | **协议** | MIT |
@@ -36,7 +36,7 @@
 │             SkillsForUnity (Unity Editor Plugin)             │
 │  ┌─────────────────┐  ┌─────────────┐  ┌─────────────────┐  │
 │  │ SkillsHttpServer│→ │ SkillRouter │→ │[UnitySkill] 方法│  │
-│  │ (Multi-Instance)│  │(Auto-Undo)  │  │  (272 Skills)   │  │
+│  │ (Multi-Instance)│  │(Auto-Undo)  │  │  (279 Skills)   │  │
 │  └─────────────────┘  └─────────────┘  └─────────────────┘  │
 │           ↓                  ↓                              │
 │  ┌─────────────────┐  ┌─────────────────────────────────┐   │
@@ -113,7 +113,7 @@ Unity-Skills/
 │           ├── ShaderSkills.cs         # Shader 操作 (6 skills)
 │           ├── NextGenSkills.cs        # Perception 场景理解 (3 skills)
 │           ├── SmartSkills.cs          # AI 推理技能 (3 skills)
-│           └── ... (37 个 *Skills.cs 文件, 共 272 Skills)
+│           └── ... (38 个 *Skills.cs 文件, 共 279 Skills)
 │
 ├── unity-skills/                   # 跨平台 AI Skill 模板 (分发给 AI 工具)
 │   ├── SKILL.md                    # 主 Skill 定义 (AI 读取)
@@ -205,7 +205,7 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 
 ---
 
-## 📊 Skills 模块汇总 (272)
+## 📊 Skills 模块汇总 (279)
 
 | 模块 | Skills 数量 | 核心功能 |
 |------|:-----------:|----------|
@@ -244,6 +244,7 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 | **Timeline** | 3 | 轨道创建/剪辑添加/绑定 |
 | **Optimization** | 2 | 纹理压缩批量优化/模型网格压缩 |
 | **Profiler** | 1 | 获取性能统计 (FPS/Memory) |
+| **Package** | 7 | 包管理/Cinemachine安装/依赖处理 [v1.4.2] |
 
 > ⚠️ **重要提示**：大部分模块都支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills。
 

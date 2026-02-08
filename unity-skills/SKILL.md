@@ -306,6 +306,17 @@ animationType: None, Legacy, Generic, Humanoid | meshCompression: Off, Low, Medi
 |-------|------------|
 | `profiler_get_stats` | (none) |
 
+### package
+| Skill | Parameters |
+|-------|------------|
+| `package_list` | (none) → returns installed packages |
+| `package_check` | packageId → returns installed, version |
+| `package_install` | packageId, version? |
+| `package_remove` | packageId |
+| `package_refresh` | (none) |
+| `package_install_cinemachine` | version? (2 or 3, default 3) |
+| `package_get_cinemachine_status` | (none) → returns cinemachine/splines status |
+
 ## Notes
 - Response: `{success: true/false, ...data}` or `{success: false, error: "message"}`
 - All operations auto-revert on failure

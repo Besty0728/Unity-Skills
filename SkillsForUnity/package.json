@@ -1,6 +1,6 @@
 {
   "name": "com.besty.unity-skills",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "displayName": "UnitySkills",
   "description": "AI automation skills specifically designed for Unity",
   "unity": "2021.3",
@@ -8,9 +8,7 @@
   "licensesUrl": "https://github.com/Besty0728/Unity-Skills/blob/main/LICENSE",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.0.2",
-    "com.unity.timeline": "1.7.7",
-    "com.unity.cinemachine": "3.1.3",
-    "com.unity.splines": "2.8.0"
+    "com.unity.timeline": "1.7.7"
   },
   "keywords": [
     "unity",
@@ -24,5 +22,22 @@
     "name": "Besty",
     "url": "https://github.com/Besty0728"
   },
+  "versionDefines": [
+    {
+      "name": "com.unity.cinemachine",
+      "expression": "[2.0,3.0)",
+      "define": "CINEMACHINE_2"
+    },
+    {
+      "name": "com.unity.cinemachine",
+      "expression": "[3.0,4.0)",
+      "define": "CINEMACHINE_3"
+    },
+    {
+      "name": "com.unity.splines",
+      "expression": "",
+      "define": "HAS_SPLINES"
+    }
+  ],
   "_fingerprint": "50c8e0b5aa74bedb7116f7d9d0ab6955f9798425"
 }

@@ -219,6 +219,15 @@ namespace UnitySkills
             {"test_get_result", "Get the result of a test run"},
             {"test_list", "List available tests"},
             {"test_cancel", "Cancel a running test"},
+
+            // Package Skills
+            {"package_list", "List all installed packages"},
+            {"package_check", "Check if a package is installed"},
+            {"package_install", "Install a package"},
+            {"package_remove", "Remove an installed package"},
+            {"package_refresh", "Refresh the installed package list cache"},
+            {"package_install_cinemachine", "Install Cinemachine (version 2 or 3)"},
+            {"package_get_cinemachine_status", "Get Cinemachine installation status"},
         };
 
         private static readonly Dictionary<string, string> _chinese = new Dictionary<string, string>
@@ -339,7 +348,16 @@ namespace UnitySkills
             {"test_get_result", "获取测试运行结果"},
             {"test_list", "列出可用测试"},
             {"test_cancel", "取消正在运行的测试"},
-            
+
+            // Package Skills
+            {"package_list", "列出所有已安装的包"},
+            {"package_check", "检查包是否已安装"},
+            {"package_install", "安装包"},
+            {"package_remove", "移除已安装的包"},
+            {"package_refresh", "刷新已安装包列表缓存"},
+            {"package_install_cinemachine", "安装 Cinemachine (版本 2 或 3)"},
+            {"package_get_cinemachine_status", "获取 Cinemachine 安装状态"},
+
             // New Skills (Batch 1.2.0+)
             {"gameobject_rename", "重命名游戏对象"},
             {"gameobject_rename_batch", "批量重命名游戏对象"},

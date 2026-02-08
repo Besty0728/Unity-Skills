@@ -591,7 +591,7 @@ namespace UnitySkills
                 job.ResponseJson = JsonConvert.SerializeObject(new {
                     status = "ok",
                     service = "UnitySkills",
-                    version = "1.4.1",
+                    version = "1.4.2",
                     serverRunning = _isRunning,
                     queuedRequests = QueuedRequests,
                     totalProcessed = _totalRequestsProcessed,

@@ -3,7 +3,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2021.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-270%2B-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-279-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -20,7 +20,7 @@
 ## 🚀 核心特性
 
 - ⚡ **极致效能**：支持 **Result Truncation** 与 **SKILL.md** 瘦身，最大化节省 Token。
-- 🛠️ **全能工具库**：内置 270+ Skills，支持 **Batch (批处理)** 操作，大幅减少 HTTP 通信开销，显著提升执行效率。
+- 🛠️ **全能工具库**：内置 279 Skills，支持 **Batch (批处理)** 操作，大幅减少 HTTP 通信开销，显著提升执行效率。
 - 🛡️ **安全第一**：支持 **Transactional (事务原子性)**，操作失败自动回滚，场景零残留。
 - 🌍 **多实例支持**：自动端口发现、全局注册表，支持同时控制多个 Unity 项目。
 - 🤖 **深度集成**：独家支持 **Antigravity Slash Commands**，解锁 `/unity-skills` 交互新体验。
@@ -104,7 +104,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 
 ---
 
-## 📦 Skills 分类概要 (270+)
+## 📦 Skills 分类概要 (279)
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -131,6 +131,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 | **Cleaner** | 5 | 未使用资源/重复文件/丢失引用检测 [v1.4] |
 | **Physics** | 4 | 物理材质/射线检测/层设置 |
 | **Cinemachine** | 10+ | 3.x全面支持/混合相机/TargetGroup/Spline [v1.4.1] |
+| **Package** | 7 | 包管理/Cinemachine安装/依赖处理 [v1.4.2 NEW] |
 
 > ⚠️ 大部分模块支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills 以提升性能。
 

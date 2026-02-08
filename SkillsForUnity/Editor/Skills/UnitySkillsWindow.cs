@@ -698,6 +698,11 @@ namespace UnitySkills
 
             EditorGUILayout.Space(10);
 
+            // Cinemachine Installation
+            DrawCinemachineSection();
+
+            EditorGUILayout.Space(10);
+
             // Custom Installation
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "自定义安装位置" : "Custom Install Location", EditorStyles.boldLabel);
@@ -906,6 +911,79 @@ namespace UnitySkills
         }
 
         private string L(string key) => Localization.Get(key);
+
+        // Cinemachine UI state
+        private int _cinemachineVersionIndex = 1; // 0=CM2, 1=CM3
+        private bool _cinemachineInstalling = false;
+
+        private void DrawCinemachineSection()
+        {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Cinemachine", EditorStyles.boldLabel);
+
+            var status = PackageManagerHelper.GetCinemachineStatus();
+
+            // 状态显示
+            EditorGUILayout.BeginHorizontal();
+            var statusLabel = Localization.Current == Localization.Language.Chinese ? "状态:" : "Status:";
+            EditorGUILayout.LabelField(statusLabel, GUILayout.Width(50));
+
+            if (status.installed)
+            {
+                var versionLabel = status.isVersion3 ? $"CM3 ({status.version})" : $"CM2 ({status.version})";
+                EditorGUILayout.LabelField("✓ " + versionLabel, EditorStyles.miniLabel);
+            }
+            else
+            {
+                EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "未安装" : "Not installed", EditorStyles.miniLabel);
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(4);
+
+            // 版本选择和安装
+            EditorGUILayout.BeginHorizontal();
+            var versionOptions = new[] { $"2.x ({PackageManagerHelper.Cinemachine2Version})", $"3.x ({PackageManagerHelper.Cinemachine3Version})" };
+            _cinemachineVersionIndex = EditorGUILayout.Popup(_cinemachineVersionIndex, versionOptions, GUILayout.Width(150));
+
+            GUI.enabled = !_cinemachineInstalling && !PackageManagerHelper.IsRefreshing;
+            var installLabel = status.installed
+                ? (Localization.Current == Localization.Language.Chinese ? "切换版本" : "Switch")
+                : (Localization.Current == Localization.Language.Chinese ? "安装" : "Install");
+
+            if (GUILayout.Button(installLabel, GUILayout.Width(80)))
+            {
+                _cinemachineInstalling = true;
+                PackageManagerHelper.InstallCinemachine(_cinemachineVersionIndex == 1, (success, msg) =>
+                {
+                    _cinemachineInstalling = false;
+                    if (success)
+                        EditorUtility.DisplayDialog("Success",
+                            Localization.Current == Localization.Language.Chinese
+                                ? $"Cinemachine {msg} 安装成功！"
+                                : $"Cinemachine {msg} installed successfully!", "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error",
+                            Localization.Current == Localization.Language.Chinese
+                                ? $"安装失败: {msg}"
+                                : $"Install failed: {msg}", "OK");
+                    Repaint();
+                });
+            }
+            GUI.enabled = true;
+            EditorGUILayout.EndHorizontal();
+
+            // CM3 依赖提示
+            if (_cinemachineVersionIndex == 1)
+            {
+                var hint = Localization.Current == Localization.Language.Chinese
+                    ? $"CM3 需要 Splines {PackageManagerHelper.SplinesVersion}，将自动安装"
+                    : $"CM3 requires Splines {PackageManagerHelper.SplinesVersion}, will be auto-installed";
+                EditorGUILayout.LabelField(hint, EditorStyles.miniLabel);
+            }
+
+            EditorGUILayout.EndVertical();
+        }
 
         // Helper methods for colored UI elements
         private void DrawColoredLabel(string text, Color color, bool bold)
