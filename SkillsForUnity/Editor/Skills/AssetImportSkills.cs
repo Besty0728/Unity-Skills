@@ -24,6 +24,10 @@ namespace UnitySkills
                     return new { success = false, error = $"Asset not found: {assetPath}" };
             }
 
+            // 重新导入前记录资产状态
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
+
             AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
             return new { success = true, reimported = assetPath };
         }
@@ -56,6 +60,10 @@ namespace UnitySkills
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null)
                 return new { success = false, error = $"Not a texture or not found: {assetPath}" };
+
+            // 修改前记录资产状态
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
 
             bool changed = false;
 
@@ -132,6 +140,10 @@ namespace UnitySkills
             var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null)
                 return new { success = false, error = $"Not a model or not found: {assetPath}" };
+
+            // 修改前记录资产状态
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
 
             bool changed = false;
 

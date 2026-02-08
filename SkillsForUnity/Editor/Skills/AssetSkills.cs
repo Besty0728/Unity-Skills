@@ -23,6 +23,10 @@ namespace UnitySkills
             File.Copy(sourcePath, destinationPath, true);
             AssetDatabase.ImportAsset(destinationPath);
 
+            // 记录新创建的资产
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(destinationPath);
+            if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
+
             return new { success = true, imported = destinationPath };
         }
 
@@ -32,6 +36,10 @@ namespace UnitySkills
             if (!File.Exists(assetPath) && !Directory.Exists(assetPath))
                 return new { error = $"Asset not found: {assetPath}" };
 
+            // 删除前记录资产状态（用于恢复）
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
+
             AssetDatabase.DeleteAsset(assetPath);
             return new { success = true, deleted = assetPath };
         }
@@ -39,11 +47,14 @@ namespace UnitySkills
         [UnitySkill("asset_move", "Move or rename an asset")]
         public static object AssetMove(string sourcePath, string destinationPath)
         {
+            // 移动前记录资产状态
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(sourcePath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
+
             var error = AssetDatabase.MoveAsset(sourcePath, destinationPath);
             if (!string.IsNullOrEmpty(error))
                 return new { error };
 
-            return new { success = true, from = sourcePath, to = destinationPath };
             return new { success = true, from = sourcePath, to = destinationPath };
         }
 
@@ -70,6 +81,8 @@ namespace UnitySkills
                             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
                             File.Copy(item.sourcePath, item.destinationPath, true);
                             AssetDatabase.ImportAsset(item.destinationPath);
+                            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.destinationPath);
+                            if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
                             results.Add(new { target = item.destinationPath, success = true });
                             successCount++;
                         } catch (System.Exception ex) {
@@ -102,6 +115,8 @@ namespace UnitySkills
                 try {
                     foreach (var item in itemList) {
                         try {
+                            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.path);
+                            if (asset != null) WorkflowManager.SnapshotObject(asset);
                             if (AssetDatabase.DeleteAsset(item.path)) {
                                 results.Add(new { target = item.path, success = true });
                                 successCount++;
@@ -137,6 +152,8 @@ namespace UnitySkills
                 AssetDatabase.StartAssetEditing();
                 try {
                     foreach (var item in itemList) {
+                        var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.sourcePath);
+                        if (asset != null) WorkflowManager.SnapshotObject(asset);
                         string error = AssetDatabase.MoveAsset(item.sourcePath, item.destinationPath);
                         if (string.IsNullOrEmpty(error)) {
                              results.Add(new { target = item.sourcePath, success = true, from = item.sourcePath, to = item.destinationPath });
@@ -161,6 +178,11 @@ namespace UnitySkills
         {
             var newPath = AssetDatabase.GenerateUniqueAssetPath(assetPath);
             AssetDatabase.CopyAsset(assetPath, newPath);
+
+            // 记录新创建的资产
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(newPath);
+            if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
+
             return new { success = true, original = assetPath, copy = newPath };
         }
 

@@ -167,12 +167,23 @@ namespace UnitySkills
 
             string json = "";
             string assetPath = "";
+            string assetBytesBase64 = "";
 
             try
             {
                 json = EditorJsonUtility.ToJson(obj);
                 // For assets, also store the asset path for better restoration
                 assetPath = AssetDatabase.GetAssetPath(obj);
+
+                // Backup asset file bytes (exclude .cs scripts)
+                if (!string.IsNullOrEmpty(assetPath) && !assetPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                {
+                    string fullPath = Path.Combine(Application.dataPath, "..", assetPath);
+                    if (File.Exists(fullPath))
+                    {
+                        assetBytesBase64 = Convert.ToBase64String(File.ReadAllBytes(fullPath));
+                    }
+                }
             }
             catch { }
 
@@ -183,7 +194,8 @@ namespace UnitySkills
                 objectName = obj.name,
                 typeName = obj.GetType().Name,
                 type = type,
-                assetPath = assetPath
+                assetPath = assetPath,
+                assetBytesBase64 = assetBytesBase64
             });
 
             // Incremental save for robustness (in case of crash)
@@ -221,6 +233,45 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// Records a newly created asset (Material, Prefab, ScriptableObject, etc.) for undo tracking.
+        /// </summary>
+        public static void SnapshotCreatedAsset(UnityEngine.Object asset)
+        {
+            if (_currentTask == null || asset == null) return;
+
+            string assetPath = AssetDatabase.GetAssetPath(asset);
+            if (string.IsNullOrEmpty(assetPath)) return;
+
+            string gid = GlobalObjectId.GetGlobalObjectIdSlow(asset).ToString();
+
+            // Check if already snapshotted in this task
+            if (_currentTask.snapshots.Any(s => s.globalObjectId == gid))
+                return;
+
+            string assetBytesBase64 = "";
+            // Backup asset file bytes (exclude .cs scripts)
+            if (!assetPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+            {
+                string fullPath = Path.Combine(Application.dataPath, "..", assetPath);
+                if (File.Exists(fullPath))
+                {
+                    assetBytesBase64 = Convert.ToBase64String(File.ReadAllBytes(fullPath));
+                }
+            }
+
+            _currentTask.snapshots.Add(new ObjectSnapshot
+            {
+                globalObjectId = gid,
+                originalJson = EditorJsonUtility.ToJson(asset),
+                objectName = asset.name,
+                typeName = asset.GetType().Name,
+                type = SnapshotType.Created,
+                assetPath = assetPath,
+                assetBytesBase64 = assetBytesBase64
+            });
+        }
+
+        /// <summary>
         /// Records a newly created GameObject for undo/redo tracking.
         /// Stores primitiveType for recreation during redo.
         /// </summary>
@@ -234,15 +285,37 @@ namespace UnitySkills
             if (_currentTask.snapshots.Any(s => s.globalObjectId == gid))
                 return;
 
-            _currentTask.snapshots.Add(new ObjectSnapshot
+            var t = go.transform;
+            var snapshot = new ObjectSnapshot
             {
                 globalObjectId = gid,
                 originalJson = EditorJsonUtility.ToJson(go),
                 objectName = go.name,
                 typeName = "GameObject",
                 type = SnapshotType.Created,
-                primitiveType = primitiveType ?? ""
-            });
+                primitiveType = primitiveType ?? "",
+                posX = t.position.x, posY = t.position.y, posZ = t.position.z,
+                rotX = t.rotation.x, rotY = t.rotation.y, rotZ = t.rotation.z, rotW = t.rotation.w,
+                scaleX = t.localScale.x, scaleY = t.localScale.y, scaleZ = t.localScale.z,
+                components = new List<ComponentData>()
+            };
+
+            // Save all components data
+            foreach (var comp in go.GetComponents<Component>())
+            {
+                if (comp == null || comp is Transform) continue;
+                try
+                {
+                    snapshot.components.Add(new ComponentData
+                    {
+                        typeName = comp.GetType().AssemblyQualifiedName,
+                        json = EditorJsonUtility.ToJson(comp)
+                    });
+                }
+                catch { }
+            }
+
+            _currentTask.snapshots.Add(snapshot);
         }
 
 
@@ -286,8 +359,8 @@ namespace UnitySkills
                     var createdObj = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(createdGid);
                     if (createdObj != null)
                     {
-                        // Save current state for redo
-                        redoTask.snapshots.Add(new ObjectSnapshot
+                        // Save current state for redo (including transform for GameObjects)
+                        var redoSnapshot = new ObjectSnapshot
                         {
                             globalObjectId = snapshot.globalObjectId,
                             originalJson = EditorJsonUtility.ToJson(createdObj),
@@ -296,8 +369,35 @@ namespace UnitySkills
                             type = SnapshotType.Created,
                             componentTypeName = snapshot.componentTypeName,
                             parentGameObjectId = snapshot.parentGameObjectId,
-                            assetPath = snapshot.assetPath
-                        });
+                            assetPath = snapshot.assetPath,
+                            primitiveType = snapshot.primitiveType,
+                            components = new List<ComponentData>()
+                        };
+
+                        // Save transform and components for GameObjects
+                        if (createdObj is GameObject go)
+                        {
+                            var t = go.transform;
+                            redoSnapshot.posX = t.position.x; redoSnapshot.posY = t.position.y; redoSnapshot.posZ = t.position.z;
+                            redoSnapshot.rotX = t.rotation.x; redoSnapshot.rotY = t.rotation.y; redoSnapshot.rotZ = t.rotation.z; redoSnapshot.rotW = t.rotation.w;
+                            redoSnapshot.scaleX = t.localScale.x; redoSnapshot.scaleY = t.localScale.y; redoSnapshot.scaleZ = t.localScale.z;
+
+                            foreach (var comp in go.GetComponents<Component>())
+                            {
+                                if (comp == null || comp is Transform) continue;
+                                try
+                                {
+                                    redoSnapshot.components.Add(new ComponentData
+                                    {
+                                        typeName = comp.GetType().AssemblyQualifiedName,
+                                        json = EditorJsonUtility.ToJson(comp)
+                                    });
+                                }
+                                catch { }
+                            }
+                        }
+
+                        redoTask.snapshots.Add(redoSnapshot);
                     }
 
                     // For components: use parentGameObjectId and componentTypeName for reliable deletion
@@ -328,6 +428,23 @@ namespace UnitySkills
                     var obj = createdObj;
                     if (obj == null) continue;
 
+                    // Handle created assets - delete the asset file
+                    if (!string.IsNullOrEmpty(snapshot.assetPath))
+                    {
+                        // Save asset bytes for redo before deleting
+                        string fullPath = Path.Combine(Application.dataPath, "..", snapshot.assetPath);
+                        if (File.Exists(fullPath) && !snapshot.assetPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var lastSnapshot = redoTask.snapshots.LastOrDefault();
+                            if (lastSnapshot != null && string.IsNullOrEmpty(lastSnapshot.assetBytesBase64))
+                            {
+                                lastSnapshot.assetBytesBase64 = Convert.ToBase64String(File.ReadAllBytes(fullPath));
+                            }
+                        }
+                        AssetDatabase.DeleteAsset(snapshot.assetPath);
+                        continue;
+                    }
+
                     // This was a NEW object created by AI, so we delete it to undo
                     if (obj is GameObject go2) Undo.DestroyObjectImmediate(go2);
                     else if (obj is Component comp2) Undo.DestroyObjectImmediate(comp2);
@@ -342,7 +459,15 @@ namespace UnitySkills
                     var obj = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid);
                     if (obj == null) continue;
 
-                    // Capture current state for redo
+                    // Capture current state for redo (including asset bytes)
+                    string currentAssetBytes = "";
+                    if (!string.IsNullOrEmpty(snapshot.assetPath) && !snapshot.assetPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string fullPath = Path.Combine(Application.dataPath, "..", snapshot.assetPath);
+                        if (File.Exists(fullPath))
+                            currentAssetBytes = Convert.ToBase64String(File.ReadAllBytes(fullPath));
+                    }
+
                     redoTask.snapshots.Add(new ObjectSnapshot
                     {
                         globalObjectId = snapshot.globalObjectId,
@@ -350,12 +475,23 @@ namespace UnitySkills
                         objectName = snapshot.objectName,
                         typeName = snapshot.typeName,
                         type = SnapshotType.Modified,
-                        assetPath = snapshot.assetPath
+                        assetPath = snapshot.assetPath,
+                        assetBytesBase64 = currentAssetBytes
                     });
 
-                    Undo.RecordObject(obj, "Undo Workflow Modification");
-                    EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, obj);
-                    EditorUtility.SetDirty(obj);
+                    // Restore from asset bytes backup if available
+                    if (!string.IsNullOrEmpty(snapshot.assetBytesBase64) && !string.IsNullOrEmpty(snapshot.assetPath))
+                    {
+                        string fullPath = Path.Combine(Application.dataPath, "..", snapshot.assetPath);
+                        File.WriteAllBytes(fullPath, Convert.FromBase64String(snapshot.assetBytesBase64));
+                        AssetDatabase.ImportAsset(snapshot.assetPath);
+                    }
+                    else
+                    {
+                        Undo.RecordObject(obj, "Undo Workflow Modification");
+                        EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, obj);
+                        EditorUtility.SetDirty(obj);
+                    }
                 }
             }
 
@@ -448,24 +584,95 @@ namespace UnitySkills
 
                         newGo.name = snapshot.objectName;
 
-                        // Restore transform and other properties from JSON
-                        if (!string.IsNullOrEmpty(snapshot.originalJson))
+                        // Restore transform from stored data
+                        newGo.transform.position = new Vector3(snapshot.posX, snapshot.posY, snapshot.posZ);
+                        newGo.transform.rotation = new Quaternion(snapshot.rotX, snapshot.rotY, snapshot.rotZ, snapshot.rotW);
+                        newGo.transform.localScale = new Vector3(snapshot.scaleX, snapshot.scaleY, snapshot.scaleZ);
+
+                        // Restore all components
+                        if (snapshot.components != null)
                         {
-                            EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, newGo);
+                            foreach (var compData in snapshot.components)
+                            {
+                                if (string.IsNullOrEmpty(compData.typeName)) continue;
+                                var compType = Type.GetType(compData.typeName);
+                                if (compType == null) compType = ComponentSkills.FindComponentType(compData.typeName);
+                                if (compType == null) continue;
+
+                                // Skip if component already exists (e.g., MeshRenderer on primitives)
+                                var existing = newGo.GetComponent(compType);
+                                if (existing != null)
+                                {
+                                    if (!string.IsNullOrEmpty(compData.json))
+                                        EditorJsonUtility.FromJsonOverwrite(compData.json, existing);
+                                }
+                                else
+                                {
+                                    var comp = newGo.AddComponent(compType);
+                                    if (comp != null && !string.IsNullOrEmpty(compData.json))
+                                        EditorJsonUtility.FromJsonOverwrite(compData.json, comp);
+                                }
+                            }
                         }
 
                         Undo.RegisterCreatedObjectUndo(newGo, "Redo Create " + snapshot.objectName);
 
                         // Record for future undo
-                        newTask.snapshots.Add(new ObjectSnapshot
+                        var t = newGo.transform;
+                        var newSnapshot = new ObjectSnapshot
                         {
                             globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(newGo).ToString(),
                             originalJson = EditorJsonUtility.ToJson(newGo),
                             objectName = newGo.name,
                             typeName = "GameObject",
                             type = SnapshotType.Created,
-                            primitiveType = snapshot.primitiveType
-                        });
+                            primitiveType = snapshot.primitiveType,
+                            posX = t.position.x, posY = t.position.y, posZ = t.position.z,
+                            rotX = t.rotation.x, rotY = t.rotation.y, rotZ = t.rotation.z, rotW = t.rotation.w,
+                            scaleX = t.localScale.x, scaleY = t.localScale.y, scaleZ = t.localScale.z,
+                            components = new List<ComponentData>()
+                        };
+
+                        foreach (var comp in newGo.GetComponents<Component>())
+                        {
+                            if (comp == null || comp is Transform) continue;
+                            try
+                            {
+                                newSnapshot.components.Add(new ComponentData
+                                {
+                                    typeName = comp.GetType().AssemblyQualifiedName,
+                                    json = EditorJsonUtility.ToJson(comp)
+                                });
+                            }
+                            catch { }
+                        }
+
+                        newTask.snapshots.Add(newSnapshot);
+                    }
+                    else if (!string.IsNullOrEmpty(snapshot.assetPath) && !string.IsNullOrEmpty(snapshot.assetBytesBase64))
+                    {
+                        // Re-create asset from backup bytes
+                        string fullPath = Path.Combine(Application.dataPath, "..", snapshot.assetPath);
+                        string dir = Path.GetDirectoryName(fullPath);
+                        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                        File.WriteAllBytes(fullPath, Convert.FromBase64String(snapshot.assetBytesBase64));
+                        AssetDatabase.ImportAsset(snapshot.assetPath);
+
+                        var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(snapshot.assetPath);
+                        if (asset != null)
+                        {
+                            newTask.snapshots.Add(new ObjectSnapshot
+                            {
+                                globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(asset).ToString(),
+                                originalJson = EditorJsonUtility.ToJson(asset),
+                                objectName = asset.name,
+                                typeName = snapshot.typeName,
+                                type = SnapshotType.Created,
+                                assetPath = snapshot.assetPath,
+                                assetBytesBase64 = snapshot.assetBytesBase64
+                            });
+                        }
                     }
                     else
                     {
@@ -481,7 +688,15 @@ namespace UnitySkills
                     var obj = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid);
                     if (obj == null) continue;
 
-                    // Save current state for future undo
+                    // Save current state for future undo (including asset bytes)
+                    string currentAssetBytes = "";
+                    if (!string.IsNullOrEmpty(snapshot.assetPath) && !snapshot.assetPath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string fullPath = Path.Combine(Application.dataPath, "..", snapshot.assetPath);
+                        if (File.Exists(fullPath))
+                            currentAssetBytes = Convert.ToBase64String(File.ReadAllBytes(fullPath));
+                    }
+
                     newTask.snapshots.Add(new ObjectSnapshot
                     {
                         globalObjectId = snapshot.globalObjectId,
@@ -489,12 +704,23 @@ namespace UnitySkills
                         objectName = snapshot.objectName,
                         typeName = snapshot.typeName,
                         type = SnapshotType.Modified,
-                        assetPath = snapshot.assetPath
+                        assetPath = snapshot.assetPath,
+                        assetBytesBase64 = currentAssetBytes
                     });
 
-                    Undo.RecordObject(obj, "Redo Workflow Modification");
-                    EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, obj);
-                    EditorUtility.SetDirty(obj);
+                    // Restore from asset bytes backup if available
+                    if (!string.IsNullOrEmpty(snapshot.assetBytesBase64) && !string.IsNullOrEmpty(snapshot.assetPath))
+                    {
+                        string fullPath = Path.Combine(Application.dataPath, "..", snapshot.assetPath);
+                        File.WriteAllBytes(fullPath, Convert.FromBase64String(snapshot.assetBytesBase64));
+                        AssetDatabase.ImportAsset(snapshot.assetPath);
+                    }
+                    else
+                    {
+                        Undo.RecordObject(obj, "Redo Workflow Modification");
+                        EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, obj);
+                        EditorUtility.SetDirty(obj);
+                    }
                 }
             }
 

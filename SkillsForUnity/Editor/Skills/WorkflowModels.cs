@@ -42,6 +42,7 @@ namespace UnitySkills
         public string typeName;       // e.g. "GameObject", "Transform"
         public SnapshotType type = SnapshotType.Modified;
         public string assetPath;      // For assets: path in project (e.g., "Assets/Materials/Red.mat")
+        public string assetBytesBase64; // Base64 encoded asset file backup (excludes .cs files)
 
         // For Created type component undo - stores extra info for reliable deletion
         public string componentTypeName;   // Full type name of the component (e.g., "UnityEngine.Rigidbody")
@@ -49,6 +50,21 @@ namespace UnitySkills
 
         // For Created type GameObject redo - stores info for recreation
         public string primitiveType;       // PrimitiveType name (Cube, Sphere, etc.) or empty for empty GameObject
+
+        // Transform data for GameObject recreation
+        public float posX, posY, posZ;
+        public float rotX, rotY, rotZ, rotW;
+        public float scaleX = 1, scaleY = 1, scaleZ = 1;
+
+        // All components data for full GameObject restoration
+        public List<ComponentData> components = new List<ComponentData>();
+    }
+
+    [Serializable]
+    public class ComponentData
+    {
+        public string typeName;      // Full type name
+        public string json;          // Serialized component data
     }
 
     /// <summary>
