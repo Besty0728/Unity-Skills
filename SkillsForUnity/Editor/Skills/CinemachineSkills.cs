@@ -464,7 +464,7 @@ namespace UnitySkills
                 activeCamera = activeCam ? activeCam.name : "None",
                 isBlending = brain.IsBlending,
                 activeBlend = brain.ActiveBlend?.Description ?? "None",
-                updateMethod = brain.UpdateMethod.ToString()
+                updateMethod = brain.m_UpdateMethod.ToString()
             };
 #endif
         }
