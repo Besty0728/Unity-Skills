@@ -198,10 +198,14 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void Initialize()
         {
-            RefreshPackageList(success =>
+            // 延迟执行，等待 Package Manager 完成初始化
+            EditorApplication.delayCall += () =>
             {
-                if (success) AutoInstallCinemachineIfNeeded();
-            });
+                RefreshPackageList(success =>
+                {
+                    if (success) AutoInstallCinemachineIfNeeded();
+                });
+            };
         }
 
         /// <summary>
