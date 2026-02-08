@@ -220,6 +220,31 @@ namespace UnitySkills
             });
         }
 
+        /// <summary>
+        /// Records a newly created GameObject for undo/redo tracking.
+        /// Stores primitiveType for recreation during redo.
+        /// </summary>
+        public static void SnapshotCreatedGameObject(GameObject go, string primitiveType = null)
+        {
+            if (_currentTask == null || go == null) return;
+
+            string gid = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString();
+
+            // Check if already snapshotted in this task
+            if (_currentTask.snapshots.Any(s => s.globalObjectId == gid))
+                return;
+
+            _currentTask.snapshots.Add(new ObjectSnapshot
+            {
+                globalObjectId = gid,
+                originalJson = EditorJsonUtility.ToJson(go),
+                objectName = go.name,
+                typeName = "GameObject",
+                type = SnapshotType.Created,
+                primitiveType = primitiveType ?? ""
+            });
+        }
+
 
         /// <summary>
         /// Undoes a specific task.
@@ -406,12 +431,45 @@ namespace UnitySkills
                             }
                         }
                     }
+                    else if (snapshot.typeName == "GameObject")
+                    {
+                        // Re-create GameObject using stored primitiveType
+                        GameObject newGo = null;
+
+                        if (!string.IsNullOrEmpty(snapshot.primitiveType) &&
+                            Enum.TryParse<PrimitiveType>(snapshot.primitiveType, out var pt))
+                        {
+                            newGo = GameObject.CreatePrimitive(pt);
+                        }
+                        else
+                        {
+                            newGo = new GameObject();
+                        }
+
+                        newGo.name = snapshot.objectName;
+
+                        // Restore transform and other properties from JSON
+                        if (!string.IsNullOrEmpty(snapshot.originalJson))
+                        {
+                            EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, newGo);
+                        }
+
+                        Undo.RegisterCreatedObjectUndo(newGo, "Redo Create " + snapshot.objectName);
+
+                        // Record for future undo
+                        newTask.snapshots.Add(new ObjectSnapshot
+                        {
+                            globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(newGo).ToString(),
+                            originalJson = EditorJsonUtility.ToJson(newGo),
+                            objectName = newGo.name,
+                            typeName = "GameObject",
+                            type = SnapshotType.Created,
+                            primitiveType = snapshot.primitiveType
+                        });
+                    }
                     else
                     {
-                        // Re-create GameObject - this is more complex, we restore from JSON if possible
-                        // For now, we can only restore if the object still exists in some form
-                        // Full recreation would require storing prefab/primitive type info
-                        Debug.LogWarning($"{LOG_WARNING} Cannot fully recreate deleted GameObject: {snapshot.objectName}. Consider using Unity's Undo (Ctrl+Z) instead.");
+                        Debug.LogWarning($"{LOG_WARNING} Cannot recreate object: {snapshot.objectName} (type: {snapshot.typeName})");
                     }
                 }
                 else

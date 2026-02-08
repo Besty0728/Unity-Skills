@@ -583,6 +583,7 @@ namespace UnitySkills
                 var tmpComp = go.GetComponent(_tmpTextType);
                 if (tmpComp != null)
                 {
+                    WorkflowManager.SnapshotObject(tmpComp);
                     Undo.RecordObject(tmpComp, "Set Text");
                     SetTextOnComponent(tmpComp, text);
                     return new { success = true, name = go.name, text, usingTMP = true };
@@ -593,6 +594,7 @@ namespace UnitySkills
             var textComp = go.GetComponent<Text>();
             if (textComp != null)
             {
+                WorkflowManager.SnapshotObject(textComp);
                 Undo.RecordObject(textComp, "Set Text");
                 textComp.text = text;
                 return new { success = true, name = go.name, text, usingTMP = false };
@@ -692,6 +694,7 @@ namespace UnitySkills
             var rect = go.GetComponent<RectTransform>();
             if (rect == null) return new { error = "GameObject has no RectTransform" };
 
+            WorkflowManager.SnapshotObject(rect);
             Undo.RecordObject(rect, "Set Anchor");
 
             Vector2 anchorMin, anchorMax, pivot;
@@ -745,6 +748,7 @@ namespace UnitySkills
             var rect = go.GetComponent<RectTransform>();
             if (rect == null) return new { error = "GameObject has no RectTransform" };
 
+            WorkflowManager.SnapshotObject(rect);
             Undo.RecordObject(rect, "Set Rect");
 
             // Size

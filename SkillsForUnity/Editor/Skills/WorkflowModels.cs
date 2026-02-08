@@ -46,6 +46,9 @@ namespace UnitySkills
         // For Created type component undo - stores extra info for reliable deletion
         public string componentTypeName;   // Full type name of the component (e.g., "UnityEngine.Rigidbody")
         public string parentGameObjectId;  // GlobalObjectId of the parent GameObject
+
+        // For Created type GameObject redo - stores info for recreation
+        public string primitiveType;       // PrimitiveType name (Cube, Sphere, etc.) or empty for empty GameObject
     }
 
     /// <summary>

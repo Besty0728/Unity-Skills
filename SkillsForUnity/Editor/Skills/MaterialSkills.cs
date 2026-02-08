@@ -183,6 +183,7 @@ namespace UnitySkills
             if (material == null)
                 return new { error = $"Material not found: {materialPath}" };
 
+            WorkflowManager.SnapshotObject(renderer);
             Undo.RecordObject(renderer, "Assign Material");
             renderer.sharedMaterial = material;
 
@@ -318,7 +319,8 @@ namespace UnitySkills
             {
                 color = new Color(r * intensity, g * intensity, b * intensity, a);
             }
-            
+
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Material Color");
             
             // Try setting color with detected property, fallback to common names
@@ -398,7 +400,8 @@ namespace UnitySkills
                         }
 
                         var color = new Color(item.r, item.g, item.b, item.a);
-                        
+
+                        WorkflowManager.SnapshotObject(material);
                         Undo.RecordObject(material, "Batch Set Color");
 
                         bool colorSet = false;
@@ -465,7 +468,8 @@ namespace UnitySkills
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
-            
+
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Material Emission");
             
             // Calculate HDR color
@@ -574,6 +578,7 @@ namespace UnitySkills
             if (texture == null)
                 return new { error = $"Texture not found: {texturePath}" };
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Texture");
             material.SetTexture(propertyName, texture);
             
@@ -605,6 +610,7 @@ namespace UnitySkills
                 };
             }
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Material Float");
             material.SetFloat(propertyName, value);
             
@@ -624,12 +630,13 @@ namespace UnitySkills
 
             if (!material.HasProperty(propertyName))
             {
-                return new { 
+                return new {
                     error = $"Property not found: {propertyName}",
                     shaderName = material.shader.name
                 };
             }
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Material Int");
             material.SetInt(propertyName, value);
             
@@ -650,12 +657,13 @@ namespace UnitySkills
 
             if (!material.HasProperty(propertyName))
             {
-                return new { 
+                return new {
                     error = $"Property not found: {propertyName}",
                     shaderName = material.shader.name
                 };
             }
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Material Vector");
             material.SetVector(propertyName, new Vector4(x, y, z, w));
             
@@ -674,6 +682,7 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(propertyName))
                 propertyName = ProjectSkills.GetMainTexturePropertyName();
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Texture Offset");
             material.SetTextureOffset(propertyName, new Vector2(x, y));
             
@@ -692,6 +701,7 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(propertyName))
                 propertyName = ProjectSkills.GetMainTexturePropertyName();
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Texture Scale");
             material.SetTextureScale(propertyName, new Vector2(x, y));
             
@@ -714,6 +724,7 @@ namespace UnitySkills
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Material Keyword");
             
             if (enable)
@@ -738,6 +749,7 @@ namespace UnitySkills
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Render Queue");
             material.renderQueue = renderQueue;
             
@@ -774,12 +786,13 @@ namespace UnitySkills
             var shader = Shader.Find(shaderName);
             if (shader == null)
             {
-                return new { 
+                return new {
                     error = $"Shader not found: {shaderName}",
                     suggestion = "Use project_get_render_pipeline to see recommended shaders"
                 };
             }
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Shader");
             material.shader = shader;
             
@@ -807,6 +820,7 @@ namespace UnitySkills
                 };
             }
 
+            WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set GI Flags");
             material.globalIlluminationFlags = giFlags;
             

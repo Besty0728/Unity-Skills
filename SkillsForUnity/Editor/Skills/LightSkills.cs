@@ -89,6 +89,7 @@ namespace UnitySkills
             if (light == null)
                 return new { error = $"No Light component on {go.name}" };
 
+            WorkflowManager.SnapshotObject(light);
             Undo.RecordObject(light, "Set Light Properties");
 
             // Update color if any color component provided
@@ -201,6 +202,7 @@ namespace UnitySkills
             if (light == null)
                 return new { error = $"No Light component on {go.name}" };
 
+            WorkflowManager.SnapshotObject(light);
             Undo.RecordObject(light, "Set Light Enabled");
             light.enabled = enabled;
 
@@ -241,6 +243,7 @@ namespace UnitySkills
                         continue;
                     }
 
+                    WorkflowManager.SnapshotObject(light);
                     Undo.RecordObject(light, "Batch Set Light Enabled");
                     light.enabled = item.enabled;
                     results.Add(new { target = go.name, success = true, enabled = item.enabled });
@@ -297,6 +300,7 @@ namespace UnitySkills
                         continue;
                     }
 
+                    WorkflowManager.SnapshotObject(light);
                     Undo.RecordObject(light, "Batch Set Light Properties");
 
                     if (item.r.HasValue || item.g.HasValue || item.b.HasValue)

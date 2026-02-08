@@ -35,11 +35,12 @@ namespace UnitySkills
                         string primitiveType = item.primitiveType;
 
                         // Support "Empty", "", or null to create an empty GameObject
-                        if (string.IsNullOrEmpty(primitiveType) || 
+                        if (string.IsNullOrEmpty(primitiveType) ||
                             primitiveType.Equals("Empty", System.StringComparison.OrdinalIgnoreCase) ||
                             primitiveType.Equals("None", System.StringComparison.OrdinalIgnoreCase))
                         {
                             go = new GameObject(item.name);
+                            primitiveType = null; // 标准化为 null
                         }
                         else if (System.Enum.TryParse<PrimitiveType>(primitiveType, true, out var pt))
                         {
@@ -60,7 +61,7 @@ namespace UnitySkills
                             go.transform.localScale = new Vector3(item.scaleX, item.scaleY, item.scaleZ);
 
                         Undo.RegisterCreatedObjectUndo(go, "Batch Create " + item.name);
-                        WorkflowManager.SnapshotObject(go, SnapshotType.Created);
+                        WorkflowManager.SnapshotCreatedGameObject(go, primitiveType);
 
                         results.Add(new
                         {
@@ -115,11 +116,12 @@ namespace UnitySkills
             GameObject go;
 
             // Support "Empty", "", or null to create an empty GameObject
-            if (string.IsNullOrEmpty(primitiveType) || 
+            if (string.IsNullOrEmpty(primitiveType) ||
                 primitiveType.Equals("Empty", System.StringComparison.OrdinalIgnoreCase) ||
                 primitiveType.Equals("None", System.StringComparison.OrdinalIgnoreCase))
             {
                 go = new GameObject(name);
+                primitiveType = null; // 标准化为 null
             }
             else if (System.Enum.TryParse<PrimitiveType>(primitiveType, true, out var pt))
             {
@@ -133,7 +135,7 @@ namespace UnitySkills
 
             go.transform.position = new Vector3(x, y, z);
             Undo.RegisterCreatedObjectUndo(go, "Create " + name);
-            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
+            WorkflowManager.SnapshotCreatedGameObject(go, primitiveType);
 
             return new
             {
@@ -155,6 +157,7 @@ namespace UnitySkills
             if (error != null) return error;
 
             var oldName = go.name;
+            WorkflowManager.SnapshotObject(go);
             Undo.RecordObject(go, "Rename GameObject");
             go.name = newName;
 
@@ -203,6 +206,7 @@ namespace UnitySkills
                         }
 
                         var oldName = go.name;
+                        WorkflowManager.SnapshotObject(go);
                         Undo.RecordObject(go, "Batch Rename " + go.name);
                         go.name = item.newName;
 
@@ -409,6 +413,7 @@ namespace UnitySkills
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
 
+            WorkflowManager.SnapshotObject(go.transform);
             Undo.RecordObject(go.transform, "Set Transform");
 
             var rt = go.GetComponent<RectTransform>();
@@ -568,6 +573,7 @@ namespace UnitySkills
                             continue;
                         }
 
+                        WorkflowManager.SnapshotObject(go.transform);
                         Undo.RecordObject(go.transform, "Batch Set Transform");
 
                         var rt = go.GetComponent<RectTransform>();
@@ -788,6 +794,7 @@ namespace UnitySkills
                 parent = parentGo.transform;
             }
 
+            WorkflowManager.SnapshotObject(child.transform);
             Undo.SetTransformParent(child.transform, parent, "Set Parent");
             return new { 
                 success = true, 
@@ -838,6 +845,7 @@ namespace UnitySkills
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
 
+            WorkflowManager.SnapshotObject(go);
             Undo.RecordObject(go, "Set Active");
             go.SetActive(active);
 
@@ -872,6 +880,7 @@ namespace UnitySkills
                             continue;
                         }
 
+                        WorkflowManager.SnapshotObject(go);
                         Undo.RecordObject(go, "Batch Set Active");
                         go.SetActive(item.active);
                         results.Add(new { target = go.name, success = true, active = item.active });
@@ -943,6 +952,7 @@ namespace UnitySkills
                              continue;
                         }
 
+                        WorkflowManager.SnapshotObject(go);
                         Undo.RecordObject(go, "Batch Set Layer");
                         go.layer = layerId;
 
@@ -1017,6 +1027,7 @@ namespace UnitySkills
                             continue;
                         }
 
+                        WorkflowManager.SnapshotObject(go);
                         Undo.RecordObject(go, "Batch Set Tag");
                         try
                         {
@@ -1101,6 +1112,7 @@ namespace UnitySkills
                             parent = parentGo.transform;
                         }
 
+                        WorkflowManager.SnapshotObject(child.transform);
                         Undo.SetTransformParent(child.transform, parent, "Batch Set Parent");
                         results.Add(new { 
                             target = child.name, 

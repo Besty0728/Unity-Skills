@@ -207,15 +207,16 @@ namespace UnitySkills
                 return new { error = $"Component index {componentIndex} out of range. Found {components.Length} components of type {componentType}" };
 
             var comp = components[componentIndex];
-            
+
             // Check if it's a required component
             var requiredBy = GetRequiredByComponents(go, type);
             if (requiredBy.Any())
-                return new { 
+                return new {
                     error = $"Cannot remove {componentType} - required by: {string.Join(", ", requiredBy)}",
                     hint = "Remove dependent components first"
                 };
 
+            WorkflowManager.SnapshotObject(comp);
             Undo.DestroyObjectImmediate(comp);
             EditorUtility.SetDirty(go);
 
@@ -278,10 +279,11 @@ namespace UnitySkills
                         // For safety, let's remove the first one mostly, or iterate if needed.
                         // But ComponentRemove (single) removes specific index.
                         // Let's implement removing ALL components of that type for the batch operation to be powerful cleaning tool.
-                        
+
                         Undo.RecordObject(go, "Batch Remove Component");
                         foreach (var c in components)
                         {
+                            WorkflowManager.SnapshotObject(c);
                             Undo.DestroyObjectImmediate(c);
                         }
                         
@@ -389,11 +391,12 @@ namespace UnitySkills
             }
 
             if (prop == null && field == null)
-                return new { 
+                return new {
                     error = $"Property/field not found: {propertyName}",
                     availableProperties = GetAvailableProperties(type)
                 };
 
+            WorkflowManager.SnapshotObject(comp);
             Undo.RecordObject(comp, "Set Property");
 
             try
@@ -510,6 +513,7 @@ namespace UnitySkills
                             continue;
                         }
 
+                        WorkflowManager.SnapshotObject(comp);
                         Undo.RecordObject(comp, "Batch Set Property");
 
                         var targetType = prop?.PropertyType ?? field.FieldType;

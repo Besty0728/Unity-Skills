@@ -54,6 +54,7 @@ namespace UnitySkills
                     return new { error = $"Unknown parameter type: {paramType}. Use: float, int, bool, trigger" };
             }
 
+            WorkflowManager.SnapshotObject(controller);
             controller.AddParameter(paramName, type);
 
             // Set default value
@@ -116,6 +117,7 @@ namespace UnitySkills
             if (animator == null)
                 return new { error = $"No Animator component on {go.name}" };
 
+            WorkflowManager.SnapshotObject(animator);
             Undo.RecordObject(animator, "Set Animator Parameter");
 
             switch (paramType.ToLower())

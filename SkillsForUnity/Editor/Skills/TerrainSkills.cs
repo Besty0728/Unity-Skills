@@ -119,6 +119,7 @@ namespace UnitySkills
                 return new { success = false, error = "Terrain not found" };
 
             var data = terrain.terrainData;
+            WorkflowManager.SnapshotObject(data);
             Undo.RegisterCompleteObjectUndo(data, "Set Terrain Height");
 
             int resolution = data.heightmapResolution;
@@ -154,6 +155,7 @@ namespace UnitySkills
                 return new { success = false, error = "Heights array is empty" };
 
             var data = terrain.terrainData;
+            WorkflowManager.SnapshotObject(data);
             Undo.RegisterCompleteObjectUndo(data, "Set Terrain Heights Batch");
 
             int zSize = heights.Length;
@@ -204,6 +206,7 @@ namespace UnitySkills
                 return new { success = false, error = "Terrain not found" };
 
             var data = terrain.terrainData;
+            WorkflowManager.SnapshotObject(data);
             Undo.RegisterCompleteObjectUndo(data, "Add Hill to Terrain");
 
             int resolution = data.heightmapResolution;
@@ -274,6 +277,7 @@ namespace UnitySkills
                 return new { success = false, error = "Terrain not found" };
 
             var data = terrain.terrainData;
+            WorkflowManager.SnapshotObject(data);
             Undo.RegisterCompleteObjectUndo(data, "Generate Perlin Terrain");
 
             int resolution = data.heightmapResolution;
@@ -336,6 +340,7 @@ namespace UnitySkills
                 return new { success = false, error = "Terrain not found" };
 
             var data = terrain.terrainData;
+            WorkflowManager.SnapshotObject(data);
             Undo.RegisterCompleteObjectUndo(data, "Smooth Terrain");
 
             int resolution = data.heightmapResolution;
@@ -400,6 +405,7 @@ namespace UnitySkills
                 return new { success = false, error = "Terrain not found" };
 
             var data = terrain.terrainData;
+            WorkflowManager.SnapshotObject(data);
             Undo.RegisterCompleteObjectUndo(data, "Flatten Terrain");
 
             int resolution = data.heightmapResolution;

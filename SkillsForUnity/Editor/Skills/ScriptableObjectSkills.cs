@@ -77,6 +77,7 @@ namespace UnitySkills
             if (field == null && prop == null)
                 return new { error = $"Field/property not found: {fieldName}" };
 
+            WorkflowManager.SnapshotObject(asset);
             Undo.RecordObject(asset, "Set ScriptableObject Field");
 
             try

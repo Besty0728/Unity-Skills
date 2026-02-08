@@ -167,6 +167,7 @@ namespace UnitySkills
             if (prefabRoot == null)
                 return new { error = "GameObject is not a prefab instance" };
 
+            WorkflowManager.SnapshotObject(prefabRoot);
             var prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabRoot);
             PrefabUtility.ApplyPrefabInstance(prefabRoot, InteractionMode.UserAction);
 
@@ -180,6 +181,7 @@ namespace UnitySkills
             if (go == null)
                 return new { error = $"GameObject not found: {gameObjectName}" };
 
+            WorkflowManager.SnapshotObject(go);
             var mode = completely ? PrefabUnpackMode.Completely : PrefabUnpackMode.OutermostRoot;
             PrefabUtility.UnpackPrefabInstance(go, mode, InteractionMode.UserAction);
 
@@ -245,6 +247,7 @@ namespace UnitySkills
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
             if (prefabRoot == null) return new { error = "Not a prefab instance" };
 
+            WorkflowManager.SnapshotObject(prefabRoot);
             Undo.RecordObject(prefabRoot, "Revert Prefab Overrides");
             PrefabUtility.RevertPrefabInstance(prefabRoot, InteractionMode.UserAction);
 
@@ -265,6 +268,7 @@ namespace UnitySkills
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
             if (prefabRoot == null) return new { error = "Not a prefab instance" };
 
+            WorkflowManager.SnapshotObject(prefabRoot);
             var prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabRoot);
             PrefabUtility.ApplyPrefabInstance(prefabRoot, InteractionMode.UserAction);
 
