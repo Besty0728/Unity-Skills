@@ -17,28 +17,67 @@ import requests
 import time
 import json
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 UNITY_URL = "http://localhost:8090"
 DEFAULT_PORT = 8090
+PORT_RANGE_START = 8090
+PORT_RANGE_END = 8100
 
 def get_registry_path():
     return os.path.join(os.path.expanduser("~"), ".unity_skills", "registry.json")
+
+
+def _version_matches(actual_version: str, target: str) -> bool:
+    """
+    Version prefix matching with Unity 6 special format support.
+
+    Unity 6 uses internal version like '6000.0.xxf1', so user input '6' or 'Unity 6'
+    should match '6000.x.x'. Traditional versions like '2022.3.12f1' use direct prefix matching.
+
+    Examples:
+        _version_matches("6000.0.28f1", "6")       -> True
+        _version_matches("6000.0.28f1", "Unity 6")  -> True
+        _version_matches("6000.0.28f1", "6000")     -> True
+        _version_matches("2022.3.12f1", "2022")     -> True
+        _version_matches("2022.3.12f1", "2022.3")   -> True
+        _version_matches("2022.3.12f1", "6")        -> False
+    """
+    if not actual_version or not target:
+        return False
+
+    # Strip "Unity" prefix and whitespace from target
+    cleaned = target.strip()
+    if cleaned.lower().startswith("unity"):
+        cleaned = cleaned[5:].strip()
+
+    if not cleaned:
+        return False
+
+    # Unity 6 special mapping: user says "6" -> match "6000."
+    if cleaned == "6":
+        return actual_version.startswith("6000.")
+
+    # Direct prefix match for everything else (e.g. "6000", "2022", "2022.3")
+    return actual_version.startswith(cleaned)
+
 
 class UnitySkills:
     """
     Client for interacting with a specific Unity Editor instance.
     """
-    def __init__(self, port: int = None, target: str = None, url: str = None):
+    def __init__(self, port: int = None, target: str = None, url: str = None, version: str = None):
         """
         Initialize client.
         Args:
             port: Connect to specific localhost port (e.g. 8091)
             target: Connect to instance by Name or ID (e.g. "MyGame" or "MyGame_A1B2") - auto-discovers port.
             url: Full URL override.
+            version: Connect to instance by Unity version (e.g. "6", "2022", "2022.3") - auto-discovers port.
+        Priority: url > port > target > version > default port 8090
         """
         self.url = url
-        
+
         if not self.url:
             if port:
                 self.url = f"http://localhost:{port}"
@@ -48,8 +87,27 @@ class UnitySkills:
                     self.url = f"http://localhost:{found_port}"
                 else:
                     raise ValueError(f"Could not find Unity instance matching '{target}' in registry.")
+            elif version:
+                found_port = self._find_port_by_version(version)
+                if found_port:
+                    self.url = f"http://localhost:{found_port}"
+                else:
+                    raise ValueError(f"Could not find Unity instance matching version '{version}'.")
             else:
-                self.url = f"http://localhost:{DEFAULT_PORT}"
+                # Auto-discover: scan 8090-8100 for first responding instance
+                found_port = self._find_first_available()
+                self.url = f"http://localhost:{found_port}"
+
+    def _find_first_available(self) -> int:
+        """扫描 8090-8100，返回第一个响应的端口"""
+        for port in range(PORT_RANGE_START, PORT_RANGE_END + 1):
+            try:
+                resp = requests.get(f"http://localhost:{port}/health", timeout=1)
+                if resp.status_code == 200:
+                    return port
+            except:
+                continue
+        return DEFAULT_PORT  # fallback 到 8090
 
     def _find_port_by_target(self, target: str) -> Optional[int]:
         reg_path = get_registry_path()
@@ -70,6 +128,67 @@ class UnitySkills:
                 return None
         except:
             return None
+
+    def _find_port_by_version(self, version: str) -> Optional[int]:
+        """
+        Find a Unity instance port by version string.
+
+        Three-stage search strategy (decreasing efficiency):
+        1. Check registry - read unityVersion field from registry.json (no HTTP overhead)
+        2. Probe health - when registry has no version info (old server), call /health on registered ports
+        3. Scan ports - when registry is empty/missing, scan ports 8090-8100
+        """
+        reg_path = get_registry_path()
+        registry_data = None
+
+        # Load registry if available
+        if os.path.exists(reg_path):
+            try:
+                with open(reg_path, 'r') as f:
+                    registry_data = json.load(f)
+            except:
+                registry_data = None
+
+        # Stage 1: Check registry unityVersion field
+        if registry_data:
+            for path, info in registry_data.items():
+                reg_version = info.get('unityVersion')
+                if reg_version and _version_matches(reg_version, version):
+                    port = info.get('port')
+                    if port:
+                        return port
+
+            # Stage 2: Probe /health for registered ports without version info
+            ports_without_version = []
+            for path, info in registry_data.items():
+                if not info.get('unityVersion') and info.get('port'):
+                    ports_without_version.append(info['port'])
+
+            for port in ports_without_version:
+                try:
+                    resp = requests.get(f"http://localhost:{port}/health", timeout=2)
+                    if resp.status_code == 200:
+                        health_data = resp.json()
+                        health_version = health_data.get('unityVersion')
+                        if health_version and _version_matches(health_version, version):
+                            return port
+                except:
+                    continue
+
+        # Stage 3: Scan port range (fallback when registry is empty/missing)
+        if not registry_data:
+            for port in range(PORT_RANGE_START, PORT_RANGE_END + 1):
+                try:
+                    resp = requests.get(f"http://localhost:{port}/health", timeout=1)
+                    if resp.status_code == 200:
+                        health_data = resp.json()
+                        health_version = health_data.get('unityVersion')
+                        if health_version and _version_matches(health_version, version):
+                            return port
+                except:
+                    continue
+
+        return None
 
     def call(self, skill_name: str, verbose: bool = False, **kwargs) -> Dict[str, Any]:
         """
@@ -130,8 +249,15 @@ class UnitySkills:
     def delete_object(self, name): return self.call("delete_object", objectName=name)
 
 
-# Global Default Client
-_default_client = UnitySkills()
+# Global Default Client (lazy initialization)
+_default_client = None
+
+def _get_default_client():
+    """延迟初始化，首次调用时自动发现实例"""
+    global _default_client
+    if _default_client is None:
+        _default_client = UnitySkills()
+    return _default_client
 
 # Auto-workflow configuration
 _auto_workflow_enabled = True  # Enable auto-workflow
@@ -169,8 +295,33 @@ def is_auto_workflow_enabled() -> bool:
     """Check if auto-workflow is enabled."""
     return _auto_workflow_enabled
 
-def connect(port: int = None, target: str = None) -> UnitySkills:
-    return UnitySkills(port=port, target=target)
+def connect(port: int = None, target: str = None, version: str = None) -> UnitySkills:
+    """
+    Create a new UnitySkills client.
+    Args:
+        port: Connect to specific localhost port (e.g. 8091)
+        target: Connect to instance by Name or ID
+        version: Connect to instance by Unity version (e.g. "6", "2022", "2022.3")
+    """
+    return UnitySkills(port=port, target=target, version=version)
+
+def set_unity_version(version: str):
+    """
+    Set target Unity version and reconfigure the default client.
+
+    This is the primary way for AI agents to route to a specific Unity version
+    when multiple instances are running.
+
+    Args:
+        version: Unity version string, e.g. "6", "Unity 6", "2022", "2022.3"
+
+    Example:
+        import unity_skills
+        unity_skills.set_unity_version("6")       # Switch to Unity 6
+        unity_skills.call_skill("gameobject_create", name="Cube")  # Auto-routes
+    """
+    global _default_client
+    _default_client = UnitySkills(version=version)
 
 def list_instances() -> list:
     """Return list of active Unity instances from registry."""
@@ -206,22 +357,22 @@ def call_skill(skill_name: str, **kwargs) -> Dict[str, Any]:
     if should_track:
         # Start workflow
         _current_workflow_active = True
-        _default_client.call(
+        _get_default_client().call(
             'workflow_task_start',
             tag=skill_name,
             description=f"Auto: {skill_name} - {str(kwargs)[:100]}"
         )
 
         # Execute actual operation
-        result = _default_client.call(skill_name, **kwargs)
+        result = _get_default_client().call(skill_name, **kwargs)
 
         # End workflow
-        _default_client.call('workflow_task_end')
+        _get_default_client().call('workflow_task_end')
         _current_workflow_active = False
 
         return result
     else:
-        return _default_client.call(skill_name, **kwargs)
+        return _get_default_client().call(skill_name, **kwargs)
 
 
 class WorkflowContext:
@@ -265,18 +416,18 @@ def call_skill_with_retry(skill_name: str, max_retries: int = 3, retry_delay: fl
     return result
 
 def get_skills() -> Dict[str, Any]:
-    """Get list of all available skills."""
+    """Get list of all available skills from the current default client."""
     try:
-        response = requests.get(f"{UNITY_URL}/skills", timeout=5)
+        response = requests.get(f"{_get_default_client().url}/skills", timeout=5)
         response.encoding = 'utf-8'
         return response.json()
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
 def health() -> bool:
-    """Check if Unity server is running."""
+    """Check if the current default Unity server is running."""
     try:
-        response = requests.get(f"{UNITY_URL}/health", timeout=2)
+        response = requests.get(f"{_get_default_client().url}/health", timeout=2)
         response.encoding = 'utf-8'
         return response.json().get("status") == "ok"
     except:
@@ -287,24 +438,41 @@ def health() -> bool:
 # ============================================================
 def main():
     """Command-line interface for Unity Skills."""
-    if len(sys.argv) < 2:
-        print('用法: python unity_skills.py <skill_name> [param1=value1] [param2=value2] ...')
-        print('示例: python unity_skills.py editor_get_selection')
-        print('示例: python unity_skills.py gameobject_create name=MyCube primitiveType=Cube')
-        sys.exit(1)
+    import argparse
 
-    if sys.argv[1] == "--list":
+    parser = argparse.ArgumentParser(
+        description='Unity Skills Python CLI',
+        usage='python unity_skills.py [options] <skill_name> [param1=value1] ...'
+    )
+    parser.add_argument('--list', action='store_true', help='List all available skills')
+    parser.add_argument('--list-instances', action='store_true', help='List active Unity instances')
+    parser.add_argument('--port', type=int, default=None, help='Connect to specific port')
+    parser.add_argument('--version', type=str, default=None, dest='unity_version',
+                        help='Connect to Unity instance by version (e.g. "6", "2022", "2022.3")')
+    parser.add_argument('skill_name', nargs='?', help='Skill name to execute')
+    parser.add_argument('params', nargs='*', help='Skill parameters as key=value pairs')
+
+    args = parser.parse_args()
+
+    # Configure client based on CLI args
+    if args.port or args.unity_version:
+        global _default_client
+        _default_client = UnitySkills(port=args.port, version=args.unity_version)
+
+    if args.list:
         print(json.dumps(get_skills(), ensure_ascii=False, indent=2))
         return
-    elif sys.argv[1] == "--list-instances":
+    elif args.list_instances:
         print(json.dumps(list_instances(), ensure_ascii=False, indent=2))
         return
 
-    skill_name = sys.argv[1]
+    if not args.skill_name:
+        parser.print_help()
+        sys.exit(1)
 
     # Parse parameters
     params = {}
-    for arg in sys.argv[2:]:
+    for arg in args.params:
         if '=' in arg:
             key, value = arg.split('=', 1)
             # Try to parse as number or boolean
@@ -320,7 +488,7 @@ def main():
             params[key] = value
 
     # Call the skill
-    result = call_skill(skill_name, **params)
+    result = call_skill(args.skill_name, **params)
 
     # Pretty print the result
     print(json.dumps(result, ensure_ascii=False, indent=2))

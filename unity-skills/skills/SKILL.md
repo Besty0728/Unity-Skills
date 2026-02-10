@@ -7,6 +7,8 @@ description: "Index of all Unity Skills modules. Use when users want to browse a
 
 This folder contains detailed documentation for each skill module. For quick reference, see the parent [SKILL.md](../SKILL.md).
 
+> **Multi-Instance**: When user specifies Unity version (e.g. "Unity 6", "2022"), call `unity_skills.set_unity_version("6")` before operations. See parent SKILL.md.
+
 ## Modules
 
 | Module | Description | Batch Support |

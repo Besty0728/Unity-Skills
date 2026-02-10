@@ -7,6 +7,25 @@ description: "Unity Editor automation via REST API. Use when users want to creat
 
 > **RULE**: 2+ objects → use `*_batch` skill (1 call vs N calls)
 
+## Version Routing (Multi-Instance)
+
+When user mentions a specific Unity version, set target **before** any operations:
+
+```python
+import unity_skills
+unity_skills.set_unity_version("6")      # Unity 6 (matches 6000.x.x)
+unity_skills.set_unity_version("2022")   # Unity 2022.x
+unity_skills.set_unity_version("2021")   # Unity 2021.x
+```
+
+| User says | Call |
+|-----------|------|
+| "Unity 6" / "Unity6" | `set_unity_version("6")` |
+| "2022" / "Unity 2022" | `set_unity_version("2022")` |
+| "2021" / "Unity 2021" | `set_unity_version("2021")` |
+
+`list_instances()` → returns all running instances with `unityVersion`, `port`, `name`
+
 ## Batch Skills (Use First!)
 
 | Skill | items format |

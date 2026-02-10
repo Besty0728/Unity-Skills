@@ -100,6 +100,18 @@ namespace UnitySkills
             set => EditorPrefs.SetBool(PREF_AUTO_START, value);
         }
 
+        private const string PrefKeyPreferredPort = "UnitySkills_PreferredPort";
+
+        /// <summary>
+        /// Gets or sets the preferred port for the server.
+        /// 0 = Auto (scan 8090-8100), otherwise use specified port.
+        /// </summary>
+        public static int PreferredPort
+        {
+            get => EditorPrefs.GetInt(PrefKeyPreferredPort, 0);
+            set => EditorPrefs.SetInt(PrefKeyPreferredPort, value);
+        }
+
         /// <summary>
         /// Represents a pending HTTP request job.
         /// Created by HTTP thread, processed by Main thread.
@@ -213,7 +225,7 @@ namespace UnitySkills
                 if (!_isRunning)
                 {
                     Debug.Log($"{LOG_PREFIX} Auto-restoring server after Domain Reload...");
-                    Start();
+                    Start(PreferredPort);
                 }
             }
         }
@@ -232,7 +244,7 @@ namespace UnitySkills
             _updateHooked = false;
         }
 
-        public static void Start()
+        public static void Start(int preferredPort = 0)
         {
             if (_isRunning)
             {
@@ -249,23 +261,47 @@ namespace UnitySkills
                 int endPort = 8100;
                 bool started = false;
 
-                for (int p = startPort; p <= endPort; p++)
+                // If preferred port is specified and valid, try it first
+                if (preferredPort >= startPort && preferredPort <= endPort)
                 {
                     try
                     {
-                        string prefix = $"{_prefixBase}{p}/";
+                        string prefix = $"{_prefixBase}{preferredPort}/";
                         _listener = new HttpListener();
                         _listener.Prefixes.Add(prefix);
                         _listener.Start();
 
-                        _port = p;
+                        _port = preferredPort;
                         started = true;
-                        break;
                     }
                     catch
                     {
-                        // Port occupied, try next
                         try { _listener?.Close(); } catch { }
+                        Debug.LogError($"{LOG_ERROR} Port {preferredPort} is in use. Try another port or use Auto.");
+                        return;
+                    }
+                }
+                else
+                {
+                    // Auto mode: scan ports
+                    for (int p = startPort; p <= endPort; p++)
+                    {
+                        try
+                        {
+                            string prefix = $"{_prefixBase}{p}/";
+                            _listener = new HttpListener();
+                            _listener.Prefixes.Add(prefix);
+                            _listener.Start();
+
+                            _port = p;
+                            started = true;
+                            break;
+                        }
+                        catch
+                        {
+                            // Port occupied, try next
+                            try { _listener?.Close(); } catch { }
+                        }
                     }
                 }
 
@@ -592,6 +628,9 @@ namespace UnitySkills
                     status = "ok",
                     service = "UnitySkills",
                     version = "1.4.3",
+                    unityVersion = Application.unityVersion,
+                    instanceId = RegistryService.InstanceId,
+                    projectName = RegistryService.ProjectName,
                     serverRunning = _isRunning,
                     queuedRequests = QueuedRequests,
                     totalProcessed = _totalRequestsProcessed,

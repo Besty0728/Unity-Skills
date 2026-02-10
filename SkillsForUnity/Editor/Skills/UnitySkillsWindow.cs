@@ -179,7 +179,7 @@ namespace UnitySkills
                 {
                     if (GUILayout.Button(L("start_server"), GUILayout.Width(100), GUILayout.Height(24)))
                     {
-                        SkillsHttpServer.Start();
+                        SkillsHttpServer.Start(SkillsHttpServer.PreferredPort);
                         _serverRunning = true;
                     }
                 }
@@ -245,6 +245,19 @@ namespace UnitySkills
                     SkillsHttpServer.AutoStart = newAutoStart;
                 }
                 DrawColoredLabel(L("auto_restart_hint"), MutedColor, false);
+
+                // Preferred Port
+                EditorGUILayout.BeginHorizontal();
+                var portLabel = Localization.Current == Localization.Language.Chinese ? "启动端口" : "Port";
+                EditorGUILayout.LabelField(portLabel + ":", GUILayout.Width(60));
+                var portOptions = new[] { "Auto", "8090", "8091", "8092", "8093", "8094", "8095", "8096", "8097", "8098", "8099", "8100" };
+                var currentIdx = SkillsHttpServer.PreferredPort == 0 ? 0 : SkillsHttpServer.PreferredPort - 8089;
+                var newIdx = EditorGUILayout.Popup(currentIdx, portOptions);
+                if (newIdx != currentIdx)
+                {
+                    SkillsHttpServer.PreferredPort = newIdx == 0 ? 0 : 8089 + newIdx;
+                }
+                EditorGUILayout.EndHorizontal();
             });
 
             EditorGUILayout.Space(10);

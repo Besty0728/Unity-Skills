@@ -55,7 +55,8 @@ namespace UnitySkills
                     path = ProjectPath,
                     port = port,
                     pid = System.Diagnostics.Process.GetCurrentProcess().Id,
-                    last_active = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+                    last_active = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                    unityVersion = Application.unityVersion
                 };
 
                 // Remove entry if it exists (update it)
@@ -142,6 +143,7 @@ namespace UnitySkills
             public int port;
             public int pid;
             public long last_active;
+            public string unityVersion;
         }
     }
 }
