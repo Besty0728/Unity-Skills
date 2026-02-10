@@ -1,10 +1,10 @@
 ﻿# 🎮 UnitySkills
 
-
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2021.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
   <img src="https://img.shields.io/badge/Skills-277-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
+  <a href="README_EN.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
 
 <p align="center">
