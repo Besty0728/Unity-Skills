@@ -9,7 +9,7 @@
 
 ## Reporting a Vulnerability | 报告漏洞
 
-请通过 [GitHub Private Vulnerability Reporting](https://github.com/anthropics/Unity-Skills/security/advisories/new) 报告安全漏洞。
+请通过 [GitHub Private Vulnerability Reporting](https://github.com/Besty0728/Unity-Skills/security/advisories/new) 报告安全漏洞。
 
 **请勿** 在公开 Issue 中披露安全漏洞。
 
