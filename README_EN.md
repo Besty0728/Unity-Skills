@@ -12,6 +12,11 @@
   <i>Let AI control Unity scenes directly through Skills</i>
 </p>
 
+<p align="center">
+  🎉 We are now indexed by <b>DeepWiki</b>!<br>
+  Got questions? Check out the AI-generated docs → <a href="https://deepwiki.com/Besty0728/Unity-Skills"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+</p>
+
 ## 🤝 Acknowledgments
 This project is a deep refactoring and feature extension based on the excellent concept of [unity-mcp](https://github.com/CoplayDev/unity-mcp).
 

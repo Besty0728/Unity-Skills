@@ -12,6 +12,11 @@
   <i>让 AI 通过Skills直接掌控 Unity 场景</i>
 </p>
 
+<p align="center">
+  🎉 我们已被 <b>DeepWiki</b> 收录！<br>
+  有问题？查阅 AI 生成的项目文档 → <a href="https://deepwiki.com/Besty0728/Unity-Skills"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+</p>
+
 ## 🤝 致谢
 本项目基于 [unity-mcp](https://github.com/CoplayDev/unity-mcp) 的优秀理念深度重构与功能扩展。
 
