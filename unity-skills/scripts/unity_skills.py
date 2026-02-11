@@ -66,7 +66,7 @@ class UnitySkills:
     """
     Client for interacting with a specific Unity Editor instance.
     """
-    def __init__(self, port: int = None, target: str = None, url: str = None, version: str = None):
+    def __init__(self, port: int = None, target: str = None, url: str = None, version: str = None, agent_id: str = None):
         """
         Initialize client.
         Args:
@@ -74,11 +74,14 @@ class UnitySkills:
             target: Connect to instance by Name or ID (e.g. "MyGame" or "MyGame_A1B2") - auto-discovers port.
             url: Full URL override.
             version: Connect to instance by Unity version (e.g. "6", "2022", "2022.3") - auto-discovers port.
+            agent_id: Custom agent identifier (e.g. "MyScript", "ClaudeCode")
         Priority: url > port > target > version > default port 8090
         """
         self.url = url
+        self.agent_id = agent_id or "Python"
         # 连接复用：使用 Session 保持 TCP 连接
         self._session = requests.Session()
+        self._session.headers.update({'X-Agent-Id': self.agent_id})
 
         if not self.url:
             if port:

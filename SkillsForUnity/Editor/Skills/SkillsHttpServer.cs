@@ -125,6 +125,7 @@ namespace UnitySkills
             public string Body;
             public long EnqueueTimeTicks;
             public string RequestId;
+            public string AgentId;
 
             // Result (set by Main thread)
             public string ResponseJson;
@@ -135,6 +136,68 @@ namespace UnitySkills
 
         // Request ID counter
         private static long _requestIdCounter = 0;
+
+        /// <summary>
+        /// Detect AI Agent from User-Agent or X-Agent-Id header
+        /// </summary>
+        private static string DetectAgent(HttpListenerRequest request)
+        {
+            // Priority 1: Explicit X-Agent-Id header
+            var explicitId = request.Headers["X-Agent-Id"];
+            if (!string.IsNullOrEmpty(explicitId))
+                return explicitId;
+
+            // Priority 2: Detect from User-Agent
+            var ua = request.UserAgent ?? "";
+            var uaLower = ua.ToLowerInvariant();
+
+            // Claude Code / Anthropic
+            if (uaLower.Contains("claude") || uaLower.Contains("anthropic"))
+                return "ClaudeCode";
+
+            // OpenAI Codex / ChatGPT
+            if (uaLower.Contains("codex") || uaLower.Contains("openai"))
+                return "Codex";
+
+            // Google Gemini
+            if (uaLower.Contains("gemini") || uaLower.Contains("google"))
+                return "Gemini";
+
+            // Cursor
+            if (uaLower.Contains("cursor"))
+                return "Cursor";
+
+            // Trae (ByteDance)
+            if (uaLower.Contains("trae") || uaLower.Contains("bytedance"))
+                return "Trae";
+
+            // Antigravity
+            if (uaLower.Contains("antigravity"))
+                return "Antigravity";
+
+            // Windsurf / Codeium
+            if (uaLower.Contains("windsurf") || uaLower.Contains("codeium"))
+                return "Windsurf";
+
+            // Cline / Roo
+            if (uaLower.Contains("cline") || uaLower.Contains("roo"))
+                return "Cline";
+
+            // Amazon Q
+            if (uaLower.Contains("amazon") || uaLower.Contains("aws"))
+                return "AmazonQ";
+
+            // Python requests (likely our unity_skills.py or scripts)
+            if (uaLower.Contains("python-requests") || uaLower.Contains("python"))
+                return "Python";
+
+            // curl
+            if (uaLower.Contains("curl"))
+                return "curl";
+
+            // Unknown
+            return string.IsNullOrEmpty(ua) ? "Unknown" : $"Unknown({ua.Substring(0, Math.Min(20, ua.Length))})";
+        }
 
         /// <summary>
         /// Static constructor - called after every Domain Reload.
@@ -452,6 +515,7 @@ namespace UnitySkills
                         Body = body,
                         EnqueueTimeTicks = DateTime.UtcNow.Ticks,
                         RequestId = $"req_{Interlocked.Increment(ref _requestIdCounter):X8}",
+                        AgentId = DetectAgent(request),
                         StatusCode = 200,
                         ResponseJson = null,
                         IsProcessed = false,
@@ -533,8 +597,9 @@ namespace UnitySkills
                 // CORS headers
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Agent-Id");
                 response.Headers.Add("X-Request-Id", job.RequestId);
+                response.Headers.Add("X-Agent-Id", job.AgentId);
 
                 response.StatusCode = job.StatusCode;
                 
