@@ -77,6 +77,8 @@ class UnitySkills:
         Priority: url > port > target > version > default port 8090
         """
         self.url = url
+        # 连接复用：使用 Session 保持 TCP 连接
+        self._session = requests.Session()
 
         if not self.url:
             if port:
@@ -190,58 +192,70 @@ class UnitySkills:
 
         return None
 
-    def call(self, skill_name: str, verbose: bool = False, **kwargs) -> Dict[str, Any]:
+    def call(self, skill_name: str, verbose: bool = False, _retries: int = 2, _retry_delay: float = 1.5, **kwargs) -> Dict[str, Any]:
         """
-        Call a skill on this instance.
+        Call a skill on this instance with automatic retry on connection errors.
+
+        Args:
+            skill_name: Name of the skill to call
+            verbose: Whether to return verbose output
+            _retries: Number of retries on connection error (default 2)
+            _retry_delay: Delay between retries in seconds (default 1.5)
 
         Returns a normalized response with 'success' field and flattened result data.
         """
-        try:
-            # Combine verbose into kwargs for JSON body
-            kwargs['verbose'] = verbose
-            # 使用 ensure_ascii=False 保留原始中文字符，避免转义为 \uXXXX
-            json_data = json.dumps(kwargs, ensure_ascii=False)
-            response = requests.post(
-                f"{self.url}/skill/{skill_name}",
-                data=json_data.encode('utf-8'),
-                headers={'Content-Type': 'application/json; charset=utf-8'},
-                timeout=30
-            )
-            response.encoding = 'utf-8'  # 确保正确解码UTF-8
-
+        last_error = None
+        for attempt in range(_retries + 1):
             try:
-                data = response.json()
-            except ValueError:
-                return {'success': False, 'error': f"Invalid JSON response: {response.text}"}
+                # Combine verbose into kwargs for JSON body
+                kwargs['verbose'] = verbose
+                # 使用 ensure_ascii=False 保留原始中文字符，避免转义为 \uXXXX
+                json_data = json.dumps(kwargs, ensure_ascii=False)
+                response = self._session.post(
+                    f"{self.url}/skill/{skill_name}",
+                    data=json_data.encode('utf-8'),
+                    headers={'Content-Type': 'application/json; charset=utf-8'},
+                    timeout=30
+                )
+                response.encoding = 'utf-8'  # 确保正确解码UTF-8
 
-            # 规范化响应格式：将 {"status": "success", "result": {...}} 转换为 {"success": True, ...}
-            if data.get('status') == 'success':
-                result = data.get('result', {})
-                # 将result的内容提升到顶层，并添加success标志
-                normalized = {'success': True}
-                if isinstance(result, dict):
-                    normalized.update(result)
+                try:
+                    data = response.json()
+                except ValueError:
+                    return {'success': False, 'error': f"Invalid JSON response: {response.text}"}
+
+                # 规范化响应格式：将 {"status": "success", "result": {...}} 转换为 {"success": True, ...}
+                if data.get('status') == 'success':
+                    result = data.get('result', {})
+                    # 将result的内容提升到顶层，并添加success标志
+                    normalized = {'success': True}
+                    if isinstance(result, dict):
+                        normalized.update(result)
+                    else:
+                        normalized['result'] = result
+                    return normalized
+                elif data.get('status') == 'error':
+                    return {
+                        'success': False,
+                        'error': data.get('error', 'Unknown error'),
+                        'message': data.get('message', '')
+                    }
                 else:
-                    normalized['result'] = result
-                return normalized
-            elif data.get('status') == 'error':
+                    return data
+
+            except requests.exceptions.ConnectionError as e:
+                last_error = e
+                if attempt < _retries:
+                    time.sleep(_retry_delay)
+                    continue
                 return {
                     'success': False,
-                    'error': data.get('error', 'Unknown error'),
-                    'message': data.get('message', '')
+                    'error': f"Cannot connect to {self.url}. Unity instance may be down.",
+                    'suggestion': 'Unity may be recompiling scripts (Domain Reload). Wait 3-5 seconds and retry.',
+                    'hint': 'Check if server is running: Window > UnitySkills > Start Server'
                 }
-            else:
-                return data
-
-        except requests.exceptions.ConnectionError:
-             return {
-                'success': False,
-                'error': f"Cannot connect to {self.url}. Unity instance may be down.",
-                'suggestion': 'Unity may be recompiling scripts (Domain Reload). Wait 3-5 seconds and retry.',
-                'hint': 'Check if server is running: Window > UnitySkills > Start Server'
-            }
-        except Exception as e:
-            return {'success': False, 'error': str(e)}
+            except Exception as e:
+                return {'success': False, 'error': str(e)}
 
     # --- Proxies for common skills ---
     def create_cube(self, x=0, y=0, z=0, name="Cube"): return self.call("create_cube", x=x, y=y, z=z, name=name)
