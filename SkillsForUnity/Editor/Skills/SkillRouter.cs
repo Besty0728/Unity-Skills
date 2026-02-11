@@ -59,7 +59,7 @@ namespace UnitySkills
                 }
             }
             _initialized = true;
-            Debug.Log($"[UnitySkills] Discovered {_skills.Count} skills");
+            SkillsLogger.Log($"Discovered {_skills.Count} skills");
         }
 
         public static string GetManifest()
@@ -363,7 +363,7 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                UnityEngine.Debug.LogWarning($"[UnitySkills] Workflow snapshot failed: {ex.Message}");
+                SkillsLogger.LogWarning($"Workflow snapshot failed: {ex.Message}");
             }
         }
     }

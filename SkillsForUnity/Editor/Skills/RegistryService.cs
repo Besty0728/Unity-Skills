@@ -70,11 +70,11 @@ namespace UnitySkills
                     registry.Remove(key);
 
                 SaveRegistry(registry);
-                Debug.Log($"[UnitySkills] Registered instance '{InstanceId}' on port {port}");
+                SkillsLogger.LogVerbose($"Registered instance '{InstanceId}' on port {port}");
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[UnitySkills] Failed to register instance: {ex.Message}");
+                SkillsLogger.LogWarning($"Failed to register instance: {ex.Message}");
             }
         }
 
@@ -94,7 +94,7 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[UnitySkills] Failed to unregister: {ex.Message}");
+                SkillsLogger.LogWarning($"Failed to unregister: {ex.Message}");
             }
         }
         
@@ -130,7 +130,7 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[UnitySkills] Could not save registry: {ex.Message}");
+                SkillsLogger.LogError($"Could not save registry: {ex.Message}");
             }
         }
 

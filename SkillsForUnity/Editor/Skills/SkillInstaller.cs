@@ -214,11 +214,11 @@ namespace UnitySkills
                     // Append unity-skills entry
                     var appendContent = "\n\n## UnitySkills\n" + UnitySkillsEntry + "\n";
                     File.AppendAllText(agentsPath, appendContent.Replace("\r\n", "\n"), utf8NoBom);
-                    Debug.Log("[UnitySkills] Added unity-skills to existing AGENTS.md");
+                    SkillsLogger.Log("Added unity-skills to existing AGENTS.md");
                 }
                 else
                 {
-                    Debug.Log("[UnitySkills] unity-skills already declared in AGENTS.md");
+                    SkillsLogger.LogVerbose("unity-skills already declared in AGENTS.md");
                 }
             }
             else
@@ -231,7 +231,7 @@ This file declares available skills for AI agents like Codex.
 ## UnitySkills
 " + UnitySkillsEntry + "\n";
                 File.WriteAllText(agentsPath, newContent.Replace("\r\n", "\n"), utf8NoBom);
-                Debug.Log("[UnitySkills] Created AGENTS.md with unity-skills declaration");
+                SkillsLogger.Log("Created AGENTS.md with unity-skills declaration");
             }
         }
 
@@ -251,7 +251,7 @@ This file declares available skills for AI agents like Codex.
                 var cleanedContent = string.Join("\n", lines).Trim() + "\n";
                 var utf8NoBom = new UTF8Encoding(false);
                 File.WriteAllText(agentsPath, cleanedContent.Replace("\r\n", "\n"), utf8NoBom);
-                Debug.Log("[UnitySkills] Removed unity-skills from AGENTS.md");
+                SkillsLogger.Log("Removed unity-skills from AGENTS.md");
             }
         }
 
@@ -261,7 +261,7 @@ This file declares available skills for AI agents like Codex.
                 return (false, $"{name} skill not installed at this location");
 
             Directory.Delete(targetPath, true);
-            Debug.Log("[UnitySkills] Uninstalled skill from: " + targetPath);
+            SkillsLogger.Log("Uninstalled skill from: " + targetPath);
             return (true, targetPath);
         }
 
@@ -290,7 +290,7 @@ This file declares available skills for AI agents like Codex.
             var agentConfig = $"{{\"agentId\": \"{agentId}\", \"installedAt\": \"{DateTime.UtcNow:O}\"}}";
             File.WriteAllText(Path.Combine(scriptsPath, "agent_config.json"), agentConfig, utf8NoBom);
 
-            Debug.Log($"[UnitySkills] Installed skill to: {targetPath} (Agent: {agentId})");
+            SkillsLogger.Log($"Installed skill to: {targetPath} (Agent: {agentId})");
             return (true, targetPath);
         }
 

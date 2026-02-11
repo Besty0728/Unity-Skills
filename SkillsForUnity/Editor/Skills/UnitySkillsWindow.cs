@@ -259,6 +259,18 @@ namespace UnitySkills
                     SkillsHttpServer.PreferredPort = newIdx == 0 ? 0 : 8089 + newIdx;
                 }
                 EditorGUILayout.EndHorizontal();
+
+                // Log Level
+                EditorGUILayout.BeginHorizontal();
+                var logLabel = Localization.Current == Localization.Language.Chinese ? "日志级别" : "Log Level";
+                EditorGUILayout.LabelField(logLabel + ":", GUILayout.Width(60));
+                var logOptions = new[] { "Off", "Error", "Warning", "Info", "Verbose" };
+                var newLogLevel = (LogLevel)EditorGUILayout.Popup((int)SkillsLogger.Level, logOptions);
+                if (newLogLevel != SkillsLogger.Level)
+                {
+                    SkillsLogger.Level = newLogLevel;
+                }
+                EditorGUILayout.EndHorizontal();
             });
 
             EditorGUILayout.Space(10);

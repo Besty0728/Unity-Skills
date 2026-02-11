@@ -233,7 +233,7 @@ namespace UnitySkills
 
             if (_isRunning)
             {
-                Debug.Log($"{LOG_PREFIX} Domain Reload detected - server state saved (port {_port}), will auto-restart");
+                SkillsLogger.LogVerbose($"Domain Reload detected - server state saved (port {_port}), will auto-restart");
                 RegistryService.Unregister(); // Unregister temporarily
                 // Don't call Stop() here - domain will be destroyed anyway
                 // Just mark as not running to prevent errors
@@ -264,7 +264,7 @@ namespace UnitySkills
         {
             if (_isRunning)
             {
-                Debug.Log($"{LOG_PREFIX} Compilation started - preparing for Domain Reload...");
+                SkillsLogger.LogVerbose($"Compilation started - preparing for Domain Reload...");
             }
         }
         
@@ -291,7 +291,7 @@ namespace UnitySkills
             {
                 if (!_isRunning)
                 {
-                    Debug.Log($"{LOG_PREFIX} Auto-restoring server after Domain Reload...");
+                    SkillsLogger.Log($"Auto-restoring server after Domain Reload...");
                     Start(PreferredPort);
                 }
             }
@@ -315,7 +315,7 @@ namespace UnitySkills
         {
             if (_isRunning)
             {
-                Debug.Log($"{LOG_PREFIX} Server already running at {_prefix}");
+                SkillsLogger.LogVerbose($"Server already running at {_prefix}");
                 return;
             }
 
@@ -344,7 +344,7 @@ namespace UnitySkills
                     catch
                     {
                         try { _listener?.Close(); } catch { }
-                        Debug.LogError($"{LOG_ERROR} Port {preferredPort} is in use. Try another port or use Auto.");
+                        SkillsLogger.LogError($"Port {preferredPort} is in use. Try another port or use Auto.");
                         return;
                     }
                 }
@@ -374,7 +374,7 @@ namespace UnitySkills
 
                 if (!started)
                 {
-                    Debug.LogError($"{LOG_ERROR} Failed to find open port between {startPort} and {endPort}");
+                    SkillsLogger.LogError($"Failed to find open port between {startPort} and {endPort}");
                     return;
                 }
 
@@ -396,13 +396,13 @@ namespace UnitySkills
 
                 // These calls are safe here because Start() is called from Main thread
                 var skillCount = SkillRouter.GetManifest().Split('\n').Length;
-                Debug.Log($"{LOG_SERVER} REST Server started at <b>{_prefix}</b>");
-                Debug.Log($"{LOG_SUCCESS} {skillCount} skills loaded | Instance: <b>{RegistryService.InstanceId}</b>");
-                Debug.Log($"{LOG_PREFIX} Domain Reload Recovery: <color=#5EE05E>ENABLED</color> (AutoStart={AutoStart})");
+                SkillsLogger.Log($"REST Server started at {_prefix}");
+                SkillsLogger.Log($"{skillCount} skills loaded | Instance: {RegistryService.InstanceId}");
+                SkillsLogger.LogVerbose($"Domain Reload Recovery: ENABLED (AutoStart={AutoStart})");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"{LOG_ERROR} Failed to start: {ex.Message}");
+                SkillsLogger.LogError($"Failed to start: {ex.Message}");
                 _isRunning = false;
                 EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, false);
             }
@@ -439,9 +439,9 @@ namespace UnitySkills
             }
 
             if (permanent)
-                Debug.Log($"{LOG_SERVER} Server stopped (permanent)");
+                SkillsLogger.Log($"Server stopped (permanent)");
             else
-                Debug.Log($"{LOG_PREFIX} Server stopped (will auto-restart after reload)");
+                SkillsLogger.LogVerbose($"Server stopped (will auto-restart after reload)");
         }
         
         /// <summary>
@@ -652,7 +652,7 @@ namespace UnitySkills
                         error = ex.Message,
                         type = ex.GetType().Name
                     }, _jsonSettings);
-                    Debug.LogWarning($"{LOG_WARNING} Job processing error: {ex.Message}");
+                    SkillsLogger.LogWarning($"Job processing error: {ex.Message}");
                 }
                 finally
                 {
@@ -755,7 +755,7 @@ namespace UnitySkills
                         suggestion = "If this error persists, check Unity console for details. " +
                                     "For 'Connection Refused' errors, Unity may be reloading scripts - wait 2-3 seconds and retry."
                     }, _jsonSettings);
-                    Debug.LogWarning($"{LOG_SKILL} Skill '<b>{skillName}</b>' error: {ex.Message}");
+                    SkillsLogger.LogWarning($"Skill '{skillName}' error: {ex.Message}");
                 }
                 return;
             }
