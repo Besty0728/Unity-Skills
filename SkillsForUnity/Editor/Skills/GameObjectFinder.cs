@@ -57,6 +57,25 @@ namespace UnitySkills
     public static class GameObjectFinder
     {
         /// <summary>
+        /// Efficiently iterate all GameObjects in scene using root traversal (faster than FindObjectsOfType)
+        /// </summary>
+        private static IEnumerable<GameObject> GetAllSceneObjects()
+        {
+            var roots = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+            var stack = new Stack<Transform>();
+            foreach (var root in roots)
+                stack.Push(root.transform);
+
+            while (stack.Count > 0)
+            {
+                var t = stack.Pop();
+                yield return t.gameObject;
+                foreach (Transform child in t)
+                    stack.Push(child);
+            }
+        }
+
+        /// <summary>
         /// Find a GameObject using flexible parameters with intelligent fallback.
         /// Priority: instanceId > path > name (exact) > name (contains) > tag > component
         /// </summary>
@@ -181,7 +200,7 @@ namespace UnitySkills
         /// </summary>
         public static GameObject FindByNameCaseInsensitive(string name)
         {
-            return Object.FindObjectsOfType<GameObject>()
+            return GetAllSceneObjects()
                 .FirstOrDefault(go => go.name.Equals(name, System.StringComparison.OrdinalIgnoreCase));
         }
 
@@ -191,14 +210,14 @@ namespace UnitySkills
         public static GameObject FindByNameContains(string name)
         {
             // Prefer exact word match first
-            var exactWord = Object.FindObjectsOfType<GameObject>()
+            var exactWord = GetAllSceneObjects()
                 .FirstOrDefault(go => go.name.Split(' ', '_', '-').Any(
                     word => word.Equals(name, System.StringComparison.OrdinalIgnoreCase)));
             if (exactWord != null)
                 return exactWord;
 
             // Then try contains
-            return Object.FindObjectsOfType<GameObject>()
+            return GetAllSceneObjects()
                 .FirstOrDefault(go => go.name.IndexOf(name, System.StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
@@ -220,7 +239,7 @@ namespace UnitySkills
         public static List<GameObject> FindAll(string name = null, string tag = null, string componentType = null, bool includeInactive = false)
         {
             IEnumerable<GameObject> results;
-            
+
             if (!string.IsNullOrEmpty(tag))
             {
                 try { results = GameObject.FindGameObjectsWithTag(tag); }
@@ -233,7 +252,7 @@ namespace UnitySkills
             }
             else
             {
-                results = Object.FindObjectsOfType<GameObject>();
+                results = GetAllSceneObjects();
             }
 
             if (!string.IsNullOrEmpty(name))
@@ -305,8 +324,8 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(name))
             {
                 // Find similar names
-                var similar = Object.FindObjectsOfType<GameObject>()
-                    .Where(go => go.name.IndexOf(name.Substring(0, System.Math.Min(3, name.Length)), 
+                var similar = GetAllSceneObjects()
+                    .Where(go => go.name.IndexOf(name.Substring(0, System.Math.Min(3, name.Length)),
                         System.StringComparison.OrdinalIgnoreCase) >= 0)
                     .Take(5)
                     .Select(go => $"'{go.name}' (path: {GetPath(go)})");
