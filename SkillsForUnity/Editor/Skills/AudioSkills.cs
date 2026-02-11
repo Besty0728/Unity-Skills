@@ -13,8 +13,7 @@ namespace UnitySkills
         [UnitySkill("audio_get_settings", "Get audio import settings for an audio asset")]
         public static object AudioGetSettings(string assetPath)
         {
-            if (string.IsNullOrEmpty(assetPath))
-                return new { error = "assetPath is required" };
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
 
             var importer = AssetImporter.GetAtPath(assetPath) as AudioImporter;
             if (importer == null)
@@ -47,8 +46,7 @@ namespace UnitySkills
             float? quality = null,
             string sampleRateSetting = null)
         {
-            if (string.IsNullOrEmpty(assetPath))
-                return new { error = "assetPath is required" };
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
 
             var importer = AssetImporter.GetAtPath(assetPath) as AudioImporter;
             if (importer == null)

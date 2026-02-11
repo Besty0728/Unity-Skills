@@ -107,8 +107,7 @@ namespace UnitySkills
             string paramName = null, string paramType = "float",
             float floatValue = 0, int intValue = 0, bool boolValue = false)
         {
-            if (string.IsNullOrEmpty(paramName))
-                return new { error = "paramName is required" };
+            if (Validate.Required(paramName, "paramName") is object err) return err;
 
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
@@ -142,8 +141,7 @@ namespace UnitySkills
         [UnitySkill("animator_play", "Play an animation state on a GameObject (supports name/instanceId/path)")]
         public static object AnimatorPlay(string name = null, int instanceId = 0, string path = null, string stateName = null, int layer = 0, float normalizedTime = 0)
         {
-            if (string.IsNullOrEmpty(stateName))
-                return new { error = "stateName is required" };
+            if (Validate.Required(stateName, "stateName") is object err1) return err1;
 
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
@@ -189,8 +187,7 @@ namespace UnitySkills
         [UnitySkill("animator_assign_controller", "Assign an Animator Controller to a GameObject (supports name/instanceId/path)")]
         public static object AnimatorAssignController(string name = null, int instanceId = 0, string path = null, string controllerPath = null)
         {
-            if (string.IsNullOrEmpty(controllerPath))
-                return new { error = "controllerPath is required" };
+            if (Validate.Required(controllerPath, "controllerPath") is object err2) return err2;
 
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;

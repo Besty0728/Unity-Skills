@@ -150,8 +150,7 @@ namespace UnitySkills
         [UnitySkill("gameobject_rename", "Rename a GameObject (supports name/instanceId/path). Returns: {success, oldName, newName, instanceId}")]
         public static object GameObjectRename(string name = null, int instanceId = 0, string path = null, string newName = null)
         {
-            if (string.IsNullOrEmpty(newName))
-                return new { error = "newName parameter is required" };
+            if (Validate.Required(newName, "newName") is object err) return err;
 
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;

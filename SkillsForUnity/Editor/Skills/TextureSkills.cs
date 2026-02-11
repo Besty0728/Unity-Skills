@@ -13,8 +13,7 @@ namespace UnitySkills
         [UnitySkill("texture_get_settings", "Get texture import settings for an image asset")]
         public static object TextureGetSettings(string assetPath)
         {
-            if (string.IsNullOrEmpty(assetPath))
-                return new { error = "assetPath is required" };
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
 
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null)
@@ -58,8 +57,7 @@ namespace UnitySkills
             string wrapMode = null,
             string npotScale = null)
         {
-            if (string.IsNullOrEmpty(assetPath))
-                return new { error = "assetPath is required" };
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
 
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null)

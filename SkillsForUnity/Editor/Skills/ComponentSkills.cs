@@ -51,8 +51,7 @@ namespace UnitySkills
         [UnitySkill("component_add", "Add a component to a GameObject (supports name/instanceId/path). Works with Cinemachine, TextMeshPro, etc.")]
         public static object ComponentAdd(string name = null, int instanceId = 0, string path = null, string componentType = null)
         {
-            if (string.IsNullOrEmpty(componentType))
-                return new { error = "componentType is required" };
+            if (Validate.Required(componentType, "componentType") is object err) return err;
 
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
@@ -188,8 +187,7 @@ namespace UnitySkills
         [UnitySkill("component_remove", "Remove a component from a GameObject (supports name/instanceId/path)")]
         public static object ComponentRemove(string name = null, int instanceId = 0, string path = null, string componentType = null, int componentIndex = 0)
         {
-            if (string.IsNullOrEmpty(componentType))
-                return new { error = "componentType is required" };
+            if (Validate.Required(componentType, "componentType") is object err) return err;
 
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
@@ -595,8 +593,7 @@ namespace UnitySkills
         [UnitySkill("component_get_properties", "Get all properties of a component (supports name/instanceId/path)")]
         public static object ComponentGetProperties(string name = null, int instanceId = 0, string path = null, string componentType = null, bool includePrivate = false)
         {
-            if (string.IsNullOrEmpty(componentType))
-                return new { error = "componentType is required" };
+            if (Validate.Required(componentType, "componentType") is object err) return err;
 
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;

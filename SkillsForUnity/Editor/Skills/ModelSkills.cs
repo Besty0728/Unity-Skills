@@ -13,8 +13,7 @@ namespace UnitySkills
         [UnitySkill("model_get_settings", "Get model import settings for a 3D model asset (FBX, OBJ, etc)")]
         public static object ModelGetSettings(string assetPath)
         {
-            if (string.IsNullOrEmpty(assetPath))
-                return new { error = "assetPath is required" };
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
 
             var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null)
@@ -73,15 +72,13 @@ namespace UnitySkills
             bool? importAnimation = null,
             string materialImportMode = null)
         {
-            if (string.IsNullOrEmpty(assetPath))
-                return new { error = "assetPath is required" };
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
 
             var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null)
                 return new { error = $"Not a model file or asset not found: {assetPath}" };
 
-            // 修改前记录资产状态
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            // 修改前记录资产状�?            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
             var changes = new List<string>();
@@ -267,8 +264,7 @@ namespace UnitySkills
                                 continue;
                             }
 
-                            // 修改前记录资产状态
-                            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.assetPath);
+                            // 修改前记录资产状�?                            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.assetPath);
                             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
                             // Apply settings

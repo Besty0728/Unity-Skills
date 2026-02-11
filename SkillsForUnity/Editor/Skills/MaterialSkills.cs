@@ -169,8 +169,7 @@ namespace UnitySkills
         [UnitySkill("material_assign", "Assign a material asset to a renderer (supports name/instanceId/path)")]
         public static object MaterialAssign(string name = null, int instanceId = 0, string path = null, string materialPath = null)
         {
-            if (string.IsNullOrEmpty(materialPath))
-                return new { error = "materialPath is required" };
+            if (Validate.Required(materialPath, "materialPath") is object err) return err;
 
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
@@ -259,10 +258,8 @@ namespace UnitySkills
         [UnitySkill("material_duplicate", "Duplicate an existing material")]
         public static object MaterialDuplicate(string sourcePath, string newName, string savePath = null)
         {
-            if (string.IsNullOrEmpty(sourcePath))
-                return new { error = "sourcePath is required" };
-            if (string.IsNullOrEmpty(newName))
-                return new { error = "newName is required" };
+            if (Validate.Required(sourcePath, "sourcePath") is object err) return err;
+            if (Validate.Required(newName, "newName") is object err2) return err2;
                 
             var sourceMaterial = AssetDatabase.LoadAssetAtPath<Material>(sourcePath);
             if (sourceMaterial == null)
@@ -562,8 +559,7 @@ namespace UnitySkills
         [UnitySkill("material_set_texture", "Set a texture on a material (auto-detects property name for render pipeline)")]
         public static object MaterialSetTexture(string name = null, int instanceId = 0, string path = null, string texturePath = null, string propertyName = null)
         {
-            if (string.IsNullOrEmpty(texturePath))
-                return new { error = "texturePath is required" };
+            if (Validate.Required(texturePath, "texturePath") is object err) return err;
             
             // Auto-detect texture property name if not specified
             if (string.IsNullOrEmpty(propertyName))
@@ -595,8 +591,7 @@ namespace UnitySkills
         [UnitySkill("material_set_float", "Set a float property on a material")]
         public static object MaterialSetFloat(string name = null, int instanceId = 0, string path = null, string propertyName = null, float value = 0)
         {
-            if (string.IsNullOrEmpty(propertyName))
-                return new { error = "propertyName is required" };
+            if (Validate.Required(propertyName, "propertyName") is object err) return err;
 
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -622,8 +617,7 @@ namespace UnitySkills
         [UnitySkill("material_set_int", "Set an integer property on a material")]
         public static object MaterialSetInt(string name = null, int instanceId = 0, string path = null, string propertyName = null, int value = 0)
         {
-            if (string.IsNullOrEmpty(propertyName))
-                return new { error = "propertyName is required" };
+            if (Validate.Required(propertyName, "propertyName") is object err) return err;
 
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -649,8 +643,7 @@ namespace UnitySkills
         public static object MaterialSetVector(string name = null, int instanceId = 0, string path = null, 
             string propertyName = null, float x = 0, float y = 0, float z = 0, float w = 0)
         {
-            if (string.IsNullOrEmpty(propertyName))
-                return new { error = "propertyName is required" };
+            if (Validate.Required(propertyName, "propertyName") is object err) return err;
 
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -718,8 +711,7 @@ namespace UnitySkills
         public static object MaterialSetKeyword(string name = null, int instanceId = 0, string path = null, 
             string keyword = null, bool enable = true)
         {
-            if (string.IsNullOrEmpty(keyword))
-                return new { error = "keyword is required" };
+            if (Validate.Required(keyword, "keyword") is object err) return err;
 
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -777,8 +769,7 @@ namespace UnitySkills
         [UnitySkill("material_set_shader", "Change the shader of a material")]
         public static object MaterialSetShader(string name = null, int instanceId = 0, string path = null, string shaderName = null)
         {
-            if (string.IsNullOrEmpty(shaderName))
-                return new { error = "shaderName is required" };
+            if (Validate.Required(shaderName, "shaderName") is object err) return err;
 
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;

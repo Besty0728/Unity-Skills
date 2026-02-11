@@ -6,6 +6,19 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
+    /// Parameter validation helper - returns error object or null
+    /// </summary>
+    public static class Validate
+    {
+        /// <summary>
+        /// Check if string parameter is provided. Returns error object if empty, null if valid.
+        /// Usage: if (Validate.Required(x, "x") is object err) return err;
+        /// </summary>
+        public static object Required(string value, string paramName) =>
+            string.IsNullOrEmpty(value) ? new { error = $"{paramName} is required" } : null;
+    }
+
+    /// <summary>
     /// Unified utility for finding GameObjects by multiple methods.
     /// Supports: name, instance ID, hierarchy path, tag, component type.
     /// Enhanced with intelligent fallback search strategies.

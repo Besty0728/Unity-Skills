@@ -23,8 +23,7 @@ namespace UnitySkills
         [UnitySkill("package_check", "Check if a package is installed. Returns version if installed.")]
         public static object PackageCheck(string packageId)
         {
-            if (string.IsNullOrEmpty(packageId))
-                return new { error = "packageId is required" };
+            if (Validate.Required(packageId, "packageId") is object err) return err;
 
             var installed = PackageManagerHelper.IsPackageInstalled(packageId);
             var version = PackageManagerHelper.GetInstalledVersion(packageId);
@@ -34,8 +33,7 @@ namespace UnitySkills
         [UnitySkill("package_install", "Install a package. version is optional.")]
         public static object PackageInstall(string packageId, string version = null)
         {
-            if (string.IsNullOrEmpty(packageId))
-                return new { error = "packageId is required" };
+            if (Validate.Required(packageId, "packageId") is object err) return err;
 
             string resultMsg = null;
             bool? resultSuccess = null;
@@ -57,8 +55,7 @@ namespace UnitySkills
         [UnitySkill("package_remove", "Remove an installed package.")]
         public static object PackageRemove(string packageId)
         {
-            if (string.IsNullOrEmpty(packageId))
-                return new { error = "packageId is required" };
+            if (Validate.Required(packageId, "packageId") is object err) return err;
 
             if (!PackageManagerHelper.IsPackageInstalled(packageId))
                 return new { error = $"Package {packageId} is not installed" };

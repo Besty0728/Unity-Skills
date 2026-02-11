@@ -15,8 +15,7 @@ namespace UnitySkills
         [UnitySkill("scene_create", "Create a new empty scene")]
         public static object SceneCreate(string scenePath)
         {
-            if (string.IsNullOrEmpty(scenePath))
-                return new { error = "scenePath is required" };
+            if (Validate.Required(scenePath, "scenePath") is object err) return err;
 
             var dir = Path.GetDirectoryName(scenePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
