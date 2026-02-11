@@ -427,6 +427,8 @@ git push origin main --force
 
 ### 规则说明
 
+- **开发过程中**：只在 beta 分支操作，提交到 beta
+- **开发完成后**：将 beta 同步到 main，保持双分支一致
 - main 和 beta 保持相同的提交历史（线性）
 - 不使用 merge commit，使用 `git reset --hard` 让分支指向同一提交
 - 每次提交独立显示，最大化 GitHub 贡献记录
