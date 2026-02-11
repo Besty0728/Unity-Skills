@@ -124,13 +124,17 @@ namespace UnitySkills
             public string Path;
             public string Body;
             public long EnqueueTimeTicks;
-            
+            public string RequestId;
+
             // Result (set by Main thread)
             public string ResponseJson;
             public int StatusCode;
             public bool IsProcessed;
             public ManualResetEventSlim CompletionSignal;
         }
+
+        // Request ID counter
+        private static long _requestIdCounter = 0;
 
         /// <summary>
         /// Static constructor - called after every Domain Reload.
@@ -447,6 +451,7 @@ namespace UnitySkills
                         Path = request.Url.AbsolutePath,
                         Body = body,
                         EnqueueTimeTicks = DateTime.UtcNow.Ticks,
+                        RequestId = $"req_{Interlocked.Increment(ref _requestIdCounter):X8}",
                         StatusCode = 200,
                         ResponseJson = null,
                         IsProcessed = false,
@@ -524,12 +529,13 @@ namespace UnitySkills
             try
             {
                 response = job.Context.Response;
-                
+
                 // CORS headers
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
                 response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
-                
+                response.Headers.Add("X-Request-Id", job.RequestId);
+
                 response.StatusCode = job.StatusCode;
                 
                 if (!string.IsNullOrEmpty(job.ResponseJson))
