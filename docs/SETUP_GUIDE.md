@@ -89,6 +89,7 @@ Unity 菜单：**Window → UnitySkills**，切换到 **AI Config** 标签页
 > 安装器落盘文件说明（生成于目标目录）：
 > - `SKILL.md`
 > - `scripts/unity_skills.py`
+> - `scripts/agent_config.json`（包含 Agent 标识）
 > - Antigravity 额外生成 `workflows/unity-skills.md`
 
 ### Gemini CLI 特别说明

@@ -80,6 +80,7 @@ In Unity, click menu: `Window > UnitySkills > Start Server`
 > Installer output files (generated in target directory):
 > - `SKILL.md`
 > - `scripts/unity_skills.py`
+> - `scripts/agent_config.json` (contains Agent identifier)
 > - Antigravity additionally generates `workflows/unity-skills.md`
 
 > **Codex Note**: **Global installation** is recommended. Project-level installation requires declaration in `AGENTS.md` to be recognized; after global installation, restart Codex to use.
@@ -96,12 +97,18 @@ If one-click installation is not supported or preferred, follow this **standard 
 1. **Locate Skills Source Directory**: The `unity-skills/` directory in this repository is the distributable Skills template (root directory contains `SKILL.md`).
 2. **Find the Tool's Skills Root Directory**: Different tools have different paths; refer to the tool's documentation first.
 3. **Copy Completely**: Copy the entire `unity-skills/` directory to the tool's Skills root directory.
-4. **Directory Structure Requirements**: After copying, maintain the structure as follows (example):
+4. **Create agent_config.json**: Create an `agent_config.json` file in the `unity-skills/scripts/` directory:
+   ```json
+   {"agentId": "your-agent-name", "installedAt": "2026-02-11T00:00:00Z"}
+   ```
+   Replace `your-agent-name` with the name of your AI tool (e.g., `claude-code`, `antigravity`, `gemini-cli`, `codex`).
+5. **Directory Structure Requirements**: After copying, maintain the structure as follows (example):
    - `unity-skills/SKILL.md`
    - `unity-skills/skills/`
-   - `unity-skills/scripts/`
-5. **Restart the Tool**: Let the tool reload the Skills list.
-6. **Verify Loading**: Trigger the Skills list/command in the tool (or execute a simple skill call) to confirm availability.
+   - `unity-skills/scripts/unity_skills.py`
+   - `unity-skills/scripts/agent_config.json`
+6. **Restart the Tool**: Let the tool reload the Skills list.
+7. **Verify Loading**: Trigger the Skills list/command in the tool (or execute a simple skill call) to confirm availability.
 
 #### 🔎 Common Tool Directory Reference
 The following are verified default directories (if the tool has a custom path configured, use that instead):
