@@ -17,6 +17,30 @@ namespace UnitySkills
         private static bool _initialized;
         private static string _cachedManifest;
 
+        // Skills that trigger auto-workflow recording (modification operations)
+        private static readonly HashSet<string> _workflowTrackedSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "gameobject_create", "gameobject_delete", "gameobject_rename",
+            "gameobject_set_transform", "gameobject_duplicate", "gameobject_set_parent",
+            "gameobject_set_active", "gameobject_create_batch", "gameobject_delete_batch",
+            "gameobject_rename_batch", "gameobject_set_transform_batch",
+            "component_add", "component_remove", "component_set_property",
+            "component_add_batch", "component_remove_batch", "component_set_property_batch",
+            "material_create", "material_assign", "material_set_color", "material_set_texture",
+            "material_set_emission", "material_set_float", "material_set_shader",
+            "material_create_batch", "material_assign_batch", "material_set_colors_batch",
+            "light_create", "light_set_properties", "light_set_enabled",
+            "prefab_create", "prefab_instantiate", "prefab_apply", "prefab_unpack",
+            "prefab_instantiate_batch",
+            "ui_create_canvas", "ui_create_panel", "ui_create_button", "ui_create_text",
+            "ui_create_image", "ui_create_inputfield", "ui_create_slider", "ui_create_toggle",
+            "ui_create_batch", "ui_set_text", "ui_set_anchor", "ui_set_rect",
+            "script_create", "script_delete", "script_create_batch",
+            "terrain_create", "terrain_set_height", "terrain_set_heights_batch", "terrain_paint_texture",
+            "asset_import", "asset_delete", "asset_move", "asset_duplicate",
+            "scene_create", "scene_save"
+        };
+
         // JSON 序列化设置，禁用 Unicode 转义确保中文正确显示
         private static readonly JsonSerializerSettings _jsonSettings = new JsonSerializerSettings
         {
@@ -138,14 +162,22 @@ namespace UnitySkills
                 UnityEditor.Undo.IncrementCurrentGroup();
                 UnityEditor.Undo.SetCurrentGroupName($"Skill: {name}");
                 int undoGroup = UnityEditor.Undo.GetCurrentGroup();
-                
-                // ========== UNIVERSAL WORKFLOW TRACKING ==========
+
+                // ========== AUTO WORKFLOW RECORDING ==========
+                bool autoStartedWorkflow = false;
+                if (_workflowTrackedSkills.Contains(name) && !WorkflowManager.IsRecording)
+                {
+                    var desc = $"{name} - {(json?.Length > 80 ? json.Substring(0, 80) + "..." : json ?? "")}";
+                    WorkflowManager.BeginTask(name, desc);
+                    autoStartedWorkflow = true;
+                }
+
                 // Auto-snapshot target objects BEFORE skill execution for rollback support
                 if (WorkflowManager.IsRecording)
                 {
                     TrySnapshotTargetsFromArgs(args);
                 }
-                // ==================================================
+                // ==============================================
 
                 // Verbose control
                 bool verbose = true; // Default to true if not specified to maintain backward compatibility for direct calls
@@ -155,14 +187,18 @@ namespace UnitySkills
                 }
                 
                 var result = skill.Method.Invoke(null, invoke);
-                
-                // ========== UNIVERSAL WORKFLOW AUTO-SAVE ==========
-                // Post-Skill Hook: Force save history immediately after execution
-                if (WorkflowManager.IsRecording)
+
+                // ========== AUTO WORKFLOW END ==========
+                if (autoStartedWorkflow)
+                {
+                    WorkflowManager.EndTask();
+                    WorkflowManager.SaveHistory();
+                }
+                else if (WorkflowManager.IsRecording)
                 {
                     WorkflowManager.SaveHistory();
                 }
-                // ==================================================
+                // ========================================
 
                 // Commit transaction
                 UnityEditor.Undo.CollapseUndoOperations(undoGroup);
