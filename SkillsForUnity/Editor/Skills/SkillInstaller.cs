@@ -502,12 +502,10 @@ This file declares available skills for AI agents like Codex.
             sb.AppendLine("# CRITICAL: Fix Windows console encoding BEFORE any other imports or print statements");
             sb.AppendLine("# This must be at the very top of the module to work correctly");
             sb.AppendLine("import sys");
+            sb.AppendLine("import io");
             sb.AppendLine("if sys.platform == 'win32':");
-            sb.AppendLine("    import codecs");
-            sb.AppendLine("    if hasattr(sys.stdout, 'buffer'):");
-            sb.AppendLine("        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'replace')");
-            sb.AppendLine("    if hasattr(sys.stderr, 'buffer'):");
-            sb.AppendLine("        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'replace')");
+            sb.AppendLine("    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')");
+            sb.AppendLine("    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')");
             sb.AppendLine();
 
             // Imports
