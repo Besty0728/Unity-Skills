@@ -632,8 +632,9 @@ This file declares available skills for AI agents like Codex.
             sb.AppendLine("        try:");
             sb.AppendLine("            # Combine verbose into kwargs for JSON body");
             sb.AppendLine("            kwargs['verbose'] = verbose");
-            sb.AppendLine("            headers = {'X-Agent-Id': AGENT_ID}");
-            sb.AppendLine("            response = requests.post(f\"{self.url}/skill/{skill_name}\", json=kwargs, headers=headers, timeout=30)");
+            sb.AppendLine("            headers = {'X-Agent-Id': AGENT_ID, 'Content-Type': 'application/json; charset=utf-8'}");
+            sb.AppendLine("            body = json.dumps(kwargs, ensure_ascii=False).encode('utf-8')");
+            sb.AppendLine("            response = requests.post(f\"{self.url}/skill/{skill_name}\", data=body, headers=headers, timeout=30)");
             sb.AppendLine("            response.encoding = 'utf-8'  # Ensure correct UTF-8 decoding");
             sb.AppendLine();
             sb.AppendLine("            try:");
