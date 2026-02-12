@@ -139,8 +139,8 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.4.0
 | **Validation** | 7 | 项目验证/空文件夹清理/引用检测 |
 | **Terrain** | 6 | 地形创建/高度图编辑/纹理绘制 [v1.4] |
 | **Perception** | 3 | 场景摘要/层级描述/脚本分析 [v1.4] |
-| **Smart** | 3 | 场景查询/自动布局/引用装配 [v1.5 NEW] |
-| **UI Layout** | 5 | 锚点/尺寸/布局组/对齐/分布 [v1.5 NEW] |
+| **Smart** | 3 | 场景查询/自动布局/引用装配 [Preview] |
+| **UI Layout** | 5 | 锚点/尺寸/布局组/对齐/分布 [Preview] |
 | **Scene** | 6 | 场景切换/保存/加载/截图 |
 | **Script** | 6 | C# 脚本创建/编译检查/搜索 |
 | **Shader** | 6 | Shader 查找/创建/属性列举 |

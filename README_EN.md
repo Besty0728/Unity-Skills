@@ -139,8 +139,8 @@ If you're using other tools that support Skills, install according to the Skills
 | **Validation** | 7 | Project validation/Empty folder cleanup/Reference detection |
 | **Terrain** | 6 | Terrain creation/Heightmap editing/Texture painting [v1.4] |
 | **Perception** | 3 | Scene summary/Hierarchy description/Script analysis [v1.4] |
-| **Smart** | 3 | Scene query/Auto layout/Reference assembly [v1.5 NEW] |
-| **UI Layout** | 5 | Anchors/Size/Layout groups/Alignment/Distribution [v1.5 NEW] |
+| **Smart** | 3 | Scene query/Auto layout/Reference assembly [Preview] |
+| **UI Layout** | 5 | Anchors/Size/Layout groups/Alignment/Distribution [Preview] |
 | **Scene** | 6 | Scene switching/Save/Load/Screenshot |
 | **Script** | 6 | C# script creation/Compile check/Search |
 | **Shader** | 6 | Shader find/Create/Property enumeration |
