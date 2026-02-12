@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using UnityEditor;
 using System.Reflection;
@@ -6,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Object = UnityEngine.Object;
 
 #if CINEMACHINE_3
 using Unity.Cinemachine;
@@ -640,7 +640,7 @@ namespace UnitySkills
                 try {
                     object safeValue = SafeConvert(value, field.FieldType);
                     if (safeValue != null) { field.SetValue(target, safeValue); return true; }
-                } catch (Exception ex) { UnityEngine.Debug.LogWarning($"[UnitySkills] Failed to set field '{name}': {ex.Message}"); }
+                } catch (System.Exception ex) { UnityEngine.Debug.LogWarning($"[UnitySkills] Failed to set field '{name}': {ex.Message}"); }
             }
 
             var prop = type.GetProperty(name, flags);
@@ -649,7 +649,7 @@ namespace UnitySkills
                 try {
                     object safeValue = SafeConvert(value, prop.PropertyType);
                     if (safeValue != null) { prop.SetValue(target, safeValue); return true; }
-                } catch (Exception ex) { UnityEngine.Debug.LogWarning($"[UnitySkills] Failed to set property '{name}': {ex.Message}"); }
+                } catch (System.Exception ex) { UnityEngine.Debug.LogWarning($"[UnitySkills] Failed to set property '{name}': {ex.Message}"); }
             }
             return false;
         }
