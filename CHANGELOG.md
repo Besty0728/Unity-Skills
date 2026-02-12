@@ -35,7 +35,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **CinemachineSkills 审查修复**: 15 处代码问题修复，包括空引用保护、异常处理、API 兼容性（`CinemachineSkills.cs`）
 - **静默异常修复**: 多处空 catch 块添加日志记录，便于调试定位问题
 - **文件重命名**: `NextGenSkills.cs` → `PerceptionSkills.cs`，文件名与类名保持一致
-- **SampleSkills 标注**: 明确标记为便捷别名，Find 调用迁移到 GameObjectFinder
+- **SampleSkills 标注**: 明确标记为便捷别名，4 处 `GameObject.Find` 迁移到 `GameObjectFinder.FindOrError`
 
 #### 基础设施
 - **PhysicsSetGravity Undo 支持**: 通过 `DynamicsManager.asset` 注册 Undo，重力修改可撤销（`PhysicsSkills.cs`）
