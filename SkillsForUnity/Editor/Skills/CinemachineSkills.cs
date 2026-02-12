@@ -47,12 +47,13 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
             // 确保 CinemachineBrain 存在
-            if (Camera.main != null)
+            var mainCamera = Camera.main;
+            if (mainCamera != null)
             {
-                var brain = Camera.main.gameObject.GetComponent<CinemachineBrain>();
+                var brain = mainCamera.GetComponent<CinemachineBrain>();
                 if (brain == null)
                 {
-                    var brainComp = Undo.AddComponent<CinemachineBrain>(Camera.main.gameObject);
+                    var brainComp = Undo.AddComponent<CinemachineBrain>(mainCamera.gameObject);
                     WorkflowManager.SnapshotCreatedComponent(brainComp);
                 }
             }
@@ -114,7 +115,7 @@ namespace UnitySkills
 
         // --- Custom Sanitizer to break Loops ---
 #if CINEMACHINE_2 || CINEMACHINE_3
-        private static object Sanitize(object obj, int depth = 0)
+        private static object Sanitize(object obj, int depth = 0, HashSet<int> visited = null)
         {
             if (obj == null) return null;
             if (depth > 5) return obj.ToString();
@@ -130,16 +131,33 @@ namespace UnitySkills
             if (obj is Color c) return new { c.r, c.g, c.b, c.a };
             if (obj is Rect r) return new { r.x, r.y, r.width, r.height };
 
+            // Cycle detection for reference types
+            if (!t.IsValueType)
+            {
+                if (visited == null) visited = new HashSet<int>();
+                int id = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+                if (!visited.Add(id)) return $"[Circular: {t.Name}]";
+            }
+
+            // Handle Dictionaries (before IEnumerable to preserve key-value structure)
+            if (obj is System.Collections.IDictionary dict)
+            {
+                var dictResult = new Dictionary<string, object>();
+                foreach (System.Collections.DictionaryEntry entry in dict)
+                    dictResult[entry.Key.ToString()] = Sanitize(entry.Value, depth + 1, visited);
+                return dictResult;
+            }
+
             // Handle Arrays/Lists
             if (obj is System.Collections.IEnumerable list)
             {
                 var result = new List<object>();
-                foreach(var item in list) result.Add(Sanitize(item, depth + 1));
+                foreach(var item in list) result.Add(Sanitize(item, depth + 1, visited));
                 return result;
             }
 
             // Deep Sanitization for complex Structs/Classes
-            var dict = new Dictionary<string, object>();
+            var memberDict = new Dictionary<string, object>();
             var members = t.GetMembers(BindingFlags.Public | BindingFlags.Instance)
                 .Where(m => m.MemberType == MemberTypes.Field || m.MemberType == MemberTypes.Property);
 
@@ -156,14 +174,14 @@ namespace UnitySkills
 
                      if (val != null)
                      {
-                         dict[member.Name] = Sanitize(val, depth + 1);
+                         memberDict[member.Name] = Sanitize(val, depth + 1, visited);
                      }
                  }
-                 catch {}
+                 catch { /* Reflection read failed — skip member */ }
             }
-            if (depth == 0) dict["_type"] = t.Name;
+            if (depth == 0) memberDict["_type"] = t.Name;
 
-            return dict;
+            return memberDict;
         }
 #endif
 
@@ -267,6 +285,7 @@ namespace UnitySkills
             var vcam = go.GetComponent<CinemachineCamera>();
             if (vcam == null) return new { error = "Not a CinemachineCamera" };
 
+            Undo.RecordObject(vcam, "Set Targets");
             if (followName != null)
                 vcam.Follow = GameObject.Find(followName)?.transform;
             if (lookAtName != null)
@@ -275,13 +294,14 @@ namespace UnitySkills
             var vcam = go.GetComponent<CinemachineVirtualCamera>();
             if (vcam == null) return new { error = "Not a CinemachineVirtualCamera" };
 
+            Undo.RecordObject(vcam, "Set Targets");
             if (followName != null)
                 vcam.m_Follow = GameObject.Find(followName)?.transform;
             if (lookAtName != null)
                 vcam.m_LookAt = GameObject.Find(lookAtName)?.transform;
 #endif
 
-            Action(go, "Set Targets");
+            EditorUtility.SetDirty(go);
             return new { success = true };
 #endif
         }
@@ -378,7 +398,11 @@ namespace UnitySkills
 #elif CINEMACHINE_2
             var cmAssembly = typeof(CinemachineVirtualCamera).Assembly;
 #endif
-            var componentTypes = cmAssembly.GetTypes()
+            System.Type[] assemblyTypes;
+            try { assemblyTypes = cmAssembly.GetTypes(); }
+            catch (ReflectionTypeLoadException ex) { assemblyTypes = ex.Types.Where(t => t != null).ToArray(); }
+
+            var componentTypes = assemblyTypes
                 .Where(t => t.IsSubclassOf(typeof(MonoBehaviour)) && !t.IsAbstract && t.IsPublic)
                 .Select(t => t.Name)
                 .Where(n => n.StartsWith("Cinemachine"))
@@ -439,7 +463,7 @@ namespace UnitySkills
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-             var sources = Object.FindObjectsOfType<CinemachineImpulseSource>();
+             var sources = FindAllObjects<CinemachineImpulseSource>();
              if (sources.Length == 0) return new { success = false, error = "No CinemachineImpulseSource found in scene." };
 
              var source = sources[0];
@@ -456,7 +480,7 @@ namespace UnitySkills
                          velocity = new Vector3((float)v["x"], (float)v["y"], (float)v["z"]);
                      }
                  }
-                 catch { }
+                 catch (System.Exception ex) { UnityEngine.Debug.LogWarning($"[UnitySkills] Failed to parse impulse params: {ex.Message}"); }
              }
 
              source.GenerateImpulse(velocity);
@@ -470,8 +494,9 @@ namespace UnitySkills
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            if (Camera.main == null) return new { error = "No Main Camera" };
-            var brain = Camera.main.GetComponent<CinemachineBrain>();
+            var mainCamera = Camera.main;
+            if (mainCamera == null) return new { error = "No Main Camera" };
+            var brain = mainCamera.GetComponent<CinemachineBrain>();
             if (brain == null) return new { error = "No CinemachineBrain on Main Camera" };
 
             var activeCam = brain.ActiveVirtualCamera as Component;
@@ -506,7 +531,7 @@ namespace UnitySkills
             var vcam = go.GetComponent<CinemachineCamera>();
             if (vcam == null) return new { error = "Not a CinemachineCamera" };
 
-            var allCams = Object.FindObjectsOfType<CinemachineCamera>();
+            var allCams = FindAllObjects<CinemachineCamera>();
             int maxPrio = 0;
             if (allCams.Length > 0) maxPrio = allCams.Max(c => c.Priority);
 
@@ -518,7 +543,7 @@ namespace UnitySkills
             var vcam = go.GetComponent<CinemachineVirtualCamera>();
             if (vcam == null) return new { error = "Not a CinemachineVirtualCamera" };
 
-            var allCams = Object.FindObjectsOfType<CinemachineVirtualCamera>();
+            var allCams = FindAllObjects<CinemachineVirtualCamera>();
             int maxPrio = 0;
             if (allCams.Length > 0) maxPrio = allCams.Max(c => c.m_Priority);
 
@@ -564,10 +589,19 @@ namespace UnitySkills
 
         // --- Helpers ---
 
-        private static void Action(Object target, string name)
+        private static void RecordAndSetDirty(Object target, string name)
         {
             Undo.RecordObject(target, name);
             EditorUtility.SetDirty(target);
+        }
+
+        private static T[] FindAllObjects<T>() where T : Object
+        {
+#if UNITY_2023_1_OR_NEWER
+            return Object.FindObjectsByType<T>(FindObjectsSortMode.None);
+#else
+            return Object.FindObjectsOfType<T>();
+#endif
         }
 
 #if CINEMACHINE_2 || CINEMACHINE_3
@@ -595,7 +629,7 @@ namespace UnitySkills
 
                 if (nestedTarget == null) return false;
 
-                bool isStruct = type.IsValueType;
+                bool isStruct = nestedTarget.GetType().IsValueType;
                 bool success = SetFieldOrProperty(nestedTarget, remainingName, value);
 
                 if (success && (isStruct || field != null))
@@ -710,6 +744,7 @@ namespace UnitySkills
              Undo.RegisterCreatedObjectUndo(go, "Create TargetGroup");
              WorkflowManager.SnapshotObject(go, SnapshotType.Created);
              var group = Undo.AddComponent<CinemachineTargetGroup>(go);
+             if (group == null) return new { error = "Failed to add CinemachineTargetGroup component" };
              return new { success = true, name = go.name };
 #endif
         }
@@ -717,81 +752,58 @@ namespace UnitySkills
         [UnitySkill("cinemachine_target_group_add_member", "Add/Update member in TargetGroup. Inputs: groupName, targetName, weight, radius.")]
         public static object CinemachineTargetGroupAddMember(string groupName, string targetName, float weight = 1f, float radius = 1f)
         {
-#if CINEMACHINE_3
-             var groupGo = GameObject.Find(groupName);
-             if (groupGo == null) return new { error = "TargetGroup not found" };
-             var group = groupGo.GetComponent<CinemachineTargetGroup>();
-             if (group == null) return new { error = "GameObject is not a CinemachineTargetGroup" };
-
-             var targetGo = GameObject.Find(targetName);
-             if (targetGo == null) return new { error = "Target GameObject not found" };
-
-             WorkflowManager.SnapshotObject(groupGo);
-             Undo.RecordObject(group, "Add TargetGroup Member");
-             group.RemoveMember(targetGo.transform);
-             group.AddMember(targetGo.transform, weight, radius);
-
-             return new { success = true, message = $"Added {targetName} to {groupName} (W:{weight}, R:{radius})" };
-#elif CINEMACHINE_2
-             var groupGo = GameObject.Find(groupName);
-             if (groupGo == null) return new { error = "TargetGroup not found" };
-             var group = groupGo.GetComponent<CinemachineTargetGroup>();
-             if (group == null) return new { error = "GameObject is not a CinemachineTargetGroup" };
-
-             var targetGo = GameObject.Find(targetName);
-             if (targetGo == null) return new { error = "Target GameObject not found" };
-
-             WorkflowManager.SnapshotObject(groupGo);
-             Undo.RecordObject(group, "Add TargetGroup Member");
-             group.RemoveMember(targetGo.transform);
-             group.AddMember(targetGo.transform, weight, radius);
-
-             return new { success = true, message = $"Added {targetName} to {groupName} (W:{weight}, R:{radius})" };
-#else
+#if !CINEMACHINE_2 && !CINEMACHINE_3
              return NoCinemachine();
+#else
+             var groupGo = GameObject.Find(groupName);
+             if (groupGo == null) return new { error = "TargetGroup not found" };
+             var group = groupGo.GetComponent<CinemachineTargetGroup>();
+             if (group == null) return new { error = "GameObject is not a CinemachineTargetGroup" };
+
+             var targetGo = GameObject.Find(targetName);
+             if (targetGo == null) return new { error = "Target GameObject not found" };
+
+             WorkflowManager.SnapshotObject(groupGo);
+             Undo.RecordObject(group, "Add TargetGroup Member");
+             group.RemoveMember(targetGo.transform);
+             group.AddMember(targetGo.transform, weight, radius);
+
+             return new { success = true, message = $"Added {targetName} to {groupName} (W:{weight}, R:{radius})" };
 #endif
         }
 
         [UnitySkill("cinemachine_target_group_remove_member", "Remove member from TargetGroup. Inputs: groupName, targetName.")]
         public static object CinemachineTargetGroupRemoveMember(string groupName, string targetName)
         {
-#if CINEMACHINE_3
-             var groupGo = GameObject.Find(groupName);
-             if (groupGo == null) return new { error = "TargetGroup not found" };
-             var group = groupGo.GetComponent<CinemachineTargetGroup>();
-             if (group == null) return new { error = "GameObject is not a CinemachineTargetGroup" };
-
-             var targetGo = GameObject.Find(targetName);
-             if (targetGo == null) return new { error = "Target GameObject not found" };
-
-             WorkflowManager.SnapshotObject(groupGo);
-             Undo.RecordObject(group, "Remove TargetGroup Member");
-             group.RemoveMember(targetGo.transform);
-
-             return new { success = true, message = $"Removed {targetName} from {groupName}" };
-#elif CINEMACHINE_2
-             var groupGo = GameObject.Find(groupName);
-             if (groupGo == null) return new { error = "TargetGroup not found" };
-             var group = groupGo.GetComponent<CinemachineTargetGroup>();
-             if (group == null) return new { error = "GameObject is not a CinemachineTargetGroup" };
-
-             var targetGo = GameObject.Find(targetName);
-             if (targetGo == null) return new { error = "Target GameObject not found" };
-
-             WorkflowManager.SnapshotObject(groupGo);
-             Undo.RecordObject(group, "Remove TargetGroup Member");
-             group.RemoveMember(targetGo.transform);
-
-             return new { success = true, message = $"Removed {targetName} from {groupName}" };
-#else
+#if !CINEMACHINE_2 && !CINEMACHINE_3
              return NoCinemachine();
+#else
+             var groupGo = GameObject.Find(groupName);
+             if (groupGo == null) return new { error = "TargetGroup not found" };
+             var group = groupGo.GetComponent<CinemachineTargetGroup>();
+             if (group == null) return new { error = "GameObject is not a CinemachineTargetGroup" };
+
+             var targetGo = GameObject.Find(targetName);
+             if (targetGo == null) return new { error = "Target GameObject not found" };
+
+             WorkflowManager.SnapshotObject(groupGo);
+             Undo.RecordObject(group, "Remove TargetGroup Member");
+             group.RemoveMember(targetGo.transform);
+
+             return new { success = true, message = $"Removed {targetName} from {groupName}" };
 #endif
         }
 
         [UnitySkill("cinemachine_set_spline", "Set Spline for VCam Body. CM3 + Splines only. Inputs: vcamName, splineName.")]
         public static object CinemachineSetSpline(string vcamName, string splineName)
         {
-#if CINEMACHINE_3 && HAS_SPLINES
+#if !CINEMACHINE_2 && !CINEMACHINE_3
+            return NoCinemachine();
+#elif CINEMACHINE_2
+            return new { error = "cinemachine_set_spline 仅支持 Cinemachine 3.x + Splines 包" };
+#elif !HAS_SPLINES
+            return new { error = "Splines 包未安装。请通过 Package Manager 安装 com.unity.splines" };
+#else
             var vcamGo = GameObject.Find(vcamName);
             if (vcamGo == null) return new { error = "VCam not found" };
             var vcam = vcamGo.GetComponent<CinemachineCamera>();
@@ -813,12 +825,6 @@ namespace UnitySkills
             dolly.Spline = container;
 
             return new { success = true, message = $"Assigned Spline {splineName} to VCam {vcamName}" };
-#elif CINEMACHINE_2
-            return new { error = "cinemachine_set_spline 仅支持 Cinemachine 3.x + Splines 包" };
-#elif !HAS_SPLINES
-            return new { error = "Splines 包未安装。请通过 Package Manager 安装 com.unity.splines" };
-#else
-            return NoCinemachine();
 #endif
         }
         [UnitySkill("cinemachine_add_extension", "Add a CinemachineExtension. Inputs: vcamName, extensionName (e.g. CinemachineStoryboard).")]
@@ -846,6 +852,7 @@ namespace UnitySkills
 
              WorkflowManager.SnapshotObject(go);
              var ext = Undo.AddComponent(go, type);
+             if (ext == null) return new { error = "Failed to add extension " + type.Name };
              WorkflowManager.SnapshotCreatedComponent(ext);
              return new { success = true, message = "Added extension " + type.Name };
 #endif
@@ -882,6 +889,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Mixing Camera");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             var cam = Undo.AddComponent<CinemachineMixingCamera>(go);
+            if (cam == null) return new { error = "Failed to add CinemachineMixingCamera component" };
             return new { success = true, name = name };
 #endif
         }
@@ -921,6 +929,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Clear Shot");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             var cam = Undo.AddComponent<CinemachineClearShot>(go);
+            if (cam == null) return new { error = "Failed to add CinemachineClearShot component" };
             return new { success = true, name = name };
 #endif
         }
@@ -935,6 +944,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create State Driven Camera");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             var cam = Undo.AddComponent<CinemachineStateDrivenCamera>(go);
+            if (cam == null) return new { error = "Failed to add CinemachineStateDrivenCamera component" };
 
             if (!string.IsNullOrEmpty(targetAnimatorName))
             {
