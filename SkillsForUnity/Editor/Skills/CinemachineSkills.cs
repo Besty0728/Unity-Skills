@@ -650,7 +650,6 @@ namespace UnitySkills
                     if (safeValue != null) { prop.SetValue(target, safeValue); return true; }
                 } catch (Exception ex) { UnityEngine.Debug.LogWarning($"[UnitySkills] Failed to set property '{name}': {ex.Message}"); }
             }
-            }
             return false;
         }
 #endif
