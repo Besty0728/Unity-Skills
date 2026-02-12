@@ -16,9 +16,8 @@ namespace UnitySkills
         [UnitySkill("event_get_listeners", "Get persistent listeners of a UnityEvent")]
         public static object EventGetListeners(string objectName, string componentName, string eventName)
         {
-            var go = GameObject.Find(objectName);
-            if (go == null)
-                return new { error = $"GameObject not found: {objectName}" };
+            var (go, findErr) = GameObjectFinder.FindOrError(name: objectName);
+            if (findErr != null) return findErr;
 
             // Find component
             var component = go.GetComponent(componentName);
@@ -79,14 +78,14 @@ namespace UnitySkills
             string argType = "void", // void, int, float, string, bool, object
             float floatArg = 0, int intArg = 0, string stringArg = null, bool boolArg = false)
         {
-            var go = GameObject.Find(objectName);
-            if (go == null) return new { error = $"Source GameObject not found: {objectName}" };
+            var (go, goErr) = GameObjectFinder.FindOrError(name: objectName);
+            if (goErr != null) return goErr;
 
             var component = go.GetComponent(componentName);
             if (component == null) return new { error = $"Source Component not found: {componentName}" };
 
-            var targetGo = GameObject.Find(targetObjectName);
-            if (targetGo == null) return new { error = $"Target GameObject not found: {targetObjectName}" };
+            var (targetGo, tgtErr) = GameObjectFinder.FindOrError(name: targetObjectName);
+            if (tgtErr != null) return tgtErr;
 
             var targetComponent = targetGo.GetComponent(targetComponentName);
             if (targetComponent == null) return new { error = $"Target Component not found: {targetComponentName}" };
@@ -201,8 +200,8 @@ namespace UnitySkills
         [UnitySkill("event_remove_listener", "Remove a persistent listener by index")]
         public static object EventRemoveListener(string objectName, string componentName, string eventName, int index)
         {
-            var go = GameObject.Find(objectName);
-            if (go == null) return new { error = $"GameObject not found: {objectName}" };
+            var (go, findErr) = GameObjectFinder.FindOrError(name: objectName);
+            if (findErr != null) return findErr;
 
             var component = go.GetComponent(componentName);
             if (component == null) return new { error = $"Component not found: {componentName}" };
@@ -210,7 +209,7 @@ namespace UnitySkills
             var type = component.GetType();
             var field = type.GetField(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             var property = type.GetProperty(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            
+
             UnityEventBase unityEvent = null;
             if (field != null) unityEvent = field.GetValue(component) as UnityEventBase;
             else if (property != null) unityEvent = property.GetValue(component) as UnityEventBase;
@@ -229,8 +228,8 @@ namespace UnitySkills
         [UnitySkill("event_invoke", "Invoke a UnityEvent explicitly (Runtime only)")]
         public static object EventInvoke(string objectName, string componentName, string eventName)
         {
-             var go = GameObject.Find(objectName);
-            if (go == null) return new { error = $"GameObject not found: {objectName}" };
+             var (go, goErr) = GameObjectFinder.FindOrError(name: objectName);
+            if (goErr != null) return goErr;
 
             var component = go.GetComponent(componentName);
             if (component == null) return new { error = $"Component not found: {componentName}" };
@@ -238,7 +237,7 @@ namespace UnitySkills
             var type = component.GetType();
             var field = type.GetField(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             var property = type.GetProperty(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            
+
             UnityEventBase unityEvent = null;
             if (field != null) unityEvent = field.GetValue(component) as UnityEventBase;
             else if (property != null) unityEvent = property.GetValue(component) as UnityEventBase;

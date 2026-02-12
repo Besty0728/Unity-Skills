@@ -14,9 +14,8 @@ namespace UnitySkills
         {
             if (Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
 
-            var go = GameObject.Find(gameObjectName);
-            if (go == null)
-                return new { error = $"GameObject not found: {gameObjectName}" };
+            var (go, findErr) = GameObjectFinder.FindOrError(name: gameObjectName);
+            if (findErr != null) return findErr;
 
             var dir = Path.GetDirectoryName(savePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -120,9 +119,8 @@ namespace UnitySkills
         [UnitySkill("prefab_apply", "Apply changes from instance to prefab")]
         public static object PrefabApply(string gameObjectName)
         {
-            var go = GameObject.Find(gameObjectName);
-            if (go == null)
-                return new { error = $"GameObject not found: {gameObjectName}" };
+            var (go, goErr) = GameObjectFinder.FindOrError(name: gameObjectName);
+            if (goErr != null) return goErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
             if (prefabRoot == null)
@@ -138,9 +136,8 @@ namespace UnitySkills
         [UnitySkill("prefab_unpack", "Unpack a prefab instance")]
         public static object PrefabUnpack(string gameObjectName, bool completely = false)
         {
-            var go = GameObject.Find(gameObjectName);
-            if (go == null)
-                return new { error = $"GameObject not found: {gameObjectName}" };
+            var (go, findErr) = GameObjectFinder.FindOrError(name: gameObjectName);
+            if (findErr != null) return findErr;
 
             WorkflowManager.SnapshotObject(go);
             var mode = completely ? PrefabUnpackMode.Completely : PrefabUnpackMode.OutermostRoot;
@@ -152,13 +149,8 @@ namespace UnitySkills
         [UnitySkill("prefab_get_overrides", "Get list of property overrides on a prefab instance")]
         public static object PrefabGetOverrides(string name = null, int instanceId = 0)
         {
-            GameObject go = null;
-            if (instanceId != 0)
-                go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-            else if (!string.IsNullOrEmpty(name))
-                go = GameObject.Find(name);
-
-            if (go == null) return new { error = "GameObject not found" };
+            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId);
+            if (goErr != null) return goErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
             if (prefabRoot == null) return new { error = "Not a prefab instance" };
@@ -197,13 +189,8 @@ namespace UnitySkills
         [UnitySkill("prefab_revert_overrides", "Revert all overrides on a prefab instance back to prefab values")]
         public static object PrefabRevertOverrides(string name = null, int instanceId = 0)
         {
-            GameObject go = null;
-            if (instanceId != 0)
-                go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-            else if (!string.IsNullOrEmpty(name))
-                go = GameObject.Find(name);
-
-            if (go == null) return new { error = "GameObject not found" };
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId);
+            if (findErr != null) return findErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
             if (prefabRoot == null) return new { error = "Not a prefab instance" };
@@ -218,13 +205,8 @@ namespace UnitySkills
         [UnitySkill("prefab_apply_overrides", "Apply all overrides from instance to source prefab asset")]
         public static object PrefabApplyOverrides(string name = null, int instanceId = 0)
         {
-            GameObject go = null;
-            if (instanceId != 0)
-                go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-            else if (!string.IsNullOrEmpty(name))
-                go = GameObject.Find(name);
-
-            if (go == null) return new { error = "GameObject not found" };
+            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId);
+            if (goErr != null) return goErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
             if (prefabRoot == null) return new { error = "Not a prefab instance" };

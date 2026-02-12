@@ -789,13 +789,8 @@ namespace UnitySkills
         /// </summary>
         private static object ResolveReference(System.Type targetType, string referencePath, string referenceName)
         {
-            GameObject targetGo = null;
-
-            // Find the target GameObject
-            if (!string.IsNullOrEmpty(referencePath))
-                targetGo = GameObjectFinder.FindByPath(referencePath);
-            else if (!string.IsNullOrEmpty(referenceName))
-                targetGo = GameObject.Find(referenceName);
+            // Use unified finder (prioritizes path over name internally)
+            GameObject targetGo = GameObjectFinder.Find(name: referenceName, path: referencePath);
 
             if (targetGo == null)
                 return null;

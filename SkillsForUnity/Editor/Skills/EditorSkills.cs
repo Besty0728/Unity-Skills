@@ -40,15 +40,8 @@ namespace UnitySkills
         [UnitySkill("editor_select", "Select a GameObject")]
         public static object EditorSelect(string gameObjectName = null, int instanceId = 0)
         {
-            GameObject go = null;
-
-            if (instanceId != 0)
-                go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
-            else if (!string.IsNullOrEmpty(gameObjectName))
-                go = GameObject.Find(gameObjectName);
-
-            if (go == null)
-                return new { error = "GameObject not found" };
+            var (go, findErr) = GameObjectFinder.FindOrError(name: gameObjectName, instanceId: instanceId);
+            if (findErr != null) return findErr;
 
             Selection.activeGameObject = go;
             EditorGUIUtility.PingObject(go);

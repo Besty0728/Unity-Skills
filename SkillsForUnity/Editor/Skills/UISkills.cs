@@ -599,7 +599,7 @@ namespace UnitySkills
         {
             if (!string.IsNullOrEmpty(parentName))
             {
-                var parent = GameObject.Find(parentName);
+                var parent = GameObjectFinder.Find(name: parentName);
                 if (parent != null) return parent;
             }
 
@@ -758,13 +758,8 @@ namespace UnitySkills
             int gridColumns = 3,
             bool childForceExpandWidth = false, bool childForceExpandHeight = false)
         {
-            GameObject parentGo = null;
-            if (parentInstanceId != 0)
-                parentGo = EditorUtility.InstanceIDToObject(parentInstanceId) as GameObject;
-            else if (!string.IsNullOrEmpty(parentName))
-                parentGo = GameObject.Find(parentName);
-
-            if (parentGo == null) return new { error = "Parent not found" };
+            var (parentGo, findErr) = GameObjectFinder.FindOrError(name: parentName, instanceId: parentInstanceId);
+            if (findErr != null) return findErr;
 
             var rect = parentGo.GetComponent<RectTransform>();
             if (rect == null) return new { error = "Parent has no RectTransform" };

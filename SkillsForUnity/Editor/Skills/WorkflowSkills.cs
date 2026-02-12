@@ -192,7 +192,7 @@ namespace UnitySkills
             if (instanceId != 0)
                 target = EditorUtility.InstanceIDToObject(instanceId);
             else if (!string.IsNullOrEmpty(name))
-                target = GameObject.Find(name);
+                target = GameObjectFinder.Find(name: name);
 
             if (target == null)
                 return new { success = false, error = $"Object not found: {name ?? instanceId.ToString()}" };
@@ -272,7 +272,7 @@ namespace UnitySkills
             if (instanceId != 0)
                 target = EditorUtility.InstanceIDToObject(instanceId);
             else if (!string.IsNullOrEmpty(name))
-                target = GameObject.Find(name);
+                target = GameObjectFinder.Find(name: name);
 
             if (target == null)
                 return new { success = false, error = $"Object not found: {name ?? instanceId.ToString()}" };

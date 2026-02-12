@@ -43,12 +43,12 @@ namespace UnitySkills
         [UnitySkill("timeline_add_audio_track", "Add an Audio track to a Timeline")]
         public static object TimelineAddAudioTrack(string directorObjectName, string trackName = "Audio Track")
         {
-            var go = GameObject.Find(directorObjectName);
-            if (go == null) return new { error = $"GameObject not found: {directorObjectName}" };
-            
+            var (go, findErr) = GameObjectFinder.FindOrError(name: directorObjectName);
+            if (findErr != null) return findErr;
+
             var director = go.GetComponent<PlayableDirector>();
             if (director == null) return new { error = "PlayableDirector component not found" };
-            
+
             var timeline = director.playableAsset as TimelineAsset;
             if (timeline == null) return new { error = "No TimelineAsset assigned to Director" };
 
@@ -58,31 +58,30 @@ namespace UnitySkills
 
             return new { success = true, trackName = track.name };
         }
-        
+
         [UnitySkill("timeline_add_animation_track", "Add an Animation track to a Timeline, optionally binding an object")]
         public static object TimelineAddAnimationTrack(string directorObjectName, string trackName = "Animation Track", string bindingObjectName = null)
         {
-            var go = GameObject.Find(directorObjectName);
-            if (go == null) return new { error = $"GameObject not found: {directorObjectName}" };
-            
+            var (go, findErr) = GameObjectFinder.FindOrError(name: directorObjectName);
+            if (findErr != null) return findErr;
+
             var director = go.GetComponent<PlayableDirector>();
             if (director == null) return new { error = "PlayableDirector component not found" };
-            
+
             var timeline = director.playableAsset as TimelineAsset;
             if (timeline == null) return new { error = "No TimelineAsset assigned to Director" };
 
             var track = timeline.CreateTrack<AnimationTrack>(null, trackName);
-            
+
             if (!string.IsNullOrEmpty(bindingObjectName))
             {
-                var bindingGo = GameObject.Find(bindingObjectName);
-                if (bindingGo != null)
-                {
-                    var animator = bindingGo.GetComponent<Animator>();
-                    if (animator == null) animator = bindingGo.AddComponent<Animator>();
-                    
-                    director.SetGenericBinding(track, animator);
-                }
+                var (bindingGo, bindErr) = GameObjectFinder.FindOrError(name: bindingObjectName);
+                if (bindErr != null) return bindErr;
+
+                var animator = bindingGo.GetComponent<Animator>();
+                if (animator == null) animator = bindingGo.AddComponent<Animator>();
+
+                director.SetGenericBinding(track, animator);
             }
             
             AssetDatabase.SaveAssets();
