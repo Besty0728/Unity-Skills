@@ -3,6 +3,7 @@ using UnityEditor;
 using System.Linq;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace UnitySkills
 {
@@ -591,8 +592,8 @@ namespace UnitySkills
             // Primitives
             if (targetType == typeof(string)) return value;
             if (targetType == typeof(int)) return int.Parse(value);
-            if (targetType == typeof(float)) return float.Parse(value);
-            if (targetType == typeof(double)) return double.Parse(value);
+            if (targetType == typeof(float)) return float.Parse(value, CultureInfo.InvariantCulture);
+            if (targetType == typeof(double)) return double.Parse(value, CultureInfo.InvariantCulture);
             if (targetType == typeof(bool)) return ParseBool(value);
             if (targetType == typeof(long)) return long.Parse(value);
             
@@ -765,7 +766,7 @@ namespace UnitySkills
             if (expectedCount > 0 && parts.Length != expectedCount)
                 throw new System.ArgumentException($"Expected {expectedCount} values, got {parts.Length}");
             
-            return parts.Select(p => float.Parse(p.Trim())).ToArray();
+            return parts.Select(p => float.Parse(p.Trim(), CultureInfo.InvariantCulture)).ToArray();
         }
 
         private static int[] ParseIntArray(string value, int expectedCount)

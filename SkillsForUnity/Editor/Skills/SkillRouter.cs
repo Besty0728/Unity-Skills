@@ -214,20 +214,31 @@ namespace UnitySkills
                 // ========== 统一错误响应检测 ==========
                 if (result != null)
                 {
-                    var resultJson = JObject.FromObject(result);
-                    var hasError = resultJson.ContainsKey("error");
-                    var successFalse = resultJson.TryGetValue("success", out var s) && s.Type == JTokenType.Boolean && !s.ToObject<bool>();
+                    // Use reflection instead of JObject.FromObject to avoid double serialization
+                    var resultType = result.GetType();
+                    var errorProp = resultType.GetProperty("error");
+                    var successProp = resultType.GetProperty("success");
 
-                    // 模式A: { error = "..." } 或 模式B: { success = false, error = "..." }
-                    if (hasError && (!resultJson.ContainsKey("success") || successFalse))
+                    if (errorProp != null)
                     {
-                        return JsonConvert.SerializeObject(new
+                        var errorVal = errorProp.GetValue(result);
+                        if (errorVal != null)
                         {
-                            status = "error",
-                            errorCode = "SKILL_ERROR",
-                            error = resultJson["error"]?.ToString(),
-                            skill = name
-                        }, _jsonSettings);
+                            bool hasSuccessProp = successProp != null;
+                            bool successFalse = hasSuccessProp && successProp.GetValue(result) is bool b && !b;
+
+                            // 模式A: { error = "..." } 或 模式B: { success = false, error = "..." }
+                            if (!hasSuccessProp || successFalse)
+                            {
+                                return JsonConvert.SerializeObject(new
+                                {
+                                    status = "error",
+                                    errorCode = "SKILL_ERROR",
+                                    error = errorVal.ToString(),
+                                    skill = name
+                                }, _jsonSettings);
+                            }
+                        }
                     }
                 }
                 // =========================================

@@ -3,6 +3,7 @@ using UnityEditor;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Globalization;
 
 namespace UnitySkills
 {
@@ -150,18 +151,18 @@ namespace UnitySkills
         {
             if (targetType == typeof(string)) return value;
             if (targetType == typeof(int)) return int.Parse(value);
-            if (targetType == typeof(float)) return float.Parse(value);
+            if (targetType == typeof(float)) return float.Parse(value, CultureInfo.InvariantCulture);
             if (targetType == typeof(bool)) return bool.Parse(value);
             if (targetType == typeof(Vector3))
             {
                 var parts = value.Split(',');
-                return new Vector3(float.Parse(parts[0]), float.Parse(parts[1]), float.Parse(parts[2]));
+                return new Vector3(float.Parse(parts[0], CultureInfo.InvariantCulture), float.Parse(parts[1], CultureInfo.InvariantCulture), float.Parse(parts[2], CultureInfo.InvariantCulture));
             }
             if (targetType == typeof(Color))
             {
                 var parts = value.Split(',');
-                return new Color(float.Parse(parts[0]), float.Parse(parts[1]), float.Parse(parts[2]), 
-                    parts.Length > 3 ? float.Parse(parts[3]) : 1);
+                return new Color(float.Parse(parts[0], CultureInfo.InvariantCulture), float.Parse(parts[1], CultureInfo.InvariantCulture), float.Parse(parts[2], CultureInfo.InvariantCulture),
+                    parts.Length > 3 ? float.Parse(parts[3], CultureInfo.InvariantCulture) : 1);
             }
             return System.Convert.ChangeType(value, targetType);
         }
