@@ -704,22 +704,29 @@ namespace UnitySkills
                     foreach (Transform child in t) queue.Enqueue((child, depth + 1));
             }
 
-            // Collect edges
+            // Collect serialized reference edges
             var allObjects = objList.Select(o => o.go).ToArray();
             var edges = CollectDependencyEdges(allObjects);
-            var reverseIndex = edges.GroupBy(e => e.toObject).ToDictionary(g => g.Key, g => g.ToList());
+
+            // Collect C# code-level dependencies
+            var codeEdges = CollectCodeDependencies();
+
+            // Merge all edges
+            var allEdges = new List<DependencyEdge>(edges);
+            allEdges.AddRange(codeEdges);
+            var reverseIndex = allEdges.GroupBy(e => e.toObject).ToDictionary(g => g.Key, g => g.ToList());
 
             // Build markdown
             var sb = new StringBuilder();
             sb.AppendLine($"# Scene Report: {scene.name}");
-            int scriptCount = 0, refCount = edges.Count;
+            int userScriptCount = 0;
             foreach (var (go, _) in objList)
-                foreach (var c in go.GetComponents<Component>())
-                    if (c is MonoBehaviour) scriptCount++;
-            sb.AppendLine($"> Generated: {DateTime.Now:yyyy-MM-dd HH:mm} | Objects: {objList.Count} | Scripts: {scriptCount}");
+                foreach (var c in go.GetComponents<MonoBehaviour>())
+                    if (c != null && IsUserScript(c.GetType())) userScriptCount++;
+            sb.AppendLine($"> Generated: {DateTime.Now:yyyy-MM-dd HH:mm} | Objects: {objList.Count} | User Scripts: {userScriptCount} | References: {allEdges.Count}");
             sb.AppendLine();
 
-            // Hierarchy section
+            // Hierarchy section — built-in components: name only; user scripts: name*
             sb.AppendLine("## Hierarchy");
             sb.AppendLine();
             foreach (var (go, depth) in objList)
@@ -727,28 +734,29 @@ namespace UnitySkills
                 var indent = new string(' ', depth * 2);
                 var comps = go.GetComponents<Component>()
                     .Where(c => c != null && !(c is Transform))
-                    .Select(c => c is MonoBehaviour ? c.GetType().Name + "*" : c.GetType().Name);
+                    .Select(c => IsUserScript(c.GetType()) ? c.GetType().Name + "*" : c.GetType().Name);
                 var compStr = string.Join(", ", comps);
                 sb.AppendLine($"{indent}{go.name}{(compStr.Length > 0 ? $" [{compStr}]" : "")}");
             }
             sb.AppendLine();
 
-            // Script Fields section
-            var monos = new List<(string objPath, MonoBehaviour mb)>();
+            // Script Fields section — only user scripts, with values
+            var userMonos = new List<(string objPath, MonoBehaviour mb)>();
             foreach (var (go, _) in objList)
                 foreach (var c in go.GetComponents<MonoBehaviour>())
-                    if (c != null) monos.Add((GameObjectFinder.GetPath(go), c));
+                    if (c != null && IsUserScript(c.GetType()))
+                        userMonos.Add((GameObjectFinder.GetPath(go), c));
 
-            if (monos.Count > 0)
+            if (userMonos.Count > 0)
             {
                 sb.AppendLine("## Script Fields");
                 sb.AppendLine();
-                foreach (var (objPath, mb) in monos)
+                foreach (var (objPath, mb) in userMonos)
                 {
                     sb.AppendLine($"### {mb.GetType().Name} (on: {objPath})");
                     sb.AppendLine();
-                    sb.AppendLine("| Field | Type |");
-                    sb.AppendLine("|-------|------|");
+                    sb.AppendLine("| Field | Type | Value |");
+                    sb.AppendLine("|-------|------|-------|");
                     var so = new SerializedObject(mb);
                     var prop = so.GetIterator();
                     bool enter = true;
@@ -757,30 +765,48 @@ namespace UnitySkills
                         enter = false;
                         if (SkipFields.Contains(prop.name) || prop.propertyType == SerializedPropertyType.ArraySize) continue;
                         string ft = prop.propertyType.ToString();
-                        if (prop.propertyType == SerializedPropertyType.ObjectReference && prop.objectReferenceValue != null)
+                        string val = "";
+                        if (prop.propertyType == SerializedPropertyType.ObjectReference)
                         {
-                            var refObj = prop.objectReferenceValue;
-                            ft = refObj.GetType().Name;
-                            string rp = null;
-                            if (refObj is GameObject rg) rp = GameObjectFinder.GetPath(rg);
-                            else if (refObj is Component rc) rp = GameObjectFinder.GetPath(rc.gameObject);
-                            if (rp != null) ft += $" → {rp}";
+                            if (prop.objectReferenceValue != null)
+                            {
+                                var refObj = prop.objectReferenceValue;
+                                ft = refObj.GetType().Name;
+                                if (refObj is GameObject rg) val = GameObjectFinder.GetPath(rg);
+                                else if (refObj is Component rc) val = GameObjectFinder.GetPath(rc.gameObject);
+                                else val = refObj.name;
+                            }
+                            else val = "null";
                         }
-                        sb.AppendLine($"| {prop.name} | {ft} |");
+                        else val = GetSerializedValue(prop);
+                        sb.AppendLine($"| {prop.name} | {ft} | {val} |");
                     }
                     sb.AppendLine();
                 }
             }
 
-            // Dependency Graph section
-            if (edges.Count > 0)
+            // Code Dependencies section
+            if (codeEdges.Count > 0)
+            {
+                sb.AppendLine("## Code Dependencies (C# source analysis)");
+                sb.AppendLine();
+                var byFrom = codeEdges.GroupBy(e => e.fromScript);
+                foreach (var g in byFrom.OrderBy(g => g.Key))
+                {
+                    sb.AppendLine($"### {g.Key}");
+                    foreach (var e in g)
+                        sb.AppendLine($"- → **{e.toObject}** via `{e.fieldName}` ({e.fieldType})");
+                    sb.AppendLine();
+                }
+            }
+
+            // Dependency Graph section (merged: serialized + code)
+            if (allEdges.Count > 0)
             {
                 sb.AppendLine("## Dependency Graph");
                 sb.AppendLine();
-                sb.AppendLine("### Risk Summary");
-                sb.AppendLine();
-                sb.AppendLine("| Object | Risk | Depended By |");
-                sb.AppendLine("|--------|------|-------------|");
+                sb.AppendLine("| Object/Script | Risk | Depended By |");
+                sb.AppendLine("|---------------|------|-------------|");
                 foreach (var kv in reverseIndex.OrderByDescending(k => k.Value.Count))
                 {
                     int cnt = kv.Value.Count;
@@ -788,18 +814,6 @@ namespace UnitySkills
                     sb.AppendLine($"| {kv.Key} | {risk} | {cnt} |");
                 }
                 sb.AppendLine();
-
-                sb.AppendLine("### Details");
-                sb.AppendLine();
-                foreach (var kv in reverseIndex.Where(k => k.Value.Count > 1).OrderByDescending(k => k.Value.Count))
-                {
-                    int cnt = kv.Value.Count;
-                    string risk = cnt <= 2 ? "low" : cnt <= 5 ? "medium" : "high";
-                    sb.AppendLine($"#### {kv.Key} (risk: {risk})");
-                    foreach (var e in kv.Value)
-                        sb.AppendLine($"- {e.fromObject}:{e.fromScript}.{e.fieldName} ({e.fieldType})");
-                    sb.AppendLine();
-                }
             }
 
             sb.AppendLine("---");
@@ -817,9 +831,113 @@ namespace UnitySkills
                 success = true,
                 savedTo = savePath,
                 objectCount = objList.Count,
-                scriptCount,
-                referenceCount = refCount
+                userScriptCount,
+                referenceCount = allEdges.Count,
+                codeReferenceCount = codeEdges.Count
             };
+        }
+
+        private static bool IsUserScript(Type type)
+        {
+            if (type == null) return false;
+            var ns = type.Namespace;
+            if (string.IsNullOrEmpty(ns)) return true; // no namespace = user script
+            return !ns.StartsWith("UnityEngine") && !ns.StartsWith("Unity.") &&
+                   !ns.StartsWith("TMPro") && !ns.StartsWith("UnityEditor");
+        }
+
+        private static string GetSerializedValue(SerializedProperty prop)
+        {
+            switch (prop.propertyType)
+            {
+                case SerializedPropertyType.Integer: return prop.intValue.ToString();
+                case SerializedPropertyType.Float: return prop.floatValue.ToString("G4");
+                case SerializedPropertyType.Boolean: return prop.boolValue.ToString();
+                case SerializedPropertyType.String:
+                    var s = prop.stringValue;
+                    return s != null && s.Length > 60 ? s.Substring(0, 57) + "..." : (s ?? "");
+                case SerializedPropertyType.Enum:
+                    return prop.enumDisplayNames != null && prop.enumValueIndex >= 0 && prop.enumValueIndex < prop.enumDisplayNames.Length
+                        ? prop.enumDisplayNames[prop.enumValueIndex] : prop.enumValueIndex.ToString();
+                case SerializedPropertyType.Vector2: return FormatVec(prop.vector2Value);
+                case SerializedPropertyType.Vector3: return FormatVec(prop.vector3Value);
+                case SerializedPropertyType.Vector4: return FormatVec(prop.vector4Value);
+                case SerializedPropertyType.Color: var c = prop.colorValue; return $"({c.r:F2},{c.g:F2},{c.b:F2},{c.a:F2})";
+                case SerializedPropertyType.LayerMask: return prop.intValue.ToString();
+                default:
+                    return prop.isArray ? $"{prop.arrayElementType}[{prop.arraySize}]" : prop.propertyType.ToString();
+            }
+        }
+
+        // Regex patterns for C# code-level dependency detection
+        private static readonly System.Text.RegularExpressions.Regex RxGetComponent =
+            new System.Text.RegularExpressions.Regex(@"GetComponent(?:InChildren|InParent|s)?<(\w+)>", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex RxFindObject =
+            new System.Text.RegularExpressions.Regex(@"FindObject(?:OfType|sOfType|sByType)?<(\w+)>", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex RxSendMessage =
+            new System.Text.RegularExpressions.Regex(@"(?:SendMessage|BroadcastMessage)\s*\(\s*""(\w+)""", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex RxFieldRef =
+            new System.Text.RegularExpressions.Regex(@"(?:public|private|protected|\[SerializeField\])\s+(\w+)\s+\w+\s*[;=]", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private static List<DependencyEdge> CollectCodeDependencies()
+        {
+            var edges = new List<DependencyEdge>();
+            var scriptGuids = AssetDatabase.FindAssets("t:MonoScript", new[] { "Assets" });
+
+            // Collect all user class names (MonoBehaviour, ScriptableObject, plain classes, etc.)
+            var userClassNames = new HashSet<string>();
+            var userScriptPaths = new List<(string path, string className)>();
+            foreach (var guid in scriptGuids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+                if (script == null) continue;
+                var scriptClass = script.GetClass();
+                if (scriptClass != null && IsUserScript(scriptClass))
+                {
+                    userClassNames.Add(scriptClass.Name);
+                    userScriptPaths.Add((path, scriptClass.Name));
+                }
+            }
+            if (userClassNames.Count == 0) return edges;
+
+            foreach (var (path, className) in userScriptPaths)
+            {
+                string source;
+                try { source = File.ReadAllText(path); } catch { continue; }
+
+                // GetComponent<T> / GetComponentInChildren<T>
+                foreach (System.Text.RegularExpressions.Match m in RxGetComponent.Matches(source))
+                {
+                    var target = m.Groups[1].Value;
+                    if (target != className && userClassNames.Contains(target))
+                        edges.Add(new DependencyEdge { fromObject = className, fromScript = className, fieldName = m.Value, fieldType = "GetComponent", toObject = target });
+                }
+
+                // FindObjectOfType<T>
+                foreach (System.Text.RegularExpressions.Match m in RxFindObject.Matches(source))
+                {
+                    var target = m.Groups[1].Value;
+                    if (target != className && userClassNames.Contains(target))
+                        edges.Add(new DependencyEdge { fromObject = className, fromScript = className, fieldName = m.Value, fieldType = "FindObject", toObject = target });
+                }
+
+                // SendMessage / BroadcastMessage
+                foreach (System.Text.RegularExpressions.Match m in RxSendMessage.Matches(source))
+                    edges.Add(new DependencyEdge { fromObject = className, fromScript = className, fieldName = m.Value, fieldType = "Message", toObject = m.Groups[1].Value });
+
+                // Field referencing other user classes
+                foreach (System.Text.RegularExpressions.Match m in RxFieldRef.Matches(source))
+                {
+                    var target = m.Groups[1].Value;
+                    if (target != className && userClassNames.Contains(target))
+                        edges.Add(new DependencyEdge { fromObject = className, fromScript = className, fieldName = $"field:{target}", fieldType = "FieldReference", toObject = target });
+                }
+            }
+
+            // Deduplicate
+            return edges.GroupBy(e => $"{e.fromScript}→{e.toObject}:{e.fieldName}")
+                .Select(g => g.First()).ToList();
         }
 
         private static List<DependencyEdge> CollectDependencyEdges(GameObject[] allObjects)

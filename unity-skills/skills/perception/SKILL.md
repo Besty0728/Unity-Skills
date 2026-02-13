@@ -166,7 +166,7 @@ Generate a comprehensive scene snapshot for AI coding assistance (hierarchy, com
 ---
 
 ### scene_export_report
-Export complete scene structure and script dependency report as markdown file. Use when user asks to export scene report, generate scene document, save scene overview, or create scene context file.
+Export complete scene structure and script dependency report as markdown file. Includes: hierarchy tree (built-in components name only, user scripts marked with `*`), user script fields with values, C# code-level dependencies (`GetComponent<T>`, `FindObjectOfType<T>`, `SendMessage`, field references), and merged dependency graph with risk ratings.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -180,10 +180,17 @@ Export complete scene structure and script dependency report as markdown file. U
   "success": true,
   "savedTo": "Assets/Docs/SceneReport.md",
   "objectCount": 156,
-  "scriptCount": 12,
-  "referenceCount": 8
+  "userScriptCount": 5,
+  "referenceCount": 12,
+  "codeReferenceCount": 4
 }
 ```
+
+**Markdown output sections**:
+1. **Hierarchy** — tree with component names, user scripts marked `*`
+2. **Script Fields** — only user scripts (non-Unity namespace), with field values and reference targets
+3. **Code Dependencies** — C# source analysis: `GetComponent<T>`, `FindObjectOfType<T>`, `SendMessage`, field type references between user MonoBehaviours
+4. **Dependency Graph** — merged serialized + code references, risk rating per object/script
 
 ---
 

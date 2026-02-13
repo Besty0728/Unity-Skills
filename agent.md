@@ -239,7 +239,7 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 | **Camera** | 4 | 相机创建/属性配置/截屏/视角对齐 |
 | **AssetImport** | 4 | 强制重导入/批量修复/刷新 |
 | **Test** | 4 | 断言测试/边界条件/性能测试 |
-| **Perception** | 8 | 场景摘要/层级树/脚本分析/空间查询/材质概览/场景快照/依赖分析/场景报告导出 [Smart] |
+| **Perception** | 8 | 场景摘要/层级树/脚本分析/空间查询/材质概览/场景快照/依赖分析/场景报告导出(含C#代码级依赖) [Smart] |
 | **Smart** | 3 | 场景SQL查询/自动布局/引用绑定 |
 | **NavMesh** | 3 | 烘焙设置/代理创建/路径计算 |
 | **Timeline** | 3 | 轨道创建/剪辑添加/绑定 |

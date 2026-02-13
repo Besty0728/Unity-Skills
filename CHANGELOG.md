@@ -4,8 +4,11 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ## [1.5.0] - 2026-02-13
 
+### ⭐ Highlight
+
+- **`scene_export_report`** — 一键导出完整场景报告（Markdown），包含：精简层级树（内置组件仅列名称，用户脚本标 `*`）、用户脚本字段清单（含实际值和引用目标路径）、**C# 代码级依赖分析**（自动扫描源码中的 `GetComponent<T>`/`FindObjectOfType<T>`/`SendMessage`/字段类型引用）、合并依赖图与风险评级。生成的文件可直接作为 AI 持久化上下文，让 AI 在后续对话中无需反复查询即可理解整个场景结构和脚本间调用关系。调用示例：`call_skill('scene_export_report', savePath='Assets/Docs/SceneReport.md')`
+
 ### Added
-- **场景报告导出 Skill**: 新增 `scene_export_report`，将完整场景结构（层级树 + 组件列表）、脚本字段清单、依赖关系图整合输出为 Markdown 文件，作为 AI 持久化上下文（`PerceptionSkills.cs`）
 - **依赖边扫描重构**: 提取 `CollectDependencyEdges()` 共享方法，供 `scene_export_report` 和 `scene_dependency_analyze` 复用，消除重复代码
 - **场景快照 Skill**: 新增 `scene_context`，一次调用生成结构化 JSON 场景快照（层级、组件、脚本字段值、跨对象引用、UI 布局），支持 `rootPath` 子树导出、`maxObjects`/`maxDepth` 截断策略，让 AI 无需追问即可理解场景并编写代码（`PerceptionSkills.cs`）
 - **依赖分析 Skill**: 新增 `scene_dependency_analyze`，分析场景对象间的引用依赖关系，生成反向依赖索引和风险评级（safe/low/medium/high），支持导出 Markdown 报告作为 AI 持久化上下文，防止 AI 操作误伤关键依赖对象（`PerceptionSkills.cs`）
