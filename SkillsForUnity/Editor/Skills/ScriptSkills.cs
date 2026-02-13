@@ -70,6 +70,8 @@ public class {CLASS} : MonoBehaviour
             content = content.Replace("{CLASS}", scriptName);
             if (!string.IsNullOrEmpty(namespaceName))
                 content = content.Replace("{NAMESPACE}", namespaceName);
+            else
+                content = content.Replace("{NAMESPACE}", "DefaultNamespace");
 
             File.WriteAllText(path, content);
             AssetDatabase.ImportAsset(path);
@@ -144,7 +146,7 @@ public class {CLASS} : MonoBehaviour
                 for (int i = 0; i < lines.Length; i++)
                 {
                     bool match = isRegex
-                        ? Regex.IsMatch(lines[i], pattern)
+                        ? Regex.IsMatch(lines[i], pattern, RegexOptions.None, TimeSpan.FromSeconds(1))
                         : lines[i].Contains(pattern);
 
                     if (match)

@@ -43,7 +43,8 @@ namespace UnitySkills
 
                 if (Compare(val, op, value))
                 {
-                    var go = (comp as Component).gameObject;
+                    var go = (comp is Component c) ? c.gameObject : null;
+                    if (go == null) continue;
                     results.Add(new 
                     {
                         name = go.name,
@@ -214,10 +215,6 @@ namespace UnitySkills
                 {
                     var c = src.GetComponent(elementType);
                     if (c != null && !convertedList.Contains(c)) convertedList.Add(c);
-                }
-                else if (elementType == typeof(Transform))
-                {
-                    if (!convertedList.Contains(src.transform)) convertedList.Add(src.transform);
                 }
             }
 

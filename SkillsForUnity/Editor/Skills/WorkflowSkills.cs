@@ -120,6 +120,8 @@ namespace UnitySkills
         [UnitySkill("history_undo", "Undo the last operation (or multiple steps)")]
         public static object HistoryUndo(int steps = 1)
         {
+            if (steps < 1)
+                return new { success = false, error = "steps must be >= 1" };
             for (int i = 0; i < steps; i++)
             {
                 Undo.PerformUndo();
@@ -130,6 +132,8 @@ namespace UnitySkills
         [UnitySkill("history_redo", "Redo the last undone operation (or multiple steps)")]
         public static object HistoryRedo(int steps = 1)
         {
+            if (steps < 1)
+                return new { success = false, error = "steps must be >= 1" };
             for (int i = 0; i < steps; i++)
             {
                 Undo.PerformRedo();

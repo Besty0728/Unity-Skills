@@ -124,7 +124,7 @@ class UnitySkills:
                     return port
             except (requests.exceptions.RequestException, ValueError):
                 continue
-        return DEFAULT_PORT  # fallback 到 8090
+        raise ConnectionError(f"No Unity instance found on ports {PORT_RANGE_START}-{PORT_RANGE_END}. Is UnitySkills server running?")
 
     def _find_port_by_target(self, target: str) -> Optional[int]:
         reg_path = get_registry_path()
@@ -420,8 +420,12 @@ class WorkflowContext:
 
     def __enter__(self):
         global _current_workflow_active
-        _current_workflow_active = True
-        call_skill('workflow_task_start', tag=self.tag, description=self.description)
+        try:
+            call_skill('workflow_task_start', tag=self.tag, description=self.description)
+            _current_workflow_active = True
+        except Exception:
+            _current_workflow_active = False
+            raise
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -517,7 +521,7 @@ def main():
                 value = True
             elif value.lower() == 'false':
                 value = False
-            elif value.replace('.', '', 1).replace('-', '', 1).isdigit():
+            else:
                 try:
                     value = float(value) if '.' in value else int(value)
                 except ValueError:

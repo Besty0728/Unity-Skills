@@ -91,9 +91,9 @@ namespace UnitySkills
     /// </summary>
     public static class GameObjectFinder
     {
-        // Frame-level cache for GetAllSceneObjects - valid only within a single request cycle
+        // Request-level cache for GetAllSceneObjects - invalidated after each request via InvalidateCache()
         private static List<GameObject> _cachedSceneObjects;
-        private static int _cacheFrame = -1;
+        private static bool _cacheValid = false;
 
         /// <summary>
         /// Invalidate the scene objects cache. Should be called after each request cycle.
@@ -101,7 +101,7 @@ namespace UnitySkills
         public static void InvalidateCache()
         {
             _cachedSceneObjects = null;
-            _cacheFrame = -1;
+            _cacheValid = false;
         }
 
         /// <summary>
@@ -110,8 +110,7 @@ namespace UnitySkills
         /// </summary>
         private static IEnumerable<GameObject> GetAllSceneObjects()
         {
-            int currentFrame = UnityEngine.Time.frameCount;
-            if (_cachedSceneObjects != null && _cacheFrame == currentFrame)
+            if (_cachedSceneObjects != null && _cacheValid)
                 return _cachedSceneObjects;
 
             var result = new List<GameObject>();
@@ -129,7 +128,7 @@ namespace UnitySkills
             }
 
             _cachedSceneObjects = result;
-            _cacheFrame = currentFrame;
+            _cacheValid = true;
             return result;
         }
 

@@ -275,9 +275,13 @@ namespace UnitySkills
             }
             catch (TargetInvocationException ex)
             {
+                // Clean up auto-started workflow on error
+                if (autoStartedWorkflow && WorkflowManager.IsRecording)
+                    WorkflowManager.EndTask();
+
                 // Revert transaction
                 UnityEditor.Undo.RevertAllInCurrentGroup();
-                
+
                 var inner = ex.InnerException ?? ex;
                 return JsonConvert.SerializeObject(new
                 {
@@ -287,6 +291,10 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
+                // Clean up auto-started workflow on error
+                if (autoStartedWorkflow && WorkflowManager.IsRecording)
+                    WorkflowManager.EndTask();
+
                 // Revert transaction
                 UnityEditor.Undo.RevertAllInCurrentGroup();
                 

@@ -759,6 +759,8 @@ namespace UnitySkills
                         colors.Add(new { name = propName, description = propDesc, value = new { r = color.r, g = color.g, b = color.b, a = color.a } });
                         break;
                     case UnityEngine.Rendering.ShaderPropertyType.Float:
+                        floats.Add(new { name = propName, description = propDesc, value = material.GetFloat(propName), min = 0f, max = 0f });
+                        break;
                     case UnityEngine.Rendering.ShaderPropertyType.Range:
                         var range = shader.GetPropertyRangeLimits(i);
                         floats.Add(new { name = propName, description = propDesc, value = material.GetFloat(propName), min = range.x, max = range.y });

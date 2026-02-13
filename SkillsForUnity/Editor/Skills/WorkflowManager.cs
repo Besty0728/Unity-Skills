@@ -76,7 +76,11 @@ namespace UnitySkills
                     Directory.CreateDirectory(dir);
 
                 string json = JsonUtility.ToJson(_history, true);
-                File.WriteAllText(HistoryFilePath, json);
+                string tmpPath = HistoryFilePath + ".tmp";
+                File.WriteAllText(tmpPath, json);
+                if (File.Exists(HistoryFilePath))
+                    File.Delete(HistoryFilePath);
+                File.Move(tmpPath, HistoryFilePath);
             }
             catch (Exception e)
             {
@@ -150,6 +154,14 @@ namespace UnitySkills
         public static void SnapshotObject(UnityEngine.Object obj, SnapshotType type = SnapshotType.Modified)
         {
             if (_currentTask == null || obj == null) return;
+
+            // Limit snapshots per task to prevent unbounded memory growth
+            const int MaxSnapshotsPerTask = 500;
+            if (_currentTask.snapshots.Count >= MaxSnapshotsPerTask)
+            {
+                SkillsLogger.LogVerbose($"Snapshot limit reached ({MaxSnapshotsPerTask}), skipping: {obj.name}");
+                return;
+            }
 
             // Get GlobalObjectId for persistence
             string gid = GlobalObjectId.GetGlobalObjectIdSlow(obj).ToString();

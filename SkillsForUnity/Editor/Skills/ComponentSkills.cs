@@ -572,7 +572,7 @@ namespace UnitySkills
         private static object ConvertValue(string value, System.Type targetType)
         {
             if (value == null || value.Equals("null", System.StringComparison.OrdinalIgnoreCase))
-                return null;
+                return targetType.IsValueType ? System.Activator.CreateInstance(targetType) : null;
 
             // Primitives
             if (targetType == typeof(string)) return value;
@@ -735,8 +735,9 @@ namespace UnitySkills
             switch (value)
             {
                 case "linear": return AnimationCurve.Linear(0, 0, 1, 1);
-                case "easein": return AnimationCurve.EaseInOut(0, 0, 1, 1);
-                case "easeout": return AnimationCurve.EaseInOut(0, 0, 1, 1);
+                case "easein": return new AnimationCurve(new Keyframe(0, 0, 0, 0), new Keyframe(1, 1, 2, 0));
+                case "easeout": return new AnimationCurve(new Keyframe(0, 0, 0, 2), new Keyframe(1, 1, 0, 0));
+                case "easeinout": return AnimationCurve.EaseInOut(0, 0, 1, 1);
                 case "constant": return AnimationCurve.Constant(0, 1, 1);
                 default: return AnimationCurve.Linear(0, 0, 1, 1);
             }

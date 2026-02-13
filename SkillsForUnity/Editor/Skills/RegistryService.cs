@@ -64,10 +64,11 @@ namespace UnitySkills
 
                     registry[ProjectPath] = info;
 
-                    // Clean up stale entries (older than 60 seconds)
+                    // Clean up stale entries (older than 60 seconds or dead process)
                     var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     var keysToRemove = registry
-                        .Where(k => now - k.Value.last_active > 60 && k.Value.pid != info.pid)
+                        .Where(k => k.Value.pid != info.pid &&
+                            (now - k.Value.last_active > 60 || !IsProcessAlive(k.Value.pid)))
                         .Select(k => k.Key).ToList();
                     foreach (var key in keysToRemove)
                         registry.Remove(key);
@@ -181,6 +182,12 @@ namespace UnitySkills
                 var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
                 return BitConverter.ToString(bytes, 0, 4).Replace("-", "");
             }
+        }
+
+        private static bool IsProcessAlive(int pid)
+        {
+            try { return System.Diagnostics.Process.GetProcessById(pid) != null; }
+            catch { return false; }
         }
 
         [Serializable]

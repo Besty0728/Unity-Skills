@@ -42,7 +42,7 @@ namespace UnitySkills
         
         // Rate limiting (processed on main thread only)
         private static int _requestsThisSecond = 0;
-        private static double _lastRateLimitReset = 0;
+        private static long _lastRateLimitResetTicks = 0;
         private const int MaxRequestsPerSecond = 100;
         
         // Keep-alive interval (ms)
@@ -399,6 +399,12 @@ namespace UnitySkills
 
             try { _listener?.Stop(); } catch { /* Best-effort cleanup on shutdown */ }
             try { _listener?.Close(); } catch { /* Best-effort cleanup on shutdown */ }
+
+            // Wait for threads to finish
+            try { _listenerThread?.Join(2000); } catch { }
+            try { _keepAliveThread?.Join(2000); } catch { }
+            _listenerThread = null;
+            _keepAliveThread = null;
 
             // Signal all pending jobs to complete with error
             lock (_queueLock)
@@ -758,8 +764,14 @@ namespace UnitySkills
                     return;
                 }
                 
-                // Extract skill name (preserve original case)
+                // Extract skill name (preserve original case) and validate
                 string skillName = job.Path.Substring(7);
+                if (skillName.Contains("/") || skillName.Contains("\\") || skillName.Contains(".."))
+                {
+                    job.StatusCode = 400;
+                    job.ResponseJson = JsonConvert.SerializeObject(new { error = "Invalid skill name" }, _jsonSettings);
+                    return;
+                }
                 
                 // Execute skill (safe - on main thread)
                 try
@@ -797,15 +809,14 @@ namespace UnitySkills
         /// </summary>
         private static bool CheckRateLimit()
         {
-            // Use DateTime for thread-safe timing
-            double now = DateTime.UtcNow.Ticks / (double)TimeSpan.TicksPerSecond;
-            
-            if (now - _lastRateLimitReset >= 1.0)
+            long now = DateTime.UtcNow.Ticks;
+
+            if (now - _lastRateLimitResetTicks >= TimeSpan.TicksPerSecond)
             {
                 _requestsThisSecond = 0;
-                _lastRateLimitReset = now;
+                _lastRateLimitResetTicks = now;
             }
-            
+
             _requestsThisSecond++;
             return _requestsThisSecond <= MaxRequestsPerSecond;
         }

@@ -262,7 +262,7 @@ namespace UnitySkills
             {
                 if (useRegex)
                 {
-                    var regex = new System.Text.RegularExpressions.Regex(name);
+                    var regex = new System.Text.RegularExpressions.Regex(name, System.Text.RegularExpressions.RegexOptions.None, System.TimeSpan.FromSeconds(1));
                     results = results.Where(go => regex.IsMatch(go.name));
                 }
                 else

@@ -37,7 +37,7 @@ namespace UnitySkills
 
         public static string Get(string key)
         {
-            if (_current == Language.Chinese && _chinese.TryGetValue(key, out var cn))
+            if (Current == Language.Chinese && _chinese.TryGetValue(key, out var cn))
                 return cn;
             if (_english.TryGetValue(key, out var en))
                 return en;

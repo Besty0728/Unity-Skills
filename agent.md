@@ -206,6 +206,30 @@ python unity_skills.py gameobject_create name=MyCube primitiveType=Cube
 
 ---
 
+## 🛡️ 代码质量保障 (v1.5.0 全项目审计)
+
+v1.5.0 对全部 38 个 C# 文件 + Python 客户端进行了完整审计，修复 36 项缺陷：
+
+### 安全防护
+- **ReDoS 防护**: 所有用户输入正则表达式添加 1 秒超时 (`ScriptSkills`, `GameObjectSkills`)
+- **路径注入防护**: skill name 校验拒绝 `/` `\` `..` 等路径字符 (`SkillsHttpServer`)
+- **空引用防护**: `PrefabSkills`/`SceneSkills`/`UISkills`/`CinemachineSkills`/`SmartSkills` 等 7 处 null 检查
+- **资源泄漏防护**: `LightSkills` 错误路径清理 GameObject；`SkillsHttpServer` Stop() 线程 Join
+
+### 数据完整性
+- **原子文件写入**: `WorkflowManager.SaveHistory()` 先写 `.tmp` 再原子替换，防止崩溃丢数据
+- **快照上限**: 单任务最多 500 条快照，防止批量操作内存溢出
+- **进程存活检查**: `RegistryService` 清理条目时验证进程是否存活，避免僵尸注册
+- **AnimatorSkills**: `controller.parameters` 数组副本修改后回写
+
+### 已知设计决策（非缺陷）
+- `WorkflowManager.SnapshotObject()` 内部已有 `_currentTask == null` 守卫，外部调用无需额外检查
+- `ManualResetEventSlim` 通过 ownership transfer 模式管理，WaitAndRespond finally 中 Dispose
+- `get_skills()`/`health()` 使用 `requests.get` 而非 Session 对象，属简单 GET 请求的设计选择
+- Base64 资源备份不限制文件大小，保证完整撤销/重做能力
+
+---
+
 ## 📊 Skills 模块汇总 (282)
 
 | 模块 | Skills 数量 | 核心功能 |

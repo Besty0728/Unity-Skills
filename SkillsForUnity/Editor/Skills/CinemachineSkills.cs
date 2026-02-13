@@ -208,10 +208,12 @@ namespace UnitySkills
             bool isLens = false;
 
 #if CINEMACHINE_3
-            if (componentType.Equals("Main", System.StringComparison.OrdinalIgnoreCase) ||
+            if (string.IsNullOrEmpty(componentType) ||
+                componentType.Equals("Main", System.StringComparison.OrdinalIgnoreCase) ||
                 componentType.Equals("CinemachineCamera", System.StringComparison.OrdinalIgnoreCase))
 #elif CINEMACHINE_2
-            if (componentType.Equals("Main", System.StringComparison.OrdinalIgnoreCase) ||
+            if (string.IsNullOrEmpty(componentType) ||
+                componentType.Equals("Main", System.StringComparison.OrdinalIgnoreCase) ||
                 componentType.Equals("CinemachineVirtualCamera", System.StringComparison.OrdinalIgnoreCase))
 #endif
             {

@@ -246,7 +246,7 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchUIItem>(items, item =>
             {
                 object result;
-                switch (item.type.ToLower())
+                switch ((item.type ?? "").ToLower())
                 {
                     case "canvas":
                         result = UICreateCanvas(item.name, item.renderMode ?? "ScreenSpaceOverlay");

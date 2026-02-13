@@ -96,7 +96,7 @@ namespace UnitySkills
             {
                 name = go.name,
                 instanceId = go.GetInstanceID(),
-                components = go.GetComponents<Component>().Select(c => c.GetType().Name).ToArray(),
+                components = go.GetComponents<Component>().Where(c => c != null).Select(c => c.GetType().Name).ToArray(),
                 children = depth < maxDepth
                     ? Enumerable.Range(0, go.transform.childCount)
                         .Select(i => GetHierarchyNode(go.transform.GetChild(i).gameObject, depth + 1, maxDepth))
@@ -113,10 +113,11 @@ namespace UnitySkills
             var dir = Path.GetDirectoryName(path);
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
-            ScreenCapture.CaptureScreenshot(path, 1);
+            int superSize = Mathf.Max(1, width / Screen.width);
+            ScreenCapture.CaptureScreenshot(path, superSize);
             AssetDatabase.Refresh();
 
-            return new { success = true, path };
+            return new { success = true, path, width, height };
         }
 
         [UnitySkill("scene_get_loaded", "Get list of all currently loaded scenes")]

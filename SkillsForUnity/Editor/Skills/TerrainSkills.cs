@@ -212,7 +212,7 @@ namespace UnitySkills
             int resolution = data.heightmapResolution;
             int centerX = Mathf.RoundToInt(normalizedX * (resolution - 1));
             int centerZ = Mathf.RoundToInt(normalizedZ * (resolution - 1));
-            int radiusPixels = Mathf.RoundToInt(radius * resolution);
+            int radiusPixels = Mathf.Max(1, Mathf.RoundToInt(radius * resolution));
 
             // Calculate affected area
             int startX = Mathf.Max(0, centerX - radiusPixels);

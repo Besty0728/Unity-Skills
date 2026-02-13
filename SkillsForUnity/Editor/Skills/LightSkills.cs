@@ -27,7 +27,10 @@ namespace UnitySkills
             if (System.Enum.TryParse<LightType>(lightType, true, out var lt))
                 light.type = lt;
             else
+            {
+                Object.DestroyImmediate(go);
                 return new { error = $"Unknown light type: {lightType}. Use: Directional, Point, Spot, Area" };
+            }
 
             // Set position
             go.transform.position = new Vector3(x, y, z);

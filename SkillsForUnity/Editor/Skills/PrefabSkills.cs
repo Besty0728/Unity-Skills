@@ -38,8 +38,10 @@ namespace UnitySkills
                 return new { error = $"Prefab not found: {prefabPath}" };
 
             var instance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
+            if (instance == null)
+                return new { error = $"Failed to instantiate prefab: {prefabPath}" };
             instance.transform.position = new Vector3(x, y, z);
-            
+
             if (!string.IsNullOrEmpty(name))
                 instance.name = name;
 
@@ -78,6 +80,8 @@ namespace UnitySkills
                     throw new System.Exception($"Prefab not found: {item.prefabPath}");
 
                 var instance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
+                if (instance == null)
+                    throw new System.Exception($"Failed to instantiate prefab: {item.prefabPath}");
                 instance.transform.position = new Vector3(item.x, item.y, item.z);
 
                 if (item.rotX != 0 || item.rotY != 0 || item.rotZ != 0)

@@ -80,6 +80,7 @@ namespace UnitySkills
                         param.defaultBool = defaultBool;
                         break;
                 }
+                controller.parameters = parameters;
             }
 
             EditorUtility.SetDirty(controller);

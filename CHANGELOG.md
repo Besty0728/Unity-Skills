@@ -6,7 +6,59 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### ⭐ Highlight
 
-- **`scene_export_report`** — 一键导出完整场景报告（Markdown），包含：精简层级树（内置组件仅列名称，用户脚本标 `*`）、用户脚本字段清单（含实际值和引用目标路径）、**C# 代码级依赖分析**（自动扫描源码中的 `GetComponent<T>`/`FindObjectOfType<T>`/`SendMessage`/字段类型引用）、合并依赖图与风险评级。生成的文件可直接作为 AI 持久化上下文，让 AI 在后续对话中无需反复查询即可理解整个场景结构和脚本间调用关系。调用示例：`call_skill('scene_export_report', savePath='Assets/Docs/SceneReport.md')`
+- **`scene_export_report`** — 一键导出完整场景报告（Markdown），包含：精简层级树（内置组件仅列名称，用户脚本标 `*`）、用户脚本字段清单（含实际值和引用目标路径）、**深度 C# 代码级依赖分析**（10 种模式：`GetComponent<T>`/`FindObjectOfType<T>`/`SendMessage`/字段类型引用/单例访问/静态成员调用/`new T()`实例化/泛型类型参数/继承与接口实现/`typeof`·`is`·`as`类型检查）、合并依赖图与风险评级。覆盖项目中所有用户 C# 类（MonoBehaviour、ScriptableObject、Editor、普通类）。生成的文件可直接作为 AI 持久化上下文。调用示例：`call_skill('scene_export_report', savePath='Assets/Docs/SceneReport.md')`
+
+### Improved
+- **`scene_export_report` 依赖分析质量提升** (5 项修复):
+  1. Dependency Graph 表格新增 `Source` 列，区分 `scene`（序列化引用）和 `code`（源码分析），AI 不再混淆场景对象与类名
+  2. 代码扫描前剔除 `//` 单行注释和 `/* */` 块注释，消除注释中的虚假依赖
+  3. `StaticAccess` 正则收紧为双侧 PascalCase（`[A-Z]\w+\.\s*[A-Z]\w*`），不再误报 `Debug.Log`、`Mathf.Clamp` 等
+  4. `RxInheritance` 从 `Match` 改为 `Matches`，支持单文件多类（partial class、嵌套类）
+  5. 新增方法级粒度：`From` 列显示 `ClassName.MethodName`，定位依赖发生的具体方法
+
+### Fixed (全项目审计 — 36 项缺陷修复)
+
+#### 🔴 严重 (14 项)
+- **P-1** `CinemachineSkills.cs` — `componentType` 为 null 时 `.Equals()` 空引用崩溃，添加 null 检查
+- **P-2** `SmartSkills.cs` — 非 Component 对象强转 `(comp as Component).gameObject` 崩溃，改为安全转换并跳过
+- **B-1** `ScriptSkills.cs:147` — 用户输入正则无超时限制导致 ReDoS 风险，添加 `TimeSpan.FromSeconds(1)` 超时
+- **B-2** `GameObjectSkills.cs:265` — 同上 ReDoS 风险，`new Regex(name)` 添加超时参数
+- **B-3** `PrefabSkills.cs:40-41,80` — `InstantiatePrefab` 返回 null 未检查导致后续空引用，添加 null 守卫
+- **B-4** `SceneSkills.cs:99` — `GetComponents<Component>()` 返回含 null 元素（缺失脚本），`.Select(c => c.GetType())` 崩溃，添加 `.Where(c => c != null)` 过滤
+- **B-9** `LightSkills.cs:27-30` — 无效 lightType 时返回错误但已创建的 GameObject 泄漏，添加 `DestroyImmediate(go)` 清理
+- **B-10** `ComponentSkills.cs:574` — `ConvertValue` 对值类型返回 null 导致拆箱异常，改为 `Activator.CreateInstance(targetType)` 返回默认值
+- **B-11** `TerrainSkills.cs:238` — `radiusPixels=0` 时除零异常，添加 `Mathf.Max(1, ...)` 下限
+- **I-1** `SkillsHttpServer.cs` — `Stop()` 未 Join 后台线程导致线程泄漏，添加 `Thread.Join(2000)` 和引用清理
+- **I-5** `SkillsHttpServer.cs` — skill name 未校验可注入 `/` `..` 等路径字符，添加输入验证
+- **I-6** `SkillRouter.cs` — `BeginTask` 注册的 Undo hooks 在异常时未通过 `EndTask` 清理，在 catch 块中添加 `EndTask()` 调用
+- **P-4** `unity_skills.py:118-127` — 端口扫描全部失败时静默回退到 8090，改为抛出 `ConnectionError` 明确报错
+- **P-7** `unity_skills.py:421-425` — `WorkflowContext.__enter__` 中 `call_skill` 失败后 `_current_workflow_active` 仍为 True，重排赋值顺序并添加异常处理
+
+#### 🟡 中等 (15 项)
+- **P-3** `SmartSkills.cs:213-222` — Transform 分支是 Component 分支的子集（死代码），删除冗余分支
+- **P-5** `Localization.cs:40` — `Get()` 直接读 `_current` 字段绕过 `Current` 属性的懒初始化，改为使用 `Current` 属性
+- **B-5** `SceneSkills.cs:110` — `SceneScreenshot` 忽略 width/height 参数，改用 `superSize` 计算并在返回值中包含尺寸
+- **B-6** `AnimatorSkills.cs:67-83` — `controller.parameters` 返回数组副本，修改后未写回，添加 `controller.parameters = parameters` 回写
+- **B-7** `ComponentSkills.cs:738` — `easein` 和 `easeout` 使用相同的 `EaseInOut` 曲线，改为各自独立的加速/减速曲线
+- **B-8** `MaterialSkills.cs:763` — Float 类型属性调用 `GetPropertyRangeLimits()` 返回无意义值，分离 Float 和 Range 两个 case
+- **B-12** `UISkills.cs:249` — `item.type` 为 null 时 `.ToLower()` 崩溃，添加 null 合并 `(item.type ?? "")`
+- **B-13** `ScriptSkills.cs:70-72` — 未提供 namespace 时 `{NAMESPACE}` 占位符残留在生成的脚本中，添加默认值替换
+- **I-3** `WorkflowManager.cs` — `SaveHistory()` 直接写目标文件，崩溃时数据丢失，改为先写 `.tmp` 再原子替换
+- **I-7** `SkillsHttpServer.cs` — 速率限制使用 `double` 精度时间戳存在浮点漂移，改为 `long` Ticks 整数比较
+- **I-8** `WorkflowManager.cs` — 批量操作无快照上限导致内存无限增长，添加 500 条上限和日志提示
+- **I-9** `RegistryService.cs` — 清理过期条目仅检查时间戳，进程已死但时间未过期的条目残留，添加 `IsProcessAlive()` 检查
+- **I-10** `GameObjectFinder.cs` — 编辑器非播放模式下 `Time.frameCount` 不递增导致缓存永不失效，改为请求级 bool 标志
+- **P-8** `AudioSkills.cs:145-177` — `StartAssetEditing()` 期间调用 `SaveAndReimport()` 导致导入管线冲突，移除 batch 方法的 setup/teardown
+- **P-11** `unity_skills.py:520` — CLI 数值解析 `isdigit()` 预检对 `"1.2.3"` `"--5"` 等边界值误判，改为直接 try/except 转换
+
+#### 🟢 轻微 (7 项)
+- **P-9** `ValidationSkills.cs:192-211` — 空文件夹删除未按深度排序，父文件夹先删导致子文件夹残留，改为按路径长度降序删除
+- **P-10** `WorkflowSkills.cs:121-138` — `HistoryUndo/Redo` 未校验 steps 参数，负数导致无限循环，添加 `steps < 1` 守卫
+- **P-12** `PhysicsSkills.cs:78-89` — `PhysicsSetGravity` Undo 记录使用 `RecordObject` 而非 `Undo.RecordObject`，变量命名优化避免混淆
+- **B-14** `ComponentSkills.cs:167` — `SnapshotObject` 内部已有 `_currentTask == null` 守卫，确认无需额外修改
+- **I-2** `SkillsHttpServer.cs` — `ManualResetEventSlim` 已通过 ownership transfer 模式正确管理，确认无泄漏
+- **I-4** `RegistryService.cs` — tmp 文件删除已在文件锁保护范围内，确认无竞态条件
+- **P-6** `unity_skills.py:457-462` — `get_skills()`/`health()` 使用 `requests.get` 而非 Session 对象，属设计选择非缺陷
 
 ### Added
 - **依赖边扫描重构**: 提取 `CollectDependencyEdges()` 共享方法，供 `scene_export_report` 和 `scene_dependency_analyze` 复用，消除重复代码

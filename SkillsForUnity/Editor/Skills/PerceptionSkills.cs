@@ -805,14 +805,10 @@ namespace UnitySkills
             {
                 sb.AppendLine("## Dependency Graph");
                 sb.AppendLine();
-                sb.AppendLine("| Object/Script | Risk | Depended By |");
-                sb.AppendLine("|---------------|------|-------------|");
-                foreach (var kv in reverseIndex.OrderByDescending(k => k.Value.Count))
-                {
-                    int cnt = kv.Value.Count;
-                    string risk = cnt <= 2 ? "low" : cnt <= 5 ? "medium" : "high";
-                    sb.AppendLine($"| {kv.Key} | {risk} | {cnt} |");
-                }
+                sb.AppendLine("| From | To | Type | Source | Detail |");
+                sb.AppendLine("|------|----|------|--------|--------|");
+                foreach (var e in allEdges.OrderBy(e => e.fromObject).ThenBy(e => e.toObject))
+                    sb.AppendLine($"| {e.fromScript} | {e.toObject} | {e.fieldType} | {e.source} | {e.fieldName} |");
                 sb.AppendLine();
             }
 
@@ -878,6 +874,24 @@ namespace UnitySkills
             new System.Text.RegularExpressions.Regex(@"(?:SendMessage|BroadcastMessage)\s*\(\s*""(\w+)""", System.Text.RegularExpressions.RegexOptions.Compiled);
         private static readonly System.Text.RegularExpressions.Regex RxFieldRef =
             new System.Text.RegularExpressions.Regex(@"(?:public|private|protected|\[SerializeField\])\s+(\w+)\s+\w+\s*[;=]", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex RxSingleton =
+            new System.Text.RegularExpressions.Regex(@"([A-Z]\w+)\s*\.\s*[Ii]nstance\b", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex RxStaticAccess =
+            new System.Text.RegularExpressions.Regex(@"([A-Z]\w+)\s*\.\s*[A-Z]\w*\s*[\(;,\)]", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex RxNewInstance =
+            new System.Text.RegularExpressions.Regex(@"new\s+(\w+)\s*\(", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex RxGenericArg =
+            new System.Text.RegularExpressions.Regex(@"<(\w+)>\s*\(", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex RxInheritance =
+            new System.Text.RegularExpressions.Regex(@"class\s+(\w+)\s*:\s*([\w\s,]+?)\s*\{", System.Text.RegularExpressions.RegexOptions.Compiled);
+        private static readonly System.Text.RegularExpressions.Regex RxTypeCheck =
+            new System.Text.RegularExpressions.Regex(@"(?:typeof|is|as)\s*[\(<]\s*(\w+)\s*[\)>]?", System.Text.RegularExpressions.RegexOptions.Compiled);
+        // Matches strings (group 1) OR comments (group 2/3). Strings are kept, comments replaced.
+        private static readonly System.Text.RegularExpressions.Regex RxComment =
+            new System.Text.RegularExpressions.Regex(@"(""(?:[^""\\]|\\.)*"")|(/\*[\s\S]*?\*/)|(//.*?$)",
+                System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Multiline);
+        private static readonly System.Text.RegularExpressions.Regex RxMethodDecl =
+            new System.Text.RegularExpressions.Regex(@"(?:(?:public|private|protected|internal|static|virtual|override|abstract|async)\s+)*(?:void|bool|int|float|string|IEnumerator|object|[A-Z]\w*)\s+([A-Z]\w*)\s*\(", System.Text.RegularExpressions.RegexOptions.Compiled);
 
         private static List<DependencyEdge> CollectCodeDependencies()
         {
@@ -903,41 +917,97 @@ namespace UnitySkills
 
             foreach (var (path, className) in userScriptPaths)
             {
-                string source;
-                try { source = File.ReadAllText(path); } catch { continue; }
+                string rawSource;
+                try { rawSource = File.ReadAllText(path); } catch { continue; }
+
+                // Strip comments to avoid false positives (preserve string literals, keep char offsets)
+                var source = RxComment.Replace(rawSource, m => m.Groups[1].Success ? m.Value : new string(' ', m.Length));
+
+                // Build line→method index for method-level granularity
+                var methodAtLine = BuildMethodIndex(source);
+
+                void AddEdge(string target, string pattern, string edgeType, int charIndex)
+                {
+                    if (target != className && userClassNames.Contains(target))
+                    {
+                        var method = GetMethodAtPos(source, charIndex, methodAtLine);
+                        var location = method != null ? $"{className}.{method}" : className;
+                        edges.Add(new DependencyEdge { fromObject = className, fromScript = location, fieldName = pattern, fieldType = edgeType, toObject = target, source = "code" });
+                    }
+                }
 
                 // GetComponent<T> / GetComponentInChildren<T>
                 foreach (System.Text.RegularExpressions.Match m in RxGetComponent.Matches(source))
-                {
-                    var target = m.Groups[1].Value;
-                    if (target != className && userClassNames.Contains(target))
-                        edges.Add(new DependencyEdge { fromObject = className, fromScript = className, fieldName = m.Value, fieldType = "GetComponent", toObject = target });
-                }
+                    AddEdge(m.Groups[1].Value, m.Value, "GetComponent", m.Index);
 
                 // FindObjectOfType<T>
                 foreach (System.Text.RegularExpressions.Match m in RxFindObject.Matches(source))
-                {
-                    var target = m.Groups[1].Value;
-                    if (target != className && userClassNames.Contains(target))
-                        edges.Add(new DependencyEdge { fromObject = className, fromScript = className, fieldName = m.Value, fieldType = "FindObject", toObject = target });
-                }
+                    AddEdge(m.Groups[1].Value, m.Value, "FindObject", m.Index);
 
                 // SendMessage / BroadcastMessage
                 foreach (System.Text.RegularExpressions.Match m in RxSendMessage.Matches(source))
-                    edges.Add(new DependencyEdge { fromObject = className, fromScript = className, fieldName = m.Value, fieldType = "Message", toObject = m.Groups[1].Value });
+                    AddEdge(m.Groups[1].Value, m.Value, "Message", m.Index);
 
                 // Field referencing other user classes
                 foreach (System.Text.RegularExpressions.Match m in RxFieldRef.Matches(source))
+                    AddEdge(m.Groups[1].Value, $"field:{m.Groups[1].Value}", "FieldReference", m.Index);
+
+                // Singleton access: ClassName.Instance (PascalCase only)
+                foreach (System.Text.RegularExpressions.Match m in RxSingleton.Matches(source))
+                    AddEdge(m.Groups[1].Value, $"{m.Groups[1].Value}.Instance", "Singleton", m.Index);
+
+                // Static member access: PascalCase.PascalCase (both sides must start uppercase)
+                foreach (System.Text.RegularExpressions.Match m in RxStaticAccess.Matches(source))
+                    AddEdge(m.Groups[1].Value, m.Value.TrimEnd('(', ';', ',', ')').Trim(), "StaticAccess", m.Index);
+
+                // new ClassName()
+                foreach (System.Text.RegularExpressions.Match m in RxNewInstance.Matches(source))
+                    AddEdge(m.Groups[1].Value, $"new {m.Groups[1].Value}()", "Instantiation", m.Index);
+
+                // Generic type argument: SomeMethod<ClassName>()
+                foreach (System.Text.RegularExpressions.Match m in RxGenericArg.Matches(source))
+                    AddEdge(m.Groups[1].Value, m.Value.TrimEnd('('), "GenericArg", m.Index);
+
+                // Inheritance: class X : BaseClass, IInterface (Matches for multi-class files)
+                foreach (System.Text.RegularExpressions.Match inhMatch in RxInheritance.Matches(source))
                 {
-                    var target = m.Groups[1].Value;
-                    if (target != className && userClassNames.Contains(target))
-                        edges.Add(new DependencyEdge { fromObject = className, fromScript = className, fieldName = $"field:{target}", fieldType = "FieldReference", toObject = target });
+                    var declaredClass = inhMatch.Groups[1].Value;
+                    foreach (var baseType in inhMatch.Groups[2].Value.Split(','))
+                    {
+                        var trimmed = baseType.Trim();
+                        if (trimmed != declaredClass && userClassNames.Contains(trimmed))
+                            edges.Add(new DependencyEdge { fromObject = declaredClass, fromScript = declaredClass, fieldName = $"extends:{trimmed}", fieldType = "Inheritance", toObject = trimmed, source = "code" });
+                    }
                 }
+
+                // typeof(T) / is T / as T
+                foreach (System.Text.RegularExpressions.Match m in RxTypeCheck.Matches(source))
+                    AddEdge(m.Groups[1].Value, m.Value.Trim(), "TypeCheck", m.Index);
             }
 
             // Deduplicate
             return edges.GroupBy(e => $"{e.fromScript}→{e.toObject}:{e.fieldName}")
                 .Select(g => g.First()).ToList();
+        }
+
+        private static List<(int lineStart, string methodName)> BuildMethodIndex(string source)
+        {
+            var result = new List<(int lineStart, string methodName)>();
+            foreach (System.Text.RegularExpressions.Match m in RxMethodDecl.Matches(source))
+                result.Add((m.Index, m.Groups[1].Value));
+            result.Sort((a, b) => a.lineStart.CompareTo(b.lineStart));
+            return result;
+        }
+
+        private static string GetMethodAtPos(string source, int charIndex, List<(int lineStart, string methodName)> methods)
+        {
+            string best = null;
+            foreach (var (pos, name) in methods)
+            {
+                if (pos <= charIndex) best = name;
+                else break;
+            }
+            return best;
         }
 
         private static List<DependencyEdge> CollectDependencyEdges(GameObject[] allObjects)
@@ -972,7 +1042,8 @@ namespace UnitySkills
                             fromScript = comp.GetType().Name,
                             fieldName = prop.name,
                             fieldType = refObj.GetType().Name,
-                            toObject = refTarget
+                            toObject = refTarget,
+                            source = "scene"
                         });
                     }
                 }
@@ -1054,7 +1125,7 @@ namespace UnitySkills
 
         private class DependencyEdge
         {
-            public string fromObject, fromScript, fieldName, fieldType, toObject;
+            public string fromObject, fromScript, fieldName, fieldType, toObject, source;
         }
 
         private static List<object> BuildAnalysis(HashSet<string> targets, Dictionary<string, List<DependencyEdge>> reverseIndex, List<DependencyEdge> allEdges)

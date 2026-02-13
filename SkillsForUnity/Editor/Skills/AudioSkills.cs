@@ -172,9 +172,7 @@ namespace UnitySkills
 
                 importer.SaveAndReimport();
                 return new { path = item.assetPath, success = true };
-            }, item => item.assetPath,
-            setup: () => AssetDatabase.StartAssetEditing(),
-            teardown: () => { AssetDatabase.StopAssetEditing(); AssetDatabase.Refresh(); });
+            }, item => item.assetPath);
         }
 
         private class BatchAudioItem

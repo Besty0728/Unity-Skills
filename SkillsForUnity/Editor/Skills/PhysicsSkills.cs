@@ -74,18 +74,18 @@ namespace UnitySkills
         [UnitySkill("physics_set_gravity", "Set global gravity setting")]
         public static object PhysicsSetGravity(float x, float y, float z)
         {
-            // Record for Undo support
-            var dynamicsManager = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/DynamicsManager.asset");
-            if (dynamicsManager != null && dynamicsManager.Length > 0)
+            // Record for Undo support via DynamicsManager asset
+            var assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/DynamicsManager.asset");
+            if (assets != null && assets.Length > 0)
             {
-                Undo.RecordObject(dynamicsManager[0], "Set Gravity");
+                Undo.RecordObject(assets[0], "Set Gravity");
             }
 
             Physics.gravity = new Vector3(x, y, z);
 
-            if (dynamicsManager != null && dynamicsManager.Length > 0)
+            if (assets != null && assets.Length > 0)
             {
-                EditorUtility.SetDirty(dynamicsManager[0]);
+                EditorUtility.SetDirty(assets[0]);
             }
 
             return new { success = true, gravity = new { x, y, z } };

@@ -191,7 +191,9 @@ namespace UnitySkills
 
             if (!dryRun && emptyFolders.Count > 0)
             {
-                foreach (var folder in emptyFolders.ToArray())
+                // Delete in reverse order (deepest first) to handle nested empty folders
+                var sorted = emptyFolders.OrderByDescending(f => f.Length).ToList();
+                foreach (var folder in sorted)
                 {
                     if (Directory.Exists(folder))
                     {
