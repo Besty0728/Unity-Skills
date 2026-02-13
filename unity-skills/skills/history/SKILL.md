@@ -1,6 +1,6 @@
 ---
 name: unity-history
-description: "Undo/redo history management. Use when users want to undo, redo, or check edit history. Triggers: history, undo, redo, revert, previous state."
+description: "Undo/redo history management. Use when users want to undo, redo, or check edit history. Triggers: history, undo, redo, revert, previous state, Unity历史, Unity撤销, Unity重做."
 ---
 
 # History Skills

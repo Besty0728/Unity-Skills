@@ -1,6 +1,6 @@
 ---
 name: unity-light
-description: "Unity lighting control. Use when users want to create or configure lights (Directional, Point, Spot, Area). Triggers: light, lighting, directional light, point light, spot light, shadows, intensity."
+description: "Unity lighting control. Use when users want to create or configure lights (Directional, Point, Spot, Area). Triggers: light, lighting, directional light, point light, spot light, shadows, intensity, 灯光, 光照, 阴影."
 ---
 
 # Unity Light Skills

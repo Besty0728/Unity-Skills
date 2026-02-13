@@ -61,8 +61,8 @@ def _version_matches(actual_version: str, target: str) -> bool:
     if not cleaned:
         return False
 
-    # Unity 6 special mapping: user says "6" -> match "6000."
-    if cleaned == "6":
+    # Unity 6 special mapping: user says "6", "6.1", "6.2" etc -> match "6000."
+    if cleaned.split(".")[0] == "6" and not cleaned.startswith("6000"):
         return actual_version.startswith("6000.")
 
     # Direct prefix match for everything else (e.g. "6000", "2022", "2022.3")

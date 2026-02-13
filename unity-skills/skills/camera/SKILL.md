@@ -1,6 +1,6 @@
 ---
 name: unity-camera
-description: "Scene View camera control. Use when users want to move, rotate, or align the editor camera view. Triggers: camera, view, scene view, look at, align, viewport."
+description: "Scene View camera control. Use when users want to move, rotate, or align the editor camera view. Triggers: camera, view, scene view, look at, align, viewport, 相机, 摄像机, 视角."
 ---
 
 # Camera Skills

@@ -1,6 +1,6 @@
 ---
 name: unity-scene
-description: "Unity scene management. Use when users want to create, load, save scenes, or get scene hierarchy. Triggers: scene, load scene, save scene, hierarchy, screenshot."
+description: "Unity scene management. Use when users want to create, load, save scenes, or get scene hierarchy. Triggers: scene, load scene, save scene, hierarchy, screenshot, Unity场景, Unity加载场景, Unity保存场景, Unity截图."
 ---
 
 # Unity Scene Skills

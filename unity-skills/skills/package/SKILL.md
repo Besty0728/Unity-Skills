@@ -1,6 +1,6 @@
 ---
 name: unity-package
-description: "Unity Package Manager operations. Use when users want to install, remove, or list packages. Triggers: package, UPM, install, dependency, Cinemachine, TextMeshPro."
+description: "Unity Package Manager operations. Use when users want to install, remove, or list packages. Triggers: package, UPM, install, dependency, Cinemachine, TextMeshPro, 包管理, Unity安装, Unity依赖."
 ---
 
 # Package Skills

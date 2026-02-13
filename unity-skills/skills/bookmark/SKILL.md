@@ -1,6 +1,6 @@
 ---
 name: unity-bookmark
-description: "Scene view bookmarks. Use when users want to save, recall, or manage camera positions in the editor. Triggers: bookmark, save view, goto, camera position, viewpoint."
+description: "Scene view bookmarks. Use when users want to save, recall, or manage camera positions in the editor. Triggers: bookmark, save view, goto, camera position, viewpoint, 书签, 视角, 保存视图."
 ---
 
 # Bookmark Skills

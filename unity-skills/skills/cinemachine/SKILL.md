@@ -1,6 +1,6 @@
 ---
 name: unity-cinemachine
-description: "Cinemachine virtual camera control. Use when users want to create cinematic cameras, set follow/look targets, or configure camera behaviors. Triggers: cinemachine, virtual camera, vcam, follow, look at, dolly, freelook."
+description: "Cinemachine virtual camera control. Use when users want to create cinematic cameras, set follow/look targets, or configure camera behaviors. Triggers: cinemachine, virtual camera, vcam, follow, look at, dolly, freelook, 虚拟相机, 跟随, 轨道."
 ---
 
 # Cinemachine Skills

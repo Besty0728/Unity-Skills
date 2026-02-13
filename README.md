@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2021.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-277-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-282-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_EN.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
@@ -25,7 +25,7 @@
 ## 🚀 核心特性
 
 - ⚡ **极致效能**：支持 **Result Truncation** 与 **SKILL.md** 瘦身，最大化节省 Token。
-- 🛠️ **全能工具库**：内置 277 Skills，支持 **Batch (批处理)** 操作，大幅减少 HTTP 通信开销，显著提升执行效率。
+- 🛠️ **全能工具库**：内置 282 Skills，支持 **Batch (批处理)** 操作，大幅减少 HTTP 通信开销，显著提升执行效率。
 - 🛡️ **安全第一**：支持 **Transactional (事务原子性)**，操作失败自动回滚，场景零残留。
 - 🌍 **多实例支持**：自动端口发现、全局注册表，支持同时控制多个 Unity 项目。
 - 🤖 **深度集成**：独家支持 **Antigravity Slash Commands**，解锁 `/unity-skills` 交互新体验。
@@ -123,7 +123,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.4.0
 
 ---
 
-## 📦 Skills 分类概要 (277)
+## 📦 Skills 分类概要 (282)
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -138,7 +138,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.4.0
 | **Light** | 7 | 灯光创建/类型配置/强度颜色/批量开关 |
 | **Validation** | 7 | 项目验证/空文件夹清理/引用检测 |
 | **Terrain** | 6 | 地形创建/高度图编辑/纹理绘制 [v1.4] |
-| **Perception** | 3 | 场景摘要/层级描述/脚本分析 [v1.4] |
+| **Perception** | 8 | 场景摘要/层级描述/脚本分析/空间查询/材质概览/场景快照/依赖分析/场景报告导出 [v1.4] |
 | **Smart** | 3 | 场景查询/自动布局/引用装配 [Preview] |
 | **UI Layout** | 5 | 锚点/尺寸/布局组/对齐/分布 [Preview] |
 | **Scene** | 6 | 场景切换/保存/加载/截图 |

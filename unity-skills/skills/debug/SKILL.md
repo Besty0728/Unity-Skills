@@ -1,6 +1,6 @@
 ---
 name: unity-debug
-description: "Debug and diagnostics. Use when users want to check compilation errors, get system info, or debug issues. Triggers: debug, error, compilation, recompile, system info, diagnostics."
+description: "Debug and diagnostics. Use when users want to check compilation errors, get system info, or debug issues. Triggers: debug, error, compilation, recompile, system info, diagnostics, Unity调试, Unity编译错误, Unity诊断."
 ---
 
 # Debug Skills

@@ -1,6 +1,6 @@
 ---
 name: unity-perception
-description: "Scene understanding and analysis. Use when users want to get a summary or overview of the current scene state. Triggers: scene summary, analyze, overview, statistics, count."
+description: "Scene understanding and analysis. Use when users want to get a summary, overview, dependency report, or export of the current scene state. Triggers: scene summary, analyze, overview, statistics, count, export report, 场景摘要, Unity分析, Unity概览, Unity统计, 导出报告, 依赖分析."
 ---
 
 # Unity Perception Skills
@@ -76,5 +76,144 @@ Analyze a MonoBehaviour script's public API.
   "properties": [{"name": "IsGrounded", "type": "bool", "canWrite": false}],
   "methods": [{"name": "Jump", "returnType": "void", "parameters": ""}],
   "unityCallbacks": ["Start", "Update", "OnCollisionEnter"]
+}
+```
+
+---
+
+### scene_spatial_query
+Find objects within a radius of a point, or near another object.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `x` | float | No | 0 | Center X coordinate |
+| `y` | float | No | 0 | Center Y coordinate |
+| `z` | float | No | 0 | Center Z coordinate |
+| `radius` | float | No | 10 | Search radius |
+| `nearObject` | string | No | - | Find near this object instead of coordinates |
+| `componentFilter` | string | No | - | Only include objects with this component |
+| `maxResults` | int | No | 50 | Max results to return |
+
+**Returns**:
+```json
+{
+  "center": {"x": 0, "y": 0, "z": 0},
+  "radius": 10,
+  "totalFound": 5,
+  "results": [{"name": "Enemy", "path": "Enemies/Enemy", "distance": 3.2, "position": {"x": 1, "y": 0, "z": 3}}]
+}
+```
+
+---
+
+### scene_materials
+Get an overview of all materials and shaders used in the current scene.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `includeProperties` | bool | No | false | Include shader property list |
+
+**Returns**:
+```json
+{
+  "totalMaterials": 12,
+  "totalShaders": 4,
+  "shaders": [{"shader": "Standard", "materialCount": 5, "materials": [{"name": "Ground", "userCount": 3}]}]
+}
+```
+
+---
+
+### scene_context
+Generate a comprehensive scene snapshot for AI coding assistance (hierarchy, components, script fields, references, UI layout).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `maxDepth` | int | No | 10 | Max hierarchy depth to traverse |
+| `maxObjects` | int | No | 200 | Max objects to export |
+| `rootPath` | string | No | - | Only export a subtree (e.g. "Canvas/MainPanel") |
+| `includeValues` | bool | No | false | Include serialized field values |
+| `includeReferences` | bool | No | true | Include cross-object references |
+
+**Returns**:
+```json
+{
+  "sceneName": "Main",
+  "totalObjects": 156,
+  "exportedObjects": 85,
+  "truncated": true,
+  "objects": [
+    {
+      "path": "Canvas/MainPanel/StartButton",
+      "name": "StartButton",
+      "active": true,
+      "tag": "Untagged",
+      "layer": "UI",
+      "components": [
+        {"type": "RectTransform", "props": {"anchoredPosition": "(120, -50)", "sizeDelta": "(200, 60)"}},
+        {"type": "Button", "props": {"interactable": true, "transition": "ColorTint"}},
+        {"type": "PlayerUIController", "kind": "MonoBehaviour", "fields": {"speed": {"type": "Float", "value": 5.5}, "target": {"type": "GameObject", "value": "Player/Body"}}}
+      ],
+      "children": ["Canvas/MainPanel/StartButton/Text"]
+    }
+  ],
+  "references": [
+    {"from": "Canvas/MainPanel/StartButton:PlayerUIController.target", "to": "Player/Body"}
+  ]
+}
+```
+
+---
+
+### scene_export_report
+Export complete scene structure and script dependency report as markdown file. Use when user asks to export scene report, generate scene document, save scene overview, or create scene context file.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `savePath` | string | No | "Assets/Docs/SceneReport.md" | Output file path |
+| `maxDepth` | int | No | 10 | Max hierarchy depth |
+| `maxObjects` | int | No | 500 | Max objects to export |
+
+**Returns**:
+```json
+{
+  "success": true,
+  "savedTo": "Assets/Docs/SceneReport.md",
+  "objectCount": 156,
+  "scriptCount": 12,
+  "referenceCount": 8
+}
+```
+
+---
+
+### scene_dependency_analyze
+Analyze object dependency graph and impact of changes. Use ONLY when user explicitly asks about dependency/impact analysis, safe to delete/disable, refactoring impact, or reference checks.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `targetPath` | string | No | - | Analyze specific subtree (e.g. "Canvas/HUD") |
+| `savePath` | string | No | - | Save analysis as markdown (e.g. "Assets/Docs/deps.md") |
+
+**Returns**:
+```json
+{
+  "sceneName": "Main",
+  "totalReferences": 12,
+  "objectsAnalyzed": 5,
+  "analysis": [
+    {
+      "path": "Canvas/HUD/HealthBar",
+      "risk": "medium",
+      "dependedByCount": 3,
+      "dependedBy": [
+        {"source": "Player", "script": "PlayerController", "field": "healthUI", "fieldType": "Slider"}
+      ],
+      "dependsOnCount": 0,
+      "dependsOn": null
+    }
+  ],
+  "savedTo": "Assets/Docs/deps.md",
+  "markdown": null
 }
 ```

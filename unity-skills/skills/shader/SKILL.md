@@ -1,6 +1,6 @@
 ---
 name: unity-shader
-description: "Shader creation and management. Use when users want to create or inspect shaders. Triggers: shader, HLSL, ShaderLab, Unlit, Standard, custom shader."
+description: "Shader creation and management. Use when users want to create or inspect shaders. Triggers: shader, HLSL, ShaderLab, Unlit, Standard, custom shader, 着色器, 创建Shader."
 ---
 
 # Unity Shader Skills

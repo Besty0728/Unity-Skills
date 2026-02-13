@@ -1,6 +1,6 @@
 ---
 name: unity-smart
-description: "Smart agentic operations. Use when users want to query scene objects by properties, auto-layout, or auto-bind references. Triggers: query, find by property, layout, auto-bind, smart."
+description: "AI-powered scene operations: SQL-like object queries, automatic spatial layout, and reference auto-binding. Use when users want to find objects by property conditions, arrange objects in grid/circle/line, or auto-wire serialized references. Triggers: query, find by property, layout, auto-bind, smart, 查询, 自动布局, 自动绑定."
 ---
 
 # Unity Smart Skills

@@ -1,6 +1,6 @@
 ---
 name: unity-component
-description: "GameObject component management. Use when users want to add, remove, or configure components like Rigidbody, Collider, AudioSource. Triggers: component, add component, rigidbody, collider, audio source, script."
+description: "GameObject component management. Use when users want to add, remove, or configure components like Rigidbody, Collider, AudioSource. Triggers: component, add component, rigidbody, collider, audio source, script, 组件, 添加组件, 刚体, 碰撞体."
 ---
 
 # Unity Component Skills

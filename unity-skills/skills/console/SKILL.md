@@ -1,6 +1,6 @@
 ---
 name: unity-console
-description: "Unity console log management. Use when users want to capture, filter, or clear console logs. Triggers: console, log, warning, error, debug, print."
+description: "Unity console log management. Use when users want to capture, filter, or clear console logs. Triggers: console, log, warning, error, debug, print, Unity控制台, Unity日志, Unity错误."
 ---
 
 # Unity Console Skills

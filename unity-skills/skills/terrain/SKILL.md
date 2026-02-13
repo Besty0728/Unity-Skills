@@ -1,6 +1,6 @@
 ---
 name: unity-terrain
-description: "Unity Terrain operations. Use when users want to create terrain, set heights, paint textures, or add trees. Triggers: terrain, heightmap, landscape, paint, trees, grass."
+description: "Unity Terrain operations. Use when users want to create terrain, set heights, paint textures, or add trees. Triggers: terrain, heightmap, landscape, paint, trees, grass, 地形, 高度图, 纹理绘制, 树木."
 ---
 
 # Unity Terrain Skills

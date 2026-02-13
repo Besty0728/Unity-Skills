@@ -1,6 +1,6 @@
 ---
 name: unity-skills-index
-description: "Index of all Unity Skills modules. Use when users want to browse available skills or understand the module structure. Triggers: index, modules, skills, reference, documentation."
+description: "Index of all Unity Skills modules. Use when users want to browse available skills or understand the module structure. Triggers: index, modules, skills, reference, documentation, 模块, 技能列表, 文档."
 ---
 
 # Unity Skills - Module Index

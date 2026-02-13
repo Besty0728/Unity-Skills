@@ -1,6 +1,6 @@
 ---
 name: unity-cleaner
-description: "Project cleanup utilities. Use when users want to find unused assets, duplicate files, or clean up the project. Triggers: unused, duplicate, cleanup, optimize, dead code, orphan."
+description: "Project cleanup utilities. Use when users want to find unused assets, duplicate files, or clean up the project. Triggers: unused, duplicate, cleanup, optimize, dead code, orphan, Unity清理, Unity未使用, 重复文件."
 ---
 
 # Unity Cleaner Skills

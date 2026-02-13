@@ -1,6 +1,6 @@
 ---
 name: unity-skills
-description: "Unity Editor automation via REST API. Use when users want to create, modify, or manage GameObjects, components, scenes, materials, prefabs, lights, UI elements, or any Unity Editor operations. Triggers on: Unity, GameObject, prefab, scene, material, component, animator, shader, UI canvas, lighting setup, asset import, play mode, editor automation."
+description: "Unity Editor automation via REST API. Use when users want to create, modify, or manage GameObjects, components, scenes, materials, prefabs, lights, UI elements, or any Unity Editor operations. Triggers on: Unity, GameObject, prefab, scene, material, component, animator, shader, UI canvas, lighting setup, asset import, play mode, editor automation, Unity编辑器, Unity自动化, Unity场景, Unity物体, Unity组件, Unity材质, Unity预制体, Unity灯光, Unity动画, Unity脚本."
 ---
 
 # Unity Skills API
@@ -14,13 +14,15 @@ When user mentions a specific Unity version, set target **before** any operation
 ```python
 import unity_skills
 unity_skills.set_unity_version("6")      # Unity 6 (matches 6000.x.x)
+unity_skills.set_unity_version("2023")   # Unity 2023.x
 unity_skills.set_unity_version("2022")   # Unity 2022.x
 unity_skills.set_unity_version("2021")   # Unity 2021.x
 ```
 
 | User says | Call |
 |-----------|------|
-| "Unity 6" / "Unity6" | `set_unity_version("6")` |
+| "Unity 6" / "Unity6" / "Unity 6.2" | `set_unity_version("6")` |
+| "2023" / "Unity 2023" | `set_unity_version("2023")` |
 | "2022" / "Unity 2022" | `set_unity_version("2022")` |
 | "2021" / "Unity 2021" | `set_unity_version("2021")` |
 

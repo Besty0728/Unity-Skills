@@ -1,6 +1,6 @@
 ---
 name: unity-material
-description: "Unity material and shader properties. Use when users want to create materials, set colors, textures, emission, or shader properties. Triggers: material, shader, color, texture, emission, albedo, metallic, smoothness."
+description: "Unity material and shader properties. Use when users want to create materials, set colors, textures, emission, or shader properties. Triggers: material, shader, color, texture, emission, albedo, metallic, smoothness, 材质, 颜色, 纹理, 发光."
 ---
 
 # Unity Material Skills

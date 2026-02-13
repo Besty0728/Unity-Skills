@@ -1,6 +1,6 @@
 ---
 name: unity-scriptableobject
-description: "ScriptableObject management. Use when users want to create, read, or modify ScriptableObject assets. Triggers: scriptableobject, SO, data asset, config, settings asset."
+description: "ScriptableObject management. Use when users want to create, read, or modify ScriptableObject assets. Triggers: scriptableobject, SO, data asset, config, settings asset, 数据资产, 配置文件."
 ---
 
 # ScriptableObject Skills

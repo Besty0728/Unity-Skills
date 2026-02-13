@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -400,6 +401,617 @@ namespace UnitySkills
             public int renderQueue;
             public List<string> users;
             public List<object> properties;
+        }
+
+        [UnitySkill("scene_context", "Generate a comprehensive scene snapshot for AI coding assistance (hierarchy, components, script fields, references, UI layout)")]
+        public static object SceneContext(
+            int maxDepth = 10,
+            int maxObjects = 200,
+            string rootPath = null,
+            bool includeValues = false,
+            bool includeReferences = true)
+        {
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            var totalObjects = UnityEngine.Object.FindObjectsOfType<GameObject>().Length;
+
+            // Determine roots
+            Transform[] roots;
+            if (!string.IsNullOrEmpty(rootPath))
+            {
+                var rootGo = GameObjectFinder.FindByPath(rootPath);
+                if (rootGo == null)
+                    return new { success = false, error = $"Root path '{rootPath}' not found" };
+                roots = new[] { rootGo.transform };
+            }
+            else
+            {
+                roots = scene.GetRootGameObjects().Select(g => g.transform).ToArray();
+            }
+
+            // BFS traversal
+            var objects = new List<object>();
+            var references = new List<object>();
+            var queue = new Queue<(Transform t, int depth)>();
+            foreach (var r in roots) queue.Enqueue((r, 0));
+
+            while (queue.Count > 0 && objects.Count < maxObjects)
+            {
+                var (t, depth) = queue.Dequeue();
+                objects.Add(BuildObjectInfo(t.gameObject, includeValues, includeReferences, references));
+
+                if (depth + 1 <= maxDepth)
+                {
+                    foreach (Transform child in t)
+                        queue.Enqueue((child, depth + 1));
+                }
+            }
+
+            var result = new
+            {
+                success = true,
+                sceneName = scene.name,
+                totalObjects,
+                exportedObjects = objects.Count,
+                truncated = objects.Count < totalObjects || queue.Count > 0,
+                objects,
+                references = includeReferences ? references : null
+            };
+            return result;
+        }
+
+        private static object BuildObjectInfo(GameObject go, bool includeValues, bool includeReferences, List<object> refs)
+        {
+            var path = GameObjectFinder.GetPath(go);
+            var components = new List<object>();
+
+            foreach (var comp in go.GetComponents<Component>())
+            {
+                if (comp == null) continue;
+                components.Add(BuildComponentInfo(comp, path, includeValues, includeReferences, refs));
+            }
+
+            var children = new List<string>();
+            foreach (Transform child in go.transform)
+                children.Add(GameObjectFinder.GetPath(child.gameObject));
+
+            return new
+            {
+                path,
+                name = go.name,
+                active = go.activeInHierarchy,
+                tag = go.tag,
+                layer = LayerMask.LayerToName(go.layer),
+                components,
+                children
+            };
+        }
+
+        private static object BuildComponentInfo(Component comp, string objPath, bool includeValues, bool includeReferences, List<object> refs)
+        {
+            var type = comp.GetType();
+            var typeName = type.Name;
+
+            // MonoBehaviour → serialized fields
+            if (comp is MonoBehaviour)
+            {
+                var fields = ExtractSerializedFields(comp, objPath, includeValues, includeReferences, refs);
+                return new { type = typeName, kind = "MonoBehaviour", fields };
+            }
+
+            // Built-in components: only output props when includeValues is true
+            if (includeValues)
+            {
+                var props = GetBuiltinComponentProps(comp);
+                return new { type = typeName, props };
+            }
+            return new { type = typeName };
+        }
+
+        private static readonly HashSet<string> SkipFields = new HashSet<string>
+        {
+            "m_Script", "m_ObjectHideFlags", "m_CorrespondingSourceObject",
+            "m_PrefabInstance", "m_PrefabAsset", "m_GameObject", "m_Enabled"
+        };
+
+        private static Dictionary<string, object> ExtractSerializedFields(Component comp, string objPath, bool includeValues, bool includeReferences, List<object> refs)
+        {
+            var fields = new Dictionary<string, object>();
+            var so = new SerializedObject(comp);
+            var prop = so.GetIterator();
+            bool enterChildren = true;
+
+            while (prop.NextVisible(enterChildren))
+            {
+                enterChildren = false;
+                if (SkipFields.Contains(prop.name)) continue;
+                if (prop.propertyType == SerializedPropertyType.ArraySize) continue;
+
+                var fieldType = prop.propertyType.ToString();
+
+                // Always extract ObjectReference refs (independent of includeValues)
+                if (prop.propertyType == SerializedPropertyType.ObjectReference && prop.objectReferenceValue != null)
+                {
+                    var refObj = prop.objectReferenceValue;
+                    fieldType = refObj.GetType().Name;
+                    string refPath = null;
+                    if (refObj is GameObject refGo)
+                        refPath = GameObjectFinder.GetPath(refGo);
+                    else if (refObj is Component refComp)
+                        refPath = GameObjectFinder.GetPath(refComp.gameObject);
+
+                    if (includeReferences && refPath != null)
+                        refs.Add(new { from = $"{objPath}:{comp.GetType().Name}.{prop.name}", to = refPath });
+
+                    if (includeValues)
+                        fields[prop.name] = new { type = fieldType, value = (object)(refPath ?? refObj.name) };
+                    else
+                        fields[prop.name] = fieldType;
+                    continue;
+                }
+
+                if (!includeValues)
+                {
+                    fields[prop.name] = fieldType;
+                    continue;
+                }
+
+                // includeValues=true: extract actual values
+                object value;
+                switch (prop.propertyType)
+                {
+                    case SerializedPropertyType.Integer: value = prop.intValue; break;
+                    case SerializedPropertyType.Float: value = prop.floatValue; break;
+                    case SerializedPropertyType.Boolean: value = prop.boolValue; break;
+                    case SerializedPropertyType.String:
+                        var sv = prop.stringValue;
+                        value = sv != null && sv.Length > 100 ? sv.Substring(0, 100) + "..." : sv;
+                        break;
+                    case SerializedPropertyType.Enum: value = prop.enumDisplayNames != null && prop.enumValueIndex >= 0 && prop.enumValueIndex < prop.enumDisplayNames.Length ? prop.enumDisplayNames[prop.enumValueIndex] : prop.enumValueIndex; break;
+                    case SerializedPropertyType.Vector2: value = FormatVec(prop.vector2Value); break;
+                    case SerializedPropertyType.Vector3: value = FormatVec(prop.vector3Value); break;
+                    case SerializedPropertyType.Vector4: value = FormatVec(prop.vector4Value); break;
+                    case SerializedPropertyType.Color: var c = prop.colorValue; value = $"({c.r:F2}, {c.g:F2}, {c.b:F2}, {c.a:F2})"; break;
+                    case SerializedPropertyType.ObjectReference: value = "null"; break; // ref is null (non-null handled above)
+                    default:
+                        value = prop.isArray ? $"{prop.arrayElementType}[{prop.arraySize}]" : fieldType;
+                        break;
+                }
+                fields[prop.name] = new { type = fieldType, value };
+            }
+            return fields;
+        }
+
+        private static string FormatVec(Vector2 v) => $"({v.x}, {v.y})";
+        private static string FormatVec(Vector3 v) => $"({v.x}, {v.y}, {v.z})";
+        private static string FormatVec(Vector4 v) => $"({v.x}, {v.y}, {v.z}, {v.w})";
+
+        private static Dictionary<string, object> GetBuiltinComponentProps(Component comp)
+        {
+            var props = new Dictionary<string, object>();
+
+            switch (comp)
+            {
+                case RectTransform rt:
+                    props["anchoredPosition"] = FormatVec(rt.anchoredPosition);
+                    props["sizeDelta"] = FormatVec(rt.sizeDelta);
+                    props["anchorMin"] = FormatVec(rt.anchorMin);
+                    props["anchorMax"] = FormatVec(rt.anchorMax);
+                    props["pivot"] = FormatVec(rt.pivot);
+                    break;
+                case Transform t:
+                    props["position"] = FormatVec(t.position);
+                    props["rotation"] = FormatVec(t.eulerAngles);
+                    props["scale"] = FormatVec(t.localScale);
+                    break;
+                case Camera cam:
+                    props["fieldOfView"] = cam.fieldOfView;
+                    props["orthographic"] = cam.orthographic;
+                    props["clearFlags"] = cam.clearFlags.ToString();
+                    props["cullingMask"] = cam.cullingMask;
+                    break;
+                case Light light:
+                    props["type"] = light.type.ToString();
+                    props["color"] = $"({light.color.r:F2}, {light.color.g:F2}, {light.color.b:F2})";
+                    props["intensity"] = light.intensity;
+                    props["range"] = light.range;
+                    break;
+                case Renderer rend:
+                    props["material"] = rend.sharedMaterial != null ? rend.sharedMaterial.name : "null";
+                    props["enabled"] = rend.enabled;
+                    break;
+                case Canvas canvas:
+                    props["renderMode"] = canvas.renderMode.ToString();
+                    props["sortingOrder"] = canvas.sortingOrder;
+                    break;
+                case CanvasGroup cg:
+                    props["alpha"] = cg.alpha;
+                    props["interactable"] = cg.interactable;
+                    props["blocksRaycasts"] = cg.blocksRaycasts;
+                    break;
+                case UnityEngine.UI.Button btn:
+                    props["interactable"] = btn.interactable;
+                    props["transition"] = btn.transition.ToString();
+                    break;
+                case UnityEngine.UI.Text txt:
+                    var textVal = txt.text;
+                    props["text"] = textVal != null && textVal.Length > 50 ? textVal.Substring(0, 50) + "..." : textVal;
+                    props["fontSize"] = txt.fontSize;
+                    props["color"] = $"({txt.color.r:F2}, {txt.color.g:F2}, {txt.color.b:F2}, {txt.color.a:F2})";
+                    break;
+                case UnityEngine.UI.Image img:
+                    props["sprite"] = img.sprite != null ? img.sprite.name : "null";
+                    props["color"] = $"({img.color.r:F2}, {img.color.g:F2}, {img.color.b:F2}, {img.color.a:F2})";
+                    props["raycastTarget"] = img.raycastTarget;
+                    break;
+                case Animator anim:
+                    props["controller"] = anim.runtimeAnimatorController != null ? anim.runtimeAnimatorController.name : "null";
+                    props["enabled"] = anim.enabled;
+                    break;
+                case AudioSource audio:
+                    props["clip"] = audio.clip != null ? audio.clip.name : "null";
+                    props["playOnAwake"] = audio.playOnAwake;
+                    props["loop"] = audio.loop;
+                    props["volume"] = audio.volume;
+                    break;
+                case Collider col:
+                    props["isTrigger"] = col.isTrigger;
+                    props["enabled"] = col.enabled;
+                    break;
+                case Collider2D col2d:
+                    props["isTrigger"] = col2d.isTrigger;
+                    props["enabled"] = col2d.enabled;
+                    break;
+                case Rigidbody rb:
+                    props["mass"] = rb.mass;
+                    props["useGravity"] = rb.useGravity;
+                    props["isKinematic"] = rb.isKinematic;
+                    break;
+                default:
+                    props["enabled"] = IsComponentEnabled(comp);
+                    break;
+            }
+            return props;
+        }
+
+        private static object IsComponentEnabled(Component comp)
+        {
+            if (comp is Behaviour b) return b.enabled;
+            if (comp is Renderer r) return r.enabled;
+            if (comp is Collider c) return c.enabled;
+            return null;
+        }
+
+        [UnitySkill("scene_export_report", "Export complete scene structure and script dependency report as markdown file. Use when user asks to: export scene report, generate scene document, save scene overview, create scene context file")]
+        public static object SceneExportReport(
+            string savePath = "Assets/Docs/SceneReport.md",
+            int maxDepth = 10,
+            int maxObjects = 500)
+        {
+            if (Validate.SafePath(savePath, "savePath") is object pathErr0) return pathErr0;
+
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            var roots = scene.GetRootGameObjects().Select(g => g.transform).ToArray();
+
+            // BFS collect objects
+            var objList = new List<(GameObject go, int depth)>();
+            var queue = new Queue<(Transform t, int depth)>();
+            foreach (var r in roots) queue.Enqueue((r, 0));
+            while (queue.Count > 0 && objList.Count < maxObjects)
+            {
+                var (t, depth) = queue.Dequeue();
+                objList.Add((t.gameObject, depth));
+                if (depth + 1 <= maxDepth)
+                    foreach (Transform child in t) queue.Enqueue((child, depth + 1));
+            }
+
+            // Collect edges
+            var allObjects = objList.Select(o => o.go).ToArray();
+            var edges = CollectDependencyEdges(allObjects);
+            var reverseIndex = edges.GroupBy(e => e.toObject).ToDictionary(g => g.Key, g => g.ToList());
+
+            // Build markdown
+            var sb = new StringBuilder();
+            sb.AppendLine($"# Scene Report: {scene.name}");
+            int scriptCount = 0, refCount = edges.Count;
+            foreach (var (go, _) in objList)
+                foreach (var c in go.GetComponents<Component>())
+                    if (c is MonoBehaviour) scriptCount++;
+            sb.AppendLine($"> Generated: {DateTime.Now:yyyy-MM-dd HH:mm} | Objects: {objList.Count} | Scripts: {scriptCount}");
+            sb.AppendLine();
+
+            // Hierarchy section
+            sb.AppendLine("## Hierarchy");
+            sb.AppendLine();
+            foreach (var (go, depth) in objList)
+            {
+                var indent = new string(' ', depth * 2);
+                var comps = go.GetComponents<Component>()
+                    .Where(c => c != null && !(c is Transform))
+                    .Select(c => c is MonoBehaviour ? c.GetType().Name + "*" : c.GetType().Name);
+                var compStr = string.Join(", ", comps);
+                sb.AppendLine($"{indent}{go.name}{(compStr.Length > 0 ? $" [{compStr}]" : "")}");
+            }
+            sb.AppendLine();
+
+            // Script Fields section
+            var monos = new List<(string objPath, MonoBehaviour mb)>();
+            foreach (var (go, _) in objList)
+                foreach (var c in go.GetComponents<MonoBehaviour>())
+                    if (c != null) monos.Add((GameObjectFinder.GetPath(go), c));
+
+            if (monos.Count > 0)
+            {
+                sb.AppendLine("## Script Fields");
+                sb.AppendLine();
+                foreach (var (objPath, mb) in monos)
+                {
+                    sb.AppendLine($"### {mb.GetType().Name} (on: {objPath})");
+                    sb.AppendLine();
+                    sb.AppendLine("| Field | Type |");
+                    sb.AppendLine("|-------|------|");
+                    var so = new SerializedObject(mb);
+                    var prop = so.GetIterator();
+                    bool enter = true;
+                    while (prop.NextVisible(enter))
+                    {
+                        enter = false;
+                        if (SkipFields.Contains(prop.name) || prop.propertyType == SerializedPropertyType.ArraySize) continue;
+                        string ft = prop.propertyType.ToString();
+                        if (prop.propertyType == SerializedPropertyType.ObjectReference && prop.objectReferenceValue != null)
+                        {
+                            var refObj = prop.objectReferenceValue;
+                            ft = refObj.GetType().Name;
+                            string rp = null;
+                            if (refObj is GameObject rg) rp = GameObjectFinder.GetPath(rg);
+                            else if (refObj is Component rc) rp = GameObjectFinder.GetPath(rc.gameObject);
+                            if (rp != null) ft += $" → {rp}";
+                        }
+                        sb.AppendLine($"| {prop.name} | {ft} |");
+                    }
+                    sb.AppendLine();
+                }
+            }
+
+            // Dependency Graph section
+            if (edges.Count > 0)
+            {
+                sb.AppendLine("## Dependency Graph");
+                sb.AppendLine();
+                sb.AppendLine("### Risk Summary");
+                sb.AppendLine();
+                sb.AppendLine("| Object | Risk | Depended By |");
+                sb.AppendLine("|--------|------|-------------|");
+                foreach (var kv in reverseIndex.OrderByDescending(k => k.Value.Count))
+                {
+                    int cnt = kv.Value.Count;
+                    string risk = cnt <= 2 ? "low" : cnt <= 5 ? "medium" : "high";
+                    sb.AppendLine($"| {kv.Key} | {risk} | {cnt} |");
+                }
+                sb.AppendLine();
+
+                sb.AppendLine("### Details");
+                sb.AppendLine();
+                foreach (var kv in reverseIndex.Where(k => k.Value.Count > 1).OrderByDescending(k => k.Value.Count))
+                {
+                    int cnt = kv.Value.Count;
+                    string risk = cnt <= 2 ? "low" : cnt <= 5 ? "medium" : "high";
+                    sb.AppendLine($"#### {kv.Key} (risk: {risk})");
+                    foreach (var e in kv.Value)
+                        sb.AppendLine($"- {e.fromObject}:{e.fromScript}.{e.fieldName} ({e.fieldType})");
+                    sb.AppendLine();
+                }
+            }
+
+            sb.AppendLine("---");
+            sb.AppendLine($"*Generated: {DateTime.Now:yyyy-MM-dd HH:mm}*");
+
+            // Save
+            var dir = Path.GetDirectoryName(savePath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            File.WriteAllText(savePath, sb.ToString());
+            AssetDatabase.ImportAsset(savePath);
+
+            return new
+            {
+                success = true,
+                savedTo = savePath,
+                objectCount = objList.Count,
+                scriptCount,
+                referenceCount = refCount
+            };
+        }
+
+        private static List<DependencyEdge> CollectDependencyEdges(GameObject[] allObjects)
+        {
+            var edges = new List<DependencyEdge>();
+            foreach (var go in allObjects)
+            {
+                var objPath = GameObjectFinder.GetPath(go);
+                foreach (var comp in go.GetComponents<Component>())
+                {
+                    if (comp == null) continue;
+                    var so = new SerializedObject(comp);
+                    var prop = so.GetIterator();
+                    bool enter = true;
+                    while (prop.NextVisible(enter))
+                    {
+                        enter = false;
+                        if (prop.propertyType != SerializedPropertyType.ObjectReference) continue;
+                        if (prop.objectReferenceValue == null) continue;
+
+                        string refTarget = null;
+                        var refObj = prop.objectReferenceValue;
+                        if (refObj is GameObject refGo)
+                            refTarget = GameObjectFinder.GetPath(refGo);
+                        else if (refObj is Component refComp)
+                            refTarget = GameObjectFinder.GetPath(refComp.gameObject);
+                        if (refTarget == null || refTarget == objPath) continue;
+
+                        edges.Add(new DependencyEdge
+                        {
+                            fromObject = objPath,
+                            fromScript = comp.GetType().Name,
+                            fieldName = prop.name,
+                            fieldType = refObj.GetType().Name,
+                            toObject = refTarget
+                        });
+                    }
+                }
+            }
+            return edges;
+        }
+
+        [UnitySkill("scene_dependency_analyze", "Analyze object dependency graph and impact of changes. Use ONLY when user explicitly asks about: dependency analysis, impact analysis, what depends on, what references, safe to delete/disable/remove, refactoring impact, reference check")]
+        public static object SceneDependencyAnalyze(
+            string targetPath = null,
+            string savePath = null)
+        {
+            if (!string.IsNullOrEmpty(savePath) && Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
+
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+
+            var edges = CollectDependencyEdges(allObjects);
+
+            // Build reverse index: who depends on each object
+            var reverseIndex = edges.GroupBy(e => e.toObject)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            // If targetPath specified, only analyze that subtree
+            List<object> analysis;
+            if (!string.IsNullOrEmpty(targetPath))
+            {
+                var targetGo = GameObjectFinder.FindByPath(targetPath);
+                if (targetGo == null)
+                    return new { success = false, error = $"Target '{targetPath}' not found" };
+
+                // Collect target + all descendants
+                var targetPaths = new HashSet<string>();
+                var stack = new Stack<Transform>();
+                stack.Push(targetGo.transform);
+                while (stack.Count > 0)
+                {
+                    var t = stack.Pop();
+                    targetPaths.Add(GameObjectFinder.GetPath(t.gameObject));
+                    foreach (Transform child in t) stack.Push(child);
+                }
+
+                analysis = BuildAnalysis(targetPaths, reverseIndex, edges);
+            }
+            else
+            {
+                // All objects that are depended upon
+                var allTargets = new HashSet<string>(reverseIndex.Keys);
+                analysis = BuildAnalysis(allTargets, reverseIndex, edges);
+            }
+
+            // Build markdown
+            var md = BuildDependencyMarkdown(scene.name, targetPath, analysis, edges);
+
+            // Save if requested
+            string savedPath = null;
+            if (!string.IsNullOrEmpty(savePath))
+            {
+                var dir = Path.GetDirectoryName(savePath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+                File.WriteAllText(savePath, md);
+                AssetDatabase.ImportAsset(savePath);
+                savedPath = savePath;
+            }
+
+            return new
+            {
+                success = true,
+                sceneName = scene.name,
+                target = targetPath,
+                totalReferences = edges.Count,
+                objectsAnalyzed = analysis.Count,
+                analysis,
+                savedTo = savedPath,
+                markdown = savedPath == null ? md : null
+            };
+        }
+
+        private class DependencyEdge
+        {
+            public string fromObject, fromScript, fieldName, fieldType, toObject;
+        }
+
+        private static List<object> BuildAnalysis(HashSet<string> targets, Dictionary<string, List<DependencyEdge>> reverseIndex, List<DependencyEdge> allEdges)
+        {
+            var result = new List<object>();
+            foreach (var path in targets.OrderBy(p => p))
+            {
+                var dependedBy = reverseIndex.ContainsKey(path)
+                    ? reverseIndex[path].Select(e => new { source = e.fromObject, script = e.fromScript, field = e.fieldName, fieldType = e.fieldType }).ToList()
+                    : null;
+                var dependsOn = allEdges.Where(e => e.fromObject == path)
+                    .Select(e => new { target = e.toObject, script = e.fromScript, field = e.fieldName, fieldType = e.fieldType }).ToList();
+
+                int incomingCount = dependedBy?.Count ?? 0;
+                string risk = incomingCount == 0 ? "safe" : incomingCount <= 2 ? "low" : incomingCount <= 5 ? "medium" : "high";
+
+                result.Add(new
+                {
+                    path,
+                    risk,
+                    dependedByCount = incomingCount,
+                    dependedBy,
+                    dependsOnCount = dependsOn.Count,
+                    dependsOn = dependsOn.Count > 0 ? dependsOn : null
+                });
+            }
+            return result;
+        }
+
+        private static string BuildDependencyMarkdown(string sceneName, string targetPath, List<object> analysis, List<DependencyEdge> edges)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"# Dependency Analysis: {sceneName}");
+            sb.AppendLine();
+            if (!string.IsNullOrEmpty(targetPath))
+                sb.AppendLine($"> Target: `{targetPath}`");
+            sb.AppendLine($"> Total references: {edges.Count} | Objects analyzed: {analysis.Count}");
+            sb.AppendLine();
+
+            // High risk objects first
+            sb.AppendLine("## Risk Summary");
+            sb.AppendLine();
+            sb.AppendLine("| Object | Risk | Depended By | Depends On |");
+            sb.AppendLine("|--------|------|-------------|------------|");
+            foreach (dynamic item in analysis)
+            {
+                sb.AppendLine($"| `{item.path}` | {item.risk} | {item.dependedByCount} | {item.dependsOnCount} |");
+            }
+            sb.AppendLine();
+
+            // Detail for objects with incoming dependencies
+            var withDeps = analysis.Where(a => ((dynamic)a).dependedByCount > 0).ToList();
+            if (withDeps.Count > 0)
+            {
+                sb.AppendLine("## Dependency Details");
+                sb.AppendLine();
+                sb.AppendLine("Objects below are referenced by other scripts. **Disabling/deleting them may cause errors.**");
+                sb.AppendLine();
+                foreach (dynamic item in withDeps)
+                {
+                    sb.AppendLine($"### `{item.path}` (risk: {item.risk})");
+                    sb.AppendLine();
+                    sb.AppendLine("**Referenced by:**");
+                    if (item.dependedBy != null)
+                    {
+                        foreach (dynamic dep in item.dependedBy)
+                            sb.AppendLine($"- `{dep.source}` → `{dep.script}.{dep.field}` ({dep.fieldType})");
+                    }
+                    sb.AppendLine();
+                }
+            }
+
+            sb.AppendLine("---");
+            sb.AppendLine($"*Generated: {DateTime.Now:yyyy-MM-dd HH:mm}*");
+            return sb.ToString();
         }
 
         private static string GetFriendlyTypeName(Type type)

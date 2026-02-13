@@ -1,6 +1,6 @@
 ---
 name: unity-asset
-description: "Unity asset management. Use when users want to import, move, delete, duplicate, or organize project assets. Triggers: asset, import, export, folder, file, resource, AssetDatabase."
+description: "Unity asset management. Use when users want to import, move, delete, duplicate, or organize project assets. Triggers: asset, import, export, folder, file, resource, AssetDatabase, Unity资源, 资产, Unity导入."
 ---
 
 # Unity Asset Skills

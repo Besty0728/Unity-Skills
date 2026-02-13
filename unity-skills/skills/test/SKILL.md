@@ -1,6 +1,6 @@
 ---
 name: unity-test
-description: "Unity Test Runner operations. Use when users want to run, list, or check test results. Triggers: test, unit test, test runner, EditMode, PlayMode."
+description: "Unity Test Runner operations. Use when users want to run, list, or check test results. Triggers: test, unit test, test runner, EditMode, PlayMode, Unity测试, Unity单元测试, Unity测试运行."
 ---
 
 # Test Skills

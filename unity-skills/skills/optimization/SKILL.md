@@ -1,6 +1,6 @@
 ---
 name: unity-optimization
-description: "Project optimization utilities. Use when users want to optimize textures, meshes, or improve performance. Triggers: optimize, compression, texture size, mesh compression, performance, LOD."
+description: "Project optimization utilities. Use when users want to optimize textures, meshes, or improve performance. Triggers: optimize, compression, texture size, mesh compression, performance, LOD, Unity优化, Unity压缩, Unity性能."
 ---
 
 # Optimization Skills

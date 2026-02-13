@@ -1,6 +1,6 @@
 ---
 name: unity-editor
-description: "Unity Editor control. Use when users want to enter play mode, select objects, undo/redo, or execute menu commands. Triggers: play, stop, pause, select, undo, redo, menu, editor."
+description: "Unity Editor control. Use when users want to enter play mode, select objects, undo/redo, or execute menu commands. Triggers: play, stop, pause, select, undo, redo, menu, editor, Unity编辑器, Unity播放, Unity撤销, Unity选择."
 ---
 
 # Unity Editor Skills

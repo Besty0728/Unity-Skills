@@ -1,6 +1,6 @@
 ---
 name: unity-event
-description: "UnityEvent management. Use when users want to inspect or modify UI events like Button.onClick. Triggers: event, onClick, listener, callback, UnityEvent, button click."
+description: "UnityEvent management. Use when users want to inspect or modify UI events like Button.onClick. Triggers: event, onClick, listener, callback, UnityEvent, button click, 事件, 监听器, 按钮点击."
 ---
 
 # Event Skills

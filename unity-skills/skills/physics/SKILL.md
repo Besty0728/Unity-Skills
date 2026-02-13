@@ -1,6 +1,6 @@
 ---
 name: unity-physics
-description: "Unity physics operations. Use when users want to perform raycasts, overlap checks, or configure gravity. Triggers: physics, raycast, overlap, gravity, collision, layer mask."
+description: "Unity physics operations. Use when users want to perform raycasts, overlap checks, or configure gravity. Triggers: physics, raycast, overlap, gravity, collision, layer mask, 物理, 射线检测, 重力, 碰撞."
 ---
 
 # Physics Skills

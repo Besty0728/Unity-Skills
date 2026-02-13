@@ -1,6 +1,6 @@
 ---
 name: unity-prefab
-description: "Prefab management. Use when users want to create, instantiate, apply, or unpack prefabs. Triggers: prefab, instantiate, spawn, apply, unpack, variant."
+description: "Prefab management. Use when users want to create, instantiate, apply, or unpack prefabs. Triggers: prefab, instantiate, spawn, apply, unpack, variant, 预制体, 实例化, 生成."
 ---
 
 # Unity Prefab Skills

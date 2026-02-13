@@ -1,6 +1,6 @@
 ---
 name: unity-workflow
-description: "Operation history and rollback. Use when users want to track changes, create snapshots, or undo operations. Triggers: undo, redo, snapshot, rollback, history, revert, session."
+description: "Operation history and rollback. Use when users want to track changes, create snapshots, or undo operations. Triggers: undo, redo, snapshot, rollback, history, revert, session, 工作流, Unity快照, Unity回滚, Unity撤销."
 ---
 
 # Workflow Skills

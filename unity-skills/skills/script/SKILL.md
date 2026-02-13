@@ -1,6 +1,6 @@
 ---
 name: unity-script
-description: "C# script management. Use when users want to create, read, or modify C# scripts. Triggers: script, C#, MonoBehaviour, code, class, method."
+description: "C# script management. Use when users want to create, read, or modify C# scripts. Triggers: script, C#, MonoBehaviour, code, class, method, Unity脚本, Unity代码, Unity创建脚本."
 ---
 
 # Unity Script Skills

@@ -1,6 +1,6 @@
 ---
 name: unity-project
-description: "Project information. Use when users want to get project settings, quality settings, or shader lists. Triggers: project, settings, quality, build, configuration."
+description: "Project information. Use when users want to get project settings, quality settings, or shader lists. Triggers: project, settings, quality, build, configuration, Unity项目, Unity设置, Unity质量, Unity构建."
 ---
 
 # Project Skills

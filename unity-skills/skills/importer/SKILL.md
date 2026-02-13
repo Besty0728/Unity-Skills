@@ -1,6 +1,6 @@
 ---
 name: unity-importer
-description: "Asset import settings. Use when users want to configure texture, audio, or model import settings. Triggers: import settings, texture settings, audio settings, model settings, compression, max size."
+description: "Asset import settings. Use when users want to configure texture, audio, or model import settings. Triggers: import settings, texture settings, audio settings, model settings, compression, max size, 导入设置, 纹理设置, Unity压缩."
 ---
 
 # Unity Importer Skills

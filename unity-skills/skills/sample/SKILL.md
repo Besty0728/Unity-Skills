@@ -1,6 +1,6 @@
 ---
 name: unity-sample
-description: "Sample/test skills. Use for basic API testing. Triggers: test, sample, hello, ping."
+description: "Sample scene generators and API test utilities. Use when users want to generate example scenes, test API connectivity, or create demo objects for learning. Triggers: test, sample, hello, ping, demo, example, 示例, Unity测试, Unity演示."
 ---
 
 # Sample Skills
