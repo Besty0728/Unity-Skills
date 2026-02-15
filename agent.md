@@ -80,6 +80,7 @@
 - **Consumer** (Unity 主线程)：通过 `EditorApplication.update` 处理队列中的任务
 - **自动恢复**：Domain Reload 后自动重启服务器（端口持久化 + 秒级延迟重试 + 端口 fallback）
 - **超时可配置**：请求超时默认 60 分钟，用户可在设置面板自定义，Python 客户端自动同步
+- **超时值线程安全缓存**：`RequestTimeoutMs` 在 `Start()` 时缓存到静态字段，避免 ThreadPool 线程调用 `EditorPrefs`（主线程限定 API）导致 500 错误
 
 ---
 
