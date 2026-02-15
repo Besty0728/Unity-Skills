@@ -92,25 +92,22 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("profiler_get_runtime_memory", "Get runtime memory size of a named object")]
-        public static object ProfilerGetRuntimeMemory(string name = null, int instanceId = 0, string path = null)
+        [UnitySkill("profiler_get_runtime_memory", "Get top N objects by runtime memory usage in the scene")]
+        public static object ProfilerGetRuntimeMemory(int limit = 20)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
-            if (error != null) return error;
-
-            long total = 0;
-            var details = new List<object>();
-            foreach (var comp in go.GetComponents<Component>())
+            var allObjects = Resources.FindObjectsOfTypeAll<UnityEngine.Object>();
+            var items = new List<(string name, string type, long size)>();
+            foreach (var obj in allObjects)
             {
-                if (comp == null) continue;
-                long size = Profiler.GetRuntimeMemorySizeLong(comp);
-                total += size;
-                details.Add(new { type = comp.GetType().Name, sizeKB = size / 1024f });
+                if (obj == null || obj.hideFlags.HasFlag(HideFlags.HideAndDontSave)) continue;
+                long size = Profiler.GetRuntimeMemorySizeLong(obj);
+                if (size > 1024) // > 1KB
+                    items.Add((obj.name, obj.GetType().Name, size));
             }
-            long goSize = Profiler.GetRuntimeMemorySizeLong(go);
-            total += goSize;
-
-            return new { success = true, gameObject = go.name, totalKB = total / 1024f, gameObjectKB = goSize / 1024f, components = details };
+            var top = items.OrderByDescending(i => i.size).Take(limit)
+                .Select(i => new { name = i.name, type = i.type, sizeKB = i.size / 1024f }).ToArray();
+            long totalMem = items.Sum(i => i.size);
+            return new { success = true, totalTrackedMB = totalMem / (1024f * 1024f), showing = top.Length, objects = top };
         }
 
         [UnitySkill("profiler_get_texture_memory", "Get memory usage of all loaded textures")]

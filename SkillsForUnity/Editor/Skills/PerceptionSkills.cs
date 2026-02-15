@@ -1223,52 +1223,81 @@ namespace UnitySkills
             return type.Name;
         }
 
-        [UnitySkill("scene_tag_layer_stats", "Get Tag and Layer usage statistics for the current scene")]
+        [UnitySkill("scene_tag_layer_stats", "Get Tag/Layer usage stats and find potential issues (untagged objects, unused layers)")]
         public static object SceneTagLayerStats()
         {
             var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
             var tagCounts = new Dictionary<string, int>();
             var layerCounts = new Dictionary<string, int>();
+            int untaggedCount = 0;
 
             foreach (var go in allObjects)
             {
                 var tag = go.tag ?? "Untagged";
+                if (tag == "Untagged") untaggedCount++;
                 tagCounts[tag] = tagCounts.TryGetValue(tag, out var tc) ? tc + 1 : 1;
                 var layerName = LayerMask.LayerToName(go.layer);
                 if (string.IsNullOrEmpty(layerName)) layerName = $"Layer {go.layer}";
                 layerCounts[layerName] = layerCounts.TryGetValue(layerName, out var lc) ? lc + 1 : 1;
             }
 
-            return new { success = true, totalObjects = allObjects.Length,
+            // Find layers with physics interactions that have no objects
+            var usedLayers = allObjects.Select(go => go.layer).Distinct().ToArray();
+            var emptyLayers = Enumerable.Range(0, 32)
+                .Where(i => !string.IsNullOrEmpty(LayerMask.LayerToName(i)) && !usedLayers.Contains(i))
+                .Select(i => LayerMask.LayerToName(i)).ToArray();
+
+            return new { success = true, totalObjects = allObjects.Length, untaggedCount,
                 tags = tagCounts.OrderByDescending(kv => kv.Value).Select(kv => new { tag = kv.Key, count = kv.Value }).ToArray(),
-                layers = layerCounts.OrderByDescending(kv => kv.Value).Select(kv => new { layer = kv.Key, count = kv.Value }).ToArray() };
+                layers = layerCounts.OrderByDescending(kv => kv.Value).Select(kv => new { layer = kv.Key, count = kv.Value }).ToArray(),
+                emptyDefinedLayers = emptyLayers };
         }
 
-        [UnitySkill("scene_performance_hints", "Analyze scene and provide performance optimization hints")]
+        [UnitySkill("scene_performance_hints", "Diagnose scene performance issues with prioritized actionable suggestions")]
         public static object ScenePerformanceHints()
         {
             var hints = new List<object>();
             var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+
+            // 1. Realtime shadow lights
             var lights = UnityEngine.Object.FindObjectsOfType<Light>();
-            var realtimeLights = lights.Where(l => l.type != LightType.Area && l.shadows != LightShadows.None).ToArray();
-            if (realtimeLights.Length > 4)
-                hints.Add(new { severity = "Warning", hint = $"{realtimeLights.Length} realtime shadow-casting lights (recommend ≤4)" });
+            var shadowLights = lights.Where(l => l.shadows != LightShadows.None).ToArray();
+            if (shadowLights.Length > 4)
+                hints.Add(new { priority = 1, category = "Lighting", issue = $"{shadowLights.Length} shadow-casting lights",
+                    suggestion = "Reduce to ≤4 or use baked lighting", fixSkill = "light_set_properties" });
 
-            int nonStaticRenderers = 0;
-            foreach (var go in allObjects)
-            {
-                if (go.GetComponent<Renderer>() != null && !go.isStatic) nonStaticRenderers++;
-            }
-            if (nonStaticRenderers > 100)
-                hints.Add(new { severity = "Info", hint = $"{nonStaticRenderers} non-static renderers. Consider marking static objects for batching." });
+            // 2. Non-static renderers
+            var renderers = UnityEngine.Object.FindObjectsOfType<Renderer>();
+            int nonStaticCount = renderers.Count(r => !r.gameObject.isStatic);
+            if (nonStaticCount > 100)
+                hints.Add(new { priority = 2, category = "Batching", issue = $"{nonStaticCount} non-static renderers",
+                    suggestion = "Mark static objects with optimize_set_static_flags", fixSkill = "optimize_set_static_flags" });
 
+            // 3. High-poly meshes without LOD
             var meshFilters = UnityEngine.Object.FindObjectsOfType<MeshFilter>();
-            var highPolyMeshes = meshFilters.Where(mf => mf.sharedMesh != null && mf.sharedMesh.triangles.Length / 3 > 10000).ToArray();
-            if (highPolyMeshes.Length > 0)
-                hints.Add(new { severity = "Info", hint = $"{highPolyMeshes.Length} meshes with >10k triangles. Consider LOD groups." });
+            var highPoly = meshFilters.Where(mf => mf.sharedMesh != null && mf.sharedMesh.triangles.Length / 3 > 10000
+                && mf.GetComponent<LODGroup>() == null).ToArray();
+            if (highPoly.Length > 0)
+                hints.Add(new { priority = 2, category = "Geometry", issue = $"{highPoly.Length} high-poly meshes (>10k tris) without LOD",
+                    suggestion = "Add LOD groups", fixSkill = "optimize_set_lod_group" });
+
+            // 4. Duplicate materials
+            var mats = renderers.SelectMany(r => r.sharedMaterials).Where(m => m != null).ToArray();
+            var uniqueShaders = mats.Select(m => m.shader?.name).Distinct().Count();
+            var duplicateCount = mats.Length - mats.Select(m => m.GetInstanceID()).Distinct().Count();
+            if (duplicateCount > 10)
+                hints.Add(new { priority = 3, category = "Materials", issue = $"{duplicateCount} duplicate material references",
+                    suggestion = "Consolidate materials", fixSkill = "optimize_find_duplicate_materials" });
+
+            // 5. Particle systems
+            var particles = UnityEngine.Object.FindObjectsOfType<ParticleSystem>();
+            if (particles.Length > 20)
+                hints.Add(new { priority = 3, category = "Particles", issue = $"{particles.Length} particle systems",
+                    suggestion = "Consider reducing or pooling particle systems", fixSkill = (string)null });
 
             if (hints.Count == 0)
-                hints.Add(new { severity = "OK", hint = "No obvious performance issues detected." });
+                hints.Add(new { priority = 0, category = "OK", issue = "No obvious performance issues",
+                    suggestion = "Scene looks good", fixSkill = (string)null });
 
             return new { success = true, hintCount = hints.Count, hints };
         }
