@@ -136,12 +136,6 @@ namespace UnitySkills
             {"editor_get_tags", "Get all available tags"},
             {"debug_get_logs", "Get console logs (filtered by type)"},
 
-            // Asset Import Skills
-            {"asset_reimport", "Force reimport of an asset"},
-            {"asset_reimport_batch", "Reimport multiple assets matching a pattern"},
-            {"texture_set_import_settings", "Set texture import settings (maxSize, compression, readable)"},
-            {"model_set_import_settings", "Set model (FBX) import settings"},
-
             // Cleaner Skills
             {"cleaner_find_unused_assets", "Find potentially unused assets of a specific type"},
             {"cleaner_find_duplicates", "Find duplicate files by content hash"},
@@ -859,12 +853,6 @@ namespace UnitySkills
             {"cinemachine_set_component", "切换虚拟相机组件 (Body/Aim/Noise)"},
             
             {"debug_get_logs", "获取控制台日志 (按类型筛选)"},
-
-            // Asset Import Skills
-            {"asset_reimport", "强制重新导入资源"},
-            {"asset_reimport_batch", "批量重新导入匹配模式的资源"},
-            {"texture_set_import_settings", "设置贴图导入设置 (最大尺寸/压缩/可读性)"},
-            {"model_set_import_settings", "设置模型(FBX)导入设置"},
 
             // Cleaner Skills
             {"cleaner_find_unused_assets", "查找指定类型的潜在未使用资源"},
