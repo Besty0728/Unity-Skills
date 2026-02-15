@@ -374,6 +374,9 @@ namespace UnitySkills
                 SkillsLogger.Log($"REST Server started at {_prefix}");
                 SkillsLogger.Log($"{skillCount} skills loaded | Instance: {RegistryService.InstanceId}");
                 SkillsLogger.LogVerbose($"Domain Reload Recovery: ENABLED (AutoStart={AutoStart})");
+
+                // Self-test: verify reachability after Start() returns
+                EditorApplication.delayCall += RunSelfTest;
             }
             catch (Exception ex)
             {
@@ -819,6 +822,37 @@ namespace UnitySkills
 
             _requestsThisSecond++;
             return _requestsThisSecond <= MaxRequestsPerSecond;
+        }
+
+        private static void RunSelfTest()
+        {
+            if (!_isRunning) return;
+            int port = _port;
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var hosts = new[] { "localhost", "127.0.0.1" };
+                foreach (var host in hosts)
+                {
+                    string url = $"http://{host}:{port}/health";
+                    try
+                    {
+                        var req = (HttpWebRequest)WebRequest.Create(url);
+                        req.Timeout = 3000;
+                        using (var resp = (HttpWebResponse)req.GetResponse())
+                        {
+                            if (resp.StatusCode == HttpStatusCode.OK)
+                                SkillsLogger.LogSuccess($"[Self-Test] {url} -> OK");
+                            else
+                                SkillsLogger.LogWarning($"[Self-Test] {url} -> HTTP {(int)resp.StatusCode}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        SkillsLogger.LogError($"[Self-Test] {url} -> FAILED: {ex.Message}");
+                        SkillsLogger.LogError($"[Self-Test] Check firewall/antivirus settings.");
+                    }
+                }
+            });
         }
     }
 }
