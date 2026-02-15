@@ -73,6 +73,7 @@
 6.  **IPv4/IPv6 双绑定 & 启动自检** [v1.5.1]:
     - `HttpListener` 同时绑定 `http://localhost:{port}/` 和 `http://127.0.0.1:{port}/`，解决部分 Windows 系统 `localhost` 仅解析到 IPv6 导致 `127.0.0.1` 不可达的问题。
     - 启动后自动 Self-Test：通过 `EditorApplication.delayCall` + `ThreadPool` 异步请求两个地址的 `/health` 端点，结果输出到 Console，帮助用户快速定位连接问题。
+    - `SceneScreenshot` 自动补全文件扩展名：当 `filename` 参数不含扩展名时自动追加 `.png`，确保截图文件可被 Unity 正常识别和预览。
 
 **Producer-Consumer 模式** (线程安全)：
 - **Producer** (HTTP 线程)：接收 HTTP 请求，入队到 `RequestJob` 队列
