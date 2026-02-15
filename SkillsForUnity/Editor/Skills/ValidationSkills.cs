@@ -395,5 +395,61 @@ namespace UnitySkills
                 objects = fixedObjects
             };
         }
+        [UnitySkill("validate_missing_references", "Find null/missing object references on components in the scene")]
+        public static object ValidateMissingReferences(int limit = 50)
+        {
+            var results = new List<object>();
+            foreach (var go in Object.FindObjectsOfType<GameObject>())
+            {
+                if (results.Count >= limit) break;
+                foreach (var comp in go.GetComponents<Component>())
+                {
+                    if (comp == null) continue;
+                    var so = new SerializedObject(comp);
+                    var prop = so.GetIterator();
+                    while (prop.NextVisible(true))
+                    {
+                        if (prop.propertyType == SerializedPropertyType.ObjectReference &&
+                            prop.objectReferenceValue == null && prop.objectReferenceInstanceIDValue != 0)
+                        {
+                            results.Add(new { gameObject = go.name, path = GameObjectFinder.GetPath(go),
+                                component = comp.GetType().Name, property = prop.propertyPath });
+                            break;
+                        }
+                    }
+                }
+            }
+            return new { success = true, count = results.Count, issues = results };
+        }
+
+        [UnitySkill("validate_mesh_collider_convex", "Find non-convex MeshColliders (potential performance issue)")]
+        public static object ValidateMeshColliderConvex(int limit = 50)
+        {
+            var colliders = Object.FindObjectsOfType<MeshCollider>()
+                .Where(mc => !mc.convex)
+                .Take(limit)
+                .Select(mc => new { gameObject = mc.gameObject.name, path = GameObjectFinder.GetPath(mc.gameObject),
+                    vertexCount = mc.sharedMesh != null ? mc.sharedMesh.vertexCount : 0 })
+                .ToArray();
+            return new { success = true, count = colliders.Length, nonConvexColliders = colliders };
+        }
+
+        [UnitySkill("validate_shader_errors", "Find shaders with compilation errors")]
+        public static object ValidateShaderErrors(int limit = 50)
+        {
+            var guids = AssetDatabase.FindAssets("t:Shader");
+            var errors = new List<object>();
+            foreach (var guid in guids)
+            {
+                if (errors.Count >= limit) break;
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var shader = AssetDatabase.LoadAssetAtPath<Shader>(path);
+                if (shader == null) continue;
+                int msgCount = UnityEditor.ShaderUtil.GetShaderMessageCount(shader);
+                if (msgCount > 0)
+                    errors.Add(new { name = shader.name, path, errorCount = msgCount });
+            }
+            return new { success = true, count = errors.Count, shaders = errors };
+        }
     }
 }

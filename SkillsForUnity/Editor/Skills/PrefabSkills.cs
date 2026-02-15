@@ -221,5 +221,40 @@ namespace UnitySkills
 
             return new { success = true, appliedTo = prefabPath };
         }
+        [UnitySkill("prefab_create_variant", "Create a prefab variant from an existing prefab")]
+        public static object PrefabCreateVariant(string sourcePrefabPath, string variantPath)
+        {
+            if (Validate.Required(sourcePrefabPath, "sourcePrefabPath") is object err) return err;
+            if (Validate.SafePath(variantPath, "variantPath") is object pathErr) return pathErr;
+
+            var source = AssetDatabase.LoadAssetAtPath<GameObject>(sourcePrefabPath);
+            if (source == null) return new { error = $"Prefab not found: {sourcePrefabPath}" };
+
+            var dir = Path.GetDirectoryName(variantPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+            var instance = PrefabUtility.InstantiatePrefab(source) as GameObject;
+            var variant = PrefabUtility.SaveAsPrefabAsset(instance, variantPath);
+            Object.DestroyImmediate(instance);
+
+            return new { success = true, sourcePath = sourcePrefabPath, variantPath, name = variant.name };
+        }
+
+        [UnitySkill("prefab_find_instances", "Find all instances of a prefab in the current scene")]
+        public static object PrefabFindInstances(string prefabPath, int limit = 50)
+        {
+            if (Validate.Required(prefabPath, "prefabPath") is object err) return err;
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (prefab == null) return new { error = $"Prefab not found: {prefabPath}" };
+
+            var allObjects = Object.FindObjectsOfType<GameObject>();
+            var instances = allObjects
+                .Where(go => PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(go) == prefabPath)
+                .Take(limit)
+                .Select(go => new { name = go.name, path = GameObjectFinder.GetPath(go), instanceId = go.GetInstanceID() })
+                .ToArray();
+
+            return new { success = true, prefabPath, count = instances.Length, instances };
+        }
     }
 }

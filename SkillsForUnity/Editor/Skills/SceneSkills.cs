@@ -188,5 +188,35 @@ namespace UnitySkills
             }
             return new { success = false, error = $"Scene '{sceneName}' not found in loaded scenes" };
         }
+        [UnitySkill("scene_find_objects", "Search GameObjects by name pattern, tag, or component type")]
+        public static object SceneFindObjects(string namePattern = null, string tag = null, string componentType = null, int limit = 50)
+        {
+            IEnumerable<GameObject> objects = Object.FindObjectsOfType<GameObject>();
+
+            if (!string.IsNullOrEmpty(tag))
+            {
+                try { objects = objects.Where(go => go.CompareTag(tag)); }
+                catch { return new { error = $"Invalid tag: {tag}" }; }
+            }
+
+            if (!string.IsNullOrEmpty(namePattern))
+                objects = objects.Where(go => go.name.IndexOf(namePattern, System.StringComparison.OrdinalIgnoreCase) >= 0);
+
+            if (!string.IsNullOrEmpty(componentType))
+            {
+                var type = System.AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a => { try { return a.GetTypes(); } catch { return System.Type.EmptyTypes; } })
+                    .FirstOrDefault(t => t.Name.Equals(componentType, System.StringComparison.OrdinalIgnoreCase) && typeof(Component).IsAssignableFrom(t));
+                if (type == null) return new { error = $"Component type not found: {componentType}" };
+                objects = objects.Where(go => go.GetComponent(type) != null);
+            }
+
+            var results = objects.Take(limit).Select(go => new {
+                name = go.name, path = GameObjectFinder.GetPath(go), instanceId = go.GetInstanceID(),
+                active = go.activeInHierarchy, tag = go.tag
+            }).ToArray();
+
+            return new { success = true, count = results.Length, objects = results };
+        }
     }
 }

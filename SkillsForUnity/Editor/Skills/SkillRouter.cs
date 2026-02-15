@@ -61,7 +61,15 @@ namespace UnitySkills
             "smart_distribute", "smart_snap_to_grid", "smart_randomize_transform", "smart_replace_objects",
             "console_set_pause_on_error", "console_set_collapse", "console_set_clear_on_play",
             "debug_set_defines",
-            "project_add_tag", "project_set_quality_level"
+            "project_add_tag", "project_set_quality_level",
+            "optimize_set_static_flags", "optimize_audio_compression", "optimize_set_lod_group",
+            "audio_add_source", "audio_set_source_properties", "audio_create_mixer",
+            "model_set_animation_clips", "model_set_rig",
+            "texture_set_type", "texture_set_platform_settings", "texture_set_sprite_settings",
+            "light_add_probe_group", "light_add_reflection_probe",
+            "animator_add_transition", "animator_add_state",
+            "component_copy", "component_set_enabled",
+            "prefab_create_variant"
         };
 
         // JSON 序列化设置，禁用 Unicode 转义确保中文正确显示

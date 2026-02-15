@@ -252,5 +252,47 @@ namespace UnitySkills
                 states
             };
         }
+        [UnitySkill("animator_add_state", "Add a state to an Animator Controller layer")]
+        public static object AnimatorAddState(string controllerPath, string stateName, string clipPath = null, int layer = 0)
+        {
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+            if (controller == null) return new { error = $"Controller not found: {controllerPath}" };
+            if (layer < 0 || layer >= controller.layers.Length) return new { error = $"Invalid layer: {layer}" };
+
+            var sm = controller.layers[layer].stateMachine;
+            var state = sm.AddState(stateName);
+            if (!string.IsNullOrEmpty(clipPath))
+            {
+                var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+                if (clip != null) state.motion = clip;
+            }
+            AssetDatabase.SaveAssets();
+            return new { success = true, controller = controllerPath, stateName, layer };
+        }
+
+        [UnitySkill("animator_add_transition", "Add a transition between two states in an Animator Controller")]
+        public static object AnimatorAddTransition(string controllerPath, string fromState, string toState, int layer = 0, bool hasExitTime = true, float duration = 0.25f)
+        {
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
+            if (controller == null) return new { error = $"Controller not found: {controllerPath}" };
+            if (layer < 0 || layer >= controller.layers.Length) return new { error = $"Invalid layer: {layer}" };
+
+            var sm = controller.layers[layer].stateMachine;
+            var states = sm.states;
+            AnimatorState src = null, dst = null;
+            foreach (var s in states)
+            {
+                if (s.state.name == fromState) src = s.state;
+                if (s.state.name == toState) dst = s.state;
+            }
+            if (src == null) return new { error = $"State not found: {fromState}" };
+            if (dst == null) return new { error = $"State not found: {toState}" };
+
+            var transition = src.AddTransition(dst);
+            transition.hasExitTime = hasExitTime;
+            transition.duration = duration;
+            AssetDatabase.SaveAssets();
+            return new { success = true, from = fromState, to = toState, layer, hasExitTime, duration };
+        }
     }
 }

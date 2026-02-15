@@ -36,7 +36,7 @@
 │             SkillsForUnity (Unity Editor Plugin)             │
 │  ┌─────────────────┐  ┌─────────────┐  ┌─────────────────┐  │
 │  │ SkillsHttpServer│→ │ SkillRouter │→ │[UnitySkill] 方法│  │
-│  │ (Multi-Instance)│  │(Auto-Undo)  │  │  (378 Skills)   │  │
+│  │ (Multi-Instance)│  │(Auto-Undo)  │  │  (430 Skills)   │  │
 │  └─────────────────┘  └─────────────┘  └─────────────────┘  │
 │           ↓                  ↓                              │
 │  ┌─────────────────┐  ┌─────────────────────────────────┐   │
@@ -102,8 +102,8 @@ Unity-Skills/
 │           ├── Localization.cs         # 中英双语 UI
 │           │
 │           ├── GameObjectSkills.cs     # GameObject 操作 (18 skills)
-│           ├── ComponentSkills.cs      # Component 操作 (8 skills)
-│           ├── SceneSkills.cs          # Scene 管理 (9 skills)
+│           ├── ComponentSkills.cs      # Component 操作 (10 skills)
+│           ├── SceneSkills.cs          # Scene 管理 (10 skills)
 │           ├── MaterialSkills.cs       # Material 操作 (21 skills)
 │           ├── CinemachineSkills.cs    # Cinemachine 3.x (23 skills)
 │           ├── WorkflowSkills.cs       # Workflow 撤销/回滚 (22 skills)
@@ -111,15 +111,15 @@ Unity-Skills/
 │           ├── EditorSkills.cs         # Editor 控制 (12 skills)
 │           ├── AssetSkills.cs          # Asset 管理 (11 skills)
 │           ├── TerrainSkills.cs        # Terrain 地形 (10 skills)
-│           ├── PrefabSkills.cs         # Prefab 操作 (8 skills)
-│           ├── AnimatorSkills.cs       # Animator 管理 (8 skills)
-│           ├── LightSkills.cs          # Light 配置 (7 skills)
-│           ├── ValidationSkills.cs     # 项目验证 (7 skills)
-│           ├── ScriptSkills.cs         # Script 管理 (6 skills)
-│           ├── ShaderSkills.cs         # Shader 操作 (6 skills)
-│           ├── PerceptionSkills.cs     # Perception 场景理解 (8 skills)
+│           ├── PrefabSkills.cs         # Prefab 操作 (10 skills)
+│           ├── AnimatorSkills.cs       # Animator 管理 (10 skills)
+│           ├── LightSkills.cs          # Light 配置 (10 skills)
+│           ├── ValidationSkills.cs     # 项目验证 (10 skills)
+│           ├── ScriptSkills.cs         # Script 管理 (11 skills)
+│           ├── ShaderSkills.cs         # Shader 操作 (11 skills)
+│           ├── PerceptionSkills.cs     # Perception 场景理解 (10 skills)
 │           ├── SmartSkills.cs          # AI 推理技能 (10 skills)
-│           └── ... (37 个 *Skills.cs 文件, 共 378 Skills)
+│           └── ... (37 个 *Skills.cs 文件, 共 430 Skills)
 │
 ├── unity-skills/                   # 跨平台 AI Skill 模板 (分发给 AI 工具)
 │   ├── SKILL.md                    # 主 Skill 定义 (AI 读取)
