@@ -47,8 +47,10 @@ namespace UnitySkills
         
         // Keep-alive interval (ms)
         private const int KeepAliveIntervalMs = 50;
-        // Request processing timeout - user configurable
-        private static int RequestTimeoutMs => RequestTimeoutMinutes * 60 * 1000;
+        // Request processing timeout - cached for thread safety (EditorPrefs is main-thread only)
+        private static int _cachedTimeoutMs = 60 * 60 * 1000;
+        private static int RequestTimeoutMs => _cachedTimeoutMs;
+        internal static void RefreshTimeoutCache() => _cachedTimeoutMs = RequestTimeoutMinutes * 60 * 1000;
         // Maximum allowed POST body size
         private const int MaxBodySizeBytes = 10 * 1024 * 1024; // 10MB
         // Heartbeat interval for registry (seconds)
@@ -119,7 +121,11 @@ namespace UnitySkills
         public static int RequestTimeoutMinutes
         {
             get => Mathf.Max(1, EditorPrefs.GetInt(PrefKeyRequestTimeout, 60));
-            set => EditorPrefs.SetInt(PrefKeyRequestTimeout, Mathf.Max(1, value));
+            set
+            {
+                EditorPrefs.SetInt(PrefKeyRequestTimeout, Mathf.Max(1, value));
+                RefreshTimeoutCache();
+            }
         }
 
         /// <summary>
@@ -352,6 +358,7 @@ namespace UnitySkills
             try
             {
                 HookUpdateLoop();
+                RefreshTimeoutCache();
 
                 // Port Hunting: 8090 -> 8100
                 int startPort = 8090;
