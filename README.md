@@ -31,6 +31,7 @@
 - 🤖 **深度集成**：独家支持 **Antigravity Slash Commands**，解锁 `/unity-skills` 交互新体验。
 - 🔌 **全环境兼容**：完美支持 Claude Code, Antigravity, Gemini CLI 等主流 AI 终端。
 - 🎥 **Cinemachine 2.x/3.x 双版本支持**：自动检测 Unity 版本并安装对应 Cinemachine，支持 **MixingCamera**, **ClearShot**, **TargetGroup**, **Spline** 等高级相机控制。
+- 🔗 **超长任务稳定连接**：请求超时用户可配置（默认 60 分钟），Domain Reload 后自动恢复同一端口，Python 客户端自动同步超时配置，彻底解决长时间任务断连问题。
 
 ---
 

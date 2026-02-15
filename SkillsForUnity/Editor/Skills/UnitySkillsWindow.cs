@@ -260,6 +260,18 @@ namespace UnitySkills
                 }
                 EditorGUILayout.EndHorizontal();
 
+                // Request Timeout
+                EditorGUILayout.BeginHorizontal();
+                var timeoutLabel = Localization.Current == Localization.Language.Chinese ? "请求超时" : "Timeout";
+                EditorGUILayout.LabelField(timeoutLabel + ":", GUILayout.Width(60));
+                var newTimeout = EditorGUILayout.IntField(SkillsHttpServer.RequestTimeoutMinutes, GUILayout.Width(40));
+                EditorGUILayout.LabelField(L("timeout_unit"), GUILayout.Width(30));
+                if (newTimeout != SkillsHttpServer.RequestTimeoutMinutes)
+                {
+                    SkillsHttpServer.RequestTimeoutMinutes = newTimeout;
+                }
+                EditorGUILayout.EndHorizontal();
+
                 // Log Level
                 EditorGUILayout.BeginHorizontal();
                 var logLabel = Localization.Current == Localization.Language.Chinese ? "日志级别" : "Log Level";
