@@ -399,6 +399,216 @@ namespace UnitySkills
             {"workflow_task_start", "Start a new persistent workflow task/session"},
             {"workflow_undo_task", "Undo changes from a specific task (restore to previous state)"},
             {"workflow_undone_list", "List all undone tasks that can be redone"},
+
+            // Profiler Skills
+            {"profiler_get_memory", "Get memory usage overview (total allocated, reserved, mono heap)"},
+            {"profiler_get_runtime_memory", "Get top N objects by runtime memory usage in the scene"},
+            {"profiler_get_texture_memory", "Get memory usage of all loaded textures"},
+            {"profiler_get_mesh_memory", "Get memory usage of all loaded meshes"},
+            {"profiler_get_material_memory", "Get memory usage of all loaded materials"},
+            {"profiler_get_audio_memory", "Get memory usage of all loaded AudioClips"},
+            {"profiler_get_object_count", "Count all loaded objects grouped by type"},
+            {"profiler_get_rendering_stats", "Get rendering statistics (batches, triangles, vertices)"},
+            {"profiler_get_asset_bundle_stats", "Get information about all loaded AssetBundles"},
+
+            // Optimization Skills
+            {"optimize_analyze_scene", "Analyze scene for performance bottlenecks"},
+            {"optimize_find_large_assets", "Find assets exceeding a size threshold"},
+            {"optimize_set_static_flags", "Set static flags on GameObjects"},
+            {"optimize_get_static_flags", "Get static flags of a GameObject"},
+            {"optimize_audio_compression", "Batch set audio compression settings"},
+            {"optimize_find_duplicate_materials", "Find materials with identical properties"},
+            {"optimize_analyze_overdraw", "Analyze transparent objects that may cause overdraw"},
+            {"optimize_set_lod_group", "Add or configure LOD Group"},
+
+            // Audio Skills (new)
+            {"audio_find_clips", "Search for AudioClip assets in the project"},
+            {"audio_get_clip_info", "Get detailed information about an AudioClip"},
+            {"audio_add_source", "Add an AudioSource component to a GameObject"},
+            {"audio_get_source_info", "Get AudioSource configuration"},
+            {"audio_set_source_properties", "Set AudioSource properties"},
+            {"audio_find_sources_in_scene", "Find all AudioSource components in the scene"},
+            {"audio_create_mixer", "Create a new AudioMixer asset"},
+
+            // Model Skills (new)
+            {"model_find_assets", "Search for model assets in the project"},
+            {"model_get_mesh_info", "Get detailed Mesh information (vertices, triangles)"},
+            {"model_get_materials_info", "Get material mapping for a model asset"},
+            {"model_get_animations_info", "Get animation clip information from a model"},
+            {"model_set_animation_clips", "Configure animation clip splitting"},
+            {"model_get_rig_info", "Get rig/skeleton binding information"},
+            {"model_set_rig", "Set rig/skeleton binding type"},
+
+            // Texture Skills (new)
+            {"texture_find_assets", "Search for texture assets in the project"},
+            {"texture_get_info", "Get detailed texture information (dimensions, format, memory)"},
+            {"texture_set_type", "Set texture type"},
+            {"texture_set_platform_settings", "Set platform-specific texture settings"},
+            {"texture_get_platform_settings", "Get platform-specific texture settings"},
+            {"texture_set_sprite_settings", "Configure Sprite-specific settings"},
+            {"texture_find_by_size", "Find textures by dimension range"},
+
+            // Light Skills (new)
+            {"light_add_probe_group", "Add a Light Probe Group to a GameObject"},
+            {"light_add_reflection_probe", "Create a Reflection Probe at a position"},
+            {"light_get_lightmap_settings", "Get Lightmap baking settings"},
+
+            // Package Skills (new)
+            {"package_search", "Search for packages in the Unity Registry"},
+            {"package_get_dependencies", "Get dependency list for an installed package"},
+            {"package_get_versions", "Get all available versions for a package"},
+
+            // Validation Skills (new)
+            {"validate_missing_references", "Find null/missing object references on components"},
+            {"validate_mesh_collider_convex", "Find non-convex MeshColliders"},
+            {"validate_shader_errors", "Find shaders with compilation errors"},
+
+            // Animator Skills (new)
+            {"animator_add_state", "Add a state to an Animator Controller layer"},
+            {"animator_add_transition", "Add a transition between two states"},
+
+            // Component Skills (new)
+            {"component_copy", "Copy a component from one GameObject to another"},
+            {"component_set_enabled", "Enable or disable a Behaviour component"},
+
+            // Perception Skills (new)
+            {"scene_tag_layer_stats", "Get Tag/Layer usage stats and find potential issues"},
+            {"scene_performance_hints", "Diagnose scene performance issues with actionable suggestions"},
+
+            // Prefab Skills (new)
+            {"prefab_create_variant", "Create a prefab variant from an existing prefab"},
+            {"prefab_find_instances", "Find all instances of a prefab in the scene"},
+
+            // Scene Skills (new)
+            {"scene_find_objects", "Search GameObjects by name pattern, tag, or component type"},
+
+            // Shader Skills (new)
+            {"shader_check_errors", "Check shader for compilation errors"},
+            {"shader_get_keywords", "Get shader keyword list"},
+            {"shader_get_variant_count", "Get shader variant count for performance analysis"},
+            {"shader_create_urp", "Create a URP shader from template"},
+            {"shader_set_global_keyword", "Enable or disable a global shader keyword"},
+
+            // AssetImport Skills
+            {"asset_reimport", "Force reimport of an asset"},
+            {"asset_reimport_batch", "Reimport multiple assets matching a pattern"},
+            {"texture_get_import_settings", "Get texture import settings"},
+            {"texture_set_import_settings", "Set texture import settings"},
+            {"model_get_import_settings", "Get model import settings"},
+            {"model_set_import_settings", "Set model import settings"},
+            {"audio_get_import_settings", "Get audio import settings"},
+            {"audio_set_import_settings", "Set audio import settings"},
+            {"sprite_set_import_settings", "Set sprite import settings"},
+            {"asset_get_labels", "Get asset labels"},
+            {"asset_set_labels", "Set asset labels"},
+
+            // Camera Skills (new)
+            {"camera_create", "Create a new Camera"},
+            {"camera_set_properties", "Set camera properties"},
+            {"camera_get_properties", "Get camera properties"},
+            {"camera_list", "List all cameras in the scene"},
+            {"camera_screenshot", "Capture a screenshot from a camera"},
+            {"camera_set_culling_mask", "Set camera culling mask"},
+            {"camera_set_orthographic", "Set camera orthographic mode"},
+
+            // Cleaner Skills (new)
+            {"cleaner_find_empty_folders", "Find empty folders in the project"},
+            {"cleaner_delete_empty_folders", "Delete empty folders"},
+            {"cleaner_find_large_assets", "Find large assets in the project"},
+            {"cleaner_fix_missing_scripts", "Remove missing script components"},
+            {"cleaner_get_dependency_tree", "Get asset dependency tree"},
+
+            // Console Skills (new)
+            {"console_export", "Export console logs to file"},
+            {"console_get_stats", "Get console log statistics"},
+            {"console_set_pause_on_error", "Set pause on error"},
+            {"console_set_collapse", "Set console collapse mode"},
+            {"console_set_clear_on_play", "Set clear on play"},
+
+            // Debug Skills (new)
+            {"debug_get_memory_info", "Get detailed memory information"},
+            {"debug_get_stack_trace", "Get stack trace of last error"},
+            {"debug_get_assembly_info", "Get loaded assembly information"},
+            {"debug_get_defines", "Get scripting define symbols"},
+            {"debug_set_defines", "Set scripting define symbols"},
+
+            // Event Skills (new)
+            {"event_add_listener_batch", "Batch add persistent listeners"},
+            {"event_clear_listeners", "Clear all persistent listeners"},
+            {"event_copy_listeners", "Copy listeners between events"},
+            {"event_get_listener_count", "Get listener count"},
+            {"event_list_events", "List all UnityEvents on a component"},
+            {"event_set_listener_state", "Set listener enabled state"},
+
+            // NavMesh Skills (new)
+            {"navmesh_add_agent", "Add NavMeshAgent component"},
+            {"navmesh_set_agent", "Set NavMeshAgent properties"},
+            {"navmesh_add_obstacle", "Add NavMeshObstacle component"},
+            {"navmesh_set_obstacle", "Set NavMeshObstacle properties"},
+            {"navmesh_set_area_cost", "Set NavMesh area cost"},
+            {"navmesh_get_settings", "Get NavMesh settings"},
+            {"navmesh_sample_position", "Sample nearest point on NavMesh"},
+
+            // Physics Skills (new)
+            {"physics_create_material", "Create a PhysicMaterial"},
+            {"physics_set_material", "Assign PhysicMaterial to a collider"},
+            {"physics_set_layer_collision", "Set layer collision matrix"},
+            {"physics_get_layer_collision", "Get layer collision matrix"},
+            {"physics_raycast_all", "Raycast and get all hits"},
+            {"physics_spherecast", "Cast a sphere and get hit info"},
+            {"physics_boxcast", "Cast a box and get hit info"},
+            {"physics_overlap_box", "Check for colliders in a box"},
+
+            // Project Skills (new)
+            {"project_add_tag", "Add a new tag"},
+            {"project_set_quality_level", "Set quality level"},
+            {"project_get_tags", "Get all project tags"},
+            {"project_get_layers", "Get all project layers"},
+            {"project_get_packages", "Get installed packages"},
+            {"project_get_build_settings", "Get build settings"},
+            {"project_get_player_settings", "Get player settings"},
+
+            // Script Skills (new)
+            {"script_replace", "Replace content in a script"},
+            {"script_rename", "Rename a script file"},
+            {"script_move", "Move a script file"},
+            {"script_list", "List scripts in the project"},
+            {"script_get_info", "Get script information"},
+
+            // ScriptableObject Skills (new)
+            {"scriptableobject_delete", "Delete a ScriptableObject asset"},
+            {"scriptableobject_find", "Find ScriptableObject assets"},
+            {"scriptableobject_set_batch", "Batch set ScriptableObject fields"},
+            {"scriptableobject_export_json", "Export ScriptableObject to JSON"},
+            {"scriptableobject_import_json", "Import ScriptableObject from JSON"},
+
+            // Smart Skills (new)
+            {"smart_align_to_ground", "Align objects to ground surface"},
+            {"smart_distribute", "Distribute objects evenly"},
+            {"smart_snap_to_grid", "Snap objects to grid"},
+            {"smart_randomize_transform", "Randomize object transforms"},
+            {"smart_replace_objects", "Replace objects with prefab"},
+            {"smart_scene_query_spatial", "Spatial query for nearby objects"},
+            {"smart_select_by_component", "Select objects by component type"},
+
+            // Test Skills (new)
+            {"test_create_editmode", "Create an EditMode test"},
+            {"test_create_playmode", "Create a PlayMode test"},
+            {"test_get_last_result", "Get last test result"},
+            {"test_get_summary", "Get test summary"},
+            {"test_list_categories", "List test categories"},
+            {"test_run_by_name", "Run a specific test by name"},
+
+            // Timeline Skills (new)
+            {"timeline_add_activation_track", "Add an Activation track"},
+            {"timeline_add_control_track", "Add a Control track"},
+            {"timeline_add_signal_track", "Add a Signal track"},
+            {"timeline_add_clip", "Add a clip to a track"},
+            {"timeline_remove_track", "Remove a track"},
+            {"timeline_list_tracks", "List all tracks in a Timeline"},
+            {"timeline_play", "Play/stop Timeline"},
+            {"timeline_set_duration", "Set Timeline duration"},
+            {"timeline_set_binding", "Set track binding object"},
         };
 
         private static readonly Dictionary<string, string> _chinese = new Dictionary<string, string>
@@ -812,6 +1022,212 @@ namespace UnitySkills
             {"set_object_rotation", "设置游戏对象旋转 (欧拉角)"},
             {"set_object_scale", "设置游戏对象缩放"},
             {"find_objects_by_name", "按名称查找所有游戏对象"},
+
+            // Profiler Skills (new)
+            {"profiler_get_memory", "获取内存使用概况 (总分配/保留/Mono堆)"},
+            {"profiler_get_runtime_memory", "获取场景中内存占用最大的 N 个对象"},
+            {"profiler_get_texture_memory", "获取所有已加载纹理的内存占用"},
+            {"profiler_get_mesh_memory", "获取所有已加载网格的内存占用"},
+            {"profiler_get_material_memory", "获取所有已加载材质的内存占用"},
+            {"profiler_get_audio_memory", "获取所有已加载音频的内存占用"},
+            {"profiler_get_object_count", "按类型统计已加载对象数量"},
+            {"profiler_get_rendering_stats", "获取渲染统计 (批次/三角面/顶点)"},
+            {"profiler_get_asset_bundle_stats", "获取已加载 AssetBundle 信息"},
+
+            // Optimization Skills (new)
+            {"optimize_analyze_scene", "分析场景性能瓶颈"},
+            {"optimize_find_large_assets", "查找超过指定大小的资源"},
+            {"optimize_set_static_flags", "设置游戏对象的 Static Flags"},
+            {"optimize_get_static_flags", "获取游戏对象的 Static Flags"},
+            {"optimize_audio_compression", "批量设置音频压缩"},
+            {"optimize_find_duplicate_materials", "查找属性相同的重复材质"},
+            {"optimize_analyze_overdraw", "分析可能导致 Overdraw 的透明物体"},
+            {"optimize_set_lod_group", "添加或配置 LOD Group"},
+
+            // Audio Skills (new)
+            {"audio_find_clips", "搜索项目中的 AudioClip 资源"},
+            {"audio_get_clip_info", "获取 AudioClip 详细信息"},
+            {"audio_add_source", "添加 AudioSource 组件"},
+            {"audio_get_source_info", "获取 AudioSource 配置"},
+            {"audio_set_source_properties", "设置 AudioSource 属性"},
+            {"audio_find_sources_in_scene", "查找场景中所有 AudioSource"},
+            {"audio_create_mixer", "创建 AudioMixer 资源"},
+
+            // Model Skills (new)
+            {"model_find_assets", "搜索项目中的模型资源"},
+            {"model_get_mesh_info", "获取网格详细信息 (顶点/三角面)"},
+            {"model_get_materials_info", "获取模型的材质映射"},
+            {"model_get_animations_info", "获取模型的动画剪辑信息"},
+            {"model_set_animation_clips", "配置动画剪辑分割"},
+            {"model_get_rig_info", "获取骨骼绑定信息"},
+            {"model_set_rig", "设置骨骼绑定类型"},
+
+            // Texture Skills (new)
+            {"texture_find_assets", "搜索项目中的纹理资源"},
+            {"texture_get_info", "获取纹理详细信息 (尺寸/格式/内存)"},
+            {"texture_set_type", "设置纹理类型"},
+            {"texture_set_platform_settings", "设置平台纹理压缩设置"},
+            {"texture_get_platform_settings", "获取平台纹理设置"},
+            {"texture_set_sprite_settings", "配置 Sprite 设置"},
+            {"texture_find_by_size", "按尺寸范围查找纹理"},
+
+            // Light Skills (new)
+            {"light_add_probe_group", "添加光照探针组"},
+            {"light_add_reflection_probe", "创建反射探针"},
+            {"light_get_lightmap_settings", "获取光照贴图烘焙设置"},
+
+            // Package Skills (new)
+            {"package_search", "搜索 Unity Registry 中的包"},
+            {"package_get_dependencies", "获取包的依赖关系"},
+            {"package_get_versions", "获取包的所有可用版本"},
+
+            // Validation Skills (new)
+            {"validate_missing_references", "查找组件上的空引用/丢失引用"},
+            {"validate_mesh_collider_convex", "查找非凸 MeshCollider"},
+            {"validate_shader_errors", "查找有编译错误的 Shader"},
+
+            // Animator Skills (new)
+            {"animator_add_state", "添加动画状态到 Animator Controller 层"},
+            {"animator_add_transition", "添加两个状态之间的过渡"},
+
+            // Component Skills (new)
+            {"component_copy", "复制组件到另一个游戏对象"},
+            {"component_set_enabled", "启用/禁用 Behaviour 组件"},
+
+            // Perception Skills (new)
+            {"scene_tag_layer_stats", "获取 Tag/Layer 使用统计及潜在问题"},
+            {"scene_performance_hints", "诊断场景性能问题并给出可操作建议"},
+
+            // Prefab Skills (new)
+            {"prefab_create_variant", "从现有预制体创建变体"},
+            {"prefab_find_instances", "查找预制体在场景中的所有实例"},
+
+            // Scene Skills (new)
+            {"scene_find_objects", "按名称/标签/组件类型搜索游戏对象"},
+
+            // Shader Skills (new)
+            {"shader_check_errors", "检查 Shader 编译错误"},
+            {"shader_get_keywords", "获取 Shader 关键字列表"},
+            {"shader_get_variant_count", "获取 Shader 变体数量 (性能分析)"},
+            {"shader_create_urp", "从模板创建 URP Shader"},
+            {"shader_set_global_keyword", "启用/禁用全局 Shader 关键字"},
+
+            // AssetImport Skills (new)
+            {"texture_get_import_settings", "获取纹理导入设置"},
+            {"audio_get_import_settings", "获取音频导入设置"},
+            {"audio_set_import_settings", "设置音频导入设置"},
+            {"sprite_set_import_settings", "设置精灵导入设置"},
+            {"asset_get_labels", "获取资源标签"},
+            {"asset_set_labels", "设置资源标签"},
+            {"model_get_import_settings", "获取模型导入设置"},
+
+            // Camera Skills (new)
+            {"camera_create", "创建新相机"},
+            {"camera_set_properties", "设置相机属性"},
+            {"camera_get_properties", "获取相机属性"},
+            {"camera_list", "列出场景中所有相机"},
+            {"camera_screenshot", "从相机截图"},
+            {"camera_set_culling_mask", "设置相机剔除遮罩"},
+            {"camera_set_orthographic", "设置相机正交模式"},
+
+            // Cleaner Skills (new)
+            {"cleaner_find_empty_folders", "查找项目中的空文件夹"},
+            {"cleaner_delete_empty_folders", "删除空文件夹"},
+            {"cleaner_find_large_assets", "查找项目中的大资源"},
+            {"cleaner_fix_missing_scripts", "移除丢失的脚本组件"},
+            {"cleaner_get_dependency_tree", "获取资源依赖树"},
+
+            // Console Skills (new)
+            {"console_export", "导出控制台日志到文件"},
+            {"console_get_stats", "获取控制台日志统计"},
+            {"console_set_pause_on_error", "设置报错暂停"},
+            {"console_set_collapse", "设置控制台折叠模式"},
+            {"console_set_clear_on_play", "设置播放时清除"},
+
+            // Debug Skills (new)
+            {"debug_get_memory_info", "获取详细内存信息"},
+            {"debug_get_stack_trace", "获取最后一条错误的堆栈跟踪"},
+            {"debug_get_assembly_info", "获取已加载程序集信息"},
+            {"debug_get_defines", "获取脚本宏定义符号"},
+            {"debug_set_defines", "设置脚本宏定义符号"},
+
+            // Event Skills (new)
+            {"event_add_listener_batch", "批量添加持久化监听器"},
+            {"event_clear_listeners", "清除所有持久化监听器"},
+            {"event_copy_listeners", "复制事件监听器"},
+            {"event_get_listener_count", "获取监听器数量"},
+            {"event_list_events", "列出组件上的所有 UnityEvent"},
+            {"event_set_listener_state", "设置监听器启用状态"},
+
+            // NavMesh Skills (new)
+            {"navmesh_add_agent", "添加 NavMeshAgent 组件"},
+            {"navmesh_set_agent", "设置 NavMeshAgent 属性"},
+            {"navmesh_add_obstacle", "添加 NavMeshObstacle 组件"},
+            {"navmesh_set_obstacle", "设置 NavMeshObstacle 属性"},
+            {"navmesh_set_area_cost", "设置 NavMesh 区域代价"},
+            {"navmesh_get_settings", "获取 NavMesh 设置"},
+            {"navmesh_sample_position", "采样 NavMesh 上最近的点"},
+
+            // Physics Skills (new)
+            {"physics_create_material", "创建物理材质"},
+            {"physics_set_material", "分配物理材质到碰撞体"},
+            {"physics_set_layer_collision", "设置层碰撞矩阵"},
+            {"physics_get_layer_collision", "获取层碰撞矩阵"},
+            {"physics_raycast_all", "射线检测所有命中"},
+            {"physics_spherecast", "球形射线检测"},
+            {"physics_boxcast", "盒形射线检测"},
+            {"physics_overlap_box", "检测盒形区域内的碰撞体"},
+
+            // Project Skills (new)
+            {"project_add_tag", "添加新标签"},
+            {"project_set_quality_level", "设置质量等级"},
+            {"project_get_tags", "获取所有项目标签"},
+            {"project_get_layers", "获取所有项目层"},
+            {"project_get_packages", "获取已安装的包"},
+            {"project_get_build_settings", "获取构建设置"},
+            {"project_get_player_settings", "获取播放器设置"},
+
+            // Script Skills (new)
+            {"script_replace", "替换脚本中的内容"},
+            {"script_rename", "重命名脚本文件"},
+            {"script_move", "移动脚本文件"},
+            {"script_list", "列出项目中的脚本"},
+            {"script_get_info", "获取脚本信息"},
+
+            // ScriptableObject Skills (new)
+            {"scriptableobject_delete", "删除 ScriptableObject 资源"},
+            {"scriptableobject_find", "查找 ScriptableObject 资源"},
+            {"scriptableobject_set_batch", "批量设置 ScriptableObject 字段"},
+            {"scriptableobject_export_json", "导出 ScriptableObject 为 JSON"},
+            {"scriptableobject_import_json", "从 JSON 导入 ScriptableObject"},
+
+            // Smart Skills (new)
+            {"smart_align_to_ground", "将对象对齐到地面"},
+            {"smart_distribute", "均匀分布对象"},
+            {"smart_snap_to_grid", "将对象吸附到网格"},
+            {"smart_randomize_transform", "随机化对象变换"},
+            {"smart_replace_objects", "用预制体替换对象"},
+            {"smart_scene_query_spatial", "空间查询附近对象"},
+            {"smart_select_by_component", "按组件类型选择对象"},
+
+            // Test Skills (new)
+            {"test_create_editmode", "创建 EditMode 测试"},
+            {"test_create_playmode", "创建 PlayMode 测试"},
+            {"test_get_last_result", "获取上次测试结果"},
+            {"test_get_summary", "获取测试摘要"},
+            {"test_list_categories", "列出测试分类"},
+            {"test_run_by_name", "按名称运行指定测试"},
+
+            // Timeline Skills (new)
+            {"timeline_add_activation_track", "添加激活轨道"},
+            {"timeline_add_control_track", "添加控制轨道"},
+            {"timeline_add_signal_track", "添加信号轨道"},
+            {"timeline_add_clip", "添加剪辑到轨道"},
+            {"timeline_remove_track", "移除轨道"},
+            {"timeline_list_tracks", "列出 Timeline 中的所有轨道"},
+            {"timeline_play", "播放/停止 Timeline"},
+            {"timeline_set_duration", "设置 Timeline 时长"},
+            {"timeline_set_binding", "设置轨道绑定对象"},
         };
     }
 }
