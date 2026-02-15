@@ -91,7 +91,8 @@ namespace UnitySkills
             {"architecture", "Architecture"},
             {"auto_restart", "Auto-restart after compile"},
             {"auto_restart_hint", "Server will automatically restart after Unity recompiles scripts"},
-            
+            {"timeout_unit", "min"},
+
             // Skill descriptions
             {"scene_create", "Create a new empty scene"},
             {"scene_load", "Load an existing scene"},
@@ -657,7 +658,8 @@ namespace UnitySkills
             {"architecture", "架构"},
             {"auto_restart", "编译后自动重启"},
             {"auto_restart_hint", "Unity 重新编译脚本后服务器将自动重启"},
-            
+            {"timeout_unit", "分钟"},
+
             // Skill descriptions
             {"scene_create", "创建新的空场景"},
             {"scene_load", "加载已有场景"},

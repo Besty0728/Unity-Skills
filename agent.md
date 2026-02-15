@@ -78,7 +78,8 @@
 **Producer-Consumer 模式** (线程安全)：
 - **Producer** (HTTP 线程)：接收 HTTP 请求，入队到 `RequestJob` 队列
 - **Consumer** (Unity 主线程)：通过 `EditorApplication.update` 处理队列中的任务
-- **自动恢复**：Domain Reload 后自动重启服务器
+- **自动恢复**：Domain Reload 后自动重启服务器（端口持久化 + 秒级延迟重试 + 端口 fallback）
+- **超时可配置**：请求超时默认 60 分钟，用户可在设置面板自定义，Python 客户端自动同步
 
 ---
 
@@ -156,6 +157,8 @@ HTTP 服务器核心，采用 **Producer-Consumer** 架构保证线程安全：
 - 自动恢复: Domain Reload 后通过 EditorPrefs 恢复状态
 - Keep-Alive: 后台线程定时触发 Unity 更新，确保后台运行
 - 速率限制: 内置防止过快请求的保护机制
+- 请求超时: 用户可配置（默认 60 分钟），通过 /health 端点暴露给客户端自动同步
+- Domain Reload 韧性: 主动释放端口 + 端口持久化 + 秒级延迟重试 + 端口 fallback
 ```
 
 ### 2. SkillRouter.cs

@@ -519,6 +519,7 @@ This file declares available skills for AI agents like Codex.
             sb.AppendLine();
             sb.AppendLine("UNITY_URL = \"http://localhost:8090\"");
             sb.AppendLine("DEFAULT_PORT = 8090");
+            sb.AppendLine("DEFAULT_TIMEOUT = 3600");
             sb.AppendLine();
 
             // Auto-workflow configuration
@@ -590,6 +591,7 @@ This file declares available skills for AI agents like Codex.
             sb.AppendLine("            url: Full URL override.");
             sb.AppendLine("        \"\"\"");
             sb.AppendLine("        self.url = url");
+            sb.AppendLine("        self.timeout = DEFAULT_TIMEOUT");
             sb.AppendLine();
             sb.AppendLine("        if not self.url:");
             sb.AppendLine("            if port:");
@@ -602,6 +604,15 @@ This file declares available skills for AI agents like Codex.
             sb.AppendLine("                    raise ValueError(f\"Could not find Unity instance matching '{target}' in registry.\")");
             sb.AppendLine("            else:");
             sb.AppendLine("                self.url = f\"http://localhost:{DEFAULT_PORT}\"");
+            sb.AppendLine();
+            sb.AppendLine("        # Sync timeout from Unity server");
+            sb.AppendLine("        try:");
+            sb.AppendLine("            resp = requests.get(f\"{self.url}/health\", timeout=2)");
+            sb.AppendLine("            if resp.status_code == 200:");
+            sb.AppendLine("                minutes = resp.json().get('requestTimeoutMinutes')");
+            sb.AppendLine("                if minutes and minutes > 0:");
+            sb.AppendLine("                    self.timeout = int(minutes) * 60");
+            sb.AppendLine("        except: pass");
             sb.AppendLine();
             sb.AppendLine("    def _find_port_by_target(self, target: str) -> Optional[int]:");
             sb.AppendLine("        reg_path = get_registry_path()");
@@ -634,7 +645,7 @@ This file declares available skills for AI agents like Codex.
             sb.AppendLine("            kwargs['verbose'] = verbose");
             sb.AppendLine("            headers = {'X-Agent-Id': AGENT_ID, 'Content-Type': 'application/json; charset=utf-8'}");
             sb.AppendLine("            body = json.dumps(kwargs, ensure_ascii=False).encode('utf-8')");
-            sb.AppendLine("            response = requests.post(f\"{self.url}/skill/{skill_name}\", data=body, headers=headers, timeout=30)");
+            sb.AppendLine("            response = requests.post(f\"{self.url}/skill/{skill_name}\", data=body, headers=headers, timeout=self.timeout)");
             sb.AppendLine("            response.encoding = 'utf-8'  # Ensure correct UTF-8 decoding");
             sb.AppendLine();
             sb.AppendLine("            try:");

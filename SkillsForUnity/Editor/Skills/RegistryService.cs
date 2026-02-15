@@ -64,11 +64,11 @@ namespace UnitySkills
 
                     registry[ProjectPath] = info;
 
-                    // Clean up stale entries (older than 60 seconds or dead process)
+                    // Clean up stale entries (older than 120 seconds or dead process)
                     var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     var keysToRemove = registry
                         .Where(k => k.Value.pid != info.pid &&
-                            (now - k.Value.last_active > 60 || !IsProcessAlive(k.Value.pid)))
+                            (now - k.Value.last_active > 120 || !IsProcessAlive(k.Value.pid)))
                         .Select(k => k.Key).ToList();
                     foreach (var key in keysToRemove)
                         registry.Remove(key);

@@ -31,6 +31,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 - 🤖 **Deep Integration**: Exclusive support for **Antigravity Slash Commands**, unlocking the `/unity-skills` interactive experience.
 - 🔌 **Full Environment Compatibility**: Perfect support for Claude Code, Antigravity, Gemini CLI, and other mainstream AI terminals.
 - 🎥 **Cinemachine 2.x/3.x Dual Version Support**: Auto-detects Unity version and installs the corresponding Cinemachine, supporting **MixingCamera**, **ClearShot**, **TargetGroup**, **Spline**, and other advanced camera controls.
+- 🔗 **Stable Long-Running Tasks**: User-configurable request timeout (default 60 minutes), automatic port recovery after Domain Reload, Python client auto-syncs timeout from server, fully resolving disconnection issues during long tasks.
 
 ---
 

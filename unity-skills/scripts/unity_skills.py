@@ -27,7 +27,7 @@ PORT_RANGE_START = 8090
 PORT_RANGE_END = 8100
 
 # Timeout constants (seconds)
-DEFAULT_CALL_TIMEOUT = 30
+DEFAULT_CALL_TIMEOUT = 3600
 HEALTH_TIMEOUT = 2
 SCAN_TIMEOUT = 1
 
@@ -82,7 +82,7 @@ class UnitySkills:
             url: Full URL override.
             version: Connect to instance by Unity version (e.g. "6", "2022", "2022.3") - auto-discovers port.
             agent_id: Custom agent identifier (e.g. "MyScript", "ClaudeCode")
-            timeout: Request timeout in seconds (default: 30)
+            timeout: Request timeout in seconds (default: 3600)
         Priority: url > port > target > version > default port 8090
         """
         self.url = url
@@ -114,6 +114,21 @@ class UnitySkills:
                 # Auto-discover: scan 8090-8100 for first responding instance
                 found_port = self._find_first_available()
                 self.url = f"http://localhost:{found_port}"
+
+        # Sync timeout from Unity server if user didn't specify one
+        if not timeout:
+            self._sync_timeout_from_server()
+
+    def _sync_timeout_from_server(self):
+        """Fetch requestTimeoutMinutes from /health and apply as self.timeout."""
+        try:
+            resp = requests.get(f"{self.url}/health", timeout=HEALTH_TIMEOUT)
+            if resp.status_code == 200:
+                minutes = resp.json().get('requestTimeoutMinutes')
+                if minutes and isinstance(minutes, (int, float)) and minutes > 0:
+                    self.timeout = int(minutes) * 60
+        except Exception:
+            pass
 
     def _find_first_available(self) -> int:
         """扫描 8090-8100，返回第一个响应的端口"""
@@ -207,15 +222,15 @@ class UnitySkills:
 
         return None
 
-    def call(self, skill_name: str, verbose: bool = False, _retries: int = 2, _retry_delay: float = 1.5, **kwargs) -> Dict[str, Any]:
+    def call(self, skill_name: str, verbose: bool = False, _retries: int = 3, _retry_delay: float = 2.0, **kwargs) -> Dict[str, Any]:
         """
         Call a skill on this instance with automatic retry on connection errors.
 
         Args:
             skill_name: Name of the skill to call
             verbose: Whether to return verbose output
-            _retries: Number of retries on connection error (default 2)
-            _retry_delay: Delay between retries in seconds (default 1.5)
+            _retries: Number of retries on connection error (default 3)
+            _retry_delay: Base delay between retries in seconds (default 2.0), uses progressive backoff
 
         Returns a normalized response with 'success' field and flattened result data.
         """
@@ -261,7 +276,7 @@ class UnitySkills:
             except requests.exceptions.ConnectionError as e:
                 last_error = e
                 if attempt < _retries:
-                    time.sleep(_retry_delay)
+                    time.sleep(_retry_delay * (attempt + 1))
                     continue
                 return {
                     'success': False,
@@ -459,7 +474,7 @@ def call_skill_with_retry(skill_name: str, max_retries: int = 3, retry_delay: fl
 def get_skills() -> Dict[str, Any]:
     """Get list of all available skills from the current default client."""
     try:
-        response = requests.get(f"{_get_default_client().url}/skills", timeout=DEFAULT_CALL_TIMEOUT)
+        response = requests.get(f"{_get_default_client().url}/skills", timeout=_get_default_client().timeout)
         response.encoding = 'utf-8'
         return response.json()
     except Exception as e:
