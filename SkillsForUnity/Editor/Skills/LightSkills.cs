@@ -285,5 +285,49 @@ namespace UnitySkills
             public float? range { get; set; }
             public string shadows { get; set; }
         }
+
+        [UnitySkill("light_add_probe_group", "Add a Light Probe Group to a GameObject")]
+        public static object LightAddProbeGroup(string name = null, int instanceId = 0, string path = null)
+        {
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (error != null) return error;
+
+            if (go.GetComponent<LightProbeGroup>() != null)
+                return new { success = true, warning = "LightProbeGroup already exists", gameObject = go.name };
+
+            var lpg = Undo.AddComponent<LightProbeGroup>(go);
+            return new { success = true, gameObject = go.name, probeCount = lpg.probePositions.Length };
+        }
+
+        [UnitySkill("light_add_reflection_probe", "Create a Reflection Probe at a position")]
+        public static object LightAddReflectionProbe(string probeName = "ReflectionProbe", float x = 0, float y = 1, float z = 0,
+            float sizeX = 10, float sizeY = 10, float sizeZ = 10, int resolution = 256)
+        {
+            var go = new GameObject(probeName);
+            go.transform.position = new Vector3(x, y, z);
+            var probe = go.AddComponent<ReflectionProbe>();
+            probe.size = new Vector3(sizeX, sizeY, sizeZ);
+            probe.resolution = resolution;
+
+            Undo.RegisterCreatedObjectUndo(go, "Create Reflection Probe");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
+
+            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), resolution, size = new { x = sizeX, y = sizeY, z = sizeZ } };
+        }
+
+        [UnitySkill("light_get_lightmap_settings", "Get Lightmap baking settings")]
+        public static object LightGetLightmapSettings()
+        {
+            return new
+            {
+                success = true,
+                bakedGI = Lightmapping.bakedGI,
+                realtimeGI = Lightmapping.realtimeGI,
+                lightmapSize = LightmapEditorSettings.maxAtlasSize,
+                lightmapPadding = LightmapEditorSettings.padding,
+                isRunning = Lightmapping.isRunning,
+                lightmapCount = LightmapSettings.lightmaps.Length
+            };
+        }
     }
 }

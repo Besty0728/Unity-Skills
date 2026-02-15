@@ -286,5 +286,143 @@ namespace UnitySkills
             public bool? importAnimation { get; set; }
             public string materialImportMode { get; set; }
         }
+
+        [UnitySkill("model_find_assets", "Search for model assets in the project")]
+        public static object ModelFindAssets(string filter = "", int limit = 50)
+        {
+            var guids = AssetDatabase.FindAssets("t:Model " + filter);
+            var models = guids.Take(limit).Select(guid =>
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                return new { path, name = System.IO.Path.GetFileNameWithoutExtension(path) };
+            }).ToArray();
+            return new { success = true, totalFound = guids.Length, showing = models.Length, models };
+        }
+
+        [UnitySkill("model_get_mesh_info", "Get detailed Mesh information (vertices, triangles, submeshes)")]
+        public static object ModelGetMeshInfo(string name = null, int instanceId = 0, string path = null, string assetPath = null)
+        {
+            Mesh mesh = null;
+            if (!string.IsNullOrEmpty(assetPath))
+            {
+                mesh = AssetDatabase.LoadAssetAtPath<Mesh>(assetPath);
+                if (mesh == null)
+                {
+                    var go = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+                    if (go != null) { var mf = go.GetComponentInChildren<MeshFilter>(); if (mf != null) mesh = mf.sharedMesh; }
+                }
+            }
+            else
+            {
+                var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+                if (error != null) return error;
+                var mf = go.GetComponent<MeshFilter>();
+                var smr = go.GetComponent<SkinnedMeshRenderer>();
+                mesh = mf != null ? mf.sharedMesh : smr != null ? smr.sharedMesh : null;
+            }
+            if (mesh == null) return new { error = "No mesh found" };
+
+            return new { success = true, name = mesh.name, vertexCount = mesh.vertexCount, triangles = mesh.triangles.Length / 3,
+                subMeshCount = mesh.subMeshCount, bounds = new { center = $"{mesh.bounds.center}", size = $"{mesh.bounds.size}" },
+                hasNormals = mesh.normals.Length > 0, hasTangents = mesh.tangents.Length > 0, hasUV = mesh.uv.Length > 0, hasUV2 = mesh.uv2.Length > 0,
+                hasColors = mesh.colors.Length > 0, blendShapeCount = mesh.blendShapeCount, isReadable = mesh.isReadable };
+        }
+
+        [UnitySkill("model_get_materials_info", "Get material mapping for a model asset")]
+        public static object ModelGetMaterialsInfo(string assetPath)
+        {
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
+            var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return new { error = $"Not a model: {assetPath}" };
+
+            var allAssets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+            var materials = allAssets.OfType<Material>().Select(m => new { name = m.name, shader = m.shader != null ? m.shader.name : "null" }).ToArray();
+            var meshes = allAssets.OfType<Mesh>().Select(m => new { name = m.name, vertices = m.vertexCount, triangles = m.triangles.Length / 3 }).ToArray();
+
+            return new { success = true, path = assetPath, materialCount = materials.Length, materials, meshCount = meshes.Length, meshes };
+        }
+
+        [UnitySkill("model_get_animations_info", "Get animation clip information from a model asset")]
+        public static object ModelGetAnimationsInfo(string assetPath)
+        {
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
+            var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return new { error = $"Not a model: {assetPath}" };
+
+            var allAssets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+            var clips = allAssets.OfType<AnimationClip>().Where(c => !c.name.StartsWith("__preview__"))
+                .Select(c => new { name = c.name, length = c.length, frameRate = c.frameRate, wrapMode = c.wrapMode.ToString(), isLooping = c.isLooping }).ToArray();
+
+            var importedClips = importer.clipAnimations;
+            var clipDefs = importedClips != null ? importedClips.Select(c => new { name = c.name, firstFrame = c.firstFrame, lastFrame = c.lastFrame, loop = c.loopTime }).ToArray() : null;
+
+            return new { success = true, path = assetPath, importAnimation = importer.importAnimation, clipCount = clips.Length, clips, clipDefinitions = clipDefs };
+        }
+
+        [UnitySkill("model_set_animation_clips", "Configure animation clip splitting. clips: JSON array of {name, firstFrame, lastFrame, loop}")]
+        public static object ModelSetAnimationClips(string assetPath, string clips)
+        {
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
+            if (Validate.Required(clips, "clips") is object err2) return err2;
+            var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return new { error = $"Not a model: {assetPath}" };
+
+            var clipList = Newtonsoft.Json.JsonConvert.DeserializeObject<List<ClipDef>>(clips);
+            if (clipList == null || clipList.Count == 0) return new { error = "No clips provided" };
+
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
+
+            importer.clipAnimations = clipList.Select(c => new ModelImporterClipAnimation
+            {
+                name = c.name, takeName = c.takeName ?? "Take 001",
+                firstFrame = c.firstFrame, lastFrame = c.lastFrame, loopTime = c.loop
+            }).ToArray();
+            importer.SaveAndReimport();
+
+            return new { success = true, path = assetPath, clipCount = clipList.Count };
+        }
+
+        private class ClipDef
+        {
+            public string name { get; set; }
+            public string takeName { get; set; }
+            public float firstFrame { get; set; }
+            public float lastFrame { get; set; }
+            public bool loop { get; set; }
+        }
+
+        [UnitySkill("model_get_rig_info", "Get rig/skeleton binding information")]
+        public static object ModelGetRigInfo(string assetPath)
+        {
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
+            var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return new { error = $"Not a model: {assetPath}" };
+
+            return new { success = true, path = assetPath, animationType = importer.animationType.ToString(),
+                avatarSetup = importer.avatarSetup.ToString(), sourceAvatar = importer.sourceAvatar != null ? importer.sourceAvatar.name : "null",
+                optimizeGameObjects = importer.optimizeGameObjects, isHuman = importer.animationType == ModelImporterAnimationType.Human };
+        }
+
+        [UnitySkill("model_set_rig", "Set rig/skeleton binding type. animationType: None/Legacy/Generic/Humanoid")]
+        public static object ModelSetRig(string assetPath, string animationType, string avatarSetup = null)
+        {
+            if (Validate.Required(assetPath, "assetPath") is object err) return err;
+            var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
+            if (importer == null) return new { error = $"Not a model: {assetPath}" };
+
+            if (!System.Enum.TryParse<ModelImporterAnimationType>(animationType, true, out var at))
+                return new { error = $"Invalid animationType: {animationType}" };
+
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
+
+            importer.animationType = at;
+            if (!string.IsNullOrEmpty(avatarSetup) && System.Enum.TryParse<ModelImporterAvatarSetup>(avatarSetup, true, out var avs))
+                importer.avatarSetup = avs;
+            importer.SaveAndReimport();
+
+            return new { success = true, path = assetPath, animationType = at.ToString() };
+        }
     }
 }

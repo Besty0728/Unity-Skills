@@ -1222,5 +1222,55 @@ namespace UnitySkills
             }
             return type.Name;
         }
+
+        [UnitySkill("scene_tag_layer_stats", "Get Tag and Layer usage statistics for the current scene")]
+        public static object SceneTagLayerStats()
+        {
+            var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+            var tagCounts = new Dictionary<string, int>();
+            var layerCounts = new Dictionary<string, int>();
+
+            foreach (var go in allObjects)
+            {
+                var tag = go.tag ?? "Untagged";
+                tagCounts[tag] = tagCounts.TryGetValue(tag, out var tc) ? tc + 1 : 1;
+                var layerName = LayerMask.LayerToName(go.layer);
+                if (string.IsNullOrEmpty(layerName)) layerName = $"Layer {go.layer}";
+                layerCounts[layerName] = layerCounts.TryGetValue(layerName, out var lc) ? lc + 1 : 1;
+            }
+
+            return new { success = true, totalObjects = allObjects.Length,
+                tags = tagCounts.OrderByDescending(kv => kv.Value).Select(kv => new { tag = kv.Key, count = kv.Value }).ToArray(),
+                layers = layerCounts.OrderByDescending(kv => kv.Value).Select(kv => new { layer = kv.Key, count = kv.Value }).ToArray() };
+        }
+
+        [UnitySkill("scene_performance_hints", "Analyze scene and provide performance optimization hints")]
+        public static object ScenePerformanceHints()
+        {
+            var hints = new List<object>();
+            var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+            var lights = UnityEngine.Object.FindObjectsOfType<Light>();
+            var realtimeLights = lights.Where(l => l.type != LightType.Area && l.shadows != LightShadows.None).ToArray();
+            if (realtimeLights.Length > 4)
+                hints.Add(new { severity = "Warning", hint = $"{realtimeLights.Length} realtime shadow-casting lights (recommend ≤4)" });
+
+            int nonStaticRenderers = 0;
+            foreach (var go in allObjects)
+            {
+                if (go.GetComponent<Renderer>() != null && !go.isStatic) nonStaticRenderers++;
+            }
+            if (nonStaticRenderers > 100)
+                hints.Add(new { severity = "Info", hint = $"{nonStaticRenderers} non-static renderers. Consider marking static objects for batching." });
+
+            var meshFilters = UnityEngine.Object.FindObjectsOfType<MeshFilter>();
+            var highPolyMeshes = meshFilters.Where(mf => mf.sharedMesh != null && mf.sharedMesh.triangles.Length / 3 > 10000).ToArray();
+            if (highPolyMeshes.Length > 0)
+                hints.Add(new { severity = "Info", hint = $"{highPolyMeshes.Length} meshes with >10k triangles. Consider LOD groups." });
+
+            if (hints.Count == 0)
+                hints.Add(new { severity = "OK", hint = "No obvious performance issues detected." });
+
+            return new { success = true, hintCount = hints.Count, hints };
+        }
     }
 }
