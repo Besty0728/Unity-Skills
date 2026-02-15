@@ -183,5 +183,11 @@ If you're using other tools that support Skills, install according to the Skills
 
 ---
 
+## ⭐ Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Besty0728/Unity-Skills&type=Date)](https://star-history.com/#Besty0728/Unity-Skills&Date)
+
+---
+
 ## 📄 License
 This project is licensed under the [MIT License](LICENSE).
