@@ -19,6 +19,7 @@ namespace UnitySkills
         public const string Cinemachine2Version = "2.10.5";
         public const string Cinemachine3Version = "3.1.3";
         public const string SplinesVersion = "2.8.0";
+        public const string SplinesVersionUnity6 = "2.8.3";
 
         private static ListRequest _listRequest;
         private static AddRequest _addRequest;
@@ -151,6 +152,26 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// 获取当前 Unity 版本推荐的 Splines 版本
+        /// </summary>
+        public static string GetRecommendedSplinesVersion()
+        {
+#if UNITY_6000_0_OR_NEWER
+            return SplinesVersionUnity6;
+#else
+            return SplinesVersion;
+#endif
+        }
+
+        /// <summary>
+        /// 安装 Splines 包
+        /// </summary>
+        public static void InstallSplines(Action<bool, string> callback)
+        {
+            InstallPackage(SplinesPackageId, GetRecommendedSplinesVersion(), callback);
+        }
+
+        /// <summary>
         /// 安装 Cinemachine（自动处理依赖）
         /// </summary>
         public static void InstallCinemachine(bool useVersion3, Action<bool, string> callback)
@@ -160,7 +181,7 @@ namespace UnitySkills
                 // CM3 需要先安装 Splines
                 if (!IsPackageInstalled(SplinesPackageId))
                 {
-                    InstallPackage(SplinesPackageId, SplinesVersion, (success, msg) =>
+                    InstallPackage(SplinesPackageId, GetRecommendedSplinesVersion(), (success, msg) =>
                     {
                         if (success)
                             InstallPackage(CinemachinePackageId, Cinemachine3Version, callback);

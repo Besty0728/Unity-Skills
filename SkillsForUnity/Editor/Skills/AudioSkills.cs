@@ -286,11 +286,40 @@ namespace UnitySkills
             var savePath = System.IO.Path.Combine(folder, mixerName + ".mixer").Replace("\\", "/");
             if (System.IO.File.Exists(savePath)) return new { error = $"Mixer already exists: {savePath}" };
 
-            var mixerType = typeof(Editor).Assembly.GetType("UnityEditor.Audio.AudioMixerController");
+            // Search AudioMixerController across all assemblies (moved in Unity 6)
+            System.Type mixerType = typeof(Editor).Assembly.GetType("UnityEditor.Audio.AudioMixerController");
+            if (mixerType == null)
+            {
+                foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    mixerType = asm.GetType("UnityEditor.Audio.AudioMixerController");
+                    if (mixerType != null) break;
+                }
+            }
             if (mixerType == null) return new { error = "AudioMixerController type not found" };
 
             var mixer = ScriptableObject.CreateInstance(mixerType);
-            if (mixer == null) return new { error = "Failed to create AudioMixer instance" };
+            if (mixer == null)
+            {
+                // Fallback: try internal constructor
+                try { mixer = (ScriptableObject)System.Activator.CreateInstance(mixerType, true); } catch { }
+            }
+            if (mixer == null)
+            {
+                // Fallback: try static factory method
+                try
+                {
+                    var createMethod = mixerType.GetMethod("CreateMixerControllerAtPath",
+                        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                    if (createMethod != null)
+                    {
+                        mixer = createMethod.Invoke(null, new object[] { savePath }) as ScriptableObject;
+                        if (mixer != null) { AssetDatabase.SaveAssets(); return new { success = true, path = savePath, name = mixerName }; }
+                    }
+                }
+                catch { }
+                return new { error = "Failed to create AudioMixer instance" };
+            }
 
             AssetDatabase.CreateAsset(mixer, savePath);
             AssetDatabase.SaveAssets();

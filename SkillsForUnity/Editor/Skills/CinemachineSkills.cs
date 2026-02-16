@@ -535,7 +535,7 @@ namespace UnitySkills
 
             var allCams = FindAllObjects<CinemachineCamera>();
             int maxPrio = 0;
-            if (allCams.Length > 0) maxPrio = allCams.Max(c => c.Priority);
+            foreach (var c in allCams) { int p = (int)c.Priority; if (p > maxPrio) maxPrio = p; }
 
             vcam.Priority = maxPrio + 1;
             EditorUtility.SetDirty(vcam);

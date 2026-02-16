@@ -122,6 +122,28 @@ namespace UnitySkills
             };
         }
 
+        [UnitySkill("package_install_splines", "Install Unity Splines package. Auto-detects correct version for Unity 6 vs Unity 2022.")]
+        public static object PackageInstallSplines()
+        {
+            var currentVersion = PackageManagerHelper.GetInstalledVersion(PackageManagerHelper.SplinesPackageId);
+            var targetVersion = PackageManagerHelper.GetRecommendedSplinesVersion();
+
+            if (currentVersion == targetVersion)
+                return new { success = true, message = $"Splines {currentVersion} is already installed." };
+
+            PackageManagerHelper.InstallSplines((success, msg) =>
+            {
+                if (success) Debug.Log($"[PackageSkills] Splines {msg} installed successfully");
+                else Debug.LogError($"[PackageSkills] Failed to install Splines: {msg}");
+            });
+
+            return new {
+                success = true,
+                message = $"Installing Splines {targetVersion}" + (currentVersion != null ? $" (upgrading from {currentVersion})" : "") + "...",
+                async = true
+            };
+        }
+
         [UnitySkill("package_get_cinemachine_status", "Get Cinemachine installation status.")]
         public static object PackageGetCinemachineStatus()
         {

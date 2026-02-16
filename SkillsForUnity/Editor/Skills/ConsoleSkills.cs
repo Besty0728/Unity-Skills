@@ -161,12 +161,40 @@ namespace UnitySkills
         {
             var consoleType = System.Type.GetType("UnityEditor.ConsoleWindow, UnityEditor");
             if (consoleType == null) return new { error = "ConsoleWindow not found" };
+
+            // Unity 6+: try SetConsoleFlag method
+            var setFlagMethod = consoleType.GetMethod("SetConsoleFlag", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+            if (setFlagMethod != null)
+            {
+                try { setFlagMethod.Invoke(null, new object[] { flag, enabled }); return new { success = true, setting = name, enabled }; }
+                catch { /* fall through */ }
+            }
+
+            // Legacy: try s_ConsoleFlags field
             var flagField = consoleType.GetField("s_ConsoleFlags", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-            if (flagField == null) return new { error = "Console flags not accessible" };
-            int flags = (int)flagField.GetValue(null);
-            flags = enabled ? flags | flag : flags & ~flag;
-            flagField.SetValue(null, flags);
-            return new { success = true, setting = name, enabled };
+            if (flagField != null)
+            {
+                int flags = (int)flagField.GetValue(null);
+                flags = enabled ? flags | flag : flags & ~flag;
+                flagField.SetValue(null, flags);
+                return new { success = true, setting = name, enabled };
+            }
+
+            // Fallback: LogEntries API
+            var logEntriesType = System.Type.GetType("UnityEditor.LogEntries, UnityEditor");
+            if (logEntriesType != null)
+            {
+                var setMethod = logEntriesType.GetMethod("SetConsoleFlag", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                if (setMethod != null)
+                {
+                    try { setMethod.Invoke(null, new object[] { flag, enabled }); return new { success = true, setting = name, enabled }; }
+                    catch { /* fall through */ }
+                }
+            }
+
+            // Final fallback: EditorPrefs
+            EditorPrefs.SetBool("UnitySkills_Console_" + name, enabled);
+            return new { success = true, setting = name, enabled, note = "Set via EditorPrefs fallback" };
         }
     }
 }

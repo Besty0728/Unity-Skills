@@ -87,15 +87,28 @@ namespace UnitySkills
             var (targetGo, tgtErr) = GameObjectFinder.FindOrError(name: targetObjectName);
             if (tgtErr != null) return tgtErr;
 
-            var targetComponent = targetGo.GetComponent(targetComponentName);
-            if (targetComponent == null) return new { error = $"Target Component not found: {targetComponentName}" };
+            // Resolve target: "GameObject" is not a Component, use GO itself as Object target
+            Object targetObj = null;
+            System.Type targetType = null;
+            if (targetComponentName == "GameObject" || targetComponentName == "UnityEngine.GameObject")
+            {
+                targetObj = targetGo;
+                targetType = typeof(GameObject);
+            }
+            else
+            {
+                var targetComponent = targetGo.GetComponent(targetComponentName);
+                if (targetComponent == null) return new { error = $"Target Component not found: {targetComponentName}" };
+                targetObj = targetComponent;
+                targetType = targetComponent.GetType();
+            }
 
             // Find UnityEvent
             var type = component.GetType();
             var field = type.GetField(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             var property = type.GetProperty(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-            
-            UnityEvent unityEvent = null; // Note: Only supporting standard UnityEvent for now, not generic UnityEvent<T> as field type
+
+            UnityEvent unityEvent = null;
 
             object rawEvent = null;
             if (field != null) rawEvent = field.GetValue(component);
@@ -104,78 +117,71 @@ namespace UnitySkills
             if (rawEvent == null)
                 return new { error = $"UnityEvent '{eventName}' not found on {componentName}" };
 
-            if (!(rawEvent is UnityEvent))
-            {
-                // Try casting if it is a subclass of UnityEventBase but maybe generic? 
-                // UnityEventTools usually requires strictly UnityEvent or specific subclasses.
-                // For simplicity, we cast to UnityEventBase but UnityEventTools needs UnityEvent usually.
-                // Actually UnityEventTools.AddPersistentListener overloads take UnityEvent or UnityEvent<T>.
-                // Dynamic dispatch might be needed for UnityEvent<T>, skipping for V1.
-                 unityEvent = rawEvent as UnityEvent;
-                 if (unityEvent == null)
-                     return new { error = $"Field '{eventName}' is not a standard UnityEvent. Generic events (UnityEvent<T>) not yet supported in this version." };
-            }
-            else
-            {
-                unityEvent = (UnityEvent)rawEvent;
-            }
+            unityEvent = rawEvent as UnityEvent;
+            if (unityEvent == null)
+                return new { error = $"Field '{eventName}' is not a standard UnityEvent. Generic events (UnityEvent<T>) not yet supported in this version." };
 
             // Record Undo
             WorkflowManager.SnapshotObject(component);
             Undo.RecordObject(component, "Add Event Listener");
 
-            // Resolve Method
-            // We need to find the method on target targetComponent
+            // Resolve Method - also handles property setters (set_XXX)
             MethodInfo methodInfo = null;
-            
-            // Search logic based on argType
+
+            MethodInfo FindMethodOnTarget(System.Type[] paramTypes)
+            {
+                var mi = targetType.GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public, null, paramTypes, null);
+                if (mi != null) return mi;
+                if (methodName.StartsWith("set_"))
+                {
+                    var prop2 = targetType.GetProperty(methodName.Substring(4), BindingFlags.Instance | BindingFlags.Public);
+                    if (prop2 != null && prop2.CanWrite)
+                    {
+                        var setter = prop2.GetSetMethod();
+                        if (setter != null && paramTypes.Length == 1 && setter.GetParameters()[0].ParameterType == paramTypes[0])
+                            return setter;
+                    }
+                }
+                return null;
+            }
+
             switch (argType.ToLower())
             {
                 case "void":
-                    methodInfo = targetComponent.GetType().GetMethod(methodName, 
-                        BindingFlags.Instance | BindingFlags.Public, null, System.Type.EmptyTypes, null);
+                    methodInfo = FindMethodOnTarget(System.Type.EmptyTypes);
                     if (methodInfo == null) return new { error = $"Method '{methodName}()' not found on {targetComponentName}" };
-                    
-                    var voidDelegate = System.Delegate.CreateDelegate(typeof(UnityAction), targetComponent, methodInfo) as UnityAction;
+                    var voidDelegate = System.Delegate.CreateDelegate(typeof(UnityAction), targetObj, methodInfo) as UnityAction;
                     UnityEventTools.AddPersistentListener(unityEvent, voidDelegate);
                     break;
 
                 case "float":
-                    methodInfo = targetComponent.GetType().GetMethod(methodName, 
-                        BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(float) }, null);
+                    methodInfo = FindMethodOnTarget(new[] { typeof(float) });
                     if (methodInfo == null) return new { error = $"Method '{methodName}(float)' not found" };
-                    
-                    var floatDelegate = System.Delegate.CreateDelegate(typeof(UnityAction<float>), targetComponent, methodInfo) as UnityAction<float>;
+                    var floatDelegate = System.Delegate.CreateDelegate(typeof(UnityAction<float>), targetObj, methodInfo) as UnityAction<float>;
                     UnityEventTools.AddFloatPersistentListener(unityEvent, floatDelegate, floatArg);
                     break;
 
                 case "int":
-                    methodInfo = targetComponent.GetType().GetMethod(methodName, 
-                        BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(int) }, null);
+                    methodInfo = FindMethodOnTarget(new[] { typeof(int) });
                     if (methodInfo == null) return new { error = $"Method '{methodName}(int)' not found" };
-                    
-                    var intDelegate = System.Delegate.CreateDelegate(typeof(UnityAction<int>), targetComponent, methodInfo) as UnityAction<int>;
+                    var intDelegate = System.Delegate.CreateDelegate(typeof(UnityAction<int>), targetObj, methodInfo) as UnityAction<int>;
                     UnityEventTools.AddIntPersistentListener(unityEvent, intDelegate, intArg);
                     break;
 
                 case "string":
-                    methodInfo = targetComponent.GetType().GetMethod(methodName, 
-                        BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(string) }, null);
+                    methodInfo = FindMethodOnTarget(new[] { typeof(string) });
                     if (methodInfo == null) return new { error = $"Method '{methodName}(string)' not found" };
-                    
-                    var stringDelegate = System.Delegate.CreateDelegate(typeof(UnityAction<string>), targetComponent, methodInfo) as UnityAction<string>;
+                    var stringDelegate = System.Delegate.CreateDelegate(typeof(UnityAction<string>), targetObj, methodInfo) as UnityAction<string>;
                     UnityEventTools.AddStringPersistentListener(unityEvent, stringDelegate, stringArg);
                     break;
 
                 case "bool":
-                    methodInfo = targetComponent.GetType().GetMethod(methodName, 
-                        BindingFlags.Instance | BindingFlags.Public, null, new[] { typeof(bool) }, null);
+                    methodInfo = FindMethodOnTarget(new[] { typeof(bool) });
                     if (methodInfo == null) return new { error = $"Method '{methodName}(bool)' not found" };
-                    
-                    var boolDelegate = System.Delegate.CreateDelegate(typeof(UnityAction<bool>), targetComponent, methodInfo) as UnityAction<bool>;
+                    var boolDelegate = System.Delegate.CreateDelegate(typeof(UnityAction<bool>), targetObj, methodInfo) as UnityAction<bool>;
                     UnityEventTools.AddBoolPersistentListener(unityEvent, boolDelegate, boolArg);
                     break;
-                    
+
                 default:
                     return new { error = $"Unsupported argType: {argType}" };
             }

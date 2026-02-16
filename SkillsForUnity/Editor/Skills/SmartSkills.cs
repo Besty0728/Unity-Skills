@@ -155,11 +155,22 @@ namespace UnitySkills
             if (comp == null) 
                 return new { success = false, error = $"Component '{componentName}' not found on target" };
 
-            // 2. Find Member
+            // 2. Find Member (field, then Unity naming conventions, then property)
             var type = comp.GetType();
             var field = type.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-            
-            if (field == null) 
+            if (field == null)
+                field = type.GetField("m_" + char.ToUpper(fieldName[0]) + fieldName.Substring(1), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (field == null)
+                field = type.GetField("_" + fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+            PropertyInfo propFallback = null;
+            if (field == null)
+            {
+                propFallback = type.GetProperty(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (propFallback != null && !propFallback.CanWrite) propFallback = null;
+            }
+
+            if (field == null && propFallback == null)
                 return new { success = false, error = $"Field '{fieldName}' not found on {componentName}" };
 
             // 3. Find Source Objects
@@ -179,7 +190,7 @@ namespace UnitySkills
                 return new { success = false, error = "No source objects found matching criteria" };
 
             // 4. Validate field type
-            var fieldType = field.FieldType;
+            var fieldType = field != null ? field.FieldType : propFallback.PropertyType;
             bool isList = fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() == typeof(List<>);
             bool isArray = fieldType.IsArray;
 
@@ -198,7 +209,7 @@ namespace UnitySkills
             // Append mode: start with existing items
             if (appendMode)
             {
-                var existing = field.GetValue(comp) as IEnumerable;
+                var existing = (field != null ? field.GetValue(comp) : propFallback.GetValue(comp)) as IEnumerable;
                 if (existing != null)
                 {
                     foreach (var item in existing) convertedList.Add(item);
@@ -223,13 +234,15 @@ namespace UnitySkills
             {
                 var array = System.Array.CreateInstance(elementType, convertedList.Count);
                 convertedList.CopyTo(array);
-                field.SetValue(comp, array);
+                if (field != null) field.SetValue(comp, array);
+                else propFallback.SetValue(comp, array);
             }
             else
             {
                 var list = System.Activator.CreateInstance(fieldType) as IList;
                 foreach (var item in convertedList) list.Add(item);
-                field.SetValue(comp, list);
+                if (field != null) field.SetValue(comp, list);
+                else propFallback.SetValue(comp, list);
             }
 
             EditorUtility.SetDirty(comp);
