@@ -3,7 +3,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2021.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-277-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-431-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -25,7 +25,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 ## 🚀 Core Features
 
 - ⚡ **Ultimate Efficiency**: Supports **Result Truncation** and **SKILL.md** optimization to maximize token savings.
-- 🛠️ **Comprehensive Toolkit**: Built-in 277 Skills with **Batch** operations, significantly reducing HTTP overhead and improving execution efficiency.
+- 🛠️ **Comprehensive Toolkit**: Built-in 431 Skills with **Batch** operations, significantly reducing HTTP overhead and improving execution efficiency.
 - 🛡️ **Safety First**: Supports **Transactional** (atomic operations) with automatic rollback on failure, leaving no residue in scenes.
 - 🌍 **Multi-Instance Support**: Automatic port discovery and global registry, enabling simultaneous control of multiple Unity projects.
 - 🤖 **Deep Integration**: Exclusive support for **Antigravity Slash Commands**, unlocking the `/unity-skills` interactive experience.
@@ -124,34 +124,47 @@ If you're using other tools that support Skills, install according to the Skills
 
 ---
 
-## 📦 Skills Category Overview (277)
+## 📦 Skills Category Overview (431)
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
-| **Material** | 21 | Batch material property modification/HDR/PBR settings |
-| **GameObject** | 18 | Create/Find/Transform sync/Batch operations/Hierarchy management |
-| **Editor** | 12 | Play mode/Selection/Undo-Redo/Context retrieval |
-| **Asset** | 11 | Asset import/Search/Folders/GUID management |
-| **UI System** | 11 | Canvas/Button/Text/Slider/RectTransform |
-| **Component** | 8 | Add/Remove/Property configuration/Copy-Paste |
-| **Animator** | 8 | Animation controller/Parameters/State machine/Transitions |
-| **Sample** | 8 | Sample scenes/Test case generation |
-| **Light** | 7 | Light creation/Type configuration/Intensity-Color/Batch toggle |
-| **Validation** | 7 | Project validation/Empty folder cleanup/Reference detection |
-| **Terrain** | 6 | Terrain creation/Heightmap editing/Texture painting [v1.4] |
-| **Perception** | 3 | Scene summary/Hierarchy description/Script analysis [v1.4] |
-| **Smart** | 3 | Scene query/Auto layout/Reference assembly [Preview] |
-| **UI Layout** | 5 | Anchors/Size/Layout groups/Alignment/Distribution [Preview] |
-| **Scene** | 6 | Scene switching/Save/Load/Screenshot |
-| **Script** | 6 | C# script creation/Compile check/Search |
-| **Shader** | 6 | Shader find/Create/Property enumeration |
-| **Workflow** | 6 | **[NEW]** Persistent history/Rollback/Snapshot/Tag management [v1.4] |
-| **DebugEnhance** | 4 | Console logs/Clear/Error pause [v1.4] |
-| **AssetImport** | 4 | Re-import/Texture settings/Model settings [v1.4] |
-| **Cleaner** | 5 | Unused assets/Duplicate files/Missing reference detection [v1.4] |
-| **Physics** | 4 | Physics materials/Raycasting/Layer settings |
-| **Cinemachine** | 23 | 2.x/3.x dual version auto-install/Mixing camera/TargetGroup/Spline [v1.4.2] |
-| **Package** | 7 | Package management/Cinemachine installation/Dependency handling [v1.4.2 NEW] |
+| **Cinemachine** | 23 | 2.x/3.x dual version auto-install/MixingCamera/ClearShot/TargetGroup/Spline |
+| **Workflow** | 22 | Persistent history/Task snapshots/Session-level undo/Rollback/Bookmarks |
+| **Material** | 21 | Batch material property modification/HDR/PBR/Emission/Keywords/Render queue |
+| **GameObject** | 18 | Create/Find/Transform sync/Batch operations/Hierarchy management/Rename/Duplicate |
+| **Scene** | 18 | Multi-scene load/Unload/Activate/Screenshot/Context/Dependency analysis/Report export |
+| **UI System** | 16 | Canvas/Button/Text/Slider/Toggle/Anchors/Layout/Alignment/Distribution |
+| **Asset** | 15 | Asset import/Delete/Move/Copy/Search/Folders/Batch operations/Refresh |
+| **Editor** | 12 | Play mode/Selection/Undo-Redo/Context retrieval/Menu execution |
+| **Timeline** | 12 | Track create/Delete/Clip management/Playback control/Binding/Duration |
+| **Physics** | 12 | Raycast/SphereCast/BoxCast/Physics materials/Layer collision matrix |
+| **Audio** | 12 | Audio import settings/AudioSource/AudioClip/AudioMixer/Batch |
+| **Texture** | 12 | Texture import settings/Platform settings/Sprite/Type/Size search/Batch |
+| **Model** | 12 | Model import settings/Mesh info/Material mapping/Animation/Skeleton/Batch |
+| **Script** | 12 | C# script create/Read/Replace/List/Info/Rename/Move/Analyze |
+| **Package** | 11 | Package management/Install/Remove/Search/Versions/Dependencies/Cinemachine/Splines |
+| **AssetImport** | 11 | Texture/Model/Audio/Sprite import settings/Label management/Reimport |
+| **Project** | 11 | Render pipeline/Build settings/Package management/Layer/Tag/PlayerSettings/Quality |
+| **Shader** | 11 | Shader create/URP templates/Compile check/Keywords/Variant analysis/Global keywords |
+| **Camera** | 11 | Scene View control/Game Camera create/Properties/Screenshot/Orthographic toggle/List |
+| **Terrain** | 10 | Terrain create/Heightmap/Perlin noise/Smooth/Flatten/Texture painting |
+| **NavMesh** | 10 | Bake/Path calculation/Agent/Obstacle/Sampling/Area cost |
+| **Cleaner** | 10 | Unused assets/Duplicate files/Empty folders/Missing script fix/Dependency tree |
+| **ScriptableObject** | 10 | Create/Read-Write/Batch set/Delete/Find/JSON import-export |
+| **Console** | 10 | Log capture/Clear/Export/Statistics/Pause control/Collapse/Clear on play |
+| **Debug** | 10 | Error logs/Compile check/Stack trace/Assemblies/Define symbols/Memory info |
+| **Event** | 10 | UnityEvent listener management/Batch add/Copy/State control/List |
+| **Smart** | 10 | Scene SQL query/Spatial query/Auto layout/Snap to ground/Grid snap/Randomize/Replace |
+| **Test** | 10 | Test run/Run by name/Categories/Template create/Summary statistics |
+| **Prefab** | 10 | Create/Instantiate/Override apply & revert/Batch instantiate/Variants/Find instances |
+| **Component** | 10 | Add/Remove/Property config/Batch operations/Copy/Enable-Disable |
+| **Optimization** | 10 | Texture compression/Mesh compression/Audio compression/Scene analysis/Static flags/LOD/Duplicate materials/Overdraw |
+| **Profiler** | 10 | FPS/Memory/Texture/Mesh/Material/Audio/Rendering stats/Object count/AssetBundle |
+| **Light** | 10 | Light create/Type config/Intensity-Color/Batch toggle/Probe groups/Reflection probes/Lightmaps |
+| **Validation** | 10 | Project validation/Empty folder cleanup/Reference detection/Mesh collider/Shader errors |
+| **Animator** | 10 | Animation controller/Parameters/State machine/Transitions/Assign/Play |
+| **Perception** | 9 | Scene summary/Hierarchy tree/Script analysis/Spatial query/Material overview/Scene snapshot/Dependency analysis/Report export/Performance hints |
+| **Sample** | 8 | Basic examples: Create/Delete/Transform/Scene info |
 
 > ⚠️ Most modules support `*_batch` batch operations. When operating on multiple objects, prioritize batch Skills for better performance.
 
@@ -161,24 +174,30 @@ If you're using other tools that support Skills, install according to the Skills
 
 ```bash
 .
-├── SkillsForUnity/                 # Unity Editor Plugin (Package Core)
-│   └── Editor/Skills/              # Core Skill Logic & C# Installer
-│       ├── EditorSkills.cs         # Editor control (includes editor_get_context)
-│       ├── NavMeshSkills.cs        # NavMesh baking & agents [New]
-│       ├── CinemachineSkills.cs    # Virtual camera control [New]
-│       ├── TimelineSkills.cs       # Timeline management [New]
-│       ├── TextureSkills.cs        # Texture import settings
-│       ├── AudioSkills.cs          # Audio import settings
-│       ├── ModelSkills.cs          # Model import settings
-│       └── ...                     # 190+ Skills source code
-├── unity-skills/                   # Cross-platform AI Skill Template (Core Source)
-│   ├── SKILL.md                    # Skill definitions & Prompt design
-│   ├── scripts/                    # Python Helper wrappers
-│   └── skills/                     # Modular Skill documentation
-│       ├── editor/SKILL.md
-│       ├── importer/SKILL.md       # [v1.2 New]
-│       └── ...
-├── CHANGELOG.md                    # Detailed update log & roadmap
+├── SkillsForUnity/                 # Unity Editor Plugin (UPM Package)
+│   ├── package.json                # com.besty.unity-skills
+│   └── Editor/Skills/              # Core Skill Logic (37 *Skills.cs files, 431 Skills)
+│       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
+│       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
+│       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
+│       ├── RegistryService.cs      # Global Registry (Multi-instance Discovery)
+│       ├── GameObjectFinder.cs     # Unified GO Finder (name/instanceId/path)
+│       ├── BatchExecutor.cs        # Generic Batch Processing Framework
+│       ├── GameObjectSkills.cs     # GameObject Operations (18 skills)
+│       ├── MaterialSkills.cs       # Material Operations (21 skills)
+│       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (23 skills)
+│       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (22 skills)
+│       ├── PerceptionSkills.cs     # Scene Understanding (9 skills)
+│       └── ...                     # 431 Skills source code
+├── unity-skills/                   # Cross-platform AI Skill Template (Distributed to AI Tools)
+│   ├── SKILL.md                    # Main Skill Definitions (AI-readable)
+│   ├── scripts/
+│   │   └── unity_skills.py         # Python Client Library
+│   ├── skills/                     # Modular Skill Documentation
+│   └── references/                 # Unity Development References
+├── docs/
+│   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
+├── CHANGELOG.md                    # Version Update Log
 └── LICENSE                         # MIT License
 ```
 
