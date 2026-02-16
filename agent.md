@@ -11,7 +11,7 @@
 | **项目名称** | UnitySkills |
 | **版本** | 1.5.1 |
 | **技术栈** | C# (Unity Editor) + Python (Client) |
-| **Unity 版本** | 2021.3+ |
+| **Unity 版本** | 2021.3+ (已验证 Unity 6 / 6000.2.x) |
 | **协议** | MIT |
 | **核心功能** | 通过 REST API 让 AI 直接控制 Unity 编辑器 |
 
@@ -36,7 +36,7 @@
 │             SkillsForUnity (Unity Editor Plugin)             │
 │  ┌─────────────────┐  ┌─────────────┐  ┌─────────────────┐  │
 │  │ SkillsHttpServer│→ │ SkillRouter │→ │[UnitySkill] 方法│  │
-│  │ (Multi-Instance)│  │(Auto-Undo)  │  │  (430 Skills)   │  │
+│  │ (Multi-Instance)│  │(Auto-Undo)  │  │  (431 Skills)   │  │
 │  └─────────────────┘  └─────────────┘  └─────────────────┘  │
 │           ↓                  ↓                              │
 │  ┌─────────────────┐  ┌─────────────────────────────────┐   │
@@ -105,23 +105,42 @@ Unity-Skills/
 │           │
 │           ├── GameObjectSkills.cs     # GameObject 操作 (18 skills)
 │           ├── ComponentSkills.cs      # Component 操作 (10 skills)
-│           ├── SceneSkills.cs          # Scene 管理 (10 skills)
+│           ├── SceneSkills.cs          # Scene 管理 (18 skills, 含 Perception)
 │           ├── MaterialSkills.cs       # Material 操作 (21 skills)
 │           ├── CinemachineSkills.cs    # Cinemachine 3.x (23 skills)
-│           ├── WorkflowSkills.cs       # Workflow 撤销/回滚 (22 skills)
+│           ├── WorkflowSkills.cs       # Workflow 撤销/回滚 (22 skills, 含 bookmark/history)
 │           ├── UISkills.cs             # UI 元素创建 (16 skills)
+│           ├── AssetSkills.cs          # Asset 管理 (15 skills)
 │           ├── EditorSkills.cs         # Editor 控制 (12 skills)
-│           ├── AssetSkills.cs          # Asset 管理 (11 skills)
+│           ├── AudioSkills.cs          # Audio 音频 (12 skills)
+│           ├── TextureSkills.cs        # Texture 纹理 (12 skills)
+│           ├── ModelSkills.cs          # Model 模型 (12 skills)
+│           ├── TimelineSkills.cs       # Timeline 时间线 (12 skills)
+│           ├── PhysicsSkills.cs        # Physics 物理 (12 skills)
+│           ├── ScriptSkills.cs         # Script 管理 (12 skills, 含 analyze)
+│           ├── AssetImportSkills.cs    # AssetImport 导入设置 (11 skills)
+│           ├── ProjectSkills.cs        # Project 项目设置 (11 skills)
+│           ├── ShaderSkills.cs         # Shader 操作 (11 skills)
+│           ├── CameraSkills.cs         # Camera 相机 (11 skills)
+│           ├── PackageSkills.cs        # Package 包管理 (11 skills)
 │           ├── TerrainSkills.cs        # Terrain 地形 (10 skills)
 │           ├── PrefabSkills.cs         # Prefab 操作 (10 skills)
 │           ├── AnimatorSkills.cs       # Animator 管理 (10 skills)
 │           ├── LightSkills.cs          # Light 配置 (10 skills)
 │           ├── ValidationSkills.cs     # 项目验证 (10 skills)
-│           ├── ScriptSkills.cs         # Script 管理 (11 skills)
-│           ├── ShaderSkills.cs         # Shader 操作 (11 skills)
-│           ├── PerceptionSkills.cs     # Perception 场景理解 (10 skills)
+│           ├── OptimizationSkills.cs   # 性能优化 (10 skills)
+│           ├── CleanerSkills.cs        # 项目清理 (10 skills)
+│           ├── NavMeshSkills.cs        # NavMesh 导航 (10 skills)
+│           ├── ScriptableObjectSkills.cs # ScriptableObject (10 skills)
+│           ├── ConsoleSkills.cs        # Console 控制台 (10 skills)
+│           ├── DebugSkills.cs          # Debug 调试 (10 skills)
+│           ├── EventSkills.cs          # Event 事件 (10 skills)
 │           ├── SmartSkills.cs          # AI 推理技能 (10 skills)
-│           └── ... (37 个 *Skills.cs 文件, 共 430 Skills)
+│           ├── TestSkills.cs           # Test 测试 (10 skills)
+│           ├── ProfilerSkills.cs       # Profiler 性能分析 (10 skills)
+│           ├── PerceptionSkills.cs     # Perception 场景理解 (9 skills)
+│           ├── SampleSkills.cs         # 基础示例 (8 skills)
+│           └── ... (37 个 *Skills.cs 文件, 共 431 Skills)
 │
 ├── unity-skills/                   # 跨平台 AI Skill 模板 (分发给 AI 工具)
 │   ├── SKILL.md                    # 主 Skill 定义 (AI 读取)
@@ -239,27 +258,44 @@ v1.5.0 对全部 38 个 C# 文件 + Python 客户端进行了完整审计，修�
 - `script_create` 同时接受 `scriptName` 和 `name` 参数（`scriptName` 优先），空值时返回错误而非生成无名文件
 - `light_add_probe_group` 支持 `gridX/gridY/gridZ` + `spacingX/spacingY/spacingZ` 参数，一步创建网格布局光照探针
 
+### Unity 6 兼容性修复 (v1.5.1)
+
+以下修复确保在 Unity 6 (6000.2.x) 上正常运行：
+
+- **`console_set_collapse` / `console_set_clear_on_play`**: Unity 6 移除了 `ConsoleWindow.s_ConsoleFlags`，改为多级回退策略
+- **`cinemachine_set_active`**: CM3 的 `Priority` 属性不支持 LINQ `Max()` 泛型比较，改用手动迭代
+- **`audio_create_mixer`**: `ScriptableObject.CreateInstance(AudioMixerController)` 触发 `ExtensionOfNativeClass` 异常，改用 `CreateMixerControllerAtPath` 工厂方法。注："Mixer is not initialized" 日志为 Unity 6 内部已知问题，不影响功能
+- **`event_add_listener`**: `GetComponent("GameObject")` 返回 null，新增特殊处理
+- **`component_set_enabled`**: 新增 `Renderer` 和 `Collider` 类型支持（它们不继承 `Behaviour`）
+- **`optimize_find_duplicate_materials`**: `mat.color` 访问不存在的 `_Color` 属性时异常，改为 `HasProperty` 安全检查
+- **Splines 版本适配**: Unity 6 自动使用 Splines 2.8.3，Unity 2022 使用 2.8.0
+
 ---
 
-## 📊 Skills 模块汇总 (378)
+## 📊 Skills 模块汇总 (431)
 
 | 模块 | Skills 数量 | 核心功能 |
 |------|:-----------:|----------|
 | **Cinemachine** | 23 | 2.x/3.x双版本支持/自动安装/混合相机/ClearShot/TargetGroup/Spline |
-| **Workflow** | 22 | 持久化历史/任务快照/会话级撤销/回滚 |
-| **Material** | 21 | 材质属性批量修改/HDR/PBR设置 |
-| **GameObject** | 18 | 创建/查找/变换同步/批量操作/层级管理 |
-| **UI System** | 16 | Canvas/Button/Text/Slider/锚点/布局 |
-| **Editor** | 12 | 播放模式/选择/撤销重做/上下文获取 |
+| **Workflow** | 22 | 持久化历史/任务快照/会话级撤销/回滚/书签 |
+| **Material** | 21 | 材质属性批量修改/HDR/PBR/Emission/关键字/渲染队列 |
+| **GameObject** | 18 | 创建/查找/变换同步/批量操作/层级管理/重命名/复制 |
+| **Scene** | 18 | 多场景加载/卸载/激活/截图/上下文/依赖分析/报告导出 |
+| **UI System** | 16 | Canvas/Button/Text/Slider/Toggle/锚点/布局/对齐/分布 |
+| **Asset** | 15 | 资产导入/删除/移动/复制/搜索/文件夹/批量操作/刷新 |
+| **Editor** | 12 | 播放模式/选择/撤销重做/上下文获取/菜单执行 |
 | **Timeline** | 12 | 轨道创建/删除/Clip管理/播放控制/绑定/时长设置 |
 | **Physics** | 12 | 射线检测/球形投射/盒形投射/物理材质/层碰撞矩阵 |
-| **Asset** | 11 | 资产导入/搜索/文件夹/GUID管理 |
-| **AssetImport** | 11 | 纹理/模型/音频/Sprite导入设置/标签管理 |
-| **ProjectSkills** | 11 | 渲染管线/构建设置/包管理/Layer/Tag/PlayerSettings |
-| **ShaderSkills** | 11 | Shader创建/URP模板/编译检查/关键字/变体分析 |
-| **Script** | 11 | C#脚本创建/读取/替换/列表/信息/重命名/移动 |
-| **Camera** | 11 | Scene View控制/Game Camera创建/属性/截图/正交切换 |
-| **Terrain** | 10 | 地形创建/高度图/Perlin噪声/纹理绘制 |
+| **Audio** | 12 | 音频导入设置/AudioSource/AudioClip/AudioMixer/批量 |
+| **Texture** | 12 | 纹理导入设置/平台设置/Sprite/类型/尺寸查找/批量 |
+| **Model** | 12 | 模型导入设置/Mesh信息/材质映射/动画/骨骼/批量 |
+| **Script** | 12 | C#脚本创建/读取/替换/列表/信息/重命名/移动/分析 |
+| **Package** | 11 | 包管理/安装/移除/搜索/版本/依赖/Cinemachine/Splines |
+| **AssetImport** | 11 | 纹理/模型/音频/Sprite导入设置/标签管理/重导入 |
+| **Project** | 11 | 渲染管线/构建设置/包管理/Layer/Tag/PlayerSettings/质量 |
+| **Shader** | 11 | Shader创建/URP模板/编译检查/关键字/变体分析/全局关键字 |
+| **Camera** | 11 | Scene View控制/Game Camera创建/属性/截图/正交切换/列表 |
+| **Terrain** | 10 | 地形创建/高度图/Perlin噪声/平滑/平坦化/纹理绘制 |
 | **NavMesh** | 10 | 烘焙/路径计算/Agent/Obstacle/采样/区域代价 |
 | **Cleaner** | 10 | 未使用资源/重复文件/空文件夹/丢失脚本修复/依赖树 |
 | **ScriptableObject** | 10 | 创建/读写/批量设置/删除/查找/JSON导入导出 |
@@ -268,17 +304,15 @@ v1.5.0 对全部 38 个 C# 文件 + Python 客户端进行了完整审计，修�
 | **Event** | 10 | UnityEvent监听器管理/批量添加/复制/状态控制/列举 |
 | **Smart** | 10 | 场景SQL查询/空间查询/自动布局/对齐地面/网格吸附/随机化/替换 |
 | **Test** | 10 | 测试运行/按名运行/分类/模板创建/汇总统计 |
-| **Scene** | 9 | 多场景加载/卸载/激活/截图 |
-| **Prefab** | 8 | 创建/实例化/覆盖应用与恢复/批量实例化 |
-| **Component** | 8 | 添加/移除/属性配置/批量操作 |
-| **Animator** | 8 | 动画控制器/参数/状态机/过渡 |
-| **Sample** | 8 | 示例场景/测试用例生成 |
-| **Perception** | 8 | 场景摘要/层级树/脚本分析/空间查询/材质概览/场景快照/依赖分析/场景报告导出 |
-| **Light** | 7 | 灯光创建/类型配置/强度颜色/批量开关 |
-| **Validation** | 7 | 项目验证/空文件夹清理/引用检测 |
-| **Package** | 7 | 包管理/Cinemachine安装/依赖处理 |
-| **Optimization** | 2 | 纹理压缩批量优化/模型网格压缩 |
-| **Profiler** | 1 | 获取性能统计 (FPS/Memory) |
+| **Prefab** | 10 | 创建/实例化/覆盖应用与恢复/批量实例化/变体/查找实例 |
+| **Component** | 10 | 添加/移除/属性配置/批量操作/复制/启用禁用 |
+| **Optimization** | 10 | 纹理压缩/网格压缩/音频压缩/场景分析/静态标记/LOD/重复材质/过度绘制 |
+| **Profiler** | 10 | FPS/内存/纹理/网格/材质/音频/渲染统计/对象计数/AssetBundle |
+| **Light** | 10 | 灯光创建/类型配置/强度颜色/批量开关/探针组/反射探针/光照贴图 |
+| **Validation** | 10 | 项目验证/空文件夹清理/引用检测/网格碰撞/Shader错误 |
+| **Animator** | 10 | 动画控制器/参数/状态机/过渡/分配/播放 |
+| **Perception** | 9 | 场景摘要/层级树/脚本分析/空间查询/材质概览/场景快照/依赖分析/报告导出/性能提示 |
+| **Sample** | 8 | 基础示例：创建/删除/变换/场景信息 |
 
 > ⚠️ **重要提示**：大部分模块都支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills。
 
