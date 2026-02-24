@@ -50,6 +50,8 @@ This project has been deeply optimized for the following environments to ensure 
 
 ## 🏁 Quick Start
 
+> **Overview**: Install Unity Plugin → Start UnitySkills Server → AI Uses Skills
+
 ### 1. Install Unity Plugin
 Add via Unity Package Manager using Git URL:
 
