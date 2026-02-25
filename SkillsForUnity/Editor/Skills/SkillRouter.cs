@@ -103,7 +103,9 @@ namespace UnitySkills
                 {
                     foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static))
                     {
-                        var attr = method.GetCustomAttribute<UnitySkillAttribute>();
+                        UnitySkillAttribute attr;
+                        try { attr = method.GetCustomAttribute<UnitySkillAttribute>(); }
+                        catch { continue; }
                         if (attr != null)
                         {
                             var name = attr.Name ?? ToSnakeCase(method.Name);
