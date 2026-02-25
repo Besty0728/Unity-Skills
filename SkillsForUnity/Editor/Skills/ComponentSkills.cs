@@ -548,18 +548,23 @@ namespace UnitySkills
 
         private static bool AllowMultiple(System.Type type)
         {
-            return type.GetCustomAttributes(typeof(DisallowMultipleComponent), true).Length == 0;
+            try { return type.GetCustomAttributes(typeof(DisallowMultipleComponent), true).Length == 0; }
+            catch { return true; }
         }
 
         private static string[] GetRequiredByComponents(GameObject go, System.Type targetType)
         {
-            return go.GetComponents<Component>()
-                .Where(c => c != null && c.GetType() != targetType)
-                .Where(c => c.GetType().GetCustomAttributes(typeof(RequireComponent), true)
-                    .OfType<RequireComponent>()
-                    .Any(r => r.m_Type0 == targetType || r.m_Type1 == targetType || r.m_Type2 == targetType))
-                .Select(c => c.GetType().Name)
-                .ToArray();
+            try
+            {
+                return go.GetComponents<Component>()
+                    .Where(c => c != null && c.GetType() != targetType)
+                    .Where(c => c.GetType().GetCustomAttributes(typeof(RequireComponent), true)
+                        .OfType<RequireComponent>()
+                        .Any(r => r.m_Type0 == targetType || r.m_Type1 == targetType || r.m_Type2 == targetType))
+                    .Select(c => c.GetType().Name)
+                    .ToArray();
+            }
+            catch { return new string[0]; }
         }
         
         #endregion

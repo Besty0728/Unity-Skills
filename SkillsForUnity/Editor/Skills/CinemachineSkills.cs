@@ -163,7 +163,7 @@ namespace UnitySkills
 
             foreach (var member in members)
             {
-                 if (member.GetCustomAttribute<System.ObsoleteAttribute>() != null) continue;
+                 try { if (member.GetCustomAttribute<System.ObsoleteAttribute>() != null) continue; } catch { continue; }
                  if (member.Name == "normalized" || member.Name == "magnitude" || member.Name == "sqrMagnitude") continue;
 
                  try

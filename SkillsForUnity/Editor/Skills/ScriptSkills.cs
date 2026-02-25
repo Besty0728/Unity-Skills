@@ -18,6 +18,8 @@ namespace UnitySkills
             scriptName = scriptName ?? name;
             if (string.IsNullOrEmpty(scriptName))
                 return new { error = "scriptName is required" };
+            if (scriptName.Contains("/") || scriptName.Contains("\\") || scriptName.Contains(".."))
+                return new { error = "scriptName must not contain path separators" };
 
             if (!string.IsNullOrEmpty(folder) && Validate.SafePath(folder, "folder") is object folderErr) return folderErr;
 

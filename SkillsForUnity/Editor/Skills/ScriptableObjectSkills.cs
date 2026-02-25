@@ -206,7 +206,10 @@ namespace UnitySkills
             if (asset == null) return new { error = $"ScriptableObject not found: {assetPath}" };
             var data = json;
             if (string.IsNullOrEmpty(data) && !string.IsNullOrEmpty(jsonFilePath))
+            {
+                if (Validate.SafePath(jsonFilePath, "jsonFilePath") is object pathErr) return pathErr;
                 data = File.ReadAllText(jsonFilePath);
+            }
             if (string.IsNullOrEmpty(data)) return new { error = "No JSON data provided" };
             WorkflowManager.SnapshotObject(asset);
             Undo.RecordObject(asset, "Import JSON to SO");
