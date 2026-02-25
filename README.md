@@ -52,6 +52,10 @@
 
 > **总体路线**：安装 Unity 插件 → 开启 UnitySkills 服务器 → AI 使用 Skill
 
+<p align="center">
+  <img src="docs/installation-demo.gif" alt="一键安装演示" width="800">
+</p>
+
 ### 1. 安装 Unity 插件
 通过 Unity Package Manager 直接添加 Git URL：
 
