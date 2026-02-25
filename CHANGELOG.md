@@ -2,6 +2,11 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.5.2] - 2026-02-25
+
+### Fixed
+- **JetBrains.Annotations 反射崩溃** — 修复在含有 JetBrains Rider 注解（`[NotNull]`/`[CanBeNull]` 等）的项目中，插件扫描技能方法时 CLR 尝试加载 `JetBrains.Annotations.dll`（Version=4242.42.42.42）失败导致的 `FileNotFoundException`。现在遇到程序集加载异常时会跳过该方法继续扫描，不影响正常功能。（`SkillRouter.cs`、`UnitySkillsWindow.cs`）
+
 ## [1.5.1] - 2026-02-15
 
 ### ⭐ Highlight
