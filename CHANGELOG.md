@@ -6,6 +6,12 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Fixed
 - **JetBrains.Annotations 反射崩溃** — 修复在含有 JetBrains Rider 注解（`[NotNull]`/`[CanBeNull]` 等）的项目中，插件扫描技能方法时 CLR 尝试加载 `JetBrains.Annotations.dll`（Version=4242.42.42.42）失败导致的 `FileNotFoundException`。现在遇到程序集加载异常时会跳过该方法继续扫描，不影响正常功能。（`SkillRouter.cs`、`UnitySkillsWindow.cs`）
+- **反射 GetCustomAttribute 崩溃风险** — 修复与 JetBrains 崩溃同类的三处反射调用：`AllowMultiple()`（`ComponentSkills.cs:551`）、`GetRequiredByComponents()` 内的 LINQ 查询（`ComponentSkills.cs:556`）、`GetCustomAttribute<ObsoleteAttribute>()`（`CinemachineSkills.cs:166`）。CLR 解析特性时若触发程序集加载失败，现在均以 try-catch 安全降级，不影响正常功能。
+- **路径遍历安全漏洞** — 两处文件操作路径参数缺少校验：`scriptableobject_import_json` 的 `jsonFilePath` 参数新增 `Validate.SafePath()` 校验，阻止 `../../etc/passwd` 等路径逃逸（`ScriptableObjectSkills.cs:209`）；`script_create` 的 `scriptName` 参数新增路径分隔符检查（`/`、`\`、`..`），防止经由 `Path.Combine` 逃逸出 Assets 目录（`ScriptSkills.cs:24`）。
+
+### Security
+- **`scriptableobject_import_json` jsonFilePath 路径遍历** — `jsonFilePath` 参数现在通过 `Validate.SafePath()` 限制在 Assets/Packages 目录内（`ScriptableObjectSkills.cs`）
+- **`script_create` scriptName 目录逃逸** — `scriptName` 含路径分隔符时立即返回错误，不再经由 `Path.Combine` 拼接到文件系统（`ScriptSkills.cs`）
 
 ## [1.5.1] - 2026-02-15
 
