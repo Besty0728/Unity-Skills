@@ -5,6 +5,7 @@
 .codeiumignore
 .kiro
 CLAUDE.md
+AGENTS.md*
 
 # Code-copy related files
 .clipignore
