@@ -181,7 +181,7 @@ namespace UnitySkills
             string name = "New PhysicMaterial", string savePath = "Assets",
             float dynamicFriction = 0.6f, float staticFriction = 0.6f, float bounciness = 0f)
         {
-            var mat = new PhysicMaterial(name)
+            var mat = new PhysicsMaterial(name)
             {
                 dynamicFriction = dynamicFriction,
                 staticFriction = staticFriction,
@@ -204,7 +204,7 @@ namespace UnitySkills
             if (err != null) return err;
             var collider = go.GetComponent<Collider>();
             if (collider == null) return new { error = $"No Collider on {go.name}" };
-            var mat = AssetDatabase.LoadAssetAtPath<PhysicMaterial>(materialPath);
+            var mat = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(materialPath);
             if (mat == null) return new { error = $"PhysicMaterial not found: {materialPath}" };
             WorkflowManager.SnapshotObject(collider);
             Undo.RecordObject(collider, "Set PhysicMaterial");
