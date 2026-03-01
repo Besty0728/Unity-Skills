@@ -68,7 +68,7 @@ namespace UnitySkills
         // 2. Smart Layout ("The Automated Designer")
         // ==================================================================================
 
-        [UnitySkill("smart_scene_layout", "Organize selected objects into a layout (Linear, Grid, Circle, Arc)")]
+        [UnitySkill("smart_scene_layout", "Organize selected objects into a layout (Linear, Grid, Circle, Arc). Requires objects selected in Hierarchy first.")]
         public static object SmartSceneLayout(
             string layoutType = "Linear",   // Linear, Grid, Circle, Arc
             string axis = "X",              // X, Y, Z for Linear; ignored for Circle
@@ -382,7 +382,7 @@ namespace UnitySkills
             return new { success = true, count = results.Count, center = new { x, y, z }, radius, results };
         }
 
-        [UnitySkill("smart_align_to_ground", "Raycast selected objects downward to align them to the ground")]
+        [UnitySkill("smart_align_to_ground", "Raycast selected objects downward to align them to the ground. Requires objects selected in Hierarchy first.")]
         public static object SmartAlignToGround(float maxDistance = 100f, bool alignRotation = false)
         {
             var selected = Selection.gameObjects;
@@ -402,7 +402,7 @@ namespace UnitySkills
             return new { success = true, aligned, total = selected.Length };
         }
 
-        [UnitySkill("smart_distribute", "Evenly distribute selected objects between first and last positions")]
+        [UnitySkill("smart_distribute", "Evenly distribute selected objects between first and last positions. Requires at least 3 objects selected in Hierarchy first.")]
         public static object SmartDistribute(string axis = "X")
         {
             var selected = Selection.gameObjects.OrderBy(g => g.transform.GetSiblingIndex()).ToList();
@@ -457,7 +457,7 @@ namespace UnitySkills
             return new { success = true, randomized = selected.Length };
         }
 
-        [UnitySkill("smart_replace_objects", "Replace selected objects with a prefab (preserving transforms)")]
+        [UnitySkill("smart_replace_objects", "Replace selected objects with a prefab (preserving transforms). Requires objects selected in Hierarchy first.")]
         public static object SmartReplaceObjects(string prefabPath)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);

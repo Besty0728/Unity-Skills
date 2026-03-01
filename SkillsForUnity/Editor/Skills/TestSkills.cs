@@ -25,7 +25,7 @@ namespace UnitySkills
             public System.DateTime StartTime;
         }
 
-        [UnitySkill("test_run", "Run Unity tests (returns job ID for polling)")]
+        [UnitySkill("test_run", "Run Unity tests asynchronously. Returns a jobId immediately — poll with test_get_result(jobId) to check status.")]
         public static object TestRun(string testMode = "EditMode", string filter = null)
         {
             if (_api == null)
@@ -59,7 +59,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("test_get_result", "Get the result of a test run")]
+        [UnitySkill("test_get_result", "Get the result of a test run. Requires the jobId returned by test_run or test_run_by_name.")]
         public static object TestGetResult(string jobId)
         {
             if (!_runningTests.TryGetValue(jobId, out var runInfo))

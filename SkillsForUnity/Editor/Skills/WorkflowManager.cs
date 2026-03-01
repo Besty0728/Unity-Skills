@@ -33,6 +33,14 @@ namespace UnitySkills
 
         public static void LoadHistory()
         {
+            // Crash recovery: if main file is missing but .tmp exists, promote it
+            string tmpPath = HistoryFilePath + ".tmp";
+            if (!File.Exists(HistoryFilePath) && File.Exists(tmpPath))
+            {
+                try { File.Move(tmpPath, HistoryFilePath); }
+                catch { /* If promotion fails, start fresh below */ }
+            }
+
             if (File.Exists(HistoryFilePath))
             {
                 try

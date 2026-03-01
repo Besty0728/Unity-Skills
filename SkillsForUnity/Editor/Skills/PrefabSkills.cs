@@ -121,7 +121,7 @@ namespace UnitySkills
             public float scaleZ { get; set; } = 1;
         }
 
-        [UnitySkill("prefab_apply", "Apply changes from instance to prefab")]
+        [UnitySkill("prefab_apply", "Apply all overrides from prefab instance to the source prefab asset. Equivalent to prefab_apply_overrides.")]
         public static object PrefabApply(string gameObjectName)
         {
             var (go, goErr) = GameObjectFinder.FindOrError(name: gameObjectName);
@@ -138,7 +138,7 @@ namespace UnitySkills
             return new { success = true, appliedTo = prefabPath };
         }
 
-        [UnitySkill("prefab_unpack", "Unpack a prefab instance")]
+        [UnitySkill("prefab_unpack", "Unpack a prefab instance. completely=false: unpack outermost root only; completely=true: fully unpack all nested prefabs.")]
         public static object PrefabUnpack(string gameObjectName, bool completely = false)
         {
             var (go, findErr) = GameObjectFinder.FindOrError(name: gameObjectName);
@@ -207,7 +207,7 @@ namespace UnitySkills
             return new { success = true, reverted = prefabRoot.name };
         }
 
-        [UnitySkill("prefab_apply_overrides", "Apply all overrides from instance to source prefab asset")]
+        [UnitySkill("prefab_apply_overrides", "Apply all overrides from instance to source prefab asset. Equivalent to prefab_apply.")]
         public static object PrefabApplyOverrides(string name = null, int instanceId = 0)
         {
             var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId);

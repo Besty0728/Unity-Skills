@@ -84,6 +84,7 @@ namespace UnitySkills
         [UnitySkill("shader_read", "Read shader source code")]
         public static object ShaderRead(string shaderPath)
         {
+            if (Validate.SafePath(shaderPath, "shaderPath") is object pathErr) return pathErr;
             if (!File.Exists(shaderPath))
                 return new { error = $"Shader not found: {shaderPath}" };
 
@@ -173,6 +174,9 @@ namespace UnitySkills
                 return new { error = $"Shader not found: {shaderPath}" };
 
             if (Validate.SafePath(shaderPath, "shaderPath", isDelete: true) is object pathErr) return pathErr;
+
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(shaderPath);
+            if (asset != null) WorkflowManager.SnapshotObject(asset);
 
             AssetDatabase.DeleteAsset(shaderPath);
             return new { success = true, deleted = shaderPath };

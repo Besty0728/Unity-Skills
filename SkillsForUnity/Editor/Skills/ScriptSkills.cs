@@ -115,6 +115,7 @@ public class {CLASS} : MonoBehaviour
         [UnitySkill("script_read", "Read the contents of a script")]
         public static object ScriptRead(string scriptPath)
         {
+            if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (!File.Exists(scriptPath))
                 return new { error = $"Script not found: {scriptPath}" };
 
@@ -143,6 +144,7 @@ public class {CLASS} : MonoBehaviour
         [UnitySkill("script_find_in_file", "Search for pattern in scripts")]
         public static object ScriptFindInFile(string pattern, string folder = "Assets", bool isRegex = false, int limit = 50)
         {
+            if (!string.IsNullOrEmpty(folder) && Validate.SafePath(folder, "folder") is object folderErr) return folderErr;
             var results = new System.Collections.Generic.List<object>();
             var files = Directory.GetFiles(folder, "*.cs", SearchOption.AllDirectories);
 

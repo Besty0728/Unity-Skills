@@ -145,29 +145,58 @@ namespace UnitySkills
             return new { success = true, enabled };
         }
 
-        [UnitySkill("console_export", "Export captured logs to a file")]
+        [UnitySkill("console_export", "Export console logs to a file. Uses captured buffer when console_start_capture is active; otherwise reads directly from Unity Console history (no setup needed).")]
         public static object ConsoleExport(string savePath = "Assets/console_log.txt")
         {
             if (Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
             var dir = System.IO.Path.GetDirectoryName(savePath);
             if (!string.IsNullOrEmpty(dir) && !System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
-            var lines = _logs.Select(l => $"[{l.time:HH:mm:ss.fff}] [{l.type}] {l.message}");
-            System.IO.File.WriteAllLines(savePath, lines);
-            return new { success = true, path = savePath, count = _logs.Count };
+
+            if (_capturing || _logs.Count > 0)
+            {
+                var lines = _logs.Select(l => $"[{l.time:HH:mm:ss.fff}] [{l.type}] {l.message}");
+                System.IO.File.WriteAllLines(savePath, lines);
+                return new { success = true, path = savePath, count = _logs.Count, source = "capture" };
+            }
+
+            // Direct mode: read from Unity Console when no capture buffer is available
+            int allMask = DebugSkills.ErrorModeMask | DebugSkills.WarningModeMask | DebugSkills.LogModeMask;
+            var entries = DebugSkills.ReadLogEntries(allMask, null, 1000);
+            var directLines = entries.Select(e => { dynamic d = e; return $"[{d.type}] {d.message}"; });
+            System.IO.File.WriteAllLines(savePath, directLines.Cast<string>());
+            return new { success = true, path = savePath, count = entries.Count, source = "console" };
         }
 
-        [UnitySkill("console_get_stats", "Get log statistics (count by type)")]
+        [UnitySkill("console_get_stats", "Get log statistics (count by type). Uses captured buffer when console_start_capture is active; otherwise reads directly from Unity Console history.")]
         public static object ConsoleGetStats()
         {
-            return new
+            if (_capturing || _logs.Count > 0)
             {
-                success = true, total = _logs.Count,
-                logs = _logs.Count(l => l.type == LogType.Log),
-                warnings = _logs.Count(l => l.type == LogType.Warning),
-                errors = _logs.Count(l => l.type == LogType.Error),
-                exceptions = _logs.Count(l => l.type == LogType.Exception),
-                asserts = _logs.Count(l => l.type == LogType.Assert)
-            };
+                return new
+                {
+                    success = true, total = _logs.Count, source = "capture",
+                    logs = _logs.Count(l => l.type == LogType.Log),
+                    warnings = _logs.Count(l => l.type == LogType.Warning),
+                    errors = _logs.Count(l => l.type == LogType.Error),
+                    exceptions = _logs.Count(l => l.type == LogType.Exception),
+                    asserts = _logs.Count(l => l.type == LogType.Assert)
+                };
+            }
+
+            // Direct mode: read from Unity Console
+            int allMask = DebugSkills.ErrorModeMask | DebugSkills.WarningModeMask | DebugSkills.LogModeMask;
+            var entries = DebugSkills.ReadLogEntries(allMask, null, 10000);
+            int errCount = 0, warnCount = 0, logCount = 0;
+            foreach (dynamic e in entries)
+            {
+                switch ((string)e.type)
+                {
+                    case "Error":   errCount++;  break;
+                    case "Warning": warnCount++; break;
+                    default:        logCount++;  break;
+                }
+            }
+            return new { success = true, total = entries.Count, source = "console", logs = logCount, warnings = warnCount, errors = errCount };
         }
 
         [UnitySkill("console_set_collapse", "Set console log collapse mode")]

@@ -114,10 +114,10 @@ namespace UnitySkills
                     int mode = (int)_modeField.GetValue(entry);
                     if ((mode & targetMask) == 0) continue;
 
-                    string msg  = (string)_messageField.GetValue(entry);
+                    string msg  = (string)_messageField.GetValue(entry) ?? "";
                     if (!string.IsNullOrEmpty(filter) && !msg.Contains(filter)) continue;
 
-                    string file = (string)_fileField.GetValue(entry);
+                    string file = (string)_fileField.GetValue(entry) ?? "";
                     int    line = (int)_lineField.GetValue(entry);
 
                     string logType = (mode & ErrorModeMask)   != 0 ? "Error"
@@ -142,10 +142,10 @@ namespace UnitySkills
             return results;
         }
 
-        [UnitySkill("debug_get_errors", "Get only active errors and exceptions from the console logs.")]
+        [UnitySkill("debug_get_errors", "Get only errors and exceptions from Unity Console logs. Reads existing console history directly (no setup needed). For all log types use console_get_logs.")]
         public static object DebugGetErrors(int limit = 50) => DebugGetLogs("Error", null, limit);
 
-        [UnitySkill("debug_get_logs", "Get console logs filtered by type (Error/Warning/Log) and content.")]
+        [UnitySkill("debug_get_logs", "Get console logs filtered by type (Error/Warning/Log) and content. Reads existing console history directly (no setup needed). Prefer console_get_logs for all-type queries with timestamp support.")]
         public static object DebugGetLogs(string type = "Error", string filter = null, int limit = 50)
         {
             int targetMask = 0;
@@ -211,7 +211,7 @@ namespace UnitySkills
                     return new { error = $"Index {entryIndex} out of range (0-{count - 1})" };
 
                 _getEntryMethod.Invoke(null, new object[] { entryIndex, entry });
-                var msg   = (string)_messageField.GetValue(entry);
+                var msg   = (string)_messageField.GetValue(entry) ?? "";
                 var lines = msg.Split('\n');
                 return new { index = entryIndex, message = lines[0], stackTrace = string.Join("\n", lines.Skip(1)) };
             }

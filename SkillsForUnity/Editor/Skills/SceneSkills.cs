@@ -107,9 +107,12 @@ namespace UnitySkills
             return node;
         }
 
-        [UnitySkill("scene_screenshot", "Capture a screenshot of the scene view")]
+        [UnitySkill("scene_screenshot", "Capture a screenshot of the game view. filename is a bare filename only (no path separators); saved under Assets/Screenshots/.")]
         public static object SceneScreenshot(string filename = "screenshot.png", int width = 1920, int height = 1080)
         {
+            // Strip any path components to prevent writing outside Screenshots/
+            filename = Path.GetFileName(filename);
+            if (string.IsNullOrEmpty(filename)) filename = "screenshot";
             if (!Path.HasExtension(filename)) filename += ".png";
             var path = Path.Combine(Application.dataPath, "Screenshots", filename);
             var dir = Path.GetDirectoryName(path);
@@ -189,7 +192,7 @@ namespace UnitySkills
             }
             return new { success = false, error = $"Scene '{sceneName}' not found in loaded scenes" };
         }
-        [UnitySkill("scene_find_objects", "Search GameObjects by name pattern, tag, or component type")]
+        [UnitySkill("scene_find_objects", "Search GameObjects by name pattern, tag, or component type. For advanced search (regex, layer, path) use gameobject_find.")]
         public static object SceneFindObjects(string namePattern = null, string tag = null, string componentType = null, int limit = 50)
         {
             IEnumerable<GameObject> objects = Object.FindObjectsOfType<GameObject>();

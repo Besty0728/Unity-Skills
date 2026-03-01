@@ -154,7 +154,7 @@ namespace UnitySkills
 
         // --- Persistent Workflow Skills ---
 
-        [UnitySkill("workflow_task_start", "Start a new persistent workflow task/session")]
+        [UnitySkill("workflow_task_start", "Start a new persistent workflow task to track changes for undo. Call workflow_task_end when done.")]
         public static object WorkflowTaskStart(string tag, string description = "")
         {
             var task = WorkflowManager.BeginTask(tag, description);
@@ -166,7 +166,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("workflow_task_end", "End the current persistent workflow task")]
+        [UnitySkill("workflow_task_end", "End the current workflow task and save it. Requires an active task (call workflow_task_start first).")]
         public static object WorkflowTaskEnd()
         {
             if (!WorkflowManager.IsRecording)
@@ -186,7 +186,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("workflow_snapshot_object", "Manually snapshot an object before modification")]
+        [UnitySkill("workflow_snapshot_object", "Manually snapshot an object's state before modification. Requires an active task (call workflow_task_start first).")]
         public static object WorkflowSnapshotObject(string name = null, int instanceId = 0)
         {
             if (!WorkflowManager.IsRecording)
@@ -266,7 +266,7 @@ namespace UnitySkills
             return WorkflowUndoTask(taskId);
         }
 
-        [UnitySkill("workflow_snapshot_created", "Record a newly created object for undo tracking")]
+        [UnitySkill("workflow_snapshot_created", "Record a newly created object for undo tracking. Requires an active task (call workflow_task_start first).")]
         public static object WorkflowSnapshotCreated(string name = null, int instanceId = 0)
         {
             if (!WorkflowManager.IsRecording)

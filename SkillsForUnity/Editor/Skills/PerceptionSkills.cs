@@ -103,7 +103,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("hierarchy_describe", "Get a text tree of the scene hierarchy (like 'tree' command)")]
+        [UnitySkill("hierarchy_describe", "Get a text tree of the scene hierarchy (like 'tree' command). Returns human-readable text. For JSON structure use scene_get_hierarchy.")]
         public static object HierarchyDescribe(int maxDepth = 5, bool includeInactive = false, int maxItemsPerLevel = 20)
         {
             var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
@@ -403,7 +403,7 @@ namespace UnitySkills
             public List<object> properties;
         }
 
-        [UnitySkill("scene_context", "Generate a comprehensive scene snapshot for AI coding assistance (hierarchy, components, script fields, references, UI layout)")]
+        [UnitySkill("scene_context", "Generate a comprehensive scene snapshot for AI coding assistance (hierarchy, components, script fields, references, UI layout). Best for initial context gathering before editing code or complex scene work.")]
         public static object SceneContext(
             int maxDepth = 10,
             int maxObjects = 200,

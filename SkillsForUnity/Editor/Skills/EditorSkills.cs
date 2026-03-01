@@ -10,7 +10,7 @@ namespace UnitySkills
     /// </summary>
     public static class EditorSkills
     {
-        [UnitySkill("editor_play", "Enter play mode")]
+        [UnitySkill("editor_play", "Enter play mode. Warning: any unsaved scene changes made during Play mode will be lost when exiting.")]
         public static object EditorPlay()
         {
             if (EditorApplication.isPlaying)
@@ -20,7 +20,7 @@ namespace UnitySkills
             return new { success = true, mode = "playing" };
         }
 
-        [UnitySkill("editor_stop", "Exit play mode")]
+        [UnitySkill("editor_stop", "Exit play mode. Warning: any scene changes made during Play mode will be lost.")]
         public static object EditorStop()
         {
             if (!EditorApplication.isPlaying)
@@ -61,14 +61,14 @@ namespace UnitySkills
             return new { count = selected.Length, objects = selected };
         }
 
-        [UnitySkill("editor_undo", "Undo the last action")]
+        [UnitySkill("editor_undo", "Undo the last action (single step). For multiple undo steps use history_undo(steps=N). For workflow-level undo use workflow_undo_task.")]
         public static object EditorUndo()
         {
             Undo.PerformUndo();
             return new { success = true, message = "Undo performed" };
         }
 
-        [UnitySkill("editor_redo", "Redo the last undone action")]
+        [UnitySkill("editor_redo", "Redo the last undone action (single step). For multiple redo steps use history_redo(steps=N).")]
         public static object EditorRedo()
         {
             Undo.PerformRedo();
