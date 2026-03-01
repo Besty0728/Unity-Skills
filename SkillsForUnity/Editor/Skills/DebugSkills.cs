@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEditor.Compilation;
 using System.Linq;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace UnitySkills
 {
@@ -11,81 +12,150 @@ namespace UnitySkills
     /// </summary>
     public static class DebugSkills
     {
+        // Unity LogEntry mode bits (from UnityCsReference)
+        // Error=1, Assert=2, Log=4, Fatal=16,
+        // DontPreprocessCondition=32, AssetImportError=64, AssetImportWarning=128,
+        // ScriptingError=256, ScriptingWarning=512, ScriptingLog=1024,
+        // ScriptCompileError=2048, ScriptCompileWarning=4096,
+        // ScriptingException=131072
+        private const int ModeError               = 1;
+        private const int ModeAssert              = 2;
+        private const int ModeLog                 = 4;
+        private const int ModeFatal               = 16;
+        private const int ModeAssetImportError    = 64;
+        private const int ModeAssetImportWarning  = 128;
+        private const int ModeScriptingError      = 256;
+        private const int ModeScriptingWarning    = 512;
+        private const int ModeScriptingLog        = 1024;
+        private const int ModeScriptCompileError  = 2048;
+        private const int ModeScriptCompileWarning = 4096;
+        private const int ModeScriptingException  = 131072;
+
+        private const int ErrorModeMask   = ModeError | ModeAssert | ModeFatal | ModeAssetImportError | ModeScriptingError | ModeScriptCompileError | ModeScriptingException;
+        private const int WarningModeMask = ModeAssetImportWarning | ModeScriptingWarning | ModeScriptCompileWarning;
+        private const int LogModeMask     = ModeLog | ModeScriptingLog;
+
+        // Cached reflection members (initialized on first use, cleared on failure to allow retry)
+        private static System.Type _logEntriesType;
+        private static System.Type _logEntryType;
+        private static MethodInfo  _getCountMethod;
+        private static MethodInfo  _getEntryMethod;
+        private static MethodInfo  _startMethod;
+        private static MethodInfo  _endMethod;
+        private static FieldInfo   _modeField;
+        private static FieldInfo   _messageField;
+        private static FieldInfo   _fileField;
+        private static FieldInfo   _lineField;
+
+        private static bool EnsureReflection()
+        {
+            if (_getEntryMethod != null) return true;
+
+            var asm = Assembly.GetAssembly(typeof(SceneView));
+            _logEntriesType = asm?.GetType("UnityEditor.LogEntries");
+            _logEntryType   = asm?.GetType("UnityEditor.LogEntry");
+
+            if (_logEntriesType == null || _logEntryType == null)
+            {
+                SkillsLogger.LogError("DebugSkills: UnityEditor.LogEntries or LogEntry type not found.");
+                return false;
+            }
+
+            var staticFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+            _getCountMethod = _logEntriesType.GetMethod("GetCount",             staticFlags);
+            _getEntryMethod = _logEntriesType.GetMethod("GetEntryInternal",     staticFlags);
+            _startMethod    = _logEntriesType.GetMethod("StartGettingEntries",  staticFlags);
+            _endMethod      = _logEntriesType.GetMethod("EndGettingEntries",    staticFlags);
+
+            var instFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            _modeField    = _logEntryType.GetField("mode",    instFlags);
+            _messageField = _logEntryType.GetField("message", instFlags);
+            _fileField    = _logEntryType.GetField("file",    instFlags);
+            _lineField    = _logEntryType.GetField("line",    instFlags);
+
+            bool ok = _getCountMethod != null && _getEntryMethod != null &&
+                      _startMethod    != null && _endMethod      != null &&
+                      _modeField      != null && _messageField   != null &&
+                      _fileField      != null && _lineField      != null;
+
+            if (!ok)
+            {
+                SkillsLogger.LogError("DebugSkills: Failed to reflect required members of LogEntries/LogEntry.");
+                // Clear everything so the next call will retry
+                _logEntriesType = null;
+                _logEntryType   = null;
+                _getCountMethod = null;
+                _getEntryMethod = null;
+                _startMethod    = null;
+                _endMethod      = null;
+                _modeField      = null;
+                _messageField   = null;
+                _fileField      = null;
+                _lineField      = null;
+            }
+
+            return ok;
+        }
+
+        private static List<object> ReadLogEntries(int targetMask, string filter, int limit)
+        {
+            var results = new List<object>();
+            if (!EnsureReflection()) return results;
+
+            var entry = System.Activator.CreateInstance(_logEntryType);
+            _startMethod.Invoke(null, null);
+            try
+            {
+                int count = (int)_getCountMethod.Invoke(null, null);
+                int found = 0;
+                for (int i = count - 1; i >= 0 && found < limit; i--)
+                {
+                    _getEntryMethod.Invoke(null, new object[] { i, entry });
+                    int mode = (int)_modeField.GetValue(entry);
+                    if ((mode & targetMask) == 0) continue;
+
+                    string msg  = (string)_messageField.GetValue(entry);
+                    if (!string.IsNullOrEmpty(filter) && !msg.Contains(filter)) continue;
+
+                    string file = (string)_fileField.GetValue(entry);
+                    int    line = (int)_lineField.GetValue(entry);
+
+                    string logType = (mode & ErrorModeMask)   != 0 ? "Error"
+                                   : (mode & WarningModeMask) != 0 ? "Warning"
+                                   : "Log";
+
+                    results.Add(new
+                    {
+                        type    = logType,
+                        message = msg.Length > 500 ? msg.Substring(0, 500) + "..." : msg,
+                        file,
+                        line
+                    });
+                    found++;
+                }
+            }
+            finally
+            {
+                _endMethod.Invoke(null, null);
+            }
+
+            return results;
+        }
+
         [UnitySkill("debug_get_errors", "Get only active errors and exceptions from the console logs.")]
         public static object DebugGetErrors(int limit = 50) => DebugGetLogs("Error", null, limit);
 
         [UnitySkill("debug_get_logs", "Get console logs filtered by type (Error/Warning/Log) and content.")]
         public static object DebugGetLogs(string type = "Error", string filter = null, int limit = 50)
         {
-            // We can't access internal log entries easily via public API without reflection,
-            // but we can piggyback on ConsoleSkills if active, or use LogEntries reflection again.
-            // Let's use reflection to get current active logs from the actual Console Window backend.
-            
-            var assembly = System.Reflection.Assembly.GetAssembly(typeof(SceneView));
-            var logEntriesType = assembly.GetType("UnityEditor.LogEntries");
-            var getCountMethod = logEntriesType.GetMethod("GetCount");
-            var getEntryMethod = logEntriesType.GetMethod("GetEntryInternal");
-            var startMethod = logEntriesType.GetMethod("StartGettingEntries");
-            var endMethod = logEntriesType.GetMethod("EndGettingEntries");
-            
-            startMethod.Invoke(null, null);
-            int count = (int)getCountMethod.Invoke(null, null);
-            var results = new List<object>();
-            
-            // Create an instance of LogEntry (internal struct/class)
-            var logEntryType = assembly.GetType("UnityEditor.LogEntry");
-            var logEntryInstance = System.Activator.CreateInstance(logEntryType);
-            var modeField = logEntryType.GetField("mode");
-            var messageField = logEntryType.GetField("message");
-            var fileField = logEntryType.GetField("file");
-            var lineField = logEntryType.GetField("line");
-            
-            // Mask mapping
-            // LogEntryMode: Error = 1, Assert = 2, Log = 4, Fatal = 16, Warning = 256, AssetImportError = ..., AssetImportWarning = ...
-            // We'll simplify: 
-            int errorMask = 1 | 2 | 16 | 32 | 64 | 128; // Error, Assert, Fatal...
-            int warningMask = 256 | 512 | 1024; // Warning...
-            int logMask = 4; // Log
-            
             int targetMask = 0;
-            if (type.Contains("Error")) targetMask |= errorMask;
-            if (type.Contains("Warning")) targetMask |= warningMask;
-            if (type.Contains("Log")) targetMask |= logMask;
-            if (targetMask == 0) targetMask = errorMask; // Default to error
-            
-            // Iterate backwards
-            int found = 0;
-            for (int i = count - 1; i >= 0 && found < limit; i--)
-            {
-                getEntryMethod.Invoke(null, new object[] { i, logEntryInstance });
-                
-                int mode = (int)modeField.GetValue(logEntryInstance);
-                
-                if ((mode & targetMask) == 0) continue;
-                
-                string msg = (string)messageField.GetValue(logEntryInstance);
-                if (!string.IsNullOrEmpty(filter) && !msg.Contains(filter)) continue;
-                
-                string file = (string)fileField.GetValue(logEntryInstance);
-                int line = (int)lineField.GetValue(logEntryInstance);
-                
-                results.Add(new 
-                {
-                    type = (mode & errorMask) != 0 ? "Error" : (mode & warningMask) != 0 ? "Warning" : "Log",
-                    message = msg.Length > 500 ? msg.Substring(0, 500) + "..." : msg, 
-                    file,
-                    line
-                });
-                found++;
-            }
-            
-            endMethod.Invoke(null, null);
-            
-            return new
-            {
-                count = results.Count,
-                logs = results
-            };
+            if (type.Contains("Error"))   targetMask |= ErrorModeMask;
+            if (type.Contains("Warning")) targetMask |= WarningModeMask;
+            if (type.Contains("Log"))     targetMask |= LogModeMask;
+            if (targetMask == 0)          targetMask = ErrorModeMask;
+
+            var results = ReadLogEntries(targetMask, filter, limit);
+            return new { count = results.Count, logs = results };
         }
 
         [UnitySkill("debug_check_compilation", "Check if Unity is currently compiling scripts.")]
@@ -103,13 +173,13 @@ namespace UnitySkills
         {
             // 1. Refresh AssetDatabase
             AssetDatabase.Refresh();
-            
+
             // 2. Request Script Compilation (Target specific or all)
             CompilationPipeline.RequestScriptCompilation();
-            
+
             return new { success = true, message = "Compilation requested" };
         }
-        
+
         [UnitySkill("debug_get_system_info", "Get Editor and System capabilities.")]
         public static object DebugGetSystemInfo()
         {
@@ -129,23 +199,26 @@ namespace UnitySkills
         [UnitySkill("debug_get_stack_trace", "Get stack trace for a log entry by index")]
         public static object DebugGetStackTrace(int entryIndex)
         {
-            var assembly = System.Reflection.Assembly.GetAssembly(typeof(SceneView));
-            var logEntriesType = assembly.GetType("UnityEditor.LogEntries");
-            var logEntryType = assembly.GetType("UnityEditor.LogEntry");
-            var startMethod = logEntriesType.GetMethod("StartGettingEntries");
-            var endMethod = logEntriesType.GetMethod("EndGettingEntries");
-            var getEntryMethod = logEntriesType.GetMethod("GetEntryInternal");
-            var getCountMethod = logEntriesType.GetMethod("GetCount");
-            startMethod.Invoke(null, null);
-            int count = (int)getCountMethod.Invoke(null, null);
-            if (entryIndex < 0 || entryIndex >= count) { endMethod.Invoke(null, null); return new { error = $"Index {entryIndex} out of range (0-{count - 1})" }; }
-            var entry = System.Activator.CreateInstance(logEntryType);
-            getEntryMethod.Invoke(null, new object[] { entryIndex, entry });
-            var msg = (string)logEntryType.GetField("message").GetValue(entry);
-            endMethod.Invoke(null, null);
-            // message field contains the stack trace after the first line
-            var lines = msg.Split('\n');
-            return new { index = entryIndex, message = lines[0], stackTrace = string.Join("\n", lines.Skip(1)) };
+            if (!EnsureReflection())
+                return new { error = "Reflection initialization failed" };
+
+            var entry = System.Activator.CreateInstance(_logEntryType);
+            _startMethod.Invoke(null, null);
+            try
+            {
+                int count = (int)_getCountMethod.Invoke(null, null);
+                if (entryIndex < 0 || entryIndex >= count)
+                    return new { error = $"Index {entryIndex} out of range (0-{count - 1})" };
+
+                _getEntryMethod.Invoke(null, new object[] { entryIndex, entry });
+                var msg   = (string)_messageField.GetValue(entry);
+                var lines = msg.Split('\n');
+                return new { index = entryIndex, message = lines[0], stackTrace = string.Join("\n", lines.Skip(1)) };
+            }
+            finally
+            {
+                _endMethod.Invoke(null, null);
+            }
         }
 
         [UnitySkill("debug_get_assembly_info", "Get project assembly information")]
