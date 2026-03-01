@@ -2,6 +2,19 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.5.3] - 2026-03-01
+
+### Fixed
+
+- **`debug_get_errors` / `debug_get_logs` 始终返回空列表** — 修复 `LogEntry.mode` bitmask 值与 Unity 内部枚举（UnityCsReference）不一致导致所有日志被过滤的根本问题。原 `errorMask = 1|2|16|32|64|128 = 243` 不含 `ScriptingError = 256`（bit 8），导致 `Debug.LogError()` 产生的日志 `256 & 243 = 0` 被全部跳过；`logMask = 4` 不含 `ScriptingLog = 1024`，`Debug.Log()` 同理。修正后：`ErrorModeMask = 1|2|16|64|256|2048|131072`，`LogModeMask = 4|1024`，`WarningModeMask = 128|512|4096`，完整覆盖所有 Unity 日志类型。感谢 **@RubingHan** 发现并报告此问题。（`DebugSkills.cs`）
+- **`debug_*` 反射性能与稳定性** — 反射成员改为静态字段缓存（首次调用后复用），新增 `BindingFlags.NonPublic` 确保跨 Unity 版本兼容，提取 `ReadLogEntries()` 共享方法消除代码重复，用 `try/finally` 包裹 `EndGettingEntries()` 修复原资源泄漏风险，反射失败时清空缓存字段允许下次重试。（`DebugSkills.cs`）
+- **`PhysicMaterial` Unity 6 向后兼容** — `physics_create_material` / `physics_set_material` 用 `#if UNITY_6000_0_OR_NEWER` 区分 `PhysicsMaterial`（Unity 6+）和 `PhysicMaterial`（Unity 2021.3–2022），确保双版本编译通过。（`PhysicsSkills.cs`）
+- **`Assembly` 命名空间歧义编译错误** — 修复同时 `using UnityEditor.Compilation` 和 `using System.Reflection` 导致的 `CS0104` 歧义错误，改为 `System.Reflection.Assembly.GetAssembly()` 完整限定调用。（`DebugSkills.cs`）
+
+### Notes
+
+- `console_get_logs` 返回空列表属于**设计行为**，不是 bug：该 skill 基于 `Application.logMessageReceived` 事件回调，只捕获订阅后产生的新日志。**使用前必须先调用 `console_start_capture`**，之后触发的日志才会被记录。如需读取 Console 中已有的历史日志，请使用 `debug_get_errors` 或 `debug_get_logs`（直接读取 Unity Editor LogEntries，无需预先启动）。
+
 ## [1.5.2] - 2026-02-25
 
 ### Fixed
