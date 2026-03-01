@@ -51,7 +51,7 @@ namespace UnitySkills
         {
             if (_getEntryMethod != null) return true;
 
-            var asm = Assembly.GetAssembly(typeof(SceneView));
+            var asm = System.Reflection.Assembly.GetAssembly(typeof(SceneView));
             _logEntriesType = asm?.GetType("UnityEditor.LogEntries");
             _logEntryType   = asm?.GetType("UnityEditor.LogEntry");
 
