@@ -31,9 +31,9 @@ namespace UnitySkills
         private const int ModeScriptCompileWarning = 4096;
         private const int ModeScriptingException  = 131072;
 
-        private const int ErrorModeMask   = ModeError | ModeAssert | ModeFatal | ModeAssetImportError | ModeScriptingError | ModeScriptCompileError | ModeScriptingException;
-        private const int WarningModeMask = ModeAssetImportWarning | ModeScriptingWarning | ModeScriptCompileWarning;
-        private const int LogModeMask     = ModeLog | ModeScriptingLog;
+        internal const int ErrorModeMask   = ModeError | ModeAssert | ModeFatal | ModeAssetImportError | ModeScriptingError | ModeScriptCompileError | ModeScriptingException;
+        internal const int WarningModeMask = ModeAssetImportWarning | ModeScriptingWarning | ModeScriptCompileWarning;
+        internal const int LogModeMask     = ModeLog | ModeScriptingLog;
 
         // Cached reflection members (initialized on first use, cleared on failure to allow retry)
         private static System.Type _logEntriesType;
@@ -47,7 +47,7 @@ namespace UnitySkills
         private static FieldInfo   _fileField;
         private static FieldInfo   _lineField;
 
-        private static bool EnsureReflection()
+        internal static bool EnsureReflection()
         {
             if (_getEntryMethod != null) return true;
 
@@ -97,7 +97,7 @@ namespace UnitySkills
             return ok;
         }
 
-        private static List<object> ReadLogEntries(int targetMask, string filter, int limit)
+        internal static List<object> ReadLogEntries(int targetMask, string filter, int limit)
         {
             var results = new List<object>();
             if (!EnsureReflection()) return results;

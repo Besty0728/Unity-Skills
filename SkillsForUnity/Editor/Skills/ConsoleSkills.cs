@@ -44,22 +44,47 @@ namespace UnitySkills
             return new { success = true, message = "Console capture stopped", capturedCount = _logs.Count };
         }
 
-        [UnitySkill("console_get_logs", "Get captured console logs")]
-        public static object ConsoleGetLogs(string filter = null, int limit = 100)
+        [UnitySkill("console_get_logs", "Get Unity Console logs. Reads existing console history directly (no setup needed). Use type=All/Error/Warning/Log to filter. When console_start_capture is active, returns captured logs with timestamps instead.")]
+        public static object ConsoleGetLogs(string type = "All", string filter = null, int limit = 100)
         {
-            IEnumerable<LogEntry> results = _logs;
-
-            if (!string.IsNullOrEmpty(filter))
-                results = results.Where(l => l.message.Contains(filter));
-
-            var logs = results.TakeLast(limit).Select(l => new
+            if (_capturing)
             {
-                message = l.message,
-                type = l.type.ToString(),
-                time = l.time.ToString("HH:mm:ss.fff")
-            }).ToArray();
+                // Capture mode: return buffered logs with timestamps
+                IEnumerable<LogEntry> results = _logs;
+                if (type != "All")
+                    results = results.Where(l => CapturedLogMatchesType(l.type, type));
+                if (!string.IsNullOrEmpty(filter))
+                    results = results.Where(l => l.message.Contains(filter));
 
-            return new { count = logs.Length, logs };
+                var captured = results.TakeLast(limit).Select(l => new
+                {
+                    type = l.type.ToString(),
+                    message = l.message,
+                    time = l.time.ToString("HH:mm:ss.fff")
+                }).ToArray();
+                return new { count = captured.Length, logs = captured, source = "capture" };
+            }
+
+            // Direct mode: read existing entries from Unity Console via LogEntries reflection
+            int targetMask = 0;
+            if (type == "All" || type.Contains("Error"))   targetMask |= DebugSkills.ErrorModeMask;
+            if (type == "All" || type.Contains("Warning")) targetMask |= DebugSkills.WarningModeMask;
+            if (type == "All" || type.Contains("Log"))     targetMask |= DebugSkills.LogModeMask;
+            if (targetMask == 0) targetMask = DebugSkills.ErrorModeMask | DebugSkills.WarningModeMask | DebugSkills.LogModeMask;
+
+            var logs = DebugSkills.ReadLogEntries(targetMask, filter, limit);
+            return new { count = logs.Count, logs, source = "console" };
+        }
+
+        private static bool CapturedLogMatchesType(LogType logType, string typeFilter)
+        {
+            switch (typeFilter)
+            {
+                case "Error":   return logType == LogType.Error || logType == LogType.Exception || logType == LogType.Assert;
+                case "Warning": return logType == LogType.Warning;
+                case "Log":     return logType == LogType.Log;
+                default:        return true;
+            }
         }
 
         [UnitySkill("console_clear", "Clear the Unity console")]
