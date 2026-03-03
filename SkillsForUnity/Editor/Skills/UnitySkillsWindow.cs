@@ -736,6 +736,88 @@ namespace UnitySkills
             EditorGUILayout.EndHorizontal();
             EditorGUILayout.EndVertical();
 
+            EditorGUILayout.Space(10);
+
+            // Cursor
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            EditorGUILayout.LabelField("Cursor", EditorStyles.boldLabel);
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(L("install_project") + ":", GUILayout.Width(100));
+            if (SkillInstaller.IsCursorProjectInstalled)
+            {
+                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel, GUILayout.Width(60));
+                if (GUILayout.Button(L("update"), GUILayout.Width(50)))
+                {
+                    var result = SkillInstaller.InstallCursor(false);
+                    if (result.success)
+                        EditorUtility.DisplayDialog("Success", L("update_success"), "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error", string.Format(L("update_failed"), result.message), "OK");
+                }
+                if (GUILayout.Button(L("uninstall"), GUILayout.Width(60)))
+                {
+                    if (EditorUtility.DisplayDialog(L("uninstall"), string.Format(L("uninstall_confirm"), "Cursor (Project)"), "OK", "Cancel"))
+                    {
+                        var result = SkillInstaller.UninstallCursor(false);
+                        if (result.success)
+                            EditorUtility.DisplayDialog("Success", L("uninstall_success"), "OK");
+                        else
+                            EditorUtility.DisplayDialog("Error", string.Format(L("uninstall_failed"), result.message), "OK");
+                    }
+                }
+            }
+            else
+            {
+                if (GUILayout.Button(L("install_project"), GUILayout.Width(120)))
+                {
+                    var result = SkillInstaller.InstallCursor(false);
+                    if (result.success)
+                        EditorUtility.DisplayDialog("Success", L("install_success") + "\n" + result.message, "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error", string.Format(L("install_failed"), result.message), "OK");
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField(L("install_global") + ":", GUILayout.Width(100));
+            if (SkillInstaller.IsCursorGlobalInstalled)
+            {
+                EditorGUILayout.LabelField(L("installed"), EditorStyles.miniLabel, GUILayout.Width(60));
+                if (GUILayout.Button(L("update"), GUILayout.Width(50)))
+                {
+                    var result = SkillInstaller.InstallCursor(true);
+                    if (result.success)
+                        EditorUtility.DisplayDialog("Success", L("update_success"), "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error", string.Format(L("update_failed"), result.message), "OK");
+                }
+                if (GUILayout.Button(L("uninstall"), GUILayout.Width(60)))
+                {
+                    if (EditorUtility.DisplayDialog(L("uninstall"), string.Format(L("uninstall_confirm"), "Cursor (Global)"), "OK", "Cancel"))
+                    {
+                        var result = SkillInstaller.UninstallCursor(true);
+                        if (result.success)
+                            EditorUtility.DisplayDialog("Success", L("uninstall_success"), "OK");
+                        else
+                            EditorUtility.DisplayDialog("Error", string.Format(L("uninstall_failed"), result.message), "OK");
+                    }
+                }
+            }
+            else
+            {
+                if (GUILayout.Button(L("install_global"), GUILayout.Width(120)))
+                {
+                    var result = SkillInstaller.InstallCursor(true);
+                    if (result.success)
+                        EditorUtility.DisplayDialog("Success", L("install_success") + "\n" + result.message, "OK");
+                    else
+                        EditorUtility.DisplayDialog("Error", string.Format(L("install_failed"), result.message), "OK");
+                }
+            }
+            EditorGUILayout.EndHorizontal();
+            EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(10);
 

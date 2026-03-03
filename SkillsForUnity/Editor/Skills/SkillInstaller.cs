@@ -10,7 +10,7 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// One-click skill installer for Claude Code, Antigravity, and Gemini CLI.
+    /// One-click skill installer for mainstream AI IDEs: Claude Code, Antigravity, Gemini CLI, Codex, and Cursor.
     /// </summary>
     public static class SkillInstaller
     {
@@ -32,6 +32,10 @@ namespace UnitySkills
         public static string CodexProjectPath => Path.Combine(Application.dataPath, "..", ".codex", "skills", "unity-skills");
         public static string CodexGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "skills", "unity-skills");
 
+        // Cursor paths - https://cursor.com/docs/context/skills
+        public static string CursorProjectPath => Path.Combine(Application.dataPath, "..", ".cursor", "skills", "unity-skills");
+        public static string CursorGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "skills", "unity-skills");
+
         public static bool IsClaudeProjectInstalled => Directory.Exists(ClaudeProjectPath) && File.Exists(Path.Combine(ClaudeProjectPath, "SKILL.md"));
         public static bool IsClaudeGlobalInstalled => Directory.Exists(ClaudeGlobalPath) && File.Exists(Path.Combine(ClaudeGlobalPath, "SKILL.md"));
         public static bool IsAntigravityProjectInstalled => Directory.Exists(AntigravityProjectPath) && File.Exists(Path.Combine(AntigravityProjectPath, "SKILL.md"));
@@ -40,6 +44,8 @@ namespace UnitySkills
         public static bool IsGeminiGlobalInstalled => Directory.Exists(GeminiGlobalPath) && File.Exists(Path.Combine(GeminiGlobalPath, "SKILL.md"));
         public static bool IsCodexProjectInstalled => Directory.Exists(CodexProjectPath) && File.Exists(Path.Combine(CodexProjectPath, "SKILL.md"));
         public static bool IsCodexGlobalInstalled => Directory.Exists(CodexGlobalPath) && File.Exists(Path.Combine(CodexGlobalPath, "SKILL.md"));
+        public static bool IsCursorProjectInstalled => Directory.Exists(CursorProjectPath) && File.Exists(Path.Combine(CursorProjectPath, "SKILL.md"));
+        public static bool IsCursorGlobalInstalled => Directory.Exists(CursorGlobalPath) && File.Exists(Path.Combine(CursorGlobalPath, "SKILL.md"));
 
         public static (bool success, string message) InstallClaude(bool global)
         {
@@ -175,6 +181,32 @@ namespace UnitySkills
                 }
 
                 return res;
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public static (bool success, string message) InstallCursor(bool global)
+        {
+            try
+            {
+                var targetPath = global ? CursorGlobalPath : CursorProjectPath;
+                return InstallSkill(targetPath, "Cursor", "Cursor");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public static (bool success, string message) UninstallCursor(bool global)
+        {
+            try
+            {
+                var targetPath = global ? CursorGlobalPath : CursorProjectPath;
+                return UninstallSkill(targetPath, "Cursor");
             }
             catch (Exception ex)
             {
