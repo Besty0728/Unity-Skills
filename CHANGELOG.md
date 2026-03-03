@@ -7,6 +7,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 ### Changed
 
 - 版本号升级至 v1.5.4
+- 合并来自silwings1986的PR-add Cursor install in AI Config
 
 ## [1.5.3] - 2026-03-01
 
