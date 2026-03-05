@@ -14,7 +14,7 @@ namespace UnitySkills
     public static class EventSkills
     {
         [UnitySkill("event_get_listeners", "Get persistent listeners of a UnityEvent")]
-        public static object EventGetListeners(string name = null, int instanceId = 0, string path = null, string componentName, string eventName)
+        public static object EventGetListeners(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
         {
             var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (findErr != null) return findErr;
@@ -72,8 +72,8 @@ namespace UnitySkills
 
         [UnitySkill("event_add_listener", "Add a persistent listener to a UnityEvent (Editor time). Supported args: void, int, float, string, bool, Object.")]
         public static object EventAddListener(
-            string name = null, int instanceId = 0, string path = null, string componentName, string eventName,
-            string targetObjectName, string targetComponentName, string methodName,
+            string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null,
+            string targetObjectName = null, string targetComponentName = null, string methodName = null,
             string mode = "RuntimeOnly",
             string argType = "void", // void, int, float, string, bool, object
             float floatArg = 0, int intArg = 0, string stringArg = null, bool boolArg = false)
@@ -204,7 +204,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("event_remove_listener", "Remove a persistent listener by index")]
-        public static object EventRemoveListener(string name = null, int instanceId = 0, string path = null, string componentName, string eventName, int index)
+        public static object EventRemoveListener(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, int index = 0)
         {
             var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (findErr != null) return findErr;
@@ -232,7 +232,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("event_invoke", "Invoke a UnityEvent explicitly (Runtime only)")]
-        public static object EventInvoke(string name = null, int instanceId = 0, string path = null, string componentName, string eventName)
+        public static object EventInvoke(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
         {
              var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (goErr != null) return goErr;
@@ -279,7 +279,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("event_clear_listeners", "Remove all persistent listeners from a UnityEvent")]
-        public static object EventClearListeners(string name = null, int instanceId = 0, string path = null, string componentName, string eventName)
+        public static object EventClearListeners(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
         {
             var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);
             if (err != null) return err;
@@ -292,7 +292,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("event_set_listener_state", "Set a listener's call state (Off, RuntimeOnly, EditorAndRuntime)")]
-        public static object EventSetListenerState(string name = null, int instanceId = 0, string path = null, string componentName, string eventName, int index, string state)
+        public static object EventSetListenerState(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, int index = 0, string state = null)
         {
             var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);
             if (err != null) return err;
@@ -305,7 +305,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("event_list_events", "List all UnityEvent fields on a component")]
-        public static object EventListEvents(string name = null, int instanceId = 0, string path = null, string componentName)
+        public static object EventListEvents(string name = null, int instanceId = 0, string path = null, string componentName = null)
         {
             var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (findErr != null) return findErr;
@@ -320,7 +320,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("event_add_listener_batch", "Add multiple listeners at once. items: JSON array of {targetObjectName, targetComponentName, methodName}")]
-        public static object EventAddListenerBatch(string name = null, int instanceId = 0, string path = null, string componentName, string eventName, string items)
+        public static object EventAddListenerBatch(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, string items = null)
         {
             var list = Newtonsoft.Json.JsonConvert.DeserializeObject<List<BatchListenerItem>>(items);
             if (list == null || list.Count == 0) return new { error = "No items provided" };
@@ -370,7 +370,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("event_get_listener_count", "Get the number of persistent listeners on a UnityEvent")]
-        public static object EventGetListenerCount(string name = null, int instanceId = 0, string path = null, string componentName, string eventName)
+        public static object EventGetListenerCount(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
         {
             var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);
             if (err != null) return err;
