@@ -436,7 +436,7 @@ namespace UnitySkills
                 match = settings.match,
                 referenceDpi = settings.referenceDpi,
                 fallbackDpi = settings.fallbackDpi,
-                referenceSpritePixelsPerUnit = settings.referenceSpritePixelsPerUnit,
+                referenceSpritePixelsPerUnit = typeof(PanelSettings).GetProperty("referenceSpritePixelsPerUnit")?.GetValue(settings),
                 dynamicAtlasSettings = new
                 {
                     minAtlasSize = atlas.minAtlasSize,
@@ -700,7 +700,11 @@ namespace UnitySkills
             if (match.HasValue)          settings.match = match.Value;
             if (referenceDpi.HasValue)   settings.referenceDpi = referenceDpi.Value;
             if (fallbackDpi.HasValue)    settings.fallbackDpi = fallbackDpi.Value;
-            if (referenceSpritePixelsPerUnit.HasValue) settings.referenceSpritePixelsPerUnit = referenceSpritePixelsPerUnit.Value;
+            if (referenceSpritePixelsPerUnit.HasValue)
+            {
+                var rsppu = typeof(PanelSettings).GetProperty("referenceSpritePixelsPerUnit");
+                rsppu?.SetValue(settings, referenceSpritePixelsPerUnit.Value);
+            }
 
             // --- Dynamic Atlas Settings (struct: read → modify → write back) ---
             if (dynamicAtlasMinSize.HasValue || dynamicAtlasMaxSize.HasValue ||

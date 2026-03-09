@@ -2,6 +2,11 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.6.1] - 2026-03-09
+
+### Fixed
+- **Unity 2021.3 / 2022.3 early patch compatibility**: `PanelSettings.referenceSpritePixelsPerUnit` does not exist in Unity 2021.3 ~ 2022.3 early patches (e.g. 2022.3.17). Changed to reflection-based access to avoid CS1061 compile errors across all Unity versions.
+
 ## [1.6.0] - 2026-03-06
 
 ### Added

@@ -14,7 +14,7 @@ namespace UnitySkills
         /// Centralized version constant. Update this when releasing a new version.
         /// Referenced by SkillsHttpServer (/health), SkillRouter (/skills manifest), etc.
         /// </summary>
-        public const string Version = "1.6.0";
+        public const string Version = "1.6.1";
 
         // Centralized log prefix constants with colors (Unity rich text)
         public const string PREFIX_INFO    = "<color=#4A9EFF>[UnitySkills]</color>";
