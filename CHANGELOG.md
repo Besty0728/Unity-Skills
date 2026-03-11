@@ -2,6 +2,11 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.6.2] - 2026-03-11
+
+### Fixed
+- **`DebugSkills.cs` 编译错误**: 修复 `debug_get_logs` 读取日志时 `LogEntryInfo` 对象初始化器使用了不合法的 `file, line` 简写，改为显式成员赋值，解决 `CS0747 Invalid initializer member declarator` 编译失败。
+
 ## [1.6.1] - 2026-03-11
 
 ### Fixed

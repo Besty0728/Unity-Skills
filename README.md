@@ -76,9 +76,9 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity
 https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 ```
 
-**指定版本安装** (如 v1.6.1):
+**指定版本安装** (如 v1.6.2):
 ```
-https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.1
+https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.2
 ```
 
 > 📦 所有版本包可在 [Releases](https://github.com/Besty0728/Unity-Skills/releases) 页面下载

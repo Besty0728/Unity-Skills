@@ -9,7 +9,7 @@
 | 属性 | 值 |
 |------|-----|
 | **项目名称** | UnitySkills |
-| **版本** | 1.6.1 |
+| **版本** | 1.6.2 |
 | **技术栈** | C# (Unity Editor) + Python (Client) |
 | **Unity 版本** | 2022.3+（官方维护基线，已验证 Unity 6 / 6000.2.x） |
 | **协议** | MIT |
@@ -480,7 +480,7 @@ public static class MyCustomSkills
 
 ```bash
 # 检查统一版本源与主要文档是否一致
-rg -n "1.6.1|SkillsLogger.Version|__version__" agent.md CHANGELOG.md README.md README_EN.md SkillsForUnity/package.json unity-skills/scripts/unity_skills.py SkillsForUnity/Editor/Skills/SkillsLogger.cs SkillsForUnity/Editor/Skills/SkillsHttpServer.cs SkillsForUnity/Editor/Skills/SkillRouter.cs
+rg -n "1.6.2|SkillsLogger.Version|__version__" agent.md CHANGELOG.md README.md README_EN.md SkillsForUnity/package.json unity-skills/scripts/unity_skills.py SkillsForUnity/Editor/Skills/SkillsLogger.cs SkillsForUnity/Editor/Skills/SkillsHttpServer.cs SkillsForUnity/Editor/Skills/SkillRouter.cs
 ```
 
 ---

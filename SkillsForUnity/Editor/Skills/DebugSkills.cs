@@ -136,8 +136,8 @@ namespace UnitySkills
                     {
                         type    = logType,
                         message = msg.Length > 500 ? msg.Substring(0, 500) + "..." : msg,
-                        file,
-                        line
+                        file    = file,
+                        line    = line
                     });
                     found++;
                 }

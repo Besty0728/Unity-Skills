@@ -75,9 +75,9 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity
 https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 ```
 
-**Specific Version** (e.g., v1.6.1):
+**Specific Version** (e.g., v1.6.2):
 ```
-https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.1
+https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.2
 ```
 
 > 📦 All version packages are available on the [Releases](https://github.com/Besty0728/Unity-Skills/releases) page

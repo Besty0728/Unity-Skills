@@ -19,7 +19,7 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-__version__ = "1.6.1"
+__version__ = "1.6.2"
 
 UNITY_URL = "http://localhost:8090"
 DEFAULT_PORT = 8090
