@@ -319,11 +319,26 @@ This file declares available skills for AI agents like Codex.
 
         private static string GetSkillTemplateRoot()
         {
+            // 1. Try project root (development / local clone)
             string templateRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "unity-skills"));
-            if (!Directory.Exists(templateRoot))
-                throw new DirectoryNotFoundException($"unity-skills template folder not found: {templateRoot}");
+            if (Directory.Exists(templateRoot))
+                return templateRoot;
 
-            return templateRoot;
+            // 2. Try relative to UPM package location (git/local package installs)
+            // For git packages with ?path=SkillsForUnity, resolvedPath points to SkillsForUnity/
+            // The unity-skills template folder is at the repo root (parent of package path)
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(SkillInstaller).Assembly);
+            if (packageInfo != null && !string.IsNullOrEmpty(packageInfo.resolvedPath))
+            {
+                templateRoot = Path.GetFullPath(Path.Combine(packageInfo.resolvedPath, "..", "unity-skills"));
+                if (Directory.Exists(templateRoot))
+                    return templateRoot;
+            }
+
+            throw new DirectoryNotFoundException(
+                "unity-skills template folder not found. " +
+                "Checked: project root and package path. " +
+                "If installed via UPM, ensure the git URL includes the full repository.");
         }
 
         private static void CopyTemplateDirectory(string sourceRoot, string targetRoot, Encoding encoding)

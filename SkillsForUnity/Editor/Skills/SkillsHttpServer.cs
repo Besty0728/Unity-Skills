@@ -1191,8 +1191,8 @@ namespace UnitySkills
                     }
                     catch (Exception ex)
                     {
-                        SkillsLogger.LogError($"[Self-Test] {url} -> FAILED: {ex.Message}");
-                        SkillsLogger.LogError($"[Self-Test] Check firewall/antivirus settings.");
+                        SkillsLogger.LogWarning($"[Self-Test] {url} -> FAILED: {ex.Message}");
+                        SkillsLogger.LogWarning($"[Self-Test] Check firewall/antivirus settings.");
                     }
                 }
 
