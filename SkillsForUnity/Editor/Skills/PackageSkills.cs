@@ -47,7 +47,8 @@ namespace UnitySkills
             // 返回异步状态提示
             return new {
                 success = true,
-                message = $"Installing {packageId}" + (version != null ? $"@{version}" : "") + "... Check Unity console for progress.",
+                status = "installing",
+                message = $"Installing {packageId}" + (version != null ? $"@{version}" : "") + "... This operation is async. Check Unity console for progress.",
                 async = true,
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
                     $"正在安装包 {packageId}。包导入和程序集刷新期间，REST 服务可能短暂不可用。",
@@ -180,7 +181,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("package_search", "Search for packages in the Unity Registry")]
+        [UnitySkill("package_search", "Search installed packages by name or displayName (does not search the Unity Registry)")]
         public static object PackageSearch(string query)
         {
             if (Validate.Required(query, "query") is object err) return err;

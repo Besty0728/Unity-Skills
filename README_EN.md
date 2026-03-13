@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-447-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-448-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -30,7 +30,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 ## 🚀 Core Features
 
 - ⚡ **Ultimate Efficiency**: Supports **Result Truncation** and **SKILL.md** optimization to maximize token savings.
-- 🛠️ **Comprehensive Toolkit**: Built-in **447 REST Skills** plus **13 advisory design modules**, with **Batch** operations that significantly reduce HTTP overhead and improve execution efficiency.
+- 🛠️ **Comprehensive Toolkit**: Built-in **448 REST Skills** plus **13 advisory design modules**, with **Batch** operations that significantly reduce HTTP overhead and improve execution efficiency.
 - 🛡️ **Safety First**: Supports **Transactional** (atomic operations) with automatic rollback on failure, leaving no residue in scenes.
 - 🌍 **Multi-Instance Support**: Automatic port discovery and global registry, enabling simultaneous control of multiple Unity projects.
 - 🤖 **Deep Integration**: Exclusive support for **Antigravity Slash Commands**, unlocking the `/unity-skills` interactive experience.
@@ -76,9 +76,9 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity
 https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 ```
 
-**Specific Version** (e.g., v1.6.2):
+**Specific Version** (e.g., v1.6.0):
 ```
-https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.2
+https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ```
 
 > 📦 All version packages are available on the [Releases](https://github.com/Besty0728/Unity-Skills/releases) page
@@ -144,7 +144,7 @@ If you're using other tools that support Skills, install according to the Skills
 
 ---
 
-## 📦 Skills Category Overview (447)
+## 📦 Skills Category Overview (448)
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
@@ -152,16 +152,16 @@ If you're using other tools that support Skills, install according to the Skills
 | **Workflow** | 22 | Persistent history/Task snapshots/Session-level undo/Rollback/Bookmarks |
 | **Material** | 21 | Batch material property modification/HDR/PBR/Emission/Keywords/Render queue |
 | **GameObject** | 18 | Create/Find/Transform sync/Batch operations/Hierarchy management/Rename/Duplicate |
-| **Scene** | 18 | Multi-scene load/Unload/Activate/Screenshot/Context/Dependency analysis/Report export |
+| **Scene** | 10 | Multi-scene load/Unload/Activate/Screenshot/Context/Dependency analysis/Report export |
 | **UI System** | 16 | Canvas/Button/Text/Slider/Toggle/Anchors/Layout/Alignment/Distribution |
 | **UI Toolkit** | 15 | UXML/USS file management/UIDocument/PanelSettings full property read-write/Template generation/Structure inspection/Batch create |
-| **Asset** | 15 | Asset import/Delete/Move/Copy/Search/Folders/Batch operations/Refresh |
+| **Asset** | 11 | Asset import/Delete/Move/Copy/Search/Folders/Batch operations/Refresh |
 | **Editor** | 12 | Play mode/Selection/Undo-Redo/Context retrieval/Menu execution |
 | **Timeline** | 12 | Track create/Delete/Clip management/Playback control/Binding/Duration |
 | **Physics** | 12 | Raycast/SphereCast/BoxCast/Physics materials/Layer collision matrix |
-| **Audio** | 12 | Audio import settings/AudioSource/AudioClip/AudioMixer/Batch |
-| **Texture** | 12 | Texture import settings/Platform settings/Sprite/Type/Size search/Batch |
-| **Model** | 12 | Model import settings/Mesh info/Material mapping/Animation/Skeleton/Batch |
+| **Audio** | 10 | Audio import settings/AudioSource/AudioClip/AudioMixer/Batch |
+| **Texture** | 10 | Texture import settings/Platform settings/Sprite/Type/Size search/Batch |
+| **Model** | 10 | Model import settings/Mesh info/Material mapping/Animation/Skeleton/Batch |
 | **Script** | 12 | C# script create/Read/Replace/List/Info/Rename/Move/Analyze |
 | **Package** | 11 | Package management/Install/Remove/Search/Versions/Dependencies/Cinemachine/Splines |
 | **AssetImport** | 11 | Texture/Model/Audio/Sprite import settings/Label management/Reimport |
@@ -184,7 +184,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Light** | 10 | Light create/Type config/Intensity-Color/Batch toggle/Probe groups/Reflection probes/Lightmaps |
 | **Validation** | 10 | Project validation/Empty folder cleanup/Reference detection/Mesh collider/Shader errors |
 | **Animator** | 10 | Animation controller/Parameters/State machine/Transitions/Assign/Play |
-| **Perception** | 9 | Scene summary/Hierarchy tree/Script analysis/Spatial query/Material overview/Scene snapshot/Dependency analysis/Report export/Performance hints |
+| **Perception** | 11 | Scene summary/Hierarchy tree/Script analysis/Spatial query/Material overview/Scene snapshot/Dependency analysis/Report export/Performance hints/Script dependency graph |
 | **Sample** | 8 | Basic examples: Create/Delete/Transform/Scene info |
 
 > ⚠️ Most modules support `*_batch` batch operations. When operating on multiple objects, prioritize batch Skills for better performance.
@@ -199,7 +199,7 @@ If you're using other tools that support Skills, install according to the Skills
 .
 ├── SkillsForUnity/                 # Unity Editor Plugin (UPM Package)
 │   ├── package.json                # com.besty.unity-skills
-│   └── Editor/Skills/              # Core Skill Logic (38 *Skills.cs files, 447 Skills)
+│   └── Editor/Skills/              # Core Skill Logic (38 *Skills.cs files, 448 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
 │       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
 │       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
@@ -210,8 +210,8 @@ If you're using other tools that support Skills, install according to the Skills
 │       ├── MaterialSkills.cs       # Material Operations (21 skills)
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (23 skills)
 │       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (22 skills)
-│       ├── PerceptionSkills.cs     # Scene Understanding (9 skills)
-│       └── ...                     # 447 Skills source code
+│       ├── PerceptionSkills.cs     # Scene Understanding (11 skills)
+│       └── ...                     # 448 Skills source code
 ├── unity-skills/                   # Cross-platform AI Skill Template (Distributed to AI Tools)
 │   ├── SKILL.md                    # Main Skill Definitions (AI-readable)
 │   ├── scripts/

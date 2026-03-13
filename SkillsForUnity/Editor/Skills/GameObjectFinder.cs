@@ -7,6 +7,25 @@ using UnityEngine.SceneManagement;
 namespace UnitySkills
 {
     /// <summary>
+    /// Compatibility helper for FindObjectsByType (Unity 6+) / FindObjectsOfType fallback.
+    /// </summary>
+    internal static class FindHelper
+    {
+        internal static T[] FindAll<T>(bool includeInactive = false) where T : Object
+        {
+#if UNITY_6000_0_OR_NEWER
+            return includeInactive
+                ? Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None)
+                : Object.FindObjectsByType<T>(FindObjectsSortMode.None);
+#else
+            return includeInactive
+                ? Resources.FindObjectsOfTypeAll<T>()
+                : Object.FindObjectsOfType<T>();
+#endif
+        }
+    }
+
+    /// <summary>
     /// Parameter validation helper - returns error object or null
     /// </summary>
     public static class Validate

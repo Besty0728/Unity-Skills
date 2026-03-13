@@ -599,11 +599,7 @@ namespace UnitySkills
 
         private static T[] FindAllObjects<T>() where T : Object
         {
-#if UNITY_2023_1_OR_NEWER
-            return Object.FindObjectsByType<T>(FindObjectsSortMode.None);
-#else
-            return Object.FindObjectsOfType<T>();
-#endif
+            return FindHelper.FindAll<T>();
         }
 
 #if CINEMACHINE_2 || CINEMACHINE_3

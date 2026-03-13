@@ -25,3 +25,88 @@ Calculate a path between two points.
 - `areaMask` (int, optional): NavMesh area mask.
 
 **Returns:** `{ status: "PathComplete", distance: 12.5, corners: [...] }`
+
+### `navmesh_add_agent`
+Add NavMeshAgent component to an object.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | GameObject name |
+| instanceId | int | No | 0 | GameObject instance ID |
+| path | string | No | null | GameObject hierarchy path |
+
+**Returns:** `{ success, gameObject }`
+
+### `navmesh_set_agent`
+Set NavMeshAgent properties (speed, acceleration, radius, height, stoppingDistance).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | GameObject name |
+| instanceId | int | No | 0 | GameObject instance ID |
+| path | string | No | null | GameObject hierarchy path |
+| speed | float | No | null | Agent movement speed |
+| acceleration | float | No | null | Agent acceleration |
+| angularSpeed | float | No | null | Agent angular speed |
+| radius | float | No | null | Agent radius |
+| height | float | No | null | Agent height |
+| stoppingDistance | float | No | null | Distance to stop before target |
+
+**Returns:** `{ success, gameObject, speed, radius }`
+
+### `navmesh_add_obstacle`
+Add NavMeshObstacle component to an object.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | GameObject name |
+| instanceId | int | No | 0 | GameObject instance ID |
+| path | string | No | null | GameObject hierarchy path |
+| carve | bool | No | true | Enable carving |
+
+**Returns:** `{ success, gameObject, carving }`
+
+### `navmesh_set_obstacle`
+Set NavMeshObstacle properties (shape, size, carving).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | GameObject name |
+| instanceId | int | No | 0 | GameObject instance ID |
+| path | string | No | null | GameObject hierarchy path |
+| shape | string | No | null | Obstacle shape (e.g. Box, Capsule) |
+| sizeX | float | No | null | Obstacle size X |
+| sizeY | float | No | null | Obstacle size Y |
+| sizeZ | float | No | null | Obstacle size Z |
+| carving | bool | No | null | Enable carving |
+
+**Returns:** `{ success, gameObject, shape, carving }`
+
+### `navmesh_sample_position`
+Find nearest point on NavMesh.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| x | float | Yes | - | Source position X |
+| y | float | Yes | - | Source position Y |
+| z | float | Yes | - | Source position Z |
+| maxDistance | float | No | 10 | Maximum search distance |
+
+**Returns:** `{ success, found, point: { x, y, z }, distance }`
+
+### `navmesh_set_area_cost`
+Set area traversal cost.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| areaIndex | int | Yes | - | NavMesh area index |
+| cost | float | Yes | - | Traversal cost value |
+
+**Returns:** `{ success, areaIndex, cost }`
+
+### `navmesh_get_settings`
+Get NavMesh build settings.
+
+**Parameters:** None.
+
+**Returns:** `{ success, agentRadius, agentHeight, agentSlope, agentClimb }`

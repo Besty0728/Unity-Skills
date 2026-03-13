@@ -20,7 +20,7 @@ Control Unity scenes - the containers that hold all your GameObjects.
 | `scene_get_loaded` | Get all loaded scenes |
 | `scene_unload` | Unload an additive scene |
 | `scene_set_active` | Set active scene |
-| `scene_summarize` | Get scene summary |
+| `scene_find_objects` | Search objects by name/tag/component |
 
 ---
 
@@ -94,15 +94,17 @@ Set the active scene (for multi-scene editing).
 |-----------|------|----------|-------------|
 | `sceneName` | string | Yes | Scene name to set active |
 
-### scene_summarize
-Get a structured summary of the current scene.
+### scene_find_objects
+Search GameObjects by name pattern, tag, or component type. For advanced search (regex, layer, path) use gameobject_find.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `includeComponentStats` | bool | No | true | Include component statistics |
-| `topComponentsLimit` | int | No | 10 | Max components to list |
+| `namePattern` | string | No | - | Name substring to match (case-insensitive) |
+| `tag` | string | No | - | Filter by tag |
+| `componentType` | string | No | - | Filter by component type name |
+| `limit` | int | No | 50 | Max results to return |
 
-**Returns**: `{success, objectCount, componentStats, hierarchyDepth}`
+**Returns**: `{success, count, objects: [{name, path, instanceId, active, tag}]}`
 
 ---
 

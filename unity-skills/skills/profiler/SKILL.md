@@ -22,3 +22,75 @@ Get performance statistics (FPS, Memory, Batches).
   "memory": { "totalAllocatedMB": 256.5, ... }
 }
 ```
+
+### `profiler_get_memory`
+Get memory usage overview (total allocated, reserved, mono heap).
+**Parameters:** None.
+
+**Returns:** `{ success, totalAllocatedMB, totalReservedMB, unusedReservedMB, monoHeapMB, monoUsedMB }`
+
+### `profiler_get_runtime_memory`
+Get top N objects by runtime memory usage in the scene.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | int | No | 20 | Maximum number of objects to return |
+
+**Returns:** `{ success, totalTrackedMB, showing, objects: [{ name, type, sizeKB }] }`
+
+### `profiler_get_texture_memory`
+Get memory usage of all loaded textures.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | int | No | 50 | Maximum number of textures to return |
+
+**Returns:** `{ success, totalCount, totalMB, topTextures: [{ name, type, sizeKB, width, height }] }`
+
+### `profiler_get_mesh_memory`
+Get memory usage of all loaded meshes.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | int | No | 50 | Maximum number of meshes to return |
+
+**Returns:** `{ success, totalCount, totalMB, topMeshes: [{ name, sizeKB, vertices, triangles }] }`
+
+### `profiler_get_material_memory`
+Get memory usage of all loaded materials.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | int | No | 50 | Maximum number of materials to return |
+
+**Returns:** `{ success, totalCount, totalMB, topMaterials: [{ name, shader, sizeKB }] }`
+
+### `profiler_get_audio_memory`
+Get memory usage of all loaded AudioClips.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | int | No | 50 | Maximum number of clips to return |
+
+**Returns:** `{ success, totalCount, totalMB, topClips: [{ name, sizeKB, length, channels, frequency }] }`
+
+### `profiler_get_object_count`
+Count all loaded objects grouped by type.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| topN | int | No | 20 | Number of top types to return |
+
+**Returns:** `{ success, totalObjects, topTypes: [{ type, count }] }`
+
+### `profiler_get_rendering_stats`
+Get rendering statistics (batches, triangles, vertices, etc.).
+**Parameters:** None.
+
+**Returns:** `{ success, frameTime, renderTime, triangles, vertices, batches, setPassCalls, drawCalls, dynamicBatchedDrawCalls, staticBatchedDrawCalls, instancedBatchedDrawCalls, shadowCasters }`
+
+### `profiler_get_asset_bundle_stats`
+Get information about all loaded AssetBundles.
+**Parameters:** None.
+
+**Returns:** `{ success, count, bundles: [{ name, isStreamedSceneAssetBundle }] }`

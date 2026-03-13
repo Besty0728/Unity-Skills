@@ -134,6 +134,7 @@ Generate a comprehensive scene snapshot for AI coding assistance (hierarchy, com
 | `rootPath` | string | No | - | Only export a subtree (e.g. "Canvas/MainPanel") |
 | `includeValues` | bool | No | false | Include serialized field values |
 | `includeReferences` | bool | No | true | Include cross-object references |
+| `includeCodeDeps` | bool | No | false | Include C# code-level dependency edges (regex-based) |
 
 **Returns**:
 ```json
@@ -159,6 +160,9 @@ Generate a comprehensive scene snapshot for AI coding assistance (hierarchy, com
   ],
   "references": [
     {"from": "Canvas/MainPanel/StartButton:PlayerUIController.target", "to": "Player/Body"}
+  ],
+  "codeDependencies": [
+    {"from": "PlayerUIController.Start", "to": "HealthSystem", "type": "GetComponent", "detail": "GetComponent<HealthSystem>()"}
   ]
 }
 ```
@@ -222,5 +226,81 @@ Analyze object dependency graph and impact of changes. Use ONLY when user explic
   ],
   "savedTo": "Assets/Docs/deps.md",
   "markdown": null
+}
+```
+
+---
+
+### script_dependency_graph
+Given an entry script, return its N-hop dependency closure as structured JSON. Shows which scripts to read to understand or safely modify a feature.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `scriptName` | string | Yes | - | Entry script class name |
+| `maxHops` | int | No | 2 | Dependency traversal hops (bidirectional) |
+| `includeDetails` | bool | No | true | Include fields and Unity callbacks per script |
+
+**Returns**:
+```json
+{
+  "success": true,
+  "entryScript": "PlayerController",
+  "totalScriptsReached": 5,
+  "maxHops": 2,
+  "scripts": [
+    {
+      "name": "PlayerController",
+      "hop": 0,
+      "kind": "MonoBehaviour",
+      "baseClass": "MonoBehaviour",
+      "filePath": "Assets/Scripts/PlayerController.cs",
+      "dependsOn": ["HealthSystem", "InputManager"],
+      "dependedBy": ["EnemyAI"],
+      "fields": [{"name": "health", "type": "HealthSystem", "serializable": true}],
+      "unityCallbacks": ["Start", "Update"]
+    }
+  ],
+  "edges": [
+    {"from": "PlayerController", "to": "HealthSystem", "type": "FieldReference", "detail": "field:HealthSystem"}
+  ],
+  "suggestedReadOrder": ["InputManager", "HealthSystem", "EnemyAI", "PlayerController"]
+}
+```
+
+---
+
+### scene_tag_layer_stats
+Get Tag/Layer usage stats and find potential issues (untagged objects, unused layers).
+
+No parameters.
+
+**Returns**:
+```json
+{
+  "success": true,
+  "totalObjects": 156,
+  "untaggedCount": 120,
+  "tags": [{"tag": "Untagged", "count": 120}, {"tag": "Player", "count": 5}],
+  "layers": [{"layer": "Default", "count": 140}, {"layer": "UI", "count": 16}],
+  "emptyDefinedLayers": ["Water", "PostProcessing"]
+}
+```
+
+---
+
+### scene_performance_hints
+Diagnose scene performance issues with prioritized actionable suggestions.
+
+No parameters.
+
+**Returns**:
+```json
+{
+  "success": true,
+  "hintCount": 2,
+  "hints": [
+    {"priority": 1, "category": "Lighting", "issue": "6 shadow-casting lights", "suggestion": "Reduce to ≤4 or use baked lighting", "fixSkill": "light_set_properties"},
+    {"priority": 2, "category": "Batching", "issue": "150 non-static renderers", "suggestion": "Mark static objects with optimize_set_static_flags", "fixSkill": "optimize_set_static_flags"}
+  ]
 }
 ```

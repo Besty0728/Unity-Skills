@@ -14,6 +14,13 @@ namespace UnitySkills
         private static readonly Dictionary<string, TestRunInfo> _runningTests = new Dictionary<string, TestRunInfo>();
         private static TestRunnerApi _api;
 
+        [InitializeOnLoadMethod]
+        static void CleanupOnDomainReload()
+        {
+            _api = null;
+            _runningTests.Clear();
+        }
+
         private class TestRunInfo
         {
             public string JobId;
@@ -62,6 +69,12 @@ namespace UnitySkills
         [UnitySkill("test_get_result", "Get the result of a test run. Requires the jobId returned by test_run or test_run_by_name.")]
         public static object TestGetResult(string jobId)
         {
+            // Clean stale entries older than 1 hour
+            var staleKeys = _runningTests
+                .Where(kv => (System.DateTime.Now - kv.Value.StartTime).TotalHours > 1)
+                .Select(kv => kv.Key).ToList();
+            foreach (var key in staleKeys) _runningTests.Remove(key);
+
             if (!_runningTests.TryGetValue(jobId, out var runInfo))
                 return new { error = $"Test job not found: {jobId}" };
 
@@ -105,7 +118,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(jobId) && _runningTests.ContainsKey(jobId))
             {
                 _runningTests[jobId].Status = "cancelled";
-                return new { success = true, cancelled = jobId };
+                return new { success = true, cancelled = jobId, note = "Unity TestRunnerApi does not support direct cancellation. The test status has been marked but the runner may continue." };
             }
 
             return new { error = "Cannot cancel tests directly. Wait for completion." };
@@ -152,6 +165,7 @@ namespace UnitySkills
                 if (_runInfo.Status != "cancelled")
                     _runInfo.Status = "completed";
                 TestSkills._api?.UnregisterCallbacks(this);
+                // Keep entry for result polling but it will be cleaned by stale check after 1 hour
             }
 
             public void TestStarted(ITestAdaptor test) { }

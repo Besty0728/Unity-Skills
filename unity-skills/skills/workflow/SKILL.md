@@ -10,142 +10,203 @@ Allows tagging tasks, snapshotting objects before modification, and undoing spec
 
 **NEW: Session-level undo** - Group all changes from a conversation and undo them together.
 
+## Bookmark Skills
+
+### `bookmark_set`
+Save current selection and scene view position as a bookmark.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| bookmarkName | string | Yes | - | Name for the bookmark |
+| note | string | No | null | Optional note for the bookmark |
+
+**Returns:** `{ success, bookmark, selectedCount, hasSceneView, note }`
+
+### `bookmark_goto`
+Restore selection and scene view from a bookmark.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| bookmarkName | string | Yes | - | Name of the bookmark to restore |
+
+**Returns:** `{ success, bookmark, restoredSelection, note }`
+
+### `bookmark_list`
+List all saved bookmarks.
+
+No parameters.
+
+**Returns:** `{ success, count, bookmarks: [{ name, selectedCount, hasSceneView, note, createdAt }] }`
+
+### `bookmark_delete`
+Delete a bookmark.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| bookmarkName | string | Yes | - | Name of the bookmark to delete |
+
+**Returns:** `{ success, deleted }`
+
+## History Skills
+
+### `history_undo`
+Undo the last operation (or multiple steps).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| steps | int | No | 1 | Number of undo steps to perform |
+
+**Returns:** `{ success, undoneSteps }`
+
+### `history_redo`
+Redo the last undone operation (or multiple steps).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| steps | int | No | 1 | Number of redo steps to perform |
+
+**Returns:** `{ success, redoneSteps }`
+
+### `history_get_current`
+Get the name of the current undo group.
+
+No parameters.
+
+**Returns:** `{ success, currentGroup, groupIndex }`
+
 ## Session Management (Conversation-Level Undo)
 
 ### `workflow_session_start`
 Start a new session (conversation-level). All changes will be tracked and can be undone together.
 **Call this at the beginning of each conversation.**
-**Parameters:**
-- `tag` (string, optional): Label for the session.
 
-**Returns:** `{ success: true, sessionId: "uuid..." }`
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| tag | string | No | null | Label for the session |
+
+**Returns:** `{ success, sessionId, message }`
 
 ### `workflow_session_end`
 End the current session and save all tracked changes.
 **Call this at the end of each conversation.**
-**Parameters:** None.
 
-**Returns:** `{ success: true, sessionId: "..." }`
+No parameters.
+
+**Returns:** `{ success, sessionId, message }`
 
 ### `workflow_session_undo`
 Undo all changes made during a specific session (conversation-level undo).
-**Parameters:**
-- `sessionId` (string, optional): The UUID of the session to undo. If not provided, undoes the most recent session.
 
-**Returns:** `{ success: true, sessionId: "...", message: "Session changes undone successfully" }`
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| sessionId | string | No | null | The UUID of the session to undo. If not provided, undoes the most recent session |
+
+**Returns:** `{ success, sessionId, message }`
 
 ### `workflow_session_list`
 List all recorded sessions (conversation-level history).
-**Parameters:** None.
 
-**Returns:**
-```json
-{
-  "success": true,
-  "count": 3,
-  "currentSessionId": "...",
-  "sessions": [
-    { "sessionId": "...", "taskCount": 2, "totalChanges": 15, "startTime": "...", "endTime": "...", "tags": ["..."] }
-  ]
-}
-```
+No parameters.
+
+**Returns:** `{ success, count, currentSessionId, sessions: [{ sessionId, taskCount, totalChanges, startTime, endTime, tags }] }`
 
 ### `workflow_session_status`
 Get the current session status.
-**Parameters:** None.
 
-**Returns:** `{ hasActiveSession: true, currentSessionId: "...", isRecording: true, snapshotCount: 5 }`
+No parameters.
+
+**Returns:** `{ success, hasActiveSession, currentSessionId, isRecording, currentTaskId, currentTaskTag, currentTaskDescription, snapshotCount }`
 
 ## Task-Level Skills
 
 ### `workflow_task_start`
-Start a new persistent workflow task/session.
-**Parameters:**
-- `tag` (string): Short label for the task (e.g., "Create NPC").
-- `description` (string, optional): Detailed description or prompt.
+Start a new persistent workflow task to track changes for undo. Call workflow_task_end when done.
 
-**Returns:** `{ success: true, taskId: "uuid..." }`
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| tag | string | Yes | - | Short label for the task (e.g., "Create NPC") |
+| description | string | No | "" | Detailed description or prompt |
+
+**Returns:** `{ success, taskId, message }`
 
 ### `workflow_task_end`
-End the current persistent workflow task and save to disk.
-**Parameters:** None.
+End the current workflow task and save it. Requires an active task (call workflow_task_start first).
 
-**Returns:** `{ success: true, taskId: "...", snapshotCount: 5 }`
+No parameters.
+
+**Returns:** `{ success, taskId, snapshotCount, message }`
 
 ### `workflow_snapshot_object`
-Manually snapshot an object's state *before* you modify it.
+Manually snapshot an object's state before modification. Requires an active task (call workflow_task_start first).
 **Call this BEFORE `component_set_property`, `gameobject_set_transform`, etc.**
-**Parameters:**
-- `name` (string, optional): Name of the Game Object.
-- `instanceId` (int, optional): Instance ID of the object (preferred).
 
-**Returns:** `{ success: true, objectName: "Cube", type: "GameObject" }`
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | Name of the Game Object |
+| instanceId | int | No | 0 | Instance ID of the object (preferred) |
+
+**Returns:** `{ success, objectName, type }`
 
 ### `workflow_snapshot_created`
-Record a newly created object for undo tracking. Use this when you create objects via methods that don't automatically record (e.g., custom scripts).
+Record a newly created object for undo tracking. Requires an active task (call workflow_task_start first).
 **Note:** `component_add` and `gameobject_create` automatically record created objects, so you typically don't need to call this manually.
-**Parameters:**
-- `name` (string, optional): Name of the Game Object.
-- `instanceId` (int, optional): Instance ID of the object (preferred).
 
-**Returns:** `{ success: true, objectName: "Cube", type: "Rigidbody" }`
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | Name of the Game Object |
+| instanceId | int | No | 0 | Instance ID of the object (preferred) |
+
+**Returns:** `{ success, objectName, type }`
 
 ### `workflow_list`
 List persistent workflow history.
-**Parameters:** None.
 
-**Returns:**
-```json
-{
-  "success": true,
-  "history": [
-    { "id": "...", "tag": "Fix Light", "time": "14:30:00", "changes": 2 }
-  ]
-}
-```
+No parameters.
+
+**Returns:** `{ success, count, history: [{ id, tag, description, time, changes }] }`
 
 ### `workflow_undo_task`
-Undo changes from a specific task. Restores snapshotted objects to their original state and deletes objects created during the task. The undone task is saved and can be redone later.
-**Parameters:**
-- `taskId` (string): The UUID of the task to undo.
+Undo changes from a specific task (restore to previous state). The undone task is saved and can be redone later.
 
-**Returns:** `{ success: true, taskId: "..." }`
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| taskId | string | Yes | - | The UUID of the task to undo |
+
+**Returns:** `{ success, taskId }`
 
 ### `workflow_redo_task`
 Redo a previously undone task (restore changes).
-**Parameters:**
-- `taskId` (string, optional): The UUID of the task to redo. If not provided, redoes the most recently undone task.
 
-**Returns:** `{ success: true, taskId: "..." }`
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| taskId | string | No | null | The UUID of the task to redo. If not provided, redoes the most recently undone task |
+
+**Returns:** `{ success, taskId }`
 
 ### `workflow_undone_list`
 List all undone tasks that can be redone.
-**Parameters:** None.
 
-**Returns:**
-```json
-{
-  "success": true,
-  "count": 2,
-  "undoneStack": [
-    { "id": "...", "tag": "Add Physics", "time": "14:30:00", "changes": 3 }
-  ]
-}
-```
+No parameters.
 
-### workflow_revert_task
+**Returns:** `{ success, count, undoneStack: [{ id, tag, description, time, changes }] }`
+
+### `workflow_revert_task`
 **(deprecated)** Alias for `workflow_undo_task`. Use `workflow_undo_task` instead.
-**Parameters:**
-- `taskId` (string): The UUID of the task to undo.
 
-**Returns:** `{ success: true, taskId: "..." }`
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| taskId | string | Yes | - | The UUID of the task to undo |
+
+**Returns:** `{ success, taskId }`
 
 ### `workflow_delete_task`
-Delete a task record from history (does *not* undo changes, just removes the record).
-**Parameters:**
-- `taskId` (string): The UUID of the task to delete.
+Delete a task from history (does not revert changes, just removes the record).
 
-**Returns:** `{ success: true }`
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| taskId | string | Yes | - | The UUID of the task to delete |
+
+**Returns:** `{ success, deletedId }`
 
 ## Recommended Usage Pattern
 

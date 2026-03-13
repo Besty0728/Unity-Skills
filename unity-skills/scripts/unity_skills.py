@@ -18,6 +18,7 @@ import time
 import json
 import os
 import re
+import threading
 from typing import Any, Dict, List, Optional
 
 __version__ = "1.6.2"
@@ -343,15 +344,18 @@ def _get_default_client():
 
 _auto_workflow_enabled = True  # Backward-compatible flag; single-call workflow is now handled by the Unity server.
 _current_workflow_active = False  # Is an explicit WorkflowContext currently active?
+_workflow_lock = threading.Lock()  # Protects _auto_workflow_enabled and _current_workflow_active
 
 def set_auto_workflow(enabled: bool):
     """Backward-compatible toggle. Single-call auto-workflow is owned by the Unity server."""
     global _auto_workflow_enabled
-    _auto_workflow_enabled = enabled
+    with _workflow_lock:
+        _auto_workflow_enabled = enabled
 
 def is_auto_workflow_enabled() -> bool:
     """Check if auto-workflow is enabled."""
-    return _auto_workflow_enabled
+    with _workflow_lock:
+        return _auto_workflow_enabled
 
 def connect(port: int = None, target: str = None, version: str = None) -> UnitySkills:
     """
@@ -434,7 +438,8 @@ class WorkflowContext:
 
         self._started = True
         self._task_id = status.get('currentTaskId')
-        _current_workflow_active = True
+        with _workflow_lock:
+            _current_workflow_active = True
         return True
 
     def _recover_ended_task(self, failed_result: Dict[str, Any]) -> bool:
@@ -463,10 +468,12 @@ class WorkflowContext:
         if not start_result.get('success'):
             if self._recover_started_task(start_result):
                 return self
-            _current_workflow_active = False
+            with _workflow_lock:
+                _current_workflow_active = False
             raise RuntimeError(start_result.get('error', 'workflow_task_start failed'))
 
-        _current_workflow_active = True
+        with _workflow_lock:
+            _current_workflow_active = True
         self._started = True
         self._task_id = start_result.get('taskId')
         return self
@@ -481,7 +488,8 @@ class WorkflowContext:
                     if exc_type is None and not recovered:
                         raise RuntimeError(end_result.get('error', 'workflow_task_end failed'))
         finally:
-            _current_workflow_active = False
+            with _workflow_lock:
+                _current_workflow_active = False
             self._started = False
             self._task_id = None
         return False  # Do not suppress exceptions
@@ -491,17 +499,29 @@ def workflow_context(tag: str, description: str = '') -> WorkflowContext:
     return WorkflowContext(tag, description)
 
 def call_skill_with_retry(skill_name: str, max_retries: int = 3, retry_delay: float = 2.0, **kwargs) -> Dict[str, Any]:
-    """Call a Unity skill with automatic retry logic for Domain Reload scenarios."""
-    for attempt in range(max_retries):
+    """Call a Unity skill with automatic retry logic for Domain Reload scenarios.
+
+    Args:
+        skill_name: Name of the Unity skill to call.
+        max_retries: Maximum number of retry attempts after the initial call (default: 3, total attempts: 4).
+        retry_delay: Delay in seconds between retry attempts.
+        **kwargs: Additional arguments passed to call_skill.
+
+    Returns:
+        The result from call_skill, or the last result if all retries are exhausted.
+    """
+    last_result = None
+    for attempt in range(1 + max_retries):
         result = call_skill(skill_name, **kwargs)
 
         is_connection_error = _is_retryable_transport_error(result)
         if not is_connection_error:
             return result
 
-        if attempt < max_retries - 1:
+        last_result = result
+        if attempt < max_retries:
             time.sleep(retry_delay)
-    return result
+    return last_result
 
 def get_skills() -> Dict[str, Any]:
     """Get list of all available skills from the current default client."""

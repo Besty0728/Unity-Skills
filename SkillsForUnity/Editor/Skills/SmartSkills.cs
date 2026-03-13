@@ -13,6 +13,20 @@ namespace UnitySkills
     /// </summary>
     public static class SmartSkills
     {
+        private static readonly Dictionary<string, System.Type> CommonUnityTypes = new Dictionary<string, System.Type>(System.StringComparer.OrdinalIgnoreCase)
+        {
+            {"Light", typeof(Light)},
+            {"Camera", typeof(Camera)},
+            {"MeshRenderer", typeof(MeshRenderer)},
+            {"MeshFilter", typeof(MeshFilter)},
+            {"BoxCollider", typeof(BoxCollider)},
+            {"SphereCollider", typeof(SphereCollider)},
+            {"Rigidbody", typeof(Rigidbody)},
+            {"AudioSource", typeof(AudioSource)},
+            {"Animator", typeof(Animator)},
+            {"Transform", typeof(Transform)},
+        };
+
         // ==================================================================================
         // 1. Smart Query ("The SQL for Unity Scene")
         // ==================================================================================
@@ -146,6 +160,8 @@ namespace UnitySkills
             string sourceName = null,   // Find by name contains
             bool appendMode = false)    // If true, append to existing; if false, replace
         {
+            if (string.IsNullOrEmpty(fieldName)) return new { error = "fieldName is required" };
+
             // 1. Find Target
             var targetGo = GameObject.Find(targetName);
             if (targetGo == null) 
@@ -182,7 +198,7 @@ namespace UnitySkills
             }
             if (!string.IsNullOrEmpty(sourceName))
             {
-                sources.AddRange(Object.FindObjectsOfType<GameObject>().Where(g => g.name.Contains(sourceName)));
+                sources.AddRange(FindHelper.FindAll<GameObject>().Where(g => g.name.Contains(sourceName)));
             }
             sources = sources.Distinct().ToList();
 
@@ -256,22 +272,8 @@ namespace UnitySkills
 
         private static System.Type GetTypeByName(string name)
         {
-            // Fast path: common Unity types
-            var common = new Dictionary<string, System.Type>(System.StringComparer.OrdinalIgnoreCase)
-            {
-                {"Light", typeof(Light)},
-                {"Camera", typeof(Camera)},
-                {"MeshRenderer", typeof(MeshRenderer)},
-                {"MeshFilter", typeof(MeshFilter)},
-                {"BoxCollider", typeof(BoxCollider)},
-                {"SphereCollider", typeof(SphereCollider)},
-                {"Rigidbody", typeof(Rigidbody)},
-                {"AudioSource", typeof(AudioSource)},
-                {"Animator", typeof(Animator)},
-                {"Transform", typeof(Transform)},
-            };
-            
-            if (common.TryGetValue(name, out var t)) return t;
+            // Fast path: common Unity types (static dictionary)
+            if (CommonUnityTypes.TryGetValue(name, out var t)) return t;
 
             // Slow path: reflection
             return System.AppDomain.CurrentDomain.GetAssemblies()

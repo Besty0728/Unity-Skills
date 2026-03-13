@@ -46,6 +46,7 @@ namespace UnitySkills
         private const int MaxQueuedRequests = 200;
         private const int MaxPendingRequests = 300;
         private static readonly ConcurrentBag<RequestJob> _requestJobPool = new ConcurrentBag<RequestJob>();
+        private static int _poolSize;
 
         // Admission limiting on the listener thread to avoid queue and thread blowups.
         private static int _admittedThisSecond = 0;
@@ -239,7 +240,10 @@ namespace UnitySkills
         private static RequestJob RentRequestJob()
         {
             if (_requestJobPool.TryTake(out var job))
+            {
+                Interlocked.Decrement(ref _poolSize);
                 return job;
+            }
 
             return new RequestJob();
         }
@@ -252,6 +256,12 @@ namespace UnitySkills
             if (Interlocked.Exchange(ref job.PoolReturned, 1) == 1)
                 return;
 
+            if (Interlocked.Increment(ref _poolSize) > MaxPendingRequests)
+            {
+                Interlocked.Decrement(ref _poolSize);
+                job.CompletionSignal.Dispose();
+                return;
+            }
             job.Reset();
             _requestJobPool.Add(job);
         }
@@ -933,8 +943,7 @@ namespace UnitySkills
             finally
             {
                 ReleasePendingSlot();
-                if (completed)
-                    ReturnRequestJob(job);
+                ReturnRequestJob(job);
             }
         }
         

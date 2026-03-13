@@ -20,6 +20,8 @@ description: "Prefab management. Use when users want to create, instantiate, app
 - `prefab_get_overrides` - Get instance overrides
 - `prefab_revert_overrides` - Revert to prefab values
 - `prefab_apply_overrides` - Apply overrides to prefab
+- `prefab_create_variant` - Create a prefab variant
+- `prefab_find_instances` - Find all instances of a prefab in scene
 
 ---
 
@@ -117,6 +119,26 @@ Apply all overrides from instance to source prefab asset.
 |-----------|------|----------|-------------|
 | `name` | string | No* | Prefab instance name |
 | `instanceId` | int | No* | Instance ID |
+
+### prefab_create_variant
+Create a prefab variant from an existing prefab.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `sourcePrefabPath` | string | Yes | - | Path to the source prefab asset |
+| `variantPath` | string | Yes | - | Save path for the new variant |
+
+**Returns:** `{ success, sourcePath, variantPath, name }`
+
+### prefab_find_instances
+Find all instances of a prefab in the current scene.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `prefabPath` | string | Yes | - | Prefab asset path to search for |
+| `limit` | int | No | 50 | Maximum number of instances to return |
+
+**Returns:** `{ success, prefabPath, count, instances: [{ name, path, instanceId }] }`
 
 ---
 

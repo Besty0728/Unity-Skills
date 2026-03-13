@@ -295,7 +295,8 @@ namespace UnitySkills
             var manifestPath = "Packages/manifest.json";
             if (!File.Exists(manifestPath)) return new { error = "manifest.json not found" };
             var json = File.ReadAllText(manifestPath, System.Text.Encoding.UTF8);
-            return new { success = true, manifest = json };
+            var manifest = Newtonsoft.Json.Linq.JObject.Parse(json);
+            return new { success = true, manifest };
         }
 
         [UnitySkill("project_get_layers", "Get all Layer definitions")]
@@ -315,6 +316,8 @@ namespace UnitySkills
         [UnitySkill("project_add_tag", "Add a custom Tag", TracksWorkflow = true)]
         public static object ProjectAddTag(string tagName)
         {
+            if (Validate.Required(tagName, "tagName") is object err) return err;
+
             var tagManager = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
             var tagsProp = tagManager.FindProperty("tags");
             for (int i = 0; i < tagsProp.arraySize; i++)

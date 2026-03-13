@@ -128,6 +128,8 @@ namespace UnitySkills
                     case "none":
                         light.shadows = LightShadows.None;
                         break;
+                    default:
+                        return new { warning = $"Unknown shadow type: '{shadows}'. Valid values: hard, soft, none" };
                 }
             }
 
@@ -174,7 +176,7 @@ namespace UnitySkills
         [UnitySkill("light_find_all", "Find all lights in the scene")]
         public static object LightFindAll(string lightType = null, int limit = 50)
         {
-            var lights = Object.FindObjectsOfType<Light>();
+            var lights = FindHelper.FindAll<Light>();
 
             if (!string.IsNullOrEmpty(lightType))
             {
@@ -258,7 +260,8 @@ namespace UnitySkills
                     light.color = new Color(item.r ?? c.r, item.g ?? c.g, item.b ?? c.b);
                 }
                 if (item.intensity.HasValue) light.intensity = item.intensity.Value;
-                if (item.range.HasValue) light.range = item.range.Value;
+                if (item.range.HasValue && (light.type == LightType.Point || light.type == LightType.Spot))
+                    light.range = item.range.Value;
                 if (!string.IsNullOrEmpty(item.shadows))
                 {
                     switch (item.shadows.ToLower())
@@ -266,6 +269,7 @@ namespace UnitySkills
                         case "hard": light.shadows = LightShadows.Hard; break;
                         case "soft": light.shadows = LightShadows.Soft; break;
                         case "none": light.shadows = LightShadows.None; break;
+                        default: throw new System.Exception($"Unknown shadow type: '{item.shadows}'. Valid values: hard, soft, none");
                     }
                 }
 

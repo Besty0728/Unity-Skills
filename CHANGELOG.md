@@ -27,6 +27,50 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **文件 I/O 一致性**：统一更多文件读写为 UTF-8，补齐 `SafePath` 校验顺序，修复部分 Skill 先访问文件再校验路径的问题。
 - **批处理与依赖分析性能**：清理批处理实现分裂，更多路径统一走 `BatchExecutor`；`CleanerSkills` 先建立依赖缓存再分析，移除重复 `GetDependencies()` 带来的性能瓶颈。
 - **文档与注释编码问题**：修复一批中文文本与注释的编码异常，避免 AI 读取和用户查看时出现乱码。
+- **Perception 模块 Skill 计数**：修正文档中 Scene/Asset/Audio/Texture/Model/Perception 六个模块的 Skill 数量偏差，补齐 `scene/SKILL.md` 遗漏的 `scene_find_objects`、`perception/SKILL.md` 遗漏的 `scene_tag_layer_stats` 和 `scene_performance_hints`，以及 `skills/SKILL.md` 缺失的 `uitoolkit` 行。
+- **AnimatorSkills 值类型拷贝 Bug**：`AnimatorControllerParameter` 是值类型，`FirstOrDefault` 返回副本导致修改默认值不生效，改用 `Array.FindIndex` 直接修改原数组元素。
+- **PrefabSkills 变体创建**：`prefab_create_variant` 使用 `SaveAsPrefabAsset` 创建的是普通 Prefab 而非 Variant，改用 `SaveAsPrefabAssetAndConnect` 正确创建变体。
+- **MaterialSkills 内存泄漏**：`material_create` 未指定 `savePath` 时 `new Material()` 无人引用且无法被 GC 回收，现返回 `instanceId` 和警告信息供调用方后续引用或销毁。
+- **ConsoleSkills 线程安全**：`_logs` 列表在 `OnLogMessage` 回调（可能来自后台线程）与 Skill 方法（主线程）之间无同步，添加 `lock` 保护所有读写操作。
+- **PhysicsSkills 方向向量未归一化**：`physics_raycast`/`physics_raycast_all`/`physics_spherecast`/`physics_boxcast` 的 `direction` 参数未归一化导致 `maxDistance` 语义不正确，添加归一化和零向量检查。
+- **BatchExecutor error 误计为成功**：`processor` 返回含 `error` 字段的对象不会触发 catch 而被计入 `successCount`，添加反射检测 error 字段逻辑，正确计入 `failCount`。
+- **TextureSkills/ModelSkills 注释编码乱码**：修复 GBK 编码被误读为 UTF-8 导致的注释乱码（`TextureSkills.cs` L66、`ModelSkills.cs` L81）。
+- **Python `call_skill_with_retry` 重试语义**：`max_retries=3` + `range(max_retries)` 实际只有 3 次尝试，与参数名"最多重试 3 次"语义不一致，改为 `range(1 + max_retries)` 确保总尝试次数为 `1 + max_retries`。
+- **SKILL.md 文档补全**：补全 28 个模块约 166 个 Skill 的缺失文档条目，删除 `debug/SKILL.md` 中的幽灵条目 `debug_log`。
+- **对象池无上限增长**：`SkillsHttpServer` 的 `ConcurrentBag<RequestJob>` 无上限归还，超过 `MaxPendingRequests` 时 Dispose 而非归还；超时 job 也无条件归还池中。
+- **SkillRouter verbose 参数泄漏**：框架参数 `verbose` 读取后未从 `args` 移除，导致后续参数绑定可能出现类型不匹配错误。
+- **SkillRouter manifest 缓存竞态**：`_cachedManifest` 读写无同步保护，并发调用可能导致重复构建或读到半初始化值，添加 double-check locking。
+- **RegistryService 原子写入恢复**：`AtomicReadModifyWrite` 在崩溃后 `.tmp` 文件残留但主文件为空时无恢复机制，新增启动时 `.tmp` 备份恢复检查。
+- **WorkflowManager UndoSession 去重逻辑**：`sessionTasks` 倒序收集快照导致去重保留中间状态而非原始状态，改为正序（`OrderBy`）收集以确保去重保留最旧快照。
+- **FindObjectsOfType 过时 API**：全部 36 处 `Object.FindObjectsOfType<T>()` 替换为 `FindHelper.FindAll<T>()`，在 Unity 6+ 自动使用 `FindObjectsByType` 以消除性能警告。
+- **NavMeshSkills TracksWorkflow 误标**：`navmesh_set_area_cost` 影响全局状态无法 SnapshotObject，移除 `TracksWorkflow` 并添加 `areaIndex`/`cost` 参数校验。
+- **AnimatorSkills switch 缺 default**：`AnimatorControllerParameterType` switch 添加 `default: break;` 避免潜在的未处理枚举值。
+- **代码去重 GetGameObjectPath**：`CleanerSkills` 和 `EditorSkills` 中重复的私有 `GetGameObjectPath` 方法改为调用 `GameObjectFinder.GetPath()`。
+- **代码去重 ConvertValue**：`ScriptableObjectSkills` 删除私有 `ConvertValue`，改为调用 `ComponentSkills.ConvertValue`（已提升为 `internal`）。
+- **ValidationSkills 优化**：删除未使用的 `rootObjects` 变量；`FindUnusedAssets` 由 O(n²) 嵌套依赖查询改为预构建依赖索引 O(n)。
+- **ComponentSkills 缓存无上限**：`_typeCache`/`_memberCache` 超过 500 条时自动清空，防止长时间运行后内存增长。
+- **ComponentSkills 兼容性**：`string.Contains(StringComparison)` 需要 .NET Standard 2.1+，改为 `IndexOf` 兼容旧运行时。
+- **ComponentSkills 死代码**：删除未使用的 `GetTypeConversionHint` 方法。
+- **LightSkills shadow switch 缺 default**：光源阴影类型 switch 添加 default 分支返回警告；批量操作中 `light.range` 添加光源类型检查。
+- **ScriptSkills 参数校验**：`script_find_in_file` 添加 `pattern` 必填检查和 `Directory.Exists` 检查。
+- **ShaderSkills 健壮性**：`shader_create` 添加 `shaderName` 必填检查；`File.Exists` 添加空字符串保护；提取 `FindShaderByNameOrPath` 消除重复查找逻辑。
+- **EventSkills 异常保护**：`event_invoke` 的反射调用添加 try-catch 防止未处理异常。
+- **SmartSkills 性能**：`GetTypeByName` 的类型字典从方法内部提升为类级 `static readonly` 字段；`fieldName` 添加空字符串检查。
+- **CameraSkills 资源泄漏**：`camera_screenshot` 添加 try/finally 保证 RenderTexture/Texture2D 释放；保存/恢复原始 `targetTexture`；`camera_create` 的 AudioListener 改为可选参数。
+- **PackageSkills 语义修正**：安装返回状态改为 `installing` 明确异步语义；`package_search` 描述明确为搜索已安装包。
+- **ProjectSkills 结构化返回**：`project_get_packages` 返回解析后的 JSON 对象而非原始文本；`project_add_tag` 添加参数校验。
+- **TestSkills 资源管理**：测试完成回调中清理过期条目（1小时）；Domain Reload 时清理 `_api` 和 `_runningTests`；`test_cancel` 返回说明限制的 note。
+- **ProfilerSkills 返回值修正**：`GetStatFloat` 返回 `float?` nullable 代替 `-1f` 哨兵值；`profiler_get_stats` 添加 `success = true`。
+- **OptimizationSkills 健壮性**：`optimize_textures` 添加 `limit` 参数；LOD 距离解析改用 `TryParse`；`FindDuplicateMaterials` 添加近似比较说明。
+- **NavMeshSkills navmesh_clear**：返回中添加不可撤销警告。
+- **ScriptableObjectSkills 类型查找**：`FindScriptableObjectType` 改用 `OrdinalIgnoreCase` 大小写不敏感匹配。
+- **CleanerSkills 路径格式**：`cleaner_find_large_assets` 将绝对 OS 路径转换为 Unity 相对路径。
+- **Python 线程安全**：`_auto_workflow_enabled` 和 `_current_workflow_active` 全局标志添加 `threading.Lock` 保护。
+
+### Enhanced
+- **新增 `script_dependency_graph` Skill**：给定入口脚本，BFS 双向扩展 N 跳依赖闭包，返回结构化 JSON（脚本列表含 fields/unityCallbacks、边列表、Kahn 拓扑排序的 suggestedReadOrder），帮助 AI 仅加载必要脚本上下文而非全量源码。（REST Skills 447 → 448）
+- **`scene_context` 增强**：新增 `includeCodeDeps` 参数，开启后一次调用即可获取场景结构 + 代码级依赖 JSON，解决此前需分别调用 `scene_context` 和 `scene_export_report` 的割裂问题。
+- **`RxGetComponent` 正则补强**：扩展为 `(?:Get|Add)Component<T>` 以覆盖 `AddComponent<T>()` 这一明确的依赖声明，减少代码依赖图遗漏边。
 
 ## [1.6.1] - 2026-03-11
 

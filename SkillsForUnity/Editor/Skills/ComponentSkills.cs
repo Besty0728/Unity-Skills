@@ -474,10 +474,11 @@ namespace UnitySkills
             result = System.Type.GetType(name);
             if (result != null && typeof(Component).IsAssignableFrom(result))
             {
+                if (_typeCache.Count > 500) _typeCache.Clear();
                 _typeCache[name] = result;
                 return result;
             }
-            
+
             // 2. Extract simple name
             var simpleName = name.Contains(".") ? name.Substring(name.LastIndexOf('.') + 1) : name;
             
@@ -487,6 +488,7 @@ namespace UnitySkills
                 result = TryGetTypeFromAssemblies(ns + simpleName);
                 if (result != null && typeof(Component).IsAssignableFrom(result))
                 {
+                    if (_typeCache.Count > 500) _typeCache.Clear();
                     _typeCache[name] = result;
                     return result;
                 }
@@ -501,7 +503,10 @@ namespace UnitySkills
                     typeof(Component).IsAssignableFrom(t));
 
             if (result != null)
+            {
+                if (_typeCache.Count > 500) _typeCache.Clear();
                 _typeCache[name] = result;
+            }
                 
             return result;
         }
@@ -540,7 +545,7 @@ namespace UnitySkills
             return System.AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => { try { return a.GetTypes(); } catch { return new System.Type[0]; } })
                 .Where(t => typeof(Component).IsAssignableFrom(t) && 
-                           t.Name.Contains(simpleName, System.StringComparison.OrdinalIgnoreCase))
+                           t.Name.IndexOf(simpleName, System.StringComparison.OrdinalIgnoreCase) >= 0)
                 .Take(10)
                 .Select(t => t.FullName)
                 .ToArray();
@@ -574,7 +579,7 @@ namespace UnitySkills
         /// <summary>
         /// Convert string value to target type with extensive support.
         /// </summary>
-        private static object ConvertValue(string value, System.Type targetType)
+        internal static object ConvertValue(string value, System.Type targetType)
         {
             if (value == null || value.Equals("null", System.StringComparison.OrdinalIgnoreCase))
                 return targetType.IsValueType ? System.Activator.CreateInstance(targetType) : null;
@@ -837,6 +842,7 @@ namespace UnitySkills
             }
 
             var result = (prop, field);
+            if (_memberCache.Count > 500) _memberCache.Clear();
             _memberCache[cacheKey] = result;
             return result;
         }
@@ -851,18 +857,6 @@ namespace UnitySkills
                 .Select(f => $"{f.Name} ({f.FieldType.Name})")
                 .Take(20);
             return props.Concat(fields).ToArray();
-        }
-
-        private static string GetTypeConversionHint(System.Type type)
-        {
-            if (type == typeof(Vector2)) return "Use format: x,y (e.g., '100,50')";
-            if (type == typeof(Vector3)) return "Use format: x,y,z (e.g., '1,2,3')";
-            if (type == typeof(Vector4)) return "Use format: x,y,z,w (e.g., '1,2,3,4')";
-            if (type == typeof(Color)) return "Use format: r,g,b,a (0-1) or hex (#RRGGBB) or name (red, blue, etc.)";
-            if (type == typeof(Quaternion)) return "Use euler angles: x,y,z (e.g., '0,90,0')";
-            if (typeof(Component).IsAssignableFrom(type) || type == typeof(Transform) || type == typeof(GameObject))
-                return "Use referencePath or referenceName parameter to set object references";
-            return null;
         }
 
         private static Dictionary<string, object> GetComponentPropertiesSummary(Component c)

@@ -88,7 +88,7 @@ namespace UnitySkills
         [UnitySkill("find_objects_by_name", "Find all GameObjects containing a name (param: nameContains)")]
         public static object FindObjectsByName(string nameContains)
         {
-            var allObjects = Object.FindObjectsOfType<GameObject>();
+            var allObjects = FindHelper.FindAll<GameObject>();
             var matches = System.Array.FindAll(allObjects, go => go.name.Contains(nameContains));
             return new
             {

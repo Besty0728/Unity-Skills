@@ -11,13 +11,15 @@ namespace UnitySkills
     public static class OptimizationSkills
     {
         [UnitySkill("optimize_textures", "Optimize texture settings (maxSize, compression). Returns list of modified textures.")]
-        public static object OptimizeTextures(int maxTextureSize = 2048, bool enableCrunch = true, int compressionQuality = 50, string filter = "")
+        public static object OptimizeTextures(int maxTextureSize = 2048, bool enableCrunch = true, int compressionQuality = 50, string filter = "", int limit = 0)
         {
             var guids = AssetDatabase.FindAssets("t:Texture2D " + filter);
             var modified = new List<object>();
-            
+
             foreach (var guid in guids)
             {
+                if (limit > 0 && modified.Count >= limit) break;
+
                 var path = AssetDatabase.GUIDToAssetPath(guid);
                 var importer = AssetImporter.GetAtPath(path) as TextureImporter;
                 if (importer == null) continue;
@@ -112,7 +114,7 @@ namespace UnitySkills
         [UnitySkill("optimize_analyze_scene", "Analyze scene for performance bottlenecks (high-poly meshes, excessive materials)")]
         public static object OptimizeAnalyzeScene(int polyThreshold = 10000, int materialThreshold = 5)
         {
-            var renderers = Object.FindObjectsOfType<Renderer>();
+            var renderers = FindHelper.FindAll<Renderer>();
             var issues = new List<object>();
             int totalTris = 0, totalMats = 0;
 
@@ -241,13 +243,13 @@ namespace UnitySkills
             var duplicates = matInfos.GroupBy(m => m.key).Where(g => g.Count() > 1).Take(limit)
                 .Select(g => new { shader = g.Key.Split('|')[0], count = g.Count(), paths = g.Select(m => m.path).ToArray() }).ToArray();
 
-            return new { success = true, duplicateGroups = duplicates.Length, groups = duplicates };
+            return new { success = true, duplicateGroups = duplicates.Length, groups = duplicates, note = "Comparison is approximate (color/texture similarity). Manual review recommended." };
         }
 
         [UnitySkill("optimize_analyze_overdraw", "Analyze transparent objects that may cause overdraw")]
         public static object OptimizeAnalyzeOverdraw(int limit = 50)
         {
-            var renderers = Object.FindObjectsOfType<Renderer>();
+            var renderers = FindHelper.FindAll<Renderer>();
             var transparent = new List<object>();
 
             foreach (var r in renderers)
@@ -272,7 +274,14 @@ namespace UnitySkills
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
 
-            var distances = lodDistances.Split(',').Select(s => float.Parse(s.Trim(), System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+            var distanceParts = lodDistances.Split(',');
+            var distances = new List<float>();
+            foreach (var part in distanceParts)
+            {
+                if (!float.TryParse(part.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float dist))
+                    return new { error = $"Invalid LOD distance value: '{part.Trim()}'" };
+                distances.Add(dist);
+            }
             var lodGroup = go.GetComponent<LODGroup>();
             if (lodGroup == null)
                 lodGroup = Undo.AddComponent<LODGroup>(go);
@@ -280,10 +289,10 @@ namespace UnitySkills
                 Undo.RecordObject(lodGroup, "Set LOD Group");
 
             var renderers = go.GetComponentsInChildren<Renderer>();
-            var lods = new LOD[distances.Length + 1];
-            for (int i = 0; i < distances.Length; i++)
+            var lods = new LOD[distances.Count + 1];
+            for (int i = 0; i < distances.Count; i++)
                 lods[i] = new LOD(distances[i], i == 0 ? renderers : new Renderer[0]);
-            lods[distances.Length] = new LOD(0, new Renderer[0]);
+            lods[distances.Count] = new LOD(0, new Renderer[0]);
 
             lodGroup.SetLODs(lods);
             lodGroup.RecalculateBounds();

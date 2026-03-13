@@ -30,3 +30,56 @@ Get the result of a test run.
 Cancel a running test.
 **Parameters:**
 - `jobId` (string, optional): Job ID to cancel.
+
+### `test_run_by_name`
+Run specific tests by class or method name.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| testName | string | Yes | - | Test class or method name to run |
+| testMode | string | No | EditMode | EditMode or PlayMode |
+
+**Returns:** `{ success, jobId, testName, testMode }`
+
+### `test_get_last_result`
+Get the most recent test run result.
+
+No parameters.
+
+**Returns:** `{ jobId, status, total, passed, failed, failedNames }`
+
+### `test_list_categories`
+List test categories.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| testMode | string | No | EditMode | EditMode or PlayMode |
+
+**Returns:** `{ success, count, categories }`
+
+### `test_create_editmode`
+Create an EditMode test script template.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| testName | string | Yes | - | Name of the test class to create |
+| folder | string | No | Assets/Tests/Editor | Folder path for the test script |
+
+**Returns:** `{ success, path, testName, serverAvailability }`
+
+### `test_create_playmode`
+Create a PlayMode test script template.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| testName | string | Yes | - | Name of the test class to create |
+| folder | string | No | Assets/Tests/Runtime | Folder path for the test script |
+
+**Returns:** `{ success, path, testName, serverAvailability }`
+
+### `test_get_summary`
+Get aggregated test summary across all runs.
+
+No parameters.
+
+**Returns:** `{ success, totalRuns, completedRuns, totalPassed, totalFailed, allFailedTests }`

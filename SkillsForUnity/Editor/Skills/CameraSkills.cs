@@ -76,11 +76,11 @@ namespace UnitySkills
         }
 
         [UnitySkill("camera_create", "Create a new Game Camera", TracksWorkflow = true)]
-        public static object CameraCreate(string name = "New Camera", float x = 0, float y = 1, float z = -10)
+        public static object CameraCreate(string name = "New Camera", float x = 0, float y = 1, float z = -10, bool addAudioListener = false)
         {
             var go = new GameObject(name);
             var cam = go.AddComponent<Camera>();
-            go.AddComponent<AudioListener>();
+            if (addAudioListener) go.AddComponent<AudioListener>();
             go.transform.position = new Vector3(x, y, z);
             Undo.RegisterCreatedObjectUndo(go, "Create Camera");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
@@ -163,17 +163,25 @@ namespace UnitySkills
             var dir = System.IO.Path.GetDirectoryName(savePath);
             if (!string.IsNullOrEmpty(dir) && !System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
             var rt = new RenderTexture(width, height, 24);
-            cam.targetTexture = rt;
-            cam.Render();
-            RenderTexture.active = rt;
-            var tex = new Texture2D(width, height, TextureFormat.RGB24, false);
-            tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
-            tex.Apply();
-            cam.targetTexture = null;
-            RenderTexture.active = null;
-            Object.DestroyImmediate(rt);
-            System.IO.File.WriteAllBytes(savePath, tex.EncodeToPNG());
-            Object.DestroyImmediate(tex);
+            Texture2D tex = null;
+            RenderTexture oldTarget = cam.targetTexture;
+            try
+            {
+                cam.targetTexture = rt;
+                cam.Render();
+                RenderTexture.active = rt;
+                tex = new Texture2D(width, height, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                tex.Apply();
+                System.IO.File.WriteAllBytes(savePath, tex.EncodeToPNG());
+            }
+            finally
+            {
+                cam.targetTexture = oldTarget;
+                RenderTexture.active = null;
+                if (rt != null) Object.DestroyImmediate(rt);
+                if (tex != null) Object.DestroyImmediate(tex);
+            }
             AssetDatabase.ImportAsset(savePath);
             return new { success = true, path = savePath, width, height };
         }
@@ -195,7 +203,7 @@ namespace UnitySkills
         [UnitySkill("camera_list", "List all cameras in the scene")]
         public static object CameraList()
         {
-            var cameras = Object.FindObjectsOfType<Camera>();
+            var cameras = FindHelper.FindAll<Camera>();
             var list = cameras.Select(c => new
             {
                 name = c.gameObject.name, instanceId = c.gameObject.GetInstanceID(),

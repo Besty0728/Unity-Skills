@@ -9,12 +9,6 @@ Debug utilities for error checking and diagnostics.
 
 ## Skills
 
-### `debug_log`
-Write a debug message to the console.
-**Parameters:**
-- `message` (string): Message to log.
-- `type` (string, optional): Log type (Log/Warning/Error). Default: Log.
-
 ### `debug_get_logs`
 Get console logs filtered by type and content.
 **Parameters:**
@@ -38,3 +32,42 @@ Force Unity to recompile all scripts.
 ### `debug_get_system_info`
 Get system and Unity environment information.
 **Parameters:** None.
+
+### `debug_get_stack_trace`
+Get stack trace for a log entry by index.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| entryIndex | int | Yes | - | Index of the log entry to retrieve stack trace for |
+
+**Returns:** `{ index, message, stackTrace }`
+
+### `debug_get_assembly_info`
+Get project assembly information.
+
+**Parameters:** None.
+
+**Returns:** `{ success, count, assemblies }`
+
+### `debug_get_defines`
+Get scripting define symbols for current platform.
+
+**Parameters:** None.
+
+**Returns:** `{ success, buildTargetGroup, defines }`
+
+### `debug_set_defines`
+Set scripting define symbols for current platform.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| defines | string | Yes | - | Scripting define symbols to set |
+
+**Returns:** `{ success, buildTargetGroup, defines, serverAvailability }`
+
+### `debug_get_memory_info`
+Get memory usage information.
+
+**Parameters:** None.
+
+**Returns:** `{ success, totalAllocatedMB, totalReservedMB, totalUnusedReservedMB, monoUsedSizeMB, monoHeapSizeMB }`

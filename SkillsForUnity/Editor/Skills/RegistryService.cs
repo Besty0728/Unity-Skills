@@ -113,6 +113,13 @@ namespace UnitySkills
             const int maxRetries = 5;
             const int retryDelayMs = 100;
 
+            // Recover from interrupted writes: if .tmp exists and main file is missing/empty, restore from .tmp
+            var tmpFile = RegistryFile + ".tmp";
+            if (File.Exists(tmpFile) && (!File.Exists(RegistryFile) || new FileInfo(RegistryFile).Length == 0))
+            {
+                try { File.Copy(tmpFile, RegistryFile, true); File.Delete(tmpFile); } catch { }
+            }
+
             for (int attempt = 0; attempt < maxRetries; attempt++)
             {
                 FileStream lockStream = null;

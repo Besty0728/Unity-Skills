@@ -82,30 +82,36 @@ namespace UnitySkills
         public static string GetManifest()
         {
             Initialize();
-            if (_cachedManifest != null) return _cachedManifest;
+            var cached = _cachedManifest;
+            if (cached != null) return cached;
 
-            var manifest = new
+            lock (_initLock)
             {
-                version = SkillsLogger.Version,
-                unityVersion = Application.unityVersion,
-                totalSkills = _skills.Count,
-                workflowTrackedSkills = _workflowTrackedSkills.OrderBy(name => name).ToArray(),
-                skills = _skills.Values.Select(s => new
+                if (_cachedManifest != null) return _cachedManifest;
+
+                var manifest = new
                 {
-                    name = s.Name,
-                    description = s.Description,
-                    tracksWorkflow = s.TracksWorkflow,
-                    parameters = s.Parameters.Select(p => new
+                    version = SkillsLogger.Version,
+                    unityVersion = Application.unityVersion,
+                    totalSkills = _skills.Count,
+                    workflowTrackedSkills = _workflowTrackedSkills.OrderBy(name => name).ToArray(),
+                    skills = _skills.Values.Select(s => new
                     {
-                        name = p.Name,
-                        type = GetJsonType(p.ParameterType),
-                        required = !p.HasDefaultValue,
-                        defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
+                        name = s.Name,
+                        description = s.Description,
+                        tracksWorkflow = s.TracksWorkflow,
+                        parameters = s.Parameters.Select(p => new
+                        {
+                            name = p.Name,
+                            type = GetJsonType(p.ParameterType),
+                            required = !p.HasDefaultValue,
+                            defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
+                        })
                     })
-                })
-            };
-            _cachedManifest = JsonConvert.SerializeObject(manifest, Formatting.Indented, _jsonSettings);
-            return _cachedManifest;
+                };
+                _cachedManifest = JsonConvert.SerializeObject(manifest, Formatting.Indented, _jsonSettings);
+                return _cachedManifest;
+            }
         }
 
         public static string Execute(string name, string json)
@@ -179,6 +185,7 @@ namespace UnitySkills
                 if (args.TryGetValue("verbose", StringComparison.OrdinalIgnoreCase, out var verboseToken))
                 {
                     verbose = verboseToken.ToObject<bool>();
+                    args.Remove("verbose");
                 }
                 
                 var result = skill.Method.Invoke(null, invoke);

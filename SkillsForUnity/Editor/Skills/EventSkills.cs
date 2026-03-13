@@ -256,7 +256,14 @@ namespace UnitySkills
             if (invokeMethod == null)
                 return new { error = "Could not find Invoke method on event" };
                 
-            invokeMethod.Invoke(unityEvent, null);
+            try
+            {
+                invokeMethod.Invoke(unityEvent, null);
+            }
+            catch (System.Reflection.TargetInvocationException ex)
+            {
+                return new { error = $"Event invoke failed: {(ex.InnerException ?? ex).Message}" };
+            }
 
             return new { success = true, message = "Event invoked" };
         }

@@ -87,12 +87,12 @@ namespace UnitySkills
             {
                 if (field != null)
                 {
-                    var converted = ConvertValue(value, field.FieldType);
+                    var converted = ComponentSkills.ConvertValue(value, field.FieldType);
                     field.SetValue(asset, converted);
                 }
                 else if (prop != null && prop.CanWrite)
                 {
-                    var converted = ConvertValue(value, prop.PropertyType);
+                    var converted = ComponentSkills.ConvertValue(value, prop.PropertyType);
                     prop.SetValue(asset, converted);
                 }
 
@@ -154,7 +154,7 @@ namespace UnitySkills
             foreach (var kv in dict)
             {
                 var field = type.GetField(kv.Key, BindingFlags.Public | BindingFlags.Instance);
-                if (field != null) { field.SetValue(asset, ConvertValue(kv.Value, field.FieldType)); set++; }
+                if (field != null) { field.SetValue(asset, ComponentSkills.ConvertValue(kv.Value, field.FieldType)); set++; }
             }
             EditorUtility.SetDirty(asset);
             AssetDatabase.SaveAssets();
@@ -223,27 +223,8 @@ namespace UnitySkills
         {
             return System.AppDomain.CurrentDomain.GetAssemblies()
                 .SelectMany(a => { try { return a.GetTypes(); } catch { return new System.Type[0]; } })
-                .FirstOrDefault(t => t.Name == name && t.IsSubclassOf(typeof(ScriptableObject)));
+                .FirstOrDefault(t => string.Equals(t.Name, name, System.StringComparison.OrdinalIgnoreCase) && t.IsSubclassOf(typeof(ScriptableObject)));
         }
 
-        private static object ConvertValue(string value, System.Type targetType)
-        {
-            if (targetType == typeof(string)) return value;
-            if (targetType == typeof(int)) return int.Parse(value);
-            if (targetType == typeof(float)) return float.Parse(value, CultureInfo.InvariantCulture);
-            if (targetType == typeof(bool)) return bool.Parse(value);
-            if (targetType == typeof(Vector3))
-            {
-                var parts = value.Split(',');
-                return new Vector3(float.Parse(parts[0], CultureInfo.InvariantCulture), float.Parse(parts[1], CultureInfo.InvariantCulture), float.Parse(parts[2], CultureInfo.InvariantCulture));
-            }
-            if (targetType == typeof(Color))
-            {
-                var parts = value.Split(',');
-                return new Color(float.Parse(parts[0], CultureInfo.InvariantCulture), float.Parse(parts[1], CultureInfo.InvariantCulture), float.Parse(parts[2], CultureInfo.InvariantCulture),
-                    parts.Length > 3 ? float.Parse(parts[3], CultureInfo.InvariantCulture) : 1);
-            }
-            return System.Convert.ChangeType(value, targetType);
-        }
     }
 }

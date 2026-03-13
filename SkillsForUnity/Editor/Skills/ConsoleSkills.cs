@@ -11,6 +11,7 @@ namespace UnitySkills
     public static class ConsoleSkills
     {
         private static readonly List<LogEntry> _logs = new List<LogEntry>();
+        private static readonly object _logLock = new object();
         private static bool _capturing;
 
         private class LogEntry
@@ -29,7 +30,7 @@ namespace UnitySkills
                 Application.logMessageReceived += OnLogMessage;
                 _capturing = true;
             }
-            _logs.Clear();
+            lock (_logLock) { _logs.Clear(); }
             return new { success = true, message = "Console capture started" };
         }
 
@@ -41,7 +42,9 @@ namespace UnitySkills
                 Application.logMessageReceived -= OnLogMessage;
                 _capturing = false;
             }
-            return new { success = true, message = "Console capture stopped", capturedCount = _logs.Count };
+            int count;
+            lock (_logLock) { count = _logs.Count; }
+            return new { success = true, message = "Console capture stopped", capturedCount = count };
         }
 
         [UnitySkill("console_get_logs", "Get Unity Console logs. Reads existing console history directly (no setup needed). Use type=All/Error/Warning/Log to filter. When console_start_capture is active, returns captured logs with timestamps instead.")]
@@ -50,19 +53,22 @@ namespace UnitySkills
             if (_capturing)
             {
                 // Capture mode: return buffered logs with timestamps
-                IEnumerable<LogEntry> results = _logs;
-                if (type != "All")
-                    results = results.Where(l => CapturedLogMatchesType(l.type, type));
-                if (!string.IsNullOrEmpty(filter))
-                    results = results.Where(l => l.message.Contains(filter));
-
-                var captured = results.TakeLast(limit).Select(l => new
+                lock (_logLock)
                 {
-                    type = l.type.ToString(),
-                    message = l.message,
-                    time = l.time.ToString("HH:mm:ss.fff")
-                }).ToArray();
-                return new { count = captured.Length, logs = captured, source = "capture" };
+                    IEnumerable<LogEntry> results = _logs;
+                    if (type != "All")
+                        results = results.Where(l => CapturedLogMatchesType(l.type, type));
+                    if (!string.IsNullOrEmpty(filter))
+                        results = results.Where(l => l.message.Contains(filter));
+
+                    var captured = results.TakeLast(limit).Select(l => new
+                    {
+                        type = l.type.ToString(),
+                        message = l.message,
+                        time = l.time.ToString("HH:mm:ss.fff")
+                    }).ToArray();
+                    return new { count = captured.Length, logs = captured, source = "capture" };
+                }
             }
 
             // Direct mode: read existing entries from Unity Console via LogEntries reflection
@@ -95,7 +101,7 @@ namespace UnitySkills
             var clearMethod = logEntries.GetMethod("Clear");
             clearMethod.Invoke(null, null);
 
-            _logs.Clear();
+            lock (_logLock) { _logs.Clear(); }
             return new { success = true, message = "Console cleared" };
         }
 
@@ -119,17 +125,20 @@ namespace UnitySkills
 
         private static void OnLogMessage(string message, string stackTrace, LogType type)
         {
-            _logs.Add(new LogEntry
+            lock (_logLock)
             {
-                message = message,
-                stackTrace = stackTrace,
-                type = type,
-                time = System.DateTime.Now
-            });
+                _logs.Add(new LogEntry
+                {
+                    message = message,
+                    stackTrace = stackTrace,
+                    type = type,
+                    time = System.DateTime.Now
+                });
 
-            // Keep only last 1000 entries
-            if (_logs.Count > 1000)
-                _logs.RemoveAt(0);
+                // Keep only last 1000 entries
+                if (_logs.Count > 1000)
+                    _logs.RemoveAt(0);
+            }
         }
 
         [UnitySkill("console_set_pause_on_error", "Enable or disable Error Pause in Play mode", TracksWorkflow = true)]
@@ -154,9 +163,12 @@ namespace UnitySkills
 
             if (_capturing || _logs.Count > 0)
             {
-                var lines = _logs.Select(l => $"[{l.time:HH:mm:ss.fff}] [{l.type}] {l.message}");
-                System.IO.File.WriteAllLines(savePath, lines);
-                return new { success = true, path = savePath, count = _logs.Count, source = "capture" };
+                lock (_logLock)
+                {
+                    var lines = _logs.Select(l => $"[{l.time:HH:mm:ss.fff}] [{l.type}] {l.message}");
+                    System.IO.File.WriteAllLines(savePath, lines);
+                    return new { success = true, path = savePath, count = _logs.Count, source = "capture" };
+                }
             }
 
             // Direct mode: read from Unity Console when no capture buffer is available
@@ -172,15 +184,18 @@ namespace UnitySkills
         {
             if (_capturing || _logs.Count > 0)
             {
-                return new
+                lock (_logLock)
                 {
-                    success = true, total = _logs.Count, source = "capture",
-                    logs = _logs.Count(l => l.type == LogType.Log),
-                    warnings = _logs.Count(l => l.type == LogType.Warning),
-                    errors = _logs.Count(l => l.type == LogType.Error),
-                    exceptions = _logs.Count(l => l.type == LogType.Exception),
-                    asserts = _logs.Count(l => l.type == LogType.Assert)
-                };
+                    return new
+                    {
+                        success = true, total = _logs.Count, source = "capture",
+                        logs = _logs.Count(l => l.type == LogType.Log),
+                        warnings = _logs.Count(l => l.type == LogType.Warning),
+                        errors = _logs.Count(l => l.type == LogType.Error),
+                        exceptions = _logs.Count(l => l.type == LogType.Exception),
+                        asserts = _logs.Count(l => l.type == LogType.Assert)
+                    };
+                }
             }
 
             // Direct mode: read from Unity Console

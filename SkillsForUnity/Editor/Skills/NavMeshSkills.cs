@@ -21,7 +21,7 @@ namespace UnitySkills
         public static object NavMeshClear()
         {
             UnityEditor.AI.NavMeshBuilder.ClearAllNavMeshes();
-            return new { success = true, message = "NavMesh cleared" };
+            return new { success = true, warning = "NavMesh cleared. This operation cannot be undone." };
         }
 
         [UnitySkill("navmesh_calculate_path", "Calculate a path between two points. Returns: {status, distance, cornerCount, corners}")]
@@ -135,9 +135,11 @@ namespace UnitySkills
             return new { success = true, found = false };
         }
 
-        [UnitySkill("navmesh_set_area_cost", "Set area traversal cost", TracksWorkflow = true)]
+        [UnitySkill("navmesh_set_area_cost", "Set area traversal cost")]
         public static object NavMeshSetAreaCost(int areaIndex, float cost)
         {
+            if (Validate.InRange(areaIndex, 0, 31, "areaIndex") is object err1) return err1;
+            if (cost < 0) return new { error = "cost must be >= 0" };
             NavMesh.SetAreaCost(areaIndex, cost);
             return new { success = true, areaIndex, cost };
         }

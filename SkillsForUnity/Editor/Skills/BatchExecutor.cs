@@ -58,8 +58,19 @@ namespace UnitySkills
                     try
                     {
                         var result = processor(item);
+                        // Check if result contains an error field (processor returned error without throwing)
+                        bool isError = false;
+                        if (result != null)
+                        {
+                            var resultType = result.GetType();
+                            if (resultType.GetProperty("error") != null || resultType.GetField("error") != null)
+                                isError = true;
+                        }
                         results.Add(result);
-                        successCount++;
+                        if (isError)
+                            failCount++;
+                        else
+                            successCount++;
                     }
                     catch (Exception ex)
                     {

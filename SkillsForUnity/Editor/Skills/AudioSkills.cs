@@ -271,7 +271,7 @@ namespace UnitySkills
         [UnitySkill("audio_find_sources_in_scene", "Find all AudioSource components in the current scene")]
         public static object AudioFindSourcesInScene(int limit = 50)
         {
-            var sources = Object.FindObjectsOfType<AudioSource>();
+            var sources = FindHelper.FindAll<AudioSource>();
             var results = sources.Take(limit).Select(s => new { gameObject = s.gameObject.name, path = GameObjectFinder.GetPath(s.gameObject),
                 clip = s.clip != null ? s.clip.name : "null", volume = s.volume, loop = s.loop, enabled = s.enabled }).ToArray();
             return new { success = true, totalFound = sources.Length, showing = results.Length, sources = results };

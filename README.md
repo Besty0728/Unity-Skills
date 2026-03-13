@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-447-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-448-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_EN.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
@@ -31,7 +31,7 @@
 ## 🚀 核心特性
 
 - ⚡ **极致效能**：支持 **Result Truncation** 与 **SKILL.md** 瘦身，最大化节省 Token。
-- 🛠️ **全能工具库**：内置 **447 REST Skills**，并提供 **13 个 advisory 设计模块**，支持 **Batch (批处理)** 操作，大幅减少 HTTP 通信开销，显著提升执行效率。
+- 🛠️ **全能工具库**：内置 **448 REST Skills**，并提供 **13 个 advisory 设计模块**，支持 **Batch (批处理)** 操作，大幅减少 HTTP 通信开销，显著提升执行效率。
 - 🛡️ **安全第一**：支持 **Transactional (事务原子性)**，操作失败自动回滚，场景零残留。
 - 🌍 **多实例支持**：自动端口发现、全局注册表，支持同时控制多个 Unity 项目。
 - 🤖 **深度集成**：独家支持 **Antigravity Slash Commands**，解锁 `/unity-skills` 交互新体验。
@@ -77,9 +77,9 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity
 https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#beta
 ```
 
-**指定版本安装** (如 v1.6.2):
+**指定版本安装** (如 v1.6.0):
 ```
-https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.2
+https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ```
 
 > 📦 所有版本包可在 [Releases](https://github.com/Besty0728/Unity-Skills/releases) 页面下载
@@ -145,7 +145,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.2
 
 ---
 
-## 📦 Skills 分类概要 (447)
+## 📦 Skills 分类概要 (448)
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -153,16 +153,16 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.2
 | **Workflow** | 22 | 持久化历史/任务快照/会话级撤销/回滚/书签 |
 | **Material** | 21 | 材质属性批量修改/HDR/PBR/Emission/关键字/渲染队列 |
 | **GameObject** | 18 | 创建/查找/变换同步/批量操作/层级管理/重命名/复制 |
-| **Scene** | 18 | 多场景加载/卸载/激活/截图/上下文/依赖分析/报告导出 |
+| **Scene** | 10 | 多场景加载/卸载/激活/截图/上下文/依赖分析/报告导出 |
 | **UI System** | 16 | Canvas/Button/Text/Slider/Toggle/锚点/布局/对齐/分布 |
 | **UI Toolkit** | 15 | UXML/USS文件管理/UIDocument/PanelSettings全属性读写/模板生成/结构检查/批量创建 |
-| **Asset** | 15 | 资产导入/删除/移动/复制/搜索/文件夹/批量操作/刷新 |
+| **Asset** | 11 | 资产导入/删除/移动/复制/搜索/文件夹/批量操作/刷新 |
 | **Editor** | 12 | 播放模式/选择/撤销重做/上下文获取/菜单执行 |
 | **Timeline** | 12 | 轨道创建/删除/Clip管理/播放控制/绑定/时长设置 |
 | **Physics** | 12 | 射线检测/球形投射/盒形投射/物理材质/层碰撞矩阵 |
-| **Audio** | 12 | 音频导入设置/AudioSource/AudioClip/AudioMixer/批量 |
-| **Texture** | 12 | 纹理导入设置/平台设置/Sprite/类型/尺寸查找/批量 |
-| **Model** | 12 | 模型导入设置/Mesh信息/材质映射/动画/骨骼/批量 |
+| **Audio** | 10 | 音频导入设置/AudioSource/AudioClip/AudioMixer/批量 |
+| **Texture** | 10 | 纹理导入设置/平台设置/Sprite/类型/尺寸查找/批量 |
+| **Model** | 10 | 模型导入设置/Mesh信息/材质映射/动画/骨骼/批量 |
 | **Script** | 12 | C#脚本创建/读取/替换/列表/信息/重命名/移动/分析 |
 | **Package** | 11 | 包管理/安装/移除/搜索/版本/依赖/Cinemachine/Splines |
 | **AssetImport** | 11 | 纹理/模型/音频/Sprite导入设置/标签管理/重导入 |
@@ -185,7 +185,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.2
 | **Light** | 10 | 灯光创建/类型配置/强度颜色/批量开关/探针组/反射探针/光照贴图 |
 | **Validation** | 10 | 项目验证/空文件夹清理/引用检测/网格碰撞/Shader错误 |
 | **Animator** | 10 | 动画控制器/参数/状态机/过渡/分配/播放 |
-| **Perception** | 9 | 场景摘要/层级树/脚本分析/空间查询/材质概览/场景快照/依赖分析/报告导出/性能提示 |
+| **Perception** | 11 | 场景摘要/层级树/脚本分析/空间查询/材质概览/场景快照/依赖分析/报告导出/性能提示/脚本依赖图 |
 | **Sample** | 8 | 基础示例：创建/删除/变换/场景信息 |
 
 > ⚠️ 大部分模块支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills 以提升性能。
@@ -200,7 +200,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.2
 .
 ├── SkillsForUnity/                 # Unity 编辑器插件 (UPM Package)
 │   ├── package.json                # com.besty.unity-skills
-│   └── Editor/Skills/              # 核心 Skill 逻辑 (38 个 *Skills.cs, 共 447 Skills)
+│   └── Editor/Skills/              # 核心 Skill 逻辑 (38 个 *Skills.cs, 共 448 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP 服务器核心 (Producer-Consumer)
 │       ├── SkillRouter.cs          # 请求路由 & 反射发现 Skills
 │       ├── WorkflowManager.cs      # 持久化工作流 (Task/Session/Snapshot)
@@ -211,8 +211,8 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.2
 │       ├── MaterialSkills.cs       # Material 操作 (21 skills)
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (23 skills)
 │       ├── WorkflowSkills.cs       # Workflow 撤销/回滚 (22 skills)
-│       ├── PerceptionSkills.cs     # 场景理解 (9 skills)
-│       └── ...                     # 447 Skills 源码
+│       ├── PerceptionSkills.cs     # 场景理解 (11 skills)
+│       └── ...                     # 448 Skills 源码
 ├── unity-skills/                   # 跨平台 AI Skill 模板 (分发给 AI 工具)
 │   ├── SKILL.md                    # 主 Skill 定义 (AI 读取)
 │   ├── scripts/

@@ -130,6 +130,10 @@ namespace UnitySkills
         public static object ScriptFindInFile(string pattern, string folder = "Assets", bool isRegex = false, int limit = 50)
         {
             if (!string.IsNullOrEmpty(folder) && Validate.SafePath(folder, "folder") is object folderErr) return folderErr;
+            if (Validate.Required(pattern, "pattern") is object err) return err;
+
+            if (!Directory.Exists(folder))
+                return new { error = $"Directory not found: {folder}" };
 
             var results = new List<object>();
             var files = Directory.GetFiles(folder, "*.cs", SearchOption.AllDirectories);

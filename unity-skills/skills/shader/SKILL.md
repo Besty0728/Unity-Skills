@@ -17,6 +17,11 @@ Work with shaders - create shader files, read source code, and list available sh
 | `shader_find` | Find shader by name |
 | `shader_delete` | Delete shader file |
 | `shader_get_properties` | Get shader properties |
+| `shader_check_errors` | Check shader for compilation errors |
+| `shader_get_keywords` | Get shader keyword list |
+| `shader_get_variant_count` | Get shader variant count for performance analysis |
+| `shader_create_urp` | Create a URP shader from template |
+| `shader_set_global_keyword` | Enable or disable a global shader keyword |
 
 ---
 
@@ -82,6 +87,54 @@ Get all properties defined in a shader.
 | `shaderPath` | string | No* | Shader asset path |
 
 **Returns**: `{success, properties: [{name, type, description}]}`
+
+### `shader_check_errors`
+Check shader for compilation errors.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `shaderNameOrPath` | string | Yes | - | Shader name or asset path (e.g., "Custom/MyShader" or "Assets/Shaders/My.shader") |
+
+**Returns:** `{ shaderName, hasErrors, messageCount }`
+
+### `shader_get_keywords`
+Get shader keyword list.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `shaderNameOrPath` | string | Yes | - | Shader name or asset path (e.g., "Custom/MyShader" or "Assets/Shaders/My.shader") |
+
+**Returns:** `{ shaderName, keywordCount, keywords: [{ name, type }] }`
+
+### `shader_get_variant_count`
+Get shader variant count for performance analysis.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `shaderNameOrPath` | string | Yes | - | Shader name or asset path (e.g., "Custom/MyShader" or "Assets/Shaders/My.shader") |
+
+**Returns:** `{ shaderName, subshaderCount, totalPasses }`
+
+### `shader_create_urp`
+Create a URP shader from template (type: Unlit or Lit).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `shaderName` | string | Yes | - | Shader name (e.g., "Custom/MyURPShader") |
+| `savePath` | string | Yes | - | Save path (e.g., "Assets/Shaders/MyURP.shader") |
+| `type` | string | No | "Unlit" | Template type: "Unlit" or "Lit" |
+
+**Returns:** `{ success, shaderName, path, type }`
+
+### `shader_set_global_keyword`
+Enable or disable a global shader keyword.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `keyword` | string | Yes | - | Global shader keyword name |
+| `enabled` | bool | Yes | - | true to enable, false to disable |
+
+**Returns:** `{ success, keyword, enabled }`
 
 ---
 

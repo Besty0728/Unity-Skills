@@ -741,9 +741,9 @@ namespace UnitySkills
             Undo.SetCurrentGroupName($"Undo Session");
             int undoGroup = Undo.GetCurrentGroup();
 
-            // Collect all snapshots from all tasks in reverse order
+            // Collect all snapshots from all tasks in chronological order (oldest first)
             var allSnapshots = new List<ObjectSnapshot>();
-            foreach (var task in sessionTasks)
+            foreach (var task in sessionTasks.OrderBy(t => t.timestamp))
             {
                 allSnapshots.AddRange(task.snapshots);
             }

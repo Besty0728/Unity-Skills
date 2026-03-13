@@ -28,8 +28,7 @@ namespace UnitySkills
         {
             var issues = new List<ValidationIssue>();
             var scene = SceneManager.GetActiveScene();
-            var rootObjects = scene.GetRootGameObjects();
-            var allObjects = Object.FindObjectsOfType<GameObject>();
+            var allObjects = FindHelper.FindAll<GameObject>();
 
             // Check for missing scripts
             if (checkMissingScripts)
@@ -132,7 +131,7 @@ namespace UnitySkills
             var results = new List<object>();
 
             // Search in scene
-            var sceneObjects = Object.FindObjectsOfType<GameObject>();
+            var sceneObjects = FindHelper.FindAll<GameObject>();
             foreach (var go in sceneObjects)
             {
                 var components = go.GetComponents<Component>();
@@ -241,32 +240,38 @@ namespace UnitySkills
         {
             var filter = $"t:{assetType}";
             var guids = AssetDatabase.FindAssets(filter);
-            var potentiallyUnused = new List<object>();
+            var candidatePaths = new HashSet<string>(
+                guids.Select(AssetDatabase.GUIDToAssetPath).Where(p => !string.IsNullOrEmpty(p)),
+                System.StringComparer.OrdinalIgnoreCase);
 
-            foreach (var guid in guids.Take(limit * 2)) // Check more than limit
+            // Pre-build dependency index: collect all paths that are depended upon by any asset
+            var allGuids = AssetDatabase.FindAssets("t:Object");
+            var referencedPaths = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+            foreach (var g in allGuids)
+            {
+                var assetPath = AssetDatabase.GUIDToAssetPath(g);
+                if (string.IsNullOrEmpty(assetPath)) continue;
+                foreach (var dep in AssetDatabase.GetDependencies(assetPath, true))
+                {
+                    if (dep != assetPath && candidatePaths.Contains(dep))
+                        referencedPaths.Add(dep);
+                }
+            }
+
+            // Collect candidates not found in the referenced set
+            var potentiallyUnused = new List<object>();
+            foreach (var path in candidatePaths)
             {
                 if (potentiallyUnused.Count >= limit) break;
+                if (referencedPaths.Contains(path)) continue;
 
-                var path = AssetDatabase.GUIDToAssetPath(guid);
-                var dependencies = AssetDatabase.GetDependencies(path, false);
-                
-                // Simple heuristic: if nothing depends on it except itself
-                var usedBy = guids
-                    .Select(g => AssetDatabase.GUIDToAssetPath(g))
-                    .Where(p => p != path && AssetDatabase.GetDependencies(p, true).Contains(path))
-                    .Take(1)
-                    .ToArray();
-
-                if (usedBy.Length == 0)
+                var asset = AssetDatabase.LoadMainAssetAtPath(path);
+                potentiallyUnused.Add(new
                 {
-                    var asset = AssetDatabase.LoadMainAssetAtPath(path);
-                    potentiallyUnused.Add(new
-                    {
-                        path,
-                        name = asset?.name,
-                        type = asset?.GetType().Name
-                    });
-                }
+                    path,
+                    name = asset?.name,
+                    type = asset?.GetType().Name
+                });
             }
 
             return new
@@ -363,7 +368,7 @@ namespace UnitySkills
         public static object ValidateFixMissingScripts(bool dryRun = true)
         {
             var fixedObjects = new List<object>();
-            var sceneObjects = Object.FindObjectsOfType<GameObject>();
+            var sceneObjects = FindHelper.FindAll<GameObject>();
 
             foreach (var go in sceneObjects)
             {
@@ -399,7 +404,7 @@ namespace UnitySkills
         public static object ValidateMissingReferences(int limit = 50)
         {
             var results = new List<object>();
-            foreach (var go in Object.FindObjectsOfType<GameObject>())
+            foreach (var go in FindHelper.FindAll<GameObject>())
             {
                 if (results.Count >= limit) break;
                 foreach (var comp in go.GetComponents<Component>())
@@ -425,7 +430,7 @@ namespace UnitySkills
         [UnitySkill("validate_mesh_collider_convex", "Find non-convex MeshColliders (potential performance issue)")]
         public static object ValidateMeshColliderConvex(int limit = 50)
         {
-            var colliders = Object.FindObjectsOfType<MeshCollider>()
+            var colliders = FindHelper.FindAll<MeshCollider>()
                 .Where(mc => !mc.convex)
                 .Take(limit)
                 .Select(mc => new { gameObject = mc.gameObject.name, path = GameObjectFinder.GetPath(mc.gameObject),

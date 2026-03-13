@@ -542,7 +542,7 @@ namespace UnitySkills
         [UnitySkill("uitk_list_documents", "List all UIDocument components in the active scene")]
         public static object UitkListDocuments()
         {
-            var docs = UnityEngine.Object.FindObjectsOfType<UIDocument>();
+            var docs = FindHelper.FindAll<UIDocument>();
             var result = docs.Select(doc => new
             {
                 name = doc.gameObject.name,

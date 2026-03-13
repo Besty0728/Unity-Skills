@@ -126,7 +126,7 @@ namespace UnitySkills
                 {
                     ["name"] = go.name,
                     ["instanceId"] = go.GetInstanceID(),
-                    ["path"] = GetGameObjectPath(go),
+                    ["path"] = GameObjectFinder.GetPath(go),
                     ["tag"] = go.tag,
                     ["layer"] = LayerMask.LayerToName(go.layer),
                     ["isActive"] = go.activeSelf
@@ -198,16 +198,5 @@ namespace UnitySkills
             };
         }
 
-        private static string GetGameObjectPath(GameObject go)
-        {
-            var path = go.name;
-            var parent = go.transform.parent;
-            while (parent != null)
-            {
-                path = parent.name + "/" + path;
-                parent = parent.parent;
-            }
-            return path;
-        }
     }
 }

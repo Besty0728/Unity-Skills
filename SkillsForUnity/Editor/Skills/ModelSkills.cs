@@ -78,7 +78,7 @@ namespace UnitySkills
             if (importer == null)
                 return new { error = $"Not a model file or asset not found: {assetPath}" };
 
-            // 淇敼鍓嶈褰曡祫浜х姸鎬?
+            // 修改前记录资产状态
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 

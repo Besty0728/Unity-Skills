@@ -67,22 +67,23 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(controller);
             controller.AddParameter(paramName, type);
 
-            // Set default value
+            // Set default value — use index to modify struct in-place (value type copy bug fix)
             var parameters = controller.parameters;
-            var param = parameters.FirstOrDefault(p => p.name == paramName);
-            if (param != null)
+            int idx = System.Array.FindIndex(parameters, p => p.name == paramName);
+            if (idx >= 0)
             {
                 switch (type)
                 {
                     case AnimatorControllerParameterType.Float:
-                        param.defaultFloat = defaultFloat;
+                        parameters[idx].defaultFloat = defaultFloat;
                         break;
                     case AnimatorControllerParameterType.Int:
-                        param.defaultInt = defaultInt;
+                        parameters[idx].defaultInt = defaultInt;
                         break;
                     case AnimatorControllerParameterType.Bool:
-                        param.defaultBool = defaultBool;
+                        parameters[idx].defaultBool = defaultBool;
                         break;
+                    default: break;
                 }
                 controller.parameters = parameters;
             }

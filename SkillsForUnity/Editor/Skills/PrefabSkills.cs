@@ -236,7 +236,8 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
             var instance = PrefabUtility.InstantiatePrefab(source) as GameObject;
-            var variant = PrefabUtility.SaveAsPrefabAsset(instance, variantPath);
+            var variant = PrefabUtility.SaveAsPrefabAssetAndConnect(
+                instance, variantPath, InteractionMode.AutomatedAction);
             Object.DestroyImmediate(instance);
 
             return new { success = true, sourcePath = sourcePrefabPath, variantPath, name = variant.name };
@@ -249,7 +250,7 @@ namespace UnitySkills
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             if (prefab == null) return new { error = $"Prefab not found: {prefabPath}" };
 
-            var allObjects = Object.FindObjectsOfType<GameObject>();
+            var allObjects = FindHelper.FindAll<GameObject>();
             var instances = allObjects
                 .Where(go => PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(go) == prefabPath)
                 .Take(limit)

@@ -155,12 +155,28 @@ namespace UnitySkills
                 WorkflowManager.SnapshotObject(material, SnapshotType.Created);
                 AssetDatabase.SaveAssets();
             }
+            else
+            {
+                // No savePath: return instanceId so caller can reference or destroy later
+                var pipelineType2 = ProjectSkills.DetectRenderPipeline();
+                return new {
+                    success = true,
+                    name,
+                    shader = shaderName,
+                    path = (string)null,
+                    instanceId = material.GetInstanceID(),
+                    renderPipeline = pipelineType2.ToString(),
+                    colorProperty = ProjectSkills.GetColorPropertyName(),
+                    textureProperty = ProjectSkills.GetMainTexturePropertyName(),
+                    warning = "Material created in memory only (no savePath). It will be lost on editor restart. Use asset_save or specify savePath to persist."
+                };
+            }
 
             var pipelineType = ProjectSkills.DetectRenderPipeline();
-            return new { 
-                success = true, 
-                name, 
-                shader = shaderName, 
+            return new {
+                success = true,
+                name,
+                shader = shaderName,
                 path = savePath,
                 renderPipeline = pipelineType.ToString(),
                 colorProperty = ProjectSkills.GetColorPropertyName(),

@@ -16,9 +16,10 @@ namespace UnitySkills
         [UnitySkill("shader_create", "Create a new shader file", TracksWorkflow = true)]
         public static object ShaderCreate(string shaderName, string savePath, string template = null)
         {
+            if (Validate.Required(shaderName, "shaderName") is object err) return err;
             if (!string.IsNullOrEmpty(savePath) && Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
 
-            if (File.Exists(savePath))
+            if (!string.IsNullOrEmpty(savePath) && File.Exists(savePath))
                 return new { error = $"File already exists: {savePath}" };
 
             var dir = Path.GetDirectoryName(savePath);
@@ -126,16 +127,7 @@ namespace UnitySkills
         [UnitySkill("shader_get_properties", "Get properties of a shader")]
         public static object ShaderGetProperties(string shaderNameOrPath)
         {
-            Shader shader = null;
-
-            // Try as asset path first
-            if (shaderNameOrPath.EndsWith(".shader"))
-                shader = AssetDatabase.LoadAssetAtPath<Shader>(shaderNameOrPath);
-
-            // Try as shader name
-            if (shader == null)
-                shader = Shader.Find(shaderNameOrPath);
-
+            var shader = FindShaderByNameOrPath(shaderNameOrPath);
             if (shader == null)
                 return new { error = $"Shader not found: {shaderNameOrPath}" };
 
@@ -190,9 +182,7 @@ namespace UnitySkills
         [UnitySkill("shader_check_errors", "Check shader for compilation errors")]
         public static object ShaderCheckErrors(string shaderNameOrPath)
         {
-            Shader shader = shaderNameOrPath.EndsWith(".shader")
-                ? AssetDatabase.LoadAssetAtPath<Shader>(shaderNameOrPath)
-                : Shader.Find(shaderNameOrPath);
+            var shader = FindShaderByNameOrPath(shaderNameOrPath);
             if (shader == null) return new { error = $"Shader not found: {shaderNameOrPath}" };
             int msgCount = ShaderUtil.GetShaderMessageCount(shader);
             return new { shaderName = shader.name, hasErrors = msgCount > 0, messageCount = msgCount };
@@ -201,9 +191,7 @@ namespace UnitySkills
         [UnitySkill("shader_get_keywords", "Get shader keyword list")]
         public static object ShaderGetKeywords(string shaderNameOrPath)
         {
-            Shader shader = shaderNameOrPath.EndsWith(".shader")
-                ? AssetDatabase.LoadAssetAtPath<Shader>(shaderNameOrPath)
-                : Shader.Find(shaderNameOrPath);
+            var shader = FindShaderByNameOrPath(shaderNameOrPath);
             if (shader == null) return new { error = $"Shader not found: {shaderNameOrPath}" };
             var keywords = shader.keywordSpace.keywords.Select(k => new { name = k.name, type = k.type.ToString() }).ToArray();
             return new { shaderName = shader.name, keywordCount = keywords.Length, keywords };
@@ -212,9 +200,7 @@ namespace UnitySkills
         [UnitySkill("shader_get_variant_count", "Get shader variant count for performance analysis")]
         public static object ShaderGetVariantCount(string shaderNameOrPath)
         {
-            Shader shader = shaderNameOrPath.EndsWith(".shader")
-                ? AssetDatabase.LoadAssetAtPath<Shader>(shaderNameOrPath)
-                : Shader.Find(shaderNameOrPath);
+            var shader = FindShaderByNameOrPath(shaderNameOrPath);
             if (shader == null) return new { error = $"Shader not found: {shaderNameOrPath}" };
             var data = ShaderUtil.GetShaderData(shader);
             int totalVariants = 0;
@@ -296,6 +282,20 @@ namespace UnitySkills
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(savePath);
             if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
             return new { success = true, shaderName, path = savePath, type };
+        }
+
+        /// <summary>
+        /// Find a shader by name or asset path. Tries asset path first if it ends with .shader, then falls back to Shader.Find.
+        /// </summary>
+        private static Shader FindShaderByNameOrPath(string shaderNameOrPath)
+        {
+            if (string.IsNullOrEmpty(shaderNameOrPath)) return null;
+            Shader shader = null;
+            if (shaderNameOrPath.EndsWith(".shader"))
+                shader = AssetDatabase.LoadAssetAtPath<Shader>(shaderNameOrPath);
+            if (shader == null)
+                shader = Shader.Find(shaderNameOrPath);
+            return shader;
         }
 
         [UnitySkill("shader_set_global_keyword", "Enable or disable a global shader keyword", TracksWorkflow = true)]

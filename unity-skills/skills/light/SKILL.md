@@ -161,6 +161,46 @@ unity_skills.call_skill("light_create",
 )
 ```
 
+### `light_add_probe_group`
+Add a Light Probe Group to a GameObject. Optional grid layout: gridX/gridY/gridZ (count per axis), spacingX/spacingY/spacingZ (meters between probes).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No | null | GameObject name |
+| `instanceId` | int | No | 0 | Instance ID |
+| `path` | string | No | null | Hierarchy path |
+| `gridX` | int | No | 0 | Probe count on X axis |
+| `gridY` | int | No | 0 | Probe count on Y axis |
+| `gridZ` | int | No | 0 | Probe count on Z axis |
+| `spacingX` | float | No | 2 | Meters between probes on X |
+| `spacingY` | float | No | 1.5 | Meters between probes on Y |
+| `spacingZ` | float | No | 2 | Meters between probes on Z |
+
+**Returns:** `{ success, gameObject, probeCount, existed, hasGrid }`
+
+### `light_add_reflection_probe`
+Create a Reflection Probe at a position.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `probeName` | string | No | "ReflectionProbe" | Probe name |
+| `x`, `y`, `z` | float | No | 0,1,0 | Position |
+| `sizeX`, `sizeY`, `sizeZ` | float | No | 10,10,10 | Probe box size |
+| `resolution` | int | No | 256 | Cubemap resolution |
+
+**Returns:** `{ success, name, instanceId, resolution, size }`
+
+### `light_get_lightmap_settings`
+Get Lightmap baking settings.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| *(none)* | — | — | — | No parameters required |
+
+**Returns:** `{ success, bakedGI, realtimeGI, lightmapSize, lightmapPadding, isRunning, lightmapCount }`
+
+---
+
 ## Best Practices
 
 1. Use Directional light for main scene illumination

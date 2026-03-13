@@ -19,7 +19,10 @@ namespace UnitySkills
         {
             var origin = new Vector3(originX, originY, originZ);
             var direction = new Vector3(dirX, dirY, dirZ);
-            
+            if (direction.sqrMagnitude < 1e-6f)
+                return new { error = "Direction vector cannot be zero" };
+            direction.Normalize();
+
             if (Physics.Raycast(origin, direction, out RaycastHit hit, maxDistance, layerMask))
             {
                 return new
@@ -99,6 +102,9 @@ namespace UnitySkills
         {
             var origin = new Vector3(originX, originY, originZ);
             var direction = new Vector3(dirX, dirY, dirZ);
+            if (direction.sqrMagnitude < 1e-6f)
+                return new { error = "Direction vector cannot be zero" };
+            direction.Normalize();
             var hits = Physics.RaycastAll(origin, direction, maxDistance, layerMask);
             var results = hits.OrderBy(h => h.distance).Select(h => new
             {
@@ -120,6 +126,9 @@ namespace UnitySkills
         {
             var origin = new Vector3(originX, originY, originZ);
             var direction = new Vector3(dirX, dirY, dirZ);
+            if (direction.sqrMagnitude < 1e-6f)
+                return new { error = "Direction vector cannot be zero" };
+            direction.Normalize();
             if (Physics.SphereCast(origin, radius, direction, out RaycastHit hit, maxDistance, layerMask))
             {
                 return new
@@ -143,6 +152,9 @@ namespace UnitySkills
         {
             var origin = new Vector3(originX, originY, originZ);
             var direction = new Vector3(dirX, dirY, dirZ);
+            if (direction.sqrMagnitude < 1e-6f)
+                return new { error = "Direction vector cannot be zero" };
+            direction.Normalize();
             var halfExtents = new Vector3(halfExtentX, halfExtentY, halfExtentZ);
             if (Physics.BoxCast(origin, halfExtents, direction, out RaycastHit hit, Quaternion.identity, maxDistance, layerMask))
             {

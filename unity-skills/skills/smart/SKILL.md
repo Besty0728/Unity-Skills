@@ -63,3 +63,89 @@ Auto-fill a List/Array field with matching objects.
 # Fill GameManager.spawns with all SpawnPoint tagged objects
 call_skill("smart_reference_bind", targetName="GameManager", componentName="GameController", fieldName="spawns", sourceTag="SpawnPoint")
 ```
+
+---
+
+### `smart_scene_query_spatial`
+Find objects within a sphere/box region, optionally filtered by component.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `x` | float | Yes | - | Center X coordinate |
+| `y` | float | Yes | - | Center Y coordinate |
+| `z` | float | Yes | - | Center Z coordinate |
+| `radius` | float | No | 10 | Search sphere radius |
+| `componentFilter` | string | No | null | Only include objects with this component |
+| `limit` | int | No | 50 | Max results |
+
+**Returns:** `{ success, count, center, radius, results }`
+
+---
+
+### `smart_align_to_ground`
+Raycast selected objects downward to align them to the ground. Requires objects selected in Hierarchy first.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `maxDistance` | float | No | 100 | Maximum raycast distance |
+| `alignRotation` | bool | No | false | Align rotation to surface normal |
+
+**Returns:** `{ success, aligned, total }`
+
+---
+
+### `smart_distribute`
+Evenly distribute selected objects between first and last positions. Requires at least 3 objects selected in Hierarchy first.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `axis` | string | No | "X" | X, Y, Z, -X, -Y, -Z |
+
+**Returns:** `{ success, distributed, axis }`
+
+---
+
+### `smart_snap_to_grid`
+Snap selected objects to a grid.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `gridSize` | float | No | 1 | Grid cell size |
+
+**Returns:** `{ success, snapped, gridSize }`
+
+---
+
+### `smart_randomize_transform`
+Randomize position/rotation/scale of selected objects within ranges.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `posRange` | float | No | 0 | Position randomization range |
+| `rotRange` | float | No | 0 | Rotation randomization range (degrees) |
+| `scaleMin` | float | No | 1 | Minimum uniform scale |
+| `scaleMax` | float | No | 1 | Maximum uniform scale |
+
+**Returns:** `{ success, randomized }`
+
+---
+
+### `smart_replace_objects`
+Replace selected objects with a prefab (preserving transforms). Requires objects selected in Hierarchy first.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `prefabPath` | string | Yes | - | Asset path to the replacement prefab |
+
+**Returns:** `{ success, replaced, prefab }`
+
+---
+
+### `smart_select_by_component`
+Select all objects that have a specific component.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `componentName` | string | Yes | - | Component type name to search for |
+
+**Returns:** `{ success, selected, component }`

@@ -16,6 +16,11 @@ description: "Project cleanup utilities. Use when users want to find unused asse
 | `cleaner_find_missing_references` | Find missing scripts/asset references |
 | `cleaner_delete_assets` | Delete assets (with dryRun protection) |
 | `cleaner_get_asset_usage` | Find what references a specific asset |
+| `cleaner_find_empty_folders` | Find empty folders in the project |
+| `cleaner_find_large_assets` | Find largest assets by file size |
+| `cleaner_delete_empty_folders` | Delete all empty folders |
+| `cleaner_fix_missing_scripts` | Remove missing script components from GameObjects |
+| `cleaner_get_dependency_tree` | Get dependency tree for an asset |
 
 ---
 
@@ -121,8 +126,88 @@ Find what objects reference a specific asset.
 
 ```python
 # Check what uses a texture
-result = call_skill("cleaner_get_asset_usage", 
+result = call_skill("cleaner_get_asset_usage",
     assetPath="Assets/Textures/player.png")
+```
+
+### `cleaner_find_empty_folders`
+Find empty folders in the project.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `searchPath` | string | No | "Assets" | Search path |
+
+**Returns:** `{ success, count, folders }`
+
+```python
+# Find empty folders
+result = call_skill("cleaner_find_empty_folders")
+print(f"Found {result['count']} empty folders")
+```
+
+### `cleaner_find_large_assets`
+Find largest assets by file size.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `searchPath` | string | No | "Assets" | Search path |
+| `limit` | int | No | 20 | Max results |
+| `minSizeBytes` | long | No | 0 | Minimum file size in bytes |
+
+**Returns:** `{ success, count, assets: [{ path, sizeBytes, sizeMB }] }`
+
+```python
+# Find top 10 largest assets over 1 MB
+result = call_skill("cleaner_find_large_assets", limit=10, minSizeBytes=1048576)
+for a in result['assets']:
+    print(f"{a['sizeMB']:.2f} MB - {a['path']}")
+```
+
+### `cleaner_delete_empty_folders`
+Delete all empty folders.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `searchPath` | string | No | "Assets" | Search path |
+
+**Returns:** `{ success, deleted, total }`
+
+```python
+# Delete all empty folders
+result = call_skill("cleaner_delete_empty_folders")
+print(f"Deleted {result['deleted']} of {result['total']} empty folders")
+```
+
+### `cleaner_fix_missing_scripts`
+Remove missing script components from GameObjects.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `includeInactive` | bool | No | true | Include inactive objects |
+
+**Returns:** `{ success, removedComponents }`
+
+```python
+# Remove all missing script components
+result = call_skill("cleaner_fix_missing_scripts")
+print(f"Removed {result['removedComponents']} missing script components")
+```
+
+### `cleaner_get_dependency_tree`
+Get dependency tree for an asset.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `assetPath` | string | Yes | - | Asset path |
+| `recursive` | bool | No | true | Recursively resolve dependencies |
+
+**Returns:** `{ success, assetPath, dependencyCount, dependencies: [{ path, type }] }`
+
+```python
+# Get full dependency tree for a prefab
+result = call_skill("cleaner_get_dependency_tree",
+    assetPath="Assets/Prefabs/Player.prefab")
+print(f"Dependencies: {result['dependencyCount']}")
 ```
 
 ---

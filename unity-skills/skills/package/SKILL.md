@@ -63,3 +63,71 @@ Unity Package Manager 操作，支持包的安装、移除和 Cinemachine 自动
   "splines": {"installed": true, "version": "2.8.0"}
 }
 ```
+
+### `package_install_splines`
+Install Unity Splines package. Auto-detects correct version for Unity 6 vs Unity 2022.
+
+**Parameters:** None.
+
+**Returns:**
+```json
+{
+  "success": true,
+  "message": "Installing Splines 2.8.0...",
+  "async": true
+}
+```
+
+### `package_search`
+Search for packages in the Unity Registry.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| query | string | Yes | - | 搜索关键词，匹配包名或显示名称 |
+
+**Returns:**
+```json
+{
+  "success": true,
+  "query": "cinemachine",
+  "count": 1,
+  "packages": [{"name": "com.unity.cinemachine", "version": "3.1.3", "displayName": "Cinemachine"}]
+}
+```
+
+### `package_get_dependencies`
+Get dependency list for an installed package.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| packageId | string | Yes | - | 包 ID，如 `com.unity.cinemachine` |
+
+**Returns:**
+```json
+{
+  "success": true,
+  "packageId": "com.unity.cinemachine",
+  "version": "3.1.3",
+  "dependencyCount": 1,
+  "dependencies": [{"name": "com.unity.splines", "version": "2.8.0"}]
+}
+```
+
+### `package_get_versions`
+Get all available versions for a package.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| packageId | string | Yes | - | 包 ID，如 `com.unity.cinemachine` |
+
+**Returns:**
+```json
+{
+  "success": true,
+  "packageId": "com.unity.cinemachine",
+  "currentVersion": "3.1.3",
+  "compatibleVersion": "3.1.3",
+  "latestVersion": "3.1.3",
+  "allVersions": ["2.10.0", "3.0.0", "3.1.3"]
+}
+```

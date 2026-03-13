@@ -158,7 +158,7 @@ namespace UnitySkills
                 ? Resources.FindObjectsOfTypeAll<GameObject>()
                     .Where(go => !EditorUtility.IsPersistent(go) && go.hideFlags == HideFlags.None)
                     .ToArray()
-                : Object.FindObjectsOfType<GameObject>();
+                : FindHelper.FindAll<GameObject>();
 
             foreach (var go in allObjects)
             {
@@ -172,7 +172,7 @@ namespace UnitySkills
                         {
                             type = "MissingScript",
                             gameObject = go.name,
-                            path = GetGameObjectPath(go),
+                            path = GameObjectFinder.GetPath(go),
                             componentIndex = i
                         });
                     }
@@ -193,7 +193,7 @@ namespace UnitySkills
                                 {
                                     type = "MissingReference",
                                     gameObject = go.name,
-                                    path = GetGameObjectPath(go),
+                                    path = GameObjectFinder.GetPath(go),
                                     component = component.GetType().Name,
                                     property = prop.propertyPath
                                 });
@@ -338,7 +338,7 @@ namespace UnitySkills
                 totalBytes,
                 totalMB = totalBytes / (1024.0 * 1024.0),
                 confirmToken = token,
-                message = $"鈿狅笍 PREVIEW ONLY - {previewResults.Count(r => ((dynamic)r).exists)} assets will be deleted ({totalBytes / (1024.0 * 1024.0):F2} MB). To confirm, call again with confirmToken='{token}'",
+                message = $"⚠️ PREVIEW ONLY - {previewResults.Count(r => ((dynamic)r).exists)} assets will be deleted ({totalBytes / (1024.0 * 1024.0):F2} MB). To confirm, call again with confirmToken='{token}'",
                 expiresIn = "5 minutes",
                 assetsToDelete = previewResults
             };
@@ -419,7 +419,13 @@ namespace UnitySkills
                 .Where(fi => fi.Length > minSizeBytes)
                 .OrderByDescending(fi => fi.Length)
                 .Take(limit)
-                .Select(fi => new { path = fi.FullName.Replace("\\", "/"), sizeBytes = fi.Length, sizeMB = fi.Length / (1024.0 * 1024.0) })
+                .Select(fi =>
+                {
+                    var relativePath = fi.FullName.Replace("\\", "/");
+                    var assetsIndex = relativePath.IndexOf("Assets/");
+                    if (assetsIndex >= 0) relativePath = relativePath.Substring(assetsIndex);
+                    return new { path = relativePath, sizeBytes = fi.Length, sizeMB = fi.Length / (1024.0 * 1024.0) };
+                })
                 .ToArray();
             return new { success = true, count = files.Length, assets = files };
         }
@@ -443,7 +449,7 @@ namespace UnitySkills
         {
             var allObjects = includeInactive
                 ? Resources.FindObjectsOfTypeAll<GameObject>().Where(go => !EditorUtility.IsPersistent(go) && go.hideFlags == HideFlags.None).ToArray()
-                : Object.FindObjectsOfType<GameObject>();
+                : FindHelper.FindAll<GameObject>();
             int totalRemoved = 0;
             foreach (var go in allObjects)
             {
@@ -470,16 +476,5 @@ namespace UnitySkills
             return new { success = true, assetPath, dependencyCount = deps.Length, dependencies = deps };
         }
 
-        private static string GetGameObjectPath(GameObject go)
-        {
-            var path = go.name;
-            var parent = go.transform.parent;
-            while (parent != null)
-            {
-                path = parent.name + "/" + path;
-                parent = parent.parent;
-            }
-            return path;
-        }
     }
 }

@@ -20,6 +20,7 @@ This folder contains detailed documentation for each skill module. For quick ref
 | [prefab](./prefab/SKILL.md) | Prefab creation and instantiation | Yes (1 batch skill) |
 | [asset](./asset/SKILL.md) | Asset import, organize, search | Yes (3 batch skills) |
 | [ui](./ui/SKILL.md) | Canvas and UI element creation | Yes (1 batch skill) |
+| [uitoolkit](./uitoolkit/SKILL.md) | UI Toolkit UXML/USS/UIDocument | No |
 | [script](./script/SKILL.md) | C# script creation and search | Yes (1 batch skill) |
 | [scene](./scene/SKILL.md) | Scene loading, saving, hierarchy | No |
 | [editor](./editor/SKILL.md) | Play mode, selection, undo/redo | No |
@@ -89,7 +90,7 @@ unity_skills.call_skill("gameobject_create_batch",
 
 ## Coverage Summary
 
-- Unity REST skills: 447
+- Unity REST skills: 448
 - Advisory design modules: 13
 - Core runtime modules: 37
 - Total documented module folders: 50

@@ -195,7 +195,7 @@ namespace UnitySkills
         [UnitySkill("scene_find_objects", "Search GameObjects by name pattern, tag, or component type. For advanced search (regex, layer, path) use gameobject_find.")]
         public static object SceneFindObjects(string namePattern = null, string tag = null, string componentType = null, int limit = 50)
         {
-            IEnumerable<GameObject> objects = Object.FindObjectsOfType<GameObject>();
+            IEnumerable<GameObject> objects = FindHelper.FindAll<GameObject>();
 
             if (!string.IsNullOrEmpty(tag))
             {

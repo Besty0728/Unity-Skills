@@ -17,12 +17,12 @@ namespace UnitySkills
         private static readonly Type s_UnityStatsType =
             typeof(Editor).Assembly.GetType("UnityEditor.UnityStats");
 
-        private static float GetStatFloat(string name)
+        private static float? GetStatFloat(string name)
         {
             var prop = s_UnityStatsType?.GetProperty(name, BindingFlags.Public | BindingFlags.Static);
-            if (prop == null) return -1f;
+            if (prop == null) return null;
             try { return Convert.ToSingle(prop.GetValue(null)); }
-            catch { return -1f; }
+            catch { return null; }
         }
 
         private static int GetStatInt(string name)
@@ -40,15 +40,15 @@ namespace UnitySkills
             long totalReservedMemory = Profiler.GetTotalReservedMemoryLong();
             long totalUnusedReservedMemory = Profiler.GetTotalUnusedReservedMemoryLong();
 
-            float frameTime = GetStatFloat("frameTime");
-            float fps = frameTime > 0 ? 1000f / frameTime : 0f;
+            float? frameTime = GetStatFloat("frameTime");
+            float? fps = frameTime.HasValue && frameTime.Value > 0 ? 1000f / frameTime.Value : null;
 
             int visibleSkinnedMeshes = 0;
-            foreach (var smr in UnityEngine.Object.FindObjectsOfType<SkinnedMeshRenderer>())
+            foreach (var smr in FindHelper.FindAll<SkinnedMeshRenderer>())
                 if (smr.isVisible) visibleSkinnedMeshes++;
 
             int visibleAnimators = 0;
-            foreach (var anim in UnityEngine.Object.FindObjectsOfType<Animator>())
+            foreach (var anim in FindHelper.FindAll<Animator>())
             {
                 var renderer = anim.GetComponent<Renderer>();
                 if (renderer != null && renderer.isVisible) visibleAnimators++;
@@ -56,6 +56,7 @@ namespace UnitySkills
 
             return new
             {
+                success = true,
                 fps, frameTime,
                 renderTime = GetStatFloat("renderTime"),
                 triangles = GetStatInt("triangles"),

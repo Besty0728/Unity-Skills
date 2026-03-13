@@ -36,7 +36,7 @@ namespace UnitySkills
         public static object SceneSummarize(bool includeComponentStats = true, int topComponentsLimit = 10)
         {
             var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+            var allObjects = FindHelper.FindAll<GameObject>();
             var rootObjects = scene.GetRootGameObjects();
 
             int totalObjects = allObjects.Length;
@@ -281,7 +281,7 @@ namespace UnitySkills
                 center = new Vector3(x, y, z);
             }
 
-            var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+            var allObjects = FindHelper.FindAll<GameObject>();
             float radiusSq = radius * radius;
 
             Type filterType = null;
@@ -330,7 +330,7 @@ namespace UnitySkills
         [UnitySkill("scene_materials", "Get an overview of all materials and shaders used in the current scene")]
         public static object SceneMaterials(bool includeProperties = false)
         {
-            var renderers = UnityEngine.Object.FindObjectsOfType<Renderer>();
+            var renderers = FindHelper.FindAll<Renderer>();
             var materialMap = new Dictionary<string, MaterialInfo>();
 
             foreach (var renderer in renderers)
@@ -409,10 +409,11 @@ namespace UnitySkills
             int maxObjects = 200,
             string rootPath = null,
             bool includeValues = false,
-            bool includeReferences = true)
+            bool includeReferences = true,
+            bool includeCodeDeps = false)
         {
             var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            var totalObjects = UnityEngine.Object.FindObjectsOfType<GameObject>().Length;
+            var totalObjects = FindHelper.FindAll<GameObject>().Length;
 
             // Determine roots
             Transform[] roots;
@@ -446,6 +447,19 @@ namespace UnitySkills
                 }
             }
 
+            // Optional: code-level dependencies
+            List<object> codeDeps = null;
+            if (includeCodeDeps)
+            {
+                codeDeps = CollectCodeDependencies().Select(e => (object)new
+                {
+                    from = e.fromScript,
+                    to = e.toObject,
+                    type = e.fieldType,
+                    detail = e.fieldName
+                }).ToList();
+            }
+
             var result = new
             {
                 success = true,
@@ -454,7 +468,8 @@ namespace UnitySkills
                 exportedObjects = objects.Count,
                 truncated = objects.Count < totalObjects || queue.Count > 0,
                 objects,
-                references = includeReferences ? references : null
+                references = includeReferences ? references : null,
+                codeDependencies = codeDeps
             };
             return result;
         }
@@ -867,7 +882,7 @@ namespace UnitySkills
 
         // Regex patterns for C# code-level dependency detection
         private static readonly System.Text.RegularExpressions.Regex RxGetComponent =
-            new System.Text.RegularExpressions.Regex(@"GetComponent(?:InChildren|InParent|s)?<(\w+)>", System.Text.RegularExpressions.RegexOptions.Compiled);
+            new System.Text.RegularExpressions.Regex(@"(?:Get|Add)Component(?:InChildren|InParent|s)?<(\w+)>", System.Text.RegularExpressions.RegexOptions.Compiled);
         private static readonly System.Text.RegularExpressions.Regex RxFindObject =
             new System.Text.RegularExpressions.Regex(@"FindObject(?:OfType|sOfType|sByType)?<(\w+)>", System.Text.RegularExpressions.RegexOptions.Compiled);
         private static readonly System.Text.RegularExpressions.Regex RxSendMessage =
@@ -1059,7 +1074,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(savePath) && Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
 
             var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+            var allObjects = FindHelper.FindAll<GameObject>();
 
             var edges = CollectDependencyEdges(allObjects);
 
@@ -1121,6 +1136,226 @@ namespace UnitySkills
                 savedTo = savedPath,
                 markdown = savedPath == null ? md : null
             };
+        }
+
+        [UnitySkill("script_dependency_graph",
+            "Given an entry script, return its N-hop dependency closure as structured JSON. "
+            + "Shows which scripts to read to understand or safely modify a feature.")]
+        public static object ScriptDependencyGraph(
+            string scriptName,
+            int maxHops = 2,
+            bool includeDetails = true)
+        {
+            if (string.IsNullOrEmpty(scriptName))
+                return new { success = false, error = "scriptName is required" };
+
+            // Find the entry script type
+            var allTypes = AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(a => { try { return a.GetTypes(); } catch { return new Type[0]; } })
+                .Where(t => t.IsClass && IsUserScript(t))
+                .ToList();
+
+            var entryType = allTypes.FirstOrDefault(t => t.Name.Equals(scriptName, StringComparison.OrdinalIgnoreCase));
+            if (entryType == null)
+                return new { success = false, error = $"Script '{scriptName}' not found among user scripts" };
+
+            var entryName = entryType.Name;
+
+            // Collect all code-level dependency edges
+            var codeEdges = CollectCodeDependencies();
+
+            // Build bidirectional adjacency: outgoing (A depends on B) and incoming (B is depended by A)
+            var outgoing = new Dictionary<string, HashSet<string>>();
+            var incoming = new Dictionary<string, HashSet<string>>();
+
+            foreach (var e in codeEdges)
+            {
+                if (!outgoing.ContainsKey(e.fromObject)) outgoing[e.fromObject] = new HashSet<string>();
+                outgoing[e.fromObject].Add(e.toObject);
+
+                if (!incoming.ContainsKey(e.toObject)) incoming[e.toObject] = new HashSet<string>();
+                incoming[e.toObject].Add(e.fromObject);
+            }
+
+            // BFS from entry, expanding both directions, up to maxHops
+            var visited = new Dictionary<string, int>(); // scriptName → hop
+            var queue = new Queue<(string name, int hop)>();
+            visited[entryName] = 0;
+            queue.Enqueue((entryName, 0));
+
+            while (queue.Count > 0)
+            {
+                var (current, hop) = queue.Dequeue();
+                if (hop >= maxHops) continue;
+
+                // Expand outgoing
+                if (outgoing.TryGetValue(current, out var outs))
+                {
+                    foreach (var neighbor in outs)
+                    {
+                        if (!visited.ContainsKey(neighbor))
+                        {
+                            visited[neighbor] = hop + 1;
+                            queue.Enqueue((neighbor, hop + 1));
+                        }
+                    }
+                }
+
+                // Expand incoming
+                if (incoming.TryGetValue(current, out var ins))
+                {
+                    foreach (var neighbor in ins)
+                    {
+                        if (!visited.ContainsKey(neighbor))
+                        {
+                            visited[neighbor] = hop + 1;
+                            queue.Enqueue((neighbor, hop + 1));
+                        }
+                    }
+                }
+            }
+
+            // Build file path lookup via MonoScript assets
+            var filePathMap = new Dictionary<string, string>();
+            var scriptGuids = AssetDatabase.FindAssets("t:MonoScript", new[] { "Assets" });
+            foreach (var guid in scriptGuids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                var ms = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
+                if (ms == null) continue;
+                var cls = ms.GetClass();
+                if (cls != null && visited.ContainsKey(cls.Name))
+                    filePathMap[cls.Name] = path;
+            }
+
+            // Build type lookup for reached scripts
+            var typeMap = new Dictionary<string, Type>();
+            foreach (var t in allTypes)
+            {
+                if (visited.ContainsKey(t.Name) && !typeMap.ContainsKey(t.Name))
+                    typeMap[t.Name] = t;
+            }
+
+            // Build script info list
+            var scripts = new List<object>();
+            foreach (var kv in visited.OrderBy(k => k.Value).ThenBy(k => k.Key))
+            {
+                var sName = kv.Key;
+                var hop = kv.Value;
+                var type = typeMap.ContainsKey(sName) ? typeMap[sName] : null;
+
+                var dependsOn = outgoing.ContainsKey(sName)
+                    ? outgoing[sName].Where(visited.ContainsKey).OrderBy(n => n).ToList()
+                    : new List<string>();
+                var dependedBy = incoming.ContainsKey(sName)
+                    ? incoming[sName].Where(visited.ContainsKey).OrderBy(n => n).ToList()
+                    : new List<string>();
+
+                string kind = null, baseClass = null;
+                List<object> fields = null;
+                List<string> callbacks = null;
+
+                if (type != null)
+                {
+                    kind = typeof(MonoBehaviour).IsAssignableFrom(type) ? "MonoBehaviour"
+                        : typeof(ScriptableObject).IsAssignableFrom(type) ? "ScriptableObject"
+                        : "Class";
+                    baseClass = type.BaseType?.Name;
+
+                    if (includeDetails)
+                    {
+                        fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                            .Where(f => !f.Name.StartsWith("<"))
+                            .Select(f => (object)new
+                            {
+                                name = f.Name,
+                                type = GetFriendlyTypeName(f.FieldType),
+                                serializable = f.IsPublic || f.GetCustomAttribute<SerializeField>() != null
+                            }).ToList();
+
+                        if (typeof(MonoBehaviour).IsAssignableFrom(type))
+                        {
+                            callbacks = type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+                                .Where(m => UnityCallbacks.Contains(m.Name))
+                                .Select(m => m.Name).ToList();
+                        }
+                    }
+                }
+
+                scripts.Add(new
+                {
+                    name = sName,
+                    hop,
+                    kind,
+                    baseClass,
+                    filePath = filePathMap.ContainsKey(sName) ? filePathMap[sName] : null,
+                    dependsOn,
+                    dependedBy,
+                    fields,
+                    unityCallbacks = callbacks
+                });
+            }
+
+            // Filter edges to only those between reached scripts
+            var reachedEdges = codeEdges
+                .Where(e => visited.ContainsKey(e.fromObject) && visited.ContainsKey(e.toObject))
+                .Select(e => (object)new { from = e.fromObject, to = e.toObject, type = e.fieldType, detail = e.fieldName })
+                .ToList();
+
+            // Topological sort for suggestedReadOrder (Kahn's algorithm)
+            var readOrder = TopologicalSort(visited.Keys.ToList(), codeEdges.Where(e => visited.ContainsKey(e.fromObject) && visited.ContainsKey(e.toObject)).ToList(), entryName);
+
+            return new
+            {
+                success = true,
+                entryScript = entryName,
+                totalScriptsReached = visited.Count,
+                maxHops,
+                scripts,
+                edges = reachedEdges,
+                suggestedReadOrder = readOrder
+            };
+        }
+
+        /// <summary>
+        /// Kahn's topological sort on dependency subgraph. Leaves with no outgoing edges come first.
+        /// Entry script is placed last. Cycle members appended alphabetically.
+        /// </summary>
+        private static List<string> TopologicalSort(List<string> nodes, List<DependencyEdge> edges, string entryScript)
+        {
+            var inDegree = nodes.ToDictionary(n => n, n => 0);
+            var adj = nodes.ToDictionary(n => n, n => new List<string>());
+
+            foreach (var e in edges)
+            {
+                if (!adj.ContainsKey(e.toObject) || !inDegree.ContainsKey(e.fromObject)) continue;
+                adj[e.toObject].Add(e.fromObject); // dependency flows: if A depends on B, B should be read first → edge B→A
+                inDegree[e.fromObject] = inDegree.TryGetValue(e.fromObject, out var d) ? d + 1 : 1;
+            }
+
+            var queue = new Queue<string>(nodes.Where(n => inDegree[n] == 0).OrderBy(n => n));
+            var result = new List<string>();
+
+            while (queue.Count > 0)
+            {
+                var node = queue.Dequeue();
+                result.Add(node);
+                foreach (var neighbor in adj[node].OrderBy(n => n))
+                {
+                    inDegree[neighbor]--;
+                    if (inDegree[neighbor] == 0) queue.Enqueue(neighbor);
+                }
+            }
+
+            // Remaining nodes are in cycles — append alphabetically
+            var remaining = nodes.Where(n => !result.Contains(n)).OrderBy(n => n).ToList();
+            result.AddRange(remaining);
+
+            // Move entry script to end (read dependencies first, entry last)
+            if (result.Remove(entryScript))
+                result.Add(entryScript);
+
+            return result;
         }
 
         private class DependencyEdge
@@ -1226,7 +1461,7 @@ namespace UnitySkills
         [UnitySkill("scene_tag_layer_stats", "Get Tag/Layer usage stats and find potential issues (untagged objects, unused layers)")]
         public static object SceneTagLayerStats()
         {
-            var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+            var allObjects = FindHelper.FindAll<GameObject>();
             var tagCounts = new Dictionary<string, int>();
             var layerCounts = new Dictionary<string, int>();
             int untaggedCount = 0;
@@ -1257,24 +1492,24 @@ namespace UnitySkills
         public static object ScenePerformanceHints()
         {
             var hints = new List<object>();
-            var allObjects = UnityEngine.Object.FindObjectsOfType<GameObject>();
+            var allObjects = FindHelper.FindAll<GameObject>();
 
             // 1. Realtime shadow lights
-            var lights = UnityEngine.Object.FindObjectsOfType<Light>();
+            var lights = FindHelper.FindAll<Light>();
             var shadowLights = lights.Where(l => l.shadows != LightShadows.None).ToArray();
             if (shadowLights.Length > 4)
                 hints.Add(new { priority = 1, category = "Lighting", issue = $"{shadowLights.Length} shadow-casting lights",
                     suggestion = "Reduce to ≤4 or use baked lighting", fixSkill = "light_set_properties" });
 
             // 2. Non-static renderers
-            var renderers = UnityEngine.Object.FindObjectsOfType<Renderer>();
+            var renderers = FindHelper.FindAll<Renderer>();
             int nonStaticCount = renderers.Count(r => !r.gameObject.isStatic);
             if (nonStaticCount > 100)
                 hints.Add(new { priority = 2, category = "Batching", issue = $"{nonStaticCount} non-static renderers",
                     suggestion = "Mark static objects with optimize_set_static_flags", fixSkill = "optimize_set_static_flags" });
 
             // 3. High-poly meshes without LOD
-            var meshFilters = UnityEngine.Object.FindObjectsOfType<MeshFilter>();
+            var meshFilters = FindHelper.FindAll<MeshFilter>();
             var highPoly = meshFilters.Where(mf => mf.sharedMesh != null && mf.sharedMesh.triangles.Length / 3 > 10000
                 && mf.GetComponent<LODGroup>() == null).ToArray();
             if (highPoly.Length > 0)
@@ -1290,7 +1525,7 @@ namespace UnitySkills
                     suggestion = "Consolidate materials", fixSkill = "optimize_find_duplicate_materials" });
 
             // 5. Particle systems
-            var particles = UnityEngine.Object.FindObjectsOfType<ParticleSystem>();
+            var particles = FindHelper.FindAll<ParticleSystem>();
             if (particles.Length > 20)
                 hints.Add(new { priority = 3, category = "Particles", issue = $"{particles.Length} particle systems",
                     suggestion = "Consider reducing or pooling particle systems", fixSkill = (string)null });

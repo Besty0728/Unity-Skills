@@ -161,3 +161,65 @@ unity_skills.call_skill("component_add", name="Player", componentType="MyScript"
 12. After script edits, call `script_get_compile_feedback` and fix reported errors
 13. Use regex search for complex patterns
 14. **Use batch creation to minimize Domain Reloads**
+
+---
+
+## Additional Skills
+
+### `script_replace`
+Find and replace content in a script file.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `scriptPath` | string | Yes | - | Script asset path |
+| `find` | string | Yes | - | Text or pattern to find |
+| `replace` | string | Yes | - | Replacement text |
+| `isRegex` | bool | No | false | Use regex matching |
+| `checkCompile` | bool | No | true | Check compilation after replace |
+| `diagnosticLimit` | int | No | 20 | Max compile diagnostics |
+
+**Returns:** `{ success, path, replacements, compilation? }`
+
+### `script_list`
+List C# script files in the project.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `folder` | string | No | "Assets" | Folder to search in |
+| `filter` | string | No | null | Filter string for path matching |
+| `limit` | int | No | 100 | Max results |
+
+**Returns:** `{ count, scripts: [{ path, name }] }`
+
+### `script_get_info`
+Get script info (class name, base class, methods).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `scriptPath` | string | Yes | - | Script asset path |
+
+**Returns:** `{ path, className, baseClass, namespaceName, isMonoBehaviour, publicMethods, publicFields }`
+
+### `script_rename`
+Rename a script file.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `scriptPath` | string | Yes | - | Script asset path |
+| `newName` | string | Yes | - | New script name (without extension) |
+| `checkCompile` | bool | No | true | Check compilation after rename |
+| `diagnosticLimit` | int | No | 20 | Max compile diagnostics |
+
+**Returns:** `{ success, path, oldPath, newName, compilation? }`
+
+### `script_move`
+Move a script to a new folder.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `scriptPath` | string | Yes | - | Script asset path |
+| `newFolder` | string | Yes | - | Destination folder |
+| `checkCompile` | bool | No | true | Check compilation after move |
+| `diagnosticLimit` | int | No | 20 | Max compile diagnostics |
+
+**Returns:** `{ success, path, oldPath, newPath, compilation? }`

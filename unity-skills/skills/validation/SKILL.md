@@ -18,6 +18,9 @@ Maintain project health - find problems, clean up, and validate your Unity proje
 | `validate_find_unused_assets` | Find potentially unused assets |
 | `validate_texture_sizes` | Check texture sizes |
 | `validate_project_structure` | Get project overview |
+| `validate_missing_references` | Find null/missing object references on components |
+| `validate_mesh_collider_convex` | Find non-convex MeshColliders |
+| `validate_shader_errors` | Find shaders with compilation errors |
 
 ---
 
@@ -91,6 +94,33 @@ Get project folder structure overview.
 | `maxDepth` | int | No | 3 | Max folder depth |
 
 **Returns**: `{success, structure, summary: {totalFolders, totalAssets}}`
+
+### `validate_missing_references`
+Find null/missing object references on components in the scene.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `limit` | int | No | 50 | Max results |
+
+**Returns**: `{ success, count, issues: [{ gameObject, path, component, property }] }`
+
+### `validate_mesh_collider_convex`
+Find non-convex MeshColliders (potential performance issue).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `limit` | int | No | 50 | Max results |
+
+**Returns**: `{ success, count, nonConvexColliders: [{ gameObject, path, vertexCount }] }`
+
+### `validate_shader_errors`
+Find shaders with compilation errors.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `limit` | int | No | 50 | Max results |
+
+**Returns**: `{ success, count, shaders: [{ name, path, errorCount }] }`
 
 ---
 

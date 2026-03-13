@@ -189,3 +189,39 @@ unity_skills.call_skill("component_set_property_batch", items=[
 3. Check property names with `component_get_properties` first
 4. Some properties are read-only (will fail to set)
 5. Use full type names for custom scripts (e.g., "MyNamespace.MyScript")
+
+---
+
+## Additional Skills
+
+### `component_copy`
+Copy a component from one GameObject to another.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `sourceName` | string | No* | null | Source GameObject name |
+| `sourceInstanceId` | int | No* | 0 | Source Instance ID |
+| `sourcePath` | string | No* | null | Source hierarchy path |
+| `targetName` | string | No* | null | Target GameObject name |
+| `targetInstanceId` | int | No* | 0 | Target Instance ID |
+| `targetPath` | string | No* | null | Target hierarchy path |
+| `componentType` | string | Yes | - | Component type to copy |
+
+*At least one source identifier and one target identifier required
+
+**Returns:** `{ success, source, target, componentType }`
+
+### `component_set_enabled`
+Enable or disable a component (Behaviour, Renderer, Collider, etc.).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | null | GameObject name |
+| `instanceId` | int | No* | 0 | Instance ID |
+| `path` | string | No* | null | Hierarchy path |
+| `componentType` | string | Yes | - | Component type to enable/disable |
+| `enabled` | bool | No | true | Whether to enable or disable |
+
+*At least one identifier required
+
+**Returns:** `{ success, gameObject, componentType, enabled }`
