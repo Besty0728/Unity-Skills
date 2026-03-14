@@ -21,6 +21,12 @@ description: "Unity UI creation. Use when users want to create Canvas, Button, T
 - `ui_layout_children` - Arrange children in layout
 - `ui_align_selected` - Align selected elements
 - `ui_distribute_selected` - Distribute selected elements
+- `ui_set_image` - Set Image properties (type/fill/sprite)
+- `ui_add_layout_element` - Add/configure LayoutElement
+- `ui_add_canvas_group` - Add/configure CanvasGroup
+- `ui_add_mask` - Add Mask or RectMask2D
+- `ui_add_outline` - Add Shadow/Outline effect
+- `ui_configure_selectable` - Configure Selectable colors/transition/navigation
 
 ---
 
@@ -190,7 +196,7 @@ Create multiple UI elements in one call.
 
 **Item properties**: `type` (required), `name`, `parent`, `text`, `width`, `height`, `x`, `y`, `r`, `g`, `b`, `a`, etc.
 
-**Supported types**: Button, Text, Image, Panel, Slider, Toggle, InputField
+**Supported types**: Button, Text, Image, Panel, Slider, Toggle, InputField, Dropdown, ScrollView, RawImage, Scrollbar
 
 ```python
 unity_skills.call_skill("ui_create_batch", items=[
@@ -231,6 +237,127 @@ UI Skills auto-detect TextMeshPro:
 - **Without TMP**: Falls back to legacy `UnityEngine.UI.Text`
 
 Response includes `usingTMP` field to indicate which was used.
+
+## New Element Creation Skills
+
+### ui_create_dropdown
+Create a Dropdown with options list and full Template/ScrollRect hierarchy.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No | "Dropdown" | Dropdown name |
+| `parent` | string | No | null | Parent object |
+| `options` | string | No | "Option A,Option B,Option C" | Comma-separated options |
+| `width/height` | float | No | 160/30 | Size |
+
+### ui_create_scrollview
+Create a ScrollRect with Viewport, RectMask2D, and Content.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No | "ScrollView" | Name |
+| `parent` | string | No | null | Parent object |
+| `width/height` | float | No | 300/200 | Size |
+| `horizontal` | bool | No | false | Enable horizontal scroll |
+| `vertical` | bool | No | true | Enable vertical scroll |
+| `movementType` | string | No | "Elastic" | Unrestricted/Elastic/Clamped |
+
+### ui_create_rawimage
+Create a RawImage element (for Texture2D/RenderTexture).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No | "RawImage" | Name |
+| `parent` | string | No | null | Parent object |
+| `texturePath` | string | No | null | Texture asset path |
+| `width/height` | float | No | 100 | Size |
+
+### ui_create_scrollbar
+Create a standalone Scrollbar.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No | "Scrollbar" | Name |
+| `parent` | string | No | null | Parent object |
+| `direction` | string | No | "BottomToTop" | LeftToRight/RightToLeft/BottomToTop/TopToBottom |
+| `value` | float | No | 0 | Initial value (0-1) |
+| `size` | float | No | 0.2 | Handle size (0-1) |
+| `numberOfSteps` | int | No | 0 | 0=continuous, >0=discrete |
+
+## Property Configuration Skills
+
+### ui_set_image
+Set Image advanced properties (type, fill, sprite).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | — | Image element name |
+| `instanceId` | int | No* | 0 | Instance ID |
+| `type` | string | No | — | Simple/Sliced/Tiled/Filled |
+| `fillMethod` | string | No | — | Radial360/Radial180/Radial90/Horizontal/Vertical |
+| `fillAmount` | float | No | — | 0-1 fill amount |
+| `fillClockwise` | bool | No | — | Fill direction |
+| `preserveAspect` | bool | No | — | Preserve aspect ratio |
+| `spritePath` | string | No | — | Sprite asset path |
+
+### ui_add_layout_element
+Add/configure LayoutElement constraints.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | — | Element name |
+| `minWidth/minHeight` | float | No | — | Minimum size |
+| `preferredWidth/preferredHeight` | float | No | — | Preferred size |
+| `flexibleWidth/flexibleHeight` | float | No | — | Flexible size (0=fixed, >0=grow) |
+| `ignoreLayout` | bool | No | — | Ignore layout group |
+| `layoutPriority` | int | No | — | Priority (higher overrides) |
+
+### ui_add_canvas_group
+Add/configure CanvasGroup (alpha, interactable, blocksRaycasts).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | — | Element name |
+| `alpha` | float | No | — | Group alpha (0-1) |
+| `interactable` | bool | No | — | Children interactable |
+| `blocksRaycasts` | bool | No | — | Blocks raycasts |
+| `ignoreParentGroups` | bool | No | — | Ignore parent groups |
+
+### ui_add_mask
+Add Mask (stencil-based) or RectMask2D (rect clipping).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | — | Element name |
+| `maskType` | string | No | "RectMask2D" | Mask/RectMask2D |
+| `showMaskGraphic` | bool | No | true | Show mask graphic (Mask only) |
+
+### ui_add_outline
+Add Shadow or Outline visual effect.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | — | Element name |
+| `effectType` | string | No | "Outline" | Shadow/Outline |
+| `r/g/b/a` | float | No | 0,0,0,0.5 | Effect color |
+| `distanceX/distanceY` | float | No | 1/-1 | Effect offset |
+| `useGraphicAlpha` | bool | No | true | Use graphic alpha |
+
+### ui_configure_selectable
+Configure Selectable properties on Button/Toggle/Slider/etc.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | — | Element name |
+| `transition` | string | No | — | None/ColorTint/SpriteSwap/Animation |
+| `interactable` | bool | No | — | Interactable state |
+| `navigationMode` | string | No | — | None/Horizontal/Vertical/Automatic/Explicit |
+| `normalR/G/B` | float | No | — | Normal state color |
+| `highlightedR/G/B` | float | No | — | Highlighted state color |
+| `pressedR/G/B` | float | No | — | Pressed state color |
+| `disabledR/G/B` | float | No | — | Disabled state color |
+| `colorMultiplier` | float | No | — | Color multiplier (1-5) |
+| `fadeDuration` | float | No | — | Fade duration |
 
 ## Best Practices
 

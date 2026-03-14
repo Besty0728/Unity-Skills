@@ -6,7 +6,9 @@
         "Unity.Timeline",
         "Cinemachine",
         "Unity.Cinemachine",
-        "Unity.Splines"
+        "Unity.Splines",
+        "Unity.ProBuilder",
+        "Unity.ProBuilder.Editor"
     ],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
@@ -30,6 +32,11 @@
             "name": "com.unity.splines",
             "expression": "[2.0,3.0)",
             "define": "SPLINES_2"
+        },
+        {
+            "name": "com.unity.probuilder",
+            "expression": "[5.0,7.0)",
+            "define": "PROBUILDER"
         }
     ],
     "noEngineReferences": false

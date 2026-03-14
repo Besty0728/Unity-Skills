@@ -30,6 +30,16 @@ Work with Unity's web-style UI system: **UXML** (structure, like HTML) + **USS**
 | `uitk_inspect_uxml` | Inspect | Parse UXML element hierarchy |
 | `uitk_create_from_template` | Template | Create UXML+USS from template |
 | `uitk_create_batch` | Batch | Batch create USS/UXML files |
+| `uitk_add_element` | UXML | Add element to UXML file |
+| `uitk_remove_element` | UXML | Remove element from UXML by name |
+| `uitk_modify_element` | UXML | Modify UXML element attributes |
+| `uitk_clone_element` | UXML | Clone element in UXML |
+| `uitk_add_uss_rule` | USS | Add/update USS rule by selector |
+| `uitk_remove_uss_rule` | USS | Remove USS rule by selector |
+| `uitk_list_uss_variables` | USS | Extract CSS custom properties |
+| `uitk_create_editor_window` | CodeGen | Generate EditorWindow C# script |
+| `uitk_create_runtime_ui` | CodeGen | Generate runtime UI MonoBehaviour |
+| `uitk_inspect_document` | Inspect | Inspect live UIDocument hierarchy |
 
 ---
 
@@ -802,6 +812,10 @@ Generate a paired UXML+USS from a built-in template. Files are named `{name}.uxm
 | `settings` | Settings panel: Volume sliders, Toggle, DropdownField |
 | `inventory` | 3x3 grid inventory with ScrollView |
 | `list` | Scrollable item list |
+| `tab-view` | Tab bar with switchable content panels |
+| `toolbar` | Horizontal toolbar with buttons, separators, spacer |
+| `card` | Card component with image, title, description, tags |
+| `notification` | Notification/Toast stack (info, success, warning, error) |
 
 **Returns**: `{success, template, ussPath, uxmlPath, name}`
 
@@ -1040,6 +1054,127 @@ unity_skills.call_skill("uitk_write_file",
     content=updated
 )
 ```
+
+---
+
+## UXML Element Operation Skills
+
+### uitk_add_element
+Add an element to a UXML file.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `filePath` | string | Yes | — | UXML file path |
+| `elementType` | string | Yes | — | Element type: Label/Button/Toggle/Slider/TextField/VisualElement/etc. |
+| `parentName` | string | No | root | Parent element name |
+| `elementName` | string | No | null | New element name attribute |
+| `text` | string | No | null | Text attribute |
+| `classes` | string | No | null | CSS class(es) |
+| `style` | string | No | null | Inline style |
+| `bindingPath` | string | No | null | Binding path |
+
+### uitk_remove_element
+Remove an element from a UXML file by name.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filePath` | string | Yes | UXML file path |
+| `elementName` | string | Yes | Name attribute of element to remove |
+
+### uitk_modify_element
+Modify attributes of a UXML element.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filePath` | string | Yes | UXML file path |
+| `elementName` | string | Yes | Target element name |
+| `text` | string | No | New text attribute |
+| `classes` | string | No | New class attribute |
+| `style` | string | No | New inline style |
+| `newName` | string | No | Rename the element |
+| `bindingPath` | string | No | New binding path |
+| `setAttribute` | string | No | Custom attribute name |
+| `setAttributeValue` | string | No | Custom attribute value |
+
+### uitk_clone_element
+Clone (duplicate) an element and its children in a UXML file.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `filePath` | string | Yes | — | UXML file path |
+| `elementName` | string | Yes | — | Element to clone |
+| `newName` | string | No | null | Name for the cloned element |
+
+---
+
+## USS Operation Skills
+
+### uitk_add_uss_rule
+Add or update a USS rule. If the selector already exists, it is replaced.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filePath` | string | Yes | USS file path |
+| `selector` | string | Yes | CSS selector, e.g. `.my-class` or `.btn:hover` |
+| `properties` | string | Yes | Semicolon-separated properties, e.g. `"background-color: #333; padding: 8px"` |
+
+### uitk_remove_uss_rule
+Remove a USS rule by its selector.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filePath` | string | Yes | USS file path |
+| `selector` | string | Yes | Selector to remove |
+
+### uitk_list_uss_variables
+Extract all CSS custom property definitions and `var()` references from a USS file.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filePath` | string | Yes | USS file path |
+
+**Returns**: `{path, definedCount, variables: [{name, value}], referencedVariables[]}`
+
+---
+
+## Code Generation Skills
+
+### uitk_create_editor_window
+Generate an EditorWindow C# script with UI Toolkit pattern (CreateGUI + UXML/USS binding).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `savePath` | string | Yes | — | C# script path |
+| `className` | string | Yes | — | Class name |
+| `windowTitle` | string | No | className | Window title |
+| `uxmlPath` | string | No | null | UXML to load in CreateGUI |
+| `ussPath` | string | No | null | USS to attach |
+| `menuPath` | string | No | "Window/{className}" | MenuItem path |
+
+### uitk_create_runtime_ui
+Generate a runtime MonoBehaviour script with UIDocument query pattern.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `savePath` | string | Yes | — | C# script path |
+| `className` | string | Yes | — | Class name |
+| `elementQueries` | string | No | null | Element queries: `"Button:my-button,Label:score-label"` |
+
+---
+
+## Scene Inspection Skills
+
+### uitk_inspect_document
+Inspect the live VisualElement hierarchy of a UIDocument component in the scene.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | — | GameObject name |
+| `instanceId` | int | No* | 0 | Instance ID |
+| `path` | string | No* | — | Hierarchy path |
+| `depth` | int | No | 5 | Max traversal depth |
+
+**Returns**: `{gameObject, instanceId, hierarchy: {type, name, classes[], children[]}}`
 
 ---
 

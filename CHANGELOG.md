@@ -2,6 +2,59 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.6.3] - 2026-03-14
+
+### Added
+- **ProBuilderSkills (22 skills)**：新增 `ProBuilderSkills.cs` 模块，通过条件编译 `#if PROBUILDER` 支持可选包 `com.unity.probuilder`（5.x–7.x）。未安装时所有 skill 返回友好错误提示。包含：
+  - `probuilder_create_shape`：创建参数化 ProBuilder 形状（Cube/Sphere/Cylinder/Cone/Torus/Prism/Arch/Pipe/Stairs/Door/Plane），支持位置、尺寸、旋转设置，支持 `parent` 参数指定父对象
+  - `probuilder_extrude_faces`：面拉伸（IndividualFaces/FaceNormal/VertexNormal 三种模式）
+  - `probuilder_subdivide`：细分整个网格或指定面
+  - `probuilder_bevel_edges`：边倒角，支持顶点索引对指定
+  - `probuilder_delete_faces`：按索引删除面
+  - `probuilder_merge_faces`：合并多个面为单个面
+  - `probuilder_set_face_material`：按面设置材质（支持 materialPath 或 submeshIndex）
+  - `probuilder_flip_normals`：翻转面法线方向
+  - `probuilder_get_info`：获取网格完整信息（顶点/面/边/三角形数、形状类型、材质列表、submesh 分布）
+  - `probuilder_center_pivot`：居中枢轴或设置到指定世界坐标
+  - `probuilder_create_batch`：批量创建多个 ProBuilder 形状
+  - `probuilder_move_vertices`：按增量移动顶点（用于斜坡/坡道等造型）
+  - `probuilder_set_vertices`：设置顶点绝对位置
+  - `probuilder_get_vertices`：查询顶点位置信息
+  - `probuilder_combine_meshes`：合并多个 ProBuilder 网格
+  - `probuilder_set_material`：设置整个网格的材质（支持颜色快捷方式）
+
+- **UISkills 新增 10 skills**（16 → 26）：基于 UGUI 源码实现完整控件层级结构：
+  - `ui_create_dropdown`：创建 Dropdown（含 Template/ScrollRect/Viewport/Content/Item 完整子层级和 Toggle 选项），支持逗号分隔的选项列表
+  - `ui_create_scrollview`：创建 ScrollRect 滚动视图（含 Viewport + RectMask2D + Content），支持方向和 MovementType 配置
+  - `ui_create_rawimage`：创建 RawImage 元素（用于 Texture2D/RenderTexture 显示）
+  - `ui_create_scrollbar`：创建独立 Scrollbar（含 Sliding Area + Handle），支持四方向和离散步数
+  - `ui_set_image`：设置 Image 高级属性（Type: Simple/Sliced/Tiled/Filled、FillMethod: Radial360/Horizontal/Vertical 等、fillAmount、preserveAspect）
+  - `ui_add_layout_element`：添加/配置 LayoutElement（minWidth/preferredWidth/flexibleWidth 等完整布局约束）
+  - `ui_add_canvas_group`：添加/配置 CanvasGroup（alpha/interactable/blocksRaycasts/ignoreParentGroups）
+  - `ui_add_mask`：添加 Mask（模板缓冲）或 RectMask2D（矩形裁剪）
+  - `ui_add_outline`：添加 Shadow 或 Outline 视觉效果（颜色、距离、graphicAlpha）
+  - `ui_configure_selectable`：配置 Selectable 属性（Transition 模式、ColorBlock 四态颜色、Navigation 模式）
+
+- **UIToolkitSkills 新增 10 skills + 4 模板**（15 → 25）：基于 UI Toolkit 源码示例实现 UXML/USS 程序化操作：
+  - `uitk_add_element`：向 UXML 添加元素（Label/Button/Toggle/Slider/TextField 等），支持 name/text/classes/style/binding-path
+  - `uitk_remove_element`：从 UXML 按 name 删除元素
+  - `uitk_modify_element`：修改 UXML 元素属性（text/classes/style/name/binding-path/自定义属性）
+  - `uitk_clone_element`：复制 UXML 元素（含子元素）
+  - `uitk_add_uss_rule`：向 USS 文件添加或更新样式规则（自动检测已有选择器并替换）
+  - `uitk_remove_uss_rule`：从 USS 删除指定选择器的规则
+  - `uitk_list_uss_variables`：提取 USS 中所有 CSS 自定义属性定义和 `var()` 引用
+  - `uitk_create_editor_window`：生成 EditorWindow C# 脚本模板（CreateGUI + UXML/USS 绑定 + MenuItem）
+  - `uitk_create_runtime_ui`：生成运行时 MonoBehaviour 脚本（UIDocument 查询 + 事件注册/注销模式）
+  - `uitk_inspect_document`：检查场景中 UIDocument 的 VisualElement 实时层级树（类型/名称/类列表/子节点）
+  - 新增 4 个 `uitk_create_from_template` 模板：`tab-view`（标签页切换）、`toolbar`（顶部工具栏）、`card`（卡片组件）、`notification`（通知/Toast）
+
+- **`ui_create_batch` 扩展**：批量创建支持新增的 `dropdown`、`scrollview`、`rawimage`、`scrollbar` 类型。
+
+### Changed
+- **asmdef 引用扩展**：`UnitySkills.Editor.asmdef` 新增 `Unity.ProBuilder` + `Unity.ProBuilder.Editor` 引用及 `PROBUILDER` versionDefines（`[5.0,7.0)`），与 Cinemachine 条件编译模式一致。
+- **REST Skills 总数**：448 → 490（+10 ProBuilder + 6 ProBuilder新增 + 6 ProBuilder高级 + 10 UGUI + 10 UIToolkit）。
+- **Skills 文件数**：38 → 39 个 `*Skills.cs` 文件。
+
 ## [1.6.2] - 2026-03-13
 
 ### Added

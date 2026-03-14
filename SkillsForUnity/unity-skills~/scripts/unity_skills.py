@@ -21,7 +21,7 @@ import re
 import threading
 from typing import Any, Dict, List, Optional
 
-__version__ = "1.6.2"
+__version__ = "1.6.3"
 
 UNITY_URL = "http://localhost:8090"
 DEFAULT_PORT = 8090

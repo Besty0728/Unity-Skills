@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-448-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-490-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
 </p>
 
@@ -30,7 +30,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 ## 🚀 Core Features
 
 - ⚡ **Ultimate Efficiency**: Supports **Result Truncation** and **SKILL.md** optimization to maximize token savings.
-- 🛠️ **Comprehensive Toolkit**: Built-in **448 REST Skills** plus **13 advisory design modules**, with **Batch** operations that significantly reduce HTTP overhead and improve execution efficiency.
+- 🛠️ **Comprehensive Toolkit**: Built-in **490 REST Skills** plus **13 advisory design modules**, with **Batch** operations that significantly reduce HTTP overhead and improve execution efficiency.
 - 🛡️ **Safety First**: Supports **Transactional** (atomic operations) with automatic rollback on failure, leaving no residue in scenes.
 - 🌍 **Multi-Instance Support**: Automatic port discovery and global registry, enabling simultaneous control of multiple Unity projects.
 - 🤖 **Deep Integration**: Exclusive support for **Antigravity Slash Commands**, unlocking the `/unity-skills` interactive experience.
@@ -144,7 +144,7 @@ If you're using other tools that support Skills, install according to the Skills
 
 ---
 
-## 📦 Skills Category Overview (448)
+## 📦 Skills Category Overview (490)
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
@@ -205,7 +205,7 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   │   └── unity_skills.py     # Python Client Library
 │   │   ├── skills/                 # Modular Skill Documentation + 13 advisory modules
 │   │   └── references/             # Unity Development References
-│   └── Editor/Skills/              # Core Skill Logic (38 *Skills.cs files, 448 Skills)
+│   └── Editor/Skills/              # Core Skill Logic (39 *Skills.cs files, 490 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
 │       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
 │       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
@@ -217,7 +217,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (23 skills)
 │       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (22 skills)
 │       ├── PerceptionSkills.cs     # Scene Understanding (11 skills)
-│       └── ...                     # 448 Skills source code
+│       └── ...                     # 490 Skills source code
 ├── docs/
 │   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
 ├── CHANGELOG.md                    # Version Update Log

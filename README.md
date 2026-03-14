@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-448-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-490-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_EN.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
@@ -31,7 +31,7 @@
 ## 🚀 核心特性
 
 - ⚡ **极致效能**：支持 **Result Truncation** 与 **SKILL.md** 瘦身，最大化节省 Token。
-- 🛠️ **全能工具库**：内置 **448 REST Skills**，并提供 **13 个 advisory 设计模块**，支持 **Batch (批处理)** 操作，大幅减少 HTTP 通信开销，显著提升执行效率。
+- 🛠️ **全能工具库**：内置 **490 REST Skills**，并提供 **13 个 advisory 设计模块**，支持 **Batch (批处理)** 操作，大幅减少 HTTP 通信开销，显著提升执行效率。
 - 🛡️ **安全第一**：支持 **Transactional (事务原子性)**，操作失败自动回滚，场景零残留。
 - 🌍 **多实例支持**：自动端口发现、全局注册表，支持同时控制多个 Unity 项目。
 - 🤖 **深度集成**：独家支持 **Antigravity Slash Commands**，解锁 `/unity-skills` 交互新体验。
@@ -145,7 +145,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 
 ---
 
-## 📦 Skills 分类概要 (448)
+## 📦 Skills 分类概要 (490)
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -206,7 +206,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │   │   │   └── unity_skills.py     # Python 客户端库
 │   │   ├── skills/                 # 按模块分类的 Skill 文档 + 13 个 advisory 模块
 │   │   └── references/             # Unity 开发参考文档
-│   └── Editor/Skills/              # 核心 Skill 逻辑 (38 个 *Skills.cs, 共 448 Skills)
+│   └── Editor/Skills/              # 核心 Skill 逻辑 (39 个 *Skills.cs, 共 490 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP 服务器核心 (Producer-Consumer)
 │       ├── SkillRouter.cs          # 请求路由 & 反射发现 Skills
 │       ├── WorkflowManager.cs      # 持久化工作流 (Task/Session/Snapshot)
@@ -218,7 +218,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (23 skills)
 │       ├── WorkflowSkills.cs       # Workflow 撤销/回滚 (22 skills)
 │       ├── PerceptionSkills.cs     # 场景理解 (11 skills)
-│       └── ...                     # 448 Skills 源码
+│       └── ...                     # 490 Skills 源码
 ├── docs/
 │   └── SETUP_GUIDE.md              # 完整安装使用指南
 ├── CHANGELOG.md                    # 版本更新记录

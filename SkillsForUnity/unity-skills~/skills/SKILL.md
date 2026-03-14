@@ -30,6 +30,7 @@ This folder contains detailed documentation for each skill module. For quick ref
 | [validation](./validation/SKILL.md) | Project validation and cleanup | No |
 | [importer](./importer/SKILL.md) | Texture/Audio/Model import settings | Yes (3 batch skills) |
 | [cinemachine](./cinemachine/SKILL.md) | Virtual cameras and cinematics | No |
+| [probuilder](./probuilder/SKILL.md) | ProBuilder mesh modeling (requires package) | No |
 | [terrain](./terrain/SKILL.md) | Terrain creation and painting | No |
 | [physics](./physics/SKILL.md) | Raycasts, overlaps, gravity | No |
 | [navmesh](./navmesh/SKILL.md) | Navigation mesh baking | No |
@@ -90,7 +91,7 @@ unity_skills.call_skill("gameobject_create_batch",
 
 ## Coverage Summary
 
-- Unity REST skills: 448
+- Unity REST skills: 490
 - Advisory design modules: 13
 - Core runtime modules: 37
 - Total documented module folders: 50
