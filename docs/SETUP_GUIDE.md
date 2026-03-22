@@ -185,7 +185,7 @@ unity_skills.call_skill(
 
 ## 文档索引
 
-- [中文 README](../README.md)
-- [English README](../README_EN.md)
+- [中文 README](../README_CN.md)
+- [English README](../README.md)
 - [AI Skill 入口](../SkillsForUnity/unity-skills~/SKILL.md)
 - [更新日志](../CHANGELOG.md)

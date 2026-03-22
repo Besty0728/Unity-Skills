@@ -1,4 +1,4 @@
-﻿# UnitySkills Agent 文档
+# UnitySkills Agent 文档
 
 > 本文档面向 AI Agent，提供项目全貌速览，帮助 AI 快速理解项目结构与开发规范。
 
@@ -176,7 +176,8 @@ Unity-Skills/
 │
 ├── docs/
 │   └── SETUP_GUIDE.md              # 完整安装使用指南
-├── README.md                       # 项目说明
+├── README.md                       # 项目说明（英文，默认展示）
+├── README_CN.md                    # 项目说明（中文）
 ├── CHANGELOG.md                    # 版本更新记录
 └── LICENSE                         # MIT 协议
 ```
@@ -495,8 +496,8 @@ public static class MyCustomSkills
 | 3 | `SkillsForUnity/package.json` | `"version": "x.x.x"` |
 | 4 | `CHANGELOG.md` | 顶部新增 `## [x.x.x] - YYYY-MM-DD` 条目 |
 | 5 | `SkillsForUnity/unity-skills~/scripts/unity_skills.py` | `__version__ = "x.x.x"` |
-| 6 | `README.md` | Git URL 示例、技能数、Unity 基线、超时与安装说明 |
-| 7 | `README_EN.md` | Git URL 示例、技能数、Unity 基线、超时与安装说明 |
+| 6 | `README_CN.md` | Git URL 示例、技能数、Unity 基线、超时与安装说明 |
+| 7 | `README.md` | Git URL 示例、技能数、Unity 基线、超时与安装说明 |
 | 8 | `docs/SETUP_GUIDE.md` | 安装、超时、目录结构与使用说明 |
 | 9 | `SkillsForUnity/unity-skills~/SKILL.md` | 根 Skill 快照、说明与路由提示 |
 | 10 | `SkillsForUnity/unity-skills~/skills/SKILL.md` | 模块索引、覆盖范围与 advisory 说明 |
@@ -510,7 +511,7 @@ public static class MyCustomSkills
 
 ```bash
 # 检查统一版本源与主要文档是否一致
-rg -n "1\.6\.3|2022\.3\+|490|15 分钟|15 minutes|SkillsLogger.Version|__version__" agent.md CHANGELOG.md README.md README_EN.md docs/SETUP_GUIDE.md SkillsForUnity/unity-skills~/SKILL.md SkillsForUnity/unity-skills~/skills/SKILL.md SkillsForUnity/package.json SkillsForUnity/unity-skills~/scripts/unity_skills.py SkillsForUnity/Editor/Skills/SkillsLogger.cs
+rg -n "1\.6\.3|2022\.3\+|490|15 分钟|15 minutes|SkillsLogger.Version|__version__" agent.md CHANGELOG.md README.md README_CN.md docs/SETUP_GUIDE.md SkillsForUnity/unity-skills~/SKILL.md SkillsForUnity/unity-skills~/skills/SKILL.md SkillsForUnity/package.json SkillsForUnity/unity-skills~/scripts/unity_skills.py SkillsForUnity/Editor/Skills/SkillsLogger.cs
 ```
 
 ---
