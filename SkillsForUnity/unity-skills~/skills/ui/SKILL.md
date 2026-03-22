@@ -215,6 +215,8 @@ Create multiple UI elements in one call.
 
 **Supported types**: Button, Text, Image, Panel, Slider, Toggle, InputField, Dropdown, ScrollView, RawImage, Scrollbar
 
+**Returns**: `{success, count, results: [{success, name, type, instanceId}]}`
+
 ```python
 unity_skills.call_skill("ui_create_batch", items=[
     {"type": "Button", "name": "StartBtn", "parent": "MenuPanel", "text": "Start", "y": 60},

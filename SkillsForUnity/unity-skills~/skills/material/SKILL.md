@@ -22,6 +22,8 @@ description: "Unity material and shader properties. Use when users want to creat
 - For texture tiling → `material_set_texture_scale` / `material_set_texture_offset`
 - Pipeline-specific property names differ: check Render Pipeline Compatibility table in this doc
 
+> **Object Targeting**: Single-object skills accept `name` (GameObject name) or `path` (material asset path like `Assets/Materials/X.mat`). For asset-based operations, prefer `path`.
+
 ## Skills Overview
 
 | Single Object | Batch Version | Use Batch When |
@@ -57,6 +59,8 @@ Create a new material (auto-detects render pipeline).
 ### material_create_batch
 Create multiple materials.
 
+**Returns**: `{success, count, results: [{success, name, path}]}`
+
 ```python
 unity_skills.call_skill("material_create_batch", items=[
     {"name": "Red", "savePath": "Assets/Materials"},
@@ -77,6 +81,8 @@ Assign material to object's renderer.
 
 ### material_assign_batch
 Assign materials to multiple objects.
+
+**Returns**: `{success, count, results: [{success, name, materialPath}]}`
 
 ```python
 unity_skills.call_skill("material_assign_batch", items=[
@@ -100,6 +106,8 @@ Set material color with optional HDR intensity.
 ### material_set_colors_batch
 Set colors on multiple objects.
 
+**Returns**: `{success, count, results: [{success, name}]}`
+
 ```python
 unity_skills.call_skill("material_set_colors_batch", items=[
     {"name": "Cube1", "r": 1, "g": 0, "b": 0},
@@ -121,6 +129,8 @@ Set emission color with auto-enable keyword.
 
 ### material_set_emission_batch
 Set emission on multiple objects.
+
+**Returns**: `{success, count, results: [{success, name}]}`
 
 ```python
 unity_skills.call_skill("material_set_emission_batch", items=[

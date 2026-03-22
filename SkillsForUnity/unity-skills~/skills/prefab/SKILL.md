@@ -77,6 +77,8 @@ Instantiate multiple prefabs in one call.
 
 **Item properties**: `prefabPath`, `name`, `x`, `y`, `z`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentName`
 
+**Returns**: `{success, count, results: [{success, name, instanceId, prefabPath, position}]}`
+
 ```python
 unity_skills.call_skill("prefab_instantiate_batch", items=[
     {"prefabPath": "Assets/Prefabs/Enemy.prefab", "x": 0, "z": 0, "name": "Enemy_01"},

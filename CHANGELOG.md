@@ -23,10 +23,10 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **REST Skills 总数**：512 → 513（+1 prefab_set_property）。
 - **Prefab 模块**：10 → 11 skills。
 
-### Docs (SKILL.md 文档质量审计与修复 — 20 文件)
-- **Batch Skill 返回值补全**：为 gameobject/component/light 三个模块共 12 个 batch 技能补全 `**Returns**` 结构文档（`gameobject_create/delete/duplicate/rename/set_transform/set_active/set_parent/set_layer/set_tag_batch` + `component_add/remove/set_property_batch` + `light_set_properties/set_enabled_batch`）。
+### Docs (SKILL.md 文档质量审计与修复 — 26 文件)
+- **Batch Skill 返回值补全**：为 9 个模块共 25 个 batch 技能补全 `**Returns**` 结构文档：gameobject（9）、component（3）、light（2）、material（4）、asset（3）、importer（3）、prefab（1）、ui（1）、script（1）。
 - **三元定位参数补全**：修复 `gameobject_set_transform`、`gameobject_set_parent`、`gameobject_set_active` 缺失的 `instanceId`/`path` 参数文档；`gameobject_set_parent` 参数名从 `name`/`parentName` 修正为 C# 实际签名 `childName`/`childInstanceId`/`childPath`/`parentName`/`parentInstanceId`/`parentPath`（6 参数完整文档）。
-- **Object Targeting 统一说明**：为 gameobject、component、light 三个功能模块顶部新增"Object Targeting"注释段落，说明所有单对象 Skill 支持 `name`/`instanceId`/`path` 三元定位。
+- **Object Targeting 统一说明**：为 gameobject、component、light、material 四个功能模块顶部新增"Object Targeting"注释段落，说明所有单对象 Skill 支持 `name`/`instanceId`/`path` 三元定位。
 - **Batch 参数文档增强**：`gameobject_set_parent_batch` 补全 6 参数说明 + 三种定位方式示例；`light_set_properties_batch` 补全全部可用参数（identifier + `r`/`g`/`b`/`intensity`/`range`/`shadows`）+ 混合示例。
 - **`component_set_property` 类型示例**：新增 5 种 `value` 参数类型的用法示例（float/bool、Vector3 JSON、Color JSON、Enum 字符串），消除类型模糊导致的幻觉风险。
 - **Component 技能可见性**：`component_set_enabled` 和 `component_copy` 从 "Additional Skills" 部分提升到 Skills Overview 表格，提高 AI 发现率。

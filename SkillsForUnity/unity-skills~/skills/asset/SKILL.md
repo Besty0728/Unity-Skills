@@ -54,6 +54,8 @@ Import an external file into the project.
 ### asset_import_batch
 Import multiple external files.
 
+**Returns**: `{success, count, results: [{success, sourcePath, destinationPath}]}`
+
 ```python
 unity_skills.call_skill("asset_import_batch", items=[
     {"sourcePath": "C:/Downloads/tex1.png", "destinationPath": "Assets/Textures/tex1.png"},
@@ -70,6 +72,8 @@ Delete an asset from the project.
 
 ### asset_delete_batch
 Delete multiple assets.
+
+**Returns**: `{success, count, results: [{success, path}]}`
 
 ```python
 unity_skills.call_skill("asset_delete_batch", items=[
@@ -88,6 +92,8 @@ Move or rename an asset.
 
 ### asset_move_batch
 Move multiple assets.
+
+**Returns**: `{success, count, results: [{success, sourcePath, destinationPath}]}`
 
 ```python
 unity_skills.call_skill("asset_move_batch", items=[
