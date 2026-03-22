@@ -24,8 +24,6 @@ Use this skill when the user is deciding how runtime work should be scheduled or
    - the user explicitly wants it and accepts the dependency.
 5. Use `Update` only for true continuous simulation, polling, or input loops that cannot be event-driven.
 
-Do not recommend `UniTask` just because it looks more advanced than coroutine.
-
 ## Specific Guidance
 
 - Avoid many unrelated `Update` methods if a more event-driven flow works.

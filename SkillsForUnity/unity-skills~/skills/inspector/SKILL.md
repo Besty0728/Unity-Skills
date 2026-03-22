@@ -16,7 +16,6 @@ Use this skill when scripts need to be easier to author, configure, and review i
 
 ## Default Rules
 
-- Prefer `private` fields with `[SerializeField]` over unnecessary public fields.
 - Use `[Header]`, `[Tooltip]`, `[Space]`, `[Range]`, `[Min]`, `[TextArea]` when they clarify authoring intent.
 - Use `[RequireComponent]` for mandatory sibling dependencies.
 - Use `[CreateAssetMenu]` for config/data assets that designers should create directly.

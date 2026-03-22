@@ -82,7 +82,7 @@ Configure light properties.
 ### light_set_properties_batch
 Configure multiple lights. Each item accepts: `name`/`instanceId`/`path` (identifier) + `r`, `g`, `b`, `intensity`, `range`, `shadows` (all optional).
 
-**Returns**: `{success, count, results: [{success, name}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
 
 ```python
 unity_skills.call_skill("light_set_properties_batch", items=[
@@ -104,7 +104,7 @@ Enable or disable a light.
 ### light_set_enabled_batch
 Enable or disable multiple lights.
 
-**Returns**: `{success, count, results: [{success, name, enabled}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, enabled}]}`
 
 ```python
 unity_skills.call_skill("light_set_enabled_batch", items=[

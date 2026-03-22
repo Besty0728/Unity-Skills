@@ -51,7 +51,7 @@ Set texture import settings.
 ### texture_set_settings_batch
 Set texture import settings for multiple textures.
 
-**Returns**: `{success, count, results: [{success, assetPath}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, assetPath}]}`
 
 ### texture_set_import_settings
 Set texture import settings (alternative API).
@@ -99,7 +99,7 @@ Set audio import settings.
 ### audio_set_settings_batch
 Set audio import settings for multiple audio files.
 
-**Returns**: `{success, count, results: [{success, assetPath}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, assetPath}]}`
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -147,7 +147,7 @@ Set model import settings.
 ### model_set_settings_batch
 Set model import settings for multiple models.
 
-**Returns**: `{success, count, results: [{success, assetPath}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, assetPath}]}`
 
 ### model_set_import_settings
 Set model import settings (alternative API).

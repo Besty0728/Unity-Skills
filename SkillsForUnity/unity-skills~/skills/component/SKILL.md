@@ -132,7 +132,7 @@ Get all properties of a component.
 ### component_add_batch
 Add components to multiple objects.
 
-**Returns**: `{success, count, results: [{success, gameObject, componentType, added}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, gameObject, componentType, added}]}`
 
 ```python
 unity_skills.call_skill("component_add_batch", items=[
@@ -145,7 +145,7 @@ unity_skills.call_skill("component_add_batch", items=[
 ### component_remove_batch
 Remove components from multiple objects.
 
-**Returns**: `{success, count, results: [{success, gameObject, componentType, removed}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, gameObject, componentType, removed}]}`
 
 ```python
 unity_skills.call_skill("component_remove_batch", items=[
@@ -157,7 +157,7 @@ unity_skills.call_skill("component_remove_batch", items=[
 ### component_set_property_batch
 Set properties on multiple objects.
 
-**Returns**: `{success, count, results: [{success, gameObject, componentType, property, oldValue, newValue}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, gameObject, componentType, property, oldValue, newValue}]}`
 
 ```python
 unity_skills.call_skill("component_set_property_batch", items=[

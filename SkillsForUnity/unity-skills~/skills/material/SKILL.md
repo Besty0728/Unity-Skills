@@ -59,7 +59,7 @@ Create a new material (auto-detects render pipeline).
 ### material_create_batch
 Create multiple materials.
 
-**Returns**: `{success, count, results: [{success, name, path}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, path}]}`
 
 ```python
 unity_skills.call_skill("material_create_batch", items=[
@@ -82,7 +82,7 @@ Assign material to object's renderer.
 ### material_assign_batch
 Assign materials to multiple objects.
 
-**Returns**: `{success, count, results: [{success, name, materialPath}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, materialPath}]}`
 
 ```python
 unity_skills.call_skill("material_assign_batch", items=[
@@ -106,7 +106,7 @@ Set material color with optional HDR intensity.
 ### material_set_colors_batch
 Set colors on multiple objects.
 
-**Returns**: `{success, count, results: [{success, name}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
 
 ```python
 unity_skills.call_skill("material_set_colors_batch", items=[
@@ -130,7 +130,7 @@ Set emission color with auto-enable keyword.
 ### material_set_emission_batch
 Set emission on multiple objects.
 
-**Returns**: `{success, count, results: [{success, name}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
 
 ```python
 unity_skills.call_skill("material_set_emission_batch", items=[

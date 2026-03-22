@@ -163,7 +163,7 @@ Enable or disable a GameObject.
 ### gameobject_create_batch
 Create multiple GameObjects in one call.
 
-**Returns**: `{success, count, results: [{success, name, instanceId, path, position}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, instanceId, path, position}]}`
 
 ```python
 unity_skills.call_skill("gameobject_create_batch", items=[
@@ -176,7 +176,7 @@ unity_skills.call_skill("gameobject_create_batch", items=[
 ### gameobject_delete_batch
 Delete multiple GameObjects.
 
-**Returns**: `{success, count, results: [{success, name}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
 
 ```python
 # By names
@@ -198,7 +198,7 @@ unity_skills.call_skill("gameobject_delete_batch", items=[
 ### gameobject_duplicate_batch
 Duplicate multiple GameObjects.
 
-**Returns**: `{success, count, results: [{success, originalName, copyName, copyInstanceId, copyPath}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, originalName, copyName, copyInstanceId, copyPath}]}`
 
 ```python
 unity_skills.call_skill("gameobject_duplicate_batch", items=[
@@ -210,7 +210,7 @@ unity_skills.call_skill("gameobject_duplicate_batch", items=[
 ### gameobject_rename_batch
 Rename multiple GameObjects.
 
-**Returns**: `{success, count, results: [{success, oldName, newName, instanceId}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, oldName, newName, instanceId}]}`
 
 ```python
 unity_skills.call_skill("gameobject_rename_batch", items=[
@@ -222,7 +222,7 @@ unity_skills.call_skill("gameobject_rename_batch", items=[
 ### gameobject_set_transform_batch
 Set transforms for multiple objects.
 
-**Returns**: `{success, count, results: [{success, name, position, rotation, scale}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, position, rotation, scale}]}`
 
 ```python
 unity_skills.call_skill("gameobject_set_transform_batch", items=[
@@ -235,7 +235,7 @@ unity_skills.call_skill("gameobject_set_transform_batch", items=[
 ### gameobject_set_active_batch
 Toggle multiple objects.
 
-**Returns**: `{success, count, results: [{success, name, active}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, active}]}`
 
 ```python
 unity_skills.call_skill("gameobject_set_active_batch", items=[
@@ -247,7 +247,7 @@ unity_skills.call_skill("gameobject_set_active_batch", items=[
 ### gameobject_set_parent_batch
 Parent multiple objects. Each item supports `childName`/`childInstanceId`/`childPath` and `parentName`/`parentInstanceId`/`parentPath`.
 
-**Returns**: `{success, count, results: [{success, child, parent}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, child, parent}]}`
 
 ```python
 unity_skills.call_skill("gameobject_set_parent_batch", items=[
@@ -260,7 +260,7 @@ unity_skills.call_skill("gameobject_set_parent_batch", items=[
 ### gameobject_set_layer_batch
 Set layer for multiple objects.
 
-**Returns**: `{success, count, results: [{success, name, layer}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, layer}]}`
 
 ```python
 unity_skills.call_skill("gameobject_set_layer_batch", items=[
@@ -272,7 +272,7 @@ unity_skills.call_skill("gameobject_set_layer_batch", items=[
 ### gameobject_set_tag_batch
 Set tag for multiple objects.
 
-**Returns**: `{success, count, results: [{success, name, tag}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, tag}]}`
 
 ```python
 unity_skills.call_skill("gameobject_set_tag_batch", items=[

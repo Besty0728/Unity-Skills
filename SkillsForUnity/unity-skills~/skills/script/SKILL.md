@@ -66,7 +66,7 @@ Create a C# script from template.
 ### script_create_batch
 Create multiple scripts in one call.
 
-**Returns**: `{success, count, results: [{success, path, className}], compilation?}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, path, className}], compilation?}`
 
 Before batch creation, decide whether each script should be:
 - a thin `MonoBehaviour` bridge
