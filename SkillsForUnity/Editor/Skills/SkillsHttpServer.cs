@@ -182,6 +182,7 @@ namespace UnitySkills
             public long EnqueueTimeTicks;
             public string RequestId;
             public string AgentId;
+            public string QueryString;
 
             // Result (set by Main thread)
             public string ResponseJson;
@@ -191,7 +192,7 @@ namespace UnitySkills
             public int PoolReturned;
             public ManualResetEventSlim CompletionSignal = new ManualResetEventSlim(false);
 
-            public void Prepare(HttpListenerContext context, string httpMethod, string path, string body, string requestId, string agentId)
+            public void Prepare(HttpListenerContext context, string httpMethod, string path, string body, string requestId, string agentId, string queryString = null)
             {
                 Context = context;
                 HttpMethod = httpMethod;
@@ -200,6 +201,7 @@ namespace UnitySkills
                 EnqueueTimeTicks = DateTime.UtcNow.Ticks;
                 RequestId = requestId;
                 AgentId = agentId;
+                QueryString = queryString;
                 ResponseJson = null;
                 StatusCode = 200;
                 IsProcessed = false;
@@ -217,6 +219,7 @@ namespace UnitySkills
                 EnqueueTimeTicks = 0;
                 RequestId = null;
                 AgentId = null;
+                QueryString = null;
                 ResponseJson = null;
                 StatusCode = 200;
                 IsProcessed = false;
@@ -819,7 +822,8 @@ namespace UnitySkills
                             request.Url.AbsolutePath,
                             body,
                             $"req_{Interlocked.Increment(ref _requestIdCounter):X8}",
-                            DetectAgent(request));
+                            DetectAgent(request),
+                            request.Url.Query);
 
                         Interlocked.Increment(ref _totalRequestsReceived);
 
@@ -1120,11 +1124,21 @@ namespace UnitySkills
                 return;
             }
             
-            // Get skills manifest
+            // Get skills manifest (with optional filtering)
             if (path == "/skills" && job.HttpMethod == "GET")
             {
                 job.StatusCode = 200;
-                job.ResponseJson = SkillRouter.GetManifest();
+                job.ResponseJson = string.IsNullOrEmpty(job.QueryString)
+                    ? SkillRouter.GetManifest()
+                    : SkillRouter.GetFilteredManifest(job.QueryString);
+                return;
+            }
+
+            // Skill recommendation by intent
+            if (path == "/skills/recommend" && job.HttpMethod == "GET")
+            {
+                job.StatusCode = 200;
+                job.ResponseJson = SkillRouter.GetRecommendations(job.QueryString);
                 return;
             }
             

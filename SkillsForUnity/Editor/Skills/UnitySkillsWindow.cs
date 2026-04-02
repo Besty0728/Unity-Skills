@@ -346,6 +346,25 @@ namespace UnitySkills
                 RefreshSkillsList();
                 SkillRouter.Refresh();
             }
+            if (GUILayout.Button("Validate", GUILayout.Width(70)))
+            {
+                var issues = SkillRouter.ValidateMetadata();
+                if (issues.Count == 0)
+                {
+                    SkillsLogger.Log("Metadata validation passed — all skills OK!");
+                }
+                else
+                {
+                    SkillsLogger.Log($"Metadata validation: {issues.Count} issue(s) found");
+                    foreach (var msg in issues)
+                    {
+                        if (msg.StartsWith("[ERROR]"))
+                            Debug.LogError($"[UnitySkills] {msg}");
+                        else
+                            Debug.LogWarning($"[UnitySkills] {msg}");
+                    }
+                }
+            }
             EditorGUILayout.EndHorizontal();
 
             if (_skillsByCategory != null)

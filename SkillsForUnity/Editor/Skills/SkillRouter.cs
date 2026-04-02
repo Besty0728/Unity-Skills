@@ -362,6 +362,211 @@ namespace UnitySkills
             return list.Count > 0 ? list.ToArray() : null;
         }
 
+        // ========== Filtered Manifest ==========
+
+        /// <summary>
+        /// Returns a filtered skills manifest based on query string parameters.
+        /// Supported: category, operation, tags, readOnly, q (text search).
+        /// </summary>
+        public static string GetFilteredManifest(string queryString)
+        {
+            Initialize();
+            var filters = ParseQueryString(queryString);
+            if (filters.Count == 0) return GetManifest();
+
+            IEnumerable<SkillInfo> filtered = _skills.Values;
+
+            if (filters.TryGetValue("category", out var cat))
+                filtered = filtered.Where(s => s.Category.ToString().Equals(cat, StringComparison.OrdinalIgnoreCase));
+
+            if (filters.TryGetValue("operation", out var op))
+                filtered = filtered.Where(s => s.Operation != 0 &&
+                    Enum.TryParse<SkillOperation>(op, true, out var flag) && s.Operation.HasFlag(flag));
+
+            if (filters.TryGetValue("tags", out var tag))
+                filtered = filtered.Where(s => s.Tags != null &&
+                    s.Tags.Any(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase)));
+
+            if (filters.TryGetValue("readonly", out var ro))
+                filtered = filtered.Where(s => s.ReadOnly == (ro.Equals("true", StringComparison.OrdinalIgnoreCase)));
+
+            if (filters.TryGetValue("q", out var q))
+            {
+                var keywords = q.ToLowerInvariant().Split(new[] { ' ', '+' }, StringSplitOptions.RemoveEmptyEntries);
+                filtered = filtered.Where(s => keywords.Any(kw =>
+                    s.Name.ToLowerInvariant().Contains(kw) ||
+                    (s.Description != null && s.Description.ToLowerInvariant().Contains(kw)) ||
+                    (s.Tags != null && s.Tags.Any(t => t.ToLowerInvariant().Contains(kw)))));
+            }
+
+            var results = filtered.ToList();
+            var manifest = new
+            {
+                version = SkillsLogger.Version,
+                unityVersion = Application.unityVersion,
+                totalSkills = results.Count,
+                filtered = true,
+                filters,
+                skills = results.Select(s => new
+                {
+                    name = s.Name,
+                    description = s.Description,
+                    category = s.Category != SkillCategory.Uncategorized ? s.Category.ToString() : null,
+                    operation = FormatOperation(s.Operation),
+                    tags = s.Tags,
+                    outputs = s.Outputs,
+                    requiresInput = s.RequiresInput,
+                    readOnly = s.ReadOnly,
+                    tracksWorkflow = s.TracksWorkflow,
+                    parameters = s.Parameters.Select(p => new
+                    {
+                        name = p.Name,
+                        type = GetJsonType(p.ParameterType),
+                        required = !p.HasDefaultValue,
+                        defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
+                    })
+                })
+            };
+            return JsonConvert.SerializeObject(manifest, Formatting.Indented, _jsonSettings);
+        }
+
+        // ========== Skill Recommendations ==========
+
+        /// <summary>
+        /// Intent-based skill recommendation. Scores skills by keyword matching against
+        /// name (3pts), tags (2pts), and description (1pt). Returns top-N ranked results.
+        /// </summary>
+        public static string GetRecommendations(string queryString)
+        {
+            Initialize();
+            var filters = ParseQueryString(queryString);
+            var intent = "";
+            int topN = 10;
+            if (filters.TryGetValue("intent", out var i)) intent = i;
+            if (filters.TryGetValue("topn", out var n) && int.TryParse(n, out var parsed)) topN = Mathf.Clamp(parsed, 1, 50);
+
+            if (string.IsNullOrWhiteSpace(intent))
+            {
+                return JsonConvert.SerializeObject(new
+                {
+                    status = "error",
+                    error = "Missing required parameter: intent",
+                    example = "/skills/recommend?intent=create+cube&topN=10"
+                }, _jsonSettings);
+            }
+
+            var keywords = intent.ToLowerInvariant().Split(new[] { ' ', '+', '_' }, StringSplitOptions.RemoveEmptyEntries);
+            var scored = new List<(SkillInfo skill, int score, List<string> matchedOn)>();
+
+            foreach (var s in _skills.Values)
+            {
+                int score = 0;
+                var matchedOn = new List<string>();
+                var nameLower = s.Name.ToLowerInvariant();
+                var descLower = s.Description?.ToLowerInvariant() ?? "";
+
+                foreach (var kw in keywords)
+                {
+                    if (nameLower.Contains(kw))
+                    {
+                        score += 3;
+                        matchedOn.Add($"name:{kw}");
+                    }
+                    if (s.Tags != null && s.Tags.Any(t => t.ToLowerInvariant().Contains(kw)))
+                    {
+                        score += 2;
+                        matchedOn.Add($"tag:{kw}");
+                    }
+                    if (descLower.Contains(kw))
+                    {
+                        score += 1;
+                        matchedOn.Add($"desc:{kw}");
+                    }
+                }
+
+                if (score > 0)
+                    scored.Add((s, score, matchedOn));
+            }
+
+            var results = scored.OrderByDescending(x => x.score).Take(topN).ToList();
+            var response = new
+            {
+                intent,
+                topN,
+                totalMatches = scored.Count,
+                results = results.Select(x => new
+                {
+                    name = x.skill.Name,
+                    description = x.skill.Description,
+                    category = x.skill.Category != SkillCategory.Uncategorized ? x.skill.Category.ToString() : null,
+                    score = x.score,
+                    matchedOn = x.matchedOn.Distinct().ToArray()
+                })
+            };
+            return JsonConvert.SerializeObject(response, Formatting.Indented, _jsonSettings);
+        }
+
+        // ========== Metadata Validation ==========
+
+        /// <summary>
+        /// Validates metadata completeness and consistency across all discovered skills.
+        /// Returns a list of diagnostic messages (WARN/ERROR prefix).
+        /// </summary>
+        public static List<string> ValidateMetadata()
+        {
+            Initialize();
+            var issues = new List<string>();
+
+            foreach (var s in _skills.Values)
+            {
+                if (s.Category == SkillCategory.Uncategorized)
+                    issues.Add($"[WARN] {s.Name}: Category is Uncategorized");
+
+                if (s.Operation == 0)
+                    issues.Add($"[WARN] {s.Name}: Operation not specified");
+
+                if (s.ReadOnly && s.TracksWorkflow)
+                    issues.Add($"[ERROR] {s.Name}: ReadOnly=true conflicts with TracksWorkflow=true");
+
+                if (s.Tags == null || s.Tags.Length == 0)
+                    issues.Add($"[WARN] {s.Name}: Tags is empty");
+
+                if (s.Outputs == null || s.Outputs.Length == 0)
+                    issues.Add($"[WARN] {s.Name}: Outputs is empty");
+
+                if (s.Operation.HasFlag(SkillOperation.Delete) || s.Operation.HasFlag(SkillOperation.Modify))
+                {
+                    if (s.RequiresInput == null || s.RequiresInput.Length == 0)
+                        issues.Add($"[WARN] {s.Name}: Delete/Modify operation but RequiresInput is empty");
+                }
+            }
+
+            return issues;
+        }
+
+        // ========== Query String Parser ==========
+
+        private static Dictionary<string, string> ParseQueryString(string qs)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrEmpty(qs)) return result;
+
+            // Remove leading '?'
+            var raw = qs.StartsWith("?") ? qs.Substring(1) : qs;
+            if (string.IsNullOrEmpty(raw)) return result;
+
+            foreach (var pair in raw.Split('&'))
+            {
+                var eqIdx = pair.IndexOf('=');
+                if (eqIdx <= 0) continue;
+                var key = Uri.UnescapeDataString(pair.Substring(0, eqIdx)).Trim();
+                var val = Uri.UnescapeDataString(pair.Substring(eqIdx + 1)).Trim();
+                if (!string.IsNullOrEmpty(key) && !string.IsNullOrEmpty(val))
+                    result[key] = val;
+            }
+            return result;
+        }
+
         /// <summary>
         /// Auto-snapshot target objects from skill arguments for universal rollback support.
         /// Identifies common target parameters (name, instanceId, path, materialPath, etc.) and snapshots them.

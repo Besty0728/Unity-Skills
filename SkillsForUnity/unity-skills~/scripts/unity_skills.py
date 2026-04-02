@@ -20,6 +20,7 @@ import os
 import re
 import threading
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlencode
 
 __version__ = "1.6.6"
 
@@ -523,15 +524,71 @@ def call_skill_with_retry(skill_name: str, max_retries: int = 3, retry_delay: fl
             time.sleep(retry_delay)
     return last_result
 
-def get_skills() -> Dict[str, Any]:
-    """Get list of all available skills from the current default client."""
+def get_skills(category: str = None, operation: str = None, tags: str = None,
+               read_only: bool = None, q: str = None) -> Dict[str, Any]:
+    """Get list of available skills, optionally filtered by metadata.
+
+    Args:
+        category: Filter by SkillCategory (e.g. "GameObject", "Material").
+        operation: Filter by SkillOperation (e.g. "Create", "Query").
+        tags: Filter by tag (e.g. "batch", "hierarchy").
+        read_only: Filter read-only skills (True/False).
+        q: Text search across name, description, and tags.
+    """
     try:
         client = _get_default_client()
-        response = client._session.get(f"{client.url}/skills", timeout=client.timeout)
+        params = {}
+        if category is not None: params["category"] = category
+        if operation is not None: params["operation"] = operation
+        if tags is not None: params["tags"] = tags
+        if read_only is not None: params["readOnly"] = str(read_only).lower()
+        if q is not None: params["q"] = q
+        qs = f"?{urlencode(params)}" if params else ""
+        response = client._session.get(f"{client.url}/skills{qs}", timeout=client.timeout)
         response.encoding = 'utf-8'
         return response.json()
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+def find_skills(intent: str, top_n: int = 10) -> Dict[str, Any]:
+    """Server-side intent-based skill recommendation.
+
+    Uses keyword scoring: name match (3pts), tag match (2pts), description match (1pt).
+    Returns top-N ranked skills with relevance scores.
+
+    Args:
+        intent: Natural language description of what you want to do (e.g. "create red cube").
+        top_n: Maximum number of results (default 10, max 50).
+    """
+    try:
+        client = _get_default_client()
+        params = {"intent": intent, "topN": str(top_n)}
+        response = client._session.get(
+            f"{client.url}/skills/recommend?{urlencode(params)}", timeout=client.timeout)
+        response.encoding = 'utf-8'
+        return response.json()
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def get_skill_chain(target_output: str) -> List[Dict[str, Any]]:
+    """Find skills that produce a specific output field.
+
+    Useful for building skill chains — e.g. find all skills that output "instanceId"
+    so you know which skills can feed into skills that require "gameObject".
+
+    Args:
+        target_output: The output field name to search for (e.g. "instanceId", "path").
+    """
+    try:
+        manifest = get_skills()
+        if manifest.get("status") == "error":
+            return []
+        skills = manifest.get("skills", [])
+        return [s for s in skills if s.get("outputs") and target_output in s["outputs"]]
+    except Exception:
+        return []
 
 def health() -> bool:
     """Check if the current default Unity server is running."""
