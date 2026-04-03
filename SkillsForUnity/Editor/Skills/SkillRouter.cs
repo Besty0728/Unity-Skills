@@ -132,12 +132,58 @@ namespace UnitySkills
             foreach (var kw in keywords)
             {
                 expanded.Add(kw);
+                // Exact match
                 if (_synonymMap.TryGetValue(kw, out var synonyms))
                 {
                     foreach (var s in synonyms) expanded.Add(s);
                 }
+                // Substring match: check if any synonym key is contained in the keyword
+                // This handles unsegmented Chinese like "创建红色方块" matching "创建", "方块" etc.
+                foreach (var entry in _synonymMap)
+                {
+                    if (entry.Key.Length >= 2 && kw.IndexOf(entry.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        foreach (var s in entry.Value) expanded.Add(s);
+                    }
+                }
             }
             return expanded.ToArray();
+        }
+
+        /// <summary>
+        /// Extract matched operations from keywords using substring matching for Chinese support.
+        /// </summary>
+        private static HashSet<SkillOperation> ExtractOperations(string[] keywords)
+        {
+            var ops = new HashSet<SkillOperation>();
+            foreach (var kw in keywords)
+            {
+                if (_operationKeywords.TryGetValue(kw, out var op)) ops.Add(op);
+                foreach (var entry in _operationKeywords)
+                {
+                    if (entry.Key.Length >= 2 && kw.IndexOf(entry.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+                        ops.Add(entry.Value);
+                }
+            }
+            return ops;
+        }
+
+        /// <summary>
+        /// Extract matched categories from keywords using substring matching for Chinese support.
+        /// </summary>
+        private static HashSet<SkillCategory> ExtractCategories(string[] keywords)
+        {
+            var cats = new HashSet<SkillCategory>();
+            foreach (var kw in keywords)
+            {
+                if (_categoryKeywords.TryGetValue(kw, out var cat)) cats.Add(cat);
+                foreach (var entry in _categoryKeywords)
+                {
+                    if (entry.Key.Length >= 2 && kw.IndexOf(entry.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+                        cats.Add(entry.Value);
+                }
+            }
+            return cats;
         }
         // Keep Unicode readable in JSON responses instead of forcing escaped sequences.
         private static readonly JsonSerializerSettings _jsonSettings = new JsonSerializerSettings
@@ -579,14 +625,9 @@ namespace UnitySkills
             var keywords = ExpandIntent(rawKeywords);
             var scored = new List<(SkillInfo skill, int score, List<string> matchedOn)>();
 
-            // Pre-compute operation and category matches from original keywords
-            var matchedOps = new HashSet<SkillOperation>();
-            var matchedCats = new HashSet<SkillCategory>();
-            foreach (var kw in rawKeywords)
-            {
-                if (_operationKeywords.TryGetValue(kw, out var op)) matchedOps.Add(op);
-                if (_categoryKeywords.TryGetValue(kw, out var cat)) matchedCats.Add(cat);
-            }
+            // Pre-compute operation and category matches (with Chinese substring support)
+            var matchedOps = ExtractOperations(rawKeywords);
+            var matchedCats = ExtractCategories(rawKeywords);
 
             foreach (var s in _skills.Values)
             {
