@@ -212,9 +212,9 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("job_status", "Get status for an asynchronous batch job.",
+        [UnitySkill("job_status", "Get status for an asynchronous UnitySkills job.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
-            Tags = new[] { "job", "status", "batch" },
+            Tags = new[] { "job", "status", "async" },
             Outputs = new[] { "jobId", "status", "progress", "currentStage" },
             RequiresInput = new[] { "jobId" },
             ReadOnly = true)]
@@ -223,7 +223,7 @@ namespace UnitySkills
             if (Validate.Required(jobId, "jobId") is object err)
                 return err;
 
-            var job = BatchJobService.Get(jobId);
+            var job = AsyncJobService.Get(jobId);
             if (job == null)
                 return new { success = false, error = $"Job not found: {jobId}" };
 
@@ -242,13 +242,14 @@ namespace UnitySkills
                 workflowId = job.relatedWorkflowId,
                 reportId = job.reportId,
                 canCancel = job.canCancel && !IsTerminalStatus(job.status),
-                error = job.error
+                error = job.error,
+                details = job.resultData
             };
         }
 
-        [UnitySkill("job_logs", "Get structured logs for a batch job.",
+        [UnitySkill("job_logs", "Get structured logs for a UnitySkills job.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
-            Tags = new[] { "job", "logs", "batch" },
+            Tags = new[] { "job", "logs", "async" },
             Outputs = new[] { "jobId", "logs" },
             RequiresInput = new[] { "jobId" },
             ReadOnly = true)]
@@ -257,7 +258,7 @@ namespace UnitySkills
             if (Validate.Required(jobId, "jobId") is object err)
                 return err;
 
-            var job = BatchJobService.Get(jobId);
+            var job = AsyncJobService.Get(jobId);
             if (job == null)
                 return new { success = false, error = $"Job not found: {jobId}" };
 
@@ -270,14 +271,14 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("job_list", "List recent batch jobs.",
+        [UnitySkill("job_list", "List recent UnitySkills jobs.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
-            Tags = new[] { "job", "list", "batch" },
+            Tags = new[] { "job", "list", "async" },
             Outputs = new[] { "count", "jobs" },
             ReadOnly = true)]
         public static object JobList(int limit = 20)
         {
-            var jobs = BatchJobService.List(limit);
+            var jobs = AsyncJobService.List(limit);
             return new
             {
                 success = true,
@@ -293,14 +294,15 @@ namespace UnitySkills
                     job.updatedAt,
                     job.resultSummary,
                     workflowId = job.relatedWorkflowId,
-                    job.reportId
+                    job.reportId,
+                    canCancel = job.canCancel && !IsTerminalStatus(job.status)
                 }).ToArray()
             };
         }
 
-        [UnitySkill("job_wait", "Wait for a batch job to finish or until timeoutMs elapses.",
+        [UnitySkill("job_wait", "Wait for a UnitySkills job to finish or until timeoutMs elapses.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
-            Tags = new[] { "job", "wait", "batch" },
+            Tags = new[] { "job", "wait", "async" },
             Outputs = new[] { "jobId", "status", "reportId" },
             RequiresInput = new[] { "jobId" })]
         public static object JobWait(string jobId, int timeoutMs = 10000)
@@ -308,7 +310,7 @@ namespace UnitySkills
             if (Validate.Required(jobId, "jobId") is object err)
                 return err;
 
-            var job = BatchJobService.Wait(jobId, timeoutMs);
+            var job = AsyncJobService.Wait(jobId, timeoutMs);
             if (job == null)
                 return new { success = false, error = $"Job not found: {jobId}" };
 
@@ -322,13 +324,14 @@ namespace UnitySkills
                 reportId = job.reportId,
                 workflowId = job.relatedWorkflowId,
                 resultSummary = job.resultSummary,
-                error = job.error
+                error = job.error,
+                details = job.resultData
             };
         }
 
-        [UnitySkill("job_cancel", "Cancel a batch job if it has not completed yet.",
+        [UnitySkill("job_cancel", "Cancel a UnitySkills job if the job supports cancellation.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
-            Tags = new[] { "job", "cancel", "batch" },
+            Tags = new[] { "job", "cancel", "async" },
             Outputs = new[] { "jobId", "status" },
             RequiresInput = new[] { "jobId" })]
         public static object JobCancel(string jobId)
@@ -336,11 +339,18 @@ namespace UnitySkills
             if (Validate.Required(jobId, "jobId") is object err)
                 return err;
 
-            var job = BatchJobService.Cancel(jobId);
+            var job = AsyncJobService.Cancel(jobId);
             if (job == null)
                 return new { success = false, error = $"Job not found: {jobId}" };
 
-            return new { success = true, jobId = job.jobId, status = job.status, resultSummary = job.resultSummary };
+            return new
+            {
+                success = true,
+                jobId = job.jobId,
+                status = job.status,
+                resultSummary = job.resultSummary,
+                warnings = job.warnings
+            };
         }
 
         [UnitySkill("batch_fix_missing_scripts", "Preview batch removal of missing scripts. Execute with batch_execute(confirmToken).",

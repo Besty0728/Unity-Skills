@@ -106,5 +106,5 @@ unity_skills.call_skill("gameobject_create_batch",
 
 All skills follow `<module>_<action>` or `<module>_<action>_batch` pattern.
 Valid module prefixes: `gameobject`, `component`, `material`, `light`, `prefab`, `asset`, `ui`, `uitoolkit`, `script`, `scene`, `editor`, `animator`, `shader`, `console`, `validation`, `importer`, `cinemachine`, `probuilder`, `xr`, `terrain`, `physics`, `navmesh`, `timeline`, `workflow`, `cleaner`, `smart`, `perception`, `camera`, `event`, `package`, `project`, `profiler`, `optimize`, `sample`, `debug`, `test`, `bookmark`, `history`, `scriptableobject`.
-Special: `scene_summarize`, `hierarchy_describe`, `script_analyze`, `script_dependency_graph` belong to `perception` module despite their prefix.
+Special: `scene_summarize`, `scene_analyze`, `scene_health_check`, `scene_contract_validate`, `scene_component_stats`, `scene_find_hotspots`, `hierarchy_describe`, `script_analyze`, `script_dependency_graph`, `project_stack_detect` belong to `perception` module despite their prefix.
 If a skill name doesn't start with a valid prefix listed above, **it does not exist** — do not hallucinate it.

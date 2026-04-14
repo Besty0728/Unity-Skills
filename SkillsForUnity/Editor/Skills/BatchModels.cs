@@ -118,6 +118,7 @@ namespace UnitySkills
         public string level;
         public string stage;
         public string message;
+        public string code;
     }
 
     [Serializable]
@@ -140,6 +141,8 @@ namespace UnitySkills
         public int totalItems;
         public string error;
         public BatchPreviewEnvelope preview;
+        public Dictionary<string, object> metadata = new Dictionary<string, object>();
+        public Dictionary<string, object> resultData = new Dictionary<string, object>();
         public List<BatchReportItemRecord> items = new List<BatchReportItemRecord>();
         public List<BatchJobLogEntry> logs = new List<BatchJobLogEntry>();
     }

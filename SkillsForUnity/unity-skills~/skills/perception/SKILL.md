@@ -13,6 +13,7 @@ description: "Scene understanding and analysis. Use when users want to get a sum
 - `perception_analyze` does not exist → use `scene_summarize` or `script_analyze`
 - `perception_scan` / `perception_describe` do not exist
 - `scene_context` ≠ `editor_get_context`: `scene_context` exports full hierarchy+components, `editor_get_context` returns current selection+editor state
+- `scene_analyze` / `scene_health_check` / `scene_contract_validate` / `scene_component_stats` / `scene_find_hotspots` / `project_stack_detect` belong to `perception`, not `scene` or `project`
 
 **Routing**:
 - For current editor state (selection, play mode) → use `editor` module's `editor_get_context`
@@ -20,6 +21,78 @@ description: "Scene understanding and analysis. Use when users want to get a sum
 - For script dependency analysis → `script_dependency_graph` (this module)
 
 ## Skills
+
+### scene_analyze
+Analyze the active scene and project context in one pass.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `topComponentsLimit` | int | No | 10 | Max components to include in stats |
+| `issueLimit` | int | No | 100 | Max findings returned |
+
+**Returns:** `summary`, `stats`, `findings`, `warnings`, `recommendations`, `suggestedNextSkills`
+
+---
+
+### scene_health_check
+Run a read-only health report for the active scene.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `issueLimit` | int | No | 100 | Max findings returned |
+| `deepHierarchyThreshold` | int | No | 8 | Depth threshold for hierarchy hotspot |
+| `largeChildCountThreshold` | int | No | 25 | Child-count threshold for large-group hotspot |
+
+**Returns:** `summary`, `findings`, `hotspots`, `suggestedNextSkills`
+
+---
+
+### scene_contract_validate
+Validate default scene conventions such as `Systems` / `Managers` / `Gameplay` / `UIRoot`, plus optional tag/layer requirements.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `requiredRootsJson` | string | No | built-in defaults | JSON string array of required root names |
+| `requiredTagsJson` | string | No | `[]` | JSON string array of required tags |
+| `requiredLayersJson` | string | No | `[]` | JSON string array of required layers |
+| `requireEventSystemForUi` | bool | No | true | Require EventSystem when UGUI is present |
+
+**Returns:** `summary`, `findings`, `checkedRoots`, `checkedTags`, `checkedLayers`
+
+---
+
+### project_stack_detect
+Detect project render pipeline, input path, UI route, major packages, and common folder conventions.
+
+No parameters.
+
+**Returns:** `unityVersion`, `renderPipeline`, `input`, `ui`, `packages`, `tests`, `projectFolders`, `projectProfile`
+
+---
+
+### scene_component_stats
+Get extended component and infrastructure statistics for the active scene.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `topComponentsLimit` | int | No | 15 | Max components to include |
+
+**Returns:** `stats`, `keyFacilities`, `topComponents`
+
+---
+
+### scene_find_hotspots
+Find deep hierarchies, large child groups, duplicate-name clusters, and empty-node hotspots.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `deepHierarchyThreshold` | int | No | 8 | Depth threshold |
+| `largeChildCountThreshold` | int | No | 25 | Child-count threshold |
+| `maxResults` | int | No | 20 | Max hotspots returned |
+
+**Returns:** `hotspotCount`, `hotspots`
+
+---
 
 ### scene_summarize
 Get a structured summary of the current scene.

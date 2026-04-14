@@ -30,9 +30,17 @@ namespace UnitySkills
         private static Action<bool> _pendingListCallbacks;
         private static Action<bool, string> _pendingAddCallback;
         private static Action<bool, string> _pendingRemoveCallback;
+        private static string _currentOperation;
+        private static string _currentPackageId;
 
         public static bool IsRefreshing => _isRefreshing;
         public static Dictionary<string, PkgInfo> InstalledPackages => _installedPackages;
+        public static bool HasPendingOperation =>
+            (_addRequest != null && !_addRequest.IsCompleted) ||
+            (_removeRequest != null && !_removeRequest.IsCompleted) ||
+            _isRefreshing;
+        public static string CurrentOperation => _currentOperation;
+        public static string CurrentPackageId => _currentPackageId;
         public static bool AutoInstallPackagesOnStartup
         {
             get => EditorPrefs.GetBool(PrefKeyAutoInstallPackagesOnStartup, false);
@@ -50,6 +58,8 @@ namespace UnitySkills
             if (_isRefreshing) return;
 
             _isRefreshing = true;
+            _currentOperation = "refresh";
+            _currentPackageId = "(package_list)";
             _listRequest = Client.List(true);
             EditorApplication.update -= OnListProgress;
             EditorApplication.update += OnListProgress;
@@ -61,6 +71,8 @@ namespace UnitySkills
             EditorApplication.update -= OnListProgress;
 
             _isRefreshing = false;
+            _currentOperation = null;
+            _currentPackageId = null;
             var callbacks = _pendingListCallbacks;
             _pendingListCallbacks = null;
             if (_listRequest.Status == StatusCode.Success)
@@ -108,6 +120,8 @@ namespace UnitySkills
             }
 
             var identifier = string.IsNullOrEmpty(version) ? packageId : $"{packageId}@{version}";
+            _currentOperation = "install";
+            _currentPackageId = packageId;
             _addRequest = Client.Add(identifier);
             _pendingAddCallback = callback;
             EditorApplication.update -= OnAddProgress;
@@ -118,6 +132,8 @@ namespace UnitySkills
         {
             if (!_addRequest.IsCompleted) return;
             EditorApplication.update -= OnAddProgress;
+            _currentOperation = null;
+            _currentPackageId = null;
 
             var cb = _pendingAddCallback;
             _pendingAddCallback = null;
@@ -145,6 +161,8 @@ namespace UnitySkills
                 return;
             }
 
+            _currentOperation = "remove";
+            _currentPackageId = packageId;
             _removeRequest = Client.Remove(packageId);
             _pendingRemoveCallback = callback;
             EditorApplication.update -= OnRemoveProgress;
@@ -155,6 +173,8 @@ namespace UnitySkills
         {
             if (!_removeRequest.IsCompleted) return;
             EditorApplication.update -= OnRemoveProgress;
+            _currentOperation = null;
+            _currentPackageId = null;
 
             var cb = _pendingRemoveCallback;
             _pendingRemoveCallback = null;

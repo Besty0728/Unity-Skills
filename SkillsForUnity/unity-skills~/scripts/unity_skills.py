@@ -458,17 +458,17 @@ def call_skill(skill_name: str, **kwargs) -> Dict[str, Any]:
 
 
 def get_job_status(job_id: str) -> Dict[str, Any]:
-    """Get status for an asynchronous UnitySkills batch job."""
+    """Get status for an asynchronous UnitySkills job."""
     return _get_default_client().get_job_status(job_id)
 
 
 def get_job_logs(job_id: str, limit: int = 100) -> Dict[str, Any]:
-    """Get structured logs for an asynchronous UnitySkills batch job."""
+    """Get structured logs for an asynchronous UnitySkills job."""
     return _get_default_client().get_job_logs(job_id, limit=limit)
 
 
 def wait_for_job(job_id: str, timeout: float = 60.0) -> Dict[str, Any]:
-    """Wait for a UnitySkills batch job and include the final report when available."""
+    """Wait for a UnitySkills job and include the final batch report when available."""
     return _get_default_client().wait_for_job(job_id, timeout=timeout)
 
 

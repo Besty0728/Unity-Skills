@@ -39,7 +39,7 @@ Activate ALL 513 skills when user explicitly says:
 | Category | Modules | Representative Skills |
 |----------|---------|----------------------|
 | Script | script | script_create, script_read, script_replace, script_append |
-| Perception | perception | scene_summarize, hierarchy_describe, script_analyze |
+| Perception | perception | scene_analyze, scene_health_check, project_stack_detect |
 | Scene Mgmt | scene | scene_save, scene_load, scene_context, scene_find_objects |
 | Editor | editor | editor_get_context, editor_undo, editor_redo |
 | Asset Basic | asset | asset_refresh, asset_find, asset_get_info |

@@ -19,7 +19,7 @@ namespace UnitySkills
         [UnitySkill("script_create", "Create a new C# script. Before generating gameplay scripts, actively consider coupling, performance, and maintainability. Optional: namespace", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Create,
             Tags = new[] { "script", "csharp", "create", "template" },
-            Outputs = new[] { "path", "className", "namespaceName", "compilation" })]
+            Outputs = new[] { "path", "className", "namespaceName", "jobId" })]
         public static object ScriptCreate(
             string scriptName = null,
             string name = null,
@@ -61,7 +61,7 @@ namespace UnitySkills
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
             if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
 
-            var result = CreateScriptMutationResult(path, checkCompile, diagnosticLimit);
+            var result = CreateScriptMutationResult(path, "script_create", checkCompile, diagnosticLimit);
             result["className"] = scriptName;
             result["namespaceName"] = namespaceName;
             result["designReminder"] = "Before filling in gameplay logic, actively consider coupling, performance, and maintainability. Prefer clear responsibilities, explicit dependencies, avoid unnecessary Update-driven logic, and only introduce heavier patterns such as UniTask or global event systems when clearly justified.";
@@ -117,7 +117,7 @@ namespace UnitySkills
         [UnitySkill("script_delete", "Delete a script file", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Delete,
             Tags = new[] { "script", "delete", "remove", "file" },
-            Outputs = new[] { "deleted" },
+            Outputs = new[] { "deleted", "jobId" },
             RequiresInput = new[] { "scriptPath" })]
         public static object ScriptDelete(string scriptPath)
         {
@@ -129,10 +129,13 @@ namespace UnitySkills
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
             AssetDatabase.DeleteAsset(scriptPath);
+            var job = AsyncJobService.StartScriptMutationJob("script_delete", NormalizePath(scriptPath), checkCompile: false, diagnosticLimit: DefaultDiagnosticLimit, supportsDiagnostics: false);
             var result = new Dictionary<string, object>
             {
                 ["success"] = true,
-                ["deleted"] = NormalizePath(scriptPath)
+                ["status"] = "accepted",
+                ["deleted"] = NormalizePath(scriptPath),
+                ["jobId"] = job.jobId
             };
             ServerAvailabilityHelper.AttachTransientUnavailableNotice(
                 result,
@@ -187,7 +190,7 @@ namespace UnitySkills
         [UnitySkill("script_append", "Append content to a script", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Modify,
             Tags = new[] { "script", "append", "insert", "code" },
-            Outputs = new[] { "path", "compilation" },
+            Outputs = new[] { "path", "jobId" },
             RequiresInput = new[] { "scriptPath" })]
         public static object ScriptAppend(string scriptPath, string content, int atLine = -1, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
@@ -212,13 +215,13 @@ namespace UnitySkills
 
             File.WriteAllLines(scriptPath, lines, Utf8NoBom);
             AssetDatabase.ImportAsset(scriptPath);
-            return CreateScriptMutationResult(scriptPath, checkCompile, diagnosticLimit);
+            return CreateScriptMutationResult(scriptPath, "script_append", checkCompile, diagnosticLimit);
         }
 
         [UnitySkill("script_replace", "Find and replace content in a script file", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Modify,
             Tags = new[] { "script", "replace", "find", "refactor" },
-            Outputs = new[] { "path", "replacements", "compilation" },
+            Outputs = new[] { "path", "replacements", "jobId" },
             RequiresInput = new[] { "scriptPath" })]
         public static object ScriptReplace(string scriptPath, string find, string replace, bool isRegex = false, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
@@ -240,7 +243,7 @@ namespace UnitySkills
             File.WriteAllText(scriptPath, newContent, Utf8NoBom);
             AssetDatabase.ImportAsset(scriptPath);
 
-            var result = CreateScriptMutationResult(scriptPath, checkCompile, diagnosticLimit);
+            var result = CreateScriptMutationResult(scriptPath, "script_replace", checkCompile, diagnosticLimit);
             result["replacements"] = changes;
             return result;
         }
@@ -300,7 +303,7 @@ namespace UnitySkills
         [UnitySkill("script_rename", "Rename a script file", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Modify,
             Tags = new[] { "script", "rename", "refactor", "file" },
-            Outputs = new[] { "path", "oldPath", "newName", "compilation" },
+            Outputs = new[] { "path", "oldPath", "newName", "jobId" },
             RequiresInput = new[] { "scriptPath" })]
         public static object ScriptRename(string scriptPath, string newName, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
@@ -317,7 +320,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(renameResult)) return new { error = renameResult };
 
             var renamedPath = Path.Combine(Path.GetDirectoryName(scriptPath) ?? "", newName + ".cs");
-            var result = CreateScriptMutationResult(renamedPath, checkCompile, diagnosticLimit);
+            var result = CreateScriptMutationResult(renamedPath, "script_rename", checkCompile, diagnosticLimit);
             result["oldPath"] = NormalizePath(scriptPath);
             result["newName"] = newName;
             return result;
@@ -326,7 +329,7 @@ namespace UnitySkills
         [UnitySkill("script_move", "Move a script to a new folder", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Modify,
             Tags = new[] { "script", "move", "reorganize", "file" },
-            Outputs = new[] { "oldPath", "newPath", "compilation" },
+            Outputs = new[] { "oldPath", "newPath", "jobId" },
             RequiresInput = new[] { "scriptPath" })]
         public static object ScriptMove(string scriptPath, string newFolder, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
@@ -344,7 +347,7 @@ namespace UnitySkills
             var moveResult = AssetDatabase.MoveAsset(scriptPath, newPath);
             if (!string.IsNullOrEmpty(moveResult)) return new { error = moveResult };
 
-            var result = CreateScriptMutationResult(newPath, checkCompile, diagnosticLimit);
+            var result = CreateScriptMutationResult(newPath, "script_move", checkCompile, diagnosticLimit);
             result["oldPath"] = NormalizePath(scriptPath);
             result["newPath"] = NormalizePath(newPath);
             return result;
@@ -360,29 +363,30 @@ namespace UnitySkills
         {
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (!File.Exists(scriptPath)) return new { error = $"Script not found: {scriptPath}" };
-            return GetCompilationFeedback(scriptPath, limit);
+            return GetCompilationFeedbackSnapshot(scriptPath, limit);
         }
 
-        private static Dictionary<string, object> CreateScriptMutationResult(string scriptPath, bool checkCompile, int diagnosticLimit)
+        private static Dictionary<string, object> CreateScriptMutationResult(string scriptPath, string operation, bool checkCompile, int diagnosticLimit)
         {
+            var normalizedPath = NormalizePath(scriptPath);
+            var job = AsyncJobService.StartScriptMutationJob(operation, normalizedPath, checkCompile, diagnosticLimit);
             var result = new Dictionary<string, object>
             {
                 ["success"] = true,
-                ["path"] = NormalizePath(scriptPath)
+                ["status"] = "accepted",
+                ["path"] = normalizedPath,
+                ["jobId"] = job.jobId
             };
-
-            if (checkCompile)
-                result["compilation"] = GetCompilationFeedback(scriptPath, diagnosticLimit);
 
             ServerAvailabilityHelper.AttachTransientUnavailableNotice(
                 result,
-                $"Script asset changed: {NormalizePath(scriptPath)}. Unity may briefly reload the script domain.",
+                $"Script asset changed: {normalizedPath}. Unity may briefly reload the script domain.",
                 alwaysInclude: true);
 
             return result;
         }
 
-        private static Dictionary<string, object> GetCompilationFeedback(string scriptPath, int limit)
+        internal static Dictionary<string, object> GetCompilationFeedbackSnapshot(string scriptPath, int limit)
         {
             string normalizedPath = NormalizePath(scriptPath);
             string fileName = Path.GetFileName(normalizedPath);

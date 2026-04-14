@@ -151,6 +151,12 @@ namespace UnitySkills
             {"editor_set_pause_on_error", "Enable or disable 'Error Pause' in Play mode"},
             
             // Perception Skills (NextGen)
+            {"scene_analyze", "Analyze the active scene and project context in one pass"},
+            {"scene_health_check", "Run a read-only health report for the active scene"},
+            {"scene_contract_validate", "Validate scene conventions such as roots, UI infrastructure, tags, and layers"},
+            {"project_stack_detect", "Detect render pipeline, UI route, packages, and project conventions"},
+            {"scene_component_stats", "Get detailed scene component and infrastructure statistics"},
+            {"scene_find_hotspots", "Find deep hierarchies, duplicate-name clusters, and other scene hotspots"},
             {"scene_summarize", "Get a structured summary of the current scene"},
             {"hierarchy_describe", "Get a text tree of the scene hierarchy"},
             {"script_analyze", "Analyze a MonoBehaviour script's public API"},
@@ -942,6 +948,12 @@ namespace UnitySkills
             {"editor_set_pause_on_error", "启用/禁用播放模式下的'报错暂停'"},
             
             // Perception Skills (NextGen)
+            {"scene_analyze", "一次性分析当前场景与项目上下文"},
+            {"scene_health_check", "对当前场景执行只读健康检查"},
+            {"scene_contract_validate", "校验场景约定，如根节点、UI 基础设施、标签和图层"},
+            {"project_stack_detect", "检测渲染管线、UI 路线、关键包和项目约定"},
+            {"scene_component_stats", "获取详细的组件与基础设施统计"},
+            {"scene_find_hotspots", "查找深层级、重名簇等场景热点"},
             {"scene_summarize", "获取当前场景的结构化摘要"},
             {"hierarchy_describe", "获取场景层级树的文本描述"},
             {"script_analyze", "分析 MonoBehaviour 脚本的公共 API"},

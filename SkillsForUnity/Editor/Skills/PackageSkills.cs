@@ -41,28 +41,42 @@ namespace UnitySkills
 
         [UnitySkill("package_install", "Install a package. version is optional.",
             Category = SkillCategory.Package, Operation = SkillOperation.Execute,
-            Tags = new[] { "package", "install", "upm", "add" },
-            Outputs = new[] { "status", "message", "async" },
+            Tags = new[] { "package", "install", "upm", "add", "job" },
+            Outputs = new[] { "status", "message", "jobId" },
             RequiresInput = new[] { "packageId" })]
         public static object PackageInstall(string packageId, string version = null)
         {
             if (Validate.Required(packageId, "packageId") is object err) return err;
 
-            string resultMsg = null;
-            bool? resultSuccess = null;
+            bool handledSynchronously = false;
+            bool immediateSuccess = true;
+            string immediateMessage = null;
+            BatchJobRecord job = null;
 
             PackageManagerHelper.InstallPackage(packageId, version, (success, msg) =>
             {
-                resultSuccess = success;
-                resultMsg = msg;
+                if (job == null)
+                {
+                    handledSynchronously = true;
+                    immediateSuccess = success;
+                    immediateMessage = msg;
+                    return;
+                }
+
+                if (!success)
+                    AsyncJobService.FailJob(job.jobId, $"Package install failed: {msg}", "failed_package");
             });
 
-            // 返回异步状态提示
+            if (handledSynchronously && !immediateSuccess)
+                return new { success = false, error = immediateMessage ?? "Package install failed." };
+
+            job = AsyncJobService.StartPackageJob("install", packageId, version);
+
             return new {
                 success = true,
-                status = "installing",
-                message = $"Installing {packageId}" + (version != null ? $"@{version}" : "") + "... This operation is async. Check Unity console for progress.",
-                async = true,
+                status = "accepted",
+                jobId = job.jobId,
+                message = $"Installing {packageId}" + (version != null ? $"@{version}" : "") + "... Use job_status/job_wait for progress.",
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
                     $"正在安装包 {packageId}。包导入和程序集刷新期间，REST 服务可能短暂不可用。",
                     alwaysInclude: true,
@@ -72,8 +86,8 @@ namespace UnitySkills
 
         [UnitySkill("package_remove", "Remove an installed package.",
             Category = SkillCategory.Package, Operation = SkillOperation.Execute | SkillOperation.Delete,
-            Tags = new[] { "package", "remove", "uninstall", "upm" },
-            Outputs = new[] { "message", "async" },
+            Tags = new[] { "package", "remove", "uninstall", "upm", "job" },
+            Outputs = new[] { "message", "jobId" },
             RequiresInput = new[] { "packageId" })]
         public static object PackageRemove(string packageId)
         {
@@ -82,18 +96,35 @@ namespace UnitySkills
             if (!PackageManagerHelper.IsPackageInstalled(packageId))
                 return new { error = $"Package {packageId} is not installed" };
 
+            bool handledSynchronously = false;
+            bool immediateSuccess = true;
+            string immediateMessage = null;
+            BatchJobRecord job = null;
+
             PackageManagerHelper.RemovePackage(packageId, (success, msg) =>
             {
-                if (success)
-                    Debug.Log($"[PackageSkills] Removed {packageId}");
-                else
-                    Debug.LogError($"[PackageSkills] Failed to remove {packageId}: {msg}");
+                if (job == null)
+                {
+                    handledSynchronously = true;
+                    immediateSuccess = success;
+                    immediateMessage = msg;
+                    return;
+                }
+
+                if (!success)
+                    AsyncJobService.FailJob(job.jobId, $"Package removal failed: {msg}", "failed_package");
             });
+
+            if (handledSynchronously && !immediateSuccess)
+                return new { success = false, error = immediateMessage ?? "Package remove failed." };
+
+            job = AsyncJobService.StartPackageJob("remove", packageId);
 
             return new {
                 success = true,
-                message = $"Removing {packageId}... Check Unity console for progress.",
-                async = true,
+                status = "accepted",
+                jobId = job.jobId,
+                message = $"Removing {packageId}... Use job_status/job_wait for progress.",
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
                     $"正在移除包 {packageId}。包导入和程序集刷新期间，REST 服务可能短暂不可用。",
                     alwaysInclude: true,
@@ -103,28 +134,46 @@ namespace UnitySkills
 
         [UnitySkill("package_refresh", "Refresh the installed package list cache.",
             Category = SkillCategory.Package, Operation = SkillOperation.Execute,
-            Tags = new[] { "package", "refresh", "cache", "upm" },
-            Outputs = new[] { "message" })]
+            Tags = new[] { "package", "refresh", "cache", "upm", "job" },
+            Outputs = new[] { "message", "jobId" })]
         public static object PackageRefresh()
         {
             if (PackageManagerHelper.IsRefreshing)
-                return new { success = true, message = "Already refreshing..." };
+            {
+                var existingJob = AsyncJobService.StartPackageJob("refresh", "(package_list)");
+                return new
+                {
+                    success = true,
+                    status = "accepted",
+                    jobId = existingJob.jobId,
+                    message = "Already refreshing package list..."
+                };
+            }
 
+            BatchJobRecord job = null;
             PackageManagerHelper.RefreshPackageList(success =>
             {
-                if (success)
-                    Debug.Log("[PackageSkills] Package list refreshed");
-                else
-                    Debug.LogError("[PackageSkills] Failed to refresh package list");
+                if (job == null)
+                    return;
+
+                if (!success)
+                    AsyncJobService.FailJob(job.jobId, "Package list refresh failed.", "failed_package_refresh");
             });
 
-            return new { success = true, message = "Refreshing package list..." };
+            job = AsyncJobService.StartPackageJob("refresh", "(package_list)");
+            return new
+            {
+                success = true,
+                status = "accepted",
+                jobId = job.jobId,
+                message = "Refreshing package list..."
+            };
         }
 
         [UnitySkill("package_install_cinemachine", "Install Cinemachine. version: 2 or 3 (default 3). CM3 auto-installs Splines dependency.",
             Category = SkillCategory.Package, Operation = SkillOperation.Execute,
-            Tags = new[] { "package", "install", "cinemachine", "camera" },
-            Outputs = new[] { "message", "async" })]
+            Tags = new[] { "package", "install", "cinemachine", "camera", "job" },
+            Outputs = new[] { "message", "jobId" })]
         public static object PackageInstallCinemachine(int version = 3)
         {
             var useV3 = version >= 3;
@@ -138,19 +187,36 @@ namespace UnitySkills
                     return new { success = true, message = $"Cinemachine {status.version} is already installed." };
             }
 
+            bool handledSynchronously = false;
+            bool immediateSuccess = true;
+            string immediateMessage = null;
+            BatchJobRecord job = null;
+
             PackageManagerHelper.InstallCinemachine(useV3, (success, msg) =>
             {
-                if (success)
-                    Debug.Log($"[PackageSkills] Cinemachine {msg} installed successfully");
-                else
-                    Debug.LogError($"[PackageSkills] Failed to install Cinemachine: {msg}");
+                if (job == null)
+                {
+                    handledSynchronously = true;
+                    immediateSuccess = success;
+                    immediateMessage = msg;
+                    return;
+                }
+
+                if (!success)
+                    AsyncJobService.FailJob(job.jobId, $"Cinemachine install failed: {msg}", "failed_package");
             });
+
+            if (handledSynchronously && !immediateSuccess)
+                return new { success = false, error = immediateMessage ?? "Cinemachine install failed." };
+
+            job = AsyncJobService.StartPackageJob("install", PackageManagerHelper.CinemachinePackageId, targetVersion);
 
             var depMsg = useV3 ? " (with Splines dependency)" : "";
             return new {
                 success = true,
-                message = $"Installing Cinemachine {targetVersion}{depMsg}... Check Unity console for progress.",
-                async = true,
+                status = "accepted",
+                jobId = job.jobId,
+                message = $"Installing Cinemachine {targetVersion}{depMsg}... Use job_status/job_wait for progress.",
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
                     $"正在安装 Cinemachine {targetVersion}{depMsg}。包导入和程序集刷新期间，REST 服务可能短暂不可用。",
                     alwaysInclude: true,
@@ -160,8 +226,8 @@ namespace UnitySkills
 
         [UnitySkill("package_install_splines", "Install Unity Splines package. Auto-detects correct version for Unity 6 vs Unity 2022.",
             Category = SkillCategory.Package, Operation = SkillOperation.Execute,
-            Tags = new[] { "package", "install", "splines", "path" },
-            Outputs = new[] { "message", "async" })]
+            Tags = new[] { "package", "install", "splines", "path", "job" },
+            Outputs = new[] { "message", "jobId" })]
         public static object PackageInstallSplines()
         {
             var currentVersion = PackageManagerHelper.GetInstalledVersion(PackageManagerHelper.SplinesPackageId);
@@ -170,16 +236,35 @@ namespace UnitySkills
             if (currentVersion == targetVersion)
                 return new { success = true, message = $"Splines {currentVersion} is already installed." };
 
+            bool handledSynchronously = false;
+            bool immediateSuccess = true;
+            string immediateMessage = null;
+            BatchJobRecord job = null;
+
             PackageManagerHelper.InstallSplines((success, msg) =>
             {
-                if (success) Debug.Log($"[PackageSkills] Splines {msg} installed successfully");
-                else Debug.LogError($"[PackageSkills] Failed to install Splines: {msg}");
+                if (job == null)
+                {
+                    handledSynchronously = true;
+                    immediateSuccess = success;
+                    immediateMessage = msg;
+                    return;
+                }
+
+                if (!success)
+                    AsyncJobService.FailJob(job.jobId, $"Splines install failed: {msg}", "failed_package");
             });
+
+            if (handledSynchronously && !immediateSuccess)
+                return new { success = false, error = immediateMessage ?? "Splines install failed." };
+
+            job = AsyncJobService.StartPackageJob("install", PackageManagerHelper.SplinesPackageId, targetVersion);
 
             return new {
                 success = true,
-                message = $"Installing Splines {targetVersion}" + (currentVersion != null ? $" (upgrading from {currentVersion})" : "") + "...",
-                async = true,
+                status = "accepted",
+                jobId = job.jobId,
+                message = $"Installing Splines {targetVersion}" + (currentVersion != null ? $" (upgrading from {currentVersion})" : "") + "... Use job_status/job_wait for progress.",
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
                     $"正在安装 Splines {targetVersion}。包导入和程序集刷新期间，REST 服务可能短暂不可用。",
                     alwaysInclude: true,

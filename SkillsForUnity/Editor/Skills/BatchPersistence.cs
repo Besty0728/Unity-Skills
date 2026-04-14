@@ -169,7 +169,9 @@ namespace UnitySkills
 
             foreach (var job in _state.jobs.Where(j => j != null))
             {
-                if (job.status == "queued" || job.status == "running")
+                if (job.status != "completed" &&
+                    job.status != "failed" &&
+                    job.status != "cancelled")
                 {
                     job.status = "reconnecting";
                     job.currentStage = "domain_reload_recovery";
@@ -179,7 +181,8 @@ namespace UnitySkills
                         timestamp = job.updatedAt,
                         level = "warn",
                         stage = "recovery",
-                        message = "Job reloaded after domain reload and will resume automatically."
+                        message = "Job reloaded after domain reload and will resume automatically.",
+                        code = "domain_reload_recovery"
                     });
                 }
             }
@@ -216,12 +219,16 @@ namespace UnitySkills
 
             foreach (var job in _state.jobs.Where(job => job != null))
             {
-                job.preview ??= new BatchPreviewEnvelope();
-                job.preview.items ??= new System.Collections.Generic.List<BatchPreviewItem>();
-                job.preview.operation ??= new System.Collections.Generic.Dictionary<string, object>();
+                if (job.preview != null)
+                {
+                    job.preview.items ??= new System.Collections.Generic.List<BatchPreviewItem>();
+                    job.preview.operation ??= new System.Collections.Generic.Dictionary<string, object>();
+                }
                 job.items ??= new System.Collections.Generic.List<BatchReportItemRecord>();
                 job.logs ??= new System.Collections.Generic.List<BatchJobLogEntry>();
                 job.warnings ??= new System.Collections.Generic.List<string>();
+                job.metadata ??= new System.Collections.Generic.Dictionary<string, object>();
+                job.resultData ??= new System.Collections.Generic.Dictionary<string, object>();
             }
         }
     }

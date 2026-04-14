@@ -235,9 +235,17 @@ unity_skills.set_unity_version("2022.3")   # Route by Unity version
 unity_skills.list_instances()               # Enumerate all instances
 ```
 
-### Test Module
+### Unified Job Model
 
-`test_run` and `test_run_by_name` are asynchronous — they return a `jobId` immediately. Poll with `test_get_result(jobId)` for completion.
+Long-running or reload-prone operations such as batch execution, test runs, package management, and script mutations now return a unified `jobId`.
+
+```python
+job = unity_skills.call_skill("script_create", name="PlayerController")
+unity_skills.get_job_status(job["jobId"])
+unity_skills.wait_for_job(job["jobId"], timeout=90)
+```
+
+`test_get_result(jobId)` is still available as a compatibility wrapper, but `job_status`, `job_logs`, `job_list`, `job_wait`, and `job_cancel` are now the primary async APIs.
 
 ---
 
