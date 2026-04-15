@@ -198,11 +198,27 @@ namespace UnitySkills
             Tags = new[] { "camera", "property", "vcam", "pipeline", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" })]
-        public static object CinemachineSetVCamProperty(string vcamName = null, int instanceId = 0, string path = null, string componentType = null, string propertyName = null, object value = null)
+        public static object CinemachineSetVCamProperty(
+            string vcamName = null,
+            int instanceId = 0,
+            string path = null,
+            string componentType = null,
+            string propertyName = null,
+            object value = null,
+            float? fov = null,
+            float? nearClip = null,
+            float? farClip = null,
+            float? orthoSize = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
+            if (string.IsNullOrWhiteSpace(propertyName) && value == null &&
+                (fov.HasValue || nearClip.HasValue || farClip.HasValue || orthoSize.HasValue))
+            {
+                return CinemachineSetLens(vcamName, instanceId, path, fov, nearClip, farClip, orthoSize);
+            }
+
             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
             if (err != null) return err;
 
@@ -213,6 +229,13 @@ namespace UnitySkills
             var vcam = go.GetComponent<CinemachineVirtualCamera>();
             if (vcam == null) return new { error = "Not a CinemachineVirtualCamera" };
 #endif
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return new { error = "propertyName is required unless using shorthand lens parameters (fov/nearClip/farClip/orthoSize)." };
+            }
+
+            var normalizedComponentType = componentType?.Trim();
+
             // 记录快照用于撤销
             WorkflowManager.SnapshotObject(go);
 
@@ -220,18 +243,18 @@ namespace UnitySkills
             bool isLens = false;
 
 #if CINEMACHINE_3
-            if (string.IsNullOrEmpty(componentType) ||
-                componentType.Equals("Main", System.StringComparison.OrdinalIgnoreCase) ||
-                componentType.Equals("CinemachineCamera", System.StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(normalizedComponentType) ||
+                normalizedComponentType.Equals("Main", System.StringComparison.OrdinalIgnoreCase) ||
+                normalizedComponentType.Equals("CinemachineCamera", System.StringComparison.OrdinalIgnoreCase))
 #elif CINEMACHINE_2
-            if (string.IsNullOrEmpty(componentType) ||
-                componentType.Equals("Main", System.StringComparison.OrdinalIgnoreCase) ||
-                componentType.Equals("CinemachineVirtualCamera", System.StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(normalizedComponentType) ||
+                normalizedComponentType.Equals("Main", System.StringComparison.OrdinalIgnoreCase) ||
+                normalizedComponentType.Equals("CinemachineVirtualCamera", System.StringComparison.OrdinalIgnoreCase))
 #endif
             {
                 target = vcam;
             }
-            else if (componentType.Equals("Lens", System.StringComparison.OrdinalIgnoreCase))
+            else if (normalizedComponentType.Equals("Lens", System.StringComparison.OrdinalIgnoreCase))
             {
 #if CINEMACHINE_3
                 target = vcam.Lens;
@@ -243,15 +266,17 @@ namespace UnitySkills
             else
             {
                 var comps = go.GetComponents<MonoBehaviour>();
-                target = comps.FirstOrDefault(c => c.GetType().Name.Equals(componentType, System.StringComparison.OrdinalIgnoreCase));
+                target = comps.FirstOrDefault(c => c.GetType().Name.Equals(normalizedComponentType, System.StringComparison.OrdinalIgnoreCase));
 
-                if (target == null && !componentType.StartsWith("Cinemachine"))
+                if (target == null &&
+                    !string.IsNullOrEmpty(normalizedComponentType) &&
+                    !normalizedComponentType.StartsWith("Cinemachine", System.StringComparison.OrdinalIgnoreCase))
                 {
-                    target = comps.FirstOrDefault(c => c.GetType().Name.Equals("Cinemachine" + componentType, System.StringComparison.OrdinalIgnoreCase));
+                    target = comps.FirstOrDefault(c => c.GetType().Name.Equals("Cinemachine" + normalizedComponentType, System.StringComparison.OrdinalIgnoreCase));
                 }
             }
 
-            if (target == null) return new { error = "Component " + componentType + " not found on Object." };
+            if (target == null) return new { error = "Component " + normalizedComponentType + " not found on Object." };
 
             if (isLens)
             {

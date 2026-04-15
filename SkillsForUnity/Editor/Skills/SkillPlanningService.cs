@@ -11,12 +11,17 @@ namespace UnitySkills
 {
     internal static class SkillPlanningService
     {
-        public static void EnrichDryRun(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation)
+        public static void ApplySemanticValidation(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation)
         {
             if (skill == null || validation == null)
                 return;
 
             ApplySemanticPlanner(skill, validation, null);
+        }
+
+        public static void EnrichDryRun(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation)
+        {
+            ApplySemanticValidation(skill, validation);
         }
 
         /// <summary>
@@ -100,6 +105,7 @@ namespace UnitySkills
             return new Dictionary<string, object>
             {
                 ["missingParams"] = validation?.MissingParams.Count > 0 ? validation.MissingParams.ToArray() : null,
+                ["unknownParams"] = validation?.UnknownParams.Count > 0 ? validation.UnknownParams.ToArray() : null,
                 ["typeErrors"] = validation?.TypeErrors.Count > 0 ? validation.TypeErrors.ToArray() : null,
                 ["semanticErrors"] = validation?.SemanticErrors.Count > 0 ? validation.SemanticErrors.ToArray() : null,
                 ["warnings"] = validation?.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
@@ -419,6 +425,44 @@ namespace UnitySkills
                 case "script_create":
                     AnalyzeScriptCreate(validation, plan);
                     break;
+                case "timeline_add_audio_track":
+                case "timeline_add_animation_track":
+                case "timeline_add_activation_track":
+                case "timeline_add_control_track":
+                case "timeline_add_signal_track":
+                case "timeline_remove_track":
+                case "timeline_list_tracks":
+                case "timeline_add_clip":
+                case "timeline_set_duration":
+                case "timeline_play":
+                case "timeline_set_binding":
+                    AnalyzeTimelineSceneLocatorSkill(skill.Name, validation);
+                    break;
+            }
+        }
+
+        private static void AnalyzeTimelineSceneLocatorSkill(string skillName, SkillRouter.ParameterValidationResult validation)
+        {
+            var args = validation?.Args;
+            if (args == null)
+                return;
+
+            var path = GetStringArg(args, "path");
+            if (!string.IsNullOrWhiteSpace(path) && path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+            {
+                AddSemanticError(
+                    validation,
+                    "path",
+                    $"{skillName} 的 path 参数是场景层级路径，不是 Assets 资源路径。请改用场景中的 Timeline GameObject 名称、instanceId 或层级路径。");
+            }
+
+            var name = GetStringArg(args, "name");
+            if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
+            {
+                AddSemanticError(
+                    validation,
+                    "name",
+                    $"{skillName} 面向场景中的 PlayableDirector GameObject，不接受 Assets 资源路径作为 name。");
             }
         }
 
@@ -2405,6 +2449,15 @@ namespace UnitySkills
             if (validation == null || string.IsNullOrWhiteSpace(message))
                 return;
 
+            bool exists = validation.SemanticErrors.Any(entry =>
+                SkillResultHelper.TryGetMemberValue(entry, "field", out var existingField) &&
+                SkillResultHelper.TryGetMemberValue(entry, "error", out var existingError) &&
+                string.Equals(existingField?.ToString(), field, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(existingError?.ToString(), message, StringComparison.Ordinal));
+
+            if (exists)
+                return;
+
             validation.SemanticErrors.Add(new Dictionary<string, object>
             {
                 ["field"] = field,
@@ -2415,6 +2468,9 @@ namespace UnitySkills
         private static void AddWarning(SkillRouter.ParameterValidationResult validation, string message)
         {
             if (validation == null || string.IsNullOrWhiteSpace(message))
+                return;
+
+            if (validation.Warnings.Any(w => string.Equals(w, message, StringComparison.Ordinal)))
                 return;
 
             validation.Warnings.Add(message);

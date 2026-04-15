@@ -43,9 +43,15 @@ Deeply inspect a VCam, returning fields and tooltips.
 Set any property on VCam or its pipeline components.
 **Parameters:**
 - `vcamName` (string): Name of the VCam.
+- `instanceId` (int, optional): VCam Instance ID.
+- `path` (string, optional): VCam hierarchy path.
 - `componentType` (string): "Main" (VCam itself), "Lens", or Component name (e.g. "OrbitalFollow").
 - `propertyName` (string): Field or property name.
 - `value` (object): New value.
+- `fov` (float, optional): Lens FOV shortcut. When supplied without `propertyName`, routes to `cinemachine_set_lens`.
+- `nearClip` (float, optional): Lens near clip shortcut.
+- `farClip` (float, optional): Lens far clip shortcut.
+- `orthoSize` (float, optional): Lens orthographic size shortcut.
 
 ### `cinemachine_set_targets`
 Set Follow and LookAt targets.
@@ -205,6 +211,10 @@ Configure Noise settings (Basic Multi Channel Perlin).
 | `componentType` | string | No | null | Canonical signature parameter |
 | `propertyName` | string | No | null | Canonical signature parameter |
 | `value` | any | No | null | Canonical signature parameter |
+| `fov` | float | No | null | Canonical signature parameter |
+| `nearClip` | float | No | null | Canonical signature parameter |
+| `farClip` | float | No | null | Canonical signature parameter |
+| `orthoSize` | float | No | null | Canonical signature parameter |
 
 ### cinemachine_set_targets
 | Parameter | Type | Required | Default | Description |

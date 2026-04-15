@@ -26,11 +26,12 @@ namespace UnitySkills
             public JObject Args { get; set; }
             public object[] InvokeArgs { get; set; }
             public List<string> MissingParams { get; } = new List<string>();
+            public List<object> UnknownParams { get; } = new List<object>();
             public List<object> TypeErrors { get; } = new List<object>();
             public List<object> SemanticErrors { get; } = new List<object>();
             public List<string> Warnings { get; } = new List<string>();
             public List<object> ParameterDetails { get; } = new List<object>();
-            public bool Valid => MissingParams.Count == 0 && TypeErrors.Count == 0 && SemanticErrors.Count == 0;
+            public bool Valid => MissingParams.Count == 0 && UnknownParams.Count == 0 && TypeErrors.Count == 0 && SemanticErrors.Count == 0;
         }
 
         internal sealed class SkillInfo
@@ -64,6 +65,54 @@ namespace UnitySkills
         private static readonly object _initLock = new object();
 
         private static HashSet<string> _workflowTrackedSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private static readonly HashSet<string> _reservedBodyParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "verbose"
+        };
+
+        private static readonly Dictionary<string, Dictionary<string, string[]>> _commonParameterSuggestions =
+            new Dictionary<string, Dictionary<string, string[]>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["gameobject_set_transform"] = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["x"] = new[] { "posX" },
+                ["y"] = new[] { "posY" },
+                ["z"] = new[] { "posZ" }
+            },
+            ["shader_find"] = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["shaderName"] = new[] { "searchName" }
+            },
+            ["shader_check_errors"] = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["shaderName"] = new[] { "shaderNameOrPath" }
+            },
+            ["shader_get_keywords"] = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["shaderName"] = new[] { "shaderNameOrPath" }
+            },
+            ["camera_look_at"] = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["targetName"] = new[] { "x", "y", "z" }
+            },
+            ["cinemachine_set_vcam_property"] = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["name"] = new[] { "vcamName" }
+            }
+        };
+
+        private static readonly Dictionary<string, Dictionary<string, string>> _commonParameterHints =
+            new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["camera_look_at"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["targetName"] = "camera_look_at 只接受世界坐标 x/y/z，不支持对象名。"
+            },
+            ["timeline_list_tracks"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["path"] = "timeline_list_tracks 的 path 是场景层级路径，不是 Assets 资源路径。"
+            }
+        };
 
         // ========== Intent Synonym Maps ==========
 
@@ -353,6 +402,17 @@ namespace UnitySkills
             try
             {
                 var validation = ValidateParameters(skill, json);
+                if (validation.UnknownParams.Count > 0)
+                {
+                    return JsonConvert.SerializeObject(new
+                    {
+                        status = "error",
+                        error = $"Unknown parameters: {string.Join(", ", ExtractValidationParameterNames(validation.UnknownParams))}",
+                        unknownParams = validation.UnknownParams.ToArray(),
+                        allowedParams = skill.Parameters.Select(p => p.Name).ToArray()
+                    }, _jsonSettings);
+                }
+
                 if (validation.MissingParams.Count > 0)
                 {
                     return JsonConvert.SerializeObject(new
@@ -372,6 +432,17 @@ namespace UnitySkills
                     {
                         status = "error",
                         error = message
+                    }, _jsonSettings);
+                }
+
+                if (validation.SemanticErrors.Count > 0)
+                {
+                    return JsonConvert.SerializeObject(new
+                    {
+                        status = "error",
+                        error = ExtractValidationMessage(validation.SemanticErrors[0], "Semantic validation failed"),
+                        semanticErrors = validation.SemanticErrors.ToArray(),
+                        warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
                     }, _jsonSettings);
                 }
 
@@ -508,7 +579,6 @@ namespace UnitySkills
             {
                 var validation = ValidateParameters(skill, json);
                 var planData = SkillPlanningService.BuildPlanData(skill, validation);
-                SkillPlanningService.EnrichDryRun(skill, validation);
                 return JsonConvert.SerializeObject(new
                 {
                     status = "dryRun",
@@ -536,6 +606,7 @@ namespace UnitySkills
                     validation = new
                     {
                         missingParams = validation.MissingParams.Count > 0 ? validation.MissingParams.ToArray() : null,
+                        unknownParams = validation.UnknownParams.Count > 0 ? validation.UnknownParams.ToArray() : null,
                         typeErrors = validation.TypeErrors.Count > 0 ? validation.TypeErrors.ToArray() : null,
                         semanticErrors = validation.SemanticErrors.Count > 0 ? validation.SemanticErrors.ToArray() : null,
                         warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
@@ -926,6 +997,8 @@ namespace UnitySkills
             };
 
             var ps = skill.Parameters;
+            var allowedParameterNames = ps.Select(p => p.Name).ToArray();
+            CollectUnknownParameters(skill, validation, allowedParameterNames);
             var invoke = new object[ps.Length];
             for (int i = 0; i < ps.Length; i++)
             {
@@ -967,7 +1040,129 @@ namespace UnitySkills
             }
 
             validation.InvokeArgs = invoke;
+            SkillPlanningService.ApplySemanticValidation(skill, validation);
             return validation;
+        }
+
+        private static void CollectUnknownParameters(SkillInfo skill, ParameterValidationResult validation, string[] allowedParameterNames)
+        {
+            if (validation?.Args == null)
+                return;
+
+            var allowed = new HashSet<string>(allowedParameterNames, StringComparer.OrdinalIgnoreCase);
+            allowed.UnionWith(_reservedBodyParameters);
+
+            foreach (var property in validation.Args.Properties())
+            {
+                if (allowed.Contains(property.Name))
+                    continue;
+
+                var suggestions = SuggestParameters(skill.Name, property.Name, allowedParameterNames);
+                var entry = new Dictionary<string, object>
+                {
+                    ["parameter"] = property.Name
+                };
+
+                if (suggestions.Length > 0)
+                    entry["suggestions"] = suggestions;
+
+                var hint = GetParameterHint(skill.Name, property.Name);
+                if (!string.IsNullOrWhiteSpace(hint))
+                    entry["hint"] = hint;
+
+                validation.UnknownParams.Add(entry);
+            }
+        }
+
+        private static string[] SuggestParameters(string skillName, string unknownParameter, string[] allowedParameterNames)
+        {
+            if (_commonParameterSuggestions.TryGetValue(skillName, out var skillSuggestions) &&
+                skillSuggestions.TryGetValue(unknownParameter, out var directSuggestions) &&
+                directSuggestions?.Length > 0)
+            {
+                return directSuggestions;
+            }
+
+            return allowedParameterNames
+                .Select(name => new
+                {
+                    Name = name,
+                    Distance = ComputeLevenshteinDistance(unknownParameter, name)
+                })
+                .Where(x =>
+                    x.Distance <= 3 ||
+                    x.Name.IndexOf(unknownParameter, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    unknownParameter.IndexOf(x.Name, StringComparison.OrdinalIgnoreCase) >= 0)
+                .OrderBy(x => x.Distance)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(3)
+                .Select(x => x.Name)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static string GetParameterHint(string skillName, string parameterName)
+        {
+            if (_commonParameterHints.TryGetValue(skillName, out var hints) &&
+                hints.TryGetValue(parameterName, out var hint))
+            {
+                return hint;
+            }
+
+            return null;
+        }
+
+        private static int ComputeLevenshteinDistance(string left, string right)
+        {
+            if (string.IsNullOrEmpty(left))
+                return string.IsNullOrEmpty(right) ? 0 : right.Length;
+            if (string.IsNullOrEmpty(right))
+                return left.Length;
+
+            var matrix = new int[left.Length + 1, right.Length + 1];
+            for (int i = 0; i <= left.Length; i++)
+                matrix[i, 0] = i;
+            for (int j = 0; j <= right.Length; j++)
+                matrix[0, j] = j;
+
+            for (int i = 1; i <= left.Length; i++)
+            {
+                for (int j = 1; j <= right.Length; j++)
+                {
+                    int cost = char.ToUpperInvariant(left[i - 1]) == char.ToUpperInvariant(right[j - 1]) ? 0 : 1;
+                    matrix[i, j] = Math.Min(
+                        Math.Min(matrix[i - 1, j] + 1, matrix[i, j - 1] + 1),
+                        matrix[i - 1, j - 1] + cost);
+                }
+            }
+
+            return matrix[left.Length, right.Length];
+        }
+
+        private static string[] ExtractValidationParameterNames(IEnumerable<object> validationEntries)
+        {
+            if (validationEntries == null)
+                return Array.Empty<string>();
+
+            return validationEntries
+                .Select(entry => TryGetValidationEntryField(entry, "parameter"))
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static string ExtractValidationMessage(object validationEntry, string fallback)
+        {
+            return SkillResultHelper.TryGetMemberValue(validationEntry, "error", out var errorValue) && errorValue != null
+                ? errorValue.ToString()
+                : fallback;
+        }
+
+        private static string TryGetValidationEntryField(object validationEntry, string fieldName)
+        {
+            return SkillResultHelper.TryGetMemberValue(validationEntry, fieldName, out var value) && value != null
+                ? value.ToString()
+                : null;
         }
 
         public static string Plan(string name, string json)
