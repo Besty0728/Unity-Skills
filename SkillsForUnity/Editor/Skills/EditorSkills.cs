@@ -13,20 +13,24 @@ namespace UnitySkills
         [UnitySkill("editor_play", "Enter play mode. Warning: any unsaved scene changes made during Play mode will be lost when exiting.",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "play", "runtime", "test" },
-            Outputs = new[] { "mode" })]
+            Outputs = new[] { "mode", "jobId" },
+            MayEnterPlayMode = true, RiskLevel = "medium", SupportsDryRun = false)]
         public static object EditorPlay()
         {
             if (EditorApplication.isPlaying)
                 return new { error = "Already in play mode" };
 
+            var job = AsyncJobService.CreateJob(
+                "playmode", "entering_play_mode", "Entering Play Mode.", false);
             EditorApplication.isPlaying = true;
-            return new { success = true, mode = "playing" };
+            return new { success = true, mode = "playing", jobId = job.jobId };
         }
 
         [UnitySkill("editor_stop", "Exit play mode. Warning: any scene changes made during Play mode will be lost.",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "stop", "runtime", "exit" },
-            Outputs = new[] { "mode" })]
+            Outputs = new[] { "mode" },
+            MayEnterPlayMode = true, SupportsDryRun = false)]
         public static object EditorStop()
         {
             if (!EditorApplication.isPlaying)
@@ -39,7 +43,8 @@ namespace UnitySkills
         [UnitySkill("editor_pause", "Pause/unpause play mode",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "pause", "resume", "toggle" },
-            Outputs = new[] { "paused" })]
+            Outputs = new[] { "paused" },
+            MayEnterPlayMode = true, SupportsDryRun = false)]
         public static object EditorPause()
         {
             EditorApplication.isPaused = !EditorApplication.isPaused;

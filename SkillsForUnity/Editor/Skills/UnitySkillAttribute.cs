@@ -107,6 +107,12 @@ namespace UnitySkills
         /// <summary>True if this skill may trigger script compilation or Domain Reload.</summary>
         public bool MayTriggerReload { get; set; }
 
+        /// <summary>True if this skill may enter or exit Play Mode.</summary>
+        public bool MayEnterPlayMode { get; set; }
+
+        /// <summary>False if this skill cannot provide a meaningful dry-run preview (e.g. async jobs, external processes).</summary>
+        public bool SupportsDryRun { get; set; } = true;
+
         /// <summary>Risk level: "low" (default), "medium", or "high".</summary>
         public string RiskLevel { get; set; } = "low";
 

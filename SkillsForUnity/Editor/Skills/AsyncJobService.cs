@@ -230,6 +230,7 @@ namespace UnitySkills
             job.resultSummary = "Job was cancelled.";
             AddLog(job, "warn", "cancelled", "Cancellation requested.", "cancel_requested");
             BatchPersistence.UpsertJob(job);
+            BatchJobService.NotifyCancelled(jobId);
             return job;
         }
 

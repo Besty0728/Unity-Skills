@@ -51,6 +51,8 @@ namespace UnitySkills
             public bool MutatesScene;
             public bool MutatesAssets;
             public bool MayTriggerReload;
+            public bool MayEnterPlayMode;
+            public bool SupportsDryRun;
             public string RiskLevel;
             public string[] RequiresPackages;
         }
@@ -246,6 +248,8 @@ namespace UnitySkills
                                 MutatesScene = attr.MutatesScene,
                                 MutatesAssets = attr.MutatesAssets,
                                 MayTriggerReload = attr.MayTriggerReload,
+                                MayEnterPlayMode = attr.MayEnterPlayMode,
+                                SupportsDryRun = attr.SupportsDryRun,
                                 RiskLevel = attr.RiskLevel ?? "low",
                                 RequiresPackages = attr.RequiresPackages
                             };
@@ -312,6 +316,8 @@ namespace UnitySkills
                         mutatesScene = s.MutatesScene,
                         mutatesAssets = s.MutatesAssets,
                         mayTriggerReload = s.MayTriggerReload,
+                        mayEnterPlayMode = s.MayEnterPlayMode,
+                        supportsDryRun = s.SupportsDryRun,
                         riskLevel = s.RiskLevel,
                         requiresPackages = s.RequiresPackages,
                         parameters = s.Parameters.Select(p => new
@@ -501,6 +507,7 @@ namespace UnitySkills
             try
             {
                 var validation = ValidateParameters(skill, json);
+                var planData = SkillPlanningService.BuildPlanData(skill, validation);
                 SkillPlanningService.EnrichDryRun(skill, validation);
                 return JsonConvert.SerializeObject(new
                 {
@@ -520,6 +527,8 @@ namespace UnitySkills
                         mutatesScene = skill.MutatesScene,
                         mutatesAssets = skill.MutatesAssets,
                         mayTriggerReload = skill.MayTriggerReload,
+                        mayEnterPlayMode = skill.MayEnterPlayMode,
+                        supportsDryRun = skill.SupportsDryRun,
                         riskLevel = skill.RiskLevel,
                         requiresPackages = skill.RequiresPackages
                     },
@@ -539,8 +548,11 @@ namespace UnitySkills
                         mutatesScene = skill.MutatesScene,
                         mutatesAssets = skill.MutatesAssets,
                         mayTriggerReload = skill.MayTriggerReload,
+                        mayEnterPlayMode = skill.MayEnterPlayMode,
                         riskLevel = skill.RiskLevel
                     },
+                    steps = planData?["steps"],
+                    changes = planData?["changes"],
                     note = "No execution performed"
                 }, Formatting.Indented, _jsonSettings);
             }
@@ -1013,6 +1025,12 @@ namespace UnitySkills
                     if (s.RequiresInput == null || s.RequiresInput.Length == 0)
                         issues.Add($"[WARN] {s.Name}: Delete/Modify operation but RequiresInput is empty");
                 }
+
+                if (s.MayEnterPlayMode && s.ReadOnly)
+                    issues.Add($"[WARN] {s.Name}: MayEnterPlayMode=true but ReadOnly=true seems inconsistent");
+
+                if (!s.SupportsDryRun && s.ReadOnly)
+                    issues.Add($"[WARN] {s.Name}: SupportsDryRun=false but ReadOnly=true — read-only skills should support dry run");
             }
 
             return issues;

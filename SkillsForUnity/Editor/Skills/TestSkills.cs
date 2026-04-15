@@ -16,7 +16,8 @@ namespace UnitySkills
         [UnitySkill("test_run", "Run Unity tests asynchronously. Returns a platform jobId immediately. Poll with job_status/job_wait or test_get_result(jobId).",
             Category = SkillCategory.Test, Operation = SkillOperation.Execute,
             Tags = new[] { "test", "run", "async", "editmode", "playmode", "job" },
-            Outputs = new[] { "jobId", "testMode", "message" })]
+            Outputs = new[] { "jobId", "testMode", "message" },
+            SupportsDryRun = false)]
         public static object TestRun(string testMode = "EditMode", string filter = null)
         {
             var job = AsyncJobService.StartTestJob(testMode, filter);
@@ -126,7 +127,8 @@ namespace UnitySkills
         [UnitySkill("test_run_by_name", "Run specific tests by class or method name. Returns a unified jobId.",
             Category = SkillCategory.Test, Operation = SkillOperation.Execute,
             Tags = new[] { "test", "run", "name", "specific", "job" },
-            Outputs = new[] { "jobId", "testName", "testMode" })]
+            Outputs = new[] { "jobId", "testName", "testMode" },
+            SupportsDryRun = false)]
         public static object TestRunByName(string testName, string testMode = "EditMode")
         {
             if (Validate.Required(testName, "testName") is object err)
@@ -246,6 +248,22 @@ namespace UnitySkills
                                          validation.TypeErrors.Count == 0 &&
                                          !skill.MayTriggerReload;
 
+                if (skill.MayTriggerReload)
+                {
+                    skippedCount++;
+                    results.Add(new
+                    {
+                        skill = skill.Name,
+                        category = skill.Category != SkillCategory.Uncategorized ? skill.Category.ToString() : null,
+                        readOnly = skill.ReadOnly,
+                        riskLevel = skill.RiskLevel,
+                        probeMode = "skipped",
+                        status = "skipped",
+                        reason = "MayTriggerReload — executing would cause Domain Reload and break subsequent skills"
+                    });
+                    continue;
+                }
+
                 string probeMode;
                 string probeJson;
                 if (canExecuteReadOnly)
@@ -285,8 +303,9 @@ namespace UnitySkills
                 }
 
                 var status = response["status"]?.ToString() ?? "unknown";
+                var skillIssueTag = $"] {skill.Name}: ";
                 var metadataWarnings = metadataIssues
-                    .Where(issue => issue.IndexOf($"{skill.Name}:", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .Where(issue => issue.IndexOf(skillIssueTag, StringComparison.Ordinal) >= 0)
                     .ToArray();
 
                 if (status == "error")

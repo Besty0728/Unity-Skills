@@ -19,6 +19,30 @@ namespace UnitySkills
             ApplySemanticPlanner(skill, validation, null);
         }
 
+        /// <summary>
+        /// Returns steps/changes data for inclusion in DryRun responses.
+        /// Returns null if no semantic planner exists for this skill.
+        /// </summary>
+        public static IDictionary<string, object> BuildPlanData(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation)
+        {
+            if (skill == null || validation == null)
+                return null;
+
+            var plan = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            ApplySemanticPlanner(skill, validation, plan);
+
+            // If planLevel was not set to "semantic", no planner matched
+            if (!plan.ContainsKey("planLevel") || !"semantic".Equals(plan["planLevel"]?.ToString(), StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            if (plan.ContainsKey("steps"))
+                result["steps"] = plan["steps"];
+            if (plan.ContainsKey("changes"))
+                result["changes"] = plan["changes"];
+            return result.Count > 0 ? result : null;
+        }
+
         public static object BuildPlan(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation)
         {
             var plan = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
@@ -64,6 +88,8 @@ namespace UnitySkills
                 ["mutatesScene"] = skill.MutatesScene,
                 ["mutatesAssets"] = skill.MutatesAssets,
                 ["mayTriggerReload"] = skill.MayTriggerReload,
+                ["mayEnterPlayMode"] = skill.MayEnterPlayMode,
+                ["supportsDryRun"] = skill.SupportsDryRun,
                 ["riskLevel"] = skill.RiskLevel,
                 ["requiresPackages"] = skill.RequiresPackages
             };
@@ -320,6 +346,12 @@ namespace UnitySkills
                     break;
                 case "gameobject_delete_batch":
                     AnalyzeGameObjectDeleteBatch(validation, plan);
+                    break;
+                case "gameobject_set_parent":
+                    AnalyzeGameObjectSetParent(validation, plan);
+                    break;
+                case "gameobject_set_parent_batch":
+                    AnalyzeGameObjectSetParentBatch(validation, plan);
                     break;
                 case "component_add":
                     AnalyzeComponentAdd(validation, plan);
@@ -637,6 +669,104 @@ namespace UnitySkills
                         }
                     },
                     modify: modifies,
+                    extra: new Dictionary<string, object>
+                    {
+                        ["batchPreview"] = new Dictionary<string, object>
+                        {
+                            ["totalItems"] = items.Count,
+                            ["items"] = itemPlans.ToArray()
+                        }
+                    });
+            }
+        }
+
+        private static void AnalyzeGameObjectSetParent(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
+        {
+            var args = validation.Args;
+
+            var (child, childError) = ResolveGameObject(args, "childName", "childInstanceId", "childPath");
+            if (childError != null)
+            {
+                AddSemanticError(validation, "child", ExtractError(childError));
+                return;
+            }
+
+            GameObject parentGo = null;
+            var (hasParent, parentName, parentInstanceId, parentPath) = ReadObjectLocator(args, "parentName", "parentInstanceId", "parentPath");
+            if (hasParent)
+            {
+                var (found, parentErr) = GameObjectFinder.FindOrError(parentName, parentInstanceId, parentPath);
+                if (parentErr != null)
+                    AddSemanticError(validation, "parent", ExtractError(parentErr));
+                else
+                    parentGo = found;
+            }
+
+            if (plan != null)
+            {
+                var oldPath = GameObjectFinder.GetPath(child);
+                var newParentPath = parentGo != null ? GameObjectFinder.GetPath(parentGo) : "(root)";
+                var predictedPath = parentGo != null ? newParentPath + "/" + child.name : child.name;
+
+                MarkSemantic(plan);
+                SetPlanDetails(
+                    plan,
+                    new List<object>
+                    {
+                        new Dictionary<string, object>
+                        {
+                            ["index"] = 1,
+                            ["action"] = "Set Parent",
+                            ["target"] = oldPath,
+                            ["newParent"] = newParentPath
+                        }
+                    },
+                    modify: new List<object>
+                    {
+                        new Dictionary<string, object>
+                        {
+                            ["target"] = oldPath,
+                            ["oldPath"] = oldPath,
+                            ["newPath"] = predictedPath,
+                            ["newParent"] = newParentPath
+                        }
+                    });
+            }
+        }
+
+        private static void AnalyzeGameObjectSetParentBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
+        {
+            if (!TryParseBatchItems(validation, out var items))
+                return;
+
+            if (plan != null)
+            {
+                var itemPlans = new List<object>();
+                foreach (var item in items)
+                {
+                    var itemObj = item as JObject;
+                    var childName = itemObj != null ? GetStringArg(itemObj, "childName", "childPath") : null;
+                    var parentName = itemObj != null ? GetStringArg(itemObj, "parentName", "parentPath") : null;
+                    itemPlans.Add(new Dictionary<string, object>
+                    {
+                        ["child"] = childName ?? "(unspecified)",
+                        ["newParent"] = parentName ?? "(root)"
+                    });
+                }
+
+                MarkSemantic(plan);
+                SetPlanDetails(
+                    plan,
+                    new List<object>
+                    {
+                        new Dictionary<string, object>
+                        {
+                            ["index"] = 1,
+                            ["action"] = "Batch Set Parent",
+                            ["targetCount"] = items.Count
+                        }
+                    },
+                    modify: new List<object>(),
                     extra: new Dictionary<string, object>
                     {
                         ["batchPreview"] = new Dictionary<string, object>
@@ -2040,6 +2170,12 @@ namespace UnitySkills
         private static (GameObject go, object error) ResolveGameObject(JObject args)
         {
             var (_, name, instanceId, path) = ReadObjectLocator(args, "name", "instanceId", "path");
+            return GameObjectFinder.FindOrError(name, instanceId, path);
+        }
+
+        private static (GameObject go, object error) ResolveGameObject(JObject args, string nameKey, string instanceIdKey, string pathKey)
+        {
+            var (_, name, instanceId, path) = ReadObjectLocator(args, nameKey, instanceIdKey, pathKey);
             return GameObjectFinder.FindOrError(name, instanceId, path);
         }
 

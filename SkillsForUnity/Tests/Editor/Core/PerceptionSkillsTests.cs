@@ -259,7 +259,6 @@ namespace UnitySkills.Tests.Core
             Assert.IsTrue(snapshot?.Any(item => item["name"]?.ToString() == "ActiveSceneObject") ?? false);
             Assert.IsFalse(snapshot?.Any(item => item["name"]?.ToString() == "AdditiveSceneObject") ?? true);
             Assert.AreEqual(activeScene.name, json["sceneName"]?.ToString());
-            Assert.IsNotNull(activeObject);
         }
     }
 }

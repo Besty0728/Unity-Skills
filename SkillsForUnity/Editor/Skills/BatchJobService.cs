@@ -92,6 +92,13 @@ namespace UnitySkills
             return job;
         }
 
+        /// <summary>Removes runtime context for a cancelled job so chunk execution stops.</summary>
+        internal static void NotifyCancelled(string jobId)
+        {
+            if (!string.IsNullOrEmpty(jobId) && RuntimeJobs.TryGetValue(jobId, out var context))
+                FinalizeRuntimeContext(context);
+        }
+
         internal static BatchJobRecord Wait(string jobId, int timeoutMs)
         {
             var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(100, timeoutMs));

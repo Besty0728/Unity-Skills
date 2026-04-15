@@ -178,7 +178,8 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "batch", "execute", "job", "report" },
             Outputs = new[] { "jobId", "reportId", "workflowId", "status" },
-            RequiresInput = new[] { "confirmToken" })]
+            RequiresInput = new[] { "confirmToken" },
+            SupportsDryRun = false)]
         public static object BatchExecute(string confirmToken, bool runAsync = true, int chunkSize = 100)
         {
             if (Validate.Required(confirmToken, "confirmToken") is object err)
