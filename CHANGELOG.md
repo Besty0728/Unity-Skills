@@ -2,6 +2,28 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.7.1] - 2026-04-17
+
+### Added
+- **机器可读 Skill Schema 端点** — 新增 `GET /skills/schema`，返回带 `schemaVersion`、参数定义、Skill 元数据和保留请求参数的结构化清单，便于 AI Agent 在低 token 场景下精确获取能力边界。
+- **Python `get_skill_schema()`** — Python 客户端新增 `get_skill_schema()`，可直接读取服务端 canonical skill schema。
+- **`test_smoke_skills` 回归验证 Skill** — Test 模块新增 `test_smoke_skills`，对安全只读技能直接执行、对其余技能走 dry-run，用于快速 smoke test 与发布前回归检查。
+
+### Changed
+- **Cinemachine 属性设置增强** — `cinemachine_set_vcam_property` 现支持 `fov`、`nearClip`、`farClip`、`orthoSize` 等镜头简写参数，设置常见 Lens 属性时更直接。
+- **Skill 参数校验升级** — SkillRouter 现在会识别未知参数、返回允许参数列表，并对常见误传参数给出建议与提示；语义校验结果也会更完整地体现在 execute / dry-run / plan 响应中。
+- **异步测试作业基础设施增强** — 异步测试与 smoke job 的作业管理能力得到扩展，提升测试型 Skill 的可观测性与复用性。
+- **版本号更新** — `SkillsLogger.Version`、`package.json`、Python helper 和文档同步提升到 `1.7.1`。
+
+### Fixed
+- **Undo / Redo 事务边界修复** — 修正 REST 调用场景下的撤销分组与事务边界处理，改善 `editor_undo`、`editor_redo` 以及 workflow 撤销/重做的一致性。
+- **只读组件查询副作用修复** — `ComponentSkills` 在读取 `Renderer` 材质属性时改用安全路径，避免查询型操作意外触发材质实例化。
+- **场景感知与辅助行为稳定性提升** — 改进 `PerceptionSkills` 场景根对象枚举方式，并修复 `CanvasGroup` Undo 注册、书签空选择处理，以及 XR 场景报告对 ActionBased locomotion/turn provider 的识别。
+
+### Docs
+- **模块文档与参考资料增强** — 多个 `SKILL.md` 补充了更精确的签名、参数说明和调用示例，并为 importer、ProBuilder、UI、UI Toolkit、XR 等模块拆分出独立 reference 文档。
+- **统计信息同步** — 文档统计已同步为 `41` 个功能模块、`543` 个 REST Skills，且 Test 模块更新为 `11` 个 Skills。
+
 ## [1.7.0] - 2026-04-15
 
 ### Added

@@ -1,6 +1,6 @@
 ---
 name: unity-skills-index
-description: "Index of all Unity Skills modules — 40 functional modules (SA/FA) + 13 advisory modules. Browse available skills, check mode requirements, and find the right module. Triggers: module list, skill index, browse skills, find module, 模块列表, 技能索引, 查找模块."
+description: "Index of all Unity Skills modules — 41 functional modules (SA/FA) + 13 advisory modules. Browse available skills, check mode requirements, and find the right module. Triggers: module list, skill index, browse skills, find module, 模块列表, 技能索引, 查找模块."
 ---
 
 # Unity Skills - Module Index
