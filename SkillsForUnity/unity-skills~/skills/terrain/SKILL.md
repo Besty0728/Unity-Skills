@@ -15,7 +15,7 @@ description: "Unity Terrain operations. Use when users want to create terrain, s
 - `terrain_set_texture` does not exist → use `terrain_paint_texture` with layer index and brush parameters
 - `terrain_add_tree` / `terrain_add_grass` do not exist → these require Unity Terrain tools or custom scripts
 - `terrain_set_size` does not exist → terrain dimensions are set at creation via `terrain_create`
-- `terrain_import_heightmap` does not exist → use `terrain_set_heights` with height data
+- `terrain_import_heightmap` / `terrain_set_heights` do not exist → use `terrain_set_heights_batch` with a 2D heights array (`[z][x]` values 0-1)
 
 **Routing**:
 - For terrain material → use `material` module on terrain's material

@@ -14,7 +14,7 @@ Get performance statistics.
 **DO NOT** (common hallucinations):
 - `profiler_start` / `profiler_stop` do not exist → profiler skills are read-only snapshots, not recording controls
 - `profiler_record` does not exist → use Unity Profiler window for recording
-- `profiler_analyze` does not exist → use specific skills: `profiler_get_fps`, `profiler_get_memory`, etc.
+- `profiler_analyze` / `profiler_get_fps` do not exist → use `profiler_get_stats` (FPS, batches, draw calls) or `profiler_get_memory` (heap sizes)
 
 **Routing**:
 - For scene performance hints → use `perception` module's `scene_performance_hints`

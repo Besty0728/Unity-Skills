@@ -13,7 +13,7 @@ Control Cinemachine Virtual Cameras and settings (Cinemachine 2.x / 3.x).
 
 **DO NOT** (common hallucinations):
 - `cinemachine_create` does not exist → use `cinemachine_create_vcam` for virtual cameras
-- `cinemachine_set_target` does not exist → use `cinemachine_set_follow` and `cinemachine_set_lookat` separately
+- `cinemachine_set_target` / `cinemachine_set_follow` / `cinemachine_set_lookat` do not exist → use `cinemachine_set_targets` (sets both Follow and LookAt in one call)
 - `cinemachine_add_brain` does not exist → CinemachineBrain is auto-added to Main Camera
 - Cinemachine 2.x uses `CinemachineVirtualCamera`; Cinemachine 3.x uses `CinemachineCamera` — skills handle this automatically
 

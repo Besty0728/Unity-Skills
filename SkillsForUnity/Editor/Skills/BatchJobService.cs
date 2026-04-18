@@ -81,13 +81,7 @@ namespace UnitySkills
             job.currentStage = "cancelled";
             job.updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             job.resultSummary = "Job was cancelled.";
-            job.logs.Add(new BatchJobLogEntry
-            {
-                timestamp = job.updatedAt,
-                level = "warn",
-                stage = "cancelled",
-                message = "Cancellation requested."
-            });
+            AddLog(job, "warn", "cancelled", "Cancellation requested.");
             BatchPersistence.UpsertJob(job);
             return job;
         }

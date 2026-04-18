@@ -14,7 +14,7 @@ Work with shaders - create shader files, read source code, and list available sh
 **DO NOT** (common hallucinations):
 - `shader_set_property` does not exist → use `material_set_float`/`material_set_color`/etc. on the material, not the shader
 - `shader_apply` / `shader_assign` do not exist → use `material_set_shader` to change a material's shader
-- `shader_get_properties` does not exist → use `material_get_properties` on a material using the shader
+- `shader_get_properties` returns shader **property definitions** (name/type/range), not current values → for material instance values use `material_get_properties`
 - Shader names are case-sensitive and path-like: `"Standard"`, `"Universal Render Pipeline/Lit"`, not `"standard"` or `"URP Lit"`
 
 **Routing**:

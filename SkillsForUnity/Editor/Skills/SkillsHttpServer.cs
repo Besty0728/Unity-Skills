@@ -192,7 +192,6 @@ namespace UnitySkills
             public string ResponseJson;
             public int StatusCode;
             public bool IsProcessed;
-            public bool ResponseDispatched;
             public int PoolReturned;
             public ManualResetEventSlim CompletionSignal = new ManualResetEventSlim(false);
 
@@ -209,7 +208,6 @@ namespace UnitySkills
                 ResponseJson = null;
                 StatusCode = 200;
                 IsProcessed = false;
-                ResponseDispatched = false;
                 PoolReturned = 0;
                 CompletionSignal.Reset();
             }
@@ -227,7 +225,6 @@ namespace UnitySkills
                 ResponseJson = null;
                 StatusCode = 200;
                 IsProcessed = false;
-                ResponseDispatched = false;
                 // Note: PoolReturned is managed by ReturnRequestJob/Prepare, not Reset
                 CompletionSignal.Reset();
             }
@@ -947,7 +944,6 @@ namespace UnitySkills
                 
                 // Send HTTP response (thread-safe)
                 SendResponse(job);
-                job.ResponseDispatched = true;
             }
             catch (Exception)
             {
@@ -957,7 +953,6 @@ namespace UnitySkills
                     job.StatusCode = 500;
                     job.ResponseJson = JsonConvert.SerializeObject(new { error = "Internal server error" }, _jsonSettings);
                     SendResponse(job);
-                    job.ResponseDispatched = true;
                 }
                 catch { }
             }

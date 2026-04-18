@@ -42,6 +42,18 @@ Query components with unified batch filters. Optional `componentType` narrows th
 | `componentType` | string | No | null | Optional component type constraint |
 | `sampleLimit` | int | No | 20 | Max sample objects returned |
 
+### batch_query_assets
+Query project assets by type, path pattern, and labels. Read-only.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `searchFilter` | string | No | null | Raw Unity AssetDatabase filter string |
+| `folder` | string | No | "Assets" | Search root folder |
+| `typeFilter` | string | No | null | Asset type (prefix `t:` optional, e.g. `Texture2D`) |
+| `namePattern` | string | No | null | Case-insensitive regex for filename |
+| `labelFilter` | string | No | null | Asset label (prefix `l:` optional) |
+| `maxResults` | int | No | 200 | Max results returned |
+
 ### batch_preview_rename
 Preview batch renaming. `mode` supports `prefix` / `suffix` / `replace` / `regex_replace`.
 
@@ -191,6 +203,15 @@ Preview deleting temporary helper objects by common temp-name patterns. Execute 
 | `queryJson` | string | No | null | JSON query filter envelope |
 | `patternsCsv` | string | No | null | Comma-separated temp-name patterns |
 | `sampleLimit` | int | No | DefaultSampleLimit | Max preview items |
+
+### batch_retry_failed
+Re-run only the failed items from a previous batch execution report. Returns a new `jobId` and `originalReportId`.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `reportId` | string | Yes | — | Prior batch report ID to resume from |
+| `runAsync` | bool | No | true | Whether to run asynchronously (returns `jobId`) |
+| `chunkSize` | int | No | 100 | Chunk size per retry batch |
 
 ## Exact Signatures
 

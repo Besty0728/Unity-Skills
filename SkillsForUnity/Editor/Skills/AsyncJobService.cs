@@ -210,28 +210,7 @@ namespace UnitySkills
             var callbacks = new TestCallbacks(job.jobId);
             api.RegisterCallbacks(callbacks);
 
-            var filterObj = new Filter { testMode = mode };
-            if (!string.IsNullOrEmpty(filter))
-            {
-                var exactNames = TestSkills.ResolveExactTestNames(testMode, filter);
-                if (exactNames.Length > 0)
-                {
-                    filterObj.testNames = exactNames;
-                }
-                else if (TestSkills.MatchesDiscoveredTestGroup(testMode, filter))
-                {
-                    var groupedNames = TestSkills.ResolveGroupedTestNames(testMode, filter);
-                    if (groupedNames.Length > 0)
-                        filterObj.testNames = groupedNames;
-                    var assemblyNames = TestSkills.ResolveGroupAssemblyNames(testMode, filter);
-                    if (assemblyNames.Length > 0)
-                        filterObj.assemblyNames = assemblyNames;
-                }
-                else
-                {
-                    filterObj.testNames = new[] { filter };
-                }
-            }
+            var filterObj = BuildTestFilter(testMode, filter, mode);
 
             TestRuntimeJobs[job.jobId] = new TestRuntimeContext
             {
@@ -298,6 +277,34 @@ namespace UnitySkills
                 $"Dirty scenes: {sceneList}. " +
                 "Save or discard scene changes first; otherwise Unity may show a hidden Save Scene dialog and the test run will hang.";
             return false;
+        }
+
+        private static Filter BuildTestFilter(string testMode, string filter, TestMode mode)
+        {
+            var filterObj = new Filter { testMode = mode };
+            if (string.IsNullOrEmpty(filter))
+                return filterObj;
+
+            var exactNames = TestSkills.ResolveExactTestNames(testMode, filter);
+            if (exactNames.Length > 0)
+            {
+                filterObj.testNames = exactNames;
+                return filterObj;
+            }
+
+            if (TestSkills.MatchesDiscoveredTestGroup(testMode, filter))
+            {
+                var groupedNames = TestSkills.ResolveGroupedTestNames(testMode, filter);
+                if (groupedNames.Length > 0)
+                    filterObj.testNames = groupedNames;
+                var assemblyNames = TestSkills.ResolveGroupAssemblyNames(testMode, filter);
+                if (assemblyNames.Length > 0)
+                    filterObj.assemblyNames = assemblyNames;
+                return filterObj;
+            }
+
+            filterObj.testNames = new[] { filter };
+            return filterObj;
         }
 
         internal static BatchJobRecord Get(string jobId)
@@ -676,33 +683,11 @@ namespace UnitySkills
                 try
                 {
                     var filter = GetMetadataString(job, "filter");
-                    var mode = TestMode.EditMode;
                     var api = ScriptableObject.CreateInstance<TestRunnerApi>();
                     var callbacks = new TestCallbacks(job.jobId);
                     api.RegisterCallbacks(callbacks);
 
-                    var filterObj = new Filter { testMode = mode };
-                    if (!string.IsNullOrEmpty(filter))
-                    {
-                        var exactNames = TestSkills.ResolveExactTestNames(testMode, filter);
-                        if (exactNames.Length > 0)
-                        {
-                            filterObj.testNames = exactNames;
-                        }
-                        else if (TestSkills.MatchesDiscoveredTestGroup(testMode, filter))
-                        {
-                            var groupedNames = TestSkills.ResolveGroupedTestNames(testMode, filter);
-                            if (groupedNames.Length > 0)
-                                filterObj.testNames = groupedNames;
-                            var assemblyNames = TestSkills.ResolveGroupAssemblyNames(testMode, filter);
-                            if (assemblyNames.Length > 0)
-                                filterObj.assemblyNames = assemblyNames;
-                        }
-                        else
-                        {
-                            filterObj.testNames = new[] { filter };
-                        }
-                    }
+                    var filterObj = BuildTestFilter(testMode, filter, TestMode.EditMode);
 
                     TestRuntimeJobs[job.jobId] = new TestRuntimeContext
                     {

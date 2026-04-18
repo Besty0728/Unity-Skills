@@ -12,9 +12,9 @@ Optimize project assets (Textures, Models).
 **Mode**: Full-Auto required
 
 **DO NOT** (common hallucinations):
-- `optimize_scene` / `optimization_run` do not exist → use specific skills: `optimize_find_large_textures`, `optimize_find_duplicate_materials`, etc.
-- `optimize_compress` does not exist → use `optimize_compress_textures` (textures), `optimize_compress_meshes` (meshes), `optimize_compress_audio` (audio)
-- `optimize_set_lod` does not exist → use `optimize_setup_lod` or `optimize_set_static_flags`
+- `optimize_scene` / `optimization_run` do not exist → use specific skills: `optimize_analyze_scene`, `optimize_find_large_assets`, `optimize_find_duplicate_materials`, etc.
+- `optimize_compress` / `optimize_compress_textures` / `optimize_compress_meshes` / `optimize_compress_audio` do not exist → use `optimize_textures` (textures), `optimize_mesh_compression` (meshes), `optimize_audio_compression` (audio)
+- `optimize_set_lod` / `optimize_setup_lod` do not exist → use `optimize_set_lod_group`
 - Optimization skills are analysis + action tools — always review results before applying batch changes
 
 **Routing**:

@@ -13,8 +13,8 @@ Create and manage ScriptableObject assets.
 
 **DO NOT** (common hallucinations):
 - `scriptableobject_create_type` does not exist → create SO scripts via `script_create` with template "ScriptableObject"
-- `scriptableobject_get_properties` does not exist → use `scriptableobject_read`
-- `scriptableobject_set_property` does not exist → use `scriptableobject_set_field`
+- `scriptableobject_get_properties` / `scriptableobject_read` do not exist → use `scriptableobject_get`
+- `scriptableobject_set_property` / `scriptableobject_set_field` do not exist → use `scriptableobject_set` (single field) or `scriptableobject_set_batch` (multiple fields)
 - `scriptableobject_save` does not exist → changes are auto-saved to the asset
 
 **Routing**:

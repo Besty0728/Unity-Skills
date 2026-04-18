@@ -13,8 +13,7 @@ Baking and pathfinding.
 
 **DO NOT** (common hallucinations):
 - `navmesh_create` does not exist → use `navmesh_bake` to generate NavMesh
-- `navmesh_set_agent` does not exist → use `component_add` with "NavMeshAgent", then `component_set_property`
-- `navmesh_add_obstacle` does not exist → use `component_add` with "NavMeshObstacle"
+- `navmesh_add_agent_component` / `navmesh_set_agent_speed` do not exist → use `navmesh_add_agent` + `navmesh_set_agent` (convenience wrappers), or `component_add`/`component_set_property` for full control
 - NavMesh must be re-baked after scene geometry changes
 
 **Routing**:

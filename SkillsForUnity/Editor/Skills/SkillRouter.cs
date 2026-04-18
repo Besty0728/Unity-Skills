@@ -58,11 +58,15 @@ namespace UnitySkills
             public bool SupportsDryRun;
             public string RiskLevel;
             public string[] RequiresPackages;
+            // Cached to avoid repeated allocations per Execute/DryRun call
+            public string[] ParameterNames;
+            public HashSet<string> AllowedParameterSet;
         }
 
         private static volatile Dictionary<string, SkillInfo> _skills;
         private static volatile bool _initialized;
         private static string _cachedManifest;
+        private static string _cachedSchema;
         private static Dictionary<string, List<SkillInfo>> _outputIndex;
         private static readonly object _initLock = new object();
 
@@ -296,12 +300,16 @@ namespace UnitySkills
                         if (attr != null)
                         {
                             var name = attr.Name ?? ToSnakeCase(method.Name);
+                            var parameters = method.GetParameters();
+                            var parameterNames = parameters.Select(p => p.Name).ToArray();
+                            var allowedSet = new HashSet<string>(parameterNames, StringComparer.OrdinalIgnoreCase);
+                            allowedSet.UnionWith(_reservedBodyParameters);
                             skills[name] = new SkillInfo
                             {
                                 Name = name,
                                 Description = attr.Description ?? "",
                                 Method = method,
-                                Parameters = method.GetParameters(),
+                                Parameters = parameters,
                                 TracksWorkflow = attr.TracksWorkflow,
                                 Category = attr.Category,
                                 Operation = attr.Operation,
@@ -315,7 +323,9 @@ namespace UnitySkills
                                 MayEnterPlayMode = attr.MayEnterPlayMode,
                                 SupportsDryRun = attr.SupportsDryRun,
                                 RiskLevel = attr.RiskLevel ?? "low",
-                                RequiresPackages = attr.RequiresPackages
+                                RequiresPackages = attr.RequiresPackages,
+                                ParameterNames = parameterNames,
+                                AllowedParameterSet = allowedSet
                             };
                             if (attr.TracksWorkflow)
                                 trackedSkills.Add(name);
@@ -367,8 +377,17 @@ namespace UnitySkills
         public static string GetSchema()
         {
             Initialize();
-            var schema = BuildManifest(_skills.Values, filtered: false, filters: null, manifestType: "schema");
-            return JsonConvert.SerializeObject(schema, Formatting.Indented, _jsonSettings);
+            var cached = _cachedSchema;
+            if (cached != null) return cached;
+
+            lock (_initLock)
+            {
+                if (_cachedSchema != null) return _cachedSchema;
+
+                var schema = BuildManifest(_skills.Values, filtered: false, filters: null, manifestType: "schema");
+                _cachedSchema = JsonConvert.SerializeObject(schema, Formatting.Indented, _jsonSettings);
+                return _cachedSchema;
+            }
         }
 
         /// <summary>Returns true if a skill with the given name is registered.</summary>
@@ -399,7 +418,7 @@ namespace UnitySkills
                         status = "error",
                         error = $"Unknown parameters: {string.Join(", ", ExtractValidationParameterNames(validation.UnknownParams))}",
                         unknownParams = validation.UnknownParams.ToArray(),
-                        allowedParams = skill.Parameters.Select(p => p.Name).ToArray()
+                        allowedParams = skill.ParameterNames
                     }, _jsonSettings);
                 }
 
@@ -678,6 +697,7 @@ namespace UnitySkills
                 _initialized = false;
                 _skills = null;
                 _cachedManifest = null;
+                _cachedSchema = null;
                 _outputIndex = null;
                 _workflowTrackedSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             }
@@ -1029,8 +1049,7 @@ namespace UnitySkills
             };
 
             var ps = skill.Parameters;
-            var allowedParameterNames = ps.Select(p => p.Name).ToArray();
-            CollectUnknownParameters(skill, validation, allowedParameterNames);
+            CollectUnknownParameters(skill, validation);
             var invoke = new object[ps.Length];
             for (int i = 0; i < ps.Length; i++)
             {
@@ -1076,20 +1095,20 @@ namespace UnitySkills
             return validation;
         }
 
-        private static void CollectUnknownParameters(SkillInfo skill, ParameterValidationResult validation, string[] allowedParameterNames)
+        private static void CollectUnknownParameters(SkillInfo skill, ParameterValidationResult validation)
         {
             if (validation?.Args == null)
                 return;
 
-            var allowed = new HashSet<string>(allowedParameterNames, StringComparer.OrdinalIgnoreCase);
-            allowed.UnionWith(_reservedBodyParameters);
+            var allowed = skill.AllowedParameterSet;
+            var parameterNames = skill.ParameterNames;
 
             foreach (var property in validation.Args.Properties())
             {
                 if (allowed.Contains(property.Name))
                     continue;
 
-                var suggestions = SuggestParameters(skill.Name, property.Name, allowedParameterNames);
+                var suggestions = SuggestParameters(skill.Name, property.Name, parameterNames);
                 var entry = new Dictionary<string, object>
                 {
                     ["parameter"] = property.Name

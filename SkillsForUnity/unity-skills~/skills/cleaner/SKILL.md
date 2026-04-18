@@ -14,7 +14,7 @@ description: "Project cleanup utilities. Use when users want to find unused asse
 **DO NOT** (common hallucinations):
 - `cleaner_delete` / `cleaner_remove` do not exist → cleaner skills only find/report; use `asset_delete` to actually remove
 - `cleaner_fix` does not exist → use `cleaner_fix_missing_scripts` specifically for missing script references
-- `cleaner_scan` does not exist → use specific skills: `cleaner_find_unused`, `cleaner_find_duplicates`, etc.
+- `cleaner_scan` / `cleaner_find_unused` do not exist → use specific skills: `cleaner_find_unused_assets`, `cleaner_find_duplicates`, `cleaner_find_missing_references`, `cleaner_find_empty_folders`, `cleaner_find_large_assets`
 
 **Routing**:
 - To delete found assets → use `asset` module's `asset_delete` / `asset_delete_batch`

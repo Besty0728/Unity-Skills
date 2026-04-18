@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 
@@ -11,6 +12,16 @@ namespace UnitySkills
     /// </summary>
     public static class BatchExecutor
     {
+        // Reflection results per result type are immutable — cache the "has error member" flag to avoid
+        // repeating GetProperty/GetField for every item in large batches.
+        private static readonly ConcurrentDictionary<Type, bool> _hasErrorMemberCache = new ConcurrentDictionary<Type, bool>();
+
+        private static bool HasErrorMember(Type type)
+        {
+            return _hasErrorMemberCache.GetOrAdd(type, static t =>
+                t.GetProperty("error") != null || t.GetField("error") != null);
+        }
+
         /// <summary>
         /// Execute a batch operation on a JSON array of items.
         /// Handles deserialization, per-item try/catch, and result aggregation.
@@ -59,13 +70,7 @@ namespace UnitySkills
                     {
                         var result = processor(item);
                         // Check if result contains an error field (processor returned error without throwing)
-                        bool isError = false;
-                        if (result != null)
-                        {
-                            var resultType = result.GetType();
-                            if (resultType.GetProperty("error") != null || resultType.GetField("error") != null)
-                                isError = true;
-                        }
+                        bool isError = result != null && HasErrorMember(result.GetType());
                         results.Add(result);
                         if (isError)
                             failCount++;

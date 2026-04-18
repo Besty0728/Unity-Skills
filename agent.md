@@ -48,7 +48,7 @@ AI Agent ──HTTP──▶ unity_skills.py ──POST localhost:8090-8100─�
 Unity-Skills/
 ├── SkillsForUnity/                     # UPM Package
 │   ├── package.json
-│   ├── Editor/Skills/                  # 55 个 C# 文件
+│   ├── Editor/Skills/                  # 61 个 C# 文件
 │   │   ├── SkillsHttpServer.cs         # HTTP 服务器 (Producer-Consumer)
 │   │   ├── SkillRouter.cs              # 反射路由 + 参数绑定
 │   │   ├── UnitySkillAttribute.cs      # [UnitySkill] 特性 (含 Category/Operation/Tags 元数据)
@@ -63,7 +63,7 @@ Unity-Skills/
 │   └── unity-skills~/                  # AI Skill 模板 (波浪线隐藏, 随包分发)
 │       ├── SKILL.md                    # 主 Skill 文档 (AI 读取入口)
 │       ├── scripts/unity_skills.py     # Python 客户端
-│       ├── skills/                     # 54 个模块文档 (41 functional + 13 advisory)
+│       ├── skills/                     # 53 个模块文档 (40 functional + 13 advisory)
 │       └── references/                 # Unity 开发参考
 ├── .claude/commands/                   # 自定义命令
 │   ├── updateversion.md                # /updateversion — 版本号更新 + CHANGELOG 生成

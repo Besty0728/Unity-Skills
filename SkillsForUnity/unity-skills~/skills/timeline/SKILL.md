@@ -12,7 +12,7 @@ Create and modify Unity Timelines.
 **Mode**: Full-Auto required
 
 **DO NOT** (common hallucinations):
-- `timeline_create_animation` does not exist → use `timeline_add_track` with track type "AnimationTrack"
+- `timeline_create_animation` / `timeline_add_track` do not exist → use the typed track skills: `timeline_add_animation_track`, `timeline_add_audio_track`, `timeline_add_activation_track`, `timeline_add_control_track`, `timeline_add_signal_track`
 - `timeline_add_keyframe` does not exist → Timeline uses clips, not direct keyframes; use `timeline_add_clip`
 - `timeline_set_duration` sets the Timeline asset duration, not individual clip duration
 

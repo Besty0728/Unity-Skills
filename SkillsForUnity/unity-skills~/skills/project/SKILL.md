@@ -14,12 +14,12 @@ Project information and configuration.
 **DO NOT** (common hallucinations):
 - `project_save` does not exist → use `scene_save` (scene module) or `editor_execute_menu` menuPath="File/Save"
 - `project_settings` does not exist → use specific skills: `project_get_render_pipeline`, `project_get_build_settings`, etc.
-- `project_set_resolution` does not exist → use `project_set_player_settings`
+- `project_set_resolution` / `project_set_player_settings` do not exist → Player Settings are read-only via `project_get_player_settings`; to edit, open Project Settings via `editor_execute_menu` with `Edit/Project Settings...`
 - `project_create` does not exist → projects are created via Unity Hub, not REST API
 
 **Routing**:
-- For Layer/Tag management → `project_add_layer` / `project_add_tag` (this module)
-- For build settings → `project_get_build_settings` / `project_set_build_scenes` (this module)
+- For Layer/Tag management → `project_add_tag` (this module); Layers are read-only via `project_get_layers` (edit via `editor_execute_menu` → `Edit/Project Settings...`)
+- For build settings → `project_get_build_settings` (read-only; use `editor_execute_menu` → `File/Build Settings...` to edit)
 
 ## Skills
 
