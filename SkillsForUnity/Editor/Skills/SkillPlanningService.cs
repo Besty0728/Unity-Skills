@@ -531,14 +531,13 @@ namespace UnitySkills
 
         private static void AnalyzeGameObjectCreateBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
-            var itemPlans = new List<object>();
             var creates = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
+                var item = ctx.GetItem(i);
                 var errors = new List<string>();
                 var name = GetStringArg(item, "name");
                 if (Validate.Required(name, "name") is object nameErr)
@@ -564,20 +563,16 @@ namespace UnitySkills
                         parentPath = GameObjectFinder.GetPath(parentGo);
                 }
 
-                if (errors.Count > 0)
-                    AddSemanticError(validation, $"items[{i}]", string.Join("; ", errors));
+                ctx.ReportItemErrors(i, errors);
 
                 var predictedPath = string.IsNullOrWhiteSpace(name)
                     ? "(unresolved)"
                     : parentPath == "(root)" ? name : parentPath + "/" + name;
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = name,
-                    ["valid"] = errors.Count == 0,
-                    ["predictedPath"] = predictedPath,
-                    ["errors"] = errors.ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    name,
+                    errors.Count == 0,
+                    errors.ToArray(),
+                    new Dictionary<string, object> { ["predictedPath"] = predictedPath });
 
                 if (errors.Count == 0)
                 {
@@ -589,31 +584,7 @@ namespace UnitySkills
                     });
                 }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(
-                    plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Create GameObjects (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    create: creates,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Create GameObjects (batch)", create: creates);
         }
 
         private static void AnalyzeGameObjectRename(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -658,14 +629,13 @@ namespace UnitySkills
 
         private static void AnalyzeGameObjectRenameBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var modifies = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
+                var item = ctx.GetItem(i);
                 var errors = new List<string>();
                 var newName = GetStringArg(item, "newName");
                 if (Validate.Required(newName, "newName") is object nameErr)
@@ -675,17 +645,13 @@ namespace UnitySkills
                 if (error != null)
                     errors.Add(ExtractError(error));
 
-                if (errors.Count > 0)
-                    AddSemanticError(validation, $"items[{i}]", string.Join("; ", errors));
+                ctx.ReportItemErrors(i, errors);
 
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
-                    ["valid"] = errors.Count == 0,
-                    ["newName"] = newName,
-                    ["errors"] = errors.ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    errors.Count == 0,
+                    errors.ToArray(),
+                    new Dictionary<string, object> { ["newName"] = newName });
 
                 if (errors.Count == 0 && go != null)
                 {
@@ -697,31 +663,7 @@ namespace UnitySkills
                     });
                 }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(
-                    plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Rename GameObjects (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    modify: modifies,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Rename GameObjects (batch)", modify: modifies);
         }
 
         private static void AnalyzeGameObjectSetParent(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -780,45 +722,24 @@ namespace UnitySkills
 
         private static void AnalyzeGameObjectSetParentBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             if (plan != null)
             {
-                var itemPlans = new List<object>();
-                foreach (var item in items)
+                foreach (var token in ctx.Items)
                 {
-                    var itemObj = item as JObject;
+                    var itemObj = token as JObject;
                     var childName = itemObj != null ? GetStringArg(itemObj, "childName", "childPath") : null;
                     var parentName = itemObj != null ? GetStringArg(itemObj, "parentName", "parentPath") : null;
-                    itemPlans.Add(new Dictionary<string, object>
+                    ctx.ItemPlans.Add(new Dictionary<string, object>
                     {
                         ["child"] = childName ?? "(unspecified)",
                         ["newParent"] = parentName ?? "(root)"
                     });
                 }
 
-                MarkSemantic(plan);
-                SetPlanDetails(
-                    plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Batch Set Parent",
-                            ["targetCount"] = items.Count
-                        }
-                    },
-                    modify: new List<object>(),
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
+                ctx.EmitPlan("Batch Set Parent", modify: new List<object>());
             }
         }
 
@@ -858,14 +779,13 @@ namespace UnitySkills
 
         private static void AnalyzeGameObjectDeleteBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var deletes = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var token = items[i];
+                var token = ctx.Items[i];
                 var item = token as JObject;
                 if (item == null && token.Type == JTokenType.String)
                     item = new JObject { ["name"] = token.ToString() };
@@ -875,16 +795,12 @@ namespace UnitySkills
                 var (go, error) = ResolveGameObject(item);
                 if (error != null)
                     errors.Add(ExtractError(error));
-                if (errors.Count > 0)
-                    AddSemanticError(validation, $"items[{i}]", string.Join("; ", errors));
+                ctx.ReportItemErrors(i, errors);
 
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
-                    ["valid"] = errors.Count == 0,
-                    ["errors"] = errors.ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    errors.Count == 0,
+                    errors.ToArray());
 
                 if (errors.Count == 0 && go != null)
                 {
@@ -895,31 +811,7 @@ namespace UnitySkills
                     });
                 }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(
-                    plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Delete GameObjects (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    delete: deletes,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Delete GameObjects (batch)", delete: deletes);
         }
 
         private static void AnalyzeComponentAdd(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -977,14 +869,13 @@ namespace UnitySkills
 
         private static void AnalyzeComponentAddBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var creates = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
+                var item = ctx.GetItem(i);
                 var errors = new List<string>();
                 var warnings = new List<string>();
 
@@ -1006,19 +897,14 @@ namespace UnitySkills
                         warnings.Add($"Component {type.Name} already exists on {go.name}");
                 }
 
-                if (errors.Count > 0)
-                    AddSemanticError(validation, $"items[{i}]", string.Join("; ", errors));
+                ctx.ReportItemErrors(i, errors);
                 foreach (var warning in warnings)
                     AddWarning(validation, $"items[{i}]: {warning}");
 
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
-                    ["valid"] = errors.Count == 0,
-                    ["warnings"] = warnings.ToArray(),
-                    ["errors"] = errors.ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    errors.Count == 0,
+                    errors.ToArray());
 
                 if (errors.Count == 0 && type != null && warnings.Count == 0)
                 {
@@ -1030,31 +916,7 @@ namespace UnitySkills
                     });
                 }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(
-                    plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Add Components (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    create: creates,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Add Components (batch)", create: creates);
         }
 
         private static void AnalyzeComponentRemove(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1128,14 +990,13 @@ namespace UnitySkills
 
         private static void AnalyzeComponentRemoveBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var deletes = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
+                var item = ctx.GetItem(i);
                 var errors = new List<string>();
 
                 var componentType = GetStringArg(item, "componentType");
@@ -1164,16 +1025,12 @@ namespace UnitySkills
                     }
                 }
 
-                if (errors.Count > 0)
-                    AddSemanticError(validation, $"items[{i}]", string.Join("; ", errors));
+                ctx.ReportItemErrors(i, errors);
 
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
-                    ["valid"] = errors.Count == 0,
-                    ["errors"] = errors.ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    errors.Count == 0,
+                    errors.ToArray());
 
                 if (errors.Count == 0 && type != null)
                 {
@@ -1185,31 +1042,7 @@ namespace UnitySkills
                     });
                 }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(
-                    plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Remove Components (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    delete: deletes,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Remove Components (batch)", delete: deletes);
         }
 
         private static void AnalyzeComponentSetProperty(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1295,70 +1128,34 @@ namespace UnitySkills
 
         private static void AnalyzeComponentSetPropertyBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var modifies = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
-                var itemValidation = new SkillRouter.ParameterValidationResult { Args = item };
-                AnalyzeComponentSetProperty(itemValidation, null);
-
-                foreach (var semanticError in itemValidation.SemanticErrors)
-                {
-                    AddSemanticError(validation, $"items[{i}]", ExtractSemanticMessage(semanticError));
-                }
-                foreach (var warning in itemValidation.Warnings)
-                {
+                var item = ctx.GetItem(i);
+                var iv = new SkillRouter.ParameterValidationResult { Args = item };
+                AnalyzeComponentSetProperty(iv, null);
+                ctx.ReportDelegatedErrors(i, iv);
+                foreach (var warning in iv.Warnings)
                     AddWarning(validation, $"items[{i}]: {warning}");
-                }
 
                 var (go, _) = ResolveGameObject(item);
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
-                    ["valid"] = itemValidation.SemanticErrors.Count == 0,
-                    ["errors"] = itemValidation.SemanticErrors.Select(ExtractSemanticMessage).ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    iv.SemanticErrors.Count == 0,
+                    iv.SemanticErrors.Select(ExtractSemanticMessage).ToArray());
 
-                if (itemValidation.SemanticErrors.Count == 0 && go != null)
-                {
+                if (iv.SemanticErrors.Count == 0 && go != null)
                     modifies.Add(new Dictionary<string, object>
                     {
                         ["target"] = GameObjectFinder.GetPath(go),
                         ["component"] = GetStringArg(item, "componentType"),
                         ["property"] = GetStringArg(item, "propertyName")
                     });
-                }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(
-                    plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Set Component Properties (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    modify: modifies,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Set Component Properties (batch)", modify: modifies);
         }
 
         private static void AnalyzeMaterialCreate(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1410,36 +1207,30 @@ namespace UnitySkills
 
         private static void AnalyzeMaterialCreateBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var creates = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
-                var itemValidation = new SkillRouter.ParameterValidationResult { Args = item };
-                AnalyzeMaterialCreate(itemValidation, null);
+                var item = ctx.GetItem(i);
+                var iv = new SkillRouter.ParameterValidationResult { Args = item };
+                AnalyzeMaterialCreate(iv, null);
 
                 var name = GetStringArg(item, "name");
                 var savePath = GetStringArg(item, "savePath");
-                var resolvedShader = ResolveShaderName(GetStringArg(item, "shaderName"), itemValidation);
+                var resolvedShader = ResolveShaderName(GetStringArg(item, "shaderName"), iv);
 
-                foreach (var semanticError in itemValidation.SemanticErrors)
-                    AddSemanticError(validation, $"items[{i}]", ExtractSemanticMessage(semanticError));
-                foreach (var warning in itemValidation.Warnings)
+                ctx.ReportDelegatedErrors(i, iv);
+                foreach (var warning in iv.Warnings)
                     AddWarning(validation, $"items[{i}]: {warning}");
 
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = name,
-                    ["valid"] = itemValidation.SemanticErrors.Count == 0,
-                    ["errors"] = itemValidation.SemanticErrors.Select(ExtractSemanticMessage).ToArray(),
-                    ["warnings"] = itemValidation.Warnings.ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    name,
+                    iv.SemanticErrors.Count == 0,
+                    iv.SemanticErrors.Select(ExtractSemanticMessage).ToArray());
 
-                if (itemValidation.SemanticErrors.Count == 0)
+                if (iv.SemanticErrors.Count == 0)
                 {
                     creates.Add(new Dictionary<string, object>
                     {
@@ -1449,30 +1240,7 @@ namespace UnitySkills
                     });
                 }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Create Materials (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    create: creates,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Create Materials (batch)", create: creates);
         }
 
         private static void AnalyzeMaterialAssign(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1530,61 +1298,31 @@ namespace UnitySkills
 
         private static void AnalyzeMaterialAssignBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var modifies = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
-                var itemValidation = new SkillRouter.ParameterValidationResult { Args = item };
-                AnalyzeMaterialAssign(itemValidation, null);
-                foreach (var semanticError in itemValidation.SemanticErrors)
-                    AddSemanticError(validation, $"items[{i}]", ExtractSemanticMessage(semanticError));
+                var item = ctx.GetItem(i);
+                var iv = new SkillRouter.ParameterValidationResult { Args = item };
+                AnalyzeMaterialAssign(iv, null);
+                ctx.ReportDelegatedErrors(i, iv);
 
                 var (go, _) = ResolveGameObject(item);
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
-                    ["valid"] = itemValidation.SemanticErrors.Count == 0,
-                    ["errors"] = itemValidation.SemanticErrors.Select(ExtractSemanticMessage).ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    iv.SemanticErrors.Count == 0,
+                    iv.SemanticErrors.Select(ExtractSemanticMessage).ToArray());
 
-                if (itemValidation.SemanticErrors.Count == 0 && go != null)
-                {
+                if (iv.SemanticErrors.Count == 0 && go != null)
                     modifies.Add(new Dictionary<string, object>
                     {
                         ["target"] = GameObjectFinder.GetPath(go),
                         ["material"] = GetStringArg(item, "materialPath")
                     });
-                }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Assign Materials (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    modify: modifies,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Assign Materials (batch)", modify: modifies);
         }
 
         private static void AnalyzeAssetImport(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1631,28 +1369,23 @@ namespace UnitySkills
 
         private static void AnalyzeAssetImportBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var creates = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
-                var itemValidation = new SkillRouter.ParameterValidationResult { Args = item };
-                AnalyzeAssetImport(itemValidation, null);
-                foreach (var semanticError in itemValidation.SemanticErrors)
-                    AddSemanticError(validation, $"items[{i}]", ExtractSemanticMessage(semanticError));
+                var item = ctx.GetItem(i);
+                var iv = new SkillRouter.ParameterValidationResult { Args = item };
+                AnalyzeAssetImport(iv, null);
+                ctx.ReportDelegatedErrors(i, iv);
 
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = GetStringArg(item, "destinationPath") ?? GetStringArg(item, "sourcePath"),
-                    ["valid"] = itemValidation.SemanticErrors.Count == 0,
-                    ["errors"] = itemValidation.SemanticErrors.Select(ExtractSemanticMessage).ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    GetStringArg(item, "destinationPath") ?? GetStringArg(item, "sourcePath"),
+                    iv.SemanticErrors.Count == 0,
+                    iv.SemanticErrors.Select(ExtractSemanticMessage).ToArray());
 
-                if (itemValidation.SemanticErrors.Count == 0)
+                if (iv.SemanticErrors.Count == 0)
                 {
                     creates.Add(new Dictionary<string, object>
                     {
@@ -1661,30 +1394,7 @@ namespace UnitySkills
                     });
                 }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Import Assets (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    create: creates,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Import Assets (batch)", create: creates);
         }
 
         private static void AnalyzeAssetDelete(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1721,14 +1431,13 @@ namespace UnitySkills
 
         private static void AnalyzeAssetDeleteBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var deletes = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
+                var item = ctx.GetItem(i);
                 var path = GetStringArg(item, "path");
                 var errors = new List<string>();
                 if (Validate.Required(path, "path") is object pathRequired)
@@ -1741,43 +1450,17 @@ namespace UnitySkills
                         errors.Add($"Asset not found: {path}");
                 }
 
-                if (errors.Count > 0)
-                    AddSemanticError(validation, $"items[{i}]", string.Join("; ", errors));
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = path,
-                    ["valid"] = errors.Count == 0,
-                    ["errors"] = errors.ToArray()
-                });
+                ctx.ReportItemErrors(i, errors);
+
+                ctx.AddItemPlan(i,
+                    path,
+                    errors.Count == 0,
+                    errors.ToArray());
 
                 if (errors.Count == 0)
                     deletes.Add(new Dictionary<string, object> { ["target"] = path });
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Delete Assets (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    delete: deletes,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Delete Assets (batch)", delete: deletes);
         }
 
         private static void AnalyzeAssetMove(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1824,30 +1507,25 @@ namespace UnitySkills
 
         private static void AnalyzeAssetMoveBatch(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            if (!TryParseBatchItems(validation, out var items))
-                return;
+            var ctx = TryBeginBatchAnalyze(validation, plan);
+            if (ctx == null) return;
 
             var modifies = new List<object>();
-            var itemPlans = new List<object>();
-            for (int i = 0; i < items.Count; i++)
+            for (int i = 0; i < ctx.Items.Count; i++)
             {
-                var item = items[i] as JObject ?? new JObject();
-                var itemValidation = new SkillRouter.ParameterValidationResult { Args = item };
-                AnalyzeAssetMove(itemValidation, null);
-                foreach (var semanticError in itemValidation.SemanticErrors)
-                    AddSemanticError(validation, $"items[{i}]", ExtractSemanticMessage(semanticError));
-                foreach (var warning in itemValidation.Warnings)
+                var item = ctx.GetItem(i);
+                var iv = new SkillRouter.ParameterValidationResult { Args = item };
+                AnalyzeAssetMove(iv, null);
+                ctx.ReportDelegatedErrors(i, iv);
+                foreach (var warning in iv.Warnings)
                     AddWarning(validation, $"items[{i}]: {warning}");
 
-                itemPlans.Add(new Dictionary<string, object>
-                {
-                    ["index"] = i,
-                    ["target"] = GetStringArg(item, "sourcePath"),
-                    ["valid"] = itemValidation.SemanticErrors.Count == 0,
-                    ["errors"] = itemValidation.SemanticErrors.Select(ExtractSemanticMessage).ToArray()
-                });
+                ctx.AddItemPlan(i,
+                    GetStringArg(item, "sourcePath"),
+                    iv.SemanticErrors.Count == 0,
+                    iv.SemanticErrors.Select(ExtractSemanticMessage).ToArray());
 
-                if (itemValidation.SemanticErrors.Count == 0)
+                if (iv.SemanticErrors.Count == 0)
                 {
                     modifies.Add(new Dictionary<string, object>
                     {
@@ -1856,30 +1534,7 @@ namespace UnitySkills
                     });
                 }
             }
-
-            if (plan != null)
-            {
-                MarkSemantic(plan);
-                SetPlanDetails(plan,
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["index"] = 1,
-                            ["action"] = "Move Assets (batch)",
-                            ["target"] = $"{items.Count} items"
-                        }
-                    },
-                    modify: modifies,
-                    extra: new Dictionary<string, object>
-                    {
-                        ["batchPreview"] = new Dictionary<string, object>
-                        {
-                            ["totalItems"] = items.Count,
-                            ["items"] = itemPlans.ToArray()
-                        }
-                    });
-            }
+            ctx.EmitPlan("Move Assets (batch)", modify: modifies);
         }
 
         // ==================================================================================
@@ -2486,6 +2141,86 @@ namespace UnitySkills
             if (SkillResultHelper.TryGetMemberValue(semanticError, "error", out var value) && value != null)
                 return value.ToString();
             return semanticError?.ToString() ?? "Unknown semantic error";
+        }
+
+        // ===================== Batch Analyze Helper =====================
+
+        private class BatchAnalyzeContext
+        {
+            public readonly SkillRouter.ParameterValidationResult Validation;
+            public readonly IDictionary<string, object> Plan;
+            public readonly JArray Items;
+            public readonly List<object> ItemPlans = new List<object>();
+
+            public BatchAnalyzeContext(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan, JArray items)
+            {
+                Validation = validation;
+                Plan = plan;
+                Items = items;
+            }
+
+            public JObject GetItem(int i) => Items[i] as JObject ?? new JObject();
+
+            public void ReportItemErrors(int index, List<string> errors)
+            {
+                if (errors.Count > 0)
+                    AddSemanticError(Validation, $"items[{index}]", string.Join("; ", errors));
+            }
+
+            public void ReportDelegatedErrors(int index, SkillRouter.ParameterValidationResult itemValidation)
+            {
+                foreach (var se in itemValidation.SemanticErrors)
+                    AddSemanticError(Validation, $"items[{index}]", ExtractSemanticMessage(se));
+            }
+
+            public void AddItemPlan(int index, string target, bool valid, string[] errors,
+                IDictionary<string, object> extra = null)
+            {
+                var entry = new Dictionary<string, object>
+                {
+                    ["index"] = index,
+                    ["target"] = target,
+                    ["valid"] = valid,
+                    ["errors"] = errors
+                };
+                if (extra != null)
+                    foreach (var kv in extra) entry[kv.Key] = kv.Value;
+                ItemPlans.Add(entry);
+            }
+
+            public void EmitPlan(string actionLabel,
+                List<object> create = null, List<object> modify = null, List<object> delete = null)
+            {
+                if (Plan == null) return;
+                MarkSemantic(Plan);
+                SetPlanDetails(Plan,
+                    new List<object>
+                    {
+                        new Dictionary<string, object>
+                        {
+                            ["index"] = 1,
+                            ["action"] = actionLabel,
+                            ["target"] = $"{Items.Count} items"
+                        }
+                    },
+                    create: create, modify: modify, delete: delete,
+                    extra: new Dictionary<string, object>
+                    {
+                        ["batchPreview"] = new Dictionary<string, object>
+                        {
+                            ["totalItems"] = Items.Count,
+                            ["items"] = ItemPlans.ToArray()
+                        }
+                    });
+            }
+        }
+
+        private static BatchAnalyzeContext TryBeginBatchAnalyze(
+            SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
+        {
+            if (!TryParseBatchItems(validation, out var items))
+                return null;
+            return new BatchAnalyzeContext(validation, plan, items);
         }
     }
 }

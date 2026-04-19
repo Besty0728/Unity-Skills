@@ -14,7 +14,6 @@ namespace UnitySkills
     /// </summary>
     public static class UIToolkitSkills
     {
-        private static readonly System.Text.UTF8Encoding Utf8NoBom = new System.Text.UTF8Encoding(false);
         // ============================ FILE OPERATIONS ============================
 
         [UnitySkill("uitk_create_uss", "Create a USS stylesheet file for UI Toolkit",
@@ -33,7 +32,7 @@ namespace UnitySkills
                 Directory.CreateDirectory(dir);
 
             var fileContent = content ?? DefaultUss(Path.GetFileNameWithoutExtension(savePath));
-            File.WriteAllText(savePath, fileContent, Utf8NoBom);
+            File.WriteAllText(savePath, fileContent, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(savePath);
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(savePath);
@@ -65,7 +64,7 @@ namespace UnitySkills
                 relUss = (uxmlDir == ussDir) ? Path.GetFileName(ussPath) : ussPath;
             }
             string fileContent = content ?? (relUss != null ? DefaultUxml(relUss) : DefaultUxml());
-            File.WriteAllText(savePath, fileContent, Utf8NoBom);
+            File.WriteAllText(savePath, fileContent, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(savePath);
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(savePath);
@@ -116,7 +115,7 @@ namespace UnitySkills
                 if (existing != null) WorkflowManager.SnapshotObject(existing);
             }
 
-            File.WriteAllText(filePath, content, Utf8NoBom);
+            File.WriteAllText(filePath, content, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(filePath);
 
             return new { success = true, path = filePath, lines = content.Split('\n').Length };
@@ -379,13 +378,19 @@ namespace UnitySkills
                 if (tss != null) settings.themeStyleSheet = tss;
             }
 
-            var applyErr = ApplyPanelSettings(settings,
-                textSettingsPath, targetTexturePath, targetDisplay,
-                sortOrder, scale, match, referenceDpi, fallbackDpi, referenceSpritePixelsPerUnit,
-                dynamicAtlasMinSize, dynamicAtlasMaxSize, dynamicAtlasMaxSubTextureSize, dynamicAtlasFilters,
-                clearColor, colorClearR, colorClearG, colorClearB, colorClearA, clearDepthStencil,
-                renderMode, forceGammaRendering, bindingLogLevel, colliderUpdateMode, colliderIsTrigger,
-                vertexBudget, textureSlotCount);
+            var applyErr = ApplyPanelSettings(settings, new PanelSettingsArgs
+            {
+                textSettingsPath = textSettingsPath, targetTexturePath = targetTexturePath,
+                targetDisplay = targetDisplay, sortOrder = sortOrder, scale = scale, match = match,
+                referenceDpi = referenceDpi, fallbackDpi = fallbackDpi, referenceSpritePixelsPerUnit = referenceSpritePixelsPerUnit,
+                dynamicAtlasMinSize = dynamicAtlasMinSize, dynamicAtlasMaxSize = dynamicAtlasMaxSize,
+                dynamicAtlasMaxSubTextureSize = dynamicAtlasMaxSubTextureSize, dynamicAtlasFilters = dynamicAtlasFilters,
+                clearColor = clearColor, colorClearR = colorClearR, colorClearG = colorClearG,
+                colorClearB = colorClearB, colorClearA = colorClearA, clearDepthStencil = clearDepthStencil,
+                renderMode = renderMode, forceGammaRendering = forceGammaRendering, bindingLogLevel = bindingLogLevel,
+                colliderUpdateMode = colliderUpdateMode, colliderIsTrigger = colliderIsTrigger,
+                vertexBudget = vertexBudget, textureSlotCount = textureSlotCount
+            });
             if (applyErr != null) return applyErr;
 
             AssetDatabase.CreateAsset(settings, savePath);
@@ -569,13 +574,19 @@ namespace UnitySkills
                 settings.themeStyleSheet = tss;
             }
 
-            var applyErr = ApplyPanelSettings(settings,
-                textSettingsPath, targetTexturePath, targetDisplay,
-                sortOrder, scale, match, referenceDpi, fallbackDpi, referenceSpritePixelsPerUnit,
-                dynamicAtlasMinSize, dynamicAtlasMaxSize, dynamicAtlasMaxSubTextureSize, dynamicAtlasFilters,
-                clearColor, colorClearR, colorClearG, colorClearB, colorClearA, clearDepthStencil,
-                renderMode, forceGammaRendering, bindingLogLevel, colliderUpdateMode, colliderIsTrigger,
-                vertexBudget, textureSlotCount);
+            var applyErr = ApplyPanelSettings(settings, new PanelSettingsArgs
+            {
+                textSettingsPath = textSettingsPath, targetTexturePath = targetTexturePath,
+                targetDisplay = targetDisplay, sortOrder = sortOrder, scale = scale, match = match,
+                referenceDpi = referenceDpi, fallbackDpi = fallbackDpi, referenceSpritePixelsPerUnit = referenceSpritePixelsPerUnit,
+                dynamicAtlasMinSize = dynamicAtlasMinSize, dynamicAtlasMaxSize = dynamicAtlasMaxSize,
+                dynamicAtlasMaxSubTextureSize = dynamicAtlasMaxSubTextureSize, dynamicAtlasFilters = dynamicAtlasFilters,
+                clearColor = clearColor, colorClearR = colorClearR, colorClearG = colorClearG,
+                colorClearB = colorClearB, colorClearA = colorClearA, clearDepthStencil = clearDepthStencil,
+                renderMode = renderMode, forceGammaRendering = forceGammaRendering, bindingLogLevel = bindingLogLevel,
+                colliderUpdateMode = colliderUpdateMode, colliderIsTrigger = colliderIsTrigger,
+                vertexBudget = vertexBudget, textureSlotCount = textureSlotCount
+            });
             if (applyErr != null) return applyErr;
 
             EditorUtility.SetDirty(settings);
@@ -668,8 +679,8 @@ namespace UnitySkills
 
             GetTemplateContent(template.ToLower(), uiName, $"{uiName}.uss", out var ussContent, out var uxmlContent);
 
-            File.WriteAllText(ussFilePath, ussContent, Utf8NoBom);
-            File.WriteAllText(uxmlFilePath, uxmlContent, Utf8NoBom);
+            File.WriteAllText(ussFilePath, ussContent, SkillsCommon.Utf8NoBom);
+            File.WriteAllText(uxmlFilePath, uxmlContent, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(ussFilePath);
             AssetDatabase.ImportAsset(uxmlFilePath);
 
@@ -731,112 +742,132 @@ namespace UnitySkills
             return result;
         }
 
+        private struct PanelSettingsArgs
+        {
+            public string textSettingsPath;
+            public string targetTexturePath;
+            public int? targetDisplay;
+            public float? sortOrder;
+            public float? scale;
+            public float? match;
+            public float? referenceDpi;
+            public float? fallbackDpi;
+            public float? referenceSpritePixelsPerUnit;
+            public int? dynamicAtlasMinSize;
+            public int? dynamicAtlasMaxSize;
+            public int? dynamicAtlasMaxSubTextureSize;
+            public string dynamicAtlasFilters;
+            public bool? clearColor;
+            public float? colorClearR;
+            public float? colorClearG;
+            public float? colorClearB;
+            public float? colorClearA;
+            public bool? clearDepthStencil;
+            public string renderMode;
+            public bool? forceGammaRendering;
+            public string bindingLogLevel;
+            public string colliderUpdateMode;
+            public bool? colliderIsTrigger;
+            public int? vertexBudget;
+            public int? textureSlotCount;
+        }
+
         /// <summary>
         /// Shared helper to apply extended PanelSettings properties (used by create and set).
         /// Returns null on success, or an error object on failure.
         /// </summary>
-        private static object ApplyPanelSettings(PanelSettings settings,
-            string textSettingsPath, string targetTexturePath, int? targetDisplay,
-            float? sortOrder, float? scale, float? match,
-            float? referenceDpi, float? fallbackDpi, float? referenceSpritePixelsPerUnit,
-            int? dynamicAtlasMinSize, int? dynamicAtlasMaxSize, int? dynamicAtlasMaxSubTextureSize,
-            string dynamicAtlasFilters,
-            bool? clearColor, float? colorClearR, float? colorClearG, float? colorClearB, float? colorClearA,
-            bool? clearDepthStencil,
-            string renderMode, bool? forceGammaRendering, string bindingLogLevel,
-            string colliderUpdateMode, bool? colliderIsTrigger,
-            int? vertexBudget, int? textureSlotCount)
+        private static object ApplyPanelSettings(PanelSettings settings, in PanelSettingsArgs a)
         {
             // --- Asset references ---
-            if (!string.IsNullOrEmpty(textSettingsPath))
+            if (!string.IsNullOrEmpty(a.textSettingsPath))
             {
-                if (Validate.SafePath(textSettingsPath, "textSettingsPath") is object tsErr) return tsErr;
-                var ts = AssetDatabase.LoadAssetAtPath<PanelTextSettings>(textSettingsPath);
-                if (ts == null) return new { error = $"PanelTextSettings not found: {textSettingsPath}" };
+                if (Validate.SafePath(a.textSettingsPath, "textSettingsPath") is object tsErr) return tsErr;
+                var ts = AssetDatabase.LoadAssetAtPath<PanelTextSettings>(a.textSettingsPath);
+                if (ts == null) return new { error = $"PanelTextSettings not found: {a.textSettingsPath}" };
                 settings.textSettings = ts;
             }
 
-            if (!string.IsNullOrEmpty(targetTexturePath))
+            if (!string.IsNullOrEmpty(a.targetTexturePath))
             {
-                if (Validate.SafePath(targetTexturePath, "targetTexturePath") is object ttErr) return ttErr;
-                var rt = AssetDatabase.LoadAssetAtPath<RenderTexture>(targetTexturePath);
-                if (rt == null) return new { error = $"RenderTexture not found: {targetTexturePath}" };
+                if (Validate.SafePath(a.targetTexturePath, "targetTexturePath") is object ttErr) return ttErr;
+                var rt = AssetDatabase.LoadAssetAtPath<RenderTexture>(a.targetTexturePath);
+                if (rt == null) return new { error = $"RenderTexture not found: {a.targetTexturePath}" };
                 settings.targetTexture = rt;
             }
 
             // --- Numeric properties ---
-            if (targetDisplay.HasValue)  settings.targetDisplay = targetDisplay.Value;
-            if (sortOrder.HasValue)      settings.sortingOrder = sortOrder.Value;
-            if (scale.HasValue)          settings.scale = scale.Value;
-            if (match.HasValue)          settings.match = match.Value;
-            if (referenceDpi.HasValue)   settings.referenceDpi = referenceDpi.Value;
-            if (fallbackDpi.HasValue)    settings.fallbackDpi = fallbackDpi.Value;
-            if (referenceSpritePixelsPerUnit.HasValue)
+            if (a.targetDisplay.HasValue)  settings.targetDisplay = a.targetDisplay.Value;
+            if (a.sortOrder.HasValue)      settings.sortingOrder = a.sortOrder.Value;
+            if (a.scale.HasValue)          settings.scale = a.scale.Value;
+            if (a.match.HasValue)          settings.match = a.match.Value;
+            if (a.referenceDpi.HasValue)   settings.referenceDpi = a.referenceDpi.Value;
+            if (a.fallbackDpi.HasValue)    settings.fallbackDpi = a.fallbackDpi.Value;
+            if (a.referenceSpritePixelsPerUnit.HasValue)
             {
                 var rsppu = typeof(PanelSettings).GetProperty("referenceSpritePixelsPerUnit");
-                rsppu?.SetValue(settings, referenceSpritePixelsPerUnit.Value);
+                rsppu?.SetValue(settings, a.referenceSpritePixelsPerUnit.Value);
             }
 
             // --- Dynamic Atlas Settings (struct: read -> modify -> write back) ---
-            if (dynamicAtlasMinSize.HasValue || dynamicAtlasMaxSize.HasValue ||
-                dynamicAtlasMaxSubTextureSize.HasValue || !string.IsNullOrEmpty(dynamicAtlasFilters))
+            if (a.dynamicAtlasMinSize.HasValue || a.dynamicAtlasMaxSize.HasValue ||
+                a.dynamicAtlasMaxSubTextureSize.HasValue || !string.IsNullOrEmpty(a.dynamicAtlasFilters))
             {
                 var atlas = settings.dynamicAtlasSettings;
-                if (dynamicAtlasMinSize.HasValue)        atlas.minAtlasSize = dynamicAtlasMinSize.Value;
-                if (dynamicAtlasMaxSize.HasValue)        atlas.maxAtlasSize = dynamicAtlasMaxSize.Value;
-                if (dynamicAtlasMaxSubTextureSize.HasValue) atlas.maxSubTextureSize = dynamicAtlasMaxSubTextureSize.Value;
-                if (!string.IsNullOrEmpty(dynamicAtlasFilters)) atlas.activeFilters = ParseDynamicAtlasFilters(dynamicAtlasFilters);
+                if (a.dynamicAtlasMinSize.HasValue)        atlas.minAtlasSize = a.dynamicAtlasMinSize.Value;
+                if (a.dynamicAtlasMaxSize.HasValue)        atlas.maxAtlasSize = a.dynamicAtlasMaxSize.Value;
+                if (a.dynamicAtlasMaxSubTextureSize.HasValue) atlas.maxSubTextureSize = a.dynamicAtlasMaxSubTextureSize.Value;
+                if (!string.IsNullOrEmpty(a.dynamicAtlasFilters)) atlas.activeFilters = ParseDynamicAtlasFilters(a.dynamicAtlasFilters);
                 settings.dynamicAtlasSettings = atlas;
             }
 
             // --- Color Clear ---
-            if (clearColor.HasValue)        settings.clearColor = clearColor.Value;
-            if (clearDepthStencil.HasValue) settings.clearDepthStencil = clearDepthStencil.Value;
+            if (a.clearColor.HasValue)        settings.clearColor = a.clearColor.Value;
+            if (a.clearDepthStencil.HasValue) settings.clearDepthStencil = a.clearDepthStencil.Value;
 
-            if (colorClearR.HasValue || colorClearG.HasValue || colorClearB.HasValue || colorClearA.HasValue)
+            if (a.colorClearR.HasValue || a.colorClearG.HasValue || a.colorClearB.HasValue || a.colorClearA.HasValue)
             {
                 var c = settings.colorClearValue;
                 settings.colorClearValue = new Color(
-                    colorClearR ?? c.r, colorClearG ?? c.g, colorClearB ?? c.b, colorClearA ?? c.a);
+                    a.colorClearR ?? c.r, a.colorClearG ?? c.g, a.colorClearB ?? c.b, a.colorClearA ?? c.a);
             }
 
             // --- Unity 6+ properties ---
 #if UNITY_6000_0_OR_NEWER
-            if (forceGammaRendering.HasValue) settings.forceGammaRendering = forceGammaRendering.Value;
-            if (!string.IsNullOrEmpty(bindingLogLevel) && System.Enum.TryParse<UnityEngine.UIElements.BindingLogLevel>(bindingLogLevel, true, out var parsedLogLevel))
+            if (a.forceGammaRendering.HasValue) settings.forceGammaRendering = a.forceGammaRendering.Value;
+            if (!string.IsNullOrEmpty(a.bindingLogLevel) && System.Enum.TryParse<UnityEngine.UIElements.BindingLogLevel>(a.bindingLogLevel, true, out var parsedLogLevel))
                 settings.bindingLogLevel = parsedLogLevel;
-            if (vertexBudget.HasValue)     settings.vertexBudget = (uint)vertexBudget.Value;
+            if (a.vertexBudget.HasValue)     settings.vertexBudget = (uint)a.vertexBudget.Value;
 #if UNITY_6000_3_OR_NEWER
-            if (textureSlotCount.HasValue) settings.textureSlotCount = (TextureSlotCount)textureSlotCount.Value;
+            if (a.textureSlotCount.HasValue) settings.textureSlotCount = (TextureSlotCount)a.textureSlotCount.Value;
 #endif
 
             // renderMode, colliderUpdateMode, and colliderIsTrigger are internal; update them via SerializedObject.
-            if (!string.IsNullOrEmpty(renderMode) || !string.IsNullOrEmpty(colliderUpdateMode) || colliderIsTrigger.HasValue)
+            if (!string.IsNullOrEmpty(a.renderMode) || !string.IsNullOrEmpty(a.colliderUpdateMode) || a.colliderIsTrigger.HasValue)
             {
                 var so = new SerializedObject(settings);
-                if (!string.IsNullOrEmpty(renderMode))
+                if (!string.IsNullOrEmpty(a.renderMode))
                 {
                     var prop = so.FindProperty("m_RenderMode");
                     if (prop != null)
                     {
-                        if (renderMode.Equals("ScreenSpaceOverlay", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 0;
-                        else if (renderMode.Equals("WorldSpace", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 1;
+                        if (a.renderMode.Equals("ScreenSpaceOverlay", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 0;
+                        else if (a.renderMode.Equals("WorldSpace", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 1;
                     }
                 }
-                if (!string.IsNullOrEmpty(colliderUpdateMode))
+                if (!string.IsNullOrEmpty(a.colliderUpdateMode))
                 {
                     var prop = so.FindProperty("m_ColliderUpdateMode");
                     if (prop != null)
                     {
-                        if (colliderUpdateMode.Equals("Match3DBoundingBox", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 0;
-                        else if (colliderUpdateMode.Equals("Match2DDocumentRect", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 1;
-                        else if (colliderUpdateMode.Equals("KeepExistingCollider", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 2;
+                        if (a.colliderUpdateMode.Equals("Match3DBoundingBox", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 0;
+                        else if (a.colliderUpdateMode.Equals("Match2DDocumentRect", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 1;
+                        else if (a.colliderUpdateMode.Equals("KeepExistingCollider", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 2;
                     }
                 }
-                if (colliderIsTrigger.HasValue)
+                if (a.colliderIsTrigger.HasValue)
                 {
                     var prop = so.FindProperty("m_ColliderIsTrigger");
-                    if (prop != null) prop.boolValue = colliderIsTrigger.Value;
+                    if (prop != null) prop.boolValue = a.colliderIsTrigger.Value;
                 }
                 so.ApplyModifiedProperties();
             }
@@ -1260,7 +1291,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
                 newElement.SetAttributeValue("binding-path", bindingPath);
 
             parent.Add(newElement);
-            File.WriteAllText(filePath, xdoc.ToString(), Utf8NoBom);
+            File.WriteAllText(filePath, xdoc.ToString(), SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(filePath);
 
             return new { success = true, path = filePath, elementType, elementName, parentName = parentName ?? "(root)" };
@@ -1290,7 +1321,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
                 return new { error = $"Element with name '{elementName}' not found" };
 
             target.Remove();
-            File.WriteAllText(filePath, xdoc.ToString(), Utf8NoBom);
+            File.WriteAllText(filePath, xdoc.ToString(), SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(filePath);
 
             return new { success = true, path = filePath, removedElement = elementName };
@@ -1331,7 +1362,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             if (!string.IsNullOrEmpty(setAttribute))
                 target.SetAttributeValue(setAttribute, setAttributeValue ?? "");
 
-            File.WriteAllText(filePath, xdoc.ToString(), Utf8NoBom);
+            File.WriteAllText(filePath, xdoc.ToString(), SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(filePath);
 
             return new { success = true, path = filePath, element = newName ?? elementName };
@@ -1365,7 +1396,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
                 clone.SetAttributeValue("name", newName);
 
             target.AddAfterSelf(clone);
-            File.WriteAllText(filePath, xdoc.ToString(), Utf8NoBom);
+            File.WriteAllText(filePath, xdoc.ToString(), SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(filePath);
 
             return new { success = true, path = filePath, clonedFrom = elementName, newName = newName ?? "(copy)" };
@@ -1409,7 +1440,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
                 result = content.TrimEnd() + "\n\n" + newRule + "\n";
             }
 
-            File.WriteAllText(filePath, result, Utf8NoBom);
+            File.WriteAllText(filePath, result, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(filePath);
 
             return new { success = true, path = filePath, selector = normalizedSelector, action = existed ? "updated" : "added" };
@@ -1441,7 +1472,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
                 return new { error = $"Selector '{normalizedSelector}' not found in {filePath}" };
 
             var result = regex.Replace(content, "\n", 1);
-            File.WriteAllText(filePath, result, Utf8NoBom);
+            File.WriteAllText(filePath, result, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(filePath);
 
             return new { success = true, path = filePath, removedSelector = normalizedSelector };
@@ -1552,7 +1583,7 @@ public class {className} : EditorWindow
 }}
 ";
 
-            File.WriteAllText(savePath, code, Utf8NoBom);
+            File.WriteAllText(savePath, code, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(savePath);
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(savePath);
@@ -1621,7 +1652,7 @@ public class {className} : MonoBehaviour
 }}
 ";
 
-            File.WriteAllText(savePath, code, Utf8NoBom);
+            File.WriteAllText(savePath, code, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(savePath);
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(savePath);

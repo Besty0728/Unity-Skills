@@ -367,93 +367,28 @@ namespace UnitySkills
             var rt = go.GetComponent<RectTransform>();
             bool isUI = rt != null;
 
-            // World position
-            if (posX.HasValue || posY.HasValue || posZ.HasValue)
-            {
-                var pos = go.transform.position;
-                go.transform.position = new Vector3(
-                    posX ?? pos.x,
-                    posY ?? pos.y,
-                    posZ ?? pos.z);
-            }
-
-            // Local position
-            if (localPosX.HasValue || localPosY.HasValue || localPosZ.HasValue)
-            {
-                var pos = go.transform.localPosition;
-                go.transform.localPosition = new Vector3(
-                    localPosX ?? pos.x,
-                    localPosY ?? pos.y,
-                    localPosZ ?? pos.z);
-            }
-
-            // Rotation
-            if (rotX.HasValue || rotY.HasValue || rotZ.HasValue)
-            {
-                var rot = go.transform.eulerAngles;
-                go.transform.eulerAngles = new Vector3(
-                    rotX ?? rot.x,
-                    rotY ?? rot.y,
-                    rotZ ?? rot.z);
-            }
-
-            // Scale
-            if (scaleX.HasValue || scaleY.HasValue || scaleZ.HasValue)
-            {
-                var scale = go.transform.localScale;
-                go.transform.localScale = new Vector3(
-                    scaleX ?? scale.x,
-                    scaleY ?? scale.y,
-                    scaleZ ?? scale.z);
-            }
+            if (TryMergeVector3(posX, posY, posZ, go.transform.position, out var newPos))
+                go.transform.position = newPos;
+            if (TryMergeVector3(localPosX, localPosY, localPosZ, go.transform.localPosition, out var newLocalPos))
+                go.transform.localPosition = newLocalPos;
+            if (TryMergeVector3(rotX, rotY, rotZ, go.transform.eulerAngles, out var newRot))
+                go.transform.eulerAngles = newRot;
+            if (TryMergeVector3(scaleX, scaleY, scaleZ, go.transform.localScale, out var newScale))
+                go.transform.localScale = newScale;
 
             // RectTransform specific properties
             if (isUI)
             {
-                // Anchored position
-                if (anchoredPosX.HasValue || anchoredPosY.HasValue)
-                {
-                    var pos = rt.anchoredPosition;
-                    rt.anchoredPosition = new Vector2(
-                        anchoredPosX ?? pos.x,
-                        anchoredPosY ?? pos.y);
-                }
-
-                // Anchor min
-                if (anchorMinX.HasValue || anchorMinY.HasValue)
-                {
-                    var min = rt.anchorMin;
-                    rt.anchorMin = new Vector2(
-                        anchorMinX ?? min.x,
-                        anchorMinY ?? min.y);
-                }
-
-                // Anchor max
-                if (anchorMaxX.HasValue || anchorMaxY.HasValue)
-                {
-                    var max = rt.anchorMax;
-                    rt.anchorMax = new Vector2(
-                        anchorMaxX ?? max.x,
-                        anchorMaxY ?? max.y);
-                }
-
-                // Pivot
-                if (pivotX.HasValue || pivotY.HasValue)
-                {
-                    var pivot = rt.pivot;
-                    rt.pivot = new Vector2(
-                        pivotX ?? pivot.x,
-                        pivotY ?? pivot.y);
-                }
-
-                // Size delta
-                if (sizeDeltaX.HasValue || sizeDeltaY.HasValue)
-                {
-                    var size = rt.sizeDelta;
-                    rt.sizeDelta = new Vector2(
-                        sizeDeltaX ?? size.x,
-                        sizeDeltaY ?? size.y);
-                }
+                if (TryMergeVector2(anchoredPosX, anchoredPosY, rt.anchoredPosition, out var newAnchoredPos))
+                    rt.anchoredPosition = newAnchoredPos;
+                if (TryMergeVector2(anchorMinX, anchorMinY, rt.anchorMin, out var newAnchorMin))
+                    rt.anchorMin = newAnchorMin;
+                if (TryMergeVector2(anchorMaxX, anchorMaxY, rt.anchorMax, out var newAnchorMax))
+                    rt.anchorMax = newAnchorMax;
+                if (TryMergeVector2(pivotX, pivotY, rt.pivot, out var newPivot))
+                    rt.pivot = newPivot;
+                if (TryMergeVector2(sizeDeltaX, sizeDeltaY, rt.sizeDelta, out var newSizeDelta))
+                    rt.sizeDelta = newSizeDelta;
 
                 // Width/Height shortcuts
                 if (width.HasValue || height.HasValue)
@@ -512,55 +447,31 @@ namespace UnitySkills
                 var rt = go.GetComponent<RectTransform>();
                 bool isUI = rt != null;
 
-                // World position
-                if (item.posX.HasValue || item.posY.HasValue || item.posZ.HasValue)
-                {
-                    var pos = go.transform.position;
-                    go.transform.position = new Vector3(
-                        item.posX ?? pos.x,
-                        item.posY ?? pos.y,
-                        item.posZ ?? pos.z);
-                }
+                if (TryMergeVector3(item.posX, item.posY, item.posZ, go.transform.position, out var newPos))
+                    go.transform.position = newPos;
+                if (TryMergeVector3(item.localPosX, item.localPosY, item.localPosZ, go.transform.localPosition, out var newLocalPos))
+                    go.transform.localPosition = newLocalPos;
+                if (TryMergeVector3(item.rotX, item.rotY, item.rotZ, go.transform.eulerAngles, out var newRot))
+                    go.transform.eulerAngles = newRot;
+                if (TryMergeVector3(item.scaleX, item.scaleY, item.scaleZ, go.transform.localScale, out var newScale))
+                    go.transform.localScale = newScale;
 
-                // Local position
-                if (item.localPosX.HasValue || item.localPosY.HasValue || item.localPosZ.HasValue)
-                {
-                    var pos = go.transform.localPosition;
-                    go.transform.localPosition = new Vector3(
-                        item.localPosX ?? pos.x,
-                        item.localPosY ?? pos.y,
-                        item.localPosZ ?? pos.z);
-                }
-
-                // Rotation
-                if (item.rotX.HasValue || item.rotY.HasValue || item.rotZ.HasValue)
-                {
-                    var rot = go.transform.eulerAngles;
-                    go.transform.eulerAngles = new Vector3(
-                        item.rotX ?? rot.x,
-                        item.rotY ?? rot.y,
-                        item.rotZ ?? rot.z);
-                }
-
-                // Scale
-                if (item.scaleX.HasValue || item.scaleY.HasValue || item.scaleZ.HasValue)
-                {
-                    var scale = go.transform.localScale;
-                    go.transform.localScale = new Vector3(
-                        item.scaleX ?? scale.x,
-                        item.scaleY ?? scale.y,
-                        item.scaleZ ?? scale.z);
-                }
-
-                // UI Specifics
                 if (isUI)
                 {
+                    if (TryMergeVector2(item.anchoredPosX, item.anchoredPosY, rt.anchoredPosition, out var newAnchoredPos))
+                        rt.anchoredPosition = newAnchoredPos;
+                    if (TryMergeVector2(item.anchorMinX, item.anchorMinY, rt.anchorMin, out var newAnchorMin))
+                        rt.anchorMin = newAnchorMin;
+                    if (TryMergeVector2(item.anchorMaxX, item.anchorMaxY, rt.anchorMax, out var newAnchorMax))
+                        rt.anchorMax = newAnchorMax;
+                    if (TryMergeVector2(item.pivotX, item.pivotY, rt.pivot, out var newPivot))
+                        rt.pivot = newPivot;
+                    if (TryMergeVector2(item.sizeDeltaX, item.sizeDeltaY, rt.sizeDelta, out var newSizeDelta))
+                        rt.sizeDelta = newSizeDelta;
                     if (item.width.HasValue)
                         rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, item.width.Value);
                     if (item.height.HasValue)
                         rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, item.height.Value);
-
-                    // Add other UI properties as needed (keeping batch item lightweight for now)
                 }
 
                 return new
@@ -577,7 +488,7 @@ namespace UnitySkills
             public string name { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
-            
+
             // World transform
             public float? posX { get; set; }
             public float? posY { get; set; }
@@ -588,15 +499,39 @@ namespace UnitySkills
             public float? scaleX { get; set; }
             public float? scaleY { get; set; }
             public float? scaleZ { get; set; }
-            
+
             // Local transform
             public float? localPosX { get; set; }
             public float? localPosY { get; set; }
             public float? localPosZ { get; set; }
-            
-            // UI
+
+            // RectTransform (UI)
+            public float? anchoredPosX { get; set; }
+            public float? anchoredPosY { get; set; }
+            public float? anchorMinX { get; set; }
+            public float? anchorMinY { get; set; }
+            public float? anchorMaxX { get; set; }
+            public float? anchorMaxY { get; set; }
+            public float? pivotX { get; set; }
+            public float? pivotY { get; set; }
+            public float? sizeDeltaX { get; set; }
+            public float? sizeDeltaY { get; set; }
             public float? width { get; set; }
             public float? height { get; set; }
+        }
+
+        private static bool TryMergeVector3(float? x, float? y, float? z, Vector3 current, out Vector3 result)
+        {
+            if (!x.HasValue && !y.HasValue && !z.HasValue) { result = current; return false; }
+            result = new Vector3(x ?? current.x, y ?? current.y, z ?? current.z);
+            return true;
+        }
+
+        private static bool TryMergeVector2(float? x, float? y, Vector2 current, out Vector2 result)
+        {
+            if (!x.HasValue && !y.HasValue) { result = current; return false; }
+            result = new Vector2(x ?? current.x, y ?? current.y);
+            return true;
         }
 
         [UnitySkill("gameobject_duplicate", "Duplicate a GameObject (supports name/instanceId/path). Returns: originalName, copyName, copyInstanceId, copyPath",
