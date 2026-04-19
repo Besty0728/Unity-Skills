@@ -175,6 +175,25 @@ Reimport multiple assets matching a pattern.
 | `folder` | string | No | Folder root to search (default `Assets`) |
 | `limit` | int | No | Max assets to reimport (default `100`) |
 
+### asset_set_labels
+Set labels on an asset (overwrites existing labels).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `assetPath` | string | Yes | Asset path |
+| `labels` | string | Yes | Comma-separated labels (e.g. `"ui,icon,hud"`). Empty entries are dropped |
+
+**Returns**: `{success, assetPath, labels: [...]}`
+
+### asset_get_labels
+Get the labels currently attached to an asset.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `assetPath` | string | Yes | Asset path |
+
+**Returns**: `{success, assetPath, labels: [...]}`
+
 ---
 
 ## Minimal Example
