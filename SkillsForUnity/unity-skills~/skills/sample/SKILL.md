@@ -36,7 +36,7 @@ Delete object by name.
 
 ### `find_objects_by_name`
 Find objects containing string.
-**Parameters:** `nameContains` (`name` 也可作为兼容别名)
+**Parameters:** `nameContains` (`name` is also accepted as a compatibility alias)
 
 ### `set_object_position`
 Set object position.

@@ -249,9 +249,15 @@ If you're using other tools that support Skills, install according to the Skills
 
 ---
 
-## ⭐ Star History
+## ⭐Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Besty0728/Unity-Skills&type=Date)](https://star-history.com/#Besty0728/Unity-Skills&Date)
+<a href="https://www.star-history.com/?type=date&repos=Besty0728%2FUnity-Skills">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ---
 

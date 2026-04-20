@@ -1,78 +1,78 @@
 # Netcode - Lifecycle & Call Order
 
-所有规则来自 `Runtime/Core/NetworkBehaviour.cs`、`Runtime/Core/NetworkObject.cs`、`Runtime/Spawning/NetworkSpawnManager.cs`。
+All rules here come from `Runtime/Core/NetworkBehaviour.cs`, `Runtime/Core/NetworkObject.cs`, and `Runtime/Spawning/NetworkSpawnManager.cs`.
 
-## 场景内预置 NetworkObject 的启动顺序
+## Startup order for in-scene NetworkObjects
 
 ```
-Unity Awake          (所有 MonoBehaviour / NetworkBehaviour)
+Unity Awake          (all MonoBehaviours / NetworkBehaviours)
 Unity OnEnable
-  ↓ (首帧前)
-NetworkManager.StartHost/StartServer/StartClient
+  ↓ (before first frame)
+NetworkManager.StartHost / StartServer / StartClient
   ↓
-SpawnManager 扫描场景中已有的 NetworkObject
+SpawnManager scans existing in-scene NetworkObjects
   ↓
-NetworkBehaviour.OnNetworkSpawn()  ← 这里 IsSpawned == true，IsOwner 可用
+NetworkBehaviour.OnNetworkSpawn()  ← IsSpawned == true, IsOwner is now valid
   ↓
 Unity Start
-  ↓ (持续)
+  ↓ (continuous)
 Unity Update / FixedUpdate ...
 ```
 
-**关键**：`OnNetworkSpawn` 先于 `Start`。任何依赖网络状态的初始化都应放 `OnNetworkSpawn` 而非 `Start`/`Awake`。
+**Key point**: `OnNetworkSpawn` runs before `Start`. Any initialization that depends on network state belongs in `OnNetworkSpawn`, not in `Start` or `Awake`.
 
-## 运行时 Spawn 对象的启动顺序
+## Startup order for runtime-spawned objects
 
 ```
-Instantiate(prefab)                    ← Server/Host 调用
+Instantiate(prefab)                    ← called by Server/Host
   ↓
-Unity Awake                            ← 此时 IsSpawned == false
+Unity Awake                            ← IsSpawned == false at this point
   ↓
 Unity OnEnable
   ↓
-networkObject.Spawn()                  ← Server/Host 调用
+networkObject.Spawn()                  ← called by Server/Host
   ↓
 NetworkBehaviour.OnNetworkSpawn()      ← IsSpawned = true
   ↓
-Unity Start                            ← 首帧
+Unity Start                            ← first frame
 ```
 
-## 卸载顺序
+## Teardown order
 
 ```
-NetworkObject.Despawn(true)  或 NetworkManager.Shutdown()
+NetworkObject.Despawn(true)  or  NetworkManager.Shutdown()
   ↓
 NetworkBehaviour.OnNetworkDespawn()
   ↓
 Unity OnDisable / OnDestroy
 ```
 
-**注意**：`OnDestroy` 里访问 `NetworkVariable` 已经不安全（变量可能已被释放）；清理订阅请在 `OnNetworkDespawn`。
+**Note**: Accessing `NetworkVariable` in `OnDestroy` is unsafe — the variable may already be disposed. Unsubscribe and clean up in `OnNetworkDespawn` instead.
 
-## 关键源码锚点
+## Source anchors
 
-| 回调 | 声明位置 | 说明 |
-|------|---------|------|
+| Callback | Declaration | Notes |
+|----------|-------------|-------|
 | `OnNetworkSpawn()` | `NetworkBehaviour.cs:704` | `public virtual void OnNetworkSpawn() { }` |
 | `OnNetworkDespawn()` | `NetworkBehaviour.cs:749` | `public virtual void OnNetworkDespawn() { }` |
-| `OnGainedOwnership()` | `NetworkBehaviour.cs:926` | 所有权迁入时触发 |
-| `OnLostOwnership()` | `NetworkBehaviour.cs:962` | 所有权迁出时触发 |
-| `OnNetworkObjectParentChanged(NetworkObject)` | `NetworkBehaviour.cs` | 父 NetworkObject 变更 |
+| `OnGainedOwnership()` | `NetworkBehaviour.cs:926` | Fires when ownership is transferred in |
+| `OnLostOwnership()` | `NetworkBehaviour.cs:962` | Fires when ownership is transferred out |
+| `OnNetworkObjectParentChanged(NetworkObject)` | `NetworkBehaviour.cs` | Parent NetworkObject changed |
 | `NetworkObject.IsSpawned` | `NetworkObject.cs:1224` | `public bool IsSpawned { get; internal set; }` |
-| `NetworkObject.NetworkObjectId` | `NetworkObject.cs:1172` | Spawn 后才有效 |
+| `NetworkObject.NetworkObjectId` | `NetworkObject.cs:1172` | Only valid after Spawn |
 
-## ❌ 常见错误 vs ✅ 正确模式
+## ❌ Anti-patterns vs ✅ Correct patterns
 
-### 1. 在 Awake / Start 访问网络状态
+### 1. Reading network state in Awake / Start
 
 ```csharp
-// ❌ WRONG — NetworkManager.Singleton 可能 null，IsOwner 一定 false
+// ❌ WRONG — NetworkManager.Singleton may be null; IsOwner is always false here
 void Awake() {
     if (NetworkManager.Singleton.IsServer) { ... }
     m_Health.Value = 100;
 }
 
-// ✅ CORRECT — OnNetworkSpawn 里 IsServer/IsOwner/IsClient 都已正确
+// ✅ CORRECT — IsServer / IsOwner / IsClient are valid in OnNetworkSpawn
 public override void OnNetworkSpawn() {
     if (IsServer) {
         m_Health.Value = 100;
@@ -80,15 +80,15 @@ public override void OnNetworkSpawn() {
 }
 ```
 
-### 2. 在 OnNetworkSpawn 里 `new` NetworkVariable
+### 2. `new`-ing NetworkVariable inside OnNetworkSpawn
 
 ```csharp
-// ❌ WRONG — NetworkVariable 必须字段声明时实例化，ILPP 在编译期绑定
+// ❌ WRONG — NetworkVariables must be field-initialized; ILPP binds them at compile time
 public override void OnNetworkSpawn() {
-    m_Health = new NetworkVariable<int>(100);  // 太晚了
+    m_Health = new NetworkVariable<int>(100);  // too late
 }
 
-// ✅ CORRECT — 字段声明处 new，OnNetworkSpawn 只做订阅/初值
+// ✅ CORRECT — field initializer; use OnNetworkSpawn only for subscriptions / initial values
 public NetworkVariable<int> Health = new NetworkVariable<int>(0);
 
 public override void OnNetworkSpawn() {
@@ -101,49 +101,49 @@ public override void OnNetworkDespawn() {
 }
 ```
 
-### 3. 依赖 OnGainedOwnership 在初次 Spawn 触发
+### 3. Expecting OnGainedOwnership to fire on initial Spawn
 
 ```csharp
-// ❌ WRONG — 对象初次 Spawn 给 owner 时，OnGainedOwnership 不会被调用
-//             只有 ChangeOwnership 迁移时才触发
+// ❌ WRONG — on the first spawn, the initial owner does NOT receive OnGainedOwnership.
+//            It only fires on subsequent ChangeOwnership calls.
 public override void OnGainedOwnership() {
-    InitForLocalPlayer();  // 初次 Spawn 的 owner 永远不会进来
+    InitForLocalPlayer();  // initial owner never reaches this path
 }
 
-// ✅ CORRECT — 初次 Owner 初始化放 OnNetworkSpawn
+// ✅ CORRECT — perform initial-owner setup in OnNetworkSpawn
 public override void OnNetworkSpawn() {
     if (IsOwner) InitForLocalPlayer();
 }
 public override void OnGainedOwnership() {
-    InitForLocalPlayer();  // 仅在后续 ChangeOwnership 迁入时执行
+    InitForLocalPlayer();  // runs only on later ownership transfers
 }
 ```
 
-### 4. Update 里轮询 NetworkManager.Singleton
+### 4. Polling `NetworkManager.Singleton` every frame
 
 ```csharp
-// ❌ WRONG — Singleton 可能瞬时切换（关机再开）；每帧访问也浪费
+// ❌ WRONG — Singleton can flip (shutdown + restart); per-frame access is wasted work
 void Update() {
     if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening) {
         DoNetworkThing();
     }
 }
 
-// ✅ CORRECT — 用 NetworkBehaviour 的 IsSpawned 判断，或订阅生命周期事件
+// ✅ CORRECT — use NetworkBehaviour's IsSpawned or subscribe to lifecycle events
 void Update() {
     if (!IsSpawned) return;
     DoNetworkThing();
 }
 ```
 
-## 何时用 `NetworkManager.OnServerStarted` / `OnClientStarted` / `OnClientConnectedCallback`
+## When to use `NetworkManager.OnServerStarted` / `OnClientStarted` / `OnClientConnectedCallback`
 
-- `OnServerStarted` — Server/Host 成功启动后，NetworkManager 级别的一次性事件
-- `OnClientConnectedCallback(ulong clientId)` — Server 侧：新客户端连入；Client 侧：本机连接完成（`clientId == LocalClientId`）
-- `OnClientDisconnectCallback(ulong clientId)` — 对称
-- 所有订阅都应在对应 `OnNetworkSpawn` 订阅、`OnNetworkDespawn` 解订，或者管理单例的 Awake/OnDestroy（需小心 Singleton 生命周期）
+- `OnServerStarted` — one-shot event after Server/Host startup succeeds (NetworkManager scope)
+- `OnClientConnectedCallback(ulong clientId)` — on the server side: a new client connected. On the client side: local connection completed (`clientId == LocalClientId`).
+- `OnClientDisconnectCallback(ulong clientId)` — symmetric to the above
+- Subscribe in `OnNetworkSpawn` and unsubscribe in `OnNetworkDespawn`, or manage from a singleton's Awake/OnDestroy (mind the Singleton lifetime).
 
-## 正确的 NetworkBehaviour 模板骨架
+## Canonical NetworkBehaviour template
 
 ```csharp
 using Unity.Netcode;
@@ -151,7 +151,7 @@ using UnityEngine;
 
 public class MyNetworkBehaviour : NetworkBehaviour
 {
-    // 1. NetworkVariable — 字段声明处实例化
+    // 1. NetworkVariable — instantiated at field declaration time
     public NetworkVariable<int> Health = new NetworkVariable<int>(
         0,
         NetworkVariableReadPermission.Everyone,
@@ -159,7 +159,7 @@ public class MyNetworkBehaviour : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        // 2. 订阅 + 权威端写初值
+        // 2. Subscribe, then seed initial value from the authority
         Health.OnValueChanged += OnHealthChanged;
         if (IsServer) Health.Value = 100;
         if (IsOwner)  InitLocalPlayer();
@@ -167,12 +167,12 @@ public class MyNetworkBehaviour : NetworkBehaviour
 
     public override void OnNetworkDespawn()
     {
-        // 3. 解订 — 镜像 OnNetworkSpawn
+        // 3. Unsubscribe — mirror OnNetworkSpawn exactly
         Health.OnValueChanged -= OnHealthChanged;
     }
 
-    private void OnHealthChanged(int oldVal, int newVal) { /* UI 等 */ }
+    private void OnHealthChanged(int oldVal, int newVal) { /* UI update, etc. */ }
 
-    private void InitLocalPlayer() { /* 只有拥有此对象的 client 执行 */ }
+    private void InitLocalPlayer() { /* runs only on the client that owns this object */ }
 }
 ```

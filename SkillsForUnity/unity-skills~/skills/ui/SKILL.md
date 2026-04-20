@@ -133,9 +133,9 @@ unity_skills.call_skill("ui_create_canvas", name="MainMenu")
 unity_skills.call_skill("ui_create_panel", name="MenuPanel", parent="MainMenu", a=0.7)
 unity_skills.call_skill("ui_set_rect", name="MenuPanel", width=320, height=240)
 unity_skills.call_skill("ui_create_batch", items=json.dumps([
-    {"type": "Button", "name": "StartBtn", "parent": "MenuPanel", "text": "开始", "width": 220, "height": 44},
-    {"type": "Button", "name": "OptionsBtn", "parent": "MenuPanel", "text": "设置", "width": 220, "height": 44},
-    {"type": "Button", "name": "QuitBtn", "parent": "MenuPanel", "text": "退出", "width": 220, "height": 44}
+    {"type": "Button", "name": "StartBtn", "parent": "MenuPanel", "text": "Start", "width": 220, "height": 44},
+    {"type": "Button", "name": "OptionsBtn", "parent": "MenuPanel", "text": "Options", "width": 220, "height": 44},
+    {"type": "Button", "name": "QuitBtn", "parent": "MenuPanel", "text": "Quit", "width": 220, "height": 44}
 ]))
 
 unity_skills.call_skill("ui_set_anchor", name="MenuPanel", preset="MiddleCenter")

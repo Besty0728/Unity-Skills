@@ -1,105 +1,105 @@
 # Netcode - RPC Rules
 
-所有规则来自 `Runtime/Messaging/RpcAttributes.cs`、`Runtime/Messaging/RpcTargets/RpcTarget.cs`、`Runtime/Messaging/RpcParams.cs`。
+All rules come from `Runtime/Messaging/RpcAttributes.cs`, `Runtime/Messaging/RpcTargets/RpcTarget.cs`, and `Runtime/Messaging/RpcParams.cs`.
 
-## 三套 RPC 模型（按优先级）
+## Three RPC models (ordered by preference)
 
-### 1. 通用 RPC（推荐，2.x 新增）— `[Rpc(SendTo.X)]`
+### 1. Universal RPC (recommended, 2.x) — `[Rpc(SendTo.X)]`
 
 ```csharp
-[Rpc(SendTo.Server)]                             // 等价于 [ServerRpc]
+[Rpc(SendTo.Server)]                             // same as [ServerRpc]
 void AttackServerRpc(int targetId) { ... }
 
-[Rpc(SendTo.NotServer)]                          // 等价于 [ClientRpc]
+[Rpc(SendTo.NotServer)]                          // same as [ClientRpc]
 void ShowDamageRpc(int damage) { ... }
 
-[Rpc(SendTo.Owner)]                              // 只给 owner 客户端执行
+[Rpc(SendTo.Owner)]                              // runs only on the owning client
 void GrantLootRpc(int itemId) { ... }
 
-[Rpc(SendTo.SpecifiedInParams)]                  // 运行时指定目标
+[Rpc(SendTo.SpecifiedInParams)]                  // target chosen at call time
 void TellClientRpc(int msg, RpcParams p = default) { ... }
 ```
 
-**无方法名约束**（不必以 `Rpc` / `ServerRpc` 结尾）。
+**No method-name constraint** (no need to end with `Rpc` or `ServerRpc`).
 
-### 2. 老式 ServerRpc / ClientRpc（1.x 起遗留，仍支持）
+### 2. Legacy ServerRpc / ClientRpc (from 1.x, still supported)
 
 ```csharp
 [ServerRpc]
-void AttackServerRpc(int targetId) { ... }       // ⚠ 方法名必须以 ServerRpc 结尾
+void AttackServerRpc(int targetId) { ... }       // ⚠ method name must end with ServerRpc
 
 [ClientRpc]
-void ShowDamageClientRpc(int damage) { ... }     // ⚠ 方法名必须以 ClientRpc 结尾
+void ShowDamageClientRpc(int damage) { ... }     // ⚠ method name must end with ClientRpc
 ```
 
-`[ServerRpc]` 继承 `RpcAttribute`，构造函数调用 `base(SendTo.Server)`（`RpcAttributes.cs:160`）。
-`[ClientRpc]` 同样继承，默认 `SendTo.NotServer`（`RpcAttributes.cs:176`）。
+`[ServerRpc]` inherits from `RpcAttribute` and its constructor calls `base(SendTo.Server)` (`RpcAttributes.cs:160`).
+`[ClientRpc]` does the same with `SendTo.NotServer` (`RpcAttributes.cs:176`).
 
-### 3. 自定义 Messages（底层）— `CustomMessageManager` / `MessagingSystem`
+### 3. Custom Messages (low-level) — `CustomMessageManager` / `MessagingSystem`
 
-非常少用，只在需要手控 payload 序列化时考虑。本文档不展开。
+Rarely needed. Only consider it when you must hand-serialize the payload. Not expanded here.
 
-## SendTo 枚举完整列表（11 个值）
+## SendTo enum — all 11 values
 
-来源 `Runtime/Messaging/RpcTargets/RpcTarget.cs:9-80`。
+Source: `Runtime/Messaging/RpcTargets/RpcTarget.cs:9-80`.
 
-| Value | 目标范围 |
-|-------|---------|
-| `Owner` | 只送给当前 NetworkObject 的 owner |
-| `NotOwner` | 所有非 owner 的可见观察者 |
-| `Server` | 只送给 Server（包括 Host 的 Server 侧） |
-| `NotServer` | 所有非 Server，含 Host 的 client 侧（但**不含**纯 Server 的 Host）  |
-| `Me` | 本地执行（不走网络） |
-| `NotMe` | 除本机外的所有观察者 |
-| `Everyone` | 所有观察者（含 Server 自己） |
-| `ClientsAndHost` | 所有 client 实例（含 Host 的 client 侧） |
-| `Authority` | 权威端（ClientServer 下 = Server；DistributedAuthority 下 = object authority） |
-| `NotAuthority` | 所有非权威端 |
-| `SpecifiedInParams` | 强制运行时通过 `RpcParams` 指定 |
+| Value | Target set |
+|-------|------------|
+| `Owner` | Only the current owner of this NetworkObject |
+| `NotOwner` | All visible observers except the owner |
+| `Server` | Only the Server (including the Server side of a Host) |
+| `NotServer` | Everyone except the Server; includes the Host's client side but **not** the Host's server side |
+| `Me` | Local execution only (does not traverse the network) |
+| `NotMe` | All observers except this machine |
+| `Everyone` | All observers (including the Server) |
+| `ClientsAndHost` | Every client instance (including the Host's client side) |
+| `Authority` | The authority (Server under ClientServer; per-object authority under DistributedAuthority) |
+| `NotAuthority` | All non-authority peers |
+| `SpecifiedInParams` | Target(s) supplied at runtime via `RpcParams` |
 
-> **`NotServer` vs `ClientsAndHost` 差异**：`NotServer` 不会给 Host 的 Server-side，但是给 Host 的 Client-side 执行一次；`ClientsAndHost` 同等效果——两者在大多数场景可以互换，但代码语义应选更贴近意图的那个。
+> **`NotServer` vs `ClientsAndHost`**: `NotServer` skips the Host's server-side but runs once on the Host's client-side; `ClientsAndHost` achieves the same effective set. They are interchangeable in most cases — pick the one whose name matches intent.
 
 ## RpcDelivery
 
 ```
-RpcDelivery.Reliable   (default)   可靠有序，包大也不丢
-RpcDelivery.Unreliable             不保证送达，适合高频率状态（位置等已有 NetworkTransform 做）
+RpcDelivery.Reliable   (default)   reliable, ordered, fragmented if large
+RpcDelivery.Unreliable             best-effort, suitable for high-frequency state (prefer NetworkTransform for position)
 ```
 
-源码：`RpcAttributes.cs:8-19, 88`。
+Source: `RpcAttributes.cs:8-19, 88`.
 
-## InvokePermission（控制谁能发起 RPC）
+## InvokePermission (who may invoke)
 
 ```csharp
 public enum RpcInvokePermission {
-    Everyone = 0,   // 任何客户端都能发
-    Server,         // 只有 Server 能发（很少用）
-    Owner,          // 只有 owner 能发
+    Everyone = 0,   // any client may invoke
+    Server,         // Server only (rarely used)
+    Owner,          // only the owner may invoke
 }
 ```
 
-源码：`RpcAttributes.cs:24-40`。
+Source: `RpcAttributes.cs:24-40`.
 
-### `RequireOwnership`（deprecated）迁移表
+### `RequireOwnership` (deprecated) — migration table
 
-| 老写法 | 新写法 |
+| Legacy | Modern |
 |--------|--------|
-| `[ServerRpc]` (默认 require=true) | `[Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]` |
-| `[ServerRpc(RequireOwnership = false)]` | `[Rpc(SendTo.Server)]`（默认 Everyone） |
+| `[ServerRpc]` (default `RequireOwnership = true`) | `[Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]` |
+| `[ServerRpc(RequireOwnership = false)]` | `[Rpc(SendTo.Server)]` (Everyone is the default) |
 
-源码注释：`RpcAttributes.cs:140-154`。
+Source note: `RpcAttributes.cs:140-154`.
 
-## RpcParams（运行时目标 / 发送方信息）
+## RpcParams (runtime targeting / sender info)
 
 ```csharp
-// 从接收端取发送者 ID
+// Read the sender's ClientId on the receiving side
 [Rpc(SendTo.Server)]
 void MyServerRpc(int payload, RpcParams rpcParams = default) {
     ulong sender = rpcParams.Receive.SenderClientId;
     // ...
 }
 
-// 发送到指定 client
+// Send to a specific client
 void SendTo(ulong targetClient) {
     MyTargetRpc(42, RpcTarget.Single(targetClient, RpcTargetUse.Temp));
 }
@@ -108,54 +108,54 @@ void SendTo(ulong targetClient) {
 void MyTargetRpc(int v, RpcParams p = default) { ... }
 ```
 
-老式对应物 `ServerRpcParams` / `ClientRpcParams` 仍可用，但通用 `RpcParams` 更推荐。
+The legacy `ServerRpcParams` / `ClientRpcParams` still work, but universal `RpcParams` is preferred.
 
-## 参数序列化约束
+## Parameter serialization constraints
 
-RPC 参数类型 ILPP 编译期校验，必须是以下之一：
+RPC parameter types are validated at compile time by ILPP. Allowed types:
 
-1. **unmanaged** 基础类型（int, float, bool, enum, struct of unmanaged ...）
-2. Unity 内建序列化类型（`Vector3`, `Quaternion`, `Color`, ...）
-3. `string`（内建支持）
-4. `INetworkSerializable` 实现者
-5. 上述任意的数组 `T[]` / `NativeArray<T>`
+1. **unmanaged** primitives (int, float, bool, enum, unmanaged struct)
+2. Unity's built-in serializable types (`Vector3`, `Quaternion`, `Color`, ...)
+3. `string` (built-in support)
+4. Types implementing `INetworkSerializable`
+5. Arrays / `NativeArray<T>` of any of the above
 
-**禁止**：`class`（非 string）、`List<T>`、`Dictionary<K,V>`、`object`、`Task`、`Func`/`Action`、自定义引用类型。
+**Forbidden**: non-string `class`, `List<T>`, `Dictionary<K,V>`, `object`, `Task`, `Func`/`Action`, arbitrary reference types.
 
-## ❌ 常见错误 vs ✅ 正确模式
+## ❌ Anti-patterns vs ✅ Correct patterns
 
-### 1. 幻觉特性
+### 1. Hallucinated attributes
 
 ```csharp
-// ❌ WRONG — 这些特性根本不存在
+// ❌ WRONG — these attributes do not exist
 [ServerOnly] void X() { }
 [ClientOnly] void X() { }
 [NetworkRpc] void X() { }
 [RPC(Client)] void X() { }
 ```
 
-唯一存在的是 `[Rpc]` / `[ServerRpc]` / `[ClientRpc]`。
+Only `[Rpc]`, `[ServerRpc]`, and `[ClientRpc]` exist.
 
-### 2. 老式 RPC 方法名没按约定
+### 2. Legacy RPC with non-conforming method name
 
 ```csharp
-// ❌ WRONG — ILPP 编译失败："ServerRpc methods must end with 'ServerRpc'"
+// ❌ WRONG — ILPP fails: "ServerRpc methods must end with 'ServerRpc'"
 [ServerRpc] void Attack(int id) { }
 
 // ✅ CORRECT
 [ServerRpc] void AttackServerRpc(int id) { }
-// 或改用通用 RPC
+// or switch to universal RPC
 [Rpc(SendTo.Server)] void Attack(int id) { }
 ```
 
-### 3. RPC 返回 Task / async
+### 3. RPC returning Task / async
 
 ```csharp
-// ❌ WRONG — RPC 必须 void，async Task 会编译或运行时失败
+// ❌ WRONG — RPC must be void. async Task fails at compile time or at runtime
 [Rpc(SendTo.Server)]
 async Task DoAsyncServerRpc() { await ...; }
 
-// ✅ CORRECT — RPC 本身同步；异步工作放内部并用另一个 RPC 回传结果
+// ✅ CORRECT — keep the RPC synchronous; do async work internally and reply via another RPC
 [Rpc(SendTo.Server)]
 void StartAsyncWorkRpc(int requestId) {
     _ = DoWorkInternal(requestId);
@@ -168,63 +168,63 @@ async Task DoWorkInternal(int id) {
 void ReplyClientRpc(int id, int result, RpcParams p = default) { ... }
 ```
 
-### 4. 传 List / class / string[] 误用
+### 4. Passing List / class / illegal array
 
 ```csharp
-// ❌ WRONG — List<int> 不能做 RPC 参数
+// ❌ WRONG — List<int> is not a legal RPC parameter
 [Rpc(SendTo.Server)] void SetItemsServerRpc(List<int> items) { }
 
-// ✅ CORRECT — 用数组
+// ✅ CORRECT — use an array
 [Rpc(SendTo.Server)] void SetItemsServerRpc(int[] items) { }
 ```
 
-### 5. 在 OnNetworkSpawn 发 RPC 给还没 Spawn 的对象
+### 5. Firing RPCs at peers that are not yet spawned
 
-RPC 需要 NetworkObject 已 Spawn。`OnNetworkSpawn` 本身可以发 RPC，但要发给**其他**对象时需保证那些对象也已 Spawn。不确定时订阅 `NetworkManager.OnClientConnectedCallback`。
+An RPC requires the target NetworkObject to be spawned. It is fine to send from inside your own `OnNetworkSpawn`, but if you target *another* object make sure it is already spawned. When unsure, subscribe to `NetworkManager.OnClientConnectedCallback`.
 
-### 6. 忘记同步方法名和 `Rpc` 后缀的一致性（通用 RPC 不需要）
+### 6. Forgetting the `Rpc` suffix convention (universal RPC is lenient)
 
 ```csharp
-// ✅ 通用 RPC — 无命名约束，但**推荐**带后缀 "Rpc" 让调用点明显：
-[Rpc(SendTo.Server)] void FireRpc() { }  // 推荐
-[Rpc(SendTo.Server)] void Fire() { }      // 合法但降低可读性
+// ✅ Universal RPC — no naming constraint, but the `Rpc` suffix makes call sites obvious
+[Rpc(SendTo.Server)] void FireRpc() { }  // recommended
+[Rpc(SendTo.Server)] void Fire() { }      // legal but less readable
 ```
 
-### 7. 高频状态同步选错 Delivery
+### 7. Wrong Delivery for high-frequency state
 
 ```csharp
-// ❌ WRONG — 每帧位置同步用默认 Reliable，带宽爆炸
+// ❌ WRONG — per-frame position with default Reliable wastes bandwidth
 [Rpc(SendTo.NotOwner, Delivery = RpcDelivery.Reliable)]
 void SendPositionRpc(Vector3 p) { }
 
-// ✅ BETTER — 位置同步直接挂 NetworkTransform；必须自己同步时选 Unreliable
+// ✅ BETTER — use NetworkTransform for position; if you must hand-roll it, use Unreliable
 [Rpc(SendTo.NotOwner, Delivery = RpcDelivery.Unreliable)]
 void SendPositionRpc(Vector3 p) { }
 ```
 
-## 推荐 RPC 模板骨架
+## Recommended RPC template
 
 ```csharp
 using Unity.Netcode;
 
 public class MyBehaviour : NetworkBehaviour
 {
-    // Client → Server：请求执行
+    // Client → Server: request execution
     [Rpc(SendTo.Server)]
     void RequestFireServerRpc(Vector3 dir, RpcParams p = default)
     {
-        if (p.Receive.SenderClientId != OwnerClientId) return;  // 权威校验
-        // Server 权威执行
+        if (p.Receive.SenderClientId != OwnerClientId) return;  // authority check
+        // Server-authoritative execution
         SpawnBullet(dir);
-        // 可选：广播结果
+        // optional: broadcast the result
         PlayFireSoundRpc();
     }
 
-    // Server → Clients：广播结果
+    // Server → Clients: broadcast effects
     [Rpc(SendTo.ClientsAndHost)]
-    void PlayFireSoundRpc() { /* 客户端播特效 */ }
+    void PlayFireSoundRpc() { /* clients play VFX/SFX */ }
 
-    // Server → 指定 client（例如奖励 drop）
+    // Server → specific client (e.g. loot drop)
     [Rpc(SendTo.SpecifiedInParams)]
     void GrantLootRpc(int itemId, RpcParams p = default) { /* ... */ }
 

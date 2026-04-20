@@ -1,136 +1,136 @@
 # Netcode - Scene Management
 
-所有规则来自 `Runtime/SceneManagement/NetworkSceneManager.cs`、`Runtime/Configuration/NetworkConfig.cs:109`。
+All rules come from `Runtime/SceneManagement/NetworkSceneManager.cs` and `Runtime/Configuration/NetworkConfig.cs:109`.
 
-## 核心开关：`NetworkConfig.EnableSceneManagement`
+## Master switch: `NetworkConfig.EnableSceneManagement`
 
 ```csharp
-public bool EnableSceneManagement = true;   // 默认 true
+public bool EnableSceneManagement = true;   // default true
 ```
-源码：`NetworkConfig.cs:109`。
+Source: `NetworkConfig.cs:109`.
 
-- **true（推荐，默认）**：所有场景加载 / 卸载由 `NetworkSceneManager` 统一调度；client 连接时自动同步 server 的场景状态
-- **false**：由业务自行保证 server/client 场景一致（仅动态 Spawn 可用，场景内预置 NetworkObject 不再同步）
+- **true (recommended, default)**: every scene load/unload is scheduled by `NetworkSceneManager`; clients automatically sync to the server's scene state on connect
+- **false**: your code is responsible for keeping Server and Client scene sets aligned. Only runtime-spawned objects are supported; in-scene NetworkObjects no longer sync
 
-**大多数项目保持 true**。False 路径（所谓 "PrefabSync" 模式）仅用于特殊场景（例如 client 严格独立于 server scene）。
+**Keep it true in most projects.** The `false` path (so-called "PrefabSync" mode) is only for unusual cases where the client's scene is strictly independent from the server's.
 
-## 关键 API（NetworkSceneManager）
+## Key APIs (NetworkSceneManager)
 
 ```csharp
-// 加载新场景（Server only）
+// Load a new scene (Server only)
 public SceneEventProgressStatus LoadScene(string sceneName, LoadSceneMode loadSceneMode);  // :1496
 
-// 卸载 additive 场景（Server only）
+// Unload an additive scene (Server only)
 public SceneEventProgressStatus UnloadScene(Scene scene);                                  // :1252
 
-// 客户端连接时期望的同步模式（Server 启动前设置）
+// Client synchronization mode (set this before starting the Server)
 public void SetClientSynchronizationMode(LoadSceneMode mode);                              // :803
 
-// 事件订阅
+// Event subscriptions
 public event Action<SceneEvent> OnSceneEvent;
 public event SceneLoadedDelegateHandler OnLoadComplete;
 public event SceneUnloadedDelegateHandler OnUnloadComplete;
 public event OnSynchronizeCompleteDelegateHandler OnSynchronizeComplete;
 
-// 自定义拦截
+// Custom filters
 public VerifySceneBeforeLoadingDelegateHandler VerifySceneBeforeLoading;
 public VerifySceneBeforeUnloadingDelegateHandler VerifySceneBeforeUnloading;
 ```
 
-`SceneEventProgressStatus` 返回值常见：
-- `Started` — 加载开始
-- `SceneNotLoaded` — 场景未在 Build Settings
-- `SceneEventInProgress` — 另一场景事件进行中
-- `InvalidSceneName` / `SceneFailedVerification` 等
+`SceneEventProgressStatus` values you will see most often:
+- `Started` — load has begun
+- `SceneNotLoaded` — the scene is not in Build Settings
+- `SceneEventInProgress` — another scene event is already running
+- `InvalidSceneName` / `SceneFailedVerification` — and similar
 
 ## LoadSceneMode
 
-- `LoadSceneMode.Single` — 清空当前所有已加载场景，加载目标为唯一场景
-- `LoadSceneMode.Additive` — 叠加加载；用 `UnloadScene` 卸载特定 additive
+- `LoadSceneMode.Single` — unload every currently loaded scene and load the target as the sole scene
+- `LoadSceneMode.Additive` — stack on top; call `UnloadScene` to remove a specific additive scene
 
-## 场景加载生命周期
+## Load lifecycle
 
 ```
-Server 调用 LoadScene("X", Single/Additive)
+Server calls LoadScene("X", Single/Additive)
   ↓
-所有 client 收到 SceneEvent(Load)
+All clients receive SceneEvent(Load)
   ↓
-Unity SceneManager.LoadSceneAsync (每端本地)
+Unity SceneManager.LoadSceneAsync (on each peer)
   ↓
-加载完成 → OnLoadComplete(clientId, sceneName, mode)
+Load completes → OnLoadComplete(clientId, sceneName, mode)
   ↓
-同步场景内的 NetworkObject（按 GlobalObjectIdHash 对齐）
+In-scene NetworkObjects are aligned by GlobalObjectIdHash
   ↓
-OnSynchronizeComplete(clientId)   ← 此时所有预置 NetworkObject 的 OnNetworkSpawn 已触发
+OnSynchronizeComplete(clientId)   ← at this point every pre-placed NetworkObject has fired OnNetworkSpawn
 ```
 
-## Client 连接时的同步
+## Client sync on connect
 
-- 默认 `SetClientSynchronizationMode(LoadSceneMode.Single)`：client 连上后将 **server 当前所有已加载场景** 加载到本机（Single 模式下 client 会先卸载自己本地全部非 active scene，再按 server 列表重建）
-- 如需 client 保留本地 UI 场景等不被覆盖，改用 Additive 模式并在 `VerifySceneBeforeLoading` 过滤
+- Default `SetClientSynchronizationMode(LoadSceneMode.Single)`: on connect, the client loads exactly the scene set the server currently has loaded (Single mode first unloads the client's non-active scenes, then rebuilds from the server's list)
+- If the client should keep a local UI scene that the server never touches, switch to Additive mode and filter in `VerifySceneBeforeLoading`
 
-## 场景内预置 NetworkObject
+## In-scene NetworkObjects
 
-- Build Settings 里的 scene asset
-- scene 里预放的 NetworkObject，每个都有 `GlobalObjectIdHash`
-- 同 scene 在 server 和 client 加载后，Netcode 按 hash **对齐** 预置对象，并触发 `OnNetworkSpawn`
+- A scene asset listed in Build Settings
+- Every pre-placed NetworkObject in that scene has a `GlobalObjectIdHash`
+- When both server and client load that scene, Netcode aligns the pre-placed objects by hash and fires `OnNetworkSpawn`
 
-> **不需要** 自己手动 Spawn 场景预置对象。直接 `Start` / `StartHost` 即可。
+> You do **not** manually Spawn in-scene objects. `Start` / `StartHost` is enough.
 
-## VerifySceneBeforeLoading 回调
+## VerifySceneBeforeLoading callback
 
 ```csharp
 public delegate bool VerifySceneBeforeLoadingDelegateHandler(
     int sceneIndex, string sceneName, LoadSceneMode loadSceneMode);
 
 NetworkManager.SceneManager.VerifySceneBeforeLoading = (idx, name, mode) => {
-    if (name == "ClientOnlyUI") return false;  // 阻止加载
+    if (name == "ClientOnlyUI") return false;  // block this load
     return true;
 };
 ```
-Client 可拒绝 server 下发的某个场景（该 client 跳过加载；server 继续）。用于 "client 永远不加载 UI/Editor 专用场景" 等。
+A client can reject a scene load requested by the server (that client skips the load; the server continues). Useful for "the client never loads this editor/UI-only scene".
 
-## ❌ 常见错误 vs ✅ 正确模式
+## ❌ Anti-patterns vs ✅ Correct patterns
 
-### 1. 用 Unity 原生 `SceneManager.LoadScene` 切场景
+### 1. Using Unity's `SceneManager.LoadScene` to switch scenes
 
 ```csharp
-// ❌ WRONG — client 不会跟随
+// ❌ WRONG — clients do not follow
 UnityEngine.SceneManagement.SceneManager.LoadScene("GameScene");
 
-// ✅ CORRECT — Server 调用 NetworkSceneManager
+// ✅ CORRECT — server calls NetworkSceneManager
 if (IsServer) {
     NetworkManager.SceneManager.LoadScene("GameScene", LoadSceneMode.Single);
 }
 ```
 
-### 2. Client 调 LoadScene
+### 2. Client calling LoadScene directly
 
 ```csharp
-// ❌ WRONG — 返回 NotServer 错误
+// ❌ WRONG — returns a NotServer error
 if (Input.GetKeyDown(KeyCode.Return)) {
     NetworkManager.SceneManager.LoadScene("Lobby", LoadSceneMode.Single);
 }
 
-// ✅ 通过 Rpc 请求 Server 切场景
+// ✅ Ask the server to switch via RPC
 [Rpc(SendTo.Server)] void RequestSceneServerRpc(FixedString32Bytes name) {
     NetworkManager.SceneManager.LoadScene(name.ToString(), LoadSceneMode.Single);
 }
 ```
 
-### 3. 忘记把场景加入 Build Settings
+### 3. Forgetting to add the scene to Build Settings
 
-`LoadScene("X")` 返回 `SceneNotLoaded`。把 scene 拖进 File > Build Settings。
+`LoadScene("X")` returns `SceneNotLoaded`. Drag the scene into File > Build Settings.
 
-### 4. 在 `Start()` 订阅 SceneManager 事件
+### 4. Subscribing to SceneManager events in `Start()`
 
 ```csharp
-// ⚠ NetworkManager.SceneManager 在 StartHost/Server 之前可能为 null
+// ⚠ NetworkManager.SceneManager can be null before StartHost/Server
 void Start() {
-    NetworkManager.SceneManager.OnLoadComplete += OnSceneLoaded;  // NRE 风险
+    NetworkManager.SceneManager.OnLoadComplete += OnSceneLoaded;  // NRE risk
 }
 
-// ✅ 订阅 NetworkManager.OnServerStarted 或 在 OnNetworkSpawn 里处理
+// ✅ Subscribe from NetworkManager.OnServerStarted or inside OnNetworkSpawn
 void Start() {
     NetworkManager.OnServerStarted += () => {
         NetworkManager.SceneManager.OnLoadComplete += OnSceneLoaded;
@@ -138,20 +138,20 @@ void Start() {
 }
 ```
 
-### 5. 场景切换时 `DontDestroyWithOwner` 对象意外消失
+### 5. Persistent objects lost during scene transitions
 
-场景 Single 切换会销毁"destroyWithScene=true"的 Spawn 对象。持久对象应：
+`Single`-mode scene switches destroy every spawn-with-scene object. For persistent objects:
 - `Spawn(destroyWithScene: false)`
-- 并在新场景里可能重复注册其 Parent（被 DDoL 的 NetworkObject 可用 `TrySetParent`）
+- Re-parent if needed in the new scene (a DDoL NetworkObject can be used as the target of `TrySetParent`)
 
-### 6. 在同一帧连续调两次 LoadScene
+### 6. Two LoadScene calls in the same frame
 
 ```csharp
-// ❌ 第二次返回 SceneEventInProgress
+// ❌ The second call returns SceneEventInProgress
 NetworkManager.SceneManager.LoadScene("A", LoadSceneMode.Single);
-NetworkManager.SceneManager.LoadScene("B", LoadSceneMode.Single);  // 被拒
+NetworkManager.SceneManager.LoadScene("B", LoadSceneMode.Single);  // rejected
 
-// ✅ 等待 OnLoadComplete 再发下一个
+// ✅ Wait for OnLoadComplete before issuing the next one
 NetworkManager.SceneManager.OnLoadComplete += OnLoaded;
 NetworkManager.SceneManager.LoadScene("A", LoadSceneMode.Single);
 
@@ -162,7 +162,7 @@ void OnLoaded(ulong clientId, string name, LoadSceneMode mode) {
 }
 ```
 
-## 场景切换模板
+## Scene-switch template
 
 ```csharp
 public class SceneController : NetworkBehaviour
@@ -188,7 +188,7 @@ public class SceneController : NetworkBehaviour
     }
 
     void OnLoadComplete(ulong clientId, string sceneName, LoadSceneMode mode) {
-        // server 端所有 client 都完成后（clientId == NetworkManager.ServerClientId 是 server 自己那条）
+        // The entry with clientId == NetworkManager.ServerClientId is the server's own completion.
     }
 }
 ```

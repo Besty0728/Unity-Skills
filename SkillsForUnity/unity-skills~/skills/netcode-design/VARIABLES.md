@@ -1,10 +1,10 @@
 # Netcode - NetworkVariable & NetworkList
 
-所有规则来自 `Runtime/NetworkVariable/NetworkVariable.cs`、`NetworkVariableBase.cs`、`NetworkVariablePermission.cs`、`Collections/NetworkList.cs`。
+All rules come from `Runtime/NetworkVariable/NetworkVariable.cs`, `NetworkVariableBase.cs`, `NetworkVariablePermission.cs`, and `Collections/NetworkList.cs`.
 
 ## NetworkVariable&lt;T&gt;
 
-### 签名
+### Signature
 ```csharp
 public class NetworkVariable<T> : NetworkVariableBase
 {
@@ -18,29 +18,29 @@ public class NetworkVariable<T> : NetworkVariableBase
     public bool CheckDirtyState() { ... }
 }
 ```
-源码位置：`Runtime/NetworkVariable/NetworkVariable.cs:12`。
+Source: `Runtime/NetworkVariable/NetworkVariable.cs:12`.
 
-### T 的约束（ILPP 编译期校验）
-1. `unmanaged` struct（含 primitive / enum / `Vector3` / `Quaternion` / `FixedString32Bytes` 等）
-2. 或实现 `INetworkSerializable`
+### Constraints on `T` (ILPP enforced at compile time)
+1. `unmanaged` struct (primitives, enums, `Vector3`, `Quaternion`, `FixedString32Bytes`, etc.)
+2. Or a type implementing `INetworkSerializable`
 
-**不合法**：`string`（用 `FixedString*`）、`List<T>`（用 `NetworkList<T>`）、`class`、接口、`object`、委托。
+**Not allowed**: `string` (use `FixedString*`), `List<T>` (use `NetworkList<T>`), `class`, interfaces, `object`, delegates.
 
 ### Permissions
 ```csharp
 public enum NetworkVariableReadPermission  { Everyone, Owner }
 public enum NetworkVariableWritePermission { Server,   Owner }
 ```
-源码：`Runtime/NetworkVariable/NetworkVariablePermission.cs:10, 25`。
+Source: `Runtime/NetworkVariable/NetworkVariablePermission.cs:10, 25`.
 
-### UpdateTraits（可选，控制同步频率）
+### UpdateTraits (optional throttling)
 ```csharp
 public struct NetworkVariableUpdateTraits {
     public float MinSecondsBetweenUpdates;
-    public int   TickRateDivisor;  // 每 N tick 才发一次
+    public int   TickRateDivisor;  // send at most once every N ticks
 }
 ```
-源码：`NetworkVariableBase.cs:11`。用 `SetUpdateTraits(new NetworkVariableUpdateTraits { ... })` 设置。
+Source: `NetworkVariableBase.cs:11`. Apply via `SetUpdateTraits(new NetworkVariableUpdateTraits { ... })`.
 
 ## NetworkList&lt;T&gt;
 
@@ -58,49 +58,49 @@ public class NetworkList<T> : NetworkVariableBase
     public void Clear();
 }
 ```
-源码：`Runtime/NetworkVariable/Collections/NetworkList.cs:14`。
+Source: `Runtime/NetworkVariable/Collections/NetworkList.cs:14`.
 
-`OnListChanged` 事件参数 `NetworkListEvent<T>`（`NetworkList.cs:720`）含 `Type`（Add/Remove/Insert/Clear/Value）、`Index`、`Value`、`PreviousValue`。
+The `OnListChanged` event argument is `NetworkListEvent<T>` (`NetworkList.cs:720`) with `Type` (Add/Remove/Insert/Clear/Value), `Index`, `Value`, `PreviousValue`.
 
-### 不要用 `NetworkVariable<List<T>>`
+### Do not use `NetworkVariable<List<T>>`
 ```csharp
-// ❌ 编译失败 — List<T> 非 unmanaged
+// ❌ Compile error — List<T> is not unmanaged
 public NetworkVariable<List<int>> Bad = new NetworkVariable<List<int>>();
 
-// ✅ 用 NetworkList
+// ✅ Use NetworkList
 public NetworkList<int> Good = new NetworkList<int>();
 ```
 
-## AnticipatedNetworkVariable&lt;T&gt;（高级，可选）
+## AnticipatedNetworkVariable&lt;T&gt; (advanced, optional)
 
 ```csharp
 public class AnticipatedNetworkVariable<T> : NetworkVariableBase
 ```
-源码：`Runtime/NetworkVariable/AnticipatedNetworkVariable.cs`。用于客户端预测 + 权威服务器回滚场景（FPS 移动、技能判定）。一般项目先不用。
+Source: `Runtime/NetworkVariable/AnticipatedNetworkVariable.cs`. Used for client-side prediction + authoritative rollback (FPS movement, ability resolution). Skip it for most projects.
 
-## 字符串与集合实用类型
+## Strings and small collections
 
-当 T 需要"字符串"或"小数组"时，使用 `Unity.Collections` 的固定尺寸类型：
+When you want a "string" or a small array, use fixed-size types from `Unity.Collections`:
 
-| 类型 | 用途 |
-|------|------|
-| `FixedString32Bytes` | 短文本（昵称） |
-| `FixedString64Bytes` / `128Bytes` / `512Bytes` / `4096Bytes` | 更长文本 |
-| `NativeList<T>` / `NativeArray<T>` | 通常不直接放 NetworkVariable；作为 RPC 参数 OK |
+| Type | Use case |
+|------|----------|
+| `FixedString32Bytes` | Short text (nicknames) |
+| `FixedString64Bytes` / `128Bytes` / `512Bytes` / `4096Bytes` | Longer text |
+| `NativeList<T>` / `NativeArray<T>` | Usually not embedded in NetworkVariable; fine as RPC parameters |
 
-## ❌ 常见错误 vs ✅ 正确模式
+## ❌ Anti-patterns vs ✅ Correct patterns
 
-### 1. 把 new 放到 OnNetworkSpawn 里
+### 1. Constructing NetworkVariable in OnNetworkSpawn
 
 ```csharp
-// ❌ WRONG — 字段未初始化，ILPP 找不到要追踪的实例
+// ❌ WRONG — the field is uninitialized at load time, so ILPP has nothing to track
 public NetworkVariable<int> Health;
 
 public override void OnNetworkSpawn() {
-    Health = new NetworkVariable<int>(100);  // 太晚
+    Health = new NetworkVariable<int>(100);  // too late
 }
 
-// ✅ CORRECT — 字段声明时 new
+// ✅ CORRECT — initialize at field declaration
 public NetworkVariable<int> Health = new NetworkVariable<int>(0);
 
 public override void OnNetworkSpawn() {
@@ -108,27 +108,27 @@ public override void OnNetworkSpawn() {
 }
 ```
 
-### 2. 用 string 做 NetworkVariable
+### 2. Using string as a NetworkVariable type
 
 ```csharp
-// ❌ WRONG — string 不是 unmanaged
+// ❌ WRONG — string is not unmanaged
 public NetworkVariable<string> Name = new NetworkVariable<string>("");
 
-// ✅ CORRECT — FixedStringNBytes
+// ✅ CORRECT — use FixedStringNBytes
 using Unity.Collections;
 public NetworkVariable<FixedString32Bytes> Name =
     new NetworkVariable<FixedString32Bytes>(new FixedString32Bytes(""));
 ```
 
-### 3. 订阅 / 解订 不对称导致泄漏
+### 3. Subscribing without unsubscribing (memory leak)
 
 ```csharp
-// ❌ WRONG — 没 OnNetworkDespawn 解订；Spawn 再 Despawn 多次会重复订阅
+// ❌ WRONG — no OnNetworkDespawn unsubscription; repeated Spawn/Despawn cycles accumulate handlers
 public override void OnNetworkSpawn() {
     Health.OnValueChanged += OnHp;
 }
 
-// ✅ CORRECT — 镜像解订
+// ✅ CORRECT — mirror subscribe/unsubscribe
 public override void OnNetworkSpawn() {
     Health.OnValueChanged += OnHp;
 }
@@ -137,45 +137,45 @@ public override void OnNetworkDespawn() {
 }
 ```
 
-### 4. 在 OnDestroy 读 NetworkVariable
+### 4. Reading NetworkVariable in OnDestroy
 
 ```csharp
-// ❌ WRONG — NetworkVariable 在 OnNetworkDespawn 后就不再有效
+// ❌ WRONG — the variable may already be disposed after OnNetworkDespawn
 void OnDestroy() {
-    Debug.Log(Health.Value);  // 可能抛或返回无意义值
+    Debug.Log(Health.Value);  // can throw or return garbage
 }
 
-// ✅ CORRECT — 清理在 OnNetworkDespawn
+// ✅ CORRECT — finalize in OnNetworkDespawn
 public override void OnNetworkDespawn() {
     Debug.Log($"Final Hp: {Health.Value}");
     Health.OnValueChanged -= OnHp;
 }
 ```
 
-### 5. Client 写默认权限 NetworkVariable
+### 5. Client writing a default-permission NetworkVariable
 
 ```csharp
-// ❌ WRONG — 默认 Server 写，Client 赋值被丢弃
+// ❌ WRONG — default is Server-write; client assignments are dropped
 public NetworkVariable<int> Score = new NetworkVariable<int>();
 
 void UI_OnClientScoreClick() {
-    Score.Value++;   // Client 无效
+    Score.Value++;   // no-op on the client
 }
 
-// ✅ 选项 A — Owner 写权限
+// ✅ Option A — Owner write permission
 public NetworkVariable<int> Score = new NetworkVariable<int>(
     0,
     NetworkVariableReadPermission.Everyone,
     NetworkVariableWritePermission.Owner);
 
-// ✅ 选项 B — 保持 Server 写，用 RPC 请求
+// ✅ Option B — keep Server-write, request via RPC
 [Rpc(SendTo.Server)] void IncServerRpc() { Score.Value++; }
 ```
 
-### 6. 自定义 struct 忘实现 INetworkSerializable
+### 6. Custom struct that forgot INetworkSerializable
 
 ```csharp
-// struct 含引用类型字段就不是 unmanaged，必须实现 INetworkSerializable
+// A struct with reference-type fields is not unmanaged. It must implement INetworkSerializable.
 public struct PlayerInfo : INetworkSerializable
 {
     public FixedString32Bytes Name;
@@ -191,23 +191,23 @@ public struct PlayerInfo : INetworkSerializable
 public NetworkVariable<PlayerInfo> Info = new NetworkVariable<PlayerInfo>();
 ```
 
-### 7. 高频写入不节流
+### 7. High-frequency writes without throttling
 
 ```csharp
-// ❌ WRONG — 每帧写，NetworkVariable 会每 tick 发包
+// ❌ WRONG — per-frame writes trigger a packet every tick
 void Update() {
     if (IsServer) Accuracy.Value = ComputeAccuracy();
 }
 
-// ✅ 设置 UpdateTraits 节流
+// ✅ Throttle with UpdateTraits
 void Awake() {
     Accuracy.SetUpdateTraits(new NetworkVariableUpdateTraits {
-        MinSecondsBetweenUpdates = 0.1f   // 最多 10Hz
+        MinSecondsBetweenUpdates = 0.1f   // cap at 10 Hz
     });
 }
 ```
 
-## NetworkList 事件处理模板
+## NetworkList event handling template
 
 ```csharp
 using Unity.Netcode;
@@ -229,7 +229,7 @@ public class Inventory : NetworkBehaviour
             case NetworkListEvent<int>.EventType.Add:    /* ... */ break;
             case NetworkListEvent<int>.EventType.Remove: /* ... */ break;
             case NetworkListEvent<int>.EventType.Clear:  /* ... */ break;
-            case NetworkListEvent<int>.EventType.Value:  /* index 处被赋值 */ break;
+            case NetworkListEvent<int>.EventType.Value:  /* index was reassigned */ break;
         }
     }
 

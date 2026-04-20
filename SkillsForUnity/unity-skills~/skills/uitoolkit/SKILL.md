@@ -163,7 +163,7 @@ unity_skills.call_skill("uitk_create_uss",
 
 unity_skills.call_skill("uitk_create_uxml",
     savePath="Assets/UI/HUD.uxml",
-    content="<?xml version=\"1.0\" encoding=\"utf-8\"?><engine:UXML xmlns:engine=\"UnityEngine.UIElements\"><Style src=\"HUD.uss\" /><engine:Label class=\"title\" text=\"开始\" /></engine:UXML>"
+    content="<?xml version=\"1.0\" encoding=\"utf-8\"?><engine:UXML xmlns:engine=\"UnityEngine.UIElements\"><Style src=\"HUD.uss\" /><engine:Label class=\"title\" text=\"Start\" /></engine:UXML>"
 )
 
 unity_skills.call_skill("uitk_create_document",

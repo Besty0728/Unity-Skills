@@ -1,84 +1,84 @@
 # Netcode - Ownership & Authority
 
-所有规则来自 `Runtime/Core/NetworkBehaviour.cs:455-547`、`Runtime/Core/NetworkObject.cs:1172-2215`、`Runtime/Configuration/NetworkConfig.cs:169`。
+All rules here come from `Runtime/Core/NetworkBehaviour.cs:455-547`, `Runtime/Core/NetworkObject.cs:1172-2215`, and `Runtime/Configuration/NetworkConfig.cs:169`.
 
-## 角色关系
+## Role properties
 
-| 属性 | 含义 | 源码位置 |
-|------|------|---------|
-| `IsServer` | 当前进程是 Server 或 Host | `NetworkBehaviour.cs:505` |
-| `IsClient` | 当前进程是 Client 或 Host | `NetworkBehaviour.cs:530` |
-| `IsHost` | **等价于** `IsServer && IsClient` | `NetworkBehaviour.cs:536` |
-| `IsOwner` | 当前 NetworkObject 的 `OwnerClientId == LocalClientId` 且已 Spawn | `NetworkObject.cs:1214` |
-| `IsLocalPlayer` | 此 NetworkBehaviour 所在 NetworkObject 是本机 PlayerObject | `NetworkBehaviour.cs:495` |
-| `OwnerClientId` | 当前所有者的 ClientId | `NetworkObject.cs:1177` |
-| `LocalClientId` | 本机在网络中的 ID（Server 为 0） | `NetworkManager.cs:588` |
+| Property | Meaning | Source |
+|----------|---------|--------|
+| `IsServer` | Current process is a Server or Host | `NetworkBehaviour.cs:505` |
+| `IsClient` | Current process is a Client or Host | `NetworkBehaviour.cs:530` |
+| `IsHost` | Equivalent to `IsServer && IsClient` | `NetworkBehaviour.cs:536` |
+| `IsOwner` | This NetworkObject's `OwnerClientId == LocalClientId` and it is spawned | `NetworkObject.cs:1214` |
+| `IsLocalPlayer` | This NetworkBehaviour's NetworkObject is the local machine's PlayerObject | `NetworkBehaviour.cs:495` |
+| `OwnerClientId` | Current owner's ClientId | `NetworkObject.cs:1177` |
+| `LocalClientId` | Local machine's ID on the network (Server = 0) | `NetworkManager.cs:588` |
 
-**重要不变式**：
-- Host = Server + Client 同一进程。IsHost 为 true 时 IsServer **和** IsClient 都为 true。
-- 只有 Server / Host 有权在 NetworkObject 上调用 `Spawn` / `Despawn` / `ChangeOwnership` / `RemoveOwnership`。
-- ServerOnly（非 Host）模式下 `IsClient == false`；纯 Client 模式下 `IsServer == false`。
+**Invariants**:
+- Host = Server + Client in one process. When `IsHost` is true, both `IsServer` and `IsClient` are true.
+- Only Server / Host may call `Spawn`, `Despawn`, `ChangeOwnership`, `RemoveOwnership` on a NetworkObject.
+- In Server-only mode (no Host), `IsClient` is false. In pure Client mode, `IsServer` is false.
 
-## 权限矩阵
+## Permission matrix
 
-| 操作 | Server | Host | Client (非 owner) | Client (owner) | 备注 |
-|------|:------:|:----:|:-----------------:|:--------------:|------|
-| `networkObject.Spawn()` | ✅ | ✅ | ❌ | ❌ | 其他调用者抛异常或被忽略 |
-| `networkObject.Despawn()` | ✅ | ✅ | ❌ | ❌ | 同上 |
+| Operation | Server | Host | Client (non-owner) | Client (owner) | Notes |
+|-----------|:------:|:----:|:------------------:|:--------------:|-------|
+| `networkObject.Spawn()` | ✅ | ✅ | ❌ | ❌ | Other callers throw or are dropped |
+| `networkObject.Despawn()` | ✅ | ✅ | ❌ | ❌ | Same as above |
 | `ChangeOwnership(id)` | ✅ | ✅ | ❌ | ❌ | `NetworkObject.cs:1971` |
 | `RemoveOwnership()` | ✅ | ✅ | ❌ | ❌ | `NetworkObject.cs:1954` |
-| 写 `NetworkVariable` (Server 写权限) | ✅ | ✅ | ❌ | ❌ | 默认权限 |
-| 写 `NetworkVariable` (Owner 写权限) | ❌ | ✅* | ❌ | ✅ | *Host 当 Owner 时才能写 |
-| 发起 `[Rpc(SendTo.Server)]` | — | ✅ | ✅ | ✅ | Server 自己也能发给自己 |
-| 发起 `[Rpc(SendTo.X)]` (InvokePermission=Owner) | — | ✅* | ❌ | ✅ | *Host=owner 时可 |
-| 读 `NetworkVariable` | ✅ | ✅ | ✅ | ✅ | 默认 `Everyone` 读权限 |
+| Write `NetworkVariable` (Server write permission) | ✅ | ✅ | ❌ | ❌ | Default |
+| Write `NetworkVariable` (Owner write permission) | ❌ | ✅* | ❌ | ✅ | *Host only when Host is the owner |
+| Invoke `[Rpc(SendTo.Server)]` | — | ✅ | ✅ | ✅ | Server can send to itself |
+| Invoke `[Rpc(SendTo.X)]` with `InvokePermission=Owner` | — | ✅* | ❌ | ✅ | *Host only when Host is the owner |
+| Read `NetworkVariable` | ✅ | ✅ | ✅ | ✅ | Default read permission is `Everyone` |
 | `NetworkSceneManager.LoadScene` | ✅ | ✅ | ❌ | ❌ | `NetworkSceneManager.cs:1496` |
-| `transform` 直接赋值并期望同步 | ❌ | ❌ | ❌ | ❌ | 必须通过 `NetworkTransform` 或权威 RPC |
+| Direct `transform` assignment with sync expectation | ❌ | ❌ | ❌ | ❌ | Use `NetworkTransform` or an authoritative RPC |
 
-## Distributed Authority 模式
+## Distributed Authority mode
 
-`NetworkConfig.NetworkTopology = NetworkTopologyTypes.DistributedAuthority` 开启后，权限模型改变：
+When `NetworkConfig.NetworkTopology = NetworkTopologyTypes.DistributedAuthority`, the permission model shifts:
 
-- 没有专门的 Server 角色；每个 NetworkObject 有自己的 **Authority**（默认 = Owner）
-- 使用 `SendTo.Authority` / `SendTo.NotAuthority` 代替 `SendTo.Server` / `SendTo.NotServer`
-- Owner 可直接写"自己所拥有对象"的 NetworkVariable、Spawn 新对象
-- `NetworkObject.SetOwnershipStatus` + `OwnershipStatus` flags 控制谁能申请所有权
+- No dedicated Server role. Each NetworkObject has its own **Authority** (defaults to Owner).
+- Use `SendTo.Authority` / `SendTo.NotAuthority` in place of `SendTo.Server` / `SendTo.NotServer`.
+- An owner may directly write NetworkVariables on objects it owns and may Spawn new objects.
+- `NetworkObject.SetOwnershipStatus` + `OwnershipStatus` flags govern who may claim ownership.
 
-> 普通游戏建议先用 ClientServer（默认），遇到 P2P / 去中心需求再切 Distributed Authority。
+> For typical games, start with ClientServer (default) and switch to Distributed Authority only when P2P or decentralized ownership is required.
 
-## 所有权状态与锁
+## Ownership status and locks
 
-`NetworkObject.Ownership` 是 `OwnershipStatus` flags（`NetworkObject.cs:1023`）：
+`NetworkObject.Ownership` is an `OwnershipStatus` flag set (`NetworkObject.cs:1023`):
 
-- `None` — 默认，固定拥有者
-- `Distributable` — 可被系统自动迁移
-- `Transferable` — 可被主动转移
-- `RequestRequired` — 转移需申请批准
-- `SessionOwner` — 迁到"会话所有者"（房主）
+- `None` — default, ownership is fixed
+- `Distributable` — the system may auto-transfer ownership
+- `Transferable` — ownership may be transferred on request
+- `RequestRequired` — transfer requires approval
+- `SessionOwner` — transfers to the "session owner" (room host)
 
-`IsOwnershipLocked`（`NetworkObject.cs:491`）可锁定转移。
+`IsOwnershipLocked` (`NetworkObject.cs:491`) can lock out transfers.
 
-## 转移 / 放弃所有权
+## Transferring / releasing ownership
 
 ```csharp
-// Server 调用
+// Called by the Server
 networkObject.ChangeOwnership(targetClientId);   // NetworkObject.cs:1971
-networkObject.RemoveOwnership();                 // NetworkObject.cs:1954（归还给 Server）
+networkObject.RemoveOwnership();                 // NetworkObject.cs:1954 (returns ownership to Server)
 ```
 
-触发远端 / 本机的 `OnGainedOwnership` / `OnLostOwnership`。
+Both trigger `OnGainedOwnership` / `OnLostOwnership` on the relevant peers.
 
-## ❌ 常见错误 vs ✅ 正确模式
+## ❌ Anti-patterns vs ✅ Correct patterns
 
-### 1. Client 端尝试 Spawn
+### 1. Spawning from the client
 
 ```csharp
-// ❌ WRONG — 拒绝执行
+// ❌ WRONG — rejected by the network layer
 if (Input.GetKeyDown(KeyCode.F)) {
     Instantiate(bulletPrefab).GetComponent<NetworkObject>().Spawn();
 }
 
-// ✅ CORRECT — Client 发 RPC 给 Server，由 Server Spawn
+// ✅ CORRECT — client sends an RPC, server spawns
 [Rpc(SendTo.Server)]
 void FireBulletServerRpc(Vector3 pos, Vector3 dir) {
     var bullet = Instantiate(bulletPrefab, pos, Quaternion.LookRotation(dir));
@@ -86,34 +86,35 @@ void FireBulletServerRpc(Vector3 pos, Vector3 dir) {
 }
 ```
 
-### 2. 在 ServerRpc 内用 `IsOwner` 判断发送者
+### 2. Using `IsOwner` inside a ServerRpc to identify the sender
 
 ```csharp
-// ❌ WRONG — ServerRpc 执行在 Server 上，IsOwner 是 Server 对此对象的视角，不是发送方
+// ❌ WRONG — the ServerRpc body runs on the Server. IsOwner is the Server's view of this object,
+//            not the sending client.
 [Rpc(SendTo.Server)]
 void DoSomethingServerRpc() {
-    if (IsOwner) { ... }  // 永远是 Server 的 owner 视角
+    if (IsOwner) { ... }  // always reflects the Server's ownership view
 }
 
-// ✅ CORRECT — 从 RpcParams 取 SenderClientId，与 OwnerClientId 比较
+// ✅ CORRECT — read SenderClientId from RpcParams and compare to OwnerClientId
 [Rpc(SendTo.Server)]
 void DoSomethingServerRpc(RpcParams rpcParams = default) {
     ulong sender = rpcParams.Receive.SenderClientId;
-    if (sender == OwnerClientId) { /* 来自真正的 owner */ }
+    if (sender == OwnerClientId) { /* request came from the actual owner */ }
 }
 ```
 
-### 3. Client 直接写 NetworkVariable
+### 3. Client writing a NetworkVariable directly
 
 ```csharp
-// ❌ WRONG — 默认 Server 写权限，Client 赋值会被拒绝或日志报错
+// ❌ WRONG — default Server write permission, so client writes are dropped
 public NetworkVariable<int> Score = new NetworkVariable<int>();
 
 void OnClientClicksButton() {
-    Score.Value++;  // Client 上无效
+    Score.Value++;  // no-op on the client
 }
 
-// ✅ CORRECT — Client 通过 RPC 请求，Server 写
+// ✅ CORRECT — client requests via RPC, server writes
 [Rpc(SendTo.Server)]
 void IncrementScoreServerRpc() {
     Score.Value++;
@@ -123,33 +124,33 @@ void OnClientClicksButton() {
     IncrementScoreServerRpc();
 }
 
-// ✅ ALT — 若业务允许，声明 Owner 写权限
+// ✅ ALTERNATIVE — if the design allows, declare Owner write permission
 public NetworkVariable<int> Score = new NetworkVariable<int>(
     0,
     NetworkVariableReadPermission.Everyone,
     NetworkVariableWritePermission.Owner);
 ```
 
-### 4. 用 MonoBehaviour 普通 `transform.position = ...` 期望同步
+### 4. Expecting plain `transform.position = ...` to sync
 
 ```csharp
-// ❌ WRONG — 直接修改 transform 不会通过网络同步
+// ❌ WRONG — direct transform writes are not replicated
 void Update() {
     if (IsServer) transform.position += Vector3.forward * Time.deltaTime;
 }
 
-// ✅ CORRECT — 挂 NetworkTransform 组件，然后正常改 transform；NetworkTransform 自动同步
-// （或自行维护 NetworkVariable<Vector3> + 插值）
+// ✅ CORRECT — attach a NetworkTransform, then modify transform normally; NetworkTransform syncs it
+//             (or maintain NetworkVariable<Vector3> + interpolation yourself)
 ```
 
-### 5. 认为 Host 既是 Server 又不算 Client，所以 SendTo.NotServer 包含 Host
+### 5. Believing `SendTo.NotServer` includes the Host's client half
 
 ```csharp
-// ❌ WRONG — SendTo.NotServer 不会送给 Host。想同时让 Host 上的 Client 执行要用 SendTo.ClientsAndHost
+// ❌ WRONG — SendTo.NotServer does NOT deliver to the Host. To include the Host's client side, use ClientsAndHost.
 [Rpc(SendTo.NotServer)]
 void AnnounceToClientsRpc() { ... }
 
-// ✅ CORRECT — 想让"所有 client 端（包括 Host 的 client 侧）"都执行，用 ClientsAndHost
+// ✅ CORRECT — to reach every client instance (including Host's client half), use ClientsAndHost
 [Rpc(SendTo.ClientsAndHost)]
 void AnnounceToClientsRpc() { ... }
 ```

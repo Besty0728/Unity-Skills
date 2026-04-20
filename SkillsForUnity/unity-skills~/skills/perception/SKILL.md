@@ -82,8 +82,8 @@ Use this module for read-only scene and project analysis. It is available in Sem
 
 | Skill | Scope | Use when |
 |-------|-------|----------|
-| `scene_dependency_analyze` | Scene object references | ask "删掉/禁用这个对象会影响谁" |
-| `script_dependency_graph` | Script class dependency closure | ask "要改这个功能先看哪些脚本" |
+| `scene_dependency_analyze` | Scene object references | ask "who depends on this object if I delete or disable it" |
+| `script_dependency_graph` | Script class dependency closure | ask "which scripts do I have to touch to change this feature" |
 
 ## Key Return Shapes
 
