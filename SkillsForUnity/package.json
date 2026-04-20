@@ -38,6 +38,11 @@
       "name": "com.unity.splines",
       "expression": "",
       "define": "HAS_SPLINES"
+    },
+    {
+      "name": "com.unity.netcode.gameobjects",
+      "expression": "[2.0,3.0)",
+      "define": "NETCODE_GAMEOBJECTS"
     }
   ],
   "_fingerprint": "50c8e0b5aa74bedb7116f7d9d0ab6955f9798425"

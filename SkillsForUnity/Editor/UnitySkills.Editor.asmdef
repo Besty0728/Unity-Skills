@@ -8,7 +8,8 @@
         "Unity.Cinemachine",
         "Unity.Splines",
         "Unity.ProBuilder",
-        "Unity.ProBuilder.Editor"
+        "Unity.ProBuilder.Editor",
+        "Unity.Netcode.Runtime"
     ],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
@@ -47,6 +48,11 @@
             "name": "com.unity.xr.core-utils",
             "expression": "[2.0,4.0)",
             "define": "XR_CORE_UTILS"
+        },
+        {
+            "name": "com.unity.netcode.gameobjects",
+            "expression": "[2.0,3.0)",
+            "define": "NETCODE_GAMEOBJECTS"
         }
     ],
     "noEngineReferences": false

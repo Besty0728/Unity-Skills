@@ -47,7 +47,8 @@ namespace UnitySkills
         Cinemachine,
         Project,
         AssetImport,
-        Sample
+        Sample,
+        Netcode
     }
 
     /// <summary>

@@ -1,6 +1,6 @@
 ---
 name: unity-skills-index
-description: "Index of all Unity Skills modules — 41 functional modules (SA/FA) + 13 advisory modules. Browse available skills, check mode requirements, and find the right module. Triggers: module list, skill index, browse skills, find module, 模块列表, 技能索引, 查找模块."
+description: "Index of all Unity Skills modules — 42 functional modules (SA/FA) + 14 advisory modules. Browse available skills, check mode requirements, and find the right module. Triggers: module list, skill index, browse skills, find module, 模块列表, 技能索引, 查找模块."
 ---
 
 # Unity Skills - Module Index
@@ -56,6 +56,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 | [bookmark](./bookmark/SKILL.md) | FA | Scene View bookmarks | No |
 | [history](./history/SKILL.md) | FA | Undo/redo history | No |
 | [scriptableobject](./scriptableobject/SKILL.md) | FA | ScriptableObject assets | No |
+| [netcode](./netcode/SKILL.md) | FA | Netcode for GameObjects setup, prefabs, lifecycle, host/server/client | Yes |
 
 ## Advisory Design Modules
 
@@ -76,6 +77,7 @@ These modules provide design guidance only.
 | [async](./async/SKILL.md) | Choose async model |
 | [inspector](./inspector/SKILL.md) | Design authoring UX |
 | [scriptdesign](./scriptdesign/SKILL.md) | Review script structure |
+| [netcode-design](./netcode-design/SKILL.md) | Netcode source-anchored rules (lifecycle/ownership/RPC/variables/spawn/scene/transport/pitfalls) |
 
 ## Batch-First Rule
 
