@@ -1,10 +1,10 @@
 # UnitySkills — AI Agent 项目速览
 
-> 通过 REST API 让 AI 直接控制 Unity 编辑器。592 个 REST Skills + 16 个 Advisory 模块。
+> 通过 REST API 让 AI 直接控制 Unity 编辑器。604 个 REST Skills + 18 个 Advisory 模块。
 
 | 项目 | 值 |
 |------|----|
-| 版本 | 1.7.3 |
+| 版本 | 1.7.4 |
 | 技术栈 | C# (Unity Editor Plugin) + Python (Client) |
 | Unity | 2022.3+（已验证 Unity 6 / 6000.x） |
 | 协议 | MIT |
@@ -63,7 +63,7 @@ Unity-Skills/
 │   └── unity-skills~/                  # AI Skill 模板 (波浪线隐藏, 随包分发)
 │       ├── SKILL.md                    # 主 Skill 文档 (AI 读取入口)
 │       ├── scripts/unity_skills.py     # Python 客户端
-│       ├── skills/                     # 53 个模块文档 (40 functional + 13 advisory)
+│       ├── skills/                     # 54 个模块文档 (41 functional + 13 advisory)
 │       └── references/                 # Unity 开发参考
 ├── .claude/commands/                   # 自定义命令
 │   ├── updateversion.md                # /updateversion — 版本号更新 + CHANGELOG 生成
@@ -122,7 +122,7 @@ public static object SkillName(string name, float x = 0) { ... }
 
 > 大部分模块支持 `*_batch` 批量操作，操作 2+ 物体时应优先使用。
 
-**Advisory 模块 (16)**：architecture, patterns, performance, asmdef, async, inspector, blueprints, adr, project-scout, scene-contracts, script-roles, scriptdesign, testability, netcode-design, yooasset-design, addressables-design — 纯架构/设计指导，无 REST Skills。
+**Advisory 模块 (18)**：architecture, patterns, performance, asmdef, async, inspector, blueprints, adr, project-scout, scene-contracts, script-roles, scriptdesign, testability, netcode-design, yooasset-design, addressables-design, unitask-design, dotween-design — 纯架构/设计指导，无 REST Skills。
 
 ---
 

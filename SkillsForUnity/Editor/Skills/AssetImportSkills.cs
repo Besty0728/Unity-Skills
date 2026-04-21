@@ -344,7 +344,14 @@ namespace UnitySkills
             }
 
             if (pixelsPerUnit.HasValue) importer.spritePixelsPerUnit = pixelsPerUnit.Value;
-            if (!string.IsNullOrEmpty(packingTag)) importer.spritePackingTag = packingTag;
+            if (!string.IsNullOrEmpty(packingTag))
+            {
+#if !UNITY_2023_1_OR_NEWER
+#pragma warning disable CS0618
+                importer.spritePackingTag = packingTag;
+#pragma warning restore CS0618
+#endif
+            }
             if (pivotX != null && pivotY != null)
             {
                 importer.spritePivot = new Vector2(

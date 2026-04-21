@@ -22,13 +22,11 @@ namespace UnitySkills
         private string _testResult = "";
         private Dictionary<string, List<SkillInfo>> _skillsByCategory;
         private Dictionary<string, bool> _categoryFoldouts = new Dictionary<string, bool>();
-        private bool _showSkillConfig = true;
         private int _selectedTab = 0;
 
         // Server monitoring
         private double _lastRepaintTime;
         private const double RepaintInterval = 0.5;
-        private bool _autoStartServer = true;
         private string _customInstallPath = "";
         private string _customAgentName = "Custom";
 

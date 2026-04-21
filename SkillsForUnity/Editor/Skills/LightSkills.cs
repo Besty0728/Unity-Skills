@@ -386,13 +386,14 @@ namespace UnitySkills
             ReadOnly = true)]
         public static object LightGetLightmapSettings()
         {
+            var settings = Lightmapping.lightingSettings;
             return new
             {
                 success = true,
                 bakedGI = Lightmapping.bakedGI,
                 realtimeGI = Lightmapping.realtimeGI,
-                lightmapSize = LightmapEditorSettings.maxAtlasSize,
-                lightmapPadding = LightmapEditorSettings.padding,
+                lightmapSize = settings != null ? settings.lightmapMaxSize : 1024,
+                lightmapPadding = settings != null ? settings.lightmapPadding : 2,
                 isRunning = Lightmapping.isRunning,
                 lightmapCount = LightmapSettings.lightmaps.Length
             };

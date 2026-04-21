@@ -49,7 +49,8 @@ namespace UnitySkills
         AssetImport,
         Sample,
         Netcode,
-        YooAsset
+        YooAsset,
+        DOTween
     }
 
     /// <summary>

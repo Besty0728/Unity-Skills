@@ -728,10 +728,12 @@ namespace UnitySkills
         }
 #endif
 
+#if CINEMACHINE_2 || CINEMACHINE_3
         private static System.Type FindCinemachineType(string name)
         {
             return CinemachineAdapter.FindCinemachineType(name);
         }
+#endif
         [UnitySkill("cinemachine_create_target_group", "Create a CinemachineTargetGroup. Returns name.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "targetGroup", "group", "cinemachine" },

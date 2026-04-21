@@ -16,7 +16,7 @@ For exact skill names, parameters, defaults, and returns, query schema first:
 
 Use module `SKILL.md` files for routing guidance, guardrails, and minimal examples, not as the canonical source of exact signatures.
 
-Current snapshot: `576` REST skills, `42` functional modules, `14` advisory modules, Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `588` REST skills, `43` functional modules, `14` advisory modules, Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`
 

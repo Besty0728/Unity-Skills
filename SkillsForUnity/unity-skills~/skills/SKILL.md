@@ -1,6 +1,6 @@
 ---
 name: unity-skills-index
-description: "Index of all Unity Skills modules — 43 functional modules (SA/FA) + 15 advisory modules. Browse available skills, check mode requirements, and find the right module. Triggers: module list, skill index, browse skills, find module, 模块列表, 技能索引, 查找模块."
+description: "Index of all Unity Skills modules — 44 functional modules (SA/FA) + 15 advisory modules. Browse available skills, check mode requirements, and find the right module. Triggers: module list, skill index, browse skills, find module, 模块列表, 技能索引, 查找模块."
 ---
 
 # Unity Skills - Module Index
@@ -58,6 +58,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 | [scriptableobject](./scriptableobject/SKILL.md) | FA | ScriptableObject assets | No |
 | [netcode](./netcode/SKILL.md) | FA | Netcode for GameObjects setup, prefabs, lifecycle, host/server/client | Yes |
 | [yooasset](./yooasset/SKILL.md) | Both | YooAsset hot-update: build bundles, Collector config, BuildReport analysis | Yes |
+| [dotween](./dotween/SKILL.md) | FA | DOTween Pro DOTweenAnimation editor-time configuration (add/batch/stagger/tune) | Yes |
 
 ## Advisory Design Modules
 
@@ -81,6 +82,8 @@ These modules provide design guidance only.
 | [netcode-design](./netcode-design/SKILL.md) | Netcode source-anchored rules (lifecycle/ownership/RPC/variables/spawn/scene/transport/pitfalls) |
 | [yooasset-design](./yooasset-design/SKILL.md) | YooAsset v2.3.18 source-anchored rules (init/playmode/handles/loading/update/filesystem/build/pitfalls) |
 | [addressables-design](./addressables-design/SKILL.md) | Addressables dual-version (1.22.3 Unity 2022 / 2.9.1 Unity 6) source-anchored rules (init/handles/loading/scene/update/download/assetref/pitfalls) with migration table |
+| [unitask-design](./unitask-design/SKILL.md) | UniTask 2.5.10 source-anchored rules (basics/playerloop/cancellation/composition/conversion/asyncenumerable/triggers/pitfalls) |
+| [dotween-design](./dotween-design/SKILL.md) | DOTween 1.3.015 source-anchored rules (basics/tween/sequence/shortcuts/ease/lifetime/integration/pitfalls) |
 
 ## Batch-First Rule
 
