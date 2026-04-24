@@ -2,6 +2,41 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.8.0] - 2026-04-24
+
+### Added
+- **YooAsset 资源管理模块** — 新增 40 个 Skill（`yooasset_*`），覆盖资源包构建、加载、释放、更新、文件系统查询和 PlayMode 模拟，基于反射实现零编译依赖（`#if YOO_ASSET`）。
+- **Netcode 网络模块** — 新增 33 个 Skill（`netcode_*`），覆盖 NetworkManager 创建/配置、NetworkObject/NetworkTransform 管理、Prefab 列表、Scene Management、Transport 配置和运行时启停（`#if NETCODE_GAMEOBJECTS`）。
+- **Shader Graph 模块** — 新增 23 个 Skill（`shadergraph_*`），支持创建/查看/编辑 Shader Graph 和 Sub Graph 资产，含节点增删、连线、属性管理等操作。配套 `ShaderGraphReflectionHelper`（2697 行）和 `ShaderGraphNodeRegistry` 实现类型安全的反射编辑。
+- **DOTween 动画模块** — 新增 21 个 Skill（`dotween_*`），覆盖 DOTween 状态查询、Settings 配置、Tween/Sequence 脚本生成，以及 DOTween Pro Animation 组件的完整 CRUD。配套 `DOTweenReflectionHelper` 和 `DOTweenPresenceDetector` 实现纯反射调用。
+- **PostProcess 后处理模块** — 新增 20 个 Skill（`postprocess_*`），提供 SRP 后处理效果的统一管理，含 Bloom、DoF、Tonemapping、Vignette、Color Adjustments 快捷配置。
+- **Volume 体积系统模块** — 新增 18 个 Skill（`volume_*`），支持 VolumeProfile 创建/管理、VolumeComponent 增删改查、批量参数设置。
+- **Graphics 图形设置模块** — 新增 11 个 Skill（`graphics_*`），涵盖质量设置、渲染管线资产管理、Always Included Shaders 和 Shader Stripping 配置，从 Project 模块独立为专用模块。
+- **URP 管线模块** — 新增 14 个 Skill（`urp_*`），覆盖 URP 资产配置、Renderer 数据和 Renderer Feature 的增删改查与启停。
+- **Decal 贴花模块** — 新增 14 个 Skill（`decal_*`），支持 URP Decal Projector 的创建/配置/查找/批量操作，含 Renderer Feature 自动注入。
+- **RenderPipelineSkillsCommon** — 新增 SRP 共享基础设施（877 行），为 URP、Volume、PostProcess、Decal、Graphics 模块提供统一的渲染管线感知和配置操作辅助方法。
+- **6 个新 Advisory 模块** — `addressables-design`（8 文档）、`netcode-design`（9 文档）、`shadergraph-design`（5 文档）、`unitask-design`（8 文档）、`dotween-design`（8 文档）、`yooasset-design`（8 文档），Advisory 总数从 13 增至 19。
+- **asmdef 扩展** — 新增 `Unity.Netcode.Runtime`、`YooAsset`、`Unity.RenderPipelines.*.Runtime` 程序集引用；新增 `NETCODE_GAMEOBJECTS`、`YOO_ASSET`、`SRP_CORE`、`URP`、`HDRP` 版本定义。
+- **SkillCategory 扩展** — `UnitySkillAttribute` 新增 Netcode、YooAsset、DOTween、Graphics、Volume、URP、Decal、PostProcess、ShaderGraph 共 9 个分类枚举。
+- **SkillRouter ShaderGraph 路由** — 新增 `shadergraph`/`subgraph`/`着色图`/`子图` 意图关键词映射。
+
+### Changed
+- **路径检查统一** — 多个模块（AssetImportSkills、AssetSkills、CleanerSkills、SkillPlanningService、GameObjectFinder）统一使用 `SkillsCommon.PathExists()` 替代重复的 `File.Exists + Directory.Exists` 组合。
+- **类型查找缓存** — `SkillsCommon.FindTypeByName()` 提供跨程序集类型查找与缓存（含 null miss 缓存），`PerceptionSkills.FindTypeInAssemblies` 委托至此实现。
+- **Quality 设置迁移** — `project_get_quality_settings` 和 `project_set_quality_level` 从 ProjectSkills 迁移至 GraphicsSkills，与渲染管线设置统一管理。
+- **LightmapSettings API 适配** — `LightGetLightmapSettings` 改用 `Lightmapping.lightingSettings` 读取 `lightmapMaxSize`/`lightmapPadding`，兼容新版 LightingSettings 工作流。
+- **spritePackingTag 兼容处理** — AssetImportSkills 对已废弃的 `spritePackingTag` 加 `#if !UNITY_2023_1_OR_NEWER` 条件编译保护。
+- **CinemachineSkills 编译清理** — `FindCinemachineType` 方法增加 `#if CINEMACHINE_2 || CINEMACHINE_3` 条件编译，消除未安装 Cinemachine 时的编译警告。
+- **UnitySkillsWindow 优化** — Validate 按钮文本本地化，移除未使用的 `_showSkillConfig` 和 `_autoStartServer` 字段。
+- **SkillPlanningService 简化** — `ResolveGameObject` 使用默认参数合并两个重载；路径存在性检查统一委托 `SkillsCommon.PathExists`。
+- **版本号更新** — `SkillsLogger.Version`、`package.json`、Python helper 和文档同步提升到 `1.8.0`。
+
+### Docs
+- **9 个新功能模块文档** — decal、dotween、graphics、netcode、postprocess、shadergraph、urp、volume、yooasset 各含完整 SKILL.md。
+- **6 个新 Advisory 文档集** — 共 ~46 个 markdown 文档，覆盖 Addressables、Netcode、ShaderGraph、UniTask、DOTween、YooAsset 的设计要点与常见陷阱。
+- **architecture / patterns advisory 扩展** — architecture 新增"执行顺序与入口保护"章节；patterns 新增"Decision Lab"对比决策方法。
+- **SKILL.md 统计同步** — 模块文档目录从 53 更新为 68（49 功能 + 19 Advisory）。
+
 ## [1.7.3] - 2026-04-20
 
 ### Added
