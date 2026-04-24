@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
@@ -19,6 +21,269 @@ namespace UnitySkills
     {
         private static object NoDOTween() => DOTweenReflectionHelper.NoDOTween();
         private static object NoDOTweenPro() => DOTweenReflectionHelper.NoDOTweenPro();
+
+        // ==================================================================================
+        // Free runtime / project diagnostics
+        // ==================================================================================
+
+        [UnitySkill("dotween_get_status",
+            "Get DOTween installation status, Pro availability, DOTweenSettings presence, and visible module count. Works with DOTween Free or Pro.",
+            Category = SkillCategory.DOTween, Operation = SkillOperation.Query,
+            Tags = new[] { "dotween", "free", "status", "installed", "modules" },
+            Outputs = new[] { "isDOTweenInstalled", "isDOTweenProInstalled", "settingsFound", "moduleCount" })]
+        public static object DOTweenGetStatus()
+        {
+            var dotweenType = DOTweenReflectionHelper.FindTypeInAssemblies(DOTweenReflectionHelper.DOTweenTypeName);
+            var proType = DOTweenReflectionHelper.FindTypeInAssemblies(DOTweenReflectionHelper.DOTweenAnimationTypeName);
+            var settings = Resources.Load("DOTweenSettings");
+            var moduleTypes = FindDOTweenTypes(t => IsDOTweenModuleType(t)).ToList();
+
+            return new
+            {
+                isDOTweenInstalled = dotweenType != null,
+                isDOTweenProInstalled = proType != null,
+                dotweenType = dotweenType?.AssemblyQualifiedName,
+                dotweenAnimationType = proType?.AssemblyQualifiedName,
+                settingsFound = settings != null,
+                settingsPath = settings != null ? AssetDatabase.GetAssetPath(settings) : null,
+                moduleCount = moduleTypes.Count,
+                modules = moduleTypes.Select(t => t.FullName).OrderBy(n => n).ToArray()
+            };
+        }
+
+        [UnitySkill("dotween_settings_get",
+            "Read common fields from Resources/DOTweenSettings.asset. Works with DOTween Free or Pro.",
+            Category = SkillCategory.DOTween, Operation = SkillOperation.Query,
+            Tags = new[] { "dotween", "free", "settings", "read", "query" },
+            Outputs = new[] { "success", "path", "fields" })]
+        public static object DOTweenSettingsGet()
+        {
+            if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+
+            var settings = Resources.Load("DOTweenSettings");
+            if (settings == null) return DOTweenSettingsMissing();
+
+            return new
+            {
+                success = true,
+                path = AssetDatabase.GetAssetPath(settings),
+                fields = ReadDOTweenSettingsFields(settings)
+            };
+        }
+
+        [UnitySkill("dotween_settings_find",
+            "Find DOTweenSettings assets in the project. Works with DOTween Free or Pro.",
+            Category = SkillCategory.DOTween, Operation = SkillOperation.Query,
+            Tags = new[] { "dotween", "free", "settings", "find", "asset" },
+            Outputs = new[] { "count", "paths", "resourcesLoadPath" })]
+        public static object DOTweenSettingsFind()
+        {
+            var paths = FindDOTweenSettingsPaths();
+            var settings = Resources.Load("DOTweenSettings");
+            return new
+            {
+                count = paths.Count,
+                paths,
+                resourcesLoadFound = settings != null,
+                resourcesLoadPath = settings != null ? AssetDatabase.GetAssetPath(settings) : null
+            };
+        }
+
+        [UnitySkill("dotween_settings_validate",
+            "Validate basic DOTweenSettings health: missing asset, invalid capacities, SafeMode/logBehaviour visibility. Works with DOTween Free or Pro.",
+            Category = SkillCategory.DOTween, Operation = SkillOperation.Query,
+            Tags = new[] { "dotween", "free", "settings", "validate", "diagnostic" },
+            Outputs = new[] { "success", "isValid", "issues", "warnings" })]
+        public static object DOTweenSettingsValidate()
+        {
+            if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+
+            var settings = Resources.Load("DOTweenSettings");
+            var issues = new List<string>();
+            var warnings = new List<string>();
+            var paths = FindDOTweenSettingsPaths();
+
+            if (settings == null)
+            {
+                issues.Add("DOTweenSettings.asset was not found via Resources.Load(\"DOTweenSettings\"). Run Tools > Demigiant > DOTween Utility Panel > Setup DOTween.");
+            }
+            if (paths.Count > 1)
+            {
+                warnings.Add($"Found {paths.Count} DOTweenSettings assets. DOTween loads by Resources path, so duplicate settings can be confusing.");
+            }
+
+            Dictionary<string, object> fields = null;
+            if (settings != null)
+            {
+                fields = ReadDOTweenSettingsFields(settings);
+                ValidateCapacity(fields, "defaultTweensCapacity", issues);
+                ValidateCapacity(fields, "defaultSequencesCapacity", issues);
+                if (fields.TryGetValue("useSafeMode", out var safeMode) && safeMode is bool b && !b)
+                    warnings.Add("useSafeMode is disabled. This is valid, but destroyed/missing targets will be less forgiving.");
+            }
+
+            return new
+            {
+                success = true,
+                isValid = issues.Count == 0,
+                issues,
+                warnings,
+                paths,
+                fields
+            };
+        }
+
+        [UnitySkill("dotween_list_modules",
+            "List visible DOTween module and extension types loaded in the current Unity domain. Works with DOTween Free or Pro.",
+            Category = SkillCategory.DOTween, Operation = SkillOperation.Query,
+            Tags = new[] { "dotween", "free", "modules", "extensions", "reflection" },
+            Outputs = new[] { "count", "types" })]
+        public static object DOTweenListModules(bool includeMethods = false, int methodLimit = 20)
+        {
+            if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+
+            var types = FindDOTweenTypes(t => IsDOTweenModuleType(t) || IsDOTweenExtensionContainer(t))
+                .OrderBy(t => t.FullName)
+                .Select(t => new
+                {
+                    name = t.Name,
+                    fullName = t.FullName,
+                    assembly = t.Assembly.GetName().Name,
+                    publicStaticMethodCount = t.GetMethods(BindingFlags.Public | BindingFlags.Static).Length,
+                    methods = includeMethods
+                        ? t.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                            .Select(m => m.Name)
+                            .Distinct()
+                            .OrderBy(n => n)
+                            .Take(Mathf.Max(methodLimit, 1))
+                            .ToArray()
+                        : null
+                })
+                .ToArray();
+
+            return new { count = types.Length, types };
+        }
+
+        [UnitySkill("dotween_list_shortcuts",
+            "List public DOTween shortcut/extension methods, optionally filtered by target type and method prefix. Works with DOTween Free or Pro.",
+            Category = SkillCategory.DOTween, Operation = SkillOperation.Query,
+            Tags = new[] { "dotween", "free", "shortcut", "extension", "methods" },
+            Outputs = new[] { "count", "methods" })]
+        public static object DOTweenListShortcuts(string targetType = null, string methodPrefix = null, int limit = 100)
+        {
+            if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+
+            var methods = FindDOTweenTypes(IsDOTweenExtensionContainer)
+                .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                .Where(IsExtensionMethod)
+                .Select(ToShortcutInfo)
+                .Where(m => string.IsNullOrEmpty(targetType) ||
+                            (m.targetType != null && m.targetType.IndexOf(targetType, StringComparison.OrdinalIgnoreCase) >= 0))
+                .Where(m => string.IsNullOrEmpty(methodPrefix) ||
+                            m.name.StartsWith(methodPrefix, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(m => m.targetType)
+                .ThenBy(m => m.name)
+                .Take(Mathf.Max(limit, 1))
+                .ToArray();
+
+            return new { count = methods.Length, methods };
+        }
+
+        [UnitySkill("dotween_generate_tween_script",
+            "Generate a minimal runtime DOTween MonoBehaviour script for DOTween Free/Pro. Does not attach it to scene objects.",
+            Category = SkillCategory.DOTween, Operation = SkillOperation.Create,
+            Tags = new[] { "dotween", "free", "generate", "script", "runtime", "tween" },
+            Outputs = new[] { "success", "path", "className" },
+            RequiresInput = new[] { "className" },
+            TracksWorkflow = true, MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
+        public static object DOTweenGenerateTweenScript(
+            string className,
+            string folder = "Assets/Scripts/DOTween",
+            string namespaceName = null,
+            string targetKind = "Transform",
+            string tweenKind = "DOMove",
+            float duration = 1f,
+            string ease = "OutQuad",
+            int loops = 1,
+            bool autoPlay = true,
+            bool useSetLink = true)
+        {
+            if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+            var spec = ResolveRuntimeTweenSpec(targetKind, tweenKind);
+            if (spec == null) return UnsupportedTween(targetKind, tweenKind);
+
+            var content = BuildTweenScript(className, namespaceName, spec, duration, ease, loops, autoPlay, useSetLink);
+            return WriteGeneratedScript(className, folder, content);
+        }
+
+        [UnitySkill("dotween_generate_sequence_script",
+            "Generate a minimal runtime DOTween Sequence MonoBehaviour script. stepsJson optionally accepts [{op,tweenKind,duration}]. Does not attach it to scene objects.",
+            Category = SkillCategory.DOTween, Operation = SkillOperation.Create,
+            Tags = new[] { "dotween", "free", "generate", "script", "runtime", "sequence" },
+            Outputs = new[] { "success", "path", "className" },
+            RequiresInput = new[] { "className" },
+            TracksWorkflow = true, MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
+        public static object DOTweenGenerateSequenceScript(
+            string className,
+            string folder = "Assets/Scripts/DOTween",
+            string namespaceName = null,
+            string targetKind = "Transform",
+            string tweenKind = "DOMove",
+            float duration = 1f,
+            string ease = "OutQuad",
+            int loops = 1,
+            bool autoPlay = true,
+            bool useSetLink = true,
+            string stepsJson = null)
+        {
+            if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+            var steps = ParseSequenceSteps(stepsJson, tweenKind, duration);
+            if (steps == null) return new { error = "stepsJson must be a JSON array of { op: Append|Join|AppendInterval, tweenKind, duration }." };
+
+            var specs = new List<(string op, RuntimeTweenSpec spec, float duration)>();
+            foreach (var step in steps)
+            {
+                if (string.Equals(step.op, "AppendInterval", StringComparison.OrdinalIgnoreCase))
+                {
+                    specs.Add(("AppendInterval", null, Mathf.Max(step.duration, 0f)));
+                    continue;
+                }
+                var op = string.Equals(step.op, "Join", StringComparison.OrdinalIgnoreCase) ? "Join" : "Append";
+                var spec = ResolveRuntimeTweenSpec(targetKind, step.tweenKind ?? tweenKind);
+                if (spec == null) return UnsupportedTween(targetKind, step.tweenKind ?? tweenKind);
+                specs.Add((op, spec, step.duration > 0f ? step.duration : duration));
+            }
+
+            var content = BuildSequenceScript(className, namespaceName, targetKind, specs, duration, ease, loops, autoPlay, useSetLink);
+            return WriteGeneratedScript(className, folder, content);
+        }
+
+        [UnitySkill("dotween_generate_lifetime_script",
+            "Generate a DOTween lifetime-safe MonoBehaviour wrapper that uses SetLink by default and kills owned tweens on disable/destroy.",
+            Category = SkillCategory.DOTween, Operation = SkillOperation.Create,
+            Tags = new[] { "dotween", "free", "generate", "script", "lifetime", "safe" },
+            Outputs = new[] { "success", "path", "className" },
+            RequiresInput = new[] { "className" },
+            TracksWorkflow = true, MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
+        public static object DOTweenGenerateLifetimeScript(
+            string className,
+            string folder = "Assets/Scripts/DOTween",
+            string namespaceName = null,
+            string targetKind = "Transform",
+            string tweenKind = "DOScale",
+            float duration = 1f,
+            string ease = "OutQuad",
+            int loops = 1,
+            bool autoPlay = true,
+            bool useSetLink = true)
+        {
+            if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+            var spec = ResolveRuntimeTweenSpec(targetKind, tweenKind);
+            if (spec == null) return UnsupportedTween(targetKind, tweenKind);
+
+            var content = BuildLifetimeScript(className, namespaceName, spec, duration, ease, loops, autoPlay, useSetLink);
+            return WriteGeneratedScript(className, folder, content);
+        }
 
         // ==================================================================================
         // A. Generation
@@ -147,17 +412,19 @@ namespace UnitySkills
             if (targets == null) return new { error = "targetsJson must be a JSON array of strings" };
 
             var added = new List<object>();
+            var failed = new List<object>();
             for (int i = 0; i < targets.Count; i++)
             {
                 var (go, err) = GameObjectFinder.FindOrError(name: targets[i]);
-                if (err != null) { added.Add(new { target = targets[i], error = err }); continue; }
+                if (err != null) { failed.Add(new { target = targets[i], error = err }); continue; }
                 float delay = baseDelay + i * staggerDelay;
                 var r = AddAnimationCore(go, animationType, endValueV3, endValueFloat, endValueColor,
                     endValueV2, null, null,
                     duration, ease, loops, loopType, delay, false, isFrom, autoPlay, autoKill, null);
-                added.Add(new { target = targets[i], delay, result = r });
+                if (IsSuccess(r)) added.Add(new { target = targets[i], delay, result = r });
+                else failed.Add(new { target = targets[i], error = r });
             }
-            return new { success = true, added };
+            return new { success = failed.Count == 0, added, failed };
         }
 
         // ==================================================================================
@@ -478,6 +745,381 @@ namespace UnitySkills
         // ==================================================================================
         // Private core
         // ==================================================================================
+
+        private class RuntimeTweenSpec
+        {
+            public string targetKind;
+            public string tweenKind;
+            public string fieldType;
+            public string fieldName;
+            public string fieldInitializer;
+            public string valueField;
+            public string valueType;
+            public string defaultValue;
+            public string methodCall;
+            public string extraUsing;
+            public bool genericDOTweenTo;
+        }
+
+        private class SequenceStepSpec
+        {
+            public string op { get; set; }
+            public string tweenKind { get; set; }
+            public float duration { get; set; }
+        }
+
+        private class ShortcutInfo
+        {
+            public string name { get; set; }
+            public string declaringType { get; set; }
+            public string targetType { get; set; }
+            public string returnType { get; set; }
+            public string signature { get; set; }
+        }
+
+        private static IEnumerable<Type> FindDOTweenTypes(Func<Type, bool> predicate)
+        {
+            return AppDomain.CurrentDomain.GetAssemblies()
+                .Where(a => !a.IsDynamic)
+                .SelectMany(a =>
+                {
+                    try { return a.GetTypes(); }
+                    catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null); }
+                    catch { return Array.Empty<Type>(); }
+                })
+                .Where(t => t != null && !string.IsNullOrEmpty(t.FullName) && t.FullName.StartsWith("DG.Tweening", StringComparison.Ordinal))
+                .Where(predicate);
+        }
+
+        private static bool IsDOTweenModuleType(Type t)
+        {
+            return t.IsClass && t.IsAbstract && t.IsSealed && t.Name.StartsWith("DOTweenModule", StringComparison.Ordinal);
+        }
+
+        private static bool IsDOTweenExtensionContainer(Type t)
+        {
+            return t.IsClass && t.IsAbstract && t.IsSealed &&
+                   (t.Name.IndexOf("ShortcutExtensions", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    t.Name.IndexOf("TweenExtensions", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    t.Name.IndexOf("TweenSettingsExtensions", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    t.Name.StartsWith("DOTweenModule", StringComparison.Ordinal));
+        }
+
+        private static bool IsExtensionMethod(MethodInfo method)
+        {
+            return method.IsDefined(typeof(System.Runtime.CompilerServices.ExtensionAttribute), false) &&
+                   method.GetParameters().Length > 0;
+        }
+
+        private static ShortcutInfo ToShortcutInfo(MethodInfo method)
+        {
+            var parameters = method.GetParameters();
+            return new ShortcutInfo
+            {
+                name = method.Name,
+                declaringType = method.DeclaringType?.FullName,
+                targetType = parameters.Length > 0 ? FriendlyTypeName(parameters[0].ParameterType) : null,
+                returnType = FriendlyTypeName(method.ReturnType),
+                signature = $"{FriendlyTypeName(method.ReturnType)} {method.Name}({string.Join(", ", parameters.Select(p => FriendlyTypeName(p.ParameterType) + " " + p.Name))})"
+            };
+        }
+
+        private static string FriendlyTypeName(Type type)
+        {
+            if (type == null) return null;
+            if (!type.IsGenericType) return type.FullName ?? type.Name;
+            var name = type.Name;
+            var tick = name.IndexOf('`');
+            if (tick >= 0) name = name.Substring(0, tick);
+            return $"{type.Namespace}.{name}<{string.Join(",", type.GetGenericArguments().Select(FriendlyTypeName))}>";
+        }
+
+        private static List<string> FindDOTweenSettingsPaths()
+        {
+            return AssetDatabase.FindAssets("DOTweenSettings t:ScriptableObject")
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(p => !string.IsNullOrEmpty(p) && string.Equals(Path.GetFileNameWithoutExtension(p), "DOTweenSettings", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(p => p)
+                .ToList();
+        }
+
+        private static object DOTweenSettingsMissing() => new
+        {
+            error = "DOTweenSettings.asset not found in any Resources folder. Open Tools > Demigiant > DOTween Utility Panel and click 'Setup DOTween...' once to generate it."
+        };
+
+        private static Dictionary<string, object> ReadDOTweenSettingsFields(object settings)
+        {
+            var names = new[]
+            {
+                "useSafeMode", "safeModeOptions", "timeScale", "useSmoothDeltaTime", "maxSmoothUnscaledTime",
+                "rewindCallbackMode", "showUnityEditorReport", "logBehaviour", "drawGizmos",
+                "defaultRecyclable", "defaultAutoPlay", "defaultUpdateType", "defaultTimeScaleIndependent",
+                "defaultEaseType", "defaultEaseOvershootOrAmplitude", "defaultEasePeriod", "defaultAutoKill",
+                "defaultLoopType", "defaultTweensCapacity", "defaultSequencesCapacity"
+            };
+            var fields = new Dictionary<string, object>();
+            foreach (var name in names)
+            {
+                var field = DOTweenReflectionHelper.ResolveField(settings.GetType(), name);
+                if (field != null) fields[name] = StringifySettingsValue(field.GetValue(settings));
+            }
+            return fields;
+        }
+
+        private static object StringifySettingsValue(object value)
+        {
+            if (value == null) return null;
+            if (value is Enum e) return e.ToString();
+            if (value is UnityEngine.Object o) return o != null ? AssetDatabase.GetAssetPath(o) : null;
+            var type = value.GetType();
+            if (type.IsPrimitive || value is string || value is decimal) return value;
+            return value.ToString();
+        }
+
+        private static void ValidateCapacity(Dictionary<string, object> fields, string fieldName, List<string> issues)
+        {
+            if (!fields.TryGetValue(fieldName, out var value)) return;
+            if (value is int i && i <= 0) issues.Add($"{fieldName} should be greater than 0.");
+        }
+
+        private static RuntimeTweenSpec ResolveRuntimeTweenSpec(string targetKind, string tweenKind)
+        {
+            targetKind = string.IsNullOrWhiteSpace(targetKind) ? "Transform" : targetKind.Trim();
+            tweenKind = string.IsNullOrWhiteSpace(tweenKind) ? "DOMove" : tweenKind.Trim();
+            var key = $"{targetKind}:{tweenKind}".ToLowerInvariant();
+
+            RuntimeTweenSpec TransformSpec(string method, string valueType, string defaultValue, string fieldName, string call) => new RuntimeTweenSpec
+            {
+                targetKind = "Transform", tweenKind = method, fieldType = "Transform", fieldName = "targetTransform",
+                fieldInitializer = "targetTransform = transform;", valueType = valueType, valueField = fieldName,
+                defaultValue = defaultValue, methodCall = call
+            };
+
+            switch (key)
+            {
+                case "transform:domove": return TransformSpec("DOMove", "Vector3", "new Vector3(0f, 1f, 0f)", "endPosition", "targetTransform.DOMove(endPosition, duration)");
+                case "transform:dolocalmove": return TransformSpec("DOLocalMove", "Vector3", "new Vector3(0f, 1f, 0f)", "endLocalPosition", "targetTransform.DOLocalMove(endLocalPosition, duration)");
+                case "transform:dorotate": return TransformSpec("DORotate", "Vector3", "new Vector3(0f, 180f, 0f)", "endRotation", "targetTransform.DORotate(endRotation, duration)");
+                case "transform:dolocalrotate": return TransformSpec("DOLocalRotate", "Vector3", "new Vector3(0f, 180f, 0f)", "endLocalRotation", "targetTransform.DOLocalRotate(endLocalRotation, duration)");
+                case "transform:doscale": return TransformSpec("DOScale", "Vector3", "Vector3.one * 1.2f", "endScale", "targetTransform.DOScale(endScale, duration)");
+                case "transform:dopunchposition": return TransformSpec("DOPunchPosition", "Vector3", "new Vector3(0f, 0.25f, 0f)", "punch", "targetTransform.DOPunchPosition(punch, duration)");
+                case "transform:doshakeposition": return TransformSpec("DOShakePosition", "Vector3", "new Vector3(0.25f, 0.25f, 0f)", "strength", "targetTransform.DOShakePosition(duration, strength)");
+                case "recttransform:doanchorpos": return RectSpec("DOAnchorPos", "Vector2", "new Vector2(0f, 100f)", "endAnchorPosition", "targetRectTransform.DOAnchorPos(endAnchorPosition, duration)");
+                case "recttransform:dosizedelta": return RectSpec("DOSizeDelta", "Vector2", "new Vector2(200f, 80f)", "endSizeDelta", "targetRectTransform.DOSizeDelta(endSizeDelta, duration)");
+                case "canvasgroup:dofade": return UiSpec("CanvasGroup", "targetCanvasGroup", "targetCanvasGroup = GetComponent<CanvasGroup>();", "DOFade", "float", "0f", "endAlpha", "targetCanvasGroup.DOFade(endAlpha, duration)");
+                case "graphic:docolor": return UiSpec("Graphic", "targetGraphic", "targetGraphic = GetComponent<Graphic>();", "DOColor", "Color", "Color.white", "endColor", "targetGraphic.DOColor(endColor, duration)");
+                case "graphic:dofade": return UiSpec("Graphic", "targetGraphic", "targetGraphic = GetComponent<Graphic>();", "DOFade", "float", "0f", "endAlpha", "targetGraphic.DOFade(endAlpha, duration)");
+                case "image:docolor": return UiSpec("Image", "targetImage", "targetImage = GetComponent<Image>();", "DOColor", "Color", "Color.white", "endColor", "targetImage.DOColor(endColor, duration)");
+                case "image:dofade": return UiSpec("Image", "targetImage", "targetImage = GetComponent<Image>();", "DOFade", "float", "0f", "endAlpha", "targetImage.DOFade(endAlpha, duration)");
+                case "generic:dotween.to": return new RuntimeTweenSpec
+                {
+                    targetKind = "Generic", tweenKind = "DOTween.To", fieldType = null, fieldName = null,
+                    valueType = "float", valueField = "endValue", defaultValue = "1f", genericDOTweenTo = true,
+                    methodCall = "DOTween.To(() => currentValue, value => currentValue = value, endValue, duration)"
+                };
+                default: return null;
+            }
+        }
+
+        private static RuntimeTweenSpec RectSpec(string method, string valueType, string defaultValue, string fieldName, string call) => new RuntimeTweenSpec
+        {
+            targetKind = "RectTransform", tweenKind = method, fieldType = "RectTransform", fieldName = "targetRectTransform",
+            fieldInitializer = "targetRectTransform = transform as RectTransform;", valueType = valueType, valueField = fieldName,
+            defaultValue = defaultValue, methodCall = call
+        };
+
+        private static RuntimeTweenSpec UiSpec(string type, string field, string initializer, string method, string valueType, string defaultValue, string valueField, string call) => new RuntimeTweenSpec
+        {
+            targetKind = type, tweenKind = method, fieldType = type, fieldName = field, fieldInitializer = initializer,
+            valueType = valueType, valueField = valueField, defaultValue = defaultValue, methodCall = call, extraUsing = "using UnityEngine.UI;"
+        };
+
+        private static object UnsupportedTween(string targetKind, string tweenKind) => new
+        {
+            error = $"Unsupported DOTween Free runtime tween targetKind='{targetKind}', tweenKind='{tweenKind}'. Supported targetKind/tweenKind pairs: Transform DOMove/DOLocalMove/DORotate/DOLocalRotate/DOScale/DOPunchPosition/DOShakePosition; RectTransform DOAnchorPos/DOSizeDelta; CanvasGroup DOFade; Graphic/Image DOColor/DOFade; Generic DOTween.To."
+        };
+
+        private static List<SequenceStepSpec> ParseSequenceSteps(string stepsJson, string tweenKind, float duration)
+        {
+            if (string.IsNullOrWhiteSpace(stepsJson))
+            {
+                return new List<SequenceStepSpec>
+                {
+                    new SequenceStepSpec { op = "Append", tweenKind = tweenKind, duration = duration },
+                    new SequenceStepSpec { op = "AppendInterval", duration = 0.1f },
+                    new SequenceStepSpec { op = "Append", tweenKind = tweenKind, duration = duration }
+                };
+            }
+            try { return JsonConvert.DeserializeObject<List<SequenceStepSpec>>(stepsJson); }
+            catch { return null; }
+        }
+
+        private static object WriteGeneratedScript(string className, string folder, string content)
+        {
+            if (string.IsNullOrWhiteSpace(className)) return new { error = "className is required" };
+            if (!IsValidClassName(className)) return new { error = "className must be a valid C# identifier and must not contain path separators" };
+            if (Validate.SafePath(folder, "folder") is object folderErr) return folderErr;
+            if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+
+            var path = Path.Combine(folder, className + ".cs").Replace("\\", "/");
+            if (File.Exists(path)) return new { error = $"Script already exists: {path}" };
+
+            File.WriteAllText(path, content, SkillsCommon.Utf8NoBom);
+            AssetDatabase.ImportAsset(path);
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+            if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
+            return new { success = true, path, className, nextAction = "Unity may start compiling. After compilation finishes, call script_get_compile_feedback if needed." };
+        }
+
+        private static bool IsValidClassName(string className)
+        {
+            if (string.IsNullOrWhiteSpace(className)) return false;
+            if (className.Contains("/") || className.Contains("\\") || className.Contains("..")) return false;
+            if (!(char.IsLetter(className[0]) || className[0] == '_')) return false;
+            return className.All(c => char.IsLetterOrDigit(c) || c == '_');
+        }
+
+        private static string BuildTweenScript(string className, string namespaceName, RuntimeTweenSpec spec, float duration, string ease, int loops, bool autoPlay, bool useSetLink)
+        {
+            var body = BuildScriptBody(className, spec, duration, ease, loops, autoPlay, useSetLink, "Tween");
+            return WrapGeneratedNamespace(namespaceName, body);
+        }
+
+        private static string BuildLifetimeScript(string className, string namespaceName, RuntimeTweenSpec spec, float duration, string ease, int loops, bool autoPlay, bool useSetLink)
+        {
+            var body = BuildScriptBody(className, spec, duration, ease, loops, autoPlay, useSetLink, "Tween", includeRestart: true);
+            return WrapGeneratedNamespace(namespaceName, body);
+        }
+
+        private static string BuildSequenceScript(string className, string namespaceName, string targetKind, List<(string op, RuntimeTweenSpec spec, float duration)> specs, float duration, string ease, int loops, bool autoPlay, bool useSetLink)
+        {
+            var usings = new SortedSet<string> { "using DG.Tweening;", "using UnityEngine;" };
+            foreach (var item in specs.Where(i => i.spec != null && !string.IsNullOrEmpty(i.spec.extraUsing))) usings.Add(item.spec.extraUsing);
+            var fieldSpecs = specs.Where(i => i.spec != null && !i.spec.genericDOTweenTo).Select(i => i.spec).GroupBy(s => s.fieldName).Select(g => g.First()).ToList();
+            var valueSpecs = specs.Where(i => i.spec != null).Select(i => i.spec).GroupBy(s => s.valueField).Select(g => g.First()).ToList();
+            var sb = new StringBuilder();
+            sb.AppendLine(string.Join("\n", usings));
+            sb.AppendLine();
+            sb.AppendLine($"public class {className} : MonoBehaviour");
+            sb.AppendLine("{");
+            foreach (var spec in fieldSpecs) sb.AppendLine($"    [SerializeField] private {spec.fieldType} {spec.fieldName};");
+            foreach (var spec in valueSpecs) sb.AppendLine($"    [SerializeField] private {spec.valueType} {spec.valueField} = {spec.defaultValue};");
+            sb.AppendLine($"    [SerializeField] private float duration = {FloatLiteral(duration)};");
+            sb.AppendLine($"    [SerializeField] private Ease ease = Ease.{SanitizeEnumName(ease, "OutQuad")};");
+            sb.AppendLine($"    [SerializeField] private int loops = {loops};");
+            sb.AppendLine($"    [SerializeField] private bool autoPlay = {BoolLiteral(autoPlay)};");
+            sb.AppendLine("    private Sequence sequence;");
+            if (specs.Any(i => i.spec != null && i.spec.genericDOTweenTo)) sb.AppendLine("    private float currentValue;");
+            sb.AppendLine();
+            sb.AppendLine("    private void Awake()");
+            sb.AppendLine("    {");
+            foreach (var spec in fieldSpecs) sb.AppendLine($"        if ({spec.fieldName} == null) {spec.fieldInitializer}");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine("    private void OnEnable()");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (autoPlay) Play();");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine("    public void Play()");
+            sb.AppendLine("    {");
+            sb.AppendLine("        KillTween();");
+            sb.AppendLine("        sequence = DOTween.Sequence();");
+            foreach (var item in specs)
+            {
+                if (item.op == "AppendInterval") sb.AppendLine($"        sequence.AppendInterval({FloatLiteral(item.duration)});");
+                else sb.AppendLine($"        sequence.{item.op}({item.spec.methodCall.Replace("duration", FloatLiteral(item.duration))});");
+            }
+            sb.AppendLine("        sequence.SetEase(ease).SetLoops(loops);");
+            if (useSetLink) sb.AppendLine("        sequence.SetLink(gameObject);");
+            sb.AppendLine("    }");
+            AppendKillMethods(sb, "sequence");
+            sb.AppendLine("}");
+            return WrapGeneratedNamespace(namespaceName, sb.ToString());
+        }
+
+        private static string BuildScriptBody(string className, RuntimeTweenSpec spec, float duration, string ease, int loops, bool autoPlay, bool useSetLink, string tweenType, bool includeRestart = false)
+        {
+            var usings = new SortedSet<string> { "using DG.Tweening;", "using UnityEngine;" };
+            if (!string.IsNullOrEmpty(spec.extraUsing)) usings.Add(spec.extraUsing);
+            var sb = new StringBuilder();
+            sb.AppendLine(string.Join("\n", usings));
+            sb.AppendLine();
+            sb.AppendLine($"public class {className} : MonoBehaviour");
+            sb.AppendLine("{");
+            if (!spec.genericDOTweenTo) sb.AppendLine($"    [SerializeField] private {spec.fieldType} {spec.fieldName};");
+            sb.AppendLine($"    [SerializeField] private {spec.valueType} {spec.valueField} = {spec.defaultValue};");
+            sb.AppendLine($"    [SerializeField] private float duration = {FloatLiteral(duration)};");
+            sb.AppendLine($"    [SerializeField] private Ease ease = Ease.{SanitizeEnumName(ease, "OutQuad")};");
+            sb.AppendLine($"    [SerializeField] private int loops = {loops};");
+            sb.AppendLine($"    [SerializeField] private bool autoPlay = {BoolLiteral(autoPlay)};");
+            sb.AppendLine($"    private {tweenType} tween;");
+            if (spec.genericDOTweenTo) sb.AppendLine("    private float currentValue;");
+            sb.AppendLine();
+            if (!spec.genericDOTweenTo)
+            {
+                sb.AppendLine("    private void Awake()");
+                sb.AppendLine("    {");
+                sb.AppendLine($"        if ({spec.fieldName} == null) {spec.fieldInitializer}");
+                sb.AppendLine("    }");
+                sb.AppendLine();
+            }
+            sb.AppendLine("    private void OnEnable()");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (autoPlay) Play();");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine("    public void Play()");
+            sb.AppendLine("    {");
+            sb.AppendLine("        KillTween();");
+            sb.AppendLine($"        tween = {spec.methodCall}.SetEase(ease).SetLoops(loops);");
+            if (useSetLink) sb.AppendLine("        tween.SetLink(gameObject);");
+            sb.AppendLine("    }");
+            if (includeRestart)
+            {
+                sb.AppendLine();
+                sb.AppendLine("    public void RestartTween()");
+                sb.AppendLine("    {");
+                sb.AppendLine("        if (tween != null && tween.IsActive()) tween.Restart();");
+                sb.AppendLine("        else Play();");
+                sb.AppendLine("    }");
+            }
+            AppendKillMethods(sb, "tween");
+            sb.AppendLine("}");
+            return sb.ToString();
+        }
+
+        private static void AppendKillMethods(StringBuilder sb, string fieldName)
+        {
+            sb.AppendLine();
+            sb.AppendLine("    public void KillTween()");
+            sb.AppendLine("    {");
+            sb.AppendLine($"        if ({fieldName} != null && {fieldName}.IsActive()) {fieldName}.Kill();");
+            sb.AppendLine($"        {fieldName} = null;");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine("    private void OnDisable()");
+            sb.AppendLine("    {");
+            sb.AppendLine("        KillTween();");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine("    private void OnDestroy()");
+            sb.AppendLine("    {");
+            sb.AppendLine("        KillTween();");
+            sb.AppendLine("    }");
+        }
+
+        private static string WrapGeneratedNamespace(string namespaceName, string content)
+        {
+            if (string.IsNullOrWhiteSpace(namespaceName)) return content;
+            var indented = string.Join("\n", content.Replace("\r\n", "\n").TrimEnd('\n').Split('\n').Select(line => string.IsNullOrEmpty(line) ? string.Empty : "    " + line));
+            return $"namespace {namespaceName}\n{{\n{indented}\n}}\n";
+        }
+
+        private static string FloatLiteral(float value) => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) + "f";
+        private static string BoolLiteral(bool value) => value ? "true" : "false";
+        private static string SanitizeEnumName(string value, string fallback) => string.IsNullOrWhiteSpace(value) || !value.All(c => char.IsLetterOrDigit(c) || c == '_') ? fallback : value.Trim();
 
         private static object AddAnimationCore(
             GameObject go,

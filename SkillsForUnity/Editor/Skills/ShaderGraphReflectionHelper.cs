@@ -29,7 +29,7 @@ namespace UnitySkills
         private const string TemplatesRoot = "Packages/com.unity.shadergraph/GraphTemplates";
         private const string BuiltinBlankTemplatePath = "builtin:blank";
 
-        private static readonly Dictionary<string, Type> TypeCache = new Dictionary<string, Type>(StringComparer.Ordinal);
+        // TypeCache removed — delegated to SkillsCommon.FindTypeByName
 
         private static readonly Dictionary<string, string> PropertyTypeMap =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -97,34 +97,7 @@ namespace UnitySkills
             }
         }
 
-        public static Type FindTypeInAssemblies(string fullName)
-        {
-            if (string.IsNullOrWhiteSpace(fullName))
-                return null;
-
-            if (TypeCache.TryGetValue(fullName, out var cached))
-                return cached;
-
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    var type = assembly.GetType(fullName, false);
-                    if (type != null)
-                    {
-                        TypeCache[fullName] = type;
-                        return type;
-                    }
-                }
-                catch
-                {
-                    // Ignore broken reflection-only assemblies.
-                }
-            }
-
-            TypeCache[fullName] = null;
-            return null;
-        }
+        public static Type FindTypeInAssemblies(string fullName) => SkillsCommon.FindTypeByName(fullName);
 
         public static IEnumerable<object> GetTemplateDescriptors(bool includeSubGraphs)
         {
@@ -348,6 +321,17 @@ namespace UnitySkills
 
         public static bool TryLoadGraphData(string assetPath, out object graph, out string error)
         {
+            if (!TryReadAssetText(assetPath, out var text, out error))
+            {
+                graph = null;
+                return false;
+            }
+
+            return TryLoadGraphData(assetPath, text, out graph, out error);
+        }
+
+        public static bool TryLoadGraphData(string assetPath, string text, out object graph, out string error)
+        {
             graph = null;
             error = null;
 
@@ -359,13 +343,6 @@ namespace UnitySkills
 
             try
             {
-                var fullPath = Path.GetFullPath(assetPath);
-                if (!File.Exists(fullPath))
-                {
-                    error = $"Shader Graph asset not found: {assetPath}";
-                    return false;
-                }
-
                 var graphType = FindTypeInAssemblies("UnityEditor.ShaderGraph.GraphData");
                 var messageManagerType = FindTypeInAssemblies("UnityEditor.Graphing.Util.MessageManager");
                 var multiJsonType = FindTypeInAssemblies("UnityEditor.ShaderGraph.Serialization.MultiJson");
@@ -388,7 +365,6 @@ namespace UnitySkills
                     return false;
                 }
 
-                var text = File.ReadAllText(fullPath, Encoding.UTF8);
                 deserializeMethod.MakeGenericMethod(graphType).Invoke(null, new object[] { graph, text, null, false });
                 InvokeMethod(graph, "OnEnable");
                 InvokeMethod(graph, "ValidateGraph");
@@ -630,9 +606,9 @@ namespace UnitySkills
             return TrySaveGraphData(assetPath, graph, out error);
         }
 
-        public static bool TryReadGraphDocument(string assetPath, out ShaderGraphDocument document, out string error)
+        private static bool TryReadAssetText(string assetPath, out string text, out string error)
         {
-            document = null;
+            text = null;
             error = null;
 
             try
@@ -644,7 +620,49 @@ namespace UnitySkills
                     return false;
                 }
 
-                var text = File.ReadAllText(fullPath, Encoding.UTF8);
+                text = File.ReadAllText(fullPath, Encoding.UTF8);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryReadGraphDocumentAndLoadGraphData(string assetPath, out ShaderGraphDocument document, out object graph, out string error)
+        {
+            document = null;
+            graph = null;
+
+            if (!TryReadAssetText(assetPath, out var text, out error))
+                return false;
+
+            if (!TryReadGraphDocument(assetPath, text, out document, out error))
+                return false;
+
+            TryLoadGraphData(assetPath, text, out graph, out _);
+            return true;
+        }
+
+        public static bool TryReadGraphDocument(string assetPath, out ShaderGraphDocument document, out string error)
+        {
+            if (!TryReadAssetText(assetPath, out var text, out error))
+            {
+                document = null;
+                return false;
+            }
+
+            return TryReadGraphDocument(assetPath, text, out document, out error);
+        }
+
+        public static bool TryReadGraphDocument(string assetPath, string text, out ShaderGraphDocument document, out string error)
+        {
+            document = null;
+            error = null;
+
+            try
+            {
                 var objects = ParseMultiJson(text);
                 if (objects.Count == 0)
                 {

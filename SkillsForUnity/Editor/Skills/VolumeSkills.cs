@@ -218,7 +218,7 @@ namespace UnitySkills
                 .Select(x => new
                 {
                     name = x.Name,
-                    pipeline = x.Pipeline,
+                    pipeline = x.Pipeline.ToString(),
                     group = x.Group,
                     isPostProcess = x.IsPostProcess
                 })
@@ -399,17 +399,8 @@ namespace UnitySkills
             return result;
         }
 
-        private static (VolumeProfile profile, object error) LoadProfileOrError(string profilePath)
-        {
-            if (Validate.Required(profilePath, "profilePath") is object err) return (null, err);
-            if (Validate.SafePath(profilePath, "profilePath") is object pathErr) return (null, pathErr);
-
-            var profile = RenderPipelineSkillsCommon.LoadVolumeProfile(profilePath);
-            if (profile == null)
-                return (null, new { error = $"VolumeProfile not found: {profilePath}" });
-
-            return (profile, null);
-        }
+        private static (VolumeProfile profile, object error) LoadProfileOrError(string profilePath) =>
+            RenderPipelineSkillsCommon.LoadProfileOrError(profilePath);
 
         private static (string name, Type type, object error) ResolveDescriptor(string componentType)
         {

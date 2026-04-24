@@ -352,23 +352,16 @@ namespace UnitySkills
         private static bool TryParseVector2(string value, out Vector2 result)
         {
             result = default;
-            var parts = value.Split(',').Select(x => x.Trim()).ToArray();
-            if (parts.Length != 2) return false;
-            if (!float.TryParse(parts[0], out var x)) return false;
-            if (!float.TryParse(parts[1], out var y)) return false;
-            result = new Vector2(x, y);
+            if (!RenderPipelineSkillsCommon.TryParseVector(value, 2, out var v)) return false;
+            result = new Vector2(v[0], v[1]);
             return true;
         }
 
         private static bool TryParseVector3(string value, out Vector3 result)
         {
             result = default;
-            var parts = value.Split(',').Select(x => x.Trim()).ToArray();
-            if (parts.Length != 3) return false;
-            if (!float.TryParse(parts[0], out var x)) return false;
-            if (!float.TryParse(parts[1], out var y)) return false;
-            if (!float.TryParse(parts[2], out var z)) return false;
-            result = new Vector3(x, y, z);
+            if (!RenderPipelineSkillsCommon.TryParseVector(value, 3, out var v)) return false;
+            result = new Vector3(v[0], v[1], v[2]);
             return true;
         }
 

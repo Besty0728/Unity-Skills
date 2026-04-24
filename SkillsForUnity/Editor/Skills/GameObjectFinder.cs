@@ -678,5 +678,35 @@ namespace UnitySkills
         /// <summary>True if the given path exists as either a file or a directory.</summary>
         public static bool PathExists(string path) =>
             !string.IsNullOrEmpty(path) && (File.Exists(path) || Directory.Exists(path));
+
+        // -----------------------------------------------------------------
+        // Unified type lookup (cached, shared across all ReflectionHelper)
+        // -----------------------------------------------------------------
+
+        private static readonly Dictionary<string, System.Type> _findTypeCache =
+            new Dictionary<string, System.Type>();
+
+        /// <summary>
+        /// Find a type by its fully-qualified name across all loaded assemblies.
+        /// Results are cached (including null misses) so subsequent lookups are O(1).
+        /// </summary>
+        public static System.Type FindTypeByName(string fullName)
+        {
+            if (string.IsNullOrEmpty(fullName)) return null;
+            if (_findTypeCache.TryGetValue(fullName, out var cached)) return cached;
+
+            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var t = asm.GetType(fullName, throwOnError: false);
+                    if (t != null) { _findTypeCache[fullName] = t; return t; }
+                }
+                catch { /* skip assemblies that fail to enumerate */ }
+            }
+
+            _findTypeCache[fullName] = null;
+            return null;
+        }
     }
 }

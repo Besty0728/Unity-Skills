@@ -23,14 +23,11 @@ namespace UnitySkills
         private const string DOTweenDefine = "DOTWEEN";
         private const string DOTweenProDefine = "DOTWEEN_PRO";
 
-        private const string DOTweenTypeName = "DG.Tweening.DOTween";
-        private const string DOTweenAnimationTypeName = "DG.Tweening.DOTweenAnimation";
-
         [InitializeOnLoadMethod]
         private static void Synchronize()
         {
-            bool hasDOTween = TypeExists(DOTweenTypeName);
-            bool hasDOTweenPro = TypeExists(DOTweenAnimationTypeName);
+            bool hasDOTween = DOTweenReflectionHelper.IsDOTweenInstalled;
+            bool hasDOTweenPro = DOTweenReflectionHelper.IsDOTweenProInstalled;
 
             bool changed = false;
             changed |= EnsureDefineState(DOTweenDefine, hasDOTween);
@@ -41,20 +38,6 @@ namespace UnitySkills
                 try { CompilationPipeline.RequestScriptCompilation(); }
                 catch { /* editor may refuse during certain lifecycle moments */ }
             }
-        }
-
-        private static bool TypeExists(string fullName)
-        {
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    if (asm.GetType(fullName, throwOnError: false) != null)
-                        return true;
-                }
-                catch { /* assembly may fail to enumerate — skip */ }
-            }
-            return false;
         }
 
         private static bool EnsureDefineState(string define, bool shouldBePresent)

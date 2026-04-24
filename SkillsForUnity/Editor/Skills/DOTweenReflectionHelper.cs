@@ -22,31 +22,12 @@ namespace UnitySkills
         // Type Lookup
         // ==================================================================================
 
-        private static readonly Dictionary<string, Type> _typeCache = new Dictionary<string, Type>();
-
         public const string DOTweenTypeName = "DG.Tweening.DOTween";
         public const string DOTweenAnimationTypeName = "DG.Tweening.DOTweenAnimation";
         public const string EaseEnumTypeName = "DG.Tweening.Ease";
         public const string LoopTypeEnumTypeName = "DG.Tweening.LoopType";
 
-        public static Type FindTypeInAssemblies(string fullName)
-        {
-            if (string.IsNullOrEmpty(fullName)) return null;
-            if (_typeCache.TryGetValue(fullName, out var cached)) return cached;
-
-            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    var t = asm.GetType(fullName, throwOnError: false);
-                    if (t != null) { _typeCache[fullName] = t; return t; }
-                }
-                catch { /* skip assemblies that fail to enumerate */ }
-            }
-
-            _typeCache[fullName] = null;
-            return null;
-        }
+        public static Type FindTypeInAssemblies(string fullName) => SkillsCommon.FindTypeByName(fullName);
 
         public static bool IsDOTweenInstalled => FindTypeInAssemblies(DOTweenTypeName) != null;
         public static bool IsDOTweenProInstalled => FindTypeInAssemblies(DOTweenAnimationTypeName) != null;

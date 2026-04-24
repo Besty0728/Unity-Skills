@@ -161,9 +161,11 @@ namespace UnitySkills
             ReadOnly = true)]
         public static object ShaderGraphListAssets(string filter = null, bool includeSubGraphs = true, int limit = 100)
         {
-            var assets = AssetDatabase.GetAllAssetPaths()
+            var searchFilter = string.IsNullOrWhiteSpace(filter) ? string.Empty : filter;
+            var assets = AssetDatabase.FindAssets(searchFilter, new[] { "Assets" })
+                .Select(AssetDatabase.GUIDToAssetPath)
                 .Where(path =>
-                    path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrEmpty(path) &&
                     (path.EndsWith(".shadergraph", StringComparison.OrdinalIgnoreCase) ||
                      (includeSubGraphs && path.EndsWith(".shadersubgraph", StringComparison.OrdinalIgnoreCase))))
                 .Where(path => string.IsNullOrWhiteSpace(filter) || path.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
@@ -213,10 +215,10 @@ namespace UnitySkills
             if (Validate.Required(assetPath, "assetPath") is object err) return err;
             if (Validate.SafePath(assetPath, "assetPath") is object pathErr) return pathErr;
 
-            if (!ShaderGraphReflectionHelper.TryReadGraphDocument(assetPath, out var document, out var error))
+            if (!ShaderGraphReflectionHelper.TryReadGraphDocumentAndLoadGraphData(assetPath, out var document, out var graph, out var error))
                 return new { error };
 
-            if (ShaderGraphReflectionHelper.TryLoadGraphData(assetPath, out var graph, out _))
+            if (graph != null)
                 return ShaderGraphReflectionHelper.DescribeGraphStructure(document, graph, maxNodes, maxEdges);
 
             return ShaderGraphReflectionHelper.DescribeGraphStructure(document, maxNodes, maxEdges);

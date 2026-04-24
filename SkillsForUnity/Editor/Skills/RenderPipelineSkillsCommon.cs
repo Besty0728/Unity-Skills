@@ -27,7 +27,7 @@ namespace UnitySkills
     {
         public string Name { get; set; }
         public Type Type { get; set; }
-        public string Pipeline { get; set; }
+        public RenderPipelineSupport Pipeline { get; set; }
         public string Group { get; set; }
         public bool IsPostProcess { get; set; }
     }
@@ -201,58 +201,69 @@ namespace UnitySkills
             };
         }
 
+        // Cached registries: postProcessOnly=true and postProcessOnly=false
+        private static IReadOnlyList<VolumeComponentDescriptor> _registryAll;
+        private static IReadOnlyList<VolumeComponentDescriptor> _registryPostProcess;
+
         public static IReadOnlyList<VolumeComponentDescriptor> GetVolumeComponentRegistry(bool postProcessOnly = false)
         {
+            var cached = postProcessOnly ? _registryPostProcess : _registryAll;
+            if (cached != null) return cached;
+
             var descriptors = new List<VolumeComponentDescriptor>();
 
 #if URP
             descriptors.AddRange(new[]
             {
-                CreateDescriptor("Bloom", typeof(UnityEngine.Rendering.Universal.Bloom), "URP", "Post-processing", true),
-                CreateDescriptor("ChromaticAberration", typeof(UnityEngine.Rendering.Universal.ChromaticAberration), "URP", "Post-processing", true),
-                CreateDescriptor("ColorAdjustments", typeof(UnityEngine.Rendering.Universal.ColorAdjustments), "URP", "Post-processing", true),
-                CreateDescriptor("ColorCurves", typeof(UnityEngine.Rendering.Universal.ColorCurves), "URP", "Post-processing", true),
-                CreateDescriptor("ColorLookup", typeof(UnityEngine.Rendering.Universal.ColorLookup), "URP", "Post-processing", true),
-                CreateDescriptor("ChannelMixer", typeof(UnityEngine.Rendering.Universal.ChannelMixer), "URP", "Post-processing", true),
-                CreateDescriptor("DepthOfField", typeof(UnityEngine.Rendering.Universal.DepthOfField), "URP", "Post-processing", true),
-                CreateDescriptor("FilmGrain", typeof(UnityEngine.Rendering.Universal.FilmGrain), "URP", "Post-processing", true),
-                CreateDescriptor("LensDistortion", typeof(UnityEngine.Rendering.Universal.LensDistortion), "URP", "Post-processing", true),
-                CreateDescriptor("LiftGammaGain", typeof(UnityEngine.Rendering.Universal.LiftGammaGain), "URP", "Post-processing", true),
-                CreateDescriptor("MotionBlur", typeof(UnityEngine.Rendering.Universal.MotionBlur), "URP", "Post-processing", true),
-                CreateDescriptor("PaniniProjection", typeof(UnityEngine.Rendering.Universal.PaniniProjection), "URP", "Post-processing", true),
-                CreateDescriptor("ShadowsMidtonesHighlights", typeof(UnityEngine.Rendering.Universal.ShadowsMidtonesHighlights), "URP", "Post-processing", true),
-                CreateDescriptor("SplitToning", typeof(UnityEngine.Rendering.Universal.SplitToning), "URP", "Post-processing", true),
-                CreateDescriptor("Tonemapping", typeof(UnityEngine.Rendering.Universal.Tonemapping), "URP", "Post-processing", true),
-                CreateDescriptor("Vignette", typeof(UnityEngine.Rendering.Universal.Vignette), "URP", "Post-processing", true),
-                CreateDescriptor("WhiteBalance", typeof(UnityEngine.Rendering.Universal.WhiteBalance), "URP", "Post-processing", true)
+                CreateDescriptor("Bloom", typeof(UnityEngine.Rendering.Universal.Bloom), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("ChromaticAberration", typeof(UnityEngine.Rendering.Universal.ChromaticAberration), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("ColorAdjustments", typeof(UnityEngine.Rendering.Universal.ColorAdjustments), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("ColorCurves", typeof(UnityEngine.Rendering.Universal.ColorCurves), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("ColorLookup", typeof(UnityEngine.Rendering.Universal.ColorLookup), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("ChannelMixer", typeof(UnityEngine.Rendering.Universal.ChannelMixer), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("DepthOfField", typeof(UnityEngine.Rendering.Universal.DepthOfField), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("FilmGrain", typeof(UnityEngine.Rendering.Universal.FilmGrain), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("LensDistortion", typeof(UnityEngine.Rendering.Universal.LensDistortion), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("LiftGammaGain", typeof(UnityEngine.Rendering.Universal.LiftGammaGain), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("MotionBlur", typeof(UnityEngine.Rendering.Universal.MotionBlur), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("PaniniProjection", typeof(UnityEngine.Rendering.Universal.PaniniProjection), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("ShadowsMidtonesHighlights", typeof(UnityEngine.Rendering.Universal.ShadowsMidtonesHighlights), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("SplitToning", typeof(UnityEngine.Rendering.Universal.SplitToning), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("Tonemapping", typeof(UnityEngine.Rendering.Universal.Tonemapping), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("Vignette", typeof(UnityEngine.Rendering.Universal.Vignette), RenderPipelineSupport.URP, "Post-processing", true),
+                CreateDescriptor("WhiteBalance", typeof(UnityEngine.Rendering.Universal.WhiteBalance), RenderPipelineSupport.URP, "Post-processing", true)
             });
 #endif
 
 #if HDRP
             descriptors.AddRange(new[]
             {
-                CreateDescriptor("Bloom", typeof(UnityEngine.Rendering.HighDefinition.Bloom), "HDRP", "Post-processing", true),
-                CreateDescriptor("ColorAdjustments", typeof(UnityEngine.Rendering.HighDefinition.ColorAdjustments), "HDRP", "Post-processing", true),
-                CreateDescriptor("DepthOfField", typeof(UnityEngine.Rendering.HighDefinition.DepthOfField), "HDRP", "Post-processing", true),
-                CreateDescriptor("Tonemapping", typeof(UnityEngine.Rendering.HighDefinition.Tonemapping), "HDRP", "Post-processing", true),
-                CreateDescriptor("Vignette", typeof(UnityEngine.Rendering.HighDefinition.Vignette), "HDRP", "Post-processing", true)
+                CreateDescriptor("Bloom", typeof(UnityEngine.Rendering.HighDefinition.Bloom), RenderPipelineSupport.HDRP, "Post-processing", true),
+                CreateDescriptor("ColorAdjustments", typeof(UnityEngine.Rendering.HighDefinition.ColorAdjustments), RenderPipelineSupport.HDRP, "Post-processing", true),
+                CreateDescriptor("DepthOfField", typeof(UnityEngine.Rendering.HighDefinition.DepthOfField), RenderPipelineSupport.HDRP, "Post-processing", true),
+                CreateDescriptor("Tonemapping", typeof(UnityEngine.Rendering.HighDefinition.Tonemapping), RenderPipelineSupport.HDRP, "Post-processing", true),
+                CreateDescriptor("Vignette", typeof(UnityEngine.Rendering.HighDefinition.Vignette), RenderPipelineSupport.HDRP, "Post-processing", true)
             });
 #endif
 
             var pipeline = DetectPipeline();
             IEnumerable<VolumeComponentDescriptor> filtered = descriptors;
             if (pipeline == RenderPipelineSupport.URP)
-                filtered = filtered.Where(x => x.Pipeline == "URP");
+                filtered = filtered.Where(x => x.Pipeline == RenderPipelineSupport.URP);
             else if (pipeline == RenderPipelineSupport.HDRP)
-                filtered = filtered.Where(x => x.Pipeline == "HDRP");
+                filtered = filtered.Where(x => x.Pipeline == RenderPipelineSupport.HDRP);
 
             if (postProcessOnly)
                 filtered = filtered.Where(x => x.IsPostProcess);
 
-            return filtered
+            var result = filtered
                 .OrderBy(x => x.Group, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+
+            if (postProcessOnly) _registryPostProcess = result;
+            else _registryAll = result;
+            return result;
         }
 
         public static VolumeComponentDescriptor FindVolumeComponent(string componentType, bool postProcessOnly = false)
@@ -267,6 +278,18 @@ namespace UnitySkills
             return string.IsNullOrWhiteSpace(profilePath)
                 ? null
                 : AssetDatabase.LoadAssetAtPath<VolumeProfile>(profilePath);
+        }
+
+        public static (VolumeProfile profile, object error) LoadProfileOrError(string profilePath)
+        {
+            if (Validate.Required(profilePath, "profilePath") is object err) return (null, err);
+            if (Validate.SafePath(profilePath, "profilePath") is object pathErr) return (null, pathErr);
+
+            var profile = LoadVolumeProfile(profilePath);
+            if (profile == null)
+                return (null, new { error = $"VolumeProfile not found: {profilePath}" });
+
+            return (profile, null);
         }
 
         public static VolumeComponent GetOrAddVolumeComponent(VolumeProfile profile, Type componentType, bool overrides = true)
@@ -389,7 +412,7 @@ namespace UnitySkills
             AssetDatabase.SaveAssets();
         }
 
-        private static VolumeComponentDescriptor CreateDescriptor(string name, Type type, string pipeline, string group, bool isPostProcess)
+        private static VolumeComponentDescriptor CreateDescriptor(string name, Type type, RenderPipelineSupport pipeline, string group, bool isPostProcess)
         {
             return new VolumeComponentDescriptor
             {
@@ -638,7 +661,7 @@ namespace UnitySkills
             return true;
         }
 
-        private static bool TryParseVector(string input, int expectedCount, out float[] values)
+        public static bool TryParseVector(string input, int expectedCount, out float[] values)
         {
             values = null;
             var parts = input.Split(',')
@@ -848,23 +871,7 @@ namespace UnitySkills
             AssetDatabase.SaveAssets();
         }
 
-        private static Type ResolveURPType(string fullName)
-        {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                try
-                {
-                    var type = assembly.GetType(fullName);
-                    if (type != null)
-                        return type;
-                }
-                catch
-                {
-                }
-            }
-
-            return null;
-        }
+        private static Type ResolveURPType(string fullName) => SkillsCommon.FindTypeByName(fullName);
     }
 #endif
 }

@@ -492,8 +492,8 @@ namespace UnitySkills
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var go = GameObjectFinder.Find(name, instanceId, path);
-            if (go == null) return new { error = $"GameObject not found (name={name}, instanceId={instanceId}, path={path})." };
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
 
             var existing = go.GetComponent<NetworkObject>();
             if (existing != null)
@@ -515,7 +515,7 @@ namespace UnitySkills
                 success = true,
                 name = go.name,
                 instanceId = go.GetInstanceID(),
-                globalObjectIdHash = no.GlobalObjectIdHash
+                globalObjectIdHash = GetGlobalObjectIdHash(no)
             };
 #endif
         }
@@ -542,8 +542,8 @@ namespace UnitySkills
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var go = GameObjectFinder.Find(name, instanceId, path);
-            if (go == null) return new { error = "GameObject not found." };
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
             var no = go.GetComponent<NetworkObject>();
             if (no == null) return new { error = $"'{go.name}' has no NetworkObject component. Use netcode_add_network_object first." };
 
@@ -575,8 +575,8 @@ namespace UnitySkills
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var go = GameObjectFinder.Find(name, instanceId, path);
-            if (go == null) return new { error = "GameObject not found." };
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
             var no = go.GetComponent<NetworkObject>();
             if (no == null) return new { error = $"'{go.name}' has no NetworkObject component." };
             if (Application.isPlaying && no.IsSpawned)
@@ -604,7 +604,7 @@ namespace UnitySkills
             {
                 name = no.gameObject.name,
                 instanceId = no.gameObject.GetInstanceID(),
-                globalObjectIdHash = no.GlobalObjectIdHash,
+                globalObjectIdHash = GetGlobalObjectIdHash(no),
                 isSpawned = Application.isPlaying && no.IsSpawned,
                 networkObjectId = Application.isPlaying && no.IsSpawned ? (ulong?)no.NetworkObjectId : null,
                 ownerClientId = Application.isPlaying && no.IsSpawned ? (ulong?)no.OwnerClientId : null,
@@ -628,8 +628,8 @@ namespace UnitySkills
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var go = GameObjectFinder.Find(name, instanceId, path);
-            if (go == null) return new { found = false, error = "GameObject not found." };
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return new { found = false, error = SkillResultHelper.TryGetError(findErr, out var message) ? message : "GameObject not found." };
             var no = go.GetComponent<NetworkObject>();
             if (no == null) return new { found = false, error = $"'{go.name}' has no NetworkObject." };
 
@@ -638,7 +638,7 @@ namespace UnitySkills
                 found = true,
                 name = go.name,
                 instanceId = go.GetInstanceID(),
-                globalObjectIdHash = no.GlobalObjectIdHash,
+                globalObjectIdHash = GetGlobalObjectIdHash(no),
                 alwaysReplicateAsRoot = no.AlwaysReplicateAsRoot,
                 synchronizeTransform = no.SynchronizeTransform,
                 activeSceneSynchronization = no.ActiveSceneSynchronization,
@@ -829,6 +829,11 @@ namespace UnitySkills
         }
 
 #if NETCODE_GAMEOBJECTS
+        private static uint GetGlobalObjectIdHash(NetworkObject networkObject)
+        {
+            return networkObject != null ? networkObject.PrefabIdHash : 0;
+        }
+
         private static uint SafeSourceHash(NetworkPrefab p)
         {
             try { return p.SourcePrefabGlobalObjectIdHash; } catch { return 0; }
@@ -907,8 +912,8 @@ namespace UnitySkills
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var go = GameObjectFinder.Find(name, instanceId, path);
-            if (go == null) return new { error = "GameObject not found." };
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
             if (go.GetComponent<NetworkObject>() == null)
                 return new { error = $"'{go.name}' lacks a NetworkObject component. Add one first (NetworkTransform requires NetworkBehaviour's NetworkObject)." };
             if (go.GetComponent<NetworkTransform>() != null)
@@ -954,8 +959,8 @@ namespace UnitySkills
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var go = GameObjectFinder.Find(name, instanceId, path);
-            if (go == null) return new { error = "GameObject not found." };
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
             var nt = go.GetComponent<NetworkTransform>();
             if (nt == null) return new { error = $"'{go.name}' has no NetworkTransform." };
 
@@ -1022,8 +1027,8 @@ namespace UnitySkills
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var go = GameObjectFinder.Find(name, instanceId, path);
-            if (go == null) return new { error = "GameObject not found." };
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
             if (go.GetComponent<NetworkObject>() == null)
                 return new { error = $"'{go.name}' lacks a NetworkObject component. Add one first." };
 
@@ -1066,8 +1071,8 @@ namespace UnitySkills
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var go = GameObjectFinder.Find(name, instanceId, path);
-            if (go == null) return new { error = "GameObject not found." };
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
             if (go.GetComponent<NetworkObject>() == null)
                 return new { error = $"'{go.name}' lacks a NetworkObject component." };
             if (go.GetComponent<Animator>() == null)
@@ -1286,7 +1291,7 @@ namespace UnitySkills
             var items = sm.SpawnedObjects.Values.Select(no => new
             {
                 networkObjectId = no.NetworkObjectId,
-                globalObjectIdHash = no.GlobalObjectIdHash,
+                globalObjectIdHash = GetGlobalObjectIdHash(no),
                 name = no.gameObject.name,
                 ownerClientId = no.OwnerClientId,
                 isPlayerObject = no.IsPlayerObject

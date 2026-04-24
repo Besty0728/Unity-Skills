@@ -24,6 +24,32 @@ namespace UnitySkills
     /// </summary>
     public static class YooAssetSkills
     {
+        private enum RuntimeValidationStatus
+        {
+            Queued,
+            Running,
+            Completed,
+            Failed
+        }
+
+        private enum RuntimeValidationStage
+        {
+            Queued,
+            WaitingPlayMode,
+            InitializeYooAssets,
+            WaitInitialize,
+            WaitPackageVersion,
+            WaitManifest,
+            LoadAsset,
+            WaitAsset,
+            CheckDownloader,
+            WaitDownloader,
+            Cleanup,
+            WaitDestroy,
+            Completed,
+            Failed
+        }
+
         private sealed class RuntimeValidationJob
         {
             public string JobId;
@@ -35,8 +61,8 @@ namespace UnitySkills
             public bool CheckDownloader;
             public int DownloadingMaxNumber;
             public int FailedTryAgain;
-            public string Status = "queued";
-            public string Stage = "queued";
+            public RuntimeValidationStatus Status = RuntimeValidationStatus.Queued;
+            public RuntimeValidationStage Stage = RuntimeValidationStage.Queued;
             public int Progress;
             public string Error;
             public Dictionary<string, object> Result = new Dictionary<string, object>();
@@ -72,6 +98,72 @@ namespace UnitySkills
             public int Progress;
             public string Error;
             public Dictionary<string, object> Result;
+        }
+
+        private static string ToPayloadValue(RuntimeValidationStatus status)
+        {
+            return status switch
+            {
+                RuntimeValidationStatus.Queued => "queued",
+                RuntimeValidationStatus.Running => "running",
+                RuntimeValidationStatus.Completed => "completed",
+                RuntimeValidationStatus.Failed => "failed",
+                _ => status.ToString()
+            };
+        }
+
+        private static RuntimeValidationStatus ParseStatus(string status)
+        {
+            return status switch
+            {
+                "running" => RuntimeValidationStatus.Running,
+                "completed" => RuntimeValidationStatus.Completed,
+                "failed" => RuntimeValidationStatus.Failed,
+                _ => RuntimeValidationStatus.Queued
+            };
+        }
+
+        private static string ToPayloadValue(RuntimeValidationStage stage)
+        {
+            return stage switch
+            {
+                RuntimeValidationStage.Queued => "queued",
+                RuntimeValidationStage.WaitingPlayMode => "waiting_playmode",
+                RuntimeValidationStage.InitializeYooAssets => "initialize_yooassets",
+                RuntimeValidationStage.WaitInitialize => "wait_initialize",
+                RuntimeValidationStage.WaitPackageVersion => "wait_package_version",
+                RuntimeValidationStage.WaitManifest => "wait_manifest",
+                RuntimeValidationStage.LoadAsset => "load_asset",
+                RuntimeValidationStage.WaitAsset => "wait_asset",
+                RuntimeValidationStage.CheckDownloader => "check_downloader",
+                RuntimeValidationStage.WaitDownloader => "wait_downloader",
+                RuntimeValidationStage.Cleanup => "cleanup",
+                RuntimeValidationStage.WaitDestroy => "wait_destroy",
+                RuntimeValidationStage.Completed => "completed",
+                RuntimeValidationStage.Failed => "failed",
+                _ => stage.ToString()
+            };
+        }
+
+        private static RuntimeValidationStage ParseStage(string stage)
+        {
+            return stage switch
+            {
+                "initialize_yooassets" => RuntimeValidationStage.InitializeYooAssets,
+                "wait_initialize" => RuntimeValidationStage.WaitInitialize,
+                "wait_package_version" => RuntimeValidationStage.WaitPackageVersion,
+                "wait_manifest" => RuntimeValidationStage.WaitManifest,
+                "load_asset" => RuntimeValidationStage.LoadAsset,
+                "wait_asset" => RuntimeValidationStage.WaitAsset,
+                "check_downloader" => RuntimeValidationStage.CheckDownloader,
+                "wait_downloader" => RuntimeValidationStage.WaitDownloader,
+                "cleanup" => RuntimeValidationStage.Cleanup,
+                "wait_destroy" => RuntimeValidationStage.WaitDestroy,
+                "completed" => RuntimeValidationStage.Completed,
+                "failed" => RuntimeValidationStage.Failed,
+                "waiting_playmode" => RuntimeValidationStage.WaitingPlayMode,
+                _ => RuntimeValidationStage.Queued
+            };
         }
 
 #if !YOO_ASSET
@@ -186,9 +278,15 @@ namespace UnitySkills
             if (eBp == EBuildPipeline.EditorSimulateBuildPipeline)
                 return new { error = "Use yooasset_simulate_build for EditorSimulateBuildPipeline." };
 
-            var target = string.IsNullOrEmpty(buildTarget)
-                ? EditorUserBuildSettings.activeBuildTarget
-                : (BuildTarget)Enum.Parse(typeof(BuildTarget), buildTarget, true);
+            BuildTarget target;
+            if (string.IsNullOrEmpty(buildTarget))
+            {
+                target = EditorUserBuildSettings.activeBuildTarget;
+            }
+            else if (!Enum.TryParse(buildTarget, true, out target))
+            {
+                return new { error = $"Unknown buildTarget: {buildTarget}. Available: {string.Join(", ", Enum.GetNames(typeof(BuildTarget)))}" };
+            }
 
             var version = (packageVersion == "auto" || string.IsNullOrEmpty(packageVersion))
                 ? DateTime.UtcNow.ToString("yyyyMMddHHmm")
@@ -668,8 +766,8 @@ namespace UnitySkills
                 CheckDownloader = checkDownloader,
                 DownloadingMaxNumber = Math.Max(1, downloadingMaxNumber),
                 FailedTryAgain = Math.Max(0, failedTryAgain),
-                Status = "queued",
-                Stage = "waiting_playmode",
+                Status = RuntimeValidationStatus.Queued,
+                Stage = RuntimeValidationStage.WaitingPlayMode,
                 Progress = 0
             };
             RuntimeValidationJobs[job.JobId] = job;
@@ -678,8 +776,8 @@ namespace UnitySkills
             return new
             {
                 jobId = job.JobId,
-                status = job.Status,
-                stage = job.Stage,
+                status = ToPayloadValue(job.Status),
+                stage = ToPayloadValue(job.Stage),
                 packageName,
                 assetLocation,
                 restoreEditMode,
@@ -708,8 +806,8 @@ namespace UnitySkills
             {
                 jobId = job.JobId,
                 packageName = job.PackageName,
-                status = job.Status,
-                stage = job.Stage,
+                status = ToPayloadValue(job.Status),
+                stage = ToPayloadValue(job.Stage),
                 progress = job.Progress,
                 lastError = job.Error,
                 result = job.Result
@@ -1712,8 +1810,8 @@ namespace UnitySkills
                 CheckDownloader = job.CheckDownloader,
                 DownloadingMaxNumber = job.DownloadingMaxNumber,
                 FailedTryAgain = job.FailedTryAgain,
-                Status = job.Status,
-                Stage = job.Stage,
+                Status = ToPayloadValue(job.Status),
+                Stage = ToPayloadValue(job.Stage),
                 Progress = job.Progress,
                 Error = job.Error,
                 Result = job.Result
@@ -1757,15 +1855,15 @@ namespace UnitySkills
                     CheckDownloader = state.CheckDownloader,
                     DownloadingMaxNumber = Math.Max(1, state.DownloadingMaxNumber),
                     FailedTryAgain = Math.Max(0, state.FailedTryAgain),
-                    Status = string.IsNullOrEmpty(state.Status) ? "queued" : state.Status,
-                    Stage = string.IsNullOrEmpty(state.Stage) ? "waiting_playmode" : state.Stage,
+                    Status = ParseStatus(state.Status),
+                    Stage = ParseStage(state.Stage),
                     Progress = state.Progress,
                     Error = state.Error,
                     Result = state.Result ?? new Dictionary<string, object>()
                 };
             }
 
-            if (RuntimeValidationJobs.Values.Any(job => job.Status != "completed" && job.Status != "failed"))
+            if (RuntimeValidationJobs.Values.Any(job => job.Status != RuntimeValidationStatus.Completed && job.Status != RuntimeValidationStatus.Failed))
                 EnsureRuntimeValidationUpdateHooked();
         }
 
@@ -1849,7 +1947,7 @@ namespace UnitySkills
         {
             foreach (var job in RuntimeValidationJobs.Values.ToArray())
             {
-                if (job.Status == "completed" || job.Status == "failed")
+                if (job.Status == RuntimeValidationStatus.Completed || job.Status == RuntimeValidationStatus.Failed)
                     continue;
 
                 try
@@ -1862,7 +1960,7 @@ namespace UnitySkills
                 }
             }
 
-            if (RuntimeValidationJobs.Values.All(j => j.Status == "completed" || j.Status == "failed"))
+            if (RuntimeValidationJobs.Values.All(j => j.Status == RuntimeValidationStatus.Completed || j.Status == RuntimeValidationStatus.Failed))
             {
                 EditorApplication.update -= ProcessRuntimeValidationJobs;
                 _runtimeValidationUpdateHooked = false;
@@ -1871,26 +1969,26 @@ namespace UnitySkills
 
         private static void ProcessRuntimeValidationJob(RuntimeValidationJob job)
         {
-            if (job.Stage == "waiting_playmode")
+            if (job.Stage == RuntimeValidationStage.WaitingPlayMode)
             {
-                job.Status = "running";
+                job.Status = RuntimeValidationStatus.Running;
                 job.Progress = 5;
                 if (!EditorApplication.isPlaying)
                 {
                     job.StartedPlayMode = true;
-                    job.Status = "running";
+                    job.Status = RuntimeValidationStatus.Running;
                     PersistRuntimeValidationJobs();
                     if (!EditorApplication.isPlayingOrWillChangePlaymode)
                         EditorApplication.isPlaying = true;
                     return;
                 }
-                job.Stage = "initialize_yooassets";
+                job.Stage = RuntimeValidationStage.InitializeYooAssets;
             }
 
             if (!EditorApplication.isPlaying)
                 return;
 
-            if (job.Stage == "initialize_yooassets")
+            if (job.Stage == RuntimeValidationStage.InitializeYooAssets)
             {
                 job.Progress = 15;
                 if (!YooAssets.Initialized)
@@ -1909,11 +2007,11 @@ namespace UnitySkills
                 job.Package = package;
                 job.Result["packageRootDirectory"] = simulateResult.PackageRootDirectory;
                 job.InitializeOperation = package.InitializeAsync(parameters);
-                job.Stage = "wait_initialize";
+                job.Stage = RuntimeValidationStage.WaitInitialize;
                 return;
             }
 
-            if (job.Stage == "wait_initialize")
+            if (job.Stage == RuntimeValidationStage.WaitInitialize)
             {
                 job.Progress = 35;
                 if (!job.InitializeOperation.IsDone) return;
@@ -1924,11 +2022,11 @@ namespace UnitySkills
                 }
                 job.Result["initialized"] = true;
                 job.RequestVersionOperation = job.Package.RequestPackageVersionAsync();
-                job.Stage = "wait_package_version";
+                job.Stage = RuntimeValidationStage.WaitPackageVersion;
                 return;
             }
 
-            if (job.Stage == "wait_package_version")
+            if (job.Stage == RuntimeValidationStage.WaitPackageVersion)
             {
                 job.Progress = 45;
                 if (!job.RequestVersionOperation.IsDone) return;
@@ -1940,11 +2038,11 @@ namespace UnitySkills
 
                 job.Result["packageVersion"] = job.RequestVersionOperation.PackageVersion;
                 job.UpdateManifestOperation = job.Package.UpdatePackageManifestAsync(job.RequestVersionOperation.PackageVersion);
-                job.Stage = "wait_manifest";
+                job.Stage = RuntimeValidationStage.WaitManifest;
                 return;
             }
 
-            if (job.Stage == "wait_manifest")
+            if (job.Stage == RuntimeValidationStage.WaitManifest)
             {
                 job.Progress = 50;
                 if (!job.UpdateManifestOperation.IsDone) return;
@@ -1956,11 +2054,11 @@ namespace UnitySkills
 
                 job.Result["manifestUpdated"] = true;
                 job.Result["packageValid"] = job.Package.PackageValid;
-                job.Stage = "load_asset";
+                job.Stage = RuntimeValidationStage.LoadAsset;
                 return;
             }
 
-            if (job.Stage == "load_asset")
+            if (job.Stage == RuntimeValidationStage.LoadAsset)
             {
                 job.Progress = 55;
                 var location = job.AssetLocation;
@@ -1974,7 +2072,7 @@ namespace UnitySkills
                 if (string.IsNullOrEmpty(location))
                 {
                     job.Result["assetLoadSkipped"] = true;
-                    job.Stage = "check_downloader";
+                    job.Stage = RuntimeValidationStage.CheckDownloader;
                     return;
                 }
 
@@ -1987,11 +2085,11 @@ namespace UnitySkills
                 }
 
                 job.AssetHandle = job.Package.LoadAssetAsync(location);
-                job.Stage = "wait_asset";
+                job.Stage = RuntimeValidationStage.WaitAsset;
                 return;
             }
 
-            if (job.Stage == "wait_asset")
+            if (job.Stage == RuntimeValidationStage.WaitAsset)
             {
                 if (!job.AssetHandle.IsDone) return;
                 if (job.AssetHandle.Status != EOperationStatus.Succeed)
@@ -2004,28 +2102,28 @@ namespace UnitySkills
                 job.Result["assetType"] = job.AssetHandle.AssetObject ? job.AssetHandle.AssetObject.GetType().Name : null;
                 job.AssetHandle.Release();
                 job.Result["assetHandleReleased"] = true;
-                job.Stage = "check_downloader";
+                job.Stage = RuntimeValidationStage.CheckDownloader;
                 return;
             }
 
-            if (job.Stage == "check_downloader")
+            if (job.Stage == RuntimeValidationStage.CheckDownloader)
             {
                 job.Progress = 70;
                 if (!job.CheckDownloader)
                 {
                     job.Result["downloadSkipped"] = true;
-                    job.Stage = "cleanup";
+                    job.Stage = RuntimeValidationStage.Cleanup;
                     return;
                 }
                 job.Downloader = job.Package.CreateResourceDownloader(job.DownloadingMaxNumber, job.FailedTryAgain);
                 job.Result["downloadTotalCount"] = job.Downloader.TotalDownloadCount;
                 job.Result["downloadTotalBytes"] = job.Downloader.TotalDownloadBytes;
                 job.Downloader.BeginDownload();
-                job.Stage = "wait_downloader";
+                job.Stage = RuntimeValidationStage.WaitDownloader;
                 return;
             }
 
-            if (job.Stage == "wait_downloader")
+            if (job.Stage == RuntimeValidationStage.WaitDownloader)
             {
                 if (!job.Downloader.IsDone) return;
                 job.Result["downloadStatus"] = job.Downloader.Status.ToString();
@@ -2035,11 +2133,11 @@ namespace UnitySkills
                     FailRuntimeValidationJob(job, job.Downloader.Error, "DownloaderFailed");
                     return;
                 }
-                job.Stage = "cleanup";
+                job.Stage = RuntimeValidationStage.Cleanup;
                 return;
             }
 
-            if (job.Stage == "cleanup")
+            if (job.Stage == RuntimeValidationStage.Cleanup)
             {
                 job.Progress = 85;
                 if (!job.Cleanup)
@@ -2048,11 +2146,11 @@ namespace UnitySkills
                     return;
                 }
                 job.DestroyOperation = job.Package.DestroyAsync();
-                job.Stage = "wait_destroy";
+                job.Stage = RuntimeValidationStage.WaitDestroy;
                 return;
             }
 
-            if (job.Stage == "wait_destroy")
+            if (job.Stage == RuntimeValidationStage.WaitDestroy)
             {
                 if (!job.DestroyOperation.IsDone) return;
                 job.Result["destroyStatus"] = job.DestroyOperation.Status.ToString();
@@ -2065,8 +2163,8 @@ namespace UnitySkills
         private static void CompleteRuntimeValidationJob(RuntimeValidationJob job)
         {
             job.Progress = 100;
-            job.Stage = "completed";
-            job.Status = "completed";
+            job.Stage = RuntimeValidationStage.Completed;
+            job.Status = RuntimeValidationStatus.Completed;
             job.Result["completedAt"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             PersistRuntimeValidationJobs();
             if (job.RestoreEditMode && job.StartedPlayMode && EditorApplication.isPlaying)
@@ -2075,8 +2173,8 @@ namespace UnitySkills
 
         private static void FailRuntimeValidationJob(RuntimeValidationJob job, string error, string errorType)
         {
-            job.Status = "failed";
-            job.Stage = "failed";
+            job.Status = RuntimeValidationStatus.Failed;
+            job.Stage = RuntimeValidationStage.Failed;
             job.Error = error;
             job.Result["errorType"] = errorType;
             job.Result["failedAt"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

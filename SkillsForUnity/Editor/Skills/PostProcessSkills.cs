@@ -97,7 +97,7 @@ namespace UnitySkills
                 effects = effects.Select(x => new
                 {
                     name = x.Name,
-                    pipeline = x.Pipeline,
+                    pipeline = x.Pipeline.ToString(),
                     group = x.Group
                 }).ToArray()
             };
@@ -224,10 +224,10 @@ namespace UnitySkills
             var result = GetOrAddEffect(profilePath, "Bloom", overrides: true);
             if (result.error != null) return result.error;
 
-            if (intensity.HasValue && !SetParameter(result.component, result.profile, intensity.Value, "intensity")) return new { error = _lastParameterError };
-            if (threshold.HasValue && !SetParameter(result.component, result.profile, threshold.Value, "threshold")) return new { error = _lastParameterError };
-            if (scatter.HasValue && !SetParameter(result.component, result.profile, scatter.Value, "scatter")) return new { error = _lastParameterError };
-            if (!string.IsNullOrWhiteSpace(tint) && !SetParameter(result.component, result.profile, tint, "tint")) return new { error = _lastParameterError };
+            if (intensity.HasValue && !SetParameter(result.component, result.profile, intensity.Value, out var e1, "intensity")) return new { error = e1 };
+            if (threshold.HasValue && !SetParameter(result.component, result.profile, threshold.Value, out var e2, "threshold")) return new { error = e2 };
+            if (scatter.HasValue && !SetParameter(result.component, result.profile, scatter.Value, out var e3, "scatter")) return new { error = e3 };
+            if (!string.IsNullOrWhiteSpace(tint) && !SetParameter(result.component, result.profile, tint, out var e4, "tint")) return new { error = e4 };
 
             return EffectResponse(profilePath, result.descriptor.Name, result.component);
         }
@@ -245,10 +245,10 @@ namespace UnitySkills
             var result = GetOrAddEffect(profilePath, "DepthOfField", overrides: true);
             if (result.error != null) return result.error;
 
-            if (!string.IsNullOrWhiteSpace(mode) && !SetParameter(result.component, result.profile, mode, "mode", "focusMode")) return new { error = _lastParameterError };
-            if (focusDistance.HasValue && !SetParameter(result.component, result.profile, focusDistance.Value, "focusDistance")) return new { error = _lastParameterError };
-            if (gaussianStart.HasValue && !SetParameter(result.component, result.profile, gaussianStart.Value, "gaussianStart", "nearFocusStart")) return new { error = _lastParameterError };
-            if (gaussianEnd.HasValue && !SetParameter(result.component, result.profile, gaussianEnd.Value, "gaussianEnd", "farFocusStart")) return new { error = _lastParameterError };
+            if (!string.IsNullOrWhiteSpace(mode) && !SetParameter(result.component, result.profile, mode, out var e1, "mode", "focusMode")) return new { error = e1 };
+            if (focusDistance.HasValue && !SetParameter(result.component, result.profile, focusDistance.Value, out var e2, "focusDistance")) return new { error = e2 };
+            if (gaussianStart.HasValue && !SetParameter(result.component, result.profile, gaussianStart.Value, out var e3, "gaussianStart", "nearFocusStart")) return new { error = e3 };
+            if (gaussianEnd.HasValue && !SetParameter(result.component, result.profile, gaussianEnd.Value, out var e4, "gaussianEnd", "farFocusStart")) return new { error = e4 };
 
             return EffectResponse(profilePath, result.descriptor.Name, result.component);
         }
@@ -266,7 +266,7 @@ namespace UnitySkills
             var result = GetOrAddEffect(profilePath, "Tonemapping", overrides: true);
             if (result.error != null) return result.error;
 
-            if (!string.IsNullOrWhiteSpace(mode) && !SetParameter(result.component, result.profile, mode, "mode")) return new { error = _lastParameterError };
+            if (!string.IsNullOrWhiteSpace(mode) && !SetParameter(result.component, result.profile, mode, out var e1, "mode")) return new { error = e1 };
             return EffectResponse(profilePath, result.descriptor.Name, result.component);
         }
 
@@ -283,11 +283,11 @@ namespace UnitySkills
             var result = GetOrAddEffect(profilePath, "Vignette", overrides: true);
             if (result.error != null) return result.error;
 
-            if (intensity.HasValue && !SetParameter(result.component, result.profile, intensity.Value, "intensity")) return new { error = _lastParameterError };
-            if (smoothness.HasValue && !SetParameter(result.component, result.profile, smoothness.Value, "smoothness")) return new { error = _lastParameterError };
-            if (!string.IsNullOrWhiteSpace(color) && !SetParameter(result.component, result.profile, color, "color")) return new { error = _lastParameterError };
-            if (!string.IsNullOrWhiteSpace(center) && !SetParameter(result.component, result.profile, center, "center")) return new { error = _lastParameterError };
-            if (rounded.HasValue && !SetParameter(result.component, result.profile, rounded.Value, "rounded")) return new { error = _lastParameterError };
+            if (intensity.HasValue && !SetParameter(result.component, result.profile, intensity.Value, out var e1, "intensity")) return new { error = e1 };
+            if (smoothness.HasValue && !SetParameter(result.component, result.profile, smoothness.Value, out var e2, "smoothness")) return new { error = e2 };
+            if (!string.IsNullOrWhiteSpace(color) && !SetParameter(result.component, result.profile, color, out var e3, "color")) return new { error = e3 };
+            if (!string.IsNullOrWhiteSpace(center) && !SetParameter(result.component, result.profile, center, out var e4, "center")) return new { error = e4 };
+            if (rounded.HasValue && !SetParameter(result.component, result.profile, rounded.Value, out var e5, "rounded")) return new { error = e5 };
 
             return EffectResponse(profilePath, result.descriptor.Name, result.component);
         }
@@ -305,18 +305,16 @@ namespace UnitySkills
             var result = GetOrAddEffect(profilePath, "ColorAdjustments", overrides: true);
             if (result.error != null) return result.error;
 
-            if (postExposure.HasValue && !SetParameter(result.component, result.profile, postExposure.Value, "postExposure")) return new { error = _lastParameterError };
-            if (contrast.HasValue && !SetParameter(result.component, result.profile, contrast.Value, "contrast")) return new { error = _lastParameterError };
-            if (!string.IsNullOrWhiteSpace(colorFilter) && !SetParameter(result.component, result.profile, colorFilter, "colorFilter")) return new { error = _lastParameterError };
-            if (hueShift.HasValue && !SetParameter(result.component, result.profile, hueShift.Value, "hueShift")) return new { error = _lastParameterError };
-            if (saturation.HasValue && !SetParameter(result.component, result.profile, saturation.Value, "saturation")) return new { error = _lastParameterError };
+            if (postExposure.HasValue && !SetParameter(result.component, result.profile, postExposure.Value, out var e1, "postExposure")) return new { error = e1 };
+            if (contrast.HasValue && !SetParameter(result.component, result.profile, contrast.Value, out var e2, "contrast")) return new { error = e2 };
+            if (!string.IsNullOrWhiteSpace(colorFilter) && !SetParameter(result.component, result.profile, colorFilter, out var e3, "colorFilter")) return new { error = e3 };
+            if (hueShift.HasValue && !SetParameter(result.component, result.profile, hueShift.Value, out var e4, "hueShift")) return new { error = e4 };
+            if (saturation.HasValue && !SetParameter(result.component, result.profile, saturation.Value, out var e5, "saturation")) return new { error = e5 };
 
             return EffectResponse(profilePath, result.descriptor.Name, result.component);
         }
 
-        private static string _lastParameterError;
-
-        private static bool SetParameter(VolumeComponent component, VolumeProfile profile, object value, params string[] parameterNames)
+        private static bool SetParameter(VolumeComponent component, VolumeProfile profile, object value, out string error, params string[] parameterNames)
         {
             WorkflowManager.SnapshotObject(component);
             Undo.RegisterCompleteObjectUndo(component, "Set Post Process Parameter");
@@ -326,12 +324,12 @@ namespace UnitySkills
                 if (RenderPipelineSkillsCommon.TrySetVolumeParameter(component, parameterName, value, true, out _))
                 {
                     RenderPipelineSkillsCommon.MarkDirty(profile);
-                    _lastParameterError = null;
+                    error = null;
                     return true;
                 }
             }
 
-            _lastParameterError = $"None of the parameters matched: {string.Join(", ", parameterNames)}";
+            error = $"None of the parameters matched: {string.Join(", ", parameterNames)}";
             return false;
         }
 
@@ -346,17 +344,8 @@ namespace UnitySkills
             };
         }
 
-        private static (VolumeProfile profile, object error) LoadProfileOrError(string profilePath)
-        {
-            if (Validate.Required(profilePath, "profilePath") is object err) return (null, err);
-            if (Validate.SafePath(profilePath, "profilePath") is object pathErr) return (null, pathErr);
-
-            var profile = RenderPipelineSkillsCommon.LoadVolumeProfile(profilePath);
-            if (profile == null)
-                return (null, new { error = $"VolumeProfile not found: {profilePath}" });
-
-            return (profile, null);
-        }
+        private static (VolumeProfile profile, object error) LoadProfileOrError(string profilePath) =>
+            RenderPipelineSkillsCommon.LoadProfileOrError(profilePath);
 
         private static (VolumeComponentDescriptor descriptor, object error) ResolveEffect(string effectType)
         {

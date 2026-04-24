@@ -183,20 +183,7 @@ namespace UnitySkills
             return snapshot;
         }
 
-        private static Type FindTypeInAssemblies(string fullName)
-        {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                Type type = null;
-                try { type = assembly.GetType(fullName, false); }
-                catch { }
-
-                if (type != null)
-                    return type;
-            }
-
-            return null;
-        }
+        private static Type FindTypeInAssemblies(string fullName) => SkillsCommon.FindTypeByName(fullName);
 
         private static object GetPropertyValue(object target, string name)
         {
