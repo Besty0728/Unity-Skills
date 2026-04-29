@@ -372,6 +372,56 @@ class UnitySkills:
                 result['report'] = report
         return result
 
+    def get_job(self, job_id: str) -> Dict[str, Any]:
+        """Read a job snapshot via GET /jobs/{id} (lightweight, bypasses skill router)."""
+        try:
+            resp = self._session.get(f"{self.url}/jobs/{job_id}", timeout=HEALTH_TIMEOUT)
+            return resp.json()
+        except Exception as exc:
+            return {'status': 'error', 'error': str(exc)}
+
+    def list_jobs(self, limit: int = 50) -> Dict[str, Any]:
+        """List recent jobs via GET /jobs."""
+        try:
+            resp = self._session.get(f"{self.url}/jobs?limit={int(limit)}", timeout=HEALTH_TIMEOUT)
+            return resp.json()
+        except Exception as exc:
+            return {'status': 'error', 'error': str(exc)}
+
+    def poll_job(self, job_id: str, interval: float = 0.5, timeout: float = 300.0,
+                 on_progress=None) -> Dict[str, Any]:
+        """
+        Poll GET /jobs/{id} until the job reaches a terminal state or timeout elapses.
+        Designed as the lightweight alternative to wait_for_job (which holds a worker slot).
+
+        Args:
+            job_id: Job identifier returned by an async skill (e.g. script_create).
+            interval: Seconds between polls. Default 0.5s — the server is local so cost is low.
+            timeout: Total wait budget in seconds. Default 5 min.
+            on_progress: Optional callback (snapshot_dict) -> None invoked after each poll.
+
+        Returns the final snapshot dict (with `terminal=True` on natural completion).
+        """
+        deadline = time.time() + max(0.0, timeout)
+        last = None
+        while True:
+            last = self.get_job(job_id)
+            if isinstance(last, dict):
+                if on_progress:
+                    try:
+                        on_progress(last)
+                    except Exception:
+                        pass
+                if last.get('terminal') is True:
+                    return last
+                if last.get('errorCode') in ('NOT_FOUND', 'INTERNAL'):
+                    return last
+            if time.time() >= deadline:
+                if isinstance(last, dict):
+                    last['_pollTimeout'] = True
+                return last or {'status': 'error', 'error': 'poll_job timed out'}
+            time.sleep(interval)
+
 
 # Global Default Client (lazy initialization)
 _default_client = None
@@ -489,6 +539,31 @@ def get_job_logs(job_id: str, limit: int = 100) -> Dict[str, Any]:
 def wait_for_job(job_id: str, timeout: float = 60.0) -> Dict[str, Any]:
     """Wait for a UnitySkills job and include the final batch report when available."""
     return _get_default_client().wait_for_job(job_id, timeout=timeout)
+
+
+def get_job(job_id: str) -> Dict[str, Any]:
+    """Lightweight GET /jobs/{id} snapshot — preferred for high-frequency progress polling."""
+    return _get_default_client().get_job(job_id)
+
+
+def list_jobs(limit: int = 50) -> Dict[str, Any]:
+    """List recent jobs via GET /jobs."""
+    return _get_default_client().list_jobs(limit=limit)
+
+
+def poll_job(job_id: str, interval: float = 0.5, timeout: float = 300.0, on_progress=None) -> Dict[str, Any]:
+    """Block until a job reaches a terminal state, polling GET /jobs/{id} every `interval` seconds."""
+    return _get_default_client().poll_job(job_id, interval=interval, timeout=timeout, on_progress=on_progress)
+
+
+def diagnose(error_limit: int = 20, include_warnings: bool = True, include_recent_jobs: bool = True) -> Dict[str, Any]:
+    """One-shot Editor health snapshot — call this FIRST when triaging problems."""
+    return _get_default_client().call(
+        'unity_diagnose',
+        errorLimit=error_limit,
+        includeWarnings=include_warnings,
+        includeRecentJobs=include_recent_jobs,
+    )
 
 
 class WorkflowContext:

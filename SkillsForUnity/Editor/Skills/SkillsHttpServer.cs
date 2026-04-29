@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
@@ -1221,6 +1222,15 @@ namespace UnitySkills
                 job.ResponseJson = SkillRouter.GetSkillChain(job.QueryString);
                 return;
             }
+
+            // Job query (lightweight GET, bypasses skill router for high-frequency progress polling)
+            if (job.HttpMethod == "GET" &&
+                (string.Equals(path, "/jobs", StringComparison.OrdinalIgnoreCase) ||
+                 path.StartsWith("/jobs/", StringComparison.OrdinalIgnoreCase)))
+            {
+                HandleJobsRequest(job);
+                return;
+            }
             
             // Execute / DryRun / Plan skill
             if (path.StartsWith("/skill/", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "POST")
@@ -1323,6 +1333,166 @@ namespace UnitySkills
                     }
                 },
                 retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+        }
+
+        /// <summary>
+        /// Routes GET /jobs and GET /jobs/{id}[/logs] to BatchPersistence without going
+        /// through the skill router. Designed for high-frequency progress polling: the
+        /// caller pings GET /jobs/{id} every 200-500 ms and gets a fresh snapshot.
+        /// </summary>
+        private static void HandleJobsRequest(RequestJob job)
+        {
+            string path = job.Path ?? string.Empty;
+            var qs = SkillRouter.ParseQueryString(job.QueryString);
+
+            // GET /jobs  → list
+            if (string.Equals(path, "/jobs", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(path, "/jobs/", StringComparison.OrdinalIgnoreCase))
+            {
+                int limit = 50;
+                if (qs.TryGetValue("limit", out var l) && int.TryParse(l, out var lp))
+                    limit = Mathf.Clamp(lp, 1, 100);
+
+                var jobs = BatchPersistence.ListJobs(limit);
+                var projected = new System.Collections.Generic.List<object>(jobs.Length);
+                foreach (var r in jobs)
+                {
+                    projected.Add(new
+                    {
+                        jobId = r.jobId,
+                        kind = r.kind,
+                        status = r.status,
+                        progress = r.progress,
+                        currentStage = r.currentStage,
+                        startedAt = r.startedAt,
+                        updatedAt = r.updatedAt,
+                        resultSummary = r.resultSummary,
+                        error = r.error,
+                    });
+                }
+
+                job.StatusCode = 200;
+                job.ResponseJson = JsonConvert.SerializeObject(new
+                {
+                    count = projected.Count,
+                    jobs = projected,
+                }, _jsonSettings);
+                return;
+            }
+
+            // GET /jobs/{id}[/logs]
+            const string prefix = "/jobs/";
+            string remainder = path.Substring(prefix.Length).TrimEnd('/');
+            string jobId;
+            string subResource = null;
+            int slashIdx = remainder.IndexOf('/');
+            if (slashIdx >= 0)
+            {
+                jobId = remainder.Substring(0, slashIdx);
+                subResource = remainder.Substring(slashIdx + 1);
+            }
+            else
+            {
+                jobId = remainder;
+            }
+
+            if (string.IsNullOrEmpty(jobId))
+            {
+                job.StatusCode = 400;
+                job.ResponseJson = SkillErrorResponse.Build(
+                    SkillErrorCode.MissingParam,
+                    "Missing job id in path",
+                    details: new { example = "/jobs/{id}" },
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                return;
+            }
+
+            var record = BatchPersistence.GetJob(jobId);
+            if (record == null)
+            {
+                job.StatusCode = 404;
+                job.ResponseJson = SkillErrorResponse.Build(
+                    SkillErrorCode.NotFound,
+                    $"Job not found: {jobId}",
+                    details: new { jobId },
+                    retryStrategy: SkillErrorResponse.Abort);
+                return;
+            }
+
+            if (string.Equals(subResource, "logs", StringComparison.OrdinalIgnoreCase))
+            {
+                int limit = 100;
+                if (qs.TryGetValue("limit", out var l) && int.TryParse(l, out var lp))
+                    limit = Mathf.Clamp(lp, 1, 500);
+
+                var logs = record.logs ?? new System.Collections.Generic.List<BatchJobLogEntry>();
+                int skip = Math.Max(0, logs.Count - limit);
+                var sliced = logs.Skip(skip)
+                    .Select(e => new
+                    {
+                        timestamp = e.timestamp,
+                        level = e.level,
+                        stage = e.stage,
+                        message = e.message,
+                        code = e.code,
+                    })
+                    .ToArray();
+
+                job.StatusCode = 200;
+                job.ResponseJson = JsonConvert.SerializeObject(new
+                {
+                    jobId = record.jobId,
+                    count = sliced.Length,
+                    totalCount = logs.Count,
+                    logs = sliced,
+                }, _jsonSettings);
+                return;
+            }
+
+            // GET /jobs/{id} (default — full status snapshot)
+            int recentCount = 10;
+            var recentEvents = record.progressEvents == null
+                ? Array.Empty<object>()
+                : record.progressEvents
+                    .Skip(Math.Max(0, record.progressEvents.Count - recentCount))
+                    .Select(e => new
+                    {
+                        timestamp = e.timestamp,
+                        progress = e.progress,
+                        stage = e.stage,
+                        description = e.description,
+                    }).ToArray();
+
+            job.StatusCode = 200;
+            job.ResponseJson = JsonConvert.SerializeObject(new
+            {
+                jobId = record.jobId,
+                kind = record.kind,
+                status = record.status,
+                progress = record.progress,
+                currentStage = record.currentStage,
+                progressStage = record.progressStage,
+                startedAt = record.startedAt,
+                updatedAt = record.updatedAt,
+                processedItems = record.processedItems,
+                totalItems = record.totalItems,
+                resultSummary = record.resultSummary,
+                error = record.error,
+                warnings = record.warnings,
+                reportId = record.reportId,
+                relatedWorkflowId = record.relatedWorkflowId,
+                canCancel = record.canCancel,
+                recentProgress = recentEvents,
+                terminal = IsTerminalStatus(record.status),
+            }, _jsonSettings);
+        }
+
+        private static bool IsTerminalStatus(string status)
+        {
+            if (string.IsNullOrEmpty(status)) return false;
+            return status.Equals("completed", StringComparison.OrdinalIgnoreCase)
+                || status.Equals("failed", StringComparison.OrdinalIgnoreCase)
+                || status.Equals("cancelled", StringComparison.OrdinalIgnoreCase);
         }
 
         private static void RunSelfTest()
