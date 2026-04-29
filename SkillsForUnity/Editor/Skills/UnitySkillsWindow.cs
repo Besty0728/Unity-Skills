@@ -298,6 +298,22 @@ namespace UnitySkills
                     SkillsLogger.Level = newLogLevel;
                 }
                 EditorGUILayout.EndHorizontal();
+
+                // Require Confirmation for high-risk skills (Delete / RiskLevel="high")
+                EditorGUILayout.Space(4);
+                var confirmLabel = Localization.Current == Localization.Language.Chinese
+                    ? "高风险技能二次确认"
+                    : "Confirm High-Risk Skills";
+                var newRequireConfirm = EditorGUILayout.Toggle(confirmLabel, ConfirmationTokenService.RequireConfirmation);
+                if (newRequireConfirm != ConfirmationTokenService.RequireConfirmation)
+                {
+                    ConfirmationTokenService.RequireConfirmation = newRequireConfirm;
+                }
+                DrawColoredLabel(
+                    Localization.Current == Localization.Language.Chinese
+                        ? "开启后：删除类/RiskLevel=high 技能首次调用返回 _confirm token + dryRun 预览，5 分钟内带 token 重试才执行。默认关闭，全自动场景无感。"
+                        : "When ON: delete / high-risk skills first return a _confirm token + dryRun preview; re-call within 5 min with the token to execute. OFF by default — fully automated flows are unaffected.",
+                    MutedColor, false);
             });
 
             EditorGUILayout.Space(10);

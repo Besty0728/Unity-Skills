@@ -87,7 +87,8 @@ namespace UnitySkills
         private static HashSet<string> _workflowTrackedSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private static readonly HashSet<string> _reservedBodyParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "verbose"
+            "verbose",
+            "_confirm"
         };
 
         private static readonly HashSet<string> _transactionlessSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -478,6 +479,16 @@ namespace UnitySkills
                             warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
                         },
                         retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                }
+
+                // Confirmation gate: high-risk skills require an explicit one-shot token
+                // when ConfirmationTokenService.RequireConfirmation is enabled.
+                // Disabled by default — flip in Window > UnitySkills > Server > Settings.
+                if (ConfirmationTokenService.RequireConfirmation && ConfirmationTokenService.IsHighRisk(skill))
+                {
+                    var gateResult = ApplyConfirmationGate(skill, name, json, validation);
+                    if (gateResult != null)
+                        return gateResult;
                 }
 
                 var args = validation.Args;
@@ -1189,6 +1200,71 @@ namespace UnitySkills
 
                 validation.UnknownParams.Add(entry);
             }
+        }
+
+        /// <summary>
+        /// Returns null when the skill is allowed to execute (token consumed); otherwise returns
+        /// a serialized error payload (CONFIRMATION_REQUIRED or INVALID_TOKEN) the caller should
+        /// surface back to the client unchanged.
+        /// </summary>
+        private static string ApplyConfirmationGate(
+            SkillInfo skill,
+            string name,
+            string rawJson,
+            ParameterValidationResult validation)
+        {
+            string token = null;
+            if (validation.Args.TryGetValue("_confirm", StringComparison.OrdinalIgnoreCase, out var ct) && ct.Type != JTokenType.Null)
+            {
+                token = ct.ToString();
+            }
+
+            // argsHash excludes _confirm so the same args produce the same hash on both calls.
+            var argsForHash = (JObject)validation.Args.DeepClone();
+            argsForHash.Remove("_confirm");
+            var argsForHashJson = argsForHash.ToString(Formatting.None);
+
+            if (string.IsNullOrEmpty(token))
+            {
+                var (newToken, ttl) = ConfirmationTokenService.IssueToken(name, argsForHashJson);
+                JObject dryRunPreview = null;
+                try
+                {
+                    var dryRunJson = DryRun(name, rawJson);
+                    if (!string.IsNullOrEmpty(dryRunJson))
+                        dryRunPreview = JObject.Parse(dryRunJson);
+                }
+                catch
+                {
+                    // Dry-run is best-effort; if it fails the token is still valid.
+                }
+
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.ConfirmationRequired,
+                    "This skill is high-risk and requires confirmation. Re-call with the same args plus '_confirm':'<token>' to execute.",
+                    skill: name,
+                    details: new
+                    {
+                        _confirm = newToken,
+                        ttlSeconds = ttl,
+                        why = $"riskLevel={skill.RiskLevel}, operation={string.Join("|", FormatOperation(skill.Operation) ?? new[] { "?" })}",
+                        dryRun = dryRunPreview
+                    },
+                    retryStrategy: SkillErrorResponse.RetryConfirmAndRetry,
+                    retryAfterSeconds: 0);
+            }
+
+            if (!ConfirmationTokenService.TryConsume(token, name, argsForHashJson))
+            {
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.InvalidToken,
+                    "_confirm token is invalid, expired, or args differ from when the token was issued.",
+                    skill: name,
+                    details: new { suggestion = "Re-call without '_confirm' to receive a fresh token bound to your current args." },
+                    retryStrategy: SkillErrorResponse.RetryConfirmAndRetry);
+            }
+
+            return null;
         }
 
         private static List<SuggestedFix> BuildUnknownParamFixes(string skillName, List<object> unknownParams)
