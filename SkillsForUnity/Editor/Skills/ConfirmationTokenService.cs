@@ -51,8 +51,9 @@ namespace UnitySkills
 
         /// <summary>
         /// A skill is considered high-risk if RiskLevel="high" or its Operation includes Delete.
+        /// Internal because <see cref="SkillRouter.SkillInfo"/> is internal.
         /// </summary>
-        public static bool IsHighRisk(SkillRouter.SkillInfo skill)
+        internal static bool IsHighRisk(SkillRouter.SkillInfo skill)
         {
             if (skill == null) return false;
             if (string.Equals(skill.RiskLevel, "high", StringComparison.OrdinalIgnoreCase))
