@@ -8,6 +8,7 @@ using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace UnitySkills
 {
@@ -294,6 +295,18 @@ namespace UnitySkills
             return _admittedThisSecond <= MaxRequestsPerSecond;
         }
 
+        /// <summary>
+        /// Parse a pre-serialized error JSON string back into a JObject so it can be
+        /// passed through SendImmediateJsonResponse without double-encoding.
+        /// </summary>
+        private static JObject BuildErrorPayload(string rawJson)
+        {
+            if (string.IsNullOrEmpty(rawJson))
+                return new JObject();
+            try { return JObject.Parse(rawJson); }
+            catch { return new JObject { ["error"] = rawJson }; }
+        }
+
         private static void SendImmediateJsonResponse(HttpListenerContext context, HttpListenerRequest request, int statusCode, object payload)
         {
             HttpListenerResponse response = null;
@@ -313,9 +326,12 @@ namespace UnitySkills
                 response.ContentLength64 = buffer.Length;
                 response.OutputStream.Write(buffer, 0, buffer.Length);
             }
-            catch
+            catch (HttpListenerException) { /* Client disconnected */ }
+            catch (System.IO.IOException) { /* Client disconnected mid-write */ }
+            catch (ObjectDisposedException) { /* Response already closed */ }
+            catch (Exception ex)
             {
-                // Ignore write errors. The client may have already disconnected.
+                SkillsLogger.LogWarning($"SendImmediateJsonResponse failed: {ex.GetType().Name}: {ex.Message}");
             }
             finally
             {
@@ -710,7 +726,11 @@ namespace UnitySkills
                 {
                     var job = _jobQueue.Dequeue();
                     job.StatusCode = 503;
-                    job.ResponseJson = JsonConvert.SerializeObject(new { error = "Server stopped" }, _jsonSettings);
+                    job.ResponseJson = SkillErrorResponse.Build(
+                        SkillErrorCode.ServerStopped,
+                        "Server stopped",
+                        retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                        retryAfterSeconds: 5);
                     job.IsProcessed = true;
                     job.CompletionSignal?.Set();
                 }
@@ -766,7 +786,10 @@ namespace UnitySkills
                     }
                 }
                 catch (ThreadAbortException) { break; }
-                catch { /* Ignore */ }
+                catch (Exception ex)
+                {
+                    SkillsLogger.LogWarning($"KeepAlive iteration error: {ex.GetType().Name}: {ex.Message}");
+                }
             }
         }
 
@@ -791,38 +814,37 @@ namespace UnitySkills
 
                     if (!CheckAdmissionRateLimit())
                     {
-                        SendImmediateJsonResponse(context, request, 429, new
-                        {
-                            error = "Rate limit exceeded",
-                            limit = MaxRequestsPerSecond,
-                            suggestion = "Please slow down requests"
-                        });
+                        SendImmediateJsonResponse(context, request, 429, BuildErrorPayload(SkillErrorResponse.Build(
+                            SkillErrorCode.RateLimit,
+                            "Rate limit exceeded",
+                            details: new { limit = MaxRequestsPerSecond },
+                            retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                            retryAfterSeconds: 1)));
                         continue;
                     }
 
                     reservedPendingSlot = TryReservePendingSlot();
                     if (!reservedPendingSlot)
                     {
-                        SendImmediateJsonResponse(context, request, 503, new
-                        {
-                            error = "Too many pending requests",
-                            pendingLimit = MaxPendingRequests,
-                            suggestion = "Please retry after current requests complete"
-                        });
+                        SendImmediateJsonResponse(context, request, 503, BuildErrorPayload(SkillErrorResponse.Build(
+                            SkillErrorCode.QueueFull,
+                            "Too many pending requests",
+                            details: new { pendingLimit = MaxPendingRequests },
+                            retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                            retryAfterSeconds: 2)));
                         continue;
                     }
-                    
+
                     if (request.HttpMethod == "POST" && request.ContentLength64 > 0)
                     {
                         if (request.ContentLength64 > MaxBodySizeBytes)
                         {
                             ReleasePendingSlot();
-                            SendImmediateJsonResponse(context, request, 413, new
-                            {
-                                error = "Request body too large",
-                                maxSizeBytes = MaxBodySizeBytes,
-                                receivedBytes = request.ContentLength64
-                            });
+                            SendImmediateJsonResponse(context, request, 413, BuildErrorPayload(SkillErrorResponse.Build(
+                                SkillErrorCode.BodyTooLarge,
+                                "Request body too large",
+                                details: new { maxSizeBytes = MaxBodySizeBytes, receivedBytes = request.ContentLength64 },
+                                retryStrategy: SkillErrorResponse.Abort)));
                             continue;
                         }
 
@@ -853,12 +875,12 @@ namespace UnitySkills
                             if (_jobQueue.Count >= MaxQueuedRequests)
                             {
                                 job.StatusCode = 503;
-                                job.ResponseJson = JsonConvert.SerializeObject(new
-                                {
-                                    error = "Request queue is full",
-                                    queueLimit = MaxQueuedRequests,
-                                    suggestion = "Please retry after current requests complete"
-                                }, _jsonSettings);
+                                job.ResponseJson = SkillErrorResponse.Build(
+                                    SkillErrorCode.QueueFull,
+                                    "Request queue is full",
+                                    details: new { queueLimit = MaxQueuedRequests },
+                                    retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                                    retryAfterSeconds: 2);
                                 job.IsProcessed = true;
                                 job.CompletionSignal.Set();
                             }
@@ -927,37 +949,42 @@ namespace UnitySkills
                 if (!completed)
                 {
                     job.StatusCode = 504;
-                    job.ResponseJson = JsonConvert.SerializeObject(new {
-                        error = $"Gateway Timeout: Main thread did not respond within {RequestTimeoutMs / 1000} seconds",
-                        diagnostics = new {
+                    job.ResponseJson = SkillErrorResponse.Build(
+                        SkillErrorCode.Timeout,
+                        $"Gateway Timeout: Main thread did not respond within {RequestTimeoutMs / 1000} seconds",
+                        details: new {
                             domainReloadPending = _domainReloadPending,
                             queuedRequests = QueuedRequests,
                             listenerAlive = _listenerThread?.IsAlive ?? false,
                             keepAliveAlive = _keepAliveThread?.IsAlive ?? false,
+                            suggestion = _domainReloadPending
+                                ? "Unity is reloading scripts. Wait a few seconds and retry."
+                                : "Unity Editor may be paused, showing a modal dialog, or processing a long operation.",
+                            manualAction = "If unresponsive, restart via: Window > UnitySkills > Start Server",
                         },
-                        suggestion = _domainReloadPending
-                            ? "Unity is reloading scripts. Wait a few seconds and retry."
-                            : "Unity Editor may be paused, showing a modal dialog, or processing a long operation. " +
-                              "Please check the Unity Editor window for any dialogs or errors.",
-                        manualAction = "If the server is unresponsive, restart via: Window > UnitySkills > Start Server",
-                        retryAfterSeconds = _domainReloadPending ? 5 : 10,
-                        retryStrategy = "wait_and_retry"
-                    }, _jsonSettings);
+                        retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                        retryAfterSeconds: _domainReloadPending ? 5 : 10);
                 }
                 
                 // Send HTTP response (thread-safe)
                 SendResponse(job);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Best effort - try to send error response
                 try
                 {
                     job.StatusCode = 500;
-                    job.ResponseJson = JsonConvert.SerializeObject(new { error = "Internal server error" }, _jsonSettings);
+                    job.ResponseJson = SkillErrorResponse.Build(
+                        SkillErrorCode.Internal,
+                        "Internal server error",
+                        retryStrategy: SkillErrorResponse.Abort);
                     SendResponse(job);
                 }
-                catch { }
+                catch (Exception ex2)
+                {
+                    SkillsLogger.LogError($"Fallback response failed: primary={ex.Message}, fallback={ex2.Message}");
+                }
             }
             finally
             {
@@ -1035,10 +1062,11 @@ namespace UnitySkills
                 catch (Exception ex)
                 {
                     job.StatusCode = 500;
-                    job.ResponseJson = JsonConvert.SerializeObject(new {
-                        error = ex.Message,
-                        type = ex.GetType().Name
-                    }, _jsonSettings);
+                    job.ResponseJson = SkillErrorResponse.Build(
+                        SkillErrorCode.Internal,
+                        ex.Message,
+                        details: new { type = ex.GetType().Name },
+                        retryStrategy: SkillErrorResponse.RetryWaitAndRetry);
                     SkillsLogger.LogWarning($"Job processing error: {ex.Message}");
                 }
                 finally
@@ -1200,18 +1228,18 @@ namespace UnitySkills
                 if (_domainReloadPending || ServerAvailabilityHelper.IsCompilationInProgress())
                 {
                     job.StatusCode = 503;
-                    job.ResponseJson = JsonConvert.SerializeObject(new {
-                        error = "Unity is compiling or reloading scripts",
-                        diagnostics = new {
+                    job.ResponseJson = SkillErrorResponse.Build(
+                        SkillErrorCode.Compiling,
+                        "Unity is compiling or reloading scripts",
+                        details: new {
                             isCompiling = EditorApplication.isCompiling,
                             isUpdating = EditorApplication.isUpdating,
                             domainReloadPending = _domainReloadPending,
+                            suggestion = "The REST server is temporarily unavailable during compilation. Wait a few seconds and retry.",
+                            manualAction = "If this persists, check Unity Editor for compilation errors or stuck dialogs.",
                         },
-                        suggestion = "The REST server is temporarily unavailable during compilation. Wait a few seconds and retry.",
-                        manualAction = "If this persists, check Unity Editor for compilation errors or stuck dialogs.",
-                        retryAfterSeconds = _domainReloadPending ? 8 : 5,
-                        retryStrategy = "wait_and_retry"
-                    }, _jsonSettings);
+                        retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                        retryAfterSeconds: _domainReloadPending ? 8 : 5);
                     return;
                 }
 
@@ -1220,7 +1248,11 @@ namespace UnitySkills
                 if (skillName.Contains("/") || skillName.Contains("\\") || skillName.Contains(".."))
                 {
                     job.StatusCode = 400;
-                    job.ResponseJson = JsonConvert.SerializeObject(new { error = "Invalid skill name" }, _jsonSettings);
+                    job.ResponseJson = SkillErrorResponse.Build(
+                        SkillErrorCode.InvalidSkillName,
+                        "Invalid skill name",
+                        details: new { received = skillName },
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                     return;
                 }
 
@@ -1258,13 +1290,13 @@ namespace UnitySkills
                 catch (Exception ex)
                 {
                     job.StatusCode = 500;
-                    job.ResponseJson = JsonConvert.SerializeObject(new {
-                        error = ex.Message,
-                        type = ex.GetType().Name,
-                        skill = skillName,
-                        suggestion = "If this error persists, check Unity console for details. " +
-                                    "For 'Connection Refused' errors, Unity may be reloading scripts - wait 2-3 seconds and retry."
-                    }, _jsonSettings);
+                    job.ResponseJson = SkillErrorResponse.Build(
+                        SkillErrorCode.Internal,
+                        ex.Message,
+                        skill: skillName,
+                        details: new { type = ex.GetType().Name },
+                        retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                        retryAfterSeconds: 3);
                     SkillsLogger.LogWarning($"Skill '{skillName}' error: {ex.Message}");
                 }
                 return;
@@ -1273,21 +1305,24 @@ namespace UnitySkills
 
             // Not found
             job.StatusCode = 404;
-            job.ResponseJson = JsonConvert.SerializeObject(new {
-                error = "Not found",
-                endpoints = new[]
-                {
-                    "GET /skills",
-                    "GET /skills/schema",
-                    "GET /skills/recommend",
-                    "GET /skills/chain",
-                    "POST /skill/{name}",
-                    "POST /skill/{name}?mode=dryRun",
-                    "POST /skill/{name}?mode=plan",
-                    "POST /skill/{name}?dryRun=true",
-                    "GET /health"
-                }
-            }, _jsonSettings);
+            job.ResponseJson = SkillErrorResponse.Build(
+                SkillErrorCode.NotFound,
+                "Not found",
+                details: new {
+                    endpoints = new[]
+                    {
+                        "GET /skills",
+                        "GET /skills/schema",
+                        "GET /skills/recommend",
+                        "GET /skills/chain",
+                        "POST /skill/{name}",
+                        "POST /skill/{name}?mode=dryRun",
+                        "POST /skill/{name}?mode=plan",
+                        "POST /skill/{name}?dryRun=true",
+                        "GET /health"
+                    }
+                },
+                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
         }
 
         private static void RunSelfTest()

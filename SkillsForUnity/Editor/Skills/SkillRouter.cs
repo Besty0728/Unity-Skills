@@ -288,6 +288,12 @@ namespace UnitySkills
         // Shared JSON settings from SkillsCommon (single definition, no duplication)
         private static readonly JsonSerializerSettings _jsonSettings = SkillsCommon.JsonSettings;
 
+        private static string ErrorJson(string error) =>
+            SkillErrorResponse.Build(SkillErrorCode.Internal, error);
+
+        private static string ErrorJson(SkillErrorCode code, string error, string skill = null, string retryStrategy = null, object details = null) =>
+            SkillErrorResponse.Build(code, error, skill: skill, details: details, retryStrategy: retryStrategy);
+
         public static void Initialize()
         {
             if (_initialized) return;
@@ -382,7 +388,7 @@ namespace UnitySkills
                 if (_cachedManifest != null) return _cachedManifest;
 
                 var manifest = BuildManifest(_skills.Values, filtered: false, filters: null, manifestType: "manifest");
-                _cachedManifest = JsonConvert.SerializeObject(manifest, Formatting.Indented, _jsonSettings);
+                _cachedManifest = JsonConvert.SerializeObject(manifest, _jsonSettings);
                 return _cachedManifest;
             }
         }
@@ -398,7 +404,7 @@ namespace UnitySkills
                 if (_cachedSchema != null) return _cachedSchema;
 
                 var schema = BuildManifest(_skills.Values, filtered: false, filters: null, manifestType: "schema");
-                _cachedSchema = JsonConvert.SerializeObject(schema, Formatting.Indented, _jsonSettings);
+                _cachedSchema = JsonConvert.SerializeObject(schema, _jsonSettings);
                 return _cachedSchema;
             }
         }
@@ -426,22 +432,24 @@ namespace UnitySkills
                 var validation = ValidateParameters(skill, json);
                 if (validation.UnknownParams.Count > 0)
                 {
-                    return JsonConvert.SerializeObject(new
-                    {
-                        status = "error",
-                        error = $"Unknown parameters: {string.Join(", ", ExtractValidationParameterNames(validation.UnknownParams))}",
-                        unknownParams = validation.UnknownParams.ToArray(),
-                        allowedParams = skill.ParameterNames
-                    }, _jsonSettings);
+                    var fixes = BuildUnknownParamFixes(name, validation.UnknownParams);
+                    return SkillErrorResponse.Build(
+                        SkillErrorCode.UnknownParam,
+                        $"Unknown parameters: {string.Join(", ", ExtractValidationParameterNames(validation.UnknownParams))}",
+                        skill: name,
+                        details: new { unknownParams = validation.UnknownParams.ToArray(), allowedParams = skill.ParameterNames },
+                        suggestedFixes: fixes,
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                 }
 
                 if (validation.MissingParams.Count > 0)
                 {
-                    return JsonConvert.SerializeObject(new
-                    {
-                        status = "error",
-                        error = $"Missing required parameter: {validation.MissingParams[0]}"
-                    }, _jsonSettings);
+                    return SkillErrorResponse.Build(
+                        SkillErrorCode.MissingParam,
+                        $"Missing required parameter: {validation.MissingParams[0]}",
+                        skill: name,
+                        details: new { missingParams = validation.MissingParams.ToArray(), allowedParams = skill.ParameterNames },
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                 }
 
                 if (validation.TypeErrors.Count > 0)
@@ -450,22 +458,26 @@ namespace UnitySkills
                     var message = SkillResultHelper.TryGetMemberValue(firstTypeError, "error", out var errorValue) && errorValue != null
                         ? errorValue.ToString()
                         : "Parameter type mismatch";
-                    return JsonConvert.SerializeObject(new
-                    {
-                        status = "error",
-                        error = message
-                    }, _jsonSettings);
+                    return SkillErrorResponse.Build(
+                        SkillErrorCode.TypeMismatch,
+                        message,
+                        skill: name,
+                        details: new { typeErrors = validation.TypeErrors.ToArray() },
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                 }
 
                 if (validation.SemanticErrors.Count > 0)
                 {
-                    return JsonConvert.SerializeObject(new
-                    {
-                        status = "error",
-                        error = ExtractValidationMessage(validation.SemanticErrors[0], "Semantic validation failed"),
-                        semanticErrors = validation.SemanticErrors.ToArray(),
-                        warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
-                    }, _jsonSettings);
+                    return SkillErrorResponse.Build(
+                        SkillErrorCode.SemanticInvalid,
+                        ExtractValidationMessage(validation.SemanticErrors[0], "Semantic validation failed"),
+                        skill: name,
+                        details: new
+                        {
+                            semanticErrors = validation.SemanticErrors.ToArray(),
+                            warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
+                        },
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                 }
 
                 var args = validation.Args;
@@ -533,13 +545,11 @@ namespace UnitySkills
                 // Return a normalized error payload when a skill reports a logical failure.
                 if (SkillResultHelper.TryGetError(result, out string errorText))
                 {
-                    return JsonConvert.SerializeObject(new
-                    {
-                        status = "error",
-                        errorCode = "SKILL_ERROR",
-                        error = errorText,
-                        skill = name
-                    }, _jsonSettings);
+                    return SkillErrorResponse.Build(
+                        SkillErrorCode.SkillError,
+                        errorText,
+                        skill: name,
+                        retryStrategy: SkillErrorResponse.Abort);
                 }
 
                 if (!verbose && result != null)
@@ -585,11 +595,12 @@ namespace UnitySkills
                 }
 
                 var inner = ex.InnerException ?? ex;
-                return JsonConvert.SerializeObject(new
-                {
-                    status = "error",
-                    error = $"[Transactional Revert] {inner.Message}"
-                }, _jsonSettings);
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.Internal,
+                    $"[Transactional Revert] {inner.Message}",
+                    skill: name,
+                    details: new { exceptionType = inner.GetType().Name },
+                    retryStrategy: SkillErrorResponse.RetryWaitAndRetry);
             }
             catch (Exception ex)
             {
@@ -603,11 +614,12 @@ namespace UnitySkills
                     UnityEditor.Undo.RevertAllInCurrentGroup();
                 }
 
-                return JsonConvert.SerializeObject(new
-                {
-                    status = "error",
-                    error = $"[Transactional Revert] {ex.Message}"
-                }, _jsonSettings);
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.Internal,
+                    $"[Transactional Revert] {ex.Message}",
+                    skill: name,
+                    details: new { exceptionType = ex.GetType().Name },
+                    retryStrategy: SkillErrorResponse.RetryWaitAndRetry);
             }
         }
 
@@ -667,15 +679,15 @@ namespace UnitySkills
                     steps = planData?["steps"],
                     changes = planData?["changes"],
                     note = "No execution performed"
-                }, Formatting.Indented, _jsonSettings);
+                }, _jsonSettings);
             }
             catch (Exception ex)
             {
-                return JsonConvert.SerializeObject(new
-                {
-                    status = "error",
-                    error = $"Invalid JSON: {ex.Message}"
-                }, _jsonSettings);
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.InvalidJson,
+                    $"Invalid JSON: {ex.Message}",
+                    skill: name,
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
             }
         }
 
@@ -792,7 +804,7 @@ namespace UnitySkills
 
             var results = filtered.ToList();
             var manifest = BuildManifest(results, filtered: true, filters, manifestType: "manifest");
-            return JsonConvert.SerializeObject(manifest, Formatting.Indented, _jsonSettings);
+            return JsonConvert.SerializeObject(manifest, _jsonSettings);
         }
 
         private static object BuildManifest(IEnumerable<SkillInfo> skills, bool filtered, Dictionary<string, string> filters, string manifestType)
@@ -855,17 +867,19 @@ namespace UnitySkills
             var filters = ParseQueryString(queryString);
             var intent = "";
             int topN = 10;
+            bool includeSchema = false;
             if (filters.TryGetValue("intent", out var i)) intent = i;
             if (filters.TryGetValue("topn", out var n) && int.TryParse(n, out var parsed)) topN = Mathf.Clamp(parsed, 1, 50);
+            if (filters.TryGetValue("includeschema", out var inc))
+                includeSchema = inc.Equals("true", StringComparison.OrdinalIgnoreCase) || inc == "1";
 
             if (string.IsNullOrWhiteSpace(intent))
             {
-                return JsonConvert.SerializeObject(new
-                {
-                    status = "error",
-                    error = "Missing required parameter: intent",
-                    example = "/skills/recommend?intent=create+cube&topN=10"
-                }, _jsonSettings);
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.MissingParam,
+                    "Missing required parameter: intent",
+                    details: new { example = "/skills/recommend?intent=create+cube&topN=10&includeSchema=true" },
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
             }
 
             var rawKeywords = intent.ToLowerInvariant().Split(new[] { ' ', '+', '_' }, StringSplitOptions.RemoveEmptyEntries);
@@ -933,6 +947,7 @@ namespace UnitySkills
                 intent,
                 expandedKeywords = keywords.Length > rawKeywords.Length ? keywords : null,
                 topN,
+                includeSchema,
                 totalMatches = scored.Count,
                 results = results.Select(x => new
                 {
@@ -940,11 +955,40 @@ namespace UnitySkills
                     description = x.skill.Description,
                     category = x.skill.Category != SkillCategory.Uncategorized ? x.skill.Category.ToString() : null,
                     score = x.score,
-                    matchedOn = x.matchedOn.Distinct().ToArray()
+                    confidence = ScoreToConfidence(x.score),
+                    matchedOn = x.matchedOn.Distinct().ToArray(),
+                    schema = includeSchema ? BuildSkillSchemaForRecommend(x.skill) : null
                 })
             };
-            return JsonConvert.SerializeObject(response, Formatting.Indented, _jsonSettings);
+            return JsonConvert.SerializeObject(response, _jsonSettings);
         }
+
+        private static string ScoreToConfidence(int score)
+        {
+            if (score >= 10) return "high";
+            if (score >= 5) return "medium";
+            return "low";
+        }
+
+        private static object BuildSkillSchemaForRecommend(SkillInfo s) => new
+        {
+            parameters = s.Parameters.Select(p => new
+            {
+                name = p.Name,
+                type = GetJsonType(p.ParameterType),
+                required = IsParameterRequired(p),
+                defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
+            }).ToArray(),
+            outputs = s.Outputs,
+            requiresInput = s.RequiresInput,
+            tags = s.Tags,
+            operation = FormatOperation(s.Operation),
+            riskLevel = s.RiskLevel,
+            readOnly = s.ReadOnly,
+            mutatesScene = s.MutatesScene,
+            mutatesAssets = s.MutatesAssets,
+            requiresPackages = s.RequiresPackages,
+        };
 
         // ========== Skill Dependency Chain ==========
 
@@ -964,12 +1008,11 @@ namespace UnitySkills
 
             if (string.IsNullOrWhiteSpace(targetOutput))
             {
-                return JsonConvert.SerializeObject(new
-                {
-                    status = "error",
-                    error = "Missing required parameter: output",
-                    example = "/skills/chain?output=instanceId&maxDepth=3"
-                }, _jsonSettings);
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.MissingParam,
+                    "Missing required parameter: output",
+                    details: new { example = "/skills/chain?output=instanceId&maxDepth=3" },
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
             }
 
             // BFS: find skills producing the target, then trace their RequiresInput
@@ -1022,7 +1065,7 @@ namespace UnitySkills
                 maxDepth,
                 totalProducers = producers.Count,
                 producers
-            }, Formatting.Indented, _jsonSettings);
+            }, _jsonSettings);
         }
 
         internal static string[] FormatOperationForPlanning(SkillOperation op)
@@ -1032,13 +1075,23 @@ namespace UnitySkills
 
         internal static string ResolveSkillNotFound(string name)
         {
-            return JsonConvert.SerializeObject(new
-            {
-                status = "error",
-                error = $"Skill '{name}' not found",
-                availableSkills = _skills.Keys.Take(20).ToArray()
-            }, _jsonSettings);
+            // Surface up to 5 nearest registered skill names so AI agents can self-correct typos.
+            var nearest = _skills.Keys
+                .Select(k => new { Name = k, Distance = ComputeLevenshteinDistance(name ?? string.Empty, k) })
+                .Where(x => x.Distance <= 5 ||
+                            (!string.IsNullOrEmpty(name) && k_ContainsCi(x.Name, name)))
+                .OrderBy(x => x.Distance)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .Select(x => x.Name)
+                .ToList();
+
+            return SkillErrorResponse.SkillNotFound(name, nearest);
         }
+
+        private static bool k_ContainsCi(string haystack, string needle) =>
+            !string.IsNullOrEmpty(haystack) && !string.IsNullOrEmpty(needle) &&
+            haystack.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0;
 
         internal static bool TryGetSkill(string name, out SkillInfo skill)
         {
@@ -1136,6 +1189,50 @@ namespace UnitySkills
 
                 validation.UnknownParams.Add(entry);
             }
+        }
+
+        private static List<SuggestedFix> BuildUnknownParamFixes(string skillName, List<object> unknownParams)
+        {
+            var fixes = new List<SuggestedFix>();
+            if (unknownParams == null || unknownParams.Count == 0)
+                return fixes;
+
+            foreach (var entry in unknownParams)
+            {
+                if (entry is not IDictionary<string, object> dict)
+                    continue;
+
+                string param = dict.TryGetValue("parameter", out var pv) ? pv?.ToString() : null;
+                string hint = dict.TryGetValue("hint", out var hv) ? hv?.ToString() : null;
+
+                if (dict.TryGetValue("suggestions", out var sObj) && sObj is IEnumerable<string> sugs)
+                {
+                    foreach (var s in sugs)
+                    {
+                        fixes.Add(new SuggestedFix
+                        {
+                            action = "fix_param",
+                            skill = skillName,
+                            args = new Dictionary<string, string> { [s] = "<value>" },
+                            reason = !string.IsNullOrEmpty(hint)
+                                ? $"Did you mean '{s}'? {hint}"
+                                : (!string.IsNullOrEmpty(param)
+                                    ? $"Replace unknown parameter '{param}' with '{s}'"
+                                    : $"Use '{s}'")
+                        });
+                    }
+                }
+                else if (!string.IsNullOrEmpty(hint))
+                {
+                    fixes.Add(new SuggestedFix
+                    {
+                        action = "fix_param",
+                        skill = skillName,
+                        reason = hint
+                    });
+                }
+            }
+            return fixes.Count > 0 ? fixes : null;
         }
 
         private static string[] SuggestParameters(string skillName, string unknownParameter, string[] allowedParameterNames)
@@ -1239,15 +1336,15 @@ namespace UnitySkills
             {
                 var validation = ValidateParameters(skill, json);
                 var plan = SkillPlanningService.BuildPlan(skill, validation);
-                return JsonConvert.SerializeObject(plan, Formatting.Indented, _jsonSettings);
+                return JsonConvert.SerializeObject(plan, _jsonSettings);
             }
             catch (Exception ex)
             {
-                return JsonConvert.SerializeObject(new
-                {
-                    status = "error",
-                    error = $"Invalid JSON: {ex.Message}"
-                }, _jsonSettings);
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.InvalidJson,
+                    $"Invalid JSON: {ex.Message}",
+                    skill: name,
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
             }
         }
 
