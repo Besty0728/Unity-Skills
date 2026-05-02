@@ -16,13 +16,13 @@ For exact skill names, parameters, defaults, and returns, query schema first:
 
 Use module `SKILL.md` files for routing guidance, guardrails, and minimal examples, not as the canonical source of exact signatures.
 
-Current snapshot: `713` REST skills, `50` functional source modules, `68` module documentation directories (`49` REST/module docs + `19` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `714` REST skills, `51` functional source modules, `68` module documentation directories (`49` REST/module docs + `19` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`
 
 ## Operating Mode
 
-Operating modes are an **AI routing policy**, not a server-side permission gate. The REST server still exposes all `713` skills through `/skills` and `/skills/schema`; the mode rules control which modules the agent should choose by default.
+Operating modes are an **AI routing policy**, not a server-side permission gate. The REST server still exposes all `714` skills through `/skills` and `/skills/schema`; the mode rules control which modules the agent should choose by default.
 
 > **Default: SEMI-AUTO**. Prefer only `script`, `perception`, `scene`, `editor`, `asset`, `workflow`, `debug`, `console`, and advisory modules. Hold back object creation/configuration modules until the user clearly requests direct Unity manipulation.
 

@@ -81,6 +81,10 @@ Configure light properties.
 
 ### light_set_properties_batch
 Configure multiple lights. Each item accepts: `name`/`instanceId`/`path` (identifier) + `r`, `g`, `b`, `intensity`, `range`, `shadows` (all optional).
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
 
@@ -103,6 +107,10 @@ Enable or disable a light.
 
 ### light_set_enabled_batch
 Enable or disable multiple lights.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, enabled}]}`
 

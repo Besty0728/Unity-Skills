@@ -53,6 +53,10 @@ Import an external file into the project.
 
 ### asset_import_batch
 Import multiple external files.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 `items` currently expects a JSON string, not a native array.
 
@@ -76,6 +80,10 @@ Delete an asset from the project.
 
 ### asset_delete_batch
 Delete multiple assets.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 `items` currently expects a JSON string, not a native array.
 
@@ -100,6 +108,10 @@ Move or rename an asset.
 
 ### asset_move_batch
 Move multiple assets.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 `items` currently expects a JSON string, not a native array.
 

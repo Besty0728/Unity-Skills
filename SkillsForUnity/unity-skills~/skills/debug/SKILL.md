@@ -24,6 +24,16 @@ Debug utilities for error checking and diagnostics.
 
 ## Skills
 
+### `unity_diagnose`
+**Aggregated Editor health snapshot — call this FIRST when triaging problems.** Combines console errors, compile state, recent workflow tasks, recent jobs, and server stats in a single response. Avoids chaining 4-5 individual skills.
+
+**Parameters:**
+- `errorLimit` (int, optional, default 20, range 1-200): Max console entries to return.
+- `includeWarnings` (bool, optional, default true): Include warnings (false = errors only).
+- `includeRecentJobs` (bool, optional, default true): Include the 10 most recent async jobs.
+
+**Returns:** `{ summary: { healthy, consoleErrorCount, consoleWarningCount, isCompiling, serverRunning, hint }, compile, console, workflow, server, recentJobs }`
+
 ### `debug_get_logs`
 Get console logs filtered by type and content.
 **Parameters:**

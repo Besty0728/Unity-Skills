@@ -58,6 +58,10 @@ Create a new material (auto-detects render pipeline).
 
 ### material_create_batch
 Create multiple materials.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, path}]}`
 
@@ -81,6 +85,10 @@ Assign material to object's renderer.
 
 ### material_assign_batch
 Assign materials to multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, materialPath}]}`
 
@@ -105,6 +113,11 @@ Set material color with optional HDR intensity.
 
 ### material_set_colors_batch
 Set colors on multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | string | No | null |  |
+| `propertyName` | string | No | null |  |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
 
@@ -129,6 +142,10 @@ Set emission color with auto-enable keyword.
 
 ### material_set_emission_batch
 Set emission on multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
 

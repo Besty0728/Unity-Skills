@@ -25,11 +25,13 @@ Manage Unity Editor undo/redo history.
 
 ### `history_undo`
 Undo the last operation.
-**Parameters:** None.
+**Parameters:**
+- `steps` (int, optional, default 1): Number of operations to undo.
 
 ### `history_redo`
 Redo the last undone operation.
-**Parameters:** None.
+**Parameters:**
+- `steps` (int, optional, default 1): Number of operations to redo.
 
 ### `history_get_current`
 Get current undo history state.

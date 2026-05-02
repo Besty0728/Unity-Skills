@@ -119,18 +119,25 @@ Get detailed GameObject information.
 **Returns**: `{name, instanceId, path, tag, layer, active, position, rotation, scale, components, children}`
 
 ### gameobject_set_transform
-Set position, rotation, and/or scale.
+Set position, rotation, and/or scale. Supports world / local / RectTransform spaces.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Object name |
 | `instanceId` | int | No* | Instance ID (preferred) |
 | `path` | string | No* | Hierarchy path |
-| `posX/posY/posZ` | float | No | Position |
-| `rotX/rotY/rotZ` | float | No | Rotation (euler) |
-| `scaleX/scaleY/scaleZ` | float | No | Scale |
+| `posX/posY/posZ` | float | No | World position |
+| `rotX/rotY/rotZ` | float | No | World rotation (euler) |
+| `scaleX/scaleY/scaleZ` | float | No | Local scale |
+| `localPosX/localPosY/localPosZ` | float | No | Local position (relative to parent; works for both 3D and UI) |
+| `anchoredPosX/anchoredPosY` | float | No | RectTransform anchored position (UI only) |
+| `anchorMinX/anchorMinY` | float | No | RectTransform anchor min (0-1, UI only) |
+| `anchorMaxX/anchorMaxY` | float | No | RectTransform anchor max (0-1, UI only) |
+| `pivotX/pivotY` | float | No | RectTransform pivot (0-1, UI only) |
+| `sizeDeltaX/sizeDeltaY` | float | No | RectTransform size delta (UI only) |
+| `width/height` | float | No | Convenience aliases for sizeDeltaX/sizeDeltaY (UI only) |
 
-*At least one identifier required
+*At least one identifier required. RectTransform / `anchored*` / `anchor*` / `pivot*` / `sizeDelta*` / `width` / `height` only apply to UI elements; ignored on regular Transforms.
 
 ### gameobject_set_parent
 Set parent-child relationship.
@@ -164,6 +171,10 @@ Enable or disable a GameObject.
 
 ### gameobject_create_batch
 Create multiple GameObjects in one call.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Item properties**: `name`, `primitiveType`, `x`, `y`, `z`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentName`, `parentInstanceId`, `parentPath`
 
@@ -179,6 +190,10 @@ unity_skills.call_skill("gameobject_create_batch", items=[
 
 ### gameobject_delete_batch
 Delete multiple GameObjects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
 
@@ -201,6 +216,10 @@ unity_skills.call_skill("gameobject_delete_batch", items=[
 
 ### gameobject_duplicate_batch
 Duplicate multiple GameObjects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, originalName, copyName, copyInstanceId, copyPath}]}`
 
@@ -213,6 +232,10 @@ unity_skills.call_skill("gameobject_duplicate_batch", items=[
 
 ### gameobject_rename_batch
 Rename multiple GameObjects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, oldName, newName, instanceId}]}`
 
@@ -225,6 +248,10 @@ unity_skills.call_skill("gameobject_rename_batch", items=[
 
 ### gameobject_set_transform_batch
 Set transforms for multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, position, rotation, scale}]}`
 
@@ -238,6 +265,10 @@ unity_skills.call_skill("gameobject_set_transform_batch", items=[
 
 ### gameobject_set_active_batch
 Toggle multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, active}]}`
 
@@ -250,6 +281,10 @@ unity_skills.call_skill("gameobject_set_active_batch", items=[
 
 ### gameobject_set_parent_batch
 Parent multiple objects. Each item supports `childName`/`childInstanceId`/`childPath` and `parentName`/`parentInstanceId`/`parentPath`.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, child, parent}]}`
 
@@ -263,6 +298,10 @@ unity_skills.call_skill("gameobject_set_parent_batch", items=[
 
 ### gameobject_set_layer_batch
 Set layer for multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, layer}]}`
 
@@ -275,6 +314,10 @@ unity_skills.call_skill("gameobject_set_layer_batch", items=[
 
 ### gameobject_set_tag_batch
 Set tag for multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, tag}]}`
 

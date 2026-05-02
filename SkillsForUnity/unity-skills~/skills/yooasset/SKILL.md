@@ -44,7 +44,7 @@ Editor-side automation for the YooAsset hot-update framework — build pipeline 
 | `yooasset_simulate_build` | Run `AssetBundleSimulateBuilder.SimulateBuild` for an `EditorSimulateMode` package — virtual bundles only, no files written. | `packageName` |
 | `yooasset_get_default_paths` | Return `BuildOutputRoot` + `StreamingAssetsRoot` that YooAsset uses. | (none) |
 | `yooasset_get_build_settings` | Read persisted YooAsset AssetBundle Builder EditorPrefs for a package/pipeline. | `packageName`, `pipeline?` |
-| `yooasset_set_build_settings` | Persist AssetBundle Builder EditorPrefs for repeatable build UI defaults. | `packageName`, `pipeline?`, `compression?`, `fileNameStyle?`, `buildinFileCopyOption?`, `clearBuildCache?`, `useAssetDependencyDB?`, `verifyBuildingResult?` |
+| `yooasset_set_build_settings` | Persist AssetBundle Builder EditorPrefs for repeatable build UI defaults. | `packageName`, `pipeline?`, `compression?`, `fileNameStyle?`, `buildinFileCopyOption?`, `buildinFileCopyParams?`, `encryptionServicesClassName?`, `manifestProcessServicesClassName?`, `manifestRestoreServicesClassName?`, `clearBuildCache?`, `useAssetDependencyDB?` |
 | `yooasset_open_builder_window` | Open the YooAsset `AssetBundle Builder` Editor window. | (none) |
 | `yooasset_open_collector_window` | Open the YooAsset `AssetBundle Collector` Editor window. | (none) |
 

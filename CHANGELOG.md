@@ -2,6 +2,27 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.8.1] - 2026-05-02
+
+### Added
+- **统一错误响应体系** — 新增 `SkillErrorCode` 枚举（21 个稳定错误码）与 `SkillErrorResponse` 统一构造器，所有 REST 错误响应统一返回 `status / errorCode / error / skill / details / suggestedFixes / relatedSkills / retryStrategy / retryAfterSeconds` 形状，AI Agent 可基于 errorCode 做确定性自愈，无需 NLP 解析自由文本；`unknownParams` 错误自动生成可重放的 SuggestedFix。
+- **高风险技能二次确认** — 新增 `ConfirmationTokenService`（内存字典 + 5 分钟 TTL，token 与 `(skillName, argsHash)` 绑定，SHA256 哈希防 token-then-modify-args 攻击）。`SkillRouter.Execute` 新增 confirmation gate：当 `RiskLevel="high"` 或 `Operation` 含 `Delete` 时，首次调用返回 `CONFIRMATION_REQUIRED` + 新 token + 内嵌 dryRun 预览；二次调用带 `_confirm` 校验通过后执行；`_confirm` 加入 `_reservedBodyParameters`，不传给 skill 自身。`UnitySkillsWindow` Server 标签页 Settings 卡片新增 toggle，默认关闭——全自动场景完全无感。
+- **`GET /jobs` 长轮询端点** — 新增三个绕开 skill router 的轻量端点：`GET /jobs`（最近 N 个 BatchJobRecord 列表）、`GET /jobs/{id}`（完整快照 + recentProgress + terminal 标记）、`GET /jobs/{id}/logs`（结构化日志，带 stage/level/code），专为高频进度轮询设计（200–500ms 拉一次即可获得平滑进度）。Windows HttpListener 的 chunked + flush 行为不可靠，按事先约定走轮询降级而非 SSE。
+- **`unity_diagnose` 聚合诊断 Skill** — 新增 `DiagnoseSkills` 模块（1 个 Skill），单调用返回 console errors + 编译状态 + 最近 5 个 workflow tasks + 服务器统计 + 最近 10 个 jobs，AI 排错时取代 `console_get_logs / workflow_* / health` 等 4–5 个 Skill 的串联调用。
+- **Python 客户端长轮询/诊断辅助** — `unity_skills.py` 新增 `get_job(id)` / `list_jobs(limit)`（走轻量 `GET /jobs` 端点）、`poll_job(id, interval, timeout, on_progress)` 长轮询便捷封装、`diagnose(...)` 聚合诊断快捷调用。
+
+### Changed
+- **`/skills/recommend` 检索增强** — `includeSchema=true` 返回完整参数定义、outputs / tags / riskLevel；score 归一化为 `confidence: high(≥10) / medium(≥5) / low`，AI 可直接按置信度分支。
+- **`ResolveSkillNotFound` 智能 did-you-mean** — 用 Levenshtein 距离给出最近 5 个建议，取代原 "前 20 个名字" 的浪费输出。
+- **manifest / schema 响应体瘦身** — `SkillRouter` manifest / schema 取消 `Formatting.Indented`，响应体减小约 30%。
+- **HTTP 异常透出** — `SkillsHttpServer` 把 swallowed catch 改成显式异常 + 日志，便于排错。
+- **类型缓存与过期清理** — `SkillsCommon` 类型查找缓存逻辑优化，新增过期运行时清理；改进测试文件夹检测策略。
+- **`ConfirmationTokenService.IsHighRisk` 可见性收紧** — 改为 `internal`，因 `SkillRouter.SkillInfo` 是 `internal`，`public` 方法的参数不能引用更窄可见性的类型（CS0051）。
+- **GameObject 文档扩展** — `gameobject_set_transform` 文档补充 World / Local / RectTransform 三套参数空间（`localPos*`、`anchoredPos*`、`anchor*`、`pivot*`、`sizeDelta*`、`width / height`），并明确 RectTransform 专属参数在普通 Transform 上会被忽略；`gameobject_create_batch / delete_batch / duplicate_batch / rename_batch` 补齐 `items` 参数表格行。
+- **多个模块文档微调** — `asset / component / debug / history / light / material / yooasset` 的 SKILL.md 同步最新 Skill 行为说明。
+- **Skill 计数文档同步** — 文档总数从 `713` 修正为 `714`（新增 `unity_diagnose` +1，与 Unity 端反射计数一致）；README / agent.md / SKILL.md 模块表加入 Diagnose 行；为 Volume / PostProcess / Decal / URP 4 个 SRP 模块加 `†` 标注，说明 URP 未安装时这 4 个模块以同名 stub 返回 `NoURP()`，rg 源码计数（747）≠ 运行时计数（714）的差额由 `#if !URP / #else` 双分支编译解释。
+- **版本号更新** — `SkillsLogger.Version`、`package.json`、Python helper 和文档同步提升到 `1.8.1`。
+
 ## [1.8.0] - 2026-04-24
 
 ### Added

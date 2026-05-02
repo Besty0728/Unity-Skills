@@ -131,6 +131,10 @@ Get all properties of a component.
 
 ### component_add_batch
 Add components to multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, gameObject, componentType, added}]}`
 
@@ -144,6 +148,10 @@ unity_skills.call_skill("component_add_batch", items=[
 
 ### component_remove_batch
 Remove components from multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, gameObject, componentType, removed}]}`
 
@@ -156,6 +164,10 @@ unity_skills.call_skill("component_remove_batch", items=[
 
 ### component_set_property_batch
 Set properties on multiple objects.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, gameObject, componentType, property, oldValue, newValue}]}`
 

@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-713-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-714-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -30,7 +30,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **713 REST Skills Comprehensive Toolkit**: Includes 50 functional source modules plus 19 advisory design modules, with Batch operations for multi-object control.
+- 🛠️ **714 REST Skills Comprehensive Toolkit**: Includes 51 functional source modules plus 19 advisory design modules, with Batch operations for multi-object control.
 - 🎛️ **Dual-Mode Flexibility**: Use Semi-Auto (code-first routing) or Full-Auto (direct manipulation routing) for different workflows.
 - 🤖 **4 Major IDEs Native Support**: Claude Code / Antigravity / Gemini CLI / Codex — one-click install and use.
 - 🛡️ **Transactional Atomicity**: Failed operations auto-rollback, leaving scenes clean and safe.
@@ -45,7 +45,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 | Mode | Default | AI Routing Scope | Use Case |
 |:-----|:-------:|:----------------:|:---------|
 | **Semi-Auto** | ✅ | 8 REST categories (~121 entries) + 19 advisory modules | AI writes C# code + light Skills assist (script, perception, scene, editor, asset, workflow, debug, console) |
-| **Full-Auto** | — | All 713 REST Skills | AI directly manipulates Unity (create objects, configure materials/lights/UI, build scenes) |
+| **Full-Auto** | — | All 714 REST Skills | AI directly manipulates Unity (create objects, configure materials/lights/UI, build scenes) |
 
 **How to switch**:
 - → Full-Auto: `"full auto"` / `"full-auto mode"` / `"build the scene for me"` / `"directly manipulate Unity"`
@@ -164,7 +164,7 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><h2>📦 Skills Category Overview (713)</h2></summary>
+<summary><h2>📦 Skills Category Overview (714)</h2></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
@@ -217,6 +217,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Texture** | 10 | Texture import settings/Platform settings/Sprite/Type/Size search/Batch |
 | **Project** | 9 | Render pipeline/Build settings/Package management/Layer/Tag/PlayerSettings/Quality |
 | **Sample** | 8 | Basic examples: Create/Delete/Transform/Scene info |
+| **Diagnose** | 1 | Aggregated Editor health snapshot (console/compile/workflow/server/jobs) |
 
 > ⚠️ Most modules support `*_batch` batch operations. When operating on multiple objects, prioritize batch Skills for better performance.
 >
@@ -238,7 +239,7 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   │   └── unity_skills.py     # Python Client Library
 │   │   ├── skills/                 # 68 module docs (49 REST/module docs + 19 advisory docs)
 │   │   └── references/             # Unity Development References
-│   └── Editor/Skills/              # Core Skill Logic (50 *Skills.cs files, 713 Skills)
+│   └── Editor/Skills/              # Core Skill Logic (51 *Skills.cs files, 714 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
 │       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
 │       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
@@ -250,7 +251,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
 │       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (23 skills)
 │       ├── PerceptionSkills.cs     # Scene Understanding (18 skills)
-│       └── ...                     # 713 Skills source code
+│       └── ...                     # 714 Skills source code
 ├── docs/
 │   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
 ├── CHANGELOG.md                    # Version Update Log
