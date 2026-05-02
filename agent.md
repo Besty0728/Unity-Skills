@@ -4,7 +4,7 @@
 
 | 项目 | 值 |
 |------|----|
-| 版本 | 1.8.1 |
+| 版本 | 1.8.2 |
 | 技术栈 | C# (Unity Editor Plugin) + Python (Client) |
 | Unity | 2022.3+（已验证 Unity 6 / 6000.x） |
 | 协议 | MIT |

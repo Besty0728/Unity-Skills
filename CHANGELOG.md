@@ -2,6 +2,18 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.8.2] - 2026-05-02
+
+### Added
+- **`progressGranularity` 参数** — `batch_execute` 新增 `progressGranularity`（默认 10），每处理 N 个 item 向 `progressEvents` 写入一条进度事件（含毫秒时间戳、百分比、stage、描述），解决小批次 progress 从 0 直跳 100 无法观测的问题。
+- **`GET /jobs/{id}/progress` 端点** — 新增细粒度进度事件增量拉取端点，支持 `?offset=N` 参数，客户端每次传入上次 `totalCount` 即可只获取新增事件，响应含 `terminal` 标记，适合 100–200ms 高频轮询。
+- **Python `get_job_progress(job_id, offset)` 辅助** — `unity_skills.py` 新增对应封装，支持增量轮询进度事件。
+
+### Changed
+- **`GET /jobs/{id}` 支持 `recentCount` 参数** — 可指定返回最近 N 条进度事件（1–200，默认 10），通过 `recentProgress` 字段返回。
+- **`batch/SKILL.md` 文档补全** — 补充 `progressGranularity` 参数说明、`job_status` 的 `recentCount` 参数、`job_progress` 端点完整文档（增量轮询用法与响应字段）。
+- **版本号更新** — `SkillsLogger.Version`、`package.json`、Python helper 和文档同步提升到 `1.8.2`。
+
 ## [1.8.1] - 2026-05-02
 
 ### Added
