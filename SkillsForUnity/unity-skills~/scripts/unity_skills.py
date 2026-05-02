@@ -388,6 +388,14 @@ class UnitySkills:
         except Exception as exc:
             return {'status': 'error', 'error': str(exc)}
 
+    def get_job_progress(self, job_id: str, offset: int = 0) -> Dict[str, Any]:
+        """Read fine-grained progress events via GET /jobs/{id}/progress?offset=N."""
+        try:
+            resp = self._session.get(f"{self.url}/jobs/{job_id}/progress?offset={int(offset)}", timeout=HEALTH_TIMEOUT)
+            return resp.json()
+        except Exception as exc:
+            return {'status': 'error', 'error': str(exc)}
+
     def poll_job(self, job_id: str, interval: float = 0.5, timeout: float = 300.0,
                  on_progress=None) -> Dict[str, Any]:
         """
@@ -549,6 +557,11 @@ def get_job(job_id: str) -> Dict[str, Any]:
 def list_jobs(limit: int = 50) -> Dict[str, Any]:
     """List recent jobs via GET /jobs."""
     return _get_default_client().list_jobs(limit=limit)
+
+
+def get_job_progress(job_id: str, offset: int = 0) -> Dict[str, Any]:
+    """Read fine-grained progress events via GET /jobs/{id}/progress?offset=N."""
+    return _get_default_client().get_job_progress(job_id, offset=offset)
 
 
 def poll_job(job_id: str, interval: float = 0.5, timeout: float = 300.0, on_progress=None) -> Dict[str, Any]:

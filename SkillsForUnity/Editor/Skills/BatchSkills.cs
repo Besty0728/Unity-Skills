@@ -180,7 +180,7 @@ namespace UnitySkills
             Outputs = new[] { "jobId", "reportId", "workflowId", "status" },
             RequiresInput = new[] { "confirmToken" },
             SupportsDryRun = false)]
-        public static object BatchExecute(string confirmToken, bool runAsync = true, int chunkSize = 100)
+        public static object BatchExecute(string confirmToken, bool runAsync = true, int chunkSize = 100, int progressGranularity = 10)
         {
             if (Validate.Required(confirmToken, "confirmToken") is object err)
                 return err;
@@ -195,7 +195,7 @@ namespace UnitySkills
             }
 
             BatchPersistence.RemovePreview(confirmToken);
-            var job = BatchJobService.Start(preview, chunkSize);
+            var job = BatchJobService.Start(preview, chunkSize, progressGranularity);
             if (runAsync || preview.executableCount > chunkSize)
             {
                 return new

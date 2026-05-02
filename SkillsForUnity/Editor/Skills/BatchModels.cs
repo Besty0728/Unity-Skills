@@ -150,6 +150,7 @@ namespace UnitySkills
         public List<BatchReportItemRecord> items = new List<BatchReportItemRecord>();
         public List<BatchJobLogEntry> logs = new List<BatchJobLogEntry>();
         public string progressStage;
+        public int progressGranularity = 10;
         public List<BatchJobProgressEvent> progressEvents = new List<BatchJobProgressEvent>();
     }
 

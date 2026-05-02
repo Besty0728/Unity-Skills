@@ -26,7 +26,7 @@ namespace UnitySkills
             EditorApplication.update += ProcessQueuedJobs;
         }
 
-        internal static BatchJobRecord Start(BatchPreviewEnvelope preview, int chunkSize)
+        internal static BatchJobRecord Start(BatchPreviewEnvelope preview, int chunkSize, int progressGranularity = 10)
         {
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             var job = new BatchJobRecord
@@ -40,6 +40,7 @@ namespace UnitySkills
                 updatedAt = now,
                 resultSummary = "Job created and waiting to start.",
                 chunkSize = Math.Max(1, chunkSize),
+                progressGranularity = Math.Max(1, progressGranularity),
                 totalItems = preview.items.Count(item => item.valid && item.willChange),
                 preview = preview
             };
@@ -211,11 +212,25 @@ namespace UnitySkills
                 job.currentStage = $"chunk_{chunkIndex}";
                 AddLog(job, "info", job.currentStage, $"Processing chunk {chunkIndex + 1} with {chunkItems.Count} items.");
 
+                var granularity = Math.Max(1, job.progressGranularity);
                 foreach (var item in chunkItems)
                 {
                     var result = BatchSkills.ExecutePreviewItem(job.preview, item, chunkIndex);
                     job.items.Add(result);
                     job.processedItems++;
+
+                    if (job.processedItems % granularity == 0 || job.processedItems == job.totalItems)
+                    {
+                        var pct = job.totalItems <= 0 ? 100 : (int)Math.Round(job.processedItems * 100.0 / job.totalItems);
+                        job.progress = pct;
+                        job.progressEvents.Add(new BatchJobProgressEvent
+                        {
+                            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                            progress = pct,
+                            stage = job.currentStage,
+                            description = $"{job.processedItems}/{job.totalItems}"
+                        });
+                    }
                 }
 
                 job.progress = job.totalItems <= 0 ? 100 : (int)Math.Round(job.processedItems * 100.0 / job.totalItems);

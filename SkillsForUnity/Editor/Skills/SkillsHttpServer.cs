@@ -1426,6 +1426,30 @@ namespace UnitySkills
                 return;
             }
 
+            if (string.Equals(subResource, "progress", StringComparison.OrdinalIgnoreCase))
+            {
+                int offset = 0;
+                if (qs.TryGetValue("offset", out var off) && int.TryParse(off, out var offp))
+                    offset = Math.Max(0, offp);
+
+                var events = record.progressEvents ?? new System.Collections.Generic.List<BatchJobProgressEvent>();
+                var sliced = events.Skip(offset)
+                    .Select(e => new { e.timestamp, e.progress, e.stage, e.description })
+                    .ToArray();
+
+                job.StatusCode = 200;
+                job.ResponseJson = JsonConvert.SerializeObject(new
+                {
+                    jobId = record.jobId,
+                    status = record.status,
+                    totalCount = events.Count,
+                    offset,
+                    events = sliced,
+                    terminal = IsTerminalStatus(record.status),
+                }, _jsonSettings);
+                return;
+            }
+
             if (string.Equals(subResource, "logs", StringComparison.OrdinalIgnoreCase))
             {
                 int limit = 100;
@@ -1458,6 +1482,8 @@ namespace UnitySkills
 
             // GET /jobs/{id} (default — full status snapshot)
             int recentCount = 10;
+            if (qs.TryGetValue("recentCount", out var rc) && int.TryParse(rc, out var rcp))
+                recentCount = Mathf.Clamp(rcp, 1, 200);
             var recentEvents = record.progressEvents == null
                 ? Array.Empty<object>()
                 : record.progressEvents

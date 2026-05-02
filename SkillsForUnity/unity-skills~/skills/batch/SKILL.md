@@ -100,6 +100,7 @@ Execute a previously previewed batch operation by `confirmToken`. Large operatio
 | `confirmToken` | string | Yes | - | Preview confirmation token |
 | `runAsync` | bool | No | true | Run as async job |
 | `chunkSize` | int | No | 100 | Batch execution chunk size |
+| `progressGranularity` | int | No | 10 | Emit a `progressEvent` every N items processed |
 
 ### batch_report_get
 Get a batch execution report by `reportId`.
@@ -116,11 +117,22 @@ List recent batch reports.
 | `limit` | int | No | 20 | Max reports returned |
 
 ### job_status
-Get status for an asynchronous UnitySkills job.
+Get status for an asynchronous UnitySkills job. Supports `recentCount` query param (1–200, default 10) to include the last N `progressEvents` in the response as `recentProgress`.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `jobId` | string | Yes | - | Job identifier |
+| `recentCount` | int | No | 10 | Number of recent progress events to include in `recentProgress` |
+
+### job_progress
+Get fine-grained progress events for a job via incremental polling. Use `offset` to fetch only new events since the last call (pass previous `totalCount` as next `offset`).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `jobId` | string | Yes | - | Job identifier |
+| `offset` | int | No | 0 | Skip first N events (use previous `totalCount` for incremental polling) |
+
+Response fields: `jobId`, `status`, `totalCount`, `offset`, `events[]` (`timestamp` ms, `progress`, `stage`, `description`), `terminal`.
 
 ### job_logs
 Get structured logs for a UnitySkills job.
