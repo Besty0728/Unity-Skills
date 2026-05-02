@@ -887,6 +887,7 @@ namespace UnitySkills
                 .Select(AssetDatabase.GUIDToAssetPath)
                 .Where(path => !string.IsNullOrEmpty(path))
                 .ToArray();
+            var hasTestsFolder = Directory.Exists("Assets/Tests");
 
             return new
             {
@@ -921,7 +922,7 @@ namespace UnitySkills
                 },
                 tests = new
                 {
-                    detected = Directory.Exists("Assets/Tests") || testAsmdefs.Any(path => Path.GetFileNameWithoutExtension(path).IndexOf("Test", StringComparison.OrdinalIgnoreCase) >= 0),
+                    detected = hasTestsFolder || testAsmdefs.Any(path => Path.GetFileNameWithoutExtension(path).IndexOf("Test", StringComparison.OrdinalIgnoreCase) >= 0),
                     nunitLoaded = AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name.IndexOf("nunit", StringComparison.OrdinalIgnoreCase) >= 0)
                 },
                 projectFolders = new
@@ -930,7 +931,7 @@ namespace UnitySkills
                     scenes = Directory.Exists("Assets/Scenes"),
                     prefabs = Directory.Exists("Assets/Prefabs"),
                     materials = Directory.Exists("Assets/Materials"),
-                    tests = Directory.Exists("Assets/Tests")
+                    tests = hasTestsFolder
                 },
                 projectProfile = DetermineProjectProfile(metrics, xrDetected, uiRoute)
             };

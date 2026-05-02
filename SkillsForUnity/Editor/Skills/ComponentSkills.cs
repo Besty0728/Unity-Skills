@@ -544,26 +544,24 @@ namespace UnitySkills
             result = System.Type.GetType(name);
             if (result != null && typeof(Component).IsAssignableFrom(result))
             {
-                if (_typeCache.Count > 500) _typeCache.Clear();
-                _typeCache[name] = result;
+                CacheType(name, result);
                 return result;
             }
 
             // 2. Extract simple name
             var simpleName = name.Contains(".") ? name.Substring(name.LastIndexOf('.') + 1) : name;
-            
+
             // 3. Try common namespaces
             foreach (var ns in ExtendedNamespaces)
             {
                 result = TryGetTypeFromAssemblies(ns + simpleName);
                 if (result != null && typeof(Component).IsAssignableFrom(result))
                 {
-                    if (_typeCache.Count > 500) _typeCache.Clear();
-                    _typeCache[name] = result;
+                    CacheType(name, result);
                     return result;
                 }
             }
-            
+
             // 4. Search all loaded assemblies by simple name (slowest but most comprehensive)
             result = SkillsCommon.GetAllLoadedTypes()
                 .FirstOrDefault(t =>
@@ -573,11 +571,16 @@ namespace UnitySkills
 
             if (result != null)
             {
-                if (_typeCache.Count > 500) _typeCache.Clear();
-                _typeCache[name] = result;
+                CacheType(name, result);
             }
-                
+
             return result;
+        }
+
+        private static void CacheType(string name, System.Type type)
+        {
+            if (_typeCache.Count > 5000) _typeCache.Clear();
+            _typeCache[name] = type;
         }
 
         private static System.Type TryGetTypeFromAssemblies(string fullName)
@@ -602,7 +605,7 @@ namespace UnitySkills
                     var type = System.Type.GetType($"{fullName}, {asmName}");
                     if (type != null) return type;
                 }
-                catch { }
+                catch { /* Type not in this assembly — expected during package detection */ }
             }
             return null;
         }

@@ -789,7 +789,14 @@ namespace UnitySkills
                 catch (ThreadAbortException) { break; }
                 catch (Exception ex)
                 {
-                    SkillsLogger.LogWarning($"KeepAlive iteration error: {ex.GetType().Name}: {ex.Message}");
+                    // Unity 6000.3+ QueuePlayerLoopUpdate may surface a benign
+                    // "SetSceneRepaintDirty can only be called from the main thread"
+                    // even though the wake-up itself succeeds. Silence the noise;
+                    // the queue drain is verified by main-thread ProcessJobQueue.
+                    if (ex is UnityException && ex.Message != null && ex.Message.Contains("main thread"))
+                        SkillsLogger.LogVerbose($"KeepAlive wake-up benign: {ex.Message.Split('\n')[0]}");
+                    else
+                        SkillsLogger.LogWarning($"KeepAlive iteration error: {ex.GetType().Name}: {ex.Message}");
                 }
             }
         }

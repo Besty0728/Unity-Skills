@@ -482,7 +482,40 @@ namespace UnitySkills
 
         private static void ProcessJobs()
         {
+            SweepStaleRuntimes();
             ProcessJobs(null);
+        }
+
+        private static void SweepStaleRuntimes()
+        {
+            // Purge runtime contexts whose jobs are already terminal or vanished from persistence.
+            // Normal completion paths call CleanupTestRuntime/CleanupSmokeRuntime; this sweep catches
+            // entries leaked when the test runner aborts or the Editor is forcibly killed mid-run.
+            if (TestRuntimeJobs.Count > 0)
+            {
+                List<string> stale = null;
+                foreach (var id in TestRuntimeJobs.Keys)
+                {
+                    var j = BatchPersistence.GetJob(id);
+                    if (j == null || IsTerminal(j.status))
+                        (stale ??= new List<string>()).Add(id);
+                }
+                if (stale != null)
+                    foreach (var id in stale) CleanupTestRuntime(id);
+            }
+
+            if (SmokeRuntimeJobs.Count > 0)
+            {
+                List<string> stale = null;
+                foreach (var id in SmokeRuntimeJobs.Keys)
+                {
+                    var j = BatchPersistence.GetJob(id);
+                    if (j == null || IsTerminal(j.status))
+                        (stale ??= new List<string>()).Add(id);
+                }
+                if (stale != null)
+                    foreach (var id in stale) CleanupSmokeRuntime(id);
+            }
         }
 
         private static void ProcessJobs(string onlyJobId)
