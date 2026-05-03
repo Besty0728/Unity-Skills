@@ -17,6 +17,12 @@
    ```
 4. 比较版本号：新版本号必须严格高于 main 的当前版本号（按语义化版本比较 major.minor.patch）
    - 如果不满足：告知用户 `当前 main 版本为 x.x.x，新版本号必须高于此值` 并停止
+5. **Tag 冲突检查**：检查是否已存在 `v{NEW_VER}` tag：
+   ```bash
+   git tag -l "v{NEW_VER}"
+   ```
+   如果已存在，停止并提示用户：该版本 tag 已发布，不应重复使用已发布的版本号。
+6. **变更内容检查**：预览 `git log main..beta --oneline`，如果输出为空（beta 与 main 完全一致，无任何新提交），告知用户"beta 相对 main 没有新提交，无法推断更新内容"，询问是否仍要创建一个仅包含版本号变更的空版本。
 
 ## 步骤 2：分析 beta 相对 main 的变更内容
 
@@ -59,7 +65,7 @@
 | 序号 | 文件 | 操作 |
 |:----:|------|------|
 | 1 | `SkillsForUnity/Editor/Skills/SkillsLogger.cs` | `Version = "{OLD_VER}"` → `Version = "{NEW_VER}"` |
-| 2 | `agent.md` | 概览表格 `\| **版本** \| {OLD_VER}` → `{NEW_VER}` |
+| 2 | `agent.md` | 概览表格中版本行 `| 版本 | {OLD_VER} |` → `| 版本 | {NEW_VER} |` |
 | 3 | `SkillsForUnity/package.json` | `"version": "{OLD_VER}"` → `"version": "{NEW_VER}"` |
 | 4 | `CHANGELOG.md` | 在文件顶部（`## [{OLD_VER}]` 之前）插入新的 `## [{NEW_VER}] - {TODAY}` 条目，内容为步骤 2 推断的更新内容 |
 | 5 | `SkillsForUnity/unity-skills~/scripts/unity_skills.py` | `__version__ = "{OLD_VER}"` → `__version__ = "{NEW_VER}"` |

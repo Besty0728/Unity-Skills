@@ -21,15 +21,12 @@ rg -c "\[UnitySkill\(" SkillsForUnity/Editor/Skills/ --glob "*Skills.cs" --sort 
 
 | 文件 | 搜索内容 |
 |------|---------|
-| `agent.md` | 总数引用（如 "513 个 REST Skills"）、模块计数表 |
+| `agent.md` | 总数引用（如 "714 个 REST Skills"）、模块计数表 |
 | `README.md` | badge 数字、正文中的总数 |
 | `README_CN.md` | 同上中文版 |
 | `SkillsForUnity/unity-skills~/SKILL.md` | 总数引用 |
 
-使用 Grep 搜索当前声称的数字：
-```bash
-rg -n "513|Skills-\d+" agent.md README.md README_CN.md SkillsForUnity/unity-skills~/SKILL.md
-```
+动态获取当前文档中声称的总数：从步骤 1 的实际统计结果出发，用 Grep 搜索文档中**与实际总数不同的旧数字**。先在上述文件中搜索常见的 skill 总数上下文（如 `\d+ 个 REST`、`\d+ Skills`、`Skills-\d+`），提取出文档当前声称的数字。
 
 > ⚠️ **不修改** `CHANGELOG.md` 中的历史条目 — 那些是版本发布时的快照。
 

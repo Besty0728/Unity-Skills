@@ -14,6 +14,17 @@
 2. 检查是否有未提交的更改（`git status`），如果有则停止并提示用户先提交
 3. 从 `CHANGELOG.md` 读取最新版本条目（从 `## [x.x.x]` 到下一个 `## [` 之间的内容）
 4. 确认版本号与 `SkillsForUnity/Editor/Skills/SkillsLogger.cs` 中的 `Version` 一致
+5. **远程同步检查**：执行 `git fetch origin main`，然后检查 main 上是否有 beta 不包含的提交：
+   ```bash
+   git log beta..origin/main --oneline
+   ```
+   如果有输出，说明 main 上存在 beta 没有的提交，hard reset 会丢失这些提交。**停止并警告用户**，列出这些提交，让用户决定是否继续。
+6. **Tag 冲突检查**：检查 GitHub 上是否已存在 `v{VERSION}` tag：
+   ```bash
+   git tag -l "v{VERSION}"
+   ```
+   如果已存在，停止并提示用户：该版本 tag 已存在，需要先删除旧 tag 或使用新版本号。
+7. **gh CLI 检查**：执行 `gh auth status`，确认 GitHub CLI 已登录。如果未登录，提示用户先运行 `! gh auth login`。
 
 ## 步骤 2：beta → main 同步
 
