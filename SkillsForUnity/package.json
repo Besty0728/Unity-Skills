@@ -22,28 +22,5 @@
   "author": {
     "name": "Besty",
     "url": "https://github.com/Besty0728"
-  },
-  "versionDefines": [
-    {
-      "name": "com.unity.cinemachine",
-      "expression": "[2.0,3.0)",
-      "define": "CINEMACHINE_2"
-    },
-    {
-      "name": "com.unity.cinemachine",
-      "expression": "[3.0,4.0)",
-      "define": "CINEMACHINE_3"
-    },
-    {
-      "name": "com.unity.splines",
-      "expression": "",
-      "define": "HAS_SPLINES"
-    },
-    {
-      "name": "com.unity.netcode.gameobjects",
-      "expression": "[2.0,3.0)",
-      "define": "NETCODE_GAMEOBJECTS"
-    }
-  ],
-  "_fingerprint": "50c8e0b5aa74bedb7116f7d9d0ab6955f9798425"
+  }
 }

@@ -1788,7 +1788,14 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RestoreRuntimeValidationJobsAfterReload()
         {
-            RestoreRuntimeValidationJobs();
+            try
+            {
+                RestoreRuntimeValidationJobs();
+            }
+            catch (System.Exception ex)
+            {
+                UnityEngine.Debug.LogError("[UnitySkills] YooAssetSkills restore-after-reload failed: " + ex);
+            }
         }
 
         private static void PersistRuntimeValidationJobs()

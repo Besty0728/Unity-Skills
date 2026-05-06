@@ -44,8 +44,15 @@ namespace UnitySkills
 
         static AsyncJobService()
         {
-            BatchPersistence.EnsureLoaded();
-            EditorApplication.update += ProcessJobs;
+            try
+            {
+                BatchPersistence.EnsureLoaded();
+                EditorApplication.update += ProcessJobs;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[UnitySkills] AsyncJobService init failed: " + ex);
+            }
         }
 
         internal static BatchJobRecord CreateJob(

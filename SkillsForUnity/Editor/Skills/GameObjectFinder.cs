@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using UnityEngine.SceneManagement;
 using Newtonsoft.Json;
 
-namespace UnitySkills
+namespace UnitySkills.Internal
 {
     /// <summary>
     /// Compatibility helper for FindObjectsByType (Unity 6+) / FindObjectsOfType fallback.
@@ -27,7 +27,10 @@ namespace UnitySkills
 #endif
         }
     }
+}
 
+namespace UnitySkills
+{
     /// <summary>
     /// Parameter validation helper - returns error object or null
     /// </summary>

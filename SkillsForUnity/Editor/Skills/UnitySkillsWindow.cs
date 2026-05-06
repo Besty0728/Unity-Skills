@@ -121,10 +121,10 @@ namespace UnitySkills
 
             // Tab bar
             _selectedTab = GUILayout.Toolbar(_selectedTab, new[] {
-                Localization.Current == Localization.Language.Chinese ? "服务器" : "Server",
+                SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "服务器" : "Server",
                 "Skills",
-                Localization.Current == Localization.Language.Chinese ? "AI配置" : "AI Config",
-                Localization.Current == Localization.Language.Chinese ? "历史记录" : "History"
+                SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "AI配置" : "AI Config",
+                SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "历史记录" : "History"
             });
 
             EditorGUILayout.Space(10);
@@ -141,12 +141,12 @@ namespace UnitySkills
             EditorGUILayout.Space(10);
             EditorGUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace();
-            var langLabel = Localization.Current == Localization.Language.English ? "EN / 中文" : "中文 / EN";
+            var langLabel = SkillsLocalization.Current == SkillsLocalization.Language.English ? "EN / 中文" : "中文 / EN";
             if (GUILayout.Button(langLabel, EditorStyles.miniButton, GUILayout.Width(70)))
             {
-                Localization.Current = Localization.Current == Localization.Language.English
-                    ? Localization.Language.Chinese
-                    : Localization.Language.English;
+                SkillsLocalization.Current = SkillsLocalization.Current == SkillsLocalization.Language.English
+                    ? SkillsLocalization.Language.Chinese
+                    : SkillsLocalization.Language.English;
             }
             EditorGUILayout.EndHorizontal();
         }
@@ -197,17 +197,17 @@ namespace UnitySkills
                 // Connection Info Card
                 DrawColoredBox(CardBgColor, () =>
                 {
-                    DrawColoredLabel(Localization.Current == Localization.Language.Chinese ? "连接信息" : "Connection Info", AccentColor, true);
+                    DrawColoredLabel(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "连接信息" : "Connection Info", AccentColor, true);
                     EditorGUILayout.Space(4);
 
-                    var portLabel = Localization.Current == Localization.Language.Chinese ? "端口" : "Port";
+                    var portLabel = SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "端口" : "Port";
                     EditorGUILayout.LabelField($"{portLabel}: {SkillsHttpServer.Port}");
                     EditorGUILayout.LabelField($"ID: {RegistryService.InstanceId}");
 
                     EditorGUILayout.BeginHorizontal();
                     EditorGUILayout.LabelField("URL:", GUILayout.Width(35));
                     EditorGUILayout.SelectableLabel(SkillsHttpServer.Url, EditorStyles.textField, GUILayout.Height(18));
-                    if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "复制" : "Copy", GUILayout.Width(50)))
+                    if (GUILayout.Button(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "复制" : "Copy", GUILayout.Width(50)))
                     {
                         EditorGUIUtility.systemCopyBuffer = RegistryService.InstanceId;
                     }
@@ -226,7 +226,7 @@ namespace UnitySkills
 
                     EditorGUILayout.BeginHorizontal();
                     EditorGUILayout.LabelField($"{L("total_processed")}: {SkillsHttpServer.TotalProcessed}");
-                    if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "重置" : "Reset", GUILayout.Width(50)))
+                    if (GUILayout.Button(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "重置" : "Reset", GUILayout.Width(50)))
                     {
                         SkillsHttpServer.ResetStatistics();
                     }
@@ -239,7 +239,7 @@ namespace UnitySkills
             // Settings Card
             DrawColoredBox(CardBgColor, () =>
             {
-                DrawColoredLabel(Localization.Current == Localization.Language.Chinese ? "设置" : "Settings", AccentColor, true);
+                DrawColoredLabel(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "设置" : "Settings", AccentColor, true);
                 EditorGUILayout.Space(4);
 
                 var newAutoStart = EditorGUILayout.Toggle(L("auto_restart"), SkillsHttpServer.AutoStart);
@@ -251,7 +251,7 @@ namespace UnitySkills
 
                 // Preferred Port
                 EditorGUILayout.BeginHorizontal();
-                var portLabel = Localization.Current == Localization.Language.Chinese ? "启动端口" : "Port";
+                var portLabel = SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "启动端口" : "Port";
                 EditorGUILayout.LabelField(portLabel + ":", GUILayout.Width(60));
                 var portOptions = new[] { "Auto", "8090", "8091", "8092", "8093", "8094", "8095", "8096", "8097", "8098", "8099", "8100" };
                 var currentIdx = SkillsHttpServer.PreferredPort == 0 ? 0 : SkillsHttpServer.PreferredPort - 8089;
@@ -264,7 +264,7 @@ namespace UnitySkills
 
                 // Request Timeout
                 EditorGUILayout.BeginHorizontal();
-                var timeoutLabel = Localization.Current == Localization.Language.Chinese ? "请求超时" : "Timeout";
+                var timeoutLabel = SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "请求超时" : "Timeout";
                 EditorGUILayout.LabelField(timeoutLabel + ":", GUILayout.Width(60));
                 var newTimeout = EditorGUILayout.IntField(SkillsHttpServer.RequestTimeoutMinutes, GUILayout.Width(40));
                 EditorGUILayout.LabelField(L("timeout_unit"), GUILayout.Width(30));
@@ -276,7 +276,7 @@ namespace UnitySkills
 
                 // KeepAlive Interval
                 EditorGUILayout.BeginHorizontal();
-                var keepAliveLabel = Localization.Current == Localization.Language.Chinese ? "保活间隔" : "KeepAlive";
+                var keepAliveLabel = SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "保活间隔" : "KeepAlive";
                 EditorGUILayout.LabelField(keepAliveLabel + ":", GUILayout.Width(60));
                 var newKeepAlive = EditorGUILayout.IntField(SkillsHttpServer.KeepAliveIntervalSeconds, GUILayout.Width(40));
                 EditorGUILayout.LabelField(L("keepalive_unit"), GUILayout.Width(30));
@@ -289,7 +289,7 @@ namespace UnitySkills
 
                 // Log Level
                 EditorGUILayout.BeginHorizontal();
-                var logLabel = Localization.Current == Localization.Language.Chinese ? "日志级别" : "Log Level";
+                var logLabel = SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "日志级别" : "Log Level";
                 EditorGUILayout.LabelField(logLabel + ":", GUILayout.Width(60));
                 var logOptions = new[] { "Off", "Error", "Warning", "Info", "Agent", "Verbose" };
                 var newLogLevel = (LogLevel)EditorGUILayout.Popup((int)SkillsLogger.Level, logOptions);
@@ -301,7 +301,7 @@ namespace UnitySkills
 
                 // Require Confirmation for high-risk skills (Delete / RiskLevel="high")
                 EditorGUILayout.Space(4);
-                var confirmLabel = Localization.Current == Localization.Language.Chinese
+                var confirmLabel = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
                     ? "高风险技能二次确认"
                     : "Confirm High-Risk Skills";
                 var newRequireConfirm = EditorGUILayout.Toggle(confirmLabel, ConfirmationTokenService.RequireConfirmation);
@@ -310,7 +310,7 @@ namespace UnitySkills
                     ConfirmationTokenService.RequireConfirmation = newRequireConfirm;
                 }
                 DrawColoredLabel(
-                    Localization.Current == Localization.Language.Chinese
+                    SkillsLocalization.Current == SkillsLocalization.Language.Chinese
                         ? "开启后：删除类/RiskLevel=high 技能首次调用返回 _confirm token + dryRun 预览，5 分钟内带 token 重试才执行。默认关闭，全自动场景无感。"
                         : "When ON: delete / high-risk skills first return a _confirm token + dryRun preview; re-call within 5 min with the token to execute. OFF by default — fully automated flows are unaffected.",
                     MutedColor, false);
@@ -420,7 +420,7 @@ namespace UnitySkills
                                 GUI.backgroundColor = originalBg;
                                 EditorGUILayout.EndHorizontal();
 
-                                var desc = Localization.Get(skill.Name);
+                                var desc = SkillsLocalization.Get(skill.Name);
                                 if (desc == skill.Name) desc = skill.Description;
                                 if (!string.IsNullOrEmpty(desc))
                                 {
@@ -701,7 +701,7 @@ namespace UnitySkills
             var experimentalStyle = new GUIStyle(EditorStyles.miniLabel);
             experimentalStyle.normal.textColor = new Color(1f, 0.6f, 0f); // Orange warning color
             EditorGUILayout.LabelField(L("install_project") + " (!):", GUILayout.Width(100));
-            if (Localization.Current == Localization.Language.Chinese)
+            if (SkillsLocalization.Current == SkillsLocalization.Language.Chinese)
                 EditorGUILayout.LabelField("实验性", experimentalStyle, GUILayout.Width(40));
             else
                 EditorGUILayout.LabelField("Exp.", experimentalStyle, GUILayout.Width(30));
@@ -735,7 +735,7 @@ namespace UnitySkills
                     var result = SkillInstaller.InstallCodex(false);
                     if (result.success)
                         EditorUtility.DisplayDialog("Success", 
-                            Localization.Current == Localization.Language.Chinese
+                            SkillsLocalization.Current == SkillsLocalization.Language.Chinese
                                 ? "安装成功！\n" + result.message + "\n\n如有问题请查看项目根目录的 AGENTS.md"
                                 : "Install success!\n" + result.message + "\n\nIf issues occur, check AGENTS.md in project root.",
                             "OK");
@@ -777,7 +777,7 @@ namespace UnitySkills
                     var result = SkillInstaller.InstallCodex(true);
                     if (result.success)
                         EditorUtility.DisplayDialog("Success", 
-                            Localization.Current == Localization.Language.Chinese
+                            SkillsLocalization.Current == SkillsLocalization.Language.Chinese
                                 ? "安装成功！\n" + result.message + "\n\n请重启 Codex 以加载新 Skill。"
                                 : "Install success!\n" + result.message + "\n\nPlease restart Codex to load new skills.",
                             "OK");
@@ -875,7 +875,7 @@ namespace UnitySkills
 
             // Custom Installation
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "自定义安装位置" : "Custom Install Location", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "自定义安装位置" : "Custom Install Location", EditorStyles.boldLabel);
             
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(L("path") + ":", GUILayout.Width(50));
@@ -883,7 +883,7 @@ namespace UnitySkills
             if (GUILayout.Button("...", GUILayout.Width(30)))
             {
                 string selectedPath = EditorUtility.OpenFolderPanel(
-                    Localization.Current == Localization.Language.Chinese ? "选择安装目录" : "Select Install Directory", 
+                    SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "选择安装目录" : "Select Install Directory", 
                     _customInstallPath, 
                     "");
                 if (!string.IsNullOrEmpty(selectedPath))
@@ -894,15 +894,15 @@ namespace UnitySkills
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField(Localization.Current == Localization.Language.Chinese ? "Agent:" : "Agent:", GUILayout.Width(50));
+            EditorGUILayout.LabelField(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "Agent:" : "Agent:", GUILayout.Width(50));
             _customAgentName = EditorGUILayout.TextField(_customAgentName);
             EditorGUILayout.EndHorizontal();
 
-            if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "安装 / 更新" : "Install / Update"))
+            if (GUILayout.Button(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "安装 / 更新" : "Install / Update"))
             {
                 if (string.IsNullOrEmpty(_customInstallPath))
                 {
-                    EditorUtility.DisplayDialog("Error", Localization.Current == Localization.Language.Chinese ? "路径不能为空" : "Path cannot be empty", "OK");
+                    EditorUtility.DisplayDialog("Error", SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "路径不能为空" : "Path cannot be empty", "OK");
                 }
                 else
                 {
@@ -919,7 +919,7 @@ namespace UnitySkills
             
             // Help text
             EditorGUILayout.HelpBox(
-                Localization.Current == Localization.Language.Chinese
+                SkillsLocalization.Current == SkillsLocalization.Language.Chinese
                     ? "项目安装：将 Skill 安装到当前 Unity 项目目录\n全局安装：将 Skill 安装到用户目录，所有项目可用\n\n注意：Gemini CLI 需要在 /settings 中启用 experimental.skills\n注意：Codex 需要重启后才会加载新 Skill"
                     : "Project Install: Install skill to current Unity project\nGlobal Install: Install skill to user folder, available for all projects\n\nNote: Gemini CLI requires enabling experimental.skills in /settings\nNote: Codex requires restart to load new skills",
                 MessageType.Info
@@ -934,9 +934,9 @@ namespace UnitySkills
 
             // Header
             EditorGUILayout.BeginHorizontal();
-            DrawColoredLabel(Localization.Current == Localization.Language.Chinese ? "AI 操作历史" : "AI Operation History", AccentColor, true);
+            DrawColoredLabel(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "AI 操作历史" : "AI Operation History", AccentColor, true);
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "刷新" : "Refresh", GUILayout.Width(60)))
+            if (GUILayout.Button(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "刷新" : "Refresh", GUILayout.Width(60)))
             {
                 WorkflowManager.LoadHistory();
             }
@@ -946,7 +946,7 @@ namespace UnitySkills
 
             // Warning box about workflow cache
             EditorGUILayout.HelpBox(
-                Localization.Current == Localization.Language.Chinese
+                SkillsLocalization.Current == SkillsLocalization.Language.Chinese
                     ? "⚠️ 工作流缓存说明：\n• 缓存包含资产文件的完整备份（Base64编码），可能占用较大空间\n• 清除缓存后将无法撤销/恢复之前的 AI 操作\n• 脚本文件(.cs)不会被备份，仅记录元数据"
                     : "⚠️ Workflow Cache Info:\n• Cache contains full asset backups (Base64 encoded), may use significant space\n• Clearing cache will prevent undo/redo of previous AI operations\n• Script files (.cs) are not backed up, only metadata is recorded",
                 MessageType.Warning
@@ -959,22 +959,22 @@ namespace UnitySkills
             GUILayout.FlexibleSpace();
             var originalBg = GUI.backgroundColor;
             GUI.backgroundColor = ErrorColor;
-            if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "🗑️ 清除工作流缓存" : "🗑️ Clear Workflow Cache", GUILayout.Width(160), GUILayout.Height(24)))
+            if (GUILayout.Button(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "🗑️ 清除工作流缓存" : "🗑️ Clear Workflow Cache", GUILayout.Width(160), GUILayout.Height(24)))
             {
-                var confirmMsg = Localization.Current == Localization.Language.Chinese
+                var confirmMsg = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
                     ? "确定要清除所有工作流缓存吗？\n\n⚠️ 警告：此操作不可逆！\n• 所有 AI 操作历史将被删除\n• 无法再撤销/恢复之前的操作\n• 资产备份数据将被清除"
                     : "Are you sure you want to clear all workflow cache?\n\n⚠️ Warning: This action is irreversible!\n• All AI operation history will be deleted\n• Cannot undo/redo previous operations\n• Asset backup data will be cleared";
 
                 if (EditorUtility.DisplayDialog(
-                    Localization.Current == Localization.Language.Chinese ? "清除工作流缓存" : "Clear Workflow Cache",
+                    SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "清除工作流缓存" : "Clear Workflow Cache",
                     confirmMsg,
-                    Localization.Current == Localization.Language.Chinese ? "确定清除" : "Clear",
-                    Localization.Current == Localization.Language.Chinese ? "取消" : "Cancel"))
+                    SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "确定清除" : "Clear",
+                    SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "取消" : "Cancel"))
                 {
                     WorkflowManager.ClearHistory();
                     EditorUtility.DisplayDialog(
                         "Success",
-                        Localization.Current == Localization.Language.Chinese ? "工作流缓存已清除" : "Workflow cache cleared",
+                        SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "工作流缓存已清除" : "Workflow cache cleared",
                         "OK");
                 }
             }
@@ -988,7 +988,7 @@ namespace UnitySkills
             // Active tasks section
             if (history.tasks.Count > 0)
             {
-                DrawColoredLabel(Localization.Current == Localization.Language.Chinese ? "活动任务" : "Active Tasks", SuccessColor, true);
+                DrawColoredLabel(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "活动任务" : "Active Tasks", SuccessColor, true);
                 EditorGUILayout.Space(4);
 
                 for (int i = history.tasks.Count - 1; i >= 0; i--)
@@ -1014,7 +1014,7 @@ namespace UnitySkills
 
                         var bg = GUI.backgroundColor;
                         GUI.backgroundColor = WarningColor;
-                        if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "撤销" : "Undo", GUILayout.Height(22)))
+                        if (GUILayout.Button(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "撤销" : "Undo", GUILayout.Height(22)))
                         {
                             if (EditorUtility.DisplayDialog("Confirm", $"Undo '{task.tag}'?", "Undo", "Cancel"))
                             {
@@ -1025,7 +1025,7 @@ namespace UnitySkills
                         }
 
                         GUI.backgroundColor = ErrorColor;
-                        if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "删除" : "Delete", GUILayout.Width(60), GUILayout.Height(22)))
+                        if (GUILayout.Button(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "删除" : "Delete", GUILayout.Width(60), GUILayout.Height(22)))
                         {
                             WorkflowManager.DeleteTask(task.id);
                         }
@@ -1038,14 +1038,14 @@ namespace UnitySkills
             }
             else
             {
-                EditorGUILayout.HelpBox(Localization.Current == Localization.Language.Chinese ? "暂无活动任务" : "No active tasks.", MessageType.Info);
+                EditorGUILayout.HelpBox(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "暂无活动任务" : "No active tasks.", MessageType.Info);
             }
 
             // Undone tasks section (for redo)
             if (history.undoneStack != null && history.undoneStack.Count > 0)
             {
                 EditorGUILayout.Space(12);
-                DrawColoredLabel(Localization.Current == Localization.Language.Chinese ? "已撤销任务 (可恢复)" : "Undone Tasks (Can Redo)", MutedColor, true);
+                DrawColoredLabel(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "已撤销任务 (可恢复)" : "Undone Tasks (Can Redo)", MutedColor, true);
                 EditorGUILayout.Space(4);
 
                 for (int i = history.undoneStack.Count - 1; i >= 0; i--)
@@ -1069,7 +1069,7 @@ namespace UnitySkills
                         EditorGUILayout.Space(4);
                         var bg = GUI.backgroundColor;
                         GUI.backgroundColor = SuccessColor;
-                        if (GUILayout.Button(Localization.Current == Localization.Language.Chinese ? "恢复" : "Redo", GUILayout.Height(22)))
+                        if (GUILayout.Button(SkillsLocalization.Current == SkillsLocalization.Language.Chinese ? "恢复" : "Redo", GUILayout.Height(22)))
                         {
                             if (EditorUtility.DisplayDialog("Confirm", $"Redo '{task.tag}'?", "Redo", "Cancel"))
                             {
@@ -1091,7 +1091,7 @@ namespace UnitySkills
         private GUIStyle _cachedBoldStyle;
         private GUIStyle _cachedNormalStyle;
 
-        private string L(string key) => Localization.Get(key);
+        private string L(string key) => SkillsLocalization.Get(key);
 
         // Helper methods for colored UI elements
         private void DrawColoredLabel(string text, Color color, bool bold)

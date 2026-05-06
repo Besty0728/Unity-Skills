@@ -385,17 +385,24 @@ namespace UnitySkills
         /// </summary>
         static SkillsHttpServer()
         {
-            // Register for editor lifecycle events
-            EditorApplication.quitting += OnEditorQuitting;
-            AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
-            AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
-            CompilationPipeline.compilationStarted += OnCompilationStarted;
-            
-            HookUpdateLoop();
-            
-            // Check if we should auto-restart after Domain Reload
-            // Use delayed call to ensure Unity is fully initialized
-            EditorApplication.delayCall += () => ScheduleDelayedCall(1.0, CheckAndRestoreServer);
+            try
+            {
+                // Register for editor lifecycle events
+                EditorApplication.quitting += OnEditorQuitting;
+                AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+                AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
+                CompilationPipeline.compilationStarted += OnCompilationStarted;
+
+                HookUpdateLoop();
+
+                // Check if we should auto-restart after Domain Reload
+                // Use delayed call to ensure Unity is fully initialized
+                EditorApplication.delayCall += () => ScheduleDelayedCall(1.0, CheckAndRestoreServer);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[UnitySkills] SkillsHttpServer init failed: " + ex);
+            }
         }
         
         /// <summary>

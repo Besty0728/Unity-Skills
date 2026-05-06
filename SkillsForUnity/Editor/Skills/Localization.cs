@@ -4,10 +4,10 @@ using UnityEditor;
 namespace UnitySkills
 {
     /// <summary>
-    /// Localization for UnitySkills.
+    /// SkillsLocalization for UnitySkills.
     /// Persists language preference across Domain Reload.
     /// </summary>
-    public static class Localization
+    public static class SkillsLocalization
     {
         public enum Language { English, Chinese }
         

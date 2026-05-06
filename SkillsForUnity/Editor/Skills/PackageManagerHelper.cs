@@ -258,15 +258,29 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void Initialize()
         {
-            // 延迟执行，等待 Package Manager 完成初始化
-            EditorApplication.delayCall += () =>
+            try
             {
-                RefreshPackageList(success =>
+                // 延迟执行，等待 Package Manager 完成初始化
+                EditorApplication.delayCall += () =>
                 {
-                    if (success && AutoInstallPackagesOnStartup)
-                        AutoInstallCinemachineIfNeeded();
-                });
-            };
+                    try
+                    {
+                        RefreshPackageList(success =>
+                        {
+                            if (success && AutoInstallPackagesOnStartup)
+                                AutoInstallCinemachineIfNeeded();
+                        });
+                    }
+                    catch (System.Exception ex)
+                    {
+                        UnityEngine.Debug.LogError("[UnitySkills] PackageManagerHelper delayed init failed: " + ex);
+                    }
+                };
+            }
+            catch (System.Exception ex)
+            {
+                UnityEngine.Debug.LogError("[UnitySkills] PackageManagerHelper init failed: " + ex);
+            }
         }
 
         private static int _autoInstallRetryCount = 0;

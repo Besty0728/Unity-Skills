@@ -5,6 +5,7 @@ using System.Reflection;
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.Profiling;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {

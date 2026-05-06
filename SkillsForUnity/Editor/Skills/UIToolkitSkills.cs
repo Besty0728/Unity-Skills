@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Xml.Linq;
 using System.Globalization;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {

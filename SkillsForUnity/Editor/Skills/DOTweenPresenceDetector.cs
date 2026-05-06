@@ -26,17 +26,24 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void Synchronize()
         {
-            bool hasDOTween = DOTweenReflectionHelper.IsDOTweenInstalled;
-            bool hasDOTweenPro = DOTweenReflectionHelper.IsDOTweenProInstalled;
-
-            bool changed = false;
-            changed |= EnsureDefineState(DOTweenDefine, hasDOTween);
-            changed |= EnsureDefineState(DOTweenProDefine, hasDOTweenPro);
-
-            if (changed)
+            try
             {
-                try { CompilationPipeline.RequestScriptCompilation(); }
-                catch { /* editor may refuse during certain lifecycle moments */ }
+                bool hasDOTween = DOTweenReflectionHelper.IsDOTweenInstalled;
+                bool hasDOTweenPro = DOTweenReflectionHelper.IsDOTweenProInstalled;
+
+                bool changed = false;
+                changed |= EnsureDefineState(DOTweenDefine, hasDOTween);
+                changed |= EnsureDefineState(DOTweenProDefine, hasDOTweenPro);
+
+                if (changed)
+                {
+                    try { CompilationPipeline.RequestScriptCompilation(); }
+                    catch { /* editor may refuse during certain lifecycle moments */ }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                UnityEngine.Debug.LogError("[UnitySkills] DOTweenPresenceDetector init failed: " + ex);
             }
         }
 

@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using System.IO;
 using System.Linq;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {

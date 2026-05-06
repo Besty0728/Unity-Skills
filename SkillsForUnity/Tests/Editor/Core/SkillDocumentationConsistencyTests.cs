@@ -579,11 +579,11 @@ namespace UnitySkills.Tests.Core
 
         private static Dictionary<string, string> GetLocalizationDictionary(string fieldName)
         {
-            var field = typeof(Localization).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.That(field, Is.Not.Null, $"未找到 Localization.{fieldName}");
+            var field = typeof(SkillsLocalization).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(field, Is.Not.Null, $"未找到 SkillsLocalization.{fieldName}");
 
             var dictionary = field.GetValue(null) as Dictionary<string, string>;
-            Assert.That(dictionary, Is.Not.Null, $"Localization.{fieldName} 类型不是 Dictionary<string, string>");
+            Assert.That(dictionary, Is.Not.Null, $"SkillsLocalization.{fieldName} 类型不是 Dictionary<string, string>");
             return dictionary;
         }
 

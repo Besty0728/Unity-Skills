@@ -26,23 +26,33 @@ namespace UnitySkills
 
         static RegistryService()
         {
-            ProjectName = Application.productName;
-            ProjectPath = Directory.GetParent(Application.dataPath).FullName;
-            
-            // Generate stable Instance ID based on SHA256 hash to identify this specific project instance
-            // SHA256 is deterministic across processes/runtimes unlike GetHashCode()
-            var pathHash = ComputeStableHash(ProjectPath);
-            // Sanitize project name
-            var cleanName = System.Text.RegularExpressions.Regex.Replace(ProjectName, "[^a-zA-Z0-9]", "");
-            InstanceId = $"{cleanName}_{pathHash}";
-            
-            // Ensure config dir exists
-            if (!Directory.Exists(GlobalConfigDir))
-                Directory.CreateDirectory(GlobalConfigDir);
-                
-             // Clean up on quit
-             EditorApplication.quitting += Unregister;
-             // Assembly reload cleanup handled by SkillsHttpServer calling Stop()
+            try
+            {
+                ProjectName = Application.productName;
+                ProjectPath = Directory.GetParent(Application.dataPath).FullName;
+
+                // Generate stable Instance ID based on SHA256 hash to identify this specific project instance
+                // SHA256 is deterministic across processes/runtimes unlike GetHashCode()
+                var pathHash = ComputeStableHash(ProjectPath);
+                // Sanitize project name
+                var cleanName = System.Text.RegularExpressions.Regex.Replace(ProjectName, "[^a-zA-Z0-9]", "");
+                InstanceId = $"{cleanName}_{pathHash}";
+
+                // Ensure config dir exists
+                if (!Directory.Exists(GlobalConfigDir))
+                    Directory.CreateDirectory(GlobalConfigDir);
+
+                // Clean up on quit
+                EditorApplication.quitting += Unregister;
+                // Assembly reload cleanup handled by SkillsHttpServer calling Stop()
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError("[UnitySkills] RegistryService init failed: " + ex);
+                InstanceId = InstanceId ?? "unknown_0";
+                ProjectName = ProjectName ?? "unknown";
+                ProjectPath = ProjectPath ?? string.Empty;
+            }
         }
 
         public static void Register(int port)

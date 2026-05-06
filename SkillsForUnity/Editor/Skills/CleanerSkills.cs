@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {

@@ -13,6 +13,7 @@ using Newtonsoft.Json.Linq;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {

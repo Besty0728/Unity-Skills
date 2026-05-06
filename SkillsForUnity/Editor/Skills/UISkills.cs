@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System;
 using System.Collections.Generic;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {

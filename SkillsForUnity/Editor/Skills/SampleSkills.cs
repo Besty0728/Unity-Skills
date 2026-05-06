@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEditor;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {

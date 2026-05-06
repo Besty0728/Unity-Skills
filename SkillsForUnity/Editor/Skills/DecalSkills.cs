@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using UnitySkills.Internal;
 #if URP
 using UnityEngine.Rendering.Universal;
 #endif

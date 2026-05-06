@@ -6,6 +6,7 @@ using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Object = UnityEngine.Object;
+using UnitySkills.Internal;
 
 #if CINEMACHINE_3
 using Unity.Cinemachine;
@@ -13,7 +14,7 @@ using Unity.Cinemachine;
 using Cinemachine;
 #endif
 
-#if HAS_SPLINES
+#if SPLINES_2
 using UnityEngine.Splines;
 #endif
 
@@ -816,8 +817,8 @@ namespace UnitySkills
             return NoCinemachine();
 #elif CINEMACHINE_2
             return new { error = "cinemachine_set_spline 仅支持 Cinemachine 3.x + Splines 包" };
-#elif !HAS_SPLINES
-            return new { error = "Splines 包未安装。请通过 Package Manager 安装 com.unity.splines" };
+#elif !SPLINES_2
+            return new { error = "cinemachine_set_spline 需要 com.unity.splines 2.x（[2.0,3.0)）。当前项目未安装兼容版本：未安装、或安装的是 1.x / 3.x。请通过 Package Manager 安装 2.x 版本的 Splines 包。" };
 #else
             var (vcamGo, vcamErr) = GameObjectFinder.FindOrError(vcamName, vcamInstanceId, vcamPath);
             if (vcamErr != null) return vcamErr;

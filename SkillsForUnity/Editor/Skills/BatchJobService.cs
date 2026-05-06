@@ -21,9 +21,16 @@ namespace UnitySkills
 
         static BatchJobService()
         {
-            BatchPersistence.EnsureLoaded();
-            ResumeJobs();
-            EditorApplication.update += ProcessQueuedJobs;
+            try
+            {
+                BatchPersistence.EnsureLoaded();
+                ResumeJobs();
+                EditorApplication.update += ProcessQueuedJobs;
+            }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError("[UnitySkills] BatchJobService init failed: " + ex);
+            }
         }
 
         internal static BatchJobRecord Start(BatchPreviewEnvelope preview, int chunkSize, int progressGranularity = 10)
