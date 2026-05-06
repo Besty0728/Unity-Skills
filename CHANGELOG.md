@@ -2,10 +2,19 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
-## [Unreleased]
+## [1.8.3] - 2026-05-06
 
 ### Fixed
 - **修复 .meta 伪 GUID 与第三方包冲突导致编译失败** — 包内 46 个 `.meta` 文件历史上使用了顺序模式伪 GUID（如 `a1b2c3d4e5f6...`、`0123456789abcdef...`），在用户项目中与 `com.posthog.unity` 等第三方包发生 GUID 碰撞，导致 Unity 把 `ValidationSkills.cs` / `AnimatorSkills.cs` / `LightSkills.cs` / `UISkills.cs` 等文件 ownership 判给其他包并排除我们的导入，进而触发 `error CS0103: The name 'ValidationSkills' does not exist in the current context`（`BatchSkills.cs:481-482`、`PerceptionSkills.cs:593,608`）。本次修复将所有 46 个伪 GUID 全部重新生成为 uuid4 真随机 GUID，影响范围已用 grep 全库验证（0 处外部引用），不会破坏任何 prefab/asset 序列化关系。
+- **修复 `#define` 符号不一致** — `asmdef` 与 `package.json` 历史上重复定义 `versionDefines`，且符号名不一致：`com.unity.splines` 在 asmdef 中是 `SPLINES_2`（`[2.0,3.0)`），在 package.json 中是 `HAS_SPLINES`（任意版本），但代码中只使用 `HAS_SPLINES` —— 当 Unity Package Manager 解析顺序异常或 package.json 被忽略时整段 `#if HAS_SPLINES` 块会失效。本次统一为 asmdef 中的 `SPLINES_2`，并删除 package.json 中冗余的 `versionDefines`（CINEMACHINE_2/3、NETCODE_GAMEOBJECTS 在两处定义完全一致，已被 asmdef 完整覆盖；splines 范围由任意版本严格收紧到 2.x，因为代码使用 `CinemachineSplineDolly` 等 splines 2.x API，对 1.x/3.x 不兼容）。
+- **改进 `cinemachine_set_spline` 在不兼容 splines 版本下的错误消息** — 原消息为 `Splines 包未安装`，对实际安装了 splines 1.x 或 3.x 的用户具有误导性。新消息明确说明需要 `com.unity.splines` 2.x（`[2.0,3.0)`），并列出三种可能原因（未安装 / 装的是 1.x / 装的是 3.x）。
+
+### Changed
+- **`[InitializeOnLoad]` 静态构造增加 try/catch 异常防护** — 7 个 Editor 启动入口（`AsyncJobService` / `BatchJobService` / `RegistryService` / `SkillsHttpServer` 静态构造，以及 `DOTweenPresenceDetector.Synchronize` / `PackageManagerHelper.Initialize` / `YooAssetSkills.RestoreRuntimeValidationJobsAfterReload` 三个 `[InitializeOnLoadMethod]`）原先未做异常防护，受限环境（CI、容器、远程开发机权限不足）下 IO 失败 / 文件权限 / 端口占用等异常会引发 `TypeInitializationException`，症状与 GUID 冲突相似（包看起来装了但完全不工作）。本次全部包 `try/catch`，异常通过 `Debug.LogError` 输出，不会拉崩 Editor。`RegistryService` 还为 `InstanceId` / `ProjectName` / `ProjectPath` 设置 fallback 值，确保即使初始化失败下游仍能拿到非 null 字段。
+- **通用类型名命名空间隔离** — `FindHelper`（`internal`）和 `ObjectSnapshot`（`public [Serializable]`）原属 `namespace UnitySkills`，与第三方包共存时存在命名歧义风险。本次迁至 `namespace UnitySkills.Internal`，作为父命名空间的子命名空间（C# 作用域规则使其内部仍可直接引用 `UnitySkills` 中的 `ComponentData` / `SnapshotType` 等类型，无需添加 using）；18 个 `FindHelper` 消费方文件 + `WorkflowManager.cs` + `WorkflowModels.cs` 自身已统一注入 `using UnitySkills.Internal;`。
+- **`Localization` 类重命名为 `SkillsLocalization`** — 原名与 `UnityEngine.Localization` 命名空间存在视觉混淆风险。`UnitySkillsWindow.cs`（85 处）+ `Localization.cs`（2 处）+ `SkillDocumentationConsistencyTests.cs`（3 处）共 90 处词边界正则替换，`GetLocalizationDictionary` / `EnglishAndChineseLocalization` 等子串未受影响。文件名 `Localization.cs` 保留以避免动 `.meta` GUID。
+- **`package.json` 清理** — 删除冗余的 `versionDefines` 数组（asmdef 已包含完整定义）；删除 `_fingerprint` 字段（Asset Store 缓存导出时的偶然产物，开源 GitHub 包不应保留）。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `1.8.3`。
 
 ### Added
 - **`/metacheck` 自定义命令** — 新增 `.claude/commands/metacheck.md`，用启发式扫描全仓库 `.meta` 文件检测伪 GUID（连续 hex / 交错递增 / 重复字符 / abcdef 字面），支持 `--fix` 自动重生成模式，作为本类回归的长期防护。
