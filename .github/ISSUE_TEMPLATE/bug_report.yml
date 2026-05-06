@@ -7,8 +7,8 @@ body:
     attributes:
       label: Unity 版本 / Unity Version
       description: >-
-        当前官方维护基线为 Unity 2022.3+ / Unity 6；若问题发生在更早版本，请明确说明。
-        / The current supported baseline is Unity 2022.3+ / Unity 6. If the issue occurs on an earlier version, please specify.
+        当前官方维护基线为 Unity 2022.3+ / Unity 6+；若问题发生在更早版本，请明确说明。
+        / The current supported baseline is Unity 2022.3+ / Unity 6+. If the issue occurs on an earlier version, please specify.
       placeholder: "e.g. 2022.3.20f1"
     validations:
       required: true

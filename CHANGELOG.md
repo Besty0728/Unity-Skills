@@ -2,6 +2,14 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **修复 .meta 伪 GUID 与第三方包冲突导致编译失败** — 包内 46 个 `.meta` 文件历史上使用了顺序模式伪 GUID（如 `a1b2c3d4e5f6...`、`0123456789abcdef...`），在用户项目中与 `com.posthog.unity` 等第三方包发生 GUID 碰撞，导致 Unity 把 `ValidationSkills.cs` / `AnimatorSkills.cs` / `LightSkills.cs` / `UISkills.cs` 等文件 ownership 判给其他包并排除我们的导入，进而触发 `error CS0103: The name 'ValidationSkills' does not exist in the current context`（`BatchSkills.cs:481-482`、`PerceptionSkills.cs:593,608`）。本次修复将所有 46 个伪 GUID 全部重新生成为 uuid4 真随机 GUID，影响范围已用 grep 全库验证（0 处外部引用），不会破坏任何 prefab/asset 序列化关系。
+
+### Added
+- **`/metacheck` 自定义命令** — 新增 `.claude/commands/metacheck.md`，用启发式扫描全仓库 `.meta` 文件检测伪 GUID（连续 hex / 交错递增 / 重复字符 / abcdef 字面），支持 `--fix` 自动重生成模式，作为本类回归的长期防护。
+
 ## [1.8.2] - 2026-05-02
 
 ### Added
