@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -154,6 +155,32 @@ namespace UnitySkills.Tests.Core
             };
         }
 
+        private static BatchJobRecord CreateDiscoveryJob(string jobId, string status, params Dictionary<string, object>[] tests)
+        {
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            return new BatchJobRecord
+            {
+                jobId = jobId,
+                kind = "test_discovery",
+                status = status,
+                currentStage = status,
+                progress = status == "completed" ? 100 : 10,
+                startedAt = now,
+                updatedAt = now,
+                resultSummary = "discovery",
+                canCancel = false,
+                metadata = new Dictionary<string, object>
+                {
+                    ["testMode"] = "EditMode"
+                },
+                resultData = new Dictionary<string, object>
+                {
+                    ["count"] = tests?.Length ?? 0,
+                    ["tests"] = tests?.ToList() ?? new List<Dictionary<string, object>>()
+                }
+            };
+        }
+
         [Test]
         public void TestGetLastResult_IgnoresSyntheticRuns()
         {
@@ -177,12 +204,45 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void TestList_UsesSourceScanDiscoveryAndReturnsTests()
+        public void TestList_UsesCachedUnityDiscoveryAndReturnsTests()
         {
-            var json = ToJObject(TestSkills.TestList(limit: 200));
-            Assert.That(json["success"]?.Value<bool>(), Is.True);
-            Assert.That(json["count"]?.Value<int>(), Is.GreaterThan(0));
-            Assert.That(json["discoveryMode"]?.ToString(), Is.EqualTo("source_scan_with_file_dependencies"));
+            var jobId = Guid.NewGuid().ToString("N").Substring(0, 8);
+            var discovery = CreateDiscoveryJob(
+                jobId,
+                "completed",
+                new Dictionary<string, object>
+                {
+                    ["name"] = "SampleTest",
+                    ["fullName"] = "Tests.SampleTest",
+                    ["runState"] = "Runnable",
+                    ["categories"] = new[] { "Smoke" }
+                });
+
+            try
+            {
+                BatchPersistence.UpsertJob(discovery);
+
+                var json = ToJObject(TestSkills.TestList(limit: 200));
+                Assert.That(json["success"]?.Value<bool>(), Is.True);
+                Assert.That(json["count"]?.Value<int>(), Is.EqualTo(1));
+                Assert.That(json["discoveryMode"]?.ToString(), Is.EqualTo("unity_test_runner_async_cache"));
+            }
+            finally
+            {
+                BatchPersistence.RemoveJob(jobId);
+            }
+        }
+
+        [Test]
+        public void TestList_WhenNoCachedDiscoveryExists_StartsAsyncDiscovery()
+        {
+            var json = ToJObject(TestSkills.TestList(limit: 10));
+            Assert.That(json["success"]?.Value<bool>(), Is.False);
+            var discoveryJobId = json["discoveryJobId"]?.ToString();
+            Assert.That(discoveryJobId, Is.Not.Null.And.Not.Empty);
+            Assert.That(json["discoveryMode"]?.ToString(), Is.EqualTo("unity_test_runner_async_cache"));
+            StringAssert.Contains("No cached Unity Test Runner discovery result", json["error"]?.ToString());
+            BatchPersistence.RemoveJob(discoveryJobId);
         }
 
         [Test]

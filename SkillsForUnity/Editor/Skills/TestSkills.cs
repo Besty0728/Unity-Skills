@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
 using UnityEditor;
@@ -16,7 +14,8 @@ namespace UnitySkills
     /// </summary>
     public static class TestSkills
     {
-        private const string TestDiscoveryMode = "source_scan_with_file_dependencies";
+        private const string TestDiscoveryMode = "unity_test_runner_async_cache";
+        private const string TestDiscoveryJobKind = "test_discovery";
 
         internal sealed class SmokeOutcome
         {
@@ -93,7 +92,22 @@ namespace UnitySkills
             ReadOnly = true)]
         public static object TestList(string testMode = "EditMode", int limit = 100)
         {
-            var tests = DiscoverTests(testMode)
+            var discovery = GetLatestCompletedDiscovery(testMode);
+            if (discovery == null)
+            {
+                var started = StartTestDiscovery(testMode);
+                return new
+                {
+                    success = false,
+                    testMode,
+                    discoveryMode = TestDiscoveryMode,
+                    error = "No cached Unity Test Runner discovery result is available yet. Discovery has been started asynchronously; poll with test_discover_get_result(jobId) and retry test_list after it completes.",
+                    discoveryJobId = started.jobId,
+                    discoveryStatus = started.status
+                };
+            }
+
+            var tests = GetDiscoveredTests(discovery)
                 .Take(Mathf.Max(1, limit))
                 .Select(test => new
                 {
@@ -110,6 +124,65 @@ namespace UnitySkills
                 count = tests.Length,
                 discoveryMode = TestDiscoveryMode,
                 tests
+            };
+        }
+
+        [UnitySkill("test_discover_start", "Start asynchronous Unity Test Runner discovery and return a discovery jobId.",
+            Category = SkillCategory.Test, Operation = SkillOperation.Execute,
+            Tags = new[] { "test", "discover", "list", "async", "job" },
+            Outputs = new[] { "jobId", "testMode", "message" },
+            SupportsDryRun = false)]
+        public static object TestDiscoverStart(string testMode = "EditMode")
+        {
+            var job = StartTestDiscovery(testMode);
+            return new
+            {
+                success = true,
+                status = job.status,
+                jobId = job.jobId,
+                kind = job.kind,
+                testMode,
+                message = "Unity Test Runner discovery started. Poll with test_discover_get_result(jobId)."
+            };
+        }
+
+        [UnitySkill("test_discover_get_result", "Get the result of an asynchronous Unity Test Runner discovery job.",
+            Category = SkillCategory.Test, Operation = SkillOperation.Query,
+            Tags = new[] { "test", "discover", "result", "poll", "job" },
+            Outputs = new[] { "jobId", "status", "count", "tests" },
+            RequiresInput = new[] { "jobId" },
+            ReadOnly = true)]
+        public static object TestDiscoverGetResult(string jobId, int limit = 100)
+        {
+            if (Validate.Required(jobId, "jobId") is object err)
+                return err;
+
+            var job = BatchPersistence.GetJob(jobId);
+            if (job == null || !string.Equals(job.kind, TestDiscoveryJobKind, StringComparison.OrdinalIgnoreCase))
+                return new { error = $"Test discovery job not found: {jobId}" };
+
+            var discoveredTests = GetDiscoveredTests(job);
+            var tests = discoveredTests
+                .Take(Mathf.Max(1, limit))
+                .Select(test => new
+                {
+                    name = test.Name,
+                    fullName = test.FullName,
+                    runState = test.RunState,
+                    categories = test.Categories ?? Array.Empty<string>()
+                })
+                .ToArray();
+
+            return new
+            {
+                success = true,
+                jobId,
+                status = job.status,
+                testMode = GetMetadataString(job, "testMode"),
+                discoveryMode = TestDiscoveryMode,
+                count = discoveredTests.Count,
+                tests,
+                error = job.error
             };
         }
 
@@ -216,7 +289,22 @@ namespace UnitySkills
             ReadOnly = true)]
         public static object TestListCategories(string testMode = "EditMode")
         {
-            var categories = DiscoverTests(testMode)
+            var discovery = GetLatestCompletedDiscovery(testMode);
+            if (discovery == null)
+            {
+                var started = StartTestDiscovery(testMode);
+                return new
+                {
+                    success = false,
+                    testMode,
+                    discoveryMode = TestDiscoveryMode,
+                    error = "No cached Unity Test Runner discovery result is available yet. Discovery has been started asynchronously; poll with test_discover_get_result(jobId) and retry test_list_categories after it completes.",
+                    discoveryJobId = started.jobId,
+                    discoveryStatus = started.status
+                };
+            }
+
+            var categories = GetDiscoveredTests(discovery)
                 .SelectMany(test => test.Categories ?? Array.Empty<string>())
                 .Where(category => !string.IsNullOrWhiteSpace(category))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -673,16 +761,87 @@ public class {testName}
                 .ToArray() ?? Array.Empty<string>();
         }
 
-        private static IReadOnlyList<DiscoveredTestCase> DiscoverTests(string testMode)
+        private static BatchJobRecord StartTestDiscovery(string testMode)
         {
-            var discovered = new List<DiscoveredTestCase>();
-            var includePlayMode = string.Equals(testMode, "PlayMode", StringComparison.OrdinalIgnoreCase);
-            foreach (var filePath in EnumerateTestSourceFiles(includePlayMode))
-                discovered.AddRange(DiscoverTestsFromSource(filePath, includePlayMode));
+            var mode = ParseTestMode(testMode);
+            var normalizedMode = NormalizeTestMode(testMode);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var job = new BatchJobRecord
+            {
+                jobId = Guid.NewGuid().ToString("N").Substring(0, 8),
+                kind = TestDiscoveryJobKind,
+                status = "running",
+                progress = 5,
+                currentStage = "discovering",
+                startedAt = now,
+                updatedAt = now,
+                canCancel = false,
+                resultSummary = "Unity Test Runner discovery started.",
+                metadata = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["testMode"] = normalizedMode
+                },
+                resultData = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["tests"] = new List<object>(),
+                    ["count"] = 0
+                }
+            };
+            BatchPersistence.UpsertJob(job);
+            BatchPersistence.FlushIfDirty();
 
-            return discovered
-                .OrderBy(test => test.FullName, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            try
+            {
+                var api = ScriptableObject.CreateInstance<TestRunnerApi>();
+                api.RetrieveTestList(mode, root =>
+                {
+                    try
+                    {
+                        var storedJob = BatchPersistence.GetJob(job.jobId);
+                        if (storedJob == null)
+                            return;
+
+                        var discovered = new List<DiscoveredTestCase>();
+                        CollectDiscoveredTests(root, discovered);
+                        var ordered = discovered
+                            .OrderBy(test => test.FullName, StringComparer.OrdinalIgnoreCase)
+                            .ToArray();
+
+                        storedJob.status = "completed";
+                        storedJob.progress = 100;
+                        storedJob.currentStage = "completed";
+                        storedJob.updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                        storedJob.resultSummary = $"Discovered {ordered.Length} tests via Unity Test Runner.";
+                        storedJob.resultData["tests"] = ordered
+                            .Select(test => new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                            {
+                                ["name"] = test.Name,
+                                ["fullName"] = test.FullName,
+                                ["runState"] = test.RunState,
+                                ["categories"] = test.Categories ?? Array.Empty<string>()
+                            })
+                            .Cast<object>()
+                            .ToList();
+                        storedJob.resultData["count"] = ordered.Length;
+                        BatchPersistence.UpsertJob(storedJob);
+                        BatchPersistence.FlushIfDirty();
+                    }
+                    catch (Exception ex)
+                    {
+                        MarkDiscoveryFailed(job.jobId, ex.Message);
+                    }
+                    finally
+                    {
+                        UnityEngine.Object.DestroyImmediate(api);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                MarkDiscoveryFailed(job.jobId, ex.Message);
+            }
+
+            return job;
         }
 
         internal static string[] ResolveExactTestNames(string testMode, string filter)
@@ -690,7 +849,7 @@ public class {testName}
             if (string.IsNullOrWhiteSpace(filter))
                 return Array.Empty<string>();
 
-            return DiscoverTests(testMode)
+            return GetCachedDiscoveredTests(testMode)
                 .Where(test =>
                     string.Equals(test.FullName, filter, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(test.Name, filter, StringComparison.OrdinalIgnoreCase))
@@ -704,7 +863,7 @@ public class {testName}
             if (string.IsNullOrWhiteSpace(filter))
                 return false;
 
-            return DiscoverTests(testMode).Any(test =>
+            return GetCachedDiscoveredTests(testMode).Any(test =>
                 test.FullName.StartsWith(filter + ".", StringComparison.OrdinalIgnoreCase) ||
                 test.FullName.IndexOf("." + filter + ".", StringComparison.OrdinalIgnoreCase) >= 0);
         }
@@ -714,7 +873,7 @@ public class {testName}
             if (string.IsNullOrWhiteSpace(filter))
                 return Array.Empty<string>();
 
-            return DiscoverTests(testMode)
+            return GetCachedDiscoveredTests(testMode)
                 .Where(test =>
                     test.FullName.StartsWith(filter + ".", StringComparison.OrdinalIgnoreCase) ||
                     test.FullName.IndexOf("." + filter + ".", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -723,239 +882,148 @@ public class {testName}
                 .ToArray();
         }
 
-        internal static string[] ResolveGroupAssemblyNames(string testMode, string filter)
+        private static IReadOnlyList<DiscoveredTestCase> GetCachedDiscoveredTests(string testMode)
         {
-            if (string.IsNullOrWhiteSpace(filter))
-                return Array.Empty<string>();
-
-            return DiscoverTests(testMode)
-                .Where(test =>
-                    test.FullName.StartsWith(filter + ".", StringComparison.OrdinalIgnoreCase) ||
-                    test.FullName.IndexOf("." + filter + ".", StringComparison.OrdinalIgnoreCase) >= 0)
-                .Select(test => test.AssemblyName)
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            return GetDiscoveredTests(GetLatestCompletedDiscovery(testMode));
         }
 
-        private static IEnumerable<string> EnumerateTestSourceFiles(bool includePlayMode)
+        private static BatchJobRecord GetLatestCompletedDiscovery(string testMode)
         {
-            var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                Application.dataPath,
-                Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Packages"))
-            };
-
-            foreach (var fileDependencyRoot in EnumerateFileDependencyRoots())
-                roots.Add(fileDependencyRoot);
-
-            foreach (var root in roots.Where(Directory.Exists))
-            {
-                IEnumerable<string> files;
-                try
-                {
-                    files = Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories);
-                }
-                catch
-                {
-                    continue;
-                }
-
-                foreach (var file in files)
-                {
-                    var normalized = file.Replace('\\', '/');
-                    if (normalized.IndexOf("/Tests/", StringComparison.OrdinalIgnoreCase) < 0)
-                        continue;
-
-                    var isPlayModeFile = normalized.IndexOf("/Tests/Runtime/", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         normalized.IndexOf("/Tests/PlayMode/", StringComparison.OrdinalIgnoreCase) >= 0;
-                    var isEditModeFile = normalized.IndexOf("/Tests/Editor/", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                                         normalized.IndexOf("/Editor/Tests/", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                    if (includePlayMode)
-                    {
-                        if (!isPlayModeFile)
-                            continue;
-                    }
-                    else if (isPlayModeFile && !isEditModeFile)
-                    {
-                        continue;
-                    }
-
-                    yield return file;
-                }
-            }
+            var normalizedMode = NormalizeTestMode(testMode);
+            return BatchPersistence.ListJobs(100)
+                .Where(job =>
+                    job != null &&
+                    string.Equals(job.kind, TestDiscoveryJobKind, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(job.status, "completed", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(GetMetadataString(job, "testMode"), normalizedMode, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(job => job.updatedAt)
+                .FirstOrDefault();
         }
 
-        private static IEnumerable<string> EnumerateFileDependencyRoots()
+        private static IReadOnlyList<DiscoveredTestCase> GetDiscoveredTests(BatchJobRecord job)
         {
-            var manifestPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Packages", "manifest.json"));
-            if (!File.Exists(manifestPath))
-                yield break;
+            if (job?.resultData == null || !job.resultData.TryGetValue("tests", out var rawTests) || rawTests == null)
+                return Array.Empty<DiscoveredTestCase>();
 
-            JObject manifest;
-            try
+            if (rawTests is IEnumerable<object> objects)
             {
-                manifest = JsonConvert.DeserializeObject<JObject>(File.ReadAllText(manifestPath));
-            }
-            catch
-            {
-                yield break;
-            }
-
-            var dependencies = manifest?["dependencies"] as JObject;
-            if (dependencies == null)
-                yield break;
-
-            foreach (var property in dependencies.Properties())
-            {
-                var value = property.Value?.ToString();
-                if (string.IsNullOrWhiteSpace(value) || !value.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                var root = value.Substring("file:".Length).Replace('/', Path.DirectorySeparatorChar);
-                if (Path.IsPathRooted(root))
-                    yield return root;
-                else
-                    yield return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(manifestPath) ?? string.Empty, root));
-            }
-        }
-
-        private static IEnumerable<DiscoveredTestCase> DiscoverTestsFromSource(string filePath, bool includePlayMode)
-        {
-            string[] lines;
-            try
-            {
-                lines = File.ReadAllLines(filePath);
-            }
-            catch
-            {
-                yield break;
-            }
-
-            var assemblyName = ResolveAssemblyNameForSourceFile(filePath);
-            var namespaceName = string.Empty;
-            var currentClass = string.Empty;
-            var classCategories = Array.Empty<string>();
-            var pendingAttributes = new List<string>();
-
-            foreach (var rawLine in lines)
-            {
-                var line = rawLine.Trim();
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    pendingAttributes.Clear();
-                    continue;
-                }
-
-                if (line.StartsWith("[", StringComparison.Ordinal))
-                {
-                    pendingAttributes.Add(line);
-                    continue;
-                }
-
-                var namespaceMatch = Regex.Match(line, @"^namespace\s+(?<ns>[\w\.]+)");
-                if (namespaceMatch.Success)
-                {
-                    namespaceName = namespaceMatch.Groups["ns"].Value;
-                    pendingAttributes.Clear();
-                    continue;
-                }
-
-                var classMatch = Regex.Match(line, @"^(?:public|internal|private|protected|sealed|abstract|static|partial|\s)*class\s+(?<name>\w+)");
-                if (classMatch.Success)
-                {
-                    currentClass = classMatch.Groups["name"].Value;
-                    classCategories = ExtractCategoryNames(pendingAttributes).ToArray();
-                    pendingAttributes.Clear();
-                    continue;
-                }
-
-                var methodMatch = Regex.Match(line, @"^(?:public|internal|private|protected|static|virtual|override|sealed|async|\s)+[\w<>\[\],\.\s]+\s+(?<name>\w+)\s*\(");
-                if (!methodMatch.Success)
-                {
-                    pendingAttributes.Clear();
-                    continue;
-                }
-
-                var isUnityTest = ContainsAttribute(pendingAttributes, "UnityTest");
-                var isTest = ContainsAttribute(pendingAttributes, "Test") ||
-                             ContainsAttribute(pendingAttributes, "TestCase") ||
-                             isUnityTest;
-                if (!isTest || string.IsNullOrWhiteSpace(currentClass))
-                {
-                    pendingAttributes.Clear();
-                    continue;
-                }
-
-                var categories = classCategories
-                    .Concat(ExtractCategoryNames(pendingAttributes))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                return objects
+                    .Select(ConvertDiscoveredTestCase)
+                    .Where(test => test != null && !string.IsNullOrWhiteSpace(test.FullName))
+                    .OrderBy(test => test.FullName, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
+            }
 
-                var methodName = methodMatch.Groups["name"].Value;
-                yield return new DiscoveredTestCase
+            return Array.Empty<DiscoveredTestCase>();
+        }
+
+        private static DiscoveredTestCase ConvertDiscoveredTestCase(object raw)
+        {
+            if (raw == null)
+                return null;
+
+            if (raw is JObject json)
+            {
+                return new DiscoveredTestCase
                 {
-                    Name = methodName,
-                    FullName = string.IsNullOrWhiteSpace(namespaceName)
-                        ? $"{currentClass}.{methodName}"
-                        : $"{namespaceName}.{currentClass}.{methodName}",
-                    AssemblyName = assemblyName,
-                    RunState = ContainsAttribute(pendingAttributes, "Ignore") ? "Ignored" :
-                               ContainsAttribute(pendingAttributes, "Explicit") ? "Explicit" : "Runnable",
-                    Categories = categories
+                    Name = json["name"]?.ToString(),
+                    FullName = json["fullName"]?.ToString(),
+                    RunState = json["runState"]?.ToString(),
+                    Categories = json["categories"]?.ToObject<string[]>() ?? Array.Empty<string>()
                 };
-
-                pendingAttributes.Clear();
             }
-        }
 
-        private static bool ContainsAttribute(IEnumerable<string> attributes, string attributeName)
-        {
-            return attributes.Any(attribute =>
-                attribute.IndexOf($"[{attributeName}", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                attribute.IndexOf($"[{attributeName}Attribute", StringComparison.OrdinalIgnoreCase) >= 0);
-        }
-
-        private static IEnumerable<string> ExtractCategoryNames(IEnumerable<string> attributes)
-        {
-            foreach (var attribute in attributes)
+            if (raw is Dictionary<string, object> dict)
             {
-                foreach (Match match in Regex.Matches(attribute, @"Category(?:Attribute)?\s*\(\s*""(?<name>[^""]+)""\s*\)", RegexOptions.IgnoreCase))
+                return new DiscoveredTestCase
                 {
-                    var category = match.Groups["name"].Value;
-                    if (!string.IsNullOrWhiteSpace(category))
-                        yield return category;
-                }
-            }
-        }
-
-        private static string ResolveAssemblyNameForSourceFile(string filePath)
-        {
-            try
-            {
-                var directory = Path.GetDirectoryName(filePath);
-                while (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
-                {
-                    var asmdefPath = Directory.EnumerateFiles(directory, "*.asmdef", SearchOption.TopDirectoryOnly)
-                        .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                        .FirstOrDefault();
-                    if (!string.IsNullOrWhiteSpace(asmdefPath))
-                    {
-                        var asmdefJson = JsonConvert.DeserializeObject<JObject>(File.ReadAllText(asmdefPath));
-                        var assemblyName = asmdefJson?["name"]?.ToString();
-                        if (!string.IsNullOrWhiteSpace(assemblyName))
-                            return assemblyName;
-                    }
-
-                    directory = Path.GetDirectoryName(directory);
-                }
-            }
-            catch
-            {
+                    Name = dict.TryGetValue("name", out var name) ? name?.ToString() : null,
+                    FullName = dict.TryGetValue("fullName", out var fullName) ? fullName?.ToString() : null,
+                    RunState = dict.TryGetValue("runState", out var runState) ? runState?.ToString() : null,
+                    Categories = ConvertToStringArray(dict.TryGetValue("categories", out var categories) ? categories : null)
+                };
             }
 
             return null;
+        }
+
+        private static void CollectDiscoveredTests(ITestAdaptor test, List<DiscoveredTestCase> tests)
+        {
+            if (test == null || tests == null)
+                return;
+
+            if (!test.HasChildren)
+            {
+                tests.Add(new DiscoveredTestCase
+                {
+                    Name = test.Name,
+                    FullName = test.FullName,
+                    RunState = test.RunState.ToString(),
+                    Categories = test.Categories?.Where(category => !string.IsNullOrWhiteSpace(category)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? Array.Empty<string>()
+                });
+                return;
+            }
+
+            foreach (var child in test.Children)
+                CollectDiscoveredTests(child, tests);
+        }
+
+        private static void MarkDiscoveryFailed(string jobId, string error)
+        {
+            var job = BatchPersistence.GetJob(jobId);
+            if (job == null)
+                return;
+
+            job.status = "failed";
+            job.progress = 100;
+            job.currentStage = "failed";
+            job.updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            job.error = error;
+            job.resultSummary = $"Unity Test Runner discovery failed: {error}";
+            BatchPersistence.UpsertJob(job);
+            BatchPersistence.FlushIfDirty();
+        }
+
+        private static TestMode ParseTestMode(string testMode)
+        {
+            return string.Equals(testMode, "PlayMode", StringComparison.OrdinalIgnoreCase)
+                ? TestMode.PlayMode
+                : TestMode.EditMode;
+        }
+
+        private static string NormalizeTestMode(string testMode)
+        {
+            return ParseTestMode(testMode) == TestMode.PlayMode ? "PlayMode" : "EditMode";
+        }
+
+        private static string GetMetadataString(BatchJobRecord job, string key)
+        {
+            if (job?.metadata == null || !job.metadata.TryGetValue(key, out var value) || value == null)
+                return null;
+
+            return value.ToString();
+        }
+
+        private static string[] ConvertToStringArray(object value)
+        {
+            if (value == null)
+                return Array.Empty<string>();
+
+            if (value is JArray jsonArray)
+                return jsonArray.ToObject<string[]>() ?? Array.Empty<string>();
+
+            if (value is IEnumerable<string> strings)
+                return strings.Where(item => !string.IsNullOrWhiteSpace(item)).ToArray();
+
+            if (value is IEnumerable<object> objects)
+            {
+                return objects
+                    .Select(item => item?.ToString())
+                    .Where(item => !string.IsNullOrWhiteSpace(item))
+                    .ToArray();
+            }
+
+            return Array.Empty<string>();
         }
 
         private static int GetResultInt(BatchJobRecord job, string key)
@@ -1007,7 +1075,6 @@ public class {testName}
         {
             public string Name;
             public string FullName;
-            public string AssemblyName;
             public string RunState;
             public string[] Categories;
         }

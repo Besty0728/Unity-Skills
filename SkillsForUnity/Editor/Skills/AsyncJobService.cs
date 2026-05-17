@@ -304,9 +304,6 @@ namespace UnitySkills
                 var groupedNames = TestSkills.ResolveGroupedTestNames(testMode, filter);
                 if (groupedNames.Length > 0)
                     filterObj.testNames = groupedNames;
-                var assemblyNames = TestSkills.ResolveGroupAssemblyNames(testMode, filter);
-                if (assemblyNames.Length > 0)
-                    filterObj.assemblyNames = assemblyNames;
                 return filterObj;
             }
 
