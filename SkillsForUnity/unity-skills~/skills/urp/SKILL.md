@@ -9,7 +9,9 @@ URP-specific asset and renderer feature management for Unity 2022.3+.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT**:
 - Use this module for ShaderGraph

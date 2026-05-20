@@ -9,7 +9,7 @@ Get performance statistics.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
 
 **DO NOT** (common hallucinations):
 - `profiler_start` / `profiler_stop` do not exist → profiler skills are read-only snapshots, not recording controls

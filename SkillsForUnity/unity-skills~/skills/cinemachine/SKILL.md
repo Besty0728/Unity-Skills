@@ -9,7 +9,9 @@ Control Cinemachine Virtual Cameras and settings (Cinemachine 2.x / 3.x).
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `cinemachine_create` does not exist → use `cinemachine_create_vcam` for virtual cameras

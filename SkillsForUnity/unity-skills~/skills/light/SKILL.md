@@ -9,7 +9,7 @@ description: "Unity lighting control. Use when users want to create or configure
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
 
 **DO NOT** (common hallucinations):
 - `light_add` does not exist → use `light_create` (creates a new light GameObject)

@@ -9,7 +9,7 @@ Control the Scene View camera.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
 
 **DO NOT** (common hallucinations):
 - `camera_move` / `camera_rotate` do not exist → use `camera_set_transform` (Scene View) or `gameobject_set_transform` (Game Camera)

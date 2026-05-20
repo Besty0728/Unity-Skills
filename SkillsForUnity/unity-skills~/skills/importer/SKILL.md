@@ -11,7 +11,7 @@ Use this module to change import **settings** for textures, audio, and models th
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
 
 **DO NOT** (common hallucinations):
 - `importer_import` does not exist -> use `asset_import` in the `asset` module to bring files into the project

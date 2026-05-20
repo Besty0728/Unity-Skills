@@ -9,7 +9,7 @@ Save and recall Scene View camera positions.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
 
 **DO NOT** (common hallucinations):
 - `bookmark_save` does not exist → use `bookmark_set`

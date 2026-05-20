@@ -9,7 +9,7 @@ Graphics and quality settings management for Unity 2022.3+ projects.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
 
 **Routing**:
 - For current render pipeline detection only: `project_get_render_pipeline`

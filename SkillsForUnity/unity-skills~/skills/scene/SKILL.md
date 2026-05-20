@@ -9,17 +9,19 @@ Control Unity scenes - the containers that hold all your GameObjects.
 
 ## Guardrails
 
-**Mode**: Semi-Auto (available by default)
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `scene_delete` / `scene_rename` do not exist → delete scene files via `asset_delete`, rename via `asset_move`
 - `scene_list` does not exist → use `scene_get_loaded` (loaded scenes) or `asset_find` with `t:Scene` (all scene assets)
-- `scene_find_objects` is a simple name/tag/component filter; for regex/layer/path search use `gameobject_find` (Full-Auto)
+- `scene_find_objects` is a simple name/tag/component filter; for regex/layer/path search use `gameobject_find` (SkillMode.FullAuto)
 
 **Routing**:
 - For detailed hierarchy tree → use `perception` module's `hierarchy_describe`
 - For scene statistics → use `perception` module's `scene_summarize`
-- For screenshot → `scene_screenshot` (this module) or `camera_screenshot` (camera module, Full-Auto)
+- For screenshot → `scene_screenshot` (this module) or `camera_screenshot` (camera module, SkillMode.FullAuto)
 
 ## Skills Overview
 

@@ -9,7 +9,7 @@ description: "Prefab management. Use when users want to create, instantiate, app
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
 
 **DO NOT** (common hallucinations):
 - `prefab_create_from_object` does not exist → use `prefab_create` (takes scene object name/instanceId and savePath)

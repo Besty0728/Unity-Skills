@@ -9,7 +9,7 @@ Control Unity's animation system - create controllers, manage parameters, and co
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
 
 **DO NOT** (common hallucinations):
 - `animator_create_clip` / `animator_add_clip` do not exist → AnimationClips are created via Unity Editor or asset import

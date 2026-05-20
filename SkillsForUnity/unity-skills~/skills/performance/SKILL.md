@@ -61,7 +61,7 @@ The same principle as the "possibility write" rule above — the runtime pays fo
 
 ## Guardrails
 
-**Mode**: Both (Semi-Auto + Full-Auto) — advisory only, no REST skills
+**Mode**: Documentation only — guidance for AI under all three operating modes; no REST skills to gate.
 
 - Do not recommend large refactors without a meaningful hotspot.
 - Do not replace simple code with unreadable “optimized” code unless the hot path is real.

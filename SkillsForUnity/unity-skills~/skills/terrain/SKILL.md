@@ -9,7 +9,7 @@ description: "Unity Terrain operations. Use when users want to create terrain, s
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
 
 **DO NOT** (common hallucinations):
 - `terrain_set_texture` does not exist → use `terrain_paint_texture` with layer index and brush parameters

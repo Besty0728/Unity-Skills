@@ -29,7 +29,7 @@ Use this skill when starting a new mini-game or vertical slice and a lightweight
 
 ## Guardrails
 
-**Mode**: Both (Semi-Auto + Full-Auto) — advisory only, no REST skills
+**Mode**: Documentation only — guidance for AI under all three operating modes; no REST skills to gate.
 
 - Provide the smallest viable blueprint, not a giant reusable framework.
 - Prefer a short script inventory over “future-proof” template sprawl.

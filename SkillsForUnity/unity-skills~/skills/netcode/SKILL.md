@@ -12,7 +12,9 @@ Automation for Netcode for GameObjects (NGO) multiplayer setup and operations. E
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `netcode_spawn_object` / `netcode_spawn_player` — do not exist. Spawn must happen in runtime code (NetworkBehaviour) via `.Spawn()` or `NetworkManager.SpawnManager.InstantiateAndSpawn`. Skills do not proxy Spawn because Spawn requires a running NetworkManager.

@@ -7,7 +7,7 @@ description: "Source-anchored Shader Graph design rules for Unity 2022.3 / Shade
 
 Advisory module. Read this before giving Shader Graph guidance. The goal is to keep recommendations anchored to actual package/source behavior, not stale model memory.
 
-> **Mode**: Both. Documentation only, no REST skills.
+> **Mode**: Documentation only — guidance for AI under all three operating modes; no REST skills to gate.
 
 ## Source Scope
 

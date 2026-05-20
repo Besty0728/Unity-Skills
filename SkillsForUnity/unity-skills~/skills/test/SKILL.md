@@ -9,7 +9,7 @@ Run and manage Unity tests.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
 
 **DO NOT** (common hallucinations):
 - `test_run_all` does not exist → use `test_run` or `test_run_by_name`

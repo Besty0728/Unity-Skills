@@ -9,7 +9,9 @@ Basic examples for testing the API.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - Sample skills are basic test/demo skills — do not use them for production work

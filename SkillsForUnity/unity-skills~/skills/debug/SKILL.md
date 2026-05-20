@@ -9,7 +9,7 @@ Debug utilities for error checking and diagnostics.
 
 ## Guardrails
 
-**Mode**: Semi-Auto (available by default)
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
 
 **DO NOT** (common hallucinations):
 - `debug_compile` / `debug_recompile` do not exist → use `debug_force_recompile`

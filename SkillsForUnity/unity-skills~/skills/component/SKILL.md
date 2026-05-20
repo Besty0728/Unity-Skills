@@ -9,7 +9,9 @@ description: "GameObject component management. Use when users want to add, remov
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `component_create` / `component_get` do not exist → use `component_add` (add) and `component_get_properties` (read)

@@ -12,7 +12,9 @@ Use this module for Unity UI Toolkit only: `UXML` for structure, `USS` for styli
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `uitoolkit_create_button` / `uitoolkit_create_label` do not exist -> use `uitk_add_element`

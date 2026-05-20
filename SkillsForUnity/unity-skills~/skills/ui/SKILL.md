@@ -11,7 +11,7 @@ Use this module for Unity UGUI / Canvas workflows. It is separate from UI Toolki
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
 
 **DO NOT** (common hallucinations):
 - `ui_add_canvas` does not exist -> use `ui_create_canvas`

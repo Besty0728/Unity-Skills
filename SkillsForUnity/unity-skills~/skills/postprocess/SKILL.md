@@ -9,7 +9,9 @@ Modern URP/HDRP post-processing skills built on top of the Volume framework.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT**:
 - Use this module for PPv2 / `com.unity.postprocessing`

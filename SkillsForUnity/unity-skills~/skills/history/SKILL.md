@@ -9,7 +9,7 @@ Manage Unity Editor undo/redo history.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
 
 **DO NOT** (common hallucinations):
 - `history_list` / `history_get` do not exist → use `history_get_current` for current undo group

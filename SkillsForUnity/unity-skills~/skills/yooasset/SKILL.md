@@ -12,7 +12,9 @@ Editor-side automation for the YooAsset hot-update framework — build pipeline 
 
 ## Guardrails
 
-**Mode**: Both (Semi-Auto + Full-Auto).
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `yooasset_initialize` / `yooasset_load_asset` / `yooasset_create_downloader` — do NOT exist as general-purpose REST skills. Runtime APIs (`YooAssets.Initialize`, default-package `YooAssets.LoadAssetAsync`, `ResourcePackage.LoadAssetAsync`, `RequestPackageVersionAsync`, `CreateResourceDownloader`) belong in game code. Use [yooasset-design](../yooasset-design/SKILL.md) when writing runtime code.

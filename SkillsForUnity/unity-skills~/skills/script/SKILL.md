@@ -10,7 +10,9 @@ description: "C# script management — create, read, replace, and analyze Unity 
 
 ## Guardrails
 
-**Mode**: Semi-Auto (available by default)
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `script_edit` / `script_update` do not exist → use `script_replace` for find-and-replace

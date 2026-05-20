@@ -9,7 +9,9 @@ Inspect and modify UnityEvents (e.g. Button.onClick).
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `event_create` / `event_trigger` do not exist → UnityEvents are triggered at runtime, not from editor skills

@@ -9,7 +9,7 @@ Use this skill when the user is deciding how runtime work should be scheduled or
 
 ## Guardrails
 
-**Mode**: Both (Semi-Auto + Full-Auto) — advisory only, no REST skills
+**Mode**: Documentation only — guidance for AI under all three operating modes; no REST skills to gate.
 
 - Do not recommend `UniTask` just because it looks more advanced than coroutine.
 - Prefer the simplest scheduling model that fits the use case.

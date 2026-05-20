@@ -9,7 +9,7 @@ Batch workflow orchestration for query, preview, execution, reports, and async j
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
 
 **DO NOT** (common hallucinations):
 - Always call a `batch_preview_*` skill first — `batch_execute` requires a `confirmToken` from a preview, it cannot be called directly

@@ -9,7 +9,9 @@ DOTween Free/Pro support for project diagnostics, settings, module/API discovery
 
 ## Guardrails
 
-**Mode**: Full-Auto required.
+**Mode**: Mixed — query skills marked SkillMode.SemiAuto; mutators are SkillMode.FullAuto (need grant under Approval).
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **Prerequisites**:
 - DOTween Free or Pro must be installed. `DOTweenPresenceDetector` adds `DOTWEEN` / `DOTWEEN_PRO` defines automatically after install.

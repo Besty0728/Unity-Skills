@@ -12,7 +12,9 @@ Use this module for editable ProBuilder meshes, not regular primitive GameObject
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `probuilder_create_mesh` does not exist -> use `probuilder_create_shape`

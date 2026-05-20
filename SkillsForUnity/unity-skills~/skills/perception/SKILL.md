@@ -5,11 +5,11 @@ description: "Scene understanding and analysis. Use when users want to get a sum
 
 # Unity Perception Skills
 
-Use this module for read-only scene and project analysis. It is available in Semi-Auto by default.
+Use this module for read-only scene and project analysis. It is available in Approval mode without grant.
 
 ## Guardrails
 
-**Mode**: Semi-Auto
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
 
 **DO NOT** (common hallucinations):
 - `perception_analyze`, `perception_scan`, and `perception_describe` do not exist

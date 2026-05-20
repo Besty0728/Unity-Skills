@@ -9,7 +9,7 @@ Work with the Unity console - capture logs, write messages, and debug your proje
 
 ## Guardrails
 
-**Mode**: Semi-Auto (available by default)
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
 
 **DO NOT** (common hallucinations):
 - `console_filter` does not exist → use `console_get_logs` with `filter` parameter

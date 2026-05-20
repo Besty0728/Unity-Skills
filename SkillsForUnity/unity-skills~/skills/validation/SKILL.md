@@ -9,7 +9,9 @@ Maintain project health - find problems, clean up, and validate your Unity proje
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - Validation skill routes use the `validate_*` prefix, not `validation_*`

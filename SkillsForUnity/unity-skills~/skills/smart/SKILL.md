@@ -7,7 +7,9 @@ description: "AI-powered scene operations: SQL-like object queries, automatic sp
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `smart_create` / `smart_build` do not exist → smart skills are query/layout tools, not creation tools

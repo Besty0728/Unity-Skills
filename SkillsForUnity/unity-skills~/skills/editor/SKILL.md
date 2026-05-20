@@ -9,7 +9,9 @@ Control the Unity Editor itself - enter play mode, manage selection, undo/redo, 
 
 ## Guardrails
 
-**Mode**: Semi-Auto (available by default)
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `editor_run` does not exist → use `editor_play` to enter play mode

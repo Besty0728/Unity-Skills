@@ -9,7 +9,7 @@ Project information and configuration.
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
 
 **DO NOT** (common hallucinations):
 - `project_save` does not exist → use `scene_save` (scene module) or `editor_execute_menu` menuPath="File/Save"

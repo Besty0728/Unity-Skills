@@ -9,7 +9,9 @@ description: "Unity asset management. Use when users want to import, move, delet
 
 ## Guardrails
 
-**Mode**: Semi-Auto (available by default)
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `asset_create` does not exist → use `asset_create_folder` (folders), `material_create` (materials), `script_create` (scripts)
@@ -18,8 +20,8 @@ description: "Unity asset management. Use when users want to import, move, delet
 - `asset_copy` does not exist → use `asset_duplicate`
 
 **Routing**:
-- For texture/model/audio import settings → use `importer` module (Full-Auto)
-- For material creation → use `material` module (Full-Auto)
+- For texture/model/audio import settings → use `importer` module (SkillMode.FullAuto)
+- For material creation → use `material` module (SkillMode.FullAuto)
 - For script creation → use `script` module
 
 ## Skills Overview

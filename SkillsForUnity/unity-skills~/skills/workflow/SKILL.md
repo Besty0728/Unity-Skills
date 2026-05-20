@@ -12,7 +12,9 @@ Allows tagging tasks, snapshotting objects before modification, and undoing spec
 
 ## Guardrails
 
-**Mode**: Semi-Auto (available by default)
+**Mode**: SkillMode.SemiAuto (most skills usable in Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `workflow_save` does not exist → use `workflow_task_end` to end and save a task

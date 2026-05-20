@@ -9,7 +9,9 @@ description: "GameObject creation and manipulation. Use when users want to creat
 
 ## Guardrails
 
-**Mode**: Full-Auto required
+**Mode**: SkillMode.FullAuto (default — requires grant under Approval mode)
+
+> Some skills (Delete / PlayMode / Reload / high-risk) are auto-forbidden in Approval/Auto modes — only Bypass can run them.
 
 **DO NOT** (common hallucinations):
 - `gameobject_move` / `gameobject_rotate` / `gameobject_set_scale` do not exist → use `gameobject_set_transform` (handles position, rotation, and scale together)
@@ -20,7 +22,7 @@ description: "GameObject creation and manipulation. Use when users want to creat
 **Routing**:
 - To add/remove components → use `component` module
 - To set material/color → use `material` module
-- To search objects by name/tag/component → `gameobject_find` (this module) or `scene_find_objects` (scene module, Semi-Auto)
+- To search objects by name/tag/component → `gameobject_find` (this module) or `scene_find_objects` (scene module, SkillMode.SemiAuto)
 
 > **Object Targeting**: All single-object skills accept three identifiers: `name` (string), `instanceId` (int, preferred for precision), `path` (string, hierarchy path like "Parent/Child"). Provide at least one. When only `name` is shown in a parameter table, `instanceId` and `path` are also accepted.
 

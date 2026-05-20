@@ -7,7 +7,7 @@ description: "Source-anchored design rules for Netcode for GameObjects. Load thi
 
 Advisory module. Every rule is distilled from `com.unity.netcode.gameobjects` 2.x source. Each rule cites a concrete file/line so the reasoning is auditable.
 
-> **Mode**: Both (Semi-Auto + Full-Auto) — documentation only, no REST skills.
+> **Mode**: Documentation only — guidance for AI under all three operating modes; no REST skills to gate.
 
 ## When to Load This Module
 
