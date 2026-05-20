@@ -1170,6 +1170,8 @@ namespace UnitySkills
             // Health check
             if (path == "/" || string.Equals(path, "/health", StringComparison.OrdinalIgnoreCase))
             {
+                int pendingCount = SkillsModeManager.PendingGrantRequests.Count;
+                int grantedCount = SkillsModeManager.GrantedSkills.Count;
                 job.StatusCode = 200;
                 job.ResponseJson = JsonConvert.SerializeObject(new {
                     status = "ok",
@@ -1185,6 +1187,10 @@ namespace UnitySkills
                     requestTimeoutMinutes = RequestTimeoutMinutes,
                     domainReloadRecovery = "enabled",
                     architecture = "Producer-Consumer (Thread-Safe)",
+                    currentMode = SkillsModeManager.ModeToWire(SkillsModeManager.CurrentMode),
+                    panelApprovalRequired = SkillsModeManager.PanelApprovalRequired,
+                    pendingCount,
+                    grantedCount,
                     threads = new {
                         listenerAlive = _listenerThread?.IsAlive ?? false,
                         keepAliveAlive = _keepAliveThread?.IsAlive ?? false,
@@ -1326,6 +1332,15 @@ namespace UnitySkills
             }
 
 
+            // Permission system (v1.9): mode + grant token + audit log.
+            if (path.StartsWith("/permission/", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(path, "/permission", StringComparison.OrdinalIgnoreCase))
+            {
+                HandlePermissionRequest(job);
+                return;
+            }
+
+
             // Not found
             job.StatusCode = 404;
             job.ResponseJson = SkillErrorResponse.Build(
@@ -1342,7 +1357,13 @@ namespace UnitySkills
                         "POST /skill/{name}?mode=dryRun",
                         "POST /skill/{name}?mode=plan",
                         "POST /skill/{name}?dryRun=true",
-                        "GET /health"
+                        "GET /health",
+                        "GET /permission/status",
+                        "POST /permission/grant",
+                        "POST /permission/approve",
+                        "POST /permission/deny",
+                        "POST /permission/revoke",
+                        "GET /permission/audit"
                     }
                 },
                 retryStrategy: SkillErrorResponse.RetryFixAndRetry);
@@ -1524,6 +1545,284 @@ namespace UnitySkills
                 recentProgress = recentEvents,
                 terminal = IsTerminalStatus(record.status),
             }, _jsonSettings);
+        }
+
+        // ===== Permission system (v1.9) =====
+
+        private static void HandlePermissionRequest(RequestJob job)
+        {
+            string path = job.Path ?? string.Empty;
+
+            if (string.Equals(path, "/permission/status", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "GET")
+            {
+                HandlePermissionStatus(job);
+                return;
+            }
+
+            if (string.Equals(path, "/permission/audit", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "GET")
+            {
+                HandlePermissionAudit(job);
+                return;
+            }
+
+            if (job.HttpMethod == "POST")
+            {
+                if (string.Equals(path, "/permission/grant", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandlePermissionGrant(job);
+                    return;
+                }
+                if (string.Equals(path, "/permission/approve", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandlePermissionApprove(job);
+                    return;
+                }
+                if (string.Equals(path, "/permission/deny", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandlePermissionDeny(job);
+                    return;
+                }
+                if (string.Equals(path, "/permission/revoke", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandlePermissionRevoke(job);
+                    return;
+                }
+            }
+
+            job.StatusCode = 404;
+            job.ResponseJson = SkillErrorResponse.Build(
+                SkillErrorCode.NotFound,
+                "Permission endpoint not found",
+                details: new
+                {
+                    endpoints = new[]
+                    {
+                        "GET /permission/status",
+                        "POST /permission/grant",
+                        "POST /permission/approve",
+                        "POST /permission/deny",
+                        "POST /permission/revoke",
+                        "GET /permission/audit"
+                    }
+                },
+                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+        }
+
+        private static void HandlePermissionStatus(RequestJob job)
+        {
+            var qs = SkillRouter.ParseQueryString(job.QueryString);
+            string focusToken = qs.TryGetValue("token", out var tokenVal) ? tokenVal : null;
+
+            var pending = SkillsModeManager.PendingGrantRequests;
+            var granted = SkillsModeManager.GrantedSkills;
+
+            object focusEntry = null;
+            if (!string.IsNullOrEmpty(focusToken))
+            {
+                var match = pending.FirstOrDefault(p => string.Equals(p.Token, focusToken, StringComparison.Ordinal));
+                if (match != null)
+                {
+                    focusEntry = new
+                    {
+                        token = match.Token,
+                        skill = match.SkillName,
+                        argsSummary = match.ArgsSummary,
+                        channel = match.Channel,
+                        approvedByPanel = match.ApprovedByPanel,
+                        expiresAtUtc = match.ExpiresAtUtc.ToString("o"),
+                        ttlSeconds = Math.Max(0, (int)(match.ExpiresAtUtc - DateTime.UtcNow).TotalSeconds),
+                    };
+                }
+            }
+
+            job.StatusCode = 200;
+            job.ResponseJson = JsonConvert.SerializeObject(new
+            {
+                mode = SkillsModeManager.ModeToWire(SkillsModeManager.CurrentMode),
+                panelApprovalRequired = SkillsModeManager.PanelApprovalRequired,
+                granted = granted,
+                pending = pending.Select(p => new
+                {
+                    token = p.Token,
+                    skill = p.SkillName,
+                    argsSummary = p.ArgsSummary,
+                    channel = p.Channel,
+                    approvedByPanel = p.ApprovedByPanel,
+                    expiresAtUtc = p.ExpiresAtUtc.ToString("o"),
+                    ttlSeconds = Math.Max(0, (int)(p.ExpiresAtUtc - DateTime.UtcNow).TotalSeconds),
+                }).ToArray(),
+                focus = focusEntry,
+                counts = new
+                {
+                    granted = granted.Count,
+                    pending = pending.Count,
+                },
+            }, _jsonSettings);
+        }
+
+        private static void HandlePermissionGrant(RequestJob job)
+        {
+            if (!TryParseBody(job, out var body)) return;
+
+            string skill = body.TryGetValue("skill", StringComparison.OrdinalIgnoreCase, out var sToken) ? sToken?.ToString() : null;
+            string token = body.TryGetValue("token", StringComparison.OrdinalIgnoreCase, out var tToken) ? tToken?.ToString() : null;
+            string argsJson = ExtractArgsJson(body);
+
+            if (string.IsNullOrWhiteSpace(skill) || string.IsNullOrWhiteSpace(token))
+            {
+                WritePermissionError(job, 400, SkillErrorCode.MissingParam,
+                    "Both 'skill' and 'token' are required.",
+                    details: new { required = new[] { "skill", "token" }, optional = new[] { "args" } },
+                    retry: SkillErrorResponse.RetryFixAndRetry);
+                return;
+            }
+
+            var outcome = SkillsModeManager.TryGrantDetailed(skill, token, argsJson);
+            switch (outcome)
+            {
+                case GrantOutcome.Granted:
+                    job.StatusCode = 200;
+                    job.ResponseJson = JsonConvert.SerializeObject(new { ok = true, skill }, _jsonSettings);
+                    return;
+                case GrantOutcome.PendingApproval:
+                    job.StatusCode = 200;
+                    job.ResponseJson = SkillErrorResponse.Build(
+                        SkillErrorCode.GrantPendingApproval,
+                        "Token is valid but waiting for panel approval.",
+                        skill: skill,
+                        details: new
+                        {
+                            hint = "Tell the user to click Approve on the Unity panel; then re-call the original skill. Do not retry /permission/grant.",
+                        },
+                        retryStrategy: SkillErrorResponse.RetryAskUserAndGrant,
+                        extra: new Dictionary<string, object> { ["ok"] = false, ["reason"] = "GRANT_PENDING_APPROVAL" });
+                    return;
+                default:
+                    WritePermissionError(job, 400, SkillErrorCode.InvalidToken,
+                        "Grant token is invalid, expired, or does not match (skill, args).",
+                        skill: skill,
+                        details: new { suggestion = "Re-trigger the skill to obtain a fresh MODE_RESTRICTED token bound to your current args." },
+                        retry: SkillErrorResponse.RetryAskUserAndGrant);
+                    return;
+            }
+        }
+
+        private static void HandlePermissionApprove(RequestJob job)
+        {
+            if (!TryParseBody(job, out var body)) return;
+            string token = body.TryGetValue("token", StringComparison.OrdinalIgnoreCase, out var t) ? t?.ToString() : null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                WritePermissionError(job, 400, SkillErrorCode.MissingParam, "'token' is required.", retry: SkillErrorResponse.RetryFixAndRetry);
+                return;
+            }
+            bool ok = SkillsModeManager.Approve(token);
+            job.StatusCode = ok ? 200 : 404;
+            job.ResponseJson = JsonConvert.SerializeObject(new { ok, token }, _jsonSettings);
+        }
+
+        private static void HandlePermissionDeny(RequestJob job)
+        {
+            if (!TryParseBody(job, out var body)) return;
+            string token = body.TryGetValue("token", StringComparison.OrdinalIgnoreCase, out var t) ? t?.ToString() : null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                WritePermissionError(job, 400, SkillErrorCode.MissingParam, "'token' is required.", retry: SkillErrorResponse.RetryFixAndRetry);
+                return;
+            }
+            bool ok = SkillsModeManager.Deny(token);
+            job.StatusCode = ok ? 200 : 404;
+            job.ResponseJson = JsonConvert.SerializeObject(new { ok, token }, _jsonSettings);
+        }
+
+        private static void HandlePermissionRevoke(RequestJob job)
+        {
+            if (!TryParseBody(job, out var body)) return;
+            bool all = body.TryGetValue("all", StringComparison.OrdinalIgnoreCase, out var allToken)
+                && allToken.Type == JTokenType.Boolean && allToken.ToObject<bool>();
+
+            if (all)
+            {
+                int before = SkillsModeManager.GrantedSkills.Count;
+                SkillsModeManager.RevokeAll();
+                job.StatusCode = 200;
+                job.ResponseJson = JsonConvert.SerializeObject(new { ok = true, revoked = before }, _jsonSettings);
+                return;
+            }
+
+            string skill = body.TryGetValue("skill", StringComparison.OrdinalIgnoreCase, out var s) ? s?.ToString() : null;
+            if (string.IsNullOrWhiteSpace(skill))
+            {
+                WritePermissionError(job, 400, SkillErrorCode.MissingParam,
+                    "Provide either 'skill' or 'all:true'.",
+                    retry: SkillErrorResponse.RetryFixAndRetry);
+                return;
+            }
+
+            bool wasGranted = SkillsModeManager.GrantedSkills.Contains(skill);
+            SkillsModeManager.Revoke(skill);
+            job.StatusCode = 200;
+            job.ResponseJson = JsonConvert.SerializeObject(new { ok = true, revoked = wasGranted ? 1 : 0, skill }, _jsonSettings);
+        }
+
+        private static void HandlePermissionAudit(RequestJob job)
+        {
+            var qs = SkillRouter.ParseQueryString(job.QueryString);
+            int limit = 100;
+            if (qs.TryGetValue("limit", out var l) && int.TryParse(l, out var lp))
+                limit = Mathf.Clamp(lp, 1, 1000);
+
+            var entries = SkillsAuditLog.ReadRecent(limit);
+            job.StatusCode = 200;
+            job.ResponseJson = JsonConvert.SerializeObject(new
+            {
+                count = entries.Count,
+                limit,
+                entries,
+                path = SkillsAuditLog.GetLogPath(),
+            }, _jsonSettings);
+        }
+
+        private static bool TryParseBody(RequestJob job, out JObject body)
+        {
+            body = null;
+            try
+            {
+                body = string.IsNullOrWhiteSpace(job.Body) ? new JObject() : JObject.Parse(job.Body);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                WritePermissionError(job, 400, SkillErrorCode.InvalidJson,
+                    $"Invalid JSON body: {ex.Message}",
+                    retry: SkillErrorResponse.RetryFixAndRetry);
+                return false;
+            }
+        }
+
+        private static string ExtractArgsJson(JObject body)
+        {
+            if (body == null) return string.Empty;
+            if (!body.TryGetValue("args", StringComparison.OrdinalIgnoreCase, out var argsToken))
+                return string.Empty;
+            if (argsToken == null || argsToken.Type == JTokenType.Null) return string.Empty;
+            if (argsToken.Type == JTokenType.String) return argsToken.ToString();
+            // Re-serialize without _confirm so hashing matches the SkillRouter-side normalization.
+            if (argsToken is JObject obj)
+            {
+                var clone = (JObject)obj.DeepClone();
+                clone.Remove("_confirm");
+                return clone.ToString(Formatting.None);
+            }
+            return argsToken.ToString(Formatting.None);
+        }
+
+        private static void WritePermissionError(
+            RequestJob job, int statusCode, SkillErrorCode code, string message,
+            string skill = null, object details = null, string retry = null)
+        {
+            job.StatusCode = statusCode;
+            job.ResponseJson = SkillErrorResponse.Build(code, message, skill: skill, details: details, retryStrategy: retry);
         }
 
         private static bool IsTerminalStatus(string status)

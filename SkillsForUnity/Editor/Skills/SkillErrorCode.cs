@@ -28,6 +28,9 @@ namespace UnitySkills
         Timeout,
         NotFound,
         Internal,
+        ModeRestricted,
+        ModeForbidden,
+        GrantPendingApproval,
     }
 
     internal static class SkillErrorCodeExtensions
@@ -56,6 +59,9 @@ namespace UnitySkills
                 case SkillErrorCode.Timeout:              return "TIMEOUT";
                 case SkillErrorCode.NotFound:             return "NOT_FOUND";
                 case SkillErrorCode.Internal:             return "INTERNAL";
+                case SkillErrorCode.ModeRestricted:       return "MODE_RESTRICTED";
+                case SkillErrorCode.ModeForbidden:        return "MODE_FORBIDDEN";
+                case SkillErrorCode.GrantPendingApproval: return "GRANT_PENDING_APPROVAL";
                 default:                                  return "UNKNOWN";
             }
         }

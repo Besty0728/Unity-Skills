@@ -58,6 +58,9 @@ namespace UnitySkills
             public bool SupportsDryRun;
             public string RiskLevel;
             public string[] RequiresPackages;
+            // Permission mode (v1.9). Defaults to FullAuto so unannotated skills go through
+            // the Approval gate; SemiAuto must be explicitly opted in via [UnitySkill(Mode=...)].
+            public SkillMode Mode;
             // Cached to avoid repeated allocations per Execute/DryRun call
             public string[] ParameterNames;
             public HashSet<string> AllowedParameterSet;
@@ -341,6 +344,7 @@ namespace UnitySkills
                                 SupportsDryRun = attr.SupportsDryRun,
                                 RiskLevel = attr.RiskLevel ?? "low",
                                 RequiresPackages = attr.RequiresPackages,
+                                Mode = attr.Mode,
                                 ParameterNames = parameterNames,
                                 AllowedParameterSet = allowedSet,
                                 NameLower = name.ToLowerInvariant(),
@@ -480,6 +484,13 @@ namespace UnitySkills
                         },
                         retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                 }
+
+                // Permission mode gate (v1.9). Runs before the high-risk confirmation gate so
+                // a FullAuto skill that is also high-risk surfaces MODE_RESTRICTED first; the
+                // ConfirmationToken step only matters once the skill is allowed to run at all.
+                var modeGate = ApplyModeGate(skill, name, validation);
+                if (modeGate != null)
+                    return modeGate;
 
                 // Confirmation gate: high-risk skills require an explicit one-shot token
                 // when ConfirmationTokenService.RequireConfirmation is enabled.
@@ -665,7 +676,8 @@ namespace UnitySkills
                         mayEnterPlayMode = skill.MayEnterPlayMode,
                         supportsDryRun = skill.SupportsDryRun,
                         riskLevel = skill.RiskLevel,
-                        requiresPackages = skill.RequiresPackages
+                        requiresPackages = skill.RequiresPackages,
+                        mode = SkillsModeManager.SkillModeToWire(skill.Mode)
                     },
                     parameters = validation.ParameterDetails,
                     validation = new
@@ -855,6 +867,7 @@ namespace UnitySkills
                     supportsDryRun = s.SupportsDryRun,
                     riskLevel = s.RiskLevel,
                     requiresPackages = s.RequiresPackages,
+                    mode = SkillsModeManager.SkillModeToWire(s.Mode),
                     parameters = s.Parameters.Select(p => new
                     {
                         name = p.Name,
@@ -999,6 +1012,7 @@ namespace UnitySkills
             mutatesScene = s.MutatesScene,
             mutatesAssets = s.MutatesAssets,
             requiresPackages = s.RequiresPackages,
+            mode = SkillsModeManager.SkillModeToWire(s.Mode),
         };
 
         // ========== Skill Dependency Chain ==========
@@ -1200,6 +1214,95 @@ namespace UnitySkills
 
                 validation.UnknownParams.Add(entry);
             }
+        }
+
+        /// <summary>
+        /// Returns null when the permission mode allows the skill; otherwise returns a serialized
+        /// error payload (MODE_RESTRICTED or MODE_FORBIDDEN) the caller surfaces unchanged.
+        /// Always writes an audit "call" entry on Allowed so Auto-mode silent executions remain traceable.
+        /// </summary>
+        private static string ApplyModeGate(SkillInfo skill, string name, ParameterValidationResult validation)
+        {
+            var argsForHash = validation?.Args == null ? new JObject() : (JObject)validation.Args.DeepClone();
+            argsForHash.Remove("_confirm");
+            var argsJson = argsForHash.ToString(Formatting.None);
+
+            var access = SkillsModeManager.CheckAccess(skill);
+            var currentMode = SkillsModeManager.CurrentMode;
+            var modeWire = SkillsModeManager.ModeToWire(currentMode);
+
+            switch (access)
+            {
+                case SkillsModeManager.AccessResult.Allowed:
+                    bool highImpact = currentMode == SkillsOperatingMode.Auto
+                        && (skill.MutatesScene || skill.MutatesAssets
+                            || skill.Operation.HasFlag(SkillOperation.Modify)
+                            || skill.Operation.HasFlag(SkillOperation.Create));
+                    SkillsAuditLog.Append("call", new
+                    {
+                        skill = name,
+                        mode = modeWire,
+                        skillMode = SkillsModeManager.SkillModeToWire(skill.Mode),
+                        result = "allowed",
+                        highImpact,
+                    });
+                    return null;
+
+                case SkillsModeManager.AccessResult.Forbidden:
+                    SkillsAuditLog.Append("call", new
+                    {
+                        skill = name,
+                        mode = modeWire,
+                        skillMode = SkillsModeManager.SkillModeToWire(skill.Mode),
+                        result = "forbidden",
+                    });
+                    return SkillErrorResponse.Build(
+                        SkillErrorCode.ModeForbidden,
+                        "This skill is classified as never-in-semi and is only allowed in Bypass mode.",
+                        skill: name,
+                        details: new
+                        {
+                            currentMode = modeWire,
+                            riskLevel = skill.RiskLevel,
+                            mayEnterPlayMode = skill.MayEnterPlayMode,
+                            mayTriggerReload = skill.MayTriggerReload,
+                            operation = FormatOperation(skill.Operation),
+                            hint = "Switch the Unity panel to Bypass mode, or use a different skill.",
+                        },
+                        retryStrategy: SkillErrorResponse.Abort);
+
+                case SkillsModeManager.AccessResult.NeedsGrant:
+                    var (token, ttl, channel) = SkillsModeManager.IssueGrantRequest(name, argsJson);
+                    var channelWire = SkillsModeManager.ChannelToWire(channel);
+                    var pendingSummary = SkillsModeManager.PeekPending(token);
+                    SkillsAuditLog.Append("call", new
+                    {
+                        skill = name,
+                        mode = modeWire,
+                        skillMode = SkillsModeManager.SkillModeToWire(skill.Mode),
+                        result = "restricted",
+                        grantToken = token,
+                        channel = channelWire,
+                    });
+                    return SkillErrorResponse.Build(
+                        SkillErrorCode.ModeRestricted,
+                        "This skill is FullAuto and requires user approval under the current mode.",
+                        skill: name,
+                        details: new
+                        {
+                            currentMode = modeWire,
+                            skillMode = SkillsModeManager.SkillModeToWire(skill.Mode),
+                            approvalChannel = channelWire,
+                            grantRequestToken = token,
+                            tokenTtlSeconds = ttl,
+                            argsSummary = pendingSummary?.ArgsSummary,
+                            hint = channel == SkillsModeManager.ApprovalChannel.Dialog
+                                ? "Ask the user, then POST /permission/grant {skill, token}; on success, re-call this skill."
+                                : "Tell the user to click Approve on the Unity panel; then re-call this skill. Do not poll grant.",
+                        },
+                        retryStrategy: SkillErrorResponse.RetryAskUserAndGrant);
+            }
+            return null;
         }
 
         /// <summary>

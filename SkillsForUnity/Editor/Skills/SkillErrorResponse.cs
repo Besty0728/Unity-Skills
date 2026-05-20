@@ -48,6 +48,7 @@ namespace UnitySkills
         public const string RetryFindAndRetry    = "find_target_and_retry";
         public const string RetryInstallAndRetry = "install_and_retry";
         public const string RetryConfirmAndRetry = "confirm_and_retry";
+        public const string RetryAskUserAndGrant = "ask_user_and_grant";
         public const string Abort                = "abort";
 
         private static readonly JsonSerializerSettings _jsonSettings = SkillsCommon.JsonSettings;
