@@ -2,6 +2,28 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.9.2] - 2026-05-22
+
+### Added
+- **`job_progress` skill** —— BatchSkills + AsyncJobService 共享快照接口，统一查询 batch / async job 的进度、剩余条目、错误明细，避免客户端各自轮询多个端点。
+- **`/skills` manifest 新增 `approvalBehavior` 字段** —— 每条 skill 返回 `allow` / `grant` / `forbid` 三态（基于当前 currentMode + skill 元数据预测，**忽略 Allowlist/一次性 bypass 状态**），AI 启动一次 `/skills` 拉取即可推断在 Approval 模式下每个 skill 的预期行为，不再需要先发起调用再依赖错误码回探。
+
+### Changed
+- **元数据补全 17 项,IsForbiddenInSemi 完全由 metadata 自动判定** —— TestSkills `test_run` / `test_run_by_name` 补 `MayEnterPlayMode`,`test_create_editmode/playmode` 补 `MayTriggerReload+MutatesAssets`;PackageSkills `install_cinemachine/splines` 补 `RiskLevel="high"`;ScriptSkills `rename/move` 补 `MayTriggerReload`;DebugSkills `set_defines` 补 `MayTriggerReload`;WorkflowSkills `bookmark_set/goto` 改 `SemiAuto`;PerceptionSkills `scene_export_report` 改 `SemiAuto`;ProBuilderSkills `delete_faces` 改 `Modify`(不再误标 Delete);CleanerSkills `fix_missing_scripts` 改 `Modify`。完成后 `IsForbiddenInSemi()` 完全由四条元数据规则(Delete / MayEnterPlayMode / MayTriggerReload / RiskLevel=high)自动判定,覆盖 75 个 NeverInSemi skill。
+- **文档全量一致性审查** —— Skill 总数 `714 → 750`(PostProcess 10→20 / Volume 9→18 / URP 7→14 / Decal 7→14 / Test 11→13 等 4 个模块计数修正);68 个 SKILL.md 格式统一(空 H2 清理、Style B→A、advisory 标注);17 处 Mode / NeverInSemi 文档失同步修正(editor / scene / project / prefab / test / workflow / bookmark / batch / probuilder / yooasset / netcode 等);35+ 处 Returns 字段漂移修复(validation Python 示例 `unusedAssets / foldersToDelete` → `assets / folders`、component / console / editor / script / test / shader / animator / terrain / material / light / navmesh / gameobject 等模块的返回字段与 Outputs 元数据对齐)。
+- **`/health` 增加 `grantedCount = allowlistCount` deprecated 别名** —— 与 `/permission/status` 在 v1.9.1 保留 `granted` 别名一致,客户端继续读旧字段不会破坏。下个 minor 版本统一移除。
+- **UI 文案 Bypass "(全自动)" → "(全部直接放行)"** —— 老称谓与现行三档语义不再匹配,改为更精确的描述,避免与 Auto 模式混淆。
+
+### Fixed
+- **`shader_create` template 文档幻觉修正** —— 文档中"Templates"表(Unlit / Standard / Transparent)误导 AI 认为可按模板名调用,实际 `template` 参数是 raw 源码字符串。移除假表格,明确路由到 `shader_create_urp` 处理 URP 模板需求。
+- **DO NOT 列表反向幽灵修正** —— `cleaner/SKILL.md` 错误声称 `cleaner_fix_missing_scripts` 不存在(实际已实现);现已修正为正确分类。
+
+### Removed
+- **`SkillsModeManager._explicitNeverList` 死代码清理** —— 兜底名单 `{scene_clear, scene_new, batch_apply}` 在当前 750 skills 中已**零命中**(全部满足元数据规则),保留只增加未来理解负担。删除后 `IsForbiddenInSemi()` 仅保留四条元数据规则,逻辑更直观。
+
+### Changed (cont.)
+- **版本号更新** —— `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `1.9.2`。
+
 ## [1.9.1] - 2026-05-21
 
 ### Changed
