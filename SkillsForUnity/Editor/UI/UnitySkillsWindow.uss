@@ -156,6 +156,8 @@
 
 .url-pill {
     flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
     height: 22px;
     background-color: var(--color-input-bg);
     border-width: 1px;
@@ -242,11 +244,13 @@
 }
 
 .server-status-text {
+    flex-shrink: 0;
     min-width: 56px;
     margin-right: 4px;
     font-size: 10px;
     color: var(--color-text-secondary);
     -unity-text-align: middle-left;
+    white-space: nowrap;
 }
 
 .server-status-text.on  { color: var(--color-success); }

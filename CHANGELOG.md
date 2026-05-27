@@ -2,6 +2,14 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [1.9.3] - 2026-05-27
+
+### Fixed
+- **2K / 高 DPI 下 Topbar 控件文字重叠（#34）** —— `.server-status-text` 原本仅设 `min-width: 56px`，未声明 `flex-shrink` 与 `white-space`；2K + 中文场景下 "正在运行" 等较长状态字串的渲染宽度超过 56px 时，Label 盒子被父级 flex 行布局压缩回 56px 但字形不收缩，与右侧 `.perm-mode-badge` 视觉重叠。现给 `.server-status-text` 加 `flex-shrink: 0` + `white-space: nowrap`，强制 Label 盒子撑到字形真实宽度且禁止换行；同步给 `.url-pill` 加 `min-width: 0` + `flex-shrink: 1`，让 URL 输入框优先收缩，把空间让给固定宽度的兄弟元素。仅修改 `UnitySkillsWindow.uss` 4 行，零 C# 改动，对 1080p / 既有用户视觉零回归。
+
+### Changed
+- **版本号更新** —— `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `1.9.3`。
+
 ## [1.9.2] - 2026-05-22
 
 ### Added

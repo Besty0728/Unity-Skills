@@ -7,7 +7,7 @@
 
 | 项目 | 值 |
 |------|----|
-| 版本 | 1.9.2 |
+| 版本 | 1.9.3 |
 | 技术栈 | C# (Unity Editor Plugin) + Python (Client) |
 | Unity | 2022.3+（已验证 Unity 6 / 6000.x） |
 | 协议 | MIT |
@@ -127,7 +127,7 @@ public static object SkillName(string name, float x = 0f) { ... }
 
 ### 4. 常量与日志源
 
-- **版本号唯一源**：`SkillsLogger.Version`。`SkillsHttpServer`(`/health`)、`SkillRouter`(`/skills` manifest) 等均引此常量。**禁止硬编码 "1.9.2" 等字面量**。
+- **版本号唯一源**：`SkillsLogger.Version`。`SkillsHttpServer`(`/health`)、`SkillRouter`(`/skills` manifest) 等均引此常量。**禁止硬编码 "1.9.3" 等字面量**。
 - **日志走 `SkillsLogger`**：`Log` / `LogWarning` / `LogError` / `LogVerbose` / `LogAgent`，禁止直调 `Debug.Log*`；前缀颜色用 `PREFIX_*` 常量。
 - **EditorPrefs key 前缀**：统一 `UnitySkills_*`（用于"老安装"检测，参见 `PermissionUiHelpers.IsExistingInstall()`）。
 
