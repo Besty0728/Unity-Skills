@@ -45,7 +45,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = terrainGO.name,
-                instanceId = (int)terrainGO.GetEntityId(),
+                instanceId = terrainGO.GetEntityId().GetHashCode(),
                 terrainDataPath = assetPath,
                 size = new { width, length, height },
                 position = new { x, y, z }
@@ -88,7 +88,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = terrain.name,
-                instanceId = (int)terrain.gameObject.GetEntityId(),
+                instanceId = terrain.gameObject.GetEntityId().GetHashCode(),
                 position = new { x = terrain.transform.position.x, y = terrain.transform.position.y, z = terrain.transform.position.z },
                 size = new { width = data.size.x, height = data.size.y, length = data.size.z },
                 heightmapResolution = data.heightmapResolution,

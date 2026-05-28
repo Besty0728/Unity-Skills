@@ -180,7 +180,7 @@ namespace UnitySkills
             {
                 var (transform, path, sceneName, depth) = stack.Pop();
                 var gameObject = transform.gameObject;
-                var instanceId = (int)gameObject.GetEntityId();
+                var instanceId = gameObject.GetEntityId().GetHashCode();
 
                 cache.Objects.Add(gameObject);
                 cache.PathsByInstanceId[instanceId] = path;
@@ -224,7 +224,7 @@ namespace UnitySkills
             if (go == null)
                 return 0;
 
-            var instanceId = (int)go.GetEntityId();
+            var instanceId = go.GetEntityId().GetHashCode();
             if (_cachedSceneData != null && _cacheValid &&
                 _cachedSceneData.DepthsByInstanceId.TryGetValue(instanceId, out var depth))
                 return depth;
@@ -509,7 +509,7 @@ namespace UnitySkills
             if (go == null)
                 return null;
 
-            var instanceId = (int)go.GetEntityId();
+            var instanceId = go.GetEntityId().GetHashCode();
             var cache = GetOrBuildSceneCache();
             if (cache.PathsByInstanceId.TryGetValue(instanceId, out var cachedPath))
                 return cachedPath;

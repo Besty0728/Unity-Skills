@@ -21,7 +21,7 @@ namespace UnitySkills
             cube.transform.position = new Vector3(x, y, z);
             Undo.RegisterCreatedObjectUndo(cube, "Create " + name);
             WorkflowManager.SnapshotObject(cube, SnapshotType.Created);
-            return new { success = true, name = cube.name, instanceId = (int)cube.GetEntityId(), position = new { x, y, z }, message = $"Created {name} at ({x},{y},{z})" };
+            return new { success = true, name = cube.name, instanceId = cube.GetEntityId().GetHashCode(), position = new { x, y, z }, message = $"Created {name} at ({x},{y},{z})" };
         }
 
         [UnitySkill("create_sphere", "Create a sphere at the specified position",
@@ -35,7 +35,7 @@ namespace UnitySkills
             sphere.transform.position = new Vector3(x, y, z);
             Undo.RegisterCreatedObjectUndo(sphere, "Create " + name);
             WorkflowManager.SnapshotObject(sphere, SnapshotType.Created);
-            return new { success = true, name = sphere.name, instanceId = (int)sphere.GetEntityId(), position = new { x, y, z }, message = $"Created {name} at ({x},{y},{z})" };
+            return new { success = true, name = sphere.name, instanceId = sphere.GetEntityId().GetHashCode(), position = new { x, y, z }, message = $"Created {name} at ({x},{y},{z})" };
         }
 
         [UnitySkill("delete_object", "Delete a GameObject by name",

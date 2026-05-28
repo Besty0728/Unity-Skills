@@ -45,7 +45,7 @@ namespace UnitySkills
                 success = true, 
                 assetPath, 
                 gameObjectName = go.name, 
-                directorInstanceId = (int)director.GetEntityId() 
+                directorInstanceId = director.GetEntityId().GetHashCode() 
             };
         }
 

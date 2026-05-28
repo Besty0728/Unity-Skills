@@ -253,7 +253,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = (int)go.GetEntityId(),
+                instanceId = go.GetEntityId().GetHashCode(),
                 hasUxml = doc.visualTreeAsset != null,
                 hasPanelSettings = doc.panelSettings != null,
                 sortOrder
@@ -306,7 +306,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = (int)go.GetEntityId(),
+                instanceId = go.GetEntityId().GetHashCode(),
                 visualTreeAsset = doc.visualTreeAsset != null ? AssetDatabase.GetAssetPath(doc.visualTreeAsset) : null,
                 panelSettings = doc.panelSettings != null ? AssetDatabase.GetAssetPath(doc.panelSettings) : null,
                 sortingOrder = doc.sortingOrder
@@ -619,7 +619,7 @@ namespace UnitySkills
             var result = docs.Select(doc => new
             {
                 name = doc.gameObject.name,
-                instanceId = (int)doc.gameObject.GetEntityId(),
+                instanceId = doc.gameObject.GetEntityId().GetHashCode(),
                 visualTreeAsset = doc.visualTreeAsset != null ? AssetDatabase.GetAssetPath(doc.visualTreeAsset) : null,
                 panelSettings = doc.panelSettings != null ? AssetDatabase.GetAssetPath(doc.panelSettings) : null,
                 sortingOrder = doc.sortingOrder,
@@ -1697,7 +1697,7 @@ public class {className} : MonoBehaviour
             return new
             {
                 gameObject = go.name,
-                instanceId = (int)go.GetEntityId(),
+                instanceId = go.GetEntityId().GetHashCode(),
                 hierarchy
             };
         }

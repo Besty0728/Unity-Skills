@@ -196,7 +196,7 @@ namespace UnitySkills
             {
                 name = asset.name,
                 path = string.IsNullOrEmpty(path) ? null : path,
-                instanceId = (int)asset.GetEntityId(),
+                instanceId = asset.GetEntityId().GetHashCode(),
                 type = asset.GetType().Name
             };
         }

@@ -56,7 +56,7 @@ namespace UnitySkills
                 }
             }
 
-            return new { success = true, gameObjectName = go.name, instanceId = (int)go.GetEntityId() };
+            return new { success = true, gameObjectName = go.name, instanceId = go.GetEntityId().GetHashCode() };
 #endif
         }
 
@@ -1177,7 +1177,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Sequencer Camera");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, gameObjectName = go.name, instanceId = (int)go.GetEntityId(), type = CinemachineAdapter.SequencerTypeName, loop };
+            return new { success = true, gameObjectName = go.name, instanceId = go.GetEntityId().GetHashCode(), type = CinemachineAdapter.SequencerTypeName, loop };
 #endif
         }
 
@@ -1273,7 +1273,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create FreeLook Camera");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, gameObjectName = go.name, instanceId = (int)go.GetEntityId() };
+            return new { success = true, gameObjectName = go.name, instanceId = go.GetEntityId().GetHashCode() };
 #endif
         }
 

@@ -609,7 +609,7 @@ namespace UnitySkills
                     list.Add(new
                     {
                         gameObject = g.Key.name,
-                        instanceId = (int)g.Key.GetEntityId(),
+                        instanceId = g.Key.GetEntityId().GetHashCode(),
                         animationIndex = idx++,
                         animationType = DOTweenReflectionHelper.GetFieldByCandidates(c, DOTweenReflectionHelper.AnimationTypeFieldCandidates)?.ToString(),
                         duration = DOTweenReflectionHelper.GetFieldByCandidates(c, DOTweenReflectionHelper.DurationFieldCandidates),

@@ -484,7 +484,7 @@ namespace UnitySkills
 
             info["type"] = type.Name;
             info["gameObject"] = comp.gameObject.name;
-            info["instanceId"] = (int)comp.gameObject.GetEntityId();
+            info["instanceId"] = comp.gameObject.GetEntityId().GetHashCode();
             info["enabled"] = comp is Behaviour b ? b.enabled : true;
 
             // Read common XR properties (verified from XRI source code)

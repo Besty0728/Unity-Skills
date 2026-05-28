@@ -169,7 +169,7 @@ namespace UnitySkills
                     name,
                     shader = shaderName,
                     path = (string)null,
-                    instanceId = (int)material.GetEntityId(),
+                    instanceId = material.GetEntityId().GetHashCode(),
                     renderPipeline = pipelineType2.ToString(),
                     colorProperty = ProjectSkills.GetColorPropertyName(),
                     textureProperty = ProjectSkills.GetMainTexturePropertyName(),

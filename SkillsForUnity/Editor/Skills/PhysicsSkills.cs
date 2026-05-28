@@ -34,9 +34,9 @@ namespace UnitySkills
                 {
                     hit = true,
                     collider = hit.collider.name,
-                    colliderInstanceId = (int)hit.collider.GetEntityId(),
+                    colliderInstanceId = hit.collider.GetEntityId().GetHashCode(),
                     objectName = hit.collider.gameObject.name,
-                    objectInstanceId = (int)hit.collider.gameObject.GetEntityId(),
+                    objectInstanceId = hit.collider.gameObject.GetEntityId().GetHashCode(),
                     path = GameObjectFinder.GetPath(hit.collider.gameObject),
                     point = new { x = hit.point.x, y = hit.point.y, z = hit.point.z },
                     normal = new { x = hit.normal.x, y = hit.normal.y, z = hit.normal.z },
@@ -132,7 +132,7 @@ namespace UnitySkills
             var results = hits.OrderBy(h => h.distance).Select(h => new
             {
                 objectName = h.collider.gameObject.name,
-                instanceId = (int)h.collider.gameObject.GetEntityId(),
+                instanceId = h.collider.gameObject.GetEntityId().GetHashCode(),
                 path = GameObjectFinder.GetPath(h.collider.gameObject),
                 point = new { x = h.point.x, y = h.point.y, z = h.point.z },
                 normal = new { x = h.normal.x, y = h.normal.y, z = h.normal.z },
@@ -163,7 +163,7 @@ namespace UnitySkills
                 {
                     hit = true,
                     objectName = hit.collider.gameObject.name,
-                    instanceId = (int)hit.collider.gameObject.GetEntityId(),
+                    instanceId = hit.collider.gameObject.GetEntityId().GetHashCode(),
                     point = new { x = hit.point.x, y = hit.point.y, z = hit.point.z },
                     distance = hit.distance
                 };
@@ -195,7 +195,7 @@ namespace UnitySkills
                 {
                     hit = true,
                     objectName = hit.collider.gameObject.name,
-                    instanceId = (int)hit.collider.gameObject.GetEntityId(),
+                    instanceId = hit.collider.gameObject.GetEntityId().GetHashCode(),
                     point = new { x = hit.point.x, y = hit.point.y, z = hit.point.z },
                     distance = hit.distance
                 };

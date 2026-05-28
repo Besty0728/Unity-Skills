@@ -39,7 +39,7 @@ namespace UnitySkills
 
             var bookmark = new BookmarkData
             {
-                selectedInstanceIds = Selection.entityIds?.Select(e => (int)e).ToArray() ?? Array.Empty<int>(),
+                selectedInstanceIds = Selection.entityIds?.Select(e => e.GetHashCode()).ToArray() ?? Array.Empty<int>(),
                 note = note,
                 createdAt = System.DateTime.Now
             };

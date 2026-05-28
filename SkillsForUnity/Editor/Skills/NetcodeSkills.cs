@@ -138,7 +138,7 @@ namespace UnitySkills
 #else
             var existing = FindHelper.FindAll<NetworkManager>(includeInactive: true);
             if (existing.Length > 0)
-                return new { error = $"NetworkManager already exists: '{existing[0].gameObject.name}' (instanceId={existing[0].(int)gameObject.GetEntityId()}). Only one is supported." };
+                return new { error = $"NetworkManager already exists: '{existing[0].gameObject.name}' (instanceId={existing[0].gameObject.GetEntityId().GetHashCode()}). Only one is supported." };
 
             var go = new GameObject(string.IsNullOrEmpty(name) ? "NetworkManager" : name);
             Undo.RegisterCreatedObjectUndo(go, "Create NetworkManager");
@@ -151,7 +151,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = (int)go.GetEntityId(),
+                instanceId = go.GetEntityId().GetHashCode(),
                 transportType = nameof(UnityTransport)
             };
 #endif
@@ -276,7 +276,7 @@ namespace UnitySkills
             {
                 found = true,
                 name = nm.gameObject.name,
-                instanceId = (int)nm.gameObject.GetEntityId(),
+                instanceId = nm.gameObject.GetEntityId().GetHashCode(),
                 config = cfgSnap,
                 runtime
             };
@@ -501,7 +501,7 @@ namespace UnitySkills
 
             var existing = go.GetComponent<NetworkObject>();
             if (existing != null)
-                return new { error = $"GameObject '{go.name}' already has a NetworkObject (instanceId={(int)existing.GetEntityId()})." };
+                return new { error = $"GameObject '{go.name}' already has a NetworkObject (instanceId={existing.GetEntityId().GetHashCode()})." };
 
             var no = Undo.AddComponent<NetworkObject>(go);
             if (alwaysReplicateAsRoot.HasValue) no.AlwaysReplicateAsRoot = alwaysReplicateAsRoot.Value;
@@ -518,7 +518,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = (int)go.GetEntityId(),
+                instanceId = go.GetEntityId().GetHashCode(),
                 globalObjectIdHash = GetGlobalObjectIdHash(no)
             };
 #endif
@@ -608,7 +608,7 @@ namespace UnitySkills
             var list = all.Select(no => new
             {
                 name = no.gameObject.name,
-                instanceId = (int)no.gameObject.GetEntityId(),
+                instanceId = no.gameObject.GetEntityId().GetHashCode(),
                 globalObjectIdHash = GetGlobalObjectIdHash(no),
                 isSpawned = Application.isPlaying && no.IsSpawned,
                 networkObjectId = Application.isPlaying && no.IsSpawned ? (ulong?)no.NetworkObjectId : null,
@@ -643,7 +643,7 @@ namespace UnitySkills
             {
                 found = true,
                 name = go.name,
-                instanceId = (int)go.GetEntityId(),
+                instanceId = go.GetEntityId().GetHashCode(),
                 globalObjectIdHash = GetGlobalObjectIdHash(no),
                 alwaysReplicateAsRoot = no.AlwaysReplicateAsRoot,
                 synchronizeTransform = no.SynchronizeTransform,
@@ -1217,7 +1217,7 @@ namespace UnitySkills
             {
                 type = nb.GetType().Name,
                 gameObject = nb.gameObject.name,
-                instanceId = (int)nb.gameObject.GetEntityId(),
+                instanceId = nb.gameObject.GetEntityId().GetHashCode(),
                 isSpawned = Application.isPlaying && nb.IsSpawned,
                 isOwner = Application.isPlaying && nb.IsOwner
             }).ToArray();
