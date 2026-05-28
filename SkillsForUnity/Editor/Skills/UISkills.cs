@@ -136,7 +136,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 renderMode = canvas.renderMode.ToString()
             };
         }
@@ -166,7 +166,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Panel");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name };
         }
 
         [UnitySkill("ui_create_button", "Create a Button UI element",
@@ -204,7 +204,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Button");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, text };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name, text };
         }
 
         [UnitySkill("ui_create_text", "Create a Text UI element",
@@ -229,7 +229,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Text");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, usingTMP = IsTMPAvailable() };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name, usingTMP = IsTMPAvailable() };
         }
 
         [UnitySkill("ui_create_image", "Create an Image UI element",
@@ -261,7 +261,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Image");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name };
         }
 
         [UnitySkill("ui_create_batch", "Create multiple UI elements (Efficient). items: JSON array of {type, name, parent, text, width, height, ...}",
@@ -452,7 +452,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create InputField");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, placeholder, usingTMP = IsTMPAvailable() };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name, placeholder, usingTMP = IsTMPAvailable() };
         }
 
         [UnitySkill("ui_create_slider", "Create a Slider UI element",
@@ -525,7 +525,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Slider");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, minValue, maxValue, value };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name, minValue, maxValue, value };
         }
 
         [UnitySkill("ui_create_toggle", "Create a Toggle UI element",
@@ -586,7 +586,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Toggle");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, label, isOn };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name, label, isOn };
         }
 
         [UnitySkill("ui_set_text", "Set text content on a UI Text element (supports name/instanceId/path)",
@@ -651,7 +651,7 @@ namespace UnitySkills
                     results.Add(new
                     {
                         name = element.name,
-                        instanceId = element.gameObject.GetInstanceID(),
+                        instanceId = (int)element.gameObject.GetEntityId(),
                         path = GameObjectFinder.GetCachedPath(element.gameObject),
                         uiType = type,
                         active = element.gameObject.activeInHierarchy
@@ -1179,7 +1179,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Dropdown");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, optionCount = optionList.Count };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name, optionCount = optionList.Count };
         }
 
         [UnitySkill("ui_create_scrollview", "Create a ScrollRect (ScrollView) UI element",
@@ -1238,7 +1238,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create ScrollView");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, horizontal, vertical };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name, horizontal, vertical };
         }
 
         [UnitySkill("ui_create_rawimage", "Create a RawImage UI element (for Texture2D/RenderTexture)",
@@ -1270,7 +1270,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create RawImage");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, hasTexture = rawImage.texture != null };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name, hasTexture = rawImage.texture != null };
         }
 
         [UnitySkill("ui_create_scrollbar", "Create a standalone Scrollbar UI element",
@@ -1326,7 +1326,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Scrollbar");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), parent = parentGo.name, direction };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), parent = parentGo.name, direction };
         }
 
         // ==================================================================================

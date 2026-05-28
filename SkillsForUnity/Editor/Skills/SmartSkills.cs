@@ -81,7 +81,7 @@ namespace UnitySkills
                     results.Add(new 
                     {
                         name = go.name,
-                        instanceId = go.GetInstanceID(),
+                        instanceId = (int)go.GetEntityId(),
                         path = GameObjectFinder.GetPath(go),
                         propertyValue = FormatValue(val)
                     });
@@ -409,7 +409,7 @@ namespace UnitySkills
                 }
                 results.Add(new
                 {
-                    name = go.name, instanceId = go.GetInstanceID(),
+                    name = go.name, instanceId = (int)go.GetEntityId(),
                     path = GameObjectFinder.GetPath(go),
                     distance = Vector3.Distance(center, go.transform.position)
                 });

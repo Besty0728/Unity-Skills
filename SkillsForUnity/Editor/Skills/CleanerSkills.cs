@@ -203,7 +203,7 @@ namespace UnitySkills
                     {
                         if (prop.propertyType == SerializedPropertyType.ObjectReference)
                         {
-                            if (prop.objectReferenceValue == null && prop.objectReferenceInstanceIDValue != 0)
+                            if (prop.objectReferenceValue == null && (int)prop.objectReferenceEntityIdValue != 0)
                             {
                                 issues.Add(new
                                 {

@@ -62,7 +62,7 @@ namespace UnitySkills
                 {
                     success = true,
                     name = go.name,
-                    instanceId = go.GetInstanceID(),
+                    instanceId = (int)go.GetEntityId(),
                     path = GameObjectFinder.GetPath(go),
                     position = new { x = item.x, y = item.y, z = item.z }
                 };
@@ -136,7 +136,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 path = GameObjectFinder.GetPath(go),
                 parent = parentGo != null ? parentGo.name : "(root)",
                 position = new { x, y, z }
@@ -165,7 +165,7 @@ namespace UnitySkills
                 success = true, 
                 oldName, 
                 newName = go.name, 
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 path = GameObjectFinder.GetPath(go)
             };
         }
@@ -191,7 +191,7 @@ namespace UnitySkills
                 Undo.RecordObject(go, "Batch Rename " + go.name);
                 go.name = item.newName;
 
-                return new { success = true, oldName, newName = go.name, instanceId = go.GetInstanceID() };
+                return new { success = true, oldName, newName = go.name, instanceId = (int)go.GetEntityId() };
             }, item => item.name ?? item.path ?? item.instanceId.ToString());
         }
 
@@ -327,7 +327,7 @@ namespace UnitySkills
             var list = results.Take(limit).Select(go => new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 path = GameObjectFinder.GetCachedPath(go),
                 tag = go.tag,
                 layer = LayerMask.LayerToName(go.layer),
@@ -404,7 +404,7 @@ namespace UnitySkills
                 {
                     success = true,
                     name = go.name,
-                    instanceId = go.GetInstanceID(),
+                    instanceId = (int)go.GetEntityId(),
                     isUI = true,
                     anchoredPosition = new { x = rt.anchoredPosition.x, y = rt.anchoredPosition.y },
                     anchorMin = new { x = rt.anchorMin.x, y = rt.anchorMin.y },
@@ -420,7 +420,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 isUI = false,
                 position = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z },
                 localPosition = new { x = go.transform.localPosition.x, y = go.transform.localPosition.y, z = go.transform.localPosition.z },
@@ -555,7 +555,7 @@ namespace UnitySkills
                 success = true,
                 originalName = go.name,
                 copyName = copy.name,
-                copyInstanceId = copy.GetInstanceID(),
+                copyInstanceId = (int)copy.GetEntityId(),
                 copyPath = GameObjectFinder.GetPath(copy)
             };
         }
@@ -582,7 +582,7 @@ namespace UnitySkills
                     success = true,
                     originalName = go.name,
                     copyName = copy.name,
-                    copyInstanceId = copy.GetInstanceID(),
+                    copyInstanceId = (int)copy.GetEntityId(),
                     copyPath = GameObjectFinder.GetPath(copy)
                 };
             }, item => item.name ?? item.path ?? item.instanceId.ToString());
@@ -652,7 +652,7 @@ namespace UnitySkills
                 children.Add(new
                 {
                     name = child.name,
-                    instanceId = child.gameObject.GetInstanceID(),
+                    instanceId = (int)child.gameObject.GetEntityId(),
                     path = GameObjectFinder.GetCachedPath(child.gameObject)
                 });
             }
@@ -660,7 +660,7 @@ namespace UnitySkills
             return new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 path = GameObjectFinder.GetCachedPath(go),
                 tag = go.tag,
                 layer = LayerMask.LayerToName(go.layer),

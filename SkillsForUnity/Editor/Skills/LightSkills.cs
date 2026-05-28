@@ -72,7 +72,7 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 lightType = light.type.ToString(),
                 position = new { x, y, z },
                 color = new { r, g, b },
@@ -175,7 +175,7 @@ namespace UnitySkills
             return new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 path = GameObjectFinder.GetPath(go),
                 lightType = light.type.ToString(),
                 color = new { r = light.color.r, g = light.color.g, b = light.color.b },
@@ -208,7 +208,7 @@ namespace UnitySkills
             var results = lights.Take(limit).Select(l => new
             {
                 name = l.gameObject.name,
-                instanceId = l.gameObject.GetInstanceID(),
+                instanceId = (int)l.gameObject.GetEntityId(),
                 path = GameObjectFinder.GetPath(l.gameObject),
                 lightType = l.type.ToString(),
                 intensity = l.intensity,
@@ -379,7 +379,7 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Reflection Probe");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID(), resolution, size = new { x = sizeX, y = sizeY, z = sizeZ } };
+            return new { success = true, name = go.name, instanceId = (int)go.GetEntityId(), resolution, size = new { x = sizeX, y = sizeY, z = sizeZ } };
         }
 
         [UnitySkill("light_get_lightmap_settings", "Get Lightmap baking settings",

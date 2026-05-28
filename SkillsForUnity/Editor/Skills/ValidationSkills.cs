@@ -452,7 +452,7 @@ namespace UnitySkills
                     while (prop.NextVisible(true))
                     {
                         if (prop.propertyType == SerializedPropertyType.ObjectReference &&
-                            prop.objectReferenceValue == null && prop.objectReferenceInstanceIDValue != 0)
+                            prop.objectReferenceValue == null && (int)prop.objectReferenceEntityIdValue != 0)
                         {
                             results.Add(new { gameObject = go.name, path = GameObjectFinder.GetPath(go),
                                 component = comp.GetType().Name, property = prop.propertyPath });

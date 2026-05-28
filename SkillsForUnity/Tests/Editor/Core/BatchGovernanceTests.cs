@@ -199,7 +199,7 @@ namespace UnitySkills.Tests.Core
             {
                 targetName = go.name,
                 targetPath = GameObjectFinder.GetCachedPath(go),
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 action = "set_property",
                 status = "failed",
                 before = "1",

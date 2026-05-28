@@ -46,7 +46,7 @@ namespace UnitySkills
             var objects = targets.Take(Math.Max(1, sampleLimit)).Select(go => new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 path = GameObjectFinder.GetCachedPath(go),
                 components = go.GetComponents<Component>().Where(component => component != null).Select(component => component.GetType().Name).ToArray()
             }).ToArray();
@@ -755,7 +755,7 @@ namespace UnitySkills
             if (!query.includeInactive)
                 results = results.Where(go => go.activeInHierarchy);
             if (query.instanceId != 0)
-                results = results.Where(go => go.GetInstanceID() == query.instanceId);
+                results = results.Where(go => (int)go.GetEntityId() == query.instanceId);
             if (!string.IsNullOrWhiteSpace(query.path))
                 results = results.Where(go => string.Equals(GameObjectFinder.GetCachedPath(go), query.path.Trim(), StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrWhiteSpace(query.name))
@@ -853,7 +853,7 @@ namespace UnitySkills
                     action = "rename",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    instanceId = (int)target.GetEntityId(),
                     sceneName = target.scene.name,
                     currentValue = target.name,
                     nextValue = nextName,
@@ -930,7 +930,7 @@ namespace UnitySkills
                     action = "set_property",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    instanceId = (int)target.GetEntityId(),
                     sceneName = target.scene.name,
                     componentType = componentType,
                     propertyName = propertyName,
@@ -978,7 +978,7 @@ namespace UnitySkills
                     action = "replace_material",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    instanceId = (int)target.GetEntityId(),
                     sceneName = target.scene.name,
                     currentMaterialPath = currentPath,
                     nextMaterialPath = materialPath,
@@ -1005,7 +1005,7 @@ namespace UnitySkills
                     action = "remove_missing_scripts",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    instanceId = (int)target.GetEntityId(),
                     sceneName = target.scene.name,
                     currentValue = missingCount.ToString(),
                     nextValue = "0",
@@ -1038,7 +1038,7 @@ namespace UnitySkills
                     action = "rename",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    instanceId = (int)target.GetEntityId(),
                     sceneName = target.scene.name,
                     currentValue = target.name,
                     nextValue = standardized,
@@ -1078,7 +1078,7 @@ namespace UnitySkills
                     action = "set_layer",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    instanceId = (int)target.GetEntityId(),
                     sceneName = target.scene.name,
                     currentLayer = currentLayer,
                     nextLayer = layer,
@@ -1108,7 +1108,7 @@ namespace UnitySkills
                     action = "delete_gameobject",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    instanceId = (int)target.GetEntityId(),
                     sceneName = target.scene.name,
                     reason = $"matched_pattern:{matchedPattern}",
                     willChange = true
@@ -1189,7 +1189,7 @@ namespace UnitySkills
                 action = action,
                 targetName = target.name,
                 targetPath = GameObjectFinder.GetCachedPath(target),
-                instanceId = target.GetInstanceID(),
+                instanceId = (int)target.GetEntityId(),
                 sceneName = target.scene.name,
                 currentValue = currentValue,
                 nextValue = nextValue,
@@ -1245,7 +1245,7 @@ namespace UnitySkills
             return new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                instanceId = (int)go.GetEntityId(),
                 path = GameObjectFinder.GetCachedPath(go),
                 scene = go.scene.name,
                 tag = go.tag,
