@@ -25,6 +25,10 @@ DOTween Free/Pro support for project diagnostics, settings, module/API discovery
 - Runtime tween generation creates `.cs` scripts only; it does not auto-attach scripts to scene objects because Unity may need a Domain Reload first.
 - For source-level runtime API design rules, load [dotween-design](../dotween-design/SKILL.md).
 
+## Exact Signatures
+
+Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file. The signatures shown below are illustrative; treat the schema endpoint as the source of truth.
+
 ## Free Skills
 
 ### Diagnostics and settings
@@ -75,15 +79,17 @@ dotween_generate_sequence_script className=ButtonPop targetKind=Transform stepsJ
 
 ### `dotween_pro_add_animation`
 Add one DOTweenAnimation to a GameObject and configure all core fields.
-**Parameters:** `target` / `animationType` / `endValueV3?` / `endValueFloat?` / `endValueColor?` / `endValueV2?` / `endValueString?` / `endValueRect?` / `duration=1` / `ease="OutQuad"` / `loops=1` / `loopType="Yoyo"` / `delay=0` / `isRelative=false` / `isFrom=false` / `autoPlay=true` / `autoKill=true` / `id?`
+**Parameters:** `target` / `animationType` / `endValueV3` / `endValueFloat` / `endValueColor` / `endValueV2` / `endValueString` / `endValueRect` / `duration` / `ease` / `loops` / `loopType` / `delay` / `isRelative` / `isFrom` / `autoPlay` / `autoKill` / `id`
+(Defaults and exact types live in `GET /skills/schema` — see "## Exact Signatures" above.)
 
 ### `dotween_pro_batch_add_animation`
 Add the same animation to multiple GameObjects.
-**Parameters:** `targetsJson` (JSON string array) + all params of `dotween_pro_add_animation`.
+**Parameters:** `targetsJson` (JSON string array) — plus every parameter of dotween_pro_add_animation above.
 
 ### `dotween_pro_stagger_animations`
 Batch-add with incrementing delay — UI cascade entrance pattern.
-**Parameters:** `targetsJson` / `animationType` / `endValueV3?` / `endValueFloat?` / `endValueColor?` / `endValueV2?` / `duration=0.5` / `ease="OutBack"` / `loops=1` / `loopType="Yoyo"` / `baseDelay=0` / `staggerDelay=0.1` / `isFrom=true` / `autoPlay=true` / `autoKill=true`
+**Parameters:** `targetsJson` / `animationType` / `endValueV3` / `endValueFloat` / `endValueColor` / `endValueV2` / `duration` / `ease` / `loops` / `loopType` / `baseDelay` / `staggerDelay` / `isFrom` / `autoPlay` / `autoKill`
+(Defaults and exact types live in `GET /skills/schema` — see "## Exact Signatures" above.)
 
 ### `dotween_pro_set_duration`
 Change `duration` on an existing DOTweenAnimation. Parameters: `target`, `animationIndex=0`, `duration`.

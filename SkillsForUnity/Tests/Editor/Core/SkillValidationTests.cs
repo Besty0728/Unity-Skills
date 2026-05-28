@@ -37,6 +37,46 @@ namespace UnitySkills.Tests.Core
             AssertSuggestion(unknownParams, "shaderName", "searchName");
         }
 
+        /// <summary>
+        /// R1 (issue #1 Define→Develop gate): legacy clients depend on the nested
+        /// <c>details.unknownParams</c> path. D2 surfaces <c>unknownParams</c>
+        /// additively at top-level; this fixture pins the nested path so D2 stays
+        /// backward-compatible. If a future refactor consolidates to a single
+        /// source of truth (top-level only), this test must change in the same
+        /// PR as the consumer migration.
+        /// </summary>
+        [Test]
+        public void Execute_UnknownParamErrorEnvelope_PreservesNestedDetailsPath_ForLegacyClients()
+        {
+            var response = JObject.Parse(SkillRouter.Execute("gameobject_set_transform", @"{""x"":0,""y"":1,""z"":2}"));
+
+            Assert.That(response["status"]?.ToString(), Is.EqualTo("error"));
+
+            // Nested path is the legacy contract — must stay structurally unchanged.
+            var details = response["details"] as JObject;
+            Assert.That(details, Is.Not.Null, "details object must be present");
+
+            var nestedUnknown = details["unknownParams"] as JArray;
+            Assert.That(nestedUnknown, Is.Not.Null, "details.unknownParams (legacy) must remain present");
+            Assert.That(nestedUnknown.Count, Is.EqualTo(3));
+
+            var nestedAllowed = details["allowedParams"] as JArray;
+            Assert.That(nestedAllowed, Is.Not.Null.And.Not.Empty, "details.allowedParams must remain present");
+
+            // And the top-level path D2 adds must be structurally equivalent to the nested
+            // one — same count, same parameter names — so consumers reading either get the
+            // same data. (If they ever drift, the "two sources of truth" risk has manifested.)
+            var topLevel = response["unknownParams"] as JArray;
+            Assert.That(topLevel, Is.Not.Null, "top-level unknownParams (D2) must be present");
+            Assert.That(topLevel.Count, Is.EqualTo(nestedUnknown.Count),
+                "top-level and nested unknownParams must have the same element count");
+
+            var nestedNames = nestedUnknown.OfType<JObject>().Select(o => o["parameter"]?.ToString()).OrderBy(s => s).ToList();
+            var topLevelNames = topLevel.OfType<JObject>().Select(o => o["parameter"]?.ToString()).OrderBy(s => s).ToList();
+            CollectionAssert.AreEqual(nestedNames, topLevelNames,
+                "top-level and nested unknownParams must list the same parameter names");
+        }
+
         [Test]
         public void Plan_WithTimelineAssetPath_ReturnsSemanticValidationError()
         {

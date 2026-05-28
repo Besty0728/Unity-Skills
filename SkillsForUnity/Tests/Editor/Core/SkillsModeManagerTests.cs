@@ -308,10 +308,14 @@ namespace UnitySkills.Tests.Core
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
 
+            // v1.9.x removed the historical _explicitNeverList (scene_clear/scene_new/
+            // batch_apply) — see SkillsModeManager.cs:89-94. Forbidden now means a
+            // metadata flag is set (Operation=Delete / MayEnterPlayMode / MayTriggerReload
+            // / RiskLevel=high). Cover two distinct flavours to exercise the OR-branch.
             Assert.AreEqual(SkillsModeManager.AccessResult.Forbidden,
                 SkillsModeManager.CheckAccess(MakeSkill("delete_thing", op: SkillOperation.Delete)));
             Assert.AreEqual(SkillsModeManager.AccessResult.Forbidden,
-                SkillsModeManager.CheckAccess(MakeSkill("scene_clear")));
+                SkillsModeManager.CheckAccess(MakeSkill("reload_scene", mayTriggerReload: true)));
         }
 
         // ═════════════════════════════════════════════════════════════════
@@ -389,7 +393,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void IsForbiddenInSemi_CoversAllAutoJudgementBranches()
         {
-            // Five flavours that MUST be forbidden in Approval / Auto.
+            // v1.9.x is metadata-only: four flavours that MUST be forbidden in
+            // Approval / Auto. The historical _explicitNeverList fallback was
+            // removed (see SkillsModeManager.cs:89-94) — no name-based check.
             Assert.IsTrue(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("del", op: SkillOperation.Delete)),
                 "SkillOperation.Delete must be forbidden");
@@ -402,9 +408,12 @@ namespace UnitySkills.Tests.Core
             Assert.IsTrue(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("hot", risk: "high")),
                 "RiskLevel=\"high\" must be forbidden");
-            Assert.IsTrue(SkillsModeManager.IsForbiddenInSemi(
+
+            // A plain skill with NO forbidden metadata must NOT be forbidden,
+            // even if its name resembles a historical never-list entry.
+            Assert.IsFalse(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("scene_clear")),
-                "Names in the explicit never list must be forbidden");
+                "Name-only matching is intentionally not a forbidden trigger anymore");
 
             // Plain SemiAuto / FullAuto without any flag must NOT be forbidden.
             Assert.IsFalse(SkillsModeManager.IsForbiddenInSemi(
@@ -477,6 +486,68 @@ namespace UnitySkills.Tests.Core
         }
 
         // ═════════════════════════════════════════════════════════════════
+        //  Test matrix #17.5 — R2 migration safety pins (issue #1 Define→Develop gate):
+        //
+        //  These tests pin the three branches of the CurrentMode getter so a future
+        //  attempt to revert the fresh-install default from Auto to Approval (D1,
+        //  initially planned for PR#2 of issue #1) is forced to revisit each branch
+        //  case-by-case rather than silently flipping behavior:
+        //
+        //   (a) explicit pref present          → that pref's value (no fallback)
+        //   (b) implicit (no pref, no legacy)  → Auto  ← current contract; D1 wants Approval
+        //   (c) legacy install marker present  → Bypass
+        //
+        //  D1 status: DEFERRED. The PR#2 verification run surfaced an 8-test regression
+        //  cascade in fixtures (SelectionDrivenSkillTests, EditorUndoRedoTests) that
+        //  rode on the implicit Auto default. Codex flagged this exact risk at the
+        //  Define→Develop debate gate (R2). The fix requires a test-environment-level
+        //  [SetUpFixture] that sets Bypass for the whole UnitySkills.Tests.Core
+        //  namespace before D1 can land. That work is its own PR — tracked as
+        //  follow-up issue #3.
+        //
+        //  Cases (b) and (c) are also covered by #16 / #17 above; this fixture is the
+        //  explicit migration matrix so the contract is grouped in one place.
+        // ═════════════════════════════════════════════════════════════════
+
+        [Test]
+        public void CurrentMode_ExplicitAutoPref_PersistsAcrossFreshInstallDefaultRevert()
+        {
+            // User explicitly chose Auto. Whether the fresh-install fallback is Auto
+            // (today) or Approval (post-D1), the explicit pref MUST win.
+            EditorPrefs.SetString(PrefKeyMode, SkillsOperatingMode.Auto.ToString());
+
+            Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
+            Assert.AreEqual("Auto", EditorPrefs.GetString(PrefKeyMode));
+        }
+
+        [Test]
+        public void CurrentMode_MigrationMatrix_AllThreeBranchesHonorIntent()
+        {
+            // Case (a) — explicit pref dominates. Use a value distinct from the
+            // current default so the assertion isn't trivially satisfied.
+            EditorPrefs.SetString(PrefKeyMode, SkillsOperatingMode.Approval.ToString());
+            Assert.AreEqual(SkillsOperatingMode.Approval, SkillsModeManager.CurrentMode,
+                "(a) explicit pref must override the default fall-through");
+            EditorPrefs.DeleteKey(PrefKeyMode);
+
+            // Case (b) — implicit fresh install (no pref, no legacy markers) → Auto today.
+            // When D1 lands, this assertion will be the canary that signals the
+            // behavior flip; the same fixture then needs updating in lock-step.
+            foreach (var k in LegacyInstallKeys) EditorPrefs.DeleteKey(k);
+            Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
+            Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode,
+                "(b) fresh install with no keys defaults to Auto (D1 deferred — see issue #3)");
+
+            // Case (c) — legacy install marker present (no mode pref) → Bypass.
+            EditorPrefs.SetInt(LegacyInstallKeys[0], 1);
+            Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode,
+                "(c) legacy install marker must still flip the default to Bypass");
+            // Getter must NOT have planted PrefKeyMode as a side effect.
+            Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode),
+                "default-path resolution must remain side-effect free in EditorPrefs");
+        }
+
+        // ═════════════════════════════════════════════════════════════════
         //  Test matrix #18 — Allowlist API: add / remove / clear / IsInAllowlist
         // ═════════════════════════════════════════════════════════════════
 
@@ -519,19 +590,27 @@ namespace UnitySkills.Tests.Core
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
 
-            // 默认拦截
+            // v1.9.x is metadata-only — use a metadata-forbidden skill instead of
+            // the now-defunct explicit never-list name ("scene_clear"). See
+            // SkillsModeManager.cs:89-94 for the rationale on removing the list.
+            const string skill = "delete_thing";
+
+            // 默认拦截（metadata flag → Forbidden）
             Assert.AreEqual(SkillsModeManager.AccessResult.Forbidden,
-                SkillsModeManager.CheckAccess(MakeSkill("scene_clear")));
+                SkillsModeManager.CheckAccess(MakeSkill(skill, op: SkillOperation.Delete)));
 
-            // 加入 Allowlist 后被放行（即使在 explicit never list 里）
-            Assert.IsTrue(SkillsModeManager.AddToAllowlist("scene_clear"));
+            // 加入 Allowlist 后被放行（Allowlist 优先于 IsForbiddenInSemi）
+            Assert.IsTrue(SkillsModeManager.AddToAllowlist(skill));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
-                SkillsModeManager.CheckAccess(MakeSkill("scene_clear")));
+                SkillsModeManager.CheckAccess(MakeSkill(skill, op: SkillOperation.Delete)));
 
-            // 同样适用于 metadata 判定的高危 skill
-            Assert.IsTrue(SkillsModeManager.AddToAllowlist("delete_thing"));
+            // 高危 mayTriggerReload 也同样可被 Allowlist 放行
+            const string reloadSkill = "reload_scene";
+            Assert.AreEqual(SkillsModeManager.AccessResult.Forbidden,
+                SkillsModeManager.CheckAccess(MakeSkill(reloadSkill, mayTriggerReload: true)));
+            Assert.IsTrue(SkillsModeManager.AddToAllowlist(reloadSkill));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
-                SkillsModeManager.CheckAccess(MakeSkill("delete_thing", op: SkillOperation.Delete)));
+                SkillsModeManager.CheckAccess(MakeSkill(reloadSkill, mayTriggerReload: true)));
         }
 
         // ═════════════════════════════════════════════════════════════════

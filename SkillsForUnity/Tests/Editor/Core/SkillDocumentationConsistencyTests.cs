@@ -34,7 +34,19 @@ namespace UnitySkills.Tests.Core
             "testability",
             "bookmark",
             "history",
-            "shadergraph-design"
+            "shadergraph-design",
+            // Issue #1: these five "-design" modules all self-label as
+            // "Advisory module" in their SKILL.md front-matter and contain
+            // zero `### skill_name` blocks — they are pattern/rule docs for
+            // the AI to read, not skill catalogs that need schema-first
+            // `Exact Signatures` pointers. Grouping them with `shadergraph-design`
+            // (the existing precedent) instead of stamping each SKILL.md with
+            // boilerplate.
+            "addressables-design",
+            "dotween-design",
+            "netcode-design",
+            "unitask-design",
+            "yooasset-design"
         };
 
         private static readonly HashSet<string> ExactSignatureOptionalModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
