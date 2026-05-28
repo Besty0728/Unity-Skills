@@ -122,6 +122,11 @@ namespace UnitySkills.Tests.Core
             var prefabPath = Path.Combine(TempRoot, "Replacement.prefab").Replace('\\', '/');
             PrefabUtility.SaveAsPrefabAsset(sourcePrefabGo, prefabPath);
             Object.DestroyImmediate(sourcePrefabGo);
+            // Unity 6 import pipeline is genuinely async — SaveAsPrefabAsset queues an
+            // import that may not complete before AssetDatabase.LoadAssetAtPath reads
+            // the imported asset cache, returning null in the skill body. Force
+            // synchronous import so the prefab is visible to the next LoadAssetAtPath.
+            AssetDatabase.ImportAsset(prefabPath, ImportAssetOptions.ForceSynchronousImport);
 
             var a = CreateObject("ReplaceA", new Vector3(1, 0, 0));
             var b = CreateObject("ReplaceB", new Vector3(2, 0, 0));

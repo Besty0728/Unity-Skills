@@ -2,6 +2,7 @@ using System.Linq;
 using NUnit.Framework;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -11,6 +12,12 @@ namespace UnitySkills.Tests.Core
     [TestFixture]
     public class PerceptionSkillsTests
     {
+        // Some tests in this fixture (e.g. SceneDiff_SnapshotOnlyIncludesActiveSceneObjects)
+        // save scenes under Assets/CodexTemp/RealValidation/. EditorSceneManager.SaveScene
+        // returns false with "Parent directory must exist before creating asset" if the
+        // folder isn't present, so we create it lazily in [SetUp].
+        private const string TempRoot = "Assets/CodexTemp/RealValidation";
+
         private static JObject ToJObject(object result)
         {
             return JObject.Parse(JsonConvert.SerializeObject(result));
@@ -21,12 +28,19 @@ namespace UnitySkills.Tests.Core
         {
             EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
             GameObjectFinder.InvalidateCache();
+
+            if (!AssetDatabase.IsValidFolder("Assets/CodexTemp"))
+                AssetDatabase.CreateFolder("Assets", "CodexTemp");
+            if (!AssetDatabase.IsValidFolder(TempRoot))
+                AssetDatabase.CreateFolder("Assets/CodexTemp", "RealValidation");
         }
 
         [TearDown]
         public void TearDown()
         {
             GameObjectFinder.InvalidateCache();
+            if (AssetDatabase.IsValidFolder(TempRoot))
+                AssetDatabase.DeleteAsset(TempRoot);
         }
 
         [Test]
