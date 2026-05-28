@@ -523,10 +523,14 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void CurrentMode_MigrationMatrix_AllThreeBranchesHonorIntent()
         {
-            // Case (a) — explicit pref dominates. Use a value distinct from the
-            // current default so the assertion isn't trivially satisfied.
-            EditorPrefs.SetString(PrefKeyMode, SkillsOperatingMode.Approval.ToString());
-            Assert.AreEqual(SkillsOperatingMode.Approval, SkillsModeManager.CurrentMode,
+            // Case (a) — explicit pref dominates. Use `Bypass` so the assertion
+            // is non-vacuous in BOTH the current default state (`Auto`) AND
+            // the post-D1 default state (`Approval`) — picking either of those
+            // would make this case redundant once D1 lands. `Bypass` is the
+            // only value that's always distinct from the default fall-through
+            // path regardless of D1 status. See follow-up #4.
+            EditorPrefs.SetString(PrefKeyMode, SkillsOperatingMode.Bypass.ToString());
+            Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode,
                 "(a) explicit pref must override the default fall-through");
             EditorPrefs.DeleteKey(PrefKeyMode);
 
