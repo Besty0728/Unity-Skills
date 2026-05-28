@@ -486,6 +486,72 @@ namespace UnitySkills.Tests.Core
         }
 
         // ═════════════════════════════════════════════════════════════════
+        //  Test matrix #17.5 — R2 migration safety pins (issue #1 Define→Develop gate):
+        //
+        //  These tests pin the three branches of the CurrentMode getter so a future
+        //  attempt to revert the fresh-install default from Auto to Approval (D1,
+        //  initially planned for PR#2 of issue #1) is forced to revisit each branch
+        //  case-by-case rather than silently flipping behavior:
+        //
+        //   (a) explicit pref present          → that pref's value (no fallback)
+        //   (b) implicit (no pref, no legacy)  → Auto  ← current contract; D1 wants Approval
+        //   (c) legacy install marker present  → Bypass
+        //
+        //  D1 status: DEFERRED. The PR#2 verification run surfaced an 8-test regression
+        //  cascade in fixtures (SelectionDrivenSkillTests, EditorUndoRedoTests) that
+        //  rode on the implicit Auto default. Codex flagged this exact risk at the
+        //  Define→Develop debate gate (R2). The fix requires a test-environment-level
+        //  [SetUpFixture] that sets Bypass for the whole UnitySkills.Tests.Core
+        //  namespace before D1 can land. That work is its own PR — tracked as
+        //  follow-up issue #3.
+        //
+        //  Cases (b) and (c) are also covered by #16 / #17 above; this fixture is the
+        //  explicit migration matrix so the contract is grouped in one place.
+        // ═════════════════════════════════════════════════════════════════
+
+        [Test]
+        public void CurrentMode_ExplicitAutoPref_PersistsAcrossFreshInstallDefaultRevert()
+        {
+            // User explicitly chose Auto. Whether the fresh-install fallback is Auto
+            // (today) or Approval (post-D1), the explicit pref MUST win.
+            EditorPrefs.SetString(PrefKeyMode, SkillsOperatingMode.Auto.ToString());
+
+            Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
+            Assert.AreEqual("Auto", EditorPrefs.GetString(PrefKeyMode));
+        }
+
+        [Test]
+        public void CurrentMode_MigrationMatrix_AllThreeBranchesHonorIntent()
+        {
+            // Case (a) — explicit pref dominates. Use `Bypass` so the assertion
+            // is non-vacuous in BOTH the current default state (`Auto`) AND
+            // the post-D1 default state (`Approval`) — picking either of those
+            // would make this case redundant once D1 lands. `Bypass` is the
+            // only value that's always distinct from the default fall-through
+            // path regardless of D1 status. See follow-up #4.
+            EditorPrefs.SetString(PrefKeyMode, SkillsOperatingMode.Bypass.ToString());
+            Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode,
+                "(a) explicit pref must override the default fall-through");
+            EditorPrefs.DeleteKey(PrefKeyMode);
+
+            // Case (b) — implicit fresh install (no pref, no legacy markers) → Auto today.
+            // When D1 lands, this assertion will be the canary that signals the
+            // behavior flip; the same fixture then needs updating in lock-step.
+            foreach (var k in LegacyInstallKeys) EditorPrefs.DeleteKey(k);
+            Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
+            Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode,
+                "(b) fresh install with no keys defaults to Auto (D1 deferred — see issue #3)");
+
+            // Case (c) — legacy install marker present (no mode pref) → Bypass.
+            EditorPrefs.SetInt(LegacyInstallKeys[0], 1);
+            Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode,
+                "(c) legacy install marker must still flip the default to Bypass");
+            // Getter must NOT have planted PrefKeyMode as a side effect.
+            Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode),
+                "default-path resolution must remain side-effect free in EditorPrefs");
+        }
+
+        // ═════════════════════════════════════════════════════════════════
         //  Test matrix #18 — Allowlist API: add / remove / clear / IsInAllowlist
         // ═════════════════════════════════════════════════════════════════
 

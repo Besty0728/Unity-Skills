@@ -438,13 +438,25 @@ namespace UnitySkills
                 if (validation.UnknownParams.Count > 0)
                 {
                     var fixes = BuildUnknownParamFixes(name, validation.UnknownParams);
+                    // Issue #1 D2 + R1: `unknownParams` is surfaced BOTH at top-level
+                    // (for upstream Besty0728/main parity — see SkillValidationTests
+                    // Execute_WithUnknownTransformParameters / Execute_WithUnknownShaderParameter)
+                    // AND nested at `details.unknownParams` (legacy clients depend on
+                    // the nested path — pinned by
+                    // SkillValidationTests.Execute_UnknownParamErrorEnvelope_PreservesNestedDetailsPath_ForLegacyClients).
+                    // Keep both writes in sync; consolidating to a single source of
+                    // truth is tracked for a v-next schema bump.
                     return SkillErrorResponse.Build(
                         SkillErrorCode.UnknownParam,
                         $"Unknown parameters: {string.Join(", ", ExtractValidationParameterNames(validation.UnknownParams))}",
                         skill: name,
                         details: new { unknownParams = validation.UnknownParams.ToArray(), allowedParams = skill.ParameterNames },
                         suggestedFixes: fixes,
-                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry,
+                        extra: new Dictionary<string, object>
+                        {
+                            ["unknownParams"] = validation.UnknownParams.ToArray(),
+                        });
                 }
 
                 if (validation.MissingParams.Count > 0)
