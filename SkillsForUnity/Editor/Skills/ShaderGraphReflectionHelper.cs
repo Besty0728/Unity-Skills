@@ -406,8 +406,22 @@ namespace UnitySkills
                     return false;
                 }
 
+                // Issue #1 PR#3 (Unity 6.5 + URP 17.5 compat): Unity's own internal
+                // path for the same write — `CreateShaderSubGraph.cs` inside
+                // `com.unity.shadergraph@17.5` — calls `AssetDatabase.Refresh()`
+                // RIGHT AFTER `WriteShaderGraphToDisk`. Skipping the refresh on
+                // 17.5 causes the import worker to deliver a partially-populated
+                // GraphData on the next `LoadAssetAtPath`, which fails subgraph
+                // creation and any subsequent `TryAddNode` against the freshly
+                // written asset. ImportAsset(ForceUpdate) + SaveAssets is not a
+                // substitute on 17.5 — both run before Refresh has had a chance
+                // to settle the worker's view of the file.
+                //
+                // Cheap on Approval cost (small targeted refresh after a write
+                // we already initiated); fixes #3 / #4 / #5 in issue #1.
                 AssetDatabase.ImportAsset(assetPath, ImportAssetOptions.ForceUpdate);
                 AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
                 return true;
             }
             catch (Exception ex)
@@ -2336,22 +2350,71 @@ namespace UnitySkills
         {
             var type = instance.GetType();
             var methods = GetMethodsRecursive(type, methodName).ToArray();
-            foreach (var method in methods)
+
+            // Prefer exact-arity matches first; fall back to optional-default matches
+            // (caller passed fewer args than the signature, and every trailing
+            // parameter on the method has a default value the runtime can fill in).
+            //
+            // Issue #1 PR#3: Unity 6.5 / URP 17.5 widened several ShaderGraph methods
+            // by appending optional `bool` flags (e.g. GraphData.AddNode now takes
+            // `(AbstractMaterialNode node, bool usePreviewPref = true)` rather than
+            // just `(AbstractMaterialNode node)`). Without optional-default
+            // tolerance here, every 1-arg `AddNode` call in this adapter fails with
+            // MissingMethodException and the entire SG mutation surface goes dark.
+            // Same shape will hit again on future Unity SG API additions; this is
+            // the durable fix rather than a per-call workaround.
+            foreach (var method in methods.OrderBy(m =>
+                Math.Abs(m.GetParameters().Length - arguments.Length)))
             {
                 var parameters = method.GetParameters();
-                if (parameters.Length != arguments.Length)
-                    continue;
 
-                try
+                // Exact-arity path (original behavior, preferred when possible).
+                if (parameters.Length == arguments.Length)
                 {
-                    var invokeArguments = new object[arguments.Length];
-                    for (var i = 0; i < parameters.Length; i++)
-                        invokeArguments[i] = ChangeType(arguments[i], parameters[i].ParameterType);
-                    return method.Invoke(instance, invokeArguments);
+                    try
+                    {
+                        var invokeArguments = new object[arguments.Length];
+                        for (var i = 0; i < parameters.Length; i++)
+                            invokeArguments[i] = ChangeType(arguments[i], parameters[i].ParameterType);
+                        return method.Invoke(instance, invokeArguments);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
                 }
-                catch
+
+                // Optional-default path: signature is wider than the caller, every
+                // surplus parameter has a default. Fill them in from the reflection
+                // metadata. Don't accept narrower signatures (would require dropping
+                // caller intent).
+                if (parameters.Length > arguments.Length)
                 {
-                    // Try the next overload.
+                    var trailingAllOptional = true;
+                    for (var i = arguments.Length; i < parameters.Length; i++)
+                    {
+                        if (!parameters[i].HasDefaultValue)
+                        {
+                            trailingAllOptional = false;
+                            break;
+                        }
+                    }
+                    if (!trailingAllOptional)
+                        continue;
+
+                    try
+                    {
+                        var invokeArguments = new object[parameters.Length];
+                        for (var i = 0; i < arguments.Length; i++)
+                            invokeArguments[i] = ChangeType(arguments[i], parameters[i].ParameterType);
+                        for (var i = arguments.Length; i < parameters.Length; i++)
+                            invokeArguments[i] = parameters[i].DefaultValue;
+                        return method.Invoke(instance, invokeArguments);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
                 }
             }
 
