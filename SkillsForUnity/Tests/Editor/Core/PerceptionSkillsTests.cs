@@ -245,6 +245,19 @@ namespace UnitySkills.Tests.Core
         public void SceneDiff_SnapshotOnlyIncludesActiveSceneObjects()
         {
             const string testFolder = "Assets/CodexTemp/RealValidation";
+
+            // 确保临时目录存在
+            if (!AssetDatabase.IsValidFolder(testFolder))
+            {
+                var parentFolder = "Assets/CodexTemp";
+                if (!AssetDatabase.IsValidFolder(parentFolder))
+                {
+                    AssetDatabase.CreateFolder("Assets", "CodexTemp");
+                }
+                AssetDatabase.CreateFolder(parentFolder, "RealValidation");
+                AssetDatabase.Refresh();
+            }
+
             try
             {
                 var activeScene = SceneManager.GetActiveScene();

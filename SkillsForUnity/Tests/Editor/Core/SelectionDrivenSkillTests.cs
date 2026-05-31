@@ -19,6 +19,18 @@ namespace UnitySkills.Tests.Core
             _savedMode = SkillsModeManager.CurrentMode;
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
 
+            // 确保临时目录存在
+            if (!AssetDatabase.IsValidFolder(TempRoot))
+            {
+                var parentFolder = "Assets/CodexTemp";
+                if (!AssetDatabase.IsValidFolder(parentFolder))
+                {
+                    AssetDatabase.CreateFolder("Assets", "CodexTemp");
+                }
+                AssetDatabase.CreateFolder(parentFolder, "SelectionDrivenSkillTests");
+                AssetDatabase.Refresh();
+            }
+
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             Selection.objects = new Object[0];
             GameObjectFinder.InvalidateCache();

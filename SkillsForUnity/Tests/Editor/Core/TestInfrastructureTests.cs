@@ -82,6 +82,19 @@ namespace UnitySkills.Tests.Core
         public void TestRun_WhenAnotherRunIsActive_ReturnsErrorInsteadOfStartingConcurrentRunner()
         {
             const string testFolder = "Assets/CodexTemp/RealValidation";
+
+            // 确保临时目录存在
+            if (!AssetDatabase.IsValidFolder(testFolder))
+            {
+                var parentFolder = "Assets/CodexTemp";
+                if (!AssetDatabase.IsValidFolder(parentFolder))
+                {
+                    AssetDatabase.CreateFolder("Assets", "CodexTemp");
+                }
+                AssetDatabase.CreateFolder(parentFolder, "RealValidation");
+                AssetDatabase.Refresh();
+            }
+
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var cleanScenePath = "Assets/CodexTemp/RealValidation/ActiveJobGuardScene.unity";
             Assert.That(EditorSceneManager.SaveScene(SceneManager.GetActiveScene(), cleanScenePath), Is.True);
