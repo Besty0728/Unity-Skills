@@ -1383,7 +1383,7 @@ namespace UnitySkills
                 foreach (var mat in renderer.sharedMaterials)
                 {
                     if (mat == null) continue;
-                    var key = mat.GetInstanceID().ToString();
+                    var key = UnityObjectIdUtility.GetEntityId(mat);
                     if (!materialMap.ContainsKey(key))
                     {
                         materialMap[key] = new MaterialInfo
@@ -1397,13 +1397,13 @@ namespace UnitySkills
                         if (includeProperties && mat.shader != null)
                         {
                             var props = new List<object>();
-                            int count = ShaderUtil.GetPropertyCount(mat.shader);
+                            int count = mat.shader.GetPropertyCount();
                             for (int i = 0; i < count; i++)
                             {
                                 props.Add(new
                                 {
-                                    name = ShaderUtil.GetPropertyName(mat.shader, i),
-                                    type = ShaderUtil.GetPropertyType(mat.shader, i).ToString()
+                                    name = mat.shader.GetPropertyName(i),
+                                    type = mat.shader.GetPropertyType(i).ToString()
                                 });
                             }
                             materialMap[key].properties = props;
@@ -2817,7 +2817,7 @@ namespace UnitySkills
             // 4. Duplicate materials
             var mats = renderers.SelectMany(r => r.sharedMaterials).Where(m => m != null).ToArray();
             var uniqueShaders = mats.Select(m => m.shader?.name).Distinct().Count();
-            var duplicateCount = mats.Length - mats.Select(m => m.GetInstanceID()).Distinct().Count();
+            var duplicateCount = mats.Length - mats.Select(UnityObjectIdUtility.GetEntityId).Distinct().Count();
             if (duplicateCount > 10)
                 hints.Add(new { priority = 3, category = "Materials", issue = $"{duplicateCount} duplicate material references",
                     suggestion = "Consolidate materials", fixSkill = "optimize_find_duplicate_materials" });
@@ -2866,20 +2866,20 @@ namespace UnitySkills
             try { previousSnapshot = JArray.Parse(snapshotJson); }
             catch (Exception ex) { return new { error = $"Invalid snapshotJson: {ex.Message}" }; }
 
-            var previousMap = new Dictionary<int, JObject>();
+            var previousMap = new Dictionary<string, JObject>(StringComparer.Ordinal);
             foreach (var item in previousSnapshot)
             {
-                var id = item["instanceId"]?.Value<int>() ?? 0;
-                if (id != 0)
+                var id = GetSnapshotIdentity(item as JObject);
+                if (!string.IsNullOrEmpty(id))
                     previousMap[id] = item as JObject;
             }
 
             var currentSnapshot = CaptureSceneSnapshot();
-            var currentMap = new Dictionary<int, Dictionary<string, object>>();
+            var currentMap = new Dictionary<string, Dictionary<string, object>>(StringComparer.Ordinal);
             foreach (var item in currentSnapshot)
             {
-                var id = GetPropertyValue<int>(item, "instanceId", 0);
-                if (id != 0)
+                var id = GetSnapshotIdentity(item);
+                if (!string.IsNullOrEmpty(id))
                     currentMap[id] = item as Dictionary<string, object> ?? new Dictionary<string, object>();
             }
 
@@ -2894,7 +2894,8 @@ namespace UnitySkills
                 {
                     added.Add(new
                     {
-                        instanceId = kvp.Key,
+                        entityId = GetPropertyValue<string>(kvp.Value, "entityId", null),
+                        instanceId = GetPropertyValue<int>(kvp.Value, "instanceId", 0),
                         name = GetPropertyValue<string>(kvp.Value, "name", ""),
                         path = GetPropertyValue<string>(kvp.Value, "path", "")
                     });
@@ -2908,7 +2909,8 @@ namespace UnitySkills
                 {
                     removed.Add(new
                     {
-                        instanceId = kvp.Key,
+                        entityId = kvp.Value["entityId"]?.ToString(),
+                        instanceId = kvp.Value["instanceId"]?.Value<int>() ?? 0,
                         name = kvp.Value["name"]?.ToString() ?? "",
                         path = kvp.Value["path"]?.ToString() ?? ""
                     });
@@ -2949,7 +2951,8 @@ namespace UnitySkills
                     {
                         modified.Add(new
                         {
-                            instanceId = kvp.Key,
+                            entityId = GetPropertyValue<string>(kvp.Value, "entityId", null),
+                            instanceId = GetPropertyValue<int>(kvp.Value, "instanceId", 0),
                             name = curName,
                             path = curPath,
                             changes = changes.ToArray()
@@ -3012,7 +3015,8 @@ namespace UnitySkills
 
             snapshot.Add(new Dictionary<string, object>
             {
-                ["instanceId"] = go.GetInstanceID(),
+                ["entityId"] = UnityObjectIdUtility.GetEntityId(go),
+                ["instanceId"] = UnityObjectIdUtility.GetObjectId(go),
                 ["name"] = go.name,
                 ["path"] = GameObjectFinder.GetPath(go),
                 ["componentList"] = string.Join(",", components),
@@ -3026,6 +3030,34 @@ namespace UnitySkills
             {
                 CaptureSceneSnapshotRecursive(t.GetChild(i).gameObject, activeScene, snapshot);
             }
+        }
+
+        private static string GetSnapshotIdentity(JObject item)
+        {
+            if (item == null)
+                return null;
+
+            var entityId = item["entityId"]?.ToString();
+            if (!string.IsNullOrWhiteSpace(entityId))
+                return "entity:" + entityId.Trim();
+
+            var instanceId = item["instanceId"]?.Value<int>() ?? 0;
+            return instanceId != 0 ? "instance:" + instanceId.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+        }
+
+        private static string GetSnapshotIdentity(object item)
+        {
+            if (item is IDictionary<string, object> dictionary)
+            {
+                var entityId = GetPropertyValue<string>(dictionary, "entityId", null);
+                if (!string.IsNullOrWhiteSpace(entityId))
+                    return "entity:" + entityId.Trim();
+
+                var instanceId = GetPropertyValue<int>(dictionary, "instanceId", 0);
+                return instanceId != 0 ? "instance:" + instanceId.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+            }
+
+            return null;
         }
 
         private static bool HasVectorDifference(

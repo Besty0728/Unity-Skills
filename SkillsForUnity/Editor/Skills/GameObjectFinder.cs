@@ -16,14 +16,38 @@ namespace UnitySkills.Internal
     {
         internal static T[] FindAll<T>(bool includeInactive = false) where T : Object
         {
-#if UNITY_6000_0_OR_NEWER
+#if UNITY_6000_4_OR_NEWER
+            return includeInactive
+                ? Object.FindObjectsByType<T>(FindObjectsInactive.Include)
+                : Object.FindObjectsByType<T>(FindObjectsInactive.Exclude);
+#elif UNITY_6000_0_OR_NEWER || UNITY_2022_2_OR_NEWER
             return includeInactive
                 ? Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None)
-                : Object.FindObjectsByType<T>(FindObjectsSortMode.None);
+                : Object.FindObjectsByType<T>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
 #else
             return includeInactive
                 ? Resources.FindObjectsOfTypeAll<T>()
                 : Object.FindObjectsOfType<T>();
+#endif
+        }
+
+        internal static Object[] FindAll(System.Type type, bool includeInactive = false)
+        {
+            if (type == null)
+                return System.Array.Empty<Object>();
+
+#if UNITY_6000_4_OR_NEWER
+            return includeInactive
+                ? Object.FindObjectsByType(type, FindObjectsInactive.Include)
+                : Object.FindObjectsByType(type, FindObjectsInactive.Exclude);
+#elif UNITY_6000_0_OR_NEWER || UNITY_2022_2_OR_NEWER
+            return includeInactive
+                ? Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None)
+                : Object.FindObjectsByType(type, FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+#else
+            return includeInactive
+                ? Resources.FindObjectsOfTypeAll(type)
+                : Object.FindObjectsOfType(type);
 #endif
         }
     }
@@ -135,7 +159,7 @@ namespace UnitySkills
 
     /// <summary>
     /// Unified utility for finding GameObjects by multiple methods.
-    /// Supports: name, instance ID, hierarchy path, tag, component type.
+    /// Supports: name, entityId, legacy instance ID, hierarchy path, tag, component type.
     /// Enhanced with intelligent fallback search strategies.
     /// </summary>
     public static class GameObjectFinder
@@ -143,8 +167,10 @@ namespace UnitySkills
         private sealed class SceneObjectCache
         {
             public readonly List<GameObject> Objects = new List<GameObject>();
-            public readonly Dictionary<int, string> PathsByInstanceId = new Dictionary<int, string>();
-            public readonly Dictionary<int, int> DepthsByInstanceId = new Dictionary<int, int>();
+            public readonly Dictionary<string, string> PathsByEntityId =
+                new Dictionary<string, string>(System.StringComparer.Ordinal);
+            public readonly Dictionary<string, int> DepthsByEntityId =
+                new Dictionary<string, int>(System.StringComparer.Ordinal);
             public readonly Dictionary<string, GameObject> PathLookup =
                 new Dictionary<string, GameObject>(System.StringComparer.OrdinalIgnoreCase);
         }
@@ -180,11 +206,14 @@ namespace UnitySkills
             {
                 var (transform, path, sceneName, depth) = stack.Pop();
                 var gameObject = transform.gameObject;
-                var instanceId = gameObject.GetInstanceID();
+                var entityId = UnityObjectIdUtility.GetEntityId(gameObject);
 
                 cache.Objects.Add(gameObject);
-                cache.PathsByInstanceId[instanceId] = path;
-                cache.DepthsByInstanceId[instanceId] = depth;
+                if (!string.IsNullOrEmpty(entityId))
+                {
+                    cache.PathsByEntityId[entityId] = path;
+                    cache.DepthsByEntityId[entityId] = depth;
+                }
                 AddPathLookup(cache.PathLookup, path, gameObject);
 
                 if (!string.IsNullOrEmpty(sceneName))
@@ -224,9 +253,10 @@ namespace UnitySkills
             if (go == null)
                 return 0;
 
-            var instanceId = go.GetInstanceID();
+            var entityId = UnityObjectIdUtility.GetEntityId(go);
             if (_cachedSceneData != null && _cacheValid &&
-                _cachedSceneData.DepthsByInstanceId.TryGetValue(instanceId, out var depth))
+                !string.IsNullOrEmpty(entityId) &&
+                _cachedSceneData.DepthsByEntityId.TryGetValue(entityId, out var depth))
                 return depth;
 
             depth = 0;
@@ -237,8 +267,8 @@ namespace UnitySkills
                 parent = parent.parent;
             }
 
-            if (_cachedSceneData != null && _cacheValid)
-                _cachedSceneData.DepthsByInstanceId[instanceId] = depth;
+            if (_cachedSceneData != null && _cacheValid && !string.IsNullOrEmpty(entityId))
+                _cachedSceneData.DepthsByEntityId[entityId] = depth;
 
             return depth;
         }
@@ -279,25 +309,38 @@ namespace UnitySkills
 
         /// <summary>
         /// Find a GameObject using flexible parameters with intelligent fallback.
-        /// Priority: instanceId > path > name (exact) > name (contains) > tag > component
+        /// Priority: entityId > instanceId > path > name (exact) > name (contains) > tag > component
         /// </summary>
         /// <param name="name">Simple name to search (uses GameObject.Find, then fallback to contains)</param>
-        /// <param name="instanceId">Unity instance ID (most precise)</param>
+        /// <param name="instanceId">Legacy Unity instance ID fallback</param>
         /// <param name="path">Hierarchy path like "Parent/Child/Target"</param>
         /// <param name="tag">Tag to search by (e.g., "MainCamera", "Player")</param>
         /// <param name="componentType">Find first object with this component (e.g., "Camera")</param>
+        /// <param name="entityId">Unity EntityId serialized as a decimal ulong string</param>
         /// <returns>Found GameObject or null</returns>
-        public static GameObject Find(string name = null, int instanceId = 0, string path = null, string tag = null, string componentType = null)
+        public static GameObject Find(string name = null, int instanceId = 0, string path = null, string tag = null, string componentType = null, string entityId = null)
         {
-            // Priority 1: Instance ID (most precise, works regardless of selection/focus)
-            if (instanceId != 0)
+            // Priority 1: EntityId (most precise, Unity 6000.5-safe).
+            if (!string.IsNullOrWhiteSpace(entityId))
             {
-                var obj = EditorUtility.InstanceIDToObject(instanceId);
+                var obj = UnityObjectIdUtility.EntityIdToObject(entityId);
                 if (obj is GameObject go)
                     return go;
+                if (obj is Component component)
+                    return component.gameObject;
             }
 
-            // Priority 2: Hierarchy path (works for nested objects)
+            // Priority 2: Legacy instance ID fallback.
+            if (instanceId != 0)
+            {
+                var obj = UnityObjectIdUtility.ObjectIdToObject(instanceId);
+                if (obj is GameObject go)
+                    return go;
+                if (obj is Component component)
+                    return component.gameObject;
+            }
+
+            // Priority 3: Hierarchy path (works for nested objects)
             if (!string.IsNullOrEmpty(path))
             {
                 var go = FindByPath(path);
@@ -305,7 +348,7 @@ namespace UnitySkills
                     return go;
             }
 
-            // Priority 3: Simple name search (exact match first)
+            // Priority 4: Simple name search (exact match first)
             if (!string.IsNullOrEmpty(name))
             {
                 var go = FindByNameCaseInsensitive(name);
@@ -318,7 +361,7 @@ namespace UnitySkills
                     return go;
             }
 
-            // Priority 4: Tag search
+            // Priority 5: Tag search
             if (!string.IsNullOrEmpty(tag))
             {
                 var go = GetAllSceneObjects().FirstOrDefault(candidate =>
@@ -330,7 +373,7 @@ namespace UnitySkills
                     return go;
             }
 
-            // Priority 5: Component type search
+            // Priority 6: Component type search
             if (!string.IsNullOrEmpty(componentType))
             {
                 var go = FindByComponent(componentType);
@@ -509,25 +552,28 @@ namespace UnitySkills
             if (go == null)
                 return null;
 
-            var instanceId = go.GetInstanceID();
+            var entityId = UnityObjectIdUtility.GetEntityId(go);
             var cache = GetOrBuildSceneCache();
-            if (cache.PathsByInstanceId.TryGetValue(instanceId, out var cachedPath))
+            if (!string.IsNullOrEmpty(entityId) &&
+                cache.PathsByEntityId.TryGetValue(entityId, out var cachedPath))
                 return cachedPath;
 
             var path = GetPath(go);
-            cache.PathsByInstanceId[instanceId] = path;
+            if (!string.IsNullOrEmpty(entityId))
+                cache.PathsByEntityId[entityId] = path;
             return path;
         }
 
         /// <summary>
         /// Find or report error with helpful suggestions
         /// </summary>
-        public static (GameObject go, object error) FindOrError(string name = null, int instanceId = 0, string path = null, string tag = null, string componentType = null)
+        public static (GameObject go, object error) FindOrError(string name = null, int instanceId = 0, string path = null, string tag = null, string componentType = null, string entityId = null)
         {
-            var go = Find(name, instanceId, path, tag, componentType);
+            var go = Find(name, instanceId, path, tag, componentType, entityId);
             if (go == null)
             {
-                var identifier = instanceId != 0 ? $"instanceId {instanceId}" : 
+                var identifier = !string.IsNullOrEmpty(entityId) ? $"entityId {entityId}" :
+                    instanceId != 0 ? $"instanceId {instanceId}" :
                     !string.IsNullOrEmpty(path) ? $"path '{path}'" :
                     !string.IsNullOrEmpty(tag) ? $"tag '{tag}'" :
                     !string.IsNullOrEmpty(componentType) ? $"component '{componentType}'" :
@@ -547,9 +593,9 @@ namespace UnitySkills
         /// <summary>
         /// Find a GameObject and get a required component, or return an error.
         /// </summary>
-        public static (T component, object error) FindComponentOrError<T>(string name = null, int instanceId = 0, string path = null) where T : Component
+        public static (T component, object error) FindComponentOrError<T>(string name = null, int instanceId = 0, string path = null, string entityId = null) where T : Component
         {
-            var (go, err) = FindOrError(name, instanceId, path);
+            var (go, err) = FindOrError(name, instanceId, path, entityId: entityId);
             if (err != null) return (null, err);
             var comp = go.GetComponent<T>();
             if (comp == null) return (null, new { error = $"No {typeof(T).Name} component on {go.name}" });

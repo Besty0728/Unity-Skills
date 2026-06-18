@@ -138,7 +138,7 @@ namespace UnitySkills
 #else
             var existing = FindHelper.FindAll<NetworkManager>(includeInactive: true);
             if (existing.Length > 0)
-                return new { error = $"NetworkManager already exists: '{existing[0].gameObject.name}' (instanceId={existing[0].gameObject.GetInstanceID()}). Only one is supported." };
+                return new { error = $"NetworkManager already exists: '{existing[0].gameObject.name}' (entityId={UnityObjectIdUtility.GetEntityId(existing[0].gameObject)}, instanceId={UnityObjectIdUtility.GetObjectId(existing[0].gameObject)}). Only one is supported." };
 
             var go = new GameObject(string.IsNullOrEmpty(name) ? "NetworkManager" : name);
             Undo.RegisterCreatedObjectUndo(go, "Create NetworkManager");
@@ -151,7 +151,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 transportType = nameof(UnityTransport)
             };
 #endif
@@ -276,7 +277,8 @@ namespace UnitySkills
             {
                 found = true,
                 name = nm.gameObject.name,
-                instanceId = nm.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(nm.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(nm.gameObject),
                 config = cfgSnap,
                 runtime
             };
@@ -501,7 +503,7 @@ namespace UnitySkills
 
             var existing = go.GetComponent<NetworkObject>();
             if (existing != null)
-                return new { error = $"GameObject '{go.name}' already has a NetworkObject (instanceId={existing.GetInstanceID()})." };
+                return new { error = $"GameObject '{go.name}' already has a NetworkObject (entityId={UnityObjectIdUtility.GetEntityId(existing)}, instanceId={UnityObjectIdUtility.GetObjectId(existing)})." };
 
             var no = Undo.AddComponent<NetworkObject>(go);
             if (alwaysReplicateAsRoot.HasValue) no.AlwaysReplicateAsRoot = alwaysReplicateAsRoot.Value;
@@ -518,7 +520,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 globalObjectIdHash = GetGlobalObjectIdHash(no)
             };
 #endif
@@ -608,7 +611,8 @@ namespace UnitySkills
             var list = all.Select(no => new
             {
                 name = no.gameObject.name,
-                instanceId = no.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(no.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(no.gameObject),
                 globalObjectIdHash = GetGlobalObjectIdHash(no),
                 isSpawned = Application.isPlaying && no.IsSpawned,
                 networkObjectId = Application.isPlaying && no.IsSpawned ? (ulong?)no.NetworkObjectId : null,
@@ -643,7 +647,8 @@ namespace UnitySkills
             {
                 found = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 globalObjectIdHash = GetGlobalObjectIdHash(no),
                 alwaysReplicateAsRoot = no.AlwaysReplicateAsRoot,
                 synchronizeTransform = no.SynchronizeTransform,
@@ -1217,7 +1222,8 @@ namespace UnitySkills
             {
                 type = nb.GetType().Name,
                 gameObject = nb.gameObject.name,
-                instanceId = nb.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(nb.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(nb.gameObject),
                 isSpawned = Application.isPlaying && nb.IsSpawned,
                 isOwner = Application.isPlaying && nb.IsOwner
             }).ToArray();

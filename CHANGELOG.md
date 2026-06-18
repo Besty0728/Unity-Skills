@@ -2,6 +2,20 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.0.4] - 2026-06-18
+
+### Changed
+
+- **Unity 对象 ID 兼容层** — 新增 `UnityObjectIdUtility`，统一封装 `EntityId`、legacy `InstanceID`、对象查找、缺失引用检测与 Selection 读写逻辑；Unity 6000.5 走 EntityId 路径，旧版本保留 InstanceID fallback。
+- **Unity 6000.x API 对齐** — 更新 PlayerSettings、Shader、FindObjectsByType、UI Toolkit 背景样式等 API 用法，减少 Unity 6000.5 obsolete warning。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.0.4`。
+
+### Fixed
+
+- **Unity 6000.5 编译兼容** — 替换业务代码中的 `GetInstanceID`、`EditorUtility.InstanceIDToObject`、`objectReferenceInstanceIDValue`、`Selection.instanceIDs` 等 obsolete API 入口，避免 warning-as-error 下编译失败。
+- **批处理模型序列化告警** — 移除 BatchModels 的 Unity 序列化标记，避免 Newtonsoft 持久化模型触发 UAC1009。
+- **对象定位与工作流选择恢复** — 批量查询/执行、GameObject 查找、Workflow bookmark 与 snapshot 支持 `entityId`，保留 legacy `instanceId` 兼容路径。
+
 ## [2.0.3] - 2026-06-14
 
 ### Added

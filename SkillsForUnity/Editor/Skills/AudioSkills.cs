@@ -258,7 +258,7 @@ namespace UnitySkills
                 if (clip != null) source.clip = clip;
             }
 
-            return new { success = true, gameObject = go.name, instanceId = go.GetInstanceID() };
+            return new { success = true, gameObject = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go) };
         }
 
         [UnitySkill("audio_get_source_info", "Get AudioSource configuration",

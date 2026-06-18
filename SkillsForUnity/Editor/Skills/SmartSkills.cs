@@ -65,7 +65,7 @@ namespace UnitySkills
             if (type == null) 
                 return new { success = false, error = $"Component type '{componentName}' not found. Try: Light, MeshRenderer, Camera, etc." };
 
-            var components = Object.FindObjectsOfType(type);
+            var components = FindHelper.FindAll(type, includeInactive: false);
             
             foreach (var comp in components)
             {
@@ -81,7 +81,8 @@ namespace UnitySkills
                     results.Add(new 
                     {
                         name = go.name,
-                        instanceId = go.GetInstanceID(),
+                        entityId = UnityObjectIdUtility.GetEntityId(go),
+                        instanceId = UnityObjectIdUtility.GetObjectId(go),
                         path = GameObjectFinder.GetPath(go),
                         propertyValue = FormatValue(val)
                     });
@@ -409,7 +410,7 @@ namespace UnitySkills
                 }
                 results.Add(new
                 {
-                    name = go.name, instanceId = go.GetInstanceID(),
+                    name = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go),
                     path = GameObjectFinder.GetPath(go),
                     distance = Vector3.Distance(center, go.transform.position)
                 });
@@ -547,7 +548,7 @@ namespace UnitySkills
 
             var type = GetTypeByName(componentName);
             if (type == null) return new { error = $"Component type '{componentName}' not found" };
-            var components = Object.FindObjectsOfType(type);
+            var components = FindHelper.FindAll(type, includeInactive: false);
             var gameObjects = components.OfType<Component>().Select(c => c.gameObject).Distinct().ToArray();
             Selection.objects = gameObjects;
             return new { success = true, selected = gameObjects.Length, component = componentName };

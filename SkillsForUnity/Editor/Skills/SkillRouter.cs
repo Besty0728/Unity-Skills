@@ -94,6 +94,29 @@ namespace UnitySkills
             "_confirm"
         };
 
+        private const string EntityIdParameterName = "entityId";
+
+        private static readonly string[] _entityIdPathFallbackParameters =
+        {
+            "path",
+            "targetPath",
+            "cameraPath",
+            "vcamPath",
+            "sequencerPath"
+        };
+
+        private static readonly string[] _entityIdNameFallbackParameters =
+        {
+            "name",
+            "target",
+            "targetName",
+            "cameraName",
+            "vcamName",
+            "sequencerName",
+            "objectName",
+            "gameObjectName"
+        };
+
         private static readonly HashSet<string> _transactionlessSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "editor_undo",
@@ -324,6 +347,8 @@ namespace UnitySkills
                             var parameterNames = parameters.Select(p => p.Name).ToArray();
                             var allowedSet = new HashSet<string>(parameterNames, StringComparer.OrdinalIgnoreCase);
                             allowedSet.UnionWith(_reservedBodyParameters);
+                            if (!allowedSet.Contains(EntityIdParameterName) && SupportsSyntheticEntityId(parameterNames))
+                                allowedSet.Add(EntityIdParameterName);
                             skills[name] = new SkillInfo
                             {
                                 Name = name,
@@ -364,8 +389,9 @@ namespace UnitySkills
                 var outputIdx = new Dictionary<string, List<SkillInfo>>(StringComparer.OrdinalIgnoreCase);
                 foreach (var s in skills.Values)
                 {
-                    if (s.Outputs == null) continue;
-                    foreach (var output in s.Outputs)
+                    var effectiveOutputs = GetEffectiveOutputs(s);
+                    if (effectiveOutputs == null) continue;
+                    foreach (var output in effectiveOutputs)
                     {
                         if (!outputIdx.TryGetValue(output, out var list))
                         {
@@ -442,7 +468,7 @@ namespace UnitySkills
                         SkillErrorCode.UnknownParam,
                         $"Unknown parameters: {string.Join(", ", ExtractValidationParameterNames(validation.UnknownParams))}",
                         skill: name,
-                        details: new { unknownParams = validation.UnknownParams.ToArray(), allowedParams = skill.ParameterNames },
+                        details: new { unknownParams = validation.UnknownParams.ToArray(), allowedParams = GetEffectiveParameterNames(skill) },
                         suggestedFixes: fixes,
                         retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                 }
@@ -453,7 +479,7 @@ namespace UnitySkills
                         SkillErrorCode.MissingParam,
                         $"Missing required parameter: {validation.MissingParams[0]}",
                         skill: name,
-                        details: new { missingParams = validation.MissingParams.ToArray(), allowedParams = skill.ParameterNames },
+                        details: new { missingParams = validation.MissingParams.ToArray(), allowedParams = GetEffectiveParameterNames(skill) },
                         retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                 }
 
@@ -662,11 +688,11 @@ namespace UnitySkills
                     skill = new
                     {
                         name = skill.Name,
-                        description = skill.Description,
+                        description = GetEffectiveDescription(skill),
                         category = skill.Category != SkillCategory.Uncategorized ? skill.Category.ToString() : null,
                         operation = FormatOperation(skill.Operation),
                         tags = skill.Tags,
-                        outputs = skill.Outputs,
+                        outputs = GetEffectiveOutputs(skill),
                         requiresInput = skill.RequiresInput,
                         readOnly = skill.ReadOnly,
                         tracksWorkflow = skill.TracksWorkflow,
@@ -717,11 +743,12 @@ namespace UnitySkills
 
         private static string SerializeSuccessResponse(object result)
         {
+            var jsonResult = NormalizeSuccessResult(result);
+
             if (ServerAvailabilityHelper.IsCompilationInProgress())
             {
                 try
                 {
-                    var jsonResult = JToken.FromObject(result ?? new object());
                     if (jsonResult is JObject obj && !obj.ContainsKey("serverAvailability"))
                     {
                         var notice = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
@@ -736,7 +763,191 @@ namespace UnitySkills
                 }
                 catch { }
             }
-            return JsonConvert.SerializeObject(new { status = "success", result }, _jsonSettings);
+
+            return JsonConvert.SerializeObject(new { status = "success", result = jsonResult }, _jsonSettings);
+        }
+
+        private static JToken NormalizeSuccessResult(object result)
+        {
+            try
+            {
+                var token = result is JToken existingToken
+                    ? existingToken.DeepClone()
+                    : JToken.FromObject(result ?? new object(), JsonSerializer.Create(_jsonSettings));
+
+                AddEntityIdsToResult(token);
+                return token;
+            }
+            catch
+            {
+                return result is JToken fallbackToken
+                    ? fallbackToken.DeepClone()
+                    : JToken.FromObject(result ?? new object());
+            }
+        }
+
+        private static void AddEntityIdsToResult(JToken token)
+        {
+            if (token == null)
+                return;
+
+            if (token is JObject obj)
+            {
+                TryAddEntityIdToResultObject(obj);
+                foreach (var property in obj.Properties().ToArray())
+                    AddEntityIdsToResult(property.Value);
+                return;
+            }
+
+            if (token is JArray array)
+            {
+                foreach (var item in array)
+                    AddEntityIdsToResult(item);
+            }
+        }
+
+        private static void TryAddEntityIdToResultObject(JObject obj)
+        {
+            if (obj == null ||
+                TryGetJsonValue(obj, EntityIdParameterName, out _) ||
+                !TryGetJsonValue(obj, "instanceId", out var instanceIdToken))
+            {
+                return;
+            }
+
+            var unityObject = ResolveUnityObjectFromResultObject(obj, instanceIdToken);
+            var entityId = UnityObjectIdUtility.GetEntityId(unityObject);
+            if (!string.IsNullOrWhiteSpace(entityId))
+                obj[EntityIdParameterName] = entityId;
+        }
+
+        private static UnityEngine.Object ResolveUnityObjectFromResultObject(JObject obj, JToken instanceIdToken)
+        {
+            if (TryReadInt(instanceIdToken, out var instanceId) && instanceId != 0)
+            {
+                var byInstanceId = UnityObjectIdUtility.ObjectIdToObject(instanceId);
+                if (byInstanceId != null)
+                    return byInstanceId;
+            }
+
+            foreach (var pathField in new[] { "assetPath", "materialPath", "profilePath", "prefabPath", "path" })
+            {
+                if (!TryGetJsonString(obj, pathField, out var candidatePath))
+                    continue;
+
+                var asset = TryResolveAssetPath(candidatePath);
+                if (asset != null)
+                    return asset;
+
+                var sceneObject = TryResolveScenePath(candidatePath);
+                if (sceneObject != null)
+                    return sceneObject;
+            }
+
+            foreach (var nameField in new[] { "gameObject", "gameObjectName", "target", "targetName", "objectName", "cameraName", "vcamName", "sequencerName" })
+            {
+                if (!TryGetJsonString(obj, nameField, out var candidateName))
+                    continue;
+
+                var sceneObject = GameObjectFinder.Find(name: candidateName);
+                if (sceneObject != null)
+                    return sceneObject;
+            }
+
+            if (!LooksLikeAssetResult(obj) && TryGetJsonString(obj, "name", out var name))
+                return GameObjectFinder.Find(name: name);
+
+            return null;
+        }
+
+        private static UnityEngine.Object TryResolveAssetPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
+
+            var normalized = path.Replace('\\', '/');
+            if (!normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) &&
+                !normalized.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(normalized);
+        }
+
+        private static GameObject TryResolveScenePath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
+
+            var normalized = path.Replace('\\', '/');
+            if (normalized.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return GameObjectFinder.Find(path: normalized);
+        }
+
+        private static bool LooksLikeAssetResult(JObject obj)
+        {
+            return TryGetJsonValue(obj, "assetPath", out _) ||
+                TryGetJsonValue(obj, "materialPath", out _) ||
+                TryGetJsonValue(obj, "profilePath", out _) ||
+                TryGetJsonValue(obj, "prefabPath", out _) ||
+                TryGetJsonValue(obj, "shader", out _) ||
+                TryGetJsonValue(obj, "texture", out _) ||
+                TryGetJsonValue(obj, "renderPipeline", out _);
+        }
+
+        private static bool TryGetJsonString(JObject obj, string propertyName, out string value)
+        {
+            value = null;
+            if (!TryGetJsonValue(obj, propertyName, out var token) ||
+                token == null ||
+                token.Type == JTokenType.Null)
+            {
+                return false;
+            }
+
+            value = token.ToString();
+            return !string.IsNullOrWhiteSpace(value);
+        }
+
+        private static bool TryGetJsonValue(JObject obj, string propertyName, out JToken value)
+        {
+            value = null;
+            if (obj == null || string.IsNullOrEmpty(propertyName))
+                return false;
+
+            foreach (var property in obj.Properties())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryReadInt(JToken token, out int value)
+        {
+            value = 0;
+            if (token == null || token.Type == JTokenType.Null)
+                return false;
+
+            try
+            {
+                value = token.ToObject<int>();
+                return true;
+            }
+            catch
+            {
+                return int.TryParse(token.ToString(), out value);
+            }
         }
 
         public static void Refresh()
@@ -841,6 +1052,98 @@ namespace UnitySkills
             return JsonConvert.SerializeObject(manifest, _jsonSettings);
         }
 
+        private static bool ContainsParameter(IEnumerable<string> parameterNames, string parameterName)
+        {
+            return parameterNames != null &&
+                parameterNames.Any(name => string.Equals(name, parameterName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool SupportsSyntheticEntityId(string[] parameterNames)
+        {
+            return !ContainsParameter(parameterNames, EntityIdParameterName) &&
+                ContainsParameter(parameterNames, "instanceId") &&
+                (_entityIdPathFallbackParameters.Any(name => ContainsParameter(parameterNames, name)) ||
+                 _entityIdNameFallbackParameters.Any(name => ContainsParameter(parameterNames, name)));
+        }
+
+        private static bool ShouldExposeSyntheticEntityId(SkillInfo skill)
+        {
+            return skill != null &&
+                !ContainsParameter(skill.ParameterNames, EntityIdParameterName) &&
+                skill.AllowedParameterSet != null &&
+                skill.AllowedParameterSet.Contains(EntityIdParameterName);
+        }
+
+        private static string[] GetEffectiveParameterNames(SkillInfo skill)
+        {
+            if (skill?.ParameterNames == null)
+                return Array.Empty<string>();
+
+            if (!ShouldExposeSyntheticEntityId(skill))
+                return skill.ParameterNames;
+
+            return skill.ParameterNames
+                .Concat(new[] { EntityIdParameterName })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static object[] BuildParameterSchema(SkillInfo skill)
+        {
+            if (skill == null)
+                return Array.Empty<object>();
+
+            var parameters = skill.Parameters.Select(p => (object)new
+            {
+                name = p.Name,
+                type = GetJsonType(p.ParameterType),
+                required = IsParameterRequired(p),
+                defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
+            }).ToList();
+
+            if (ShouldExposeSyntheticEntityId(skill))
+            {
+                parameters.Add(new
+                {
+                    name = EntityIdParameterName,
+                    type = "string",
+                    required = false,
+                    defaultValue = (string)null
+                });
+            }
+
+            return parameters.ToArray();
+        }
+
+        private static string[] GetEffectiveOutputs(SkillInfo skill)
+        {
+            if (skill?.Outputs == null)
+                return null;
+
+            if (!skill.Outputs.Any(output => string.Equals(output, "instanceId", StringComparison.OrdinalIgnoreCase)) ||
+                skill.Outputs.Any(output => string.Equals(output, EntityIdParameterName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return skill.Outputs;
+            }
+
+            return skill.Outputs
+                .Concat(new[] { EntityIdParameterName })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static string GetEffectiveDescription(SkillInfo skill)
+        {
+            var description = skill?.Description ?? string.Empty;
+            if (!ShouldExposeSyntheticEntityId(skill))
+                return description;
+
+            return description
+                .Replace("name/instanceId/path", "name/entityId/instanceId/path")
+                .Replace("name, instanceId, or path", "name, entityId, instanceId, or path")
+                .Replace("name / instanceId / path", "name / entityId / instanceId / path");
+        }
+
         private static object BuildManifest(IEnumerable<SkillInfo> skills, bool filtered, Dictionary<string, string> filters, string manifestType)
         {
             var skillArray = skills
@@ -863,11 +1166,11 @@ namespace UnitySkills
                 skills = skillArray.Select(s => new
                 {
                     name = s.Name,
-                    description = s.Description,
+                    description = GetEffectiveDescription(s),
                     category = s.Category != SkillCategory.Uncategorized ? s.Category.ToString() : null,
                     operation = FormatOperation(s.Operation),
                     tags = s.Tags,
-                    outputs = s.Outputs,
+                    outputs = GetEffectiveOutputs(s),
                     requiresInput = s.RequiresInput,
                     readOnly = s.ReadOnly,
                     tracksWorkflow = s.TracksWorkflow,
@@ -880,13 +1183,7 @@ namespace UnitySkills
                     requiresPackages = s.RequiresPackages,
                     mode = SkillsModeManager.SkillModeToWire(s.Mode),
                     approvalBehavior = SkillsModeManager.ApprovalBehaviorForSkill(s),
-                    parameters = s.Parameters.Select(p => new
-                    {
-                        name = p.Name,
-                        type = GetJsonType(p.ParameterType),
-                        required = IsParameterRequired(p),
-                        defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
-                    })
+                    parameters = BuildParameterSchema(s)
                 })
             };
         }
@@ -988,7 +1285,7 @@ namespace UnitySkills
                 results = results.Select(x => new
                 {
                     name = x.skill.Name,
-                    description = x.skill.Description,
+                    description = GetEffectiveDescription(x.skill),
                     category = x.skill.Category != SkillCategory.Uncategorized ? x.skill.Category.ToString() : null,
                     score = x.score,
                     confidence = ScoreToConfidence(x.score),
@@ -1008,14 +1305,8 @@ namespace UnitySkills
 
         private static object BuildSkillSchemaForRecommend(SkillInfo s) => new
         {
-            parameters = s.Parameters.Select(p => new
-            {
-                name = p.Name,
-                type = GetJsonType(p.ParameterType),
-                required = IsParameterRequired(p),
-                defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
-            }).ToArray(),
-            outputs = s.Outputs,
+            parameters = BuildParameterSchema(s),
+            outputs = GetEffectiveOutputs(s),
             requiresInput = s.RequiresInput,
             tags = s.Tags,
             operation = FormatOperation(s.Operation),
@@ -1074,11 +1365,11 @@ namespace UnitySkills
                     producers.Add(new
                     {
                         skill = s.Name,
-                        description = s.Description,
+                        description = GetEffectiveDescription(s),
                         category = s.Category != SkillCategory.Uncategorized ? s.Category.ToString() : null,
                         depth,
                         producesField = field,
-                        outputs = s.Outputs,
+                        outputs = GetEffectiveOutputs(s),
                         requiresInput = s.RequiresInput
                     });
 
@@ -1153,6 +1444,7 @@ namespace UnitySkills
             };
 
             var ps = skill.Parameters;
+            NormalizeSyntheticEntityIdLocator(skill, validation);
             CollectUnknownParameters(skill, validation);
             var invoke = new object[ps.Length];
             for (int i = 0; i < ps.Length; i++)
@@ -1194,9 +1486,70 @@ namespace UnitySkills
                 });
             }
 
+            if (ShouldExposeSyntheticEntityId(skill))
+            {
+                validation.ParameterDetails.Add(new
+                {
+                    name = EntityIdParameterName,
+                    type = "string",
+                    required = false,
+                    provided = validation.Args.TryGetValue(EntityIdParameterName, StringComparison.OrdinalIgnoreCase, out _),
+                    defaultValue = (string)null,
+                    synthetic = true
+                });
+            }
+
             validation.InvokeArgs = invoke;
             SkillPlanningService.ApplySemanticValidation(skill, validation);
             return validation;
+        }
+
+        private static void NormalizeSyntheticEntityIdLocator(SkillInfo skill, ParameterValidationResult validation)
+        {
+            if (!ShouldExposeSyntheticEntityId(skill) ||
+                validation?.Args == null ||
+                !validation.Args.TryGetValue(EntityIdParameterName, StringComparison.OrdinalIgnoreCase, out var token))
+            {
+                return;
+            }
+
+            var entityId = token.Type == JTokenType.Null ? null : token.ToString();
+            if (string.IsNullOrWhiteSpace(entityId))
+                return;
+
+            var unityObject = UnityObjectIdUtility.EntityIdToObject(entityId);
+            var gameObject = unityObject as GameObject ?? (unityObject as Component)?.gameObject;
+            if (gameObject == null)
+            {
+                validation.SemanticErrors.Add(new
+                {
+                    parameter = EntityIdParameterName,
+                    error = $"Object not found for entityId: {entityId}"
+                });
+                return;
+            }
+
+            if (TryInjectLocatorValue(validation.Args, skill.ParameterNames, _entityIdPathFallbackParameters, GameObjectFinder.GetCachedPath(gameObject)))
+                return;
+
+            TryInjectLocatorValue(validation.Args, skill.ParameterNames, _entityIdNameFallbackParameters, gameObject.name);
+        }
+
+        private static bool TryInjectLocatorValue(JObject args, string[] parameterNames, string[] candidates, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            foreach (var candidate in candidates)
+            {
+                if (!ContainsParameter(parameterNames, candidate))
+                    continue;
+
+                args[candidate] = value;
+                return true;
+            }
+
+            return false;
         }
 
         private static void CollectUnknownParameters(SkillInfo skill, ParameterValidationResult validation)
@@ -1631,6 +1984,7 @@ namespace UnitySkills
                 string targetName = null;
                 int targetInstanceId = 0;
                 string targetPath = null;
+                string targetEntityId = null;
 
                 if (args.TryGetValue("name", StringComparison.OrdinalIgnoreCase, out var nameToken))
                     targetName = nameToken.ToString();
@@ -1638,11 +1992,13 @@ namespace UnitySkills
                     targetInstanceId = idToken.ToObject<int>();
                 if (args.TryGetValue("path", StringComparison.OrdinalIgnoreCase, out var pathToken))
                     targetPath = pathToken.ToString();
+                if (args.TryGetValue(EntityIdParameterName, StringComparison.OrdinalIgnoreCase, out var entityIdToken))
+                    targetEntityId = entityIdToken.ToString();
 
                 // Snapshot GameObject if identifiable
-                if (!string.IsNullOrEmpty(targetName) || targetInstanceId != 0 || !string.IsNullOrEmpty(targetPath))
+                if (!string.IsNullOrEmpty(targetEntityId) || !string.IsNullOrEmpty(targetName) || targetInstanceId != 0 || !string.IsNullOrEmpty(targetPath))
                 {
-                    var (go, _) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath);
+                    var (go, _) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath, entityId: targetEntityId);
                     if (go != null)
                     {
                         WorkflowManager.SnapshotObject(go);
@@ -1700,10 +2056,11 @@ namespace UnitySkills
                                 string itemName = item.ContainsKey("name") ? item["name"]?.ToString() : null;
                                 int itemId = item.ContainsKey("instanceId") ? Convert.ToInt32(item["instanceId"]) : 0;
                                 string itemPath = item.ContainsKey("path") ? item["path"]?.ToString() : null;
+                                string itemEntityId = item.ContainsKey(EntityIdParameterName) ? item[EntityIdParameterName]?.ToString() : null;
 
-                                if (!string.IsNullOrEmpty(itemName) || itemId != 0 || !string.IsNullOrEmpty(itemPath))
+                                if (!string.IsNullOrEmpty(itemEntityId) || !string.IsNullOrEmpty(itemName) || itemId != 0 || !string.IsNullOrEmpty(itemPath))
                                 {
-                                    var (itemGo, _) = GameObjectFinder.FindOrError(itemName, itemId, itemPath);
+                                    var (itemGo, _) = GameObjectFinder.FindOrError(itemName, itemId, itemPath, entityId: itemEntityId);
                                     if (itemGo != null)
                                     {
                                         WorkflowManager.SnapshotObject(itemGo);

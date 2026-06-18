@@ -7,7 +7,7 @@ namespace UnitySkills
 {
     /// <summary>
     /// GameObject management skills - create, modify, delete, find.
-    /// Now supports finding by name, instanceId, or path.
+    /// Now supports finding by name, entityId, legacy instanceId, or path.
     /// </summary>
     public static class GameObjectSkills
     {
@@ -42,9 +42,9 @@ namespace UnitySkills
                 }
 
                 // Set parent if specified
-                if (!string.IsNullOrEmpty(item.parentName) || item.parentInstanceId != 0 || !string.IsNullOrEmpty(item.parentPath))
+                if (!string.IsNullOrEmpty(item.parentEntityId) || !string.IsNullOrEmpty(item.parentName) || item.parentInstanceId != 0 || !string.IsNullOrEmpty(item.parentPath))
                 {
-                    var (parentGo, parentErr) = GameObjectFinder.FindOrError(item.parentName, item.parentInstanceId, item.parentPath);
+                    var (parentGo, parentErr) = GameObjectFinder.FindOrError(item.parentName, item.parentInstanceId, item.parentPath, entityId: item.parentEntityId);
                     if (parentErr != null) throw new System.Exception($"Parent not found for '{item.name}'");
                     go.transform.SetParent(parentGo.transform, false);
                 }
@@ -62,7 +62,8 @@ namespace UnitySkills
                 {
                     success = true,
                     name = go.name,
-                    instanceId = go.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(go),
+                    instanceId = UnityObjectIdUtility.GetObjectId(go),
                     path = GameObjectFinder.GetPath(go),
                     position = new { x = item.x, y = item.y, z = item.z }
                 };
@@ -83,6 +84,7 @@ namespace UnitySkills
             public float scaleY { get; set; } = 1;
             public float scaleZ { get; set; } = 1;
             public string parentName { get; set; }
+            public string parentEntityId { get; set; }
             public int parentInstanceId { get; set; }
             public string parentPath { get; set; }
         }
@@ -94,13 +96,13 @@ namespace UnitySkills
             TracksWorkflow = true,
             MutatesScene = true, RiskLevel = "medium")]
         public static object GameObjectCreate(string name, string primitiveType = null, float x = 0, float y = 0, float z = 0,
-            string parentName = null, int parentInstanceId = 0, string parentPath = null)
+            string parentName = null, int parentInstanceId = 0, string parentPath = null, string parentEntityId = null)
         {
             // Resolve parent first so we fail fast before creating the object
             GameObject parentGo = null;
-            if (!string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
+            if (!string.IsNullOrEmpty(parentEntityId) || !string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
             {
-                var (found, parentErr) = GameObjectFinder.FindOrError(parentName, parentInstanceId, parentPath);
+                var (found, parentErr) = GameObjectFinder.FindOrError(parentName, parentInstanceId, parentPath, entityId: parentEntityId);
                 if (parentErr != null) return parentErr;
                 parentGo = found;
             }
@@ -136,7 +138,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 path = GameObjectFinder.GetPath(go),
                 parent = parentGo != null ? parentGo.name : "(root)",
                 position = new { x, y, z }
@@ -149,11 +152,11 @@ namespace UnitySkills
             Outputs = new[] { "oldName", "newName", "instanceId", "path" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true)]
-        public static object GameObjectRename(string name = null, int instanceId = 0, string path = null, string newName = null)
+        public static object GameObjectRename(string name = null, int instanceId = 0, string path = null, string newName = null, string entityId = null)
         {
             if (Validate.Required(newName, "newName") is object err) return err;
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var oldName = go.name;
@@ -165,7 +168,8 @@ namespace UnitySkills
                 success = true, 
                 oldName, 
                 newName = go.name, 
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 path = GameObjectFinder.GetPath(go)
             };
         }
@@ -183,7 +187,7 @@ namespace UnitySkills
                 if (string.IsNullOrEmpty(item.newName))
                     throw new System.Exception("newName is required");
 
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                 if (error != null) throw new System.Exception("Object not found");
 
                 var oldName = go.name;
@@ -191,13 +195,14 @@ namespace UnitySkills
                 Undo.RecordObject(go, "Batch Rename " + go.name);
                 go.name = item.newName;
 
-                return new { success = true, oldName, newName = go.name, instanceId = go.GetInstanceID() };
-            }, item => item.name ?? item.path ?? item.instanceId.ToString());
+                return new { success = true, oldName, newName = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go) };
+            }, item => item.name ?? item.path ?? item.entityId ?? item.instanceId.ToString());
         }
 
         private class BatchRenameItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public string newName { get; set; }
@@ -210,9 +215,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true,
             MutatesScene = true, RiskLevel = "medium")]
-        public static object GameObjectDelete(string name = null, int instanceId = 0, string path = null)
+        public static object GameObjectDelete(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var deletedName = go.name;
@@ -236,7 +241,7 @@ namespace UnitySkills
                 var normalizedItems = NormalizeDeleteBatchItems(items);
                 return BatchExecutor.Execute<BatchDeleteItem>(normalizedItems, item =>
                 {
-                    var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                    var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                     if (error != null)
                         throw new System.Exception("Object not found");
 
@@ -244,7 +249,7 @@ namespace UnitySkills
                     WorkflowManager.SnapshotObject(go);
                     Undo.DestroyObjectImmediate(go);
                     return new { target = deletedName, success = true };
-                }, item => item.name ?? item.path ?? item.instanceId.ToString());
+                }, item => item.name ?? item.path ?? item.entityId ?? item.instanceId.ToString());
             }
             catch (System.Exception ex)
             {
@@ -269,6 +274,7 @@ namespace UnitySkills
         private class BatchDeleteItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
         }
@@ -327,7 +333,8 @@ namespace UnitySkills
             var list = results.Take(limit).Select(go => new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 path = GameObjectFinder.GetCachedPath(go),
                 tag = go.tag,
                 layer = LayerMask.LayerToName(go.layer),
@@ -357,9 +364,10 @@ namespace UnitySkills
             float? anchorMaxX = null, float? anchorMaxY = null,
             float? pivotX = null, float? pivotY = null,
             float? sizeDeltaX = null, float? sizeDeltaY = null,
-            float? width = null, float? height = null)
+            float? width = null, float? height = null,
+            string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             WorkflowManager.SnapshotObject(go.transform);
@@ -404,7 +412,8 @@ namespace UnitySkills
                 {
                     success = true,
                     name = go.name,
-                    instanceId = go.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(go),
+                    instanceId = UnityObjectIdUtility.GetObjectId(go),
                     isUI = true,
                     anchoredPosition = new { x = rt.anchoredPosition.x, y = rt.anchoredPosition.y },
                     anchorMin = new { x = rt.anchorMin.x, y = rt.anchorMin.y },
@@ -420,7 +429,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 isUI = false,
                 position = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z },
                 localPosition = new { x = go.transform.localPosition.x, y = go.transform.localPosition.y, z = go.transform.localPosition.z },
@@ -439,7 +449,7 @@ namespace UnitySkills
         {
             return BatchExecutor.Execute<BatchTransformItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                 if (error != null) throw new System.Exception("Object not found");
 
                 WorkflowManager.SnapshotObject(go.transform);
@@ -479,14 +489,16 @@ namespace UnitySkills
                 {
                     success = true,
                     name = go.name,
+                    entityId = UnityObjectIdUtility.GetEntityId(go),
                     pos = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z }
                 };
-            }, item => item.name ?? item.path);
+            }, item => item.name ?? item.path ?? item.entityId);
         }
 
         private class BatchTransformItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
 
@@ -541,9 +553,9 @@ namespace UnitySkills
             Outputs = new[] { "copyName", "copyInstanceId", "copyPath" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true)]
-        public static object GameObjectDuplicate(string name = null, int instanceId = 0, string path = null)
+        public static object GameObjectDuplicate(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var copy = Object.Instantiate(go, go.transform.parent);
@@ -555,7 +567,8 @@ namespace UnitySkills
                 success = true,
                 originalName = go.name,
                 copyName = copy.name,
-                copyInstanceId = copy.GetInstanceID(),
+                copyEntityId = UnityObjectIdUtility.GetEntityId(copy),
+                copyInstanceId = UnityObjectIdUtility.GetObjectId(copy),
                 copyPath = GameObjectFinder.GetPath(copy)
             };
         }
@@ -569,7 +582,7 @@ namespace UnitySkills
         {
             return BatchExecutor.Execute<BatchDuplicateItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                 if (error != null) throw new System.Exception("Object not found");
 
                 var copy = Object.Instantiate(go, go.transform.parent);
@@ -582,15 +595,17 @@ namespace UnitySkills
                     success = true,
                     originalName = go.name,
                     copyName = copy.name,
-                    copyInstanceId = copy.GetInstanceID(),
+                    copyEntityId = UnityObjectIdUtility.GetEntityId(copy),
+                    copyInstanceId = UnityObjectIdUtility.GetObjectId(copy),
                     copyPath = GameObjectFinder.GetPath(copy)
                 };
-            }, item => item.name ?? item.path ?? item.instanceId.ToString());
+            }, item => item.name ?? item.path ?? item.entityId ?? item.instanceId.ToString());
         }
 
         private class BatchDuplicateItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
         }
@@ -602,15 +617,15 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true)]
         public static object GameObjectSetParent(string childName = null, int childInstanceId = 0, string childPath = null, 
-            string parentName = null, int parentInstanceId = 0, string parentPath = null)
+            string parentName = null, int parentInstanceId = 0, string parentPath = null, string childEntityId = null, string parentEntityId = null)
         {
-            var (child, childError) = GameObjectFinder.FindOrError(childName, childInstanceId, childPath);
+            var (child, childError) = GameObjectFinder.FindOrError(childName, childInstanceId, childPath, entityId: childEntityId);
             if (childError != null) return childError;
 
             Transform parent = null;
-            if (!string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
+            if (!string.IsNullOrEmpty(parentEntityId) || !string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
             {
-                var (parentGo, parentError) = GameObjectFinder.FindOrError(parentName, parentInstanceId, parentPath);
+                var (parentGo, parentError) = GameObjectFinder.FindOrError(parentName, parentInstanceId, parentPath, entityId: parentEntityId);
                 if (parentError != null) return parentError;
                 parent = parentGo.transform;
             }
@@ -620,7 +635,9 @@ namespace UnitySkills
             return new { 
                 success = true, 
                 child = child.name, 
+                childEntityId = UnityObjectIdUtility.GetEntityId(child),
                 parent = parent?.name ?? "(root)",
+                parentEntityId = parent != null ? UnityObjectIdUtility.GetEntityId(parent.gameObject) : null,
                 newPath = GameObjectFinder.GetPath(child)
             };
         }
@@ -632,9 +649,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object GameObjectGetInfo(string name = null, int instanceId = 0, string path = null)
+        public static object GameObjectGetInfo(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var componentBuffer = new List<Component>(8);
@@ -652,7 +669,8 @@ namespace UnitySkills
                 children.Add(new
                 {
                     name = child.name,
-                    instanceId = child.gameObject.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(child.gameObject),
+                    instanceId = UnityObjectIdUtility.GetObjectId(child.gameObject),
                     path = GameObjectFinder.GetCachedPath(child.gameObject)
                 });
             }
@@ -660,7 +678,8 @@ namespace UnitySkills
             return new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 path = GameObjectFinder.GetCachedPath(go),
                 tag = go.tag,
                 layer = LayerMask.LayerToName(go.layer),
@@ -682,16 +701,16 @@ namespace UnitySkills
             Outputs = new[] { "name", "active" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true)]
-        public static object GameObjectSetActive(string name = null, int instanceId = 0, string path = null, bool active = true)
+        public static object GameObjectSetActive(string name = null, int instanceId = 0, string path = null, bool active = true, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             WorkflowManager.SnapshotObject(go);
             Undo.RecordObject(go, "Set Active");
             go.SetActive(active);
 
-            return new { success = true, name = go.name, active };
+            return new { success = true, name = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), active };
         }
 
         [UnitySkill("gameobject_set_active_batch", "Enable or disable multiple GameObjects. items: JSON array of {name, active}",
@@ -703,19 +722,20 @@ namespace UnitySkills
         {
             return BatchExecutor.Execute<BatchSetActiveItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                 if (error != null) throw new System.Exception("Object not found");
 
                 WorkflowManager.SnapshotObject(go);
                 Undo.RecordObject(go, "Batch Set Active");
                 go.SetActive(item.active);
-                return new { target = go.name, success = true, active = item.active };
-            }, item => item.name ?? item.path);
+                return new { target = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), success = true, active = item.active };
+            }, item => item.name ?? item.path ?? item.entityId);
         }
 
         public class BatchSetActiveItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public bool active { get; set; } = true;
@@ -730,7 +750,7 @@ namespace UnitySkills
         {
             return BatchExecutor.Execute<BatchSetLayerItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                 if (error != null) throw new System.Exception("Object not found");
 
                 int layerId = LayerMask.NameToLayer(item.layer);
@@ -750,13 +770,14 @@ namespace UnitySkills
                     }
                 }
 
-                return new { target = go.name, success = true, layer = item.layer };
-            }, item => item.name ?? item.path);
+                return new { target = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), success = true, layer = item.layer };
+            }, item => item.name ?? item.path ?? item.entityId);
         }
 
         private class BatchSetLayerItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public string layer { get; set; }
@@ -772,19 +793,20 @@ namespace UnitySkills
         {
             return BatchExecutor.Execute<BatchSetTagItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                 if (error != null) throw new System.Exception("Object not found");
 
                 WorkflowManager.SnapshotObject(go);
                 Undo.RecordObject(go, "Batch Set Tag");
                 go.tag = item.tag;
-                return new { target = go.name, success = true, tag = item.tag };
-            }, item => item.name ?? item.path);
+                return new { target = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), success = true, tag = item.tag };
+            }, item => item.name ?? item.path ?? item.entityId);
         }
 
         private class BatchSetTagItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public string tag { get; set; }
@@ -799,13 +821,13 @@ namespace UnitySkills
         {
             return BatchExecutor.Execute<BatchSetParentItem>(items, item =>
             {
-                var (child, childError) = GameObjectFinder.FindOrError(item.childName, item.childInstanceId, item.childPath);
+                var (child, childError) = GameObjectFinder.FindOrError(item.childName, item.childInstanceId, item.childPath, entityId: item.childEntityId);
                 if (childError != null) throw new System.Exception("Child object not found");
 
                 Transform parent = null;
-                if (!string.IsNullOrEmpty(item.parentName) || item.parentInstanceId != 0 || !string.IsNullOrEmpty(item.parentPath))
+                if (!string.IsNullOrEmpty(item.parentEntityId) || !string.IsNullOrEmpty(item.parentName) || item.parentInstanceId != 0 || !string.IsNullOrEmpty(item.parentPath))
                 {
-                    var (parentGo, parentError) = GameObjectFinder.FindOrError(item.parentName, item.parentInstanceId, item.parentPath);
+                    var (parentGo, parentError) = GameObjectFinder.FindOrError(item.parentName, item.parentInstanceId, item.parentPath, entityId: item.parentEntityId);
                     if (parentError != null)
                         throw new System.Exception($"Parent not found: {item.parentName ?? item.parentPath}");
                     parent = parentGo.transform;
@@ -816,18 +838,21 @@ namespace UnitySkills
                 return new
                 {
                     target = child.name,
+                    entityId = UnityObjectIdUtility.GetEntityId(child),
                     success = true,
                     parent = parent?.name ?? "(root)"
                 };
-            }, item => item.childName ?? item.childPath);
+            }, item => item.childName ?? item.childPath ?? item.childEntityId);
         }
 
         private class BatchSetParentItem
         {
             public string childName { get; set; }
+            public string childEntityId { get; set; }
             public int childInstanceId { get; set; }
             public string childPath { get; set; }
             public string parentName { get; set; }
+            public string parentEntityId { get; set; }
             public int parentInstanceId { get; set; }
             public string parentPath { get; set; }
         }

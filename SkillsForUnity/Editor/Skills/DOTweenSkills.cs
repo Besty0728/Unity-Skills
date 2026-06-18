@@ -7,6 +7,7 @@ using System.Text;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -591,12 +592,7 @@ namespace UnitySkills
             }
             else
             {
-#if UNITY_6000_0_OR_NEWER
-                comps = UnityEngine.Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None)
-                    .OfType<Component>().ToArray();
-#else
-                comps = UnityEngine.Object.FindObjectsOfType(type).OfType<Component>().ToArray();
-#endif
+                comps = FindHelper.FindAll(type, includeInactive: true).OfType<Component>().ToArray();
             }
 
             var list = new List<object>();
@@ -609,7 +605,8 @@ namespace UnitySkills
                     list.Add(new
                     {
                         gameObject = g.Key.name,
-                        instanceId = g.Key.GetInstanceID(),
+                        entityId = UnityObjectIdUtility.GetEntityId(g.Key),
+                        instanceId = UnityObjectIdUtility.GetObjectId(g.Key),
                         animationIndex = idx++,
                         animationType = DOTweenReflectionHelper.GetFieldByCandidates(c, DOTweenReflectionHelper.AnimationTypeFieldCandidates)?.ToString(),
                         duration = DOTweenReflectionHelper.GetFieldByCandidates(c, DOTweenReflectionHelper.DurationFieldCandidates),

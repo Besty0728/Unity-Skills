@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -456,12 +457,7 @@ namespace UnitySkills
             var type = ResolveXRType(typeName);
             if (type == null) return Array.Empty<Component>();
 
-#if UNITY_6000_0_OR_NEWER
-            return UnityEngine.Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None)
-                .OfType<Component>().ToArray();
-#else
-            return UnityEngine.Object.FindObjectsOfType(type).OfType<Component>().ToArray();
-#endif
+            return FindHelper.FindAll(type, includeInactive: true).OfType<Component>().ToArray();
         }
 
         /// <summary>
@@ -484,7 +480,8 @@ namespace UnitySkills
 
             info["type"] = type.Name;
             info["gameObject"] = comp.gameObject.name;
-            info["instanceId"] = comp.gameObject.GetInstanceID();
+            info["entityId"] = UnityObjectIdUtility.GetEntityId(comp.gameObject);
+            info["instanceId"] = UnityObjectIdUtility.GetObjectId(comp.gameObject);
             info["enabled"] = comp is Behaviour b ? b.enabled : true;
 
             // Read common XR properties (verified from XRI source code)

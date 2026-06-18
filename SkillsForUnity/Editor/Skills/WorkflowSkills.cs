@@ -19,6 +19,7 @@ namespace UnitySkills
 
         private class BookmarkData
         {
+            public string[] selectedEntityIds;
             public int[] selectedInstanceIds;
             public Vector3? sceneViewPosition;
             public Quaternion? sceneViewRotation;
@@ -39,7 +40,8 @@ namespace UnitySkills
 
             var bookmark = new BookmarkData
             {
-                selectedInstanceIds = Selection.instanceIDs ?? Array.Empty<int>(),
+                selectedEntityIds = UnityObjectIdUtility.GetSelectionEntityIds(),
+                selectedInstanceIds = UnityObjectIdUtility.GetSelectionObjectIds(),
                 note = note,
                 createdAt = System.DateTime.Now
             };
@@ -59,7 +61,7 @@ namespace UnitySkills
             {
                 success = true,
                 bookmark = bookmarkName,
-                selectedCount = bookmark.selectedInstanceIds.Length,
+                selectedCount = (bookmark.selectedEntityIds ?? Array.Empty<string>()).Length,
                 hasSceneView = sceneView != null,
                 note
             };
@@ -76,11 +78,21 @@ namespace UnitySkills
             if (!_bookmarks.TryGetValue(bookmarkName, out var bookmark))
                 return new { success = false, error = $"Bookmark '{bookmarkName}' not found" };
 
-            // Restore selection
-            var validIds = (bookmark.selectedInstanceIds ?? Array.Empty<int>())
-                .Where(id => EditorUtility.InstanceIDToObject(id) != null)
+            // Restore selection. Prefer Unity 6000.5-safe EntityIds; legacy instanceIds are kept for older bookmarks.
+            var validEntityIds = (bookmark.selectedEntityIds ?? Array.Empty<string>())
+                .Where(id => UnityObjectIdUtility.EntityIdToObject(id) != null)
                 .ToArray();
-            Selection.instanceIDs = validIds;
+            if (validEntityIds.Length > 0 || bookmark.selectedEntityIds != null)
+            {
+                UnityObjectIdUtility.SetSelectionEntityIds(validEntityIds);
+            }
+            else
+            {
+                var validIds = (bookmark.selectedInstanceIds ?? Array.Empty<int>())
+                    .Where(id => UnityObjectIdUtility.ObjectIdToObject(id) != null)
+                    .ToArray();
+                UnityObjectIdUtility.SetSelectionObjectIds(validIds);
+            }
 
             // Restore scene view
             if (bookmark.sceneViewPosition.HasValue)
@@ -101,7 +113,9 @@ namespace UnitySkills
             {
                 success = true,
                 bookmark = bookmarkName,
-                restoredSelection = validIds.Length,
+                restoredSelection = validEntityIds.Length > 0 || bookmark.selectedEntityIds != null
+                    ? validEntityIds.Length
+                    : (bookmark.selectedInstanceIds ?? Array.Empty<int>()).Count(id => UnityObjectIdUtility.ObjectIdToObject(id) != null),
                 note = bookmark.note
             };
         }
@@ -117,7 +131,9 @@ namespace UnitySkills
             var list = _bookmarks.Select(kv => new
             {
                 name = kv.Key,
-                selectedCount = (kv.Value.selectedInstanceIds ?? Array.Empty<int>()).Length,
+                selectedCount = (kv.Value.selectedEntityIds ?? Array.Empty<string>()).Length > 0
+                    ? kv.Value.selectedEntityIds.Length
+                    : (kv.Value.selectedInstanceIds ?? Array.Empty<int>()).Length,
                 hasSceneView = kv.Value.sceneViewPosition.HasValue,
                 note = kv.Value.note,
                 createdAt = kv.Value.createdAt.ToString("HH:mm:ss")
@@ -235,19 +251,21 @@ namespace UnitySkills
             Tags = new[] { "snapshot", "undo", "object", "state" },
             Outputs = new[] { "objectName", "type" },
             RequiresInput = new[] { "gameObject" })]
-        public static object WorkflowSnapshotObject(string name = null, int instanceId = 0)
+        public static object WorkflowSnapshotObject(string name = null, int instanceId = 0, string entityId = null)
         {
             if (!WorkflowManager.IsRecording)
                 return new { success = false, error = "No active task. Call workflow_task_start first." };
 
             UnityEngine.Object target = null;
-            if (instanceId != 0)
-                target = EditorUtility.InstanceIDToObject(instanceId);
+            if (!string.IsNullOrWhiteSpace(entityId))
+                target = UnityObjectIdUtility.EntityIdToObject(entityId);
+            else if (instanceId != 0)
+                target = UnityObjectIdUtility.ObjectIdToObject(instanceId);
             else if (!string.IsNullOrEmpty(name))
                 target = GameObjectFinder.Find(name: name);
 
             if (target == null)
-                return new { success = false, error = $"Object not found: {name ?? instanceId.ToString()}" };
+                return new { success = false, error = $"Object not found: {entityId ?? name ?? instanceId.ToString()}" };
 
             WorkflowManager.SnapshotObject(target);
             return new { success = true, objectName = target.name, type = target.GetType().Name };
@@ -340,19 +358,21 @@ namespace UnitySkills
             Tags = new[] { "snapshot", "undo", "created", "tracking" },
             Outputs = new[] { "objectName", "type" },
             RequiresInput = new[] { "gameObject" })]
-        public static object WorkflowSnapshotCreated(string name = null, int instanceId = 0)
+        public static object WorkflowSnapshotCreated(string name = null, int instanceId = 0, string entityId = null)
         {
             if (!WorkflowManager.IsRecording)
                 return new { success = false, error = "No active task. Call workflow_task_start first." };
 
             UnityEngine.Object target = null;
-            if (instanceId != 0)
-                target = EditorUtility.InstanceIDToObject(instanceId);
+            if (!string.IsNullOrWhiteSpace(entityId))
+                target = UnityObjectIdUtility.EntityIdToObject(entityId);
+            else if (instanceId != 0)
+                target = UnityObjectIdUtility.ObjectIdToObject(instanceId);
             else if (!string.IsNullOrEmpty(name))
                 target = GameObjectFinder.Find(name: name);
 
             if (target == null)
-                return new { success = false, error = $"Object not found: {name ?? instanceId.ToString()}" };
+                return new { success = false, error = $"Object not found: {entityId ?? name ?? instanceId.ToString()}" };
 
             if (target is Component comp)
                 WorkflowManager.SnapshotCreatedComponent(comp);

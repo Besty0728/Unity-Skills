@@ -92,7 +92,8 @@ namespace UnitySkills
                 rootObjects = roots.Select(go => new
                 {
                     name = go.name,
-                    instanceId = go.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(go),
+                    instanceId = UnityObjectIdUtility.GetObjectId(go),
                     childCount = go.transform.childCount
                 }).ToArray()
             };
@@ -135,7 +136,8 @@ namespace UnitySkills
             var node = new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 components = GetComponentTypeNames(go, componentBuffer),
                 children
             };
@@ -293,7 +295,7 @@ namespace UnitySkills
             }
 
             var results = objects.Take(limit).Select(go => new {
-                name = go.name, path = GameObjectFinder.GetCachedPath(go), instanceId = go.GetInstanceID(),
+                name = go.name, path = GameObjectFinder.GetCachedPath(go), entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go),
                 active = go.activeInHierarchy, tag = go.tag
             }).ToArray();
 

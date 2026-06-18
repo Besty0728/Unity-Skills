@@ -60,7 +60,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 shape,
                 position = new { x, y, z },
                 size = new { x = sizeX, y = sizeY, z = sizeZ },
@@ -110,7 +111,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 extrudedFaceCount = newFaces?.Length ?? 0,
                 method,
                 distance,
@@ -160,7 +162,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 deletedCount = validIndices.Count,
                 remainingFaces = pbMesh.faceCount,
                 remainingVertices = pbMesh.vertexCount
@@ -201,7 +204,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 mergedFromCount = faces.Count,
                 totalFaces = pbMesh.faceCount,
                 totalVertices = pbMesh.vertexCount
@@ -241,7 +245,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 flippedCount = faces.Count
             };
 #endif
@@ -279,7 +284,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 detachedFaceCount = newFaces?.Count ?? 0,
                 deleteSourceFaces,
                 totalFaces = pbMesh.faceCount,
@@ -340,7 +346,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 beveledEdgeCount = edges.Count,
                 newFaceCount = newFaces?.Count ?? 0,
                 amount,
@@ -387,7 +394,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 extrudedEdgeCount = edges.Count,
                 newEdgeCount = newEdges?.Length ?? 0,
                 distance,
@@ -437,7 +445,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 bridgedEdge = new { a = edgeA, b = edgeB },
                 totalFaces = pbMesh.faceCount,
                 totalVertices = pbMesh.vertexCount
@@ -491,7 +500,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 totalFaces = pbMesh.faceCount,
                 totalVertices = pbMesh.vertexCount
             };
@@ -529,7 +539,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 status = result.status.ToString(),
                 notification = result.notification ?? "",
                 faceCount = faces.Count
@@ -580,7 +591,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 inputVertexCount = validIndices.Count,
                 weldedVertexCount = weldedIndices?.Length ?? 0,
                 radius,
@@ -664,7 +676,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 affectedFaces = faces.Count,
                 materialCount = pbMesh.GetComponent<MeshRenderer>().sharedMaterials.Length
             };
@@ -711,7 +724,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 isProBuilder = true,
                 vertexCount = pbMesh.vertexCount,
                 faceCount = pbMesh.faceCount,
@@ -764,7 +778,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 pivot = new { x = newPos.x, y = newPos.y, z = newPos.z }
             };
 #endif
@@ -811,7 +826,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 projectedFaceCount = faces.Count,
                 channel,
                 method = "Box"
@@ -940,7 +956,7 @@ namespace UnitySkills
                 Undo.RegisterCreatedObjectUndo(go, "Create PB Shape");
                 WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-                return new { success = true, name = go.name, instanceId = go.GetInstanceID(), shape = item.shape ?? "Cube" };
+                return new { success = true, name = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go), shape = item.shape ?? "Cube" };
             }, item => item.name ?? item.shape);
 #endif
         }
@@ -1006,7 +1022,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 movedVertexCount = validIndices.Count,
                 delta = new { x = deltaX, y = deltaY, z = deltaZ },
                 totalVertices = pbMesh.vertexCount
@@ -1055,7 +1072,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 setVertexCount = setCount,
                 totalVertices = pbMesh.vertexCount
             };
@@ -1185,7 +1203,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = target.gameObject.name,
-                instanceId = target.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(target.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(target.gameObject),
                 combinedCount = meshes.Count,
                 resultMeshCount = result?.Count ?? 1,
                 vertexCount = target.vertexCount,
@@ -1246,7 +1265,8 @@ namespace UnitySkills
                 {
                     success = true,
                     name = pbMesh.gameObject.name,
-                    instanceId = pbMesh.gameObject.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                    instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                     materialName = mat.name,
                     color = new { r = color.r, g = color.g, b = color.b, a = color.a },
                     note = "Runtime material created. Use material_create + materialPath for persistent materials."
@@ -1261,7 +1281,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = pbMesh.gameObject.name,
-                instanceId = pbMesh.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(pbMesh.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(pbMesh.gameObject),
                 material = renderer.sharedMaterial.name
             };
 #endif

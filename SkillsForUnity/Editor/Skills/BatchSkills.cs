@@ -16,7 +16,7 @@ namespace UnitySkills
         private static readonly Regex MultiWhitespaceRegex = new Regex(@"\s+", RegexOptions.Compiled);
         private static readonly Regex MultiUnderscoreRegex = new Regex(@"_+", RegexOptions.Compiled);
 
-        [UnitySkill("batch_query_gameobjects", "Query GameObjects with unified batch filters. queryJson supports name/path/instanceId/tag/layer/active/componentType/sceneName/parentPath/prefabSource/includeInactive/limit.",
+        [UnitySkill("batch_query_gameobjects", "Query GameObjects with unified batch filters. queryJson supports name/path/entityId/instanceId/tag/layer/active/componentType/sceneName/parentPath/prefabSource/includeInactive/limit.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
             Tags = new[] { "batch", "query", "gameobject", "filter" },
             Outputs = new[] { "count", "objects", "summary" },
@@ -46,7 +46,8 @@ namespace UnitySkills
             var objects = targets.Take(Math.Max(1, sampleLimit)).Select(go => new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 path = GameObjectFinder.GetCachedPath(go),
                 components = go.GetComponents<Component>().Where(component => component != null).Select(component => component.GetType().Name).ToArray()
             }).ToArray();
@@ -591,6 +592,7 @@ namespace UnitySkills
                     action = fi.action ?? report.kind,
                     targetName = fi.targetName,
                     targetPath = fi.targetPath,
+                    entityId = fi.entityId,
                     instanceId = fi.instanceId,
                     willChange = true,
                     valid = true
@@ -650,6 +652,7 @@ namespace UnitySkills
                     {
                         targetName = item.targetName,
                         targetPath = item.targetPath,
+                        entityId = item.entityId,
                         instanceId = item.instanceId,
                         action = item.action,
                         status = "failed",
@@ -754,8 +757,10 @@ namespace UnitySkills
 
             if (!query.includeInactive)
                 results = results.Where(go => go.activeInHierarchy);
+            if (!string.IsNullOrWhiteSpace(query.entityId))
+                results = results.Where(go => UnityObjectIdUtility.MatchesEntityId(go, query.entityId));
             if (query.instanceId != 0)
-                results = results.Where(go => go.GetInstanceID() == query.instanceId);
+                results = results.Where(go => UnityObjectIdUtility.MatchesObjectId(go, query.instanceId));
             if (!string.IsNullOrWhiteSpace(query.path))
                 results = results.Where(go => string.Equals(GameObjectFinder.GetCachedPath(go), query.path.Trim(), StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrWhiteSpace(query.name))
@@ -853,7 +858,8 @@ namespace UnitySkills
                     action = "rename",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(target),
+                    instanceId = UnityObjectIdUtility.GetObjectId(target),
                     sceneName = target.scene.name,
                     currentValue = target.name,
                     nextValue = nextName,
@@ -930,7 +936,8 @@ namespace UnitySkills
                     action = "set_property",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(target),
+                    instanceId = UnityObjectIdUtility.GetObjectId(target),
                     sceneName = target.scene.name,
                     componentType = componentType,
                     propertyName = propertyName,
@@ -978,7 +985,8 @@ namespace UnitySkills
                     action = "replace_material",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(target),
+                    instanceId = UnityObjectIdUtility.GetObjectId(target),
                     sceneName = target.scene.name,
                     currentMaterialPath = currentPath,
                     nextMaterialPath = materialPath,
@@ -1005,7 +1013,8 @@ namespace UnitySkills
                     action = "remove_missing_scripts",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(target),
+                    instanceId = UnityObjectIdUtility.GetObjectId(target),
                     sceneName = target.scene.name,
                     currentValue = missingCount.ToString(),
                     nextValue = "0",
@@ -1038,7 +1047,8 @@ namespace UnitySkills
                     action = "rename",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(target),
+                    instanceId = UnityObjectIdUtility.GetObjectId(target),
                     sceneName = target.scene.name,
                     currentValue = target.name,
                     nextValue = standardized,
@@ -1078,7 +1088,8 @@ namespace UnitySkills
                     action = "set_layer",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(target),
+                    instanceId = UnityObjectIdUtility.GetObjectId(target),
                     sceneName = target.scene.name,
                     currentLayer = currentLayer,
                     nextLayer = layer,
@@ -1108,7 +1119,8 @@ namespace UnitySkills
                     action = "delete_gameobject",
                     targetName = target.name,
                     targetPath = GameObjectFinder.GetCachedPath(target),
-                    instanceId = target.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(target),
+                    instanceId = UnityObjectIdUtility.GetObjectId(target),
                     sceneName = target.scene.name,
                     reason = $"matched_pattern:{matchedPattern}",
                     willChange = true
@@ -1128,6 +1140,7 @@ namespace UnitySkills
             {
                 item.targetName,
                 item.targetPath,
+                item.entityId,
                 item.action,
                 before = ChooseBeforeValue(item),
                 after = ChooseAfterValue(item)
@@ -1189,7 +1202,8 @@ namespace UnitySkills
                 action = action,
                 targetName = target.name,
                 targetPath = GameObjectFinder.GetCachedPath(target),
-                instanceId = target.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(target),
+                instanceId = UnityObjectIdUtility.GetObjectId(target),
                 sceneName = target.scene.name,
                 currentValue = currentValue,
                 nextValue = nextValue,
@@ -1245,7 +1259,8 @@ namespace UnitySkills
             return new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 path = GameObjectFinder.GetCachedPath(go),
                 scene = go.scene.name,
                 tag = go.tag,
@@ -1324,7 +1339,7 @@ namespace UnitySkills
 
         private static GameObject FindTarget(BatchPreviewItem item)
         {
-            return GameObjectFinder.Find(item.targetName, item.instanceId, item.targetPath);
+            return GameObjectFinder.Find(item.targetName, item.instanceId, item.targetPath, entityId: item.entityId);
         }
 
         private static BatchReportItemRecord ExecuteRenameItem(BatchPreviewItem item, int chunkIndex)
@@ -1425,6 +1440,7 @@ namespace UnitySkills
             {
                 targetName = item.targetName,
                 targetPath = item.targetPath,
+                entityId = item.entityId,
                 instanceId = item.instanceId,
                 action = item.action,
                 status = "success",
@@ -1451,17 +1467,17 @@ namespace UnitySkills
 
         private static BatchReportItemRecord CreateSuccessReport(BatchPreviewItem item, int chunkIndex, string before, string after)
         {
-            return new BatchReportItemRecord { targetName = item.targetName, targetPath = item.targetPath, instanceId = item.instanceId, action = item.action, status = "success", before = before, after = after, chunkIndex = chunkIndex };
+            return new BatchReportItemRecord { targetName = item.targetName, targetPath = item.targetPath, entityId = item.entityId, instanceId = item.instanceId, action = item.action, status = "success", before = before, after = after, chunkIndex = chunkIndex };
         }
 
         private static BatchReportItemRecord CreateSkippedReport(BatchPreviewItem item, int chunkIndex, string reason)
         {
-            return new BatchReportItemRecord { targetName = item.targetName, targetPath = item.targetPath, instanceId = item.instanceId, action = item.action, status = "skipped", before = ChooseBeforeValue(item), after = ChooseAfterValue(item), reason = reason, chunkIndex = chunkIndex };
+            return new BatchReportItemRecord { targetName = item.targetName, targetPath = item.targetPath, entityId = item.entityId, instanceId = item.instanceId, action = item.action, status = "skipped", before = ChooseBeforeValue(item), after = ChooseAfterValue(item), reason = reason, chunkIndex = chunkIndex };
         }
 
         private static BatchReportItemRecord CreateFailedReport(BatchPreviewItem item, int chunkIndex, string reason)
         {
-            return new BatchReportItemRecord { targetName = item.targetName, targetPath = item.targetPath, instanceId = item.instanceId, action = item.action, status = "failed", before = ChooseBeforeValue(item), after = ChooseAfterValue(item), reason = reason, chunkIndex = chunkIndex };
+            return new BatchReportItemRecord { targetName = item.targetName, targetPath = item.targetPath, entityId = item.entityId, instanceId = item.instanceId, action = item.action, status = "failed", before = ChooseBeforeValue(item), after = ChooseAfterValue(item), reason = reason, chunkIndex = chunkIndex };
         }
 
         private static string ChooseBeforeValue(BatchPreviewItem item)

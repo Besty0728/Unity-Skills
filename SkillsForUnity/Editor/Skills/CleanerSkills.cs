@@ -203,7 +203,7 @@ namespace UnitySkills
                     {
                         if (prop.propertyType == SerializedPropertyType.ObjectReference)
                         {
-                            if (prop.objectReferenceValue == null && prop.objectReferenceInstanceIDValue != 0)
+                            if (UnityObjectIdUtility.HasMissingObjectReference(prop))
                             {
                                 issues.Add(new
                                 {

@@ -81,7 +81,8 @@ namespace UnitySkills
                 return new { 
                     warning = $"Component {type.Name} already exists on {go.name}",
                     gameObject = go.name,
-                    instanceId = go.GetInstanceID()
+                    entityId = UnityObjectIdUtility.GetEntityId(go),
+                    instanceId = UnityObjectIdUtility.GetObjectId(go)
                 };
 
             var comp = Undo.AddComponent(go, type);
@@ -97,7 +98,8 @@ namespace UnitySkills
             return new {
                 success = true,
                 gameObject = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 component = type.Name,
                 fullTypeName = type.FullName
             };
@@ -265,12 +267,13 @@ namespace UnitySkills
                 })
                 .ToArray();
 
-            return new { 
-                gameObject = go.name, 
-                instanceId = go.GetInstanceID(), 
-                path = GameObjectFinder.GetPath(go), 
+            return new {
+                gameObject = go.name,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
+                path = GameObjectFinder.GetPath(go),
                 componentCount = components.Length,
-                components 
+                components
             };
         }
 

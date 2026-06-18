@@ -26,7 +26,7 @@ namespace UnitySkills
             if (findErr != null) return findErr;
 
             // Find component
-            var component = go.GetComponent(componentName);
+            var component = FindComponentOnGameObject(go, componentName);
             if (component == null)
                 return new { error = $"Component not found: {componentName} on {go.name}" };
 
@@ -91,7 +91,7 @@ namespace UnitySkills
             var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (goErr != null) return goErr;
 
-            var component = go.GetComponent(componentName);
+            var component = FindComponentOnGameObject(go, componentName);
             if (component == null) return new { error = $"Source Component not found: {componentName}" };
 
             var (targetGo, tgtErr) = GameObjectFinder.FindOrError(name: targetObjectName);
@@ -107,7 +107,7 @@ namespace UnitySkills
             }
             else
             {
-                var targetComponent = targetGo.GetComponent(targetComponentName);
+                var targetComponent = FindComponentOnGameObject(targetGo, targetComponentName);
                 if (targetComponent == null) return new { error = $"Target Component not found: {targetComponentName}" };
                 targetObj = targetComponent;
                 targetType = targetComponent.GetType();
@@ -223,7 +223,7 @@ namespace UnitySkills
             var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (findErr != null) return findErr;
 
-            var component = go.GetComponent(componentName);
+            var component = FindComponentOnGameObject(go, componentName);
             if (component == null) return new { error = $"Component not found: {componentName}" };
 
             var type = component.GetType();
@@ -255,7 +255,7 @@ namespace UnitySkills
              var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (goErr != null) return goErr;
 
-            var component = go.GetComponent(componentName);
+            var component = FindComponentOnGameObject(go, componentName);
             if (component == null) return new { error = $"Component not found: {componentName}" };
 
             var type = component.GetType();
@@ -291,7 +291,7 @@ namespace UnitySkills
         {
             var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (findErr != null) return (null, null, findErr);
-            var component = go.GetComponent(componentName);
+            var component = FindComponentOnGameObject(go, componentName);
             if (component == null) return (null, null, new { error = $"Component not found: {componentName}" });
             var type = component.GetType();
             var field = type.GetField(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -332,10 +332,7 @@ namespace UnitySkills
                 return true;
             }
 
-            var componentType = ComponentSkills.FindComponentType(targetComponentName);
-            var targetComponent = componentType != null
-                ? targetGo.GetComponent(componentType)
-                : targetGo.GetComponent(targetComponentName);
+            var targetComponent = FindComponentOnGameObject(targetGo, targetComponentName);
             if (targetComponent == null)
             {
                 error = $"Target Component not found: {targetComponentName}";
@@ -345,6 +342,30 @@ namespace UnitySkills
             targetObj = targetComponent;
             targetType = targetComponent.GetType();
             return true;
+        }
+
+        private static Component FindComponentOnGameObject(GameObject go, string componentName)
+        {
+            if (go == null || string.IsNullOrWhiteSpace(componentName))
+                return null;
+
+            var componentType = ComponentSkills.FindComponentType(componentName);
+            if (componentType != null)
+            {
+                var component = go.GetComponent(componentType);
+                if (component != null)
+                    return component;
+            }
+
+            var byName = go.GetComponent(componentName);
+            if (byName != null)
+                return byName;
+
+            return go.GetComponents<Component>()
+                .FirstOrDefault(component =>
+                    component != null &&
+                    (string.Equals(component.GetType().Name, componentName, System.StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(component.GetType().FullName, componentName, System.StringComparison.OrdinalIgnoreCase)));
         }
 
         private static MethodInfo FindTargetMethod(System.Type targetType, string methodName, System.Type[] parameterTypes)
@@ -568,7 +589,7 @@ namespace UnitySkills
         {
             var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (findErr != null) return findErr;
-            var component = go.GetComponent(componentName);
+            var component = FindComponentOnGameObject(go, componentName);
             if (component == null) return new { error = $"Component not found: {componentName}" };
             var type = component.GetType();
             var events = type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)

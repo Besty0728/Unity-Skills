@@ -451,8 +451,7 @@ namespace UnitySkills
                     var prop = so.GetIterator();
                     while (prop.NextVisible(true))
                     {
-                        if (prop.propertyType == SerializedPropertyType.ObjectReference &&
-                            prop.objectReferenceValue == null && prop.objectReferenceInstanceIDValue != 0)
+                        if (UnityObjectIdUtility.HasMissingObjectReference(prop))
                         {
                             results.Add(new { gameObject = go.name, path = GameObjectFinder.GetPath(go),
                                 component = comp.GetType().Name, property = prop.propertyPath });

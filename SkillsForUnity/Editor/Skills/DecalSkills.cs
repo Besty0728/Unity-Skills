@@ -333,7 +333,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = projector.gameObject.name,
-                instanceId = projector.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(projector.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(projector.gameObject),
                 path = GameObjectFinder.GetPath(projector.gameObject),
                 material = projector.material != null ? new
                 {

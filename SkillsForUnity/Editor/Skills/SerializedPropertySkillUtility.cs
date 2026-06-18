@@ -331,7 +331,7 @@ namespace UnitySkills
                 case SerializedPropertyType.ObjectReference:
                     return property.objectReferenceValue == null
                         ? "null"
-                        : $"{property.objectReferenceValue.GetInstanceID()}:{property.objectReferenceValue.GetType().FullName}:{property.objectReferenceValue.name}";
+                        : $"{UnityObjectIdUtility.GetEntityId(property.objectReferenceValue)}:{property.objectReferenceValue.GetType().FullName}:{property.objectReferenceValue.name}";
                 case SerializedPropertyType.Enum:
                     return property.enumValueIndex.ToString(CultureInfo.InvariantCulture);
                 case SerializedPropertyType.Vector2:

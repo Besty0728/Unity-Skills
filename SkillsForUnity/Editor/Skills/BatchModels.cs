@@ -3,12 +3,12 @@ using System.Collections.Generic;
 
 namespace UnitySkills
 {
-    [Serializable]
     internal class BatchTargetQuery
     {
         public string name;
         public string namePattern;
         public string path;
+        public string entityId;
         public int instanceId;
         public string tag;
         public string layer;
@@ -22,12 +22,12 @@ namespace UnitySkills
         public int limit = 500;
     }
 
-    [Serializable]
     internal class BatchPreviewItem
     {
         public string action;
         public string targetName;
         public string targetPath;
+        public string entityId;
         public int instanceId;
         public string sceneName;
         public string componentType;
@@ -47,7 +47,6 @@ namespace UnitySkills
         public string skipReason;
     }
 
-    [Serializable]
     internal class BatchPreviewEnvelope
     {
         public string confirmToken;
@@ -66,14 +65,12 @@ namespace UnitySkills
         public int skipCount;
     }
 
-    [Serializable]
     internal class BatchFailureGroup
     {
         public string reason;
         public int count;
     }
 
-    [Serializable]
     internal class BatchReportTotals
     {
         public int total;
@@ -82,11 +79,11 @@ namespace UnitySkills
         public int skipped;
     }
 
-    [Serializable]
     internal class BatchReportItemRecord
     {
         public string targetName;
         public string targetPath;
+        public string entityId;
         public int instanceId;
         public string action;
         public string status;
@@ -97,7 +94,6 @@ namespace UnitySkills
         public int chunkIndex;
     }
 
-    [Serializable]
     internal class BatchReportRecord
     {
         public string reportId;
@@ -115,7 +111,6 @@ namespace UnitySkills
         public List<BatchFailureGroup> failureGroups = new List<BatchFailureGroup>();
     }
 
-    [Serializable]
     internal class BatchJobLogEntry
     {
         public long timestamp;
@@ -125,7 +120,6 @@ namespace UnitySkills
         public string code;
     }
 
-    [Serializable]
     internal class BatchJobRecord
     {
         public string jobId;
@@ -154,7 +148,6 @@ namespace UnitySkills
         public List<BatchJobProgressEvent> progressEvents = new List<BatchJobProgressEvent>();
     }
 
-    [Serializable]
     internal class BatchJobProgressEvent
     {
         public long timestamp;
@@ -163,7 +156,6 @@ namespace UnitySkills
         public string description;
     }
 
-    [Serializable]
     internal class BatchStorageState
     {
         public List<BatchPreviewEnvelope> previews = new List<BatchPreviewEnvelope>();

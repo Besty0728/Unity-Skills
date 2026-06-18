@@ -138,7 +138,7 @@ namespace UnitySkills
 
             _settingsBtn.text = "";
             _settingsBtn.style.backgroundImage = new StyleBackground((Texture2D)icon);
-            _settingsBtn.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+            _settingsBtn.style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
         }
 
         private void BuildPermBadgeContent()

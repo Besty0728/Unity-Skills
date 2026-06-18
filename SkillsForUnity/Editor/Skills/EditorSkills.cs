@@ -78,7 +78,8 @@ namespace UnitySkills
             var selected = Selection.gameObjects.Select(go => new
             {
                 name = go.name,
-                instanceId = go.GetInstanceID()
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go)
             }).ToArray();
 
             return new { count = selected.Length, objects = selected };
@@ -183,7 +184,8 @@ namespace UnitySkills
                 var info = new System.Collections.Generic.Dictionary<string, object>
                 {
                     ["name"] = go.name,
-                    ["instanceId"] = go.GetInstanceID(),
+                    ["entityId"] = UnityObjectIdUtility.GetEntityId(go),
+                    ["instanceId"] = UnityObjectIdUtility.GetObjectId(go),
                     ["path"] = GameObjectFinder.GetPath(go),
                     ["tag"] = go.tag,
                     ["layer"] = LayerMask.LayerToName(go.layer),
@@ -203,7 +205,7 @@ namespace UnitySkills
                     var children = new System.Collections.Generic.List<object>();
                     foreach (Transform child in go.transform)
                     {
-                        children.Add(new { name = child.name, instanceId = child.gameObject.GetInstanceID() });
+                        children.Add(new { name = child.name, entityId = UnityObjectIdUtility.GetEntityId(child.gameObject), instanceId = UnityObjectIdUtility.GetObjectId(child.gameObject) });
                     }
                     info["children"] = children;
                 }

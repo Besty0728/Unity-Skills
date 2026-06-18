@@ -40,12 +40,13 @@ namespace UnitySkills
 
             AssetDatabase.SaveAssets();
             
-            return new 
-            { 
-                success = true, 
-                assetPath, 
-                gameObjectName = go.name, 
-                directorInstanceId = director.GetInstanceID() 
+            return new
+            {
+                success = true,
+                assetPath,
+                gameObjectName = go.name,
+                directorEntityId = UnityObjectIdUtility.GetEntityId(director),
+                directorInstanceId = UnityObjectIdUtility.GetObjectId(director)
             };
         }
 

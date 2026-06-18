@@ -253,7 +253,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 hasUxml = doc.visualTreeAsset != null,
                 hasPanelSettings = doc.panelSettings != null,
                 sortOrder
@@ -306,7 +307,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 visualTreeAsset = doc.visualTreeAsset != null ? AssetDatabase.GetAssetPath(doc.visualTreeAsset) : null,
                 panelSettings = doc.panelSettings != null ? AssetDatabase.GetAssetPath(doc.panelSettings) : null,
                 sortingOrder = doc.sortingOrder
@@ -619,7 +621,8 @@ namespace UnitySkills
             var result = docs.Select(doc => new
             {
                 name = doc.gameObject.name,
-                instanceId = doc.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(doc.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(doc.gameObject),
                 visualTreeAsset = doc.visualTreeAsset != null ? AssetDatabase.GetAssetPath(doc.visualTreeAsset) : null,
                 panelSettings = doc.panelSettings != null ? AssetDatabase.GetAssetPath(doc.panelSettings) : null,
                 sortingOrder = doc.sortingOrder,
@@ -1697,7 +1700,8 @@ public class {className} : MonoBehaviour
             return new
             {
                 gameObject = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 hierarchy
             };
         }

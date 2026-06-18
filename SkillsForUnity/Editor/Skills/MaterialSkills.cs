@@ -169,7 +169,8 @@ namespace UnitySkills
                     name,
                     shader = shaderName,
                     path = (string)null,
-                    instanceId = material.GetInstanceID(),
+                    entityId = UnityObjectIdUtility.GetEntityId(material),
+                    instanceId = UnityObjectIdUtility.GetObjectId(material),
                     renderPipeline = pipelineType2.ToString(),
                     colorProperty = ProjectSkills.GetColorPropertyName(),
                     textureProperty = ProjectSkills.GetMainTexturePropertyName(),
@@ -183,6 +184,7 @@ namespace UnitySkills
                 name,
                 shader = shaderName,
                 path = savePath,
+                entityId = UnityObjectIdUtility.GetEntityId(material),
                 renderPipeline = pipelineType.ToString(),
                 colorProperty = ProjectSkills.GetColorPropertyName(),
                 textureProperty = ProjectSkills.GetMainTexturePropertyName()

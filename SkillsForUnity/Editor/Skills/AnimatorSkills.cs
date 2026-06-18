@@ -202,7 +202,8 @@ namespace UnitySkills
             return new
             {
                 gameObject = animator.gameObject.name,
-                instanceId = animator.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(animator.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(animator.gameObject),
                 hasController = animator.runtimeAnimatorController != null,
                 controllerPath,
                 speed = animator.speed,

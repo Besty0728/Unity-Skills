@@ -130,7 +130,7 @@ namespace UnitySkills
                     {
                         path = p,
                         name = shader?.name,
-                        propertyCount = shader != null ? ShaderUtil.GetPropertyCount(shader) : 0
+                        propertyCount = shader != null ? shader.GetPropertyCount() : 0
                     };
                 })
                 .ToArray();
@@ -151,13 +151,13 @@ namespace UnitySkills
             if (shader == null)
                 return new { error = $"Shader not found: {shaderNameOrPath}" };
 
-            var propCount = ShaderUtil.GetPropertyCount(shader);
+            var propCount = shader.GetPropertyCount();
             var properties = Enumerable.Range(0, propCount)
                 .Select(i => new
                 {
-                    name = ShaderUtil.GetPropertyName(shader, i),
-                    type = ShaderUtil.GetPropertyType(shader, i).ToString(),
-                    description = ShaderUtil.GetPropertyDescription(shader, i)
+                    name = shader.GetPropertyName(i),
+                    type = shader.GetPropertyType(i).ToString(),
+                    description = shader.GetPropertyDescription(i)
                 })
                 .ToArray();
 

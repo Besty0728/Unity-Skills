@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Compilation;
 using System.Linq;
 using System.Collections.Generic;
@@ -284,7 +285,7 @@ namespace UnitySkills
         public static object DebugGetDefines()
         {
             var group = EditorUserBuildSettings.selectedBuildTargetGroup;
-            var defines = PlayerSettings.GetScriptingDefineSymbolsForGroup(group);
+            var defines = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group));
             return new { success = true, buildTargetGroup = group.ToString(), defines };
         }
 
@@ -296,7 +297,7 @@ namespace UnitySkills
         public static object DebugSetDefines(string defines)
         {
             var group = EditorUserBuildSettings.selectedBuildTargetGroup;
-            PlayerSettings.SetScriptingDefineSymbolsForGroup(group, defines);
+            PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group), defines);
             return new
             {
                 success = true,

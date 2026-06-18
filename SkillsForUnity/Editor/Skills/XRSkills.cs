@@ -160,11 +160,13 @@ namespace UnitySkills
                 // Add detailed component listing
                 info["interactorDetails"] = interactors.Select(c => new {
                     name = c.gameObject.name, type = c.GetType().Name,
-                    instanceId = c.gameObject.GetInstanceID()
+                    entityId = UnityObjectIdUtility.GetEntityId(c.gameObject),
+                    instanceId = UnityObjectIdUtility.GetObjectId(c.gameObject)
                 }).ToArray();
                 info["interactableDetails"] = interactables.Select(c => new {
                     name = c.gameObject.name, type = c.GetType().Name,
-                    instanceId = c.gameObject.GetInstanceID()
+                    entityId = UnityObjectIdUtility.GetEntityId(c.gameObject),
+                    instanceId = UnityObjectIdUtility.GetObjectId(c.gameObject)
                 }).ToArray();
             }
 
@@ -254,7 +256,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = root.name,
-                instanceId = root.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(root),
+                instanceId = UnityObjectIdUtility.GetObjectId(root),
                 xriVersion = XRReflectionHelper.XRIMajorVersion,
                 hierarchy = new
                 {
@@ -292,7 +295,8 @@ namespace UnitySkills
                     success = true,
                     alreadyExists = true,
                     name = existing.gameObject.name,
-                    instanceId = existing.gameObject.GetInstanceID()
+                    entityId = UnityObjectIdUtility.GetEntityId(existing.gameObject),
+                    instanceId = UnityObjectIdUtility.GetObjectId(existing.gameObject)
                 };
 
             var go = new GameObject(name ?? "XR Interaction Manager");
@@ -306,7 +310,8 @@ namespace UnitySkills
                 success = true,
                 alreadyExists = false,
                 name = go.name,
-                instanceId = go.GetInstanceID()
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go)
             };
 #endif
         }
@@ -370,7 +375,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = esGo.name,
-                instanceId = esGo.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(esGo),
+                instanceId = UnityObjectIdUtility.GetObjectId(esGo),
                 created,
                 removedStandaloneInputModule = removedStandalone,
                 addedXRUIInputModule = addedXRInput
@@ -422,7 +428,8 @@ namespace UnitySkills
                         {
                             ["type"] = comp.GetType().Name,
                             ["gameObject"] = comp.gameObject.name,
-                            ["instanceId"] = comp.gameObject.GetInstanceID(),
+                            ["entityId"] = UnityObjectIdUtility.GetEntityId(comp.gameObject),
+                            ["instanceId"] = UnityObjectIdUtility.GetObjectId(comp.gameObject),
                             ["path"] = GameObjectFinder.GetPath(comp.gameObject),
                             ["enabled"] = comp is Behaviour b ? b.enabled : true
                         };
@@ -515,7 +522,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 interactorType = comp.GetType().Name,
                 maxRaycastDistance = maxDistance,
                 lineType,
@@ -564,7 +572,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 interactorType = comp.GetType().Name,
                 triggerRadius = radius
             };
@@ -612,7 +621,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 interactorType = comp.GetType().Name,
                 showHoverMesh,
                 recycleDelay
@@ -643,7 +653,8 @@ namespace UnitySkills
                     {
                         ["type"] = comp.GetType().Name,
                         ["gameObject"] = comp.gameObject.name,
-                        ["instanceId"] = comp.gameObject.GetInstanceID(),
+                        ["entityId"] = UnityObjectIdUtility.GetEntityId(comp.gameObject),
+                        ["instanceId"] = UnityObjectIdUtility.GetObjectId(comp.gameObject),
                         ["path"] = GameObjectFinder.GetPath(comp.gameObject),
                         ["enabled"] = comp is Behaviour b ? b.enabled : true
                     };
@@ -748,7 +759,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 movementType,
                 throwOnDetach,
                 smoothPosition,
@@ -790,7 +802,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 interactableType = comp.GetType().Name,
                 note = "Use xr_add_interaction_event to wire up hover/select callbacks."
             };
@@ -856,7 +869,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 interactableType = comp.GetType().Name,
                 changedProperties = changed,
                 selectModeOptions = XRReflectionHelper.GetEnumValues(comp, "selectMode"),
@@ -888,7 +902,8 @@ namespace UnitySkills
                     {
                         ["type"] = comp.GetType().Name,
                         ["gameObject"] = comp.gameObject.name,
-                        ["instanceId"] = comp.gameObject.GetInstanceID(),
+                        ["entityId"] = UnityObjectIdUtility.GetEntityId(comp.gameObject),
+                        ["instanceId"] = UnityObjectIdUtility.GetObjectId(comp.gameObject),
                         ["path"] = GameObjectFinder.GetPath(comp.gameObject),
                         ["enabled"] = comp is Behaviour b ? b.enabled : true,
                         ["isSelected"] = (bool)(XRReflectionHelper.GetProperty(comp, "isSelected") ?? false),
@@ -912,7 +927,8 @@ namespace UnitySkills
                     {
                         ["type"] = comp.GetType().Name,
                         ["gameObject"] = comp.gameObject.name,
-                        ["instanceId"] = comp.gameObject.GetInstanceID(),
+                        ["entityId"] = UnityObjectIdUtility.GetEntityId(comp.gameObject),
+                        ["instanceId"] = UnityObjectIdUtility.GetObjectId(comp.gameObject),
                         ["path"] = GameObjectFinder.GetPath(comp.gameObject),
                         ["enabled"] = comp is Behaviour b2 ? b2.enabled : true
                     });
@@ -972,7 +988,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 providerType = comp.GetType().Name,
                 note = "Now create teleport targets via xr_add_teleport_area or xr_add_teleport_anchor."
             };
@@ -1021,7 +1038,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 teleportType = "TeleportationArea",
                 matchOrientation,
                 matchOrientationOptions = XRReflectionHelper.GetEnumValues(comp, "matchOrientation")
@@ -1091,7 +1109,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 teleportType = "TeleportationAnchor",
                 position = new { x, y, z },
                 rotationY = rotY,
@@ -1150,7 +1169,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 providerType = comp.GetType().Name,
                 moveSpeed,
                 enableStrafe,
@@ -1218,7 +1238,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 providerType = comp.GetType().Name,
                 turnType,
                 turnAmount = isSnap ? turnAmount : 0f,
@@ -1283,7 +1304,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 removedStandardRaycaster = removedStandard,
                 addedTrackedDeviceRaycaster = addedTracked,
                 renderMode = "WorldSpace",
@@ -1342,7 +1364,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 interactorType = comp.GetType().Name,
                 changedProperties = changed,
                 selectIntensity,
@@ -1442,7 +1465,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 eventType,
                 targetObject = targetName,
                 targetMethod,
@@ -1515,7 +1539,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = go.name,
-                instanceId = go.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
                 componentType = comp.GetType().Name,
                 layers,
                 isInteractor

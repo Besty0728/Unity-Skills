@@ -104,7 +104,7 @@ namespace UnitySkills
             go.transform.position = new Vector3(x, y, z);
             Undo.RegisterCreatedObjectUndo(go, "Create Camera");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
-            return new { success = true, name = go.name, instanceId = go.GetInstanceID() };
+            return new { success = true, name = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go) };
         }
 
         [UnitySkill("camera_get_properties", "Get Game Camera properties (supports name/instanceId/path)",
@@ -378,7 +378,9 @@ namespace UnitySkills
             var cameras = FindHelper.FindAll<Camera>();
             var list = cameras.Select(c => new
             {
-                name = c.gameObject.name, instanceId = c.gameObject.GetInstanceID(),
+                name = c.gameObject.name,
+                entityId = UnityObjectIdUtility.GetEntityId(c.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(c.gameObject),
                 path = GameObjectFinder.GetPath(c.gameObject),
                 depth = c.depth, orthographic = c.orthographic, enabled = c.enabled
             }).OrderBy(c => c.depth).ToArray();

@@ -45,7 +45,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = terrainGO.name,
-                instanceId = terrainGO.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(terrainGO),
+                instanceId = UnityObjectIdUtility.GetObjectId(terrainGO),
                 terrainDataPath = assetPath,
                 size = new { width, length, height },
                 position = new { x, y, z }
@@ -88,7 +89,8 @@ namespace UnitySkills
             {
                 success = true,
                 name = terrain.name,
-                instanceId = terrain.gameObject.GetInstanceID(),
+                entityId = UnityObjectIdUtility.GetEntityId(terrain.gameObject),
+                instanceId = UnityObjectIdUtility.GetObjectId(terrain.gameObject),
                 position = new { x = terrain.transform.position.x, y = terrain.transform.position.y, z = terrain.transform.position.z },
                 size = new { width = data.size.x, height = data.size.y, length = data.size.z },
                 heightmapResolution = data.heightmapResolution,
@@ -579,7 +581,7 @@ namespace UnitySkills
         {
             if (instanceId != 0)
             {
-                var obj = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+                var obj = UnityObjectIdUtility.ObjectIdToObject(instanceId) as GameObject;
                 return obj?.GetComponent<Terrain>();
             }
 
@@ -590,7 +592,7 @@ namespace UnitySkills
             }
 
             // Return first terrain in scene
-            return Object.FindObjectOfType<Terrain>();
+            return Object.FindAnyObjectByType<Terrain>();
         }
     }
 }

@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEngine.Rendering;
 using System.IO;
 using System.Linq;
@@ -366,8 +367,8 @@ namespace UnitySkills
                 defaultScreenWidth = PlayerSettings.defaultScreenWidth,
                 defaultScreenHeight = PlayerSettings.defaultScreenHeight,
                 fullscreen = PlayerSettings.fullScreenMode.ToString(),
-                apiCompatibility = PlayerSettings.GetApiCompatibilityLevel(EditorUserBuildSettings.selectedBuildTargetGroup).ToString(),
-                scriptingBackend = PlayerSettings.GetScriptingBackend(EditorUserBuildSettings.selectedBuildTargetGroup).ToString()
+                apiCompatibility = PlayerSettings.GetApiCompatibilityLevel(NamedBuildTarget.FromBuildTargetGroup(EditorUserBuildSettings.selectedBuildTargetGroup)).ToString(),
+                scriptingBackend = PlayerSettings.GetScriptingBackend(NamedBuildTarget.FromBuildTargetGroup(EditorUserBuildSettings.selectedBuildTargetGroup)).ToString()
             };
         }
 

@@ -2339,14 +2339,28 @@ namespace UnitySkills
             foreach (var method in methods)
             {
                 var parameters = method.GetParameters();
-                if (parameters.Length != arguments.Length)
+                if (arguments.Length > parameters.Length)
+                    continue;
+                if (parameters.Skip(arguments.Length).Any(parameter => !parameter.IsOptional))
                     continue;
 
                 try
                 {
-                    var invokeArguments = new object[arguments.Length];
+                    var invokeArguments = new object[parameters.Length];
                     for (var i = 0; i < parameters.Length; i++)
-                        invokeArguments[i] = ChangeType(arguments[i], parameters[i].ParameterType);
+                    {
+                        if (i < arguments.Length)
+                        {
+                            invokeArguments[i] = ChangeType(arguments[i], parameters[i].ParameterType);
+                        }
+                        else
+                        {
+                            invokeArguments[i] = parameters[i].DefaultValue == DBNull.Value
+                                ? Type.Missing
+                                : parameters[i].DefaultValue;
+                        }
+                    }
+
                     return method.Invoke(instance, invokeArguments);
                 }
                 catch

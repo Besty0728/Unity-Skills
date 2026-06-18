@@ -145,7 +145,7 @@ namespace UnitySkills
                 // Use backgroundImage instead of Image.image — more reliable in
                 // Editor windows under UI Toolkit 2022.3+. Also lets USS tint.
                 icon.style.backgroundImage = new StyleBackground(tex);
-                icon.style.unityBackgroundScaleMode = ScaleMode.ScaleToFit;
+                icon.style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
             }
             head.Add(icon);
 

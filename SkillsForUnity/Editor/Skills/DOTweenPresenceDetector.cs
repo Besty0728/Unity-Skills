@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Compilation;
 using UnityEngine;
 
@@ -57,7 +58,7 @@ namespace UnitySkills
                 if (IsObsoleteBuildTargetGroup(btg)) continue;
 
                 string currentDefs;
-                try { currentDefs = PlayerSettings.GetScriptingDefineSymbolsForGroup(btg) ?? string.Empty; }
+                try { currentDefs = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(btg)) ?? string.Empty; }
                 catch { continue; }
 
                 var defList = currentDefs
@@ -93,7 +94,7 @@ namespace UnitySkills
         {
             try
             {
-                PlayerSettings.SetScriptingDefineSymbolsForGroup(btg, string.Join(";", defs));
+                PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(btg), string.Join(";", defs));
             }
             catch (Exception ex)
             {
