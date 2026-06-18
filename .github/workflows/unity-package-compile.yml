@@ -1,0 +1,80 @@
+name: Unity Package Compile Matrix
+
+"on":
+  workflow_dispatch:
+  push:
+    branches:
+      - beta
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  editmode:
+    name: Unity ${{ matrix.unityVersion }} EditMode
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - unityVersion: 2022.3.62f1
+            uguiVersion: 1.0.0
+          - unityVersion: 6000.0.76f1
+            uguiVersion: 2.0.0
+          - unityVersion: 6000.2.0f1
+            uguiVersion: 2.0.0
+          - unityVersion: 6000.3.18f1
+            uguiVersion: 2.0.0
+          - unityVersion: 6000.4.12f1
+            uguiVersion: 2.0.0
+          - unityVersion: 6000.5.0f1
+            uguiVersion: 2.5.0
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Create CI test project
+        run: |
+          set -euo pipefail
+          mkdir -p TempUnityProject/Assets TempUnityProject/Packages TempUnityProject/ProjectSettings
+          cat > TempUnityProject/Packages/manifest.json <<EOF
+          {
+            "dependencies": {
+              "com.unity.test-framework": "1.4.5",
+              "com.unity.testtools.codecoverage": "1.3.0",
+              "com.unity.ugui": "${{ matrix.uguiVersion }}",
+              "com.besty.unity-skills": "file:../../SkillsForUnity"
+            },
+            "testables": [
+              "com.besty.unity-skills"
+            ]
+          }
+          EOF
+          cat > TempUnityProject/ProjectSettings/ProjectVersion.txt <<EOF
+          m_EditorVersion: ${{ matrix.unityVersion }}
+          EOF
+          cat TempUnityProject/Packages/manifest.json
+
+      - uses: game-ci/unity-test-runner@v4
+        id: tests
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          packageMode: false
+          projectPath: TempUnityProject
+          unityVersion: ${{ matrix.unityVersion }}
+          testMode: EditMode
+          artifactsPath: artifacts/${{ matrix.unityVersion }}
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unity-test-results-${{ matrix.unityVersion }}
+          path: ${{ steps.tests.outputs.artifactsPath }}
