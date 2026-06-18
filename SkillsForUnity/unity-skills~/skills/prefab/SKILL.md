@@ -65,11 +65,12 @@ Instantiate a prefab into the scene.
 | `prefabPath` | string | Yes | - | Prefab asset path |
 | `name` | string | No | prefab name | Instance name |
 | `x`, `y`, `z` | float | No | 0 | Local position (relative to parent if set) |
+| `parentEntityId` | string | No | null | Parent entity ID (Unity 6000.4+, preferred) |
 | `parentName` | string | No | null | Parent object name |
 | `parentInstanceId` | int | No | 0 | Parent instance ID |
 | `parentPath` | string | No | null | Parent hierarchy path |
 
-**Returns**: `{success, name, instanceId, path, prefabPath, position}`
+**Returns**: `{success, name, entityId, instanceId, path, prefabPath, position}`
 
 ### prefab_instantiate_batch
 Instantiate multiple prefabs in one call.
@@ -78,7 +79,7 @@ Instantiate multiple prefabs in one call.
 |-----------|------|----------|-------------|
 | `items` | array | Yes | Array of instantiation configs |
 
-**Item properties**: `prefabPath`, `name`, `x`, `y`, `z`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentName`, `parentInstanceId`, `parentPath`
+**Item properties**: `prefabPath`, `name`, `x`, `y`, `z`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentEntityId`, `parentName`, `parentInstanceId`, `parentPath`
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, instanceId, prefabPath, position}]}`
 

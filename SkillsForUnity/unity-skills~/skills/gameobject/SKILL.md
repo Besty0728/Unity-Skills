@@ -24,7 +24,7 @@ description: "GameObject creation and manipulation — create, delete, move, rot
 - To set material/color → use `material` module
 - To search objects by name/tag/component → `gameobject_find` (this module) or `scene_find_objects` (scene module, SkillMode.SemiAuto)
 
-> **Object Targeting**: All single-object skills accept three identifiers: `name` (string), `instanceId` (int, preferred for precision), `path` (string, hierarchy path like "Parent/Child"). Provide at least one. When only `name` is shown in a parameter table, `instanceId` and `path` are also accepted.
+> **Object Targeting**: All single-object skills accept `entityId` (string, Unity 6000.4+ preferred — returned by all object skills), `name` (string), `instanceId` (int, Unity < 6000.4 preferred), and `path` (string, hierarchy path like "Parent/Child"). Provide at least one. Priority: `entityId > instanceId > path > name`. On Unity 6000.4+ use `entityId` — `instanceId` is reported as `0`. When only `name` is shown in a parameter table, `entityId`, `instanceId`, and `path` are also accepted.
 
 ## Skills Overview
 
@@ -56,19 +56,21 @@ Create a new GameObject (primitive or empty).
 | `name` | string | Yes | - | Object name |
 | `primitiveType` | string | No | null | Cube/Sphere/Capsule/Cylinder/Plane/Quad (null=Empty) |
 | `x`, `y`, `z` | float | No | 0 | Local position (relative to parent if set) |
+| `parentEntityId` | string | No | null | Parent entityId (Unity 6000.4+, preferred) |
 | `parentName` | string | No | null | Parent object name |
 | `parentInstanceId` | int | No | 0 | Parent instance ID |
 | `parentPath` | string | No | null | Parent hierarchy path |
 
-**Returns**: `{success, name, instanceId, path, parent, position}`
+**Returns**: `{success, name, entityId, instanceId, path, parent, position}`
 
 ### gameobject_delete
 Delete a GameObject.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `entityId` | string | No* | Entity ID (Unity 6000.4+, preferred) |
 | `name` | string | No* | Object name |
-| `instanceId` | int | No* | Instance ID (preferred) |
+| `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 
 *At least one identifier required
@@ -78,22 +80,24 @@ Duplicate a GameObject.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `entityId` | string | No* | Entity ID (Unity 6000.4+, preferred) |
 | `name` | string | No* | Object name |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 
-**Returns**: `{originalName, copyName, copyInstanceId, copyPath}`
+**Returns**: `{originalName, copyName, copyEntityId, copyInstanceId, copyPath}`
 
 ### gameobject_rename
 Rename a GameObject.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `entityId` | string | No* | Entity ID (Unity 6000.4+, preferred) |
 | `name` | string | No* | Current object name |
-| `instanceId` | int | No* | Instance ID (preferred) |
+| `instanceId` | int | No* | Instance ID |
 | `newName` | string | Yes | New name |
 
-**Returns**: `{success, oldName, newName, instanceId}`
+**Returns**: `{success, oldName, newName, entityId, instanceId}`
 
 ### gameobject_find
 Find GameObjects matching criteria.
@@ -107,26 +111,28 @@ Find GameObjects matching criteria.
 | `useRegex` | bool | No | false | Use regex for name |
 | `limit` | int | No | 50 | Max results |
 
-**Returns**: `{count, objects: [{name, instanceId, path, tag, layer}]}`
+**Returns**: `{count, objects: [{name, entityId, instanceId, path, tag, layer, position}]}`
 
 ### gameobject_get_info
 Get detailed GameObject information.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `entityId` | string | No* | Entity ID (Unity 6000.4+, preferred) |
 | `name` | string | No* | Object name |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 
-**Returns**: `{name, instanceId, path, tag, layer, active, position, rotation, scale, components, children}`
+**Returns**: `{name, entityId, instanceId, path, tag, layer, active, position, rotation, scale, parent, parentPath, childCount, children: [{name, entityId, instanceId, path}], components}`
 
 ### gameobject_set_transform
 Set position, rotation, and/or scale. Supports world / local / RectTransform spaces.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `entityId` | string | No* | Entity ID (Unity 6000.4+, preferred) |
 | `name` | string | No* | Object name |
-| `instanceId` | int | No* | Instance ID (preferred) |
+| `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 | `posX/posY/posZ` | float | No | World position |
 | `rotX/rotY/rotZ` | float | No | World rotation (euler) |
@@ -146,26 +152,33 @@ Set parent-child relationship.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `childEntityId` | string | No* | Child entity ID (Unity 6000.4+, preferred) |
 | `childName` | string | No* | Child object name |
-| `childInstanceId` | int | No* | Child Instance ID (preferred) |
+| `childInstanceId` | int | No* | Child instance ID |
 | `childPath` | string | No* | Child hierarchy path |
+| `parentEntityId` | string | No* | Parent entity ID (Unity 6000.4+, preferred) |
 | `parentName` | string | No* | Parent object name (empty string = unparent) |
-| `parentInstanceId` | int | No* | Parent Instance ID |
+| `parentInstanceId` | int | No* | Parent instance ID |
 | `parentPath` | string | No* | Parent hierarchy path |
 
-*At least one child identifier and one parent identifier required
+*At least one child identifier required; omit all parent identifiers to unparent
+
+**Returns**: `{success, child, childEntityId, parent, parentEntityId, newPath}`
 
 ### gameobject_set_active
 Enable or disable a GameObject.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `entityId` | string | No* | Entity ID (Unity 6000.4+, preferred) |
 | `name` | string | No* | Object name |
-| `instanceId` | int | No* | Instance ID (preferred) |
+| `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 | `active` | bool | Yes | Enable state |
 
 *At least one identifier required
+
+**Returns**: `{success, name, entityId, active}`
 
 ---
 
@@ -178,7 +191,7 @@ Create multiple GameObjects in one call.
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
 
 
-**Item properties**: `name`, `primitiveType`, `x`, `y`, `z`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentName`, `parentInstanceId`, `parentPath`
+**Item properties**: `name`, `primitiveType`, `x`, `y`, `z`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentEntityId`, `parentName`, `parentInstanceId`, `parentPath`
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, instanceId, path, position}]}`
 
@@ -256,7 +269,7 @@ Set transforms for multiple objects.
 
 
 **Item properties** (each item supports identifier + any subset of transform fields):
-- Identifier: `name` / `instanceId` / `path` (at least one required)
+- Identifier: `entityId` / `name` / `instanceId` / `path` (at least one required)
 - World: `posX`, `posY`, `posZ`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`
 - Local: `localPosX`, `localPosY`, `localPosZ`
 - RectTransform (UI only): `anchoredPosX`, `anchoredPosY`, `anchorMinX`, `anchorMinY`, `anchorMaxX`, `anchorMaxY`, `pivotX`, `pivotY`, `sizeDeltaX`, `sizeDeltaY`, `width`, `height`
@@ -272,7 +285,7 @@ unity_skills.call_skill("gameobject_set_transform_batch", items=[
 ```
 
 ### gameobject_set_active_batch
-Toggle multiple objects. Each item supports identifier (`name` / `instanceId` / `path`) + `active` (bool).
+Toggle multiple objects. Each item supports identifier (`entityId` / `name` / `instanceId` / `path`) + `active` (bool).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
@@ -288,7 +301,7 @@ unity_skills.call_skill("gameobject_set_active_batch", items=[
 ```
 
 ### gameobject_set_parent_batch
-Parent multiple objects. Each item supports `childName`/`childInstanceId`/`childPath` and `parentName`/`parentInstanceId`/`parentPath`.
+Parent multiple objects. Each item supports `childEntityId`/`childName`/`childInstanceId`/`childPath` and `parentEntityId`/`parentName`/`parentInstanceId`/`parentPath`.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
@@ -305,7 +318,7 @@ unity_skills.call_skill("gameobject_set_parent_batch", items=[
 ```
 
 ### gameobject_set_layer_batch
-Set layer for multiple objects. Each item supports identifier (`name` / `instanceId` / `path`) + `layer` (string layer name) + optional `recursive` (bool, default false — propagates layer to children).
+Set layer for multiple objects. Each item supports identifier (`entityId` / `name` / `instanceId` / `path`) + `layer` (string layer name) + optional `recursive` (bool, default false — propagates layer to children).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
@@ -321,7 +334,7 @@ unity_skills.call_skill("gameobject_set_layer_batch", items=[
 ```
 
 ### gameobject_set_tag_batch
-Set tag for multiple objects. Each item supports identifier (`name` / `instanceId` / `path`) + `tag` (string tag name).
+Set tag for multiple objects. Each item supports identifier (`entityId` / `name` / `instanceId` / `path`) + `tag` (string tag name).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |

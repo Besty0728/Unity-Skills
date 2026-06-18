@@ -158,9 +158,15 @@ Create a Cinemachine Mixing Camera.
 ### `cinemachine_mixing_camera_set_weight`
 Set the weight of a child camera within a Mixing Camera.
 **Parameters:**
-- `mixerName` (string): Name of the Mixing Camera.
-- `childName` (string): Name of the child VCam.
-- `weight` (float): Weight value (usually 0.0 to 1.0).
+- `mixerName` (string, optional): Name of the Mixing Camera.
+- `mixerInstanceId` (int, optional): Mixing Camera instance ID.
+- `mixerPath` (string, optional): Mixing Camera hierarchy path.
+- `mixerEntityId` (string, optional): Mixing Camera entity ID (Unity 6000.4+, preferred).
+- `childName` (string, optional): Name of the child VCam.
+- `childInstanceId` (int, optional): Child VCam instance ID.
+- `childPath` (string, optional): Child VCam hierarchy path.
+- `childEntityId` (string, optional): Child VCam entity ID (Unity 6000.4+, preferred).
+- `weight` (float): Weight value, usually 0.0–1.0 (default 1).
 
 ### `cinemachine_create_clear_shot`
 Create a Cinemachine Clear Shot Camera.
@@ -176,11 +182,17 @@ Create a Cinemachine State Driven Camera.
 ### `cinemachine_state_driven_camera_add_instruction`
 Add a state mapping instruction to a State Driven Camera.
 **Parameters:**
-- `cameraName` (string): Name of the State Driven Camera.
+- `cameraName` (string, optional): Name of the State Driven Camera.
+- `cameraInstanceId` (int, optional): State Driven Camera instance ID.
+- `cameraPath` (string, optional): State Driven Camera hierarchy path.
+- `cameraEntityId` (string, optional): State Driven Camera entity ID (Unity 6000.4+, preferred).
 - `stateName` (string): Name of the animation state (e.g., "Run").
-- `childCameraName` (string): Name of the child VCam to activate for this state.
-- `minDuration` (float, optional): Minimum duration in seconds.
-- `activateAfter` (float, optional): Delay in seconds before activation.
+- `childCameraName` (string, optional): Name of the child VCam to activate for this state.
+- `childInstanceId` (int, optional): Child VCam instance ID.
+- `childPath` (string, optional): Child VCam hierarchy path.
+- `childEntityId` (string, optional): Child VCam entity ID (Unity 6000.4+, preferred).
+- `minDuration` (float, optional): Minimum duration in seconds (default 0).
+- `activateAfter` (float, optional): Delay in seconds before activation (default 0).
 
 ### `cinemachine_set_noise`
 Configure Noise settings (Basic Multi Channel Perlin).
@@ -225,15 +237,19 @@ Create a Sequencer camera (CM3) or BlendList camera (CM2) that plays child camer
 ### `cinemachine_sequencer_add_instruction`
 Add a child camera instruction to a Sequencer/BlendList camera.
 **Parameters:**
-- `sequencerName` (string, optional): Sequencer camera name. Provide one of name/instanceId/path.
+- `sequencerName` (string, optional): Sequencer camera name.
 - `sequencerInstanceId` (int, optional): Sequencer Instance ID.
 - `sequencerPath` (string, optional): Sequencer hierarchy path.
-- `childCameraName` (string, optional): Child VCam name. Provide one of name/instanceId/path.
+- `sequencerEntityId` (string, optional): Sequencer entity ID (Unity 6000.4+, preferred).
+- `childCameraName` (string, optional): Child VCam name.
 - `childInstanceId` (int, optional): Child VCam Instance ID.
 - `childPath` (string, optional): Child VCam hierarchy path.
+- `childEntityId` (string, optional): Child VCam entity ID (Unity 6000.4+, preferred).
 - `hold` (float): Duration to hold on this child in seconds (default `2`).
 - `blendStyle` (string): Blend style to use entering this child (default `EaseInOut`).
 - `blendTime` (float): Blend duration in seconds (default `2`).
+
+Provide at least one identifier for each of sequencer and child camera.
 
 ### `cinemachine_create_freelook`
 Create a FreeLook camera. CM2 uses `CinemachineFreeLook`; CM3 builds `CinemachineCamera` + `OrbitalFollow(ThreeRing)` + `RotationComposer`.
