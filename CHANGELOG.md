@@ -2,6 +2,15 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.0.5] - 2026-06-19
+
+### Changed
+
+- **SKILL.md description 中英双语化(触发层本地化)** — 按 Anthropic Agent Skills 官方最佳实践,重写全部 71 个顶层 `SKILL.md`(根入口 + `skills/SKILL.md` index + 69 个模块)的 frontmatter `description`,统一为「第三人称:做什么(what)+ `Use when` 触发场景(when),关键术语自然嵌入句中,适度 pushy 对抗 undertrigger」,并补齐**中文触发从句**(做什么 / 当用户要…时使用)。修复纯英文触发词导致中文输入下模块长期"零触发"的本地化缺口(社区 issue #68086);所有 description 仍 ≤1024 字符硬限制。
+- **reference 子文档 frontmatter 补全** — 16 个已有 description 的子文档(`unitask-design/*`、`dotween-design/*`)改写为中英双语「内容速览」型;34 个原本无 frontmatter 的子文档(`addressables-design`、`netcode-design`、`shadergraph-design`、`yooasset-design` 设计文档及 5 个 `*_REFERENCE.md`)新增 `name` / `description` / `type: reference` 三字段。子文档不参与模块触发,description 为"被读取时的内容清单",不套用 `Use when` 模板。
+- **取舍说明(相对 2.0.4)** — 2.0.4 走英文精简路线(顶层 discovery 降至 ~6.1k 字符);2.0.5 改为**中文用户触发准确率优先**,顶层 discovery 回升至 ~28.6k 字符(连同子文档 frontmatter 合计 ~42k)。代价可控:单条仍 ≤1024 硬限制,且在渐进披露加载模型下(根入口 → 按需读模块)常驻成本基本持平,增量主要落在"按需读取该模块时",相对其正文 token 为零头,以此换取中文输入的触发准确率。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.0.5`。
+
 ## [2.0.4] - 2026-06-18
 
 ### Changed
