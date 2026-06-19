@@ -1,6 +1,6 @@
 ---
 name: unity-project-scout
-description: Unity project reconnaissance advisor. 项目分析, 项目结构, 看看项目, 分析项目, 现有架构, 项目用了什么.
+description: Advises on reconnoitering an existing Unity project — check Unity version, packages, asmdef layout, folders, and coding patterns before proposing changes. Use when first approaching an unfamiliar project, before proposing structural changes, or auditing the existing setup, even if the user just says "看看这个项目" or "项目用了什么". 为侦查现有 Unity 项目提供建议(在提改动前先查 Unity 版本、包、asmdef 结构、目录、编码风格);当用户要初次接触陌生项目、在提结构性改动前、或盘点现有配置时使用。
 ---
 
 # Unity Project Scout

@@ -1,6 +1,6 @@
 ---
 name: unity-skills
-description: Unity Editor automation via REST API — create scripts, analyze scenes. 自动化, Unity编辑器, Unity技能, 操作Unity, 在Unity中, Unity工作流, Unity批处理, Unity授权, Unity白名单, Unity多实例
+description: Automate the Unity Editor through a local REST API — create and edit scripts, build scenes and prefabs, manage assets/materials/lighting, run tests, and drive hundreds of Editor operations across modules. Use whenever the user wants to operate Unity from chat — create or modify GameObjects/scripts/scenes/assets, batch-edit, or run any Unity Editor automation, even if they just say "在 Unity 里…" or "操作 Unity". 通过本地 REST API 自动化 Unity 编辑器(创建与编辑脚本、搭建场景与 Prefab、管理资源/材质/灯光、运行测试,覆盖跨模块的数百项编辑器操作);当用户想从对话里操作 Unity——创建或修改 GameObject/脚本/场景/资源、批量编辑、或执行任何 Unity 编辑器自动化时使用。
 ---
 
 # Unity Skills

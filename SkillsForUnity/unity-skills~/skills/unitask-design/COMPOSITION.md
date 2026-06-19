@@ -1,6 +1,6 @@
 ---
 name: unity-unitask-composition
-description: "UniTask composition operators — WhenAll, WhenAny, WhenEach, Forget, ContinueWith, timeout patterns, RetryOnError; zero-alloc combinator semantics and how they differ from Task.WhenAll/WhenAny."
+description: "UniTask composition operators — WhenAll, WhenAny, WhenEach, Forget, ContinueWith, timeout patterns, RetryOnError; zero-alloc combinator semantics and how they differ from Task.WhenAll/WhenAny. UniTask 组合算子——WhenAll、WhenAny、WhenEach、Forget、ContinueWith、超时模式、RetryOnError;零分配组合子语义及其与 Task.WhenAll/WhenAny 的差异。"
 type: reference
 ---
 

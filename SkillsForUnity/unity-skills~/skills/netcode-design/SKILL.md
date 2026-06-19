@@ -1,6 +1,6 @@
 ---
 name: unity-netcode-design
-description: Source-anchored design rules for Netcode for GameObjects 2.x. 网络同步, 多人游戏, 联机, 服务器权威, 分布式权威, 主机, 客户端, 服务端, 网络对象, 网络变量, 网络列表, 网络场景管理, 远程过程调用, RPC 调用, 所有权
+description: Source-anchored design rules for Netcode for GameObjects 2.x — lifecycle, ownership, RPCs, NetworkVariables, spawning, scene management, transport, and pitfalls. Use when writing or reviewing multiplayer code, designing server/distributed authority, wiring RPCs or NetworkVariables, or debugging netcode, even if the user just says "联机" or "多人同步". 为 Netcode for GameObjects 2.x 提供源码锚定的设计规则(生命周期、所有权、RPC、NetworkVariable、生成、场景管理、传输、陷阱);当用户要编写或审查多人联机代码、设计服务器/分布式权威、连接 RPC 或网络变量、或排查 netcode 问题时使用。
 ---
 
 # Netcode for GameObjects - Design Rules

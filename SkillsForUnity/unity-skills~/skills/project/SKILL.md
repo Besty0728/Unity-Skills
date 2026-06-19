@@ -1,6 +1,6 @@
 ---
 name: unity-project
-description: Project information — read metadata (Unity version, render pipeline), list shaders/UPM packages
+description: Read Unity project information — project metadata such as Unity version and render pipeline, plus lists of shaders and UPM packages. Use when checking the Unity version, detecting the render pipeline, or listing installed shaders/packages, even if the user just says "项目信息" or "什么版本". 读取 Unity 项目信息(项目元数据如 Unity 版本与渲染管线,以及 shader 与 UPM 包列表);当用户要查看 Unity 版本、判断渲染管线、或列出已装 shader/包时使用。
 ---
 
 # Project Skills

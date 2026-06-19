@@ -1,6 +1,6 @@
 ---
 name: unity-shader
-description: HLSL/ShaderLab .shader file management — create/read/list/find/delete, inspect properties/keywords
+description: Manage HLSL/ShaderLab .shader files — create, read, list, find, delete, and inspect shader properties/keywords. Use when creating or editing handwritten shaders, listing or finding .shader files, or inspecting their properties and keywords, even if the user just says "写个shader" or "着色器文件". 管理 HLSL/ShaderLab .shader 文件(创建、读取、列出、查找、删除、检查 shader 属性/关键字);当用户要创建或编辑手写 shader、列出或查找 .shader 文件、或检查其属性与关键字时使用。
 ---
 
 # Unity Shader Skills

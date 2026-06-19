@@ -1,6 +1,6 @@
 ---
 name: unity-scene
-description: Unity scene management — create, load (single/additive), save, unload, switch active scene, get
+description: Manage Unity scenes — create, load (single/additive), save, unload, switch the active scene, and get scene info/hierarchy. Use when opening or saving scenes, loading additively, switching the active scene, or querying scene contents, even if the user just says "打开场景" or "切场景". 管理 Unity 场景(创建、加载、叠加加载、保存、卸载、切换活动场景、获取场景信息与层级);当用户要打开或保存场景、叠加加载、切换活动场景、或查询场景内容时使用。
 ---
 
 # Unity Scene Skills

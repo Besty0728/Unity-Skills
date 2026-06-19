@@ -1,3 +1,9 @@
+---
+name: unity-addressables-assetref
+description: "AssetReference and AssetReferenceT<T> serialized field rules (Addressables 1.22.3 & 2.9.1) — type hierarchy, Inspector wiring, and cross-version differences. AssetReference 与 AssetReferenceT 序列化字段规则(Addressables 1.22.3 与 2.9.1:类型层级、Inspector 连接、跨版本差异)。"
+type: reference
+---
+
 # Addressables - AssetReference & AssetReferenceT<T>
 
 All rules here come from `Runtime/AssetReference.cs` — versions **1.22.3** (Unity 2022) and **2.9.1** (Unity 6).

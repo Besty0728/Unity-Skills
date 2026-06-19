@@ -1,6 +1,6 @@
 ---
 name: unity-yooasset
-description: YooAsset hot-update/asset bundle automation — build bundles, Editor simulate builds
+description: Automate YooAsset hot-update and asset bundles — build bundles, run Editor simulate builds, manage Collector groups, analyze BuildReport, and validate runtime. Use when building or simulating YooAsset bundles, configuring collectors, or validating hot-update assets, even if the user just says "热更" or "打AB包". 自动化 YooAsset 热更新与资源包(构建 bundle、编辑器模拟构建、管理 Collector 分组、分析 BuildReport、运行时校验);当用户要构建或模拟 YooAsset 资源包、配置 collector、或校验热更资源时使用。
 ---
 
 # Unity YooAsset Skills

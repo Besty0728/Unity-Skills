@@ -1,6 +1,6 @@
 ---
 name: unity-unitask-pitfalls
-description: "30 concrete UniTask hallucination and runtime pitfalls — double await, forgotten Forget, wrong PlayerLoopTiming, WebGL ThreadPool crashes, tracker leaks, AsyncEnumerable subscription leaks, coroutine/tween bridge edge cases."
+description: "30 concrete UniTask hallucination and runtime pitfalls — double await, forgotten Forget, wrong PlayerLoopTiming, WebGL ThreadPool crashes, tracker leaks, AsyncEnumerable subscription leaks, coroutine/tween bridge edge cases. UniTask 的 30 个真实陷阱与幻觉点——重复 await、漏调 Forget、PlayerLoopTiming 误用、WebGL 线程池崩溃、追踪器泄漏、AsyncEnumerable 订阅泄漏、协程/补间桥接边界。"
 type: reference
 ---
 

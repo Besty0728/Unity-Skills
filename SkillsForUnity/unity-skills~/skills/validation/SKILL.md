@@ -1,6 +1,6 @@
 ---
 name: unity-validation
-description: Project and scene health validation plus cleanup
+description: Validate project and scene health plus cleanup — find broken references, missing scripts, and other integrity issues. Use when checking for broken or missing references, validating scene/project integrity, or cleaning up issues before a build, even if the user just says "检查引用" or "有没有丢失". 校验项目与场景健康度并清理(查找断裂引用、丢失脚本及其他完整性问题);当用户要检查断裂或丢失引用、校验场景/项目完整性、或在构建前清理问题时使用。
 ---
 
 # Unity Validation Skills

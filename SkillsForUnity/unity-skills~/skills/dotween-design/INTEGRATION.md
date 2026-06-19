@@ -1,6 +1,6 @@
 ---
 name: unity-dotween-integration
-description: "DOTween + UniTask (ToUniTask, TweenCancelBehaviour, AttachExternalCancellation), DOTween + Coroutine (WaitForCompletion YieldInstruction), DOTween + Addressables/prefab lifetime, DOTween in deterministic Netcode loops."
+description: "DOTween + UniTask (ToUniTask, TweenCancelBehaviour, AttachExternalCancellation), DOTween + Coroutine (WaitForCompletion YieldInstruction), DOTween + Addressables/prefab lifetime, DOTween in deterministic Netcode loops. DOTween 与 UniTask(ToUniTask、TweenCancelBehaviour、AttachExternalCancellation)、与协程(WaitForCompletion YieldInstruction)、与 Addressables/预制体生命周期、在确定性 Netcode 循环中的 DOTween 集成。"
 type: reference
 ---
 

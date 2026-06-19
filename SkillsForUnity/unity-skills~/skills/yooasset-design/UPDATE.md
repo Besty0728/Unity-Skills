@@ -1,3 +1,9 @@
+---
+name: unity-yooasset-update
+description: "YooAsset update flow and Downloader (v2.3.18) — the canonical patch flow from InitializeAsync through version/manifest update to bundle download. YooAsset 更新流程与 Downloader(v2.3.18:从 InitializeAsync 到版本/清单更新再到资源包下载的标准热更流程)。"
+type: reference
+---
+
 # YooAsset - Update Flow & Downloader
 
 All rules come from `Runtime/ResourcePackage/ResourcePackage.cs:220-1142`, `Runtime/ResourcePackage/Operation/DownloaderOperation.cs`, and the reference implementation in `Samples~/Space Shooter/GameScript/Runtime/PatchLogic/FsmNode/Fsm*.cs`.

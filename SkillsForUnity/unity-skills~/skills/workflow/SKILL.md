@@ -1,6 +1,6 @@
 ---
 name: unity-workflow
-description: Persistent operation history, snapshots, task/session undo, bookmarks, and batch planning/retry
+description: Persistent operation history and orchestration — snapshots, task/session undo, bookmarks, and batch planning/retry/rollback. Use when undoing a whole task or session, snapshotting before risky changes, planning or previewing batch operations, or rolling back, even if the user just says "撤销整个操作" or "回滚". 持久化操作历史与编排(快照、任务/会话级撤销、书签、批量规划/重试/回滚);当用户要撤销整个任务或会话、在高危改动前快照、规划或预览批量操作、或回滚时使用。
 ---
 
 # Workflow Skills

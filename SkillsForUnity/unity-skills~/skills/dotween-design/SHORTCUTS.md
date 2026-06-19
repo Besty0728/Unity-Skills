@@ -1,6 +1,6 @@
 ---
 name: unity-dotween-shortcuts
-description: "Shortcut extensions by target type — Transform (DOMove / DORotate / DOScale / DOPath / DOPunch / DOShake), RectTransform (DOAnchorPos / DOSizeDelta), Image / Text / CanvasGroup (DOFade / DOColor), Material (DOColor / DOFloat / DOOffset), AudioSource / Camera / Light / Rigidbody / Rigidbody2D."
+description: "Shortcut extensions by target type — Transform (DOMove / DORotate / DOScale / DOPath / DOPunch / DOShake), RectTransform (DOAnchorPos / DOSizeDelta), Image / Text / CanvasGroup (DOFade / DOColor), Material (DOColor / DOFloat / DOOffset), AudioSource / Camera / Light / Rigidbody / Rigidbody2D. 按目标类型的快捷扩展——Transform(DOMove/DORotate/DOScale/DOPath/DOPunch/DOShake)、RectTransform(DOAnchorPos/DOSizeDelta)、Image/Text/CanvasGroup(DOFade/DOColor)、Material(DOColor/DOFloat/DOOffset)、AudioSource/Camera/Light/Rigidbody/Rigidbody2D。"
 type: reference
 ---
 

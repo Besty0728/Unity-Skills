@@ -1,3 +1,9 @@
+---
+name: unity-netcode-ownership
+description: "Netcode for GameObjects ownership and authority — IsOwner/IsServer/IsClient role properties, ownership transfer, and distributed authority. Netcode for GameObjects 的所有权与权威(IsOwner/IsServer/IsClient 角色属性、所有权转移、分布式权威)。"
+type: reference
+---
+
 # Netcode - Ownership & Authority
 
 All rules here come from `Runtime/Core/NetworkBehaviour.cs:455-547`, `Runtime/Core/NetworkObject.cs:1172-2215`, and `Runtime/Configuration/NetworkConfig.cs:169`.

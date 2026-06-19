@@ -1,3 +1,9 @@
+---
+name: unity-yooasset-handles
+description: "YooAsset handles, release, and reference counting (v2.3.18) — the five handle classes, HandleBase, AssetHandle, and AutoUnloadBundleWhenUnused. YooAsset 句柄、释放与引用计数(v2.3.18:五种句柄类、HandleBase、AssetHandle、AutoUnloadBundleWhenUnused)。"
+type: reference
+---
+
 # YooAsset - Handles, Release, Reference Counting
 
 All rules come from `Runtime/ResourceManager/Handle/HandleBase.cs`, `Runtime/ResourceManager/Handle/AssetHandle.cs`, and the `AutoUnloadBundleWhenUnused` field on `Runtime/InitializeParameters.cs:48-49`.

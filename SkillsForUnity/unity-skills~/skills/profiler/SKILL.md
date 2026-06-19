@@ -1,6 +1,6 @@
 ---
 name: unity-profiler
-description: Read-only Unity runtime performance snapshots
+description: Capture read-only Unity runtime performance snapshots — sample frame timing, memory, and runtime stats without mutating anything. Use when checking runtime performance, taking a profiler snapshot, or inspecting memory/frame stats, even if the user just says "性能数据" or "看看帧率". 采集只读的 Unity 运行时性能快照(采样帧耗时、内存、运行时统计,不做任何改动);当用户要查看运行时性能、抓取 profiler 快照、或检查内存/帧率统计时使用。
 ---
 
 # Profiler Skills

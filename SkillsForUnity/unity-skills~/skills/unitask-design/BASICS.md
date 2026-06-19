@@ -1,6 +1,6 @@
 ---
 name: unity-unitask-basics
-description: "UniTask struct semantics, UniTaskVoid, zero-alloc state machine, AsyncMethodBuilder, Preserve(), Status/UniTaskStatus — foundations that diverge from System.Threading.Tasks.Task."
+description: "UniTask struct semantics, UniTaskVoid, zero-alloc state machine, AsyncMethodBuilder, Preserve(), Status/UniTaskStatus — foundations that diverge from System.Threading.Tasks.Task. UniTask 的 struct 语义、UniTaskVoid、零分配状态机、AsyncMethodBuilder、Preserve()、Status/UniTaskStatus——与 System.Threading.Tasks.Task 的根本差异。"
 type: reference
 ---
 

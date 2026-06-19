@@ -1,6 +1,6 @@
 ---
 name: unity-blueprints
-description: Mini-game architecture blueprint advisor. 游戏模板, 小游戏架构, 做个游戏, 从零开始, 平台跳跃, 塔防, 卡牌, 游戏框架.
+description: Advises on starter architecture blueprints for small games — platformer, shooter, runner, puzzle, tower-defense, clicker, card. Use when starting a small game from scratch, scaffolding a genre's core structure, or asking how to organize a specific game type, even if the user just says "做个平台跳跃" or "塔防怎么搭". 为小游戏提供起步架构蓝图(平台跳跃、射击、跑酷、解谜、塔防、点击、卡牌);当用户要从零开始做小游戏、搭建某类型的核心结构、或询问特定玩法怎么组织时使用。
 ---
 
 # Unity Gameplay Blueprints

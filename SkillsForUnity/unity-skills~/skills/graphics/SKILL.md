@@ -1,6 +1,6 @@
 ---
 name: unity-graphics
-description: Project-wide GraphicsSettings/QualitySettings for SRP
+description: Manage project-wide GraphicsSettings and QualitySettings for SRP — read and edit render pipeline assets, quality tiers, and graphics tier settings. Use when configuring project graphics/quality settings, assigning an SRP asset, or adjusting quality levels, even if the user just says "画质设置" or "渲染管线配置". 管理面向 SRP 的工程级 GraphicsSettings 与 QualitySettings(读取与编辑渲染管线资产、质量档位、图形层级设置);当用户要配置工程图形/画质设置、指定 SRP 资产或调整质量等级时使用。
 ---
 
 # Graphics Skills

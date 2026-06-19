@@ -1,6 +1,6 @@
 ---
 name: unity-bookmark
-description: Scene View bookmarks — save the current selection plus camera pivot/rotation/size under a name
+description: Manage Scene View bookmarks — save the current selection plus camera pivot/rotation/size under a name, then jump back later. Use when saving or restoring Scene View viewpoints, bookmarking a camera angle, or navigating between saved scene locations, even if the user just says "标记视角" or "存个机位". 管理 Scene View 书签(以命名方式保存当前选中对象与相机 pivot/旋转/大小,之后快速跳回);当用户要保存或恢复场景视角、收藏某个机位、或在已存位置间切换时使用。
 ---
 
 # Bookmark Skills

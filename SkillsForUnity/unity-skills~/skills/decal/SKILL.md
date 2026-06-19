@@ -1,6 +1,6 @@
 ---
 name: unity-decal
-description: URP Decal Projector creation and configuration plus DecalRendererFeature setup
+description: Create and configure URP Decal Projectors plus DecalRendererFeature setup — project decals onto surfaces and wire the renderer feature. Use when adding decals in URP, configuring a Decal Projector, or enabling the Decal Renderer Feature, even if the user just says "贴花" or "decal". 创建与配置 URP Decal Projector 并设置 DecalRendererFeature(将贴花投射到表面、接入渲染器特性);当用户要在 URP 中添加贴花、配置 Decal Projector 或启用 Decal Renderer Feature 时使用。
 ---
 
 # Decal Skills

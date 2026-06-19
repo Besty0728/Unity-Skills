@@ -1,3 +1,9 @@
+---
+name: unity-yooasset-playmode
+description: "YooAsset PlayMode and InitializeParameters (v2.3.18) — the five EPlayMode options and how to initialize each. YooAsset 运行模式与 InitializeParameters(v2.3.18:五种 EPlayMode 及各自初始化方式)。"
+type: reference
+---
+
 # YooAsset - PlayMode & InitializeParameters
 
 All rules come from `Runtime/InitializeParameters.cs`, `Runtime/ResourcePackage/ResourcePackage.cs`, and the real sample `Samples~/Space Shooter/GameScript/Runtime/PatchLogic/FsmNode/FsmInitializePackage.cs`.

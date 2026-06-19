@@ -1,6 +1,6 @@
 ---
 name: unity-dotween-ease
-description: "Ease enum (36 public values incl. Flash family + 2 INTERNAL), SetEase overloads — basic enum, amplitude+period for Elastic/Back, AnimationCurve, custom EaseFunction, Flash-family 3-param overload, default ease from DOTweenSettings."
+description: "Ease enum (36 public values incl. Flash family + 2 INTERNAL), SetEase overloads — basic enum, amplitude+period for Elastic/Back, AnimationCurve, custom EaseFunction, Flash-family 3-param overload, default ease from DOTweenSettings. Ease 枚举(36 个公开值含 Flash 家族 + 2 个 INTERNAL)、SetEase 重载——基础枚举、Elastic/Back 的幅度+周期、AnimationCurve、自定义 EaseFunction、Flash 家族 3 参重载、来自 DOTweenSettings 的默认缓动。"
 type: reference
 ---
 

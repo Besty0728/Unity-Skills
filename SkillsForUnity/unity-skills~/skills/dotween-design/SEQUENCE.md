@@ -1,6 +1,6 @@
 ---
 name: unity-dotween-sequence
-description: "DOTween.Sequence() composition — Append vs Join vs Insert vs Prepend vs AppendInterval vs PrependInterval vs AppendCallback vs InsertCallback vs JoinCallback, nested sequences, Sequence.SetLoops, timing math, parent Sequence autoKill semantics."
+description: "DOTween.Sequence() composition — Append vs Join vs Insert vs Prepend vs AppendInterval vs PrependInterval vs AppendCallback vs InsertCallback vs JoinCallback, nested sequences, Sequence.SetLoops, timing math, parent Sequence autoKill semantics. DOTween.Sequence() 组合——Append/Join/Insert/Prepend/AppendInterval/PrependInterval/AppendCallback/InsertCallback/JoinCallback 对比、嵌套序列、Sequence.SetLoops、时序计算、父 Sequence 的 autoKill 语义。"
 type: reference
 ---
 

@@ -1,3 +1,9 @@
+---
+name: unity-xr-api-reference
+description: "Extended XR Interaction Toolkit (XRI) reference — detailed workflows, verified XRI property names, and event/property tables beyond the xr SKILL.md. XR Interaction Toolkit(XRI)扩展参考(详细工作流、已验证的 XRI 属性名、超出 xr SKILL.md 的事件/属性表)。"
+type: reference
+---
+
 # XR API Reference
 
 Load this file when you need the detailed workflows, verified XRI property names, or event/property tables. The main `SKILL.md` keeps only routing and critical guardrails.

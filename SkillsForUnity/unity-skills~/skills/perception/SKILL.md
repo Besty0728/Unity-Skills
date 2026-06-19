@@ -1,6 +1,6 @@
 ---
 name: unity-perception
-description: Read-only scene/project/script analysis for AI coding context
+description: Read-only scene, project, and script analysis for AI coding context — analyze scene structure, detect the project stack, run health checks, and find hotspots. Use when gathering context before editing, understanding an unfamiliar scene or project, or auditing structure without making changes, even if the user just says "分析一下场景" or "看看项目结构". 只读的场景/项目/脚本分析,为 AI 编码提供上下文(分析场景结构、探测项目技术栈、健康检查、定位热点);当用户要在编辑前收集上下文、理解陌生场景或项目、或在不改动的前提下审查结构时使用。
 ---
 
 # Unity Perception Skills

@@ -1,6 +1,6 @@
 ---
 name: unity-async
-description: Unity async and lifecycle strategy advisor. 异步, 协程, 生命周期, 用协程还是UniTask, 异步怎么写, 定时器, 取消操作.
+description: Advises on Unity async and lifecycle strategy — choosing among Update, coroutines, UniTask, and timers, plus cleanup and cancellation. Use when deciding how to write async code, choosing between coroutine and UniTask, scheduling timers, or handling cancellation and cleanup, even if the user just asks "异步怎么写" or "用协程还是UniTask". 为 Unity 异步与生命周期策略提供建议(在 Update、协程、UniTask、定时器间取舍,以及清理与取消);当用户要决定异步代码怎么写、在协程与 UniTask 间选择、调度定时器或处理取消与清理时使用。
 ---
 
 # Unity Async Strategy

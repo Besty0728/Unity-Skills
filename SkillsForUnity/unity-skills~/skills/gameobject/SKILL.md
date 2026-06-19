@@ -1,6 +1,6 @@
 ---
 name: unity-gameobject
-description: GameObject creation and manipulation — create, delete, move, rotate, scale, parent, find, rename
+description: Create and manipulate GameObjects — create, delete, move, rotate, scale, parent, find, rename, batch-edit. Use when building or restructuring a scene hierarchy, spawning or removing objects, or adjusting transforms, even if the user doesn't say "GameObject". 创建与操控 GameObject(增删、移动、旋转、缩放、父子、查找、重命名、批量编辑);当用户要搭建或调整场景层级、新建或删除物体、修改 Transform 时使用。
 ---
 
 # Unity GameObject Skills

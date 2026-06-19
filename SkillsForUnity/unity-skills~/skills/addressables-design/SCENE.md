@@ -1,3 +1,9 @@
+---
+name: unity-addressables-scene
+description: "Addressables scene loading and SceneReleaseMode rules (1.22.3 & 2.9.1) — LoadSceneAsync, UnloadSceneAsync, and the biggest cross-version scene-API difference. Addressables 场景加载与 SceneReleaseMode 规则(1.22.3 与 2.9.1:LoadSceneAsync、UnloadSceneAsync,以及最大的跨版本场景 API 差异)。"
+type: reference
+---
+
 # Addressables - Scene Loading & `SceneReleaseMode`
 
 All rules here come from `Runtime/Addressables.cs`, `Runtime/ResourceManager/ResourceProviders/ISceneProvider.cs`, and `Runtime/ResourceManager/ResourceProviders/SceneProvider.cs` — versions **1.22.3** (Unity 2022) and **2.9.1** (Unity 6).

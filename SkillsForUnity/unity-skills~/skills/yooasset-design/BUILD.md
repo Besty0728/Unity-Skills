@@ -1,3 +1,9 @@
+---
+name: unity-yooasset-build
+description: "YooAsset build pipeline, Collector, and BuildParameters (v2.3.18, YooAsset.Editor) — AssetBundleBuilder entry point, collect rules, and Editor-only build APIs. YooAsset 构建管线、Collector 与 BuildParameters(v2.3.18,YooAsset.Editor:AssetBundleBuilder 入口、收集规则、仅编辑器构建 API)。"
+type: reference
+---
+
 # YooAsset - Build Pipeline, Collector, BuildParameters
 
 All rules come from `Editor/AssetBundleBuilder/AssetBundleBuilder.cs`, `Editor/AssetBundleBuilder/BuildParameters.cs`, `Editor/AssetBundleBuilder/BuildPipeline/ScriptableBuildPipeline/ScriptableBuildParameters.cs`, `Editor/AssetBundleCollector/CollectCommand.cs`, and `Editor/AssetBundleCollector/CollectRules/IFilterRule.cs`.

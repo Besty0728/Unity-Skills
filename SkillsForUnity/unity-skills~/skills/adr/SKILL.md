@@ -1,6 +1,6 @@
 ---
 name: unity-adr
-description: Architecture decision record helper for Unity projects. 技术选型, 方案对比, 选哪个, 设计决策, 架构决策, 优缺点对比.
+description: Helps record Unity architecture decisions (ADR) — compare options, weigh tradeoffs, and lock in a chosen approach with rationale. Use when choosing between technical approaches, comparing libraries or patterns, or documenting why a design decision was made, even if the user just asks "选哪个" or "用哪个方案好". 帮助记录 Unity 架构决策(ADR:技术选型、方案对比、权衡优缺点、固化决策与理由);当用户要在多个技术方案间抉择、对比库或模式、或记录某个设计决策的来龙去脉时使用。
 ---
 
 # Unity ADR

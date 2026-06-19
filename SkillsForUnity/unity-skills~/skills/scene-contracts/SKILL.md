@@ -1,6 +1,6 @@
 ---
 name: unity-scene-contracts
-description: Scene composition contract advisor for Unity. 场景契约, 场景装配, 场景依赖, 场景里必须有什么, 引用怎么连.
+description: Advises on Unity scene composition contracts — required scene objects, component dependencies, bootstrap logic, and reference wiring. Use when defining what a scene must contain, planning bootstrap/wiring, or documenting scene dependencies, even if the user just says "场景里要有什么" or "引用怎么连". 为 Unity 场景装配契约提供建议(场景必备对象、组件依赖、bootstrap 逻辑、引用连线);当用户要界定场景必须包含什么、规划启动/装配、或记录场景依赖时使用。
 ---
 
 # Unity Scene Contracts

@@ -1,6 +1,6 @@
 ---
 name: unity-xr
-description: XR Interaction Toolkit (XRI) for VR/AR — set up XR rigs, grab/socket/ray interactors
+description: Set up XR Interaction Toolkit (XRI) for VR/AR — XR rigs and grab/socket/ray interactors. Use when building VR/AR interaction, setting up an XR rig, or configuring grab/socket/ray interactors, even if the user just says "VR" or "XR交互". 搭建用于 VR/AR 的 XR Interaction Toolkit(XRI:XR rig、抓取/插槽/射线交互器);当用户要构建 VR/AR 交互、搭建 XR rig、或配置抓取/插槽/射线交互器时使用。
 ---
 
 # Unity XR Interaction Toolkit Skills

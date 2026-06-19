@@ -1,6 +1,6 @@
 ---
 name: unity-editor
-description: Unity Editor control — enter/exit/pause play mode, select objects, undo/redo, execute menu
+description: Control the Unity Editor — enter/exit/pause play mode, select objects, undo/redo, and execute menu items. Use when driving Editor state, entering or leaving play mode, changing the selection, or running menu commands, even if the user just says "进入运行" or "选中物体". 控制 Unity 编辑器(进入/退出/暂停 play mode、选中对象、撤销/重做、执行菜单项);当用户要操控编辑器状态、进出 play mode、改变选中、或运行菜单命令时使用。
 ---
 
 # Unity Editor Skills

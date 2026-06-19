@@ -1,3 +1,9 @@
+---
+name: unity-netcode-lifecycle
+description: "Netcode for GameObjects lifecycle and call order — Awake/OnNetworkSpawn/Start ordering for in-scene and dynamically spawned NetworkObjects. Netcode for GameObjects 的生命周期与调用顺序(场景内与动态生成 NetworkObject 的 Awake/OnNetworkSpawn/Start 次序)。"
+type: reference
+---
+
 # Netcode - Lifecycle & Call Order
 
 All rules here come from `Runtime/Core/NetworkBehaviour.cs`, `Runtime/Core/NetworkObject.cs`, and `Runtime/Spawning/NetworkSpawnManager.cs`.

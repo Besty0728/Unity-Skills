@@ -1,6 +1,6 @@
 ---
 name: unity-script
-description: C# script CRUD and analysis — create, read, replace, append, search, rename, move, delete scripts
+description: Create, read, and analyze C# scripts — create, read, replace, append, search, rename, move, and delete scripts, plus compile feedback. Use when authoring or editing C# code, searching across scripts, refactoring file layout, or checking compile errors, even if the user just says "写个脚本" or "改代码". 对 C# 脚本进行增删改查与分析(创建、读取、替换、追加、搜索、重命名、移动、删除脚本,以及编译反馈);当用户要编写或编辑 C# 代码、跨脚本搜索、重构文件布局、或检查编译错误时使用。
 ---
 
 # Unity Script Skills

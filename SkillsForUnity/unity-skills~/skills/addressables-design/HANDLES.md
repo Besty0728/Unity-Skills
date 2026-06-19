@@ -1,3 +1,9 @@
+---
+name: unity-addressables-handles
+description: "AsyncOperationHandle and AsyncOperationHandle<T> lifecycle (Addressables 1.22.3 & 2.9.1) — the handle structs, completion, status, release, and ref-counting. AsyncOperationHandle 与 AsyncOperationHandle 泛型句柄的生命周期(1.22.3 与 2.9.1:句柄结构体、完成、状态、释放、引用计数)。"
+type: reference
+---
+
 # Addressables - AsyncOperationHandle lifecycle
 
 All rules here come from `Runtime/ResourceManager/AsyncOperations/AsyncOperationHandle.cs` and `Runtime/ResourceManager/AsyncOperations/AsyncOperationBase.cs` — versions **1.22.3** and **2.9.1**. The handle struct is effectively identical across both versions; differences noted inline.

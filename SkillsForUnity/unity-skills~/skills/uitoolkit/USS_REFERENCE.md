@@ -1,3 +1,9 @@
+---
+name: unity-uitoolkit-uss-reference
+description: "Extended UI Toolkit USS reference — design tokens, reusable layout/component patterns, and an end-to-end USS example beyond the uitoolkit SKILL.md. UI Toolkit USS 扩展参考(设计令牌、可复用布局/组件模式、超出 uitoolkit SKILL.md 的端到端 USS 示例)。"
+type: reference
+---
+
 # UI Toolkit USS Reference
 
 Load this file when you need deeper USS design material, reusable layout/component patterns, or a full end-to-end example. The main `SKILL.md` keeps only routing rules and guardrails.

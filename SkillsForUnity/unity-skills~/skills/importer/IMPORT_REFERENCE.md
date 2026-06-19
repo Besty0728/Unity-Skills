@@ -1,3 +1,9 @@
+---
+name: unity-importer-reference
+description: "Extended importer reference — importer/search helpers, per-platform override details, and import best-practice examples beyond the importer SKILL.md. 导入器扩展参考(importer/搜索辅助、分平台覆盖细节、超出 importer SKILL.md 的导入最佳实践示例)。"
+type: reference
+---
+
 # Importer Reference
 
 Load this file when you need extended importer/search helpers, platform override details, or importer-side best-practice examples. The main `SKILL.md` keeps only routing and the most common setting decisions.

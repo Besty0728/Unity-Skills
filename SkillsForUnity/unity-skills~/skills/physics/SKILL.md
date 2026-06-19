@@ -1,6 +1,6 @@
 ---
 name: unity-physics
-description: Unity physics queries and editor-time configuration
+description: Run Unity physics queries and configure physics at editor time — raycasts, overlap checks, gravity, and physics settings. Use when casting rays, testing overlaps, querying colliders, or adjusting gravity/physics settings, even if the user just says "射线检测" or "物理设置". 执行 Unity 物理查询并在编辑器期配置物理(raycast、overlap 检测、重力、物理设置);当用户要发射射线、检测重叠、查询碰撞体、或调整重力/物理设置时使用。
 ---
 
 # Physics Skills

@@ -1,3 +1,9 @@
+---
+name: unity-ui-reference
+description: "Extended UGUI reference — fuller UGUI examples, element/property details, and a longer menu-building workflow beyond the ui SKILL.md. UGUI 扩展参考(更完整的 UGUI 示例、元素/属性细节、超出 ui SKILL.md 的菜单搭建流程)。"
+type: reference
+---
+
 # UGUI Reference
 
 Load this file when you need fuller UGUI examples, extended element/property details, or a longer menu-building workflow. The main `SKILL.md` keeps only routing and core summaries.

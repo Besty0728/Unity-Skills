@@ -1,6 +1,6 @@
 ---
 name: unity-inspector
-description: Unity Inspector design advisor. 检视面板, Inspector怎么设计, 序列化字段, 编辑器显示, 显示在Inspector.
+description: Advises on Unity Inspector authoring UX — SerializeField usage, Tooltip/Header organization, validation, and custom Inspector display. Use when designing how a component appears in the Inspector, organizing serialized fields, adding tooltips/headers, or improving authoring UX, even if the user just says "Inspector怎么设计" or "字段怎么显示". 为 Unity Inspector 编写体验提供建议(SerializeField 用法、Tooltip/Header 组织、校验、自定义 Inspector 显示);当用户要设计组件在 Inspector 的呈现、组织序列化字段、添加提示/分组或改善编辑体验时使用。
 ---
 
 # Unity Inspector Design

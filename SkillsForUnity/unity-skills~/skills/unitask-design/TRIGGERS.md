@@ -1,6 +1,6 @@
 ---
 name: unity-unitask-triggers
-description: "AsyncTriggerBase and MonoBehaviour lifecycle-to-UniTask extensions — GetAsyncStartTrigger / OnDestroyAsync / OnCollisionEnterAsync / OnClickAsync / OnTriggerEnterAsync, AsyncTriggerExtensions, GetCancellationTokenOnDestroy internals."
+description: "AsyncTriggerBase and MonoBehaviour lifecycle-to-UniTask extensions — GetAsyncStartTrigger / OnDestroyAsync / OnCollisionEnterAsync / OnClickAsync / OnTriggerEnterAsync, AsyncTriggerExtensions, GetCancellationTokenOnDestroy internals. AsyncTriggerBase 与 MonoBehaviour 生命周期转 UniTask 的扩展——GetAsyncStartTrigger/OnDestroyAsync/OnCollisionEnterAsync/OnClickAsync/OnTriggerEnterAsync、AsyncTriggerExtensions、GetCancellationTokenOnDestroy 内部机制。"
 type: reference
 ---
 

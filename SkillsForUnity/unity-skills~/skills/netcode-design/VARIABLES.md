@@ -1,3 +1,9 @@
+---
+name: unity-netcode-variables
+description: "Netcode for GameObjects NetworkVariable and NetworkList — NetworkVariable<T> signatures, read/write permissions, and replicated collections. Netcode for GameObjects 的 NetworkVariable 与 NetworkList(NetworkVariable 泛型签名、读写权限、可复制集合)。"
+type: reference
+---
+
 # Netcode - NetworkVariable & NetworkList
 
 All rules come from `Runtime/NetworkVariable/NetworkVariable.cs`, `NetworkVariableBase.cs`, `NetworkVariablePermission.cs`, and `Collections/NetworkList.cs`.

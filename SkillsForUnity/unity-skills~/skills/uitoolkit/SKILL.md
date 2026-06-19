@@ -1,6 +1,6 @@
 ---
 name: unity-uitoolkit
-description: UI Toolkit (UITK) — create/edit USS stylesheets and UXML layouts, configure UIDocument +
+description: Build Unity UI Toolkit (UITK) UIs — create/edit USS stylesheets and UXML layouts, and configure UIDocument components. Use when authoring runtime or editor UI with UI Toolkit, writing USS/UXML, or wiring a UIDocument, even if the user just says "UITK" or "UXML". 构建 Unity UI Toolkit(UITK)界面(创建/编辑 USS 样式表与 UXML 布局、配置 UIDocument 组件);当用户要用 UI Toolkit 编写运行时或编辑器 UI、编写 USS/UXML、或接入 UIDocument 时使用。
 ---
 
 # Unity UI Toolkit Skills

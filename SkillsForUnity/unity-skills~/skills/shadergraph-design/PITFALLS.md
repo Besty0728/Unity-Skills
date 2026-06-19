@@ -1,3 +1,9 @@
+---
+name: unity-shadergraph-pitfalls
+description: "Shader Graph pitfalls — common bad advice to reject before it ships, such as misusing PropertyNode reference names. Shader Graph 陷阱(在落地前需否决的常见错误建议,如误用 PropertyNode 的引用名)。"
+type: reference
+---
+
 # Pitfalls
 
 Sub-doc of [shadergraph-design](./SKILL.md). Use this to reject bad Shader Graph advice before it ships.

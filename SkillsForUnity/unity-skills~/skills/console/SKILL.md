@@ -1,6 +1,6 @@
 ---
 name: unity-console
-description: Unity Editor console log capture, query, write, and settings
+description: Capture and query the Unity Editor console — read/filter logs, write custom log entries, and adjust console settings. Use when inspecting console output, filtering errors or warnings, emitting log messages, or configuring the console, even if the user just says "看日志" or "控制台". 捕获并查询 Unity 编辑器控制台(读取/过滤日志、写入自定义日志、调整控制台设置);当用户要查看控制台输出、过滤错误或警告、输出日志消息时使用。
 ---
 
 # Unity Console Skills

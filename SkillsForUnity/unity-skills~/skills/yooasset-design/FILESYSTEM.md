@@ -1,3 +1,9 @@
+---
+name: unity-yooasset-filesystem
+description: "YooAsset FileSystem parameters and services (v2.3.18) — FileSystemParameters, decryption and remote services. YooAsset 文件系统参数与服务(v2.3.18:FileSystemParameters、解密与远端服务)。"
+type: reference
+---
+
 # YooAsset - FileSystem Parameters & Services
 
 All rules come from `Runtime/FileSystem/FileSystemParameters.cs`, `Runtime/FileSystem/FileSystemParametersDefine.cs`, and `Runtime/Services/IDecryptionServices.cs` / `IRemoteServices.cs`.

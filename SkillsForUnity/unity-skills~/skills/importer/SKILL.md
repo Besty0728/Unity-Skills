@@ -1,6 +1,6 @@
 ---
 name: unity-importer
-description: Asset import settings — texture/audio/model importers, sprite settings, per-platform overrides,
+description: Configure asset import settings — texture/audio/model importers, sprite settings, and per-platform overrides. Use when adjusting how assets import, setting texture compression or sprite modes, or applying per-platform import overrides, even if the user just says "导入设置" or "贴图压缩". 配置资源导入设置(texture/audio/model 导入器、sprite 设置、分平台覆盖);当用户要调整资源如何导入、设置贴图压缩或 sprite 模式、或应用分平台导入覆盖时使用。
 ---
 
 # Unity Importer Skills

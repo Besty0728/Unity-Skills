@@ -1,6 +1,6 @@
 ---
 name: unity-ui
-description: Unity UGUI (Canvas-based) creation and layout
+description: Create and lay out Unity UGUI (Canvas-based UI) — Canvas, panels, buttons, text, images, and layout groups. Use when building UGUI screens, adding Canvas elements, or arranging UI layout, even if the user just says "做个UI" or "界面". 创建与布局 Unity UGUI(基于 Canvas 的 UI:Canvas、面板、按钮、文本、图片、布局组);当用户要搭建 UGUI 界面、添加 Canvas 元素、或排布 UI 布局时使用。
 ---
 
 # Unity UI Skills

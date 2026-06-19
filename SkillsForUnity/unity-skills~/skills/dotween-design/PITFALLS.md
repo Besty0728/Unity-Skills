@@ -1,6 +1,6 @@
 ---
 name: unity-dotween-pitfalls
-description: "30 concrete DOTween pitfalls — missing target NRE, Safe Mode hiding bugs, autoKill confusion, Append vs Join timing errors, OnComplete on infinite loops, DOPath mode errors, module compile errors, tween pool leaks, Addressables/tween lifetime races."
+description: "30 concrete DOTween pitfalls — missing target NRE, Safe Mode hiding bugs, autoKill confusion, Append vs Join timing errors, OnComplete on infinite loops, DOPath mode errors, module compile errors, tween pool leaks, Addressables/tween lifetime races. DOTween 的 30 个真实陷阱——目标缺失 NRE、安全模式掩盖 bug、autoKill 混淆、Append 与 Join 时序错误、无限循环上的 OnComplete、DOPath 模式错误、模块编译错误、补间池泄漏、Addressables/补间生命周期竞态。"
 type: reference
 ---
 

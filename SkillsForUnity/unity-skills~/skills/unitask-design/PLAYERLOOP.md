@@ -1,6 +1,6 @@
 ---
 name: unity-unitask-playerloop
-description: "PlayerLoopTiming (16 values 2020.2+), UniTask.Yield / NextFrame / Delay / DelayFrame / WaitForEndOfFrame / WaitForFixedUpdate, DelayType, frame-ordering semantics and coroutine interop."
+description: "PlayerLoopTiming (16 values 2020.2+), UniTask.Yield / NextFrame / Delay / DelayFrame / WaitForEndOfFrame / WaitForFixedUpdate, DelayType, frame-ordering semantics and coroutine interop. PlayerLoopTiming(2020.2+ 共 16 个值)、UniTask.Yield/NextFrame/Delay/DelayFrame/WaitForEndOfFrame/WaitForFixedUpdate、DelayType、帧序语义与协程互操作。"
 type: reference
 ---
 

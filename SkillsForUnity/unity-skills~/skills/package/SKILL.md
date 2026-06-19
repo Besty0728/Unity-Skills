@@ -1,6 +1,6 @@
 ---
 name: unity-package
-description: Unity Package Manager (UPM) operations — install, remove, refresh, search, inspect packages, list
+description: Manage Unity Package Manager (UPM) — install, remove, refresh, search, inspect, and list packages. Use when adding or removing UPM packages, checking installed versions, searching the registry, or scripting package operations, even if the user just says "装个包" or "UPM". 管理 Unity Package Manager(UPM:安装、移除、刷新、搜索、查看、列出包);当用户要添加或移除 UPM 包、检查已装版本、搜索 registry、或脚本化包操作时使用。
 ---
 
 # Package Skills

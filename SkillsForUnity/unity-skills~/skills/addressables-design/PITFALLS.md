@@ -1,3 +1,9 @@
+---
+name: unity-addressables-pitfalls
+description: "30 concrete Addressables pitfalls verified against 1.22.3 and 2.9.1 — 1.x-vs-2.x surface mismatches, version-tagged hallucinations, and source-cited fixes. Addressables 的 30 个真实陷阱(对照 1.22.3 与 2.9.1 验证:1.x 与 2.x 接口错配、按版本标注的幻觉点、附源码出处的修正)。"
+type: reference
+---
+
 # Addressables - Pitfalls (30 concrete hallucinations)
 
 All pitfalls below are verified against `com.unity.addressables@1.22.3` and `com.unity.addressables@8460f1c9c927` (v2.9.1). Each entry tags the affected version(s) and cites the source anchor.

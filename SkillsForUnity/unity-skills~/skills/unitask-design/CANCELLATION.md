@@ -1,6 +1,6 @@
 ---
 name: unity-unitask-cancellation
-description: "UniTask cancellation model — CancellationToken lifetimes, GetCancellationTokenOnDestroy (3 overloads: MonoBehaviour/GameObject/Component), AttachExternalCancellation, WaitUntilCanceled, CancelAfterSlim, AddTo, OperationCanceledException flow, non-MonoBehaviour token management."
+description: "UniTask cancellation model — CancellationToken lifetimes, GetCancellationTokenOnDestroy (3 overloads: MonoBehaviour/GameObject/Component), AttachExternalCancellation, WaitUntilCanceled, CancelAfterSlim, AddTo, OperationCanceledException flow, non-MonoBehaviour token management. UniTask 取消模型——CancellationToken 生命周期、GetCancellationTokenOnDestroy(3 个重载:MonoBehaviour/GameObject/Component)、AttachExternalCancellation、WaitUntilCanceled、CancelAfterSlim、AddTo、OperationCanceledException 流程、非 MonoBehaviour 的令牌管理。"
 type: reference
 ---
 

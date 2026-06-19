@@ -1,6 +1,6 @@
 ---
 name: unity-camera
-description: Unity Scene View and Game Camera control — move/rotate the view, create/configure cameras, FOV/clip
+description: Control Unity Scene View and Game cameras — move/rotate the view, create and configure cameras, set FOV/clip planes/projection. Use when framing the Scene View, creating or adjusting cameras, tweaking FOV or clipping planes, or scripting camera setup, even if the user just says "镜头" or "相机". 控制 Unity Scene View 与游戏相机(移动/旋转视图、创建与配置相机、设置 FOV/裁剪面/投影);当用户要取景 Scene View、创建或调整相机、修改 FOV 或裁剪面时使用。
 ---
 
 # Camera Skills

@@ -1,6 +1,6 @@
 ---
 name: unity-architecture
-description: Gameplay and system architecture advisor for Unity. 架构设计, 怎么组织代码, 模块划分, 代码结构, 解耦, 重构方向, 系统设计.
+description: Advises on Unity gameplay and system architecture — module boundaries, decoupling, scene composition, SOLID structure, refactor direction. Use when planning how to organize code, splitting responsibilities, reducing coupling, or choosing a refactor direction, before writing structural code. 为 Unity 游戏与系统架构提供建议(模块边界、解耦、场景组织、SOLID、重构方向);当用户要规划代码结构、划分职责、降低耦合或决定重构方向时使用。
 ---
 
 # Unity Architecture Advisor

@@ -1,6 +1,6 @@
 ---
 name: unity-patterns
-description: Unity design pattern selector. 设计模式, 用什么模式, 事件系统, 状态机, 对象池, 观察者模式, 该用什么模式.
+description: Advises on choosing Unity design patterns — ScriptableObject, event systems, state machines, object pooling, observer, and more. Use when deciding which pattern fits a problem, structuring decoupled systems, or choosing between event/state-machine/pool approaches, even if the user just asks "用什么模式" or "该用状态机吗". 为选择 Unity 设计模式提供建议(ScriptableObject、事件系统、状态机、对象池、观察者等);当用户要判断哪种模式适合某问题、构建解耦系统、或在事件/状态机/对象池方案间抉择时使用。
 ---
 
 # Unity Pattern Selector

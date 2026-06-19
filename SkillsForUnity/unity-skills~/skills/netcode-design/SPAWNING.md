@@ -1,3 +1,9 @@
+---
+name: unity-netcode-spawning
+description: "Netcode for GameObjects spawning and prefab registration — NetworkPrefabsList, NetworkObject.Spawn, and the prefab-registration happy path. Netcode for GameObjects 的生成与预制体注册(NetworkPrefabsList、NetworkObject.Spawn,以及预制体注册的正确流程)。"
+type: reference
+---
+
 # Netcode - Spawning & Prefab Registration
 
 All rules come from `Runtime/Core/NetworkObject.cs:1884-2215`, `Runtime/Spawning/NetworkSpawnManager.cs`, `Runtime/Configuration/NetworkPrefab.cs`, and `Runtime/Configuration/NetworkPrefabsList.cs`.

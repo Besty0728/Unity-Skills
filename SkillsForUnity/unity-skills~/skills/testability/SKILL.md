@@ -1,6 +1,6 @@
 ---
 name: unity-testability
-description: Unity testability advisor. 怎么测试, 写测试, 可测试, 测试性, 单元测试, 逻辑分离.
+description: Advises on Unity testability — isolating logic out of MonoBehaviour and planning EditMode/PlayMode tests. Use when improving testability, extracting logic for unit tests, or planning a test strategy, even if the user just says "怎么测试" or "代码不好测". 为 Unity 可测试性提供建议(把逻辑从 MonoBehaviour 中剥离、规划 EditMode/PlayMode 测试);当用户要提升可测试性、为单元测试抽取逻辑、或规划测试策略时使用。
 ---
 
 # Unity Testability Advisor

@@ -1,6 +1,6 @@
 ---
 name: unity-debug
-description: Debug, diagnostics and compile state — read console errors, force recompile, stack traces, list
+description: Inspect debug, diagnostics and compile state — read console errors, force recompile, get stack traces, and list system/memory info. Use when diagnosing compile failures, checking errors after a change, forcing recompilation, or gathering system diagnostics, even if the user just says "为什么报错" or "编译状态". 检查调试、诊断与编译状态(读取控制台错误、强制重新编译、获取堆栈、列出系统/内存信息);当用户要诊断编译失败、改动后检查报错、强制重编或收集系统诊断时使用。
 ---
 
 # Debug Skills

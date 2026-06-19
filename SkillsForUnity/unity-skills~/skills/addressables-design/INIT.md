@@ -1,3 +1,9 @@
+---
+name: unity-addressables-init
+description: "Addressables initialization and catalog-loading rules anchored to Addressables.cs / AddressablesImpl.cs / InitializationOperation.cs (1.22.3 & 2.9.1). Addressables 初始化与目录加载规则(锚定 1.22.3 与 2.9.1 引擎源码)。"
+type: reference
+---
+
 # Addressables - Initialization & Catalog Loading
 
 All rules here come from `Runtime/Addressables.cs`, `Runtime/AddressablesImpl.cs`, and `Runtime/Initialization/InitializationOperation.cs` — versions **1.22.3** (Unity 2022) and **2.9.1** (Unity 6).

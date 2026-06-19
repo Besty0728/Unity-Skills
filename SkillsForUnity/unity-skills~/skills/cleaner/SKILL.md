@@ -1,6 +1,6 @@
 ---
 name: unity-cleaner
-description: Project cleanup and audit — find unused assets, content-hash duplicates, missing references, empty
+description: Clean up and audit a Unity project — find unused assets, content-hash duplicates, missing references, and empty folders. Use when reducing project bloat, hunting duplicate or orphaned assets, or auditing before a release, even if the user just says "清理项目" or "瘦身". 清理与审计 Unity 工程(查找未使用资源、内容哈希重复项、丢失引用、空文件夹);当用户要给项目瘦身、排查重复或孤立资源、或发布前审计时使用。
 ---
 
 # Unity Cleaner Skills

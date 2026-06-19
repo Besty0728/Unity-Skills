@@ -1,6 +1,6 @@
 ---
 name: unity-unitask-asyncenumerable
-description: "UniTaskAsyncEnumerable LINQ-to-async operators, AsyncReactiveProperty, Channel<T>, IUniTaskAsyncEnumerable<T> lifecycle, EveryValueChanged, Publish, GroupBy, Merge, subscription/leak patterns."
+description: "UniTaskAsyncEnumerable LINQ-to-async operators, AsyncReactiveProperty, Channel<T>, IUniTaskAsyncEnumerable<T> lifecycle, EveryValueChanged, Publish, GroupBy, Merge, subscription/leak patterns. UniTaskAsyncEnumerable 的 LINQ 转异步算子、AsyncReactiveProperty、Channel、IUniTaskAsyncEnumerable 生命周期、EveryValueChanged、Publish/GroupBy/Merge 及订阅/泄漏模式。"
 type: reference
 ---
 

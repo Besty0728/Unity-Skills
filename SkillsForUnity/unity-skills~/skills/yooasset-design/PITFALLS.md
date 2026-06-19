@@ -1,3 +1,9 @@
+---
+name: unity-yooasset-pitfalls
+description: "YooAsset pitfalls checklist (v2.3.18) — the 30 mistakes AI agents most often introduce, plus a legacy-API migration list of pre-2.3.18 calls to avoid. YooAsset 陷阱清单(v2.3.18:AI 最易引入的 30 个错误,以及 2.3.18 之前不可再用的旧 API 迁移清单)。"
+type: reference
+---
+
 # YooAsset - Pitfalls Checklist
 
 A checklist of the 30 mistakes AI agents most often introduce when writing YooAsset code against **v2.3.18**. Every item cites a source anchor. Scan before writing or reviewing YooAsset code.

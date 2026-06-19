@@ -1,6 +1,6 @@
 ---
 name: unity-dotween-lifetime
-description: "Tween lifetime management — SetAutoKill, SetLink, SetRecyclable, SetId, SetTarget, DOTween.Kill/KillAll grouping, Safe Mode semantics, tween pool capacity, tween ID types (object/string/int)."
+description: "Tween lifetime management — SetAutoKill, SetLink, SetRecyclable, SetId, SetTarget, DOTween.Kill/KillAll grouping, Safe Mode semantics, tween pool capacity, tween ID types (object/string/int). 补间生命周期管理——SetAutoKill、SetLink、SetRecyclable、SetId、SetTarget、DOTween.Kill/KillAll 分组、安全模式语义、补间池容量、补间 ID 类型(object/string/int)。"
 type: reference
 ---
 

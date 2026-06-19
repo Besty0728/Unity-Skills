@@ -1,6 +1,6 @@
 ---
 name: unity-shadergraph
-description: Shader Graph asset creation, structure inspection, constrained blackboard editing, and constrained
+description: Create and inspect Shader Graph assets — create graphs, inspect structure, and perform constrained blackboard and node editing. Use when creating a Shader Graph, inspecting its structure, or making controlled edits to its blackboard or nodes, even if the user just says "shader graph" or "着色器图". 创建与检查 Shader Graph 资产(创建图、检查结构、受约束的黑板与节点编辑);当用户要创建 Shader Graph、检查其结构、或对黑板/节点做受控编辑时使用。
 ---
 
 # ShaderGraph Skills

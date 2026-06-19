@@ -1,6 +1,6 @@
 ---
 name: unity-dotween-tween
-description: "Tween base class lifecycle — Play / Pause / Rewind / Restart / Kill / Complete / Goto / SmoothRewind / TogglePause / ManualUpdate / ForceInit; active / IsPlaying / IsComplete / IsBackwards / ElapsedPercentage state getters; callback hooks."
+description: "Tween base class lifecycle — Play / Pause / Rewind / Restart / Kill / Complete / Goto / SmoothRewind / TogglePause / ManualUpdate / ForceInit; active / IsPlaying / IsComplete / IsBackwards / ElapsedPercentage state getters; callback hooks. Tween 基类生命周期——Play/Pause/Rewind/Restart/Kill/Complete/Goto/SmoothRewind/TogglePause/ManualUpdate/ForceInit;active/IsPlaying/IsComplete/IsBackwards/ElapsedPercentage 状态读取器;回调钩子。"
 type: reference
 ---
 

@@ -1,3 +1,9 @@
+---
+name: unity-probuilder-modeling
+description: "Extended ProBuilder modeling reference — spatial design heuristics, furniture decomposition, and detailed modeling examples beyond the probuilder SKILL.md. ProBuilder 建模扩展参考(空间设计启发式、家具拆解、超出 probuilder SKILL.md 的详细建模示例)。"
+type: reference
+---
+
 # ProBuilder Modeling Reference
 
 Load this file when you need deeper spatial design heuristics, detailed furniture decomposition, or extended modeling examples. The main `SKILL.md` keeps only routing and key skill summaries.

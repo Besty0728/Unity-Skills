@@ -1,6 +1,6 @@
 ---
 name: unity-batch
-description: Unified batch query, preview-confirm-execute mutation, async job orchestration, and bulk scene
+description: Unified batch and async-job orchestration — batch queries, preview-confirm-execute mutations, background job scheduling and polling, and bulk scene operations. Use when an operation touches many objects at once, running or polling long async jobs, or applying preview-then-commit bulk edits, even if the user just says "批量" or "一次性改很多". 统一的批量与异步任务编排(批量查询、预览-确认-执行变更、后台任务调度与轮询、批量场景操作);当用户要一次性操作大量对象、运行或轮询长时异步任务、或执行先预览后提交的批量编辑时使用。
 ---
 
 # Unity Batch Skills

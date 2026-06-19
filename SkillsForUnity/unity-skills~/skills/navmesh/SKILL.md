@@ -1,6 +1,6 @@
 ---
 name: unity-navmesh
-description: Unity NavMesh baking and pathfinding — bake/rebake, query paths, configure
+description: Bake and query Unity NavMesh — bake/rebake navigation meshes, query paths, and configure bake settings. Use when setting up navigation, baking a NavMesh, testing agent paths, or tuning bake parameters, even if the user just says "导航网格" or "寻路". 烘焙与查询 Unity NavMesh(烘焙/重烘焙导航网格、查询路径、配置烘焙设置);当用户要搭建导航、烘焙 NavMesh、测试 agent 路径或调整烘焙参数时使用。
 ---
 
 # NavMesh Skills

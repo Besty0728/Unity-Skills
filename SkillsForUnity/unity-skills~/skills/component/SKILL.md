@@ -1,6 +1,6 @@
 ---
 name: unity-component
-description: GameObject component management — add, remove, list, copy, enable/disable components, read/set
+description: Manage GameObject components — add, remove, list, copy, enable/disable, and read/set component fields. Use when attaching or removing components, copying components between objects, toggling them, or reading/writing their serialized fields, even if the user just says "加个组件" or "改组件属性". 管理 GameObject 组件(添加、移除、列出、复制、启用/禁用、读写组件字段);当用户要挂载或移除组件、在对象间复制组件、开关组件或读写其序列化字段时使用。
 ---
 
 # Unity Component Skills

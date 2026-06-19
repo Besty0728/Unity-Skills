@@ -1,3 +1,9 @@
+---
+name: unity-yooasset-loading
+description: "YooAsset loading of assets, scenes, and raw files (v2.3.18) — the five load families, sync vs async, and the type guard. YooAsset 加载资源、场景与原始文件(v2.3.18:五大加载族、同步与异步、类型守卫)。"
+type: reference
+---
+
 # YooAsset - Loading Assets, Scenes, Raw Files
 
 All rules come from `Runtime/ResourcePackage/ResourcePackage.cs:516-964`, `Runtime/YooAssetsExtension.cs:16, 217-506`, and `Runtime/ResourcePackage/ResourcePackage.cs:1172-1187` (the type guard).
