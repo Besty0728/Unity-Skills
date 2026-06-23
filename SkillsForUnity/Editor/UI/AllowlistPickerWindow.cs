@@ -45,6 +45,9 @@ namespace UnitySkills
             var uss = AssetDatabase.LoadAssetAtPath<StyleSheet>(UssPath);
             if (uss != null) rootVisualElement.styleSheets.Add(uss);
 
+            // Bundled CJK font — fixes the macOS shared-atlas glyph drop (see UISkillsFont).
+            UISkillsFont.Apply(rootVisualElement);
+
             var uxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(UxmlPath);
             if (uxml == null)
             {

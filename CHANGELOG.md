@@ -2,6 +2,21 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.0.6] - 2026-06-23
+
+### Fixed
+
+- **macOS 下面板部分中文字体显示异常(掉字)** — 主面板/审计/Allowlist 三个 Editor 窗口在 macOS 上会出现个别常用汉字渲染成空白(如 `全局更新` → `全 新`、`全局安装` → `全 安装`、`自定义 Agent` → `自 义 Agent`、`卸载` → `载`),掉的字是字形级、稳定但"随机"(局/更/卸/定 等),与字号/加粗/截断无关。根因是 Unity UI Toolkit 在 macOS 上把 CJK 字形按需光栅化进**编辑器共享的动态字体图集**,图集扩容/重排时个别字形拿到失效 UV → 渲染为空白(同一 `.mini-btn.install` 类下 `项目安装` 正常而 `全局安装` 掉字,可证为字形级而非样式问题)。现改为给三个窗口根节点绑定**自带的 CJK 字体**(`UISkillsFont.Apply` → 运行时 `FontAsset.CreateFontAsset`,独立多图集,不再与编辑器共享图集争用),从机制上消除掉字;字体缺失时安全回退到编辑器默认字体,不影响窗口可用性。
+
+### Added
+
+- **内置 CJK 字体(`Editor/UI/Fonts/UnitySkillsCN-Regular.ttf`)** — 基于 [Maple Mono](https://github.com/subframe7536/maple-font) 的 CN 变体(v7.9,CN 汉字源自 [Resource Han Rounded](https://github.com/CyanoHao/Resource-Han-Rounded))**子集化**而来:仅保留 ASCII/拉丁、常用标点与 UI 符号、以及 `GB2312 ∪ 面板实际用到的全部 CJK`(约 7.5k 字形,~5MB,源字体单权重约 18MB),并移除编程连字、将字体族重命名为 `UnitySkills CJK`(避免与用户已装 Maple 冲突)。
+- **开源许可合规** — 字体遵循 **SIL Open Font License 1.1**;`Editor/UI/Fonts/` 内随附完整 `OFL.txt`(含原始版权声明)与 `THIRD-PARTY-NOTICES.md`(注明来源、所做修改与合规说明)。字体(含运行时派生的 FontAsset)仅以 OFL 1.1 分发,不并入项目自身许可;Maple Mono 未声明 Reserved Font Name,故子集化与重命名均符合 OFL 第 3 条。
+
+### Changed
+
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.0.6`。
+
 ## [2.0.5] - 2026-06-19
 
 ### Changed

@@ -31,7 +31,7 @@
 ## 🚀 核心特性
 
 - 🛠️ **726 REST Skills 全能库**：包含 51 个功能源码模块和 19 个 advisory 设计模块，支持 Batch 批处理，一次操控多个对象。
-- ⚡ **调用效率革命性提升 (v2.0.1+)**：Schema 缓存 + 指数退避轮询 + BATCH-FIRST 引导 → **Token 消耗 ↓ 96%**，**简单任务 4-6 次调用 → 1 次（↓ 75-83%）**。当前：v2.0.5。
+- ⚡ **调用效率革命性提升 (v2.0.1+)**：Schema 缓存 + 指数退避轮询 + BATCH-FIRST 引导 → **Token 消耗 ↓ 96%**，**简单任务 4-6 次调用 → 1 次（↓ 75-83%）**。当前：v2.0.6。
 - 🔐 **三档权限模式 (v1.9.0+)**：Approval / Auto / Bypass，配合双轨审批渠道（Dialog / Panel），对齐 Claude Code permission modes；老用户升级零感知。
 - 🤖 **4 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor，一键安装即用。
 - 🛡️ **事务原子性保障**：操作失败自动回滚，场景永不残留，确保流程安全。
@@ -283,3 +283,9 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 
 ## 📄 开源协议
 本项目采用 [MIT License](LICENSE) 许可。
+
+**内置字体(独立协议):** 编辑器窗口内置了一个子集化的中文字体
+`SkillsForUnity/Editor/UI/Fonts/UnitySkillsCN-Regular.ttf`,来源于
+[Maple Mono](https://github.com/subframe7536/maple-font)(CN 变体),遵循
+**SIL Open Font License 1.1**(非 MIT)。完整许可证与署名随字体置于该目录
+(`OFL.txt`、`THIRD-PARTY-NOTICES.md`)。
