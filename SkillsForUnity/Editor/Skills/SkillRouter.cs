@@ -650,6 +650,19 @@ namespace UnitySkills
                     details: new { exceptionType = inner.GetType().Name },
                     retryStrategy: SkillErrorResponse.RetryWaitAndRetry);
             }
+            catch (Newtonsoft.Json.JsonException ex)
+            {
+                // Malformed request body — JObject.Parse inside ValidateParameters threw
+                // before any mutation/undo group was started. This is a client error, not a
+                // server or transaction failure: return InvalidJson + fix_and_retry so the
+                // agent corrects the body instead of looping on wait_and_retry (the generic
+                // catch below mislabels this as "[Transactional Revert]"). Mirrors DryRun.
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.InvalidJson,
+                    $"Invalid JSON: {ex.Message}",
+                    skill: name,
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+            }
             catch (Exception ex)
             {
                 // Clean up auto-started workflow on error
