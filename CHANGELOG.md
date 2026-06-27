@@ -2,6 +2,25 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.0.8] - 2026-06-27
+
+### Added
+
+- **`?summary=1` 轻量认知 manifest 端点(第三层 schema 取用)** — 此前 agent 取技能清单只有两个粒度:全量 `/skills/schema`(~618KB/~154K token,含每技能参数 schema)或 scoped `/skills/schema?category=`(~24KB/类,只看一个模块,易致跨模块盲选)。新增 `GET /skills?summary=1`(也接受 `?includeSchema=false`,对齐 `/skills/recommend` 既有约定),返回每技能 `name`/`description`(截首句)/`category`/`operation`/`riskLevel` 五字段,~136KB/~34K token(全量 22%),服务端按 query 缓存。复用既有 `verbose` Summary Mode 哲学(截首句因描述里的参数提示与 `parameters` 字段冗余,截掉不损认知)。供 agent 首次拉取做**完整项目认知**(全部 726 技能 + 各干什么),执行前再拉 scoped 补精确参数,省 token 不损认知。裸 `/skills` 保持全量(向后兼容)。
+- **`get_skills_summary()` Python helper** — 镜像 `get_skill_schema` 的进程内 300s 缓存模式拉取 lite 认知层,重复调用 0ms 缓存命中、不重复付 token。
+
+### Fixed
+
+- **`TryConsume` 改为先校验后删除,合法 token 不再被误销** — `ConfirmationTokenService.TryConsume` 原 `TryRemove` 在 expiry/skillName/argsHash 三项校验**之前**执行,导致合法、未过期但 args 哈希不匹配(客户端 JSON 键序/空白差异、多带字段)的 token 被直接销毁,用户被迫从头走确认流。改为 `TryGetValue` → 三项全过 → `TryRemove`,失败不删;更符合自身 docstring("Successfully consumed tokens are removed")。过期 token 改由 `CleanupExpired()` 清理。
+- **非法 JSON 返 `INVALID_JSON`/`fix_and_retry`,不再误报事务回滚致 agent 死循环** — `SkillRouter.Execute` 的 `JObject.Parse`(在 `ValidateParameters` 内)对非法 body 抛 `JsonReaderException` 时落入通用 `catch(Exception)`,返回 `INTERNAL` / `[Transactional Revert]` / `wait_and_retry`,agent 按 `wait_and_retry` 死循环重发同一坏 body。新增 `catch(JsonException)` 返 `InvalidJson` + `fix_and_retry`(对齐 `DryRun` 既有处理);parse 发生在变异/undo 之前,无需事务回滚。
+- **`wait_for_job` 改轮询 `GET /jobs`,不再 `Thread.Sleep` 冻结主线程堵 `/health`** — Python `wait_for_job` 原调阻塞式 `job_wait` 技能,其 `Thread.Sleep(25)` 循环跑在 Unity 主线程,冻结编辑器并堵住 `/health` 与所有并发请求最长 60s(Python 默认;`/health` 也在主线程 `ProcessJob` 处理,故一并被堵)。改用 `poll_job` 轮询 `GET /jobs/{id}`(短读 + 客户端指数退避),主线程在轮询间保持空闲,`/health` 持续响应。保持 `job_wait` 返回形态(`success`/`status`/`reportId`/`report`/…)兼容;`success` 改为仅 `completed` 为真(旧 `job_wait` 恒真,更严格)。
+
+### Changed
+
+- **scoped schema/manifest 按查询缓存** — `?category=` 等 filtered 输出原先每次重建 + 序列化全部技能,是 agent 省 token 的主路径却被反复重算。改用 `ConcurrentDictionary` 按规范化 query(小写化 key+value、排序)缓存(`_filteredOutputCache`),`Refresh`/域重载时清。实测 20 并发 scoped 22ms→7ms(0.8×,原 2.66×);内容字节确定,缓存安全。
+- **SKILL.md 三层 schema 取用指引** — 纠正"`/skills/schema` 不支持按 category 过滤"的过时说法(实际 `GetFilteredSchema` 已支持);改为三层模型:`?summary=1` 首取轻量认知 → 全量按需 → scoped 按模块;强调 scoped 是细节补充非认知替代,单独用会致跨模块盲选。体积标注 578KB→618KB。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.0.8`。
+
 ## [2.0.7] - 2026-06-27
 
 ### Fixed

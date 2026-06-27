@@ -1213,7 +1213,7 @@ namespace UnitySkills
                 filters,
                 summary,
                 summaryHint = summary
-                    ? "Lite awareness manifest: each skill carries only name/description(first sentence)/category/operation/riskLevel. Drop ?summary=1 for the full manifest (parameter schemas, tags, outputs, requiresInput, requiresPackages, mode, and behavior flags)."
+                    ? "AWARENESS ONLY — parameter schemas are omitted and descriptions are informal/partial (some omit parameter hints entirely). Before executing any skill listed here, validate its parameters with ?mode=dryRun (the server returns unknownParam suggestions + the full parameter schema) or fetch its scoped schema GET /skills/schema?category=<Category>. Do NOT guess parameters from descriptions alone."
                     : null,
                 categories = Enum.GetNames(typeof(SkillCategory)).Where(c => c != "Uncategorized").ToArray(),
                 operationTypes = Enum.GetNames(typeof(SkillOperation)),
@@ -1223,7 +1223,7 @@ namespace UnitySkills
                     ? skillArray.Select(s => (object)new
                     {
                         name = s.Name,
-                        description = TruncateDescription(GetEffectiveDescription(s)),
+                        description = GetEffectiveDescription(s),
                         category = s.Category != SkillCategory.Uncategorized ? s.Category.ToString() : null,
                         operation = FormatOperation(s.Operation),
                         riskLevel = s.RiskLevel
@@ -1251,29 +1251,6 @@ namespace UnitySkills
                         parameters = BuildParameterSchema(s)
                     })
             };
-        }
-
-        /// <summary>
-        /// Truncates a skill description to its first sentence (the "what it does" part) for
-        /// summary/awareness manifests. The trailing parameter hints baked into descriptions
-        /// are redundant with the <c>parameters</c> field (omitted in summary mode), so this
-        /// truncation costs no real awareness — only the execution-detail tail is dropped.
-        /// Caps at ~140 characters when no sentence boundary is found.
-        /// </summary>
-        private static string TruncateDescription(string desc)
-        {
-            if (string.IsNullOrEmpty(desc)) return desc;
-            const int cap = 140;
-            if (desc.Length <= cap) return desc;
-
-            for (int i = 0; i < desc.Length && i <= cap; i++)
-            {
-                char c = desc[i];
-                if (c == '.' && i + 1 < desc.Length && desc[i + 1] == ' ') return desc.Substring(0, i + 1).TrimEnd();
-                if (c == '。') return desc.Substring(0, i + 1).TrimEnd();
-                if (c == '\n' || c == '\r') return desc.Substring(0, i).TrimEnd();
-            }
-            return desc.Substring(0, cap).TrimEnd() + "…";
         }
 
         // ========== Skill Recommendations ==========
