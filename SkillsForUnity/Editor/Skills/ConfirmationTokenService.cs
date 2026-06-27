@@ -92,9 +92,14 @@ namespace UnitySkills
             if (string.IsNullOrWhiteSpace(token))
                 return false;
 
-            if (!_entries.TryRemove(token, out var entry))
+            if (!_entries.TryGetValue(token, out var entry))
                 return false;
 
+            // Validate BEFORE removing. A valid, unexpired token bound to a different
+            // (skillName, args) — e.g. the client sent slightly different JSON, or is
+            // replaying the wrong skill — must NOT be destroyed: the caller needs it
+            // intact to retry the confirmation flow. The previous TryRemove-first logic
+            // deleted the entry before any check, so any mismatch burned a good token.
             if (DateTime.UtcNow > entry.ExpiresAtUtc)
                 return false;
 
@@ -104,7 +109,9 @@ namespace UnitySkills
             if (!string.Equals(entry.ArgsHash, HashArgs(argsJson), StringComparison.Ordinal))
                 return false;
 
-            return true;
+            // All checks passed — atomically consume. TryRemove handles the race where
+            // another thread consumed between our TryGetValue and now (returns false).
+            return _entries.TryRemove(token, out _);
         }
 
         public static int CleanupExpired()
