@@ -2,6 +2,13 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.0.9] - 2026-07-04
+
+### Fixed
+
+- **`UnitySkillsWindow` 周期性 UI 刷新触发 `InvalidOperationException` 死循环(issue #44)** — 主窗口 4 处 `schedule.Execute(...).Every(...)` 周期 tick(500ms 的 footer/topbar 状态刷新、500ms 的 topbar 响应式自愈、1000ms 的待批权限 banner、1000ms 的 Settings 抽屉权限轮询)都在回调里直接改 visual tree(`label.text=`、`AddToClassList`/`RemoveFromClassList`)。该回调运行在 panel 的 update 阶段,与 EditorWindow 的 layout/repaint(`generateVisualContent`)可能重叠,命中时抛 `InvalidOperationException`;因为是周期 tick,一次命中就滚成高频 Console 循环,面板常开几秒即可堆到 999+。新增 `EditorUiScheduler.RepeatSafe` 收口:仍用 `element.schedule` 绑定生命周期(detach 自动暂停/attach 自动恢复),但把实际 mutation 推迟到 `EditorApplication.delayCall`(帧间安全点)执行,并对多次排队做合并、对已销毁的 panel 做双重判空;4 处 tick 全部改用该 helper,主 tick 额外在 `OnDisable` 里显式 `Pause`,避免窗口关闭后继续排队刷新。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.0.9`。
+
 ## [2.0.8] - 2026-06-27
 
 ### Added

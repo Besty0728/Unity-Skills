@@ -125,7 +125,9 @@ namespace UnitySkills
             // 倒计时每秒推进一次；ScheduleItem 跟随 _root 生命周期自动停止。
             // 同时做权限状态快照对比 — OnChanged 信号若因后台窗口/事件循环延迟丢失，
             // 这条 polling 兜底保证 Drawer 总能在 1s 内同步到最新 pending/granted。
-            _root.schedule.Execute(TickPermissions).Every(1000);
+            // 经 EditorUiScheduler.RepeatSafe 把实际 mutation 推迟到 delayCall，避免落在
+            // repaint/generateVisualContent 期间触发 InvalidOperationException（issue #44）。
+            EditorUiScheduler.RepeatSafe(_root, 1000, TickPermissions);
         }
 
         private void OnRootDetached(DetachFromPanelEvent _)

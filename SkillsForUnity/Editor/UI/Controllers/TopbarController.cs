@@ -73,7 +73,9 @@ namespace UnitySkills
                 // GeometryChangedEvent 可能漏派发"最终尺寸"那次，使响应式卡在窄布局。
                 // 低频轮询真实 layout 宽度重算——schedule 挂在元素上，detach 自动暂停、
                 // attach 自动恢复，不依赖事件派发；ApplyResponsiveLayout 内有状态早退，重复调用零副作用。
-                _topbarElement.schedule.Execute(SelfHealResponsiveLayout).Every(SelfHealIntervalMs);
+                // 经 EditorUiScheduler.RepeatSafe 把 class 变更推迟到 delayCall，避免落在
+                // repaint/generateVisualContent 期间触发 InvalidOperationException（issue #44）。
+                EditorUiScheduler.RepeatSafe(_topbarElement, SelfHealIntervalMs, SelfHealResponsiveLayout);
             }
         }
 

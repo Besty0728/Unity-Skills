@@ -50,6 +50,11 @@ namespace UnitySkills
         private Button[]        _tabButtons;
         private VisualElement[] _tabUnderlines;
 
+        // ----- Live tick — routed through EditorUiScheduler to avoid mutating the
+        // visual tree during repaint/generateVisualContent (issue #44); paused on disable
+        // so a closed window can't keep queuing refreshes. -----
+        private IVisualElementScheduledItem _liveUpdateItem;
+
         [MenuItem("Window/UnitySkills")]
         public static void ShowWindow()
         {
@@ -68,6 +73,8 @@ namespace UnitySkills
         private void OnDisable()
         {
             SkillsModeManager.OnChanged -= Repaint;
+            _liveUpdateItem?.Pause();
+            _liveUpdateItem = null;
         }
 
         public void CreateGUI()
@@ -111,8 +118,10 @@ namespace UnitySkills
             SwitchTab(_selectedTab);
             RefreshLocalization();
 
-            // Live update tick — 500ms (server stats, status)
-            rootVisualElement.schedule.Execute(OnLiveDataUpdate).Every(500).StartingIn(0);
+            // Live update tick — 500ms (server stats, status). Routed through
+            // EditorUiScheduler.RepeatSafe so the actual mutation happens on delayCall,
+            // outside repaint/generateVisualContent (issue #44).
+            _liveUpdateItem = EditorUiScheduler.RepeatSafe(rootVisualElement, 500, OnLiveDataUpdate);
         }
 
         private void CacheTabReferences()
