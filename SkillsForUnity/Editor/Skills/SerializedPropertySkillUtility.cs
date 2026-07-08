@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
 
@@ -186,6 +187,12 @@ namespace UnitySkills
                         }
                         return true;
 
+                    case SerializedPropertyType.Gradient:
+                        return TrySetGradient(property, value, out error);
+
+                    case SerializedPropertyType.AnimationCurve:
+                        return TrySetAnimationCurve(property, value, out error);
+
                     default:
                         error = $"Unsupported SerializedPropertyType '{property.propertyType}' for '{property.propertyPath}'";
                         return false;
@@ -333,7 +340,10 @@ namespace UnitySkills
                         ? "null"
                         : $"{UnityObjectIdUtility.GetEntityId(property.objectReferenceValue)}:{property.objectReferenceValue.GetType().FullName}:{property.objectReferenceValue.name}";
                 case SerializedPropertyType.Enum:
-                    return property.enumValueIndex.ToString(CultureInfo.InvariantCulture);
+                    // enumValueIndex is -1 for combined [Flags] masks; fall back to the raw bitmask.
+                    return property.enumValueIndex >= 0
+                        ? property.enumValueIndex.ToString(CultureInfo.InvariantCulture)
+                        : $"flags:{property.intValue.ToString(CultureInfo.InvariantCulture)}";
                 case SerializedPropertyType.Vector2:
                     return Format(property.vector2Value);
                 case SerializedPropertyType.Vector3:
@@ -358,6 +368,14 @@ namespace UnitySkills
                     return $"{bi.position.x},{bi.position.y},{bi.position.z},{bi.size.x},{bi.size.y},{bi.size.z}";
                 case SerializedPropertyType.Character:
                     return property.intValue.ToString(CultureInfo.InvariantCulture);
+                case SerializedPropertyType.Gradient:
+                    var gradient = property.gradientValue;
+                    return gradient == null
+                        ? "null"
+                        : $"Gradient(colorKeys={gradient.colorKeys.Length},alphaKeys={gradient.alphaKeys.Length},mode={gradient.mode})";
+                case SerializedPropertyType.AnimationCurve:
+                    var curve = property.animationCurveValue;
+                    return curve == null ? "null" : $"AnimationCurve(keys={curve.length})";
                 default:
                     return property.propertyType.ToString();
             }
@@ -398,8 +416,11 @@ namespace UnitySkills
                     property.enumValueIndex = index;
                     return true;
                 }
-                error = $"Enum index {index} out of range for '{property.propertyPath}'";
-                return false;
+
+                // Out-of-range numbers are written as a raw bitmask so [Flags] combinations
+                // (e.g. "3" = A|B, "-1" = Everything) stay expressible.
+                property.intValue = index;
+                return true;
             }
 
             for (var i = 0; i < property.enumNames.Length; i++)
@@ -412,8 +433,58 @@ namespace UnitySkills
                 }
             }
 
-            error = $"Enum value '{value}' not found for '{property.propertyPath}'";
+            if (value != null && value.IndexOfAny(new[] { ',', '|' }) >= 0)
+            {
+                return TrySetEnumFlags(property, value, out error);
+            }
+
+            error = $"Enum value '{value}' not found for '{property.propertyPath}'. Valid names: {string.Join(", ", property.enumNames)}. [Flags] enums accept comma-separated names or a raw bitmask number";
             return false;
+        }
+
+        private static bool TrySetEnumFlags(SerializedProperty property, string value, out string error)
+        {
+            error = null;
+            var names = property.enumNames;
+            var displayNames = property.enumDisplayNames;
+            var originalValue = property.intValue;
+            var parts = value.Split(new[] { ',', '|' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+            {
+                error = $"Enum value '{value}' not found for '{property.propertyPath}'. Valid names: {string.Join(", ", names)}";
+                return false;
+            }
+
+            var combined = 0;
+            foreach (var part in parts)
+            {
+                var token = part.Trim();
+                var matchIndex = -1;
+                for (var i = 0; i < names.Length; i++)
+                {
+                    if (string.Equals(names[i], token, StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(displayNames[i], token, StringComparison.OrdinalIgnoreCase))
+                    {
+                        matchIndex = i;
+                        break;
+                    }
+                }
+
+                if (matchIndex < 0)
+                {
+                    property.intValue = originalValue;
+                    error = $"Enum value '{token}' not found for '{property.propertyPath}'. Valid names: {string.Join(", ", names)}";
+                    return false;
+                }
+
+                // The enumValueIndex round-trip resolves each name to its underlying constant,
+                // so combined masks work without reflecting on the enum type (native enums included).
+                property.enumValueIndex = matchIndex;
+                combined |= property.intValue;
+            }
+
+            property.intValue = combined;
+            return true;
         }
 
         private static bool TrySetRectInt(SerializedProperty property, string value, out string error)
@@ -430,6 +501,141 @@ namespace UnitySkills
             if (parts == null) return false;
             property.boundsIntValue = new BoundsInt(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]);
             return true;
+        }
+
+        private static bool TrySetGradient(SerializedProperty property, string value, out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                error = $"Expected gradient JSON for '{property.propertyPath}', e.g. {{\"colorKeys\":[{{\"color\":\"1,0,0,1\",\"time\":0}},{{\"color\":\"0,0,1,1\",\"time\":1}}],\"alphaKeys\":[{{\"alpha\":1,\"time\":0}},{{\"alpha\":1,\"time\":1}}],\"mode\":\"Blend\"}}";
+                return false;
+            }
+
+            GradientPayload payload;
+            try
+            {
+                payload = JsonConvert.DeserializeObject<GradientPayload>(value);
+            }
+            catch (Exception ex)
+            {
+                error = $"Invalid gradient JSON: {ex.Message}";
+                return false;
+            }
+
+            if (payload?.colorKeys == null || payload.colorKeys.Length == 0)
+            {
+                error = "Gradient JSON must contain a non-empty colorKeys array";
+                return false;
+            }
+
+            var colorKeys = payload.colorKeys
+                .Select(k => new GradientColorKey((Color)ComponentSkills.ConvertValue(k.color, typeof(Color)), k.time))
+                .ToArray();
+            var alphaKeys = payload.alphaKeys != null && payload.alphaKeys.Length > 0
+                ? payload.alphaKeys.Select(k => new GradientAlphaKey(k.alpha, k.time)).ToArray()
+                : new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(1f, 1f) };
+
+            var gradient = new Gradient();
+            gradient.SetKeys(colorKeys, alphaKeys);
+            if (!string.IsNullOrEmpty(payload.mode))
+            {
+                if (!Enum.TryParse<GradientMode>(payload.mode, true, out var gradientMode))
+                {
+                    error = $"Unknown gradient mode '{payload.mode}' (expected Blend or Fixed)";
+                    return false;
+                }
+                gradient.mode = gradientMode;
+            }
+
+            property.gradientValue = gradient;
+            return true;
+        }
+
+        private static bool TrySetAnimationCurve(SerializedProperty property, string value, out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                error = $"Expected animation curve JSON for '{property.propertyPath}', e.g. {{\"keys\":[{{\"time\":0,\"value\":0}},{{\"time\":1,\"value\":1,\"inTangent\":2,\"outTangent\":2}}],\"preWrapMode\":\"ClampForever\",\"postWrapMode\":\"Loop\"}}";
+                return false;
+            }
+
+            AnimationCurvePayload payload;
+            try
+            {
+                payload = JsonConvert.DeserializeObject<AnimationCurvePayload>(value);
+            }
+            catch (Exception ex)
+            {
+                error = $"Invalid animation curve JSON: {ex.Message}";
+                return false;
+            }
+
+            if (payload?.keys == null || payload.keys.Length == 0)
+            {
+                error = "Animation curve JSON must contain a non-empty keys array";
+                return false;
+            }
+
+            var curve = new AnimationCurve(payload.keys
+                .Select(k => new Keyframe(k.time, k.value, k.inTangent, k.outTangent))
+                .ToArray());
+            if (!TryParseWrapMode(payload.preWrapMode, out var preWrap, out error)) return false;
+            if (preWrap.HasValue) curve.preWrapMode = preWrap.Value;
+            if (!TryParseWrapMode(payload.postWrapMode, out var postWrap, out error)) return false;
+            if (postWrap.HasValue) curve.postWrapMode = postWrap.Value;
+
+            property.animationCurveValue = curve;
+            return true;
+        }
+
+        private static bool TryParseWrapMode(string text, out WrapMode? mode, out string error)
+        {
+            mode = null;
+            error = null;
+            if (string.IsNullOrEmpty(text)) return true;
+            if (Enum.TryParse<WrapMode>(text, true, out var parsed))
+            {
+                mode = parsed;
+                return true;
+            }
+            error = $"Unknown wrap mode '{text}' (expected Default, Once, Loop, PingPong or ClampForever)";
+            return false;
+        }
+
+        private class GradientPayload
+        {
+            public GradientColorKeyPayload[] colorKeys { get; set; }
+            public GradientAlphaKeyPayload[] alphaKeys { get; set; }
+            public string mode { get; set; }
+        }
+
+        private class GradientColorKeyPayload
+        {
+            public string color { get; set; }
+            public float time { get; set; }
+        }
+
+        private class GradientAlphaKeyPayload
+        {
+            public float alpha { get; set; }
+            public float time { get; set; }
+        }
+
+        private class AnimationCurvePayload
+        {
+            public KeyframePayload[] keys { get; set; }
+            public string preWrapMode { get; set; }
+            public string postWrapMode { get; set; }
+        }
+
+        private class KeyframePayload
+        {
+            public float time { get; set; }
+            public float value { get; set; }
+            public float inTangent { get; set; }
+            public float outTangent { get; set; }
         }
 
         private static int[] ParseInts(string value, int expectedCount, out string error)

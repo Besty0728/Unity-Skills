@@ -2,6 +2,33 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.1.0] - 2026-07-08
+
+### Added
+
+- **ScriptableObject 序列化属性路径写入三件套（+3 skills，共 729）** — 原 `scriptableobject_set` 是纯反射实现,只认顶层 public 字段的字面名,嵌套 serializable class、数组/List 元素、资产引用(ObjectReference)、private `[SerializeField]` 字段全部改不动——恰是游戏配置 SO 的主体,AI 只能退回现写 Editor 脚本。新增 `scriptableobject_set_serialized_property`(assetPath + propertyPath + value/valueAssetPath/valueObjectType),复用组件侧已有的 `SerializedPropertySkillUtility` 引擎,原生支持 `nested.field`、`items.Array.data[2]`、`items.Array.size` 扩容、按 assetPath 的资产引用赋值与置空、enum 按名、Color/Vector/Rect/Bounds 等全类型;配套 `scriptableobject_get_serialized_properties`(枚举全部属性路径,先看再改)与 `scriptableobject_set_serialized_property_batch`(BatchExecutor 批量)。实机全类型矩阵 9/9 通过并经 export 验证磁盘落盘。
+- **`POST /skills/batch` 跨技能聚合执行端点** — AI 连续 N 个异构操作原需 N 轮工具调用 + N 次 HTTP。新端点一次请求顺序执行 ≤50 步(`{steps:[{skill,args}...], continueOnError}`),每步走完整单技能管线(校验/权限门/undo/审计,独立 undo 组);默认 fail-fast(失败步之后返回 `skipped`),`continueOnError=true` 跳过失败步,授权类响应(`MODE_RESTRICTED`/`CONFIRMATION_REQUIRED`)无论开关一律中断并在该步 error 里透传 grant token;`?mode=dryRun` 整序列预演(逐步校验、从不中断)。v1 边界:后步不可引用前步返回值。
+- **HTTP 线程直答已缓存 GET(快速通道)+ ETag/304 协商缓存** — 全部请求(含已缓存的 schema/manifest)原先都排队等主线程唤醒(KeepAlive 50ms 轮询节奏),单请求 60-95ms。现 `GET /skills`/`/skills/schema` 命中服务端缓存字符串时由 HTTP 线程直接写回(零 Unity API,不违跨线程硬约束),实测 70ms→1.3ms;响应带内容哈希 `ETag`,`If-None-Match` 命中返 304 空体(etag 绑定缓存字符串引用,域重载/Refresh 后自动失效)。`/health` 保持走主线程队列(主线程存活探针语义)。
+- **`GET /skills?brief=1` 目录层(第 0 层 schema)** — summary 层 143KB≈35K token 作为"每会话首取"认知税过高而典型会话只用少数技能。新增按模块分组的技能名目录(729 技能/49 模块,实测 19KB≈3.4K token,约 summary 的 1/10),配合 scoped schema 组成"目录锁模块→按模块拉签名"的低成本链路,典型会话认知成本 35K→约 10K token;融入 filtered 输出缓存,自动享受快速通道与 ETag。
+- **Python 客户端:`search_skills()` 本地检索、registry 优先端口发现、ETag+磁盘缓存** — ① `search_skills(query, category, limit)` 在缓存的 summary 上做本地多词 AND 检索,143KB 留在磁盘、只有命中条目进上下文,CLI 支持 `--search`;② 端口发现原先盲扫 8090-8100,现优先读 registry.json 心跳新鲜条目直连(实测构造 0.029s),失败自动回退扫描,并砍掉构造期重复的 /health;③ summary/full schema 缓存落盘 `~/.unity_skills/cache/`(键含 instanceId 防多项目串缓存),跨进程命中 0.008s,TTL 过期带 `If-None-Match` 重验,304 续期——CLI 短进程模式从"每进程重拉 604KB"变为磁盘/304 复用。
+- **`SerializedPropertySkillUtility` 引擎补 Gradient/AnimationCurve/flags enum 分支** — 共享引擎新增 `gradientValue`(colorKeys/alphaKeys/mode JSON)与 `animationCurveValue`(keys/pre/postWrapMode JSON)写入;flags enum 支持逗号/竖线分隔多名组合与 raw 数值(经 enumValueIndex↔intValue 往返求各常量底层值后 OR,兼容无 managed FieldInfo 的原生组件属性)。`component_set_serialized_property` 同步受益,组件侧回归通过。
+
+### Changed
+
+- **SKILL.md 调用链路按任务形态分流** — 原文档"每会话必先拉 summary(35K token)"与"不确定才查 schema"两条指引互相矛盾,且 token 大头(上下文认知成本)未被既有网络层优化覆盖。重写为四层择廉取用:意图明确→`/skills/recommend`(2-5KB,带参数 schema,扶正为首选)或已知技能直接 dryRun;一两个领域→brief 目录+scoped;探索式/跨模块才拉 summary;full(618KB)标注 rare。并补充 `search_skills` 本地检索与磁盘缓存说明。
+- **string 参数自动接受原生 JSON 数组/对象** — batch 系技能签名为 `string items`,AI 按直觉传原生 JSON 数组时原先抛 "Can not convert Array to String" 的 TYPE_MISMATCH 且零指引(高频首踩坑)。现目标参数为 string 且传入 JArray/JObject 时自动 `ToString(Formatting.None)` 降级(技能内部本就会 Parse 回来,无损),其他类型严格性不变。
+- **did-you-mean 参数建议补语义组第三级兜底** — 原两级匹配(6 技能硬编码别名表 + Levenshtein≤3/互为子串)对"语义同义、字面不相近"的参数名系统性失效(全库路径类参数 60+ 命名变体,实测 `assetPath`→`savePath` 编辑距离 4 零建议)。前两级无结果时按驼峰拆词取共享 token(path/name/id 等)纳入建议,`assetPath`→`savePath` 现可给出 suggestions;前两级有结果时行为不变(零噪音增量)。
+- **Python `call()` 透传结构化纠错字段** — 官方客户端原先把服务端错误响应剥成 `{success, error, message:''}`,`errorCode`/`details`(unknownParams suggestions/allowedParams)/`suggestedFixes`/`retryStrategy`/`relatedSkills` 全部丢弃,服务端整套容错投资到不了走 Python 通道的 AI 手里。现存在即透传,恒空的 `message` 移除。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.1.0`。
+
+### Fixed
+
+- **`scriptableobject_import_json` 裸 JSON 假成功** — `EditorJsonUtility.FromJsonOverwrite` 要求根层为原生类名包装(SO 即 `{"MonoBehaviour":{...}}`,与 export 对称),传裸字段 JSON 时静默 no-op,但技能仍无条件 SetDirty+SaveAssets 并返回 `success=true`——AI 以为写入成功且事后不可感知。现根层无包装键自动包一层(兼容已包装格式),并以写前/写后序列化快照比对做写入效果校验,零变化时返回 `warning` 提示字段未匹配。
+- **`?mode=`/`?dryRun=` 拼错静默真执行** — `mode=dry_run`/`validate`/`dryRun=1` 等未知值原先被静默忽略、请求当真执行并返回 success,AI 以为在预演、实际场景已被改(全部容错缺口中唯一"格式错误→静默破坏性执行"路径)。现未知值返回新错误码 `INVALID_MODE`(400,附 received/validValues)且不执行,实机验证含副作用检查(对象确未创建)。
+- **`verbose` 类型错落 INTERNAL 死循环** — `{"verbose":"yes"}` 原先在 `ToObject<bool>` 裸抛落通用 catch,返回 `INTERNAL "[Transactional Revert]"` + `wait_and_retry`,AI 按策略傻等重发同一坏 body。现宽容解析 "yes"/"1"/"no"/"0" 等字符串,不可解析时返回 `TYPE_MISMATCH` + `fix_and_retry` 并明示需要 boolean。
+- **DryRun/Plan 内部异常误报 INVALID_JSON** — 两处 `catch(Exception)` 把合法 JSON 下语义校验的 NRE 等也报成 "Invalid JSON" + `fix_and_retry`,误导 AI 反复修一个没问题的 body。对齐 Execute 先例细分:`JsonException`→INVALID_JSON,其余→INTERNAL+真实异常消息+abort(防两种循环)。
+- **`/skills/batch` 步间对象不可见** — batch 各步共享一个 POST job,`GameObjectFinder` 的请求级场景缓存只在整个 POST 结束后失效,后步按 name 查不到前步刚创建的对象(实测:单步成功、batch 内同参数失败)。现每步 Execute 后即失效场景缓存,建-改-删 5 步回归全绿。
+
 ## [2.0.9] - 2026-07-04
 
 ### Fixed

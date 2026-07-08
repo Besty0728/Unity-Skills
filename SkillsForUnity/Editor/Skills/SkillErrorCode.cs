@@ -31,6 +31,7 @@ namespace UnitySkills
         ModeRestricted,
         ModeForbidden,
         GrantPendingApproval,
+        InvalidMode,
     }
 
     internal static class SkillErrorCodeExtensions
@@ -62,6 +63,7 @@ namespace UnitySkills
                 case SkillErrorCode.ModeRestricted:       return "MODE_RESTRICTED";
                 case SkillErrorCode.ModeForbidden:        return "MODE_FORBIDDEN";
                 case SkillErrorCode.GrantPendingApproval: return "GRANT_PENDING_APPROVAL";
+                case SkillErrorCode.InvalidMode:          return "INVALID_MODE";
                 default:                                  return "UNKNOWN";
             }
         }

@@ -19,10 +19,11 @@ import json
 import os
 import re
 import threading
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
-__version__ = "2.0.9"
+__version__ = "2.1.0"
 
 UNITY_URL = "http://localhost:8090"
 DEFAULT_PORT = 8090
@@ -33,6 +34,11 @@ PORT_RANGE_END = 8100
 DEFAULT_CALL_TIMEOUT = 900
 HEALTH_TIMEOUT = 2
 SCAN_TIMEOUT = 1
+
+# Registry entries whose last_active heartbeat is older than this are treated as
+# dead. Matches the server's own stale-reaping threshold (RegistryService, 120s;
+# heartbeat interval is ~30s).
+REGISTRY_STALE_SECONDS = 120
 
 def get_registry_path():
     return os.path.join(os.path.expanduser("~"), ".unity_skills", "registry.json")
@@ -139,6 +145,10 @@ class UnitySkills:
             'X-Agent-Id': self.agent_id,
             'User-Agent': f'unity-skills-python/{__version__}',
         })
+        # /health payload captured during port discovery (or first lazy fetch);
+        # shared by timeout sync and disk-cache keying so construction issues at
+        # most one /health request.
+        self._health_info = None
 
         if not self.url:
             if port:
@@ -156,7 +166,7 @@ class UnitySkills:
                 else:
                     raise ValueError(f"Could not find Unity instance matching version '{version}'.")
             else:
-                # Auto-discover: scan 8090-8100 for first responding instance
+                # Auto-discover: registry ports first, then scan 8090-8100
                 found_port = self._find_first_available()
                 self.url = f"http://localhost:{found_port}"
 
@@ -164,26 +174,80 @@ class UnitySkills:
         if not timeout:
             self._sync_timeout_from_server()
 
-    def _sync_timeout_from_server(self):
-        """Fetch requestTimeoutMinutes from /health and apply as self.timeout."""
+    def _fetch_health(self, base_url: str, timeout: float = HEALTH_TIMEOUT) -> Optional[Dict[str, Any]]:
+        """GET {base_url}/health and return the parsed JSON dict, or None if unreachable."""
         try:
-            resp = self._session.get(f"{self.url}/health", timeout=HEALTH_TIMEOUT)
+            resp = self._session.get(f"{base_url}/health", timeout=timeout)
             if resp.status_code == 200:
-                minutes = resp.json().get('requestTimeoutMinutes')
-                if minutes and isinstance(minutes, (int, float)) and minutes > 0:
-                    self.timeout = int(minutes) * 60
-        except Exception:
+                data = resp.json()
+                if isinstance(data, dict):
+                    return data
+        except (requests.exceptions.RequestException, ValueError):
             pass
+        return None
+
+    def _get_health_info(self) -> Optional[Dict[str, Any]]:
+        """Return this instance's /health payload, fetching once and caching it."""
+        if self._health_info is None:
+            self._health_info = self._fetch_health(self.url)
+        return self._health_info
+
+    def _sync_timeout_from_server(self):
+        """Apply requestTimeoutMinutes from /health as self.timeout.
+
+        Reuses the health payload captured during port discovery when available,
+        so no extra request is issued on the auto-discover path.
+        """
+        health = self._get_health_info()
+        if health:
+            minutes = health.get('requestTimeoutMinutes')
+            if minutes and isinstance(minutes, (int, float)) and minutes > 0:
+                self.timeout = int(minutes) * 60
+
+    def _registry_candidate_ports(self) -> List[int]:
+        """Ports from registry.json worth probing first, freshest heartbeat first.
+
+        Entries whose last_active heartbeat (unix seconds, refreshed every ~30s by
+        the server) is older than REGISTRY_STALE_SECONDS are skipped, as are
+        malformed entries — the caller's port scan remains the safety net.
+        """
+        candidates = []
+        now = time.time()
+        for info in _load_registry().values():
+            if not isinstance(info, dict):
+                continue
+            port = info.get('port')
+            last_active = info.get('last_active')
+            if not isinstance(port, int) or port <= 0:
+                continue
+            if not isinstance(last_active, (int, float)) or (now - last_active) > REGISTRY_STALE_SECONDS:
+                continue
+            candidates.append((last_active, port))
+        candidates.sort(reverse=True)
+        return list(dict.fromkeys(port for _, port in candidates))
 
     def _find_first_available(self) -> int:
-        """Scan ports 8090-8100 and return the first responsive Unity instance."""
+        """Find the first responsive Unity instance.
+
+        Tries ports recorded in registry.json first (no blind scan when instances
+        are registered), falling back to scanning ports 8090-8100 when the registry
+        is missing, stale, or its entries stop responding. The winning /health
+        payload is kept on self._health_info so it is not fetched a second time.
+        """
+        tried = set()
+        for port in self._registry_candidate_ports():
+            tried.add(port)
+            health = self._fetch_health(f"http://localhost:{port}", timeout=HEALTH_TIMEOUT)
+            if health is not None:
+                self._health_info = health
+                return port
         for port in range(PORT_RANGE_START, PORT_RANGE_END + 1):
-            try:
-                resp = requests.get(f"http://localhost:{port}/health", timeout=SCAN_TIMEOUT)
-                if resp.status_code == 200:
-                    return port
-            except (requests.exceptions.RequestException, ValueError):
+            if port in tried:
                 continue
+            health = self._fetch_health(f"http://localhost:{port}", timeout=SCAN_TIMEOUT)
+            if health is not None:
+                self._health_info = health
+                return port
         raise ConnectionError(f"No Unity instance found on ports {PORT_RANGE_START}-{PORT_RANGE_END}. Is UnitySkills server running?")
 
     def _find_port_by_target(self, target: str) -> Optional[int]:
@@ -275,6 +339,8 @@ class UnitySkills:
             _retry_delay: Base delay between retries in seconds (default 2.0), uses progressive backoff
 
         Returns a normalized response with 'success' field and flattened result data.
+        Error responses additionally carry the server's structured correction fields
+        (errorCode, details, suggestedFixes, retryStrategy, ...) when the server sent them.
         """
         last_error = None
         for attempt in range(_retries + 1):
@@ -298,11 +364,18 @@ class UnitySkills:
                         return self.wait_for_job(normalized['jobId'], timeout=job_timeout)
                     return normalized
                 elif data.get('status') == 'error':
-                    return {
+                    normalized = {
                         'success': False,
                         'error': data.get('error', 'Unknown error'),
-                        'message': data.get('message', '')
                     }
+                    # Preserve the server's structured correction fields (did-you-mean
+                    # suggestions, allowedParams, retry guidance) when present, so
+                    # agents can self-correct without a human round-trip.
+                    for key in ('errorCode', 'details', 'suggestedFixes', 'retryStrategy',
+                                'relatedSkills', 'retryAfterSeconds', 'skill', 'message'):
+                        if key in data:
+                            normalized[key] = data[key]
+                    return normalized
                 else:
                     if wait_for_job and isinstance(data, dict) and data.get('jobId'):
                         return self.wait_for_job(data['jobId'], timeout=job_timeout)
@@ -780,6 +853,127 @@ def get_skills(category: str = None, operation: str = None, tags: str = None,
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
+# On-disk cache layer for the large /skills payloads: short-lived CLI processes
+# never benefit from the in-process dicts below, so successful summary/schema
+# responses are also persisted under ~/.unity_skills/cache/ as
+# {"etag", "cached_at", "payload"} JSON files, keyed per Unity instance
+# (instanceId from /health, so concurrent projects never share files) + endpoint.
+# Within the TTL the disk copy is served directly; past the TTL a stored ETag
+# turns the refetch into a conditional GET that an unchanged payload answers
+# with a bodyless 304. Any disk failure degrades silently to memory-only caching.
+
+def _cache_dir() -> Path:
+    return Path.home() / ".unity_skills" / "cache"
+
+
+def _cache_file_name(instance_key: str, endpoint: str) -> str:
+    # Project names may contain characters that are invalid in file names.
+    safe = re.sub(r'[^A-Za-z0-9._-]+', '_', f"{instance_key}-{endpoint}")
+    return f"{safe}.json"
+
+
+def _disk_cache_read(instance_key: str, endpoint: str) -> Optional[Dict[str, Any]]:
+    """Load a {etag, cached_at, payload} entry from disk; None on miss or any error."""
+    try:
+        path = _cache_dir() / _cache_file_name(instance_key, endpoint)
+        with open(str(path), 'r', encoding='utf-8') as f:
+            entry = json.load(f)
+        if isinstance(entry, dict) and 'payload' in entry:
+            return entry
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def _disk_cache_write(instance_key: str, endpoint: str, etag: Optional[str], payload: Any,
+                      cached_at: Optional[float] = None):
+    """Persist a cache entry; failures degrade silently to memory-only caching."""
+    try:
+        cache_dir = _cache_dir()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        entry = {
+            'etag': etag,
+            'cached_at': cached_at if cached_at is not None else time.time(),
+            'payload': payload,
+        }
+        path = cache_dir / _cache_file_name(instance_key, endpoint)
+        with open(str(path), 'w', encoding='utf-8') as f:
+            json.dump(entry, f, ensure_ascii=False)
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def _instance_cache_key(client: "UnitySkills") -> Optional[str]:
+    """Disk-cache key identifying one Unity instance.
+
+    Prefers instanceId from /health (stable project-name + path-hash), falling
+    back to projectName+port for older servers. Returns None when /health is
+    unreachable or carries neither field — callers then skip the disk layer.
+    """
+    health = client._get_health_info()
+    if not health:
+        return None
+    instance_id = health.get('instanceId')
+    if instance_id:
+        return str(instance_id)
+    project = health.get('projectName')
+    if project:
+        port = (client.url or '').rsplit(':', 1)[-1]
+        return f"{project}_{port}"
+    return None
+
+
+def _fetch_with_cache(client: "UnitySkills", path: str, endpoint: str,
+                      mem_cache: Dict[str, Dict[str, Any]], ttl: float,
+                      validate, force_refresh: bool) -> Dict[str, Any]:
+    """Shared memory -> disk -> conditional-GET pipeline for /skills payloads.
+
+    Order: a fresh in-memory entry wins; otherwise a fresh disk entry is promoted
+    to memory; otherwise the request goes out — with If-None-Match when the stale
+    disk entry carries an ETag, so an unchanged payload costs a 304 instead of a
+    full body. Validated 200 responses update both layers (the ETag is stored only
+    when the server sent one; without it the disk entry works as plain TTL cache).
+    force_refresh bypasses both cache layers and refetches unconditionally.
+    """
+    key = client.url or "default"
+    now = time.time()
+    cached = mem_cache.get(key)
+    if not force_refresh and cached and (now - cached["ts"]) < ttl:
+        return cached["data"]
+
+    instance_key = _instance_cache_key(client)
+    disk_entry = None
+    if not force_refresh and instance_key:
+        disk_entry = _disk_cache_read(instance_key, endpoint)
+        if disk_entry and not validate(disk_entry.get('payload')):
+            disk_entry = None  # corrupt/foreign file: ignore it and refetch below
+        if disk_entry and (now - disk_entry.get('cached_at', 0)) < ttl:
+            mem_cache[key] = {"ts": disk_entry['cached_at'], "data": disk_entry['payload']}
+            return disk_entry['payload']
+
+    headers = {}
+    etag = disk_entry.get('etag') if disk_entry else None
+    if etag:
+        headers['If-None-Match'] = etag
+
+    response = client._session.get(f"{client.url}{path}", timeout=client.timeout, headers=headers)
+    response.encoding = 'utf-8'
+
+    if response.status_code == 304 and disk_entry:
+        payload = disk_entry['payload']
+        mem_cache[key] = {"ts": now, "data": payload}
+        if instance_key:
+            _disk_cache_write(instance_key, endpoint, etag, payload, cached_at=now)
+        return payload
+
+    data = response.json()
+    if validate(data):
+        mem_cache[key] = {"ts": now, "data": data}
+        if instance_key:
+            _disk_cache_write(instance_key, endpoint, response.headers.get('ETag'), data, cached_at=now)
+    return data
+
+
 # Process-wide lite-summary cache: /skills?summary=1 is ~143 KB (~35K tokens) — the cheap
 # awareness layer (name/desc/category/operation/riskLevel per skill). Cache a successful
 # result per server URL for a short TTL so the agent doesn't re-pay 35K tokens to recall
@@ -792,24 +986,81 @@ def get_skills_summary(force_refresh: bool = False) -> Dict[str, Any]:
     """Get the lite awareness manifest (name/desc/category/operation/riskLevel per skill).
 
     The token-friendly first fetch (~35K tokens vs ~150K full) for project awareness;
-    server-cached and client-cached per URL for _SKILLS_SUMMARY_TTL seconds. Pull the full
-    schema via get_skill_schema() when you need exact parameter schemas to execute.
+    server-cached and client-cached (memory + disk + ETag, see _fetch_with_cache) per
+    URL for _SKILLS_SUMMARY_TTL seconds. Pull the full schema via get_skill_schema()
+    when you need exact parameter schemas to execute.
     """
     try:
         client = _get_default_client()
-        key = client.url or "default"
-        now = time.time()
-        cached = _skills_summary_cache.get(key)
-        if not force_refresh and cached and (now - cached["ts"]) < _SKILLS_SUMMARY_TTL:
-            return cached["data"]
-        response = client._session.get(f"{client.url}/skills?summary=1", timeout=client.timeout)
-        response.encoding = 'utf-8'
-        data = response.json()
-        if isinstance(data, dict) and data.get("summary") is True:
-            _skills_summary_cache[key] = {"ts": now, "data": data}
-        return data
+        return _fetch_with_cache(
+            client, "/skills?summary=1", "summary",
+            _skills_summary_cache, _SKILLS_SUMMARY_TTL,
+            validate=lambda d: isinstance(d, dict) and d.get("summary") is True,
+            force_refresh=force_refresh,
+        )
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+def search_skills(query: str, category: str = None, limit: int = 20) -> List[Dict[str, Any]]:
+    """Keyword search over the lite skills summary — avoids loading the full
+    summary (~143 KB / ~35K tokens) into context; only matching entries are returned.
+
+    Data comes from get_skills_summary() (memory + disk + ETag cached), so repeated
+    searches within the TTL re-read the cache instead of re-fetching the payload.
+
+    Matching: `query` is split on whitespace; a skill matches only when EVERY term
+    is a case-insensitive substring of its name, description, or category (AND).
+    `category`, when given, additionally filters by exact category name
+    (case-insensitive). Results are ordered by how many terms hit the name
+    (more first), then by name alphabetically.
+
+    Args:
+        query: Whitespace-separated keywords. Empty/None returns [] (never the full list).
+        category: Optional exact category filter, e.g. "ScriptableObject".
+        limit: Maximum number of results (default 20).
+
+    Returns:
+        List of {name, category, description} dicts, at most `limit` entries.
+        On summary fetch failure returns [{"status": "error", "error": "..."}]
+        (same convention as get_audit_log).
+
+    Example:
+        search_skills("serialized property")
+        search_skills("create", category="Material", limit=5)
+    """
+    if not query:
+        return []
+    terms = [t.lower() for t in query.split()]
+    if not terms:
+        return []
+
+    summary = get_skills_summary()
+    if not isinstance(summary, dict) or summary.get('status') == 'error':
+        error = summary.get('error') if isinstance(summary, dict) else 'invalid summary payload'
+        return [{"status": "error", "error": str(error)}]
+
+    category_filter = category.lower() if category else None
+    matches = []
+    for skill in summary.get('skills') or []:
+        if not isinstance(skill, dict):
+            continue
+        name = str(skill.get('name') or '')
+        desc = str(skill.get('description') or '')
+        cat = str(skill.get('category') or '')
+        if category_filter and cat.lower() != category_filter:
+            continue
+        name_l, desc_l, cat_l = name.lower(), desc.lower(), cat.lower()
+        if not all(t in name_l or t in desc_l or t in cat_l for t in terms):
+            continue
+        name_hits = sum(1 for t in terms if t in name_l)
+        matches.append((-name_hits, name_l, {'name': name, 'category': cat, 'description': desc}))
+
+    matches.sort(key=lambda m: (m[0], m[1]))
+    results = [entry for _, _, entry in matches]
+    if limit is not None:
+        results = results[:max(0, limit)]
+    return results
 
 
 # Process-wide schema cache: /skills/schema is ~618 KB; re-fetching it per call is the
@@ -820,28 +1071,24 @@ _SCHEMA_CACHE_TTL = 300.0  # seconds
 
 
 def get_skill_schema(force_refresh: bool = False) -> Dict[str, Any]:
-    """Get the canonical machine-readable skill schema (process-cached).
+    """Get the canonical machine-readable skill schema (memory + disk cached).
 
     This is the preferred source for exact skill names, parameters, and metadata
     when prompt/token budget matters more than loading large SKILL.md files.
 
     The full schema is large (~618 KB), so a successful result is cached per server URL
-    for `_SCHEMA_CACHE_TTL` seconds. Pass force_refresh=True to bypass the cache (e.g. after
+    for `_SCHEMA_CACHE_TTL` seconds (plus an on-disk ETag cache shared across processes,
+    see _fetch_with_cache). Pass force_refresh=True to bypass the cache (e.g. after
     adding/renaming skills and recompiling).
     """
     try:
         client = _get_default_client()
-        key = client.url or "default"
-        now = time.time()
-        cached = _schema_cache.get(key)
-        if not force_refresh and cached and (now - cached["ts"]) < _SCHEMA_CACHE_TTL:
-            return cached["data"]
-        response = client._session.get(f"{client.url}/skills/schema", timeout=client.timeout)
-        response.encoding = 'utf-8'
-        data = response.json()
-        if isinstance(data, dict) and data.get("totalSkills") is not None:
-            _schema_cache[key] = {"ts": now, "version": data.get("version"), "data": data}
-        return data
+        return _fetch_with_cache(
+            client, "/skills/schema", "full",
+            _schema_cache, _SCHEMA_CACHE_TTL,
+            validate=lambda d: isinstance(d, dict) and d.get("totalSkills") is not None,
+            force_refresh=force_refresh,
+        )
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -1149,6 +1396,8 @@ def main():
         usage='python unity_skills.py [options] <skill_name> [param1=value1] ...'
     )
     parser.add_argument('--list', action='store_true', help='List all available skills')
+    parser.add_argument('--search', type=str, default=None, metavar='QUERY',
+                        help='Search skills by keyword against the cached summary, e.g. --search "gradient scriptableobject"')
     parser.add_argument('--list-instances', action='store_true', help='List active Unity instances')
     parser.add_argument('--port', type=int, default=None, help='Connect to specific port')
     parser.add_argument('--version', type=str, default=None, dest='unity_version',
@@ -1162,6 +1411,15 @@ def main():
     if args.port or args.unity_version:
         global _default_client
         _default_client = UnitySkills(port=args.port, version=args.unity_version)
+
+    if args.search is not None:
+        results = search_skills(args.search)
+        if results and results[0].get('status') == 'error':
+            print(json.dumps(results[0], ensure_ascii=False, indent=2))
+            sys.exit(1)
+        for entry in results:
+            print(f"{entry.get('name', '')}  [{entry.get('category', '')}]  {(entry.get('description') or '')[:100]}")
+        return
 
     if args.list:
         print(json.dumps(get_skills(), ensure_ascii=False, indent=2))

@@ -566,7 +566,41 @@ namespace UnitySkills
                 bool verbose = true; // Default to true if not specified to maintain backward compatibility for direct calls
                 if (args.TryGetValue("verbose", StringComparison.OrdinalIgnoreCase, out var verboseToken))
                 {
-                    verbose = verboseToken.ToObject<bool>();
+                    try
+                    {
+                        verbose = verboseToken.ToObject<bool>();
+                    }
+                    catch (Exception)
+                    {
+                        // ToObject<bool> accepts true/false/"true"/1 but rejects "1"/"yes" etc.
+                        // Try the common string forms first; anything else is a client error and
+                        // must surface as TYPE_MISMATCH + fix_and_retry — the generic catch below
+                        // would mislabel it INTERNAL "[Transactional Revert]" + wait_and_retry,
+                        // sending agents into a retry loop on a body only they can fix.
+                        var raw = verboseToken.Type == JTokenType.String
+                            ? verboseToken.Value<string>()?.Trim().ToLowerInvariant()
+                            : null;
+                        if (raw == "true" || raw == "1" || raw == "yes")
+                            verbose = true;
+                        else if (raw == "false" || raw == "0" || raw == "no")
+                            verbose = false;
+                        else
+                        {
+                            // Nothing was invoked yet; unwind the bookkeeping opened above,
+                            // mirroring the catch handlers below.
+                            if (autoStartedWorkflow && WorkflowManager.IsRecording)
+                                WorkflowManager.EndTask();
+                            if (undoGroup >= 0)
+                                UnityEditor.Undo.RevertAllInCurrentGroup();
+
+                            return SkillErrorResponse.Build(
+                                SkillErrorCode.TypeMismatch,
+                                $"Parameter 'verbose' must be a boolean (true/false), got: {verboseToken.ToString(Formatting.None)}",
+                                skill: name,
+                                details: new { typeErrors = new object[] { new { parameter = "verbose", expectedType = "boolean", error = $"Cannot convert {verboseToken.Type} to Boolean" } } },
+                                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                        }
+                    }
                     args.Remove("verbose");
                 }
 
@@ -753,13 +787,25 @@ namespace UnitySkills
                     note = "No execution performed"
                 }, _jsonSettings);
             }
-            catch (Exception ex)
+            catch (Newtonsoft.Json.JsonException ex)
             {
                 return SkillErrorResponse.Build(
                     SkillErrorCode.InvalidJson,
                     $"Invalid JSON: {ex.Message}",
                     skill: name,
                     retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+            }
+            catch (Exception ex)
+            {
+                // Valid JSON can still crash plan/semantic validation (e.g. an NRE). Reporting
+                // that as INVALID_JSON sends agents into a loop rewriting a body that is fine;
+                // mirror Execute's catch split and report the real failure instead.
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.Internal,
+                    $"Dry-run failed: {ex.Message}",
+                    skill: name,
+                    details: new { exceptionType = ex.GetType().Name },
+                    retryStrategy: SkillErrorResponse.Abort);
             }
         }
 
@@ -1051,6 +1097,19 @@ namespace UnitySkills
             if (_filteredOutputCache.TryGetValue(cacheKey, out var cachedOutput))
                 return cachedOutput;
 
+            // ?brief=1 (or ?brief=true) → directory layer: skill names grouped by category,
+            // no descriptions or parameter schemas (~19KB vs ~139KB summary / ~618KB full).
+            // Takes priority over summary/category/other filters (they are ignored) so the
+            // semantics stay minimal: locate the module first, then pull exact signatures
+            // via GET /skills/schema?category=<Category>.
+            if (filters.TryGetValue("brief", out var briefVal) &&
+                (briefVal == "1" || briefVal.Equals("true", StringComparison.OrdinalIgnoreCase)))
+            {
+                var briefJson = JsonConvert.SerializeObject(BuildBriefManifest(), _jsonSettings);
+                _filteredOutputCache[cacheKey] = briefJson;
+                return briefJson;
+            }
+
             IEnumerable<SkillInfo> filtered = _skills.Values;
 
             if (filters.TryGetValue("category", out var cat))
@@ -1250,6 +1309,35 @@ namespace UnitySkills
                         approvalBehavior = SkillsModeManager.ApprovalBehaviorForSkill(s),
                         parameters = BuildParameterSchema(s)
                     })
+            };
+        }
+
+        /// <summary>
+        /// Directory-layer manifest (GET /skills?brief=1): skill names grouped by category,
+        /// nothing else. Sorted module keys and sorted names keep the payload byte-stable
+        /// per skill set, so the cached string (and its fast-path ETag) holds until Refresh().
+        /// </summary>
+        private static object BuildBriefManifest()
+        {
+            var modules = new SortedDictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in _skills.Values)
+            {
+                var category = s.Category.ToString();
+                if (!modules.TryGetValue(category, out var names))
+                    modules[category] = names = new List<string>();
+                names.Add(s.Name);
+            }
+            foreach (var names in modules.Values)
+                names.Sort(StringComparer.OrdinalIgnoreCase);
+
+            return new
+            {
+                manifestType = "brief",
+                schemaVersion = SkillSchemaVersion,
+                version = SkillsLogger.Version,
+                totalSkills = _skills.Count,
+                briefHint = "DIRECTORY ONLY — names + categories, no descriptions or parameters. Locate the module(s) you need, then fetch exact signatures via GET /skills/schema?category=<Category>, and always dryRun before first execution. If a name is ambiguous, fall back to GET /skills?summary=1 (full descriptions) or GET /skills/recommend?intent=...",
+                modules
             };
         }
 
@@ -1521,7 +1609,15 @@ namespace UnitySkills
                 {
                     try
                     {
-                        invoke[i] = token.ToObject(p.ParameterType);
+                        // Batch-style skills declare JSON payloads as string parameters, and
+                        // agents routinely send them as native arrays/objects instead. Serialize
+                        // back to a string rather than failing with TYPE_MISMATCH — the skill
+                        // re-parses the JSON internally, so the round-trip is lossless. Only
+                        // string targets get this leniency; other types stay strict.
+                        if (p.ParameterType == typeof(string) && (token is JArray || token is JObject))
+                            invoke[i] = token.ToString(Formatting.None);
+                        else
+                            invoke[i] = token.ToObject(p.ParameterType);
                     }
                     catch (Exception ex)
                     {
@@ -1866,7 +1962,7 @@ namespace UnitySkills
                 return directSuggestions;
             }
 
-            return allowedParameterNames
+            var fuzzyMatches = allowedParameterNames
                 .Select(name => new
                 {
                     Name = name,
@@ -1882,6 +1978,64 @@ namespace UnitySkills
                 .Select(x => x.Name)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+
+            if (fuzzyMatches.Length > 0)
+                return fuzzyMatches;
+
+            // Last-resort fallback: the alias table and edit distance both miss renames like
+            // assetPath→savePath (distance 4, no substring overlap), yet parameter names across
+            // the skill library reuse camelCase tokens (path/name/id/target/source/...), so
+            // sharing any token is a strong hint. Gated on the stricter levels finding nothing
+            // to avoid adding noise to suggestions that already have good matches.
+            var unknownTokens = SplitCamelCaseTokens(unknownParameter);
+            if (unknownTokens.Count == 0)
+                return fuzzyMatches;
+
+            return allowedParameterNames
+                .Where(name => SplitCamelCaseTokens(name).Overlaps(unknownTokens))
+                .Select(name => new
+                {
+                    Name = name,
+                    Distance = ComputeLevenshteinDistance(unknownParameter, name)
+                })
+                .OrderBy(x => x.Distance)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(3)
+                .Select(x => x.Name)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        private static HashSet<string> SplitCamelCaseTokens(string name)
+        {
+            var tokens = new HashSet<string>(StringComparer.Ordinal);
+            if (string.IsNullOrEmpty(name))
+                return tokens;
+
+            var current = new System.Text.StringBuilder();
+            foreach (var c in name)
+            {
+                if (!char.IsLetter(c))
+                {
+                    if (current.Length > 0)
+                    {
+                        tokens.Add(current.ToString());
+                        current.Clear();
+                    }
+                    continue;
+                }
+
+                if (char.IsUpper(c) && current.Length > 0)
+                {
+                    tokens.Add(current.ToString());
+                    current.Clear();
+                }
+                current.Append(char.ToLowerInvariant(c));
+            }
+
+            if (current.Length > 0)
+                tokens.Add(current.ToString());
+            return tokens;
         }
 
         private static string GetParameterHint(string skillName, string parameterName)
@@ -1960,13 +2114,25 @@ namespace UnitySkills
                 var plan = SkillPlanningService.BuildPlan(skill, validation);
                 return JsonConvert.SerializeObject(plan, _jsonSettings);
             }
-            catch (Exception ex)
+            catch (Newtonsoft.Json.JsonException ex)
             {
                 return SkillErrorResponse.Build(
                     SkillErrorCode.InvalidJson,
                     $"Invalid JSON: {ex.Message}",
                     skill: name,
                     retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+            }
+            catch (Exception ex)
+            {
+                // Valid JSON can still crash plan/semantic validation (e.g. an NRE). Reporting
+                // that as INVALID_JSON sends agents into a loop rewriting a body that is fine;
+                // mirror Execute's catch split and report the real failure instead.
+                return SkillErrorResponse.Build(
+                    SkillErrorCode.Internal,
+                    $"Plan failed: {ex.Message}",
+                    skill: name,
+                    details: new { exceptionType = ex.GetType().Name },
+                    retryStrategy: SkillErrorResponse.Abort);
             }
         }
 
@@ -2153,6 +2319,91 @@ namespace UnitySkills
                 SkillsLogger.LogWarning($"Workflow snapshot failed: {ex.Message}");
             }
         }
+
+        #region HTTP-thread cached GET fast path (v2.1)
+        // ⚠ 跨线程契约：本 region 会被 SkillsHttpServer 的 HTTP 监听线程直接调用，必须保持
+        // 零 Unity API（UnityEngine.*/UnityEditor.*）、零 SkillsLogger（内部走 Debug.Log 且
+        // Level getter 首次会读 EditorPrefs）。只允许读取已由主线程构建好的字符串缓存
+        // （_cachedManifest / _cachedSchema / _filteredOutputCache，均为不可变 string 或
+        // ConcurrentDictionary）以及本 region 自有的 _etagCache。缓存未建立时必须返回 false，
+        // 交回主线程慢路径（主线程构建缓存后下一次请求即可命中）。
+        // 本 region 内代码不得调用 Initialize()/GetManifest()/GetSchema()/BuildFilteredOutput()
+        // ——它们会触发反射扫描与 SkillsLogger 日志，只能在主线程运行。
+
+        // ETag 缓存：键 = 输出缓存键，值 = (来源 json 引用, etag)。
+        // SkillRouter 非 [InitializeOnLoad]、无静态持久化，域重载即整体重置，天然失效；
+        // Refresh()（skill 增删）重建后缓存 json 是新 string 实例，下方 ReferenceEquals
+        // 不匹配即自动重算——因此无需在 Refresh() 里挂清空钩子。
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Json, string Etag)> _etagCache =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, (string Json, string Etag)>();
+
+        /// <summary>
+        /// HTTP 线程快速通道：GET /skills 与 GET /skills/schema（含 query 变体）在字符串缓存
+        /// 已由主线程构建时直接返回缓存 json + ETag（SHA256 前 16 hex），绕过主线程队列。
+        /// 未命中（缓存尚未构建 / 路径不属于这两个端点）返回 false。
+        /// /skills/recommend、/skills/chain、/skills/batch 等路径精确匹配不上，一律走慢路径。
+        /// </summary>
+        internal static bool TryGetCachedGetResponse(string path, string query, out string json, out string etag)
+        {
+            json = null;
+            etag = null;
+
+            bool isSchema = string.Equals(path, "/skills/schema", StringComparison.OrdinalIgnoreCase);
+            if (!isSchema && !string.Equals(path, "/skills", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            string manifestType = isSchema ? "schema" : "manifest";
+            string cacheKey;
+
+            // 与 BuildFilteredOutput 的分流保持一致：query 为空或解析后无有效过滤键 → 全量缓存；
+            // 否则用同一把 BuildFilteredOutputCacheKey 生成的键读 _filteredOutputCache
+            // （两者键构造完全同源，大小写归一语义一致）。
+            var filters = string.IsNullOrEmpty(query) ? null : ParseQueryString(query);
+            if (filters == null || filters.Count == 0)
+            {
+                json = isSchema ? _cachedSchema : _cachedManifest;
+                cacheKey = manifestType + "|__full__";
+            }
+            else
+            {
+                cacheKey = BuildFilteredOutputCacheKey(filters, manifestType);
+                _filteredOutputCache.TryGetValue(cacheKey, out json);
+            }
+
+            if (json == null)
+                return false;
+
+            etag = GetOrComputeEtag(cacheKey, json);
+            return true;
+        }
+
+        /// <summary>
+        /// 按 (缓存键, json 引用) 记忆化的 ETag 获取：条目存在且 Json 引用与当前缓存串一致
+        /// 才复用，否则重算并覆盖——保证 Refresh() 重建缓存后不会拿旧 etag 误判 304。
+        /// </summary>
+        private static string GetOrComputeEtag(string cacheKey, string json)
+        {
+            if (_etagCache.TryGetValue(cacheKey, out var entry) && ReferenceEquals(entry.Json, json))
+                return entry.Etag;
+
+            string etag = ComputeEtag(json);
+            _etagCache[cacheKey] = (json, etag);
+            return etag;
+        }
+
+        private static string ComputeEtag(string json)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(json));
+                var sb = new System.Text.StringBuilder(16);
+                for (int i = 0; i < 8; i++)
+                    sb.Append(hash[i].ToString("x2"));
+                return sb.ToString();
+            }
+        }
+
+        #endregion
     }
 
     internal static class SkillResultHelper

@@ -340,6 +340,70 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// Fast-path responder for cached GET /skills and /skills/schema. Runs ON THE HTTP
+        /// LISTENER THREAD — must never touch Unity APIs or SkillsLogger (headers, hashing and
+        /// socket writes only). Adds an ETag header and honors If-None-Match with an
+        /// empty-body 304 reply.
+        /// </summary>
+        private static void SendCachedGetResponse(HttpListenerContext context, HttpListenerRequest request, string json, string etag)
+        {
+            HttpListenerResponse response = null;
+            try
+            {
+                response = context.Response;
+                response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Agent-Id");
+                response.Headers.Add("Access-Control-Allow-Origin", "*");
+                response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
+                response.Headers.Add("X-Agent-Id", DetectAgent(request));
+                response.Headers.Add("X-Fast-Path", "true");
+                response.Headers.Add("ETag", $"\"{etag}\"");
+
+                if (IfNoneMatchSatisfied(request.Headers["If-None-Match"], etag))
+                {
+                    response.StatusCode = 304; // Not Modified — must not carry a body
+                    return;
+                }
+
+                response.StatusCode = 200;
+                response.ContentType = "application/json; charset=utf-8";
+                byte[] buffer = Encoding.UTF8.GetBytes(json);
+                response.ContentLength64 = buffer.Length;
+                response.OutputStream.Write(buffer, 0, buffer.Length);
+            }
+            catch (HttpListenerException) { /* Client disconnected */ }
+            catch (System.IO.IOException) { /* Client disconnected mid-write */ }
+            catch (ObjectDisposedException) { /* Response already closed */ }
+            catch { /* Never let fast-path errors kill the listener loop */ }
+            finally
+            {
+                try { response?.Close(); } catch { }
+            }
+        }
+
+        /// <summary>
+        /// Loose If-None-Match comparison: tolerates quoted values, W/ weak prefixes,
+        /// comma-separated lists and the '*' wildcard.
+        /// </summary>
+        private static bool IfNoneMatchSatisfied(string ifNoneMatch, string etag)
+        {
+            if (string.IsNullOrEmpty(ifNoneMatch) || string.IsNullOrEmpty(etag))
+                return false;
+
+            foreach (var raw in ifNoneMatch.Split(','))
+            {
+                var candidate = raw.Trim();
+                if (candidate == "*") return true;
+                if (candidate.StartsWith("W/", StringComparison.OrdinalIgnoreCase))
+                    candidate = candidate.Substring(2);
+                candidate = candidate.Trim('"');
+                if (string.Equals(candidate, etag, StringComparison.Ordinal))
+                    return true;
+            }
+            return false;
+        }
+
         // Agent detection table - keyword to agent ID mapping
         private static readonly (string keyword, string agentId)[] _agentKeywords = new[]
         {
@@ -849,6 +913,26 @@ namespace UnitySkills
                         continue;
                     }
 
+                    // Fast path: GET /skills and GET /skills/schema are answered directly on this
+                    // HTTP thread when SkillRouter's string caches are already built (zero Unity
+                    // API — see SkillRouter.TryGetCachedGetResponse). A cache miss falls through
+                    // to the normal main-thread queue, which builds the cache for next time.
+                    // /health deliberately stays on the main-thread path: clients probe it to
+                    // detect main-thread liveness and compilation state.
+                    if (request.HttpMethod == "GET")
+                    {
+                        string fastPath = request.Url.AbsolutePath;
+                        if ((string.Equals(fastPath, "/skills", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(fastPath, "/skills/schema", StringComparison.OrdinalIgnoreCase)) &&
+                            SkillRouter.TryGetCachedGetResponse(fastPath, request.Url.Query, out var cachedJson, out var cachedEtag))
+                        {
+                            ReleasePendingSlot();
+                            reservedPendingSlot = false;
+                            SendCachedGetResponse(context, request, cachedJson, cachedEtag);
+                            continue;
+                        }
+                    }
+
                     if (request.HttpMethod == "POST" && request.ContentLength64 > 0)
                     {
                         if (request.ContentLength64 > MaxBodySizeBytes)
@@ -1248,6 +1332,13 @@ namespace UnitySkills
                 return;
             }
 
+            // Cross-skill aggregated execution (each step runs the full Execute pipeline)
+            if (string.Equals(path, "/skills/batch", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "POST")
+            {
+                HandleSkillsBatchRequest(job);
+                return;
+            }
+
             // Job query (lightweight GET, bypasses skill router for high-frequency progress polling)
             if (job.HttpMethod == "GET" &&
                 (string.Equals(path, "/jobs", StringComparison.OrdinalIgnoreCase) ||
@@ -1260,23 +1351,8 @@ namespace UnitySkills
             // Execute / DryRun / Plan skill
             if (path.StartsWith("/skill/", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "POST")
             {
-                if (_domainReloadPending || ServerAvailabilityHelper.IsCompilationInProgress())
-                {
-                    job.StatusCode = 503;
-                    job.ResponseJson = SkillErrorResponse.Build(
-                        SkillErrorCode.Compiling,
-                        "Unity is compiling or reloading scripts",
-                        details: new {
-                            isCompiling = EditorApplication.isCompiling,
-                            isUpdating = EditorApplication.isUpdating,
-                            domainReloadPending = _domainReloadPending,
-                            suggestion = "The REST server is temporarily unavailable during compilation. Wait a few seconds and retry.",
-                            manualAction = "If this persists, check Unity Editor for compilation errors or stuck dialogs.",
-                        },
-                        retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
-                        retryAfterSeconds: _domainReloadPending ? 8 : 5);
+                if (RejectIfCompiling(job))
                     return;
-                }
 
                 // Extract skill name (preserve original case) and validate
                 string skillName = job.Path.Substring(7);
@@ -1292,18 +1368,8 @@ namespace UnitySkills
                 }
 
                 var skillQs = SkillRouter.ParseQueryString(job.QueryString);
-                SkillRouter.RequestMode mode = SkillRouter.RequestMode.Execute;
-                if (skillQs.TryGetValue("mode", out var modeValue) && !string.IsNullOrWhiteSpace(modeValue))
-                {
-                    if (modeValue.Equals("dryRun", StringComparison.OrdinalIgnoreCase))
-                        mode = SkillRouter.RequestMode.DryRun;
-                    else if (modeValue.Equals("plan", StringComparison.OrdinalIgnoreCase))
-                        mode = SkillRouter.RequestMode.Plan;
-                }
-                else if (skillQs.TryGetValue("dryRun", out var dryRunVal) && dryRunVal.Equals("true", StringComparison.OrdinalIgnoreCase))
-                {
-                    mode = SkillRouter.RequestMode.DryRun;
-                }
+                if (!TryResolveRequestMode(job, skillQs, skillName, out var mode))
+                    return;
 
                 try
                 {
@@ -1359,6 +1425,7 @@ namespace UnitySkills
                         "GET /skills/schema",
                         "GET /skills/recommend",
                         "GET /skills/chain",
+                        "POST /skills/batch",
                         "POST /skill/{name}",
                         "POST /skill/{name}?mode=dryRun",
                         "POST /skill/{name}?mode=plan",
@@ -1376,6 +1443,322 @@ namespace UnitySkills
                     }
                 },
                 retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+        }
+
+        /// <summary>
+        /// Resolves ?mode= / ?dryRun= from the parsed query string. Returns false (and writes an
+        /// INVALID_MODE error response to the job) when either parameter is present with an
+        /// unrecognized value — the request must NOT be executed in that case. Without this
+        /// guard, an agent that misspells the mode (e.g. ?mode=dry_run, ?dryRun=1) believes it
+        /// is previewing while the server silently executes for real.
+        /// </summary>
+        private static bool TryResolveRequestMode(RequestJob job, Dictionary<string, string> qs, string skillName, out SkillRouter.RequestMode mode)
+        {
+            mode = SkillRouter.RequestMode.Execute;
+
+            if (qs.TryGetValue("mode", out var modeValue) && !string.IsNullOrWhiteSpace(modeValue))
+            {
+                if (modeValue.Equals("dryRun", StringComparison.OrdinalIgnoreCase))
+                {
+                    mode = SkillRouter.RequestMode.DryRun;
+                    return true;
+                }
+                if (modeValue.Equals("plan", StringComparison.OrdinalIgnoreCase))
+                {
+                    mode = SkillRouter.RequestMode.Plan;
+                    return true;
+                }
+
+                job.StatusCode = 400;
+                job.ResponseJson = SkillErrorResponse.Build(
+                    SkillErrorCode.InvalidMode,
+                    $"Unknown mode '{modeValue}' — request was NOT executed.",
+                    skill: skillName,
+                    details: new
+                    {
+                        received = modeValue,
+                        validValues = new[] { "dryRun", "plan" },
+                        hint = "Use '?mode=dryRun' to validate without executing, '?mode=plan' for an execution plan, or omit '?mode=' entirely to execute for real.",
+                    },
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                return false;
+            }
+
+            if (qs.TryGetValue("dryRun", out var dryRunVal) && !string.IsNullOrWhiteSpace(dryRunVal))
+            {
+                if (dryRunVal.Equals("true", StringComparison.OrdinalIgnoreCase))
+                {
+                    mode = SkillRouter.RequestMode.DryRun;
+                    return true;
+                }
+                if (dryRunVal.Equals("false", StringComparison.OrdinalIgnoreCase))
+                    return true; // explicit false = execute for real
+
+                job.StatusCode = 400;
+                job.ResponseJson = SkillErrorResponse.Build(
+                    SkillErrorCode.InvalidMode,
+                    $"Invalid dryRun value '{dryRunVal}' — request was NOT executed.",
+                    skill: skillName,
+                    details: new
+                    {
+                        received = dryRunVal,
+                        validValues = new[] { "true", "false" },
+                        hint = "Use '?dryRun=true' (or '?mode=dryRun') to validate without executing; omit the parameter to execute for real.",
+                    },
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Writes a 503 COMPILING response when Unity is compiling or a Domain Reload is
+        /// pending. Returns true when the request was rejected. Shared by POST /skill/{name}
+        /// and POST /skills/batch (the latter does not match the "/skill/" prefix check).
+        /// </summary>
+        private static bool RejectIfCompiling(RequestJob job)
+        {
+            if (!_domainReloadPending && !ServerAvailabilityHelper.IsCompilationInProgress())
+                return false;
+
+            job.StatusCode = 503;
+            job.ResponseJson = SkillErrorResponse.Build(
+                SkillErrorCode.Compiling,
+                "Unity is compiling or reloading scripts",
+                details: new {
+                    isCompiling = EditorApplication.isCompiling,
+                    isUpdating = EditorApplication.isUpdating,
+                    domainReloadPending = _domainReloadPending,
+                    suggestion = "The REST server is temporarily unavailable during compilation. Wait a few seconds and retry.",
+                    manualAction = "If this persists, check Unity Editor for compilation errors or stuck dialogs.",
+                },
+                retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                retryAfterSeconds: _domainReloadPending ? 8 : 5);
+            return true;
+        }
+
+        // ===== Cross-skill batch execution (v2.1) =====
+
+        private const int MaxBatchSteps = 50;
+
+        /// <summary>
+        /// POST /skills/batch — executes several skills sequentially inside one main-thread job,
+        /// saving one HTTP round-trip + main-thread wakeup per step.
+        ///
+        /// Body: {"steps":[{"skill":"gameobject_create","args":{...}}, ...], "continueOnError":false}
+        /// - Each step runs the FULL SkillRouter.Execute pipeline (permission gate, semantic
+        ///   validation, undo, audit) exactly like a standalone POST /skill/{name}; each step
+        ///   gets its own undo group (no merging).
+        /// - Default is fail-fast: the first failed step stops the batch and the remaining steps
+        ///   are reported as "skipped". With continueOnError=true failed steps are recorded and
+        ///   the batch continues. Authorization-type responses (MODE_RESTRICTED /
+        ///   CONFIRMATION_REQUIRED) ALWAYS interrupt regardless of continueOnError — they cannot
+        ///   be skipped; the step's full response (incl. grant token) is returned so the caller
+        ///   can complete the grant flow and re-submit the remaining steps.
+        /// - ?mode=dryRun validates every step without executing anything and never interrupts,
+        ///   so an agent can preview the whole sequence in one call. ?mode=plan is not supported.
+        /// - v1 boundary: steps cannot reference outputs of earlier steps; args are static JSON
+        ///   resolved before the batch starts.
+        /// </summary>
+        private static void HandleSkillsBatchRequest(RequestJob job)
+        {
+            if (RejectIfCompiling(job))
+                return;
+
+            var qs = SkillRouter.ParseQueryString(job.QueryString);
+            if (!TryResolveRequestMode(job, qs, "skills_batch", out var mode))
+                return;
+            if (mode == SkillRouter.RequestMode.Plan)
+            {
+                job.StatusCode = 400;
+                job.ResponseJson = SkillErrorResponse.Build(
+                    SkillErrorCode.InvalidMode,
+                    "Batch supports only '?mode=dryRun' (validates every step without executing); 'plan' is not available for /skills/batch.",
+                    details: new { received = "plan", validValues = new[] { "dryRun" } },
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                return;
+            }
+            bool dryRun = mode == SkillRouter.RequestMode.DryRun;
+
+            if (!TryParseBody(job, out var body)) return;
+
+            if (!(body.TryGetValue("steps", StringComparison.OrdinalIgnoreCase, out var stepsToken) && stepsToken is JArray steps) || steps.Count == 0)
+            {
+                job.StatusCode = 400;
+                job.ResponseJson = SkillErrorResponse.Build(
+                    SkillErrorCode.MissingParam,
+                    "'steps' must be a non-empty array of {skill, args} objects.",
+                    details: new
+                    {
+                        example = new
+                        {
+                            steps = new object[] { new { skill = "gameobject_create", args = new { name = "Cube" } } },
+                            continueOnError = false,
+                        },
+                    },
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                return;
+            }
+
+            if (steps.Count > MaxBatchSteps)
+            {
+                job.StatusCode = 400;
+                job.ResponseJson = SkillErrorResponse.Build(
+                    SkillErrorCode.SemanticInvalid,
+                    $"Too many steps: {steps.Count} (max {MaxBatchSteps}). Split into multiple /skills/batch calls.",
+                    details: new { received = steps.Count, max = MaxBatchSteps },
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                return;
+            }
+
+            bool continueOnError = body.TryGetValue("continueOnError", StringComparison.OrdinalIgnoreCase, out var coeToken)
+                && coeToken.Type == JTokenType.Boolean && coeToken.ToObject<bool>();
+
+            var results = new List<object>(steps.Count);
+            int executedCount = 0;
+            int failedCount = 0;
+            bool halted = false;
+
+            for (int i = 0; i < steps.Count; i++)
+            {
+                string stepSkillName = GetBatchStepSkillName(steps[i]);
+
+                if (halted)
+                {
+                    results.Add(new { index = i, skill = stepSkillName, status = "skipped" });
+                    continue;
+                }
+
+                if (!(steps[i] is JObject step) || string.IsNullOrWhiteSpace(stepSkillName))
+                {
+                    failedCount++;
+                    results.Add(new
+                    {
+                        index = i,
+                        skill = stepSkillName,
+                        status = "error",
+                        error = BuildErrorPayload(SkillErrorResponse.Build(
+                            SkillErrorCode.MissingParam,
+                            $"steps[{i}] must be an object with a non-empty 'skill' field.",
+                            retryStrategy: SkillErrorResponse.RetryFixAndRetry)),
+                    });
+                    if (!continueOnError && !dryRun) halted = true;
+                    continue;
+                }
+
+                string argsJson = "{}";
+                if (step.TryGetValue("args", StringComparison.OrdinalIgnoreCase, out var argsToken) &&
+                    argsToken != null && argsToken.Type != JTokenType.Null)
+                {
+                    argsJson = argsToken.Type == JTokenType.String
+                        ? argsToken.ToString()
+                        : argsToken.ToString(Formatting.None);
+                }
+
+                string stepJson;
+                try
+                {
+                    if (dryRun)
+                    {
+                        stepJson = SkillRouter.DryRun(stepSkillName, argsJson);
+                    }
+                    else
+                    {
+                        stepJson = SkillRouter.Execute(stepSkillName, argsJson);
+                        // Steps share one POST job, so the per-request invalidation in
+                        // ProcessJobQueue never runs between them — without this, a step
+                        // can't find objects created by an earlier step in the same batch.
+                        GameObjectFinder.InvalidateCache();
+                        SkillsLogger.LogAgent(job.AgentId, $"{stepSkillName} (batch {i + 1}/{steps.Count})");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    stepJson = SkillErrorResponse.Build(
+                        SkillErrorCode.Internal,
+                        ex.Message,
+                        skill: stepSkillName,
+                        details: new { type = ex.GetType().Name },
+                        retryStrategy: SkillErrorResponse.RetryWaitAndRetry);
+                    SkillsLogger.LogWarning($"Batch step {i} '{stepSkillName}' error: {ex.Message}");
+                }
+
+                JObject stepPayload;
+                try { stepPayload = JObject.Parse(stepJson); }
+                catch { stepPayload = new JObject { ["status"] = "error", ["error"] = stepJson }; }
+
+                string stepStatus = stepPayload["status"]?.ToString();
+
+                if (dryRun)
+                {
+                    // DryRun responses carry status:"dryRun" + valid:bool; unknown skills come
+                    // back as status:"error". Validation failures never halt a dry-run batch.
+                    bool stepValid = string.Equals(stepStatus, "dryRun", StringComparison.OrdinalIgnoreCase) &&
+                        stepPayload["valid"]?.Type == JTokenType.Boolean && stepPayload["valid"].ToObject<bool>();
+                    if (stepValid)
+                    {
+                        executedCount++;
+                        results.Add(new { index = i, skill = stepSkillName, status = "success", result = stepPayload });
+                    }
+                    else
+                    {
+                        failedCount++;
+                        results.Add(new { index = i, skill = stepSkillName, status = "error", error = stepPayload });
+                    }
+                    continue;
+                }
+
+                if (string.Equals(stepStatus, "error", StringComparison.OrdinalIgnoreCase))
+                {
+                    failedCount++;
+                    results.Add(new { index = i, skill = stepSkillName, status = "error", error = stepPayload });
+
+                    // Authorization-type responses can never be skipped: the caller must handle
+                    // the grant/confirmation flow, so the batch stops here even with
+                    // continueOnError=true. The full payload above carries the grant token.
+                    string errorCode = stepPayload["errorCode"]?.ToString();
+                    bool authorizationRequired =
+                        string.Equals(errorCode, "MODE_RESTRICTED", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(errorCode, "CONFIRMATION_REQUIRED", StringComparison.OrdinalIgnoreCase);
+
+                    if (authorizationRequired || !continueOnError)
+                        halted = true;
+                    continue;
+                }
+
+                // status:"success" (or any non-error shape) — unwrap the inner result;
+                // the entry-level status field already expresses success.
+                executedCount++;
+                results.Add(new
+                {
+                    index = i,
+                    skill = stepSkillName,
+                    status = "success",
+                    result = stepPayload.TryGetValue("result", out var innerResult) ? innerResult : stepPayload,
+                });
+            }
+
+            job.StatusCode = 200;
+            job.ResponseJson = JsonConvert.SerializeObject(new
+            {
+                status = failedCount == 0 ? "completed" : "partial",
+                dryRun,
+                executed = executedCount,
+                failed = failedCount,
+                results,
+            }, _jsonSettings);
+        }
+
+        private static string GetBatchStepSkillName(JToken stepToken)
+        {
+            if (stepToken is JObject step &&
+                step.TryGetValue("skill", StringComparison.OrdinalIgnoreCase, out var skillToken) &&
+                skillToken != null && skillToken.Type != JTokenType.Null)
+            {
+                return skillToken.ToString();
+            }
+            return null;
         }
 
         /// <summary>

@@ -76,7 +76,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("scriptableobject_set", "Set a field/property on a ScriptableObject",
+        [UnitySkill("scriptableobject_set", "Set a top-level public field/property on a ScriptableObject via reflection. For nested paths, arrays, object references or private [SerializeField] fields use scriptableobject_set_serialized_property",
             Category = SkillCategory.ScriptableObject, Operation = SkillOperation.Modify,
             Tags = new[] { "scriptableobject", "set", "field", "property" },
             Outputs = new[] { "field", "value" },
@@ -243,10 +243,10 @@ namespace UnitySkills
             return new { success = true, json };
         }
 
-        [UnitySkill("scriptableobject_import_json", "Import JSON data into a ScriptableObject",
+        [UnitySkill("scriptableobject_import_json", "Import JSON data into a ScriptableObject. Accepts bare field JSON {\"field\":value} (auto-wrapped) or the {\"MonoBehaviour\":{...}} format produced by scriptableobject_export_json. Returns a warning when no serialized field changed",
             Category = SkillCategory.ScriptableObject, Operation = SkillOperation.Modify,
             Tags = new[] { "scriptableobject", "import", "json", "deserialize" },
-            Outputs = new[] { "assetPath" },
+            Outputs = new[] { "assetPath", "warning" },
             RequiresInput = new[] { "assetPath" },
             TracksWorkflow = true)]
         public static object ScriptableObjectImportJson(string assetPath, string json = null, string jsonFilePath = null)
@@ -260,12 +260,148 @@ namespace UnitySkills
                 data = File.ReadAllText(jsonFilePath, System.Text.Encoding.UTF8);
             }
             if (string.IsNullOrEmpty(data)) return new { error = "No JSON data provided" };
+
+            // EditorJsonUtility.FromJsonOverwrite silently ignores bare field JSON; it expects the
+            // {"MonoBehaviour":{...}} envelope that scriptableobject_export_json produces, so wrap bare objects.
+            try
+            {
+                var root = Newtonsoft.Json.Linq.JToken.Parse(data);
+                if (!(root is Newtonsoft.Json.Linq.JObject rootObject))
+                    return new { error = "JSON root must be an object" };
+                if (rootObject.Property("MonoBehaviour") == null)
+                    data = new Newtonsoft.Json.Linq.JObject { ["MonoBehaviour"] = rootObject }.ToString();
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Invalid JSON: {ex.Message}" };
+            }
+
             WorkflowManager.SnapshotObject(asset);
             Undo.RecordObject(asset, "Import JSON to SO");
+            var before = EditorJsonUtility.ToJson(asset);
             EditorJsonUtility.FromJsonOverwrite(data, asset);
+            var changed = !string.Equals(EditorJsonUtility.ToJson(asset), before, System.StringComparison.Ordinal);
             EditorUtility.SetDirty(asset);
             AssetDatabase.SaveAssets();
+            if (!changed)
+            {
+                return new
+                {
+                    success = true,
+                    assetPath,
+                    warning = "No serialized field changed - either the values already match or no field name matched. Compare field names with scriptableobject_export_json output."
+                };
+            }
             return new { success = true, assetPath };
+        }
+
+        [UnitySkill("scriptableobject_get_serialized_properties", "List Inspector serialized properties of a ScriptableObject asset (propertyPath, type, current value), including private [SerializeField] and nested/array children. Use returned propertyPath with scriptableobject_set_serialized_property",
+            Category = SkillCategory.ScriptableObject, Operation = SkillOperation.Query,
+            Tags = new[] { "scriptableobject", "serialized", "inspector", "property", "list" },
+            Outputs = new[] { "path", "typeName", "properties" },
+            RequiresInput = new[] { "assetPath" },
+            ReadOnly = true,
+            Mode = SkillMode.SemiAuto)]
+        public static object ScriptableObjectGetSerializedProperties(string assetPath, bool includeChildren = true, int limit = 200)
+        {
+            if (Validate.Required(assetPath, "assetPath") is object reqErr) return reqErr;
+
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset == null)
+                return new { error = $"Asset not found: {assetPath}" };
+
+            return new
+            {
+                success = true,
+                path = assetPath,
+                typeName = asset.GetType().Name,
+                properties = SerializedPropertySkillUtility.ListProperties(asset, includeChildren, limit)
+            };
+        }
+
+        [UnitySkill("scriptableobject_set_serialized_property", "Set an Inspector serialized property on a ScriptableObject asset by propertyPath. Supports nested paths (stats.speed), array elements (items.Array.data[2]), array resize (items.Array.size), private [SerializeField] fields, object references via valueAssetPath, gradients, animation curves, and flags enums",
+            Category = SkillCategory.ScriptableObject, Operation = SkillOperation.Modify,
+            Tags = new[] { "scriptableobject", "serialized", "inspector", "property", "nested", "array", "reference" },
+            Outputs = new[] { "assetPath", "propertyPath", "valueSet" },
+            RequiresInput = new[] { "assetPath" },
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RiskLevel = "medium")]
+        public static object ScriptableObjectSetSerializedProperty(
+            string assetPath, string propertyPath, string value = null,
+            string valueAssetPath = null, string valueObjectType = null)
+        {
+            if (Validate.Required(assetPath, "assetPath") is object reqErr1) return reqErr1;
+            if (Validate.Required(propertyPath, "propertyPath") is object reqErr2) return reqErr2;
+
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+            if (asset == null)
+                return new { error = $"Asset not found: {assetPath}" };
+
+            var serializedObject = new SerializedObject(asset);
+            serializedObject.Update();
+            var property = SerializedPropertySkillUtility.FindProperty(serializedObject, propertyPath);
+            if (property == null)
+            {
+                return new
+                {
+                    error = $"Serialized property not found: {propertyPath}",
+                    availableProperties = SerializedPropertySkillUtility.ListProperties(asset, true, 60)
+                };
+            }
+
+            WorkflowManager.SnapshotObject(asset);
+            Undo.RecordObject(asset, "Set SO Serialized Property");
+
+            if (!SerializedPropertySkillUtility.TrySetProperty(
+                    property, value, null, 0, null, valueAssetPath, valueObjectType, out var setError))
+            {
+                return new { error = setError };
+            }
+
+            serializedObject.ApplyModifiedProperties();
+            EditorUtility.SetDirty(asset);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                assetPath,
+                propertyPath = property.propertyPath,
+                valueSet = SerializedPropertySkillUtility.DescribeValue(property)
+            };
+        }
+
+        [UnitySkill("scriptableobject_set_serialized_property_batch", "Set multiple Inspector serialized properties on one ScriptableObject asset. items: JSON array of {propertyPath, value, valueAssetPath, valueObjectType}",
+            Category = SkillCategory.ScriptableObject, Operation = SkillOperation.Modify,
+            Tags = new[] { "scriptableobject", "serialized", "property", "batch" },
+            Outputs = new[] { "successCount", "failCount", "results" },
+            RequiresInput = new[] { "assetPath" },
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RiskLevel = "medium")]
+        public static object ScriptableObjectSetSerializedPropertyBatch(string assetPath, string items)
+        {
+            if (Validate.Required(assetPath, "assetPath") is object reqErr) return reqErr;
+
+            return BatchExecutor.Execute<BatchSetSerializedPropertyItem>(items, item =>
+            {
+                var result = ScriptableObjectSetSerializedProperty(
+                    assetPath, item.propertyPath, item.value, item.valueAssetPath, item.valueObjectType);
+                if (SkillResultHelper.TryGetError(result, out var error))
+                {
+                    throw new System.Exception(error);
+                }
+                return result;
+            }, item => item.propertyPath);
+        }
+
+        private class BatchSetSerializedPropertyItem
+        {
+            public string propertyPath { get; set; }
+            public string value { get; set; }
+            public string valueAssetPath { get; set; }
+            public string valueObjectType { get; set; }
         }
 
         private static System.Type FindScriptableObjectType(string name)
