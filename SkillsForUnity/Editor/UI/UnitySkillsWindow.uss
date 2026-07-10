@@ -1136,6 +1136,45 @@
     white-space: normal;
 }
 
+/* ---------- Shortcuts section (panel hotkeys) ---------- */
+.shortcut-binding {
+    flex-shrink: 0;
+    margin-right: 6px;
+    font-size: 10px;
+    color: var(--color-text-secondary);
+    -unity-text-align: middle-right;
+}
+
+.shortcut-binding--unset {
+    color: var(--color-muted);
+    -unity-font-style: italic;
+}
+
+.shortcut-capture-prompt {
+    flex-grow: 1;
+    margin-right: 6px;
+    font-size: 11px;
+    color: var(--color-accent);
+    -unity-font-style: bold;
+    -unity-text-align: middle-right;
+}
+
+.shortcut-preview {
+    flex-grow: 1;
+    margin-right: 6px;
+    font-size: 11px;
+    color: var(--color-text);
+    -unity-font-style: bold;
+    -unity-text-align: middle-right;
+}
+
+.shortcut-conflict {
+    margin: 2px 0 0 0;
+    font-size: 10px;
+    color: var(--color-error);
+    white-space: normal;
+}
+
 /* ===================================================================
  * 8. CARDS (legacy compat — used by some inner pieces) and Inputs
  * =================================================================== */

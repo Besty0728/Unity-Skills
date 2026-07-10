@@ -35,6 +35,7 @@ namespace UnitySkills
         private Label         _statusText;
         private Button        _permBadge;
         private Label         _permBadgeLabel;
+        private Button        _macroBtn;
         private Button        _settingsBtn;
 
         private bool? _lastRunning;
@@ -53,12 +54,14 @@ namespace UnitySkills
             _serverSwitch = _root.Q<VisualElement>("server-switch");
             _statusText   = _root.Q<Label>("server-status-text");
             _permBadge    = _root.Q<Button>("perm-mode-badge");
+            _macroBtn     = _root.Q<Button>("open-macro-btn");
             _settingsBtn  = _root.Q<Button>("open-settings-btn");
 
             if (!_useNativeEmojiPermBadge)
                 BuildPermBadgeContent();
             else if (_permBadge != null)
                 _permBadge.AddToClassList("perm-mode-badge--native");
+            ApplyMacroIcon();
             ApplySettingsIcon();
             BindEvents();
             UpdateLiveData(); // initial paint
@@ -143,6 +146,22 @@ namespace UnitySkills
             _settingsBtn.style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
         }
 
+        /// <summary>
+        /// Replace the placeholder ● char with Unity's built-in record icon (same pattern as
+        /// ApplySettingsIcon). Falls back through dark/light variants; no-op if none resolve.
+        /// </summary>
+        private void ApplyMacroIcon()
+        {
+            if (_macroBtn == null) return;
+            var icon = EditorGUIUtility.IconContent("d_Animation.Record")?.image
+                       ?? EditorGUIUtility.IconContent("Animation.Record")?.image;
+            if (icon == null) return;
+
+            _macroBtn.text = "";
+            _macroBtn.style.backgroundImage = new StyleBackground((Texture2D)icon);
+            _macroBtn.style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
+        }
+
         private void BuildPermBadgeContent()
         {
             if (_permBadge == null) return;
@@ -186,6 +205,11 @@ namespace UnitySkills
                     if (!string.IsNullOrEmpty(SkillsHttpServer.Url))
                         EditorGUIUtility.systemCopyBuffer = SkillsHttpServer.Url;
                 };
+            }
+
+            if (_macroBtn != null)
+            {
+                _macroBtn.clicked += MacroRecorderWindow.ShowWindow;
             }
 
             if (_settingsBtn != null)
@@ -371,6 +395,7 @@ namespace UnitySkills
         {
             if (_copyBtn != null)     _copyBtn.text     = SkillsLocalization.Get("topbar_copy_url");
             if (_settingsBtn != null) _settingsBtn.tooltip = SkillsLocalization.Get("topbar_settings_tooltip");
+            if (_macroBtn != null)    _macroBtn.tooltip    = SkillsLocalization.Get("macro_topbar_tooltip");
             if (_serverSwitch != null) _serverSwitch.tooltip = SkillsLocalization.Get("topbar_server_tooltip");
             if (_permBadge != null)
                 _permBadge.tooltip = PermissionUiHelpers.L("topbar_perm_badge_tooltip",

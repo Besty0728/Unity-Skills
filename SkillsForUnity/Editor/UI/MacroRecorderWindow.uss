@@ -1,0 +1,275 @@
+/* ===== Macro Recorder Window — console-style layout (matches AuditLogWindow) ===== */
+
+.macro-root {
+    background-color: rgb(40, 40, 40);
+}
+
+/* ----- Control bar ----- */
+
+.macro-toolbar {
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 8px;
+    background-color: rgb(50, 50, 50);
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(20, 20, 20);
+    flex-shrink: 0;
+}
+
+.macro-record-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    margin-right: 6px;
+    background-color: rgb(90, 90, 90);
+    flex-shrink: 0;
+}
+
+/* Red dot while a session is live — toggled via the root's .recording class. */
+.macro-root.recording .macro-record-dot {
+    background-color: rgb(230, 70, 70);
+}
+
+.macro-record-btn {
+    height: 22px;
+    min-width: 90px;
+    padding: 0 12px;
+    font-size: 11px;
+    -unity-font-style: bold;
+}
+
+.macro-root.recording .macro-record-btn {
+    background-color: rgb(110, 40, 40);
+    color: rgb(255, 200, 200);
+    border-color: rgb(150, 60, 60);
+}
+
+.macro-root.recording .macro-record-btn:hover {
+    background-color: rgb(140, 50, 50);
+}
+
+.macro-status-label {
+    margin-left: 10px;
+    color: rgb(190, 190, 190);
+    font-size: 11px;
+}
+
+.macro-root.recording .macro-status-label {
+    color: rgb(255, 170, 170);
+}
+
+.macro-ignore-rest {
+    margin-left: 8px;
+    font-size: 11px;
+    color: rgb(190, 190, 190);
+}
+
+/* ----- Session warning hints ----- */
+
+.macro-hint {
+    padding: 3px 8px;
+    font-size: 10px;
+    color: rgb(255, 210, 130);
+    background-color: rgb(70, 58, 28);
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(20, 20, 20);
+    white-space: normal;
+    flex-shrink: 0;
+}
+
+/* ----- Coverage ----- */
+
+.macro-coverage {
+    flex-direction: column;
+    padding: 4px 8px;
+    background-color: rgb(45, 45, 45);
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(20, 20, 20);
+    flex-shrink: 0;
+}
+
+.macro-coverage__label {
+    color: rgb(180, 180, 180);
+    font-size: 10px;
+    margin-bottom: 3px;
+}
+
+.macro-coverage__bar {
+    flex-direction: row;
+    height: 5px;
+    border-radius: 2px;
+    background-color: rgb(60, 60, 60);
+    overflow: hidden;
+}
+
+/* Segment widths (flex-grow) are the one code-driven style: they carry the live ratio. */
+.macro-coverage__seg {
+    height: 5px;
+}
+
+.macro-coverage__seg--ok          { background-color: rgb(80, 170, 90); }
+.macro-coverage__seg--partial     { background-color: rgb(210, 160, 50); }
+.macro-coverage__seg--unsupported { background-color: rgb(190, 70, 70); }
+
+/* ----- Timeline ----- */
+
+.macro-timeline {
+    flex-grow: 1;
+    min-height: 80px;
+    background-color: rgb(40, 40, 40);
+}
+
+.macro-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 0 6px;
+    height: 22px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(30, 30, 30);
+}
+
+.macro-row__icon {
+    width: 18px;
+    -unity-text-align: middle-center;
+    font-size: 12px;
+    margin-right: 4px;
+    -unity-font-style: bold;
+}
+
+.macro-inv-ok          { color: rgb(120, 220, 130); }
+.macro-inv-partial     { color: rgb(240, 190, 80); }
+.macro-inv-unsupported { color: rgb(255, 120, 120); }
+
+.macro-row__time {
+    width: 60px;
+    color: rgb(150, 150, 150);
+    font-size: 10px;
+    -unity-text-align: middle-left;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.macro-row__kind {
+    min-width: 64px;
+    height: 16px;
+    padding: 0 6px;
+    margin-right: 8px;
+    border-radius: 3px;
+    font-size: 9px;
+    -unity-text-align: middle-center;
+    -unity-font-style: bold;
+    background-color: rgb(60, 60, 60);
+    color: rgb(190, 190, 190);
+    flex-shrink: 0;
+}
+
+.macro-row__summary {
+    color: rgb(220, 220, 220);
+    flex-grow: 1;
+    font-size: 11px;
+    -unity-text-align: middle-left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ----- Actions ----- */
+
+.macro-actions {
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 8px;
+    background-color: rgb(50, 50, 50);
+    border-top-width: 1px;
+    border-top-color: rgb(20, 20, 20);
+    flex-shrink: 0;
+}
+
+.macro-btn {
+    margin-right: 6px;
+    height: 22px;
+    padding: 0 10px;
+    font-size: 11px;
+}
+
+.macro-btn--primary {
+    background-color: rgb(40, 80, 130);
+    color: rgb(200, 228, 255);
+    border-color: rgb(60, 110, 170);
+}
+
+.macro-btn--primary:hover {
+    background-color: rgb(50, 100, 160);
+}
+
+.macro-source-label {
+    padding: 2px 8px 4px 8px;
+    color: rgb(150, 150, 150);
+    font-size: 10px;
+    -unity-font-style: italic;
+    background-color: rgb(50, 50, 50);
+    flex-shrink: 0;
+}
+
+/* ----- Replay params ----- */
+
+.macro-params-box {
+    flex-direction: column;
+    padding: 4px 8px 6px 8px;
+    background-color: rgb(45, 45, 45);
+    border-top-width: 1px;
+    border-top-color: rgb(20, 20, 20);
+    flex-shrink: 0;
+}
+
+.macro-params-label {
+    color: rgb(180, 180, 200);
+    font-size: 10px;
+    -unity-font-style: bold;
+    margin-bottom: 3px;
+}
+
+.macro-params-field {
+    height: 64px;
+    margin-bottom: 4px;
+}
+
+.macro-params-field > .unity-base-text-field__input {
+    background-color: rgb(28, 28, 28);
+    color: rgb(220, 220, 220);
+    font-size: 10px;
+    white-space: normal;
+}
+
+/* ----- Result ----- */
+
+.macro-result-box {
+    flex-direction: column;
+    padding: 4px 8px 6px 8px;
+    background-color: rgb(38, 38, 38);
+    border-top-width: 1px;
+    border-top-color: rgb(20, 20, 20);
+    flex-shrink: 0;
+}
+
+.macro-result-title {
+    font-size: 10px;
+    -unity-font-style: bold;
+    margin-bottom: 3px;
+    white-space: normal;
+}
+
+.macro-result-title.ok    { color: rgb(150, 220, 160); }
+.macro-result-title.error { color: rgb(255, 150, 150); }
+
+.macro-result-detail {
+    height: 84px;
+}
+
+.macro-result-detail > .unity-base-text-field__input {
+    background-color: rgb(28, 28, 28);
+    color: rgb(220, 220, 220);
+    font-size: 10px;
+    white-space: normal;
+    padding: 4px;
+}

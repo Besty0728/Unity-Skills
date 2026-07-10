@@ -32,6 +32,9 @@
                        tooltip="Click to switch operating mode"
                        style="height: 22px; margin: 0 4px 0 4px;" />
 
+            <ui:Button name="open-macro-btn" class="icon-btn"
+                       text="●" tooltip="Macro Recorder" />
+
             <ui:Button name="open-settings-btn" class="icon-btn"
                        text="⚙" tooltip="Settings" />
         </ui:VisualElement>

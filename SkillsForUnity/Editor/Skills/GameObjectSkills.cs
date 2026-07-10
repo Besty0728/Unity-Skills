@@ -695,6 +695,39 @@ namespace UnitySkills
             };
         }
 
+        [UnitySkill("gameobject_set_sibling_index", "Set a GameObject's sibling index — its position among the children of its parent, or among the scene's root objects when it has no parent (supports name/instanceId/path). index is clamped into the valid range and the response reports clamped=true when that happened.",
+            Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
+            Tags = new[] { "sibling", "order", "reorder", "hierarchy" },
+            Outputs = new[] { "name", "index", "previousIndex", "clamped" },
+            RequiresInput = new[] { "gameObject" },
+            TracksWorkflow = true,
+            MutatesScene = true)]
+        public static object GameObjectSetSiblingIndex(string name = null, int instanceId = 0, string path = null, int index = 0, string entityId = null)
+        {
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
+            if (error != null) return error;
+
+            var t = go.transform;
+            int siblingCount = t.parent != null ? t.parent.childCount : go.scene.rootCount;
+            int previousIndex = t.GetSiblingIndex();
+            int clampedIndex = Mathf.Clamp(index, 0, siblingCount - 1);
+
+            WorkflowManager.SnapshotObject(t);
+            Undo.SetSiblingIndex(t, clampedIndex, "Set Sibling Index");
+
+            return new
+            {
+                success = true,
+                name = go.name,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                path = GameObjectFinder.GetPath(go),
+                parent = t.parent != null ? t.parent.name : "(scene root)",
+                previousIndex,
+                index = t.GetSiblingIndex(),
+                clamped = clampedIndex != index
+            };
+        }
+
         [UnitySkill("gameobject_set_active", "Enable or disable a GameObject (supports name/instanceId/path)",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "active", "enable", "disable", "visibility" },
