@@ -1,5 +1,6 @@
 using System;
 using UnityEditor;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace UnitySkills
@@ -17,6 +18,15 @@ namespace UnitySkills
     /// on detach, auto-resume on attach) but defers the actual mutation to
     /// <see cref="EditorApplication.delayCall"/>, which runs outside repaint. Multiple ticks that
     /// land before the deferred call drains are coalesced into a single invocation.
+    ///
+    /// delayCall is NOT unconditionally safe, though: in Play mode the editor can pump
+    /// Internal_CallDelayFunctions inside a panel's render pass, and a panel whose renderer
+    /// died mid-pass (e.g. the TextCore atlas-Material engine bug) stays locked in "rendering"
+    /// so EVERY later mutation throws. Both surface as InvalidOperationException from
+    /// IncrementVersion. Since every tick here is an idempotent status refresh, the deferred
+    /// body swallows that exception (plus MissingReferenceException from dead text Materials)
+    /// and simply skips the beat — the next tick repaints the same state, and one skipped
+    /// refresh is invisible while an uncaught throw turns into a Console spam loop.
     /// </summary>
     internal static class EditorUiScheduler
     {
@@ -32,7 +42,20 @@ namespace UnitySkills
                 {
                     queued = false;
                     if (element?.panel == null) return;
-                    body();
+                    try
+                    {
+                        body();
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Visual tree is mid-render (or its renderer is wedged) — skip this
+                        // beat; the next interval repaints the same idempotent state.
+                    }
+                    catch (MissingReferenceException)
+                    {
+                        // A text Material died under us (TextCore atlas engine bug) — same
+                        // deal: skip, let the font self-heal path rebuild before the next beat.
+                    }
                 };
             }
 
