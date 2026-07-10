@@ -487,6 +487,13 @@ namespace UnitySkills
             AddLog(job, "error", stage, error, "job_failed");
             BatchPersistence.UpsertJob(job);
             BatchPersistence.FlushIfDirty();
+            EventChannelService.Publish("job_failed", new
+            {
+                jobId = job.jobId,
+                kind = job.kind,
+                status = job.status,
+                error = job.error,
+            });
         }
 
         internal static void CompleteJob(string jobId, string summary, Dictionary<string, object> resultData = null)
@@ -514,6 +521,12 @@ namespace UnitySkills
             AddLog(job, "info", "completed", summary, "job_completed");
             BatchPersistence.UpsertJob(job);
             BatchPersistence.FlushIfDirty();
+            EventChannelService.Publish("job_completed", new
+            {
+                jobId = job.jobId,
+                kind = job.kind,
+                status = job.status,
+            });
         }
 
         private static void ProcessJobs()
