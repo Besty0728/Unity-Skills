@@ -82,6 +82,9 @@ namespace UnitySkills
         private Label  _statsHint;
         private Button _statsResetBtn;
 
+        // Shortcuts group — own controller (capture state machine + conflict detection).
+        private ShortcutsSettingsController _shortcutsController;
+
         public SettingsDrawerController(VisualElement root, UnitySkillsWindow window)
         {
             _root = root;
@@ -110,6 +113,9 @@ namespace UnitySkills
             BindEvents();
             InitializeValues();
             RefreshPermissionsUi();
+
+            // Shortcuts 节：独立控制器接管捕获态机与冲突检测，抽屉仅做组装与生命周期转发。
+            _shortcutsController = new ShortcutsSettingsController(_drawerContainer);
 
             // Click on mask closes the drawer
             if (_drawerMask != null)
@@ -315,6 +321,9 @@ namespace UnitySkills
 
         public void Open()
         {
+            // 每次打开重建 Shortcuts 行，拉取最新绑定（覆盖 Edit ▸ Shortcuts 外部改动）。
+            _shortcutsController?.Refresh();
+
             if (_drawerContainer != null) _drawerContainer.AddToClassList("open");
             if (_drawerMask != null)
             {
@@ -400,6 +409,8 @@ namespace UnitySkills
 
             if (_statsHint     != null) _statsHint.text     = SkillsLocalization.Get("drawer_stats_hint");
             if (_statsResetBtn != null) _statsResetBtn.text = SkillsLocalization.Get("drawer_reset_stats_btn");
+
+            _shortcutsController?.RefreshLocalization();
         }
 
         // ===== Permissions group helpers =====

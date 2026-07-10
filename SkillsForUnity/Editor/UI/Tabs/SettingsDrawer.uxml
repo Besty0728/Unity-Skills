@@ -122,6 +122,16 @@
                               style="margin-left: 18px;" />
                 </ui:VisualElement>
 
+                <!-- Shortcuts group — panel hotkeys (rows built by ShortcutsSettingsController) -->
+                <ui:VisualElement name="group-shortcuts" class="settings-group">
+                    <ui:Label name="group-shortcuts-title" class="settings-group-title"
+                              text="Shortcuts" />
+                    <ui:Label name="shortcuts-hint" class="setting-hint"
+                              style="margin-left: 0; margin-bottom: 8px;" />
+                    <ui:VisualElement name="shortcuts-list"
+                                      style="flex-direction: column;" />
+                </ui:VisualElement>
+
                 <!-- Statistics group -->
                 <ui:VisualElement name="group-stats" class="settings-group">
                     <ui:Label name="group-stats-title" class="settings-group-title"
