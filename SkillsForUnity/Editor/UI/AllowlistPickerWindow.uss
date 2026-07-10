@@ -101,7 +101,7 @@
 .picker-row-risk {
     font-size: 9px;
     color: rgb(243, 128, 51);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     margin-left: 4px;
 }
 

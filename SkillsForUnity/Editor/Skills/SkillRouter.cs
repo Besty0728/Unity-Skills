@@ -480,10 +480,9 @@ namespace UnitySkills
             bool autoStartedWorkflow = false;
             var wrapWithUndoTransaction = !skill.ReadOnly && !_transactionlessSkills.Contains(name);
             int undoGroup = -1;
-            // Macro source marker: lets MacroRecorderService attribute editor changes made by
-            // this call (incl. the frame-end ObjectChangeEvents batch) to REST. See its
-            // EndRestExecution for why the reset is deferred one editor tick.
-            MacroRecorderService.BeginRestExecution();
+            // Attribute changes made by this call (including frame-end ObjectChangeEvents) to
+            // REST in the persistent editor-change journal.
+            EditorChangeTrackerService.BeginRestExecution();
             try
             {
                 var validation = ValidateParameters(skill, json);
@@ -757,7 +756,7 @@ namespace UnitySkills
             }
             finally
             {
-                MacroRecorderService.EndRestExecution();
+                EditorChangeTrackerService.EndRestExecution();
             }
         }
 

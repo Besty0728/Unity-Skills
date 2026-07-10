@@ -116,8 +116,8 @@ namespace UnitySkills
             {
                 _title.text = string.Format(
                     PermissionUiHelpers.L("pending_banner_title_fmt",
-                        "🔐  {0} pending approval(s)",
-                        "🔐  {0} 个待批权限请求"),
+                        "{0} pending approval(s)",
+                        "{0} 个待批权限请求"),
                     pending.Count);
             }
 

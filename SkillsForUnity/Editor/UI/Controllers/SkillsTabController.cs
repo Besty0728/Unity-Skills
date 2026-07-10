@@ -83,6 +83,8 @@ namespace UnitySkills
             _clearBtn      = _root.Q<Button>("detail-clear-btn");
             _resultLabel   = _root.Q<Label>("detail-result-label");
             _resultField   = _root.Q<TextField>("detail-result-field");
+
+            UISkillsEditorIcons.Apply(_refreshBtn, "d_Refresh", "Refresh", "TreeEditor.Refresh");
         }
 
         private void BindEvents()

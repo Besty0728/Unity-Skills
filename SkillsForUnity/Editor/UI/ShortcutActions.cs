@@ -9,11 +9,9 @@ namespace UnitySkills
     /// <summary>
     /// UnitySkills 面板快捷键命令注册 + 供设置 UI 取用的命令清单。
     ///
-    /// 每个命令用 Unity 官方 <see cref="ShortcutAttribute"/> 注册，出厂默认键统一取
-    /// Alt+Shift+字母 区——Unity 6 内建该区仅占用 A（Toggle Active State）与
-    /// N（Create Empty Child），U/M/L 空闲（文档 + 运行时枚举双重确认）。
-    /// 用户在设置抽屉 Shortcuts 节自行改绑；用户 profile 的绑定始终优先于出厂默认，
-    /// 持久化由 ShortcutManager 的 profile 自管（不写 EditorPrefs）。
+    /// 每个命令用 Unity 官方 <see cref="ShortcutAttribute"/> 注册，但不提供出厂默认键。
+    /// 用户在设置抽屉 Shortcuts 节自行绑定；持久化由 ShortcutManager 的 profile
+    /// 自管（不写 EditorPrefs）。
     ///
     /// 新增一个可绑定面板 = 加一个 [Shortcut] 静态方法 + 在 <see cref="Commands"/> 追加一条。
     /// </summary>
@@ -23,16 +21,12 @@ namespace UnitySkills
         // const 以便直接用作 [Shortcut] 特性实参。
         public const string OpenMainPanelId = "UnitySkills/Open Main Panel";
         public const string OpenAuditLogId  = "UnitySkills/Open Audit Log";
-        public const string OpenMacroRecorderId = "UnitySkills/Open Macro Recorder";
 
-        [Shortcut(OpenMainPanelId, KeyCode.U, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        [Shortcut(OpenMainPanelId)]
         private static void OpenMainPanel() => UnitySkillsWindow.ShowWindow();
 
-        [Shortcut(OpenAuditLogId, KeyCode.L, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
+        [Shortcut(OpenAuditLogId)]
         private static void OpenAuditLog() => UnitySkillsAuditWindow.ShowWindow();
-
-        [Shortcut(OpenMacroRecorderId, KeyCode.M, ShortcutModifiers.Alt | ShortcutModifiers.Shift)]
-        private static void OpenMacroRecorder() => MacroRecorderWindow.ShowWindow();
 
         /// <summary>
         /// 设置 UI 逐行渲染的命令清单，顺序即 UI 顺序。
@@ -42,7 +36,6 @@ namespace UnitySkills
         {
             new ShortcutCommand(OpenMainPanelId, "shortcut_cmd_open_main"),
             new ShortcutCommand(OpenAuditLogId,  "shortcut_cmd_open_audit"),
-            new ShortcutCommand(OpenMacroRecorderId, "shortcut_cmd_open_macro"),
         };
 
         /// <summary>

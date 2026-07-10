@@ -50,6 +50,8 @@ namespace UnitySkills
             _activeContainer = _root.Q<VisualElement>("active-tasks-container");
             _undoneTitle     = _root.Q<Label>("undone-tasks-title");
             _undoneContainer = _root.Q<VisualElement>("undone-tasks-container");
+
+            UISkillsEditorIcons.Apply(_refreshBtn, "d_Refresh", "Refresh", "TreeEditor.Refresh");
         }
 
         private void BindEvents()

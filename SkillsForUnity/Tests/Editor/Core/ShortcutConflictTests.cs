@@ -1,3 +1,5 @@
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEditor.ShortcutManagement;
@@ -15,6 +17,25 @@ namespace UnitySkills.Tests.Core
     public class ShortcutConflictTests
     {
         private static KeyCombination Combo(KeyCode k, ShortcutModifiers m) => new KeyCombination(k, m);
+
+        [TestCase(ShortcutActions.OpenMainPanelId, "OpenMainPanel")]
+        [TestCase(ShortcutActions.OpenAuditLogId, "OpenAuditLog")]
+        public void PanelShortcut_IsRegisteredWithoutDefaultBinding(string expectedId, string methodName)
+        {
+            var method = typeof(ShortcutActions).GetMethod(
+                methodName,
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var attribute = method?.GetCustomAttributesData()
+                .Where(data => data.AttributeType == typeof(ShortcutAttribute))
+                .SingleOrDefault();
+
+            Assert.That(method, Is.Not.Null);
+            Assert.That(attribute, Is.Not.Null);
+            Assert.That(attribute.ConstructorArguments[0].Value, Is.EqualTo(expectedId));
+            Assert.That(attribute.ConstructorArguments
+                .Where(argument => argument.ArgumentType == typeof(KeyCode))
+                .All(argument => (KeyCode)argument.Value == KeyCode.None), Is.True);
+        }
 
         [Test]
         public void SameCombination_Conflicts()

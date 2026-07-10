@@ -17,7 +17,7 @@
 .audit-path-label {
     margin-right: 6px;
     color: rgb(180, 180, 180);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     font-size: 11px;
 }
 
@@ -114,7 +114,7 @@
     border-radius: 3px;
     font-size: 9px;
     -unity-text-align: middle-center;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
 }
 
 .audit-row__skill {
@@ -181,7 +181,7 @@
 
 .audit-detail-title {
     color: rgb(180, 180, 200);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     font-size: 10px;
     margin-bottom: 4px;
     flex-shrink: 0;

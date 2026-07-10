@@ -32,11 +32,8 @@
                        tooltip="Click to switch operating mode"
                        style="height: 22px; margin: 0 4px 0 4px;" />
 
-            <ui:Button name="open-macro-btn" class="icon-btn"
-                       text="●" tooltip="Macro Recorder" />
-
             <ui:Button name="open-settings-btn" class="icon-btn"
-                       text="⚙" tooltip="Settings" />
+                       tooltip="Settings" />
         </ui:VisualElement>
 
         <!-- ============================================
@@ -97,7 +94,7 @@
             <ui:VisualElement name="stats-pill" class="stats-pill"
                               style="flex-direction: row; align-items: center;">
                 <ui:VisualElement class="stat-item" style="flex-direction: row; align-items: center;">
-                    <ui:Label class="stat-icon" text="▣" />
+                    <ui:VisualElement class="stat-icon stat-icon--pending" />
                     <ui:Label name="stat-queue-value" class="stat-value" text="0" />
                     <ui:Label name="stat-queue-label" class="stat-label" text="Pending" />
                 </ui:VisualElement>

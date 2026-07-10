@@ -1,6 +1,6 @@
 ---
 name: unity-workflow
-description: Persistent operation history and orchestration — snapshots, task/session undo, bookmarks, macro record→replay, and batch planning/retry/rollback. Use when undoing a whole task or session, snapshotting before risky changes, recording manual edits to replay them, planning or previewing batch operations, or rolling back, even if the user just says "撤销整个操作" or "回滚". 持久化操作历史与编排(快照、任务/会话级撤销、书签、示教录制→回放、批量规划/重试/回滚);当用户要撤销整个任务或会话、在高危改动前快照、录制手工操作以便回放、规划或预览批量操作、或回滚时使用。
+description: Persistent operation history and orchestration — snapshots, task/session undo, bookmarks, and batch planning/retry/rollback. Use when undoing a whole task or session, snapshotting before risky changes, planning or previewing batch operations, or rolling back, even if the user just says "撤销整个操作" or "回滚". 持久化操作历史与编排(快照、任务/会话级撤销、书签、批量规划/重试/回滚);当用户要撤销整个任务或会话、在高危改动前快照、规划或预览批量操作、或回滚时使用。
 ---
 
 # Workflow Skills
@@ -262,88 +262,6 @@ Delete a task from history (does not revert changes, just removes the record).
 | taskId | string | Yes | - | The UUID of the task to delete |
 
 **Returns:** `{ success, deletedId }`
-
-## Macro Recording (Demonstration → Replay)
-
-Record manual Editor operations, then invert them into a replayable `POST /skills/batch` step sequence — teach by doing, then generalize. Two change sources are fused: `ObjectChangeEvents` (structural: create / parent / delete) and `Undo.postprocessModifications` (property-level, debounced to the final value). Only one session runs at a time; a Domain Reload **voids** the active recording (surfaced as `macro_record_status.interruptedByReload = true`).
-
-### `macro_record_start`
-Start a demonstration-recording session. Manual scene edits (and REST-driven ones) are captured for later inversion.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| note | string | No | null | Optional session label |
-
-**Returns:** `{ recording, startedAtUtc, catalogSize }`
-Only one session may be active; the buffer holds up to 1000 records and auto-stops with `stoppedReason: "buffer_full"`.
-
-### `macro_record_stop`
-Stop the active session and return a summary. The stopped session stays exportable until the next `macro_record_start`.
-
-No parameters.
-
-**Returns:** `{ recordCount, durationSec, byKind, stoppedReason }`
-
-### `macro_record_status`
-Get the recorder state.
-
-No parameters.
-
-**Returns:** `{ recording, recordCount, startedAtUtc, stoppedReason, hasExportableSession, interruptedByReload }` — `interruptedByReload = true` means the last recording was discarded by a Domain Reload.
-
-### `macro_export`
-Invert the most recent stopped recording into a replayable step sequence.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| format | string | No | "batch" | Output format; `batch` produces a body directly POSTable to `/skills/batch` |
-
-**Returns:** `{ steps, warnings, replayable }` — `steps` is a ready `/skills/batch` body; objects created during the recording are wired together with `{"$ref":"$N.instanceId"}` inter-step references. Sibling-order changes are inverted into `gameobject_set_sibling_index` steps emitted after all other steps (net final order); unambiguous component removals become `component_remove` steps. Changes that cannot be inverted (asset edits, prefab-instance edits, ambiguous same-type component removal, Undo/Redo) are listed in `warnings` and set `replayable: false`; objects both created **and** destroyed within the recording are dropped entirely (net effect zero).
-
-## Macro Library (macro = one standalone skill)
-
-A stopped recording can be promoted into the **macro library**. Each saved macro then behaves like a single skill: `macro_run` executes the whole sequence in one call through the shared `/skills/batch` pipeline ($param/$ref resolution, per-step permission gate/undo/audit), and macros are managed (listed / inspected / deleted) individually by name.
-
-Two scopes (`scope` parameter on every library skill, optional):
-
-| Scope | Directory | Use |
-|-------|-----------|-----|
-| `project` (default) | `Library/UnitySkillsMacros/<name>.json` (never committed) | Macros tied to this project's scene/asset names |
-| `global` | `~/.unity_skills/macros/<name>.json` | Cross-project reuse — self-contained macros (e.g. "standard light rig") callable from any Unity project on this machine |
-
-Scope resolution when omitted: `macro_save` writes to `project`; `macro_list` merges both scopes (each entry carries its `scope`); `macro_get` / `macro_run` / `macro_delete` search `project` first, then `global` (a project macro shadows a same-named global one), and report the scope that was hit.
-
-### `macro_save`
-Save the most recent stopped recording under a name. One-liner: recording → named, replayable library entry.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| name | string | Yes | - | Library name (also the file name — path separators and other invalid characters are rejected) |
-| overwrite | bool | No | false | Replace an existing macro of the same name (within the same scope) |
-| scope | string | No | project | `project` or `global` (cross-project, `~/.unity_skills/macros`) |
-
-**Returns:** `{ name, scope, path, stepCount, replayable }` — fails when no stopped session exists (never recorded / still recording) or the name is taken in that scope and `overwrite=false`.
-
-### `macro_list`
-List all library macros with `{name, stepCount, replayable, recordedAtUtc, note, fileSizeBytes, params:[{name, hasDefault, default}]}`. `params` aggregates the `$param` slots in the macro's steps; entries without a default are mandatory for `macro_run`. An empty library returns an empty array.
-
-### `macro_get`
-Get one macro's full content — `steps`, `params` (saved defaults), `paramDeclarations`, `warnings`, recording metadata. A miss lists the available names.
-
-### `macro_delete`
-Delete exactly one macro file by name; other macros are untouched. A miss lists the available names.
-
-### `macro_run`
-Run a saved macro **as one skill call** — the "macro = standalone skill" entry point.
-
-| Parameter | Type | Required | Default | Description |
-|-----------|------|----------|---------|-------------|
-| name | string | Yes | - | Library macro to run |
-| params | object | No | null | Values for `$param` slots, overriding the macro's saved defaults |
-| continueOnError | bool | No | false | Keep running after a failed step (authorization interrupts always stop) |
-| scope | string | No | (auto) | Pin `project` / `global`; omit to search project first, then global |
-
-**Returns:** the `/skills/batch`-shaped result `{ status, executed, failed, results }` plus `macro`/`scope`/`stepCount`. Bare `$param` slots left without a value fail **before** execution with the missing names; the whole run is one undo group.
 
 ## Minimal Example
 

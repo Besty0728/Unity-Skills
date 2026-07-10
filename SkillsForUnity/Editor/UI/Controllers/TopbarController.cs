@@ -25,8 +25,6 @@ namespace UnitySkills
 
         private readonly VisualElement _root;
         private readonly UnitySkillsWindow _window;
-        private readonly bool _useNativeEmojiPermBadge;
-
         private VisualElement _topbarElement;
         private VisualElement _statusDot;
         private TextField     _urlField;
@@ -35,7 +33,6 @@ namespace UnitySkills
         private Label         _statusText;
         private Button        _permBadge;
         private Label         _permBadgeLabel;
-        private Button        _macroBtn;
         private Button        _settingsBtn;
 
         private bool? _lastRunning;
@@ -45,8 +42,6 @@ namespace UnitySkills
         {
             _root = root;
             _window = window;
-            _useNativeEmojiPermBadge = ShouldUseNativeEmojiPermBadge();
-
             _topbarElement = _root.Q<VisualElement>("topbar");
             _statusDot    = _root.Q<VisualElement>("status-dot");
             _urlField     = _root.Q<TextField>("url-field");
@@ -54,14 +49,9 @@ namespace UnitySkills
             _serverSwitch = _root.Q<VisualElement>("server-switch");
             _statusText   = _root.Q<Label>("server-status-text");
             _permBadge    = _root.Q<Button>("perm-mode-badge");
-            _macroBtn     = _root.Q<Button>("open-macro-btn");
             _settingsBtn  = _root.Q<Button>("open-settings-btn");
 
-            if (!_useNativeEmojiPermBadge)
-                BuildPermBadgeContent();
-            else if (_permBadge != null)
-                _permBadge.AddToClassList("perm-mode-badge--native");
-            ApplyMacroIcon();
+            BuildPermBadgeContent();
             ApplySettingsIcon();
             BindEvents();
             UpdateLiveData(); // initial paint
@@ -129,37 +119,13 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Replace the placeholder ⚙ char with Unity's built-in Settings icon.
+        /// Apply Unity's built-in Settings icon.
         /// Tried in order: d_SettingsIcon, SettingsIcon, _Popup. The last one
         /// always exists as a final fallback.
         /// </summary>
         private void ApplySettingsIcon()
         {
-            if (_settingsBtn == null) return;
-            var icon = EditorGUIUtility.IconContent("d_SettingsIcon")?.image
-                       ?? EditorGUIUtility.IconContent("SettingsIcon")?.image
-                       ?? EditorGUIUtility.IconContent("_Popup")?.image;
-            if (icon == null) return;
-
-            _settingsBtn.text = "";
-            _settingsBtn.style.backgroundImage = new StyleBackground((Texture2D)icon);
-            _settingsBtn.style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
-        }
-
-        /// <summary>
-        /// Replace the placeholder ● char with Unity's built-in record icon (same pattern as
-        /// ApplySettingsIcon). Falls back through dark/light variants; no-op if none resolve.
-        /// </summary>
-        private void ApplyMacroIcon()
-        {
-            if (_macroBtn == null) return;
-            var icon = EditorGUIUtility.IconContent("d_Animation.Record")?.image
-                       ?? EditorGUIUtility.IconContent("Animation.Record")?.image;
-            if (icon == null) return;
-
-            _macroBtn.text = "";
-            _macroBtn.style.backgroundImage = new StyleBackground((Texture2D)icon);
-            _macroBtn.style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
+            UISkillsEditorIcons.Apply(_settingsBtn, "d_SettingsIcon", "SettingsIcon", "_Popup");
         }
 
         private void BuildPermBadgeContent()
@@ -179,23 +145,6 @@ namespace UnitySkills
             _permBadge.Add(_permBadgeLabel);
         }
 
-        private static bool ShouldUseNativeEmojiPermBadge()
-        {
-            int major;
-            return TryGetUnityMajorVersion(out major) && major >= 6000;
-        }
-
-        private static bool TryGetUnityMajorVersion(out int major)
-        {
-            major = 0;
-            string version = Application.unityVersion;
-            if (string.IsNullOrEmpty(version)) return false;
-
-            int dot = version.IndexOf('.');
-            string majorText = dot > 0 ? version.Substring(0, dot) : version;
-            return int.TryParse(majorText, out major);
-        }
-
         private void BindEvents()
         {
             if (_copyBtn != null)
@@ -205,11 +154,6 @@ namespace UnitySkills
                     if (!string.IsNullOrEmpty(SkillsHttpServer.Url))
                         EditorGUIUtility.systemCopyBuffer = SkillsHttpServer.Url;
                 };
-            }
-
-            if (_macroBtn != null)
-            {
-                _macroBtn.clicked += MacroRecorderWindow.ShowWindow;
             }
 
             if (_settingsBtn != null)
@@ -285,29 +229,6 @@ namespace UnitySkills
             if (_permBadge == null) return;
             var mode = SkillsModeManager.CurrentMode;
             string label;
-
-            if (_useNativeEmojiPermBadge)
-            {
-                switch (mode)
-                {
-                    case SkillsOperatingMode.Approval:
-                        int pending = SkillsModeManager.PendingGrantRequests.Count;
-                        label = pending > 0 ? $"🔐 Approval ⚠{pending}" : "🔐 Approval";
-                        break;
-                    case SkillsOperatingMode.Auto:
-                        label = "⚡ Auto";
-                        break;
-                    case SkillsOperatingMode.Bypass:
-                        label = "🟢 Bypass";
-                        break;
-                    default:
-                        label = mode.ToString();
-                        break;
-                }
-
-                if (_permBadge.text != label) _permBadge.text = label;
-                return;
-            }
 
             switch (mode)
             {
@@ -395,7 +316,6 @@ namespace UnitySkills
         {
             if (_copyBtn != null)     _copyBtn.text     = SkillsLocalization.Get("topbar_copy_url");
             if (_settingsBtn != null) _settingsBtn.tooltip = SkillsLocalization.Get("topbar_settings_tooltip");
-            if (_macroBtn != null)    _macroBtn.tooltip    = SkillsLocalization.Get("macro_topbar_tooltip");
             if (_serverSwitch != null) _serverSwitch.tooltip = SkillsLocalization.Get("topbar_server_tooltip");
             if (_permBadge != null)
                 _permBadge.tooltip = PermissionUiHelpers.L("topbar_perm_badge_tooltip",

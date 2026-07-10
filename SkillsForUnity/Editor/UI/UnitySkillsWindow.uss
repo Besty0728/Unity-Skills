@@ -402,7 +402,7 @@
     height: 30px;
     margin: 0;
     padding: 0 12px;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     -unity-text-align: middle-center;
     white-space: nowrap;
     background-color: rgba(0, 0, 0, 0);
@@ -612,7 +612,7 @@
 
 .skill-title {
     font-size: 13px;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     color: var(--color-text);
     margin-bottom: 4px;
 }
@@ -658,7 +658,7 @@
 .form-label {
     font-size: 10px;
     color: var(--color-text-secondary);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     margin-bottom: 2px;
 }
 
@@ -694,7 +694,7 @@
     border-color: var(--color-accent-dark);
     border-radius: 2px;
     padding: 4px 14px;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     height: 24px;
     margin: 0 6px 0 0;
 }
@@ -775,14 +775,14 @@
     background-color: var(--color-button-bg);
     -unity-text-align: middle-center;
     font-size: 18px;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     color: var(--color-text-secondary);
 }
 
 .agent-name {
     flex-grow: 1;
     font-size: 12px;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     color: var(--color-text);
 }
 
@@ -823,7 +823,7 @@
     background-color: var(--color-accent);
     border-color: var(--color-accent-dark);
     color: var(--color-text-on-accent);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
 }
 
 .mini-btn.install:hover {
@@ -861,7 +861,7 @@
 .history-group-title {
     font-size: 10px;
     color: var(--color-muted);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     margin: 4px 0 6px 0;
 }
 
@@ -890,7 +890,7 @@
 
 .task-card__name {
     font-size: 11px;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     color: var(--color-text);
 }
 
@@ -969,8 +969,17 @@
 
 .stat-icon.ok { color: var(--color-success); }
 
+.stat-icon--pending {
+    width: 6px;
+    height: 6px;
+    margin-left: 2px;
+    margin-right: 6px;
+    background-color: var(--color-muted);
+    border-radius: 1px;
+}
+
 .stat-value {
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     color: var(--color-text);
     font-size: 10px;
     min-width: 14px;
@@ -1028,7 +1037,7 @@
 .lang-segment__seg.active {
     background-color: var(--color-accent);
     color: white;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
 }
 
 /* ===================================================================
@@ -1077,7 +1086,7 @@
 .drawer-header__title {
     flex-grow: 1;
     font-size: 12px;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     color: var(--color-text);
 }
 
@@ -1092,7 +1101,7 @@
 .settings-group-title {
     font-size: 10px;
     color: var(--color-muted);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     margin-bottom: 6px;
     padding-bottom: 4px;
     border-bottom-width: 1px;
@@ -1155,7 +1164,7 @@
     margin-right: 6px;
     font-size: 11px;
     color: var(--color-accent);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     -unity-text-align: middle-right;
 }
 
@@ -1164,7 +1173,7 @@
     margin-right: 6px;
     font-size: 11px;
     color: var(--color-text);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     -unity-text-align: middle-right;
 }
 
@@ -1201,12 +1210,12 @@
 
 .section-title {
     font-size: 12px;
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     color: var(--color-accent);
 }
 
 .bold-label {
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     color: var(--color-text);
 }
 
@@ -1277,7 +1286,7 @@
 }
 
 .pending-banner__title {
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     color: rgb(255, 220, 140);
     font-size: 11px;
 }
@@ -1303,7 +1312,7 @@
 
 .pending-banner__skill {
     color: rgb(245, 230, 200);
-    -unity-font-style: bold;
+    -unity-font-style: normal;
     font-size: 11px;
     flex-grow: 1;
 }

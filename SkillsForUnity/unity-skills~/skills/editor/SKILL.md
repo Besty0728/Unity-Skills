@@ -1,15 +1,15 @@
 ---
 name: unity-editor
-description: Control the Unity Editor — enter/exit/pause play mode, select objects, undo/redo, and execute menu items. Use when driving Editor state, entering or leaving play mode, changing the selection, or running menu commands, even if the user just says "进入运行" or "选中物体". 控制 Unity 编辑器(进入/退出/暂停 play mode、选中对象、撤销/重做、执行菜单项);当用户要操控编辑器状态、进出 play mode、改变选中、或运行菜单命令时使用。
+description: Control and observe the Unity Editor — read persistent scene/file changes, enter/exit/pause play mode, select objects, undo/redo, and execute menu items. Use after the user edited Unity while the AI was away, when file watching reports changes, or when driving Editor state. 控制并观察 Unity 编辑器(读取持久化场景/文件变更、进入/退出/暂停 play mode、选中对象、撤销/重做、执行菜单项);当用户在 AI 离开期间修改了 Unity、文件监控发现变化、或需要操控编辑器状态时使用。
 ---
 
 # Unity Editor Skills
 
-Control the Unity Editor itself - enter play mode, manage selection, undo/redo, and execute menu items.
+Observe and control the Unity Editor without parsing scene YAML.
 
 ## Operating Mode
 
-- **Approval**：本模块 Mixed —— `editor_get_selection` / `editor_get_context` / `editor_get_state` / `editor_get_tags` / `editor_get_layers` 标 `SkillMode.SemiAuto`，可直接执行；其余 `editor_select` / `editor_undo` / `editor_redo` / `editor_execute_menu` 默认 FullAuto，Approval 模式下需 grant。
+- **Approval**：本模块 Mixed —— `editor_get_changes` / `editor_get_selection` / `editor_get_context` / `editor_get_state` / `editor_get_tags` / `editor_get_layers` 标 `SkillMode.SemiAuto`，可直接执行；其余 `editor_select` / `editor_undo` / `editor_redo` / `editor_execute_menu` 默认 FullAuto，Approval 模式下需 grant。
 - **Auto / Bypass**：FullAuto 直接执行。
 - **含 NeverInSemi 高危 skill**：`editor_play` / `editor_stop` / `editor_pause`（标 `MayEnterPlayMode = true`，进出 PlayMode 会丢失运行时改动）。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
 
@@ -23,6 +23,8 @@ Control the Unity Editor itself - enter play mode, manage selection, undo/redo, 
 - For compilation check → use `debug` module's `debug_check_compilation`
 - For console errors → use `debug` module's `debug_get_errors`
 - For scene save → `scene_save` (scene module) or `editor_execute_menu` menuPath="File/Save"
+- When file watching reports changes, or the AI resumes after the user edited Unity → call `editor_get_changes` before reading `.unity` YAML
+- If `editor_get_changes.dropped=true` → its 500-entry retention window was exceeded; rebuild context with `scene_context` / `scene_diff`
 
 ## Skills Overview
 
@@ -34,6 +36,7 @@ Control the Unity Editor itself - enter play mode, manage selection, undo/redo, 
 | `editor_select` | Select GameObject |
 | `editor_get_selection` | Get selected objects |
 | `editor_get_context` | Get full editor context (selection, assets, scene) |
+| `editor_get_changes` | Read persistent scene/file changes by cursor |
 | `editor_undo` | Undo last action |
 | `editor_redo` | Redo last action |
 | `editor_get_state` | Get editor state |
@@ -92,6 +95,18 @@ Get full editor context including selection, assets, and scene info.
 - `focusedWindow`: Name of focused editor window
 - `isPlaying`, `isCompiling`: Editor state
 
+### editor_get_changes
+Read the persistent change journal at `Library/UnitySkills/editor_changes.jsonl`. It captures scene object/component/property summaries plus imported, deleted, and moved asset paths across Domain Reloads. It never parses or returns raw `.unity` YAML.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `since` | long | No | `0` | Previous response cursor; `0` reads retained history |
+| `types` | string | No | `all` | Comma-separated `scene`, `file`, `undo`, or `lifecycle` |
+| `source` | string | No | `all` | `editor`/`manual`, `rest`, or `all` |
+| `limit` | int | No | `100` | Newest entries to return, 1-500 |
+
+**Returns:** `{hasChanges, cursor, oldestSeq, dropped, truncated, changes}`. Save `cursor` for the next call. `dropped=true` means older changes fell outside the 500-entry journal, so rebuild full scene context.
+
 ### editor_undo
 Undo the last action.
 
@@ -147,6 +162,10 @@ state = unity_skills.call_skill("editor_get_state")
 if state['isCompiling']:
     print("Wait for compilation to finish")
 
+# On resume or after file-watch notification, inspect semantic changes first.
+changes = unity_skills.call_skill("editor_get_changes", since=last_cursor)
+last_cursor = changes["cursor"]
+
 # Get full context (useful for understanding current state)
 context = unity_skills.call_skill("editor_get_context", includeComponents=True)
 for obj in context['selectedGameObjects']:
@@ -169,8 +188,9 @@ unity_skills.call_skill("editor_execute_menu", menuPath="File/Save")
 1. Check editor state before play mode operations
 2. Don't modify scene during play mode (changes lost)
 3. Use undo for safe experimentation
-4. Use `editor_get_context` to get instanceId for batch operations
-5. Menu commands must match exact paths
+4. On resume, call `editor_get_changes` before reading scene files
+5. Use `editor_get_context` to get instanceId for batch operations
+6. Menu commands must match exact paths
 
 ## Exact Signatures
 

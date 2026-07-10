@@ -130,6 +130,17 @@ namespace UnitySkills
             };
         }
 
+        [UnitySkill("editor_get_changes", "Read the persistent editor-change journal instead of parsing .unity YAML. Use after the user edited the project while the AI was away, after external file changes, or after asking the user to make manual Editor changes. Returns scene structure/property summaries and imported/deleted/moved asset paths newer than 'since'. Omit since (or pass 0) for retained history, then pass the returned cursor on the next call. types: all/scene/file/undo/lifecycle (comma-separated). source: all/editor/manual/rest.",
+            Category = SkillCategory.Editor, Operation = SkillOperation.Query,
+            Tags = new[] { "changes", "observe", "journal", "scene", "files", "cursor" },
+            Outputs = new[] { "hasChanges", "cursor", "oldestSeq", "dropped", "truncated", "changes" },
+            ReadOnly = true,
+            Mode = SkillMode.SemiAuto)]
+        public static object EditorGetChanges(long since = 0, string types = null, string source = "all", int limit = 100)
+        {
+            return EditorChangeTrackerService.ReadChanges(since, types, source, limit);
+        }
+
         [UnitySkill("editor_execute_menu", "Execute a Unity menu item",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "menu", "command", "action" },

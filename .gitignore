@@ -31,6 +31,7 @@ coverage.xml
 # Unity Editor
 *.unitypackage
 *.asset
+!SkillsForUnity/Editor/UI/Fonts/UnitySkillsCN-UI.asset
 LICENSE.meta
 CONTRIBUTING.md.meta
 

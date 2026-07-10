@@ -33,7 +33,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 | [uitoolkit](./uitoolkit/SKILL.md) | Mixed* | UXML/USS/UIDocument | No |
 | [script](./script/SKILL.md) | SA* | Script create/read/update | Yes |
 | [scene](./scene/SKILL.md) | SA* | Scene load/save/query | No |
-| [editor](./editor/SKILL.md) | SA* | Play/select/undo/redo | No |
+| [editor](./editor/SKILL.md) | SA* | Play/select/undo/redo/change journal | No |
 | [animator](./animator/SKILL.md) | FA | Animator controllers | No |
 | [shader](./shader/SKILL.md) | Mixed* | Shader create/list | No |
 | [shadergraph](./shadergraph/SKILL.md) | Mixed* | Shader Graph create/inspect/blackboard edit/constrained node editing | No |
@@ -52,7 +52,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 | [physics](./physics/SKILL.md) | Mixed | Raycast/overlap/gravity | No |
 | [navmesh](./navmesh/SKILL.md) | Mixed* | NavMesh bake/query | No |
 | [timeline](./timeline/SKILL.md) | FA* | Timeline tracks/clips | No |
-| [workflow](./workflow/SKILL.md) | SA* | Task snapshots/undo, macro record→replay | No |
+| [workflow](./workflow/SKILL.md) | SA* | Task snapshots/undo, batch orchestration | No |
 | [cleaner](./cleaner/SKILL.md) | SA* | Unused/duplicate assets | No |
 | [smart](./smart/SKILL.md) | FA* | Query/layout/auto-bind | No |
 | [perception](./perception/SKILL.md) | SA | Scene/project analysis | No |

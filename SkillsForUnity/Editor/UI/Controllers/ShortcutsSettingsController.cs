@@ -172,15 +172,14 @@ namespace UnitySkills
             var kc = evt.keyCode;
             if (kc == KeyCode.Escape)
             {
-                evt.StopPropagation();
-                (evt.target as VisualElement)?.focusController?.IgnoreEvent(evt);
+                ConsumeKeyEvent(evt);
                 CancelCapture();
                 return;
             }
             // 纯修饰键 / 无键：不算一次组合，吞掉事件等待真正的键。
             if (IsModifierOrNone(kc))
             {
-                evt.StopPropagation();
+                ConsumeKeyEvent(evt);
                 return;
             }
 
@@ -193,9 +192,14 @@ namespace UnitySkills
             _hasCaptured = true;
             _conflictName = ShortcutActions.FindConflictDisplayName(_capturingId, _captured);
 
-            evt.StopPropagation();
-            (evt.target as VisualElement)?.focusController?.IgnoreEvent(evt);
+            ConsumeKeyEvent(evt);
             Rebuild();
+        }
+
+        private static void ConsumeKeyEvent(KeyDownEvent evt)
+        {
+            evt.StopImmediatePropagation();
+            evt.PreventDefault();
         }
 
         private void OnRootPointerDown(PointerDownEvent evt)

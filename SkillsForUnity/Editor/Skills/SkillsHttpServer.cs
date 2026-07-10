@@ -2030,7 +2030,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Core sequential executor behind POST /skills/batch and macro_run: $param substitution,
+        /// Core sequential executor behind POST /skills/batch: $param substitution,
         /// inter-step $ref resolution, then the FULL single-skill pipeline per step
         /// (SkillRouter.Execute — permission gate, undo, audit), with fail-fast /
         /// continueOnError / authorization-interrupt semantics and optional transactional
@@ -3852,4 +3852,3 @@ namespace UnitySkills
         }
     }
 }
-

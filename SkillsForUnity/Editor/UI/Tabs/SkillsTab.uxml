@@ -17,7 +17,7 @@
                               style="flex-direction: row; align-items: center; flex-shrink: 0;">
                 <ui:TextField name="search-field" class="search-field flex-grow"
                               tooltip="Search skills" />
-                <ui:Button name="refresh-btn" class="mini-btn" text="↻" tooltip="Refresh" />
+                <ui:Button name="refresh-btn" class="mini-btn" tooltip="Refresh" />
                 <ui:Button name="validate-btn" class="mini-btn" text="✓" tooltip="Validate" />
             </ui:VisualElement>
 

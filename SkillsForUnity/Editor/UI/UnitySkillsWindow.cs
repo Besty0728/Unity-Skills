@@ -58,7 +58,7 @@ namespace UnitySkills
         // Single flat entry: clicking "Window ▸ UnitySkills" opens the main panel directly.
         // CONSTRAINT: a "Window/UnitySkills" leaf cannot coexist with any
         // "Window/UnitySkills/..." submenu item — Unity swallows the leaf. Secondary panels
-        // (Macro Recorder, Audit Log) are therefore reachable only via in-panel buttons and
+        // Secondary panels (such as Audit Log) are therefore reachable only via in-panel buttons and
         // shortcuts (ShortcutActions); never add another [MenuItem] under this prefix.
         [MenuItem("Window/UnitySkills", false, 1)]
         public static void ShowWindow()
