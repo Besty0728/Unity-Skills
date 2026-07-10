@@ -34,13 +34,13 @@ You can also download a specific release from the [Releases page](https://github
 
 ---
 
-## 2. Start the Server
+## 2. Open the Panel & Start the Server
 
 ```
-Window → UnitySkills → Start Server
+Window → UnitySkills          (or press Alt+Shift+U)
 ```
 
-On success, the Console will show:
+Then flip the server toggle switch in the top bar. On success, the Console will show:
 
 ```
 [UnitySkills] REST Server started at http://localhost:8090/
@@ -61,14 +61,14 @@ curl http://localhost:8090/health
 ### Recommended: One-Click Installer
 
 ```
-Window → UnitySkills → Skill Installer
+Window → UnitySkills → AI Config tab
 ```
 
 Select your AI tool and click **Install**. The installer copies the `unity-skills~/` template directory to the correct location. The installed files include:
 
 ```
 SKILL.md                    # Main skill definition (AI reads this)
-skills/                     # Per-module skill docs (49 functional + 19 advisory)
+skills/                     # Per-module skill docs (49 functional + 20 advisory)
 scripts/unity_skills.py     # Python client library
 scripts/agent_config.json   # Agent configuration
 references/                 # Unity development references
@@ -108,7 +108,7 @@ The following tools have been officially tested:
 
 ## 4. Operating Modes (v1.9.0+)
 
-UnitySkills enforces permissions on the **server side** (not just as AI routing hints), aligned with Claude Code permission modes. Switch modes in `Window → UnitySkills` → **Server** tab.
+UnitySkills enforces permissions on the **server side** (not just as AI routing hints), aligned with Claude Code permission modes. Switch modes from the ⚙ Settings button in `Window → UnitySkills` → **Server** section.
 
 | Mode | Default for | Behavior |
 |------|-------------|----------|
@@ -118,7 +118,7 @@ UnitySkills enforces permissions on the **server side** (not just as AI routing 
 
 **Two approval channels under Approval mode**:
 - **Dialog** (default) — AI explains intent + grant token in chat; you say OK; AI replays the token
-- **Panel** — toggle `Panel Approval Required` on; AI-issued grants only take effect after you click **[Approve]** in the Server panel; premature AI grants return `GRANT_PENDING_APPROVAL`
+- **Panel** — toggle `Panel Approval Required` on; AI-issued grants only take effect after you click **[Approve]** in the Server section; premature AI grants return `GRANT_PENDING_APPROVAL`
 
 **Zero-impact upgrade**: the plugin detects legacy `UnitySkills_*` EditorPrefs keys and keeps **Bypass** for existing users — pre-v1.9 Full-Auto behavior is preserved with no action required.
 
@@ -139,7 +139,7 @@ curl http://localhost:8090/permission/audit?limit=100
 
 All grants, revokes, restricted hits, and skill calls write to `Library/UnitySkillsAudit.jsonl` (per-project, not in Git, async append, 1MB rotation, 3 historical files kept).
 
-Open `Window → UnitySkills → Audit Log` for a Console-style browser:
+Open the audit browser from the ⚙ Settings drawer → **View Audit Log** (or press Alt+Shift+L) for a Console-style browser:
 
 - Filter by event type or free-text search
 - Hover a row → click the trailing **✕** to delete that single entry

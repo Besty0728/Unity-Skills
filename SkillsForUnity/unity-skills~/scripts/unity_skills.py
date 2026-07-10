@@ -404,7 +404,7 @@ class UnitySkills:
                     'transportError': 'connection',
                     'retryable': True,
                     'suggestion': 'Unity may be recompiling scripts (Domain Reload). Wait 3-5 seconds and retry.',
-                    'hint': 'Check if server is running: Window > UnitySkills > Start Server'
+                    'hint': 'Check if server is running: open Window > UnitySkills and toggle the server switch'
                 }
             except Exception as e:
                 return {'success': False, 'error': str(e)}

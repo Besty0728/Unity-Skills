@@ -12,7 +12,7 @@ Use this skill when the user wants to automate the Unity Editor through the loca
 The schema is the canonical source for exact skill names, parameters, defaults, and returns — **but you rarely need the expensive layers**. Route by task shape (all layers are server-cached with ETag/304 and served off the main thread):
 
 - **Intent is specific** ("create a cube", "set this SO field") → `GET /skills/recommend?intent=<words>&topN=10&includeSchema=true` (~2-5 KB) returns scored candidates **with parameter schemas** — often the only lookup you need. If you already know the skill name, skip lookups entirely and go straight to the dryRun gate below.
-- **Task touches one or two areas** → directory first: `GET /skills?brief=1` (~19 KB ≈ 3.4K tokens — all 729 skill names grouped by module, names are self-describing `module_verb`) to lock the module(s), then `GET /skills/schema?category=<Category>` (~13–44 KB) for exact signatures. Typical session cost ≈ 10K tokens instead of 35K.
+- **Task touches one or two areas** → directory first: `GET /skills?brief=1` (~19 KB ≈ 3.4K tokens — all 739 skill names grouped by module, names are self-describing `module_verb`) to lock the module(s), then `GET /skills/schema?category=<Category>` (~13–44 KB) for exact signatures. Typical session cost ≈ 10K tokens instead of 35K.
 - **Exploratory / cross-module / unsure what exists** → full awareness: `GET /skills?summary=1` (~143 KB ≈ 35K tokens — every skill's full description). The only layer with all descriptions at once; reach for it when the cheaper layers left you unsure, **not by default**.
 - **Full detail (rare)**: `GET /skills/schema` — full schema with exact parameter schemas (~`618 KB` ≈ 150K tokens, client-cached 300s + disk-cached under `~/.unity_skills/cache/` with ETag/304 revalidation, so short-lived CLI processes reuse it too). Only when you need many modules' exact signatures at once.
 
@@ -20,19 +20,24 @@ Python helper shortcuts: `unity_skills.search_skills("keyword")` greps the cache
 
 **Before executing a skill — the dryRun gate (do not skip).** The lite/summary manifest is for *awareness* (picking the right skill), not for calling. Descriptions are informal (human-written, not a formal signature; some omit parameter hints) and parameter schemas are omitted. Before the first execution of any skill whose exact parameters you don't already hold in context, **dryRun it**: `POST /skill/<name>?mode=dryRun` with your best-guess args. The server validates parameters and, on error, returns `unknownParams` with `suggestions` (the correct parameter names) plus the full `parameters` schema — iterate until `valid: true`, then execute without `?mode=dryRun`. This is the mechanism that turns "awareness" into "correct operation steps"; never guess parameters from descriptions and never skip dryRun for a skill you have not yet called successfully this session. Mode values are strictly validated (v2.1.0+): a mistyped `?mode=` / `?dryRun=` value (e.g. `mode=dry_run`, `dryRun=1`) is rejected with `INVALID_MODE` and the request is **not** executed — a typo can never silently fall through to a real execution.
 
+**Inspect what a write changed — `?diff=1` (opt-in).** Append `?diff=1` to a single write-skill call (`POST /skill/<name>?diff=1`) and a successful response carries a top-level `sceneDiff` summarizing the scene delta, so you can confirm a mutation did exactly what you intended without a follow-up read: `{changed:[{target:{name,type,instanceId}, changes:[{path, before, after}], truncated}], added:[...], removed:[...], captureLimited}`. Property paths are type-prefixed (e.g. `Rigidbody.m_Mass`). A read-only skill returns a `note` instead of a diff; an illegal `diff` value is rejected `400`; capture is capped at 20 objects × 50 changes each (`captureLimited`/`truncated` flag the cutoff). Single-skill only — `POST /skills/batch` does not support it.
+
 **Multi-skill tasks — aggregate-plan first.** When a task needs several skills in sequence, call `workflow_plan` (`POST` a JSON array of `{name, params}` steps) before executing any of them. It returns combined `steps`, `dependencies`, `totalRisk`, and `warnings`, so you sequence correctly and surface cross-step blockers before the first mutation. Then dryRun + execute each step in order.
 
-**Multi-skill execution — `POST /skills/batch` (v2.1.0+).** When the sequence is deterministic (no step needs a previous step's return value), execute it in **one** HTTP call instead of N: body `{"steps":[{"skill":"<name>","args":{...}}, ...], "continueOnError":false}` (≤50 steps). Each step runs the full single-skill pipeline (validation, permission gate, undo, audit). Default is fail-fast — on a step error the rest are returned as `skipped`; `continueOnError: true` skips failed steps instead. Authorization responses (`MODE_RESTRICTED` / `CONFIRMATION_REQUIRED`) always interrupt regardless and carry the grant token in that step's error. Response: `{status: "completed"|"partial", executed, failed, results:[{index, skill, status, result|error}]}`. `?mode=dryRun` validates every step in one shot without executing (never interrupts) — the batch counterpart of the dryRun gate. v1 boundary: a later step cannot reference an earlier step's output — when you need that, fall back to step-by-step calls.
+**Multi-skill execution — `POST /skills/batch` (v2.1.0+).** Execute a sequence in **one** HTTP call instead of N: body `{"steps":[{"skill":"<name>","args":{...}}, ...], "continueOnError":false}` (≤50 steps). Each step runs the full single-skill pipeline (validation, permission gate, undo, audit). Default is fail-fast — on a step error the rest are returned as `skipped`; `continueOnError: true` skips failed steps instead. Authorization responses (`MODE_RESTRICTED` / `CONFIRMATION_REQUIRED`) always interrupt regardless and carry the grant token in that step's error. Response: `{status, executed, failed, results:[{index, skill, status, result|error}]}`. `?mode=dryRun` validates every step in one shot without executing (never interrupts) — the batch counterpart of the dryRun gate.
+
+- **Inter-step references (`$ref`)** — a later step can now consume an earlier step's output. Anywhere in `args`, at any depth, an object whose **only** key is `$ref` — `{"$ref":"$N.path"}` — is replaced by `SelectToken(path)` on step `N`'s (0-based) unwrapped result: e.g. `{"instanceId":{"$ref":"$0.instanceId"}}` feeds the `instanceId` created by step 0 into a later step. A ref that fails to resolve fails that step with `SEMANTIC_INVALID`. Under `?mode=dryRun` refs are structurally validated (reported in `refsValidated` with `structural:true`) since the target value does not exist yet — treat any semantic mismatch there as a warning, not a hard failure. This lifts the old "later step cannot reference an earlier step's output" boundary; step-by-step calls are no longer required just to thread returned ids.
+- **Transactional mode (`?mode=transactional`)** — all-or-nothing. If any step fails (including an authorization interrupt), every already-executed step is rolled back via Unity Undo and the response returns top-level `status:"rolled_back"`, `rolledBack:true`, with executed steps marked `rolled_back`. Pre-check **rejects (`400`)** a batch that combines `continueOnError` with any step that `MayTriggerReload`. Steps that mutate assets are flagged `rollbackReliability:"partial"` — Undo cannot fully revert on-disk asset writes.
 
 Use module `SKILL.md` files for routing guidance, guardrails, and minimal examples, not as the canonical source of exact signatures.
 
-Current snapshot: `729` REST skills, `51` functional source modules, `68` module documentation directories (`49` REST/module docs + `19` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `739` REST skills, `51` functional source modules, `69` module documentation directories (`49` REST/module docs + `20` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`
 
 ## Operating Mode (v1.9.0+)
 
-Operating mode is a **server-side permission gate**, configured in `Window > UnitySkills > Server` and persisted in EditorPrefs per-machine. It is not an AI routing policy and **cannot** be switched via chat or REST — chat-side trigger words no longer apply.
+Operating mode is a **server-side permission gate**, configured in the Unity panel (`Window > UnitySkills` → ⚙ Settings → Server section) and persisted in EditorPrefs per-machine. It is not an AI routing policy and **cannot** be switched via chat or REST — chat-side trigger words no longer apply.
 
 ### Boot Handshake
 
@@ -79,7 +84,7 @@ On `MODE_FORBIDDEN`: the skill is auto-classified as NeverInSemi (Delete / Domai
 
 ### Allowlist (user-managed permanent bypass)
 
-The Allowlist is a **user-managed** permanent whitelist of skill names, configured in `Window > UnitySkills > Server` settings drawer (Allowlist Skills section / `+ Add Skill` button). It is independent of Approval grants:
+The Allowlist is a **user-managed** permanent whitelist of skill names, configured in the `Window > UnitySkills` panel's ⚙ settings drawer (Allowlist Skills section / `+ Add Skill` button). It is independent of Approval grants:
 
 - Allowlisted skills execute directly under any mode — the server skips the Approval/MODE_RESTRICTED gate
 - **An Allowlist entry overrides MODE_FORBIDDEN** for that skill (covers Delete / MayEnterPlayMode / MayTriggerReload / `RiskLevel="high"`). This is intentional: the user has explicitly opted in
@@ -110,7 +115,7 @@ Mode authorization (persistent, per-skill) and `ConfirmationToken` (single-shot,
 
 ### Skill Mode Annotation
 
-The REST surface (~`750` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
+The REST surface (`739` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
 
 | Annotation | Count | Source |
 |---|---|---|
@@ -121,7 +126,17 @@ The REST surface (~`750` skills) is partitioned by `[UnitySkill]` `Mode` and run
 SemiAuto (read/query/analyze) skills are directly callable in every mode and span the modules below; use `GET /skills?category=<Category>` for the exact list (write skills in the same modules stay FullAuto):
 
 - **script** (read/list/get_info/find_in_file/get_compile_feedback) · **perception** (scene_analyze/context/health_check/find_hotspots, project_stack_detect) · **scene** (get_info/get_hierarchy/get_loaded/find_objects) · **editor** (get_context/state/selection/tags/layers) · **asset** (find/get_info) · **workflow** (list/session_*/plan — prefer workflow & batch helpers for planning/preview/jobs/rollback) · **debug + console** (check_compilation/get_errors/get_system_info/get_memory_info/get_logs)
-- plus most modules' own info / list / get / find skills. **Advisory**: `19` design-only modules (no REST skills) — see Coding Reference Index below.
+- plus most modules' own info / list / get / find skills. **Advisory**: `20` design-only modules (no REST skills) — see Coding Reference Index below.
+
+## Compilation Feedback, Events & Telemetry
+
+Three read-only endpoints close the loop after a mutation — most useful across Domain Reload, when the server briefly drops out (see Core Rules #4).
+
+**`GET /compile/status` — did my script edit compile?** After `script_*` writes (or any change that recompiles) the editor runs a Domain Reload and the server briefly answers `503/504`. Once it responds again, this endpoint reports the last compilation without re-reading files: `{status, isCompiling, isUpdating, domainReloadPending, lastCompilation:{finishedAtUtc, durationMs, success, errorCount, warningCount, errors:[{file, line, column, message, assembly}], warnings:[...], truncated} | null}`. `errors` are capped at 200, `warnings` at 50. `lastCompilation` survives the reload (persisted via `SessionState` for the editor session), so the pass/fail verdict and exact error lines are still there after the server returns. Recommended write-then-verify loop: `script_*` write → wait out the transient unavailability → `GET /compile/status` for success + error lines.
+
+**`GET /events` — long-poll event channel.** Instead of hammering `/compile/status` in a loop, subscribe to a 500-entry in-memory ring buffer. Query: `since` (omit = wait only for events newer than the current max seq; `0` = replay the whole buffer), `timeout` (seconds, default 25, clamped 1–55), `types` (comma-separated filter). Response: `{status, events:[{seq, type, tsUtc, payload}], cursor, oldestSeq, dropped, timedOut}`; carry `cursor` into the next call's `since` to resume. Event types: `compilation_started` / `compilation_finished` (carries `firstErrors`, first 5) / `before_domain_reload` / `after_domain_reload` / `server_restored` / `playmode_changed` / `console_error` (throttled 20/s with `droppedSinceLast`) / `job_completed` / `job_failed`. `seq` is monotonic and never rewinds across reloads; a reload discards in-flight events, signalled by `dropped:true`. **Reconnect anchor:** the "compilation succeeded" event is lost when Domain Reload tears down the connection — after reconnecting, read `server_restored`, whose `payload` carries the `lastCompilation` summary, to recover the verdict you missed.
+
+**`GET /analytics` — execution telemetry.** Aggregates how skills have been performing. Query `?window=1h|24h|7d|all` (default `24h`). Response: `summary` (`totalCalls` / `okCalls` / `errorCalls` / `errorRate` / `uniqueSkills`), `topSkills`, `errorCodes` (with per-code `topSkills` attribution), `errorProneSkills` (calls ≥ 5), `slowestSkills` (calls ≥ 3), `byMode`, `byAgent`, `recentErrors`. Backed by a telemetry log (`Library/UnitySkillsTelemetry.jsonl`, toggled by EditorPrefs `UnitySkills_TelemetryEnabled`, default on); `mode` distinguishes `execute` / `dryRun` / `plan` / `batch_step` / `batch_step_dryRun`, and results are cached ~30s. Use it to spot which skill keeps failing or dragging before you re-discover it the hard way.
 
 ## Core Rules
 
@@ -134,7 +149,7 @@ SemiAuto (read/query/analyze) skills are directly callable in every mode and spa
 
 ## Coding Reference Index
 
-Before writing or refactoring Unity code, **load the relevant advisory module first**. These are the `19` `Documentation only` design modules (no REST skills — loadable under any mode) that pin rules to engine source and prevent hallucinated / removed APIs. Load on demand by topic, not all at once.
+Before writing or refactoring Unity code, **load the relevant advisory module first**. These are the `20` `Documentation only` design modules (no REST skills — loadable under any mode) that pin rules to engine source and prevent hallucinated / removed APIs. Load on demand by topic, not all at once.
 
 **General coding & architecture** — before writing gameplay code or making structural decisions:
 

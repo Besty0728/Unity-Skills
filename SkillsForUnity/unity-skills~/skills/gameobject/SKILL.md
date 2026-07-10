@@ -180,6 +180,21 @@ Enable or disable a GameObject.
 
 **Returns**: `{success, name, entityId, active}`
 
+### gameobject_set_sibling_index
+Set a GameObject's sibling index — its position among its parent's children, or among the scene's root objects when unparented. `index` is clamped into the valid range (`clamped: true` reports it).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `entityId` | string | No* | Entity ID (Unity 6000.4+, preferred) |
+| `name` | string | No* | Object name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
+| `index` | int | Yes | Target sibling index (0 = first) |
+
+*At least one identifier required
+
+**Returns**: `{success, name, entityId, path, parent, previousIndex, index, clamped}`
+
 ---
 
 ## Batch Skills

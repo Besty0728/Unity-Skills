@@ -34,13 +34,13 @@ Window → Package Manager → + → Add package from git URL
 
 ---
 
-## 2. 启动服务
+## 2. 打开面板并启动服务
 
 ```
-Window → UnitySkills → Start Server
+Window → UnitySkills          (或按 Alt+Shift+U)
 ```
 
-正常启动后，Console 会输出：
+然后点顶栏的服务开关启动。正常启动后，Console 会输出：
 
 ```
 [UnitySkills] REST Server started at http://localhost:8090/
@@ -61,14 +61,14 @@ curl http://localhost:8090/health
 ### 推荐：一键安装
 
 ```
-Window → UnitySkills → Skill Installer
+Window → UnitySkills → AI Config 标签页
 ```
 
 选择目标 AI 工具后点击 **Install**。安装器会将 `unity-skills~/` 模板目录复制到正确位置。安装的文件包括：
 
 ```
 SKILL.md                    # 主 Skill 定义（AI 读取）
-skills/                     # 按模块分类的 Skill 文档（49 功能 + 19 顾问）
+skills/                     # 按模块分类的 Skill 文档（49 功能 + 20 顾问）
 scripts/unity_skills.py     # Python 客户端库
 scripts/agent_config.json   # Agent 配置
 references/                 # Unity 开发参考文档
@@ -108,7 +108,7 @@ references/                 # Unity 开发参考文档
 
 ## 4. 操作模式 (v1.9.0+)
 
-UnitySkills 在**服务端**真正做权限拦截（不再只是 AI 路由建议），对齐 Claude Code permission modes。模式切换统一在 `Window → UnitySkills` → **Server** 标签页完成。
+UnitySkills 在**服务端**真正做权限拦截（不再只是 AI 路由建议），对齐 Claude Code permission modes。模式切换统一从 `Window → UnitySkills` 的 ⚙ 设置按钮 → **Server** 区完成。
 
 | 模式 | 默认场景 | 行为 |
 |------|----------|------|
@@ -139,14 +139,14 @@ curl http://localhost:8090/permission/audit?limit=100
 
 所有 grant / revoke / 被拒命中 / skill 调用都会写入 `Library/UnitySkillsAudit.jsonl`（per-project，不入 Git，异步追加，1MB 滚动，保留 3 份历史）。
 
-打开 `Window → UnitySkills → Audit Log` 即可获得 Console 风格的浏览器：
+从 ⚙ 设置抽屉 → **查看审计日志**（或按 Alt+Shift+L）打开 Console 风格的浏览器：
 
 - 按事件类型或自由文本过滤
 - 鼠标悬停某行 → 点末尾 **✕** 删除该单条
 - 工具栏 **🗑 Clear All** 清空主日志 + 全部历史滚动文件
 - 删除动作本身会写 `audit_deleted` / `audit_cleared` 追踪事件回日志 —— 删除行为本身被审计，日志依然是 trust anchor
 
-> ❌ 不再识别对话触发词（如 `"全自动模式"` / `"semi-auto"`），模式切换必须走 Server 标签页。
+> ❌ 不再识别对话触发词（如 `"全自动模式"` / `"semi-auto"`），模式切换必须走 ⚙ 设置抽屉的 Server 区。
 
 ---
 

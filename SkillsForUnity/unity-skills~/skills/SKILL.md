@@ -52,7 +52,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 | [physics](./physics/SKILL.md) | Mixed | Raycast/overlap/gravity | No |
 | [navmesh](./navmesh/SKILL.md) | Mixed* | NavMesh bake/query | No |
 | [timeline](./timeline/SKILL.md) | FA* | Timeline tracks/clips | No |
-| [workflow](./workflow/SKILL.md) | SA* | Task snapshots/undo | No |
+| [workflow](./workflow/SKILL.md) | SA* | Task snapshots/undo, macro record→replay | No |
 | [cleaner](./cleaner/SKILL.md) | SA* | Unused/duplicate assets | No |
 | [smart](./smart/SKILL.md) | FA* | Query/layout/auto-bind | No |
 | [perception](./perception/SKILL.md) | SA | Scene/project analysis | No |
