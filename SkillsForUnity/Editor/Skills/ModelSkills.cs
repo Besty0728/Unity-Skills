@@ -246,7 +246,7 @@ namespace UnitySkills
         [UnitySkill("model_set_settings_batch", "Set model import settings for multiple 3D models. items: JSON array of {assetPath, meshCompression, animationType, ...}",
             Category = SkillCategory.Model, Operation = SkillOperation.Modify,
             Tags = new[] { "model", "import", "batch", "settings" },
-            Outputs = new[] { "totalCount", "successCount", "results" })]
+            Outputs = new[] { "totalItems", "successCount", "results" })]
         public static object ModelSetSettingsBatch(string items)
         {
             return BatchExecutor.Execute<BatchModelItem>(items, item =>

@@ -246,7 +246,7 @@ namespace UnitySkills
         [UnitySkill("light_set_enabled_batch", "Enable/disable multiple lights in one call (Efficient). items: JSON array of {name, instanceId, path, enabled}",
             Category = SkillCategory.Light, Operation = SkillOperation.Modify,
             Tags = new[] { "light", "enable", "batch", "toggle" },
-            Outputs = new[] { "totalCount", "successCount", "results" },
+            Outputs = new[] { "totalItems", "successCount", "results" },
             RequiresInput = new[] { "gameObject" })]
         public static object LightSetEnabledBatch(string items)
         {
@@ -276,7 +276,7 @@ namespace UnitySkills
         [UnitySkill("light_set_properties_batch", "Set properties for multiple lights in one call (Efficient). items: JSON array of {name, instanceId, r, g, b, intensity, range, shadows}",
             Category = SkillCategory.Light, Operation = SkillOperation.Modify,
             Tags = new[] { "light", "batch", "properties", "color" },
-            Outputs = new[] { "totalCount", "successCount", "results" },
+            Outputs = new[] { "totalItems", "successCount", "results" },
             RequiresInput = new[] { "gameObject" })]
         public static object LightSetPropertiesBatch(string items)
         {

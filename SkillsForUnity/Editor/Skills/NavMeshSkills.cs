@@ -16,7 +16,12 @@ namespace UnitySkills
             Outputs = new[] { "success", "message" })]
         public static object NavMeshBake()
         {
+            // CS0618 豁免：UnityEditor.AI.NavMeshBuilder 仍是编辑器全局烘焙的唯一入口；
+            // 推荐替代 UnityEngine.AI.NavMeshBuilder 是运行时增量构建 API（非等价），
+            // 组件化 NavMeshSurface 则需引入 AI Navigation 包依赖——均超出本 skill 语义。
+#pragma warning disable 0618
             UnityEditor.AI.NavMeshBuilder.BuildNavMesh();
+#pragma warning restore 0618
             return new { success = true, message = "NavMesh baked successfully" };
         }
 
@@ -26,7 +31,10 @@ namespace UnitySkills
             Outputs = new[] { "success", "warning" })]
         public static object NavMeshClear()
         {
+            // CS0618 豁免：同 NavMeshBake——旧 API 是全局清除的唯一等价入口。
+#pragma warning disable 0618
             UnityEditor.AI.NavMeshBuilder.ClearAllNavMeshes();
+#pragma warning restore 0618
             return new { success = true, warning = "NavMesh cleared. This operation cannot be undone." };
         }
 

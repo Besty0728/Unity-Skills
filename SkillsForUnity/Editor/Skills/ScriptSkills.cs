@@ -71,7 +71,7 @@ namespace UnitySkills
         [UnitySkill("script_create_batch", "Create multiple scripts efficiently. Before batch-generating gameplay scripts, actively consider coupling, performance, and maintainability for each class role. items: JSON array of {scriptName, folder, template, namespace}", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Create,
             Tags = new[] { "script", "batch", "create", "bulk" },
-            Outputs = new[] { "totalCount", "successCount", "results" },
+            Outputs = new[] { "totalItems", "successCount", "results" },
             MayTriggerReload = true)]
         public static object ScriptCreateBatch(string items)
         {

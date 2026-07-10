@@ -73,7 +73,10 @@ namespace UnitySkills
             if (!int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var instanceId))
                 return null;
 
+            // CS0618 豁免：6000.4 以下的兼容分支，旧 API 刻意保留（新 API 走上方 #if 分支）。
+#pragma warning disable 0618
             return EditorUtility.InstanceIDToObject(instanceId);
+#pragma warning restore 0618
 #endif
         }
 
@@ -85,7 +88,10 @@ namespace UnitySkills
 #if UNITY_6000_4_OR_NEWER
             return null;
 #else
+            // CS0618 豁免：6000.4 以下的兼容分支，旧 API 刻意保留。
+#pragma warning disable 0618
             return EditorUtility.InstanceIDToObject(objectId);
+#pragma warning restore 0618
 #endif
         }
 
@@ -108,7 +114,10 @@ namespace UnitySkills
 #if UNITY_6000_4_OR_NEWER
             return Array.Empty<int>();
 #else
+            // CS0618 豁免：6000.4 以下的兼容分支，旧 API 刻意保留。
+#pragma warning disable 0618
             return Selection.instanceIDs ?? Array.Empty<int>();
+#pragma warning restore 0618
 #endif
         }
 
@@ -135,7 +144,10 @@ namespace UnitySkills
                 .Where(obj => obj != null)
                 .ToArray();
 #else
+            // CS0618 豁免：6000.4 以下的兼容分支，旧 API 刻意保留。
+#pragma warning disable 0618
             Selection.instanceIDs = ids;
+#pragma warning restore 0618
 #endif
         }
 

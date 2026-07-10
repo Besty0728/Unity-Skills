@@ -193,7 +193,7 @@ namespace UnitySkills
         [UnitySkill("texture_set_settings_batch", "Set texture import settings for multiple images. items: JSON array of {assetPath, textureType, maxSize, filterMode, ...}",
             Category = SkillCategory.Texture, Operation = SkillOperation.Modify,
             Tags = new[] { "texture", "import", "batch", "settings" },
-            Outputs = new[] { "totalCount", "successCount", "results" })]
+            Outputs = new[] { "totalItems", "successCount", "results" })]
         public static object TextureSetSettingsBatch(string items)
         {
             return BatchExecutor.Execute<BatchTextureItem>(items, item =>

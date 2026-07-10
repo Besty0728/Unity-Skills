@@ -222,7 +222,7 @@ namespace UnitySkills
         [UnitySkill("material_create_batch", "Create multiple materials (Efficient). items: JSON array of {name, shaderName?, savePath?}",
             Category = SkillCategory.Material, Operation = SkillOperation.Create,
             Tags = new[] { "material", "batch", "shader", "pipeline" },
-            Outputs = new[] { "totalCount", "successCount", "results" },
+            Outputs = new[] { "totalItems", "successCount", "results" },
             TracksWorkflow = true)]
         public static object MaterialCreateBatch(string items)
         {
@@ -240,7 +240,7 @@ namespace UnitySkills
         [UnitySkill("material_assign_batch", "Assign materials to multiple objects (Efficient). items: JSON array of {name, materialPath}",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "material", "assign", "batch", "renderer" },
-            Outputs = new[] { "totalCount", "successCount", "results" },
+            Outputs = new[] { "totalItems", "successCount", "results" },
             RequiresInput = new[] { "gameObject", "materialPath" },
             TracksWorkflow = true)]
         public static object MaterialAssignBatch(string items)
@@ -380,7 +380,7 @@ namespace UnitySkills
         [UnitySkill("material_set_colors_batch", "Set colors on multiple GameObjects in a single call. items is a JSON array like [{name:'Obj1',r:1,g:0,b:0},{name:'Obj2',r:0,g:1,b:0}]. Much more efficient than calling material_set_color multiple times.",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "color", "batch", "rendering" },
-            Outputs = new[] { "totalCount", "successCount", "results" },
+            Outputs = new[] { "totalItems", "successCount", "results" },
             RequiresInput = new[] { "gameObject|materialPath" },
             TracksWorkflow = true)]
         public static object MaterialSetColorsBatch(string items = null, string propertyName = null)
@@ -497,7 +497,7 @@ namespace UnitySkills
         [UnitySkill("material_set_emission_batch", "Set emission on multiple objects (Efficient). items: JSON array of {name, r, g, b, intensity?, enableEmission?}",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "emission", "hdr", "batch", "lighting" },
-            Outputs = new[] { "totalCount", "successCount", "results" },
+            Outputs = new[] { "totalItems", "successCount", "results" },
             RequiresInput = new[] { "gameObject|materialPath" })]
         public static object MaterialSetEmissionBatch(string items)
         {

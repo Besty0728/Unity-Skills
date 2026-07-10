@@ -153,7 +153,7 @@ namespace UnitySkills
         [UnitySkill("audio_set_settings_batch", "Set audio import settings for multiple audio files. items: JSON array of {assetPath, forceToMono, loadType, compressionFormat, quality, ...}",
             Category = SkillCategory.Audio, Operation = SkillOperation.Modify,
             Tags = new[] { "audio", "import", "batch", "settings", "bulk" },
-            Outputs = new[] { "totalCount", "successCount", "results" },
+            Outputs = new[] { "totalItems", "successCount", "results" },
             RequiresInput = new[] { "audioAssets" })]
         public static object AudioSetSettingsBatch(string items)
         {
