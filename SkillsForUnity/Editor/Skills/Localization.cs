@@ -514,6 +514,11 @@ namespace UnitySkills
             {"decal_delete", "Delete a Decal Projector GameObject"},
             {"decal_set_properties_batch", "Modify multiple Decal Projectors in one request"},
             {"decal_ensure_renderer_feature", "Ensure the current URP renderer has a DecalRendererFeature"},
+            {"primetween_get_status", "Get PrimeTween Free installation status and package version"},
+            {"primetween_get_config", "Read PrimeTween global runtime configuration"},
+            {"primetween_list_factories", "List PrimeTween public factory methods"},
+            {"primetween_generate_tween_script", "Generate a PrimeTween Transform tween MonoBehaviour script"},
+            {"primetween_generate_sequence_script", "Generate a PrimeTween Sequence MonoBehaviour script"},
             {"dotween_get_status", "Get DOTween installation status, Pro availability, settings, and visible modules"},
             {"dotween_settings_get", "Read common fields from Resources/DOTweenSettings.asset"},
             {"dotween_settings_find", "Find DOTweenSettings assets in the project"},
@@ -1795,6 +1800,13 @@ namespace UnitySkills
             {"decal_delete", "删除 Decal Projector 游戏对象"},
             {"decal_set_properties_batch", "批量修改 Decal Projector 属性"},
             {"decal_ensure_renderer_feature", "确保当前 URP 渲染器已启用 DecalRendererFeature"},
+
+            // PrimeTween Skills
+            {"primetween_get_status", "获取 PrimeTween Free 安装状态与包版本"},
+            {"primetween_get_config", "读取 PrimeTween 全局运行时配置"},
+            {"primetween_list_factories", "列出 PrimeTween 公开工厂方法"},
+            {"primetween_generate_tween_script", "生成 PrimeTween Transform 补间 MonoBehaviour 脚本"},
+            {"primetween_generate_sequence_script", "生成 PrimeTween Sequence MonoBehaviour 脚本"},
 
             // DOTween Skills
             {"dotween_get_status", "获取 DOTween 安装状态、Pro 可用性、设置与已加载模块"},
