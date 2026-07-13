@@ -28,6 +28,7 @@ namespace UnitySkills
         private Label         _title;
         private Label         _windowLabel;
         private DropdownField _windowDropdown;
+        private Button        _clearBtn;
         private Button        _revealBtn;
         private Button        _refreshBtn;
         private HelpBox       _disabledBanner;
@@ -69,6 +70,7 @@ namespace UnitySkills
             _title            = _root.Q<Label>("analytics-title");
             _windowLabel      = _root.Q<Label>("analytics-window-label");
             _windowDropdown   = _root.Q<DropdownField>("analytics-window-dropdown");
+            _clearBtn         = _root.Q<Button>("analytics-clear-btn");
             _revealBtn        = _root.Q<Button>("analytics-reveal-btn");
             _refreshBtn       = _root.Q<Button>("analytics-refresh-btn");
             _disabledBanner   = _root.Q<HelpBox>("analytics-disabled");
@@ -86,6 +88,9 @@ namespace UnitySkills
             _recentList       = _root.Q<VisualElement>("analytics-recent-list");
 
             UISkillsEditorIcons.Apply(_refreshBtn, "d_Refresh", "Refresh", "TreeEditor.Refresh");
+            // Trash icon only — long "Clear window" text is reserved for the tooltip / dialog.
+            UISkillsEditorIcons.Apply(_clearBtn,
+                "TreeEditor.Trash", "d_TreeEditor.Trash", "d_Grid.TrashTool", "Trash");
         }
 
         private void BindEvents()
@@ -101,6 +106,7 @@ namespace UnitySkills
                 });
 
             if (_refreshBtn != null) _refreshBtn.clicked += Refresh;
+            if (_clearBtn != null) _clearBtn.clicked += OnClearWindowClicked;
 
             if (_revealBtn != null)
                 _revealBtn.clicked += () =>
@@ -113,6 +119,81 @@ namespace UnitySkills
                     }
                     catch (Exception ex) { SkillsLogger.LogWarning($"Reveal telemetry log failed: {ex.Message}"); }
                 };
+        }
+
+        /// <summary>
+        /// Clear telemetry for the currently selected window (1h / 24h / 7d / all), after a
+        /// confirmation dialog that names the window in the active language. On success the
+        /// tab re-aggregates so the empty/summary state updates immediately.
+        /// </summary>
+        private void OnClearWindowClicked()
+        {
+            string windowLabel = WindowLabelForToken(_windowToken);
+            string title = SkillsLocalization.Get("analytics_clear_confirm_title");
+            string msg = string.Equals(_windowToken, "all", StringComparison.Ordinal)
+                ? string.Format(SkillsLocalization.Get("analytics_clear_confirm_all_fmt"), windowLabel)
+                : string.Format(SkillsLocalization.Get("analytics_clear_confirm_fmt"), windowLabel);
+            string ok = SkillsLocalization.Get("analytics_clear_ok");
+            string cancel = SkillsLocalization.Get("analytics_clear_cancel");
+
+            if (!EditorUtility.DisplayDialog(title, msg, ok, cancel))
+                return;
+
+            object result;
+            try
+            {
+                result = SkillTelemetryService.DeleteWindow(_windowToken);
+            }
+            catch (Exception ex)
+            {
+                EditorUtility.DisplayDialog(title,
+                    string.Format(SkillsLocalization.Get("analytics_clear_failed_fmt"), ex.Message),
+                    "OK");
+                return;
+            }
+
+            // DeleteWindow returns an anonymous object; parse via JObject so we don't couple
+            // the UI to a private DTO. Any shape mismatch falls through to a soft refresh.
+            try
+            {
+                var jo = result == null ? null : JObject.FromObject(result);
+                bool success = jo?["success"]?.Value<bool>() ?? false;
+                if (!success)
+                {
+                    string err = jo?["error"]?.ToString() ?? "unknown error";
+                    EditorUtility.DisplayDialog(title,
+                        string.Format(SkillsLocalization.Get("analytics_clear_failed_fmt"), err),
+                        "OK");
+                }
+                else
+                {
+                    int removed = jo?["removed"]?.Value<int>() ?? 0;
+                    int remaining = jo?["remaining"]?.Value<int>() ?? 0;
+                    // Soft toast via HelpBox empty-banner path: just refresh; the summary
+                    // cards will show 0 / empty tables. A dialog is fine for destructive
+                    // feedback so the user sees the count.
+                    EditorUtility.DisplayDialog(title,
+                        string.Format(SkillsLocalization.Get("analytics_clear_done_fmt"), removed, remaining),
+                        "OK");
+                }
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogWarning($"Analytics clear-result parse failed: {ex.Message}");
+            }
+
+            Refresh();
+        }
+
+        private static string WindowLabelForToken(string token)
+        {
+            switch (token)
+            {
+                case "1h":  return SkillsLocalization.Get("analytics_window_1h");
+                case "7d":  return SkillsLocalization.Get("analytics_window_7d");
+                case "all": return SkillsLocalization.Get("analytics_window_all");
+                default:    return SkillsLocalization.Get("analytics_window_24h");
+            }
         }
 
         /// <summary>Called by the window when this tab becomes active — pulls fresh aggregates.</summary>
@@ -154,6 +235,12 @@ namespace UnitySkills
         {
             if (_title != null)       _title.text       = SkillsLocalization.Get("analytics_title");
             if (_windowLabel != null) _windowLabel.text = SkillsLocalization.Get("analytics_window_label");
+            if (_clearBtn != null)
+            {
+                // Icon button: never re-fill text (would cover the trash glyph); tooltip carries the label.
+                _clearBtn.text = string.Empty;
+                _clearBtn.tooltip = SkillsLocalization.Get("analytics_clear_window");
+            }
             if (_revealBtn != null)   _revealBtn.text   = SkillsLocalization.Get("analytics_reveal_log");
 
             if (_disabledBanner != null) _disabledBanner.text = SkillsLocalization.Get("analytics_disabled");

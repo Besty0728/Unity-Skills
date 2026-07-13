@@ -188,25 +188,175 @@ namespace UnitySkills
         /// <summary>Internal: drain the queue synchronously on the calling thread (read consistency).</summary>
         internal static void FlushSync() => FlushPending();
 
+        /// <summary>
+        /// Delete telemetry records for an analytics window aligned with
+        /// <see cref="BuildAnalyticsJson"/>: <c>1h</c> / <c>24h</c> / <c>7d</c> / <c>all</c>.
+        /// <c>all</c> wipes every retained file; other windows remove only records with
+        /// <c>ts &gt;= cutoff</c> (i.e. inside the window) and rewrite the primary log with
+        /// the survivors. Always clears the analytics + recommendation caches so the next
+        /// read is fresh. Best-effort — never throws to the caller.
+        /// </summary>
+        /// <returns>
+        /// <c>{ success, window, removed, remaining }</c>, or
+        /// <c>{ success:false, error }</c> on a hard failure.
+        /// </returns>
+        public static object DeleteWindow(string window)
+        {
+            try
+            {
+                window = NormalizeWindow(window);
+                // Resolve the log path on the main thread before taking the write lock so the
+                // flush worker never has to touch Application.dataPath off-thread later.
+                GetLogPath();
+
+                int removed;
+                int remaining;
+                lock (_writeLock)
+                {
+                    // Drain any in-flight queue entries under the same lock so a concurrent
+                    // Record/flush cannot re-append lines we are about to drop.
+                    FlushPendingUnlocked();
+                    var all = ReadAllUnlocked();
+                    if (string.Equals(window, "all", StringComparison.Ordinal))
+                    {
+                        removed = all.Count;
+                        remaining = 0;
+                        WipeAllFilesUnlocked();
+                    }
+                    else
+                    {
+                        DateTime cutoff = WindowCutoffUtc(window);
+                        var keep = new List<TelemetryRecord>(all.Count);
+                        removed = 0;
+                        foreach (var r in all)
+                        {
+                            // Unparseable timestamps are kept — we only delete what we can place
+                            // confidently inside the window (matches BuildAnalyticsJsonUncached,
+                            // which excludes unparseable lines from windowed aggregates).
+                            if (DateTime.TryParse(r.Ts, CultureInfo.InvariantCulture,
+                                    DateTimeStyles.RoundtripKind, out var dt) && dt >= cutoff)
+                            {
+                                removed++;
+                                continue;
+                            }
+                            keep.Add(r);
+                        }
+                        remaining = keep.Count;
+                        RewritePrimaryUnlocked(keep);
+                    }
+                }
+
+                InvalidateCaches();
+                return new { success = true, window, removed, remaining };
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogWarning($"Telemetry DeleteWindow failed: {ex.Message}");
+                return new { success = false, error = ex.Message };
+            }
+        }
+
         /// <summary>Internal: wipe the on-disk telemetry log (and rotated copies). Tests only.</summary>
         internal static void ResetForTests()
         {
             FlushPending();
             try
             {
-                var dir = ResolveLibraryDir();
-                foreach (var f in Directory.EnumerateFiles(dir, "UnitySkillsTelemetry*.jsonl"))
-                {
-                    try { File.Delete(f); } catch { /* ignore */ }
-                }
+                WipeAllFilesUnlocked();
             }
             catch { /* ignore */ }
+            InvalidateCaches();
+        }
+
+        private static void InvalidateCaches()
+        {
             lock (_analyticsCacheLock)
             {
                 _analyticsCache.Clear();
                 _recommendationHealthCache = null;
                 _recommendationHealthCacheAtTicks = 0;
             }
+        }
+
+        /// <summary>
+        /// Delete primary + rotated telemetry files. Caller must hold <see cref="_writeLock"/>
+        /// (or be single-threaded, as in tests).
+        /// </summary>
+        private static void WipeAllFilesUnlocked()
+        {
+            var dir = _cachedDir ?? ResolveLibraryDir();
+            if (!Directory.Exists(dir)) return;
+            foreach (var f in Directory.EnumerateFiles(dir, "UnitySkillsTelemetry*.jsonl"))
+            {
+                try { File.Delete(f); } catch { /* ignore */ }
+            }
+        }
+
+        /// <summary>
+        /// Rewrite the primary log with <paramref name="records"/> (chronological order) and
+        /// drop every rotated copy so the retained set is exactly the survivors. Caller must
+        /// hold <see cref="_writeLock"/>.
+        /// </summary>
+        private static void RewritePrimaryUnlocked(List<TelemetryRecord> records)
+        {
+            var dir = _cachedDir ?? ResolveLibraryDir();
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            var path = _cachedPath ?? Path.Combine(dir, LogFileName);
+
+            // Drop rotated files first so a crash mid-write leaves at most the new primary
+            // (never a mix of old rotated + half-written primary that would double-count).
+            for (int n = 1; n <= MaxRotatedFiles; n++)
+            {
+                var rotated = RotatedPath(n);
+                if (File.Exists(rotated))
+                {
+                    try { File.Delete(rotated); } catch { /* ignore */ }
+                }
+            }
+
+            if (records == null || records.Count == 0)
+            {
+                if (File.Exists(path))
+                {
+                    try { File.Delete(path); } catch { /* ignore */ }
+                }
+                return;
+            }
+
+            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (var writer = new StreamWriter(fs, SkillsCommon.Utf8NoBom))
+            {
+                foreach (var r in records)
+                {
+                    // Rebuild the JSONL line from the parsed record so we never re-emit a
+                    // corrupt original line we managed to deserialize.
+                    var payload = new Dictionary<string, object>(StringComparer.Ordinal)
+                    {
+                        ["ts"] = r.Ts,
+                        ["skill"] = r.Skill,
+                        ["agent"] = r.Agent,
+                        ["mode"] = r.Mode,
+                        ["ok"] = r.Ok,
+                    };
+                    if (!r.Ok)
+                        payload["errorCode"] = r.ErrorCode;
+                    payload["ms"] = r.Ms;
+                    writer.WriteLine(JsonConvert.SerializeObject(payload, Formatting.None, SkillsCommon.JsonSettings));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Read every telemetry line without flushing (caller is expected to have flushed and
+        /// hold <see cref="_writeLock"/>). Same chronological order as <see cref="ReadAll"/>.
+        /// </summary>
+        private static List<TelemetryRecord> ReadAllUnlocked()
+        {
+            var records = new List<TelemetryRecord>();
+            for (int n = MaxRotatedFiles; n >= 1; n--)
+                ReadFileInto(RotatedPath(n), records);
+            ReadFileInto(GetLogPath(), records);
+            return records;
         }
 
         // ===== write path =====
@@ -244,25 +394,37 @@ namespace UnitySkills
             if (_queue.IsEmpty) return;
             lock (_writeLock)
             {
-                try
-                {
-                    var dir = _cachedDir ?? ResolveLibraryDir();
-                    if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                    var path = _cachedPath ?? Path.Combine(dir, LogFileName);
+                FlushPendingUnlocked();
+            }
+        }
 
-                    using (var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
-                    using (var writer = new StreamWriter(fs, SkillsCommon.Utf8NoBom))
-                    {
-                        while (_queue.TryDequeue(out var line))
-                            writer.WriteLine(line);
-                    }
+        /// <summary>
+        /// Drain the write queue onto disk. Caller must hold <see cref="_writeLock"/>
+        /// (or be single-threaded, as in tests). Used both by the normal flush path and
+        /// by <see cref="DeleteWindow"/> so a concurrent Record can't re-append lines
+        /// that are about to be dropped.
+        /// </summary>
+        private static void FlushPendingUnlocked()
+        {
+            if (_queue.IsEmpty) return;
+            try
+            {
+                var dir = _cachedDir ?? ResolveLibraryDir();
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                var path = _cachedPath ?? Path.Combine(dir, LogFileName);
 
-                    RotateIfNeeded(path);
-                }
-                catch (Exception ex)
+                using (var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
+                using (var writer = new StreamWriter(fs, SkillsCommon.Utf8NoBom))
                 {
-                    SkillsLogger.LogWarning($"Telemetry flush failed: {ex.Message}");
+                    while (_queue.TryDequeue(out var line))
+                        writer.WriteLine(line);
                 }
+
+                RotateIfNeeded(path);
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogWarning($"Telemetry flush failed: {ex.Message}");
             }
         }
 

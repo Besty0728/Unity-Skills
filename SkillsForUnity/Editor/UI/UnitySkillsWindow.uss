@@ -925,6 +925,22 @@
     background-color: var(--color-error-hover);
 }
 
+/* Square icon-only mini buttons (e.g. Analytics trash / refresh) */
+.analytics-icon-btn {
+    width: 22px;
+    min-width: 22px;
+    padding: 0;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+/* Square icon-only mini buttons (e.g. Analytics trash / refresh) */
+.analytics-icon-btn {
+    width: 22px;
+    min-width: 22px;
+    padding: 0;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
 /* ===================================================================
  * 6. FOOTER — version + stats pill + segmented language
  * =================================================================== */

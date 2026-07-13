@@ -93,6 +93,60 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void Telemetry_DeleteWindow_RemovesRecordsInsideSelectedWindow()
+        {
+            bool prevEnabled = SkillTelemetryService.Enabled;
+            SkillTelemetryService.Enabled = true;
+            SkillTelemetryService.ResetForTests();
+            try
+            {
+                SkillTelemetryService.Record("telemetry_delete_probe", "tests", "execute", true, null, 1);
+                SkillTelemetryService.FlushSync();
+
+                var before = JObject.Parse(SkillTelemetryService.BuildAnalyticsJson("all"));
+                Assert.That(before["summary"]?["totalCalls"]?.Value<int>() ?? 0, Is.GreaterThanOrEqualTo(1));
+
+                var result = JObject.FromObject(SkillTelemetryService.DeleteWindow("1h"));
+                Assert.That(result["success"]?.Value<bool>(), Is.True);
+                Assert.That(result["removed"]?.Value<int>() ?? 0, Is.GreaterThanOrEqualTo(1));
+                Assert.That(result["window"]?.ToString(), Is.EqualTo("1h"));
+
+                var after = JObject.Parse(SkillTelemetryService.BuildAnalyticsJson("all"));
+                Assert.That(after["summary"]?["totalCalls"]?.Value<int>() ?? -1, Is.EqualTo(0));
+            }
+            finally
+            {
+                SkillTelemetryService.ResetForTests();
+                SkillTelemetryService.Enabled = prevEnabled;
+            }
+        }
+
+        [Test]
+        public void Telemetry_DeleteWindow_All_WipesRetainedLogs()
+        {
+            bool prevEnabled = SkillTelemetryService.Enabled;
+            SkillTelemetryService.Enabled = true;
+            SkillTelemetryService.ResetForTests();
+            try
+            {
+                SkillTelemetryService.Record("telemetry_delete_all_probe", "tests", "execute", false, "SKILL_ERROR", 2);
+                SkillTelemetryService.FlushSync();
+
+                var result = JObject.FromObject(SkillTelemetryService.DeleteWindow("all"));
+                Assert.That(result["success"]?.Value<bool>(), Is.True);
+                Assert.That(result["remaining"]?.Value<int>() ?? -1, Is.EqualTo(0));
+
+                var after = JObject.Parse(SkillTelemetryService.BuildAnalyticsJson("all"));
+                Assert.That(after["summary"]?["totalCalls"]?.Value<int>() ?? -1, Is.EqualTo(0));
+            }
+            finally
+            {
+                SkillTelemetryService.ResetForTests();
+                SkillTelemetryService.Enabled = prevEnabled;
+            }
+        }
+
+        [Test]
         public void BatchDiff_CreateThenModify_ReportsOnlyFinalAddedObject()
         {
             var steps = JArray.Parse(@"[

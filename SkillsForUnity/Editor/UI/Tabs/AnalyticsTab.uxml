@@ -15,6 +15,7 @@
                       style="margin-right: 6px; margin-top: 0;" text="Window" />
             <ui:DropdownField name="analytics-window-dropdown"
                               style="width: 120px; margin-right: 4px;" />
+            <ui:Button name="analytics-clear-btn" class="mini-btn danger analytics-icon-btn" tooltip="Clear window" />
             <ui:Button name="analytics-reveal-btn" class="mini-btn" text="Reveal log" />
             <ui:Button name="analytics-refresh-btn" class="mini-btn" tooltip="Refresh" />
         </ui:VisualElement>
