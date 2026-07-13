@@ -4,6 +4,10 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ## [2.1.1] - 2026-07-13
 
+### Added
+
+- **Analytics 面板按时间窗删除遥测数据** — Analytics 标签页工具栏新增红色垃圾桶图标按钮，可按当前所选时间窗（`1h`/`24h`/`7d`/`all`）删除遥测记录：`all` 清空主日志 + 全部滚动文件，其他窗仅删除 `ts >= cutoff` 的窗内记录、窗外数据保留。服务层 `SkillTelemetryService.DeleteWindow` 在写锁内先 flush 队列再改写，防并发 `Record` 回写；删除后清空 analytics/recommendation 缓存并即时刷新面板。删除前弹确认框（带时间窗名），成功后提示已删/剩余条数。
+
 ### Changed
 
 - **全部脚本追加制作者水印** — 为项目内全部 128 个 C# 脚本（`SkillsForUnity/**/*.cs`）与 Python 客户端 `unity_skills.py` 在文件末尾追加一行制作者标记注释（`Producer:Betsy`），以行注释形式置于文件最外层、不影响任何编译或运行逻辑；追加操作幂等（重复执行不会叠加）。
