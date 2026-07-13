@@ -11,9 +11,17 @@ namespace UnitySkills.Tests.Core
     [TestFixture]
     public class NewCapabilitiesTests
     {
+        private SkillsOperatingMode _savedMode;
+
         [SetUp]
         public void SetUp()
         {
+            // Batch steps here exercise write skills (incl. never-in-semi ones like
+            // gameobject_delete). Force Bypass so mode gating never silently turns a
+            // step into a MODE_FORBIDDEN no-op — otherwise diff assertions fail only
+            // when the persisted EditorPref mode happens to be auto/semi (e.g. fresh CI).
+            _savedMode = SkillsModeManager.CurrentMode;
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             GameObjectFinder.InvalidateCache();
         }
@@ -22,6 +30,7 @@ namespace UnitySkills.Tests.Core
         public void TearDown()
         {
             GameObjectFinder.InvalidateCache();
+            SkillsModeManager.CurrentMode = _savedMode;
         }
 
         [TestCase("macOS", BuildTarget.StandaloneOSX)]
@@ -66,11 +75,27 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void BuildPlayer_ExplicitScenesValidate()
         {
-            const string path = "Assets/Scenes/SampleScene.unity";
-            Assert.That(File.Exists(Path.GetFullPath(path)), Is.True, "The validation projects must contain Assets/Scenes/SampleScene.unity.");
-            Assert.That(BuildPlayerService.TryResolveScenes(new[] { path }, out var scenes, out var error), Is.True, error);
-            Assert.That(scenes, Is.EqualTo(new[] { path }));
-            Assert.That(BuildPlayerService.TryResolveScenes(new[] { "Assets/Missing.unity" }, out _, out _), Is.False);
+            // Create a throwaway scene on disk so the check never depends on the host
+            // project shipping Assets/Scenes/SampleScene.unity (a fresh CI project has none).
+            const string dir = "Assets/Temp";
+            var path = $"{dir}/BuildPlayerValidation_{Guid.NewGuid():N}.unity";
+            if (!AssetDatabase.IsValidFolder(dir))
+                AssetDatabase.CreateFolder("Assets", "Temp");
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            Assert.That(EditorSceneManager.SaveScene(scene, path), Is.True, "Failed to write the temporary validation scene.");
+            try
+            {
+                Assert.That(File.Exists(Path.GetFullPath(path)), Is.True, "The temporary validation scene was not created on disk.");
+                Assert.That(BuildPlayerService.TryResolveScenes(new[] { path }, out var scenes, out var error), Is.True, error);
+                Assert.That(scenes, Is.EqualTo(new[] { path }));
+                Assert.That(BuildPlayerService.TryResolveScenes(new[] { "Assets/Missing.unity" }, out _, out _), Is.False);
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(path);
+                if (AssetDatabase.IsValidFolder(dir) && AssetDatabase.FindAssets(string.Empty, new[] { dir }).Length == 0)
+                    AssetDatabase.DeleteAsset(dir);
+            }
         }
 
         [TestCase(4, 4, 100, 0)]

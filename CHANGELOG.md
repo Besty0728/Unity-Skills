@@ -2,6 +2,18 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.1.2] - 2026-07-13
+
+### Fixed
+
+- **CI EditMode 测试在纯净工程下必挂两处** — `NewCapabilitiesTests` 首次纳入编译矩阵（tag `v2.1.1`）即全线红。两处均为测试隔离缺陷、与产品/运行时代码无关：
+  - `BatchDiff_DeleteExistingObject_ReportsRemoved` — fixture 未强制 Bypass 模式，`gameobject_delete`（never-in-semi）在默认 `auto` 模式下被门禁拦为 `MODE_FORBIDDEN` 空操作，删除从未发生、`sceneDiff.removed` 恒为 0。此前仅因作者机器 EditorPrefs 残留 Bypass 才通过，CI 空工程默认 `auto` 即暴露。现于 SetUp/TearDown 保存并切换到 `SkillsOperatingMode.Bypass`（对齐 `DeepInspectorSkillTests` 等同类 fixture）。
+  - `BuildPlayer_ExplicitScenesValidate` — 硬编码假设 `Assets/Scenes/SampleScene.unity` 存在于磁盘，CI 临时空工程无此文件。改为自建自清理临时场景（`Assets/Temp/BuildPlayerValidation_<guid>.unity`），不再依赖宿主工程布局。
+
+### Changed
+
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.1.2`。
+
 ## [2.1.1] - 2026-07-13
 
 ### Added
