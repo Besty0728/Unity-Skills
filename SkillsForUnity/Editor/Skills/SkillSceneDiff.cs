@@ -29,13 +29,17 @@ namespace UnitySkills
 
         /// <summary>
         /// 前捕获单对象记录。对象销毁后 Unity 假 null 会让 obj.name / GetType() 抛异常，
-        /// 故 name / typeName / instanceId 必须在前捕获时就固化，供 removed 报告使用。
+        /// 故 name / typeName / entityId 必须在前捕获时就固化，供 removed 报告使用。
+        /// EntityId 走 <see cref="UnityObjectIdUtility.GetEntityId"/> 兼容层（6000.4+ 用 entityId，
+        /// 旧版回退 instanceId 字符串），既是进程内去重键也是 JSON 输出句柄；LegacyInstanceId
+        /// 仅在旧版非零，用于兼容既有 instanceId 输出字段。
         /// </summary>
         internal sealed class ObjectSnapshot
         {
             public UnityEngine.Object Obj;
-            public int InstanceId;
-            public int OwnerGameObjectId;
+            public string EntityId;
+            public string OwnerEntityId;
+            public int LegacyInstanceId;
             public string Name;
             public string TypeName;
             public string BeforeJson;
@@ -44,8 +48,8 @@ namespace UnitySkills
         internal sealed class DiffCapture
         {
             public readonly List<ObjectSnapshot> Snapshots = new List<ObjectSnapshot>();
-            // 前捕获对象的 instanceId 集，用于 added 阶段排除"本就存在的目标"。
-            public readonly HashSet<int> CapturedInstanceIds = new HashSet<int>();
+            // 前捕获对象的 entityId 集，用于 added 阶段排除"本就存在的目标"。
+            public readonly HashSet<string> CapturedEntityIds = new HashSet<string>();
             public bool Limited;
             public bool HadTargets;
             public string Error;
@@ -53,8 +57,8 @@ namespace UnitySkills
 
         internal sealed class BatchDiffCapture
         {
-            public readonly Dictionary<int, ObjectSnapshot> Snapshots = new Dictionary<int, ObjectSnapshot>();
-            public readonly Dictionary<int, UnityEngine.Object> AddedObjects = new Dictionary<int, UnityEngine.Object>();
+            public readonly Dictionary<string, ObjectSnapshot> Snapshots = new Dictionary<string, ObjectSnapshot>();
+            public readonly Dictionary<string, UnityEngine.Object> AddedObjects = new Dictionary<string, UnityEngine.Object>();
             public bool Limited;
             public bool HadWritableSteps;
             public string Error;
@@ -73,7 +77,8 @@ namespace UnitySkills
                 foreach (var obj in targets)
                 {
                     if (obj == null) continue;
-                    var id = obj.GetInstanceID();
+                    var id = UnityObjectIdUtility.GetEntityId(obj);
+                    if (id == null) continue;
                     if (capture.AddedObjects.ContainsKey(id) || IsPartOfAddedObject(capture, obj) || capture.Snapshots.ContainsKey(id)) continue;
                     if (capture.Snapshots.Count >= MaxBatchCaptureObjects)
                     {
@@ -83,8 +88,9 @@ namespace UnitySkills
                     capture.Snapshots[id] = new ObjectSnapshot
                     {
                         Obj = obj,
-                        InstanceId = id,
-                        OwnerGameObjectId = obj is Component component ? component.gameObject.GetInstanceID() : 0,
+                        EntityId = id,
+                        OwnerEntityId = obj is Component component ? UnityObjectIdUtility.GetEntityId(component.gameObject) : null,
+                        LegacyInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(obj),
                         Name = obj.name,
                         TypeName = obj.GetType().Name,
                         BeforeJson = EditorJsonUtility.ToJson(obj),
@@ -124,16 +130,16 @@ namespace UnitySkills
             {
                 var changed = new JArray();
                 var removed = new JArray();
-                var removedGameObjectIds = new HashSet<int>(capture.Snapshots.Values
+                var removedGameObjectIds = new HashSet<string>(capture.Snapshots.Values
                     .Where(snap => snap.Obj == null && snap.TypeName == nameof(GameObject))
-                    .Select(snap => snap.InstanceId));
+                    .Select(snap => snap.EntityId));
                 foreach (var snap in capture.Snapshots.Values)
                 {
                     if (snap.Obj == null)
                     {
                         if (snap.TypeName != nameof(GameObject) && WasComponentOfRemovedGameObject(capture, snap, removedGameObjectIds))
                             continue;
-                        removed.Add(new JObject { ["name"] = snap.Name, ["type"] = snap.TypeName, ["instanceId"] = snap.InstanceId });
+                        removed.Add(BuildIdentity(snap.Name, snap.TypeName, snap.EntityId, snap.LegacyInstanceId));
                         continue;
                     }
                     string afterJson;
@@ -143,7 +149,7 @@ namespace UnitySkills
                     if (changes.Count == 0) continue;
                     changed.Add(new JObject
                     {
-                        ["target"] = new JObject { ["name"] = snap.Obj.name, ["type"] = snap.TypeName, ["instanceId"] = snap.InstanceId },
+                        ["target"] = BuildIdentity(snap.Obj.name, snap.TypeName, snap.EntityId, snap.LegacyInstanceId),
                         ["changes"] = new JArray(changes),
                         ["truncated"] = truncated,
                     });
@@ -155,11 +161,9 @@ namespace UnitySkills
                     var obj = pair.Value;
                     if (obj == null) continue;
                     string path = obj is GameObject go ? GameObjectFinder.GetPath(go) : AssetDatabase.GetAssetPath(obj);
-                    added.Add(new JObject
-                    {
-                        ["name"] = obj.name, ["type"] = obj.GetType().Name,
-                        ["instanceId"] = pair.Key, ["path"] = string.IsNullOrEmpty(path) ? null : path,
-                    });
+                    var identity = BuildIdentity(obj.name, obj.GetType().Name, pair.Key, UnityObjectIdUtility.GetLegacyInstanceId(obj));
+                    identity["path"] = string.IsNullOrEmpty(path) ? null : path;
+                    added.Add(identity);
                 }
                 return new JObject
                 {
@@ -178,7 +182,8 @@ namespace UnitySkills
         private static void TrackAddedObject(BatchDiffCapture capture, UnityEngine.Object obj)
         {
             if (obj == null) return;
-            var id = obj.GetInstanceID();
+            var id = UnityObjectIdUtility.GetEntityId(obj);
+            if (id == null) return;
             if (!capture.Snapshots.ContainsKey(id) && !capture.AddedObjects.ContainsKey(id))
                 capture.AddedObjects[id] = obj;
         }
@@ -186,20 +191,23 @@ namespace UnitySkills
         private static bool IsPartOfAddedObject(BatchDiffCapture capture, UnityEngine.Object obj)
         {
             if (obj is Component component && component.gameObject != null)
-                return capture.AddedObjects.ContainsKey(component.gameObject.GetInstanceID());
+            {
+                var ownerId = UnityObjectIdUtility.GetEntityId(component.gameObject);
+                return ownerId != null && capture.AddedObjects.ContainsKey(ownerId);
+            }
             return false;
         }
 
         private static bool WasComponentOfRemovedGameObject(
-            BatchDiffCapture capture, ObjectSnapshot componentSnapshot, HashSet<int> removedGameObjectIds)
+            BatchDiffCapture capture, ObjectSnapshot componentSnapshot, HashSet<string> removedGameObjectIds)
         {
             if (removedGameObjectIds.Count == 0 || componentSnapshot == null)
                 return false;
 
             // Destroyed Unity components can no longer expose gameObject, so ownership is fixed in
             // the pre-execution snapshot and remains usable after Unity's fake-null transition.
-            return componentSnapshot.OwnerGameObjectId != 0 &&
-                removedGameObjectIds.Contains(componentSnapshot.OwnerGameObjectId);
+            return !string.IsNullOrEmpty(componentSnapshot.OwnerEntityId) &&
+                removedGameObjectIds.Contains(componentSnapshot.OwnerEntityId);
         }
 
         /// <summary>
@@ -220,8 +228,10 @@ namespace UnitySkills
                 {
                     if (obj == null)
                         continue;
-                    int id = obj.GetInstanceID();
-                    if (capture.CapturedInstanceIds.Contains(id))
+                    string id = UnityObjectIdUtility.GetEntityId(obj);
+                    if (id == null)
+                        continue;
+                    if (capture.CapturedEntityIds.Contains(id))
                         continue; // 同一对象被多个定位规则命中时去重
                     if (capture.Snapshots.Count >= MaxCaptureObjects)
                     {
@@ -229,12 +239,13 @@ namespace UnitySkills
                         break;
                     }
 
-                    capture.CapturedInstanceIds.Add(id);
+                    capture.CapturedEntityIds.Add(id);
                     capture.Snapshots.Add(new ObjectSnapshot
                     {
                         Obj = obj,
-                        InstanceId = id,
-                        OwnerGameObjectId = obj is Component component ? component.gameObject.GetInstanceID() : 0,
+                        EntityId = id,
+                        OwnerEntityId = obj is Component component ? UnityObjectIdUtility.GetEntityId(component.gameObject) : null,
+                        LegacyInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(obj),
                         Name = obj.name,
                         TypeName = obj.GetType().Name,
                         BeforeJson = EditorJsonUtility.ToJson(obj),
@@ -272,12 +283,7 @@ namespace UnitySkills
                     // Unity 假 null：对象在执行期间被销毁。用前捕获固化的展示字段报告。
                     if (snap.Obj == null)
                     {
-                        removed.Add(new JObject
-                        {
-                            ["name"] = snap.Name,
-                            ["type"] = snap.TypeName,
-                            ["instanceId"] = snap.InstanceId,
-                        });
+                        removed.Add(BuildIdentity(snap.Name, snap.TypeName, snap.EntityId, snap.LegacyInstanceId));
                         continue;
                     }
 
@@ -291,18 +297,13 @@ namespace UnitySkills
 
                     changed.Add(new JObject
                     {
-                        ["target"] = new JObject
-                        {
-                            ["name"] = snap.Obj.name,
-                            ["type"] = snap.TypeName,
-                            ["instanceId"] = snap.InstanceId,
-                        },
+                        ["target"] = BuildIdentity(snap.Obj.name, snap.TypeName, snap.EntityId, snap.LegacyInstanceId),
                         ["changes"] = new JArray(changes),
                         ["truncated"] = truncated,
                     });
                 }
 
-                var added = BuildAdded(result, capture.CapturedInstanceIds);
+                var added = BuildAdded(result, capture.CapturedEntityIds);
 
                 var diff = new JObject();
                 if (!capture.HadTargets)
@@ -344,7 +345,7 @@ namespace UnitySkills
         /// entityId 优先（Unity 6000.4+ result 里 instanceId 恒为 0，entityId 才是真标识），
         /// 解回统一走 <see cref="UnityObjectIdUtility"/> 兼容层规避 obsolete API。
         /// </summary>
-        private static JArray BuildAdded(object result, HashSet<int> capturedInstanceIds)
+        private static JArray BuildAdded(object result, HashSet<string> capturedEntityIds)
         {
             var added = new JArray();
             try
@@ -357,11 +358,11 @@ namespace UnitySkills
                 var instanceIds = new List<int>();
                 CollectIds(token, entityIds, instanceIds);
 
-                var seen = new HashSet<int>();
+                var seen = new HashSet<string>();
                 foreach (var eid in entityIds)
-                    TryAddNewObject(UnityObjectIdUtility.EntityIdToObject(eid), capturedInstanceIds, seen, added);
+                    TryAddNewObject(UnityObjectIdUtility.EntityIdToObject(eid), capturedEntityIds, seen, added);
                 foreach (var iid in instanceIds)
-                    TryAddNewObject(UnityObjectIdUtility.ObjectIdToObject(iid), capturedInstanceIds, seen, added);
+                    TryAddNewObject(UnityObjectIdUtility.ObjectIdToObject(iid), capturedEntityIds, seen, added);
             }
             catch (Exception ex)
             {
@@ -370,12 +371,14 @@ namespace UnitySkills
             return added;
         }
 
-        private static void TryAddNewObject(UnityEngine.Object obj, HashSet<int> capturedInstanceIds, HashSet<int> seen, JArray added)
+        private static void TryAddNewObject(UnityEngine.Object obj, HashSet<string> capturedEntityIds, HashSet<string> seen, JArray added)
         {
             if (obj == null)
                 return;
-            int id = obj.GetInstanceID();
-            if (capturedInstanceIds.Contains(id))
+            string id = UnityObjectIdUtility.GetEntityId(obj);
+            if (id == null)
+                return;
+            if (capturedEntityIds.Contains(id))
                 return; // 前捕获集已有 → 不是本次新建
             if (!seen.Add(id))
                 return; // 同一新对象被多个 id 字段指向，只报一次
@@ -390,13 +393,27 @@ namespace UnitySkills
                     path = assetPath;
             }
 
-            added.Add(new JObject
+            var identity = BuildIdentity(obj.name, obj.GetType().Name, id, UnityObjectIdUtility.GetLegacyInstanceId(obj));
+            identity["path"] = path;
+            added.Add(identity);
+        }
+
+        /// <summary>
+        /// 统一对象身份字段。始终输出 entityId（6000.4+ 唯一可靠句柄，旧版为 instanceId 字符串），
+        /// 旧版另附非零 instanceId 兼容既有消费方；6000.4+ 的 instanceId 恒为 0 故略去
+        /// （见 SKILL.md「Object location (Unity 6000.4+)」契约）。
+        /// </summary>
+        private static JObject BuildIdentity(string name, string type, string entityId, int legacyInstanceId)
+        {
+            var identity = new JObject
             {
-                ["name"] = obj.name,
-                ["type"] = obj.GetType().Name,
-                ["instanceId"] = id,
-                ["path"] = path,
-            });
+                ["name"] = name,
+                ["type"] = type,
+                ["entityId"] = entityId,
+            };
+            if (legacyInstanceId != 0)
+                identity["instanceId"] = legacyInstanceId;
+            return identity;
         }
 
         private static void CollectIds(JToken token, List<string> entityIds, List<int> instanceIds)

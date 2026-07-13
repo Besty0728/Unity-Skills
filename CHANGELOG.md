@@ -2,6 +2,19 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.1.3] - 2026-07-13
+
+### Fixed
+
+- **Unity 6000.5 编译失败（CS0619，30 处）** — Unity 6000.5 把 `Object.GetInstanceID()` 与 ObjectChangeEvents 的 `instanceId` / `newParentInstanceId` 系列字段从警告级过时升级为**错误级过时**（要求改用 `GetEntityId()` / `entityId`），导致 2.1.1 新增的 `SkillSceneDiff` 与 `EditorChangeTrackerService` 在 6000.5 上无法编译。两文件统一改走既有兼容层 `UnityObjectIdUtility`（`#if UNITY_6000_4_OR_NEWER` 用 entityId，旧版回退 instanceId 字符串）：
+  - `SkillSceneDiff` 的进程内去重键（快照字典/HashSet）与 JSON 输出句柄由 `int instanceId` 迁移到稳定 `entityId` 字符串；sceneDiff 的 `changed`/`added`/`removed` 对象现输出 `entityId`（旧版另附非零 `instanceId`），与 SKILL.md「6000.4+ 用 entityId 定位」契约一致。
+  - `EditorChangeTrackerService` 的 catalog 改为 entityId 键、事件按版本取 `entityId`/`instanceId`，**顺带修复其在 Unity 6000.4+ 上因 `ObjectIdToObject` 恒返回 null 而无法解析变更对象的潜在功能缺陷**。
+- **Unity 2022.3 面板缺字（`余 剩 遥`）** — 2.1.1 新增的遥测 UI 文案（"剩**余**"/"**遥**测"）引入了预烘焙静态 CJK 字体图集未包含的字形，Unity 2022 走静态图集路径时面板掉字（Unity 6 走动态 TTF 不受影响）。用 2022 编辑器重新烘焙 `UnitySkillsCN-UI.asset`（893 字，GUID 不变），补齐缺失字形。
+
+### Changed
+
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.1.3`。
+
 ## [2.1.2] - 2026-07-13
 
 ### Fixed

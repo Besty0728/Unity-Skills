@@ -33,6 +33,19 @@ namespace UnitySkills
 #endif
         }
 
+        /// <summary>
+        /// 把 ObjectChangeEvents 回调给出的原生 id 归一成与 <see cref="GetEntityId"/> 一致的稳定字符串键。
+        /// 6000.4+ 事件字段是 <c>EntityId</c>，旧版是 <c>int instanceId</c>——两条分支各自与
+        /// <see cref="GetEntityId"/> 对同一对象的输出相等，故可跨来源（对象/事件）互查 catalog。
+        /// </summary>
+#if UNITY_6000_4_OR_NEWER
+        public static string EntityKey(EntityId entityId)
+            => EntityId.ToULong(entityId).ToString(CultureInfo.InvariantCulture);
+#else
+        public static string EntityKey(int instanceId)
+            => instanceId.ToString(CultureInfo.InvariantCulture);
+#endif
+
         public static int GetObjectId(UnityEngine.Object obj)
         {
             return GetLegacyInstanceId(obj);

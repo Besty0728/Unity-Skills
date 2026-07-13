@@ -32,7 +32,7 @@ namespace UnitySkills
 
         private sealed class CatalogEntry
         {
-            public int InstanceId;
+            public string EntityId;
             public string Name;
             public string Path;
             public string ScenePath;
@@ -46,7 +46,7 @@ namespace UnitySkills
         }
 
         private static readonly Queue<JObject> Buffer = new Queue<JObject>(BufferCapacity + 1);
-        private static readonly Dictionary<int, CatalogEntry> Catalog = new Dictionary<int, CatalogEntry>();
+        private static readonly Dictionary<string, CatalogEntry> Catalog = new Dictionary<string, CatalogEntry>();
         private static readonly Dictionary<string, PendingPropertyChange> PendingProperties =
             new Dictionary<string, PendingPropertyChange>(StringComparer.Ordinal);
 
@@ -173,37 +173,65 @@ namespace UnitySkills
                     {
                         case ObjectChangeKind.CreateGameObjectHierarchy:
                             stream.GetCreateGameObjectHierarchyEvent(i, out var createArgs);
-                            change = CaptureCreated(createArgs.instanceId);
+#if UNITY_6000_4_OR_NEWER
+                            change = CaptureCreated(UnityObjectIdUtility.EntityKey(createArgs.entityId));
+#else
+                            change = CaptureCreated(UnityObjectIdUtility.EntityKey(createArgs.instanceId));
+#endif
                             break;
 
                         case ObjectChangeKind.DestroyGameObjectHierarchy:
                             stream.GetDestroyGameObjectHierarchyEvent(i, out var destroyArgs);
-                            change = CaptureDestroyed(destroyArgs.instanceId);
+#if UNITY_6000_4_OR_NEWER
+                            change = CaptureDestroyed(UnityObjectIdUtility.EntityKey(destroyArgs.entityId));
+#else
+                            change = CaptureDestroyed(UnityObjectIdUtility.EntityKey(destroyArgs.instanceId));
+#endif
                             break;
 
                         case ObjectChangeKind.ChangeGameObjectParent:
                             stream.GetChangeGameObjectParentEvent(i, out var parentArgs);
-                            change = CaptureReparented(parentArgs.instanceId, parentArgs.newParentInstanceId);
+#if UNITY_6000_4_OR_NEWER
+                            change = CaptureReparented(UnityObjectIdUtility.EntityKey(parentArgs.entityId), UnityObjectIdUtility.EntityKey(parentArgs.newParentEntityId));
+#else
+                            change = CaptureReparented(UnityObjectIdUtility.EntityKey(parentArgs.instanceId), UnityObjectIdUtility.EntityKey(parentArgs.newParentInstanceId));
+#endif
                             break;
 
                         case ObjectChangeKind.ChangeGameObjectStructure:
                             stream.GetChangeGameObjectStructureEvent(i, out var structureArgs);
-                            change = CaptureStructure(structureArgs.instanceId);
+#if UNITY_6000_4_OR_NEWER
+                            change = CaptureStructure(UnityObjectIdUtility.EntityKey(structureArgs.entityId));
+#else
+                            change = CaptureStructure(UnityObjectIdUtility.EntityKey(structureArgs.instanceId));
+#endif
                             break;
 
                         case ObjectChangeKind.ChangeGameObjectStructureHierarchy:
                             stream.GetChangeGameObjectStructureHierarchyEvent(i, out var hierarchyArgs);
-                            change = CaptureStructure(hierarchyArgs.instanceId);
+#if UNITY_6000_4_OR_NEWER
+                            change = CaptureStructure(UnityObjectIdUtility.EntityKey(hierarchyArgs.entityId));
+#else
+                            change = CaptureStructure(UnityObjectIdUtility.EntityKey(hierarchyArgs.instanceId));
+#endif
                             break;
 
                         case ObjectChangeKind.ChangeGameObjectOrComponentProperties:
                             stream.GetChangeGameObjectOrComponentPropertiesEvent(i, out var propertyArgs);
-                            RefreshCatalogForObject(propertyArgs.instanceId);
+#if UNITY_6000_4_OR_NEWER
+                            RefreshCatalogForObject(UnityObjectIdUtility.EntityKey(propertyArgs.entityId));
+#else
+                            RefreshCatalogForObject(UnityObjectIdUtility.EntityKey(propertyArgs.instanceId));
+#endif
                             break;
 
                         case ObjectChangeKind.ChangeChildrenOrder:
                             stream.GetChangeChildrenOrderEvent(i, out var orderArgs);
-                            change = CaptureReordered(orderArgs.instanceId);
+#if UNITY_6000_4_OR_NEWER
+                            change = CaptureReordered(UnityObjectIdUtility.EntityKey(orderArgs.entityId));
+#else
+                            change = CaptureReordered(UnityObjectIdUtility.EntityKey(orderArgs.instanceId));
+#endif
                             break;
 
 #if UNITY_6000_0_OR_NEWER
@@ -398,9 +426,9 @@ namespace UnitySkills
             });
         }
 
-        private static JObject CaptureCreated(int instanceId)
+        private static JObject CaptureCreated(string entityId)
         {
-            var go = ResolveGameObject(instanceId);
+            var go = ResolveGameObject(entityId);
             if (go == null || IsIgnored(go))
                 return null;
             UpsertCatalog(go);
@@ -412,10 +440,10 @@ namespace UnitySkills
             return change;
         }
 
-        private static JObject CaptureDestroyed(int instanceId)
+        private static JObject CaptureDestroyed(string entityId)
         {
-            if (!Catalog.TryGetValue(instanceId, out var entry))
-                return new JObject { ["kind"] = "gameobject_destroyed", ["instanceId"] = instanceId };
+            if (!Catalog.TryGetValue(entityId, out var entry))
+                return new JObject { ["kind"] = "gameobject_destroyed", ["entityId"] = entityId };
 
             var change = new JObject
             {
@@ -427,19 +455,19 @@ namespace UnitySkills
             };
 
             string childPrefix = string.IsNullOrEmpty(entry.Path) ? null : entry.Path + "/";
-            var removed = Catalog.Where(kv => kv.Key == instanceId ||
+            var removed = Catalog.Where(kv => kv.Key == entityId ||
                     (childPrefix != null && !string.IsNullOrEmpty(kv.Value.Path) &&
                      kv.Value.Path.StartsWith(childPrefix, StringComparison.Ordinal)))
                 .Select(kv => kv.Key).ToArray();
-            foreach (int id in removed)
+            foreach (string id in removed)
                 Catalog.Remove(id);
             return change;
         }
 
-        private static JObject CaptureReparented(int instanceId, int newParentInstanceId)
+        private static JObject CaptureReparented(string entityId, string newParentEntityId)
         {
-            Catalog.TryGetValue(instanceId, out var before);
-            var go = ResolveGameObject(instanceId);
+            Catalog.TryGetValue(entityId, out var before);
+            var go = ResolveGameObject(entityId);
             if (go == null || IsIgnored(go))
                 return null;
 
@@ -450,19 +478,19 @@ namespace UnitySkills
                 ["fromPath"] = before?.Path,
                 ["toPath"] = GameObjectFinder.GetPath(go),
                 ["newParentPath"] = go.transform.parent != null ? GameObjectFinder.GetPath(go.transform.parent.gameObject) : null,
-                ["newParentInstanceId"] = newParentInstanceId
+                ["newParentEntityId"] = newParentEntityId
             };
             CatalogHierarchy(go);
             return change;
         }
 
-        private static JObject CaptureStructure(int instanceId)
+        private static JObject CaptureStructure(string entityId)
         {
-            var go = ResolveGameObject(instanceId);
+            var go = ResolveGameObject(entityId);
             if (go == null || IsIgnored(go))
                 return null;
 
-            Catalog.TryGetValue(instanceId, out var before);
+            Catalog.TryGetValue(entityId, out var before);
             var after = SnapshotComponentTypes(go);
             DiffComponentTypes(before?.ComponentTypes, after, out var added, out var removed);
             UpsertCatalog(go);
@@ -477,9 +505,9 @@ namespace UnitySkills
             return change;
         }
 
-        private static JObject CaptureReordered(int instanceId)
+        private static JObject CaptureReordered(string entityId)
         {
-            var go = ResolveGameObject(instanceId);
+            var go = ResolveGameObject(entityId);
             if (go == null || IsIgnored(go))
                 return null;
             var change = new JObject { ["kind"] = "children_reordered" };
@@ -487,9 +515,9 @@ namespace UnitySkills
             return change;
         }
 
-        private static void RefreshCatalogForObject(int instanceId)
+        private static void RefreshCatalogForObject(string entityId)
         {
-            var obj = UnityObjectIdUtility.ObjectIdToObject(instanceId);
+            var obj = UnityObjectIdUtility.EntityIdToObject(entityId);
             var go = obj as GameObject ?? (obj as Component)?.gameObject;
             if (go != null && !IsIgnored(go))
                 CatalogHierarchy(go);
@@ -519,10 +547,12 @@ namespace UnitySkills
 
         private static void UpsertCatalog(GameObject go)
         {
-            int id = go.GetInstanceID();
+            string id = UnityObjectIdUtility.GetEntityId(go);
+            if (id == null)
+                return;
             Catalog[id] = new CatalogEntry
             {
-                InstanceId = id,
+                EntityId = id,
                 Name = go.name,
                 Path = GameObjectFinder.GetPath(go),
                 ScenePath = go.scene.path,
@@ -566,9 +596,9 @@ namespace UnitySkills
             removed = removedList.ToArray();
         }
 
-        private static GameObject ResolveGameObject(int instanceId)
+        private static GameObject ResolveGameObject(string entityId)
         {
-            var obj = UnityObjectIdUtility.ObjectIdToObject(instanceId);
+            var obj = UnityObjectIdUtility.EntityIdToObject(entityId);
             return obj as GameObject ?? (obj as Component)?.gameObject;
         }
 
