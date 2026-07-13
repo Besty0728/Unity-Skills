@@ -12,7 +12,7 @@ Use this skill when the user wants to automate the Unity Editor through the loca
 The schema is the canonical source for exact skill names, parameters, defaults, and returns — **but you rarely need the expensive layers**. Route by task shape (all layers are server-cached with ETag/304 and served off the main thread):
 
 - **Intent is specific** ("create a cube", "set this SO field") → `GET /skills/recommend?intent=<words>&topN=10&includeSchema=true` (~2-5 KB) returns scored candidates **with parameter schemas** — often the only lookup you need. If you already know the skill name, skip lookups entirely and go straight to the dryRun gate below.
-- **Task touches one or two areas** → directory first: `GET /skills?brief=1` (~19 KB ≈ 3.4K tokens — all 731 skill names grouped by module, names are self-describing `module_verb`) to lock the module(s), then `GET /skills/schema?category=<Category>` (~13–44 KB) for exact signatures. Typical session cost ≈ 10K tokens instead of 35K.
+- **Task touches one or two areas** → directory first: `GET /skills?brief=1` (~19 KB ≈ 3.4K tokens — all 733 skill names grouped by module, names are self-describing `module_verb`) to lock the module(s), then `GET /skills/schema?category=<Category>` (~13–44 KB) for exact signatures. Typical session cost ≈ 10K tokens instead of 35K.
 - **Exploratory / cross-module / unsure what exists** → full awareness: `GET /skills?summary=1` (~143 KB ≈ 35K tokens — every skill's full description). The only layer with all descriptions at once; reach for it when the cheaper layers left you unsure, **not by default**.
 - **Full detail (rare)**: `GET /skills/schema` — full schema with exact parameter schemas (~`618 KB` ≈ 150K tokens, client-cached 300s + disk-cached under `~/.unity_skills/cache/` with ETag/304 revalidation, so short-lived CLI processes reuse it too). Only when you need many modules' exact signatures at once.
 
@@ -20,7 +20,7 @@ Python helper shortcuts: `unity_skills.search_skills("keyword")` greps the cache
 
 **Before executing a skill — the dryRun gate (do not skip).** The lite/summary manifest is for *awareness* (picking the right skill), not for calling. Descriptions are informal (human-written, not a formal signature; some omit parameter hints) and parameter schemas are omitted. Before the first execution of any skill whose exact parameters you don't already hold in context, **dryRun it**: `POST /skill/<name>?mode=dryRun` with your best-guess args. The server validates parameters and, on error, returns `unknownParams` with `suggestions` (the correct parameter names) plus the full `parameters` schema — iterate until `valid: true`, then execute without `?mode=dryRun`. This is the mechanism that turns "awareness" into "correct operation steps"; never guess parameters from descriptions and never skip dryRun for a skill you have not yet called successfully this session. Mode values are strictly validated (v2.1.0+): a mistyped `?mode=` / `?dryRun=` value (e.g. `mode=dry_run`, `dryRun=1`) is rejected with `INVALID_MODE` and the request is **not** executed — a typo can never silently fall through to a real execution.
 
-**Inspect what a write changed — `?diff=1` (opt-in).** Append `?diff=1` to a single write-skill call (`POST /skill/<name>?diff=1`) and a successful response carries a top-level `sceneDiff` summarizing the scene delta, so you can confirm a mutation did exactly what you intended without a follow-up read: `{changed:[{target:{name,type,instanceId}, changes:[{path, before, after}], truncated}], added:[...], removed:[...], captureLimited}`. Property paths are type-prefixed (e.g. `Rigidbody.m_Mass`). A read-only skill returns a `note` instead of a diff; an illegal `diff` value is rejected `400`; capture is capped at 20 objects × 50 changes each (`captureLimited`/`truncated` flag the cutoff). Single-skill only — `POST /skills/batch` does not support it.
+**Inspect what a write changed — `?diff=1` (opt-in).** Append `?diff=1` to `POST /skill/<name>` or `POST /skills/batch`. A successful response carries a top-level `sceneDiff` with `changed` / `added` / `removed`; batch returns the final net change across successful steps and builds the diff after transactional rollback. Read-only calls return a note, dry runs do not capture, and invalid values are rejected before execution.
 
 **Multi-skill tasks — aggregate-plan first.** When a task needs several skills in sequence, call `workflow_plan` (`POST` a JSON array of `{name, params}` steps) before executing any of them. It returns combined `steps`, `dependencies`, `totalRisk`, and `warnings`, so you sequence correctly and surface cross-step blockers before the first mutation. Then dryRun + execute each step in order.
 
@@ -31,7 +31,7 @@ Python helper shortcuts: `unity_skills.search_skills("keyword")` greps the cache
 
 Use module `SKILL.md` files for routing guidance, guardrails, and minimal examples, not as the canonical source of exact signatures.
 
-Current snapshot: `731` REST skills, `51` functional source modules, `69` module documentation directories (`49` REST/module docs + `20` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `733` REST skills, `51` functional source modules, `69` module documentation directories (`49` REST/module docs + `20` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`
 
@@ -115,7 +115,7 @@ Mode authorization (persistent, per-skill) and `ConfirmationToken` (single-shot,
 
 ### Skill Mode Annotation
 
-The REST surface (`731` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
+The REST surface (`733` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
 
 | Annotation | Count | Source |
 |---|---|---|
@@ -136,7 +136,7 @@ Three read-only endpoints close the loop after a mutation — most useful across
 
 **`GET /events` — long-poll event channel.** Instead of hammering `/compile/status` in a loop, subscribe to a 500-entry in-memory ring buffer. Query: `since` (omit = wait only for events newer than the current max seq; `0` = replay the whole buffer), `timeout` (seconds, default 25, clamped 1–55), `types` (comma-separated filter). Response: `{status, events:[{seq, type, tsUtc, payload}], cursor, oldestSeq, dropped, timedOut}`; carry `cursor` into the next call's `since` to resume. Event types: `compilation_started` / `compilation_finished` (carries `firstErrors`, first 5) / `before_domain_reload` / `after_domain_reload` / `server_restored` / `playmode_changed` / `console_error` (throttled 20/s with `droppedSinceLast`) / `job_completed` / `job_failed`. `seq` is monotonic and never rewinds across reloads; a reload discards in-flight events, signalled by `dropped:true`. **Reconnect anchor:** the "compilation succeeded" event is lost when Domain Reload tears down the connection — after reconnecting, read `server_restored`, whose `payload` carries the `lastCompilation` summary, to recover the verdict you missed.
 
-**`GET /analytics` — execution telemetry.** Aggregates how skills have been performing. Query `?window=1h|24h|7d|all` (default `24h`). Response: `summary` (`totalCalls` / `okCalls` / `errorCalls` / `errorRate` / `uniqueSkills`), `topSkills`, `errorCodes` (with per-code `topSkills` attribution), `errorProneSkills` (calls ≥ 5), `slowestSkills` (calls ≥ 3), `byMode`, `byAgent`, `recentErrors`. Backed by a telemetry log (`Library/UnitySkillsTelemetry.jsonl`, toggled by EditorPrefs `UnitySkills_TelemetryEnabled`, default on); `mode` distinguishes `execute` / `dryRun` / `plan` / `batch_step` / `batch_step_dryRun`, and results are cached ~30s. Use it to spot which skill keeps failing or dragging before you re-discover it the hard way.
+**`GET /analytics` — execution telemetry.** Aggregates how skills have been performing. Query `?window=1h|24h|7d|all` (default `24h`). The same local data feeds `/skills/recommend`: at least 5 valid calls are required before a high failure rate applies a bounded 1–3 point penalty; slow skills are warned but not penalized. Client/permission errors are ignored, and telemetry disabled means recommendation order remains semantic-only.
 
 ## Core Rules
 

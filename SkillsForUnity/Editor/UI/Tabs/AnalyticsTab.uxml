@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements"
+         xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements"
+         editor="UnityEditor.UIElements"
+         noNamespaceSchemaLocation="../../../../../../../UIElementsSchema/UIElementsSchema.xsd">
+
+    <ui:VisualElement style="flex-grow: 1; flex-direction: column; min-height: 0;">
+
+        <!-- Toolbar: title + window selector + refresh -->
+        <ui:VisualElement name="analytics-toolbar" class="history-toolbar"
+                          style="flex-direction: row; align-items: center; flex-shrink: 0;">
+            <ui:Label name="analytics-title" class="bold-label" text="Skill Analytics" />
+            <ui:VisualElement style="flex-grow: 1;" />
+            <ui:Label name="analytics-window-label" class="setting-hint"
+                      style="margin-right: 6px; margin-top: 0;" text="Window" />
+            <ui:DropdownField name="analytics-window-dropdown"
+                              style="width: 120px; margin-right: 4px;" />
+            <ui:Button name="analytics-reveal-btn" class="mini-btn" text="Reveal log" />
+            <ui:Button name="analytics-refresh-btn" class="mini-btn" tooltip="Refresh" />
+        </ui:VisualElement>
+
+        <!-- State banners (only one shown at a time) -->
+        <ui:HelpBox name="analytics-disabled" message-type="Info"
+                    style="margin: 8px 10px 0 10px; display: none;" />
+        <ui:HelpBox name="analytics-empty" message-type="Info"
+                    style="margin: 8px 10px 0 10px; display: none;" />
+
+        <!-- Scroll body -->
+        <ui:ScrollView name="analytics-scroll" class="scroll-view"
+                       style="flex-grow: 1; min-height: 0;">
+
+            <!-- Summary stat cards -->
+            <ui:VisualElement name="analytics-summary" class="analytics-summary"
+                              style="flex-direction: row; flex-wrap: wrap;" />
+
+            <!-- Section: most used -->
+            <ui:Label name="analytics-top-title" class="history-group-title accent" />
+            <ui:VisualElement name="analytics-top-list" class="analytics-table" />
+
+            <!-- Section: error-prone -->
+            <ui:Label name="analytics-errorprone-title" class="history-group-title"
+                      style="margin-top: 10px;" />
+            <ui:VisualElement name="analytics-errorprone-list" class="analytics-table" />
+
+            <!-- Section: slowest -->
+            <ui:Label name="analytics-slowest-title" class="history-group-title"
+                      style="margin-top: 10px;" />
+            <ui:VisualElement name="analytics-slowest-list" class="analytics-table" />
+
+            <!-- Section: error codes -->
+            <ui:Label name="analytics-errorcodes-title" class="history-group-title"
+                      style="margin-top: 10px;" />
+            <ui:VisualElement name="analytics-errorcodes-list" class="analytics-table" />
+
+            <!-- Section: recent errors -->
+            <ui:Label name="analytics-recent-title" class="history-group-title"
+                      style="margin-top: 10px;" />
+            <ui:VisualElement name="analytics-recent-list" class="analytics-table" />
+
+        </ui:ScrollView>
+    </ui:VisualElement>
+</ui:UXML>

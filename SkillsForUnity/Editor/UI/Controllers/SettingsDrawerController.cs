@@ -76,6 +76,8 @@ namespace UnitySkills
         private DropdownField _logDropdown;
         private Toggle        _confirmToggle;
         private Label         _confirmHint;
+        private Toggle        _telemetryToggle;
+        private Label         _telemetryHint;
 
         // Stats group
         private Label  _statsGroupTitle;
@@ -190,6 +192,8 @@ namespace UnitySkills
             _logDropdown       = _drawerContainer.Q<DropdownField>("loglevel-dropdown");
             _confirmToggle     = _drawerContainer.Q<Toggle>("confirm-toggle");
             _confirmHint       = _drawerContainer.Q<Label>("confirm-hint");
+            _telemetryToggle   = _drawerContainer.Q<Toggle>("telemetry-toggle");
+            _telemetryHint     = _drawerContainer.Q<Label>("telemetry-hint");
 
             _statsGroupTitle = _drawerContainer.Q<Label>("group-stats-title");
             _statsHint       = _drawerContainer.Q<Label>("stats-hint");
@@ -273,6 +277,13 @@ namespace UnitySkills
                         ConfirmationTokenService.RequireConfirmation = evt.newValue;
                 });
 
+            if (_telemetryToggle != null)
+                _telemetryToggle.RegisterValueChangedCallback(evt =>
+                {
+                    if (evt.newValue != SkillTelemetryService.Enabled)
+                        SkillTelemetryService.Enabled = evt.newValue;
+                });
+
             if (_statsResetBtn != null)
                 _statsResetBtn.clicked += () =>
                 {
@@ -317,6 +328,7 @@ namespace UnitySkills
             if (_timeoutField   != null) _timeoutField.value     = SkillsHttpServer.RequestTimeoutMinutes;
             if (_keepaliveField != null) _keepaliveField.value   = SkillsHttpServer.KeepAliveIntervalSeconds;
             if (_confirmToggle  != null) _confirmToggle.value    = ConfirmationTokenService.RequireConfirmation;
+            if (_telemetryToggle != null) _telemetryToggle.value = SkillTelemetryService.Enabled;
         }
 
         public void Open()
@@ -406,6 +418,11 @@ namespace UnitySkills
                     ? "开启后：删除类/RiskLevel=high 技能首次调用返回 _confirm token + dryRun 预览，5 分钟内带 token 重试才执行。"
                     : "When ON: delete / high-risk skills first return a _confirm token + dryRun preview; re-call within 5 min with the token to execute.";
             }
+
+            if (_telemetryToggle != null)
+                _telemetryToggle.label = SkillsLocalization.Get("drawer_telemetry_label");
+            if (_telemetryHint != null)
+                _telemetryHint.text = SkillsLocalization.Get("drawer_telemetry_hint");
 
             if (_statsHint     != null) _statsHint.text     = SkillsLocalization.Get("drawer_stats_hint");
             if (_statsResetBtn != null) _statsResetBtn.text = SkillsLocalization.Get("drawer_reset_stats_btn");
@@ -737,3 +754,5 @@ namespace UnitySkills
         }
     }
 }
+
+// Producer:Betsy

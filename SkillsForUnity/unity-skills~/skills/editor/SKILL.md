@@ -11,7 +11,7 @@ Observe and control the Unity Editor without parsing scene YAML.
 
 - **Approval**：本模块 Mixed —— `editor_get_changes` / `editor_get_selection` / `editor_get_context` / `editor_get_state` / `editor_get_tags` / `editor_get_layers` 标 `SkillMode.SemiAuto`，可直接执行；其余 `editor_select` / `editor_undo` / `editor_redo` / `editor_execute_menu` 默认 FullAuto，Approval 模式下需 grant。
 - **Auto / Bypass**：FullAuto 直接执行。
-- **含 NeverInSemi 高危 skill**：`editor_play` / `editor_stop` / `editor_pause`（标 `MayEnterPlayMode = true`，进出 PlayMode 会丢失运行时改动）。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
+- **含 NeverInSemi 高危 skill**：`editor_play` / `editor_play_capture` / `editor_stop` / `editor_pause`（标 `MayEnterPlayMode = true`）。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
 
 **DO NOT** (common hallucinations):
 - `editor_run` does not exist → use `editor_play` to enter play mode
@@ -31,6 +31,7 @@ Observe and control the Unity Editor without parsing scene YAML.
 | Skill | Description |
 |-------|-------------|
 | `editor_play` | Enter play mode |
+| `editor_play_capture` | Observe runtime errors, optionally screenshot, then exit |
 | `editor_stop` | Exit play mode |
 | `editor_pause` | Toggle pause |
 | `editor_select` | Select GameObject |
@@ -53,6 +54,9 @@ Observe and control the Unity Editor without parsing scene YAML.
 Enter play mode. Warning: any unsaved scene changes made during Play mode will be lost when exiting.
 
 **Returns**: `{success, mode, jobId}` — `mode="playing"`, `jobId` returned from `AsyncJobService` so callers can poll `entering_play_mode` completion.
+
+### editor_play_capture
+Enter Play Mode, observe errors for `durationSeconds` (default 10, range 1–300), optionally capture the Game View, then exit. Returns a Job whose result includes `healthy`, error aggregates, `stoppedEarly`, and `screenshotPath`.
 
 ### editor_stop
 Exit play mode.

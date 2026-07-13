@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-731-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-733-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
@@ -30,8 +30,8 @@
 
 ## 🚀 核心特性
 
-- 🛠️ **731 REST Skills 全能库**：包含 51 个功能源码模块和 20 个 advisory 设计模块，支持 Batch 批处理，一次操控多个对象。
-- ⚡ **调用效率革命性提升 (v2.0.1+)**：Schema 缓存 + 指数退避轮询 + BATCH-FIRST 引导 → **Token 消耗 ↓ 96%**，**简单任务 4-6 次调用 → 1 次（↓ 75-83%）**。当前：v2.1.0。
+- 🛠️ **733 REST Skills 全能库**：包含 51 个功能源码模块和 20 个 advisory 设计模块，支持 Batch 批处理，一次操控多个对象。
+- ⚡ **调用效率革命性提升 (v2.0.1+)**：Schema 缓存 + 指数退避轮询 + BATCH-FIRST 引导 → **Token 消耗 ↓ 96%**，**简单任务 4-6 次调用 → 1 次（↓ 75-83%）**。当前：v2.1.1。
 - 🔐 **三档权限模式 (v1.9.0+)**：Approval / Auto / Bypass，配合双轨审批渠道（Dialog / Panel），对齐 Claude Code permission modes；老用户升级零感知。
 - 🤖 **4 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor，一键安装即用。
 - 🛡️ **事务原子性保障**：操作失败自动回滚，场景永不残留，确保流程安全。
@@ -173,7 +173,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ---
 
 <details>
-<summary><h2>📦 Skills 分类概要 (731)</h2></summary>
+<summary><h2>📦 Skills 分类概要 (733)</h2></summary>
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -195,7 +195,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 | **URP** | 7 | URP 资产/Renderer/Renderer Feature 检查与编辑 |
 | **Decal** | 7 | URP Decal Projector 创建/检查/配置/删除工作流 |
 | **DOTween** | 21 | DOTweenAnimation 编辑器期配置与调参 |
-| **Editor** | 13 | 播放模式/选择/撤销重做/上下文获取/变更日志/菜单执行 |
+| **Editor** | 14 | Play 模式运行捕获/选择/撤销重做/上下文获取/变更日志/菜单执行 |
 | **Physics** | 12 | 射线检测/球形投射/盒形投射/物理材质/层碰撞矩阵 |
 | **Script** | 12 | C#脚本创建/读取/替换/列表/信息/重命名/移动/分析 |
 | **Timeline** | 12 | 轨道创建/删除/Clip管理/播放控制/绑定/时长设置 |
@@ -224,7 +224,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 | **Smart** | 10 | 场景SQL查询/空间查询/自动布局/对齐地面/网格吸附/随机化/替换 |
 | **Terrain** | 10 | 地形创建/高度图/Perlin噪声/平滑/平坦化/纹理绘制 |
 | **Texture** | 10 | 纹理导入设置/平台设置/Sprite/类型/尺寸查找/批量 |
-| **Project** | 9 | 渲染管线/构建设置/包管理/Layer/Tag/PlayerSettings/质量 |
+| **Project** | 10 | Player 出包/渲染管线/构建设置/包管理/Layer/Tag/PlayerSettings/质量 |
 | **Sample** | 8 | 基础示例：创建/删除/变换/场景信息 |
 | **Diagnose** | 1 | 编辑器健康聚合快照（控制台/编译/工作流/服务器/作业） |
 
@@ -248,7 +248,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │   │   │   └── unity_skills.py     # Python 客户端库
 │   │   ├── skills/                 # 69 个模块文档（49 个 REST/模块文档 + 20 个 advisory 文档）
 │   │   └── references/             # Unity 开发参考文档
-│   └── Editor/Skills/              # 核心 Skill 逻辑 (51 个 *Skills.cs, 共 731 Skills)
+│   └── Editor/Skills/              # 核心 Skill 逻辑 (51 个 *Skills.cs, 共 733 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP 服务器核心 (Producer-Consumer)
 │       ├── SkillRouter.cs          # 请求路由 & 反射发现 Skills
 │       ├── WorkflowManager.cs      # 持久化工作流 (Task/Session/Snapshot)
@@ -260,7 +260,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
 │       ├── WorkflowSkills.cs       # Workflow 撤销/回滚 (23 skills)
 │       ├── PerceptionSkills.cs     # 场景理解 (18 skills)
-│       └── ...                     # 731 Skills 源码
+│       └── ...                     # 733 Skills 源码
 ├── docs/
 │   └── SETUP_GUIDE.md              # 完整安装使用指南
 ├── CHANGELOG.md                    # 版本更新记录

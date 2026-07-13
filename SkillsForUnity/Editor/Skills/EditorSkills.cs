@@ -26,6 +26,17 @@ namespace UnitySkills
             return new { success = true, mode = "playing", jobId = job.jobId };
         }
 
+        [UnitySkill("editor_play_capture", "Enter Play Mode, observe runtime errors for a fixed duration, optionally capture the Game View, then exit and return a job report.",
+            Category = SkillCategory.Editor, Operation = SkillOperation.Execute | SkillOperation.Analyze,
+            Tags = new[] { "play", "runtime", "observe", "errors", "screenshot", "test", "job" },
+            Outputs = new[] { "jobId", "kind", "durationSeconds", "captureScreenshot" },
+            MayEnterPlayMode = true, RiskLevel = "medium", SupportsDryRun = false)]
+        public static object EditorPlayCapture(int durationSeconds = 10, bool captureScreenshot = false,
+            string screenshotFilename = null, int maxErrors = 50)
+        {
+            return PlayCaptureService.Start(durationSeconds, captureScreenshot, screenshotFilename, maxErrors);
+        }
+
         [UnitySkill("editor_stop", "Exit play mode. Warning: any scene changes made during Play mode will be lost.",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "stop", "runtime", "exit" },
@@ -271,3 +282,5 @@ namespace UnitySkills
 
     }
 }
+
+// Producer:Betsy

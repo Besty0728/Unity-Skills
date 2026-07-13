@@ -2,19 +2,38 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.1.1] - 2026-07-13
+
+### Changed
+
+- **全部脚本追加制作者水印** — 为项目内全部 128 个 C# 脚本（`SkillsForUnity/**/*.cs`）与 Python 客户端 `unity_skills.py` 在文件末尾追加一行制作者标记注释（`Producer:Betsy`），以行注释形式置于文件最外层、不影响任何编译或运行逻辑；追加操作幂等（重复执行不会叠加）。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.1.1`。
+
 ## [2.1.0] - 2026-07-08
 
 ### Added
 
+- **`build_player` 异步出包 Skill** — 基于 `BuildPipeline.BuildPlayer` 与现有 Job/Event 通道构建 Player，支持当前或显式 BuildTarget、场景列表、Development 与项目内安全输出路径，并返回 BuildReport 汇总。
+- **`editor_play_capture` 运行时验证 Skill** — 自动进入 Play Mode、按时长采集去重后的 Error/Exception/Assert、按需截取 Game View、退出并生成 `healthy` 汇总；状态可跨 Domain Reload 恢复。
 - **ScriptableObject 序列化属性路径写入三件套（+3 skills，共 729）** — 原 `scriptableobject_set` 是纯反射实现,只认顶层 public 字段的字面名,嵌套 serializable class、数组/List 元素、资产引用(ObjectReference)、private `[SerializeField]` 字段全部改不动——恰是游戏配置 SO 的主体,AI 只能退回现写 Editor 脚本。新增 `scriptableobject_set_serialized_property`(assetPath + propertyPath + value/valueAssetPath/valueObjectType),复用组件侧已有的 `SerializedPropertySkillUtility` 引擎,原生支持 `nested.field`、`items.Array.data[2]`、`items.Array.size` 扩容、按 assetPath 的资产引用赋值与置空、enum 按名、Color/Vector/Rect/Bounds 等全类型;配套 `scriptableobject_get_serialized_properties`(枚举全部属性路径,先看再改)与 `scriptableobject_set_serialized_property_batch`(BatchExecutor 批量)。实机全类型矩阵 9/9 通过并经 export 验证磁盘落盘。
-- **`POST /skills/batch` 跨技能聚合执行端点** — AI 连续 N 个异构操作原需 N 轮工具调用 + N 次 HTTP。新端点一次请求顺序执行 ≤50 步(`{steps:[{skill,args}...], continueOnError}`),每步走完整单技能管线(校验/权限门/undo/审计,独立 undo 组);默认 fail-fast(失败步之后返回 `skipped`),`continueOnError=true` 跳过失败步,授权类响应(`MODE_RESTRICTED`/`CONFIRMATION_REQUIRED`)无论开关一律中断并在该步 error 里透传 grant token;`?mode=dryRun` 整序列预演(逐步校验、从不中断)。v1 边界:后步不可引用前步返回值。
+- **`POST /skills/batch` 跨技能聚合执行端点** — AI 连续 N 个异构操作原需 N 轮工具调用 + N 次 HTTP。新端点一次请求顺序执行 ≤50 步(`{steps:[{skill,args}...], continueOnError}`),每步走完整单技能管线(校验/权限门/undo/审计,独立 undo 组);默认 fail-fast(失败步之后返回 `skipped`),`continueOnError=true` 跳过失败步,授权类响应(`MODE_RESTRICTED`/`CONFIRMATION_REQUIRED`)无论开关一律中断并在该步 error 里透传 grant token;`?mode=dryRun` 整序列预演(逐步校验、从不中断)。后续迭代补齐步间引用与事务:任意深度 `args` 里 `{"$ref":"$N.path"}` 取第 N 步 unwrap 后 result 的 `SelectToken`(解析失败该步 `SEMANTIC_INVALID`,dryRun 下做结构校验并记入 `refsValidated`);`?mode=transactional` 全有或全无,任一步失败经 Unity Undo 回滚已执行步并返回顶层 `status:"rolled_back"`,MutatesAssets 步标 `rollbackReliability:"partial"`(磁盘资产写入 Undo 无法完全回滚)。
 - **HTTP 线程直答已缓存 GET(快速通道)+ ETag/304 协商缓存** — 全部请求(含已缓存的 schema/manifest)原先都排队等主线程唤醒(KeepAlive 50ms 轮询节奏),单请求 60-95ms。现 `GET /skills`/`/skills/schema` 命中服务端缓存字符串时由 HTTP 线程直接写回(零 Unity API,不违跨线程硬约束),实测 70ms→1.3ms;响应带内容哈希 `ETag`,`If-None-Match` 命中返 304 空体(etag 绑定缓存字符串引用,域重载/Refresh 后自动失效)。`/health` 保持走主线程队列(主线程存活探针语义)。
 - **`GET /skills?brief=1` 目录层(第 0 层 schema)** — summary 层 143KB≈35K token 作为"每会话首取"认知税过高而典型会话只用少数技能。新增按模块分组的技能名目录(729 技能/49 模块,实测 19KB≈3.4K token,约 summary 的 1/10),配合 scoped schema 组成"目录锁模块→按模块拉签名"的低成本链路,典型会话认知成本 35K→约 10K token;融入 filtered 输出缓存,自动享受快速通道与 ETag。
 - **Python 客户端:`search_skills()` 本地检索、registry 优先端口发现、ETag+磁盘缓存** — ① `search_skills(query, category, limit)` 在缓存的 summary 上做本地多词 AND 检索,143KB 留在磁盘、只有命中条目进上下文,CLI 支持 `--search`;② 端口发现原先盲扫 8090-8100,现优先读 registry.json 心跳新鲜条目直连(实测构造 0.029s),失败自动回退扫描,并砍掉构造期重复的 /health;③ summary/full schema 缓存落盘 `~/.unity_skills/cache/`(键含 instanceId 防多项目串缓存),跨进程命中 0.008s,TTL 过期带 `If-None-Match` 重验,304 续期——CLI 短进程模式从"每进程重拉 604KB"变为磁盘/304 复用。
 - **`SerializedPropertySkillUtility` 引擎补 Gradient/AnimationCurve/flags enum 分支** — 共享引擎新增 `gradientValue`(colorKeys/alphaKeys/mode JSON)与 `animationCurveValue`(keys/pre/postWrapMode JSON)写入;flags enum 支持逗号/竖线分隔多名组合与 raw 数值(经 enumValueIndex↔intValue 往返求各常量底层值后 OR,兼容无 managed FieldInfo 的原生组件属性)。`component_set_serialized_property` 同步受益,组件侧回归通过。
+- **`GET /events` 长轮询事件通道** — AI 原先只能靠轮询 `/compile/status` 感知编译结果。新增 500 条内存环形缓冲的事件通道,`since`/`cursor` 续拉、`timeout`(默认 25s,clamp 1–55)、`types` 过滤;事件类型含 `compilation_started/finished`(携带前 5 条 `firstErrors`)、`before/after_domain_reload`、`server_restored`(payload 带 `lastCompilation` 作重连锚点)、`playmode_changed`、`console_error`(20/s 节流 + `droppedSinceLast`)、`job_completed/failed`。`seq` 跨 domain reload 单调不回退,reload 丢弃在途事件时以 `dropped:true` 标记。长轮询整程跑在 ThreadPool 线程、不进主线程队列,挂起的长轮询不阻塞 `/health` 与其它请求。
+- **`GET /compile/status` 编译结果反馈服务** — `script_*` 写入触发 Domain Reload、服务短暂 503/504 后,无需重读文件即可拿到上次编译结论:`{status, isCompiling, isUpdating, domainReloadPending, lastCompilation:{finishedAtUtc, durationMs, success, errorCount, warningCount, errors:[{file,line,column,message,assembly}], warnings, truncated}}`;`errors` 上限 200、`warnings` 上限 50。`lastCompilation` 经 `SessionState` 跨 reload 存活,服务恢复后 pass/fail 与精确错误行仍在。
+- **写操作可选语义 sceneDiff(`?diff=1`)** — 单个写型技能追加 `?diff=1`,成功响应携带顶层 `sceneDiff` 概述场景增量:`{changed:[{target:{name,type,instanceId}, changes:[{path,before,after}], truncated}], added, removed, captureLimited}`,无需 follow-up 读取即可确认改动符合预期。属性路径带类型前缀(如 `Rigidbody.m_Mass`);捕获上限 20 对象 × 每对象 50 条变更(`captureLimited`/`truncated` 标记截断)。
+- **面板新增 Analytics 标签页 + 遥测开关** — 服务端遥测(`Library/UnitySkillsTelemetry.jsonl`,记录技能名/agent/模式/成功与否/耗时,**不含参数或字段值**;1MB×4 滚动;写入走线程池 worker、路径主线程解析确保 flush 零 Unity API)此前只有 `GET /analytics` 一个 REST 出口,人类在面板看不到。新增第 4 个标签页 Analytics(复用同一聚合与 30s 缓存,仅在标签激活/切换时间窗/手动刷新时拉取,绝不落在 500ms live tick 上):汇总卡片 + 最常用/高失败率/最慢/错误码/最近错误五张表 + 时间窗下拉(1h/24h/7d/all)+ Reveal log。遥测默认开启,**设置抽屉 Runtime 组新增开关**(EditorPrefs `UnitySkills_TelemetryEnabled`)可随时关闭;数据仅存本地,绝不外传。
+- **可配置编辑器快捷键 + 冲突检测** — 面板命令统一注册在 `ShortcutActions.cs`(Unity 官方 `[Shortcut]` 特性,出厂不绑定默认键,开箱零冲突),设置抽屉 Shortcuts 节自动枚举;用户绑定由 ShortcutManager profile 持久化(不写 EditorPrefs)。改绑时遍历全部已注册 shortcut 做冲突检测并提示冲突命令名;只读 profile 给出明确指引。首批可绑定:打开主面板 / 打开审计日志。
+- **`editor_get_changes` 持久化编辑器变更日志(+1 skill)** — 读取常驻的编辑器变更流水(`Library/UnitySkills/editor_changes.jsonl`,500 条环形缓冲、跨 domain reload 存活),替代解析 `.unity` YAML。用于"用户趁 AI 不在时手改了工程 / 外部文件变动 / 请用户手动改编辑器后"的场景:返回比 `since` 新的场景结构/属性摘要与导入/删除/移动的资产路径;`types`(all/scene/file/undo/lifecycle)与 `source`(all/editor/manual/rest)过滤,`_restDepth` 标记区分 REST 触发与手动编辑。
+- **`gameobject_set_sibling_index` 技能(+1 skill)** — 设置 GameObject 在父物体子级(或无父时场景根级)中的同级索引,支持 name/instanceId/path;index 越界自动 clamp 并在响应里以 `clamped=true` 标记。
 
 ### Changed
 
+- **遥测反哺 `/skills/recommend`** — 最近 7 天有效执行样本达到门槛后，对长期高失败 Skill 做最多 3 分的有限降权并附失败率/耗时提示；权限和参数类客户端错误不计入，关闭遥测时保持纯语义排序。
+- **开发中的示教录制宏系统在发布前被变更追踪取代(对已发布用户无影响)** — 本轮迭代曾引入 `macro_record_*` / `macro_save/list/get/delete/run` 一组示教录制→回放技能(`MacroRecorderService` 等约 2700 行),随后在发布前整体移除,改由被动、只读的 `editor_get_changes` 变更日志承接"感知编辑器改了什么"的诉求。这套宏系统自始至终只存在于开发分支、从未进入任何已发布版本(上一发布版为 2.0.9),故从 2.0.9 升级的用户不受影响。二者能力边界不同:变更日志只观测、不回放;"录制并回放可复用宏"这一能力本次不随包提供。
+- **`POST /skills/batch?diff=1` 聚合净变化** — 跨步保留首个 before 与最终 after，新建后修改只报 added，事务模式在回滚后生成最终 sceneDiff。
 - **SKILL.md 调用链路按任务形态分流** — 原文档"每会话必先拉 summary(35K token)"与"不确定才查 schema"两条指引互相矛盾,且 token 大头(上下文认知成本)未被既有网络层优化覆盖。重写为四层择廉取用:意图明确→`/skills/recommend`(2-5KB,带参数 schema,扶正为首选)或已知技能直接 dryRun;一两个领域→brief 目录+scoped;探索式/跨模块才拉 summary;full(618KB)标注 rare。并补充 `search_skills` 本地检索与磁盘缓存说明。
 - **string 参数自动接受原生 JSON 数组/对象** — batch 系技能签名为 `string items`,AI 按直觉传原生 JSON 数组时原先抛 "Can not convert Array to String" 的 TYPE_MISMATCH 且零指引(高频首踩坑)。现目标参数为 string 且传入 JArray/JObject 时自动 `ToString(Formatting.None)` 降级(技能内部本就会 Parse 回来,无损),其他类型严格性不变。
 - **did-you-mean 参数建议补语义组第三级兜底** — 原两级匹配(6 技能硬编码别名表 + Levenshtein≤3/互为子串)对"语义同义、字面不相近"的参数名系统性失效(全库路径类参数 60+ 命名变体,实测 `assetPath`→`savePath` 编辑距离 4 零建议)。前两级无结果时按驼峰拆词取共享 token(path/name/id 等)纳入建议,`assetPath`→`savePath` 现可给出 suggestions;前两级有结果时行为不变(零噪音增量)。
@@ -23,11 +42,14 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Fixed
 
+- **Unity 6 Advanced Text Generator 拒绝静态 CJK FontAsset** — Unity 6 的 ATG 文本路径不支持 `UnitySkillsCN-UI` 静态 FontAsset，会持续输出 `Advanced text system cannot use/render using static font asset` 并导致中文无法渲染。现按编辑器版本选择同一份自定义字体的绑定方式：Unity 6 通过 `FontDefinition.FromFont` 直接绑定 `UnitySkillsCN-Regular.ttf`，由 ATG 管理动态字体数据；Unity 2022 继续使用预烘焙静态 FontAsset，保留其图集/材质不会被卸载的稳定性。
 - **`scriptableobject_import_json` 裸 JSON 假成功** — `EditorJsonUtility.FromJsonOverwrite` 要求根层为原生类名包装(SO 即 `{"MonoBehaviour":{...}}`,与 export 对称),传裸字段 JSON 时静默 no-op,但技能仍无条件 SetDirty+SaveAssets 并返回 `success=true`——AI 以为写入成功且事后不可感知。现根层无包装键自动包一层(兼容已包装格式),并以写前/写后序列化快照比对做写入效果校验,零变化时返回 `warning` 提示字段未匹配。
 - **`?mode=`/`?dryRun=` 拼错静默真执行** — `mode=dry_run`/`validate`/`dryRun=1` 等未知值原先被静默忽略、请求当真执行并返回 success,AI 以为在预演、实际场景已被改(全部容错缺口中唯一"格式错误→静默破坏性执行"路径)。现未知值返回新错误码 `INVALID_MODE`(400,附 received/validValues)且不执行,实机验证含副作用检查(对象确未创建)。
 - **`verbose` 类型错落 INTERNAL 死循环** — `{"verbose":"yes"}` 原先在 `ToObject<bool>` 裸抛落通用 catch,返回 `INTERNAL "[Transactional Revert]"` + `wait_and_retry`,AI 按策略傻等重发同一坏 body。现宽容解析 "yes"/"1"/"no"/"0" 等字符串,不可解析时返回 `TYPE_MISMATCH` + `fix_and_retry` 并明示需要 boolean。
 - **DryRun/Plan 内部异常误报 INVALID_JSON** — 两处 `catch(Exception)` 把合法 JSON 下语义校验的 NRE 等也报成 "Invalid JSON" + `fix_and_retry`,误导 AI 反复修一个没问题的 body。对齐 Execute 先例细分:`JsonException`→INVALID_JSON,其余→INTERNAL+真实异常消息+abort(防两种循环)。
 - **`/skills/batch` 步间对象不可见** — batch 各步共享一个 POST job,`GameObjectFinder` 的请求级场景缓存只在整个 POST 结束后失效,后步按 name 查不到前步刚创建的对象(实测:单步成功、batch 内同参数失败)。现每步 Execute 后即失效场景缓存,建-改-删 5 步回归全绿。
+- **Play 模式切换后面板中文掉字(TextCore atlas material 被回收致 MissingReference)** — 进出 Play 模式会让 UI Toolkit 回收 CJK FontAsset 的 atlas material,存活的编辑器窗口 TextElement 仍引用它,触发 MissingReference 与掉字。`UISkillsFont` 现在在 Play 模式切换后重建并重应用字体,从机制上规避回收窗口。
+- **`EditorUiScheduler` 渲染期 `delayCall` mutate 抛 `InvalidOperationException`** — 周期 tick 推迟到 `delayCall` 执行时,若恰逢 repaint/`generateVisualContent`,个别 mutation 仍可能抛 `InvalidOperationException`。现对该异常做幂等吞噬,避免一次命中滚成高频 Console 循环(延续 issue #44 的收口)。
 
 ## [2.0.9] - 2026-07-04
 

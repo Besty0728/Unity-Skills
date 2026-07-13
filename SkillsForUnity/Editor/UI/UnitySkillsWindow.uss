@@ -14,7 +14,7 @@
  *
  * v2 changes:
  *  - Topbar: status dot + url pill + server toggle + status text + settings
- *  - Tabs reduced to 3 (Skills / AI Config / History)
+ *  - Tabs: Skills / AI Config / History / Analytics
  *  - Skills layout: master-detail (list left, detail right)
  *  - AIConfig: 4 brand cards + custom; PNG icon via Image
  *  - Settings moved into right-side drawer (slide-in)
@@ -1342,4 +1342,79 @@
     -unity-font-style: italic;
     margin-top: 4px;
     -unity-text-align: middle-center;
+}
+
+/* ---------- Analytics tab ---------- */
+.analytics-summary {
+    margin: 8px 8px 4px 8px;
+}
+
+.analytics-stat {
+    background-color: var(--color-card-bg);
+    border-width: 1px;
+    border-color: var(--color-card-border);
+    border-radius: 3px;
+    padding: 8px 10px;
+    margin: 2px;
+    min-width: 88px;
+    flex-grow: 1;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.analytics-stat__value {
+    font-size: 18px;
+    color: var(--color-text);
+    -unity-font-style: normal;
+}
+
+.analytics-stat__value--warn {
+    color: var(--color-warning);
+}
+
+.analytics-stat__label {
+    font-size: 10px;
+    color: var(--color-muted);
+    margin-top: 2px;
+}
+
+.analytics-table {
+    margin: 0 8px 2px 8px;
+}
+
+.analytics-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 4px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--color-card-border);
+}
+
+.analytics-row--header {
+    border-bottom-width: 1px;
+    border-bottom-color: var(--color-border-hard);
+}
+
+.analytics-row--header .analytics-cell {
+    color: var(--color-muted);
+    font-size: 9px;
+    -unity-font-style: normal;
+}
+
+.analytics-row--warn .analytics-cell {
+    color: var(--color-warning);
+}
+
+.analytics-cell {
+    font-size: 11px;
+    color: var(--color-text);
+    -unity-text-align: middle-left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 6px;
+}
+
+.analytics-cell--num {
+    -unity-text-align: middle-right;
+    padding-right: 8px;
 }

@@ -289,6 +289,17 @@ namespace UnitySkills
             };
         }
 
+        [UnitySkill("build_player", "Build a standalone or mobile player asynchronously. Returns a jobId; poll /jobs/{id} or job_status for the BuildReport summary.",
+            Category = SkillCategory.Project, Operation = SkillOperation.Execute,
+            Tags = new[] { "build", "player", "package", "release", "async", "job" },
+            Outputs = new[] { "jobId", "kind", "platform", "outputPath", "scenes" },
+            MutatesAssets = true, RiskLevel = "high", SupportsDryRun = false)]
+        public static object BuildPlayer(string outputPath = null, string target = null, string[] scenes = null,
+            bool development = false, bool overwrite = false)
+        {
+            return BuildPlayerService.Start(outputPath, target, scenes, development, overwrite);
+        }
+
         [UnitySkill("project_get_packages", "List installed UPM packages",
             Category = SkillCategory.Project, Operation = SkillOperation.Query,
             Tags = new[] { "project", "packages", "upm", "manifest" },
@@ -374,3 +385,5 @@ namespace UnitySkills
 
     }
 }
+
+// Producer:Betsy

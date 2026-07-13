@@ -25,6 +25,7 @@ namespace UnitySkills
         private const int MaxCaptureObjects = 20;
         // 单对象 changed 叶子上限：超出置 truncated。
         private const int MaxChangesPerObject = 50;
+        private const int MaxBatchCaptureObjects = 100;
 
         /// <summary>
         /// 前捕获单对象记录。对象销毁后 Unity 假 null 会让 obj.name / GetType() 抛异常，
@@ -34,6 +35,7 @@ namespace UnitySkills
         {
             public UnityEngine.Object Obj;
             public int InstanceId;
+            public int OwnerGameObjectId;
             public string Name;
             public string TypeName;
             public string BeforeJson;
@@ -47,6 +49,157 @@ namespace UnitySkills
             public bool Limited;
             public bool HadTargets;
             public string Error;
+        }
+
+        internal sealed class BatchDiffCapture
+        {
+            public readonly Dictionary<int, ObjectSnapshot> Snapshots = new Dictionary<int, ObjectSnapshot>();
+            public readonly Dictionary<int, UnityEngine.Object> AddedObjects = new Dictionary<int, UnityEngine.Object>();
+            public bool Limited;
+            public bool HadWritableSteps;
+            public string Error;
+        }
+
+        internal static BatchDiffCapture CreateBatchCapture() => new BatchDiffCapture();
+
+        internal static void CaptureBatchStepBefore(BatchDiffCapture capture, JObject args)
+        {
+            if (capture == null || !string.IsNullOrEmpty(capture.Error)) return;
+            capture.HadWritableSteps = true;
+            try
+            {
+                var targets = SkillRouter.CollectTargetsFromArgs(args) ?? new List<UnityEngine.Object>();
+                AppendComponentTarget(args, targets);
+                foreach (var obj in targets)
+                {
+                    if (obj == null) continue;
+                    var id = obj.GetInstanceID();
+                    if (capture.AddedObjects.ContainsKey(id) || IsPartOfAddedObject(capture, obj) || capture.Snapshots.ContainsKey(id)) continue;
+                    if (capture.Snapshots.Count >= MaxBatchCaptureObjects)
+                    {
+                        capture.Limited = true;
+                        break;
+                    }
+                    capture.Snapshots[id] = new ObjectSnapshot
+                    {
+                        Obj = obj,
+                        InstanceId = id,
+                        OwnerGameObjectId = obj is Component component ? component.gameObject.GetInstanceID() : 0,
+                        Name = obj.name,
+                        TypeName = obj.GetType().Name,
+                        BeforeJson = EditorJsonUtility.ToJson(obj),
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                capture.Error = $"batch capture failed: {ex.Message}";
+            }
+        }
+
+        internal static void TrackBatchStepResult(BatchDiffCapture capture, object result)
+        {
+            if (capture == null || !string.IsNullOrEmpty(capture.Error)) return;
+            try
+            {
+                var token = result as JToken ?? JToken.FromObject(result ?? new object(), JsonSerializer.Create(SkillsCommon.JsonSettings));
+                var entityIds = new List<string>();
+                var instanceIds = new List<int>();
+                CollectIds(token, entityIds, instanceIds);
+                foreach (var entityId in entityIds)
+                    TrackAddedObject(capture, UnityObjectIdUtility.EntityIdToObject(entityId));
+                foreach (var instanceId in instanceIds)
+                    TrackAddedObject(capture, UnityObjectIdUtility.ObjectIdToObject(instanceId));
+            }
+            catch { }
+        }
+
+        internal static JObject BuildBatch(BatchDiffCapture capture)
+        {
+            if (capture == null) return new JObject { ["note"] = "no batch diff captured" };
+            if (!string.IsNullOrEmpty(capture.Error)) return new JObject { ["error"] = capture.Error };
+            if (!capture.HadWritableSteps) return new JObject { ["note"] = "read-only batch, no diff captured" };
+
+            try
+            {
+                var changed = new JArray();
+                var removed = new JArray();
+                var removedGameObjectIds = new HashSet<int>(capture.Snapshots.Values
+                    .Where(snap => snap.Obj == null && snap.TypeName == nameof(GameObject))
+                    .Select(snap => snap.InstanceId));
+                foreach (var snap in capture.Snapshots.Values)
+                {
+                    if (snap.Obj == null)
+                    {
+                        if (snap.TypeName != nameof(GameObject) && WasComponentOfRemovedGameObject(capture, snap, removedGameObjectIds))
+                            continue;
+                        removed.Add(new JObject { ["name"] = snap.Name, ["type"] = snap.TypeName, ["instanceId"] = snap.InstanceId });
+                        continue;
+                    }
+                    string afterJson;
+                    try { afterJson = EditorJsonUtility.ToJson(snap.Obj); }
+                    catch { continue; }
+                    var changes = CompareJson(snap.BeforeJson, afterJson, out var truncated);
+                    if (changes.Count == 0) continue;
+                    changed.Add(new JObject
+                    {
+                        ["target"] = new JObject { ["name"] = snap.Obj.name, ["type"] = snap.TypeName, ["instanceId"] = snap.InstanceId },
+                        ["changes"] = new JArray(changes),
+                        ["truncated"] = truncated,
+                    });
+                }
+
+                var added = new JArray();
+                foreach (var pair in capture.AddedObjects)
+                {
+                    var obj = pair.Value;
+                    if (obj == null) continue;
+                    string path = obj is GameObject go ? GameObjectFinder.GetPath(go) : AssetDatabase.GetAssetPath(obj);
+                    added.Add(new JObject
+                    {
+                        ["name"] = obj.name, ["type"] = obj.GetType().Name,
+                        ["instanceId"] = pair.Key, ["path"] = string.IsNullOrEmpty(path) ? null : path,
+                    });
+                }
+                return new JObject
+                {
+                    ["changed"] = changed,
+                    ["added"] = added,
+                    ["removed"] = removed,
+                    ["captureLimited"] = capture.Limited,
+                };
+            }
+            catch (Exception ex)
+            {
+                return new JObject { ["error"] = $"batch diff failed: {ex.Message}" };
+            }
+        }
+
+        private static void TrackAddedObject(BatchDiffCapture capture, UnityEngine.Object obj)
+        {
+            if (obj == null) return;
+            var id = obj.GetInstanceID();
+            if (!capture.Snapshots.ContainsKey(id) && !capture.AddedObjects.ContainsKey(id))
+                capture.AddedObjects[id] = obj;
+        }
+
+        private static bool IsPartOfAddedObject(BatchDiffCapture capture, UnityEngine.Object obj)
+        {
+            if (obj is Component component && component.gameObject != null)
+                return capture.AddedObjects.ContainsKey(component.gameObject.GetInstanceID());
+            return false;
+        }
+
+        private static bool WasComponentOfRemovedGameObject(
+            BatchDiffCapture capture, ObjectSnapshot componentSnapshot, HashSet<int> removedGameObjectIds)
+        {
+            if (removedGameObjectIds.Count == 0 || componentSnapshot == null)
+                return false;
+
+            // Destroyed Unity components can no longer expose gameObject, so ownership is fixed in
+            // the pre-execution snapshot and remains usable after Unity's fake-null transition.
+            return componentSnapshot.OwnerGameObjectId != 0 &&
+                removedGameObjectIds.Contains(componentSnapshot.OwnerGameObjectId);
         }
 
         /// <summary>
@@ -81,6 +234,7 @@ namespace UnitySkills
                     {
                         Obj = obj,
                         InstanceId = id,
+                        OwnerGameObjectId = obj is Component component ? component.gameObject.GetInstanceID() : 0,
                         Name = obj.name,
                         TypeName = obj.GetType().Name,
                         BeforeJson = EditorJsonUtility.ToJson(obj),
@@ -398,3 +552,5 @@ namespace UnitySkills
         }
     }
 }
+
+// Producer:Betsy

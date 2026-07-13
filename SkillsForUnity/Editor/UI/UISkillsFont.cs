@@ -1,16 +1,16 @@
 using UnityEditor;
+using UnityEngine;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
 namespace UnitySkills
 {
     /// <summary>
-    /// Applies the package's pre-baked CJK font to UnitySkills editor windows.
+    /// Applies the package's CJK font to UnitySkills editor windows.
     ///
-    /// The FontAsset, material and atlas texture are persistent AssetDatabase objects.
-    /// Runtime-created atlases are deliberately forbidden: Unity 2022 can unload their
-    /// textures while TextElement meshes still reference them, causing DrawTextInfo
-    /// null/missing-reference exceptions and blank glyphs.
+    /// Unity 6's Advanced Text Generator requires a dynamic font backed by the source
+    /// Font. Unity 2022 instead uses the pre-baked, persistent FontAsset because it can
+    /// unload runtime-created atlas resources while TextElement meshes still use them.
     /// </summary>
     [InitializeOnLoad]
     internal static class UISkillsFont
@@ -20,7 +20,11 @@ namespace UnitySkills
         internal const string FontAssetPath =
             "Packages/com.besty.unity-skills/Editor/UI/Fonts/UnitySkillsCN-UI.asset";
 
+#if UNITY_6000_0_OR_NEWER
+        private static Font _cjkFont;
+#else
         private static FontAsset _cjkFont;
+#endif
         private static bool _warned;
 
         static UISkillsFont()
@@ -28,6 +32,19 @@ namespace UnitySkills
             EditorApplication.delayCall += ReapplyToOpenWindows;
         }
 
+#if UNITY_6000_0_OR_NEWER
+        private static Font GetFont()
+        {
+            if (_cjkFont != null)
+                return _cjkFont;
+
+            _cjkFont = AssetDatabase.LoadAssetAtPath<Font>(TtfPath);
+            if (_cjkFont == null)
+                WarnOnce($"CJK font is missing; using editor default: {TtfPath}");
+
+            return _cjkFont;
+        }
+#else
         private static FontAsset GetFontAsset()
         {
             if (_cjkFont != null)
@@ -37,16 +54,23 @@ namespace UnitySkills
             if (!IsPersistentAndComplete(candidate))
             {
                 if (!_warned)
-                {
-                    _warned = true;
-                    SkillsLogger.LogWarning(
+                    WarnOnce(
                         $"Pre-baked CJK FontAsset is missing or incomplete; using editor default: {FontAssetPath}");
-                }
                 return null;
             }
 
             _cjkFont = candidate;
             return _cjkFont;
+        }
+#endif
+
+        private static void WarnOnce(string message)
+        {
+            if (_warned)
+                return;
+
+            _warned = true;
+            SkillsLogger.LogWarning(message);
         }
 
         internal static bool IsPersistentAndComplete(FontAsset fontAsset)
@@ -88,11 +112,37 @@ namespace UnitySkills
             if (root == null)
                 return;
 
-            var fontAsset = GetFontAsset();
+#if UNITY_6000_0_OR_NEWER
+            Apply(root, GetFont());
+#else
+            Apply(root, GetFontAsset());
+#endif
+        }
+
+#if UNITY_6000_0_OR_NEWER
+        internal static void Apply(VisualElement root, Font font)
+        {
+            if (root == null)
+                return;
+
+            root.style.unityFont = new StyleFont(StyleKeyword.Null);
+            root.style.unityFontDefinition = font == null
+                ? new StyleFontDefinition(StyleKeyword.Null)
+                : new StyleFontDefinition(FontDefinition.FromFont(font));
+        }
+#else
+        internal static void Apply(VisualElement root, FontAsset fontAsset)
+        {
+            if (root == null)
+                return;
+
             root.style.unityFont = new StyleFont(StyleKeyword.Null);
             root.style.unityFontDefinition = fontAsset == null
                 ? new StyleFontDefinition(StyleKeyword.Null)
                 : new StyleFontDefinition(fontAsset);
         }
+#endif
     }
 }
+
+// Producer:Betsy

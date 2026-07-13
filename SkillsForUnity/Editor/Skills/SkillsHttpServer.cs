@@ -1981,6 +1981,9 @@ namespace UnitySkills
             var qs = SkillRouter.ParseQueryString(job.QueryString);
             if (!TryResolveBatchRequestMode(job, qs, out bool dryRun, out bool transactional))
                 return;
+            var batchMode = dryRun ? SkillRouter.RequestMode.DryRun : SkillRouter.RequestMode.Execute;
+            if (!TryResolveDiff(job, qs, "/skills/batch", batchMode, out bool captureDiff))
+                return;
 
             if (!TryParseBody(job, out var body)) return;
 
@@ -2024,7 +2027,7 @@ namespace UnitySkills
             if (transactional && RejectTransactionalPrecheck(job, steps, continueOnError))
                 return;
 
-            var response = ExecuteBatchCore(steps, batchParams, continueOnError, dryRun, transactional, job.AgentId);
+            var response = ExecuteBatchCore(steps, batchParams, continueOnError, dryRun, transactional, job.AgentId, captureDiff);
             job.StatusCode = 200;
             job.ResponseJson = JsonConvert.SerializeObject(response, _jsonSettings);
         }
@@ -2039,7 +2042,7 @@ namespace UnitySkills
         /// ({status, executed, failed, results, ...}) as a JObject.
         /// </summary>
         internal static JObject ExecuteBatchCore(JArray steps, JObject batchParams, bool continueOnError,
-            bool dryRun, bool transactional, string agentId)
+            bool dryRun, bool transactional, string agentId, bool captureDiff = false)
         {
             int txStartGroup = -1;
             if (transactional)
@@ -2057,6 +2060,7 @@ namespace UnitySkills
             int executedCount = 0;
             int failedCount = 0;
             bool halted = false;
+            var batchDiff = captureDiff && !dryRun ? SkillSceneDiff.CreateBatchCapture() : null;
 
             for (int i = 0; i < steps.Count; i++)
             {
@@ -2260,9 +2264,11 @@ namespace UnitySkills
                     }
                     else
                     {
-                        // Batch steps use the single-arg Execute overload (captureDiff:false):
-                        // ?diff=1 is a per-skill feature and is not plumbed through /skills/batch
-                        // (v1 boundary — batch has no sceneDiff).
+                        if (batchDiff != null && SkillRouter.TryGetSkill(stepSkillName, out var diffSkill) && !diffSkill.ReadOnly)
+                        {
+                            try { SkillSceneDiff.CaptureBatchStepBefore(batchDiff, JObject.Parse(argsJson)); }
+                            catch { batchDiff.HadWritableSteps = true; }
+                        }
                         stepJson = SkillRouter.Execute(stepSkillName, argsJson);
                         // Steps share one POST job, so the per-request invalidation in
                         // ProcessJobQueue never runs between them — without this, a step
@@ -2338,6 +2344,8 @@ namespace UnitySkills
                 executedCount++;
                 var unwrappedResult = stepPayload.TryGetValue("result", out var innerResult) ? innerResult : stepPayload;
                 stepResults[i] = unwrappedResult;
+                if (batchDiff != null)
+                    SkillSceneDiff.TrackBatchStepResult(batchDiff, unwrappedResult);
                 results.Add(new JObject
                 {
                     ["index"] = i,
@@ -2390,6 +2398,8 @@ namespace UnitySkills
             response["executed"] = executedCount;
             response["failed"] = failedCount;
             response["results"] = new JArray(results);
+            if (batchDiff != null)
+                response["sceneDiff"] = SkillSceneDiff.BuildBatch(batchDiff);
             return response;
         }
 
@@ -3852,3 +3862,5 @@ namespace UnitySkills
         }
     }
 }
+
+// Producer:Betsy

@@ -1434,7 +1434,8 @@ namespace UnitySkills
 
             var rawKeywords = intent.ToLowerInvariant().Split(new[] { ' ', '+', '_' }, StringSplitOptions.RemoveEmptyEntries);
             var keywords = ExpandIntent(rawKeywords);
-            var scored = new List<(SkillInfo skill, int score, List<string> matchedOn)>();
+            var healthBySkill = SkillTelemetryService.GetRecommendationHealth();
+            var scored = new List<(SkillInfo skill, int score, int semanticScore, List<string> matchedOn, SkillTelemetryService.RecommendationHealth health)>();
 
             // Pre-compute operation and category matches (with Chinese substring support)
             var matchedOps = ExtractOperations(rawKeywords);
@@ -1488,10 +1489,16 @@ namespace UnitySkills
                 }
 
                 if (score > 0)
-                    scored.Add((s, score, matchedOn));
+                {
+                    healthBySkill.TryGetValue(s.Name, out var health);
+                    var adjustedScore = Math.Max(1, score - (health?.Penalty ?? 0));
+                    scored.Add((s, adjustedScore, score, matchedOn, health));
+                }
             }
 
-            var results = scored.OrderByDescending(x => x.score).Take(topN).ToList();
+            var results = scored.OrderByDescending(x => x.score)
+                .ThenByDescending(x => x.semanticScore)
+                .Take(topN).ToList();
             var response = new
             {
                 intent,
@@ -1505,8 +1512,19 @@ namespace UnitySkills
                     description = GetEffectiveDescription(x.skill),
                     category = x.skill.Category != SkillCategory.Uncategorized ? x.skill.Category.ToString() : null,
                     score = x.score,
+                    semanticScore = x.semanticScore,
                     confidence = ScoreToConfidence(x.score),
                     matchedOn = x.matchedOn.Distinct().ToArray(),
+                    telemetry = x.health == null ? null : new
+                    {
+                        window = "7d",
+                        calls = x.health.Calls,
+                        errors = x.health.Errors,
+                        errorRate = x.health.ErrorRate,
+                        avgMs = x.health.AvgMs,
+                    },
+                    telemetryPenalty = x.health?.Penalty ?? 0,
+                    warnings = x.health != null && x.health.Warnings.Length > 0 ? x.health.Warnings : null,
                     schema = includeSchema ? BuildSkillSchemaForRecommend(x.skill) : null
                 })
             };
@@ -2556,3 +2574,5 @@ namespace UnitySkills
         }
     }
 }
+
+// Producer:Betsy

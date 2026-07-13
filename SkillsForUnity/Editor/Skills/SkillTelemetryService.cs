@@ -57,6 +57,26 @@ namespace UnitySkills
             public long AtTicks;
         }
 
+        internal sealed class RecommendationHealth
+        {
+            public int Calls;
+            public int Errors;
+            public long AvgMs;
+            public double ErrorRate;
+            public int Penalty;
+            public string[] Warnings = Array.Empty<string>();
+        }
+
+        private static readonly HashSet<string> RecommendationIgnoredErrorCodes =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "UNKNOWN_SKILL", "UNKNOWN_PARAM", "MISSING_PARAM", "TYPE_MISMATCH",
+                "INVALID_JSON", "SEMANTIC_INVALID", "INVALID_MODE", "MODE_RESTRICTED",
+                "CONFIRMATION_REQUIRED", "COMPILING",
+            };
+        private static Dictionary<string, RecommendationHealth> _recommendationHealthCache;
+        private static long _recommendationHealthCacheAtTicks;
+
         /// <summary>
         /// Master switch (EditorPrefs, default ON). When off, <see cref="Record"/> returns
         /// immediately. The getter reads EditorPrefs, so it must be called on the main thread —
@@ -136,6 +156,35 @@ namespace UnitySkills
             return json;
         }
 
+        internal static IReadOnlyDictionary<string, RecommendationHealth> GetRecommendationHealth()
+        {
+            if (!SafeEnabled())
+                return new Dictionary<string, RecommendationHealth>(StringComparer.OrdinalIgnoreCase);
+
+            var now = DateTime.UtcNow.Ticks;
+            lock (_analyticsCacheLock)
+            {
+                if (_recommendationHealthCache != null &&
+                    now - _recommendationHealthCacheAtTicks < AnalyticsCacheTtlTicks)
+                    return _recommendationHealthCache;
+            }
+
+            Dictionary<string, RecommendationHealth> result;
+            try { result = BuildRecommendationHealth(ReadAll(), DateTime.UtcNow.AddDays(-7)); }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogWarning($"Telemetry recommendation health failed: {ex.Message}");
+                result = new Dictionary<string, RecommendationHealth>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            lock (_analyticsCacheLock)
+            {
+                _recommendationHealthCache = result;
+                _recommendationHealthCacheAtTicks = now;
+            }
+            return result;
+        }
+
         /// <summary>Internal: drain the queue synchronously on the calling thread (read consistency).</summary>
         internal static void FlushSync() => FlushPending();
 
@@ -152,7 +201,12 @@ namespace UnitySkills
                 }
             }
             catch { /* ignore */ }
-            lock (_analyticsCacheLock) { _analyticsCache.Clear(); }
+            lock (_analyticsCacheLock)
+            {
+                _analyticsCache.Clear();
+                _recommendationHealthCache = null;
+                _recommendationHealthCacheAtTicks = 0;
+            }
         }
 
         // ===== write path =====
@@ -279,6 +333,63 @@ namespace UnitySkills
             [JsonProperty("ok")] public bool Ok;
             [JsonProperty("errorCode")] public string ErrorCode;
             [JsonProperty("ms")] public long Ms;
+        }
+
+        private static Dictionary<string, RecommendationHealth> BuildRecommendationHealth(
+            IEnumerable<TelemetryRecord> records, DateTime cutoffUtc)
+        {
+            var aggregates = new Dictionary<string, SkillAgg>(StringComparer.OrdinalIgnoreCase);
+            foreach (var record in records ?? Enumerable.Empty<TelemetryRecord>())
+            {
+                if (record == null || string.IsNullOrWhiteSpace(record.Skill) ||
+                    !(string.Equals(record.Mode, "execute", StringComparison.OrdinalIgnoreCase) ||
+                      string.Equals(record.Mode, "batch_step", StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                if (!DateTime.TryParse(record.Ts, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var timestamp) ||
+                    timestamp < cutoffUtc)
+                    continue;
+                if (!record.Ok && !string.IsNullOrWhiteSpace(record.ErrorCode) &&
+                    RecommendationIgnoredErrorCodes.Contains(record.ErrorCode))
+                    continue;
+
+                if (!aggregates.TryGetValue(record.Skill, out var aggregate))
+                    aggregates[record.Skill] = aggregate = new SkillAgg();
+                aggregate.Calls++;
+                aggregate.TotalMs += Math.Max(0, record.Ms);
+                aggregate.MaxMs = Math.Max(aggregate.MaxMs, record.Ms);
+                if (!record.Ok) aggregate.Errors++;
+            }
+
+            var result = new Dictionary<string, RecommendationHealth>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in aggregates)
+            {
+                var aggregate = pair.Value;
+                result[pair.Key] = CalculateRecommendationHealth(aggregate.Calls, aggregate.Errors, aggregate.TotalMs);
+            }
+            return result;
+        }
+
+        internal static RecommendationHealth CalculateRecommendationHealth(int calls, int errors, long totalMs)
+        {
+            calls = Math.Max(0, calls);
+            errors = Math.Max(0, Math.Min(errors, calls));
+            var rate = calls > 0 ? (double)errors / calls : 0.0;
+            var avgMs = calls > 0 ? (double)Math.Max(0, totalMs) / calls : 0.0;
+            var penalty = calls < 5 ? 0 : rate >= 0.75 ? 3 : rate >= 0.50 ? 2 : rate >= 0.25 ? 1 : 0;
+            var warnings = new List<string>();
+            if (penalty > 0)
+                warnings.Add($"Local 7d telemetry: {errors}/{calls} valid calls failed ({rate:P0}); ranking reduced by {penalty}.");
+            if (calls >= 3 && avgMs >= 2000)
+                warnings.Add($"Local 7d telemetry: average execution time is {avgMs / 1000.0:F1}s across {calls} valid calls.");
+            return new RecommendationHealth
+            {
+                Calls = calls,
+                Errors = errors,
+                AvgMs = (long)Math.Round(avgMs),
+                ErrorRate = Math.Round(rate, 4),
+                Penalty = penalty,
+                Warnings = warnings.ToArray(),
+            };
         }
 
         /// <summary>Per-skill running aggregate.</summary>
@@ -561,3 +672,5 @@ namespace UnitySkills
         }
     }
 }
+
+// Producer:Betsy

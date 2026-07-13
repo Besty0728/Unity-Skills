@@ -102,6 +102,7 @@ namespace UnitySkills
             {"tab_skills", "Skills"},
             {"tab_ai_config", "AI Config"},
             {"tab_history", "History"},
+            {"tab_analytics", "Analytics"},
 
             {"topbar_running", "Running"},
             {"topbar_stopped", "Stopped"},
@@ -122,6 +123,8 @@ namespace UnitySkills
             {"drawer_keepalive_label", "KeepAlive"},
             {"drawer_loglevel_label", "Log Level"},
             {"drawer_confirm_label", "Confirm high-risk skills"},
+            {"drawer_telemetry_label", "Record execution telemetry"},
+            {"drawer_telemetry_hint", "Logs each skill call (name, agent, mode, ok, duration — no arguments or field values) to Library/UnitySkillsTelemetry.jsonl, powering the Analytics tab and GET /analytics. Local only; never leaves your machine. Turn off to stop recording."},
 
             // Shortcuts settings (panel hotkeys)
             {"shortcut_section_title", "Shortcuts"},
@@ -136,6 +139,35 @@ namespace UnitySkills
             {"shortcut_capture_prompt", "Press a key combination…"},
             {"shortcut_conflict_fmt", "Conflicts with {0}"},
             {"shortcut_profile_readonly", "The active shortcut profile is read-only. Open Edit ▸ Shortcuts, select a writable profile, then try again."},
+
+            // Analytics tab (skill execution telemetry viewer)
+            {"analytics_title", "Skill Analytics"},
+            {"analytics_window_label", "Window"},
+            {"analytics_window_1h", "Last hour"},
+            {"analytics_window_24h", "Last 24h"},
+            {"analytics_window_7d", "Last 7 days"},
+            {"analytics_window_all", "All time"},
+            {"analytics_disabled", "Telemetry is off. Enable \"Record execution telemetry\" in Settings ▸ Runtime to collect data."},
+            {"analytics_empty", "No telemetry recorded in this window yet. Run a few skills and refresh."},
+            {"analytics_summary_calls", "Calls"},
+            {"analytics_summary_errors", "Errors"},
+            {"analytics_summary_errorrate", "Error rate"},
+            {"analytics_summary_skills", "Unique skills"},
+            {"analytics_section_top", "Most used"},
+            {"analytics_section_errorprone", "Error-prone (>=5 calls)"},
+            {"analytics_section_slowest", "Slowest (>=3 calls)"},
+            {"analytics_section_errorcodes", "Top error codes"},
+            {"analytics_section_recent", "Recent errors"},
+            {"analytics_col_skill", "Skill"},
+            {"analytics_col_calls", "Calls"},
+            {"analytics_col_errorrate", "Err%"},
+            {"analytics_col_avgms", "Avg ms"},
+            {"analytics_col_maxms", "Max ms"},
+            {"analytics_col_errors", "Errors"},
+            {"analytics_col_code", "Code"},
+            {"analytics_col_count", "Count"},
+            {"analytics_none", "None"},
+            {"analytics_reveal_log", "Reveal log"},
 
             {"footer_queue", "Pending"},
             {"footer_done", "Done"},
@@ -204,6 +236,7 @@ namespace UnitySkills
             {"asset_refresh", "Refresh the Asset Database"},
             {"asset_get_info", "Get information about an asset"},
             {"editor_play", "Enter play mode"},
+            {"editor_play_capture", "Run and capture Play Mode errors"},
             {"editor_stop", "Exit play mode"},
             {"editor_pause", "Pause/unpause play mode"},
             {"editor_select", "Select a GameObject"},
@@ -825,6 +858,7 @@ namespace UnitySkills
             {"project_get_layers", "Get all project layers"},
             {"project_get_packages", "Get installed packages"},
             {"project_get_build_settings", "Get build settings"},
+            {"build_player", "Build player"},
             {"project_get_player_settings", "Get player settings"},
 
             // Script Skills (new)
@@ -1043,6 +1077,7 @@ namespace UnitySkills
             {"tab_skills", "Skill"},
             {"tab_ai_config", "AI 配置"},
             {"tab_history", "历史"},
+            {"tab_analytics", "分析"},
 
             {"topbar_running", "运行中"},
             {"topbar_stopped", "已停止"},
@@ -1063,6 +1098,8 @@ namespace UnitySkills
             {"drawer_keepalive_label", "保活"},
             {"drawer_loglevel_label", "日志级别"},
             {"drawer_confirm_label", "高风险技能二次确认"},
+            {"drawer_telemetry_label", "记录执行数据"},
+            {"drawer_telemetry_hint", "将每次技能调用（名称、agent、模式、成功与否、用时——不含参数或字段值）记录到 Library/UnitySkillsTelemetry.jsonl，为 Analytics 标签与 GET /analytics 供数。仅存本地，绝不外传。关闭即停止记录。"},
 
             // Shortcuts settings (panel hotkeys)
             {"shortcut_section_title", "快捷键"},
@@ -1077,6 +1114,35 @@ namespace UnitySkills
             {"shortcut_capture_prompt", "按下组合键…"},
             {"shortcut_conflict_fmt", "与 {0} 冲突"},
             {"shortcut_profile_readonly", "当前快捷键 Profile 为只读。请打开 Edit ▸ Shortcuts 选择可写 Profile 后重试。"},
+
+            // Analytics tab (skill execution telemetry viewer)
+            {"analytics_title", "技能分析"},
+            {"analytics_window_label", "时间窗"},
+            {"analytics_window_1h", "近 1 小时"},
+            {"analytics_window_24h", "近 24 小时"},
+            {"analytics_window_7d", "近 7 日"},
+            {"analytics_window_all", "全部"},
+            {"analytics_disabled", "执行记录已关闭。在 设置 ▸ 运行 里开启记录以采集数据。"},
+            {"analytics_empty", "该时间窗内暂无执行数据。执行多个技能后刷新。"},
+            {"analytics_summary_calls", "调用"},
+            {"analytics_summary_errors", "错误"},
+            {"analytics_summary_errorrate", "错误率"},
+            {"analytics_summary_skills", "技能数"},
+            {"analytics_section_top", "最常用"},
+            {"analytics_section_errorprone", "高失败率（>=5 次）"},
+            {"analytics_section_slowest", "最慢（>=3 次）"},
+            {"analytics_section_errorcodes", "错误码 Top"},
+            {"analytics_section_recent", "最近错误"},
+            {"analytics_col_skill", "技能"},
+            {"analytics_col_calls", "调用"},
+            {"analytics_col_errorrate", "错误%"},
+            {"analytics_col_avgms", "均时ms"},
+            {"analytics_col_maxms", "峰值ms"},
+            {"analytics_col_errors", "错误数"},
+            {"analytics_col_code", "错误码"},
+            {"analytics_col_count", "次数"},
+            {"analytics_none", "无"},
+            {"analytics_reveal_log", "打开日志"},
 
             {"footer_queue", "待处理"},
             {"footer_done", "已完成"},
@@ -1145,6 +1211,7 @@ namespace UnitySkills
             {"asset_refresh", "刷新资源数据库"},
             {"asset_get_info", "获取资源信息"},
             {"editor_play", "进入播放模式"},
+            {"editor_play_capture", "运行并捕获播放模式错误"},
             {"editor_stop", "退出播放模式"},
             {"editor_pause", "暂停/继续播放模式"},
             {"editor_select", "选中游戏对象"},
@@ -1666,6 +1733,7 @@ namespace UnitySkills
             {"project_get_layers", "获取所有项目层"},
             {"project_get_packages", "获取已安装的包"},
             {"project_get_build_settings", "获取构建设置"},
+            {"build_player", "构建播放器"},
             {"project_get_player_settings", "获取播放器设置"},
             {"graphics_get_overview", "获取图形/质量/渲染管线总览"},
             {"graphics_get_quality_settings", "获取质量等级及其渲染管线覆盖"},
@@ -1989,3 +2057,5 @@ namespace UnitySkills
         };
     }
 }
+
+// Producer:Betsy

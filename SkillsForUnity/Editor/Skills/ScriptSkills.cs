@@ -550,3 +550,5 @@ public class {CLASS} : EditorWindow
         }
     }
 }
+
+// Producer:Betsy

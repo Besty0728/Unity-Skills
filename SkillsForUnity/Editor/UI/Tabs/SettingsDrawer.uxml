@@ -120,6 +120,10 @@
                     <ui:Toggle name="confirm-toggle" />
                     <ui:Label name="confirm-hint" class="setting-hint"
                               style="margin-left: 18px;" />
+
+                    <ui:Toggle name="telemetry-toggle" style="margin-top: 6px;" />
+                    <ui:Label name="telemetry-hint" class="setting-hint"
+                              style="margin-left: 18px;" />
                 </ui:VisualElement>
 
                 <!-- Shortcuts group — panel hotkeys (rows built by ShortcutsSettingsController) -->

@@ -269,6 +269,7 @@ namespace UnitySkills
             _publishingConsoleError = true;
             try
             {
+                PlayCaptureService.RecordRuntimeError(message, stackTrace, type);
                 Publish("console_error", new
                 {
                     logType = type.ToString(),
@@ -305,3 +306,5 @@ namespace UnitySkills
         }
     }
 }
+
+// Producer:Betsy

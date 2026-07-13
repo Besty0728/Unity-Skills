@@ -11,7 +11,7 @@ namespace UnitySkills
     /// <summary>
     /// Unity Editor Window — UnitySkills v2 layout.
     /// Topbar (server status + URL + toggle + settings) — persistent.
-    /// 3 tabs: Skills / AI Config / History.
+    /// 4 tabs: Skills / AI Config / History / Analytics.
     /// Footer: version + live stats pill + segmented language switch.
     /// Settings panel: slide-in drawer from the right.
     /// </summary>
@@ -44,6 +44,7 @@ namespace UnitySkills
         private SkillsTabController      _skillsController;
         private AIConfigTabController    _configController;
         private HistoryTabController     _historyController;
+        private AnalyticsTabController   _analyticsController;
 
         // ----- Tab strip -----
         private VisualElement[] _tabContents;
@@ -111,6 +112,7 @@ namespace UnitySkills
             _skillsController  = new SkillsTabController(_tabContents[0], this);
             _configController  = new AIConfigTabController(_tabContents[1], this);
             _historyController = new HistoryTabController(_tabContents[2], this);
+            _analyticsController = new AnalyticsTabController(_tabContents[3], this);
 
             // --- Tab clicks ---
             for (int i = 0; i < _tabButtons.Length; i++)
@@ -131,10 +133,10 @@ namespace UnitySkills
 
         private void CacheTabReferences()
         {
-            _tabButtons    = new Button[3];
-            _tabContents   = new VisualElement[3];
-            _tabUnderlines = new VisualElement[3];
-            for (int i = 0; i < 3; i++)
+            _tabButtons    = new Button[4];
+            _tabContents   = new VisualElement[4];
+            _tabUnderlines = new VisualElement[4];
+            for (int i = 0; i < 4; i++)
             {
                 _tabButtons[i]    = rootVisualElement.Q<Button>($"tab-btn-{i}");
                 _tabContents[i]   = rootVisualElement.Q<VisualElement>($"tab-content-{i}");
@@ -166,6 +168,10 @@ namespace UnitySkills
             }
 
             if (_tabButtons[index] != null) _tabButtons[index].Blur();
+
+            // Analytics pulls aggregates on demand (30s cache in SkillTelemetryService),
+            // so activating the tab is the natural refresh point — no live tick involved.
+            if (index == 3) _analyticsController?.OnTabSelected();
         }
 
         /// <summary>
@@ -203,6 +209,7 @@ namespace UnitySkills
             if (_tabButtons[0] != null) _tabButtons[0].text = SkillsLocalization.Get("tab_skills");
             if (_tabButtons[1] != null) _tabButtons[1].text = SkillsLocalization.Get("tab_ai_config");
             if (_tabButtons[2] != null) _tabButtons[2].text = SkillsLocalization.Get("tab_history");
+            if (_tabButtons[3] != null) _tabButtons[3].text = SkillsLocalization.Get("tab_analytics");
 
             _topbar?.RefreshLocalization();
             _footer?.RefreshLocalization();
@@ -211,6 +218,7 @@ namespace UnitySkills
             _skillsController?.RefreshLocalization();
             _configController?.RefreshLocalization();
             _historyController?.RefreshLocalization();
+            _analyticsController?.RefreshLocalization();
         }
 
         // ===== Skill catalog (preserved API for controllers) =====
@@ -871,3 +879,5 @@ namespace UnitySkills
         }
     }
 }
+
+// Producer:Betsy
