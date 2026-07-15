@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using UnityEditor;
 using UnityEngine;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -340,54 +341,54 @@ namespace UnitySkills
                 var skills = new Dictionary<string, SkillInfo>(StringComparer.OrdinalIgnoreCase);
                 var trackedSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                var allTypes = SkillsCommon.GetAllLoadedTypes();
-
-                foreach (var type in allTypes)
+                // 使用 Unity 编辑器索引直接查询 Skill 方法，避免在 Domain Reload 后枚举全部程序集和类型。
+                var methods = TypeCache.GetMethodsWithAttribute<UnitySkillAttribute>();
+                foreach (var method in methods)
                 {
-                    foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                    if (!method.IsPublic || !method.IsStatic)
+                        continue;
+
+                    UnitySkillAttribute attr;
+                    try { attr = method.GetCustomAttribute<UnitySkillAttribute>(); }
+                    catch { continue; }
+                    if (attr != null)
                     {
-                        UnitySkillAttribute attr;
-                        try { attr = method.GetCustomAttribute<UnitySkillAttribute>(); }
-                        catch { continue; }
-                        if (attr != null)
+                        var name = attr.Name ?? ToSnakeCase(method.Name);
+                        var parameters = method.GetParameters();
+                        var parameterNames = parameters.Select(p => p.Name).ToArray();
+                        var allowedSet = new HashSet<string>(parameterNames, StringComparer.OrdinalIgnoreCase);
+                        allowedSet.UnionWith(_reservedBodyParameters);
+                        if (!allowedSet.Contains(EntityIdParameterName) && SupportsSyntheticEntityId(parameterNames))
+                            allowedSet.Add(EntityIdParameterName);
+                        skills[name] = new SkillInfo
                         {
-                            var name = attr.Name ?? ToSnakeCase(method.Name);
-                            var parameters = method.GetParameters();
-                            var parameterNames = parameters.Select(p => p.Name).ToArray();
-                            var allowedSet = new HashSet<string>(parameterNames, StringComparer.OrdinalIgnoreCase);
-                            allowedSet.UnionWith(_reservedBodyParameters);
-                            if (!allowedSet.Contains(EntityIdParameterName) && SupportsSyntheticEntityId(parameterNames))
-                                allowedSet.Add(EntityIdParameterName);
-                            skills[name] = new SkillInfo
-                            {
-                                Name = name,
-                                Description = attr.Description ?? "",
-                                Method = method,
-                                Parameters = parameters,
-                                TracksWorkflow = attr.TracksWorkflow,
-                                Category = attr.Category,
-                                Operation = attr.Operation,
-                                Tags = attr.Tags,
-                                Outputs = attr.Outputs,
-                                RequiresInput = attr.RequiresInput,
-                                ReadOnly = attr.ReadOnly,
-                                MutatesScene = attr.MutatesScene,
-                                MutatesAssets = attr.MutatesAssets,
-                                MayTriggerReload = attr.MayTriggerReload,
-                                MayEnterPlayMode = attr.MayEnterPlayMode,
-                                SupportsDryRun = attr.SupportsDryRun,
-                                RiskLevel = attr.RiskLevel ?? "low",
-                                RequiresPackages = attr.RequiresPackages,
-                                Mode = attr.Mode,
-                                ParameterNames = parameterNames,
-                                AllowedParameterSet = allowedSet,
-                                NameLower = name.ToLowerInvariant(),
-                                DescriptionLower = (attr.Description ?? "").ToLowerInvariant(),
-                                TagsLower = attr.Tags?.Select(t => t.ToLowerInvariant()).ToArray()
-                            };
-                            if (attr.TracksWorkflow)
-                                trackedSkills.Add(name);
-                        }
+                            Name = name,
+                            Description = attr.Description ?? "",
+                            Method = method,
+                            Parameters = parameters,
+                            TracksWorkflow = attr.TracksWorkflow,
+                            Category = attr.Category,
+                            Operation = attr.Operation,
+                            Tags = attr.Tags,
+                            Outputs = attr.Outputs,
+                            RequiresInput = attr.RequiresInput,
+                            ReadOnly = attr.ReadOnly,
+                            MutatesScene = attr.MutatesScene,
+                            MutatesAssets = attr.MutatesAssets,
+                            MayTriggerReload = attr.MayTriggerReload,
+                            MayEnterPlayMode = attr.MayEnterPlayMode,
+                            SupportsDryRun = attr.SupportsDryRun,
+                            RiskLevel = attr.RiskLevel ?? "low",
+                            RequiresPackages = attr.RequiresPackages,
+                            Mode = attr.Mode,
+                            ParameterNames = parameterNames,
+                            AllowedParameterSet = allowedSet,
+                            NameLower = name.ToLowerInvariant(),
+                            DescriptionLower = (attr.Description ?? "").ToLowerInvariant(),
+                            TagsLower = attr.Tags?.Select(t => t.ToLowerInvariant()).ToArray()
+                        };
+                        if (attr.TracksWorkflow)
+                            trackedSkills.Add(name);
                     }
                 }
 
