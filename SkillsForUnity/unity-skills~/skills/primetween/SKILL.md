@@ -1,6 +1,6 @@
 ---
 name: unity-primetween
-description: Inspect PrimeTween Free, discover its public animation factories, and generate lifecycle-aware PrimeTween runtime scripts. Use when checking a PrimeTween installation, exploring supported animation APIs, or generating Transform/Sequence animation code.
+description: Inspect PrimeTween Free, discover its public animation factories, and generate lifecycle-aware PrimeTween runtime scripts. Use when checking a PrimeTween installation, exploring supported animation APIs, or generating Transform/Sequence animation code. 检查 PrimeTween Free 安装状态、探索其公开动画工厂方法、或生成生命周期感知的 PrimeTween 运行时代码(Transform/Sequence 动画)时使用。
 ---
 
 # PrimeTween Skills
@@ -30,7 +30,7 @@ Read the current global runtime values exposed by `PrimeTweenConfig`.
 ### `primetween_list_factories`
 List public static methods from one PrimeTween API type.
 
-**Parameters:** `typeName="Tween"` (`Tween`, `Sequence`, `Shake`, or `PrimeTweenConfig`), `methodPrefix?`, `limit=100`.
+**Parameters:** `typeName="Tween"` (Tween, Sequence, Shake, or PrimeTweenConfig), `methodPrefix?`, `limit=100`.
 
 ### `primetween_generate_tween_script`
 Create a Transform-focused PrimeTween MonoBehaviour that owns its `Tween` and stops it on disable.

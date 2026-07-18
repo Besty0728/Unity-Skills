@@ -6,7 +6,6 @@ using System.Reflection;
 using System.Text;
 using Newtonsoft.Json;
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
 using UnitySkills.Internal;
 
@@ -44,7 +43,7 @@ namespace UnitySkills
                 };
             }
 
-            var packageInfo = PackageInfo.FindForAssembly(tweenType.Assembly);
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(tweenType.Assembly);
             var typeNames = new[]
             {
                 TweenTypeName,
@@ -320,19 +319,7 @@ namespace UnitySkills
             return null;
         }
 
-        private static Type FindType(string typeName)
-        {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var type = assembly.GetType(typeName, throwOnError: false);
-                if (type != null)
-                {
-                    return type;
-                }
-            }
-
-            return null;
-        }
+        private static Type FindType(string typeName) => SkillsCommon.FindTypeByName(typeName);
 
         private static object ToMethodInfo(MethodInfo method)
         {

@@ -12,7 +12,7 @@ Use this skill when the user wants to automate the Unity Editor through the loca
 The schema is the canonical source for exact skill names, parameters, defaults, and returns — **but you rarely need the expensive layers**. Route by task shape (all layers are server-cached with ETag/304 and served off the main thread):
 
 - **Intent is specific** ("create a cube", "set this SO field") → `GET /skills/recommend?intent=<words>&topN=10&includeSchema=true` (~2-5 KB) returns scored candidates **with parameter schemas** — often the only lookup you need. If you already know the skill name, skip lookups entirely and go straight to the dryRun gate below.
-- **Task touches one or two areas** → directory first: `GET /skills?brief=1` (~19 KB ≈ 3.4K tokens — all 771 skill names grouped by module, names are self-describing `module_verb`) to lock the module(s), then `GET /skills/schema?category=<Category>` (~13–44 KB) for exact signatures. Typical session cost ≈ 10K tokens instead of 35K.
+- **Task touches one or two areas** → directory first: `GET /skills?brief=1` (~19 KB ≈ 3.4K tokens — all 738 skill names grouped by module, names are self-describing `module_verb`) to lock the module(s), then `GET /skills/schema?category=<Category>` (~13–44 KB) for exact signatures. Typical session cost ≈ 10K tokens instead of 35K.
 - **Exploratory / cross-module / unsure what exists** → full awareness: `GET /skills?summary=1` (~143 KB ≈ 35K tokens — every skill's full description). The only layer with all descriptions at once; reach for it when the cheaper layers left you unsure, **not by default**.
 - **Full detail (rare)**: `GET /skills/schema` — full schema with exact parameter schemas (~`618 KB` ≈ 150K tokens, client-cached 300s + disk-cached under `~/.unity_skills/cache/` with ETag/304 revalidation, so short-lived CLI processes reuse it too). Only when you need many modules' exact signatures at once.
 
@@ -31,7 +31,7 @@ Python helper shortcuts: `unity_skills.search_skills("keyword")` greps the cache
 
 Use module `SKILL.md` files for routing guidance, guardrails, and minimal examples, not as the canonical source of exact signatures.
 
-Current snapshot: `771` REST skills, `52` functional source modules, `71` module documentation directories (`48` REST/module docs + `23` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `738` REST skills, `52` functional source modules, `71` module documentation directories (`48` REST/module docs + `23` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`
 
@@ -115,7 +115,7 @@ Mode authorization (persistent, per-skill) and `ConfirmationToken` (single-shot,
 
 ### Skill Mode Annotation
 
-The REST surface (`771` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
+The REST surface (`738` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
 
 | Annotation | Count | Source |
 |---|---|---|
@@ -175,6 +175,7 @@ Before writing or refactoring Unity code, **load the relevant advisory module fi
 |---|---|
 | `addressables-design` | `InitializeAsync` / `LoadAssetAsync` / `LoadSceneAsync` / `UpdateCatalogs` / `AssetReference` |
 | `dotween-design` | `DOTween.Init` / `DOMove` / `Sequence` / `SetLoops` / `SetLink` / `ToUniTask` |
+| `primetween-design` | `Tween.Position` / `Sequence.Chain` / handle lifecycle / `PrimeTweenConfig` |
 | `netcode-design` | `NetworkBehaviour` / RPC / `NetworkVariable` / Spawn |
 | `shadergraph-design` | Graph structure, node chains, SubGraph boundaries, keyword / blackboard layout |
 | `unitask-design` | `async UniTask` / `UniTaskVoid` / `PlayerLoopTiming` / `CancellationToken` / `WhenAll` |
