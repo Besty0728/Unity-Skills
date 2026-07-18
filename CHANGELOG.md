@@ -2,6 +2,24 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.2.0] - 2026-07-18
+
+> **Community PRs**：本版本主要内容来自社区贡献，感谢以下 PR 作者：PR #45（客户端多实例发现）、PR #47（PrimeTween Free 支持）、PR #48（TypeCache 加速扫描）。
+
+### Added
+
+- **PrimeTween Free 支持（+5 skills，共 738）** — 新增 `primetween_get_status` / `primetween_get_config` / `primetween_list_factories` / `primetween_generate_tween_script` / `primetween_generate_sequence_script` 五个 Skill，基于反射发现 PrimeTween 工厂方法并生成生命周期感知的 Transform/Sequence 补间 MonoBehaviour 脚本；安装包为 `com.kyrylokuzyk.primetween`，全反射实现无编译期依赖。同步新增 `primetween` 功能文档模块与 `primetween-design` 架构设计模块，覆盖 PrimeTween 1.4.6 的工厂句柄、序列组合、回调、取消、异步/协程等待与 `PrimeTweenConfig` 配置规则。(PR #47)
+
+### Changed
+
+- **Skill 扫描改用 TypeCache 索引** — `SkillRouter` 与 `UnitySkillsWindow` 不再在 Domain Reload 后枚举全部程序集类型，改为 `TypeCache.GetMethodsWithAttribute<UnitySkillAttribute>()` 直接定位 Skill 方法，降低大项目反射开销与启动延迟；窗口刷新与路由器使用同一索引路径，避免重复枚举。(PR #48)
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.2.0`。
+
+### Fixed
+
+- **多开 Unity 时优先连接当前项目实例** — `unity_skills.py` 自动发现逻辑现在会按当前工作目录匹配 `registry.json` 中的项目路径，优先选择属于当前项目的实例，再按心跳新鲜度排序；避免多项目同时运行时客户端连到错误的 Unity 实例，失败仍回退扫描端口 8090-8100。(PR #45)
+- **PR#47 后续审查修复** — 合并 PrimeTween 后的审查修复：消除 `PackageInfo` 二义性（显式使用 `UnityEditor.PackageManager.PackageInfo`）、`FindType` 复用 `SkillsCommon.FindTypeByName`、补录遗漏的 `PrimeTweenSkills.cs.meta`、并将 README / agent.md / SKILL.md 中的技能计数统一修正为运行时口径 738。(f81f8e0)
+
 ## [2.1.3] - 2026-07-13
 
 ### Fixed
