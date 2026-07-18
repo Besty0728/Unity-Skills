@@ -274,9 +274,9 @@ If you're using other tools that support Skills, install according to the Skills
 
 <a href="https://www.star-history.com/?repos=Besty0728%2FUnity-Skills&type=date&logscale=&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&theme=dark&logscale&legend=top-left&sealed_token=7yN7uYkbqDVxBfuWBoFXCxDXjS_d4C7_tIqmsvpfRHO2pGfs495fm-0GxFaIenk6hgF26-jwSKEhjXoaHVP8rolOtKRLrrdlSQIiut1K0PMNk4a0tOkyrmu6T-SPzWvJ2SNcKTa34uDKIH2qph3JHKyj2B1pa-0Tc4Zz-fJOz_muhChuK9Wl_cuKKLjk" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&logscale&legend=top-left&sealed_token=7yN7uYkbqDVxBfuWBoFXCxDXjS_d4C7_tIqmsvpfRHO2pGfs495fm-0GxFaIenk6hgF26-jwSKEhjXoaHVP8rolOtKRLrrdlSQIiut1K0PMNk4a0tOkyrmu6T-SPzWvJ2SNcKTa34uDKIH2qph3JHKyj2B1pa-0Tc4Zz-fJOz_muhChuK9Wl_cuKKLjk" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&logscale&legend=top-left&sealed_token=7yN7uYkbqDVxBfuWBoFXCxDXjS_d4C7_tIqmsvpfRHO2pGfs495fm-0GxFaIenk6hgF26-jwSKEhjXoaHVP8rolOtKRLrrdlSQIiut1K0PMNk4a0tOkyrmu6T-SPzWvJ2SNcKTa34uDKIH2qph3JHKyj2B1pa-0Tc4Zz-fJOz_muhChuK9Wl_cuKKLjk" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&theme=dark&logscale&legend=top-left&sealed_token=puHA56V-rw188klMvHmwK9HLr_ngIGDkOUeEYYDkfQK3jex-mQSY6gtQdUX5bpeyxWr5NL-itvG9WkEDtFn3BasAn6uuPtHh-qWIVrwRkXb6cGi5wYWeehiHyw-STZw9Aam6AX47PMNtw62yrm-WZOp7UaUFK96GqOHmKTDCcx9ryitoAMkHAcOO18sG" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&logscale&legend=top-left&sealed_token=puHA56V-rw188klMvHmwK9HLr_ngIGDkOUeEYYDkfQK3jex-mQSY6gtQdUX5bpeyxWr5NL-itvG9WkEDtFn3BasAn6uuPtHh-qWIVrwRkXb6cGi5wYWeehiHyw-STZw9Aam6AX47PMNtw62yrm-WZOp7UaUFK96GqOHmKTDCcx9ryitoAMkHAcOO18sG" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&logscale&legend=top-left&sealed_token=puHA56V-rw188klMvHmwK9HLr_ngIGDkOUeEYYDkfQK3jex-mQSY6gtQdUX5bpeyxWr5NL-itvG9WkEDtFn3BasAn6uuPtHh-qWIVrwRkXb6cGi5wYWeehiHyw-STZw9Aam6AX47PMNtw62yrm-WZOp7UaUFK96GqOHmKTDCcx9ryitoAMkHAcOO18sG" />
  </picture>
 </a>
 
