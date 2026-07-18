@@ -39,6 +39,7 @@ namespace UnitySkills.Tests.Core
             // 统一豁免 schema-first（Exact Signatures）校验，避免误报。
             "addressables-design",
             "dotween-design",
+            "primetween-design",
             "netcode-design",
             "unitask-design",
             "yooasset-design",

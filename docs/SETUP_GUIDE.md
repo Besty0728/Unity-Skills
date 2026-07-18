@@ -68,7 +68,7 @@ Select your AI tool and click **Install**. The installer copies the `unity-skill
 
 ```
 SKILL.md                    # Main skill definition (AI reads this)
-skills/                     # Per-module skill docs (49 functional + 20 advisory)
+skills/                     # Per-module skill docs (48 REST/module + 23 advisory)
 scripts/unity_skills.py     # Python client library
 scripts/agent_config.json   # Agent configuration
 references/                 # Unity development references
