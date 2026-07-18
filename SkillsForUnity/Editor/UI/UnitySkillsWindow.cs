@@ -226,28 +226,29 @@ namespace UnitySkills
         public void RefreshSkillsList()
         {
             _skillsByCategory = new Dictionary<string, List<SkillInfo>>();
-            var allTypes = SkillsCommon.GetAllLoadedTypes();
+            // 与路由器使用相同的 Unity 编辑器索引，避免窗口刷新时再次全量枚举类型。
+            var methods = TypeCache.GetMethodsWithAttribute<UnitySkillAttribute>();
 
-            foreach (var type in allTypes)
+            foreach (var method in methods)
             {
-                foreach (var method in type.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                if (!method.IsPublic || !method.IsStatic || method.DeclaringType == null)
+                    continue;
+
+                UnitySkillAttribute attr;
+                try { attr = method.GetCustomAttribute<UnitySkillAttribute>(); }
+                catch { continue; }
+                if (attr == null) continue;
+
+                var category = method.DeclaringType.Name.Replace("Skills", "");
+                if (!_skillsByCategory.ContainsKey(category))
+                    _skillsByCategory[category] = new List<SkillInfo>();
+
+                _skillsByCategory[category].Add(new SkillInfo
                 {
-                    UnitySkillAttribute attr;
-                    try { attr = method.GetCustomAttribute<UnitySkillAttribute>(); }
-                    catch { continue; }
-                    if (attr == null) continue;
-
-                    var category = type.Name.Replace("Skills", "");
-                    if (!_skillsByCategory.ContainsKey(category))
-                        _skillsByCategory[category] = new List<SkillInfo>();
-
-                    _skillsByCategory[category].Add(new SkillInfo
-                    {
-                        Name = attr.Name ?? method.Name,
-                        Description = attr.Description ?? "",
-                        Method = method
-                    });
-                }
+                    Name = attr.Name ?? method.Name,
+                    Description = attr.Description ?? "",
+                    Method = method
+                });
             }
         }
 
