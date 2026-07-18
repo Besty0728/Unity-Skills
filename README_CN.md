@@ -272,11 +272,11 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 
 ## ⭐Star History
 
-<a href="https://www.star-history.com/?type=date&repos=Besty0728%2FUnity-Skills">
+<a href="https://www.star-history.com/?repos=Besty0728%2FUnity-Skills&type=date&logscale=&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&theme=dark&logscale&legend=top-left&sealed_token=7yN7uYkbqDVxBfuWBoFXCxDXjS_d4C7_tIqmsvpfRHO2pGfs495fm-0GxFaIenk6hgF26-jwSKEhjXoaHVP8rolOtKRLrrdlSQIiut1K0PMNk4a0tOkyrmu6T-SPzWvJ2SNcKTa34uDKIH2qph3JHKyj2B1pa-0Tc4Zz-fJOz_muhChuK9Wl_cuKKLjk" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&logscale&legend=top-left&sealed_token=7yN7uYkbqDVxBfuWBoFXCxDXjS_d4C7_tIqmsvpfRHO2pGfs495fm-0GxFaIenk6hgF26-jwSKEhjXoaHVP8rolOtKRLrrdlSQIiut1K0PMNk4a0tOkyrmu6T-SPzWvJ2SNcKTa34uDKIH2qph3JHKyj2B1pa-0Tc4Zz-fJOz_muhChuK9Wl_cuKKLjk" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Besty0728/Unity-Skills&type=date&logscale&legend=top-left&sealed_token=7yN7uYkbqDVxBfuWBoFXCxDXjS_d4C7_tIqmsvpfRHO2pGfs495fm-0GxFaIenk6hgF26-jwSKEhjXoaHVP8rolOtKRLrrdlSQIiut1K0PMNk4a0tOkyrmu6T-SPzWvJ2SNcKTa34uDKIH2qph3JHKyj2B1pa-0Tc4Zz-fJOz_muhChuK9Wl_cuKKLjk" />
  </picture>
 </a>
 
