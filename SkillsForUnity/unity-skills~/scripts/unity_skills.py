@@ -40,6 +40,41 @@ SCAN_TIMEOUT = 1
 # heartbeat interval is ~30s).
 REGISTRY_STALE_SECONDS = 120
 
+
+def _normalize_project_path(path: str) -> Optional[str]:
+    """Return a canonical path suitable for comparing project directories."""
+    if not path:
+        return None
+
+    try:
+        return os.path.normcase(
+            os.path.realpath(os.path.abspath(os.path.expanduser(os.fspath(path))))
+        )
+    except (OSError, TypeError, ValueError):
+        return None
+
+
+def _project_path_match_score(current_directory: str, project_path: str) -> int:
+    """Return a positive score when the current directory belongs to a project.
+
+    A project root also matches its subdirectories. The normalized path length is
+    used as the score so the most specific project wins when projects are nested.
+    """
+    normalized_current = _normalize_project_path(current_directory)
+    normalized_project = _normalize_project_path(project_path)
+    if not normalized_current or not normalized_project:
+        return 0
+
+    try:
+        if os.path.commonpath([normalized_current, normalized_project]) != normalized_project:
+            return 0
+    except ValueError:
+        # commonpath raises for paths on different drives on Windows.
+        return 0
+
+    return len(normalized_project)
+
+
 def get_registry_path():
     return os.path.join(os.path.expanduser("~"), ".unity_skills", "registry.json")
 
@@ -134,7 +169,7 @@ class UnitySkills:
             version: Connect to instance by Unity version (e.g. "6", "2022", "2022.3") - auto-discovers port.
             agent_id: Custom agent identifier (e.g. "MyScript", "ClaudeCode")
             timeout: Request timeout in seconds (default: 900)
-        Priority: url > port > target > version > default port 8090
+        Priority: url > port > target > version > auto-discovery
         """
         self.url = url
         self.agent_id = agent_id or _get_agent_id()
@@ -166,7 +201,8 @@ class UnitySkills:
                 else:
                     raise ValueError(f"Could not find Unity instance matching version '{version}'.")
             else:
-                # Auto-discover: registry ports first, then scan 8090-8100
+                # Auto-discover: prefer the current project's registry entry, then other
+                # registry ports, and finally scan 8090-8100.
                 found_port = self._find_first_available()
                 self.url = f"http://localhost:{found_port}"
 
@@ -205,15 +241,18 @@ class UnitySkills:
                 self.timeout = int(minutes) * 60
 
     def _registry_candidate_ports(self) -> List[int]:
-        """Ports from registry.json worth probing first, freshest heartbeat first.
+        """Return live registry ports in their preferred probing order.
 
         Entries whose last_active heartbeat (unix seconds, refreshed every ~30s by
         the server) is older than REGISTRY_STALE_SECONDS are skipped, as are
-        malformed entries — the caller's port scan remains the safety net.
+        malformed entries. Entries matching the current working directory are
+        preferred; within each group, the freshest heartbeat wins. The caller's
+        port scan remains the safety net.
         """
         candidates = []
         now = time.time()
-        for info in _load_registry().values():
+        current_directory = os.getcwd()
+        for registry_path, info in _load_registry().items():
             if not isinstance(info, dict):
                 continue
             port = info.get('port')
@@ -222,17 +261,22 @@ class UnitySkills:
                 continue
             if not isinstance(last_active, (int, float)) or (now - last_active) > REGISTRY_STALE_SECONDS:
                 continue
-            candidates.append((last_active, port))
+
+            project_path = info.get('path') or registry_path
+            path_match_score = _project_path_match_score(current_directory, project_path)
+            candidates.append((path_match_score, last_active, port))
+
         candidates.sort(reverse=True)
-        return list(dict.fromkeys(port for _, port in candidates))
+        return list(dict.fromkeys(port for _, _, port in candidates))
 
     def _find_first_available(self) -> int:
         """Find the first responsive Unity instance.
 
-        Tries ports recorded in registry.json first (no blind scan when instances
-        are registered), falling back to scanning ports 8090-8100 when the registry
-        is missing, stale, or its entries stop responding. The winning /health
-        payload is kept on self._health_info so it is not fetched a second time.
+        Tries the current project's live registry entry first, followed by other
+        live entries ordered by heartbeat. Falls back to scanning ports 8090-8100
+        when the registry is missing, stale, or its entries stop responding. The
+        winning /health payload is kept on self._health_info so it is not fetched
+        a second time.
         """
         tried = set()
         for port in self._registry_candidate_ports():
