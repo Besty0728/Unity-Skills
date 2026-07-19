@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using System.Linq;
+using Newtonsoft.Json;
 
 namespace UnitySkills
 {
@@ -9,6 +10,54 @@ namespace UnitySkills
     /// </summary>
     public static class PhysicsSkills
     {
+        private sealed class GravityValue { public float x; public float y; public float z; }
+
+        /// <summary>
+        /// Registers getters/setters so physics setting changes are reversible via workflow
+        /// undo/redo. Layer-collision keys are registered on demand (their handlers close over
+        /// the specific layer pair). Runs on domain load.
+        /// </summary>
+        [InitializeOnLoadMethod]
+        private static void RegisterSettingRestorers()
+        {
+            WorkflowSettingRestorerRegistry.Register("physics.gravity",
+                () => JsonConvert.SerializeObject(new GravityValue { x = Physics.gravity.x, y = Physics.gravity.y, z = Physics.gravity.z }),
+                json =>
+                {
+                    var v = JsonConvert.DeserializeObject<GravityValue>(json);
+                    if (v == null) return false;
+                    Physics.gravity = new Vector3(v.x, v.y, v.z);
+                    return true;
+                });
+
+            // Register a restorer for every layer pair so undo/redo of a collision-matrix change
+            // works even after a domain reload (which clears the in-memory registry).
+            for (int a = 0; a < 32; a++)
+                for (int b = a; b < 32; b++)
+                    EnsureLayerCollisionRestorer(a, b);
+        }
+
+        private static string LayerCollisionKey(int layer1, int layer2)
+        {
+            int a = Mathf.Min(layer1, layer2);
+            int b = Mathf.Max(layer1, layer2);
+            return $"physics.layerCollision:{a}:{b}";
+        }
+
+        private static void EnsureLayerCollisionRestorer(int layer1, int layer2)
+        {
+            int a = Mathf.Min(layer1, layer2);
+            int b = Mathf.Max(layer1, layer2);
+            WorkflowSettingRestorerRegistry.Register(LayerCollisionKey(a, b),
+                () => JsonConvert.SerializeObject(!Physics.GetIgnoreLayerCollision(a, b)),
+                json =>
+                {
+                    bool collisionEnabled = JsonConvert.DeserializeObject<bool>(json);
+                    Physics.IgnoreLayerCollision(a, b, !collisionEnabled);
+                    return true;
+                });
+        }
+
         [UnitySkill("physics_raycast", "Cast a ray and get hit info. Returns: {hit, collider, point, normal, distance}",
             Category = SkillCategory.Physics, Operation = SkillOperation.Query,
             Tags = new[] { "raycast", "collision", "detection", "line-of-sight" },
@@ -97,6 +146,11 @@ namespace UnitySkills
             Outputs = new[] { "success", "gravity" })]
         public static object PhysicsSetGravity(float x, float y, float z)
         {
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("physics.gravity",
+                    JsonConvert.SerializeObject(new GravityValue { x = Physics.gravity.x, y = Physics.gravity.y, z = Physics.gravity.z }),
+                    "Physics: Gravity");
+
             // Record for Undo support via DynamicsManager asset
             var assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/DynamicsManager.asset");
             if (assets != null && assets.Length > 0)
@@ -305,6 +359,14 @@ namespace UnitySkills
             Outputs = new[] { "success", "layer1", "layer2", "collisionEnabled" })]
         public static object PhysicsSetLayerCollision(int layer1, int layer2, bool enableCollision = true)
         {
+            if (WorkflowManager.IsRecording)
+            {
+                EnsureLayerCollisionRestorer(layer1, layer2);
+                WorkflowManager.SnapshotSetting(LayerCollisionKey(layer1, layer2),
+                    JsonConvert.SerializeObject(!Physics.GetIgnoreLayerCollision(layer1, layer2)),
+                    $"Physics: Layer Collision ({layer1}<->{layer2})");
+            }
+
             Physics.IgnoreLayerCollision(layer1, layer2, !enableCollision);
             return new { success = true, layer1, layer2, collisionEnabled = enableCollision };
         }

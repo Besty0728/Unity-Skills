@@ -32,6 +32,11 @@ namespace UnitySkills
             EditorSceneManager.SaveScene(scene, scenePath);
             AssetDatabase.Refresh();
 
+            // SaveScene wrote the new .unity to disk; record it as Created so undo removes it
+            // (moves into the store, redoable). Lightweight — no file-bytes backup needed.
+            var sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath);
+            if (sceneAsset != null) WorkflowManager.SnapshotCreatedAsset(sceneAsset);
+
             return new { success = true, scenePath, sceneName = scene.name };
         }
 
@@ -52,7 +57,7 @@ namespace UnitySkills
             return new { success = true, sceneName = scene.name, scenePath = scene.path };
         }
 
-        [UnitySkill("scene_save", "Save the current scene",
+        [UnitySkill("scene_save", "Save the current scene. Undo restores the on-disk .unity file; if the scene is open, reload it (Reload Scene) to see the reverted state.",
             Category = SkillCategory.Scene, Operation = SkillOperation.Execute,
             Tags = new[] { "save", "persist", "write" },
             Outputs = new[] { "scenePath" },
@@ -68,7 +73,27 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(path))
                 return new { error = "Scene has no path. Provide scenePath parameter." };
 
+            // Make the save reversible. Overwriting an existing .unity = Modified: back up the
+            // old bytes into the content-addressed store BEFORE SaveScene overwrites the file
+            // (undo writes them back to disk). Saving to a brand-new path = Created: record it
+            // AFTER the file exists (undo moves the new file into the store, redo restores it).
+            // Undo/redo act on the disk file; a currently open scene must be reloaded to reflect it.
+            bool existedBefore = File.Exists(path);
+            if (existedBefore)
+            {
+                var oldAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(path);
+                if (oldAsset != null) WorkflowManager.SnapshotObject(oldAsset);
+            }
+
             EditorSceneManager.SaveScene(scene, path);
+
+            if (!existedBefore)
+            {
+                AssetDatabase.Refresh();
+                var newAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(path);
+                if (newAsset != null) WorkflowManager.SnapshotCreatedAsset(newAsset);
+            }
+
             return new { success = true, scenePath = path };
         }
 

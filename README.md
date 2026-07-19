@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-738-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-740-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -30,7 +30,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **738 REST Skills Comprehensive Toolkit**: Includes 52 functional source modules plus 23 advisory design modules, with Batch operations for multi-object control.
+- 🛠️ **740 REST Skills Comprehensive Toolkit**: Includes 52 functional source modules plus 23 advisory design modules, with Batch operations for multi-object control.
 - ⚡ **Revolutionary Efficiency Boost (v2.0.1+)**: Schema caching + exponential backoff polling + BATCH-FIRST guidance → **Token consumption ↓ 96%**, **simple tasks 4-6 calls → 1 call (↓ 75-83%)**. Current: v2.2.0.
 - 🔐 **Three-Tier Permission Modes (v1.9.0+)**: Approval / Auto / Bypass with dual approval channels (Dialog / Panel), aligned with Claude Code permission modes; zero-impact upgrade for existing users.
 - 🤖 **4 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor — one-click install and use.
@@ -173,12 +173,12 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><h2>📦 Skills Category Overview (738)</h2></summary>
+<summary><h2>📦 Skills Category Overview (740)</h2></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
 | **YooAsset** | 40 | Hot-update bundle builds/Collector full CRUD/BuildReport asset and dependency analysis/PlayMode runtime validation/Reporter-Debugger-AssetArtScanner tools |
-| **Workflow** | 23 | Persistent history/Task snapshots/Session-level undo/Rollback/Bookmarks/Batch query-preview-execute jobs |
+| **Workflow** | 24 | Persistent history/Tiered task snapshots/Content-addressed file store/Auto-clean/Session-level undo/Rollback/Clear history/Bookmarks/Batch query-preview-execute jobs |
 | **Cinemachine** | 34 | 2.x/3.x dual version auto-install/MixingCamera/ClearShot/TargetGroup/Spline |
 | **Netcode** | 33 | Netcode for GameObjects setup/prefabs/lifecycle/host-server-client workflows |
 | **UI** | 29 | Canvas/Button/Text/InputField/Dropdown/ScrollView/Layout/Alignment/Image and selectable utilities |
@@ -200,7 +200,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Physics** | 12 | Raycast/SphereCast/BoxCast/Physics materials/Layer collision matrix |
 | **Script** | 12 | C# script create/Read/Replace/List/Info/Rename/Move/Analyze |
 | **Timeline** | 12 | Track create/Delete/Clip management/Playback control/Binding/Duration |
-| **Asset** | 11 | Asset import/Delete/Move/Copy/Search/Folders/Batch operations/Refresh |
+| **Asset** | 12 | Asset import/Delete/Move/Copy/Search/Folders/Batch folder creation/Batch operations/Refresh |
 | **AssetImport** | 11 | Texture/Model/Audio/Sprite import settings/Label management/Reimport |
 | **Camera** | 12 | Scene View control/Game Camera create/Properties/Screenshot/Orthographic toggle/List |
 | **Graphics** | 11 | GraphicsSettings/QualitySettings/SRP asset operations |
@@ -249,7 +249,7 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   │   └── unity_skills.py     # Python Client Library
 │   │   ├── skills/                 # 71 module docs (48 REST/module docs + 23 advisory docs)
 │   │   └── references/             # Unity Development References
-│   └── Editor/Skills/              # Core Skill Logic (52 *Skills.cs files, 738 Skills)
+│   └── Editor/Skills/              # Core Skill Logic (52 *Skills.cs files, 740 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
 │       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
 │       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
@@ -259,9 +259,9 @@ If you're using other tools that support Skills, install according to the Skills
 │       ├── GameObjectSkills.cs     # GameObject Operations (18 skills)
 │       ├── MaterialSkills.cs       # Material Operations (21 skills)
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
-│       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (23 skills)
+│       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (24 skills)
 │       ├── PerceptionSkills.cs     # Scene Understanding (18 skills)
-│       └── ...                     # 738 Skills source code
+│       └── ...                     # 740 Skills source code
 ├── docs/
 │   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
 ├── CHANGELOG.md                    # Version Update Log

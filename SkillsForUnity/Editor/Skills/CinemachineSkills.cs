@@ -31,7 +31,8 @@ namespace UnitySkills
         [UnitySkill("cinemachine_create_vcam", "Create a new Virtual Camera",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "virtual", "cinemachine", "vcam" },
-            Outputs = new[] { "gameObjectName", "instanceId" })]
+            Outputs = new[] { "gameObjectName", "instanceId" },
+            TracksWorkflow = true)]
         public static object CinemachineCreateVCam(string name, string folder = "Assets/Settings")
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -253,7 +254,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "property", "vcam", "pipeline", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineSetVCamProperty(
             string vcamName = null,
             int instanceId = 0,
@@ -344,7 +346,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "follow", "lookAt", "target", "cinemachine" },
             Outputs = new[] { "success" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineSetTargets(string vcamName = null, int instanceId = 0, string path = null, string followName = null, string lookAtName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -374,7 +377,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create | SkillOperation.Modify,
             Tags = new[] { "camera", "component", "add", "pipeline", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineAddComponent(string vcamName = null, int instanceId = 0, string path = null, string componentType = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -405,7 +409,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "lens", "fov", "clip", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineSetLens(string vcamName = null, int instanceId = 0, string path = null, float? fov = null, float? nearClip = null, float? farClip = null, float? orthoSize = null, string mode = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -470,7 +475,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify | SkillOperation.Delete | SkillOperation.Create,
             Tags = new[] { "camera", "pipeline", "body", "aim", "noise" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineSetComponent(string vcamName = null, int instanceId = 0, string path = null, string stage = null, string componentType = null)
         {
 #if CINEMACHINE_3
@@ -581,7 +587,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "active", "priority", "solo", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineSetActive(string vcamName = null, int instanceId = 0, string path = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -608,7 +615,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "noise", "perlin", "shake", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineSetNoise(string vcamName = null, int instanceId = 0, string path = null, float amplitudeGain = 1f, float frequencyGain = 1f)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -741,7 +749,8 @@ namespace UnitySkills
         [UnitySkill("cinemachine_create_target_group", "Create a CinemachineTargetGroup. Returns name.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "targetGroup", "group", "cinemachine" },
-            Outputs = new[] { "success", "name" })]
+            Outputs = new[] { "success", "name" },
+            TracksWorkflow = true)]
         public static object CinemachineCreateTargetGroup(string name)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -760,7 +769,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "targetGroup", "member", "add", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "targetGroup", "gameObject" })]
+            RequiresInput = new[] { "targetGroup", "gameObject" },
+            TracksWorkflow = true)]
         public static object CinemachineTargetGroupAddMember(string groupName = null, int groupInstanceId = 0, string groupPath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, float weight = 1f, float radius = 1f)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -787,7 +797,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify | SkillOperation.Delete,
             Tags = new[] { "camera", "targetGroup", "member", "remove", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "targetGroup", "gameObject" })]
+            RequiresInput = new[] { "targetGroup", "gameObject" },
+            TracksWorkflow = true)]
         public static object CinemachineTargetGroupRemoveMember(string groupName = null, int groupInstanceId = 0, string groupPath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -813,7 +824,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "spline", "dolly", "path", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "vcam", "splineContainer" })]
+            RequiresInput = new[] { "vcam", "splineContainer" },
+            TracksWorkflow = true)]
         public static object CinemachineSetSpline(string vcamName = null, int vcamInstanceId = 0, string vcamPath = null, string splineName = null, int splineInstanceId = 0, string splinePath = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -850,7 +862,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create | SkillOperation.Modify,
             Tags = new[] { "camera", "extension", "add", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineAddExtension(string vcamName = null, int instanceId = 0, string path = null, string extensionName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -880,7 +893,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Delete,
             Tags = new[] { "camera", "extension", "remove", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineRemoveExtension(string vcamName = null, int instanceId = 0, string path = null, string extensionName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -904,7 +918,8 @@ namespace UnitySkills
         [UnitySkill("cinemachine_create_mixing_camera", "Create a Cinemachine Mixing Camera.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "mixing", "blend", "cinemachine" },
-            Outputs = new[] { "success", "name" })]
+            Outputs = new[] { "success", "name" },
+            TracksWorkflow = true)]
         public static object CinemachineCreateMixingCamera(string name)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -923,7 +938,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "mixing", "weight", "blend", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "mixingCamera", "vcam" })]
+            RequiresInput = new[] { "mixingCamera", "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineMixingCameraSetWeight(string mixerName = null, int mixerInstanceId = 0, string mixerPath = null, string mixerEntityId = null,
             string childName = null, int childInstanceId = 0, string childPath = null, string childEntityId = null, float weight = 1f)
         {
@@ -952,7 +968,8 @@ namespace UnitySkills
         [UnitySkill("cinemachine_create_clear_shot", "Create a Cinemachine Clear Shot Camera.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "clearShot", "auto", "cinemachine" },
-            Outputs = new[] { "success", "name" })]
+            Outputs = new[] { "success", "name" },
+            TracksWorkflow = true)]
         public static object CinemachineCreateClearShot(string name)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -970,7 +987,8 @@ namespace UnitySkills
         [UnitySkill("cinemachine_create_state_driven_camera", "Create a Cinemachine State Driven Camera. Optional: targetAnimatorName.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "stateDriven", "animator", "cinemachine" },
-            Outputs = new[] { "success", "name" })]
+            Outputs = new[] { "success", "name" },
+            TracksWorkflow = true)]
         public static object CinemachineCreateStateDrivenCamera(string name, string targetAnimatorName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -1007,7 +1025,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "stateDriven", "instruction", "state", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "stateDrivenCamera", "vcam" })]
+            RequiresInput = new[] { "stateDrivenCamera", "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineStateDrivenCameraAddInstruction(string cameraName = null, int cameraInstanceId = 0, string cameraPath = null, string cameraEntityId = null,
             string stateName = null, string childCameraName = null, int childInstanceId = 0, string childPath = null, string childEntityId = null,
             float minDuration = 0, float activateAfter = 0)
@@ -1042,7 +1061,8 @@ namespace UnitySkills
         [UnitySkill("cinemachine_set_brain", "Configure CinemachineBrain: update method, default blend, debug display.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "brain", "blend", "cinemachine", "update" },
-            Outputs = new[] { "success", "settings" })]
+            Outputs = new[] { "success", "settings" },
+            TracksWorkflow = true)]
         public static object CinemachineSetBrain(
             string updateMethod = null,
             string blendUpdateMethod = null,
@@ -1058,6 +1078,7 @@ namespace UnitySkills
             var brain = CinemachineAdapter.FindBrain();
             if (brain == null) return new { error = "No CinemachineBrain found. Add one to the Main Camera first." };
 
+            WorkflowManager.SnapshotObject(brain.gameObject);
             Undo.RecordObject(brain, "Set Brain");
 
             if (updateMethod != null)
@@ -1101,7 +1122,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "priority", "cinemachine" },
             Outputs = new[] { "success", "priority" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineSetPriority(
             string vcamName = null, int instanceId = 0, string path = null,
             int priority = 10)
@@ -1127,7 +1149,8 @@ namespace UnitySkills
         [UnitySkill("cinemachine_set_blend", "Set default blend or per-camera-pair blend. Leave fromCamera/toCamera empty for default.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "blend", "transition", "cinemachine" },
-            Outputs = new[] { "success", "message" })]
+            Outputs = new[] { "success", "message" },
+            TracksWorkflow = true)]
         public static object CinemachineSetBlend(
             string style = "EaseInOut",
             float time = 2f,
@@ -1144,6 +1167,7 @@ namespace UnitySkills
 
             if (string.IsNullOrEmpty(fromCamera) && string.IsNullOrEmpty(toCamera))
             {
+                WorkflowManager.SnapshotObject(brain.gameObject);
                 Undo.RecordObject(brain, "Set Default Blend");
                 CinemachineAdapter.SetBrainDefaultBlend(brain, blend);
                 EditorUtility.SetDirty(brain);
@@ -1159,7 +1183,8 @@ namespace UnitySkills
         [UnitySkill("cinemachine_create_sequencer", "Create a Sequencer camera (CM3) or BlendList camera (CM2) that plays child cameras in sequence.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "sequencer", "blendlist", "sequence", "cinemachine" },
-            Outputs = new[] { "gameObjectName", "instanceId" })]
+            Outputs = new[] { "gameObjectName", "instanceId" },
+            TracksWorkflow = true)]
         public static object CinemachineCreateSequencer(string name, bool loop = false)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -1188,7 +1213,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "sequencer", "instruction", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "sequencer" })]
+            RequiresInput = new[] { "sequencer" },
+            TracksWorkflow = true)]
         public static object CinemachineSequencerAddInstruction(
             string sequencerName = null, int sequencerInstanceId = 0, string sequencerPath = null, string sequencerEntityId = null,
             string childCameraName = null, int childInstanceId = 0, string childPath = null, string childEntityId = null,
@@ -1227,7 +1253,8 @@ namespace UnitySkills
         [UnitySkill("cinemachine_create_freelook", "Create a FreeLook camera. CM2: CinemachineFreeLook. CM3: CinemachineCamera + OrbitalFollow(ThreeRing) + RotationComposer.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "freelook", "orbit", "third-person", "cinemachine" },
-            Outputs = new[] { "gameObjectName", "instanceId" })]
+            Outputs = new[] { "gameObjectName", "instanceId" },
+            TracksWorkflow = true)]
         public static object CinemachineCreateFreeLook(string name, string followName = null, string lookAtName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -1286,7 +1313,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "clearshot", "statedriven", "sequencer", "configure", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "camera" })]
+            RequiresInput = new[] { "camera" },
+            TracksWorkflow = true)]
         public static object CinemachineConfigureCameraManager(
             string cameraName = null, int cameraInstanceId = 0, string cameraPath = null,
             // ClearShot
@@ -1410,7 +1438,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "body", "follow", "orbital", "thirdperson", "cinemachine" },
             Outputs = new[] { "success", "componentType", "changes" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineConfigureBody(
             string vcamName = null, int instanceId = 0, string path = null,
             // Follow / Transposer offset
@@ -1607,7 +1636,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "aim", "composer", "pantilt", "cinemachine" },
             Outputs = new[] { "success", "componentType", "changes" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineConfigureAim(
             string vcamName = null, int instanceId = 0, string path = null,
             // Composer / RotationComposer
@@ -1714,7 +1744,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "extension", "confiner", "deoccluder", "cinemachine" },
             Outputs = new[] { "success", "extensionType", "changes" },
-            RequiresInput = new[] { "vcam" })]
+            RequiresInput = new[] { "vcam" },
+            TracksWorkflow = true)]
         public static object CinemachineConfigureExtension(
             string vcamName = null, int instanceId = 0, string path = null,
             string extensionName = null,
@@ -1849,7 +1880,8 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "impulse", "shake", "configure", "cinemachine" },
             Outputs = new[] { "success", "changes" },
-            RequiresInput = new[] { "source" })]
+            RequiresInput = new[] { "source" },
+            TracksWorkflow = true)]
         public static object CinemachineConfigureImpulseSource(
             string sourceName = null, int sourceInstanceId = 0, string sourcePath = null,
             float? amplitudeGain = null,

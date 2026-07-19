@@ -295,18 +295,27 @@ namespace UnitySkills
         [UnitySkill("workflow_undo_task", "Undo changes from a specific task (restore to previous state)",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "undo", "task", "revert", "restore" },
-            Outputs = new[] { "taskId" },
+            Outputs = new[] { "success", "taskId", "total", "succeeded", "failed", "details", "error" },
             RequiresInput = new[] { "taskId" })]
         public static object WorkflowUndoTask(string taskId)
         {
-            bool result = WorkflowManager.UndoTask(taskId);
-            return new { success = result, taskId = taskId };
+            var result = WorkflowManager.UndoTask(taskId);
+            return new
+            {
+                success = result.success,
+                taskId = taskId,
+                result.total,
+                result.succeeded,
+                result.failed,
+                details = result.details.Select(d => new { d.globalObjectId, d.objectName, d.success, d.error }).ToList(),
+                error = result.error
+            };
         }
 
         [UnitySkill("workflow_redo_task", "Redo a previously undone task (restore changes)",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "redo", "task", "restore", "changes" },
-            Outputs = new[] { "taskId" })]
+            Outputs = new[] { "success", "taskId", "total", "succeeded", "failed", "details", "error" })]
         public static object WorkflowRedoTask(string taskId = null)
         {
             // If no taskId provided, redo the most recent undone task
@@ -318,8 +327,17 @@ namespace UnitySkills
                 taskId = undoneStack[undoneStack.Count - 1].id;
             }
 
-            bool result = WorkflowManager.RedoTask(taskId);
-            return new { success = result, taskId = taskId };
+            var result = WorkflowManager.RedoTask(taskId);
+            return new
+            {
+                success = result.success,
+                taskId = taskId,
+                result.total,
+                result.succeeded,
+                result.failed,
+                details = result.details.Select(d => new { d.globalObjectId, d.objectName, d.success, d.error }).ToList(),
+                error = result.error
+            };
         }
 
         [UnitySkill("workflow_undone_list", "List all undone tasks that can be redone",
@@ -393,6 +411,43 @@ namespace UnitySkills
             return new { success = true, deletedId = taskId };
         }
 
+        [UnitySkill("workflow_clear_history",
+            "Permanently clear ALL workflow history: tasks, the redo (undone) stack, and every backed-up file blob in the content-addressed store. High-risk and irreversible — requires a confirmation token. This ONLY deletes the tracking history; it does NOT undo or revert any change already applied to your project assets, scenes, or settings.",
+            Category = SkillCategory.Workflow, Operation = SkillOperation.Delete,
+            Tags = new[] { "workflow", "history", "clear", "cleanup", "delete" },
+            Outputs = new[] { "success", "before", "after", "message" },
+            RiskLevel = "high")]
+        public static object WorkflowClearHistory()
+        {
+            var history = WorkflowManager.History;
+            var before = new
+            {
+                tasks = history.tasks.Count,
+                undoneStack = history.undoneStack.Count,
+                historyFileBytes = WorkflowManager.GetHistoryFileSizeBytes(),
+                fileStoreBytes = WorkflowFileStore.GetStoreSizeBytes()
+            };
+
+            WorkflowManager.ClearHistory();
+
+            var afterHistory = WorkflowManager.History;
+            var after = new
+            {
+                tasks = afterHistory.tasks.Count,
+                undoneStack = afterHistory.undoneStack.Count,
+                historyFileBytes = WorkflowManager.GetHistoryFileSizeBytes(),
+                fileStoreBytes = WorkflowFileStore.GetStoreSizeBytes()
+            };
+
+            return new
+            {
+                success = true,
+                before,
+                after,
+                message = "Workflow history cleared. This removed tracking data only and did NOT undo any modifications already made to your project assets."
+            };
+        }
+
         // --- Session Management (Conversation-Level Undo) ---
 
         [UnitySkill("workflow_session_start", "Start a new session (conversation-level). All changes will be tracked and can be undone together.",
@@ -432,7 +487,7 @@ namespace UnitySkills
         [UnitySkill("workflow_session_undo", "Undo all changes made during a specific session (conversation-level undo)",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "session", "undo", "conversation", "revert" },
-            Outputs = new[] { "sessionId", "message" })]
+            Outputs = new[] { "success", "sessionId", "total", "succeeded", "failed", "details", "error", "message" })]
         public static object WorkflowSessionUndo(string sessionId = null)
         {
             // If no sessionId provided, try to get the most recent session
@@ -444,12 +499,17 @@ namespace UnitySkills
                 sessionId = sessions[0].sessionId;
             }
 
-            bool result = WorkflowManager.UndoSession(sessionId);
+            var result = WorkflowManager.UndoSession(sessionId);
             return new
             {
-                success = result,
+                success = result.success,
                 sessionId = sessionId,
-                message = result ? "Session changes undone successfully" : "Failed to undo session"
+                result.total,
+                result.succeeded,
+                result.failed,
+                details = result.details.Select(d => new { d.globalObjectId, d.objectName, d.success, d.error }).ToList(),
+                error = result.error,
+                message = result.success ? "Session changes undone successfully" : "Failed to undo session"
             };
         }
 

@@ -5,6 +5,7 @@ using UnityEditor.Compilation;
 using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
+using Newtonsoft.Json;
 
 namespace UnitySkills
 {
@@ -19,6 +20,53 @@ namespace UnitySkills
             public string message;
             public string file;
             public int line;
+        }
+
+        // Serialized snapshot value for scripting define symbols. The build target group is
+        // captured alongside the defines so undo/redo applies to the correct group even if the
+        // active build target changed in between.
+        private sealed class DefinesSettingValue
+        {
+            public string group;
+            public string defines;
+        }
+
+        /// <summary>
+        /// Registers the scripting-define restorer so debug_set_defines changes are reversible
+        /// via workflow undo/redo. Runs on domain load.
+        /// </summary>
+        [InitializeOnLoadMethod]
+        private static void RegisterSettingRestorers()
+        {
+            WorkflowSettingRestorerRegistry.Register("debug.scriptingDefines",
+                CaptureDefinesValue,
+                ApplyDefinesValue);
+        }
+
+        private static string CaptureDefinesValue()
+        {
+            var group = EditorUserBuildSettings.selectedBuildTargetGroup;
+            return JsonConvert.SerializeObject(new DefinesSettingValue
+            {
+                group = group.ToString(),
+                defines = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group)) ?? string.Empty
+            });
+        }
+
+        private static bool ApplyDefinesValue(string json)
+        {
+            if (string.IsNullOrEmpty(json))
+                return false;
+
+            var value = JsonConvert.DeserializeObject<DefinesSettingValue>(json);
+            if (value == null || string.IsNullOrEmpty(value.group))
+                return false;
+
+            if (!System.Enum.TryParse(value.group, out BuildTargetGroup group))
+                return false;
+
+            PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group), value.defines ?? string.Empty);
+            return true;
         }
 
         // Unity LogEntry mode bits (from UnityCsReference)
@@ -296,6 +344,9 @@ namespace UnitySkills
             MayTriggerReload = true)]
         public static object DebugSetDefines(string defines)
         {
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("debug.scriptingDefines", CaptureDefinesValue(), "Debug: Scripting Define Symbols");
+
             var group = EditorUserBuildSettings.selectedBuildTargetGroup;
             PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group), defines);
             return new

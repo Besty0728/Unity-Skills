@@ -17,6 +17,7 @@ namespace UnitySkills
         private Button        _refreshBtn;
         private Button        _clearBtn;
         private HelpBox       _cacheWarning;
+        private HelpBox       _resultHelpBox;
         private Label         _activeTitle;
         private VisualElement _activeContainer;
         private Label         _undoneTitle;
@@ -46,10 +47,21 @@ namespace UnitySkills
             _refreshBtn      = _root.Q<Button>("refresh-btn");
             _clearBtn        = _root.Q<Button>("clear-btn");
             _cacheWarning    = _root.Q<HelpBox>("cache-warning");
+            _resultHelpBox   = _root.Q<HelpBox>("result-help-box");
             _activeTitle     = _root.Q<Label>("active-tasks-title");
             _activeContainer = _root.Q<VisualElement>("active-tasks-container");
             _undoneTitle     = _root.Q<Label>("undone-tasks-title");
             _undoneContainer = _root.Q<VisualElement>("undone-tasks-container");
+
+            if (_resultHelpBox == null && _cacheWarning != null)
+            {
+                _resultHelpBox = new HelpBox("", HelpBoxMessageType.Info)
+                {
+                    name = "result-help-box"
+                };
+                _resultHelpBox.style.display = DisplayStyle.None;
+                _cacheWarning.parent.Insert(_cacheWarning.parent.IndexOf(_cacheWarning) + 1, _resultHelpBox);
+            }
 
             UISkillsEditorIcons.Apply(_refreshBtn, "d_Refresh", "Refresh", "TreeEditor.Refresh");
         }
@@ -172,7 +184,12 @@ namespace UnitySkills
 
             if (isActive)
             {
-                var undoBtn = new Button(() => { WorkflowManager.UndoTask(task.id); RefreshHistory(); });
+                var undoBtn = new Button(() =>
+                {
+                    var result = WorkflowManager.UndoTask(task.id);
+                    ShowResult(result, "Undo");
+                    RefreshHistory();
+                });
                 undoBtn.AddToClassList("mini-btn");
                 undoBtn.text = "Undo";
                 actions.Add(undoBtn);
@@ -185,7 +202,12 @@ namespace UnitySkills
             }
             else
             {
-                var redoBtn = new Button(() => { WorkflowManager.RedoTask(task.id); RefreshHistory(); });
+                var redoBtn = new Button(() =>
+                {
+                    var result = WorkflowManager.RedoTask(task.id);
+                    ShowResult(result, "Redo");
+                    RefreshHistory();
+                });
                 redoBtn.AddToClassList("mini-btn");
                 redoBtn.AddToClassList("install");
                 redoBtn.text = "Redo";
@@ -218,6 +240,37 @@ namespace UnitySkills
             }
 
             RebuildHistoryList();
+        }
+
+        private void ShowResult(TaskUndoResult result, string operation)
+        {
+            if (result.total == 0)
+            {
+                ShowResultMessage($"{operation}: no snapshots to process", false);
+                return;
+            }
+
+            if (result.failed == 0)
+            {
+                ShowResultMessage($"{operation} succeeded: {result.succeeded}/{result.total}", false);
+            }
+            else
+            {
+                ShowResultMessage($"{operation} completed with {result.failed} failure(s) ({result.succeeded}/{result.total})", true);
+                foreach (var detail in result.details)
+                {
+                    if (!detail.success)
+                        Debug.LogWarning($"{SkillsLogger.PREFIX_WARNING} {operation} failed for {detail.objectName}: {detail.error}");
+                }
+            }
+        }
+
+        private void ShowResultMessage(string message, bool isError)
+        {
+            if (_resultHelpBox == null) return;
+            _resultHelpBox.text = message;
+            _resultHelpBox.messageType = isError ? HelpBoxMessageType.Warning : HelpBoxMessageType.Info;
+            _resultHelpBox.style.display = DisplayStyle.Flex;
         }
     }
 }

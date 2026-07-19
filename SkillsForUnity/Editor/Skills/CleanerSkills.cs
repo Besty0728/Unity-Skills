@@ -273,15 +273,14 @@ namespace UnitySkills
                     }
 
                     var existed = File.Exists(path) || Directory.Exists(path);
+                    bool deleted = false;
                     if (existed)
                     {
-                        // Workflow snapshot comment normalized.
-                        var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
-                        if (asset != null) WorkflowManager.SnapshotObject(asset);
-                        AssetDatabase.DeleteAsset(path);
-                        deletedCount++;
+                        // One-shot delete: backs up file (+ .meta) to the store and records a Deleted snapshot.
+                        deleted = WorkflowManager.DeleteAssetToTrash(path);
+                        if (deleted) deletedCount++;
                     }
-                    deletedResults.Add(new { path, deleted = existed });
+                    deletedResults.Add(new { path, deleted });
                 }
 
                 _pendingDeletes.Remove(confirmToken);
@@ -476,7 +475,9 @@ namespace UnitySkills
             int deleted = 0;
             foreach (var folder in empty.OrderByDescending(f => f.Length))
             {
-                if (AssetDatabase.DeleteAsset(folder)) deleted++;
+                // Folder branch of DeleteAssetToTrash records a metadata-only Deleted snapshot
+                // (undo re-creates the empty folder) and removes it via AssetDatabase.DeleteAsset.
+                if (WorkflowManager.DeleteAssetToTrash(folder)) deleted++;
             }
             AssetDatabase.Refresh();
             return new { success = true, deleted, total = empty.Count };

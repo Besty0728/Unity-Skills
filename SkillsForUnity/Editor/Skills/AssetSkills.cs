@@ -30,11 +30,22 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
+            // Back up any existing asset before it is overwritten, so undo can restore the old contents.
+            bool overwriting = File.Exists(destinationPath);
+            if (overwriting)
+            {
+                var existing = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(destinationPath);
+                if (existing != null) WorkflowManager.SnapshotObject(existing);
+            }
+
             File.Copy(sourcePath, destinationPath, true);
             AssetDatabase.ImportAsset(destinationPath);
 
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(destinationPath);
-            if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
+            if (!overwriting)
+            {
+                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(destinationPath);
+                if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
+            }
 
             var result = new Dictionary<string, object>
             {
@@ -65,7 +76,7 @@ namespace UnitySkills
             Tags = new[] { "delete", "remove", "cleanup" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true,
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesAssets = true, RiskLevel = "medium")]
         public static object AssetDelete(string assetPath)
         {
@@ -73,10 +84,10 @@ namespace UnitySkills
             if (!SkillsCommon.PathExists(assetPath))
                 return new { error = $"Asset not found: {assetPath}" };
 
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
-            if (asset != null) WorkflowManager.SnapshotObject(asset);
-
-            AssetDatabase.DeleteAsset(assetPath);
+            // DeleteAssetToTrash backs up the file (+ .meta) to the content-addressed store
+            // and records a Deleted snapshot, so no explicit pre-snapshot is needed.
+            if (!WorkflowManager.DeleteAssetToTrash(assetPath))
+                return new { error = $"Failed to delete asset: {assetPath}" };
 
             var result = new Dictionary<string, object>
             {
@@ -107,15 +118,15 @@ namespace UnitySkills
             Tags = new[] { "move", "rename", "reorganize" },
             Outputs = new[] { "from", "to" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true,
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesAssets = true, RiskLevel = "medium")]
         public static object AssetMove(string sourcePath, string destinationPath)
         {
             if (Validate.SafePath(sourcePath, "sourcePath") is object err1) return err1;
             if (Validate.SafePath(destinationPath, "destinationPath") is object err2) return err2;
 
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(sourcePath);
-            if (asset != null) WorkflowManager.SnapshotObject(asset);
+            // Lightweight Moved snapshot (stores both paths only); undo moves the asset back.
+            WorkflowManager.SnapshotAssetMove(sourcePath, destinationPath);
 
             var error = AssetDatabase.MoveAsset(sourcePath, destinationPath);
             if (!string.IsNullOrEmpty(error))
@@ -164,11 +175,22 @@ namespace UnitySkills
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
+                // Back up any existing asset before overwrite so undo can restore old contents.
+                bool overwriting = File.Exists(item.destinationPath);
+                if (overwriting)
+                {
+                    var existing = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.destinationPath);
+                    if (existing != null) WorkflowManager.SnapshotObject(existing);
+                }
+
                 File.Copy(item.sourcePath, item.destinationPath, true);
                 AssetDatabase.ImportAsset(item.destinationPath);
 
-                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.destinationPath);
-                if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
+                if (!overwriting)
+                {
+                    var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.destinationPath);
+                    if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
+                }
 
                 return new
                 {
@@ -194,7 +216,7 @@ namespace UnitySkills
             Tags = new[] { "delete", "remove", "cleanup", "batch" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
         public static object AssetDeleteBatch(string items)
         {
             return BatchExecutor.Execute<BatchDeleteItem>(items, item =>
@@ -202,9 +224,8 @@ namespace UnitySkills
                 if (Validate.SafePath(item.path, "path", isDelete: true) is object pathErr)
                     throw new System.Exception(((dynamic)pathErr).error);
 
-                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.path);
-                if (asset != null) WorkflowManager.SnapshotObject(asset);
-                if (!AssetDatabase.DeleteAsset(item.path))
+                // DeleteAssetToTrash self-manages backup + Deleted snapshot; no pre-snapshot needed.
+                if (!WorkflowManager.DeleteAssetToTrash(item.path))
                     throw new System.Exception("Delete failed");
 
                 return new
@@ -231,7 +252,7 @@ namespace UnitySkills
             Tags = new[] { "move", "rename", "reorganize", "batch" },
             Outputs = new[] { "from", "to" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
         public static object AssetMoveBatch(string items)
         {
             return BatchExecutor.Execute<BatchMoveItem>(items, item =>
@@ -241,8 +262,8 @@ namespace UnitySkills
                 if (Validate.SafePath(item.destinationPath, "destinationPath") is object dstErr)
                     throw new System.Exception(((dynamic)dstErr).error);
 
-                var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.sourcePath);
-                if (asset != null) WorkflowManager.SnapshotObject(asset);
+                // Lightweight Moved snapshot (both paths only); undo moves the asset back.
+                WorkflowManager.SnapshotAssetMove(item.sourcePath, item.destinationPath);
 
                 string error = AssetDatabase.MoveAsset(item.sourcePath, item.destinationPath);
                 if (!string.IsNullOrEmpty(error))
@@ -275,7 +296,7 @@ namespace UnitySkills
             Tags = new[] { "duplicate", "copy", "clone" },
             Outputs = new[] { "original", "copy" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
         public static object AssetDuplicate(string assetPath)
         {
             if (Validate.SafePath(assetPath, "assetPath") is object err) return err;
@@ -339,7 +360,7 @@ namespace UnitySkills
             Category = SkillCategory.Asset, Operation = SkillOperation.Create,
             Tags = new[] { "folder", "directory", "organize" },
             Outputs = new[] { "path", "guid" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
         public static object AssetCreateFolder(string folderPath)
         {
             if (Validate.SafePath(folderPath, "folderPath") is object pathErr) return pathErr;
@@ -350,11 +371,46 @@ namespace UnitySkills
             var name = Path.GetFileName(folderPath);
             var guid = AssetDatabase.CreateFolder(parent, name);
 
-            var createdAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(folderPath);
-            if (createdAsset != null) WorkflowManager.SnapshotCreatedAsset(createdAsset);
+            // AssetDatabase.CreateFolder returns an empty guid (and logs its own error) when it
+            // fails, e.g. the parent folder does not exist. Don't report success or record a
+            // workflow snapshot for a folder that was never created.
+            if (string.IsNullOrEmpty(guid))
+                return new { error = $"Failed to create folder '{folderPath}'. The parent folder may not exist." };
+
+            WorkflowManager.SnapshotCreatedFolder(folderPath);
 
             return new { success = true, path = folderPath, guid };
         }
+
+        [UnitySkill("asset_create_folder_batch", "Create multiple folders. items: JSON array of {folderPath}",
+            Category = SkillCategory.Asset, Operation = SkillOperation.Create,
+            Tags = new[] { "folder", "directory", "organize", "batch" },
+            Outputs = new[] { "path", "guid" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
+        public static object AssetCreateFolderBatch(string items)
+        {
+            return BatchExecutor.Execute<BatchFolderItem>(items, item =>
+            {
+                if (Validate.SafePath(item.folderPath, "folderPath") is object pathErr)
+                    throw new System.Exception(((dynamic)pathErr).error);
+                if (Directory.Exists(item.folderPath))
+                    throw new System.Exception("Folder already exists");
+
+                var parent = Path.GetDirectoryName(item.folderPath);
+                var name = Path.GetFileName(item.folderPath);
+                var guid = AssetDatabase.CreateFolder(parent, name);
+                if (string.IsNullOrEmpty(guid))
+                    throw new System.Exception("Create folder failed (parent path may not exist)");
+
+                WorkflowManager.SnapshotCreatedFolder(item.folderPath);
+
+                return new { target = item.folderPath, success = true, path = item.folderPath, guid };
+            }, item => item.folderPath,
+            setup: () => AssetDatabase.StartAssetEditing(),
+            teardown: () => { AssetDatabase.StopAssetEditing(); AssetDatabase.Refresh(); });
+        }
+
+        private class BatchFolderItem { public string folderPath; }
 
         [UnitySkill("asset_refresh", "Refresh the Asset Database",
             Category = SkillCategory.Asset, Operation = SkillOperation.Execute,

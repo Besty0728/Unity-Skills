@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.Linq;
+using Newtonsoft.Json;
 
 namespace UnitySkills
 {
@@ -13,6 +14,47 @@ namespace UnitySkills
         private static readonly List<LogEntry> _logs = new List<LogEntry>();
         private static readonly object _logLock = new object();
         private static bool _capturing;
+
+        // Console flag bit masks (match Unity's internal ConsoleWindow flags).
+        private const int FlagClearOnPlay = 16;
+        private const int FlagCollapse = 32;
+        private const int FlagErrorPause = 256;
+
+        /// <summary>
+        /// Registers setting getters/setters so console flag changes are truly reversible
+        /// via the workflow undo/redo system. Runs on domain load.
+        /// </summary>
+        [InitializeOnLoadMethod]
+        private static void RegisterSettingRestorers()
+        {
+            WorkflowSettingRestorerRegistry.Register("console.pauseOnError",
+                () => JsonConvert.SerializeObject(GetConsoleFlagValue(FlagErrorPause, "DeveloperMode_ErrorPause")),
+                json => { ConsoleSetPauseOnError(JsonConvert.DeserializeObject<bool>(json)); return true; });
+
+            WorkflowSettingRestorerRegistry.Register("console.collapse",
+                () => JsonConvert.SerializeObject(GetConsoleFlagValue(FlagCollapse, "UnitySkills_Console_Collapse")),
+                json => { ConsoleSetCollapse(JsonConvert.DeserializeObject<bool>(json)); return true; });
+
+            WorkflowSettingRestorerRegistry.Register("console.clearOnPlay",
+                () => JsonConvert.SerializeObject(GetConsoleFlagValue(FlagClearOnPlay, "UnitySkills_Console_ClearOnPlay")),
+                json => { ConsoleSetClearOnPlay(JsonConvert.DeserializeObject<bool>(json)); return true; });
+        }
+
+        /// <summary>
+        /// Reads the current state of a console flag, mirroring the write path's primary source
+        /// (the ConsoleWindow s_ConsoleFlags field), with an EditorPrefs fallback.
+        /// </summary>
+        private static bool GetConsoleFlagValue(int flag, string prefFallbackKey)
+        {
+            var consoleType = System.Type.GetType("UnityEditor.ConsoleWindow, UnityEditor");
+            var flagField = consoleType?.GetField("s_ConsoleFlags", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            if (flagField != null)
+            {
+                int flags = (int)flagField.GetValue(null);
+                return (flags & flag) != 0;
+            }
+            return EditorPrefs.GetBool(prefFallbackKey, false);
+        }
 
         private class LogEntry
         {
@@ -164,6 +206,11 @@ namespace UnitySkills
             Outputs = new[] { "enabled" })]
         public static object ConsoleSetPauseOnError(bool enabled = true)
         {
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("console.pauseOnError",
+                    JsonConvert.SerializeObject(GetConsoleFlagValue(FlagErrorPause, "DeveloperMode_ErrorPause")),
+                    "Console: Error Pause");
+
             var consoleType = System.Type.GetType("UnityEditor.ConsoleWindow, UnityEditor");
             if (consoleType == null) return new { error = "ConsoleWindow not found" };
             var flagField = consoleType.GetField("s_ConsoleFlags", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -248,7 +295,12 @@ namespace UnitySkills
             Outputs = new[] { "setting", "enabled" })]
         public static object ConsoleSetCollapse(bool enabled)
         {
-            return SetConsoleFlag(32, enabled, "Collapse");
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("console.collapse",
+                    JsonConvert.SerializeObject(GetConsoleFlagValue(FlagCollapse, "UnitySkills_Console_Collapse")),
+                    "Console: Collapse");
+
+            return SetConsoleFlag(FlagCollapse, enabled, "Collapse");
         }
 
         [UnitySkill("console_set_clear_on_play", "Set clear on play mode", TracksWorkflow = true,
@@ -257,7 +309,12 @@ namespace UnitySkills
             Outputs = new[] { "setting", "enabled" })]
         public static object ConsoleSetClearOnPlay(bool enabled)
         {
-            return SetConsoleFlag(16, enabled, "ClearOnPlay");
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("console.clearOnPlay",
+                    JsonConvert.SerializeObject(GetConsoleFlagValue(FlagClearOnPlay, "UnitySkills_Console_ClearOnPlay")),
+                    "Console: Clear On Play");
+
+            return SetConsoleFlag(FlagClearOnPlay, enabled, "ClearOnPlay");
         }
 
         private static object SetConsoleFlag(int flag, bool enabled, string name)

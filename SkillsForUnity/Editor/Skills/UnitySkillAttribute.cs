@@ -86,6 +86,15 @@ namespace UnitySkills
         public string Description { get; set; }
         public bool TracksWorkflow { get; set; }
 
+        /// <summary>
+        /// True if this skill manages its own workflow snapshots and should skip the router's
+        /// generic pre-execution snapshot (<c>TrySnapshotTargetsFromArgs</c>). Set this on skills
+        /// like asset_move/asset_delete/asset_duplicate/create_folder that capture purpose-built
+        /// snapshots themselves, so the generic pre-snapshot doesn't produce a redundant backup.
+        /// Default false — normal skills still get the automatic pre-snapshot.
+        /// </summary>
+        public bool SkipAutoPresnapshot { get; set; }
+
         // === Intent-level metadata (v1.7) ===
 
         /// <summary>Module category, maps to the *Skills.cs file this skill belongs to.</summary>

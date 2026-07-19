@@ -194,6 +194,10 @@ with unity_skills.workflow_context("Build Scene", "Create player and environment
 # All operations can be rolled back with workflow_undo_task
 ```
 
+Snapshots are tiered (created / moved / deleted / modified / setting) and asset bytes are kept in a deduplicated content-addressed store rather than embedded in the history JSON, so history stays small and auto-cleans itself. Deletes now restore fully, including `.cs` scripts. **Editor/project setting operations are now revertible too** — e.g. quality level, render pipeline, physics gravity/layer collisions, debug defines, console toggles, and added tags. Use `workflow_clear_history` to wipe all tracking data (irreversible; does not undo already-applied changes).
+
+**Known limitations:** `scene_save` undo restores the on-disk `.unity` file, so an already-open scene needs a manual Reload Scene; objects created in a never-saved scene lose their identity across an Editor restart and will be reported as failed on undo; external side effects such as Package Manager operations cannot be rolled back.
+
 ### CLI Usage
 
 ```bash

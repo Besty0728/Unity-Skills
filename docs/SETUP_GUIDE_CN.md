@@ -194,6 +194,10 @@ with unity_skills.workflow_context("Build Scene", "Create player and environment
 # 所有操作可通过 workflow_undo_task 一次性回滚
 ```
 
+快照现按类型分级（新建/移动/删除/修改/设置），资产字节存入去重的内容寻址文件存储，不再内嵌进历史 JSON，因此历史文件保持精简并会自动清理。删除操作现在可完整恢复，包括 `.cs` 脚本。**编辑器/项目设置类操作现在也可回退** —— 例如质量等级、渲染管线、物理重力/层碰撞、调试宏定义、控制台开关、新增标签等。使用 `workflow_clear_history` 可清空全部跟踪数据（不可逆；不会撤销已应用的修改）。
+
+**已知限制：** `scene_save` 的 undo 恢复磁盘上的 `.unity` 文件，若场景正在打开需手动 Reload Scene 才生效；在从未保存过的场景中新建的对象，其标识跨编辑器重启会失效，undo 时会在明细中标记为失败；Package Manager 等外部副作用无法回滚。
+
 ### CLI 用法
 
 ```bash

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEditor;
 using UnitySkills.Internal;
 
 namespace UnitySkills.Internal
@@ -14,7 +15,17 @@ namespace UnitySkills.Internal
         public string typeName;       // e.g. "GameObject", "Transform"
         public SnapshotType type = SnapshotType.Modified;
         public string assetPath;      // For assets: path in project (e.g., "Assets/Materials/Red.mat")
-        public string assetBytesBase64; // Base64 encoded asset file backup (excludes .cs files)
+        public string assetBytesBase64; // Base64 encoded asset file backup (legacy, kept for old history compatibility)
+
+        // Content-addressed file store hash. For Modified/Deleted asset snapshots.
+        public string fileHash;
+
+        // For Moved type: the original asset path before the move.
+        public string previousAssetPath;
+
+        // Reserved for future setting snapshots.
+        public string settingKey;
+        public string settingOldValueJson;
 
         // For Created type component undo - stores extra info for reliable deletion
         public string componentTypeName;   // Full type name of the component (e.g., "UnityEngine.Rigidbody")
@@ -38,7 +49,7 @@ namespace UnitySkills
     [Serializable]
     public class WorkflowHistoryData
     {
-        public const int CurrentSchemaVersion = 2;
+        public const int CurrentSchemaVersion = 3;
         public int schemaVersion = CurrentSchemaVersion;
         public List<WorkflowTask> tasks = new List<WorkflowTask>();
         public List<WorkflowTask> undoneStack = new List<WorkflowTask>(); // Stack of undone tasks for redo
@@ -118,8 +129,11 @@ namespace UnitySkills
 
     public enum SnapshotType
     {
-        Modified, // Object state changed
-        Created   // Object was newly created in this task
+        Modified = 0, // Object state changed
+        Created = 1,  // Object was newly created in this task
+        Deleted = 2,  // Object was deleted in this task
+        Moved = 3,    // Asset was moved in this task
+        Setting = 4   // Editor/project setting changed (restored via WorkflowSettingRestorerRegistry)
     }
 
     [Serializable]
@@ -127,6 +141,108 @@ namespace UnitySkills
     {
         public string typeName;      // Full type name
         public string json;          // Serialized component data
+    }
+
+    /// <summary>
+    /// Result of undoing/redoing a single snapshot.
+    /// </summary>
+    [Serializable]
+    public class SnapshotUndoResult
+    {
+        public string globalObjectId;
+        public string objectName;
+        public bool success;
+        public string error;
+    }
+
+    /// <summary>
+    /// Aggregated result of undoing/redoing a workflow task or session.
+    /// </summary>
+    [Serializable]
+    public class TaskUndoResult
+    {
+        public bool success;
+        public int total;
+        public int succeeded;
+        public int failed;
+        public List<SnapshotUndoResult> details = new List<SnapshotUndoResult>();
+        public string error;
+    }
+
+    /// <summary>
+    /// Report produced by trimming workflow history and the content-addressed file store.
+    /// </summary>
+    [Serializable]
+    public class WorkflowTrimReport
+    {
+        public int removedTasks;
+        public int reclaimedFileEntries;
+        public long reclaimedBytes;
+    }
+
+    /// <summary>
+    /// Persistent auto-cleanup configuration for workflow history and file store.
+    /// Backed by EditorPrefs under "UnitySkills.Workflow.*".
+    /// </summary>
+    public static class WorkflowAutoCleanConfig
+    {
+        private const string Prefix = "UnitySkills.Workflow.";
+
+        private const string KeyEnabled = Prefix + "Enabled";
+        private const string KeyMaxTasks = Prefix + "MaxTasks";
+        private const string KeyMaxHistoryMB = Prefix + "MaxHistoryMB";
+        private const string KeyMaxTaskAgeDays = Prefix + "MaxTaskAgeDays";
+        private const string KeyMaxStoreMB = Prefix + "MaxStoreMB";
+        private const string KeyStoreMaxAgeDays = Prefix + "StoreMaxAgeDays";
+
+        public static bool Enabled
+        {
+            get => EditorPrefs.GetBool(KeyEnabled, true);
+            set => EditorPrefs.SetBool(KeyEnabled, value);
+        }
+
+        public static int MaxTasks
+        {
+            get => EditorPrefs.GetInt(KeyMaxTasks, 200);
+            set => EditorPrefs.SetInt(KeyMaxTasks, value);
+        }
+
+        public static int MaxHistoryMB
+        {
+            get => EditorPrefs.GetInt(KeyMaxHistoryMB, 32);
+            set => EditorPrefs.SetInt(KeyMaxHistoryMB, value);
+        }
+
+        public static int MaxTaskAgeDays
+        {
+            get => EditorPrefs.GetInt(KeyMaxTaskAgeDays, 30);
+            set => EditorPrefs.SetInt(KeyMaxTaskAgeDays, value);
+        }
+
+        public static int MaxStoreMB
+        {
+            get => EditorPrefs.GetInt(KeyMaxStoreMB, 512);
+            set => EditorPrefs.SetInt(KeyMaxStoreMB, value);
+        }
+
+        public static int StoreMaxAgeDays
+        {
+            get => EditorPrefs.GetInt(KeyStoreMaxAgeDays, 7);
+            set => EditorPrefs.SetInt(KeyStoreMaxAgeDays, value);
+        }
+
+        /// <summary>
+        /// Reset all cleanup settings to their defaults.
+        /// </summary>
+        public static void ResetToDefaults()
+        {
+            Enabled = true;
+            MaxTasks = 200;
+            MaxHistoryMB = 32;
+            MaxTaskAgeDays = 30;
+            MaxStoreMB = 512;
+            StoreMaxAgeDays = 7;
+        }
     }
 
     /// <summary>

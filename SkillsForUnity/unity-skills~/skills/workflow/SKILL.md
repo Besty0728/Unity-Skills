@@ -14,7 +14,7 @@ Allows tagging tasks, snapshotting objects before modification, and undoing spec
 
 - **Approval**：本模块大部分 skill 标 `SkillMode.SemiAuto`（bookmark / history / task / session 系列 + `workflow_plan`，后者 ReadOnly=true 仅生成聚合计划），可直接执行。少数写类 skill (`workflow_snapshot_object` / `workflow_snapshot_created` / `batch_retry_failed`) 走默认 `SkillMode.FullAuto`，需 grant。
 - **Auto / Bypass**：FullAuto 直接执行。
-- **含 NeverInSemi 高危 skill**：`bookmark_delete` / `workflow_delete_task`（标 Operation.Delete，删除书签/任务记录）。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
+- **含 NeverInSemi 高危 skill**：`bookmark_delete` / `workflow_delete_task`（标 Operation.Delete，删除书签/任务记录）、`workflow_clear_history`（Operation.Delete + RiskLevel=high，清空全部历史+redo栈+文件存储，不可逆）。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
 
 > 注意：`workflow_undo_task` / `workflow_session_undo` 不是 Delete operation（标的是 Modify/Execute），它们能在 Approval/Auto 直接撤销已记录任务。
 
@@ -262,6 +262,48 @@ Delete a task from history (does not revert changes, just removes the record).
 | taskId | string | Yes | - | The UUID of the task to delete |
 
 **Returns:** `{ success, deletedId }`
+
+### `workflow_clear_history`
+Permanently clear **ALL** workflow history: every task, the redo (undone) stack, and every backed-up file blob in the content-addressed store. High-risk and irreversible.
+**This ONLY deletes tracking history — it does NOT undo or revert any change already applied to your project assets, scenes, or settings.** To roll changes back, use `workflow_undo_task` / `workflow_session_undo` *before* clearing.
+
+Marked `SkillOperation.Delete` + `RiskLevel="high"`, so it is `NeverInSemi` (returns `MODE_FORBIDDEN` in Approval/Auto; only Bypass or an Allowlist hit can call it).
+
+No parameters.
+
+**Returns:** `{ success, before, after, message }` where `before`/`after` each report `{ tasks, undoneStack, historyFileBytes, fileStoreBytes }`.
+
+## Snapshot Mechanism
+
+History is persisted to `workflow_history.json` (`schemaVersion` 3). Asset bytes are **no longer** embedded as base64 in that file; instead they live in a content-addressed file store at `Library/UnitySkills/workflow_files/<sha1>` (deduplicated, written via tmp+move to avoid half-written files), and the history JSON only keeps a `fileHash` reference. Old base64 histories are still read for backward compatibility.
+
+Snapshots are tiered by `SnapshotType`:
+
+| Type | Trigger | What is stored | Undo behavior |
+|------|---------|----------------|---------------|
+| **Created** | New asset/folder | path + GUID only | Delete the created asset/folder |
+| **Moved** | `asset_move` | old + new path only | Move back to the old path |
+| **Deleted** | `asset_delete` etc. | file + `.meta` moved into the store | Full restore, **including `.cs` scripts** (old implementation could not restore `.cs`) |
+| **Modified** | material / SO / scene / uss / uxml / shadergraph … | content-addressed backup + lightweight `originalJson` | Restore the backed-up bytes |
+| **Setting** | editor / project settings | handled via `WorkflowSettingRestorerRegistry` | Registry restores the previous value |
+
+Undo/redo now return per-snapshot detail (`TaskUndoResult`: `total` / `succeeded` / `failed` / `details` / `error`); failures are surfaced instead of being silently swallowed.
+
+### Auto-clean
+
+`WorkflowAutoCleanConfig` (EditorPrefs keys `UnitySkills.Workflow.*`) trims history and the file store after `EndTask` and after `LoadHistory`. Defaults: `MaxTasks=200`, `MaxHistoryMB=32`, `MaxTaskAgeDays=30`, `MaxStoreMB=512`, `StoreMaxAgeDays=7`.
+
+### Settings are now truly revertible
+
+Setting-class skills used to be one-way; they now register a restorer and can be rolled back: `console_set_pause_on_error` / `console_set_collapse` / `console_set_clear_on_play`, `debug_set_defines`, `graphics_set_quality_level` / `graphics_set_default_render_pipeline` / `graphics_set_quality_render_pipeline` / `graphics_add_always_included_shader` / `graphics_remove_always_included_shader` / `graphics_set_shader_stripping`, `physics_set_gravity` / `physics_set_layer_collision`, `project_add_tag`.
+
+Cinemachine's 28 write skills now set `TracksWorkflow=true` (the snapshot code existed but never auto-triggered). `scene_save` / `scene_create` are now rollback-capable (`scene_save` over an existing scene backs up the old file as a Modified snapshot).
+
+### Known Limitations
+
+- **`scene_save` undo restores the on-disk `.unity` file**; if the scene is currently open, you must **Reload Scene** for the restore to take effect.
+- **Objects created in a never-saved scene**: their `GlobalObjectId` becomes invalid across an Editor restart, so undo will mark them as failed in the result detail.
+- **External side effects** (Package Manager operations, etc.) cannot be rolled back.
 
 ## Minimal Example
 

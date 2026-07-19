@@ -2,6 +2,39 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [Unreleased]
+
+> **工作流核心重构（issue #49）** —— 修复大工作流下的性能崩溃，重做快照/撤销体系，并让设置类操作真正可回退。技能总数 738 → 740（运行时口径）。
+
+### Added
+
+- **`workflow_clear_history`（+1 skill）** — 永久清空全部工作流历史：所有任务、redo（已撤销）栈、以及内容寻址文件存储中的全部文件备份。标 `SkillOperation.Delete` + `RiskLevel=high`（受审批模式门控，`NeverInSemi`），返回 before/after 统计。**仅删除跟踪历史，不会撤销任何已应用到项目资产/场景/设置的修改。**
+- **`asset_create_folder_batch`（+1 skill）** — 批量创建文件夹（`BatchExecutor` 范式），参数 `items` 为 JSON 数组 `[{folderPath}]`。
+- **分级快照（`SnapshotType`）** — Created（新建资产/文件夹，只存路径/GUID）、Moved（`asset_move`，只存新旧路径，undo=移回）、Deleted（文件+`.meta` 移入内容寻址 store，undo 可完整恢复，**含 `.cs` 脚本**——旧实现无法恢复 `.cs`）、Modified（材质/SO/场景/uss/uxml/shadergraph 等，内容寻址备份 + 轻量 originalJson）、Setting（经 `WorkflowSettingRestorerRegistry` 恢复）。
+- **内容寻址文件存储** — 工作流历史 `workflow_history.json` 不再内嵌资产 base64，改为内容寻址文件存储 `Library/UnitySkills/workflow_files/<sha1>`，历史 JSON 只存 `fileHash` 引用（`schemaVersion` 2→3，旧历史兼容读取）。
+- **自动清理 `WorkflowAutoCleanConfig`**（EditorPrefs `UnitySkills.Workflow.*`）— 默认 MaxTasks=200 / MaxHistoryMB=32 / MaxTaskAgeDays=30 / MaxStoreMB=512 / StoreMaxAgeDays=7；在 `EndTask` 和 `LoadHistory` 后自动 trim。
+
+### Changed
+
+- **设置类 skill 现在真实可回退** — `console_set_pause_on_error` / `console_set_collapse` / `console_set_clear_on_play`、`debug_set_defines`、`graphics_set_quality_level` / `graphics_set_default_render_pipeline` / `graphics_set_quality_render_pipeline` / `graphics_add_always_included_shader` / `graphics_remove_always_included_shader` / `graphics_set_shader_stripping`、`physics_set_gravity` / `physics_set_layer_collision`、`project_add_tag`。
+- **CinemachineSkills 的 28 个写操作 skill 补齐 `TracksWorkflow=true`**（原本快照代码存在但从不自动触发）；`cinemachine_set_brain` / `cinemachine_set_blend` 补上缺失的 `WorkflowManager.SnapshotObject(brain.gameObject)` 快照（此前只 `Undo.RecordObject`，自动任务下不可回退），合计 30 个。
+- **`uitk_write_file` 新建文件现在可回退** — 新建 `.uss`/`.uxml` 时记录 Created 快照（undo=删除、redo=重建）；此前只有覆盖已存在文件的分支会备份。
+- **`scene_save` / `scene_create` 现在可回滚** — `scene_save` 覆盖已存在场景时把旧文件作为 Modified 快照备份。
+- **undo/redo 返回逐快照明细**（`TaskUndoResult`：total/succeeded/failed/details/error），失败不再静默。
+
+### Fixed
+
+- **大工作流性能崩溃（issue #49 核心）** — 删除自动任务的重复 `SaveHistory`（SkillRouter 每个自动任务原本保存两次）；删除 `SnapshotObject` 每 10 个快照的周期性全量保存；手动 workflow 期间加 dirty 检查（无新快照不保存）；移除语义错误的 `Undo.postprocessModifications` 被动捕获。
+- **redo 对 Created / Moved 快照失败** — `RedoDeletedSnapshot` / `RedoMovedSnapshot` / `RedoCreatedSnapshot`（资产分支）原本按“重新执行原操作”实现，与 undo 压入 redo 栈的反向快照方向不符（如 undo 建文件夹后 redo 要求文件夹仍存在），导致 redo 返回 “Unknown failure”。改为复用对应的 undo 逻辑（Created/Moved/Deleted 的 redo 与 undo 互为镜像），redo 现对全部快照类型正常，多次 undo/redo 往返稳定。
+- **`asset_create_folder` 父目录不存在时假报成功** — `AssetDatabase.CreateFolder` 失败时返回空 guid 并自行抛一条 console error，但旧代码不检查返回值，仍返回 `success=true` 并对未创建的文件夹记录工作流快照。现检查空 guid 并返回明确 error（与 `asset_create_folder_batch` 行为对齐），不再假报成功、不再记录无效快照。
+- **失败/无变更的自动任务污染工作流历史** — `WorkflowManager.EndTask` 原本无条件把当前 task 加入历史，导致 `TracksWorkflow=true` 的 skill 即使失败或无快照也留下一个 `changes=0` 的空任务（`EndTask` 注释描述的“仅记录有意义任务”从未真正实现）。现跳过零快照 task，历史更干净、undo/redo 导航不再被空条目干扰。
+
+### Known Limitations
+
+- `scene_save` 的 undo 恢复磁盘 `.unity` 文件，打开中的场景需手动 Reload Scene 才生效。
+- 未保存过的场景中新建的对象，`GlobalObjectId` 跨编辑器重启会失效，undo 会在明细中标记为失败。
+- 外部副作用（Package Manager 等）无法回滚。
+
 ## [2.2.0] - 2026-07-18
 
 > **Community PRs**：本版本主要内容来自社区贡献，感谢以下 PR 作者：PR #45（客户端多实例发现）、PR #47（PrimeTween Free 支持）、PR #48（TypeCache 加速扫描）。

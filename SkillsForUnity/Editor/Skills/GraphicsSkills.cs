@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Newtonsoft.Json;
 
 namespace UnitySkills
 {
@@ -12,6 +13,149 @@ namespace UnitySkills
     /// </summary>
     public static class GraphicsSkills
     {
+        // --- Workflow setting restorers (real, reversible undo/redo) ---
+
+        private sealed class ShaderStrippingValue
+        {
+            public int lightmap;
+            public int fog;
+            public int instancing;
+        }
+
+        /// <summary>
+        /// Registers getters/setters for graphics settings so their skill changes are truly
+        /// reversible via workflow undo/redo. Stateless keys are registered here on domain load;
+        /// the per-quality-level render pipeline key is registered on demand (its getter needs
+        /// the level) in <see cref="GraphicsSetQualityRenderPipeline"/>.
+        /// </summary>
+        [InitializeOnLoadMethod]
+        private static void RegisterSettingRestorers()
+        {
+            WorkflowSettingRestorerRegistry.Register("graphics.qualityLevel",
+                () => JsonConvert.SerializeObject(QualitySettings.GetQualityLevel()),
+                json =>
+                {
+                    int level = JsonConvert.DeserializeObject<int>(json);
+                    if (level < 0 || level >= QualitySettings.names.Length) return false;
+                    QualitySettings.SetQualityLevel(level, true);
+                    return true;
+                });
+
+            WorkflowSettingRestorerRegistry.Register("graphics.defaultRenderPipeline",
+                () => JsonConvert.SerializeObject(AssetDatabase.GetAssetPath(GraphicsSettings.defaultRenderPipeline) ?? string.Empty),
+                json =>
+                {
+                    string path = JsonConvert.DeserializeObject<string>(json) ?? string.Empty;
+                    GraphicsSettings.defaultRenderPipeline = string.IsNullOrEmpty(path)
+                        ? null
+                        : AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(path);
+                    return true;
+                });
+
+            WorkflowSettingRestorerRegistry.Register("graphics.alwaysIncludedShaders",
+                CaptureAlwaysIncludedShaders,
+                ApplyAlwaysIncludedShaders);
+
+            WorkflowSettingRestorerRegistry.Register("graphics.shaderStripping",
+                CaptureShaderStripping,
+                ApplyShaderStripping);
+
+            // Register a per-level render pipeline restorer for every existing quality level so
+            // undo/redo works even after a domain reload (which clears the in-memory registry).
+            for (var level = 0; level < QualitySettings.names.Length; level++)
+                EnsureQualityRenderPipelineRestorer(level);
+        }
+
+        private static string QualityRenderPipelineKey(int level) => "graphics.qualityRenderPipeline:" + level;
+
+        /// <summary>
+        /// Registers (idempotently) a getter/setter for a specific quality level's render pipeline.
+        /// The level is captured in the closures because the registry passes no key to handlers.
+        /// </summary>
+        private static void EnsureQualityRenderPipelineRestorer(int level)
+        {
+            WorkflowSettingRestorerRegistry.Register(QualityRenderPipelineKey(level),
+                () => JsonConvert.SerializeObject(AssetDatabase.GetAssetPath(QualitySettings.GetRenderPipelineAssetAt(level)) ?? string.Empty),
+                json =>
+                {
+                    if (level < 0 || level >= QualitySettings.names.Length) return false;
+                    string path = JsonConvert.DeserializeObject<string>(json) ?? string.Empty;
+                    var asset = string.IsNullOrEmpty(path) ? null : AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(path);
+                    int previousLevel = QualitySettings.GetQualityLevel();
+                    QualitySettings.SetQualityLevel(level, false);
+                    QualitySettings.renderPipeline = asset;
+                    if (previousLevel != level)
+                        QualitySettings.SetQualityLevel(previousLevel, false);
+                    return true;
+                });
+        }
+
+        private static string CaptureAlwaysIncludedShaders()
+        {
+            var graphicsSettings = RenderPipelineSkillsCommon.GetGraphicsSettingsObject();
+            var property = graphicsSettings?.FindProperty("m_AlwaysIncludedShaders");
+            var paths = new List<string>();
+            if (property != null)
+            {
+                for (var i = 0; i < property.arraySize; i++)
+                {
+                    var shader = property.GetArrayElementAtIndex(i).objectReferenceValue as Shader;
+                    paths.Add(shader != null ? AssetDatabase.GetAssetPath(shader) : null);
+                }
+            }
+            return JsonConvert.SerializeObject(paths);
+        }
+
+        private static bool ApplyAlwaysIncludedShaders(string json)
+        {
+            var paths = JsonConvert.DeserializeObject<List<string>>(json) ?? new List<string>();
+            var graphicsSettings = RenderPipelineSkillsCommon.GetGraphicsSettingsObject();
+            var property = graphicsSettings?.FindProperty("m_AlwaysIncludedShaders");
+            if (property == null)
+                return false;
+
+            property.ClearArray();
+            for (var i = 0; i < paths.Count; i++)
+            {
+                property.InsertArrayElementAtIndex(i);
+                var shader = string.IsNullOrEmpty(paths[i]) ? null : AssetDatabase.LoadAssetAtPath<Shader>(paths[i]);
+                property.GetArrayElementAtIndex(i).objectReferenceValue = shader;
+            }
+            graphicsSettings.ApplyModifiedPropertiesWithoutUndo();
+            return true;
+        }
+
+        private static string CaptureShaderStripping()
+        {
+            var graphicsSettings = RenderPipelineSkillsCommon.GetGraphicsSettingsObject();
+            return JsonConvert.SerializeObject(new ShaderStrippingValue
+            {
+                lightmap = graphicsSettings?.FindProperty("m_LightmapStripping")?.enumValueIndex ?? 0,
+                fog = graphicsSettings?.FindProperty("m_FogStripping")?.enumValueIndex ?? 0,
+                instancing = graphicsSettings?.FindProperty("m_InstancingStripping")?.enumValueIndex ?? 0
+            });
+        }
+
+        private static bool ApplyShaderStripping(string json)
+        {
+            var value = JsonConvert.DeserializeObject<ShaderStrippingValue>(json);
+            if (value == null)
+                return false;
+
+            var graphicsSettings = RenderPipelineSkillsCommon.GetGraphicsSettingsObject();
+            if (graphicsSettings == null)
+                return false;
+
+            var lightmap = graphicsSettings.FindProperty("m_LightmapStripping");
+            var fog = graphicsSettings.FindProperty("m_FogStripping");
+            var instancing = graphicsSettings.FindProperty("m_InstancingStripping");
+            if (lightmap != null) lightmap.enumValueIndex = value.lightmap;
+            if (fog != null) fog.enumValueIndex = value.fog;
+            if (instancing != null) instancing.enumValueIndex = value.instancing;
+            graphicsSettings.ApplyModifiedPropertiesWithoutUndo();
+            return true;
+        }
+
         [UnitySkill("graphics_get_overview", "Get an overview of graphics, quality, and render pipeline settings",
             Category = SkillCategory.Graphics, Operation = SkillOperation.Query,
             Tags = new[] { "graphics", "quality", "render pipeline", "settings", "overview" },
@@ -99,6 +243,10 @@ namespace UnitySkills
             if (level < 0 || level >= QualitySettings.names.Length)
                 return new { error = $"Invalid quality level: {level}" };
 
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("graphics.qualityLevel",
+                    JsonConvert.SerializeObject(QualitySettings.GetQualityLevel()), "Graphics: Quality Level");
+
             QualitySettings.SetQualityLevel(level, true);
             return new
             {
@@ -156,6 +304,11 @@ namespace UnitySkills
                     return new { error = $"RenderPipelineAsset not found: {assetPath}" };
             }
 
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("graphics.defaultRenderPipeline",
+                    JsonConvert.SerializeObject(AssetDatabase.GetAssetPath(GraphicsSettings.defaultRenderPipeline) ?? string.Empty),
+                    "Graphics: Default Render Pipeline");
+
             GraphicsSettings.defaultRenderPipeline = asset;
             return new
             {
@@ -193,6 +346,14 @@ namespace UnitySkills
                 asset = AssetDatabase.LoadAssetAtPath<RenderPipelineAsset>(assetPath);
                 if (asset == null)
                     return new { error = $"RenderPipelineAsset not found: {assetPath}" };
+            }
+
+            if (WorkflowManager.IsRecording)
+            {
+                EnsureQualityRenderPipelineRestorer(level);
+                WorkflowManager.SnapshotSetting(QualityRenderPipelineKey(level),
+                    JsonConvert.SerializeObject(AssetDatabase.GetAssetPath(QualitySettings.GetRenderPipelineAssetAt(level)) ?? string.Empty),
+                    $"Graphics: Quality Render Pipeline (level {level})");
             }
 
             var previousLevel = QualitySettings.GetQualityLevel();
@@ -270,6 +431,10 @@ namespace UnitySkills
                     return new { success = true, alreadyIncluded = true, shader = shader.name, count = property.arraySize };
             }
 
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("graphics.alwaysIncludedShaders",
+                    CaptureAlwaysIncludedShaders(), "Graphics: Always Included Shaders");
+
             property.InsertArrayElementAtIndex(property.arraySize);
             property.GetArrayElementAtIndex(property.arraySize - 1).objectReferenceValue = shader;
             graphicsSettings.ApplyModifiedPropertiesWithoutUndo();
@@ -305,6 +470,10 @@ namespace UnitySkills
                 if (string.Equals(shader.name, shaderNameOrPath, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(AssetDatabase.GetAssetPath(shader), shaderNameOrPath, StringComparison.OrdinalIgnoreCase))
                 {
+                    if (WorkflowManager.IsRecording)
+                        WorkflowManager.SnapshotSetting("graphics.alwaysIncludedShaders",
+                            CaptureAlwaysIncludedShaders(), "Graphics: Always Included Shaders");
+
                     property.DeleteArrayElementAtIndex(i);
                     graphicsSettings.ApplyModifiedPropertiesWithoutUndo();
                     return new
@@ -356,6 +525,10 @@ namespace UnitySkills
             var graphicsSettings = RenderPipelineSkillsCommon.GetGraphicsSettingsObject();
             if (graphicsSettings == null)
                 return new { error = "GraphicsSettings asset not found" };
+
+            if (WorkflowManager.IsRecording)
+                WorkflowManager.SnapshotSetting("graphics.shaderStripping",
+                    CaptureShaderStripping(), "Graphics: Shader Stripping");
 
             if (!ApplyEnumSetting(graphicsSettings.FindProperty("m_LightmapStripping"), lightmapMode, lightmapValue, out var lightmapError))
                 return new { error = lightmapError };

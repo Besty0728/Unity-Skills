@@ -111,7 +111,8 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            if (File.Exists(filePath))
+            bool overwriting = File.Exists(filePath);
+            if (overwriting)
             {
                 var existing = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(filePath);
                 if (existing != null) WorkflowManager.SnapshotObject(existing);
@@ -119,6 +120,13 @@ namespace UnitySkills
 
             File.WriteAllText(filePath, content, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(filePath);
+
+            // New files get a Created snapshot (undo = delete) so they are as reversible as overwrites.
+            if (!overwriting)
+            {
+                var created = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(filePath);
+                if (created != null) WorkflowManager.SnapshotCreatedAsset(created);
+            }
 
             return new { success = true, path = filePath, lines = content.Split('\n').Length };
         }
