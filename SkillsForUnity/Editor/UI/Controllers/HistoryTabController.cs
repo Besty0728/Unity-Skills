@@ -23,6 +23,18 @@ namespace UnitySkills
         private Label         _undoneTitle;
         private VisualElement _undoneContainer;
 
+        private Foldout      _autoCleanFoldout;
+        private Toggle       _autoCleanEnabled;
+        private VisualElement _autoCleanFields;
+        private IntegerField _autoCleanMaxTasks;
+        private IntegerField _autoCleanMaxHistoryMb;
+        private IntegerField _autoCleanMaxTaskAge;
+        private IntegerField _autoCleanMaxStoreMb;
+        private IntegerField _autoCleanStoreMaxAge;
+        private Label        _autoCleanUsage;
+        private Button       _autoCleanRunBtn;
+        private Button       _autoCleanResetBtn;
+
         public HistoryTabController(VisualElement root, UnitySkillsWindow window)
         {
             _root = root;
@@ -38,6 +50,8 @@ namespace UnitySkills
 
             CacheUiReferences();
             BindEvents();
+            LoadAutoCleanValues();
+            ApplyAutoCleanLocalization();
             RefreshHistory();
         }
 
@@ -52,6 +66,18 @@ namespace UnitySkills
             _activeContainer = _root.Q<VisualElement>("active-tasks-container");
             _undoneTitle     = _root.Q<Label>("undone-tasks-title");
             _undoneContainer = _root.Q<VisualElement>("undone-tasks-container");
+
+            _autoCleanFoldout      = _root.Q<Foldout>("autoclean-foldout");
+            _autoCleanEnabled      = _root.Q<Toggle>("autoclean-enabled");
+            _autoCleanFields       = _root.Q<VisualElement>("autoclean-fields");
+            _autoCleanMaxTasks     = _root.Q<IntegerField>("autoclean-max-tasks");
+            _autoCleanMaxHistoryMb = _root.Q<IntegerField>("autoclean-max-history-mb");
+            _autoCleanMaxTaskAge   = _root.Q<IntegerField>("autoclean-max-task-age");
+            _autoCleanMaxStoreMb   = _root.Q<IntegerField>("autoclean-max-store-mb");
+            _autoCleanStoreMaxAge  = _root.Q<IntegerField>("autoclean-store-max-age");
+            _autoCleanUsage        = _root.Q<Label>("autoclean-usage");
+            _autoCleanRunBtn       = _root.Q<Button>("autoclean-run-btn");
+            _autoCleanResetBtn     = _root.Q<Button>("autoclean-reset-btn");
 
             if (_resultHelpBox == null && _cacheWarning != null)
             {
@@ -70,12 +96,89 @@ namespace UnitySkills
         {
             if (_refreshBtn != null) _refreshBtn.clicked += RefreshHistory;
             if (_clearBtn   != null) _clearBtn.clicked   += ClearHistory;
+
+            BindAutoCleanEvents();
+        }
+
+        private void BindAutoCleanEvents()
+        {
+            _autoCleanEnabled?.RegisterValueChangedCallback(evt =>
+            {
+                WorkflowAutoCleanConfig.Enabled = evt.newValue;
+                UpdateAutoCleanFieldsEnabled();
+            });
+            _autoCleanMaxTasks?.RegisterValueChangedCallback(evt =>
+                WorkflowAutoCleanConfig.MaxTasks = Mathf.Max(0, evt.newValue));
+            _autoCleanMaxHistoryMb?.RegisterValueChangedCallback(evt =>
+                WorkflowAutoCleanConfig.MaxHistoryMB = Mathf.Max(0, evt.newValue));
+            _autoCleanMaxTaskAge?.RegisterValueChangedCallback(evt =>
+                WorkflowAutoCleanConfig.MaxTaskAgeDays = Mathf.Max(0, evt.newValue));
+            _autoCleanMaxStoreMb?.RegisterValueChangedCallback(evt =>
+                WorkflowAutoCleanConfig.MaxStoreMB = Mathf.Max(0, evt.newValue));
+            _autoCleanStoreMaxAge?.RegisterValueChangedCallback(evt =>
+                WorkflowAutoCleanConfig.StoreMaxAgeDays = Mathf.Max(0, evt.newValue));
+
+            if (_autoCleanRunBtn != null) _autoCleanRunBtn.clicked += () =>
+            {
+                var report = WorkflowManager.TrimHistoryIfNeeded(force: true);
+                ShowResultMessage(string.Format(
+                    SkillsLocalization.Get("autoclean_run_result_format"),
+                    report.removedTasks, FormatBytes(report.reclaimedBytes)), false);
+                RefreshHistory();
+            };
+
+            if (_autoCleanResetBtn != null) _autoCleanResetBtn.clicked += () =>
+            {
+                WorkflowAutoCleanConfig.ResetToDefaults();
+                LoadAutoCleanValues();
+            };
+        }
+
+        private void LoadAutoCleanValues()
+        {
+            _autoCleanEnabled?.SetValueWithoutNotify(WorkflowAutoCleanConfig.Enabled);
+            _autoCleanMaxTasks?.SetValueWithoutNotify(WorkflowAutoCleanConfig.MaxTasks);
+            _autoCleanMaxHistoryMb?.SetValueWithoutNotify(WorkflowAutoCleanConfig.MaxHistoryMB);
+            _autoCleanMaxTaskAge?.SetValueWithoutNotify(WorkflowAutoCleanConfig.MaxTaskAgeDays);
+            _autoCleanMaxStoreMb?.SetValueWithoutNotify(WorkflowAutoCleanConfig.MaxStoreMB);
+            _autoCleanStoreMaxAge?.SetValueWithoutNotify(WorkflowAutoCleanConfig.StoreMaxAgeDays);
+            UpdateAutoCleanFieldsEnabled();
+        }
+
+        private void UpdateAutoCleanFieldsEnabled()
+        {
+            bool enabled = WorkflowAutoCleanConfig.Enabled;
+            _autoCleanFields?.SetEnabled(enabled);
+            _autoCleanRunBtn?.SetEnabled(enabled);
+        }
+
+        private void UpdateAutoCleanUsage()
+        {
+            if (_autoCleanUsage == null) return;
+
+            var history = WorkflowManager.History;
+            int taskCount = (history?.tasks?.Count ?? 0) + (history?.undoneStack?.Count ?? 0);
+            long historyBytes = WorkflowManager.GetHistoryFileSizeBytes();
+            long storeBytes = WorkflowFileStore.GetStoreSizeBytes();
+
+            _autoCleanUsage.text = string.Format(
+                SkillsLocalization.Get("autoclean_usage_format"),
+                taskCount, FormatBytes(historyBytes), FormatBytes(storeBytes));
+        }
+
+        private static string FormatBytes(long bytes)
+        {
+            if (bytes >= 1024L * 1024L * 1024L) return $"{bytes / (1024.0 * 1024.0 * 1024.0):F1} GB";
+            if (bytes >= 1024L * 1024L) return $"{bytes / (1024.0 * 1024.0):F1} MB";
+            if (bytes >= 1024L) return $"{bytes / 1024.0:F1} KB";
+            return $"{bytes} B";
         }
 
         private void RefreshHistory()
         {
             WorkflowManager.LoadHistory();
             RebuildHistoryList();
+            UpdateAutoCleanUsage();
         }
 
         private void ClearHistory()
@@ -224,6 +327,28 @@ namespace UnitySkills
             return card;
         }
 
+        private void ApplyAutoCleanLocalization()
+        {
+            if (_autoCleanFoldout != null) _autoCleanFoldout.text = SkillsLocalization.Get("autoclean_title");
+            if (_autoCleanEnabled != null) _autoCleanEnabled.label = SkillsLocalization.Get("autoclean_enabled");
+
+            SetFieldLabel(_autoCleanMaxTasks,     "autoclean_max_tasks",      "autoclean_tip_max_tasks");
+            SetFieldLabel(_autoCleanMaxHistoryMb, "autoclean_max_history_mb", "autoclean_tip_max_history_mb");
+            SetFieldLabel(_autoCleanMaxTaskAge,   "autoclean_max_task_age",   "autoclean_tip_max_task_age");
+            SetFieldLabel(_autoCleanMaxStoreMb,   "autoclean_max_store_mb",   "autoclean_tip_max_store_mb");
+            SetFieldLabel(_autoCleanStoreMaxAge,  "autoclean_store_max_age",  "autoclean_tip_store_max_age");
+
+            if (_autoCleanRunBtn   != null) _autoCleanRunBtn.text   = SkillsLocalization.Get("autoclean_run_now");
+            if (_autoCleanResetBtn != null) _autoCleanResetBtn.text = SkillsLocalization.Get("autoclean_reset");
+        }
+
+        private static void SetFieldLabel(IntegerField field, string labelKey, string tooltipKey)
+        {
+            if (field == null) return;
+            field.label = SkillsLocalization.Get(labelKey);
+            field.tooltip = SkillsLocalization.Get(tooltipKey);
+        }
+
         public void RefreshLocalization()
         {
             if (_historyTitle != null)
@@ -239,6 +364,8 @@ namespace UnitySkills
                     : "Workflow Cache Warning: undo restores scene hierarchies and asset snapshots. External side effects (e.g. Package Manager) cannot be reverted.";
             }
 
+            ApplyAutoCleanLocalization();
+            UpdateAutoCleanUsage();
             RebuildHistoryList();
         }
 

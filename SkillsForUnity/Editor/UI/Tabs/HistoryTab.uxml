@@ -19,6 +19,25 @@
         <ui:HelpBox name="cache-warning" message-type="Warning"
                     style="margin: 8px 10px 0 10px;" />
 
+        <!-- Auto Clean settings -->
+        <ui:Foldout name="autoclean-foldout" value="false"
+                    style="margin: 6px 10px 0 10px; flex-shrink: 0;">
+            <ui:Toggle name="autoclean-enabled" />
+            <ui:VisualElement name="autoclean-fields">
+                <ui:IntegerField name="autoclean-max-tasks" />
+                <ui:IntegerField name="autoclean-max-history-mb" />
+                <ui:IntegerField name="autoclean-max-task-age" />
+                <ui:IntegerField name="autoclean-max-store-mb" />
+                <ui:IntegerField name="autoclean-store-max-age" />
+            </ui:VisualElement>
+            <ui:Label name="autoclean-usage" class="muted-label"
+                      style="margin-top: 4px; margin-left: 2px;" />
+            <ui:VisualElement style="flex-direction: row; margin-top: 6px;">
+                <ui:Button name="autoclean-run-btn" class="mini-btn" />
+                <ui:Button name="autoclean-reset-btn" class="mini-btn" />
+            </ui:VisualElement>
+        </ui:Foldout>
+
         <!-- Scroll body -->
         <ui:ScrollView name="history-scroll" class="history-scroll scroll-view"
                        style="flex-grow: 1; min-height: 0;">
