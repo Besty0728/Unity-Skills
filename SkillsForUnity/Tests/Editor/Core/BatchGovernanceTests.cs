@@ -232,6 +232,52 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(0, json["failureCount"]?.Value<int>());
             Assert.IsNotNull(json["results"]);
         }
+
+        [Test]
+        public void TestSmokeSkills_SkipsKnownMissingPackageInsteadOfReportingFailure()
+        {
+            if (PackageManagerHelper.InstalledPackages == null)
+                Assert.Ignore("Package Manager list is not initialized in this test host.");
+
+            if (PackageManagerHelper.IsPackageInstalled(PackageManagerHelper.CinemachinePackageId))
+                Assert.Ignore("Cinemachine is installed; missing-package branch is not applicable.");
+
+            Assert.That(SkillRouter.TryGetSkill("cinemachine_get_brain_info", out var skill), Is.True);
+            var outcome = TestSkills.EvaluateSmokeSkill(skill, Array.Empty<string>(), executeReadOnly: true);
+
+            Assert.That(outcome.Status, Is.EqualTo("skipped"));
+            Assert.That(outcome.ProbeMode, Is.EqualTo("skipped"));
+            StringAssert.Contains(PackageManagerHelper.CinemachinePackageId, outcome.Error);
+        }
+
+#if CINEMACHINE_3
+        [Test]
+        public void PackageManager_RecognizesCinemachineTransitiveSplinesDependency()
+        {
+            if (PackageManagerHelper.InstalledPackages == null)
+                Assert.Ignore("Package Manager list is not initialized in this test host.");
+
+            var status = PackageManagerHelper.GetCinemachineStatus();
+            if (!status.installed || !status.isVersion3)
+                Assert.Ignore("Cinemachine 3 is not installed; transitive Splines dependency is not applicable.");
+
+            Assert.That(PackageManagerHelper.IsPackageInstalled(PackageManagerHelper.SplinesPackageId), Is.True);
+            Assert.That(PackageManagerHelper.GetInstalledVersion(PackageManagerHelper.SplinesPackageId), Is.Not.Null.And.Not.Empty);
+        }
+
+        [Test]
+        public void CinemachineSmoke_MissingSceneFixtureIsSkippedInsteadOfFailed()
+        {
+            Assert.That(SkillRouter.TryGetSkill("cinemachine_get_brain_info", out var skill), Is.True);
+            foreach (var brain in Resources.FindObjectsOfTypeAll<Unity.Cinemachine.CinemachineBrain>())
+                UnityEngine.Object.DestroyImmediate(brain);
+
+            var outcome = TestSkills.EvaluateSmokeSkill(skill, Array.Empty<string>(), executeReadOnly: true);
+
+            Assert.That(outcome.Status, Is.EqualTo("skipped"));
+            Assert.That(outcome.Error, Does.StartWith("Scene fixture unavailable:"));
+        }
+#endif
     }
 }
 

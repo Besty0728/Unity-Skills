@@ -494,6 +494,7 @@ namespace UnitySkills
             long? workflowEndMs = null;
             var wrapWithUndoTransaction = !skill.ReadOnly && !_transactionlessSkills.Contains(name);
             int undoGroup = -1;
+            int workflowSnapshotCountBefore = WorkflowManager.CurrentTask?.snapshots?.Count ?? 0;
             // Attribute changes made by this call (including frame-end ObjectChangeEvents) to
             // REST in the persistent editor-change journal.
             EditorChangeTrackerService.BeginRestExecution();
@@ -628,7 +629,9 @@ namespace UnitySkills
                             // Nothing was invoked yet; unwind the bookkeeping opened above,
                             // mirroring the catch handlers below.
                             if (autoStartedWorkflow && WorkflowManager.IsRecording)
-                                WorkflowManager.EndTask();
+                                WorkflowManager.AbortTask();
+                            else if (WorkflowManager.IsRecording)
+                                WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
                             if (undoGroup >= 0)
                                 UnityEditor.Undo.RevertAllInCurrentGroup();
 
@@ -647,6 +650,23 @@ namespace UnitySkills
 
                 if (!skill.ReadOnly)
                     UnityEditor.Undo.FlushUndoRecordObjects();
+
+                if (SkillResultHelper.TryGetError(result, out string errorText))
+                {
+                    if (autoStartedWorkflow && WorkflowManager.IsRecording)
+                        WorkflowManager.AbortTask();
+                    else if (WorkflowManager.IsRecording)
+                        WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
+
+                    if (undoGroup >= 0)
+                        UnityEditor.Undo.RevertAllInCurrentGroup();
+
+                    return SkillErrorResponse.Build(
+                        SkillErrorCode.SkillError,
+                        errorText,
+                        skill: name,
+                        retryStrategy: SkillErrorResponse.Abort);
+                }
 
                 // ========== AUTO WORKFLOW END ==========
                 if (autoStartedWorkflow)
@@ -678,16 +698,6 @@ namespace UnitySkills
                     // explicitly so editor_undo/editor_redo target the completed mutation.
                     if (!skill.ReadOnly)
                         UnityEditor.Undo.IncrementCurrentGroup();
-                }
-
-                // Return a normalized error payload when a skill reports a logical failure.
-                if (SkillResultHelper.TryGetError(result, out string errorText))
-                {
-                    return SkillErrorResponse.Build(
-                        SkillErrorCode.SkillError,
-                        errorText,
-                        skill: name,
-                        retryStrategy: SkillErrorResponse.Abort);
                 }
 
                 // Semantic diff post-capture + compare (?diff=1). Attached to the success envelope
@@ -730,7 +740,9 @@ namespace UnitySkills
             {
                 // Clean up auto-started workflow on error
                 if (autoStartedWorkflow && WorkflowManager.IsRecording)
-                    WorkflowManager.EndTask();
+                    WorkflowManager.AbortTask();
+                else if (WorkflowManager.IsRecording)
+                    WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
 
                 if (undoGroup >= 0)
                 {
@@ -763,7 +775,9 @@ namespace UnitySkills
             {
                 // Clean up auto-started workflow on error
                 if (autoStartedWorkflow && WorkflowManager.IsRecording)
-                    WorkflowManager.EndTask();
+                    WorkflowManager.AbortTask();
+                else if (WorkflowManager.IsRecording)
+                    WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
 
                 if (undoGroup >= 0)
                 {
@@ -1139,13 +1153,18 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// A parameter is truly required only if it has no default value and cannot accept null
-        /// (non-nullable value type). Reference types silently receive null when omitted.
+        /// Explicit same-name RequiresInput metadata overrides an optional CLR default. Otherwise,
+        /// a parameter is required only when it has no default and cannot accept null.
         /// </summary>
-        private static bool IsParameterRequired(ParameterInfo p)
+        private static bool IsParameterRequired(SkillInfo skill, ParameterInfo p)
         {
+            if (skill?.RequiresInput?.Any(required =>
+                    string.Equals(required, p.Name, StringComparison.OrdinalIgnoreCase)) == true)
+                return true;
             if (p.HasDefaultValue) return false;
-            return p.ParameterType.IsValueType && Nullable.GetUnderlyingType(p.ParameterType) == null;
+            if (p.ParameterType.IsValueType && Nullable.GetUnderlyingType(p.ParameterType) == null)
+                return true;
+            return false;
         }
 
         private static string[] FormatOperation(SkillOperation op)
@@ -1299,7 +1318,7 @@ namespace UnitySkills
             {
                 name = p.Name,
                 type = GetJsonType(p.ParameterType),
-                required = IsParameterRequired(p),
+                required = IsParameterRequired(skill, p),
                 defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
             }).ToList();
 
@@ -1735,24 +1754,24 @@ namespace UnitySkills
                         validation.TypeErrors.Add(new { parameter = p.Name, expectedType = GetJsonType(p.ParameterType), error = ex.Message });
                     }
                 }
+                else if (IsParameterRequired(skill, p))
+                {
+                    validation.MissingParams.Add(p.Name);
+                }
                 else if (p.HasDefaultValue)
                 {
                     invoke[i] = p.DefaultValue;
                 }
-                else if (!IsParameterRequired(p))
-                {
-                    invoke[i] = null;
-                }
                 else
                 {
-                    validation.MissingParams.Add(p.Name);
+                    invoke[i] = null;
                 }
 
                 validation.ParameterDetails.Add(new
                 {
                     name = p.Name,
                     type = GetJsonType(p.ParameterType),
-                    required = IsParameterRequired(p),
+                    required = IsParameterRequired(skill, p),
                     provided,
                     defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
                 });

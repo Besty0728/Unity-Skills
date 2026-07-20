@@ -195,17 +195,15 @@ namespace UnitySkills
             Tags = new[] { "shader", "delete", "asset" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
         public static object ShaderDelete(string shaderPath)
         {
             if (Validate.SafePath(shaderPath, "shaderPath", isDelete: true) is object pathErr) return pathErr;
             if (!File.Exists(shaderPath))
                 return new { error = $"Shader not found: {shaderPath}" };
 
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(shaderPath);
-            if (asset != null) WorkflowManager.SnapshotObject(asset);
-
-            AssetDatabase.DeleteAsset(shaderPath);
+            if (!WorkflowManager.DeleteAssetToTrash(shaderPath))
+                return new { error = $"Failed to delete shader: {shaderPath}" };
             return new { success = true, deleted = shaderPath };
         }
 

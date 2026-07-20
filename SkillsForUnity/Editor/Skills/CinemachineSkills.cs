@@ -32,7 +32,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "virtual", "cinemachine", "vcam" },
             Outputs = new[] { "gameObjectName", "instanceId" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineCreateVCam(string name, string folder = "Assets/Settings")
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -65,6 +65,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Query,
             Tags = new[] { "camera", "inspect", "vcam", "cinemachine" },
             Outputs = new[] { "name", "priority", "follow", "lookAt", "lens", "components" },
+            RequiresPackages = new[] { "com.unity.cinemachine" },
             RequiresInput = new[] { "vcam" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
@@ -85,6 +86,8 @@ namespace UnitySkills
             var lens = Sanitize(CinemachineAdapter.GetLens(vcam));
 
             var components = go.GetComponents<MonoBehaviour>()
+                               .Concat(CinemachineAdapter.GetPipelineComponents(go))
+                               .Distinct()
                                .Where(mb => mb != null && mb.GetType().Namespace != null && mb.GetType().Namespace.Contains("Cinemachine"))
                                .Select(mb => InspectCmComponent(mb))
                                .ToList();
@@ -139,11 +142,8 @@ namespace UnitySkills
             result["settings"] = serialized;
 
             // Stage detection
-            var body = CinemachineAdapter.GetPipelineComponent(mb.gameObject, "Body");
-            var aim = CinemachineAdapter.GetPipelineComponent(mb.gameObject, "Aim");
-            if (mb == body) result["stage"] = "Body";
-            else if (mb == aim) result["stage"] = "Aim";
-            else if (t.Name.Contains("Perlin")) result["stage"] = "Noise";
+            if (CinemachineAdapter.TryGetPipelineStage(mb, out var pipelineStage))
+                result["stage"] = pipelineStage.ToString();
             else if (typeof(CinemachineExtension).IsAssignableFrom(t)) result["stage"] = "Extension";
 
             return result;
@@ -255,7 +255,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "property", "vcam", "pipeline", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSetVCamProperty(
             string vcamName = null,
             int instanceId = 0,
@@ -289,9 +289,6 @@ namespace UnitySkills
 
             var normalizedComponentType = componentType?.Trim();
 
-            // 记录快照用于撤销
-            WorkflowManager.SnapshotObject(go);
-
             object target = null;
             bool isLens = false;
 
@@ -308,7 +305,10 @@ namespace UnitySkills
             }
             else
             {
-                var comps = go.GetComponents<MonoBehaviour>();
+                var comps = go.GetComponents<MonoBehaviour>()
+                    .Concat(CinemachineAdapter.GetPipelineComponents(go))
+                    .Distinct()
+                    .ToArray();
                 target = comps.FirstOrDefault(c => c.GetType().Name.Equals(normalizedComponentType, System.StringComparison.OrdinalIgnoreCase));
 
                 if (target == null &&
@@ -321,12 +321,17 @@ namespace UnitySkills
 
             if (target == null) return new { error = "Component " + normalizedComponentType + " not found on Object." };
 
+            var undoTarget = isLens ? vcam : target as Object;
+            WorkflowManager.SnapshotObject(undoTarget);
+            Undo.RecordObject(undoTarget, "Set Cinemachine Property");
+
             if (isLens)
             {
                 object boxedLens = CinemachineAdapter.GetLens(vcam);
                 if (SetFieldOrProperty(boxedLens, propertyName, value))
                 {
                    CinemachineAdapter.SetLens(vcam, (LensSettings)boxedLens);
+                   EditorUtility.SetDirty(vcam);
                    return new { success = true, message = "Set Lens." + propertyName + " to " + value };
                 }
                 return new { error = "Property " + propertyName + " not found on Lens" };
@@ -347,7 +352,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "follow", "lookAt", "target", "cinemachine" },
             Outputs = new[] { "success" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSetTargets(string vcamName = null, int instanceId = 0, string path = null, string followName = null, string lookAtName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -356,12 +361,10 @@ namespace UnitySkills
             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
             if (err != null) return err;
 
-            // 记录快照用于撤销
-            WorkflowManager.SnapshotObject(go);
-
             var vcam = CinemachineAdapter.GetVCam(go);
             if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
 
+            WorkflowManager.SnapshotObject(vcam);
             Undo.RecordObject(vcam, "Set Targets");
             if (followName != null)
                 CinemachineAdapter.SetFollow(vcam, GameObjectFinder.Find(followName)?.transform);
@@ -378,7 +381,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "component", "add", "pipeline", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineAddComponent(string vcamName = null, int instanceId = 0, string path = null, string componentType = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -390,14 +393,37 @@ namespace UnitySkills
             var type = FindCinemachineType(componentType);
             if (type == null) return new { error = "Could not find Cinemachine component type: " + componentType };
 
-            // 记录快照用于撤销
-            WorkflowManager.SnapshotObject(go);
+            var vcam = CinemachineAdapter.GetVCam(go);
+            if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
 
-            var comp = Undo.AddComponent(go, type);
+            Component comp;
+            if (CinemachineAdapter.TryGetPipelineStage(type, out var pipelineStage))
+            {
+                var existing = CinemachineAdapter.GetPipelineComponent(go, pipelineStage.ToString());
+                if (existing != null && existing.GetType() == type)
+                    return new { success = true, message = type.Name + " already exists on " + go.name };
+
+                if (existing != null)
+                {
+                    if (!WorkflowManager.DeleteSceneObject(existing))
+                        return new { error = "Failed to capture existing " + pipelineStage + " pipeline component." };
+                    CinemachineAdapter.InvalidatePipeline(go);
+                }
+
+                comp = CinemachineAdapter.AddPipelineComponent(go, type, out var addError);
+                if (comp == null) return new { error = addError };
+            }
+            else
+            {
+                if (!typeof(Component).IsAssignableFrom(type) || type.IsAbstract)
+                    return new { error = type.Name + " is not a component type." };
+                comp = Undo.AddComponent(go, type);
+            }
+
             if (comp != null)
             {
                 WorkflowManager.SnapshotCreatedComponent(comp);
-                return new { success = true, message = "Added " + type.Name + " to " + go.name };
+                return new { success = true, message = "Added " + type.Name + " to " + comp.gameObject.name };
             }
             return new { error = "Failed to add component." };
 #endif
@@ -410,7 +436,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "lens", "fov", "clip", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSetLens(string vcamName = null, int instanceId = 0, string path = null, float? fov = null, float? nearClip = null, float? farClip = null, float? orthoSize = null, string mode = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -419,12 +445,10 @@ namespace UnitySkills
             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
             if (err != null) return err;
 
-            // 记录快照用于撤销
-            WorkflowManager.SnapshotObject(go);
-
             var vcam = CinemachineAdapter.GetVCam(go);
             if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
 
+            WorkflowManager.SnapshotObject(vcam);
             var lens = CinemachineAdapter.GetLens(vcam);
             bool changed = false;
 
@@ -448,6 +472,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Query,
             Tags = new[] { "cinemachine", "component", "list", "pipeline" },
             Outputs = new[] { "count", "components" },
+            RequiresPackages = new[] { "com.unity.cinemachine" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object CinemachineListComponents()
@@ -471,50 +496,58 @@ namespace UnitySkills
 #endif
         }
 
-        [UnitySkill("cinemachine_set_component", "Switch VCam pipeline component (Body/Aim/Noise). CM3 only.",
+        [UnitySkill("cinemachine_set_component", "Switch VCam pipeline component (Body/Aim/Noise). Supports Cinemachine 2.x and 3.x.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify | SkillOperation.Delete | SkillOperation.Create,
             Tags = new[] { "camera", "pipeline", "body", "aim", "noise" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSetComponent(string vcamName = null, int instanceId = 0, string path = null, string stage = null, string componentType = null)
         {
-#if CINEMACHINE_3
+#if CINEMACHINE_2 || CINEMACHINE_3
             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
             if (err != null) return err;
-            var vcam = go.GetComponent<CinemachineCamera>();
-            if (vcam == null) return new { error = "Not a CinemachineCamera" };
+            var vcam = CinemachineAdapter.GetVCam(go);
+            if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
 
-            if (!System.Enum.TryParse<CinemachineCore.Stage>(stage, true, out var stageEnum))
+            if (!CinemachineAdapter.TryParsePipelineStage(stage, out var stageEnum))
             {
                 return new { error = "Invalid stage. Use Body, Aim, or Noise." };
             }
 
-            // 记录快照用于撤销
-            WorkflowManager.SnapshotObject(go);
+            System.Type requestedType = null;
+            if (!string.IsNullOrEmpty(componentType) && !componentType.Equals("None", System.StringComparison.OrdinalIgnoreCase))
+            {
+                requestedType = FindCinemachineType(componentType);
+                if (requestedType == null) return new { error = "Could not find Cinemachine component type: " + componentType };
+                if (!CinemachineAdapter.TryGetPipelineStage(requestedType, out var actualStage))
+                    return new { error = requestedType.Name + " is not a Cinemachine pipeline component." };
+                if (actualStage != stageEnum)
+                    return new { error = requestedType.Name + " belongs to the " + actualStage + " stage, not " + stageEnum + "." };
+            }
 
             // 1. Remove existing component at this stage
-            var existing = vcam.GetCinemachineComponent(stageEnum);
+            var existing = CinemachineAdapter.GetPipelineComponent(go, stageEnum.ToString());
+            if (existing != null && requestedType != null && existing.GetType() == requestedType)
+                return new { success = true, message = "Set " + stageEnum + " to " + requestedType.Name + " (already configured)" };
+
             if (existing != null)
             {
-                Undo.DestroyObjectImmediate(existing);
+                if (!WorkflowManager.DeleteSceneObject(existing))
+                    return new { error = "Failed to capture existing pipeline component." };
+                CinemachineAdapter.InvalidatePipeline(go);
             }
 
             // 2. Add new component if not "None"
-            if (!string.IsNullOrEmpty(componentType) && !componentType.Equals("None", System.StringComparison.OrdinalIgnoreCase))
+            if (requestedType != null)
             {
-                var type = FindCinemachineType(componentType);
-                if (type == null) return new { error = "Could not find Cinemachine component type: " + componentType };
-
-                var comp = Undo.AddComponent(go, type);
-                if (comp == null) return new { error = "Failed to add component " + type.Name };
+                var comp = CinemachineAdapter.AddPipelineComponent(go, requestedType, out var addError);
+                if (comp == null) return new { error = addError };
                 WorkflowManager.SnapshotCreatedComponent(comp);
             }
 
-            EditorUtility.SetDirty(go);
-            return new { success = true, message = "Set " + stage + " to " + (componentType ?? "None") };
-#elif CINEMACHINE_2
-            return new { error = "cinemachine_set_component 仅支持 Cinemachine 3.x。CM2 请使用 cinemachine_add_component 添加组件。" };
+            EditorUtility.SetDirty(vcam);
+            return new { success = true, message = "Set " + stageEnum + " to " + (requestedType?.Name ?? "None") };
 #else
             return NoCinemachine();
 #endif
@@ -524,7 +557,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Execute,
             Tags = new[] { "camera", "impulse", "shake", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "impulseSource" })]
+            RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineImpulseGenerate(string sourceParams)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -559,6 +592,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Query,
             Tags = new[] { "camera", "brain", "blend", "active", "cinemachine" },
             Outputs = new[] { "activeCamera", "isBlending", "activeBlend", "updateMethod" },
+            RequiresPackages = new[] { "com.unity.cinemachine" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object CinemachineGetBrainInfo()
@@ -588,7 +622,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "active", "priority", "solo", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSetActive(string vcamName = null, int instanceId = 0, string path = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -597,12 +631,10 @@ namespace UnitySkills
             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
             if (err != null) return err;
 
-            // 记录快照用于撤销
-            WorkflowManager.SnapshotObject(go);
-
             var vcam = CinemachineAdapter.GetVCam(go);
             if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
 
+            WorkflowManager.SnapshotObject(vcam);
             int maxPrio = CinemachineAdapter.GetMaxPriority();
             CinemachineAdapter.SetPriority(vcam, maxPrio + 1);
             EditorUtility.SetDirty(vcam);
@@ -616,7 +648,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "noise", "perlin", "shake", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSetNoise(string vcamName = null, int instanceId = 0, string path = null, float amplitudeGain = 1f, float frequencyGain = 1f)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -625,14 +657,29 @@ namespace UnitySkills
             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
             if (err != null) return err;
 
-            // 记录快照用于撤销
-            WorkflowManager.SnapshotObject(go);
+            var vcam = CinemachineAdapter.GetVCam(go);
+            if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
 
-            var perlin = go.GetComponent<CinemachineBasicMultiChannelPerlin>();
+            var noise = CinemachineAdapter.GetPipelineComponent(go, "Noise");
+            var perlin = noise as CinemachineBasicMultiChannelPerlin;
             if (perlin == null)
             {
-                perlin = Undo.AddComponent<CinemachineBasicMultiChannelPerlin>(go);
+                if (noise != null)
+                {
+                    if (!WorkflowManager.DeleteSceneObject(noise))
+                        return new { error = "Failed to capture existing Noise pipeline component." };
+                    CinemachineAdapter.InvalidatePipeline(go);
+                }
+
+                perlin = CinemachineAdapter.AddPipelineComponent(
+                    go, typeof(CinemachineBasicMultiChannelPerlin), out var addError) as CinemachineBasicMultiChannelPerlin;
+                if (perlin == null) return new { error = addError };
                 WorkflowManager.SnapshotCreatedComponent(perlin);
+            }
+            else
+            {
+                WorkflowManager.SnapshotObject(perlin);
+                Undo.RecordObject(perlin, "Set Cinemachine Noise");
             }
 
             CinemachineAdapter.SetNoiseGains(perlin, amplitudeGain, frequencyGain);
@@ -750,7 +797,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "targetGroup", "group", "cinemachine" },
             Outputs = new[] { "success", "name" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineCreateTargetGroup(string name)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -758,9 +805,9 @@ namespace UnitySkills
 #else
              var go = new GameObject(name);
              Undo.RegisterCreatedObjectUndo(go, "Create TargetGroup");
-             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
              var group = Undo.AddComponent<CinemachineTargetGroup>(go);
              if (group == null) return new { error = "Failed to add CinemachineTargetGroup component" };
+             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
              return new { success = true, name = go.name };
 #endif
         }
@@ -770,7 +817,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "targetGroup", "member", "add", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "targetGroup", "gameObject" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineTargetGroupAddMember(string groupName = null, int groupInstanceId = 0, string groupPath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, float weight = 1f, float radius = 1f)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -784,7 +831,7 @@ namespace UnitySkills
              var (targetGo, targetErr) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath);
              if (targetErr != null) return targetErr;
 
-             WorkflowManager.SnapshotObject(groupGo);
+             WorkflowManager.SnapshotObject(group);
              Undo.RecordObject(group, "Add TargetGroup Member");
              group.RemoveMember(targetGo.transform);
              group.AddMember(targetGo.transform, weight, radius);
@@ -798,7 +845,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "targetGroup", "member", "remove", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "targetGroup", "gameObject" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineTargetGroupRemoveMember(string groupName = null, int groupInstanceId = 0, string groupPath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -812,7 +859,7 @@ namespace UnitySkills
              var (targetGo, targetErr) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath);
              if (targetErr != null) return targetErr;
 
-             WorkflowManager.SnapshotObject(groupGo);
+             WorkflowManager.SnapshotObject(group);
              Undo.RecordObject(group, "Remove TargetGroup Member");
              group.RemoveMember(targetGo.transform);
 
@@ -825,7 +872,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "spline", "dolly", "path", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam", "splineContainer" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine", "com.unity.splines" })]
         public static object CinemachineSetSpline(string vcamName = null, int vcamInstanceId = 0, string vcamPath = null, string splineName = null, int splineInstanceId = 0, string splinePath = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -851,7 +898,7 @@ namespace UnitySkills
             var container = splineGo.GetComponent<SplineContainer>();
             if (container == null) return new { error = "GameObject does not have a SplineContainer" };
 
-            WorkflowManager.SnapshotObject(vcamGo);
+            WorkflowManager.SnapshotObject(dolly);
             Undo.RecordObject(dolly, "Set Spline");
             dolly.Spline = container;
 
@@ -863,7 +910,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "extension", "add", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineAddExtension(string vcamName = null, int instanceId = 0, string path = null, string extensionName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -881,7 +928,6 @@ namespace UnitySkills
 
              if (go.GetComponent(type) != null) return new { success = true, message = "Extension " + type.Name + " already exists on " + go.name };
 
-             WorkflowManager.SnapshotObject(go);
              var ext = Undo.AddComponent(go, type);
              if (ext == null) return new { error = "Failed to add extension " + type.Name };
              WorkflowManager.SnapshotCreatedComponent(ext);
@@ -894,7 +940,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "extension", "remove", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineRemoveExtension(string vcamName = null, int instanceId = 0, string path = null, string extensionName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -909,8 +955,8 @@ namespace UnitySkills
              var ext = go.GetComponent(type);
              if (ext == null) return new { error = "Extension " + type.Name + " not found on " + go.name };
 
-             WorkflowManager.SnapshotObject(go);
-             Undo.DestroyObjectImmediate(ext);
+             if (!WorkflowManager.DeleteSceneObject(ext))
+                 return new { error = "Failed to capture and remove extension " + type.Name };
              return new { success = true, message = "Removed extension " + type.Name };
 #endif
         }
@@ -919,7 +965,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "mixing", "blend", "cinemachine" },
             Outputs = new[] { "success", "name" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineCreateMixingCamera(string name)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -927,9 +973,9 @@ namespace UnitySkills
 #else
             var go = new GameObject(name);
             Undo.RegisterCreatedObjectUndo(go, "Create Mixing Camera");
-            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             var cam = Undo.AddComponent<CinemachineMixingCamera>(go);
             if (cam == null) return new { error = "Failed to add CinemachineMixingCamera component" };
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             return new { success = true, name = name };
 #endif
         }
@@ -939,7 +985,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "mixing", "weight", "blend", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "mixingCamera", "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineMixingCameraSetWeight(string mixerName = null, int mixerInstanceId = 0, string mixerPath = null, string mixerEntityId = null,
             string childName = null, int childInstanceId = 0, string childPath = null, string childEntityId = null, float weight = 1f)
         {
@@ -955,8 +1001,15 @@ namespace UnitySkills
             if (childErr != null) return childErr;
             var childVcam = childGo.GetComponent<CinemachineVirtualCameraBase>();
             if (childVcam == null) return new { error = "Child is not a Cinemachine Virtual Camera" };
+            if (childGo.transform.parent != mixerGo.transform)
+            {
+                return new
+                {
+                    error = $"{childGo.name} must be an immediate child of {mixerGo.name} before its mixing weight can be set."
+                };
+            }
 
-            WorkflowManager.SnapshotObject(mixerGo);
+            WorkflowManager.SnapshotObject(mixer);
             Undo.RecordObject(mixer, "Set Mixing Weight");
             mixer.SetWeight(childVcam, weight);
             EditorUtility.SetDirty(mixer);
@@ -969,7 +1022,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "clearShot", "auto", "cinemachine" },
             Outputs = new[] { "success", "name" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineCreateClearShot(string name)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -977,9 +1030,9 @@ namespace UnitySkills
 #else
             var go = new GameObject(name);
             Undo.RegisterCreatedObjectUndo(go, "Create Clear Shot");
-            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             var cam = Undo.AddComponent<CinemachineClearShot>(go);
             if (cam == null) return new { error = "Failed to add CinemachineClearShot component" };
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             return new { success = true, name = name };
 #endif
         }
@@ -988,7 +1041,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "stateDriven", "animator", "cinemachine" },
             Outputs = new[] { "success", "name" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineCreateStateDrivenCamera(string name, string targetAnimatorName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -996,7 +1049,6 @@ namespace UnitySkills
 #else
             var go = new GameObject(name);
             Undo.RegisterCreatedObjectUndo(go, "Create State Driven Camera");
-            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             var cam = Undo.AddComponent<CinemachineStateDrivenCamera>(go);
             if (cam == null) return new { error = "Failed to add CinemachineStateDrivenCamera component" };
 
@@ -1017,6 +1069,7 @@ namespace UnitySkills
                     }
                 }
             }
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             return new { success = true, name = name };
 #endif
         }
@@ -1026,7 +1079,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "stateDriven", "instruction", "state", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "stateDrivenCamera", "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineStateDrivenCameraAddInstruction(string cameraName = null, int cameraInstanceId = 0, string cameraPath = null, string cameraEntityId = null,
             string stateName = null, string childCameraName = null, int childInstanceId = 0, string childPath = null, string childEntityId = null,
             float minDuration = 0, float activateAfter = 0)
@@ -1046,7 +1099,7 @@ namespace UnitySkills
 
             int hash = Animator.StringToHash(stateName);
 
-            WorkflowManager.SnapshotObject(go);
+            WorkflowManager.SnapshotObject(stateCam);
             Undo.RecordObject(stateCam, "Add Instruction");
 
             CinemachineAdapter.AddStateDrivenInstruction(stateCam, hash, childVcam, minDuration, activateAfter);
@@ -1062,7 +1115,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "brain", "blend", "cinemachine", "update" },
             Outputs = new[] { "success", "settings" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSetBrain(
             string updateMethod = null,
             string blendUpdateMethod = null,
@@ -1075,10 +1128,18 @@ namespace UnitySkills
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
+            if (updateMethod == null && blendUpdateMethod == null &&
+                defaultBlendStyle == null && !defaultBlendTime.HasValue &&
+                !showDebugText.HasValue && !showCameraFrustum.HasValue &&
+                !ignoreTimeScale.HasValue)
+            {
+                return new { error = "No Brain settings were provided to update." };
+            }
+
             var brain = CinemachineAdapter.FindBrain();
             if (brain == null) return new { error = "No CinemachineBrain found. Add one to the Main Camera first." };
 
-            WorkflowManager.SnapshotObject(brain.gameObject);
+            WorkflowManager.SnapshotObject(brain);
             Undo.RecordObject(brain, "Set Brain");
 
             if (updateMethod != null)
@@ -1123,7 +1184,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "priority", "cinemachine" },
             Outputs = new[] { "success", "priority" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSetPriority(
             string vcamName = null, int instanceId = 0, string path = null,
             int priority = 10)
@@ -1137,7 +1198,7 @@ namespace UnitySkills
             var vcam = CinemachineAdapter.GetVCam(go);
             if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
 
-            WorkflowManager.SnapshotObject(go);
+            WorkflowManager.SnapshotObject(vcam);
             Undo.RecordObject(vcam, "Set Priority");
             CinemachineAdapter.SetPriority(vcam, priority);
             EditorUtility.SetDirty(vcam);
@@ -1150,7 +1211,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "blend", "transition", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSetBlend(
             string style = "EaseInOut",
             float time = 2f,
@@ -1167,14 +1228,20 @@ namespace UnitySkills
 
             if (string.IsNullOrEmpty(fromCamera) && string.IsNullOrEmpty(toCamera))
             {
-                WorkflowManager.SnapshotObject(brain.gameObject);
+                WorkflowManager.SnapshotObject(brain);
                 Undo.RecordObject(brain, "Set Default Blend");
                 CinemachineAdapter.SetBrainDefaultBlend(brain, blend);
                 EditorUtility.SetDirty(brain);
                 return new { success = true, message = $"Set default blend: {style} {time}s" };
             }
 
-            return new { success = true, message = $"Set default blend: {style} {time}s (per-camera-pair blends require CinemachineBlenderSettings asset — use set_brain + custom blends asset for advanced use)" };
+            if (string.IsNullOrEmpty(fromCamera) || string.IsNullOrEmpty(toCamera))
+                return new { error = "fromCamera and toCamera must be provided together for a per-camera blend." };
+
+            return new
+            {
+                error = "Per-camera-pair blends require a persistent CinemachineBlenderSettings asset and are not supported by this skill. Leave fromCamera/toCamera empty to set the default blend."
+            };
 #endif
         }
 
@@ -1184,7 +1251,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "sequencer", "blendlist", "sequence", "cinemachine" },
             Outputs = new[] { "gameObjectName", "instanceId" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineCreateSequencer(string name, bool loop = false)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -1200,7 +1267,10 @@ namespace UnitySkills
             // 确保 Brain 存在
             var mainCamera = Camera.main;
             if (mainCamera != null && mainCamera.GetComponent<CinemachineBrain>() == null)
-                Undo.AddComponent<CinemachineBrain>(mainCamera.gameObject);
+            {
+                var brain = Undo.AddComponent<CinemachineBrain>(mainCamera.gameObject);
+                WorkflowManager.SnapshotCreatedComponent(brain);
+            }
 
             Undo.RegisterCreatedObjectUndo(go, "Create Sequencer Camera");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
@@ -1214,7 +1284,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "sequencer", "instruction", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "sequencer" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineSequencerAddInstruction(
             string sequencerName = null, int sequencerInstanceId = 0, string sequencerPath = null, string sequencerEntityId = null,
             string childCameraName = null, int childInstanceId = 0, string childPath = null, string childEntityId = null,
@@ -1236,7 +1306,7 @@ namespace UnitySkills
             var childVcam = childGo.GetComponent<CinemachineVirtualCameraBase>();
             if (childVcam == null) return new { error = "Child is not a Cinemachine Virtual Camera" };
 
-            WorkflowManager.SnapshotObject(go);
+            WorkflowManager.SnapshotObject(seq);
             Undo.RecordObject(seq, "Add Sequencer Instruction");
 
             var blend = CinemachineAdapter.CreateBlendDefinition(blendStyle, blendTime);
@@ -1254,7 +1324,7 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
             Tags = new[] { "camera", "freelook", "orbit", "third-person", "cinemachine" },
             Outputs = new[] { "gameObjectName", "instanceId" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineCreateFreeLook(string name, string followName = null, string lookAtName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -1265,7 +1335,10 @@ namespace UnitySkills
             // 确保 Brain 存在
             var mainCamera = Camera.main;
             if (mainCamera != null && mainCamera.GetComponent<CinemachineBrain>() == null)
-                Undo.AddComponent<CinemachineBrain>(mainCamera.gameObject);
+            {
+                var brain = Undo.AddComponent<CinemachineBrain>(mainCamera.gameObject);
+                WorkflowManager.SnapshotCreatedComponent(brain);
+            }
 
             // 设置目标
             var vcam = CinemachineAdapter.GetVCam(go);
@@ -1314,7 +1387,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "clearshot", "statedriven", "sequencer", "configure", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "camera" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineConfigureCameraManager(
             string cameraName = null, int cameraInstanceId = 0, string cameraPath = null,
             // ClearShot
@@ -1336,13 +1409,13 @@ namespace UnitySkills
             var (go, err) = GameObjectFinder.FindOrError(cameraName, cameraInstanceId, cameraPath);
             if (err != null) return err;
 
-            WorkflowManager.SnapshotObject(go);
             var changes = new List<string>();
 
             // ClearShot
             var clearShot = go.GetComponent<CinemachineClearShot>();
             if (clearShot != null)
             {
+                WorkflowManager.SnapshotObject(clearShot);
                 Undo.RecordObject(clearShot, "Configure ClearShot");
 #if CINEMACHINE_3
                 if (activateAfter.HasValue) { clearShot.ActivateAfter = activateAfter.Value; changes.Add($"activateAfter={activateAfter.Value}"); }
@@ -1374,6 +1447,7 @@ namespace UnitySkills
             var stateDriven = go.GetComponent<CinemachineStateDrivenCamera>();
             if (stateDriven != null)
             {
+                WorkflowManager.SnapshotObject(stateDriven);
                 Undo.RecordObject(stateDriven, "Configure StateDriven");
                 if (!string.IsNullOrEmpty(animatorName))
                 {
@@ -1421,6 +1495,7 @@ namespace UnitySkills
             var seq = CinemachineAdapter.GetSequencer(go);
             if (seq != null && loop.HasValue)
             {
+                WorkflowManager.SnapshotObject(seq);
                 Undo.RecordObject(seq, "Configure Sequencer");
                 CinemachineAdapter.SetSequencerLoop(seq, loop.Value);
                 changes.Add($"loop={loop.Value}");
@@ -1439,7 +1514,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "body", "follow", "orbital", "thirdperson", "cinemachine" },
             Outputs = new[] { "success", "componentType", "changes" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineConfigureBody(
             string vcamName = null, int instanceId = 0, string path = null,
             // Follow / Transposer offset
@@ -1468,7 +1543,7 @@ namespace UnitySkills
             var body = CinemachineAdapter.GetPipelineComponent(go, "Body");
             if (body == null) return new { error = "No Body stage component found. Add one first (e.g. CinemachineFollow, CinemachineOrbitalFollow)." };
 
-            WorkflowManager.SnapshotObject(go);
+            WorkflowManager.SnapshotObject(body);
             Undo.RecordObject(body, "Configure Body");
             var typeName = body.GetType().Name;
             var changes = new List<string>();
@@ -1637,7 +1712,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "aim", "composer", "pantilt", "cinemachine" },
             Outputs = new[] { "success", "componentType", "changes" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineConfigureAim(
             string vcamName = null, int instanceId = 0, string path = null,
             // Composer / RotationComposer
@@ -1662,7 +1737,7 @@ namespace UnitySkills
             var aim = CinemachineAdapter.GetPipelineComponent(go, "Aim");
             if (aim == null) return new { error = "No Aim stage component found. Add one first (e.g. CinemachineRotationComposer, CinemachinePanTilt)." };
 
-            WorkflowManager.SnapshotObject(go);
+            WorkflowManager.SnapshotObject(aim);
             Undo.RecordObject(aim, "Configure Aim");
             var typeName = aim.GetType().Name;
             var changes = new List<string>();
@@ -1745,7 +1820,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "extension", "confiner", "deoccluder", "cinemachine" },
             Outputs = new[] { "success", "extensionType", "changes" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineConfigureExtension(
             string vcamName = null, int instanceId = 0, string path = null,
             string extensionName = null,
@@ -1787,7 +1862,7 @@ namespace UnitySkills
             }
             if (ext == null) return new { error = "No Cinemachine extension found. Add one first with cinemachine_add_extension." };
 
-            WorkflowManager.SnapshotObject(go);
+            WorkflowManager.SnapshotObject(ext);
             Undo.RecordObject(ext, "Configure Extension");
             var typeName = ext.GetType().Name;
             var changes = new List<string>();
@@ -1870,8 +1945,9 @@ namespace UnitySkills
                 TrySet("CameraRadius", cameraRadius, "camRadius");
             }
 
+            if (changes.Count == 0)
+                return new { error = $"No compatible properties were changed on {typeName}. Check the extension type and supplied parameters." };
             EditorUtility.SetDirty(ext);
-            if (changes.Count == 0) return new { success = true, extensionType = typeName, message = "No changes applied." };
             return new { success = true, extensionType = typeName, changes = string.Join(", ", changes) };
 #endif
         }
@@ -1881,7 +1957,7 @@ namespace UnitySkills
             Tags = new[] { "camera", "impulse", "shake", "configure", "cinemachine" },
             Outputs = new[] { "success", "changes" },
             RequiresInput = new[] { "source" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineConfigureImpulseSource(
             string sourceName = null, int sourceInstanceId = 0, string sourcePath = null,
             float? amplitudeGain = null,
@@ -1907,7 +1983,7 @@ namespace UnitySkills
             }
             if (source == null) return new { error = "No CinemachineImpulseSource found." };
 
-            WorkflowManager.SnapshotObject(source.gameObject);
+            WorkflowManager.SnapshotObject(source);
             Undo.RecordObject(source, "Configure Impulse Source");
             var changes = new List<string>();
 
@@ -1923,17 +1999,20 @@ namespace UnitySkills
             TrySet("ImpulseDefinition.DissipationRate", dissipationRate, "dissipationRate");
             TrySet("ImpulseDefinition.AmplitudeGain", amplitudeGain, "amplitudeGain");
             TrySet("ImpulseDefinition.FrequencyGain", frequencyGain, "frequencyGain");
-            TrySet("ImpulseDefinition.TimeEnvelope.Duration", duration, "duration");
+            TrySet("ImpulseDefinition.ImpulseDuration", duration, "duration");
+            TrySet("ImpulseDefinition.TimeEnvelope.SustainTime", duration, "legacyDuration");
 #else
             TrySet("m_ImpulseDefinition.m_ImpactRadius", impactRadius, "impactRadius");
             TrySet("m_ImpulseDefinition.m_DissipationRate", dissipationRate, "dissipationRate");
             TrySet("m_ImpulseDefinition.m_AmplitudeGain", amplitudeGain, "amplitudeGain");
             TrySet("m_ImpulseDefinition.m_FrequencyGain", frequencyGain, "frequencyGain");
-            TrySet("m_ImpulseDefinition.m_TimeEnvelope.m_Duration", duration, "duration");
+            TrySet("m_ImpulseDefinition.m_ImpulseDuration", duration, "duration");
+            TrySet("m_ImpulseDefinition.m_TimeEnvelope.m_SustainTime", duration, "legacyDuration");
 #endif
 
+            if (changes.Count == 0)
+                return new { error = "No compatible impulse properties were changed. Check the installed Cinemachine version and supplied parameters." };
             EditorUtility.SetDirty(source);
-            if (changes.Count == 0) return new { success = true, message = "No changes applied." };
             return new { success = true, source = source.gameObject.name, changes = string.Join(", ", changes) };
 #endif
         }

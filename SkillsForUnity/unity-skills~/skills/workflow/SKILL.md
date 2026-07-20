@@ -269,13 +269,13 @@ Permanently clear **ALL** workflow history: every task, the redo (undone) stack,
 
 Marked `SkillOperation.Delete` + `RiskLevel="high"`, so it is `NeverInSemi` (returns `MODE_FORBIDDEN` in Approval/Auto; only Bypass or an Allowlist hit can call it).
 
-No parameters.
+**Parameters:** None
 
 **Returns:** `{ success, before, after, message }` where `before`/`after` each report `{ tasks, undoneStack, historyFileBytes, fileStoreBytes }`.
 
 ## Snapshot Mechanism
 
-History is persisted to `workflow_history.json` (`schemaVersion` 3). Asset bytes are **no longer** embedded as base64 in that file; instead they live in a content-addressed file store at `Library/UnitySkills/workflow_files/<sha1>` (deduplicated, written via tmp+move to avoid half-written files), and the history JSON only keeps a `fileHash` reference. Old base64 histories are still read for backward compatibility.
+History is persisted to `workflow_history.json` (`schemaVersion` 4). Asset and `.meta` bytes are independently content-addressed in `Library/UnitySkills/workflow_files/<sha1>`; history keeps `fileHash` / `metaFileHash` references. Schema 2/3 histories are migrated atomically: legacy blobs are made durable before inline base64 is removed.
 
 Snapshots are tiered by `SnapshotType`:
 
@@ -287,11 +287,11 @@ Snapshots are tiered by `SnapshotType`:
 | **Modified** | material / SO / scene / uss / uxml / shadergraph … | content-addressed backup + lightweight `originalJson` | Restore the backed-up bytes |
 | **Setting** | editor / project settings | handled via `WorkflowSettingRestorerRegistry` | Registry restores the previous value |
 
-Undo/redo now return per-snapshot detail (`TaskUndoResult`: `total` / `succeeded` / `failed` / `details` / `error`); failures are surfaced instead of being silently swallowed.
+Undo/redo return per-snapshot detail (`TaskUndoResult`: `total` / `succeeded` / `failed` / `details` / `error`). Operations run in reverse order; on the first failure, failed and unprocessed snapshots stay on their source stack so they can be retried.
 
 ### Auto-clean
 
-`WorkflowAutoCleanConfig` (EditorPrefs keys `UnitySkills.Workflow.*`) trims history and the file store after `EndTask` and after `LoadHistory`. Defaults: `MaxTasks=200`, `MaxHistoryMB=32`, `MaxTaskAgeDays=30`, `MaxStoreMB=512`, `StoreMaxAgeDays=7`.
+`WorkflowAutoCleanConfig` (EditorPrefs keys `UnitySkills.Workflow.*`) trims history and the file store after `EndTask` and after `LoadHistory`. Defaults: `MaxTasks=200`, `MaxHistoryMB=32`, `MaxTaskAgeDays=30`, `MaxStoreMB=512`, `StoreMaxAgeDays=7`. Store age/size pruning never removes a blob referenced by retained history. A value of `0` disables that individual limit.
 
 ### Settings are now truly revertible
 

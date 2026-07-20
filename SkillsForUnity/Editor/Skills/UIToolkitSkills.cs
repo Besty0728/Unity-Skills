@@ -136,17 +136,15 @@ namespace UnitySkills
             Tags = new[] { "delete", "uss", "uxml", "file" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "filePath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
         public static object UitkDeleteFile(string filePath)
         {
             if (Validate.SafePath(filePath, "filePath", isDelete: true) is object pathErr) return pathErr;
             if (!File.Exists(filePath))
                 return new { error = $"File not found: {filePath}" };
 
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(filePath);
-            if (asset != null) WorkflowManager.SnapshotObject(asset);
-
-            AssetDatabase.DeleteAsset(filePath);
+            if (!WorkflowManager.DeleteAssetToTrash(filePath))
+                return new { error = $"Failed to delete file: {filePath}" };
             return new { success = true, deleted = filePath };
         }
 

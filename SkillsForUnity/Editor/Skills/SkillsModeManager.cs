@@ -115,6 +115,7 @@ namespace UnitySkills
 
         private static readonly object _allowlistLock = new object();
         private static HashSet<string> _allowlist;
+        internal static bool? ExistingInstallOverrideForTests;
 
         /// <summary>
         /// 单次有效 grant 的"放行令牌"。由 <see cref="TryGrantAndReturnArgs"/> 设置，
@@ -790,6 +791,8 @@ namespace UnitySkills
         /// </summary>
         private static bool IsExistingInstall()
         {
+            if (ExistingInstallOverrideForTests.HasValue)
+                return ExistingInstallOverrideForTests.Value;
             return EditorPrefs.HasKey("UnitySkills_RequireConfirmation")
                 || EditorPrefs.HasKey("UnitySkills_PreferredPort")
                 || EditorPrefs.HasKey("UnitySkills_LogLevel")

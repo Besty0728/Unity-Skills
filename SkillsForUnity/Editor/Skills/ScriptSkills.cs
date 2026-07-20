@@ -116,7 +116,7 @@ namespace UnitySkills
             return new { path = NormalizePath(scriptPath), lines = content.Split('\n').Length, content };
         }
 
-        [UnitySkill("script_delete", "Delete a script file", TracksWorkflow = true,
+        [UnitySkill("script_delete", "Delete a script file", TracksWorkflow = true, SkipAutoPresnapshot = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Delete,
             Tags = new[] { "script", "delete", "remove", "file" },
             Outputs = new[] { "deleted", "jobId" },
@@ -128,10 +128,8 @@ namespace UnitySkills
             if (!File.Exists(scriptPath))
                 return new { error = $"Script not found: {scriptPath}" };
 
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(scriptPath);
-            if (asset != null) WorkflowManager.SnapshotObject(asset);
-
-            AssetDatabase.DeleteAsset(scriptPath);
+            if (!WorkflowManager.DeleteAssetToTrash(scriptPath))
+                return new { error = $"Failed to delete script: {scriptPath}" };
             var job = AsyncJobService.StartScriptMutationJob("script_delete", NormalizePath(scriptPath), checkCompile: false, diagnosticLimit: DefaultDiagnosticLimit, supportsDiagnostics: false);
             var result = new Dictionary<string, object>
             {

@@ -107,7 +107,7 @@ namespace UnitySkills
             Category = SkillCategory.Decal, Operation = SkillOperation.Modify,
             Tags = new[] { "decal", "projector", "modify" },
             Outputs = new[] { "name", "material", "size" },
-            TracksWorkflow = true,
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesScene = true,
             RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
         public static object DecalSetProperties(
@@ -233,8 +233,8 @@ namespace UnitySkills
 
             var go = projectorResult.projector.gameObject;
             var deletedName = go.name;
-            WorkflowManager.SnapshotObject(go);
-            Undo.DestroyObjectImmediate(go);
+            if (!WorkflowManager.DeleteSceneObject(go))
+                return new { error = $"Failed to capture and delete decal: {deletedName}" };
             return new
             {
                 success = true,

@@ -11,25 +11,32 @@ namespace UnitySkills
 {
     /// <summary>
     /// Content-addressed file store for workflow snapshots.
-    /// Stores asset file bytes by SHA1 hash, deduplicating identical contents.
-    /// Also persists companion .meta files as &lt;hash&gt;.meta.
+    /// Stores each file blob by its own SHA1 hash, deduplicating identical contents.
     /// </summary>
     internal static class WorkflowFileStore
     {
         /// <summary>
         /// Root directory for all stored workflow file blobs.
         /// </summary>
-        public static string StoreRoot => Path.GetFullPath(Path.Combine(Application.dataPath, "../Library/UnitySkills/workflow_files"));
+        internal static string OverrideStoreRootForTests;
+        public static string StoreRoot => OverrideStoreRootForTests ??
+            Path.GetFullPath(Path.Combine(Application.dataPath, "../Library/UnitySkills/workflow_files"));
 
         /// <summary>
         /// Stores an asset file in the content-addressed store and optionally removes the source.
-        /// Also moves the companion .meta file if present.
+        /// The companion .meta file is independently content-addressed.
         /// </summary>
         /// <param name="assetPath">Project-relative asset path (e.g., "Assets/Materials/Red.mat").</param>
         /// <param name="move">If true, deletes the source file (and meta) after storing.</param>
         /// <returns>The SHA1 hash of the file contents, or null if the source does not exist.</returns>
         public static string StoreFile(string assetPath, bool move)
         {
+            return StoreFile(assetPath, move, out _);
+        }
+
+        public static string StoreFile(string assetPath, bool move, out string metaHash)
+        {
+            metaHash = null;
             if (!TryGetSafeAssetFullPath(assetPath, out string fullPath))
             {
                 SkillsLogger.LogWarning($"[WorkflowFileStore] Unsafe or invalid asset path: {assetPath}");
@@ -43,25 +50,21 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(hash))
                 return null;
 
-            string hashPath = GetHashPath(hash);
-            string metaHashPath = GetMetaHashPath(hash);
             string metaSourcePath = fullPath + ".meta";
 
             try
             {
-                // Store main file if not already present (deduplication)
-                if (!File.Exists(hashPath))
+                if (!StoreBlob(fullPath, hash))
+                    return null;
+
+                if (File.Exists(metaSourcePath))
                 {
-                    EnsureStoreDirectory();
-                    WriteAtomically(hashPath, fullPath);
+                    metaHash = ComputeFileHash(metaSourcePath);
+                    if (string.IsNullOrEmpty(metaHash) || !StoreBlob(metaSourcePath, metaHash))
+                        return null;
                 }
 
-                // Store companion .meta if present
-                if (File.Exists(metaSourcePath) && !File.Exists(metaHashPath))
-                {
-                    WriteAtomically(metaHashPath, metaSourcePath);
-                }
-
+                // Sources are removed only after every required blob is durable.
                 if (move)
                 {
                     SafeDelete(fullPath);
@@ -79,7 +82,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Restores a stored file (and its .meta companion) to the given asset path.
+        /// Restores a stored file (and its independently addressed .meta companion).
         /// </summary>
         /// <param name="hash">SHA1 hash of the stored contents.</param>
         /// <param name="assetPath">Project-relative asset path to restore to.</param>
@@ -87,11 +90,18 @@ namespace UnitySkills
         /// <returns>True if the file was restored.</returns>
         public static bool RestoreFile(string hash, string assetPath, bool removeFromStore)
         {
+            return RestoreFile(hash, null, assetPath, removeFromStore);
+        }
+
+        public static bool RestoreFile(string hash, string metaHash, string assetPath, bool removeFromStore)
+        {
             if (string.IsNullOrEmpty(hash) || !TryGetSafeAssetFullPath(assetPath, out string fullPath))
                 return false;
 
             string hashPath = GetHashPath(hash);
-            string metaHashPath = GetMetaHashPath(hash);
+            string metaHashPath = !string.IsNullOrEmpty(metaHash)
+                ? GetHashPath(metaHash)
+                : GetLegacyMetaHashPath(hash);
 
             if (!File.Exists(hashPath))
                 return false;
@@ -116,7 +126,7 @@ namespace UnitySkills
                     if (File.Exists(metaDestPath))
                         SafeDelete(metaDestPath);
 
-                    if (removeFromStore)
+                    if (removeFromStore && !string.Equals(hash, metaHash, StringComparison.OrdinalIgnoreCase))
                         File.Move(metaHashPath, metaDestPath);
                     else
                         File.Copy(metaHashPath, metaDestPath);
@@ -153,7 +163,7 @@ namespace UnitySkills
                 try
                 {
                     string hashPath = GetHashPath(entry.hash);
-                    string metaHashPath = GetMetaHashPath(entry.hash);
+                    string metaHashPath = GetLegacyMetaHashPath(entry.hash);
 
                     if (File.Exists(hashPath))
                     {
@@ -227,28 +237,34 @@ namespace UnitySkills
         /// <summary>
         /// Prunes store entries older than <paramref name="olderThan"/u003e, then if necessary removes oldest
         /// entries until the total size is below <paramref name="maxTotalBytes"/u003e.
+        /// Blobs referenced by retained history are never removed.
         /// </summary>
         /// <returns>Number of main hash entries removed.</returns>
-        public static int PruneByAgeAndSize(DateTime olderThan, long maxTotalBytes)
+        public static int PruneByAgeAndSize(DateTime? olderThan, long maxTotalBytes,
+            HashSet<string> protectedHashes)
         {
             if (!Directory.Exists(StoreRoot))
                 return 0;
 
             var entries = ListEntries().OrderBy(e => e.lastWrite).ToList();
-            long totalBytes = entries.Sum(e => e.bytes);
+            long totalBytes = GetStoreSizeBytes();
             int removed = 0;
+            protectedHashes ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var entry in entries)
             {
-                bool tooOld = entry.lastWrite < olderThan;
-                bool tooBig = totalBytes > maxTotalBytes;
+                if (protectedHashes.Contains(entry.hash))
+                    continue;
+
+                bool tooOld = olderThan.HasValue && entry.lastWrite < olderThan.Value;
+                bool tooBig = maxTotalBytes > 0 && totalBytes > maxTotalBytes;
                 if (!tooOld && !tooBig)
                     continue;
 
                 try
                 {
                     string hashPath = GetHashPath(entry.hash);
-                    string metaHashPath = GetMetaHashPath(entry.hash);
+                    string metaHashPath = GetLegacyMetaHashPath(entry.hash);
 
                     if (File.Exists(hashPath))
                     {
@@ -297,6 +313,84 @@ namespace UnitySkills
             }
         }
 
+        public static string StoreBytes(byte[] bytes)
+        {
+            if (bytes == null) return null;
+
+            string hash;
+            using (var sha1 = SHA1.Create())
+            {
+                hash = BitConverter.ToString(sha1.ComputeHash(bytes)).Replace("-", "").ToUpperInvariant();
+            }
+
+            string destinationPath = GetHashPath(hash);
+            if (File.Exists(destinationPath))
+                return hash;
+
+            EnsureStoreDirectory();
+            string tmpPath = destinationPath + ".tmp";
+            try
+            {
+                File.WriteAllBytes(tmpPath, bytes);
+                if (!File.Exists(destinationPath))
+                    File.Move(tmpPath, destinationPath);
+                else
+                    SafeDelete(tmpPath);
+                return hash;
+            }
+            catch (Exception ex)
+            {
+                SafeDelete(tmpPath);
+                SkillsLogger.LogError($"[WorkflowFileStore] Failed to store byte blob: {ex.Message}");
+                return null;
+            }
+        }
+
+        public static bool BlobExists(string hash)
+        {
+            return !string.IsNullOrEmpty(hash) && File.Exists(GetHashPath(hash));
+        }
+
+        public static bool RestoreBlob(string hash, string destinationPath, bool removeFromStore = false)
+        {
+            if (string.IsNullOrEmpty(hash) || string.IsNullOrEmpty(destinationPath))
+                return false;
+
+            string sourcePath = GetHashPath(hash);
+            if (!File.Exists(sourcePath))
+                return false;
+
+            try
+            {
+                EnsureDirectoryExists(destinationPath);
+                if (File.Exists(destinationPath))
+                    SafeDelete(destinationPath);
+
+                if (removeFromStore)
+                    File.Move(sourcePath, destinationPath);
+                else
+                    File.Copy(sourcePath, destinationPath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogError($"[WorkflowFileStore] Failed to restore blob to {destinationPath}: {ex.Message}");
+                return false;
+            }
+        }
+
+        public static string MigrateLegacyMetaHash(string fileHash)
+        {
+            if (string.IsNullOrEmpty(fileHash)) return null;
+            string legacyPath = GetLegacyMetaHashPath(fileHash);
+            if (!File.Exists(legacyPath)) return null;
+
+            string metaHash = ComputeFileHash(legacyPath);
+            return !string.IsNullOrEmpty(metaHash) && StoreBlob(legacyPath, metaHash)
+                ? metaHash
+                : null;
+        }
+
         /// <summary>
         /// Resolves a project-relative asset path to an absolute path and validates it for safety.
         /// </summary>
@@ -315,9 +409,20 @@ namespace UnitySkills
             return Path.Combine(StoreRoot, hash.ToUpperInvariant());
         }
 
-        private static string GetMetaHashPath(string hash)
+        private static string GetLegacyMetaHashPath(string hash)
         {
             return Path.Combine(StoreRoot, hash.ToUpperInvariant() + ".meta");
+        }
+
+        private static bool StoreBlob(string sourcePath, string hash)
+        {
+            string hashPath = GetHashPath(hash);
+            if (File.Exists(hashPath))
+                return true;
+
+            EnsureStoreDirectory();
+            WriteAtomically(hashPath, sourcePath);
+            return File.Exists(hashPath);
         }
 
         private static void EnsureStoreDirectory()

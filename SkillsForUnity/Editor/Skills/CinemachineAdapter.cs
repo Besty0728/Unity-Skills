@@ -532,32 +532,221 @@ namespace UnitySkills
             return go;
         }
 
-        // ===================== Body / Aim Component Detection =====================
+        // ===================== Pipeline Components =====================
 
-        private static readonly HashSet<string> BodyTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        public static bool TryParsePipelineStage(string stageName, out CinemachineCore.Stage stage)
         {
-            "CinemachineFollow", "CinemachineOrbitalFollow", "CinemachineThirdPersonFollow",
-            "CinemachinePositionComposer", "CinemachineSplineDolly", "CinemachineHardLockToTarget",
-            // CM2
-            "CinemachineTransposer", "CinemachineFramingTransposer", "CinemachineOrbitalTransposer",
-            "Cinemachine3rdPersonFollow", "CinemachineTrackedDolly"
-        };
+            if (!string.IsNullOrWhiteSpace(stageName) &&
+                !int.TryParse(stageName, out _) &&
+                Enum.TryParse(stageName, true, out stage) &&
+                stage >= CinemachineCore.Stage.Body && stage <= CinemachineCore.Stage.Noise)
+            {
+                return true;
+            }
 
-        private static readonly HashSet<string> AimTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            stage = default;
+            return false;
+        }
+
+        public static bool TryGetPipelineStage(Type componentType, out CinemachineCore.Stage stage)
         {
-            "CinemachineRotationComposer", "CinemachinePanTilt", "CinemachineHardLookAt",
-            "CinemachineRotateWithFollowTarget", "CinemachineSplineDollyLookAtTargets",
-            // CM2
-            "CinemachineComposer", "CinemachineGroupComposer", "CinemachinePOV",
-            "CinemachineSameAsFollowTarget"
-        };
+            stage = default;
+            if (componentType == null || componentType.IsAbstract ||
+                !typeof(CinemachineComponentBase).IsAssignableFrom(componentType))
+            {
+                return false;
+            }
+
+#if CINEMACHINE_3
+            var attribute = componentType
+                .GetCustomAttributes(typeof(CameraPipelineAttribute), true)
+                .OfType<CameraPipelineAttribute>()
+                .FirstOrDefault();
+            if (attribute == null) return false;
+            stage = attribute.Stage;
+            return stage >= CinemachineCore.Stage.Body && stage <= CinemachineCore.Stage.Noise;
+#else
+            // CM2 has no pipeline-stage attribute. This is the same discovery mechanism used by
+            // its editor package: instantiate the component briefly and read its Stage property.
+            var probe = new GameObject("UnitySkills Cinemachine Stage Probe")
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            try
+            {
+                var component = probe.AddComponent(componentType) as CinemachineComponentBase;
+                if (component == null) return false;
+                stage = component.Stage;
+                return stage >= CinemachineCore.Stage.Body && stage <= CinemachineCore.Stage.Noise;
+            }
+            finally
+            {
+                Object.DestroyImmediate(probe);
+            }
+#endif
+        }
+
+        public static bool TryGetPipelineStage(MonoBehaviour component, out CinemachineCore.Stage stage)
+        {
+            if (component is CinemachineComponentBase pipelineComponent)
+            {
+                stage = pipelineComponent.Stage;
+                return stage >= CinemachineCore.Stage.Body && stage <= CinemachineCore.Stage.Noise;
+            }
+
+            stage = default;
+            return false;
+        }
+
+        public static MonoBehaviour[] GetPipelineComponents(GameObject go)
+        {
+            var vcam = GetVCam(go);
+            if (vcam == null) return Array.Empty<MonoBehaviour>();
+
+#if CINEMACHINE_3
+            return go.GetComponents<CinemachineComponentBase>().Cast<MonoBehaviour>().ToArray();
+#else
+            var owner = FindExistingPipelineOwner((CinemachineVirtualCamera)vcam);
+            return owner == null
+                ? Array.Empty<MonoBehaviour>()
+                : owner.GetComponents<CinemachineComponentBase>().Cast<MonoBehaviour>().ToArray();
+#endif
+        }
 
         public static MonoBehaviour GetPipelineComponent(GameObject go, string stage)
         {
-            var comps = go.GetComponents<MonoBehaviour>();
-            var set = stage == "Body" ? BodyTypes : AimTypes;
-            return comps.FirstOrDefault(c => c != null && set.Contains(c.GetType().Name));
+            if (!TryParsePipelineStage(stage, out var stageValue)) return null;
+
+            var vcam = GetVCam(go);
+            if (vcam == null) return null;
+
+#if CINEMACHINE_3
+            return ((CinemachineCamera)vcam).GetCinemachineComponent(stageValue);
+#else
+            var owner = FindExistingPipelineOwner((CinemachineVirtualCamera)vcam);
+            if (owner == null) return null;
+            return owner.GetComponents<CinemachineComponentBase>()
+                .FirstOrDefault(component => component != null && component.Stage == stageValue);
+#endif
         }
+
+        public static MonoBehaviour AddPipelineComponent(GameObject go, Type componentType, out string error)
+        {
+            error = null;
+            var vcam = GetVCam(go);
+            if (vcam == null)
+            {
+                error = $"Not a {VCamTypeName}";
+                return null;
+            }
+
+            if (!TryGetPipelineStage(componentType, out _))
+            {
+                error = componentType == null
+                    ? "Pipeline component type is required."
+                    : componentType.Name + " is not a valid Cinemachine pipeline component.";
+                return null;
+            }
+
+#if CINEMACHINE_3
+            var owner = go;
+#else
+            var ownerTransform = ((CinemachineVirtualCamera)vcam).GetComponentOwner();
+            if (ownerTransform == null)
+            {
+                error = "Cinemachine pipeline owner is unavailable. Prefab instances must be opened in Prefab Mode or unpacked.";
+                return null;
+            }
+            var owner = ownerTransform.gameObject;
+#endif
+
+            var component = UnityEditor.Undo.AddComponent(owner, componentType) as MonoBehaviour;
+            if (component == null)
+            {
+                error = "Failed to add pipeline component " + componentType.Name + ".";
+                return null;
+            }
+
+            InvalidatePipeline(go);
+            return component;
+        }
+
+        public static void InvalidatePipeline(GameObject go)
+        {
+#if CINEMACHINE_2
+            var vcam = GetVCam(go) as CinemachineVirtualCamera;
+            if (vcam != null) vcam.InvalidateComponentPipeline();
+#endif
+        }
+
+#if CINEMACHINE_2
+        [UnityEditor.InitializeOnLoad]
+        private static class PipelineCacheInvalidator
+        {
+            private static bool _scheduled;
+
+            static PipelineCacheInvalidator()
+            {
+                WorkflowManager.ComponentTopologyChanged += OnComponentTopologyChanged;
+                UnityEditor.Undo.undoRedoPerformed += ScheduleInvalidation;
+                UnityEditor.ObjectChangeEvents.changesPublished += OnChangesPublished;
+            }
+
+            private static void OnComponentTopologyChanged(GameObject owner, Type componentType)
+            {
+                if (owner == null || componentType == null ||
+                    !typeof(CinemachineComponentBase).IsAssignableFrom(componentType))
+                {
+                    return;
+                }
+
+                var vcam = owner.GetComponent<CinemachineVirtualCamera>() ??
+                           owner.GetComponentInParent<CinemachineVirtualCamera>();
+                if (vcam != null) vcam.InvalidateComponentPipeline();
+            }
+
+            private static void OnChangesPublished(ref UnityEditor.ObjectChangeEventStream stream)
+            {
+                for (int i = 0; i < stream.length; i++)
+                {
+                    var kind = stream.GetEventType(i);
+                    if (kind == UnityEditor.ObjectChangeKind.ChangeGameObjectStructure ||
+                        kind == UnityEditor.ObjectChangeKind.ChangeGameObjectStructureHierarchy)
+                    {
+                        ScheduleInvalidation();
+                        return;
+                    }
+                }
+            }
+
+            private static void ScheduleInvalidation()
+            {
+                if (_scheduled) return;
+                _scheduled = true;
+                UnityEditor.EditorApplication.delayCall += InvalidateAll;
+            }
+
+            private static void InvalidateAll()
+            {
+                _scheduled = false;
+                foreach (var vcam in FindHelper.FindAll<CinemachineVirtualCamera>())
+                {
+                    if (vcam != null) vcam.InvalidateComponentPipeline();
+                }
+            }
+        }
+
+        private static GameObject FindExistingPipelineOwner(CinemachineVirtualCamera vcam)
+        {
+            if (vcam == null) return null;
+            foreach (Transform child in vcam.transform)
+            {
+                if (child.GetComponent<CinemachinePipeline>() != null)
+                    return child.gameObject;
+            }
+            return null;
+        }
+#endif
     }
 #endif
 }

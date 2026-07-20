@@ -3,7 +3,9 @@
     "rootNamespace": "UnitySkills.Tests",
     "references": [
         "UnitySkills.Editor",
-        "Newtonsoft.Json"
+        "Newtonsoft.Json",
+        "Cinemachine",
+        "Unity.Cinemachine"
     ],
     "includePlatforms": ["Editor"],
     "excludePlatforms": [],
@@ -15,6 +17,17 @@
     ],
     "autoReferenced": false,
     "defineConstraints": ["UNITY_INCLUDE_TESTS"],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.cinemachine",
+            "expression": "[2.0,3.0)",
+            "define": "CINEMACHINE_2"
+        },
+        {
+            "name": "com.unity.cinemachine",
+            "expression": "[3.0,4.0)",
+            "define": "CINEMACHINE_3"
+        }
+    ],
     "noEngineReferences": false
 }

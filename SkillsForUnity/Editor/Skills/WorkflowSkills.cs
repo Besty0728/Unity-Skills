@@ -564,6 +564,7 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Analyze,
             Tags = new[] { "workflow", "plan", "preview", "multi-skill", "aggregate" },
             Outputs = new[] { "totalSteps", "totalRisk", "steps", "dependencies", "warnings" },
+            RequiresInput = new[] { "skillsJson" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object WorkflowPlan(string skillsJson)

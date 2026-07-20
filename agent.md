@@ -7,7 +7,7 @@
 
 | 项目 | 值 |
 |------|----|
-| 版本 | 2.2.0 |
+| 版本 | 2.2.1 |
 | 技术栈 | C# (Unity Editor Plugin) + Python (Client) |
 | Unity | 2022.3+（已验证 Unity 6 / 6000.x） |
 | 协议 | MIT |
@@ -112,7 +112,7 @@ public static object SkillName(string name, float x = 0f) { ... }
 - **NeverInSemi 自动判定**：`SkillOperation.Delete` / `MayEnterPlayMode=true` / `MayTriggerReload=true` / `RiskLevel="high"` 会自动判为 Approval 模式必拦——元数据决定一切，不要靠运行时另写拦截逻辑。
 - **错误返回用 `SkillErrorResponse.Build(code, msg, ...)` 而非抛异常**：业务错误必须构造结构化响应（含 `errorCode` / `suggestedFixes` / `retryStrategy`）。仅当错误真的属于"框架级未知异常"时才向上抛由 SkillRouter 包装。
 - **参数校验链**：用 `Validate.Required(x, "x") is object err` 模式，提前 return err。
-- **撤销 / 工作流快照**：写型操作必须 `Undo.RegisterCreatedObjectUndo` / `Undo.RegisterCompleteObjectUndo`；`TracksWorkflow=true` 的 skill 内调用 `WorkflowManager.SnapshotXxx(...)`。快照分级为 `SnapshotType`（Modified/Created/Deleted/Moved/Setting）：新建只存路径/GUID、移动只存新旧路径、删除把文件+`.meta` 移入内容寻址 store（`Library/UnitySkills/workflow_files/<sha1>`，可完整恢复含 `.cs`）、修改做内容寻址备份、设置类经 `WorkflowSettingRestorerRegistry` 注册回退。资产 base64 不再内嵌进 `workflow_history.json`（schemaVersion 3，只存 fileHash 引用）；`EndTask`/`LoadHistory` 后按 `WorkflowAutoCleanConfig` 自动清理。
+- **撤销 / 工作流快照**：写型操作必须 `Undo.RegisterCreatedObjectUndo` / `Undo.RegisterCompleteObjectUndo`；`TracksWorkflow=true` 的 skill 内调用 `WorkflowManager.SnapshotXxx(...)`。快照分级为 `SnapshotType`（Modified/Created/Deleted/Moved/Setting）：新建存创建态、移动保留完整操作顺序、删除完整备份文件/非空目录/场景层级、设置类经 `WorkflowSettingRestorerRegistry` 注册回退。主文件与 `.meta` 独立内容寻址（`fileHash` / `metaFileHash`），base64 不再内嵌进 `workflow_history.json`（schemaVersion 4）；自动清理不得删除仍被历史引用的 blob，限制值 `0` 表示不限制。
 - **批处理范式**：成对提供 `xxx` 和 `xxx_batch`（后者用 `BatchExecutor.Execute<TItem>(items, perItem, idFn)`）。
 
 ### 3. 公共辅助层（禁止重写）

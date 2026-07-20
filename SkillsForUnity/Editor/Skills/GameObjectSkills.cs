@@ -213,7 +213,7 @@ namespace UnitySkills
             Tags = new[] { "destroy", "remove", "hierarchy" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "gameObject" },
-            TracksWorkflow = true,
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesScene = true, RiskLevel = "medium")]
         public static object GameObjectDelete(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
@@ -221,8 +221,8 @@ namespace UnitySkills
             if (error != null) return error;
 
             var deletedName = go.name;
-            WorkflowManager.SnapshotObject(go); // Record pre-deletion state
-            Undo.DestroyObjectImmediate(go);
+            if (!WorkflowManager.DeleteSceneObject(go))
+                return new { error = $"Failed to capture and delete: {deletedName}" };
             return new { success = true, deleted = deletedName };
         }
 
@@ -231,7 +231,7 @@ namespace UnitySkills
             Tags = new[] { "destroy", "remove", "hierarchy", "batch" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "gameObject" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
         public static object GameObjectDeleteBatch(string items)
         {
             if (Validate.RequiredJsonArray(items, "items") is object err) return err;
@@ -246,8 +246,8 @@ namespace UnitySkills
                         throw new System.Exception("Object not found");
 
                     var deletedName = go.name;
-                    WorkflowManager.SnapshotObject(go);
-                    Undo.DestroyObjectImmediate(go);
+                    if (!WorkflowManager.DeleteSceneObject(go))
+                        throw new System.Exception("Failed to capture and delete object");
                     return new { target = deletedName, success = true };
                 }, item => item.name ?? item.path ?? item.entityId ?? item.instanceId.ToString());
             }

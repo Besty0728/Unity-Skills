@@ -199,7 +199,6 @@ namespace UnitySkills
         private static void ConsumeKeyEvent(KeyDownEvent evt)
         {
             evt.StopImmediatePropagation();
-            evt.PreventDefault();
         }
 
         private void OnRootPointerDown(PointerDownEvent evt)

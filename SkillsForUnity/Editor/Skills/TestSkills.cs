@@ -54,7 +54,7 @@ namespace UnitySkills
         [UnitySkill("test_get_result", "Get the result of a test run. Compatible wrapper over the unified job model.",
             Category = SkillCategory.Test, Operation = SkillOperation.Query,
             Tags = new[] { "test", "result", "status", "poll", "job" },
-            Outputs = new[] { "jobId", "status", "totalTests", "passedTests", "failedTests", "skippedTests", "inconclusiveTests", "otherTests", "failedTestNames" },
+            Outputs = new[] { "jobId", "status", "totalTests", "passedTests", "failedTests", "skippedTests", "inconclusiveTests", "otherTests", "failedTestNames", "failedTestDetails" },
             RequiresInput = new[] { "jobId" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
@@ -79,6 +79,7 @@ namespace UnitySkills
                 inconclusiveTests = GetResultInt(job, "inconclusiveTests"),
                 otherTests = GetResultInt(job, "otherTests"),
                 failedTestNames = GetResultStringList(job, "failedTestNames").ToArray(),
+                failedTestDetails = GetResultValue(job, "failedTestDetails") ?? Array.Empty<object>(),
                 elapsedSeconds = System.Math.Max(0, System.DateTimeOffset.UtcNow.ToUnixTimeSeconds() - job.startedAt),
                 resultSummary = job.resultSummary,
                 error = job.error
@@ -419,6 +420,7 @@ namespace UnitySkills
             var validation = SkillRouter.ValidateParameters(skill, "{}");
             var canExecuteReadOnly = executeReadOnly &&
                                      skill.ReadOnly &&
+                                     (skill.RequiresInput == null || skill.RequiresInput.Length == 0) &&
                                      validation.MissingParams.Count == 0 &&
                                      validation.TypeErrors.Count == 0 &&
                                      !skill.MayTriggerReload;
@@ -435,6 +437,28 @@ namespace UnitySkills
                     Error = "MayTriggerReload — executing would cause Domain Reload and break subsequent skills",
                     MetadataWarnings = FindMetadataWarnings(metadataIssues, skill.Name)
                 };
+            }
+
+            if (PackageManagerHelper.InstalledPackages != null &&
+                skill.RequiresPackages != null && skill.RequiresPackages.Length > 0)
+            {
+                var missingPackages = skill.RequiresPackages
+                    .Where(packageId => !PackageManagerHelper.IsPackageInstalled(packageId))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                if (missingPackages.Length > 0)
+                {
+                    return new SmokeOutcome
+                    {
+                        Skill = skill.Name,
+                        Category = skill.Category != SkillCategory.Uncategorized ? skill.Category.ToString() : null,
+                        ProbeMode = "skipped",
+                        Status = "skipped",
+                        Valid = false,
+                        Error = $"Missing required package(s): {string.Join(", ", missingPackages)}",
+                        MetadataWarnings = FindMetadataWarnings(metadataIssues, skill.Name)
+                    };
+                }
             }
 
             var probeMode = canExecuteReadOnly ? "execute" : "dryRun";
@@ -636,6 +660,15 @@ public class {testName}
                     var result = skill.Method.Invoke(null, validation.InvokeArgs);
                     if (SkillResultHelper.TryGetError(result, out var errorText))
                     {
+                        if (IsExpectedMissingSceneFixture(skill.Name, errorText))
+                        {
+                            return JObject.FromObject(new
+                            {
+                                status = "skipped",
+                                error = $"Scene fixture unavailable: {errorText}"
+                            });
+                        }
+
                         return JObject.FromObject(new
                         {
                             status = "error",
@@ -661,6 +694,24 @@ public class {testName}
                     });
                 }
             }
+        }
+
+        private static bool IsExpectedMissingSceneFixture(string skillName, string error)
+        {
+            if (string.IsNullOrEmpty(error)) return false;
+
+            if (string.Equals(skillName, "cinemachine_get_brain_info", StringComparison.OrdinalIgnoreCase))
+            {
+                return error.IndexOf("No Main Camera", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                       error.IndexOf("No CinemachineBrain", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+
+            if (string.Equals(skillName, "cinemachine_inspect_vcam", StringComparison.OrdinalIgnoreCase))
+            {
+                return error.IndexOf("GameObject not found", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+
+            return false;
         }
 
         private static SmokeRequest BuildSmokeRequest(
@@ -965,7 +1016,7 @@ public class {testName}
             if (test == null || tests == null)
                 return;
 
-            if (!test.HasChildren)
+            if (!test.IsSuite)
             {
                 tests.Add(new DiscoveredTestCase
                 {
@@ -977,7 +1028,7 @@ public class {testName}
                 return;
             }
 
-            foreach (var child in test.Children)
+            foreach (var child in test.Children ?? Enumerable.Empty<ITestAdaptor>())
                 CollectDiscoveredTests(child, tests);
         }
 
@@ -1063,6 +1114,13 @@ public class {testName}
                 return objectList.Select(item => item?.ToString()).Where(item => !string.IsNullOrEmpty(item));
 
             return Enumerable.Empty<string>();
+        }
+
+        private static object GetResultValue(BatchJobRecord job, string key)
+        {
+            return job?.resultData != null && job.resultData.TryGetValue(key, out var value)
+                ? value
+                : null;
         }
 
         private static HashSet<string> ParseCsv(string csv)

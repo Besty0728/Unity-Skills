@@ -2,7 +2,7 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
-## [Unreleased]
+## [2.2.1] - 2026-07-20
 
 > **工作流核心重构（issue #49）** —— 修复大工作流下的性能崩溃，重做快照/撤销体系，并让设置类操作真正可回退。技能总数 738 → 740（运行时口径）。
 
@@ -16,6 +16,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Changed
 
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.2.1`。
 - **设置类 skill 现在真实可回退** — `console_set_pause_on_error` / `console_set_collapse` / `console_set_clear_on_play`、`debug_set_defines`、`graphics_set_quality_level` / `graphics_set_default_render_pipeline` / `graphics_set_quality_render_pipeline` / `graphics_add_always_included_shader` / `graphics_remove_always_included_shader` / `graphics_set_shader_stripping`、`physics_set_gravity` / `physics_set_layer_collision`、`project_add_tag`。
 - **CinemachineSkills 的 28 个写操作 skill 补齐 `TracksWorkflow=true`**（原本快照代码存在但从不自动触发）；`cinemachine_set_brain` / `cinemachine_set_blend` 补上缺失的 `WorkflowManager.SnapshotObject(brain.gameObject)` 快照（此前只 `Undo.RecordObject`，自动任务下不可回退），合计 30 个。
 - **`uitk_write_file` 新建文件现在可回退** — 新建 `.uss`/`.uxml` 时记录 Created 快照（undo=删除、redo=重建）；此前只有覆盖已存在文件的分支会备份。
@@ -23,6 +24,8 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **undo/redo 返回逐快照明细**（`TaskUndoResult`：total/succeeded/failed/details/error），失败不再静默。
 
 ### Fixed
+
+- **issue #49 后续审查修复** — 工作流 schema 升至 4，主文件与 `.meta` 独立内容寻址；自动清理保护仍被历史引用的 blob 并修正 `0=不限制`；补全非空目录、脚本/Shader/UITK/SO、场景 GameObject/Component 删除恢复；undo/redo 按逆序执行且部分失败保留可重试项；Router 业务失败不再提交历史；Cinemachine 快照改为实际组件；旧 base64 历史原子迁移。
 
 - **大工作流性能崩溃（issue #49 核心）** — 删除自动任务的重复 `SaveHistory`（SkillRouter 每个自动任务原本保存两次）；删除 `SnapshotObject` 每 10 个快照的周期性全量保存；手动 workflow 期间加 dirty 检查（无新快照不保存）；移除语义错误的 `Undo.postprocessModifications` 被动捕获。
 - **redo 对 Created / Moved 快照失败** — `RedoDeletedSnapshot` / `RedoMovedSnapshot` / `RedoCreatedSnapshot`（资产分支）原本按“重新执行原操作”实现，与 undo 压入 redo 栈的反向快照方向不符（如 undo 建文件夹后 redo 要求文件夹仍存在），导致 redo 返回 “Unknown failure”。改为复用对应的 undo 逻辑（Created/Moved/Deleted 的 redo 与 undo 互为镜像），redo 现对全部快照类型正常，多次 undo/redo 往返稳定。

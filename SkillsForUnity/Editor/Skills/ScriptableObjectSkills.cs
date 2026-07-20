@@ -194,14 +194,14 @@ namespace UnitySkills
             Tags = new[] { "scriptableobject", "delete", "remove", "asset" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
         public static object ScriptableObjectDelete(string assetPath)
         {
             if (Validate.SafePath(assetPath, "assetPath", isDelete: true) is object pathErr) return pathErr;
             var asset = AssetDatabase.LoadAssetAtPath<ScriptableObject>(assetPath);
             if (asset == null) return new { error = $"ScriptableObject not found: {assetPath}" };
-            WorkflowManager.SnapshotObject(asset);
-            AssetDatabase.DeleteAsset(assetPath);
+            if (!WorkflowManager.DeleteAssetToTrash(assetPath))
+                return new { error = $"Failed to delete ScriptableObject: {assetPath}" };
             return new { success = true, deleted = assetPath };
         }
 

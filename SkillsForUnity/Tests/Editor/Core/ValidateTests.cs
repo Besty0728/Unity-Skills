@@ -330,7 +330,7 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void WorkflowHistoryData_EnsureDefaults_MigratesLegacySchemaAndCollections()
+        public void WorkflowHistoryData_EnsureDefaults_PreservesSchemaAndInitializesCollections()
         {
             var history = new WorkflowHistoryData
             {
@@ -341,7 +341,8 @@ namespace UnitySkills.Tests.Core
 
             history.EnsureDefaults();
 
-            Assert.AreEqual(WorkflowHistoryData.CurrentSchemaVersion, history.schemaVersion);
+            Assert.AreEqual(0, history.schemaVersion,
+                "Schema changes require transactional blob migration and must not happen in EnsureDefaults.");
             Assert.IsNotNull(history.tasks);
             Assert.IsNotNull(history.undoneStack);
         }

@@ -194,7 +194,15 @@ namespace UnitySkills
         private static SceneObjectCache GetOrBuildSceneCache()
         {
             if (_cachedSceneData != null && _cacheValid)
-                return _cachedSceneData;
+            {
+                // Unity's managed wrappers remain in the list after DestroyImmediate but compare
+                // equal to null. Rebuild so subsequent lookups see replacement objects instead of
+                // dereferencing a destroyed wrapper (common in undo/redo and test fixture teardown).
+                if (_cachedSceneData.Objects.All(gameObject => gameObject != null))
+                    return _cachedSceneData;
+
+                InvalidateCache();
+            }
 
             var cache = new SceneObjectCache();
             var roots = GetLoadedSceneRoots();

@@ -152,7 +152,7 @@ namespace UnitySkills
             Tags = new[] { "remove", "detach", "destroy" },
             Outputs = new[] { "gameObject", "removed" },
             RequiresInput = new[] { "gameObject", "component" },
-            TracksWorkflow = true,
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesScene = true)]
         public static object ComponentRemove(string name = null, int instanceId = 0, string path = null, string componentType = null, int componentIndex = 0)
         {
@@ -183,8 +183,8 @@ namespace UnitySkills
                     hint = "Remove dependent components first"
                 };
 
-            WorkflowManager.SnapshotObject(comp);
-            Undo.DestroyObjectImmediate(comp);
+            if (!WorkflowManager.DeleteSceneObject(comp))
+                return new { error = $"Failed to capture and remove {componentType}" };
             EditorUtility.SetDirty(go);
 
             return new { success = true, gameObject = go.name, removed = componentType };
@@ -195,7 +195,7 @@ namespace UnitySkills
             Tags = new[] { "remove", "detach", "destroy", "batch" },
             Outputs = new[] { "gameObject", "removed", "count" },
             RequiresInput = new[] { "gameObject", "component" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true)]
         public static object ComponentRemoveBatch(string items)
         {
             return BatchExecutor.Execute<BatchRemoveComponentItem>(items, item =>
@@ -217,8 +217,8 @@ namespace UnitySkills
                 Undo.RecordObject(go, "Batch Remove Component");
                 foreach (var c in components)
                 {
-                    WorkflowManager.SnapshotObject(c);
-                    Undo.DestroyObjectImmediate(c);
+                    if (!WorkflowManager.DeleteSceneObject(c))
+                        throw new System.Exception($"Failed to capture and remove {item.componentType}");
                 }
 
                 EditorUtility.SetDirty(go);

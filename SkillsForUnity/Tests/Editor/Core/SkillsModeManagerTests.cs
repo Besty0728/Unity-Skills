@@ -20,62 +20,83 @@ namespace UnitySkills.Tests.Core
     /// - TryGrantAndReturnArgs (方案 B 一步执行) + ConsumeOneShotBypass
     /// - 老 GrantedSkills EditorPrefs → 新 AllowlistSkills 迁移幂等
     ///
-    /// Side-effects: every test SetUp wipes UnitySkills_* EditorPrefs and resets the
-    /// in-memory grant table + on-disk audit log. Legacy install marker keys are
-    /// cleared but NOT restored — if a developer ran the production package on this
-    /// machine before, the OneTimeSetUp warning lists the keys that get wiped.
+    /// Permission prefs are backed up for the fixture and restored on completion.
+    /// Existing-install behavior is simulated with a test-only override so unrelated
+    /// UnitySkills EditorPrefs (language, port, logging) are never modified.
     /// </summary>
     [TestFixture]
     public class SkillsModeManagerTests
     {
-        // Pre-v1.9 EditorPrefs keys that mark an "existing install" (plan section 10
-        // / SkillsModeManager.IsExistingInstall). Presence of any of these flips the
-        // default mode from Auto (fresh install) to Bypass (upgrade-compat).
-        private static readonly string[] LegacyInstallKeys =
-        {
-            "UnitySkills_RequireConfirmation",
-            "UnitySkills_PreferredPort",
-            "UnitySkills_LogLevel",
-            "UnitySkills_Language",
-            "UnitySkills_RequestTimeoutMinutes",
-            "UnitySkills_KeepAliveIntervalSeconds",
-            "UnitySkills_AutoInstallPackagesOnStartup",
-        };
-
         private const string PrefKeyMode = "UnitySkills_OperatingMode";
+        private const string PrefKeyPanelApproval = "UnitySkills_PanelApprovalRequired";
         private const string PrefKeyAllowlist = "UnitySkills_AllowlistSkills";
         private const string PrefKeyMigrationDone = "UnitySkills_AllowlistMigratedFromGranted";
         private const string PrefKeyLegacyGranted = "UnitySkills_GrantedSkills";
 
+        private bool _hadMode;
+        private string _savedMode;
+        private bool _hadPanelApproval;
+        private bool _savedPanelApproval;
+        private bool _hadAllowlist;
+        private string _savedAllowlist;
+        private bool _hadMigrationDone;
+        private bool _savedMigrationDone;
+        private bool _hadLegacyGranted;
+        private string _savedLegacyGranted;
+
         [OneTimeSetUp]
         public void OneTimeSetUp()
         {
-            var existing = LegacyInstallKeys.Where(EditorPrefs.HasKey).ToList();
-            if (existing.Count > 0)
-            {
-                UnityEngine.Debug.LogWarning(
-                    "[SkillsModeManagerTests] Legacy UnitySkills_* prefs detected. " +
-                    "Tests in this fixture clear them and they will NOT be restored: "
-                    + string.Join(", ", existing));
-            }
+            _hadMode = EditorPrefs.HasKey(PrefKeyMode);
+            _savedMode = EditorPrefs.GetString(PrefKeyMode, string.Empty);
+            _hadPanelApproval = EditorPrefs.HasKey(PrefKeyPanelApproval);
+            _savedPanelApproval = EditorPrefs.GetBool(PrefKeyPanelApproval, false);
+            _hadAllowlist = EditorPrefs.HasKey(PrefKeyAllowlist);
+            _savedAllowlist = EditorPrefs.GetString(PrefKeyAllowlist, string.Empty);
+            _hadMigrationDone = EditorPrefs.HasKey(PrefKeyMigrationDone);
+            _savedMigrationDone = EditorPrefs.GetBool(PrefKeyMigrationDone, false);
+            _hadLegacyGranted = EditorPrefs.HasKey(PrefKeyLegacyGranted);
+            _savedLegacyGranted = EditorPrefs.GetString(PrefKeyLegacyGranted, string.Empty);
+        }
+
+        [OneTimeTearDown]
+        public void OneTimeTearDown()
+        {
+            RestoreString(PrefKeyMode, _hadMode, _savedMode);
+            RestoreBool(PrefKeyPanelApproval, _hadPanelApproval, _savedPanelApproval);
+            RestoreString(PrefKeyAllowlist, _hadAllowlist, _savedAllowlist);
+            RestoreBool(PrefKeyMigrationDone, _hadMigrationDone, _savedMigrationDone);
+            RestoreString(PrefKeyLegacyGranted, _hadLegacyGranted, _savedLegacyGranted);
+            SkillsModeManager.ExistingInstallOverrideForTests = null;
+            ForceAllowlistReload();
         }
 
         [SetUp]
         public void SetUp()
         {
-            // Force IsExistingInstall() == false so the default mode getter returns
-            // Auto unless a test explicitly opts back into "old install" state.
-            foreach (var k in LegacyInstallKeys) EditorPrefs.DeleteKey(k);
             SkillsModeManager.ResetForTests();
+            SkillsModeManager.ExistingInstallOverrideForTests = false;
             SkillsAuditLog.ResetForTests();
         }
 
         [TearDown]
         public void TearDown()
         {
-            foreach (var k in LegacyInstallKeys) EditorPrefs.DeleteKey(k);
             SkillsModeManager.ResetForTests();
+            SkillsModeManager.ExistingInstallOverrideForTests = null;
             SkillsAuditLog.ResetForTests();
+        }
+
+        private static void RestoreString(string key, bool existed, string value)
+        {
+            if (existed) EditorPrefs.SetString(key, value);
+            else EditorPrefs.DeleteKey(key);
+        }
+
+        private static void RestoreBool(string key, bool existed, bool value)
+        {
+            if (existed) EditorPrefs.SetBool(key, value);
+            else EditorPrefs.DeleteKey(key);
         }
 
         // ─────────────────────────────────────────────────────────────────
@@ -452,9 +473,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void CurrentMode_OldInstall_NoExplicitMode_DefaultsToBypass()
         {
-            // SetUp already cleared every legacy + mode key. Plant just one legacy
-            // marker — IsExistingInstall uses HasKey only, value doesn't matter.
-            EditorPrefs.SetInt("UnitySkills_PreferredPort", 12345);
+            SkillsModeManager.ExistingInstallOverrideForTests = true;
 
             Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode);
             // Getter must NOT write PrefKeyMode as a side effect — that would prevent

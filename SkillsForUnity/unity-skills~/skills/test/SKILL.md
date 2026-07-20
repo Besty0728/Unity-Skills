@@ -52,7 +52,7 @@ Get the result of a test run.
 **Parameters:**
 - `jobId` (string, required): Job ID from `test_run` / `test_run_by_name`.
 
-**Returns:** `{ success, jobId, status, totalTests, passedTests, failedTests, skippedTests, inconclusiveTests, otherTests, failedTestNames, elapsedSeconds, resultSummary, error }`
+**Returns:** `{ success, jobId, status, totalTests, passedTests, failedTests, skippedTests, inconclusiveTests, otherTests, failedTestNames, failedTestDetails, elapsedSeconds, resultSummary, error }` — each failure detail includes `name`, `resultState`, `message`, `stackTrace`, `durationSeconds`, and `output`.
 
 ### `test_cancel`
 Cancel a running test job if supported (Unity TestRunner has no hard cancel — best-effort).

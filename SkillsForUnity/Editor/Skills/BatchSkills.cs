@@ -151,6 +151,7 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "preview", "property", "component" },
             Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            RequiresInput = new[] { "componentType", "propertyName" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchPreviewSetProperty(
@@ -172,6 +173,7 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "preview", "material", "renderer" },
             Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            RequiresInput = new[] { "materialPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchPreviewReplaceMaterial(string queryJson = null, string materialPath = null, int sampleLimit = DefaultSampleLimit)
@@ -1434,8 +1436,8 @@ namespace UnitySkills
             var target = FindTarget(item);
             if (target == null) return CreateSkippedReport(item, chunkIndex, "target_missing_at_execution");
 
-            WorkflowManager.SnapshotObject(target);
-            Undo.DestroyObjectImmediate(target);
+            if (!WorkflowManager.DeleteSceneObject(target))
+                return CreateSkippedReport(item, chunkIndex, "workflow_snapshot_failed");
             return new BatchReportItemRecord
             {
                 targetName = item.targetName,

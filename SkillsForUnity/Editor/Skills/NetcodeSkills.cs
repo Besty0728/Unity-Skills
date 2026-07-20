@@ -287,7 +287,7 @@ namespace UnitySkills
 
         [UnitySkill("netcode_remove_manager",
             "Remove the NetworkManager GameObject from the scene",
-            TracksWorkflow = true,
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
             Category = SkillCategory.Netcode, Operation = SkillOperation.Delete,
             Tags = new[] { "netcode", "ngo", "manager" },
             Outputs = new[] { "success", "removed" },
@@ -302,9 +302,9 @@ namespace UnitySkills
             if (Application.isPlaying && nm.IsListening)
                 return new { success = false, error = "NetworkManager is currently running. Call netcode_shutdown first." };
 
-            WorkflowManager.SnapshotObject(nm.gameObject);
             var goName = nm.gameObject.name;
-            Undo.DestroyObjectImmediate(nm.gameObject);
+            if (!WorkflowManager.DeleteSceneObject(nm.gameObject))
+                return new { success = false, error = "Failed to capture and remove NetworkManager." };
             return new { success = true, removed = goName };
 #endif
         }
@@ -572,7 +572,7 @@ namespace UnitySkills
 
         [UnitySkill("netcode_remove_network_object",
             "Remove the NetworkObject component from a GameObject (must be unspawned)",
-            TracksWorkflow = true,
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
             Category = SkillCategory.Netcode, Operation = SkillOperation.Delete,
             Tags = new[] { "netcode", "ngo", "networkobject" },
             Outputs = new[] { "success" },
@@ -589,8 +589,8 @@ namespace UnitySkills
             if (Application.isPlaying && no.IsSpawned)
                 return new { error = $"NetworkObject '{go.name}' is currently spawned. Despawn before removing the component." };
 
-            WorkflowManager.SnapshotObject(go);
-            Undo.DestroyObjectImmediate(no);
+            if (!WorkflowManager.DeleteSceneObject(no))
+                return new { error = $"Failed to capture and remove NetworkObject from '{go.name}'." };
             return new { success = true };
 #endif
         }

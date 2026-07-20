@@ -305,7 +305,7 @@ namespace UnitySkills
             Tags = new[] { "dotween", "animation", "tween", "ui", "pro", "add" },
             Outputs = new[] { "success", "component", "animationIndex" },
             RequiresInput = new[] { "gameObject" },
-            TracksWorkflow = true, MutatesScene = true, RiskLevel = "low")]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesScene = true, RiskLevel = "low")]
         public static object DOTweenProAddAnimation(
             string target = null, int targetInstanceId = 0, string targetPath = null,
             string animationType = "Move",
@@ -666,8 +666,8 @@ namespace UnitySkills
             var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
             if (err != null) return err;
 
-            WorkflowManager.SnapshotObject(comp.gameObject);
-            Undo.DestroyObjectImmediate(comp);
+            if (!WorkflowManager.DeleteSceneObject(comp))
+                return new { error = "Failed to capture and remove DOTweenAnimation" };
             return new { success = true };
         }
 

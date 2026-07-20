@@ -19,7 +19,7 @@ Manage installed Unity packages and package-related helper flows such as Cinemac
 - `package_add` / `package_update` do not exist -> use `package_install`
 - `package_get_info` does not exist -> use `package_list`, `package_check`, `package_get_dependencies`, or `package_get_versions`
 - `package_search` searches the installed package cache only; it does not query the Unity Registry
-- `package_list`, `package_search`, `package_get_dependencies`, and `package_get_versions` can return "Package list not ready" until `package_refresh` completes
+- Package query skills initialize their cache automatically after Domain Reload. During the short cold-start window they return `{ success: false, status: "refreshing", cacheReady: false, retryStrategy: "wait_and_retry", retryAfterSeconds: 2 }`; retry instead of treating this as `installed=false`.
 - Package install/remove/refresh jobs can trigger package import and Domain Reload; expect transient server unavailability and use returned job IDs
 
 **Routing**:

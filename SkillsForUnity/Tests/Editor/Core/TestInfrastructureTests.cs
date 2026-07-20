@@ -26,7 +26,17 @@ namespace UnitySkills.Tests.Core
                 ["skippedTests"] = 4,
                 ["inconclusiveTests"] = 1,
                 ["otherTests"] = 1,
-                ["failedTestNames"] = new List<string> { "Sample.FailedTest" }
+                ["failedTestNames"] = new List<string> { "Sample.FailedTest" },
+                ["failedTestDetails"] = new List<object>
+                {
+                    new Dictionary<string, object>
+                    {
+                        ["name"] = "Sample.FailedTest",
+                        ["resultState"] = "Failed",
+                        ["message"] = "Expected true but was false",
+                        ["stackTrace"] = "at Sample.FailedTest()"
+                    }
+                }
             });
 
             try
@@ -39,6 +49,8 @@ namespace UnitySkills.Tests.Core
                 Assert.That(json["inconclusiveTests"]?.Value<int>(), Is.EqualTo(1));
                 Assert.That(json["otherTests"]?.Value<int>(), Is.EqualTo(1));
                 Assert.That(json["failedTestNames"]?[0]?.ToString(), Is.EqualTo("Sample.FailedTest"));
+                Assert.That(json["failedTestDetails"]?[0]?["message"]?.ToString(),
+                    Is.EqualTo("Expected true but was false"));
             }
             finally
             {

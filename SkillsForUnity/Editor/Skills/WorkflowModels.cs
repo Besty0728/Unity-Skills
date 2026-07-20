@@ -10,7 +10,10 @@ namespace UnitySkills.Internal
     public class ObjectSnapshot
     {
         public string globalObjectId; // Unity GlobalObjectId string representation
+        public int objectInstanceId;  // Same-session fallback for objects in never-saved scenes.
         public string originalJson;   // JSON state captured via EditorJsonUtility
+        public bool objectReferencesCaptured;
+        public List<ObjectReferenceData> objectReferences = new List<ObjectReferenceData>();
         public string objectName;     // Cached name for display
         public string typeName;       // e.g. "GameObject", "Transform"
         public SnapshotType type = SnapshotType.Modified;
@@ -19,6 +22,12 @@ namespace UnitySkills.Internal
 
         // Content-addressed file store hash. For Modified/Deleted asset snapshots.
         public string fileHash;
+        public string metaFileHash;
+
+        // Deleted folders are represented by one root snapshot plus content-addressed entries.
+        public bool isDirectory;
+        public bool deleteRecursively;
+        public List<WorkflowStoredPath> directoryEntries = new List<WorkflowStoredPath>();
 
         // For Moved type: the original asset path before the move.
         public string previousAssetPath;
@@ -30,6 +39,7 @@ namespace UnitySkills.Internal
         // For Created type component undo - stores extra info for reliable deletion
         public string componentTypeName;   // Full type name of the component (e.g., "UnityEngine.Rigidbody")
         public string parentGameObjectId;  // GlobalObjectId of the parent GameObject
+        public int parentGameObjectInstanceId;
 
         // For Created type GameObject redo - stores info for recreation
         public string primitiveType;       // PrimitiveType name (Cube, Sphere, etc.) or empty for empty GameObject
@@ -41,6 +51,39 @@ namespace UnitySkills.Internal
 
         // All components data for full GameObject restoration
         public List<ComponentData> components = new List<ComponentData>();
+
+        // Flat hierarchy data for deleted/recreated scene GameObjects.
+        public List<GameObjectSnapshotData> gameObjectHierarchy = new List<GameObjectSnapshotData>();
+    }
+
+    [Serializable]
+    public class WorkflowStoredPath
+    {
+        public string relativePath;
+        public bool isDirectory;
+        public string fileHash;
+        public string metaFileHash;
+    }
+
+    [Serializable]
+    public class GameObjectSnapshotData
+    {
+        public string globalObjectId;
+        public int objectInstanceId;
+        public string transformGlobalObjectId;
+        public int transformInstanceId;
+        public string name;
+        public int parentIndex = -1;
+        public bool activeSelf;
+        public int layer;
+        public string tag;
+        public int siblingIndex;
+        public string externalParentGlobalObjectId;
+        public int externalParentInstanceId;
+        public float posX, posY, posZ;
+        public float rotX, rotY, rotZ, rotW;
+        public float scaleX = 1, scaleY = 1, scaleZ = 1;
+        public List<ComponentData> components = new List<ComponentData>();
     }
 }
 
@@ -49,16 +92,13 @@ namespace UnitySkills
     [Serializable]
     public class WorkflowHistoryData
     {
-        public const int CurrentSchemaVersion = 3;
+        public const int CurrentSchemaVersion = 5;
         public int schemaVersion = CurrentSchemaVersion;
         public List<WorkflowTask> tasks = new List<WorkflowTask>();
         public List<WorkflowTask> undoneStack = new List<WorkflowTask>(); // Stack of undone tasks for redo
 
         public void EnsureDefaults()
         {
-            if (schemaVersion <= 0)
-                schemaVersion = CurrentSchemaVersion;
-
             if (tasks == null) tasks = new List<WorkflowTask>();
             if (undoneStack == null) undoneStack = new List<WorkflowTask>();
 
@@ -81,7 +121,7 @@ namespace UnitySkills
         public long timestamp;
         public string sessionId;  // Groups tasks belonging to the same conversation/session
         public List<ObjectSnapshot> snapshots = new List<ObjectSnapshot>();
-        [NonSerialized] private HashSet<string> _snapshotIds;
+        [NonSerialized] private HashSet<string> _snapshotKeys;
 
         public string GetFormattedTime()
         {
@@ -90,10 +130,10 @@ namespace UnitySkills
 
         internal void EnsureSnapshotIndex()
         {
-            if (_snapshotIds != null)
+            if (_snapshotKeys != null)
                 return;
 
-            _snapshotIds = new HashSet<string>(StringComparer.Ordinal);
+            _snapshotKeys = new HashSet<string>(StringComparer.Ordinal);
             if (snapshots == null)
             {
                 snapshots = new List<ObjectSnapshot>();
@@ -103,27 +143,45 @@ namespace UnitySkills
             snapshots.RemoveAll(snapshot => snapshot == null);
             foreach (var snapshot in snapshots)
             {
-                if (!string.IsNullOrEmpty(snapshot.globalObjectId))
-                    _snapshotIds.Add(snapshot.globalObjectId);
+                if (ShouldDeduplicate(snapshot) && !string.IsNullOrEmpty(snapshot.globalObjectId))
+                    _snapshotKeys.Add(GetSnapshotKey(snapshot.globalObjectId, snapshot.type));
             }
         }
 
-        internal bool TryRegisterSnapshotId(string globalObjectId)
+        internal bool TryRegisterSnapshot(string globalObjectId, SnapshotType type)
         {
             if (string.IsNullOrEmpty(globalObjectId))
                 return false;
 
             EnsureSnapshotIndex();
-            return _snapshotIds.Add(globalObjectId);
+            return _snapshotKeys.Add(GetSnapshotKey(globalObjectId, type));
         }
 
-        internal bool HasSnapshotId(string globalObjectId)
+        internal bool HasSnapshot(string globalObjectId, SnapshotType type)
         {
             if (string.IsNullOrEmpty(globalObjectId))
                 return false;
 
             EnsureSnapshotIndex();
-            return _snapshotIds.Contains(globalObjectId);
+            return _snapshotKeys.Contains(GetSnapshotKey(globalObjectId, type));
+        }
+
+        internal void InvalidateSnapshotIndex()
+        {
+            _snapshotKeys = null;
+        }
+
+        internal static bool ShouldDeduplicate(ObjectSnapshot snapshot)
+        {
+            if (snapshot == null) return false;
+            return snapshot.type == SnapshotType.Modified ||
+                   snapshot.type == SnapshotType.Created ||
+                   snapshot.type == SnapshotType.Setting;
+        }
+
+        private static string GetSnapshotKey(string globalObjectId, SnapshotType type)
+        {
+            return ((int)type).ToString() + ":" + globalObjectId;
         }
     }
 
@@ -141,6 +199,18 @@ namespace UnitySkills
     {
         public string typeName;      // Full type name
         public string json;          // Serialized component data
+        public string globalObjectId;
+        public int objectInstanceId;
+        public bool objectReferencesCaptured;
+        public List<ObjectReferenceData> objectReferences = new List<ObjectReferenceData>();
+    }
+
+    [Serializable]
+    public class ObjectReferenceData
+    {
+        public string propertyPath;
+        public string globalObjectId;
+        public int objectInstanceId;
     }
 
     /// <summary>
