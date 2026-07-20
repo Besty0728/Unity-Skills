@@ -204,7 +204,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(WorkflowManager.UndoTask(taskId).success, Is.True);
             var remaining = go.GetComponents<BoxCollider>();
             Assert.That(remaining, Has.Length.EqualTo(1));
-            Assert.That(remaining[0].GetInstanceID(), Is.EqualTo(existing.GetInstanceID()));
+            Assert.That(remaining[0], Is.SameAs(existing));
             Assert.That(remaining[0].center, Is.EqualTo(Vector3.one));
             Assert.That(WorkflowManager.RedoTask(taskId).success, Is.True);
             Assert.That(go.GetComponents<BoxCollider>(), Has.Length.EqualTo(2));

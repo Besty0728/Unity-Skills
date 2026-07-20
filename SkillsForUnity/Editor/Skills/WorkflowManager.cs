@@ -307,7 +307,7 @@ namespace UnitySkills
             AddSnapshot(new ObjectSnapshot
             {
                 globalObjectId = gid,
-                objectInstanceId = obj.GetInstanceID(),
+                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(obj),
                 originalJson = json,
                 objectReferencesCaptured = objectReferencesCaptured,
                 objectReferences = objectReferences,
@@ -334,14 +334,14 @@ namespace UnitySkills
             AddSnapshot(new ObjectSnapshot
             {
                 globalObjectId = gid,
-                objectInstanceId = comp.GetInstanceID(),
+                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
                 originalJson = "",  // New objects don't need original state
                 objectName = comp.name,
                 typeName = comp.GetType().Name,
                 type = SnapshotType.Created,
                 componentTypeName = comp.GetType().FullName,
                 parentGameObjectId = parentGid,
-                parentGameObjectInstanceId = comp.gameObject.GetInstanceID()
+                parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp.gameObject)
             });
         }
 
@@ -408,7 +408,7 @@ namespace UnitySkills
             var snapshot = new ObjectSnapshot
             {
                 globalObjectId = gid,
-                objectInstanceId = go.GetInstanceID(),
+                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
                 originalJson = EditorJsonUtility.ToJson(go),
                 objectName = go.name,
                 typeName = "GameObject",
@@ -433,7 +433,7 @@ namespace UnitySkills
                         typeName = comp.GetType().AssemblyQualifiedName,
                         json = EditorJsonUtility.ToJson(comp),
                         globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(comp).ToString(),
-                        objectInstanceId = comp.GetInstanceID(),
+                        objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
                         objectReferencesCaptured = objectReferencesCaptured,
                         objectReferences = objectReferences
                     });
@@ -591,7 +591,7 @@ namespace UnitySkills
                 var snapshot = new ObjectSnapshot
                 {
                     globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString(),
-                    objectInstanceId = go.GetInstanceID(),
+                    objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
                     objectName = go.name,
                     typeName = "GameObject",
                     type = SnapshotType.Deleted,
@@ -610,7 +610,7 @@ namespace UnitySkills
                 var snapshot = new ObjectSnapshot
                 {
                     globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(component).ToString(),
-                    objectInstanceId = component.GetInstanceID(),
+                    objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(component),
                     originalJson = EditorJsonUtility.ToJson(component),
                     objectReferencesCaptured = objectReferencesCaptured,
                     objectReferences = objectReferences,
@@ -619,7 +619,7 @@ namespace UnitySkills
                     type = SnapshotType.Deleted,
                     componentTypeName = component.GetType().AssemblyQualifiedName,
                     parentGameObjectId = GlobalObjectId.GetGlobalObjectIdSlow(component.gameObject).ToString(),
-                    parentGameObjectInstanceId = component.gameObject.GetInstanceID()
+                    parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(component.gameObject)
                 };
                 Undo.DestroyObjectImmediate(component);
                 NotifyComponentTopologyChanged(owner, componentType);
@@ -1080,7 +1080,7 @@ namespace UnitySkills
                             redoTask.snapshots.Add(new ObjectSnapshot
                             {
                                 globalObjectId = snapshot.globalObjectId,
-                                objectInstanceId = comp.GetInstanceID(),
+                                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
                                 originalJson = EditorJsonUtility.ToJson(comp),
                                 objectReferencesCaptured = objectReferencesCaptured,
                                 objectReferences = objectReferences,
@@ -1089,7 +1089,7 @@ namespace UnitySkills
                                 type = SnapshotType.Deleted,
                                 componentTypeName = snapshot.componentTypeName,
                                 parentGameObjectId = snapshot.parentGameObjectId,
-                                parentGameObjectInstanceId = go.GetInstanceID()
+                                parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go)
                             });
                             Undo.DestroyObjectImmediate(comp);
                             NotifyComponentTopologyChanged(go, compType);
@@ -1182,14 +1182,14 @@ namespace UnitySkills
                         newTask.snapshots.Add(new ObjectSnapshot
                         {
                             globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(comp).ToString(),
-                            objectInstanceId = comp.GetInstanceID(),
+                            objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
                             originalJson = "",
                             objectName = snapshot.objectName,
                             typeName = snapshot.typeName,
                             type = SnapshotType.Created,
                             componentTypeName = snapshot.componentTypeName,
                             parentGameObjectId = snapshot.parentGameObjectId,
-                            parentGameObjectInstanceId = go.GetInstanceID()
+                            parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go)
                         });
                         NotifyComponentTopologyChanged(go, compType);
                         return true;
@@ -1300,13 +1300,13 @@ namespace UnitySkills
                 redoTask.snapshots.Add(new ObjectSnapshot
                 {
                     globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(restored).ToString(),
-                    objectInstanceId = restored.GetInstanceID(),
+                    objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(restored),
                     objectName = restored.name,
                     typeName = restored.GetType().Name,
                     type = SnapshotType.Created,
                     componentTypeName = restored.GetType().AssemblyQualifiedName,
                     parentGameObjectId = snapshot.parentGameObjectId,
-                    parentGameObjectInstanceId = parent.GetInstanceID()
+                    parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(parent)
                 });
                 NotifyComponentTopologyChanged(parent, componentType);
                 return true;
@@ -1509,7 +1509,7 @@ namespace UnitySkills
             var result = new ObjectSnapshot
             {
                 globalObjectId = baseSnapshot.globalObjectId,
-                objectInstanceId = go.GetInstanceID(),
+                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
                 originalJson = baseSnapshot.originalJson,
                 objectReferencesCaptured = baseSnapshot.objectReferencesCaptured,
                 objectReferences = baseSnapshot.objectReferences ?? new List<ObjectReferenceData>(),
@@ -1541,7 +1541,7 @@ namespace UnitySkills
                         typeName = comp.GetType().AssemblyQualifiedName,
                         json = EditorJsonUtility.ToJson(comp),
                         globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(comp).ToString(),
-                        objectInstanceId = comp.GetInstanceID(),
+                        objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
                         objectReferencesCaptured = objectReferencesCaptured,
                         objectReferences = objectReferences
                     });
@@ -1566,9 +1566,9 @@ namespace UnitySkills
             var data = new GameObjectSnapshotData
             {
                 globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString(),
-                objectInstanceId = go.GetInstanceID(),
+                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
                 transformGlobalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(transform).ToString(),
-                transformInstanceId = transform.GetInstanceID(),
+                transformInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(transform),
                 name = go.name,
                 parentIndex = parentIndex,
                 activeSelf = go.activeSelf,
@@ -1579,7 +1579,7 @@ namespace UnitySkills
                     ? GlobalObjectId.GetGlobalObjectIdSlow(transform.parent.gameObject).ToString()
                     : null,
                 externalParentInstanceId = parentIndex < 0 && transform.parent != null
-                    ? transform.parent.gameObject.GetInstanceID()
+                    ? UnityObjectIdUtility.GetLegacyInstanceId(transform.parent.gameObject)
                     : 0,
                 posX = transform.localPosition.x,
                 posY = transform.localPosition.y,
@@ -1606,7 +1606,7 @@ namespace UnitySkills
                         typeName = component.GetType().AssemblyQualifiedName,
                         json = EditorJsonUtility.ToJson(component),
                         globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(component).ToString(),
-                        objectInstanceId = component.GetInstanceID(),
+                        objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(component),
                         objectReferencesCaptured = objectReferencesCaptured,
                         objectReferences = objectReferences
                     });
@@ -1678,7 +1678,7 @@ namespace UnitySkills
             inverseTask.snapshots.Add(new ObjectSnapshot
             {
                 globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString(),
-                objectInstanceId = go.GetInstanceID(),
+                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
                 originalJson = EditorJsonUtility.ToJson(go),
                 objectName = go.name,
                 typeName = "GameObject",
@@ -1762,7 +1762,7 @@ namespace UnitySkills
                         globalObjectId = referencedObject != null
                             ? GlobalObjectId.GetGlobalObjectIdSlow(referencedObject).ToString()
                             : string.Empty,
-                        objectInstanceId = referencedObject != null ? referencedObject.GetInstanceID() : 0
+                        objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(referencedObject)
                     });
                 }
                 captureSucceeded = true;
@@ -1907,7 +1907,7 @@ namespace UnitySkills
             targetTask.snapshots.Add(new ObjectSnapshot
             {
                 globalObjectId = snapshot.globalObjectId,
-                objectInstanceId = obj.GetInstanceID(),
+                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(obj),
                 originalJson = EditorJsonUtility.ToJson(obj),
                 objectReferencesCaptured = objectReferencesCaptured,
                 objectReferences = objectReferences,
