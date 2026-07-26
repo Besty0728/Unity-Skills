@@ -1,23 +1,31 @@
-/* ===== Audit Log Window — Unity Console-style layout ===== */
+/* =====================================================================
+ * Audit Log Window — 方案 A · 主窗格延伸（与 UnityCliWindow 同语言）
+ *
+ * 主题变量（--color-*）来自 UnitySkillsWindow.uss，本窗口 C# 侧先加载
+ * 主 USS 再加载本文件；零硬编码色值。
+ * Console 式信息密度保留：toolbar / filter / list / detail 四段用
+ * hairline 分隔；徽章统一为描边胶囊（同 CLI 状态胶囊），色彩只表语义。
+ * ===================================================================== */
 
 .audit-root {
-    background-color: rgb(40, 40, 40);
+    background-color: var(--color-bg);
 }
+
+/* ---------- Toolbar ---------- */
 
 .audit-toolbar {
     flex-direction: row;
     align-items: center;
-    padding: 4px 6px;
-    background-color: rgb(50, 50, 50);
+    padding: 6px 8px;
+    background-color: var(--color-chrome-bg);
     border-bottom-width: 1px;
-    border-bottom-color: rgb(20, 20, 20);
+    border-bottom-color: var(--color-border-hard);
     flex-shrink: 0;
 }
 
 .audit-path-label {
     margin-right: 6px;
-    color: rgb(180, 180, 180);
-    -unity-font-style: normal;
+    color: var(--color-text-secondary);
     font-size: 11px;
 }
 
@@ -29,30 +37,40 @@
 
 .audit-btn {
     margin-left: 4px;
-    height: 20px;
+    height: 22px;
     padding: 0 10px;
     font-size: 11px;
+    border-radius: 3px;
+    background-color: var(--color-button-bg);
+    border-width: 1px;
+    border-color: var(--color-border-hard);
+    color: var(--color-text);
 }
 
-/* Danger variant — for destructive actions like "Clear All".
-   Same shape as default audit-btn, only the color signals risk. */
+.audit-btn:hover {
+    background-color: var(--color-button-hover);
+}
+
+/* Danger variant — destructive "Clear All": neutral body, red text;
+   hover 才升级为红描边（同 CLI 窗口 Unbind 语言）。 */
 .audit-btn--danger {
-    background-color: rgb(110, 40, 40);
-    color: rgb(255, 200, 200);
-    border-color: rgb(150, 60, 60);
+    color: var(--color-error);
 }
 
 .audit-btn--danger:hover {
-    background-color: rgb(140, 50, 50);
+    border-color: var(--color-error);
+    background-color: var(--color-button-bg);
 }
+
+/* ---------- Filter bar ---------- */
 
 .audit-filter-bar {
     flex-direction: row;
     align-items: center;
-    padding: 4px 6px;
-    background-color: rgb(45, 45, 45);
+    padding: 5px 8px;
+    background-color: var(--color-panel);
     border-bottom-width: 1px;
-    border-bottom-color: rgb(20, 20, 20);
+    border-bottom-color: var(--color-border-hard);
     flex-shrink: 0;
 }
 
@@ -67,28 +85,31 @@
 }
 
 .audit-count-label {
-    color: rgb(160, 160, 160);
-    -unity-font-style: italic;
+    color: var(--color-muted);
     font-size: 10px;
     min-width: 100px;
     -unity-text-align: middle-right;
 }
 
+/* ---------- List ---------- */
+
 .audit-list {
     flex-grow: 1;
     min-height: 100px;
-    background-color: rgb(40, 40, 40);
+    background-color: var(--color-bg);
 }
-
-/* ----- Per-row layout ----- */
 
 .audit-row {
     flex-direction: row;
     align-items: center;
-    padding: 0 6px;
+    padding: 0 8px;
     height: 22px;
     border-bottom-width: 1px;
-    border-bottom-color: rgb(30, 30, 30);
+    border-bottom-color: var(--color-border-hard);
+}
+
+.audit-row:hover {
+    background-color: var(--color-card-bg-hover);
 }
 
 .audit-row__icon {
@@ -96,11 +117,12 @@
     -unity-text-align: middle-center;
     font-size: 12px;
     margin-right: 4px;
+    color: var(--color-text-secondary);
 }
 
 .audit-row__time {
     width: 78px;
-    color: rgb(150, 150, 150);
+    color: var(--color-text-secondary);
     font-size: 10px;
     -unity-text-align: middle-left;
     margin-right: 6px;
@@ -108,31 +130,31 @@
 
 .audit-row__badge {
     min-width: 88px;
-    height: 16px;
-    padding: 0 6px;
+    height: 15px;
+    padding: 0 7px;
     margin-right: 8px;
-    border-radius: 3px;
+    border-radius: 8px;
+    border-width: 1px;
     font-size: 9px;
+    -unity-font-style: bold;
     -unity-text-align: middle-center;
-    -unity-font-style: normal;
 }
 
 .audit-row__skill {
-    color: rgb(220, 220, 220);
+    color: var(--color-text);
     flex-grow: 1;
     font-size: 11px;
     -unity-text-align: middle-left;
 }
 
 .audit-row__suffix {
-    color: rgb(140, 200, 250);
+    color: var(--color-accent);
     margin-left: 6px;
     font-size: 10px;
     -unity-text-align: middle-right;
 }
 
-/* Per-row delete button — small ✕ glyph pinned at the row end.
-   Hidden by opacity until the row is hovered, so the list stays clean. */
+/* Per-row delete — hidden by opacity until the row is hovered. */
 .audit-row__delete {
     width: 20px;
     height: 18px;
@@ -142,7 +164,7 @@
     -unity-text-align: middle-center;
     background-color: rgba(0, 0, 0, 0);
     border-width: 0;
-    color: rgb(160, 110, 110);
+    color: var(--color-muted);
     opacity: 0.35;
 }
 
@@ -151,37 +173,38 @@
 }
 
 .audit-row__delete:hover {
-    color: rgb(255, 180, 180);
-    background-color: rgb(70, 30, 30);
+    color: var(--color-error-hover);
+    background-color: var(--color-danger-darker);
     border-radius: 3px;
 }
 
-/* ----- Badge color variants — one per logical event class ----- */
+/* ---------- Badges — 描边胶囊，色彩只表语义 ----------
+   allow=success · restricted=warning · forbidden/deny=error
+   grant=accent · mode=accent-hover · revoke/other=muted */
 
-.badge-allow      { background-color: rgb(40, 90, 50);   color: rgb(180, 240, 180); }
-.badge-restricted { background-color: rgb(130, 100, 30); color: rgb(255, 220, 140); }
-.badge-forbidden  { background-color: rgb(130, 50, 50);  color: rgb(255, 180, 180); }
-.badge-mode       { background-color: rgb(85, 60, 130);  color: rgb(220, 200, 255); }
-.badge-grant      { background-color: rgb(40, 80, 130);  color: rgb(180, 220, 255); }
-.badge-deny       { background-color: rgb(130, 50, 50);  color: rgb(255, 180, 180); }
-.badge-revoke     { background-color: rgb(70, 70, 70);   color: rgb(200, 200, 200); }
-.badge-other      { background-color: rgb(60, 60, 60);   color: rgb(180, 180, 180); }
+.badge-allow      { color: var(--color-success);       border-color: var(--color-success); }
+.badge-restricted { color: var(--color-warning);       border-color: var(--color-warning); }
+.badge-forbidden  { color: var(--color-error);         border-color: var(--color-error); }
+.badge-deny       { color: var(--color-error);         border-color: var(--color-error); }
+.badge-grant      { color: var(--color-accent);        border-color: var(--color-accent); }
+.badge-mode       { color: var(--color-accent-hover);  border-color: var(--color-accent-dark); }
+.badge-revoke     { color: var(--color-muted);         border-color: var(--color-muted); }
+.badge-other      { color: var(--color-text-secondary); border-color: var(--color-card-border); }
 
-/* ----- Detail pane (bottom) ----- */
+/* ---------- Detail pane ---------- */
 
 .audit-detail-pane {
     height: 150px;
     flex-shrink: 0;
     flex-direction: column;
     border-top-width: 1px;
-    border-top-color: rgb(20, 20, 20);
-    background-color: rgb(38, 38, 38);
-    padding: 4px 6px;
+    border-top-color: var(--color-border-hard);
+    background-color: var(--color-panel);
+    padding: 5px 8px;
 }
 
 .audit-detail-title {
-    color: rgb(180, 180, 200);
-    -unity-font-style: normal;
+    color: var(--color-text-secondary);
     font-size: 10px;
     margin-bottom: 4px;
     flex-shrink: 0;
@@ -192,11 +215,12 @@
 }
 
 .audit-detail-json > .unity-base-text-field__input {
-    background-color: rgb(28, 28, 28);
-    color: rgb(220, 220, 220);
+    background-color: var(--color-input-bg);
+    color: var(--color-text);
     font-size: 10px;
     white-space: normal;
     padding: 4px;
     border-width: 1px;
-    border-color: rgb(20, 20, 20);
+    border-color: var(--color-card-border);
+    border-radius: 3px;
 }

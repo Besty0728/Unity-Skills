@@ -61,6 +61,7 @@ namespace UnitySkills
             {
                 AtomicReadModifyWrite(registry =>
                 {
+                    UnityCliService.GetRegistryBinding(out var cliBound, out var cliPath);
                     var info = new InstanceInfo
                     {
                         id = InstanceId,
@@ -69,7 +70,9 @@ namespace UnitySkills
                         port = port,
                         pid = System.Diagnostics.Process.GetCurrentProcess().Id,
                         last_active = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                        unityVersion = Application.unityVersion
+                        unityVersion = Application.unityVersion,
+                        cliBound = cliBound,
+                        cliPath = cliPath
                     };
 
                     registry[ProjectPath] = info;
@@ -88,6 +91,29 @@ namespace UnitySkills
             catch (Exception ex)
             {
                 SkillsLogger.LogWarning($"Failed to register instance: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Unity CLI 绑定变化时同步注册表条目（面板 Bind/Unbind 调用）。
+        /// 条目尚不存在（服务器未启动过）时不落任何数据 —— Register 时会带上最新绑定状态。
+        /// </summary>
+        public static void UpdateCliBinding(bool bound, string cliPath)
+        {
+            try
+            {
+                AtomicReadModifyWrite(registry =>
+                {
+                    if (registry.TryGetValue(ProjectPath, out var existing))
+                    {
+                        existing.cliBound = bound;
+                        existing.cliPath = bound ? cliPath : null;
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogWarning($"Failed to sync CLI binding to registry: {ex.Message}");
             }
         }
 
@@ -264,6 +290,10 @@ namespace UnitySkills
             public int pid;
             public long last_active;
             public string unityVersion;
+            // Unity CLI 绑定（v2.3+）：AI 客户端跨项目发现"可冷启动"的实例用。
+            // 详情契约在 <project>/Library/UnitySkills/cli_config.json。
+            public bool cliBound;
+            public string cliPath;
         }
     }
 }

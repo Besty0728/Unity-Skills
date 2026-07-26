@@ -373,6 +373,8 @@ namespace UnitySkills
     {
         private const string UxmlPath = "Packages/com.besty.unity-skills/Editor/UI/AuditLogWindow.uxml";
         private const string UssPath  = "Packages/com.besty.unity-skills/Editor/UI/AuditLogWindow.uss";
+        // 主题变量（--color-*）唯一源：主窗口 USS 先于本窗口 USS 加载（同 UnityCliWindow 范式）。
+        private const string ThemeUssPath = "Packages/com.besty.unity-skills/Editor/UI/UnitySkillsWindow.uss";
         private const int MaxEntries = 500;
 
         // 类型筛选下拉选项；"All" 表示不过滤。新事件类型在 AuditLog 添加后同步追加。
@@ -407,8 +409,26 @@ namespace UnitySkills
             w.Focus();
         }
 
+        // ----- 语言跟随：主面板切换语言时整树重建（含窗口标题） -----
+
+        private void OnEnable() => SkillsLocalization.LanguageChanged += RebuildForLanguage;
+        private void OnDisable() => SkillsLocalization.LanguageChanged -= RebuildForLanguage;
+
+        private void RebuildForLanguage()
+        {
+            titleContent = new GUIContent(
+                PermissionUiHelpers.L("perm_audit_window_title", "UnitySkills Audit Log", "UnitySkills 审计日志"));
+            rootVisualElement.Clear();
+            rootVisualElement.styleSheets.Clear();
+            CreateGUI();
+        }
+
         private void CreateGUI()
         {
+            var themeUss = AssetDatabase.LoadAssetAtPath<StyleSheet>(ThemeUssPath);
+            if (themeUss != null) rootVisualElement.styleSheets.Add(themeUss);
+            else Debug.LogWarning($"[UnitySkills] Failed to load theme USS: {ThemeUssPath}");
+
             var uss = AssetDatabase.LoadAssetAtPath<StyleSheet>(UssPath);
             if (uss != null) rootVisualElement.styleSheets.Add(uss);
             else Debug.LogWarning($"[UnitySkills] Failed to load Audit USS: {UssPath}");

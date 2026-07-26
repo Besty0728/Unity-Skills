@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEditor;
 
@@ -10,11 +11,17 @@ namespace UnitySkills
     public static class SkillsLocalization
     {
         public enum Language { English, Chinese }
-        
+
         private const string PREF_LANGUAGE = "UnitySkills_Language";
         private static bool _initialized = false;
         private static Language _current = Language.English;
-        
+
+        /// <summary>
+        /// 语言切换通知。独立子窗口（审计 / Unity CLI）订阅后整树重建以跟随主面板切换；
+        /// 主窗口自身仍走 RefreshLocalization 直调，不依赖此事件。
+        /// </summary>
+        public static event Action LanguageChanged;
+
         public static Language Current
         {
             get
@@ -29,9 +36,16 @@ namespace UnitySkills
             }
             set
             {
+                bool changed = _current != value;
                 _current = value;
+                _initialized = true;
                 // Persist to EditorPrefs
                 EditorPrefs.SetInt(PREF_LANGUAGE, (int)value);
+                if (changed)
+                {
+                    try { LanguageChanged?.Invoke(); }
+                    catch (Exception ex) { SkillsLogger.LogWarning($"LanguageChanged handler failed: {ex.Message}"); }
+                }
             }
         }
 
@@ -131,6 +145,7 @@ namespace UnitySkills
             {"shortcut_section_hint", "Assign a hotkey to quickly open each UnitySkills panel. Unbound by default — no conflicts out of the box."},
             {"shortcut_cmd_open_main", "Open Main Panel"},
             {"shortcut_cmd_open_audit", "Open Audit Log"},
+            {"shortcut_cmd_open_cli", "Open Unity CLI Setup"},
             {"shortcut_not_set", "Not set"},
             {"shortcut_btn_edit", "Edit"},
             {"shortcut_btn_clear", "Clear"},
@@ -1136,6 +1151,7 @@ namespace UnitySkills
             {"shortcut_section_hint", "为每个 UnitySkills 面板分配快捷键以便快速打开。默认未绑定——开箱零冲突。"},
             {"shortcut_cmd_open_main", "打开主面板"},
             {"shortcut_cmd_open_audit", "打开审计面板"},
+            {"shortcut_cmd_open_cli", "打开 Unity CLI 配置"},
             {"shortcut_not_set", "未设置"},
             {"shortcut_btn_edit", "修改"},
             {"shortcut_btn_clear", "清除"},

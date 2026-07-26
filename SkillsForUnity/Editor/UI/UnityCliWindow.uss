@@ -1,0 +1,198 @@
+/* =====================================================================
+ * Unity CLI Window — 方案 A · 主窗格延伸
+ *
+ * 主题变量（--color-*）来自 UnitySkillsWindow.uss，本窗口 C# 侧先加载
+ * 主 USS 再加载本文件；此处零硬编码色值、零卡片嵌套。
+ * 视觉语言与主窗口对齐：单一蓝 accent（小节标题下划线 / primary 按钮），
+ * 绿 / 红只出现在状态胶囊；区块之间 hairline 分隔。
+ * ===================================================================== */
+
+.cli-root {
+    background-color: var(--color-bg);
+    padding: 0;
+}
+
+/* ---------- Header ---------- */
+
+.cli-header {
+    padding: 14px 16px 10px 16px;
+    background-color: var(--color-chrome-bg);
+}
+
+.cli-header-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.cli-header-title {
+    font-size: 16px;
+    -unity-font-style: bold;
+    color: var(--color-text);
+}
+
+.cli-beta-chip {
+    margin-left: 8px;
+    font-size: 9px;
+    -unity-font-style: bold;
+    letter-spacing: 2px;
+    color: var(--color-text-secondary);
+    border-width: 1px;
+    border-color: var(--color-card-border);
+    border-radius: 8px;
+    padding: 1px 7px;
+}
+
+.cli-header-sub {
+    margin-top: 3px;
+    font-size: 10px;
+    color: var(--color-text-secondary);
+}
+
+.cli-divider {
+    height: 1px;
+    background-color: var(--color-border-hard);
+    flex-shrink: 0;
+}
+
+/* ---------- Sections（同背景平铺，无卡片） ---------- */
+
+.cli-section {
+    padding: 12px 16px 4px 16px;
+}
+
+.cli-section-head {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+/* 小节标题：次级灰大写观感 + 蓝色短下划线（同主窗口 tab 选中语言） */
+.cli-section-title {
+    font-size: 11px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+    color: var(--color-text-secondary);
+    border-bottom-width: 2px;
+    border-bottom-color: var(--color-accent);
+    padding-bottom: 3px;
+}
+
+/* ---------- Status pills（绿/红仅在此出现） ---------- */
+
+.cli-status {
+    font-size: 10px;
+    -unity-font-style: bold;
+    padding: 1px 9px;
+    border-radius: 9px;
+    border-width: 1px;
+    -unity-text-align: middle-center;
+}
+
+.cli-status.installed {
+    color: var(--color-success);
+    border-color: var(--color-success);
+}
+
+.cli-status.not-installed {
+    color: var(--color-error);
+    border-color: var(--color-error);
+}
+
+.cli-status.unknown {
+    color: var(--color-muted);
+    border-color: var(--color-muted);
+}
+
+/* ---------- Rows / fields ---------- */
+
+.cli-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.cli-actions-row {
+    margin-top: 2px;
+}
+
+.cli-row-label {
+    min-width: 42px;
+    color: var(--color-text-secondary);
+    font-size: 11px;
+}
+
+.cli-path-field {
+    flex-grow: 1;
+    margin-right: 2px;
+}
+
+.cli-hint {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    white-space: normal;
+    margin-bottom: 6px;
+}
+
+/* ---------- Install guide（扁平缩进块，非卡片） ---------- */
+
+.cli-install-guide {
+    margin: 2px 0 6px 0;
+    padding: 6px 0 0 8px;
+    border-left-width: 2px;
+    border-left-color: var(--color-warning);
+}
+
+.cli-install-cmd {
+    flex-grow: 1;
+    margin-right: 2px;
+    font-size: 10px;
+}
+
+/* ---------- Feature toggles ---------- */
+
+.cli-feature-toggle {
+    margin: 0 0 6px 0;
+    padding: 2px 0;
+}
+
+/* ---------- Footnote ---------- */
+
+.cli-footnote {
+    margin: 8px 16px 14px 16px;
+    font-size: 10px;
+    color: var(--color-muted);
+    white-space: normal;
+}
+
+/* ---------- Buttons：基座复用主 USS 的 .mini-btn，此处只做尺寸与变体 ---------- */
+
+.cli-btn {
+    height: 22px;
+    padding: 0 12px;
+    font-size: 11px;
+    margin-left: 4px;
+    border-radius: 3px;
+}
+
+.cli-btn-primary {
+    background-color: var(--color-accent-dark);
+    border-color: var(--color-accent);
+    color: var(--color-text-on-accent);
+}
+
+.cli-btn-primary:hover {
+    background-color: var(--color-accent);
+}
+
+.cli-btn-danger {
+    color: var(--color-error);
+}
+
+.cli-btn-danger:hover {
+    border-color: var(--color-error);
+}
+
+.grow {
+    flex-grow: 1;
+    margin-left: 0;
+}

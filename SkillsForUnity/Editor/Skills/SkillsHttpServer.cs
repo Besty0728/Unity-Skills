@@ -552,8 +552,13 @@ namespace UnitySkills
         {
             bool shouldRun = EditorPrefs.GetBool(PREF_SERVER_SHOULD_RUN, false);
             bool autoStart = AutoStart;
+            // Unity CLI 冷启动（--args -unityskills-coldstart + 已绑定）：本会话强制拉起一次，
+            // 无视 AutoStart/shouldRun 偏好；后续 Domain Reload 走常规恢复路径。
+            bool cliColdStart = UnityCliService.ConsumeColdStartRequest();
+            if (cliColdStart)
+                SkillsLogger.Log("Unity CLI cold start detected — auto-starting server.");
 
-            if (shouldRun && autoStart && !_isRunning)
+            if (((shouldRun && autoStart) || cliColdStart) && !_isRunning)
             {
                 int failures = EditorPrefs.GetInt(PREF_CONSECUTIVE_FAILURES, 0);
 

@@ -1197,6 +1197,60 @@ def wait_for_unity(timeout: float = 10.0, check_interval: float = 1.0) -> bool:
     return False
 
 
+# ============================================================
+# Unity CLI integration (v2.3+, opt-in via the UnitySkills panel)
+# ============================================================
+
+def get_cli_config(project_root: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Read the Unity CLI binding config written by the UnitySkills panel.
+
+    Returns the parsed dict from <project_root>/Library/UnitySkills/cli_config.json,
+    or None if the file is missing/unreadable OR 'enabled' is false — None means
+    "Unity CLI is OFF for this project", so callers can gate on a single check.
+    project_root defaults to the current working directory.
+    """
+    root = project_root or os.getcwd()
+    path = os.path.join(root, 'Library', 'UnitySkills', 'cli_config.json')
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+        if not cfg.get('enabled') or not cfg.get('cliPath'):
+            return None
+        # projectPath in the file is a snapshot taken at bind time; if the project
+        # was moved/renamed since, that stale path could point elsewhere. The
+        # directory we actually found the config under is authoritative.
+        cfg['projectPath'] = os.path.abspath(root)
+        return cfg
+    except (OSError, ValueError):
+        return None
+
+
+def wait_for_health(timeout: float = 600.0, check_interval: float = 3.0) -> Optional[Dict[str, Any]]:
+    """Wait for a UnitySkills server after a cold start (unity CLI `open`).
+
+    Unlike wait_for_unity(), this resets the cached default client on every
+    attempt so port discovery reruns — required when the editor was launched
+    fresh and may bind any port in the 8090-8100 range. First import/compile
+    can take minutes; default timeout is generous. Returns the /health payload
+    once reachable, or None on timeout.
+    """
+    global _default_client
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        _default_client = None
+        try:
+            client = _get_default_client()
+            resp = client._session.get(f"{client.url}/health", timeout=HEALTH_TIMEOUT)
+            resp.encoding = 'utf-8'
+            data = resp.json()
+            if data.get('status') == 'ok':
+                return data
+        except (requests.exceptions.RequestException, ValueError, RuntimeError):
+            pass
+        time.sleep(check_interval)
+    return None
+
+
 def get_server_status() -> Dict[str, Any]:
     """Get detailed health information from the current Unity server."""
     try:

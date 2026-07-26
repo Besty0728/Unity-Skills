@@ -74,6 +74,20 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
 
+                <!-- Unity CLI group — entry to the standalone UnityCliWindow -->
+                <ui:VisualElement name="group-cli" class="settings-group">
+                    <ui:Label name="group-cli-title" class="settings-group-title"
+                              text="Unity CLI" />
+                    <ui:Label name="cli-drawer-hint" class="setting-hint"
+                              style="margin-left: 0; margin-bottom: 6px;" />
+                    <ui:VisualElement name="row-cli-setup"
+                                      style="flex-direction: row;">
+                        <ui:Button name="cli-open-setup-btn" class="mini-btn"
+                                   text="Unity CLI Setup…"
+                                   style="flex-grow: 1; height: 22px; margin: 0;" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
                 <!-- Server group -->
                 <ui:VisualElement name="group-server" class="settings-group">
                     <ui:Label name="group-server-title" class="settings-group-title"

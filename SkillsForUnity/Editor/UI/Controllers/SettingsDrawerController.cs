@@ -56,6 +56,10 @@ namespace UnitySkills
         private Button        _allowlistAddBtn;
         private Button        _viewAuditBtn;
 
+        private Label  _cliGroupTitle;
+        private Label  _cliHint;
+        private Button _cliOpenBtn;
+
         // Server group
         private Label           _serverGroupTitle;
         private Toggle          _autoStartToggle;
@@ -174,6 +178,10 @@ namespace UnitySkills
             _allowlistAddBtn     = _drawerContainer.Q<Button>("perm-allowlist-add-btn");
             _viewAuditBtn        = _drawerContainer.Q<Button>("perm-view-audit-btn");
 
+            _cliGroupTitle = _drawerContainer.Q<Label>("group-cli-title");
+            _cliHint       = _drawerContainer.Q<Label>("cli-drawer-hint");
+            _cliOpenBtn    = _drawerContainer.Q<Button>("cli-open-setup-btn");
+
             _serverGroupTitle = _drawerContainer.Q<Label>("group-server-title");
             _autoStartToggle  = _drawerContainer.Q<Toggle>("autostart-toggle");
             _autoStartHint    = _drawerContainer.Q<Label>("autostart-hint");
@@ -231,6 +239,9 @@ namespace UnitySkills
 
             if (_viewAuditBtn != null)
                 _viewAuditBtn.clicked += () => UnitySkillsAuditWindow.ShowWindow();
+
+            if (_cliOpenBtn != null)
+                _cliOpenBtn.clicked += () => UnityCliWindow.ShowWindow();
 
             if (_autoStartToggle != null)
                 _autoStartToggle.RegisterValueChangedCallback(evt =>
@@ -335,6 +346,8 @@ namespace UnitySkills
         {
             // 每次打开重建 Shortcuts 行，拉取最新绑定（覆盖 Edit ▸ Shortcuts 外部改动）。
             _shortcutsController?.Refresh();
+            // 绑定状态可能在 UnityCliWindow 里刚变过，开抽屉时取最新。
+            RefreshCliGroup();
 
             if (_drawerContainer != null) _drawerContainer.AddToClassList("open");
             if (_drawerMask != null)
@@ -391,6 +404,8 @@ namespace UnitySkills
             if (_viewAuditBtn != null)
                 _viewAuditBtn.text = PermissionUiHelpers.L("perm_view_audit_log",
                     "View Audit Log", "查看审计日志");
+
+            RefreshCliGroup();
 
             // Pending / Allowlist titles include counts, so rebuild via RefreshPermissionsUi
             // to pick up the new language strings together with the live data.
@@ -470,6 +485,34 @@ namespace UnitySkills
         /// 同步三类权限 UI：模式 toggles、Approval 设置 row、Pending/Granted 列表。
         /// 由 OnChanged 事件、本类初始化、Localization 切换调用。
         /// </summary>
+        /// <summary>
+        /// Unity CLI 组：标题/按钮文案 + 绑定状态提示。绑定发生在 UnityCliWindow，
+        /// 抽屉每次本地化刷新（含 Open）时顺带取一次最新状态即可，无需轮询。
+        /// </summary>
+        private void RefreshCliGroup()
+        {
+            if (_cliGroupTitle != null)
+                _cliGroupTitle.text = "Unity CLI";
+            if (_cliOpenBtn != null)
+            {
+                _cliOpenBtn.text = PermissionUiHelpers.L("cli_setup_entry",
+                    "Unity CLI Setup…", "Unity CLI 配置…");
+                _cliOpenBtn.tooltip = PermissionUiHelpers.L("cli_setup_entry_tip",
+                    "Detect / bind the experimental Unity CLI to enable cold start without Unity Hub",
+                    "检测 / 绑定实验性 Unity CLI，启用免 Unity Hub 冷启动");
+            }
+            if (_cliHint != null)
+            {
+                _cliHint.text = UnityCliService.IsBound
+                    ? PermissionUiHelpers.L("cli_drawer_hint_bound",
+                        "Bound — AI agents may cold-start this project via Unity CLI.",
+                        "已绑定 —— AI Agent 可通过 Unity CLI 冷启动本项目。")
+                    : PermissionUiHelpers.L("cli_drawer_hint_unbound",
+                        "Not bound — open setup to detect the CLI and bind this project.",
+                        "未绑定 —— 打开配置面板检测 CLI 并绑定本项目。");
+            }
+        }
+
         private void RefreshPermissionsUi()
         {
             if (_drawerContainer == null) return;

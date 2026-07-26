@@ -21,12 +21,16 @@ namespace UnitySkills
         // const 以便直接用作 [Shortcut] 特性实参。
         public const string OpenMainPanelId = "UnitySkills/Open Main Panel";
         public const string OpenAuditLogId  = "UnitySkills/Open Audit Log";
+        public const string OpenUnityCliId  = "UnitySkills/Open Unity CLI Setup";
 
         [Shortcut(OpenMainPanelId)]
         private static void OpenMainPanel() => UnitySkillsWindow.ShowWindow();
 
         [Shortcut(OpenAuditLogId)]
         private static void OpenAuditLog() => UnitySkillsAuditWindow.ShowWindow();
+
+        [Shortcut(OpenUnityCliId)]
+        private static void OpenUnityCli() => UnityCliWindow.ShowWindow();
 
         /// <summary>
         /// 设置 UI 逐行渲染的命令清单，顺序即 UI 顺序。
@@ -36,6 +40,7 @@ namespace UnitySkills
         {
             new ShortcutCommand(OpenMainPanelId, "shortcut_cmd_open_main"),
             new ShortcutCommand(OpenAuditLogId,  "shortcut_cmd_open_audit"),
+            new ShortcutCommand(OpenUnityCliId,  "shortcut_cmd_open_cli"),
         };
 
         /// <summary>

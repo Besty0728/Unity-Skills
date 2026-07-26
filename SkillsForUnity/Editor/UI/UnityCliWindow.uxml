@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements"
+         xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements"
+         editor="UnityEditor.UIElements"
+         noNamespaceSchemaLocation="../../../../../../../UIElementsSchema/UIElementsSchema.xsd">
+
+    <!-- 方案 A · 主窗格延伸：整页同背景，小节靠 hairline 与蓝下划线标题分隔，
+         零卡片嵌套。主题变量来自 UnitySkillsWindow.uss（窗口 C# 先行加载）。 -->
+    <ui:ScrollView name="cli-root" class="cli-root">
+
+        <!-- ===== Header ===== -->
+        <ui:VisualElement name="cli-header" class="cli-header">
+            <ui:VisualElement class="cli-header-row">
+                <ui:Label name="cli-header-title" class="cli-header-title" text="Unity CLI" />
+                <ui:Label name="cli-beta-chip" class="cli-beta-chip" text="BETA" />
+                <ui:VisualElement class="flex-spacer" style="flex-grow: 1;" />
+                <ui:Label name="cli-status-badge" class="cli-status unknown" text="…" />
+            </ui:VisualElement>
+            <ui:Label name="cli-version-label" class="cli-header-sub" text="" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="cli-divider" />
+
+        <!-- ===== Detection ===== -->
+        <ui:VisualElement name="cli-detect-section" class="cli-section">
+            <ui:VisualElement class="cli-section-head">
+                <ui:Label name="cli-detect-title" class="cli-section-title" text="Detection" />
+            </ui:VisualElement>
+
+            <ui:VisualElement name="cli-path-row" class="cli-row">
+                <ui:Label name="cli-path-label" class="cli-row-label" text="Path" />
+                <ui:TextField name="cli-path-field" class="cli-path-field" />
+                <ui:Button name="cli-browse-btn" class="mini-btn cli-btn" text="…" />
+                <ui:Button name="cli-detect-btn" class="mini-btn cli-btn cli-btn-primary" text="Detect" />
+            </ui:VisualElement>
+
+            <!-- Install guidance — visible only when CLI is not found -->
+            <ui:VisualElement name="cli-install-guide" class="cli-install-guide" style="display: none;">
+                <ui:Label name="cli-install-hint" class="cli-hint" />
+                <ui:VisualElement class="cli-row">
+                    <ui:TextField name="cli-install-cmd" class="cli-install-cmd" readonly="true" />
+                    <ui:Button name="cli-copy-cmd-btn" class="mini-btn cli-btn" text="Copy" />
+                    <ui:Button name="cli-docs-btn" class="mini-btn cli-btn" text="Docs" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- ===== Project Binding ===== -->
+        <ui:VisualElement name="cli-bind-section" class="cli-section">
+            <ui:VisualElement class="cli-section-head">
+                <ui:Label name="cli-bind-title" class="cli-section-title" text="Project Binding" />
+                <ui:VisualElement class="flex-spacer" style="flex-grow: 1;" />
+                <ui:Label name="cli-bind-badge" class="cli-status unknown" text="…" />
+            </ui:VisualElement>
+
+            <ui:Label name="cli-bind-info" class="cli-hint" text="" />
+
+            <ui:VisualElement class="cli-row cli-actions-row">
+                <ui:Button name="cli-bind-btn" class="mini-btn cli-btn cli-btn-primary grow" text="Bind" />
+                <ui:Button name="cli-unbind-btn" class="mini-btn cli-btn cli-btn-danger" text="Unbind" />
+                <ui:Button name="cli-reveal-cfg-btn" class="mini-btn cli-btn" text="Reveal Config" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- ===== Features ===== -->
+        <ui:VisualElement name="cli-features-section" class="cli-section">
+            <ui:VisualElement class="cli-section-head">
+                <ui:Label name="cli-features-title" class="cli-section-title" text="Features" />
+            </ui:VisualElement>
+            <ui:Toggle name="cli-feat-coldstart" class="cli-feature-toggle" />
+            <ui:Toggle name="cli-feat-openargs" class="cli-feature-toggle" />
+            <ui:Toggle name="cli-feat-test" class="cli-feature-toggle" />
+        </ui:VisualElement>
+
+        <!-- Footnote — plain secondary text, no box -->
+        <ui:Label name="cli-help-box" class="cli-footnote" />
+
+    </ui:ScrollView>
+</ui:UXML>
