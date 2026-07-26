@@ -2,6 +2,30 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.3.0] - 2026-07-26
+
+> **Unity CLI 集成** —— 接入官方 `unity` 命令行工具，让 AI 在 Unity 编辑器**关闭**时也能冷启动项目、传参启动、跑无头测试/构建。全程以用户在面板显式绑定为前提，未绑定即完全不生效。Advisory 模块 23 → 24。
+
+### Added
+
+- **Unity CLI 配置面板（`UnityCliWindow`）** — `Window ▸ UnitySkills → AI Config → Unity CLI Setup…` 二级面板：检测本机 `unity` 可执行文件、绑定当前项目、按特性粒度开关。绑定信息写入 `Library/UnitySkills/cli_config.json`（`schemaVersion` 1），**这是 AI 侧唯一的授权凭据**——文件缺失或 `enabled:false` 即视为该项目未开启 CLI。检测走后台线程 + 轮询收结果，遵守零跨线程调用 Unity API 的约束。
+- **五个特性开关** — `coldStart`（冷启动/生命周期）、`openArgs`（`unity open --args` 传参启动）、`cliTest`（`unity test` 无头测试）默认开启；`cliRun`（`unity run` 批处理运行）、`cliBuild`（`unity build` 无头构建）默认**关闭**，旧配置缺键即为 `false`，必须在面板显式开启。
+- **`UnityCliService`** — CLI 探测、项目绑定/解绑、特性读写、冷启动标记消费与注册表同步的服务层。
+- **冷启动标记 `-unityskills-coldstart`** — 以 `unity open <project> --args -unityskills-coldstart` 启动时，本会话强制拉起 REST 服务器，无视用户的 Auto-start 偏好；标记每个编辑器会话只消费一次，不会覆盖中途的手动停止，后续 Domain Reload 仍走常规恢复路径。
+- **`unity-cli` Advisory 模块（+1 文档）** — 纯指导文档、无 REST Skill：冷启动与存活探测的三步分诊（先查注册表 pid，`unity status` 仅作补充证据——无 Pipeline 包的运行中编辑器不会出现在其输出里）、`--args` 传参、无头测试与 REST `test_*` 的路由规则，以及一组明确的 DO NOT（不自行安装 CLI、不裸跑 `unity mcp`、不解析人类可读输出）。
+- **Python helper `get_cli_config()` / `wait_for_health()`** — 前者读取并校验绑定配置（未绑定或 `enabled:false` 一律返回 `None`，调用方单点判断即可），并以实际发现配置的目录纠正 bind-time 快照的 `projectPath`，避免项目移动后指向错误路径；后者在冷启动后每次重试都重置缓存客户端以重跑端口发现（8090-8100），默认超时 600s 以覆盖首次导入/编译。
+- **注册表新增 `cliBound` / `cliPath` 字段** — `~/.unity_skills/registry.json` 供 AI 客户端跨项目发现"可冷启动"的实例；**仅用于存活判断，不作为授权依据**，授权只认项目自己的 `cli_config.json`。
+- **快捷键命令 `UnitySkills/Open Unity CLI Setup`** — 可在 Edit ▸ Shortcuts 中自定义绑定。
+
+### Changed
+
+- **审计日志窗口跟随语言实时重建** — 主面板切换语言时 `UnitySkillsAuditWindow` 整树重建（含窗口标题），不再需要重开窗口才能生效。
+- **审计日志窗口改用统一主题变量** — `AuditLogWindow.uss` 移除全部硬编码色值，改用主窗口 USS 的 `--color-*` 变量（C# 侧先加载主 USS 再加载本窗口 USS），与 `UnityCliWindow` 保持同一套视觉语言；徽章统一为描边胶囊，色彩只表语义。
+- **设置抽屉新增 Unity CLI 分组** — 展示当前绑定状态并提供进入配置面板的入口，打开抽屉与切换语言时刷新。
+- **全量清理代码注释** — 对 `Editor/`、`Tests/`、`unity-skills~/scripts/` 下 135 个 C#/Python 文件做了一次注释精简：删除复述下一行代码的注释、版本历史痕迹（`// --- NEW SKILLS (v1.5/CM3) ---`、`/// Now supports…`、分节标题里的 `(v1.9)` 等）、重构后遗留的过时文档与无信息量占位注释；保留解释"为什么"的设计约束、公共 API 的 XML 文档、分节导航注释与文件末尾作者标注。改动经代码指纹校验（剥离注释与空白后比对 SHA-256），确认未触及任何一行实际代码。
+- **README advisory 模块计数订正** — 中英文 README 的 advisory 模块数由 23 更新为 24、模块文档总数由 71 更新为 72，与 `agent.md` 口径对齐。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.3.0`。
+
 ## [2.2.1] - 2026-07-20
 
 > **工作流核心重构（issue #49）** —— 修复大工作流下的性能崩溃，重做快照/撤销体系，并让设置类操作真正可回退。技能总数 738 → 740（运行时口径）。
