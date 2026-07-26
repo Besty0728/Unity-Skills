@@ -303,7 +303,7 @@ namespace UnitySkills
             cliPath = bound ? cfg.cliPath : null;
         }
 
-        // ===== 冷启动自动开服（v2.3+）=====
+        // ===== 冷启动自动开服 =====
 
         /// <summary>AI 经 Unity CLI 冷启动时随 --args 传入的标记。</summary>
         public const string ColdStartArg = "-unityskills-coldstart";
