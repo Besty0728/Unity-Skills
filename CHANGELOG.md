@@ -12,7 +12,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **五个特性开关** — `coldStart`（冷启动/生命周期）、`openArgs`（`unity open --args` 传参启动）、`cliTest`（`unity test` 无头测试）默认开启；`cliRun`（`unity run` 批处理运行）、`cliBuild`（`unity build` 无头构建）默认**关闭**，旧配置缺键即为 `false`，必须在面板显式开启。
 - **`UnityCliService`** — CLI 探测、项目绑定/解绑、特性读写、冷启动标记消费与注册表同步的服务层。
 - **冷启动标记 `-unityskills-coldstart`** — 以 `unity open <project> --args -unityskills-coldstart` 启动时，本会话强制拉起 REST 服务器，无视用户的 Auto-start 偏好；标记每个编辑器会话只消费一次，不会覆盖中途的手动停止，后续 Domain Reload 仍走常规恢复路径。
-- **`unity-cli` Advisory 模块（+1 文档）** — 纯指导文档、无 REST Skill：冷启动与存活探测的三步分诊（先查注册表 pid，`unity status` 仅作补充证据——无 Pipeline 包的运行中编辑器不会出现在其输出里）、`--args` 传参、无头测试与 REST `test_*` 的路由规则，以及一组明确的 DO NOT（不自行安装 CLI、不裸跑 `unity mcp`、不解析人类可读输出）。
+- **`unity-cli` Advisory 模块（+1 文档）** — 纯指导文档、无 REST Skill，按五个特性开关分节：冷启动与存活探测的三步分诊（先查注册表 pid，`unity status` 仅作补充证据——无 Pipeline 包的运行中编辑器不会出现在其输出里）、`--args` 传参、无头测试、批处理运行、无头构建，并给出各自与 REST skill 的路由规则（交互式迭代走 REST，全量/编辑器关闭时走 CLI）。附一组明确的 DO NOT：不自行安装 CLI、不裸跑 `unity mcp`（会阻塞 shell 等待 MCP 客户端）、不解析人类可读输出（须 `--format json --non-interactive`）、不走 `unity command` / `unity pipeline` 路线（与 REST 能力重复）。
 - **Python helper `get_cli_config()` / `wait_for_health()`** — 前者读取并校验绑定配置（未绑定或 `enabled:false` 一律返回 `None`，调用方单点判断即可），并以实际发现配置的目录纠正 bind-time 快照的 `projectPath`，避免项目移动后指向错误路径；后者在冷启动后每次重试都重置缓存客户端以重跑端口发现（8090-8100），默认超时 600s 以覆盖首次导入/编译。
 - **注册表新增 `cliBound` / `cliPath` 字段** — `~/.unity_skills/registry.json` 供 AI 客户端跨项目发现"可冷启动"的实例；**仅用于存活判断，不作为授权依据**，授权只认项目自己的 `cli_config.json`。
 - **快捷键命令 `UnitySkills/Open Unity CLI Setup`** — 可在 Edit ▸ Shortcuts 中自定义绑定。
