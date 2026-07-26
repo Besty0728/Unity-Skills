@@ -70,6 +70,8 @@
             <ui:Toggle name="cli-feat-coldstart" class="cli-feature-toggle" />
             <ui:Toggle name="cli-feat-openargs" class="cli-feature-toggle" />
             <ui:Toggle name="cli-feat-test" class="cli-feature-toggle" />
+            <ui:Toggle name="cli-feat-run" class="cli-feature-toggle" />
+            <ui:Toggle name="cli-feat-build" class="cli-feature-toggle" />
         </ui:VisualElement>
 
         <!-- Footnote — plain secondary text, no box -->

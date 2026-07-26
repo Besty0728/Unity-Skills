@@ -40,6 +40,8 @@ namespace UnitySkills
         private Toggle    _featColdStart;
         private Toggle    _featOpenArgs;
         private Toggle    _featTest;
+        private Toggle    _featRun;
+        private Toggle    _featBuild;
         private Label     _helpBox;   // 方案 A：无框脚注文字（原 HelpBox 扁平化）
 
         private bool _detectionPending;
@@ -100,6 +102,8 @@ namespace UnitySkills
             _featColdStart = rootVisualElement.Q<Toggle>("cli-feat-coldstart");
             _featOpenArgs  = rootVisualElement.Q<Toggle>("cli-feat-openargs");
             _featTest      = rootVisualElement.Q<Toggle>("cli-feat-test");
+            _featRun       = rootVisualElement.Q<Toggle>("cli-feat-run");
+            _featBuild     = rootVisualElement.Q<Toggle>("cli-feat-build");
             _helpBox       = rootVisualElement.Q<Label>("cli-help-box");
 
             WireStaticTexts();
@@ -151,6 +155,12 @@ namespace UnitySkills
             if (_featTest != null)
                 _featTest.label = L("cli_feat_test",
                     "Headless test runs (unity test)", "无头测试（unity test）");
+            if (_featRun != null)
+                _featRun.label = L("cli_feat_run",
+                    "Batch runs (unity run)", "批处理运行（unity run）");
+            if (_featBuild != null)
+                _featBuild.label = L("cli_feat_build",
+                    "Headless builds (unity build)", "无头构建（unity build）");
 
             if (_helpBox != null)
                 _helpBox.text = L("cli_help",
@@ -213,6 +223,12 @@ namespace UnitySkills
             if (_featTest != null)
                 _featTest.RegisterValueChangedCallback(
                     e => UnityCliService.SetFeature(f => f.cliTest = e.newValue));
+            if (_featRun != null)
+                _featRun.RegisterValueChangedCallback(
+                    e => UnityCliService.SetFeature(f => f.cliRun = e.newValue));
+            if (_featBuild != null)
+                _featBuild.RegisterValueChangedCallback(
+                    e => UnityCliService.SetFeature(f => f.cliBuild = e.newValue));
         }
 
         // ===== 检测（后台线程 → 轮询收结果，遵守零跨线程约束）=====
@@ -271,8 +287,8 @@ namespace UnitySkills
             if (!EditorUtility.DisplayDialog(
                     L("cli_unbind", "Unbind", "解绑"),
                     L("cli_unbind_confirm",
-                        "Disable Unity CLI capabilities for this project? AI agents will stop using the CLI (cold start, --args, headless tests).",
-                        "确定关闭本项目的 Unity CLI 能力吗？AI Agent 将停止使用 CLI（冷启动、传参启动、无头测试）。"),
+                        "Disable Unity CLI capabilities for this project? AI agents will stop using the CLI (cold start, --args, headless tests, batch runs, headless builds).",
+                        "确定关闭本项目的 Unity CLI 能力吗？AI Agent 将停止使用 CLI（冷启动、传参启动、无头测试、批处理运行、无头构建）。"),
                     "OK", "Cancel"))
                 return;
             UnityCliService.Unbind();
@@ -319,6 +335,8 @@ namespace UnitySkills
             SetFeatureToggle(_featColdStart, featEnabled, features?.coldStart ?? true);
             SetFeatureToggle(_featOpenArgs,  featEnabled, features?.openArgs ?? true);
             SetFeatureToggle(_featTest,      featEnabled, features?.cliTest ?? true);
+            SetFeatureToggle(_featRun,   featEnabled, features?.cliRun ?? false);
+            SetFeatureToggle(_featBuild, featEnabled, features?.cliBuild ?? false);
         }
 
         private static void SetFeatureToggle(Toggle t, bool enabled, bool value)

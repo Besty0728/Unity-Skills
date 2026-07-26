@@ -8,7 +8,7 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Unity CLI（官方 unity 命令行工具，0.1.0-beta，实验性）集成服务。
+    /// Unity CLI（官方 unity 命令行工具，实验性 beta）集成服务。
     ///
     /// 职责：
     ///  1. 检测本机是否安装 Unity CLI（后台线程跑 `unity --version`，结果供 UI 轮询）；
@@ -29,6 +29,8 @@ namespace UnitySkills
             public bool coldStart = true;   // 冷启动 / 生命周期管理
             public bool openArgs  = true;   // unity open --args 传参启动
             public bool cliTest   = true;   // unity test 无头测试
+            public bool cliRun    = false;  // unity run 批处理运行（新能力默认关，旧配置缺键=false，须在面板显式开启）
+            public bool cliBuild  = false;  // unity build 无头构建（同上，显式开启）
         }
 
         public class CliConfig
