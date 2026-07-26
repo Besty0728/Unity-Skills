@@ -136,7 +136,6 @@
     border-radius: 8px;
     border-width: 1px;
     font-size: 9px;
-    -unity-font-style: bold;
     -unity-text-align: middle-center;
 }
 

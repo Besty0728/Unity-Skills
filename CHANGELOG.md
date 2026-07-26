@@ -26,6 +26,10 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **README advisory 模块计数订正** — 中英文 README 的 advisory 模块数由 23 更新为 24、模块文档总数由 71 更新为 72，与 `agent.md` 口径对齐。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.3.0`。
 
+### Fixed
+
+- **v2.3.0 发布检查修复** — `unity-cli` 的 `SKILL.md` 补齐 `## Exact Signatures` schema-first 声明（指向 `GET /skills/schema` / `unity_skills.get_skill_schema()`），修复 `SkillDocumentationConsistencyTests` 校验失败；`AuditLogWindow.uss` / `UnityCliWindow.uss` 移除 `-unity-font-style: bold` 触发的引擎合成粗体，改用字体自身字重，并将 `UnityCliWindow.uss` 补入 `UISkillsFontTests` 的检查名单；用 2022.3 编辑器重新烘焙内置 CJK 字体图集，补齐本版本新增 UI 文案的缺失字符。
+
 ## [2.2.1] - 2026-07-20
 
 > **工作流核心重构（issue #49）** —— 修复大工作流下的性能崩溃，重做快照/撤销体系，并让设置类操作真正可回退。技能总数 738 → 740（运行时口径）。

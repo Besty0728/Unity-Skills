@@ -7,7 +7,7 @@ namespace UnitySkills
 {
     /// <summary>
     /// Unity CLI 配置面板 —— 独立二级窗口（同 UnitySkillsAuditWindow 范式）。
-    /// 入口：主窗口 ⚙ 设置抽屉 Unity CLI 组按钮（权限组之下、服务器组之上）
+    /// 入口：主窗口设置抽屉 Unity CLI 组按钮（权限组之下、服务器组之上）
     /// + ShortcutActions 可绑定快捷键。
     /// 未挂 Window 菜单（Window/UnitySkills 单入口约束）。
     ///

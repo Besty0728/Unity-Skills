@@ -140,3 +140,7 @@ One-shot batch automation on the **bound project only**, while the editor is clo
 - Do not use `unity command` / `unity pipeline` / `unity run --command` — the Unity Pipeline package route duplicates what UnitySkills REST already provides and is not part of this workflow.
 - Do not parse the CLI's human-readable output (its display language follows `unity language`, e.g. Chinese table headers) — always pass `--format json --non-interactive` when you need to read results programmatically.
 - Do not treat CLI availability as a substitute for the REST workflow: once `/health` responds, all normal operations go through REST skills.
+
+## Exact Signatures
+
+Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.

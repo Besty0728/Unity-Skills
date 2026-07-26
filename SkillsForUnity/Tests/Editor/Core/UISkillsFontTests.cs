@@ -118,6 +118,7 @@ namespace UnitySkills.Tests.Core
                 "Packages/com.besty.unity-skills/Editor/UI/UnitySkillsWindow.uss",
                 "Packages/com.besty.unity-skills/Editor/UI/AuditLogWindow.uss",
                 "Packages/com.besty.unity-skills/Editor/UI/AllowlistPickerWindow.uss",
+                "Packages/com.besty.unity-skills/Editor/UI/UnityCliWindow.uss",
             };
 
             foreach (var path in paths)

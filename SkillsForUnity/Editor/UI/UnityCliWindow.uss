@@ -26,14 +26,12 @@
 
 .cli-header-title {
     font-size: 16px;
-    -unity-font-style: bold;
     color: var(--color-text);
 }
 
 .cli-beta-chip {
     margin-left: 8px;
     font-size: 9px;
-    -unity-font-style: bold;
     letter-spacing: 2px;
     color: var(--color-text-secondary);
     border-width: 1px;
@@ -69,7 +67,6 @@
 /* 小节标题：次级灰大写观感 + 蓝色短下划线（同主窗口 tab 选中语言） */
 .cli-section-title {
     font-size: 11px;
-    -unity-font-style: bold;
     letter-spacing: 1px;
     color: var(--color-text-secondary);
     border-bottom-width: 2px;
@@ -81,7 +78,6 @@
 
 .cli-status {
     font-size: 10px;
-    -unity-font-style: bold;
     padding: 1px 9px;
     border-radius: 9px;
     border-width: 1px;
