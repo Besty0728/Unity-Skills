@@ -118,7 +118,7 @@ namespace UnitySkills
             if (selected.Count == 0) 
                 return new { success = false, error = "No GameObjects selected. Select objects in Hierarchy first." };
 
-            // Workflow 鏀寔
+            // Workflow 支持
             foreach (var go in selected)
                 WorkflowManager.SnapshotObject(go.transform);
 
