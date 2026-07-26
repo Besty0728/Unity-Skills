@@ -429,8 +429,6 @@ namespace UnitySkills
 #endif
         }
 
-        // --- NEW SKILLS (v1.5/CM3) ---
-
         [UnitySkill("cinemachine_set_lens", "Quickly configure Lens settings (FOV, Near, Far, OrthoSize).",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "lens", "fov", "clip", "cinemachine" },

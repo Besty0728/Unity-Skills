@@ -30,14 +30,12 @@ namespace UnitySkills
 
                 bool changed = false;
 
-                // Check max size
                 if (importer.maxTextureSize > maxTextureSize)
                 {
                     importer.maxTextureSize = maxTextureSize;
                     changed = true;
                 }
 
-                // Check compression
                 if (importer.textureCompression != TextureImporterCompression.Compressed)
                 {
                     // Only enforce if it was uncompressed or custom? 

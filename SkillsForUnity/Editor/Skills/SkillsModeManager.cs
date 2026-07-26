@@ -40,12 +40,12 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// Core of the v1.9 Skill mode permission system. Three-tier operating modes
+    /// Core of the Skill mode permission system. Three-tier operating modes
     /// (Approval / Auto / Bypass) + two-channel approval (Dialog / Panel) +
     /// **Allowlist (user-managed permanent whitelist, can override IsForbiddenInSemi)** +
     /// **single-use Approval** (grant/approve only releases the current call).
     ///
-    /// v1.9 semantic split (vs the original v1.9 Approval design):
+    /// Semantic split (vs the original Approval design):
     /// - **Allowlist 通道**：用户在面板手动管理；命中直接放行，**优先级高于 IsForbiddenInSemi**，
     ///   允许用户手动放行原本的高危拦截 skill。
     /// - **Approval 单次有效**：grant/approve 仅放行本次调用，不再永久写入白名单。
@@ -76,18 +76,18 @@ namespace UnitySkills
         private const string PrefKeyMode = "UnitySkills_OperatingMode";
         private const string PrefKeyPanelApproval = "UnitySkills_PanelApprovalRequired";
 
-        /// <summary>v1.9 改版后的 Allowlist 持久化 key（用户手动管理）。</summary>
+        /// <summary>Allowlist 持久化 key（用户手动管理）。</summary>
         private const string PrefKeyAllowlist = "UnitySkills_AllowlistSkills";
         /// <summary>首次迁移完成标记，避免重复执行。</summary>
         private const string PrefKeyMigrationDone = "UnitySkills_AllowlistMigratedFromGranted";
-        /// <summary>v1.9 旧 GrantedSkills key（仅用于一次性迁移读取，迁移后不删除以便回滚）。</summary>
+        /// <summary>旧 GrantedSkills key（仅用于一次性迁移读取，迁移后不删除以便回滚）。</summary>
         private const string PrefKeyLegacyGranted = "UnitySkills_GrantedSkills";
 
         private const int DefaultGrantTtlSeconds = 300;
         private const int MaxLiveGrants = 256;
         private const int MaxArgsSummaryChars = 120;
 
-        // v1.9.x: the historical `_explicitNeverList` fallback (scene_clear / scene_new / batch_apply)
+        // The historical `_explicitNeverList` fallback (scene_clear / scene_new / batch_apply)
         // has been removed — none of those skill names exist in the current 750-skill surface, and the
         // 75 NeverInSemi skills are now fully covered by metadata flags (Operation=Delete /
         // MayEnterPlayMode / MayTriggerReload / RiskLevel=high) checked in IsForbiddenInSemi.
@@ -279,7 +279,7 @@ namespace UnitySkills
         /// AI re-plays the token via <see cref="TryGrant"/>. For Panel channel the token is
         /// also visible in <see cref="PendingGrantRequests"/> for panel-side Approve/Deny.
         ///
-        /// v1.9 改版后：完整 argsJson 也缓存到 entry 中，供方案 B 一步执行回放。
+        /// 完整 argsJson 也缓存到 entry 中，供方案 B 一步执行回放。
         /// </summary>
         public static (string token, int ttlSeconds, ApprovalChannel channel)
             IssueGrantRequest(string skillName, string argsJson)
@@ -327,7 +327,7 @@ namespace UnitySkills
         /// Like <see cref="TryGrant"/> but returns a detailed outcome so callers can map
         /// PendingApproval to GRANT_PENDING_APPROVAL and Invalid to INVALID_TOKEN.
         ///
-        /// v1.9 改版后：Granted 分支**不再** AddGranted/AddToAllowlist；grant 只对本次有效，
+        /// Granted 分支**不再** AddGranted/AddToAllowlist；grant 只对本次有效，
         /// 永久白名单由用户在面板手动管理。entry 在 Granted 时被消费移除。
         /// </summary>
         public static GrantOutcome TryGrantDetailed(string skillName, string token, string argsJson)
@@ -364,7 +364,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Panel-side approve. v1.9 改版后语义：**不再** 将 skill 永久写入白名单，而是只把
+        /// Panel-side approve. **不再** 将 skill 永久写入白名单，而是只把
         /// <c>entry.ApprovedByPanel = true</c>，保留 entry 让 AI 后续 <see cref="TryGrant"/>
         /// （或方案 B 的 <see cref="TryGrantAndReturnArgs"/>）走 Granted 分支并触发一次性执行。
         /// </summary>
@@ -424,7 +424,7 @@ namespace UnitySkills
         /// Decide whether a skill may execute under the current operating mode + allowlist state.
         /// Caller (SkillRouter) translates the result into an error response or continues.
         ///
-        /// v1.9 改版后优先级（依次判断）：
+        /// 优先级（依次判断）：
         /// 1. Bypass 模式 → Allowed
         /// 2. one-shot bypass 命中（grant 方案 B 重入）→ Allowed
         /// 3. Allowlist 命中 → Allowed（**优先于** <see cref="IsForbiddenInSemi"/>，
@@ -527,10 +527,10 @@ namespace UnitySkills
         /// True if the skill must be blocked outside Bypass mode. Implementation matches
         /// plan section 8 — purely metadata-driven judgement.
         ///
-        /// v1.9.x: 移除 _explicitNeverList 兜底（已无命中）— metadata 已完全覆盖当前 75 个
+        /// 移除 _explicitNeverList 兜底（已无命中）— metadata 已完全覆盖当前 75 个
         /// NeverInSemi skill（全部由下面 4 条规则触发，0 个依赖名单兜底）。
         ///
-        /// 注意：v1.9 改版后，<see cref="CheckAccess"/> 在 IsInAllowlist 命中时**会跳过本判定**，
+        /// 注意：<see cref="CheckAccess"/> 在 IsInAllowlist 命中时**会跳过本判定**，
         /// 让用户能手动放行原本被拦截的高危 skill。
         /// </summary>
         internal static bool IsForbiddenInSemi(SkillRouter.SkillInfo s)
@@ -660,7 +660,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 一次性把 v1.9 旧的 <c>UnitySkills_GrantedSkills</c> 数据迁移到新的
+        /// 一次性把旧的 <c>UnitySkills_GrantedSkills</c> 数据迁移到新的
         /// <c>UnitySkills_AllowlistSkills</c>。通过 <see cref="PrefKeyMigrationDone"/> 保证幂等。
         /// 旧 key 故意不删除，留作回滚标记。
         ///

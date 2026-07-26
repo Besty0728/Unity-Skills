@@ -122,7 +122,6 @@ def _version_matches(actual_version: str, target: str) -> bool:
     if not actual_version or not target:
         return False
 
-    # Strip "Unity" prefix and whitespace from target
     cleaned = target.strip()
     if cleaned.lower().startswith("unity"):
         cleaned = cleaned[5:].strip()
@@ -206,7 +205,6 @@ class UnitySkills:
                 found_port = self._find_first_available()
                 self.url = f"http://localhost:{found_port}"
 
-        # Sync timeout from Unity server if user didn't specify one
         if not timeout:
             self._sync_timeout_from_server()
 
@@ -1198,7 +1196,7 @@ def wait_for_unity(timeout: float = 10.0, check_interval: float = 1.0) -> bool:
 
 
 # ============================================================
-# Unity CLI integration (v2.3+, opt-in via the UnitySkills panel)
+# Unity CLI integration (opt-in via the UnitySkills panel)
 # ============================================================
 
 def get_cli_config(project_root: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -1265,7 +1263,7 @@ def get_server_status() -> Dict[str, Any]:
 
 
 # ============================================================
-# Permission System (v1.9.0+)
+# Permission System
 # ============================================================
 
 def _permission_get(path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1505,7 +1503,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Configure client based on CLI args
     if args.port or args.unity_version:
         global _default_client
         _default_client = UnitySkills(port=args.port, version=args.unity_version)
@@ -1530,17 +1527,14 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    # Parse parameters
     params = {}
     for arg in args.params:
         if '=' in arg:
             key, value = arg.split('=', 1)
             params[key] = _parse_cli_value(value)
 
-    # Call the skill
     result = call_skill(args.skill_name, **params)
 
-    # Pretty print the result
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 if __name__ == '__main__':

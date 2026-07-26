@@ -73,7 +73,6 @@ namespace UnitySkills
             if (importer == null)
                 return new { error = $"Not a texture or asset not found: {assetPath}" };
 
-            // 修改前记录资产状态
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
@@ -178,7 +177,6 @@ namespace UnitySkills
                 importer.SetPlatformTextureSettings(platformSettings);
             }
 
-            // Apply changes
             importer.SaveAndReimport();
 
             return new

@@ -22,17 +22,14 @@ namespace UnitySkills
             int heightmapResolution = 513,
             float x = 0, float y = 0, float z = 0)
         {
-            // Create TerrainData asset
             var terrainData = new TerrainData();
             terrainData.heightmapResolution = heightmapResolution;
             terrainData.size = new Vector3(width, height, length);
 
-            // Save TerrainData as asset
             var assetPath = $"Assets/{name}_Data.asset";
             assetPath = AssetDatabase.GenerateUniqueAssetPath(assetPath);
             AssetDatabase.CreateAsset(terrainData, assetPath);
 
-            // Create Terrain GameObject
             var terrainGO = Terrain.CreateTerrainGameObject(terrainData);
             terrainGO.name = name;
             terrainGO.transform.position = new Vector3(x, y, z);
@@ -187,11 +184,9 @@ namespace UnitySkills
             int xSize = heights[0].Length;
             int resolution = data.heightmapResolution;
 
-            // Clamp start positions
             startX = Mathf.Clamp(startX, 0, resolution - 1);
             startZ = Mathf.Clamp(startZ, 0, resolution - 1);
 
-            // Clamp sizes to fit within terrain
             xSize = Mathf.Min(xSize, resolution - startX);
             zSize = Mathf.Min(zSize, resolution - startZ);
 
@@ -252,7 +247,6 @@ namespace UnitySkills
             int width = endX - startX + 1;
             int length = endZ - startZ + 1;
 
-            // Get current heights
             float[,] heights = data.GetHeights(startX, startZ, width, length);
 
             // Add hill with smooth falloff
@@ -591,7 +585,6 @@ namespace UnitySkills
                 return go?.GetComponent<Terrain>();
             }
 
-            // Return first terrain in scene
             return Object.FindAnyObjectByType<Terrain>();
         }
     }

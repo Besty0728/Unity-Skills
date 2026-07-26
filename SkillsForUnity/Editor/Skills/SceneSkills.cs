@@ -264,7 +264,6 @@ namespace UnitySkills
 
             if (sceneToUnload.isDirty)
             {
-                // Auto-save before unload
                 EditorSceneManager.SaveScene(sceneToUnload);
             }
 

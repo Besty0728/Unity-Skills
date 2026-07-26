@@ -9,7 +9,7 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// Unity Editor Window — UnitySkills v2 layout.
+    /// Unity Editor Window — UnitySkills layout.
     /// Topbar (server status + URL + toggle + settings) — persistent.
     /// 4 tabs: Skills / AI Config / History / Analytics.
     /// Footer: version + live stats pill + segmented language switch.
@@ -20,7 +20,7 @@ namespace UnitySkills
         private const string UxmlPath = "Packages/com.besty.unity-skills/Editor/UI/UnitySkillsWindow.uxml";
         private const string UssPath  = "Packages/com.besty.unity-skills/Editor/UI/UnitySkillsWindow.uss";
 
-        // v1.9 一次性 first-run toast 标记。
+        // 一次性 first-run toast 标记。
         // 仅在 "新安装 + 未设过 OperatingMode" 时弹出，避免老用户/已配置用户被打扰。
         private const string PrefKeyFirstRunToast = "UnitySkills_FirstRunToastShown";
 
@@ -71,7 +71,7 @@ namespace UnitySkills
         private void OnEnable()
         {
             RefreshSkillsList();
-            // v1.9：模式/授权变化时联动 topbar/footer 的下次重绘，避免分别在每个子 Controller 里订阅。
+            // 模式/授权变化时联动 topbar/footer 的下次重绘，避免分别在每个子 Controller 里订阅。
             SkillsModeManager.OnChanged += Repaint;
             MaybeShowFirstRunToast();
         }
@@ -175,8 +175,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Called when user clicks a skill in Skills Tab — now stays within the
-        /// Skills tab (master-detail) instead of jumping to a separate "Test" tab.
+        /// Called when user clicks a skill in Skills Tab. Stays within the
+        /// Skills tab (master-detail) rather than a separate "Test" tab.
         /// Tab switch ensured here so external callers (legacy code paths) still work.
         /// </summary>
         public void SelectTestSkill(string skillName, string defaultParams)
@@ -277,7 +277,7 @@ namespace UnitySkills
             return null;
         }
 
-        // ===== v1.9 first-run permission toast =====
+        // ===== first-run permission toast =====
 
         private void MaybeShowFirstRunToast()
         {
@@ -315,7 +315,7 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// v1.9 权限/审计面板共享小工具。
+    /// 权限/审计面板共享小工具。
     /// 集中处理 Localization fallback 与"老安装"判定，让 EditorWindow 实现保持薄。
     /// </summary>
     internal static class PermissionUiHelpers
@@ -364,7 +364,7 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// v1.9 审计日志查看器 — UI Toolkit / UXML 实现的控制台风格列表。
+    /// 审计日志查看器 — UI Toolkit / UXML 实现的控制台风格列表。
     /// Toolbar(路径 + Reveal + Refresh) → Filter(搜索 + 类型下拉 + 计数) → ListView(图标+时间+徽章+摘要) → Detail(原始 JSON)。
     /// 入口：主窗口 → 齿轮 → Settings Drawer → Permissions 组 → [View Audit Log]。
     /// 未单独挂菜单，避免 Window/UnitySkills 子菜单泛滥。
@@ -378,7 +378,7 @@ namespace UnitySkills
         private const int MaxEntries = 500;
 
         // 类型筛选下拉选项；"All" 表示不过滤。新事件类型在 AuditLog 添加后同步追加。
-        // v1.9 引入了 allowlist_* / grant_executed / audit_* 系列；revoke / revoke_all 保留以兼容旧日志。
+        // revoke / revoke_all 保留以兼容旧日志。
         private static readonly string[] _typeOptions = new[]
         {
             "All",

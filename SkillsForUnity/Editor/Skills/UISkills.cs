@@ -192,7 +192,6 @@ namespace UnitySkills
 
             var button = go.AddComponent<Button>();
 
-            // Add text child
             var textGo = new GameObject("Text");
             textGo.transform.SetParent(go.transform, false);
             var textRect = textGo.AddComponent<RectTransform>();
@@ -373,7 +372,6 @@ namespace UnitySkills
                 // Use TMP InputField
                 var inputField = go.AddComponent(_tmpInputFieldType);
 
-                // Create text area
                 var textAreaGo = new GameObject("Text Area");
                 textAreaGo.transform.SetParent(go.transform, false);
                 var textAreaRect = textAreaGo.AddComponent<RectTransform>();
@@ -383,7 +381,6 @@ namespace UnitySkills
                 textAreaRect.offsetMax = new Vector2(-10, -7);
                 textAreaGo.AddComponent<RectMask2D>();
 
-                // Placeholder
                 var placeholderGo = new GameObject("Placeholder");
                 placeholderGo.transform.SetParent(textAreaGo.transform, false);
                 var placeholderRect = placeholderGo.AddComponent<RectTransform>();
@@ -396,7 +393,6 @@ namespace UnitySkills
                 if (fontStyleType != null)
                     _tmpTextType.GetProperty("fontStyle")?.SetValue(placeholderComp, Enum.Parse(fontStyleType, "Italic"));
 
-                // Text
                 var textGo = new GameObject("Text");
                 textGo.transform.SetParent(textAreaGo.transform, false);
                 var textRect = textGo.AddComponent<RectTransform>();
@@ -415,7 +411,6 @@ namespace UnitySkills
                 // Use Legacy InputField
                 var inputField = go.AddComponent<InputField>();
 
-                // Placeholder
                 var placeholderGo = new GameObject("Placeholder");
                 placeholderGo.transform.SetParent(go.transform, false);
                 var placeholderRect = placeholderGo.AddComponent<RectTransform>();
@@ -431,7 +426,6 @@ namespace UnitySkills
                 if (placeholderText.font == null)
                     placeholderText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
 
-                // Text
                 var textGo = new GameObject("Text");
                 textGo.transform.SetParent(go.transform, false);
                 var textRect = textGo.AddComponent<RectTransform>();
@@ -478,7 +472,6 @@ namespace UnitySkills
             slider.maxValue = maxValue;
             slider.value = value;
 
-            // Background
             var bgGo = new GameObject("Background");
             bgGo.transform.SetParent(go.transform, false);
             var bgRect = bgGo.AddComponent<RectTransform>();
@@ -488,7 +481,6 @@ namespace UnitySkills
             var bgImage = bgGo.AddComponent<Image>();
             bgImage.color = new Color(0.8f, 0.8f, 0.8f);
 
-            // Fill Area
             var fillAreaGo = new GameObject("Fill Area");
             fillAreaGo.transform.SetParent(go.transform, false);
             var fillAreaRect = fillAreaGo.AddComponent<RectTransform>();
@@ -496,7 +488,6 @@ namespace UnitySkills
             fillAreaRect.anchorMax = new Vector2(1, 0.75f);
             fillAreaRect.sizeDelta = new Vector2(-20, 0);
 
-            // Fill
             var fillGo = new GameObject("Fill");
             fillGo.transform.SetParent(fillAreaGo.transform, false);
             var fillRect = fillGo.AddComponent<RectTransform>();
@@ -549,7 +540,6 @@ namespace UnitySkills
             var toggle = go.AddComponent<Toggle>();
             toggle.isOn = isOn;
 
-            // Background
             var bgGo = new GameObject("Background");
             bgGo.transform.SetParent(go.transform, false);
             var bgRect = bgGo.AddComponent<RectTransform>();
@@ -560,7 +550,6 @@ namespace UnitySkills
             var bgImage = bgGo.AddComponent<Image>();
             bgImage.color = Color.white;
 
-            // Checkmark
             var checkGo = new GameObject("Checkmark");
             checkGo.transform.SetParent(bgGo.transform, false);
             var checkRect = checkGo.AddComponent<RectTransform>();
@@ -573,7 +562,6 @@ namespace UnitySkills
             toggle.targetGraphic = bgImage;
             toggle.graphic = checkImage;
 
-            // Label
             var labelGo = new GameObject("Label");
             labelGo.transform.SetParent(go.transform, false);
             var labelRect = labelGo.AddComponent<RectTransform>();
@@ -1093,7 +1081,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // New UI Element Creation Skills
+        // UI Element Creation Skills
         // ==================================================================================
 
         [UnitySkill("ui_create_dropdown", "Create a Dropdown UI element with options",
@@ -1134,7 +1122,6 @@ namespace UnitySkills
             captionRect.offsetMax = new Vector2(-25, 0);
             var captionText = AddTextComponent(captionGo, "", 14, Color.black);
 
-            // Arrow
             var arrowGo = new GameObject("Arrow");
             arrowGo.transform.SetParent(go.transform, false);
             var arrowRect = arrowGo.AddComponent<RectTransform>();
@@ -1157,7 +1144,6 @@ namespace UnitySkills
             templateImage.color = Color.white;
             var scrollRect = templateGo.AddComponent<ScrollRect>();
 
-            // Viewport
             var viewportGo = new GameObject("Viewport");
             viewportGo.transform.SetParent(templateGo.transform, false);
             var viewportRect = viewportGo.AddComponent<RectTransform>();
@@ -1168,7 +1154,6 @@ namespace UnitySkills
             var viewportImage = viewportGo.AddComponent<Image>();
             viewportImage.color = new Color(1, 1, 1, 0);
 
-            // Content
             var contentGo = new GameObject("Content");
             contentGo.transform.SetParent(viewportGo.transform, false);
             var contentRect = contentGo.AddComponent<RectTransform>();
@@ -1182,7 +1167,6 @@ namespace UnitySkills
             scrollRect.horizontal = false;
             scrollRect.movementType = ScrollRect.MovementType.Clamped;
 
-            // Item
             var itemGo = new GameObject("Item");
             itemGo.transform.SetParent(contentGo.transform, false);
             var itemRect = itemGo.AddComponent<RectTransform>();
@@ -1191,7 +1175,6 @@ namespace UnitySkills
             itemRect.sizeDelta = new Vector2(0, 28);
             var itemToggle = itemGo.AddComponent<Toggle>();
 
-            // Item background
             var itemBgGo = new GameObject("Item Background");
             itemBgGo.transform.SetParent(itemGo.transform, false);
             var itemBgRect = itemBgGo.AddComponent<RectTransform>();
@@ -1201,7 +1184,6 @@ namespace UnitySkills
             var itemBgImage = itemBgGo.AddComponent<Image>();
             itemBgImage.color = new Color(0.96f, 0.96f, 0.96f);
 
-            // Item checkmark
             var checkGo = new GameObject("Item Checkmark");
             checkGo.transform.SetParent(itemGo.transform, false);
             var checkRect = checkGo.AddComponent<RectTransform>();
@@ -1216,7 +1198,6 @@ namespace UnitySkills
             itemToggle.graphic = checkImage;
             itemToggle.isOn = true;
 
-            // Item label
             var itemLabelGo = new GameObject("Item Label");
             itemLabelGo.transform.SetParent(itemGo.transform, false);
             var itemLabelRect = itemLabelGo.AddComponent<RectTransform>();
@@ -1303,7 +1284,6 @@ namespace UnitySkills
             var bgImage = go.AddComponent<Image>();
             bgImage.color = new Color(0.1f, 0.1f, 0.1f, 0.5f);
 
-            // Viewport
             var viewportGo = new GameObject("Viewport");
             viewportGo.transform.SetParent(go.transform, false);
             var viewportRect = viewportGo.AddComponent<RectTransform>();
@@ -1314,7 +1294,6 @@ namespace UnitySkills
             var viewportImage = viewportGo.AddComponent<Image>();
             viewportImage.color = new Color(1, 1, 1, 0);
 
-            // Content
             var contentGo = new GameObject("Content");
             contentGo.transform.SetParent(viewportGo.transform, false);
             var contentRect = contentGo.AddComponent<RectTransform>();
@@ -1387,7 +1366,6 @@ namespace UnitySkills
             var bgImage = go.AddComponent<Image>();
             bgImage.color = new Color(0.8f, 0.8f, 0.8f);
 
-            // Sliding Area
             var slideAreaGo = new GameObject("Sliding Area");
             slideAreaGo.transform.SetParent(go.transform, false);
             var slideAreaRect = slideAreaGo.AddComponent<RectTransform>();
@@ -1396,7 +1374,6 @@ namespace UnitySkills
             slideAreaRect.offsetMin = new Vector2(10, 10);
             slideAreaRect.offsetMax = new Vector2(-10, -10);
 
-            // Handle
             var handleGo = new GameObject("Handle");
             handleGo.transform.SetParent(slideAreaGo.transform, false);
             var handleRect = handleGo.AddComponent<RectTransform>();

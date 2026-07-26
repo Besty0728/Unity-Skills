@@ -278,7 +278,6 @@ namespace UnitySkills
                 return;
             }
 
-            // Get GlobalObjectId for persistence
             string gid = GlobalObjectId.GetGlobalObjectIdSlow(obj).ToString();
 
             string json = "";
@@ -421,7 +420,6 @@ namespace UnitySkills
                 gameObjectHierarchy = CaptureGameObjectHierarchy(go)
             };
 
-            // Save all components data
             foreach (var comp in go.GetComponents<Component>())
             {
                 if (comp == null || comp is Transform) continue;
@@ -825,7 +823,6 @@ namespace UnitySkills
 
             SaveHistory();
 
-            // Reclaim file store entries no longer referenced by any task
             var referencedHashes = CollectReferencedHashes();
             WorkflowFileStore.CollectGarbage(referencedHashes, out _, out _);
         }
@@ -838,7 +835,6 @@ namespace UnitySkills
         /// </summary>
         public static string BeginSession(string sessionTag = null)
         {
-            // End any existing session first
             if (HasActiveSession)
             {
                 EndSession();
@@ -846,7 +842,6 @@ namespace UnitySkills
 
             _currentSessionId = Guid.NewGuid().ToString();
 
-            // Auto-start a task for this session
             BeginTask(sessionTag ?? "Session", $"Session started at {DateTime.Now:HH:mm:ss}");
             _currentTask.sessionId = _currentSessionId;
 
@@ -861,7 +856,6 @@ namespace UnitySkills
         {
             if (!HasActiveSession) return;
 
-            // End current task if any
             if (_currentTask != null)
             {
                 _currentTask.sessionId = _currentSessionId;
@@ -884,7 +878,6 @@ namespace UnitySkills
                 return result;
             }
 
-            // Find all tasks belonging to this session
             var sessionTasks = History.tasks
                 .Where(t => t.sessionId == sessionId)
                 .OrderByDescending(t => t.timestamp)
@@ -1975,12 +1968,10 @@ namespace UnitySkills
 
             newGo.name = snapshot.objectName;
 
-            // Restore transform from stored data
             newGo.transform.position = new Vector3(snapshot.posX, snapshot.posY, snapshot.posZ);
             newGo.transform.rotation = new Quaternion(snapshot.rotX, snapshot.rotY, snapshot.rotZ, snapshot.rotW);
             newGo.transform.localScale = new Vector3(snapshot.scaleX, snapshot.scaleY, snapshot.scaleZ);
 
-            // Restore all components
             if (snapshot.components != null)
             {
                 foreach (var compData in snapshot.components)

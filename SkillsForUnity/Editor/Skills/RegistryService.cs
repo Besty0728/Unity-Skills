@@ -31,18 +31,13 @@ namespace UnitySkills
                 ProjectName = Application.productName;
                 ProjectPath = Directory.GetParent(Application.dataPath).FullName;
 
-                // Generate stable Instance ID based on SHA256 hash to identify this specific project instance
-                // SHA256 is deterministic across processes/runtimes unlike GetHashCode()
                 var pathHash = ComputeStableHash(ProjectPath);
-                // Sanitize project name
                 var cleanName = System.Text.RegularExpressions.Regex.Replace(ProjectName, "[^a-zA-Z0-9]", "");
                 InstanceId = $"{cleanName}_{pathHash}";
 
-                // Ensure config dir exists
                 if (!Directory.Exists(GlobalConfigDir))
                     Directory.CreateDirectory(GlobalConfigDir);
 
-                // Clean up on quit
                 EditorApplication.quitting += Unregister;
                 // Assembly reload cleanup handled by SkillsHttpServer calling Stop()
             }
@@ -212,7 +207,6 @@ namespace UnitySkills
                         FileAccess.ReadWrite,
                         FileShare.None);
 
-                    // Read current content
                     var registry = new Dictionary<string, InstanceInfo>();
                     if (lockStream.Length > 0)
                     {
@@ -224,24 +218,21 @@ namespace UnitySkills
                         }
                     }
 
-                    // Apply modification
                     modifier(registry);
 
                     // Write to .tmp file first for atomic replacement
                     var newJson = JsonConvert.SerializeObject(registry, Formatting.Indented);
                     File.WriteAllText(tmpFile, newJson, Encoding.UTF8);
 
-                    // Truncate and overwrite the locked file
                     lockStream.SetLength(0);
                     lockStream.Seek(0, SeekOrigin.Begin);
                     var bytes = Encoding.UTF8.GetBytes(newJson);
                     lockStream.Write(bytes, 0, bytes.Length);
                     lockStream.Flush();
 
-                    // Clean up tmp file
                     try { File.Delete(tmpFile); } catch { }
 
-                    return; // Success
+                    return;
                 }
                 catch (IOException) when (attempt < maxRetries - 1)
                 {
@@ -290,7 +281,7 @@ namespace UnitySkills
             public int pid;
             public long last_active;
             public string unityVersion;
-            // Unity CLI 绑定（v2.3+）：AI 客户端跨项目发现"可冷启动"的实例用。
+            // Unity CLI 绑定：AI 客户端跨项目发现"可冷启动"的实例用。
             // 详情契约在 <project>/Library/UnitySkills/cli_config.json。
             public bool cliBound;
             public string cliPath;

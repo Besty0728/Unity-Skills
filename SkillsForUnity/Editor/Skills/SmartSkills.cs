@@ -59,8 +59,7 @@ namespace UnitySkills
             if (Validate.Required(propertyName, "propertyName") is object propertyErr) return propertyErr;
 
             var results = new List<object>();
-            
-            // Resolve Type
+
             var type = GetTypeByName(componentName);
             if (type == null) 
                 return new { success = false, error = $"Component type '{componentName}' not found. Try: Light, MeshRenderer, Camera, etc." };
@@ -244,7 +243,6 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(comp);
             Undo.RecordObject(comp, "Smart Bind");
 
-            // Element Type
             var elementType = isArray ? fieldType.GetElementType() : fieldType.GetGenericArguments()[0];
 
             // Convert GameObjects to ElementType
@@ -273,7 +271,6 @@ namespace UnitySkills
                 }
             }
 
-            // Set value
             if (isArray)
             {
                 var array = System.Array.CreateInstance(elementType, convertedList.Count);

@@ -112,7 +112,7 @@ namespace UnitySkills
             {"keepalive_unit", "sec"},
             {"keepalive_hint", "How often to wake Unity main thread when idle (min 5s)"},
 
-            // ===== v2 layout: tabs / topbar / drawer / footer / skills detail / agent buttons / history =====
+            // ===== layout: tabs / topbar / drawer / footer / skills detail / agent buttons / history =====
             {"tab_skills", "Skills"},
             {"tab_ai_config", "AI Config"},
             {"tab_history", "History"},
@@ -299,7 +299,7 @@ namespace UnitySkills
             {"debug_log", "Write a message to the Unity console"},
             {"console_set_pause_on_error_legacy_editor_alias", "Enable or disable 'Error Pause' in Play mode"},
             
-            // Perception Skills (NextGen)
+            // Perception Skills
             {"scene_analyze", "Analyze the active scene and project context in one pass"},
             {"scene_health_check", "Run a read-only health report for the active scene"},
             {"scene_contract_validate", "Validate scene conventions such as roots, UI infrastructure, tags, and layers"},
@@ -338,7 +338,7 @@ namespace UnitySkills
             {"history_redo", "Redo the last undone operation"},
             {"history_get_current", "Get the name of the current undo group"},
             
-            // UI Skills (Additional)
+            // UI Skills
             {"ui_set_anchor", "Set anchor preset for a UI element"},
             {"ui_set_rect", "Set RectTransform size, position, and padding"},
             {"ui_layout_children", "Arrange child UI elements in a layout"},
@@ -346,7 +346,6 @@ namespace UnitySkills
             {"ui_distribute_selected", "Distribute selected UI elements evenly"},
             
             // Validation Skills
-            // Already partially present, ensuring completeness if needed
 
             {"editor_get_layers", "Get all available layers"},
             {"prefab_create", "Create a prefab from a GameObject"},
@@ -387,8 +386,7 @@ namespace UnitySkills
             {"package_refresh", "Refresh the installed package list cache"},
             {"package_install_cinemachine", "Install Cinemachine (version 2 or 3)"},
             {"package_get_cinemachine_status", "Get Cinemachine installation status"},
-        
-            // Auto-generated: complete skill descriptions
+
             {"animator_add_parameter", "Add a parameter to an Animator Controller"},
             {"animator_assign_controller", "Assign an Animator Controller to a GameObject (supports name/instanceId/path)"},
             {"animator_create_controller", "Create a new Animator Controller"},
@@ -735,7 +733,7 @@ namespace UnitySkills
             {"optimize_analyze_overdraw", "Analyze transparent objects that may cause overdraw"},
             {"optimize_set_lod_group", "Add or configure LOD Group"},
 
-            // Audio Skills (new)
+            // Audio Skills
             {"audio_find_clips", "Search for AudioClip assets in the project"},
             {"audio_get_clip_info", "Get detailed information about an AudioClip"},
             {"audio_add_source", "Add an AudioSource component to a GameObject"},
@@ -744,7 +742,7 @@ namespace UnitySkills
             {"audio_find_sources_in_scene", "Find all AudioSource components in the scene"},
             {"audio_create_mixer", "Create a new AudioMixer asset"},
 
-            // Model Skills (new)
+            // Model Skills
             {"model_find_assets", "Search for model assets in the project"},
             {"model_get_mesh_info", "Get detailed Mesh information (vertices, triangles)"},
             {"model_get_materials_info", "Get material mapping for a model asset"},
@@ -753,7 +751,7 @@ namespace UnitySkills
             {"model_get_rig_info", "Get rig/skeleton binding information"},
             {"model_set_rig", "Set rig/skeleton binding type"},
 
-            // Texture Skills (new)
+            // Texture Skills
             {"texture_find_assets", "Search for texture assets in the project"},
             {"texture_get_info", "Get detailed texture information (dimensions, format, memory)"},
             {"texture_set_type", "Set texture type"},
@@ -762,41 +760,41 @@ namespace UnitySkills
             {"texture_set_sprite_settings", "Configure Sprite-specific settings"},
             {"texture_find_by_size", "Find textures by dimension range"},
 
-            // Light Skills (new)
+            // Light Skills
             {"light_add_probe_group", "Add a Light Probe Group to a GameObject"},
             {"light_add_reflection_probe", "Create a Reflection Probe at a position"},
             {"light_get_lightmap_settings", "Get Lightmap baking settings"},
 
-            // Package Skills (new)
+            // Package Skills
             {"package_search", "Search for packages in the Unity Registry"},
             {"package_get_dependencies", "Get dependency list for an installed package"},
             {"package_get_versions", "Get all available versions for a package"},
 
-            // Validation Skills (new)
+            // Validation Skills
             {"validate_missing_references", "Find null/missing object references on components"},
             {"validate_mesh_collider_convex", "Find non-convex MeshColliders"},
             {"validate_shader_errors", "Find shaders with compilation errors"},
 
-            // Animator Skills (new)
+            // Animator Skills
             {"animator_add_state", "Add a state to an Animator Controller layer"},
             {"animator_add_transition", "Add a transition between two states"},
 
-            // Component Skills (new)
+            // Component Skills
             {"component_copy", "Copy a component from one GameObject to another"},
             {"component_set_enabled", "Enable or disable a Behaviour component"},
 
-            // Perception Skills (new)
+            // Perception Skills
             {"scene_tag_layer_stats", "Get Tag/Layer usage stats and find potential issues"},
             {"scene_performance_hints", "Diagnose scene performance issues with actionable suggestions"},
 
-            // Prefab Skills (new)
+            // Prefab Skills
             {"prefab_create_variant", "Create a prefab variant from an existing prefab"},
             {"prefab_find_instances", "Find all instances of a prefab in the scene"},
 
-            // Scene Skills (new)
+            // Scene Skills
             {"scene_find_objects", "Search GameObjects by name pattern, tag, or component type"},
 
-            // Shader Skills (new)
+            // Shader Skills
             {"shader_check_errors", "Check shader for compilation errors"},
             {"shader_get_keywords", "Get shader keyword list"},
             {"shader_get_variant_count", "Get shader variant count for performance analysis"},
@@ -839,7 +837,7 @@ namespace UnitySkills
             {"asset_get_labels", "Get asset labels"},
             {"asset_set_labels", "Set asset labels"},
 
-            // Camera Skills (new)
+            // Camera Skills
             {"camera_create", "Create a new Camera"},
             {"camera_set_properties", "Set camera properties"},
             {"camera_get_properties", "Get camera properties"},
@@ -849,28 +847,28 @@ namespace UnitySkills
             {"camera_set_culling_mask", "Set camera culling mask"},
             {"camera_set_orthographic", "Set camera orthographic mode"},
 
-            // Cleaner Skills (new)
+            // Cleaner Skills
             {"cleaner_find_empty_folders", "Find empty folders in the project"},
             {"cleaner_delete_empty_folders", "Delete empty folders"},
             {"cleaner_find_large_assets", "Find large assets in the project"},
             {"cleaner_fix_missing_scripts", "Remove missing script components"},
             {"cleaner_get_dependency_tree", "Get asset dependency tree"},
 
-            // Console Skills (new)
+            // Console Skills
             {"console_export", "Export console logs to file"},
             {"console_get_stats", "Get console log statistics"},
             {"console_set_pause_on_error", "Set pause on error"},
             {"console_set_collapse", "Set console collapse mode"},
             {"console_set_clear_on_play", "Set clear on play"},
 
-            // Debug Skills (new)
+            // Debug Skills
             {"debug_get_memory_info", "Get detailed memory information"},
             {"debug_get_stack_trace", "Get stack trace of last error"},
             {"debug_get_assembly_info", "Get loaded assembly information"},
             {"debug_get_defines", "Get scripting define symbols"},
             {"debug_set_defines", "Set scripting define symbols"},
 
-            // Event Skills (new)
+            // Event Skills
             {"event_add_listener_batch", "Batch add persistent listeners"},
             {"event_clear_listeners", "Clear all persistent listeners"},
             {"event_copy_listeners", "Copy listeners between events"},
@@ -878,7 +876,7 @@ namespace UnitySkills
             {"event_list_events", "List all UnityEvents on a component"},
             {"event_set_listener_state", "Set listener enabled state"},
 
-            // NavMesh Skills (new)
+            // NavMesh Skills
             {"navmesh_add_agent", "Add NavMeshAgent component"},
             {"navmesh_set_agent", "Set NavMeshAgent properties"},
             {"navmesh_add_obstacle", "Add NavMeshObstacle component"},
@@ -887,7 +885,7 @@ namespace UnitySkills
             {"navmesh_get_settings", "Get NavMesh settings"},
             {"navmesh_sample_position", "Sample nearest point on NavMesh"},
 
-            // Physics Skills (new)
+            // Physics Skills
             {"physics_create_material", "Create a PhysicMaterial"},
             {"physics_set_material", "Assign PhysicMaterial to a collider"},
             {"physics_set_layer_collision", "Set layer collision matrix"},
@@ -897,7 +895,7 @@ namespace UnitySkills
             {"physics_boxcast", "Cast a box and get hit info"},
             {"physics_overlap_box", "Check for colliders in a box"},
 
-            // Project Skills (new)
+            // Project Skills
             {"project_add_tag", "Add a new tag"},
             {"project_get_tags", "Get all project tags"},
             {"project_get_layers", "Get all project layers"},
@@ -906,21 +904,21 @@ namespace UnitySkills
             {"build_player", "Build player"},
             {"project_get_player_settings", "Get player settings"},
 
-            // Script Skills (new)
+            // Script Skills
             {"script_replace", "Replace content in a script"},
             {"script_rename", "Rename a script file"},
             {"script_move", "Move a script file"},
             {"script_list", "List scripts in the project"},
             {"script_get_info", "Get script information"},
 
-            // ScriptableObject Skills (new)
+            // ScriptableObject Skills
             {"scriptableobject_delete", "Delete a ScriptableObject asset"},
             {"scriptableobject_find", "Find ScriptableObject assets"},
             {"scriptableobject_set_batch", "Batch set ScriptableObject fields"},
             {"scriptableobject_export_json", "Export ScriptableObject to JSON"},
             {"scriptableobject_import_json", "Import ScriptableObject from JSON"},
 
-            // Smart Skills (new)
+            // Smart Skills
             {"smart_align_to_ground", "Align objects to ground surface"},
             {"smart_distribute", "Distribute objects evenly"},
             {"smart_snap_to_grid", "Snap objects to grid"},
@@ -929,7 +927,7 @@ namespace UnitySkills
             {"smart_scene_query_spatial", "Spatial query for nearby objects"},
             {"smart_select_by_component", "Select objects by component type"},
 
-            // Test Skills (new)
+            // Test Skills
             {"test_create_editmode", "Create an EditMode test"},
             {"test_create_playmode", "Create a PlayMode test"},
             {"test_get_last_result", "Get last test result"},
@@ -940,7 +938,7 @@ namespace UnitySkills
             {"test_discover_get_result", "Get the result of an asynchronous Unity Test Runner discovery job."},
             {"unity_diagnose", "Aggregated Editor health snapshot — console errors, compile state, recent workflow tasks, recent jobs, server stats. Call this FIRST when triaging problems."},
 
-            // Timeline Skills (new)
+            // Timeline Skills
             {"timeline_add_activation_track", "Add an Activation track"},
             {"timeline_add_control_track", "Add a Control track"},
             {"timeline_add_signal_track", "Add a Signal track"},
@@ -975,7 +973,7 @@ namespace UnitySkills
             {"probuilder_combine_meshes", "Combine multiple ProBuilder meshes into one"},
             {"probuilder_set_material", "Set material on entire ProBuilder mesh"},
 
-            // UI Skills (new)
+            // UI Skills
             {"ui_create_dropdown", "Create a Dropdown UI element"},
             {"ui_create_scrollview", "Create a ScrollView UI element"},
             {"ui_create_rawimage", "Create a RawImage UI element"},
@@ -1014,10 +1012,10 @@ namespace UnitySkills
             {"uitk_create_runtime_ui", "Generate a runtime UI script with UIDocument"},
             {"uitk_inspect_document", "Inspect UIDocument VisualElement hierarchy"},
 
-            // Package Skills (new)
+            // Package Skills
             {"package_install_splines", "Install Unity Splines package"},
 
-            // Script Skills (new)
+            // Script Skills
             {"script_dependency_graph", "Get script dependency graph (N-hop closure)"},
             {"script_get_compile_feedback", "Get compile diagnostics for a script"},
 
@@ -1118,7 +1116,7 @@ namespace UnitySkills
             {"keepalive_unit", "秒"},
             {"keepalive_hint", "空闲时唤醒 Unity 主线程的间隔（最小 5 秒）"},
 
-            // ===== v2 layout: tabs / topbar / drawer / footer / skills detail / agent buttons / history =====
+            // ===== layout: tabs / topbar / drawer / footer / skills detail / agent buttons / history =====
             {"tab_skills", "Skill"},
             {"tab_ai_config", "AI 配置"},
             {"tab_history", "历史"},
@@ -1332,7 +1330,6 @@ namespace UnitySkills
             {"package_install_cinemachine", "安装 Cinemachine (版本 2 或 3)"},
             {"package_get_cinemachine_status", "获取 Cinemachine 安装状态"},
 
-            // New Skills (Batch 1.2.0+)
             {"gameobject_rename", "重命名游戏对象"},
             {"gameobject_rename_batch", "批量重命名游戏对象"},
             
@@ -1441,7 +1438,7 @@ namespace UnitySkills
             {"timeline_add_audio_track", "添加音轨"},
             {"timeline_add_animation_track", "添加动画轨道(可选绑定对象)"},
             
-            // Phase 4: Cinemachine & Logging
+            // Cinemachine & Logging
             {"cinemachine_create_vcam", "创建虚拟相机"},
             {"cinemachine_inspect_vcam", "内省虚拟相机 (获取组件与Tooltip)"},
             {"cinemachine_set_vcam_property", "通用设置虚拟相机属性 (支持反射)"},
@@ -1461,7 +1458,7 @@ namespace UnitySkills
             {"debug_log", "向 Unity 控制台写入消息"},
             {"console_set_pause_on_error_legacy_editor_alias", "启用/禁用播放模式下的'报错暂停'"},
             
-            // Perception Skills (NextGen)
+            // Perception Skills
             {"scene_analyze", "一次性分析当前场景与项目上下文"},
             {"scene_health_check", "对当前场景执行只读健康检查"},
             {"scene_contract_validate", "校验场景约定，如根节点、UI 基础设施、标签和图层"},
@@ -1500,14 +1497,14 @@ namespace UnitySkills
             {"history_redo", "重做上一次撤销的操作"},
             {"history_get_current", "获取当前撤销组的名称"},
             
-            // UI Skills (Additional)
+            // UI Skills
             {"ui_set_anchor", "设置 UI 元素的锚点预设"},
             {"ui_set_rect", "设置 RectTransform 的尺寸、位置和边距"},
             {"ui_layout_children", "按布局排列子 UI 元素"},
             {"ui_align_selected", "对齐选中的 UI 元素"},
             {"ui_distribute_selected", "均匀分布选中的 UI 元素"},
 
-            // Cinemachine Skills (Complete)
+            // Cinemachine Skills
             {"cinemachine_add_component", "添加 Cinemachine 组件 (如 OrbitalFollow)"},
             {"cinemachine_set_lens", "快速配置镜头设置 (FOV/近裁面/远裁面/正交尺寸)"},
             {"cinemachine_list_components", "列出所有可用的 Cinemachine 组件名称"},
@@ -1549,7 +1546,7 @@ namespace UnitySkills
             {"asset_delete_batch", "批量删除资源"},
             {"asset_move_batch", "批量移动资源"},
 
-            // Material Skills (Complete)
+            // Material Skills
             {"material_create_batch", "批量创建材质"},
             {"material_assign_batch", "批量分配材质"},
             {"material_duplicate", "复制材质"},
@@ -1567,23 +1564,23 @@ namespace UnitySkills
             {"material_get_properties", "获取材质所有属性"},
             {"material_get_keywords", "获取材质启用的 Shader 关键字"},
 
-            // Scene Skills (Complete)
+            // Scene Skills
             {"scene_get_loaded", "获取所有已加载场景列表"},
             {"scene_unload", "卸载场景 (Additive)"},
             {"scene_set_active", "设置活动场景 (多场景编辑)"},
 
-            // Terrain Skills (Complete)
+            // Terrain Skills
             {"terrain_add_hill", "在地形上添加平滑山丘"},
             {"terrain_generate_perlin", "使用 Perlin 噪声生成自然地形"},
             {"terrain_smooth", "平滑地形高度"},
             {"terrain_flatten", "将地形展平到指定高度"},
 
-            // Prefab Skills (Complete)
+            // Prefab Skills
             {"prefab_get_overrides", "获取预制体实例的属性覆盖列表"},
             {"prefab_revert_overrides", "还原预制体实例的所有覆盖"},
             {"prefab_apply_overrides", "将实例覆盖应用到源预制体"},
 
-            // Workflow Skills (Complete)
+            // Workflow Skills
             {"workflow_task_start", "开始新的持久化工作流任务"},
             {"workflow_task_end", "结束当前工作流任务"},
             {"workflow_snapshot_object", "手动快照对象 (修改前)"},
@@ -1603,10 +1600,10 @@ namespace UnitySkills
             {"batch_query_assets", "按类型、目录、标签和名称模式查询项目资源"},
             {"batch_retry_failed", "仅重试之前批处理报告中的失败项"},
 
-            // Editor Skills (Complete)
+            // Editor Skills
             {"editor_get_context", "获取完整编辑器上下文 (选中对象/资源/场景/窗口)"},
 
-            // Script Skills (Complete)
+            // Script Skills
             {"script_create_batch", "批量创建脚本"},
 
             // Sample Skills
@@ -1619,7 +1616,7 @@ namespace UnitySkills
             {"set_object_scale", "设置游戏对象缩放"},
             {"find_objects_by_name", "按名称查找所有游戏对象（兼容 nameContains/name）"},
 
-            // Profiler Skills (new)
+            // Profiler Skills
             {"profiler_get_memory", "获取内存使用概况 (总分配/保留/Mono堆)"},
             {"profiler_get_runtime_memory", "获取场景中内存占用最大的 N 个对象"},
             {"profiler_get_texture_memory", "获取所有已加载纹理的内存占用"},
@@ -1630,7 +1627,7 @@ namespace UnitySkills
             {"profiler_get_rendering_stats", "获取渲染统计 (批次/三角面/顶点)"},
             {"profiler_get_asset_bundle_stats", "获取已加载 AssetBundle 信息"},
 
-            // Optimization Skills (new)
+            // Optimization Skills
             {"optimize_analyze_scene", "分析场景性能瓶颈"},
             {"optimize_find_large_assets", "查找超过指定大小的资源"},
             {"optimize_set_static_flags", "设置游戏对象的 Static Flags"},
@@ -1640,7 +1637,7 @@ namespace UnitySkills
             {"optimize_analyze_overdraw", "分析可能导致 Overdraw 的透明物体"},
             {"optimize_set_lod_group", "添加或配置 LOD Group"},
 
-            // Audio Skills (new)
+            // Audio Skills
             {"audio_find_clips", "搜索项目中的 AudioClip 资源"},
             {"audio_get_clip_info", "获取 AudioClip 详细信息"},
             {"audio_add_source", "添加 AudioSource 组件"},
@@ -1649,7 +1646,7 @@ namespace UnitySkills
             {"audio_find_sources_in_scene", "查找场景中所有 AudioSource"},
             {"audio_create_mixer", "创建 AudioMixer 资源"},
 
-            // Model Skills (new)
+            // Model Skills
             {"model_find_assets", "搜索项目中的模型资源"},
             {"model_get_mesh_info", "获取网格详细信息 (顶点/三角面)"},
             {"model_get_materials_info", "获取模型的材质映射"},
@@ -1658,7 +1655,7 @@ namespace UnitySkills
             {"model_get_rig_info", "获取骨骼绑定信息"},
             {"model_set_rig", "设置骨骼绑定类型"},
 
-            // Texture Skills (new)
+            // Texture Skills
             {"texture_find_assets", "搜索项目中的纹理资源"},
             {"texture_get_info", "获取纹理详细信息 (尺寸/格式/内存)"},
             {"texture_set_type", "设置纹理类型"},
@@ -1667,41 +1664,41 @@ namespace UnitySkills
             {"texture_set_sprite_settings", "配置 Sprite 设置"},
             {"texture_find_by_size", "按尺寸范围查找纹理"},
 
-            // Light Skills (new)
+            // Light Skills
             {"light_add_probe_group", "添加光照探针组"},
             {"light_add_reflection_probe", "创建反射探针"},
             {"light_get_lightmap_settings", "获取光照贴图烘焙设置"},
 
-            // Package Skills (new)
+            // Package Skills
             {"package_search", "搜索 Unity Registry 中的包"},
             {"package_get_dependencies", "获取包的依赖关系"},
             {"package_get_versions", "获取包的所有可用版本"},
 
-            // Validation Skills (new)
+            // Validation Skills
             {"validate_missing_references", "查找组件上的空引用/丢失引用"},
             {"validate_mesh_collider_convex", "查找非凸 MeshCollider"},
             {"validate_shader_errors", "查找有编译错误的 Shader"},
 
-            // Animator Skills (new)
+            // Animator Skills
             {"animator_add_state", "添加动画状态到 Animator Controller 层"},
             {"animator_add_transition", "添加两个状态之间的过渡"},
 
-            // Component Skills (new)
+            // Component Skills
             {"component_copy", "复制组件到另一个游戏对象"},
             {"component_set_enabled", "启用/禁用 Behaviour 组件"},
 
-            // Perception Skills (new)
+            // Perception Skills
             {"scene_tag_layer_stats", "获取 Tag/Layer 使用统计及潜在问题"},
             {"scene_performance_hints", "诊断场景性能问题并给出可操作建议"},
 
-            // Prefab Skills (new)
+            // Prefab Skills
             {"prefab_create_variant", "从现有预制体创建变体"},
             {"prefab_find_instances", "查找预制体在场景中的所有实例"},
 
-            // Scene Skills (new)
+            // Scene Skills
             {"scene_find_objects", "按名称/标签/组件类型搜索游戏对象"},
 
-            // Shader Skills (new)
+            // Shader Skills
             {"shader_check_errors", "检查 Shader 编译错误"},
             {"shader_get_keywords", "获取 Shader 关键字列表"},
             {"shader_get_variant_count", "获取 Shader 变体数量 (性能分析)"},
@@ -1731,7 +1728,7 @@ namespace UnitySkills
             {"shadergraph_reimport", "强制重新导入 Shader Graph 资产"},
             {"shader_set_global_keyword", "启用/禁用全局 Shader 关键字"},
 
-            // AssetImport Skills (new)
+            // AssetImport Skills
             {"texture_get_import_settings", "获取纹理导入设置"},
             {"audio_get_import_settings", "获取音频导入设置"},
             {"audio_set_import_settings", "设置音频导入设置"},
@@ -1740,7 +1737,7 @@ namespace UnitySkills
             {"asset_set_labels", "设置资源标签"},
             {"model_get_import_settings", "获取模型导入设置"},
 
-            // Camera Skills (new)
+            // Camera Skills
             {"camera_create", "创建新相机"},
             {"camera_set_properties", "设置相机属性"},
             {"camera_get_properties", "获取相机属性"},
@@ -1750,28 +1747,28 @@ namespace UnitySkills
             {"camera_set_culling_mask", "设置相机剔除遮罩"},
             {"camera_set_orthographic", "设置相机正交模式"},
 
-            // Cleaner Skills (new)
+            // Cleaner Skills
             {"cleaner_find_empty_folders", "查找项目中的空文件夹"},
             {"cleaner_delete_empty_folders", "删除空文件夹"},
             {"cleaner_find_large_assets", "查找项目中的大资源"},
             {"cleaner_fix_missing_scripts", "移除丢失的脚本组件"},
             {"cleaner_get_dependency_tree", "获取资源依赖树"},
 
-            // Console Skills (new)
+            // Console Skills
             {"console_export", "导出控制台日志到文件"},
             {"console_get_stats", "获取控制台日志统计"},
             {"console_set_pause_on_error", "设置报错暂停"},
             {"console_set_collapse", "设置控制台折叠模式"},
             {"console_set_clear_on_play", "设置播放时清除"},
 
-            // Debug Skills (new)
+            // Debug Skills
             {"debug_get_memory_info", "获取详细内存信息"},
             {"debug_get_stack_trace", "获取最后一条错误的堆栈跟踪"},
             {"debug_get_assembly_info", "获取已加载程序集信息"},
             {"debug_get_defines", "获取脚本宏定义符号"},
             {"debug_set_defines", "设置脚本宏定义符号"},
 
-            // Event Skills (new)
+            // Event Skills
             {"event_add_listener_batch", "批量添加持久化监听器"},
             {"event_clear_listeners", "清除所有持久化监听器"},
             {"event_copy_listeners", "复制事件监听器"},
@@ -1779,7 +1776,7 @@ namespace UnitySkills
             {"event_list_events", "列出组件上的所有 UnityEvent"},
             {"event_set_listener_state", "设置监听器启用状态"},
 
-            // NavMesh Skills (new)
+            // NavMesh Skills
             {"navmesh_add_agent", "添加 NavMeshAgent 组件"},
             {"navmesh_set_agent", "设置 NavMeshAgent 属性"},
             {"navmesh_add_obstacle", "添加 NavMeshObstacle 组件"},
@@ -1788,7 +1785,7 @@ namespace UnitySkills
             {"navmesh_get_settings", "获取 NavMesh 设置"},
             {"navmesh_sample_position", "采样 NavMesh 上最近的点"},
 
-            // Physics Skills (new)
+            // Physics Skills
             {"physics_create_material", "创建物理材质"},
             {"physics_set_material", "分配物理材质到碰撞体"},
             {"physics_set_layer_collision", "设置层碰撞矩阵"},
@@ -1798,7 +1795,7 @@ namespace UnitySkills
             {"physics_boxcast", "盒形射线检测"},
             {"physics_overlap_box", "检测盒形区域内的碰撞体"},
 
-            // Project Skills (new)
+            // Project Skills
             {"project_add_tag", "添加新标签"},
             {"project_get_tags", "获取所有项目标签"},
             {"project_get_layers", "获取所有项目层"},
@@ -1969,21 +1966,21 @@ namespace UnitySkills
             {"xr_setup_turn_provider", "向 XR Origin 添加瞬转或连续转向提供器"},
             {"xr_setup_ui_canvas", "使 Canvas 兼容 XR 交互"},
 
-            // Script Skills (new)
+            // Script Skills
             {"script_replace", "替换脚本中的内容"},
             {"script_rename", "重命名脚本文件"},
             {"script_move", "移动脚本文件"},
             {"script_list", "列出项目中的脚本"},
             {"script_get_info", "获取脚本信息"},
 
-            // ScriptableObject Skills (new)
+            // ScriptableObject Skills
             {"scriptableobject_delete", "删除 ScriptableObject 资源"},
             {"scriptableobject_find", "查找 ScriptableObject 资源"},
             {"scriptableobject_set_batch", "批量设置 ScriptableObject 字段"},
             {"scriptableobject_export_json", "导出 ScriptableObject 为 JSON"},
             {"scriptableobject_import_json", "从 JSON 导入 ScriptableObject"},
 
-            // Smart Skills (new)
+            // Smart Skills
             {"smart_align_to_ground", "将对象对齐到地面"},
             {"smart_distribute", "均匀分布对象"},
             {"smart_snap_to_grid", "将对象吸附到网格"},
@@ -1992,7 +1989,7 @@ namespace UnitySkills
             {"smart_scene_query_spatial", "空间查询附近对象"},
             {"smart_select_by_component", "按组件类型选择对象"},
 
-            // Test Skills (new)
+            // Test Skills
             {"test_create_editmode", "创建 EditMode 测试"},
             {"test_create_playmode", "创建 PlayMode 测试"},
             {"test_get_last_result", "获取上次测试结果"},
@@ -2003,7 +2000,7 @@ namespace UnitySkills
             {"test_discover_get_result", "获取异步 Unity Test Runner 测试发现任务的结果。"},
             {"unity_diagnose", "聚合的 Editor 健康快照——控制台错误、编译状态、近期工作流任务、近期 Job、服务器统计。问题排查时请最先调用此 Skill。"},
 
-            // Timeline Skills (new)
+            // Timeline Skills
             {"timeline_add_activation_track", "添加激活轨道"},
             {"timeline_add_control_track", "添加控制轨道"},
             {"timeline_add_signal_track", "添加信号轨道"},
@@ -2038,7 +2035,7 @@ namespace UnitySkills
             {"probuilder_combine_meshes", "合并多个 ProBuilder 网格为一个"},
             {"probuilder_set_material", "设置整个 ProBuilder 网格的材质"},
 
-            // UI Skills (new)
+            // UI Skills
             {"ui_create_dropdown", "创建下拉框(Dropdown)"},
             {"ui_create_scrollview", "创建滚动视图(ScrollView)"},
             {"ui_create_rawimage", "创建原始图像(RawImage)"},
@@ -2077,16 +2074,16 @@ namespace UnitySkills
             {"uitk_create_runtime_ui", "生成运行时 UI Toolkit 脚本"},
             {"uitk_inspect_document", "检查 UIDocument 的 VisualElement 层级"},
 
-            // AssetImport Skills (missing)
+            // AssetImport Skills
             {"asset_reimport", "强制重新导入资源"},
             {"asset_reimport_batch", "批量重新导入匹配的资源"},
             {"texture_set_import_settings", "设置纹理导入设置"},
             {"model_set_import_settings", "设置模型导入设置"},
 
-            // Package Skills (missing)
+            // Package Skills
             {"package_install_splines", "安装 Unity Splines 包"},
 
-            // Script Skills (missing)
+            // Script Skills
             {"script_dependency_graph", "获取脚本依赖关系图 (N 跳闭包)"},
             {"script_get_compile_feedback", "获取脚本编译诊断信息"},
 

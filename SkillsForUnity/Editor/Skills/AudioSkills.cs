@@ -138,7 +138,6 @@ namespace UnitySkills
                 importer.defaultSampleSettings = sampleSettings;
             }
 
-            // Apply changes
             importer.SaveAndReimport();
 
             return new

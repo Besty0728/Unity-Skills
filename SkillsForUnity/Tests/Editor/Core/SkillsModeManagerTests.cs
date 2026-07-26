@@ -7,13 +7,13 @@ using UnityEditor;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// Unit tests for the v1.9 Skill mode permission system (plan section 11).
+    /// Unit tests for the Skill mode permission system (plan section 11).
     ///
     /// Covers three operating modes (Approval / Auto / Bypass), two approval channels
     /// (Dialog / Panel), auto NeverInSemi judgement, grant token lifecycle, EditorPrefs
     /// persistence and the upgrade-compat rule (existing install → Bypass).
     ///
-    /// v1.9 改版后新增覆盖（工作包 A）：
+    /// 另外覆盖：
     /// - Allowlist 通道 (AddToAllowlist / RemoveFromAllowlist / ClearAllowlist / IsInAllowlist)
     /// - Allowlist 优先于 IsForbiddenInSemi
     /// - 单次有效 grant：TryGrant 不再永久写白名单
@@ -232,7 +232,7 @@ namespace UnitySkills.Tests.Core
 
             Assert.IsTrue(SkillsModeManager.TryGrant(skillName, token, args));
 
-            // v1.9 改版：grant 不再永久写白名单。重新 CheckAccess（无 one-shot 重入）应再次 NeedsGrant。
+            // grant 不再永久写白名单。重新 CheckAccess（无 one-shot 重入）应再次 NeedsGrant。
             CollectionAssert.DoesNotContain(SkillsModeManager.AllowlistSkills, skillName);
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,
                 SkillsModeManager.CheckAccess(MakeSkill(skillName)));
@@ -282,7 +282,7 @@ namespace UnitySkills.Tests.Core
             var (token, _, _) = SkillsModeManager.IssueGrantRequest(skillName, args);
 
             Assert.IsTrue(SkillsModeManager.Approve(token));
-            // v1.9 改版：Approve 不再永久写白名单，entry 保留等待后续 grant 触发一次性执行。
+            // Approve 不再永久写白名单，entry 保留等待后续 grant 触发一次性执行。
             CollectionAssert.DoesNotContain(SkillsModeManager.AllowlistSkills, skillName);
             var pendingAfterApprove = SkillsModeManager.PeekPendingForTests(token);
             Assert.IsNotNull(pendingAfterApprove, "Entry must be kept after Approve for AI re-grant.");
@@ -666,7 +666,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Migration_LegacyGrantedToAllowlist_MigratesEntriesAndSetsDoneFlag()
         {
-            // 1) 模拟老 v1.9 install：写 legacy granted、清掉迁移标记和新 allowlist。
+            // 1) 模拟老 install：写 legacy granted、清掉迁移标记和新 allowlist。
             EditorPrefs.SetString(PrefKeyLegacyGranted, "[\"alpha\",\"beta\",\"gamma\"]");
             EditorPrefs.DeleteKey(PrefKeyMigrationDone);
             EditorPrefs.DeleteKey(PrefKeyAllowlist);

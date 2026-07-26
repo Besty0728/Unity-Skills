@@ -255,7 +255,6 @@ namespace UnitySkills
                     return new { success = false, error = "Invalid or expired confirmToken. Please call again without confirmToken to get a new preview." };
                 }
 
-                // Check if token is expired (5 minutes)
                 if ((System.DateTime.Now - pending.CreatedAt).TotalMinutes > 5)
                 {
                     _pendingDeletes.Remove(confirmToken);
@@ -334,7 +333,6 @@ namespace UnitySkills
                 });
             }
 
-            // Generate confirmation token
             var token = System.Guid.NewGuid().ToString("N").Substring(0, 8);
             _pendingDeletes[token] = new PendingDeleteOperation
             {
@@ -343,7 +341,6 @@ namespace UnitySkills
                 TotalBytes = totalBytes
             };
 
-            // Clean up old tokens
             var expiredTokens = _pendingDeletes.Where(kv => (System.DateTime.Now - kv.Value.CreatedAt).TotalMinutes > 5).Select(kv => kv.Key).ToList();
             foreach (var expired in expiredTokens) _pendingDeletes.Remove(expired);
 

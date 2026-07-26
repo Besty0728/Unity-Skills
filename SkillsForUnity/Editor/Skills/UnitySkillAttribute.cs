@@ -95,7 +95,7 @@ namespace UnitySkills
         /// </summary>
         public bool SkipAutoPresnapshot { get; set; }
 
-        // === Intent-level metadata (v1.7) ===
+        // === Intent-level metadata ===
 
         /// <summary>Module category, maps to the *Skills.cs file this skill belongs to.</summary>
         public SkillCategory Category { get; set; }
@@ -139,7 +139,7 @@ namespace UnitySkills
         public string[] RequiresPackages { get; set; }
 
         /// <summary>
-        /// 权限风险档位（v1.9）。
+        /// 权限风险档位。
         /// SemiAuto = 三档模式下均直接执行；FullAuto = Approval 模式下需用户授权。
         /// 默认 FullAuto，使未标注的 skill 在 Approval 模式下走授权流程（这是 Mode 字段的默认值，与出厂操作模式默认无关）。
         /// </summary>

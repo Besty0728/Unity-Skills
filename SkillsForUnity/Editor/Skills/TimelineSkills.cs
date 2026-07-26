@@ -29,11 +29,9 @@ namespace UnitySkills
             string assetPath = System.IO.Path.Combine(folder, name + ".playable");
             assetPath = AssetDatabase.GenerateUniqueAssetPath(assetPath);
 
-            // Create Asset
             var timelineAsset = ScriptableObject.CreateInstance<TimelineAsset>();
             AssetDatabase.CreateAsset(timelineAsset, assetPath);
-            
-            // Create GameObject
+
             var go = new GameObject(name);
             var director = go.AddComponent<PlayableDirector>();
             director.playableAsset = timelineAsset;

@@ -9,8 +9,7 @@ namespace UnitySkills
 {
     /// <summary>
     /// Component management skills - add, remove, get, set properties.
-    /// Now supports finding by name, instanceId, or path.
-    /// Enhanced with advanced type conversion and reference resolution.
+    /// Supports finding by name, instanceId, or path, with advanced type conversion and reference resolution.
     /// </summary>
     public static class ComponentSkills
     {
@@ -87,7 +86,6 @@ namespace UnitySkills
 
             var comp = Undo.AddComponent(go, type);
 
-            // Record created component for workflow undo if recording
             if (WorkflowManager.IsRecording)
             {
                 WorkflowManager.SnapshotCreatedComponent(comp);
@@ -175,7 +173,6 @@ namespace UnitySkills
 
             var comp = components[componentIndex];
 
-            // Check if it's a required component
             var requiredBy = GetRequiredByComponents(go, type);
             if (requiredBy.Any())
                 return new {
@@ -303,7 +300,6 @@ namespace UnitySkills
             if (comp == null)
                 return new { error = $"Component not found: {componentType}" };
 
-            // Find property or field (with caching)
             var (prop, field) = FindMember(type, propertyName);
 
             if (prop == null && field == null)
@@ -389,7 +385,6 @@ namespace UnitySkills
                 if (comp == null)
                     throw new System.Exception($"Component not found: {item.componentType}");
 
-                // Find property or field (with caching)
                 var (prop, field) = FindMember(type, item.propertyName);
 
                 if (prop == null && field == null)
@@ -667,7 +662,6 @@ namespace UnitySkills
         {
             if (string.IsNullOrEmpty(name)) return null;
             
-            // Check cache first
             if (_typeCache.TryGetValue(name, out var cached))
                 return cached;
 
@@ -959,7 +953,6 @@ namespace UnitySkills
 
         private static float[] ParseFloatArray(string value, int expectedCount)
         {
-            // Remove parentheses and brackets
             value = value.Trim('(', ')', '[', ']', '{', '}');
             var parts = value.Split(new[] { ',', ' ', ';' }, System.StringSplitOptions.RemoveEmptyEntries);
             
@@ -996,7 +989,6 @@ namespace UnitySkills
             if (targetGo == null)
                 return null;
 
-            // Return appropriate type
             if (targetType == typeof(Transform))
                 return targetGo.transform;
             if (targetType == typeof(GameObject))

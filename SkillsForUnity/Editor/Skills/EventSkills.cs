@@ -25,12 +25,10 @@ namespace UnitySkills
             var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (findErr != null) return findErr;
 
-            // Find component
             var component = FindComponentOnGameObject(go, componentName);
             if (component == null)
                 return new { error = $"Component not found: {componentName} on {go.name}" };
 
-            // Find event field via reflection
             var type = component.GetType();
             var field = type.GetField(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             var property = type.GetProperty(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -45,7 +43,6 @@ namespace UnitySkills
             if (unityEvent == null)
                 return new { error = $"UnityEvent field/property '{eventName}' not found or null on {componentName}" };
 
-            // Inspect listeners
             int count = unityEvent.GetPersistentEventCount();
             var listeners = new List<object>();
 
@@ -113,7 +110,6 @@ namespace UnitySkills
                 targetType = targetComponent.GetType();
             }
 
-            // Find UnityEvent
             var type = component.GetType();
             var field = type.GetField(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
             var property = type.GetProperty(eventName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
@@ -131,7 +127,6 @@ namespace UnitySkills
             if (unityEvent == null)
                 return new { error = $"Field '{eventName}' is not a standard UnityEvent. Generic events (UnityEvent<T>) not yet supported in this version." };
 
-            // Record Undo
             WorkflowManager.SnapshotObject(component);
             Undo.RecordObject(component, "Add Event Listener");
 
@@ -196,7 +191,6 @@ namespace UnitySkills
                     return new { error = $"Unsupported argType: {argType}" };
             }
 
-            // Set Call State (Runtime/Editor)
             // The newly added listener is always the last one
             int index = unityEvent.GetPersistentEventCount() - 1;
             UnityEventCallState callState = UnityEventCallState.RuntimeOnly;
@@ -268,8 +262,6 @@ namespace UnitySkills
 
              if (unityEvent == null) return new { error = "UnityEvent not found" };
             
-            // Invoke via Reflection 'Invoke' method
-            // UnityEvent.Invoke() is public
             var invokeMethod = unityEvent.GetType().GetMethod("Invoke", BindingFlags.Instance | BindingFlags.Public);
             if (invokeMethod == null)
                 return new { error = "Could not find Invoke method on event" };
@@ -286,7 +278,6 @@ namespace UnitySkills
             return new { success = true, message = "Event invoked" };
         }
 
-        // Helper to find UnityEventBase on a component
         private static (UnityEventBase evt, Component comp, object error) FindEvent(string name, int instanceId, string path, string componentName, string eventName)
         {
             var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);

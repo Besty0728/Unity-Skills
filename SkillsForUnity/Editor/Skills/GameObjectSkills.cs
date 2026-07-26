@@ -7,7 +7,7 @@ namespace UnitySkills
 {
     /// <summary>
     /// GameObject management skills - create, modify, delete, find.
-    /// Now supports finding by name, entityId, legacy instanceId, or path.
+    /// Supports finding by name, entityId, legacy instanceId, or path.
     /// </summary>
     public static class GameObjectSkills
     {

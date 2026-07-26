@@ -110,7 +110,6 @@ namespace UnitySkills
             {
                 EnsureDirectoryExists(fullPath);
 
-                // Overwrite destination if it already exists
                 if (File.Exists(fullPath))
                     SafeDelete(fullPath);
 

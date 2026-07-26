@@ -356,8 +356,7 @@ namespace UnitySkills
         public static object ValidateProjectStructure(string rootPath = "Assets", int maxDepth = 2)
         {
             var structure = GetFolderStructure(rootPath, 0, maxDepth);
-            
-            // Count assets by type
+
             var assetCounts = new Dictionary<string, int>();
             var commonTypes = new[] { "Material", "Prefab", "Script", "Texture2D", "AudioClip", "Scene", "Shader" };
             

@@ -30,10 +30,8 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            // 使用 SaveAsPrefabAssetAndConnect 将场景物体连接为预制体实例
             var prefab = PrefabUtility.SaveAsPrefabAssetAndConnect(go, savePath, InteractionMode.UserAction);
 
-            // 记录新创建的预制体资产
             WorkflowManager.SnapshotCreatedAsset(prefab);
 
             return new { success = true, prefabPath = savePath, name = prefab.name };
@@ -48,7 +46,6 @@ namespace UnitySkills
         public static object PrefabInstantiate(string prefabPath, float x = 0, float y = 0, float z = 0, string name = null,
             string parentName = null, int parentInstanceId = 0, string parentPath = null, string parentEntityId = null)
         {
-            // Resolve parent first
             GameObject parentGo = null;
             if (!string.IsNullOrEmpty(parentEntityId) || !string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
             {
@@ -115,7 +112,6 @@ namespace UnitySkills
                 var instance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
                 if (instance == null)
                     throw new System.Exception($"Failed to instantiate prefab: {item.prefabPath}");
-                // Set parent if specified
                 if (!string.IsNullOrEmpty(item.parentEntityId) || !string.IsNullOrEmpty(item.parentName) || item.parentInstanceId != 0 || !string.IsNullOrEmpty(item.parentPath))
                 {
                     var (parentGo, parentErr) = GameObjectFinder.FindOrError(item.parentName, item.parentInstanceId, item.parentPath, entityId: item.parentEntityId);
@@ -386,7 +382,6 @@ namespace UnitySkills
             if (comp == null)
                 return new { error = $"Component '{componentType}' not found on '{targetGo.name}' in prefab" };
 
-            // Use SerializedObject to edit prefab asset
             var so = new SerializedObject(comp);
             var prop = FindSerializedProperty(so, propertyName);
             if (prop == null)

@@ -81,7 +81,6 @@ namespace UnitySkills
         private static int _cachedTimeoutMs = 15 * 60 * 1000;
         private static int RequestTimeoutMs => _cachedTimeoutMs;
         internal static void RefreshTimeoutCache() => _cachedTimeoutMs = RequestTimeoutMinutes * 60 * 1000;
-        // Maximum allowed POST body size
         private const int MaxBodySizeBytes = 10 * 1024 * 1024; // 10MB
         // Heartbeat interval for registry (seconds)
         private const double HeartbeatInterval = 30.0;
@@ -234,7 +233,6 @@ namespace UnitySkills
             }
         }
 
-        // Request ID counter
         private static long _requestIdCounter = 0;
 
         private static bool TryReservePendingSlot()
@@ -1161,7 +1159,7 @@ namespace UnitySkills
             }
         }
 
-        // ===== GET /events long-polling (v2.1) =====
+        // ===== GET /events long-polling =====
 
         private const int EventsDefaultTimeoutSeconds = 25;
         private const int EventsMinTimeoutSeconds = 1;
@@ -1498,7 +1496,7 @@ namespace UnitySkills
                     panelApprovalRequired = SkillsModeManager.PanelApprovalRequired,
                     pendingCount,
                     allowlistCount,
-                    // Deprecated alias for allowlistCount, kept for v1.9.x backward compatibility
+                    // Deprecated alias for allowlistCount, kept for backward compatibility
                     // (mirrors the `granted` / `counts.granted` aliases on /permission/status).
                     // Safe to remove in a future major version once external consumers migrate.
                     grantedCount = allowlistCount,
@@ -1661,7 +1659,7 @@ namespace UnitySkills
             }
 
 
-            // Permission system (v1.9): mode + grant token + audit log.
+            // Permission system: mode + grant token + audit log.
             if (path.StartsWith("/permission/", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(path, "/permission", StringComparison.OrdinalIgnoreCase))
             {
@@ -1840,7 +1838,7 @@ namespace UnitySkills
             return true;
         }
 
-        // ===== Execution telemetry (v2.1) =====
+        // ===== Execution telemetry =====
 
         /// <summary>
         /// Records one POST /skill/{name} outcome to <see cref="SkillTelemetryService"/>. Uses a
@@ -1923,7 +1921,7 @@ namespace UnitySkills
             return end > start ? json.Substring(start, end - start) : null;
         }
 
-        // ===== Cross-skill batch execution (v2.1) =====
+        // ===== Cross-skill batch execution =====
 
         private const int MaxBatchSteps = 50;
 
@@ -1952,7 +1950,7 @@ namespace UnitySkills
         ///   may use both, but a single node is one or the other, never both
         ///   ({"$param":..,"$ref":..} is rejected SEMANTIC_INVALID). Any $ref left after
         ///   substitution goes through the $ref stage below.
-        /// - Inter-step references (v2): inside a step's structured args, any object whose ONLY
+        /// - Inter-step references: inside a step's structured args, any object whose ONLY
         ///   key is "$ref" (e.g. {"$ref":"$0.instanceId"}), at any depth, is replaced before that
         ///   step executes. "$N" is the 0-based index of an EARLIER successful step; the part
         ///   after the dot is a Newtonsoft SelectToken path into that step's unwrapped result
@@ -2108,7 +2106,7 @@ namespace UnitySkills
                         : rawArgs.ToString(Formatting.None);
                 }
 
-                // ---- Static $param substitution (v2, resolved before $ref) ----
+                // ---- Static $param substitution (resolved before $ref) ----
                 // Pure static replacement from the body-level "params" object, so dryRun and
                 // execute resolve it identically (real values exist either way). Any $ref left
                 // in the substituted args is handled by the $ref stage below.
@@ -2172,7 +2170,7 @@ namespace UnitySkills
                     }
                 }
 
-                // ---- Inter-step $ref references (v2) ----
+                // ---- Inter-step $ref references ----
                 List<BatchRefNode> refNodes = null;          // dryRun bookkeeping
                 HashSet<string> strippedRefParams = null;    // dryRun: params removed from the validation body
                 bool wholeArgsFromRef = false;               // dryRun: the args root itself is a $ref
@@ -2602,7 +2600,7 @@ namespace UnitySkills
             return true;
         }
 
-        // ===== Static $param substitution (batch v2) =====
+        // ===== Static $param substitution (batch) =====
 
         /// <summary>
         /// A {"$param":"name"} / {"$param":"name","default":X} slot found inside a step's args.
@@ -2739,7 +2737,7 @@ namespace UnitySkills
             return false;
         }
 
-        // ===== Inter-step $ref references (batch v2) =====
+        // ===== Inter-step $ref references (batch) =====
 
         /// <summary>
         /// A {"$ref":"$N.path"} node found inside a step's args. RefString is null when the
@@ -3205,7 +3203,7 @@ namespace UnitySkills
             }, _jsonSettings);
         }
 
-        // ===== Permission system (v1.9) =====
+        // ===== Permission system =====
 
         private static void HandlePermissionRequest(RequestJob job)
         {
@@ -3314,7 +3312,7 @@ namespace UnitySkills
             }
 
             job.StatusCode = 200;
-            // v1.9 字段重命名：`granted` → `allowlist`。`granted` 字段作为兼容别名保留一个版本，
+            // 字段重命名：`granted` → `allowlist`。`granted` 字段作为兼容别名保留一个版本，
             // 下个 minor 版本会移除——客户端应迁移到 `allowlist` 字段。
             job.ResponseJson = JsonConvert.SerializeObject(new
             {
@@ -3523,7 +3521,7 @@ namespace UnitySkills
             }, _jsonSettings);
         }
 
-        // ===== Allowlist endpoints (v1.9 改版) =====
+        // ===== Allowlist endpoints =====
 
         private static void HandlePermissionAllowlistList(RequestJob job)
         {

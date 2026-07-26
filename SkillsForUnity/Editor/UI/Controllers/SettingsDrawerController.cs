@@ -123,7 +123,6 @@ namespace UnitySkills
             // Shortcuts 节：独立控制器接管捕获态机与冲突检测，抽屉仅做组装与生命周期转发。
             _shortcutsController = new ShortcutsSettingsController(_drawerContainer);
 
-            // Click on mask closes the drawer
             if (_drawerMask != null)
             {
                 _drawerMask.RegisterCallback<ClickEvent>(_ => Close());
@@ -212,7 +211,6 @@ namespace UnitySkills
         {
             if (_closeBtn != null) _closeBtn.clicked += Close;
 
-            // Permissions: 用 dropdown 替代原来的三个 radio toggle。
             // index 由 _modeOrder 反查为枚举，避免依赖本地化文本。
             if (_modeDropdown != null)
                 _modeDropdown.RegisterValueChangedCallback(evt =>
@@ -653,14 +651,6 @@ namespace UnitySkills
             return card;
         }
 
-        /// <summary>
-        /// "+ Add Skill" 按钮回调：弹出按 Category 分组的 GenericMenu，让用户手动把 skill
-        /// 加入白名单。高危 skill（RiskLevel=high / Delete / PlayMode / Reload）会先弹
-        /// 二次确认 dialog，避免一键放行严重操作。
-        ///
-        /// 高危判定特意在 UI 层重做（而不是反射 SkillsModeManager.IsForbiddenInSemi），
-        /// 保持 ModeManager 的可见性边界不被 UI 反向污染。
-        /// </summary>
         /// <summary>
         /// 打开 AllowlistPickerWindow —— 支持搜索、按 Category 分组勾选、整组一键选中、
         /// 提交时合并高危确认。窗口自负责调 AddToAllowlist；本控制器在 OnChanged 链路上自动刷新列表。

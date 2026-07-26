@@ -190,7 +190,7 @@ namespace UnitySkills
             };
             approve.AddToClassList("mini-btn");
             approve.style.marginRight = 4;
-            approve.SetEnabled(isPanel && !req.ApprovedByPanel); // 仅 Panel 渠道未批准时可点
+            approve.SetEnabled(isPanel && !req.ApprovedByPanel);
             actions.Add(approve);
 
             var deny = new Button(() => SkillsModeManager.Deny(req.Token))

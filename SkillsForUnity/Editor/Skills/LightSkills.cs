@@ -28,7 +28,6 @@ namespace UnitySkills
             var go = new GameObject(name);
             var light = go.AddComponent<Light>();
 
-            // Set light type
             if (System.Enum.TryParse<LightType>(lightType, true, out var lt))
                 light.type = lt;
             else
@@ -37,21 +36,17 @@ namespace UnitySkills
                 return new { error = $"Unknown light type: {lightType}. Use: Directional, Point, Spot, Area" };
             }
 
-            // Set position
             go.transform.position = new Vector3(x, y, z);
 
-            // Set color
             light.color = new Color(r, g, b);
             light.intensity = intensity;
 
-            // Type-specific settings
             if (lt == LightType.Point || lt == LightType.Spot)
                 light.range = range;
 
             if (lt == LightType.Spot)
                 light.spotAngle = spotAngle;
 
-            // Set shadows
             switch (shadows.ToLower())
             {
                 case "hard":
@@ -106,7 +101,6 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(light);
             Undo.RecordObject(light, "Set Light Properties");
 
-            // Update color if any color component provided
             if (r.HasValue || g.HasValue || b.HasValue)
             {
                 var currentColor = light.color;
@@ -345,7 +339,6 @@ namespace UnitySkills
             if (!existed)
                 lpg = Undo.AddComponent<LightProbeGroup>(go);
 
-            // Set grid layout if any grid parameter provided
             if (gridX > 0 && gridY > 0 && gridZ > 0)
             {
                 Undo.RecordObject(lpg, "Set Light Probe Positions");

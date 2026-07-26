@@ -208,7 +208,6 @@ namespace UnitySkills
             
             var availableShaders = new List<object>();
             
-            // List common shaders for the detected pipeline
             string[] shadersToCheck = pipeline switch
             {
                 RenderPipelineType.URP => new[] 
@@ -268,7 +267,6 @@ namespace UnitySkills
         {
             var shaderNames = new List<string>();
             
-            // Get all shader assets
             var guids = AssetDatabase.FindAssets("t:Shader");
             foreach (var guid in guids)
             {
@@ -283,7 +281,6 @@ namespace UnitySkills
                 }
             }
             
-            // Also try to find common built-in shaders
             var builtInShaders = new[]
             {
                 "Standard", "Standard (Specular setup)",

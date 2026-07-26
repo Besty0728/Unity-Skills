@@ -246,7 +246,6 @@ namespace UnitySkills.Tests.Core
         {
             const string testFolder = "Assets/Temp/RealValidation";
 
-            // 确保临时目录存在
             if (!AssetDatabase.IsValidFolder(testFolder))
             {
                 var parentFolder = "Assets/Temp";
@@ -290,7 +289,6 @@ namespace UnitySkills.Tests.Core
                     AssetDatabase.DeleteAsset(testFolder);
                 }
 
-                // 如果 Temp 父目录为空，也删除
                 if (AssetDatabase.IsValidFolder("Assets/Temp"))
                 {
                     var subFolders = AssetDatabase.GetSubFolders("Assets/Temp");

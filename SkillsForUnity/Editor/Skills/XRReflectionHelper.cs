@@ -303,7 +303,6 @@ namespace UnitySkills
 
             if (type == null) return null;
 
-            // Check if component already exists
             var existing = go.GetComponent(type);
             if (existing != null) return existing;
 

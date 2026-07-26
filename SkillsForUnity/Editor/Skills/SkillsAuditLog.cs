@@ -11,7 +11,7 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Append-only JSONL audit log for the Skill mode permission system (v1.9).
+    /// Append-only JSONL audit log for the Skill mode permission system.
     ///
     /// Events are written to <c>Library/UnitySkillsAudit.jsonl</c> (per-project, not in Git).
     /// Writes are queued on the calling thread and flushed asynchronously so REST handlers

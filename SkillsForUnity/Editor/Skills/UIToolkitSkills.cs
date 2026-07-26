@@ -333,7 +333,7 @@ namespace UnitySkills
             int referenceResolutionY = 1080,
             string screenMatchMode = "MatchWidthOrHeight",
             string themeStyleSheetPath = null,
-            // General properties (Unity 2022.3+)
+            // General properties
             string textSettingsPath = null,
             string targetTexturePath = null,
             int? targetDisplay = null,

@@ -19,7 +19,6 @@ namespace UnitySkills.Tests.Core
             _savedMode = SkillsModeManager.CurrentMode;
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
 
-            // 确保临时目录存在
             if (!AssetDatabase.IsValidFolder(TempRoot))
             {
                 var parentFolder = "Assets/Temp";
@@ -42,13 +41,11 @@ namespace UnitySkills.Tests.Core
             Selection.objects = new Object[0];
             GameObjectFinder.InvalidateCache();
 
-            // 清理临时目录
             if (AssetDatabase.IsValidFolder(TempRoot))
             {
                 AssetDatabase.DeleteAsset(TempRoot);
             }
 
-            // 如果 Temp 父目录为空，也删除
             if (AssetDatabase.IsValidFolder("Assets/Temp"))
             {
                 var subFolders = AssetDatabase.GetSubFolders("Assets/Temp");

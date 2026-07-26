@@ -160,7 +160,7 @@ namespace UnitySkills
     /// <summary>
     /// Unified utility for finding GameObjects by multiple methods.
     /// Supports: name, entityId, legacy instance ID, hierarchy path, tag, component type.
-    /// Enhanced with intelligent fallback search strategies.
+    /// Uses intelligent fallback search strategies.
     /// </summary>
     public static class GameObjectFinder
     {
@@ -587,7 +587,6 @@ namespace UnitySkills
                     !string.IsNullOrEmpty(componentType) ? $"component '{componentType}'" :
                     $"name '{name}'";
 
-                // Provide helpful suggestions
                 var suggestions = GetSuggestions(name, tag, componentType);
                 
                 return (null, new { 

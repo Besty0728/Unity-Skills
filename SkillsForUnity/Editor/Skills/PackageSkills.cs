@@ -186,7 +186,6 @@ namespace UnitySkills
             var useV3 = version >= 3;
             var targetVersion = useV3 ? PackageManagerHelper.Cinemachine3Version : PackageManagerHelper.Cinemachine2Version;
 
-            // 检查是否已安装
             var status = PackageManagerHelper.GetCinemachineStatus();
             if (status.installed)
             {

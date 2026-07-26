@@ -47,7 +47,7 @@ namespace UnitySkills
             // True when the skill captures its own workflow snapshots; skips the generic
             // pre-execution snapshot in TrySnapshotTargetsFromArgs to avoid redundant backups.
             public bool SkipAutoPresnapshot;
-            // Intent-level metadata (v1.7)
+            // Intent-level metadata
             public SkillCategory Category;
             public SkillOperation Operation;
             public string[] Tags;
@@ -62,7 +62,7 @@ namespace UnitySkills
             public bool SupportsDryRun;
             public string RiskLevel;
             public string[] RequiresPackages;
-            // Permission mode (v1.9). Defaults to FullAuto so unannotated skills go through
+            // Permission mode. Defaults to FullAuto so unannotated skills go through
             // the Approval gate; SemiAuto must be explicitly opted in via [UnitySkill(Mode=...)].
             public SkillMode Mode;
             // Cached to avoid repeated allocations per Execute/DryRun call
@@ -551,7 +551,7 @@ namespace UnitySkills
                         retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                 }
 
-                // Permission mode gate (v1.9). Runs before the high-risk confirmation gate so
+                // Permission mode gate. Runs before the high-risk confirmation gate so
                 // a FullAuto skill that is also high-risk surfaces MODE_RESTRICTED first; the
                 // ConfirmationToken step only matters once the skill is allowed to run at all.
                 var modeGate = ApplyModeGate(skill, name, validation);
@@ -2317,7 +2317,6 @@ namespace UnitySkills
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (string.IsNullOrEmpty(qs)) return result;
 
-            // Remove leading '?'
             var raw = qs.StartsWith("?") ? qs.Substring(1) : qs;
             if (string.IsNullOrEmpty(raw)) return result;
 

@@ -69,7 +69,6 @@ namespace UnitySkills
                 issues.Add("No EventSystem found. Create one via xr_setup_event_system.");
             else
             {
-                // Check for XRUIInputModule
                 bool hasXRInput = false;
                 foreach (var es in eventSystems)
                 {
@@ -157,7 +156,6 @@ namespace UnitySkills
 
             if (verbose)
             {
-                // Add detailed component listing
                 info["interactorDetails"] = interactors.Select(c => new {
                     name = c.gameObject.name, type = c.GetType().Name,
                     entityId = UnityObjectIdUtility.GetEntityId(c.gameObject),
@@ -187,16 +185,13 @@ namespace UnitySkills
 #if !XRI
             return NoXRI();
 #else
-            // Check XROrigin type availability
             var xrOriginType = XRReflectionHelper.ResolveXRType("XROrigin");
             if (xrOriginType == null)
                 return new { error = "XROrigin type not found. Ensure com.unity.xr.core-utils is installed." };
 
-            // Root: XR Origin
             var root = new GameObject(name);
             root.transform.position = new Vector3(x, y, z);
 
-            // Add XROrigin component
             var originComp = root.AddComponent(xrOriginType);
             if (originComp == null)
             {
@@ -204,15 +199,12 @@ namespace UnitySkills
                 return new { error = "Failed to add XROrigin component." };
             }
 
-            // Camera Offset child
             var cameraOffset = new GameObject("Camera Offset");
             cameraOffset.transform.SetParent(root.transform, false);
             cameraOffset.transform.localPosition = new Vector3(0, cameraYOffset, 0);
 
-            // Set CameraFloorOffsetObject via reflection
             XRReflectionHelper.SetProperty(originComp, "CameraFloorOffsetObject", cameraOffset);
 
-            // Main Camera
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
             camGo.transform.SetParent(cameraOffset.transform, false);
@@ -220,27 +212,22 @@ namespace UnitySkills
             cam.nearClipPlane = 0.01f;
             camGo.AddComponent<AudioListener>();
 
-            // Add TrackedPoseDriver to camera
             var tpdType = FindTrackedPoseDriverType();
             if (tpdType != null)
                 camGo.AddComponent(tpdType);
 
-            // Set Camera on XROrigin
             XRReflectionHelper.SetProperty(originComp, "Camera", cam);
 
-            // Left Controller
             var leftCtrl = new GameObject("Left Controller");
             leftCtrl.transform.SetParent(root.transform, false);
             if (tpdType != null)
                 leftCtrl.AddComponent(tpdType);
 
-            // Right Controller
             var rightCtrl = new GameObject("Right Controller");
             rightCtrl.transform.SetParent(root.transform, false);
             if (tpdType != null)
                 rightCtrl.AddComponent(tpdType);
 
-            // Add XRInteractionManager if none exists
             var managerComp = XRReflectionHelper.FindFirstOfXRType("XRInteractionManager");
             if (managerComp == null)
             {
@@ -287,7 +274,6 @@ namespace UnitySkills
             if (managerType == null)
                 return new { error = "XRInteractionManager type not found." };
 
-            // Check if one already exists
             var existing = XRReflectionHelper.FindFirstOfXRType("XRInteractionManager");
             if (existing != null)
                 return new
@@ -330,7 +316,6 @@ namespace UnitySkills
             if (xrInputType == null)
                 return new { error = "XRUIInputModule type not found in current XRI version." };
 
-            // Find or create EventSystem
             var eventSystems = FindHelper.FindAll<UnityEngine.EventSystems.EventSystem>();
             GameObject esGo;
             bool created = false;
@@ -348,7 +333,6 @@ namespace UnitySkills
 
             Undo.RecordObject(esGo, "Setup XR EventSystem");
 
-            // Remove StandaloneInputModule if present
             var standalone = esGo.GetComponent<UnityEngine.EventSystems.StandaloneInputModule>();
             bool removedStandalone = false;
             if (standalone != null)
@@ -357,7 +341,6 @@ namespace UnitySkills
                 removedStandalone = true;
             }
 
-            // Add XRUIInputModule if not present
             bool addedXRInput = false;
             var xrInput = esGo.GetComponent(xrInputType);
             if (xrInput == null)
@@ -399,7 +382,6 @@ namespace UnitySkills
 
             report["xriVersion"] = XRReflectionHelper.XRIMajorVersion;
 
-            // Collect all XR component types
             var componentTypes = new[]
             {
                 "XRInteractionManager", "XROrigin",
@@ -445,7 +427,6 @@ namespace UnitySkills
             report["totalXRComponents"] = totalCount;
             report["components"] = components;
 
-            // Summary counts
             report["summary"] = new
             {
                 interactionManagers = XRReflectionHelper.FindComponentsOfXRType("XRInteractionManager").Length,
@@ -485,19 +466,16 @@ namespace UnitySkills
 
             Undo.RecordObject(go, "Add XRRayInteractor");
 
-            // Add XRRayInteractor
             var comp = XRReflectionHelper.AddXRComponent(go, "XRRayInteractor");
             if (comp == null)
                 return new { error = "Failed to add XRRayInteractor. Type not found in current XRI version." };
 
             Undo.RegisterCreatedObjectUndo(comp, "Add XRRayInteractor");
 
-            // Configure properties
             XRReflectionHelper.SetProperty(comp, "maxRaycastDistance", maxDistance);
             if (!string.IsNullOrEmpty(lineType))
                 XRReflectionHelper.SetEnumProperty(comp, "lineType", lineType);
 
-            // Add LineRenderer if not present
             var lr = go.GetComponent<LineRenderer>();
             if (lr == null)
             {
@@ -509,7 +487,6 @@ namespace UnitySkills
                 lr.endColor = new Color(1, 1, 1, 0.5f);
             }
 
-            // Add XRInteractorLineVisual if requested
             Component lineVisual = null;
             if (addLineVisual)
             {
@@ -550,14 +527,12 @@ namespace UnitySkills
 
             Undo.RecordObject(go, "Add XRDirectInteractor");
 
-            // Add XRDirectInteractor
             var comp = XRReflectionHelper.AddXRComponent(go, "XRDirectInteractor");
             if (comp == null)
                 return new { error = "Failed to add XRDirectInteractor. Type not found in current XRI version." };
 
             Undo.RegisterCreatedObjectUndo(comp, "Add XRDirectInteractor");
 
-            // Add SphereCollider trigger if no collider exists
             var collider = go.GetComponent<Collider>();
             if (collider == null)
             {
@@ -607,7 +582,6 @@ namespace UnitySkills
             XRReflectionHelper.SetProperty(comp, "showInteractableHoverMeshes", showHoverMesh);
             XRReflectionHelper.SetProperty(comp, "recycleDelayTime", recycleDelay);
 
-            // Add SphereCollider trigger if no collider exists
             if (go.GetComponent<Collider>() == null)
             {
                 var sphere = go.AddComponent<SphereCollider>();
@@ -705,7 +679,6 @@ namespace UnitySkills
 
             Undo.RecordObject(go, "Add XRGrabInteractable");
 
-            // Ensure Rigidbody
             var rb = go.GetComponent<Rigidbody>();
             if (rb == null)
             {
@@ -714,7 +687,6 @@ namespace UnitySkills
                 rb.isKinematic = isKinematic;
             }
 
-            // Ensure Collider
             if (go.GetComponent<Collider>() == null)
             {
                 // Auto-detect best collider based on mesh
@@ -725,14 +697,12 @@ namespace UnitySkills
                     go.AddComponent<BoxCollider>();
             }
 
-            // Add XRGrabInteractable
             var comp = XRReflectionHelper.AddXRComponent(go, "XRGrabInteractable");
             if (comp == null)
                 return new { error = "Failed to add XRGrabInteractable. Type not found in current XRI version." };
 
             Undo.RegisterCreatedObjectUndo(comp, "Add XRGrabInteractable");
 
-            // Configure via reflection
             XRReflectionHelper.SetEnumProperty(comp, "movementType", movementType);
             XRReflectionHelper.SetProperty(comp, "throwOnDetach", throwOnDetach);
             XRReflectionHelper.SetProperty(comp, "smoothPosition", smoothPosition);
@@ -833,7 +803,6 @@ namespace UnitySkills
             var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (findErr != null) return findErr;
 
-            // Find any interactable component
             var comp = XRReflectionHelper.GetXRComponent(go, "XRGrabInteractable")
                     ?? XRReflectionHelper.GetXRComponent(go, "XRSimpleInteractable")
                     ?? XRReflectionHelper.GetXRComponent(go, "XRBaseInteractable");
@@ -1272,7 +1241,6 @@ namespace UnitySkills
 
             Undo.RecordObject(go, "Setup XR UI Canvas");
 
-            // Set Canvas to WorldSpace for XR
             if (canvas.renderMode != RenderMode.WorldSpace)
             {
                 canvas.renderMode = RenderMode.WorldSpace;
@@ -1285,7 +1253,6 @@ namespace UnitySkills
                 }
             }
 
-            // Remove standard GraphicRaycaster
             var standardRaycaster = go.GetComponent<UnityEngine.UI.GraphicRaycaster>();
             bool removedStandard = false;
             if (standardRaycaster != null)
@@ -1294,7 +1261,6 @@ namespace UnitySkills
                 removedStandard = true;
             }
 
-            // Add TrackedDeviceGraphicRaycaster
             var trackedRaycaster = XRReflectionHelper.AddXRComponent(go, "TrackedDeviceGraphicRaycaster");
             bool addedTracked = trackedRaycaster != null;
 
@@ -1332,7 +1298,6 @@ namespace UnitySkills
             var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (findErr != null) return findErr;
 
-            // Find any interactor component
             var comp = XRReflectionHelper.GetXRComponent(go, "XRRayInteractor")
                     ?? XRReflectionHelper.GetXRComponent(go, "XRDirectInteractor")
                     ?? XRReflectionHelper.GetXRComponent(go, "XRSocketInteractor")
@@ -1397,7 +1362,6 @@ namespace UnitySkills
             var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (findErr != null) return findErr;
 
-            // Find interactable
             var comp = XRReflectionHelper.GetXRComponent(go, "XRGrabInteractable")
                     ?? XRReflectionHelper.GetXRComponent(go, "XRSimpleInteractable")
                     ?? XRReflectionHelper.GetXRComponent(go, "XRBaseInteractable");
@@ -1405,12 +1369,10 @@ namespace UnitySkills
             if (comp == null)
                 return new { error = $"No XR interactable found on '{go.name}'." };
 
-            // Find target object
             var targetGo = GameObjectFinder.Find(targetName);
             if (targetGo == null)
                 return new { error = $"Target GameObject '{targetName}' not found." };
 
-            // Find the event property
             var eventProp = comp.GetType().GetProperty(eventType,
                 BindingFlags.Public | BindingFlags.Instance);
             if (eventProp == null)
@@ -1425,12 +1387,10 @@ namespace UnitySkills
             Undo.RecordObject(comp, "Add XR Interaction Event");
             WorkflowManager.SnapshotObject(comp);
 
-            // Get the UnityEvent and add persistent listener
             var eventObj = eventProp.GetValue(comp);
             if (eventObj == null)
                 return new { error = $"Event '{eventType}' returned null." };
 
-            // Find target method on any component of the target
             MonoBehaviour targetComponent = null;
             MethodInfo targetMethodInfo = null;
             foreach (var targetComp in targetGo.GetComponents<MonoBehaviour>())
@@ -1448,7 +1408,6 @@ namespace UnitySkills
             if (targetComponent == null || targetMethodInfo == null)
                 return new { error = $"Method '{targetMethod}' not found on any component of '{targetName}'." };
 
-            // Use UnityEventTools to add persistent listener
             var addMethod = typeof(UnityEditor.Events.UnityEventTools).GetMethods()
                 .FirstOrDefault(m => m.Name == "AddVoidPersistentListener" && m.GetParameters().Length == 2);
 
@@ -1491,7 +1450,6 @@ namespace UnitySkills
             var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (findErr != null) return findErr;
 
-            // Find the XR component
             Component comp;
             if (isInteractor)
             {

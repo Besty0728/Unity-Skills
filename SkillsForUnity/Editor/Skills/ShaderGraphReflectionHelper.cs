@@ -29,8 +29,6 @@ namespace UnitySkills
         private const string TemplatesRoot = "Packages/com.unity.shadergraph/GraphTemplates";
         private const string BuiltinBlankTemplatePath = "builtin:blank";
 
-        // TypeCache removed — delegated to SkillsCommon.FindTypeByName
-
         private static readonly Dictionary<string, string> PropertyTypeMap =
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
