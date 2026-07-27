@@ -344,6 +344,8 @@ namespace UnitySkills
             MayTriggerReload = true)]
         public static object DebugSetDefines(string defines)
         {
+            if (Validate.Required(defines, "defines") is object definesErr) return definesErr;
+
             if (WorkflowManager.IsRecording)
                 WorkflowManager.SnapshotSetting("debug.scriptingDefines", CaptureDefinesValue(), "Debug: Scripting Define Symbols");
 

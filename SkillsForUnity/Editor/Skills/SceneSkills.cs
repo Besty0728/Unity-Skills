@@ -5,6 +5,7 @@ using UnityEngine.SceneManagement;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -184,11 +185,11 @@ namespace UnitySkills
             return names.ToArray();
         }
 
-        [UnitySkill("scene_screenshot", "Capture a screenshot of the GAME VIEW (the final composited frame of all cameras + UI; in Play mode this is the live runtime image, NOT the Scene/editor view). filename is a bare filename only (no path separators); saved under Assets/Screenshots/. Async: the PNG is written ~1 frame later, so if an immediate read fails, wait ~200ms and retry.",
+        [UnitySkill("scene_screenshot", "Capture a screenshot of the GAME VIEW (the final composited frame of all cameras + UI; in Play mode this is the live runtime image, NOT the Scene/editor view). filename is a bare filename only (no path separators); saved under Assets/Screenshots/. Async: the PNG is written ~1 frame later, so if an immediate read fails, wait ~200ms and retry. Set returnImage=true to also get a PNG as base64 in the response, for clients without filesystem access (e.g. remote/MCP) — captured via a separate synchronous read of the last-rendered Game View frame, so it may be a moment older than the file written to disk.",
             Category = SkillCategory.Scene, Operation = SkillOperation.Execute,
             Tags = new[] { "screenshot", "capture", "image", "gameview", "playmode" },
-            Outputs = new[] { "path", "width", "height", "isPlaying", "note" })]
-        public static object SceneScreenshot(string filename = "screenshot.png", int width = 1920, int height = 1080)
+            Outputs = new[] { "path", "width", "height", "isPlaying", "note", "imageBase64", "imageWidth", "imageHeight", "imageBytes" })]
+        public static object SceneScreenshot(string filename = "screenshot.png", int width = 1920, int height = 1080, bool returnImage = false, int maxDimension = 1280)
         {
             // Strip any path components to prevent writing outside Screenshots/
             filename = Path.GetFileName(filename);
@@ -210,7 +211,35 @@ namespace UnitySkills
                 ? "Game View captured (live runtime frame). The PNG is written ~1 frame later; if your immediate read fails, wait ~200ms and retry."
                 : "Game View captured in Edit mode — this is the last rendered Game View frame and may be static or blank. Enter Play mode (editor_play) for a live runtime frame. The PNG is written ~1 frame later; if your immediate read fails, wait ~200ms and retry.";
 
-            return new { success = true, path, width, height, isPlaying, note };
+            var result = new Dictionary<string, object> { ["success"] = true, ["path"] = path, ["width"] = width, ["height"] = height, ["isPlaying"] = isPlaying, ["note"] = note };
+            if (returnImage)
+            {
+                // The on-disk PNG isn't readable yet (written ~1 frame later, see above), so
+                // returnImage uses a separate synchronous in-memory capture of the Game View's
+                // current backbuffer instead of reading `path` back.
+                Texture2D liveTex = null;
+                try
+                {
+                    liveTex = ScreenCapture.CaptureScreenshotAsTexture(superSize);
+                    if (liveTex == null || liveTex.width <= 0 || liveTex.height <= 0)
+                    {
+                        result["note"] = note + " returnImage capture unavailable (no Game View pixels to read); read the saved PNG at 'path' instead.";
+                    }
+                    else
+                    {
+                        var pngBytes = liveTex.EncodeToPNG();
+                        var imageFields = ScreenshotImageEncoder.Encode(pngBytes, liveTex.width, liveTex.height, maxDimension, out var imageError);
+                        if (imageError != null) return imageError;
+                        foreach (var kv in imageFields) result[kv.Key] = kv.Value;
+                    }
+                }
+                finally
+                {
+                    if (liveTex != null) Object.DestroyImmediate(liveTex);
+                }
+            }
+
+            return result;
         }
 
         [UnitySkill("scene_get_loaded", "Get list of all currently loaded scenes",

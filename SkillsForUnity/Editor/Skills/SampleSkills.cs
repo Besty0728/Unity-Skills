@@ -42,13 +42,14 @@ namespace UnitySkills
             Category = SkillCategory.Sample, Operation = SkillOperation.Delete,
             Tags = new[] { "delete", "destroy", "remove", "quick" },
             Outputs = new[] { "deleted", "message" },
-            RequiresInput = new[] { "gameObject" })]
+            RequiresInput = new[] { "gameObject" },
+            TracksWorkflow = true,
+            RiskLevel = "medium")]
         public static object DeleteObject(string objectName)
         {
             var (obj, err) = GameObjectFinder.FindOrError(objectName);
             if (err != null) return err;
-            WorkflowManager.SnapshotObject(obj);
-            Undo.DestroyObjectImmediate(obj);
+            WorkflowManager.DeleteSceneObject(obj);
             return new { success = true, deleted = objectName, message = $"Deleted {objectName}" };
         }
 

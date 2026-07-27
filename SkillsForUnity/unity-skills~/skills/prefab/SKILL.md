@@ -55,7 +55,7 @@ Create a prefab from a scene GameObject.
 
 *At least one source identifier required.
 
-**Returns**: `{success, prefabPath, sourceObject}`
+**Returns**: `{success, prefabPath, name}`
 
 ### prefab_instantiate
 Instantiate a prefab into the scene.
@@ -70,7 +70,7 @@ Instantiate a prefab into the scene.
 | `parentInstanceId` | int | No | 0 | Parent instance ID |
 | `parentPath` | string | No | null | Parent hierarchy path |
 
-**Returns**: `{success, name, entityId, instanceId, path, prefabPath, position}`
+**Returns**: `{success, name, entityId, instanceId, path}`
 
 ### prefab_instantiate_batch
 Instantiate multiple prefabs in one call.
@@ -81,7 +81,7 @@ Instantiate multiple prefabs in one call.
 
 **Item properties**: `prefabPath`, `name`, `x`, `y`, `z`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentEntityId`, `parentName`, `parentInstanceId`, `parentPath`
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, instanceId, prefabPath, position}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, entityId, instanceId, position}]}`
 
 ```python
 unity_skills.call_skill("prefab_instantiate_batch", items=[
@@ -102,7 +102,7 @@ Apply instance changes back to the prefab asset.
 
 *At least one identifier required.
 
-**Returns**: `{success, gameObject, prefabPath}`
+**Returns**: `{success, appliedTo}` (`appliedTo` is the prefab asset path)
 
 ### prefab_unpack
 Unpack a prefab instance (break prefab connection).
@@ -116,17 +116,17 @@ Unpack a prefab instance (break prefab connection).
 
 *At least one identifier required.
 
-**Returns**: `{success, gameObject, mode}`
+**Returns**: `{success, unpacked}` (`unpacked` is the instance's GameObject name)
 
 ### prefab_get_overrides
-Get list of property overrides on a prefab instance.
+Get a summary of property overrides on a prefab instance (counts, not the individual override list).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Prefab instance name |
 | `instanceId` | int | No* | Instance ID |
 
-**Returns**: `{success, overrides: [{type, path, property}]}`
+**Returns**: `{success, prefabPath, propertyOverrides, addedComponents, removedComponents, addedGameObjects, hasOverrides}` — `propertyOverrides`/`addedComponents`/`removedComponents`/`addedGameObjects` are **counts** (int), not arrays; `hasOverrides` is `true` when any of those counts is non-zero.
 
 ### prefab_revert_overrides
 Revert all overrides on a prefab instance back to prefab values.
@@ -136,6 +136,8 @@ Revert all overrides on a prefab instance back to prefab values.
 | `name` | string | No* | Prefab instance name |
 | `instanceId` | int | No* | Instance ID |
 
+**Returns**: `{success, reverted}` (`reverted` is the prefab root's GameObject name)
+
 ### prefab_apply_overrides
 Apply all overrides from instance to source prefab asset.
 
@@ -143,6 +145,8 @@ Apply all overrides from instance to source prefab asset.
 |-----------|------|----------|-------------|
 | `name` | string | No* | Prefab instance name |
 | `instanceId` | int | No* | Instance ID |
+
+**Returns**: `{success, appliedTo}` (`appliedTo` is the prefab asset path)
 
 ### prefab_create_variant
 Create a prefab variant from an existing prefab.
@@ -162,7 +166,7 @@ Find all instances of a prefab in the current scene.
 | `prefabPath` | string | Yes | - | Prefab asset path to search for |
 | `limit` | int | No | 50 | Maximum number of instances to return |
 
-**Returns:** `{ success, prefabPath, count, instances: [{ name, path, instanceId }] }`
+**Returns:** `{ success, prefabPath, count, instances: [{ name, path, entityId, instanceId }] }`
 
 ### prefab_set_property
 Set a property on a component inside a Prefab asset file (without instantiating it). Supports basic types, vectors, colors, enums, and asset references.

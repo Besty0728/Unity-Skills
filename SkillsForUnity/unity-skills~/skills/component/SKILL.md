@@ -64,11 +64,13 @@ Add a component to a GameObject.
 ### component_remove
 Remove a component from a GameObject.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | No* | GameObject name |
-| `instanceId` | int | No* | Instance ID |
-| `componentType` | string | Yes | Component type to remove |
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | - | GameObject name |
+| `instanceId` | int | No* | - | Instance ID |
+| `path` | string | No* | - | Hierarchy path |
+| `componentType` | string | Yes | - | Component type to remove |
+| `componentIndex` | int | No | 0 | Index into the components of that type when 2+ exist on the same object |
 
 **Returns**: `{success, gameObject, removed}` (`removed` is the requested `componentType` string)
 

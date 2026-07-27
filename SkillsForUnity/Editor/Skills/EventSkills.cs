@@ -211,7 +211,8 @@ namespace UnitySkills
             Category = SkillCategory.Event, Operation = SkillOperation.Delete,
             Tags = new[] { "event", "listener", "remove", "delete" },
             Outputs = new[] { "remainingCount" },
-            RequiresInput = new[] { "gameObject", "componentName", "eventName" })]
+            RequiresInput = new[] { "gameObject", "componentName", "eventName" },
+            RiskLevel = "medium")]
         public static object EventRemoveListener(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, int index = 0)
         {
             var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
@@ -429,7 +430,8 @@ namespace UnitySkills
             Category = SkillCategory.Event, Operation = SkillOperation.Delete,
             Tags = new[] { "event", "clear", "listeners", "remove" },
             Outputs = new[] { "removed" },
-            RequiresInput = new[] { "gameObject", "componentName", "eventName" })]
+            RequiresInput = new[] { "gameObject", "componentName", "eventName" },
+            RiskLevel = "medium")]
         public static object EventClearListeners(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
         {
             var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);

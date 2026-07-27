@@ -31,8 +31,7 @@ namespace UnitySkills
         [UnitySkill("bookmark_set", "Save current selection and scene view position as a bookmark",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Create,
             Tags = new[] { "bookmark", "selection", "scene-view", "save" },
-            Outputs = new[] { "bookmark", "selectedCount", "hasSceneView" },
-            Mode = SkillMode.SemiAuto)]
+            Outputs = new[] { "bookmark", "selectedCount", "hasSceneView" })]
         public static object BookmarkSet(string bookmarkName, string note = null)
         {
             if (string.IsNullOrEmpty(bookmarkName))
@@ -71,8 +70,7 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "bookmark", "selection", "restore", "navigate" },
             Outputs = new[] { "bookmark", "restoredSelection", "note" },
-            RequiresInput = new[] { "bookmarkName" },
-            Mode = SkillMode.SemiAuto)]
+            RequiresInput = new[] { "bookmarkName" })]
         public static object BookmarkGoto(string bookmarkName)
         {
             if (!_bookmarks.TryGetValue(bookmarkName, out var bookmark))
@@ -146,7 +144,8 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Delete,
             Tags = new[] { "bookmark", "delete", "remove" },
             Outputs = new[] { "deleted" },
-            RequiresInput = new[] { "bookmarkName" })]
+            RequiresInput = new[] { "bookmarkName" },
+            RiskLevel = "low")]
         public static object BookmarkDelete(string bookmarkName)
         {
             if (_bookmarks.Remove(bookmarkName))
@@ -404,7 +403,8 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Delete,
             Tags = new[] { "task", "delete", "history", "cleanup" },
             Outputs = new[] { "deletedId" },
-            RequiresInput = new[] { "taskId" })]
+            RequiresInput = new[] { "taskId" },
+            RiskLevel = "medium")]
         public static object WorkflowDeleteTask(string taskId)
         {
             WorkflowManager.DeleteTask(taskId);

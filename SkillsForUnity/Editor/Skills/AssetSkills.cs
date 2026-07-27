@@ -216,7 +216,8 @@ namespace UnitySkills
             Tags = new[] { "delete", "remove", "cleanup", "batch" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
+            RiskLevel = "medium")]
         public static object AssetDeleteBatch(string items)
         {
             return BatchExecutor.Execute<BatchDeleteItem>(items, item =>

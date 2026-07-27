@@ -110,6 +110,8 @@ references/                 # Unity 开发参考文档
 
 UnitySkills 在**服务端**真正做权限拦截（不再只是 AI 路由建议），对齐 Claude Code permission modes。模式切换统一从 `Window → UnitySkills` 的 ⚙ 设置按钮 → **Server** 区完成。
 
+> 操作模式只是治理层的四道之一 —— 另外三道是执行前的 `?mode=dryRun` 预演、执行后的 JSONL 审计留痕，以及出错后的类型化工作流回滚。四者如何配合见 [README](../README_CN.md) 的**「为什么选 UnitySkills：治理层」**一节。
+
 | 模式 | 默认场景 | 行为 |
 |------|----------|------|
 | **Approval（审批）** | — | AI 调 FullAuto skill → 服务端返回 `MODE_RESTRICTED` + grant token → 用户批准 → AI 调 `POST /permission/grant` 重放 token → skill 执行 |

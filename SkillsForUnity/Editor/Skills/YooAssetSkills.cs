@@ -1150,13 +1150,14 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Modify,
             Tags = new[] { "yooasset", "collector", "settings", "modify" },
             Outputs = new[] { "success", "showPackageView", "uniqueBundleName" },
-            MutatesAssets = true, RiskLevel = "low",
+            MutatesAssets = true, RiskLevel = "low", TracksWorkflow = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" })]
         public static object ModifyCollectorSettings(bool showPackageView = false, bool uniqueBundleName = false, bool save = true)
         {
 #if !YOO_ASSET
             return NoYooAsset();
 #else
+            WorkflowManager.SnapshotObject(AssetBundleCollectorSettingData.Setting);
             AssetBundleCollectorSettingData.ModifyShowPackageView(showPackageView);
             AssetBundleCollectorSettingData.ModifyUniqueBundleName(uniqueBundleName);
             if (save) AssetBundleCollectorSettingData.SaveFile();
@@ -1169,7 +1170,7 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Modify,
             Tags = new[] { "yooasset", "collector", "package", "modify" },
             Outputs = new[] { "success", "packageName" },
-            MutatesAssets = true, RiskLevel = "low",
+            MutatesAssets = true, RiskLevel = "low", TracksWorkflow = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" })]
         public static object ModifyCollectorPackage(
             string packageName,
@@ -1190,6 +1191,7 @@ namespace UnitySkills
             if (pkg == null) return new { error = $"Package '{packageName}' not found." };
             if (!AssetBundleCollectorSettingData.HasIgnoreRuleName(ignoreRule))
                 return new { error = $"Unknown ignoreRule: {ignoreRule}." };
+            WorkflowManager.SnapshotObject(AssetBundleCollectorSettingData.Setting);
             if (!string.IsNullOrWhiteSpace(newPackageName) && newPackageName != packageName)
             {
                 if (AssetBundleCollectorSettingData.Setting.Packages.Any(p => p.PackageName == newPackageName))
@@ -1226,7 +1228,7 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Delete,
             Tags = new[] { "yooasset", "collector", "package", "remove", "delete" },
             Outputs = new[] { "success", "packageName" },
-            MutatesAssets = true, RiskLevel = "medium",
+            MutatesAssets = true, RiskLevel = "medium", TracksWorkflow = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" })]
         public static object RemoveCollectorPackage(string packageName, bool save = true)
         {
@@ -1235,6 +1237,7 @@ namespace UnitySkills
 #else
             var pkg = FindCollectorPackage(packageName);
             if (pkg == null) return new { error = $"Package '{packageName}' not found." };
+            WorkflowManager.SnapshotObject(AssetBundleCollectorSettingData.Setting);
             AssetBundleCollectorSettingData.RemovePackage(pkg);
             if (save) AssetBundleCollectorSettingData.SaveFile();
             return new { success = true, packageName, saved = save };
@@ -1246,7 +1249,7 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Modify,
             Tags = new[] { "yooasset", "collector", "group", "modify" },
             Outputs = new[] { "success", "packageName", "groupName" },
-            MutatesAssets = true, RiskLevel = "low",
+            MutatesAssets = true, RiskLevel = "low", TracksWorkflow = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" })]
         public static object ModifyCollectorGroup(
             string packageName,
@@ -1266,6 +1269,7 @@ namespace UnitySkills
             if (group == null) return new { error = $"Group '{groupName}' not found in package '{packageName}'." };
             if (!AssetBundleCollectorSettingData.HasActiveRuleName(activeRule))
                 return new { error = $"Unknown activeRule: {activeRule}." };
+            WorkflowManager.SnapshotObject(AssetBundleCollectorSettingData.Setting);
             if (!string.IsNullOrWhiteSpace(newGroupName) && newGroupName != groupName)
             {
                 if (pkg.Groups.Any(g => g.GroupName == newGroupName))
@@ -1286,7 +1290,7 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Delete,
             Tags = new[] { "yooasset", "collector", "group", "remove", "delete" },
             Outputs = new[] { "success", "packageName", "groupName" },
-            MutatesAssets = true, RiskLevel = "medium",
+            MutatesAssets = true, RiskLevel = "medium", TracksWorkflow = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" })]
         public static object RemoveCollectorGroup(string packageName, string groupName, bool save = true)
         {
@@ -1297,6 +1301,7 @@ namespace UnitySkills
             if (pkg == null) return new { error = $"Package '{packageName}' not found." };
             var group = FindCollectorGroup(pkg, groupName);
             if (group == null) return new { error = $"Group '{groupName}' not found in package '{packageName}'." };
+            WorkflowManager.SnapshotObject(AssetBundleCollectorSettingData.Setting);
             AssetBundleCollectorSettingData.RemoveGroup(pkg, group);
             if (save) AssetBundleCollectorSettingData.SaveFile();
             return new { success = true, packageName, groupName, saved = save };
@@ -1308,7 +1313,7 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Modify,
             Tags = new[] { "yooasset", "collector", "modify" },
             Outputs = new[] { "success", "packageName", "groupName", "collectPath" },
-            MutatesAssets = true, RiskLevel = "low",
+            MutatesAssets = true, RiskLevel = "low", TracksWorkflow = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" })]
         public static object ModifyCollector(
             string packageName,
@@ -1333,6 +1338,7 @@ namespace UnitySkills
             var targetPath = string.IsNullOrWhiteSpace(newCollectPath) ? collectPath : newCollectPath;
             var validationError = ValidateCollectorArguments(targetPath, collectorType, addressRule, packRule, filterRule, out var eType);
             if (validationError != null) return validationError;
+            WorkflowManager.SnapshotObject(AssetBundleCollectorSettingData.Setting);
             collector.CollectPath = targetPath;
             collector.CollectorGUID = AssetDatabase.AssetPathToGUID(targetPath);
             collector.CollectorType = eType;
@@ -1352,7 +1358,7 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Delete,
             Tags = new[] { "yooasset", "collector", "remove", "delete" },
             Outputs = new[] { "success", "packageName", "groupName", "collectPath" },
-            MutatesAssets = true, RiskLevel = "medium",
+            MutatesAssets = true, RiskLevel = "medium", TracksWorkflow = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" })]
         public static object RemoveCollector(string packageName, string groupName, string collectPath, bool save = true)
         {
@@ -1363,6 +1369,7 @@ namespace UnitySkills
             if (groupResult != null) return groupResult;
             var collector = FindCollector(group, collectPath);
             if (collector == null) return new { error = $"Collector '{collectPath}' not found in group '{groupName}'." };
+            WorkflowManager.SnapshotObject(AssetBundleCollectorSettingData.Setting);
             AssetBundleCollectorSettingData.RemoveCollector(group, collector);
             if (save) AssetBundleCollectorSettingData.SaveFile();
             return new { success = true, packageName = pkg.PackageName, groupName = group.GroupName, collectPath, saved = save };

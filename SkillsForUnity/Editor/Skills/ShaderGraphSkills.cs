@@ -282,7 +282,8 @@ namespace UnitySkills
             TracksWorkflow = true,
             MutatesAssets = true,
             RequiresInput = new[] { "assetPath", "nodeId" },
-            RequiresPackages = new[] { "com.unity.shadergraph" })]
+            RequiresPackages = new[] { "com.unity.shadergraph" },
+            RiskLevel = "medium")]
         public static object ShaderGraphRemoveNode(string assetPath, string nodeId)
         {
             if (Validate.Required(assetPath, "assetPath") is object assetErr) return assetErr;
@@ -534,7 +535,8 @@ namespace UnitySkills
             TracksWorkflow = true,
             MutatesAssets = true,
             RequiresInput = new[] { "assetPath" },
-            RequiresPackages = new[] { "com.unity.shadergraph" })]
+            RequiresPackages = new[] { "com.unity.shadergraph" },
+            RiskLevel = "medium")]
         public static object ShaderGraphRemoveProperty(string assetPath, string propertyName = null, string referenceName = null)
         {
             if (Validate.Required(assetPath, "assetPath") is object assetErr) return assetErr;
@@ -656,7 +658,8 @@ namespace UnitySkills
             TracksWorkflow = true,
             MutatesAssets = true,
             RequiresInput = new[] { "assetPath" },
-            RequiresPackages = new[] { "com.unity.shadergraph" })]
+            RequiresPackages = new[] { "com.unity.shadergraph" },
+            RiskLevel = "medium")]
         public static object ShaderGraphRemoveKeyword(string assetPath, string displayName = null, string referenceName = null)
         {
             if (Validate.Required(assetPath, "assetPath") is object assetErr) return assetErr;

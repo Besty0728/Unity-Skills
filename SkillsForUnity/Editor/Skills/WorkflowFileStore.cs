@@ -23,6 +23,15 @@ namespace UnitySkills
             Path.GetFullPath(Path.Combine(Application.dataPath, "../Library/UnitySkills/workflow_files"));
 
         /// <summary>
+        /// Blobs that entered the store within this window are never reclaimed as unreferenced:
+        /// a caller may still be assembling the snapshot that will reference them.
+        /// </summary>
+        private static readonly TimeSpan RecentWriteGrace = TimeSpan.FromMinutes(10);
+
+        /// <summary>Extension given to a blob whose contents no longer match its hash.</summary>
+        private const string CorruptSuffix = ".corrupt";
+
+        /// <summary>
         /// Stores an asset file in the content-addressed store and optionally removes the source.
         /// The companion .meta file is independently content-addressed.
         /// </summary>
@@ -106,6 +115,12 @@ namespace UnitySkills
             if (!File.Exists(hashPath))
                 return false;
 
+            // Verified before anything is written, so a corrupt blob leaves the project untouched.
+            if (!VerifyBlobIntegrity(hash))
+                return false;
+            if (!string.IsNullOrEmpty(metaHash) && File.Exists(metaHashPath) && !VerifyBlobIntegrity(metaHash))
+                return false;
+
             try
             {
                 EnsureDirectoryExists(fullPath);
@@ -146,7 +161,12 @@ namespace UnitySkills
         /// </summary>
         /// <param name="removedCount">Number of main hash entries removed.</param>
         /// <param name="removedBytes">Total bytes reclaimed (including .meta sidecars).</param>
-        public static void CollectGarbage(HashSet<string> referencedHashes, out int removedCount, out long removedBytes, Action<string> log = null)
+        /// <param name="includeRecentWrites">
+        /// Set only when the caller knows the reference set is complete by construction (clearing all
+        /// history); otherwise just-written blobs are kept, see <see cref="RecentWriteGrace"/>.
+        /// </param>
+        public static void CollectGarbage(HashSet<string> referencedHashes, out int removedCount, out long removedBytes,
+            Action<string> log = null, bool includeRecentWrites = false)
         {
             removedCount = 0;
             removedBytes = 0;
@@ -154,9 +174,14 @@ namespace UnitySkills
             if (!Directory.Exists(StoreRoot))
                 return;
 
+            var graceCutoff = DateTime.UtcNow - RecentWriteGrace;
+
             foreach (var entry in ListEntries())
             {
                 if (referencedHashes.Contains(entry.hash))
+                    continue;
+
+                if (!includeRecentWrites && entry.lastWrite > graceCutoff)
                     continue;
 
                 try
@@ -221,6 +246,9 @@ namespace UnitySkills
                 string fileName = Path.GetFileName(file);
                 if (fileName.EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
                     continue;
+                // Quarantined blobs are evidence of corruption; cleanup must not reclaim them.
+                if (fileName.EndsWith(CorruptSuffix, StringComparison.OrdinalIgnoreCase))
+                    continue;
 
                 try
                 {
@@ -234,8 +262,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Prunes store entries older than <paramref name="olderThan"/u003e, then if necessary removes oldest
-        /// entries until the total size is below <paramref name="maxTotalBytes"/u003e.
+        /// Prunes store entries older than <paramref name="olderThan"/>, then if necessary removes oldest
+        /// entries until the total size is below <paramref name="maxTotalBytes"/>.
         /// Blobs referenced by retained history are never removed.
         /// </summary>
         /// <returns>Number of main hash entries removed.</returns>
@@ -255,9 +283,12 @@ namespace UnitySkills
                 if (protectedHashes.Contains(entry.hash))
                     continue;
 
+                // Same in-flight protection as CollectGarbage: a blob written moments ago may
+                // belong to a task not yet folded into the history's reference set.
+                bool recentWrite = entry.lastWrite >= DateTime.UtcNow - RecentWriteGrace;
                 bool tooOld = olderThan.HasValue && entry.lastWrite < olderThan.Value;
                 bool tooBig = maxTotalBytes > 0 && totalBytes > maxTotalBytes;
-                if (!tooOld && !tooBig)
+                if (recentWrite || (!tooOld && !tooBig))
                     continue;
 
                 try
@@ -324,7 +355,10 @@ namespace UnitySkills
 
             string destinationPath = GetHashPath(hash);
             if (File.Exists(destinationPath))
+            {
+                TouchBlob(destinationPath);
                 return hash;
+            }
 
             EnsureStoreDirectory();
             string tmpPath = destinationPath + ".tmp";
@@ -357,6 +391,9 @@ namespace UnitySkills
 
             string sourcePath = GetHashPath(hash);
             if (!File.Exists(sourcePath))
+                return false;
+
+            if (!VerifyBlobIntegrity(hash))
                 return false;
 
             try
@@ -417,11 +454,62 @@ namespace UnitySkills
         {
             string hashPath = GetHashPath(hash);
             if (File.Exists(hashPath))
+            {
+                TouchBlob(hashPath);
                 return true;
+            }
 
             EnsureStoreDirectory();
             WriteAtomically(hashPath, sourcePath);
+            TouchBlob(hashPath);
             return File.Exists(hashPath);
+        }
+
+        /// <summary>
+        /// Stamps a blob with the time it entered the store. File.Copy carries the source asset's
+        /// timestamp over, but cleanup ages entries by how long they have been stored, not by how
+        /// old the asset was when it was backed up.
+        /// </summary>
+        private static void TouchBlob(string hashPath)
+        {
+            try
+            {
+                if (File.Exists(hashPath))
+                    File.SetLastWriteTimeUtc(hashPath, DateTime.UtcNow);
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogVerbose($"[WorkflowFileStore] Failed to stamp blob {Path.GetFileName(hashPath)}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Confirms a stored blob still hashes to the name it is filed under, quarantining it as
+        /// "&lt;hash&gt;.corrupt" when it does not. Legacy "&lt;hash&gt;.meta" sidecars are named after the
+        /// main file's hash rather than their own, so they are never checked here.
+        /// </summary>
+        private static bool VerifyBlobIntegrity(string hash)
+        {
+            string hashPath = GetHashPath(hash);
+            string actual = ComputeFileHash(hashPath);
+            if (!string.IsNullOrEmpty(actual) && string.Equals(actual, hash, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            string quarantinePath = hashPath + CorruptSuffix;
+            try
+            {
+                SafeDelete(quarantinePath);
+                File.Move(hashPath, quarantinePath);
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogWarning($"[WorkflowFileStore] Failed to quarantine corrupt blob {hash}: {ex.Message}");
+            }
+
+            SkillsLogger.LogError(
+                $"[WorkflowFileStore] Backup blob {hash} is damaged (contents hash to {actual ?? "unreadable"}); " +
+                $"kept as {Path.GetFileName(quarantinePath)} and the restore was aborted rather than writing bad data.");
+            return false;
         }
 
         private static void EnsureStoreDirectory()

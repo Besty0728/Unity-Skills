@@ -126,7 +126,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "delete", "face", "modeling" },
             Outputs = new[] { "success", "deletedCount", "remainingFaces", "remainingVertices" },
-            RequiresInput = new[] { "proBuilderMesh" })]
+            RequiresInput = new[] { "proBuilderMesh" },
+            RiskLevel = "medium")]
         public static object ProBuilderDeleteFaces(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null)
@@ -1151,7 +1152,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify | SkillOperation.Delete,
             Tags = new[] { "probuilder", "combine", "merge", "optimization" },
             Outputs = new[] { "success", "combinedCount", "vertexCount", "faceCount" },
-            RequiresInput = new[] { "proBuilderMesh" })]
+            RequiresInput = new[] { "proBuilderMesh" },
+            RiskLevel = "medium")]
         public static object ProBuilderCombineMeshes(string names = null)
         {
 #if !PROBUILDER

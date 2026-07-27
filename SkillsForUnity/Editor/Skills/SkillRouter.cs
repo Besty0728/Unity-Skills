@@ -91,9 +91,19 @@ namespace UnitySkills
         // filtered variants (?category=… etc.) were rebuilt + re-serialized on every request —
         // the very path agents use to save tokens (scoped is ~24KB vs ~618KB full). Content is
         // byte-deterministic per query until skills change, so caching is safe; cleared on
-        // Refresh() (domain reload / skill add-remove).
+        // Refresh() (domain reload / skill add-remove). Only recognized filter keys reach the
+        // cache key (see StripUnrecognizedFilterKeys) so an unbounded query param (e.g. a
+        // cache-busting ?nonce=N) can't mint a fresh multi-hundred-KB entry per request; entry
+        // count is additionally hard-capped by MaxCacheEntries as a second line of defense.
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _filteredOutputCache =
             new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
+
+        // Hard cap shared by _filteredOutputCache and _etagCache. Both are read on the HTTP
+        // thread and written on the main thread; a capacity check + Clear() needs no extra lock
+        // (ConcurrentDictionary.Clear() is thread-safe) and keeps the eviction policy as simple
+        // as "reset the whole cache" — real-world callers cycle through a small closed set of
+        // category/tag/summary combos, so this only guards against pathological query variation.
+        private const int MaxCacheEntries = 256;
 
         /// <summary>Number of registered skills. Avoids parsing manifest just for a count.</summary>
         public static int SkillCount
@@ -651,7 +661,7 @@ namespace UnitySkills
                 if (!skill.ReadOnly)
                     UnityEditor.Undo.FlushUndoRecordObjects();
 
-                if (SkillResultHelper.TryGetError(result, out string errorText))
+                if (SkillResultHelper.TryGetErrorContext(result, out var errorContext))
                 {
                     if (autoStartedWorkflow && WorkflowManager.IsRecording)
                         WorkflowManager.AbortTask();
@@ -661,11 +671,22 @@ namespace UnitySkills
                     if (undoGroup >= 0)
                         UnityEditor.Undo.RevertAllInCurrentGroup();
 
+                    // Every business error in the fleet funnels through here. Whatever the skill
+                    // declared for itself wins field by field; the classifier fills the gaps so the
+                    // ~700 skills that only return { error = "..." } still get a code and a retry
+                    // strategy instead of a uniform SKILL_ERROR + abort. A declared errorCode also
+                    // steers the remaining fields, so a partial declaration stays self-consistent.
+                    var classified = errorContext.Code.HasValue
+                        ? SkillErrorClassifier.ForCode(errorContext.Code.Value, errorContext.Message)
+                        : SkillErrorClassifier.Classify(errorContext.Message);
+
                     return SkillErrorResponse.Build(
-                        SkillErrorCode.SkillError,
-                        errorText,
+                        errorContext.Code ?? classified.Code,
+                        errorContext.Message,
                         skill: name,
-                        retryStrategy: SkillErrorResponse.Abort);
+                        suggestedFixes: errorContext.SuggestedFixes ?? classified.SuggestedFixes,
+                        relatedSkills: errorContext.RelatedSkills ?? classified.RelatedSkills,
+                        retryStrategy: errorContext.RetryStrategy ?? classified.RetryStrategy);
                 }
 
                 // ========== AUTO WORKFLOW END ==========
@@ -1133,6 +1154,7 @@ namespace UnitySkills
                 _cachedSchema = null;
                 _outputIndex = null;
                 _filteredOutputCache.Clear();
+                _etagCache.Clear();
                 _workflowTrackedSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             }
             Initialize();
@@ -1194,10 +1216,33 @@ namespace UnitySkills
         /// </summary>
         public static string GetFilteredSchema(string queryString) => BuildFilteredOutput(queryString, "schema");
 
+        // Query keys BuildFilteredOutput actually filters/branches on. Anything else (typos,
+        // cache-busting nonces, client-side tracking params, …) is dropped before it can reach
+        // the cache key — otherwise every distinct unrecognized value mints its own permanent
+        // ~618KB cache entry (see MaxCacheEntries comment above _filteredOutputCache).
+        private static readonly HashSet<string> _recognizedFilterKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "category", "operation", "tags", "readonly", "q", "summary", "includeSchema", "brief"
+        };
+
+        private static Dictionary<string, string> StripUnrecognizedFilterKeys(Dictionary<string, string> filters)
+        {
+            if (filters.Count == 0 || filters.Keys.All(k => _recognizedFilterKeys.Contains(k)))
+                return filters;
+
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in filters)
+            {
+                if (_recognizedFilterKeys.Contains(kv.Key))
+                    result[kv.Key] = kv.Value;
+            }
+            return result;
+        }
+
         private static string BuildFilteredOutput(string queryString, string manifestType)
         {
             Initialize();
-            var filters = ParseQueryString(queryString);
+            var filters = StripUnrecognizedFilterKeys(ParseQueryString(queryString));
             if (filters.Count == 0)
                 return manifestType == "schema" ? GetSchema() : GetManifest();
 
@@ -1216,6 +1261,7 @@ namespace UnitySkills
                 (briefVal == "1" || briefVal.Equals("true", StringComparison.OrdinalIgnoreCase)))
             {
                 var briefJson = JsonConvert.SerializeObject(BuildBriefManifest(), _jsonSettings);
+                if (_filteredOutputCache.Count >= MaxCacheEntries) _filteredOutputCache.Clear();
                 _filteredOutputCache[cacheKey] = briefJson;
                 return briefJson;
             }
@@ -1257,6 +1303,7 @@ namespace UnitySkills
 
             var manifest = BuildManifest(results, filtered: true, filters, manifestType, summary);
             var json = JsonConvert.SerializeObject(manifest, _jsonSettings);
+            if (_filteredOutputCache.Count >= MaxCacheEntries) _filteredOutputCache.Clear();
             _filteredOutputCache[cacheKey] = json;
             return json;
         }
@@ -2506,8 +2553,10 @@ namespace UnitySkills
 
         // ETag 缓存：键 = 输出缓存键，值 = (来源 json 引用, etag)。
         // SkillRouter 非 [InitializeOnLoad]、无静态持久化，域重载即整体重置，天然失效；
-        // Refresh()（skill 增删）重建后缓存 json 是新 string 实例，下方 ReferenceEquals
-        // 不匹配即自动重算——因此无需在 Refresh() 里挂清空钩子。
+        // Refresh()（skill 增删）重建后旧 entry 的 json 引用与新缓存串不再相等，下方
+        // ReferenceEquals 不匹配即自动重算并覆盖同 key——正确性本不依赖清空。但 Refresh() 仍
+        // 主动 Clear()，避免旧 entry（及其引用的大字符串）在多次 Refresh 间累积；同时用
+        // MaxCacheEntries 兜底防止任意路径下的无界膨胀。
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Json, string Etag)> _etagCache =
             new System.Collections.Concurrent.ConcurrentDictionary<string, (string Json, string Etag)>();
 
@@ -2526,29 +2575,49 @@ namespace UnitySkills
             if (!isSchema && !string.Equals(path, "/skills", StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            string manifestType = isSchema ? "schema" : "manifest";
-            string cacheKey;
-
-            // 与 BuildFilteredOutput 的分流保持一致：query 为空或解析后无有效过滤键 → 全量缓存；
-            // 否则用同一把 BuildFilteredOutputCacheKey 生成的键读 _filteredOutputCache
-            // （两者键构造完全同源，大小写归一语义一致）。
-            var filters = string.IsNullOrEmpty(query) ? null : ParseQueryString(query);
-            if (filters == null || filters.Count == 0)
-            {
+            string cacheKey = BuildGetCacheKey(path, query, out bool isFullOutput);
+            if (isFullOutput)
                 json = isSchema ? _cachedSchema : _cachedManifest;
-                cacheKey = manifestType + "|__full__";
-            }
             else
-            {
-                cacheKey = BuildFilteredOutputCacheKey(filters, manifestType);
                 _filteredOutputCache.TryGetValue(cacheKey, out json);
-            }
 
             if (json == null)
                 return false;
 
             etag = GetOrComputeEtag(cacheKey, json);
             return true;
+        }
+
+        /// <summary>
+        /// 主线程慢路径专用：为刚构建好的 /skills 或 /skills/schema 输出取 ETag。与
+        /// <see cref="TryGetCachedGetResponse"/> 共用 <see cref="BuildGetCacheKey"/> 与
+        /// <see cref="GetOrComputeEtag"/>，所以同一份内容在慢路径与 HTTP 线程快路径上得到的
+        /// etag 完全一致——否则客户端会在两条路径间来回抖动，If-None-Match 永远命中不了 304。
+        /// json 为空（错误响应等）时返回 null，调用方不应发 ETag 头。
+        /// </summary>
+        internal static string GetEtagForCachedGet(string path, string query, string json)
+        {
+            if (string.IsNullOrEmpty(json))
+                return null;
+            return GetOrComputeEtag(BuildGetCacheKey(path, query, out _), json);
+        }
+
+        /// <summary>
+        /// 与 BuildFilteredOutput 的分流保持一致：query 为空或解析后无有效过滤键 → 全量缓存键
+        /// （isFullOutput=true）；否则用同一把 <see cref="BuildFilteredOutputCacheKey"/> 生成的
+        /// 键（两者键构造完全同源，大小写归一语义一致）。
+        /// </summary>
+        private static string BuildGetCacheKey(string path, string query, out bool isFullOutput)
+        {
+            string manifestType = string.Equals(path, "/skills/schema", StringComparison.OrdinalIgnoreCase)
+                ? "schema"
+                : "manifest";
+
+            var filters = string.IsNullOrEmpty(query) ? null : StripUnrecognizedFilterKeys(ParseQueryString(query));
+            isFullOutput = filters == null || filters.Count == 0;
+            return isFullOutput
+                ? manifestType + "|__full__"
+                : BuildFilteredOutputCacheKey(filters, manifestType);
         }
 
         /// <summary>
@@ -2561,6 +2630,7 @@ namespace UnitySkills
                 return entry.Etag;
 
             string etag = ComputeEtag(json);
+            if (_etagCache.Count >= MaxCacheEntries) _etagCache.Clear();
             _etagCache[cacheKey] = (json, etag);
             return etag;
         }
@@ -2580,6 +2650,20 @@ namespace UnitySkills
         #endregion
     }
 
+    /// <summary>
+    /// Everything the router could lift off a skill's error object. Only <see cref="Message"/> is
+    /// ever populated for the legacy <c>new { error = "..." }</c> shape; the rest are the opt-in
+    /// contract a skill may declare to override <see cref="SkillErrorClassifier"/>'s guess.
+    /// </summary>
+    internal sealed class SkillErrorContext
+    {
+        public string Message;
+        public SkillErrorCode? Code;
+        public string RetryStrategy;
+        public List<SuggestedFix> SuggestedFixes;
+        public List<string> RelatedSkills;
+    }
+
     internal static class SkillResultHelper
     {
         public static bool TryGetError(object result, out string errorText)
@@ -2596,6 +2680,149 @@ namespace UnitySkills
 
             errorText = errorValue.ToString();
             return !string.IsNullOrWhiteSpace(errorText);
+        }
+
+        /// <summary>
+        /// Layer 1 of the router's error contract: lift the message plus any structured fields the
+        /// skill chose to declare (<c>errorCode</c>, <c>suggestedFixes</c>, <c>retryStrategy</c>,
+        /// <c>relatedSkills</c>). Recognises the same "is this an error?" condition as
+        /// <see cref="TryGetError(object, out string)"/>, so a skill that declares nothing extra
+        /// behaves exactly as before. Field extraction is exception-isolated — a malformed
+        /// declaration degrades to message-only rather than failing the response.
+        /// </summary>
+        public static bool TryGetErrorContext(object result, out SkillErrorContext context)
+        {
+            context = null;
+            if (!TryGetError(result, out string errorText))
+                return false;
+
+            context = new SkillErrorContext { Message = errorText };
+
+            try
+            {
+                if (TryGetMemberValue(result, "errorCode", out var codeValue) && codeValue != null &&
+                    SkillErrorCodeExtensions.TryParseWire(codeValue.ToString(), out var parsedCode))
+                    context.Code = parsedCode;
+
+                if (TryGetMemberValue(result, "retryStrategy", out var retryValue) && retryValue != null)
+                {
+                    var retry = retryValue.ToString().Trim();
+                    if (retry.Length > 0)
+                        context.RetryStrategy = retry;
+                }
+
+                if (TryGetMemberValue(result, "relatedSkills", out var relatedValue))
+                    context.RelatedSkills = ToStringList(relatedValue);
+
+                if (TryGetMemberValue(result, "suggestedFixes", out var fixesValue))
+                    context.SuggestedFixes = ToSuggestedFixes(fixesValue);
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogVerbose($"Skill error context extraction failed, falling back to message only: {ex.Message}");
+            }
+
+            return true;
+        }
+
+        /// <summary>Accepts string, string[], JArray or any sequence; returns null when empty.</summary>
+        private static List<string> ToStringList(object value)
+        {
+            if (value == null || value is JObject)
+                return null;
+
+            var items = new List<string>();
+
+            if (value is string single)
+            {
+                if (!string.IsNullOrWhiteSpace(single))
+                    items.Add(single);
+            }
+            else if (value is System.Collections.IEnumerable sequence)
+            {
+                foreach (var entry in sequence)
+                {
+                    var text = entry?.ToString();
+                    if (!string.IsNullOrWhiteSpace(text))
+                        items.Add(text);
+                }
+            }
+
+            return items.Count > 0 ? items : null;
+        }
+
+        /// <summary>
+        /// Accepts a single fix or a sequence of them, in either the rich shape
+        /// (<c>{ action, skill, args, reason }</c>) or a bare hint string.
+        /// </summary>
+        private static List<SuggestedFix> ToSuggestedFixes(object value)
+        {
+            if (value == null)
+                return null;
+
+            var fixes = new List<SuggestedFix>();
+
+            if (value is string || value is JObject || value is SuggestedFix)
+            {
+                var single = ToSuggestedFix(value);
+                if (single != null)
+                    fixes.Add(single);
+            }
+            else if (value is System.Collections.IEnumerable sequence)
+            {
+                foreach (var entry in sequence)
+                {
+                    var one = ToSuggestedFix(entry);
+                    if (one != null)
+                        fixes.Add(one);
+                }
+            }
+
+            return fixes.Count > 0 ? fixes : null;
+        }
+
+        private static SuggestedFix ToSuggestedFix(object entry)
+        {
+            if (entry == null)
+                return null;
+
+            if (entry is SuggestedFix typed)
+                return typed;
+
+            if (entry is string hint)
+                return string.IsNullOrWhiteSpace(hint) ? null : new SuggestedFix { action = "retry", reason = hint };
+
+            var token = entry as JToken ?? JToken.FromObject(entry);
+
+            if (token.Type == JTokenType.String)
+            {
+                var text = token.Value<string>();
+                return string.IsNullOrWhiteSpace(text) ? null : new SuggestedFix { action = "retry", reason = text };
+            }
+
+            if (!(token is JObject obj))
+                return null;
+
+            var fix = new SuggestedFix
+            {
+                action = ReadString(obj, "action"),
+                skill = ReadString(obj, "skill"),
+                reason = ReadString(obj, "reason"),
+            };
+
+            var argsToken = obj.GetValue("args", StringComparison.OrdinalIgnoreCase);
+            if (argsToken != null && argsToken.Type != JTokenType.Null)
+                fix.args = argsToken;
+
+            bool empty = string.IsNullOrEmpty(fix.action) && string.IsNullOrEmpty(fix.skill) &&
+                         string.IsNullOrEmpty(fix.reason) && fix.args == null;
+            return empty ? null : fix;
+        }
+
+        private static string ReadString(JObject obj, string name)
+        {
+            var token = obj.GetValue(name, StringComparison.OrdinalIgnoreCase);
+            return token == null || token.Type == JTokenType.Null ? null : token.ToString();
         }
 
         public static bool TryGetMemberValue(object result, string memberName, out object value)

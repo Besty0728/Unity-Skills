@@ -42,6 +42,21 @@ namespace UnitySkills
         private static readonly Dictionary<string, SmokeRuntimeContext> SmokeRuntimeJobs =
             new Dictionary<string, SmokeRuntimeContext>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// Job kinds whose progress is driven by Unity's own main-thread event loop
+        /// (compilation daemon + domain reload, PackageManager async Request polling,
+        /// TestRunner callbacks, PlayMode state machine, BuildPipeline). <see cref="Wait"/>
+        /// runs on that same main thread, so spin-waiting on these kinds would block the
+        /// very loop they need in order to advance and would never observe progress.
+        /// </summary>
+        private static readonly HashSet<string> EngineDrivenJobKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "compile", "package", "test", "playmode", "play_capture", "build_player", "playmode_step"
+        };
+
+        /// <summary>Hard ceiling for <see cref="Wait"/>'s blocking loop; longer waits must poll instead.</summary>
+        internal const int MaxWaitTimeoutMs = 2000;
+
         static AsyncJobService()
         {
             try
@@ -490,10 +505,30 @@ namespace UnitySkills
             return job;
         }
 
-        internal static BatchJobRecord Wait(string jobId, int timeoutMs)
+        /// <summary>
+        /// Blocks the calling (main) thread pumping <paramref name="jobId"/> until it reaches
+        /// a terminal state or <paramref name="timeoutMs"/> (clamped to <see cref="MaxWaitTimeoutMs"/>)
+        /// elapses. For <see cref="EngineDrivenJobKinds"/>, blocking cannot help the job progress
+        /// (it would just freeze the Editor for the full timeout), so this pumps once and returns
+        /// the current snapshot immediately with <paramref name="waitNotSupported"/> set.
+        /// </summary>
+        internal static BatchJobRecord Wait(string jobId, int timeoutMs, out bool waitNotSupported)
         {
-            var deadline = DateTime.UtcNow.AddMilliseconds(Math.Max(100, timeoutMs));
-            BatchJobRecord job;
+            waitNotSupported = false;
+            var job = BatchPersistence.GetJob(jobId);
+            if (job == null)
+                return null;
+
+            if (EngineDrivenJobKinds.Contains(job.kind ?? string.Empty))
+            {
+                waitNotSupported = true;
+                Pump(jobId);
+                BatchJobService.Pump(jobId);
+                return BatchPersistence.GetJob(jobId);
+            }
+
+            var clampedTimeoutMs = Mathf.Clamp(timeoutMs, 0, MaxWaitTimeoutMs);
+            var deadline = DateTime.UtcNow.AddMilliseconds(clampedTimeoutMs);
             do
             {
                 Pump(jobId);

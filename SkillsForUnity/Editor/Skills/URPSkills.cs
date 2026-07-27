@@ -56,7 +56,8 @@ namespace UnitySkills
         [UnitySkill("urp_remove_renderer_feature", "Remove a renderer feature from a URP renderer",
             Category = SkillCategory.URP, Operation = SkillOperation.Delete,
             Tags = new[] { "urp", "renderer feature", "remove" },
-            Outputs = new[] { "removedFeature", "renderer" })]
+            Outputs = new[] { "removedFeature", "renderer" },
+            RiskLevel = "medium")]
         public static object URPRemoveRendererFeature(string assetPath = null, int rendererIndex = -1, string rendererDataPath = null, int featureIndex = -1, string featureName = null, string featureType = null) => RenderPipelineSkillsCommon.NoURP();
 
         [UnitySkill("urp_set_renderer_feature_active", "Enable or disable a renderer feature on a URP renderer",
@@ -249,7 +250,8 @@ namespace UnitySkills
             Outputs = new[] { "removedFeature", "renderer" },
             TracksWorkflow = true,
             MutatesAssets = true,
-            RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
+            RequiresPackages = new[] { "com.unity.render-pipelines.universal" },
+            RiskLevel = "medium")]
         public static object URPRemoveRendererFeature(string assetPath = null, int rendererIndex = -1, string rendererDataPath = null, int featureIndex = -1, string featureName = null, string featureType = null)
         {
             var asset = LoadAssetOrError(assetPath, out var error);

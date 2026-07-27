@@ -11,6 +11,37 @@ permissions:
   checks: write
 
 jobs:
+  skill-frontmatter-check:
+    name: SKILL.md Frontmatter Compliance
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Check SKILL.md frontmatter
+        run: python3 .github/scripts/check_skill_frontmatter.py .
+
+  meta-guid-check:
+    name: .meta Pairing & GUID Uniqueness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Check .meta pairing and GUID duplicates
+        run: python3 .github/scripts/check_meta_files.py .
+
   editmode:
     name: Unity ${{ matrix.unityVersion }} EditMode
     runs-on: ubuntu-latest
@@ -58,6 +89,15 @@ jobs:
           m_EditorVersion: ${{ matrix.unityVersion }}
           EOF
           cat TempUnityProject/Packages/manifest.json
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: TempUnityProject/Library
+          key: Library-${{ runner.os }}-${{ matrix.unityVersion }}-${{ hashFiles('TempUnityProject/Packages/manifest.json') }}
+          restore-keys: |
+            Library-${{ runner.os }}-${{ matrix.unityVersion }}-
+            Library-${{ runner.os }}-
 
       - uses: game-ci/unity-test-runner@v4
         id: tests

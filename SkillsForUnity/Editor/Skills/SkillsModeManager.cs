@@ -120,8 +120,19 @@ namespace UnitySkills
         /// <summary>
         /// 单次有效 grant 的"放行令牌"。由 <see cref="TryGrantAndReturnArgs"/> 设置，
         /// 由 <see cref="ConsumeOneShotBypass"/> 消费。ThreadStatic 保证不同请求线程互不干扰。
+        ///
+        /// 设置方**必须**在 finally 里调用 <see cref="ClearOneShotBypass"/>——消费点不是必经之路，
+        /// 详见该方法的注释。<see cref="_oneShotDeadlineUtc"/> 是第二道保险。
         /// </summary>
         [ThreadStatic] private static string _currentOneShotSkill;
+
+        /// <summary>
+        /// 令牌失效时刻。设置到消费之间只隔一次 SkillRouter.Execute 的参数校验（毫秒级），
+        /// 所以任何超出 <see cref="OneShotLifetime"/> 的令牌都是残留物，一律作废而非放行。
+        /// </summary>
+        [ThreadStatic] private static DateTime _oneShotDeadlineUtc;
+
+        private static readonly TimeSpan OneShotLifetime = TimeSpan.FromSeconds(30);
 
         public static event Action OnChanged;
 
@@ -495,7 +506,7 @@ namespace UnitySkills
             // Granted — 消费 entry、设置 one-shot、审计。语义上等价于 TryGrantDetailed Granted 分支。
             _grants.TryRemove(token, out _);
             entry.OneShotConsumed = true;
-            _currentOneShotSkill = entry.SkillName;
+            SetOneShotBypass(entry.SkillName);
             int tokenAgeSec = (int)Math.Max(0, (DateTime.UtcNow - entry.IssuedAtUtc).TotalSeconds);
             SkillsAuditLog.Append("grant", new
             {
@@ -511,16 +522,53 @@ namespace UnitySkills
 
         /// <summary>
         /// 消费当前线程的 one-shot 放行令牌。命中（即 <c>_currentOneShotSkill</c> 等于
-        /// <paramref name="skillName"/>，忽略大小写）则清空并返回 true；否则返回 false。
+        /// <paramref name="skillName"/>，忽略大小写，且未超出存活窗口）则清空并返回 true；
+        /// 否则返回 false。过期令牌被直接丢弃并告警——它只可能来自漏掉
+        /// <see cref="ClearOneShotBypass"/> 的路径，放行它等于静默绕过 Approval 门。
         /// </summary>
         internal static bool ConsumeOneShotBypass(string skillName)
         {
             var current = _currentOneShotSkill;
             if (string.IsNullOrEmpty(current)) return false;
+
+            if (DateTime.UtcNow > _oneShotDeadlineUtc)
+            {
+                ClearOneShotBypass();
+                SkillsLogger.LogWarning(
+                    $"Discarded a stale one-shot grant token for '{current}' (not consumed). " +
+                    "Some grant path failed to clear it; the current request is re-checked against the operating mode.");
+                return false;
+            }
+
             if (string.IsNullOrEmpty(skillName)) return false;
             if (!string.Equals(current, skillName, StringComparison.OrdinalIgnoreCase)) return false;
-            _currentOneShotSkill = null;
+            ClearOneShotBypass();
             return true;
+        }
+
+        private static void SetOneShotBypass(string skillName)
+        {
+            _currentOneShotSkill = skillName;
+            _oneShotDeadlineUtc = DateTime.UtcNow + OneShotLifetime;
+        }
+
+        /// <summary>
+        /// 无条件清除当前线程的 one-shot 放行令牌。**设置令牌的一方必须在 finally 里调用它**：
+        /// 消费点 <see cref="CheckAccess"/> 位于 SkillRouter.Execute 的四道参数校验
+        /// （UnknownParam / MissingParam / TypeMismatch / SemanticInvalid）之后，任何一道早退
+        /// 都走不到消费点。令牌是 ThreadStatic，而 grant 与普通请求跑在同一条 Unity 主线程上，
+        /// 残留令牌会让下一个同名 skill 请求带着完全不同的参数被静默放行（审计里还只记成
+        /// grantSource="auto"，无法追溯）。
+        ///
+        /// 更强的绑定是把令牌升级为 (skillName, argsHash) 并在消费点比对本次请求的 args；
+        /// 但消费点只拿得到 SkillInfo，args 需要改 SkillRouter.ApplyModeGate → CheckAccess 的
+        /// 调用签名才能传进来（不在本次改动范围）。当前用"设置方无条件清除 +
+        /// <see cref="OneShotLifetime"/> 存活窗口"把泄漏窗口封死。
+        /// </summary>
+        public static void ClearOneShotBypass()
+        {
+            _currentOneShotSkill = null;
+            _oneShotDeadlineUtc = default;
         }
 
         /// <summary>
@@ -580,7 +628,7 @@ namespace UnitySkills
                 _allowlist = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 SaveAllowlistUnlocked();
             }
-            _currentOneShotSkill = null;
+            ClearOneShotBypass();
             EditorPrefs.DeleteKey(PrefKeyMode);
             EditorPrefs.DeleteKey(PrefKeyPanelApproval);
             EditorPrefs.DeleteKey(PrefKeyAllowlist);

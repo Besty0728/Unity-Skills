@@ -283,11 +283,11 @@ Set material render queue.
 ### material_set_gi_flags
 Set material global illumination flags.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | No* | GameObject name |
-| `path` | string | No* | GameObject hierarchy path or material asset path |
-| `flags` | string | Yes | GI flags: `None` / `RealtimeEmissive` / `BakedEmissive` / `EmissiveIsBlack` / `AnyEmissive` (default `RealtimeEmissive` if omitted in code; required here)
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | - | GameObject name |
+| `path` | string | No* | - | GameObject hierarchy path or material asset path |
+| `flags` | string | No | `RealtimeEmissive` | GI flags: `None` / `RealtimeEmissive` / `BakedEmissive` / `EmissiveIsBlack` / `AnyEmissive`
 
 ---
 

@@ -57,7 +57,9 @@ namespace UnitySkills
         URP,
         Decal,
         PostProcess,
-        ShaderGraph
+        ShaderGraph,
+        Behavior,
+        HybridCLR
     }
 
     /// <summary>

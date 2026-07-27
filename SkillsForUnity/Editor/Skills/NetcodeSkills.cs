@@ -2,7 +2,9 @@ using UnityEngine;
 using UnityEditor;
 using System;
 using System.Linq;
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine.SceneManagement;
 using UnitySkills.Internal;
 
@@ -23,6 +25,12 @@ namespace UnitySkills
     ///
     /// All API calls are anchored to NGO 2.x source (see netcode-design advisory module for the
     /// contract: lifecycle, ownership, RPC, variables, spawning, scene, transport, pitfalls).
+    ///
+    /// NGO 2.5+ features (AttachableBehaviour / AttachableNode / ComponentController) are outside
+    /// the versionDefine range this file compiles against (NETCODE_GAMEOBJECTS covers all of
+    /// [2.0,3.0)), so those types are never referenced at compile time. Presence is probed at
+    /// runtime via reflection instead (see Has25Features()/ResolveXxxType() below) — the same
+    /// optional-sub-feature pattern used by DOTweenReflectionHelper for DOTween Pro.
     /// </summary>
     public static class NetcodeSkills
     {
@@ -1100,7 +1108,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("netcode_add_network_behaviour_script",
-            "Generate a NetworkBehaviour C# script template at the given path (OnNetworkSpawn/Despawn, optional NetworkVariable / Rpc / Ownership callbacks)",
+            "Generate a NetworkBehaviour C# script template at the given path (OnNetworkSpawn/Despawn, optional NetworkVariable / Rpc / Ownership callbacks / NGO 2.5+ OnNetworkPreDespawn)",
             TracksWorkflow = true,
             Category = SkillCategory.Netcode, Operation = SkillOperation.Create,
             Tags = new[] { "netcode", "ngo", "networkbehaviour", "script", "template" },
@@ -1112,6 +1120,7 @@ namespace UnitySkills
             bool includeRpc = true,
             bool includeNetworkVariable = true,
             bool includeOwnershipCallbacks = false,
+            bool includePreDespawn = false,
             string namespaceName = null)
         {
 #if !NETCODE_GAMEOBJECTS
@@ -1123,6 +1132,8 @@ namespace UnitySkills
                 return new { error = "path must end with '.cs'." };
             if (System.IO.File.Exists(path))
                 return new { error = $"File already exists at {path}." };
+            if (includePreDespawn && !Has25Features())
+                return new { error = "includePreDespawn requires Netcode for GameObjects 2.5.0+ (NetworkBehaviour.OnNetworkPreDespawn was added in 2.5.0). Call netcode_version to check the installed version, or generate without includePreDespawn." };
 
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("using Unity.Netcode;");
@@ -1156,6 +1167,17 @@ namespace UnitySkills
             sb.AppendLine($"{indent}        // TODO: init local player state inside `if (IsOwner) {{ ... }}`");
             sb.AppendLine($"{indent}    }}");
             sb.AppendLine();
+
+            if (includePreDespawn)
+            {
+                sb.AppendLine($"{indent}    public override void OnNetworkPreDespawn()");
+                sb.AppendLine($"{indent}    {{");
+                sb.AppendLine($"{indent}        // NGO 2.5+: runs before OnNetworkDespawn for this NetworkObject and all its NetworkBehaviours.");
+                sb.AppendLine($"{indent}        base.OnNetworkPreDespawn();");
+                sb.AppendLine($"{indent}    }}");
+                sb.AppendLine();
+            }
+
             sb.AppendLine($"{indent}    public override void OnNetworkDespawn()");
             sb.AppendLine($"{indent}    {{");
             if (includeNetworkVariable)
@@ -1472,6 +1494,411 @@ namespace UnitySkills
         }
 
         // ==================================================================================
+        // 8. NGO 2.5+ Features — Attachable / ComponentController (6 skills)
+        // ==================================================================================
+
+        [UnitySkill("netcode_version",
+            "Report the installed Netcode for GameObjects package version and which 2.5+ features (AttachableBehaviour/AttachableNode/ComponentController, NetworkBehaviour.OnNetworkPreDespawn) are available",
+            Category = SkillCategory.Netcode, Operation = SkillOperation.Query,
+            Tags = new[] { "netcode", "ngo", "version", "diagnostic" },
+            Outputs = new[] { "installed", "version", "supports25Features", "features" },
+            ReadOnly = true,
+            Mode = SkillMode.SemiAuto)]
+        public static object Version()
+        {
+            const string packageId = "com.unity.netcode.gameobjects";
+            PackageManagerHelper.EnsurePackageListRefresh();
+            bool installed = PackageManagerHelper.IsPackageInstalled(packageId);
+            string version = installed ? PackageManagerHelper.GetInstalledVersion(packageId) : null;
+
+#if !NETCODE_GAMEOBJECTS
+            return new
+            {
+                installed,
+                version,
+                supports25Features = false,
+                features = new { attachableBehaviour = false, attachableNode = false, componentController = false },
+                note = installed
+                    ? $"com.unity.netcode.gameobjects {version} is installed but outside the supported [2.0,3.0) range " +
+                      "(NETCODE_GAMEOBJECTS is not active), so all netcode_* skills are disabled. Legacy 1.x is unsupported by this module."
+                    : "com.unity.netcode.gameobjects is not installed. Install via: Window > Package Manager > Unity Registry > Netcode for GameObjects."
+            };
+#else
+            bool has25 = Has25Features();
+            string normalized = StripPrereleaseSuffix(version);
+            bool parsedOk = !string.IsNullOrEmpty(normalized) && System.Version.TryParse(normalized, out var parsed);
+            bool? meetsMinimumFor25 = parsedOk ? (bool?)(parsed.Major > 2 || (parsed.Major == 2 && parsed.Minor >= 5)) : null;
+
+            return new
+            {
+                installed = true,
+                version,
+                meetsMinimumFor25,
+                supports25Features = has25,
+                features = new
+                {
+                    attachableBehaviour = ResolveAttachableBehaviourType() != null,
+                    attachableNode = ResolveAttachableNodeType() != null,
+                    componentController = ResolveComponentControllerType() != null,
+                },
+                note = has25
+                    ? "AttachableBehaviour/AttachableNode/ComponentController and NetworkBehaviour.OnNetworkPreDespawn are available. " +
+                      "Use netcode_attachable_add / netcode_attachable_node_add / netcode_component_controller_add."
+                    : "NGO 2.5+ features are unavailable on this version (added in 2.5.0). Upgrade via Window > Package Manager to unlock " +
+                      "netcode_attachable_* and netcode_component_controller_* skills."
+            };
+#endif
+        }
+
+        [UnitySkill("netcode_attachable_info",
+            "Inspect the scene distribution of NGO 2.5+ attachment/component-toggle helpers: AttachableBehaviour, AttachableNode, ComponentController (requires NGO 2.5+)",
+            Category = SkillCategory.Netcode, Operation = SkillOperation.Query,
+            Tags = new[] { "netcode", "ngo", "attachable", "componentcontroller", "audit" },
+            Outputs = new[] { "supported", "attachableBehaviours", "attachableNodes", "componentControllers" },
+            ReadOnly = true,
+            Mode = SkillMode.SemiAuto)]
+        public static object AttachableInfo(bool includeInactive = true)
+        {
+#if !NETCODE_GAMEOBJECTS
+            return NoNetcode();
+#else
+            if (!Has25Features()) return No25Features("netcode_attachable_info");
+
+            var abType = ResolveAttachableBehaviourType();
+            var anType = ResolveAttachableNodeType();
+            var ccType = ResolveComponentControllerType();
+
+            var autoDetachField = abType.GetField("AutoDetach", BindingFlags.Public | BindingFlags.Instance);
+            var attachStateProp = abType.GetProperty("m_AttachState", BindingFlags.NonPublic | BindingFlags.Instance);
+            var detachOnDespawnField = anType.GetField("DetachOnDespawn", BindingFlags.Public | BindingFlags.Instance);
+            var hasAttachmentsProp = anType.GetProperty("HasAttachments", BindingFlags.Public | BindingFlags.Instance);
+            var startEnabledField = ccType.GetField("StartEnabled", BindingFlags.Public | BindingFlags.Instance);
+            var enabledStateProp = ccType.GetProperty("EnabledState", BindingFlags.Public | BindingFlags.Instance);
+
+            var transforms = FindHelper.FindAll<Transform>(includeInactive: includeInactive);
+            var abList = new List<object>();
+            var anList = new List<object>();
+            var ccList = new List<object>();
+
+            foreach (var t in transforms)
+            {
+                var go = t.gameObject;
+
+                foreach (var comp in go.GetComponents(abType))
+                {
+                    abList.Add(new
+                    {
+                        gameObject = go.name,
+                        entityId = UnityObjectIdUtility.GetEntityId(go),
+                        instanceId = UnityObjectIdUtility.GetObjectId(go),
+                        path = GameObjectFinder.GetPath(go),
+                        autoDetach = SafeGetMemberValue(autoDetachField, comp)?.ToString(),
+                        attachState = SafeGetMemberValue(attachStateProp, comp)?.ToString()
+                    });
+                }
+                foreach (var comp in go.GetComponents(anType))
+                {
+                    anList.Add(new
+                    {
+                        gameObject = go.name,
+                        entityId = UnityObjectIdUtility.GetEntityId(go),
+                        instanceId = UnityObjectIdUtility.GetObjectId(go),
+                        path = GameObjectFinder.GetPath(go),
+                        detachOnDespawn = SafeGetMemberValue(detachOnDespawnField, comp) as bool?,
+                        hasAttachments = SafeGetMemberValue(hasAttachmentsProp, comp) as bool?
+                    });
+                }
+                foreach (var comp in go.GetComponents(ccType))
+                {
+                    ccList.Add(new
+                    {
+                        gameObject = go.name,
+                        entityId = UnityObjectIdUtility.GetEntityId(go),
+                        instanceId = UnityObjectIdUtility.GetObjectId(go),
+                        path = GameObjectFinder.GetPath(go),
+                        startEnabled = SafeGetMemberValue(startEnabledField, comp) as bool?,
+                        enabledState = SafeGetMemberValue(enabledStateProp, comp) as bool?
+                    });
+                }
+            }
+
+            return new
+            {
+                supported = true,
+                attachableBehaviourCount = abList.Count,
+                attachableBehaviours = abList,
+                attachableNodeCount = anList.Count,
+                attachableNodes = anList,
+                componentControllerCount = ccList.Count,
+                componentControllers = ccList
+            };
+#endif
+        }
+
+        [UnitySkill("netcode_attachable_add",
+            "Add an AttachableBehaviour component to a GameObject — NGO 2.5+ alternate parenting ('attach') system that avoids NetworkObject parenting pitfalls. Target must be nested under a NetworkObject, not placed directly on one.",
+            TracksWorkflow = true,
+            Category = SkillCategory.Netcode, Operation = SkillOperation.Create,
+            Tags = new[] { "netcode", "ngo", "attachable", "parenting" },
+            Outputs = new[] { "success", "instanceId", "autoDetach" },
+            MutatesScene = true, RiskLevel = "low", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
+        public static object AttachableAdd(
+            string name = null,
+            int instanceId = 0,
+            string path = null,
+            string autoDetach = null)
+        {
+#if !NETCODE_GAMEOBJECTS
+            return NoNetcode();
+#else
+            if (!Has25Features()) return No25Features("netcode_attachable_add");
+
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
+
+            var abType = ResolveAttachableBehaviourType();
+            if (go.GetComponent(abType) != null)
+                return new { error = $"'{go.name}' already has an AttachableBehaviour." };
+            if (go.GetComponentInParent<NetworkObject>() == null)
+                return new { error = $"'{go.name}' is not nested under any NetworkObject. AttachableBehaviour must live on a child GameObject under a NetworkObject's hierarchy (not required to be spawned yet)." };
+
+            var autoDetachField = abType.GetField("AutoDetach", BindingFlags.Public | BindingFlags.Instance);
+            object parsedAutoDetach = null;
+            if (!string.IsNullOrEmpty(autoDetach))
+            {
+                try { parsedAutoDetach = Enum.Parse(autoDetachField.FieldType, autoDetach, ignoreCase: true); }
+                catch (Exception ex)
+                {
+                    return new { error = $"Invalid autoDetach '{autoDetach}': {ex.Message}. Valid flags: None, OnAttachNodeDestroy, OnDespawn, OnOwnershipChange (comma-separated to combine)." };
+                }
+            }
+
+            var comp = Undo.AddComponent(go, abType);
+            if (parsedAutoDetach != null) autoDetachField.SetValue(comp, parsedAutoDetach);
+
+            EditorUtility.SetDirty(go);
+            WorkflowManager.SnapshotObject(go);
+
+            return new
+            {
+                success = true,
+                name = go.name,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
+                autoDetach = SafeGetMemberValue(autoDetachField, comp)?.ToString()
+            };
+#endif
+        }
+
+        [UnitySkill("netcode_attachable_node_add",
+            "Add an AttachableNode component to a GameObject — the socket/target that AttachableBehaviour instances attach to (NGO 2.5+)",
+            TracksWorkflow = true,
+            Category = SkillCategory.Netcode, Operation = SkillOperation.Create,
+            Tags = new[] { "netcode", "ngo", "attachable", "parenting", "node" },
+            Outputs = new[] { "success", "instanceId", "detachOnDespawn" },
+            MutatesScene = true, RiskLevel = "low", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
+        public static object AttachableNodeAdd(
+            string name = null,
+            int instanceId = 0,
+            string path = null,
+            bool? detachOnDespawn = null)
+        {
+#if !NETCODE_GAMEOBJECTS
+            return NoNetcode();
+#else
+            if (!Has25Features()) return No25Features("netcode_attachable_node_add");
+
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
+
+            var anType = ResolveAttachableNodeType();
+            if (go.GetComponent(anType) != null)
+                return new { error = $"'{go.name}' already has an AttachableNode." };
+            if (go.GetComponent<NetworkObject>() == null && go.GetComponentInParent<NetworkObject>() == null)
+                return new { error = $"'{go.name}' is not associated with any NetworkObject. AttachableNode must belong to a NetworkObject's hierarchy and must be a different NetworkObject than the AttachableBehaviour attaching to it." };
+
+            var comp = Undo.AddComponent(go, anType);
+            var detachOnDespawnField = anType.GetField("DetachOnDespawn", BindingFlags.Public | BindingFlags.Instance);
+            if (detachOnDespawn.HasValue) detachOnDespawnField.SetValue(comp, detachOnDespawn.Value);
+
+            EditorUtility.SetDirty(go);
+            WorkflowManager.SnapshotObject(go);
+
+            return new
+            {
+                success = true,
+                name = go.name,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
+                detachOnDespawn = SafeGetMemberValue(detachOnDespawnField, comp) as bool?
+            };
+#endif
+        }
+
+        [UnitySkill("netcode_component_controller_add",
+            "Add a ComponentController component to a GameObject — network-synchronizes the enabled/disabled state of a list of components across connected and late-joining clients (NGO 2.5+)",
+            TracksWorkflow = true,
+            Category = SkillCategory.Netcode, Operation = SkillOperation.Create,
+            Tags = new[] { "netcode", "ngo", "componentcontroller" },
+            Outputs = new[] { "success", "instanceId", "startEnabled" },
+            MutatesScene = true, RiskLevel = "low", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
+        public static object ComponentControllerAdd(
+            string name = null,
+            int instanceId = 0,
+            string path = null,
+            bool startEnabled = true)
+        {
+#if !NETCODE_GAMEOBJECTS
+            return NoNetcode();
+#else
+            if (!Has25Features()) return No25Features("netcode_component_controller_add");
+
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
+
+            var ccType = ResolveComponentControllerType();
+            if (go.GetComponent(ccType) != null)
+                return new { error = $"'{go.name}' already has a ComponentController." };
+            if (go.GetComponentInParent<NetworkObject>() == null)
+                return new { error = $"'{go.name}' is not nested under any NetworkObject. ComponentController is a NetworkBehaviour and must belong to a NetworkObject's hierarchy." };
+
+            var comp = Undo.AddComponent(go, ccType);
+            var startEnabledField = ccType.GetField("StartEnabled", BindingFlags.Public | BindingFlags.Instance);
+            startEnabledField.SetValue(comp, startEnabled);
+
+            EditorUtility.SetDirty(go);
+            WorkflowManager.SnapshotObject(go);
+
+            return new
+            {
+                success = true,
+                name = go.name,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
+                startEnabled = SafeGetMemberValue(startEnabledField, comp) as bool?
+            };
+#endif
+        }
+
+        [UnitySkill("netcode_component_controller_configure",
+            "Configure an existing ComponentController: set StartEnabled and/or populate its synchronized component list from target GameObjects. Adding a GameObject mirrors dragging it onto the Components field in the Inspector — Unity expands it to every eligible child component (public bool `enabled`, excluding NetworkBehaviour/NetworkObject/NetworkManager). NGO 2.5+.",
+            TracksWorkflow = true,
+            Category = SkillCategory.Netcode, Operation = SkillOperation.Modify,
+            Tags = new[] { "netcode", "ngo", "componentcontroller", "configure" },
+            Outputs = new[] { "success", "startEnabled", "componentCount", "entries" },
+            MutatesScene = true, RiskLevel = "low", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
+        public static object ComponentControllerConfigure(
+            string name = null,
+            int instanceId = 0,
+            string path = null,
+            string[] targetPaths = null,
+            bool clearExisting = false,
+            bool? startEnabled = null)
+        {
+#if !NETCODE_GAMEOBJECTS
+            return NoNetcode();
+#else
+            if (!Has25Features()) return No25Features("netcode_component_controller_configure");
+
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            if (findErr != null) return findErr;
+
+            var ccType = ResolveComponentControllerType();
+            var comp = go.GetComponent(ccType);
+            if (comp == null)
+                return new { error = $"'{go.name}' has no ComponentController. Use netcode_component_controller_add first." };
+
+            // `Components` is `internal [SerializeField] List<ComponentEntry>` inside ComponentController
+            // (verified against NGO source, PR #3518) — not part of the public API, so every access
+            // below goes through reflection rather than a compile-time reference.
+            var componentsField = ccType.GetField("Components", BindingFlags.NonPublic | BindingFlags.Instance);
+            var entryType = ccType.GetNestedType("ComponentEntry", BindingFlags.NonPublic);
+            if (componentsField == null || entryType == null)
+                return new { error = "Internal: ComponentController.Components / ComponentEntry not found via reflection. The NGO internal layout may have changed on this version." };
+
+            try
+            {
+                // Record before any reflection mutation below (list contents + StartEnabled), matching
+                // the Undo.RecordObject-before-write convention used by every other netcode_configure_* skill.
+                Undo.RecordObject(comp, "Configure ComponentController");
+
+                var currentList = componentsField.GetValue(comp) as IList;
+                if (currentList == null || clearExisting)
+                {
+                    var listType = typeof(List<>).MakeGenericType(entryType);
+                    currentList = (IList)Activator.CreateInstance(listType);
+                    componentsField.SetValue(comp, currentList);
+                }
+
+                var resolvedTargets = new List<string>();
+                var missingTargets = new List<string>();
+                if (targetPaths != null)
+                {
+                    var componentFieldOnEntry = entryType.GetField("Component", BindingFlags.Public | BindingFlags.Instance);
+                    foreach (var target in targetPaths)
+                    {
+                        if (string.IsNullOrEmpty(target)) continue;
+                        var targetGo = GameObjectFinder.SmartFind(target);
+                        if (targetGo == null) { missingTargets.Add(target); continue; }
+
+                        var entry = Activator.CreateInstance(entryType, nonPublic: true);
+                        componentFieldOnEntry.SetValue(entry, targetGo);
+                        currentList.Add(entry);
+                        resolvedTargets.Add(GameObjectFinder.GetPath(targetGo));
+                    }
+                }
+
+                var startEnabledField = ccType.GetField("StartEnabled", BindingFlags.Public | BindingFlags.Instance);
+                if (startEnabled.HasValue)
+                    startEnabledField.SetValue(comp, startEnabled.Value);
+
+                // Mirror the Inspector's own drag-and-drop expansion: OnValidate() strips whole-GameObject
+                // entries and replaces them with every eligible child component, skipping
+                // NetworkBehaviour/NetworkObject/NetworkManager. Invoking it here keeps this skill's
+                // result identical to what a human would get dragging the same GameObjects onto the field.
+                var onValidate = ccType.GetMethod("OnValidate", BindingFlags.NonPublic | BindingFlags.Instance);
+                try { onValidate?.Invoke(comp, null); }
+                catch (Exception ex) { SkillsLogger.LogWarning($"[netcode_component_controller_configure] OnValidate reflection call failed: {ex.Message}"); }
+
+                EditorUtility.SetDirty(comp);
+                WorkflowManager.SnapshotObject(comp);
+
+                var finalList = componentsField.GetValue(comp) as IList;
+                var entries = new List<object>();
+                if (finalList != null)
+                {
+                    var compField = entryType.GetField("Component", BindingFlags.Public | BindingFlags.Instance);
+                    var invertField = entryType.GetField("InvertEnabled", BindingFlags.Public | BindingFlags.Instance);
+                    foreach (var e in finalList)
+                    {
+                        var compObj = compField?.GetValue(e) as UnityEngine.Object;
+                        entries.Add(new
+                        {
+                            component = compObj != null ? compObj.GetType().Name : null,
+                            gameObject = compObj is Component c ? c.gameObject.name : compObj?.name,
+                            invertEnabled = invertField != null ? (bool)(invertField.GetValue(e) ?? false) : false
+                        });
+                    }
+                }
+
+                return new
+                {
+                    success = true,
+                    startEnabled = SafeGetMemberValue(startEnabledField, comp) as bool?,
+                    componentCount = finalList?.Count ?? 0,
+                    entries,
+                    resolvedTargets,
+                    missingTargets = missingTargets.Count > 0 ? missingTargets : null
+                };
+            }
+            catch (Exception ex)
+            {
+                return new { error = $"Failed to configure ComponentController via reflection: {ex.Message}" };
+            }
+#endif
+        }
+
+        // ==================================================================================
         // Internal helpers
         // ==================================================================================
 
@@ -1484,7 +1911,58 @@ namespace UnitySkills
             return all.FirstOrDefault(n => string.Equals(n.gameObject.name, name, StringComparison.Ordinal))
                 ?? all.FirstOrDefault(n => string.Equals(n.gameObject.name, name, StringComparison.OrdinalIgnoreCase));
         }
+
+        // ---- NGO 2.5+ reflection gate (AttachableBehaviour / AttachableNode / ComponentController) ----
+        // These types live inside the same [2.0,3.0) versionDefine window as the rest of the file
+        // (NETCODE_GAMEOBJECTS), so there is no dedicated compile-time symbol for "2.5+" to branch
+        // on without editing the asmdef's versionDefines. Detecting them by type-name lookup instead
+        // means every skill above degrades to No25Features() on NGO 2.0–2.4.x instead of failing to
+        // compile — the same tradeoff DOTweenReflectionHelper makes for DOTween Pro-only features.
+        private const string AttachableBehaviourTypeName = "Unity.Netcode.Components.AttachableBehaviour";
+        private const string AttachableNodeTypeName = "AttachableNode"; // NGO ships this one in the global namespace
+        private const string ComponentControllerTypeName = "Unity.Netcode.Components.ComponentController";
+
+        private static Type ResolveAttachableBehaviourType() => SkillsCommon.FindTypeByName(AttachableBehaviourTypeName);
+        private static Type ResolveAttachableNodeType() => SkillsCommon.FindTypeByName(AttachableNodeTypeName);
+        private static Type ResolveComponentControllerType() => SkillsCommon.FindTypeByName(ComponentControllerTypeName);
+
+        private static bool Has25Features() =>
+            ResolveAttachableBehaviourType() != null &&
+            ResolveAttachableNodeType() != null &&
+            ResolveComponentControllerType() != null;
+
+        private static object No25Features(string skillName) => new
+        {
+            error = $"{skillName} requires the Netcode for GameObjects 2.5.0+ attachment/component-toggle helpers " +
+                    "(AttachableBehaviour, AttachableNode, ComponentController — added in NGO 2.5.0). " +
+                    "Call netcode_version to check the installed version, then install via Window > Package Manager > Netcode for GameObjects."
+        };
+
+        private static object SafeGetMemberValue(MemberInfo member, object instance)
+        {
+            if (member == null || instance == null) return null;
+            try
+            {
+                if (member is FieldInfo f) return f.GetValue(instance);
+                if (member is PropertyInfo p) return p.GetValue(instance);
+            }
+            catch { /* tolerate cross-version layout drift */ }
+            return null;
+        }
 #endif
+
+        /// <summary>Strips a pre-release/build suffix (e.g. "2.5.0-pre.1" -&gt; "2.5.0") so System.Version can parse it.</summary>
+        private static string StripPrereleaseSuffix(string version)
+        {
+            if (string.IsNullOrEmpty(version)) return null;
+            int cut = version.Length;
+            for (int i = 0; i < version.Length; i++)
+            {
+                if (!char.IsDigit(version[i]) && version[i] != '.') { cut = i; break; }
+            }
+            var core = version.Substring(0, cut).Trim('.');
+            return string.IsNullOrEmpty(core) ? null : core;
+        }
     }
 }
 

@@ -194,7 +194,8 @@ namespace UnitySkills
             Tags = new[] { "scriptableobject", "delete", "remove", "asset" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
+            RiskLevel = "medium")]
         public static object ScriptableObjectDelete(string assetPath)
         {
             if (Validate.SafePath(assetPath, "assetPath", isDelete: true) is object pathErr) return pathErr;

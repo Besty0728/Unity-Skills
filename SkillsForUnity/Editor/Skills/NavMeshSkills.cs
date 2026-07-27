@@ -28,7 +28,8 @@ namespace UnitySkills
         [UnitySkill("navmesh_clear", "Clear the NavMesh data",
             Category = SkillCategory.NavMesh, Operation = SkillOperation.Delete,
             Tags = new[] { "navmesh", "clear", "navigation" },
-            Outputs = new[] { "success", "warning" })]
+            Outputs = new[] { "success", "warning" },
+            MutatesScene = true, RiskLevel = "high")]
         public static object NavMeshClear()
         {
             // CS0618 豁免：同 NavMeshBake——旧 API 是全局清除的唯一等价入口。

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -140,6 +141,305 @@ namespace UnitySkills
         /// <summary>Generic internal error wrapper for caller convenience.</summary>
         public static string Internal(string message, string skill = null) =>
             Build(SkillErrorCode.Internal, message, skill: skill, retryStrategy: Abort);
+    }
+
+    /// <summary>
+    /// The classification decided for one business error: which code to report, how the caller
+    /// should react, and what to try next.
+    /// </summary>
+    public sealed class SkillErrorClassification
+    {
+        public SkillErrorCode Code;
+        public string RetryStrategy;
+        public List<SuggestedFix> SuggestedFixes;
+        public List<string> RelatedSkills;
+    }
+
+    /// <summary>
+    /// Message-pattern classifier for skill business errors — layer 2 of the router's error
+    /// contract.
+    ///
+    /// <para>Layer 1 is the opt-in pass-through: a skill that declares <c>errorCode</c> /
+    /// <c>suggestedFixes</c> / <c>retryStrategy</c> / <c>relatedSkills</c> on its error object has
+    /// those honoured verbatim. Layer 2 exists because the overwhelming majority of skills return
+    /// only <c>new { error = "..." }</c>; without it every one of them would collapse into
+    /// <c>SKILL_ERROR</c> + <c>abort</c>, which tells an agent nothing about whether the call is
+    /// worth retrying.</para>
+    ///
+    /// <para>The rules below were derived by bucketing the ~950 error literals that actually exist
+    /// in <c>*Skills.cs</c>, not from first principles; they cover ~82% of them. Order matters —
+    /// the first matching rule wins, and the residual bucket keeps today's
+    /// <c>SKILL_ERROR</c> + <c>abort</c> behaviour. No rule may ever emit
+    /// <c>wait_and_retry</c>: the Python client auto-retries on that strategy, and a business
+    /// error the caller must fix would spin.</para>
+    /// </summary>
+    public static class SkillErrorClassifier
+    {
+        // Rule 1 — an optional package/asset-store dependency is absent.
+        private static readonly string[] DependencyMarkers =
+        {
+            "not installed", "not imported", "requires com.", "requires the",
+            "package manager", "install via", "from the asset store", "未安装",
+        };
+
+        // Rule 2 — the thing the caller wants to create is already there.
+        private static readonly string[] ConflictMarkers =
+        {
+            "already exists", "already has", "already in use", "already registered", "已存在",
+        };
+
+        // Rule 3 — the target could not be located.
+        private static readonly string[] NotFoundMarkers =
+        {
+            "not found", "was not found", "no gameobject", "could not find", "could not locate",
+            "cannot be found", "does not exist", "doesn't exist", "no such", "not present",
+            "找不到", "不存在",
+        };
+
+        // Rule 6 — a parameter the caller owns was omitted. "provide " carries a trailing space so
+        // it cannot match "provided"; the "no X provided" forms are already taken by rule 4.
+        private static readonly string[] MissingParamMarkers =
+        {
+            "is required", "are required", "required when", "must be provided", "must be specified",
+            "provide ", "missing", "必填", "必须提供",
+        };
+
+        // Rule 7 — a parameter was supplied but is unusable.
+        private static readonly string[] SemanticMarkers =
+        {
+            "invalid", "must be", "must not", "must start", "unknown ", "unsupported",
+            "out of range", "not allowed", "not a valid", "cannot be", "expected ",
+            "非法", "无效",
+        };
+
+        // Rule 4 — "No faces selected" / "No items provided": the caller simply passed nothing.
+        private static readonly Regex NotSuppliedPattern = new Regex(
+            @"\bno \S+ (provided|selected|specified|supplied|given)\b|\bno objects selected\b",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        // Rule 5 — "GameObject has no RectTransform" / "No Light component on X" / "No mesh found":
+        // the object was located but does not carry what the skill needs.
+        private static readonly Regex MissingOnTargetPattern = new Regex(
+            @"\bhas no \b|\bno \S+ (component|found)\b|\bno \S+ on |^no [a-z]",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        // Rule 7b — "Not a texture: X" / "Child is not a Cinemachine Virtual Camera".
+        // Word-anchored so "cannot allocate" and "not allowed" cannot match.
+        private static readonly Regex WrongKindPattern = new Regex(
+            @"\bnot an?\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// Map a raw skill error message onto a code, a retry strategy and concrete next steps.
+        /// Case-insensitive; never returns null and never throws.
+        /// </summary>
+        public static SkillErrorClassification Classify(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+                return Unclassified();
+
+            var text = message.ToLowerInvariant();
+
+            // "Package 'x' not found" means the package is not installed — but "Group 'g' not
+            // found in package 'p'" is a lookup inside an existing package, not a dependency gap.
+            bool packageAbsent = text.Contains("package")
+                && !text.Contains("in package")
+                && (text.Contains("not found") || text.Contains("does not exist"));
+
+            if (packageAbsent || ContainsAny(text, DependencyMarkers))
+                return Dependency();
+
+            if (ContainsAny(text, ConflictMarkers))
+                return AlreadyExists();
+
+            if (ContainsAny(text, NotFoundMarkers))
+                return TargetNotFound(text);
+
+            if (NotSuppliedPattern.IsMatch(text))
+                return MissingParam();
+
+            if (MissingOnTargetPattern.IsMatch(text))
+                return TargetNotFound(text);
+
+            if (ContainsAny(text, MissingParamMarkers))
+                return MissingParam();
+
+            if (ContainsAny(text, SemanticMarkers) || WrongKindPattern.IsMatch(text))
+                return SemanticInvalid();
+
+            return Unclassified();
+        }
+
+        /// <summary>
+        /// Advice for a code the skill declared on its own error object. This keeps a *partial*
+        /// declaration coherent: a skill that states <c>errorCode</c> but omits
+        /// <c>retryStrategy</c>/<c>suggestedFixes</c> gets the advice belonging to that code rather
+        /// than whatever its message text happens to look like. Codes outside this classifier's own
+        /// vocabulary fall back to message classification — deliberately, so that declaring a
+        /// transient code (COMPILING, RATE_LIMIT, …) can never make the router infer
+        /// <c>wait_and_retry</c>; a skill that wants it must say so explicitly.
+        /// </summary>
+        public static SkillErrorClassification ForCode(SkillErrorCode code, string message)
+        {
+            switch (code)
+            {
+                case SkillErrorCode.TargetNotFound:
+                    return TargetNotFound((message ?? string.Empty).ToLowerInvariant());
+                case SkillErrorCode.MissingPackage:
+                    return Dependency();
+                case SkillErrorCode.MissingParam:
+                    return MissingParam();
+                case SkillErrorCode.SemanticInvalid:
+                    return SemanticInvalid();
+                default:
+                    return Classify(message);
+            }
+        }
+
+        private static bool ContainsAny(string text, string[] markers)
+        {
+            for (int i = 0; i < markers.Length; i++)
+            {
+                if (text.Contains(markers[i]))
+                    return true;
+            }
+            return false;
+        }
+
+        private static SkillErrorClassification Dependency() => new SkillErrorClassification
+        {
+            Code = SkillErrorCode.MissingPackage,
+            RetryStrategy = SkillErrorResponse.RetryInstallAndRetry,
+            RelatedSkills = new List<string> { "package_install", "package_list" },
+            SuggestedFixes = new List<SuggestedFix>
+            {
+                new SuggestedFix
+                {
+                    action = "install_package",
+                    skill = "package_install",
+                    reason = "The error names the missing package — install it, wait for the domain reload, then retry."
+                },
+                new SuggestedFix
+                {
+                    action = "retry",
+                    skill = "package_list",
+                    reason = "Confirm what is actually installed before assuming the package id."
+                },
+            },
+        };
+
+        private static SkillErrorClassification AlreadyExists() => new SkillErrorClassification
+        {
+            Code = SkillErrorCode.SemanticInvalid,
+            RetryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            SuggestedFixes = new List<SuggestedFix>
+            {
+                new SuggestedFix
+                {
+                    action = "fix_param",
+                    reason = "The target already exists. Retry with a different name/path, or pass the skill's overwrite/force parameter if it has one."
+                },
+            },
+        };
+
+        private static SkillErrorClassification TargetNotFound(string text)
+        {
+            var classification = new SkillErrorClassification
+            {
+                Code = SkillErrorCode.TargetNotFound,
+                RetryStrategy = SkillErrorResponse.RetryFindAndRetry,
+            };
+
+            if (text.Contains("component"))
+            {
+                classification.RelatedSkills = new List<string> { "component_list", "gameobject_get_info" };
+                classification.SuggestedFixes = new List<SuggestedFix>
+                {
+                    new SuggestedFix
+                    {
+                        action = "find_target",
+                        skill = "component_list",
+                        reason = "List the components actually present on the object, then retry with a name from that list."
+                    },
+                };
+                return classification;
+            }
+
+            if (ContainsAny(text, AssetMarkers))
+            {
+                classification.RelatedSkills = new List<string> { "asset_find", "asset_get_info" };
+                classification.SuggestedFixes = new List<SuggestedFix>
+                {
+                    new SuggestedFix
+                    {
+                        action = "find_target",
+                        skill = "asset_find",
+                        reason = "Resolve the real project path first — asset paths are case-sensitive and must start with Assets/ or Packages/."
+                    },
+                };
+                return classification;
+            }
+
+            classification.RelatedSkills = new List<string> { "gameobject_find", "scene_get_hierarchy" };
+            classification.SuggestedFixes = new List<SuggestedFix>
+            {
+                new SuggestedFix
+                {
+                    action = "find_target",
+                    skill = "gameobject_find",
+                    reason = "Confirm the target exists in an open scene, then retry with the entityId it returns rather than a name."
+                },
+                new SuggestedFix
+                {
+                    action = "find_target",
+                    skill = "scene_get_hierarchy",
+                    reason = "If the name is a guess, list the hierarchy and pick the exact path."
+                },
+            };
+            return classification;
+        }
+
+        private static readonly string[] AssetMarkers =
+        {
+            "asset", "path", "file", "folder", "directory", "prefab", "material", "shader", "texture",
+        };
+
+        private static SkillErrorClassification MissingParam() => new SkillErrorClassification
+        {
+            Code = SkillErrorCode.MissingParam,
+            RetryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            SuggestedFixes = new List<SuggestedFix>
+            {
+                new SuggestedFix
+                {
+                    action = "fix_param",
+                    skill = "POST /skill/<name>?mode=dryRun",
+                    reason = "Supply the parameter named in the message; dryRun returns the full parameter schema without executing."
+                },
+            },
+        };
+
+        private static SkillErrorClassification SemanticInvalid() => new SkillErrorClassification
+        {
+            Code = SkillErrorCode.SemanticInvalid,
+            RetryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            SuggestedFixes = new List<SuggestedFix>
+            {
+                new SuggestedFix
+                {
+                    action = "fix_param",
+                    skill = "POST /skill/<name>?mode=dryRun",
+                    reason = "The value is rejected, not the parameter name. Read the accepted range/enum in the message, then dryRun the corrected args."
+                },
+            },
+        };
+
+        // Residual bucket: genuine runtime failures ("Failed to ...", stuck editor state).
+        // Same code and strategy as before this classifier existed.
+        private static SkillErrorClassification Unclassified() => new SkillErrorClassification
+        {
+            Code = SkillErrorCode.SkillError,
+            RetryStrategy = SkillErrorResponse.Abort,
+        };
     }
 }
 

@@ -46,7 +46,8 @@ namespace UnitySkills
         [UnitySkill("decal_delete", "Delete a Decal Projector GameObject",
             Category = SkillCategory.Decal, Operation = SkillOperation.Delete,
             Tags = new[] { "decal", "projector", "delete" },
-            Outputs = new[] { "deleted" })]
+            Outputs = new[] { "deleted" },
+            RiskLevel = "medium")]
         public static object DecalDelete(string name = null, int instanceId = 0, string path = null) => RenderPipelineSkillsCommon.NoURP();
 
         [UnitySkill("decal_set_properties_batch", "Modify multiple Decal Projectors in one request",
@@ -225,7 +226,8 @@ namespace UnitySkills
             Outputs = new[] { "deleted" },
             TracksWorkflow = true,
             MutatesScene = true,
-            RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
+            RequiresPackages = new[] { "com.unity.render-pipelines.universal" },
+            RiskLevel = "medium")]
         public static object DecalDelete(string name = null, int instanceId = 0, string path = null)
         {
             var projectorResult = GetProjector(name, instanceId, path);

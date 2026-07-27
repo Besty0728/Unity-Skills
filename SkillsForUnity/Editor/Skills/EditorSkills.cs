@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEditorInternal;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace UnitySkills
@@ -8,8 +10,14 @@ namespace UnitySkills
     /// <summary>
     /// Editor control skills - play mode, selection, tools.
     /// </summary>
+    [InitializeOnLoad]
     public static class EditorSkills
     {
+        static EditorSkills()
+        {
+            RecoverStalePlaymodeStepJobs();
+        }
+
         [UnitySkill("editor_play", "Enter play mode. Warning: any unsaved scene changes made during Play mode will be lost when exiting.",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "play", "runtime", "test" },
@@ -60,6 +68,208 @@ namespace UnitySkills
         {
             EditorApplication.isPaused = !EditorApplication.isPaused;
             return new { success = true, paused = EditorApplication.isPaused };
+        }
+
+        private const string PlaymodeStepJobKind = "playmode_step";
+        private const int PlaymodeStepTimeoutSeconds = 10;
+
+        [UnitySkill("editor_playmode_step", "Advance Play Mode forward by N frames (1-100, default 1) using EditorApplication.Step; Unity automatically enters paused state as part of stepping. Requires Play Mode to already be active (call editor_play or editor_play_capture first). Runs as an async job because each Step() call is only confirmed on a later Editor tick (verified via Time.frameCount before issuing the next one) rather than synchronously - poll job_status/job_wait with the returned jobId. The completed job's result contains framesCompleted, frameCount and isPaused.",
+            Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
+            Tags = new[] { "play", "step", "frame", "runtime", "debug", "job" },
+            Outputs = new[] { "jobId", "framesRequested", "framesCompleted", "frameCount", "isPaused" },
+            RiskLevel = "low", SupportsDryRun = false)]
+        public static object EditorPlaymodeStep(int frames = 1)
+        {
+            if (!EditorApplication.isPlaying)
+                return new
+                {
+                    error = "Not in Play Mode. Frame stepping only works while Play Mode is already active.",
+                    hint = "Call editor_play or editor_play_capture first, then retry editor_playmode_step.",
+                    suggestedSkills = new[] { "editor_play", "editor_play_capture" }
+                };
+
+            var activeJob = BatchPersistence.ListJobs(100).FirstOrDefault(job =>
+                job != null && string.Equals(job.kind, PlaymodeStepJobKind, StringComparison.OrdinalIgnoreCase) &&
+                job.status != "completed" && job.status != "failed" && job.status != "cancelled");
+            if (activeJob != null)
+                return new { error = $"Another frame-step job is already active: {activeJob.jobId} ({activeJob.currentStage ?? activeJob.status})." };
+
+            var clampedFrames = Mathf.Clamp(frames, 1, 100);
+            var startFrame = Time.frameCount;
+
+            var job = AsyncJobService.CreateJob(
+                PlaymodeStepJobKind, "stepping", $"Stepping Play Mode forward by {clampedFrames} frame(s).", true,
+                metadata: new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["framesRequested"] = clampedFrames,
+                    ["framesIssued"] = 0,
+                    ["lastFrameCountAtIssue"] = (long)startFrame,
+                    ["issuedAtUtcTicks"] = 0L,
+                },
+                resultData: new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["framesRequested"] = clampedFrames,
+                    ["framesCompleted"] = 0,
+                    ["frameCount"] = startFrame,
+                    ["isPaused"] = EditorApplication.isPaused,
+                });
+            job.status = "running";
+            BatchPersistence.UpsertJob(job);
+
+            EditorApplication.CallbackFunction handler = null;
+            handler = () => ProcessPlaymodeStepJob(job.jobId, handler);
+            EditorApplication.update += handler;
+
+            return new { success = true, status = "accepted", jobId = job.jobId, framesRequested = clampedFrames };
+        }
+
+        /// <summary>
+        /// Advances one <see cref="PlaymodeStepJobKind"/> job per Editor tick. Each <see cref="EditorApplication.Step"/>
+        /// call is confirmed by observing <see cref="Time.frameCount"/> advance past the value recorded when that
+        /// step was issued before the next one is issued - back-to-back Step() calls within the same tick are not
+        /// guaranteed to land, so this never issues a new one until the previous one is confirmed.
+        /// </summary>
+        private static void ProcessPlaymodeStepJob(string jobId, EditorApplication.CallbackFunction handler)
+        {
+            var job = BatchPersistence.GetJob(jobId);
+            if (job == null || job.status == "completed" || job.status == "failed" || job.status == "cancelled")
+            {
+                EditorApplication.update -= handler;
+                return;
+            }
+
+            if (!EditorApplication.isPlaying)
+            {
+                AsyncJobService.FailJob(jobId, "Play Mode was exited before frame stepping completed.", "failed_exited_play_mode", job.resultData);
+                EditorApplication.update -= handler;
+                return;
+            }
+
+            var framesRequested = GetMetaInt(job, "framesRequested", 1);
+            var framesIssued = GetMetaInt(job, "framesIssued", 0);
+            var lastFrameCountAtIssue = GetMetaLong(job, "lastFrameCountAtIssue", Time.frameCount);
+            var currentFrame = Time.frameCount;
+
+            if (framesIssued == 0)
+            {
+                EditorApplication.Step();
+                job.metadata["framesIssued"] = 1;
+                job.metadata["lastFrameCountAtIssue"] = (long)currentFrame;
+                job.metadata["issuedAtUtcTicks"] = DateTime.UtcNow.Ticks;
+                BatchPersistence.UpsertJob(job);
+                return;
+            }
+
+            if (currentFrame <= lastFrameCountAtIssue)
+            {
+                var issuedAt = GetMetaLong(job, "issuedAtUtcTicks", DateTime.UtcNow.Ticks);
+                if (DateTime.UtcNow.Ticks - issuedAt > PlaymodeStepTimeoutSeconds * TimeSpan.TicksPerSecond)
+                {
+                    AsyncJobService.FailJob(jobId, $"Unity did not advance the frame within {PlaymodeStepTimeoutSeconds}s.", "failed_step_timeout", job.resultData);
+                    EditorApplication.update -= handler;
+                }
+                return;
+            }
+
+            // Frame count advanced past the value recorded at issue time - the previous Step() landed.
+            if (framesIssued >= framesRequested)
+            {
+                job.resultData["framesCompleted"] = framesIssued;
+                job.resultData["frameCount"] = currentFrame;
+                job.resultData["isPaused"] = EditorApplication.isPaused;
+                AsyncJobService.CompleteJob(jobId, $"Advanced Play Mode by {framesIssued} frame(s).", job.resultData);
+                EditorApplication.update -= handler;
+                return;
+            }
+
+            EditorApplication.Step();
+            job.metadata["framesIssued"] = framesIssued + 1;
+            job.metadata["lastFrameCountAtIssue"] = (long)currentFrame;
+            job.metadata["issuedAtUtcTicks"] = DateTime.UtcNow.Ticks;
+            job.resultData["framesCompleted"] = framesIssued;
+            job.resultData["frameCount"] = currentFrame;
+            BatchPersistence.UpsertJob(job);
+        }
+
+        private static int GetMetaInt(BatchJobRecord job, string key, int fallback)
+        {
+            if (job?.metadata == null || !job.metadata.TryGetValue(key, out var value) || value == null) return fallback;
+            if (value is int i) return i;
+            if (value is long l) return (int)l;
+            return int.TryParse(value.ToString(), out var parsed) ? parsed : fallback;
+        }
+
+        private static long GetMetaLong(BatchJobRecord job, string key, long fallback)
+        {
+            if (job?.metadata == null || !job.metadata.TryGetValue(key, out var value) || value == null) return fallback;
+            if (value is long l) return l;
+            if (value is int i) return i;
+            return long.TryParse(value.ToString(), out var parsed) ? parsed : fallback;
+        }
+
+        /// <summary>
+        /// The step job is advanced by a dynamically-subscribed <see cref="EditorApplication.update"/> handler
+        /// (see <see cref="EditorPlaymodeStep"/>), which does not survive a domain reload. Fail any job left
+        /// "running" from before a reload so callers polling job_status get a terminal state instead of hanging.
+        /// </summary>
+        private static void RecoverStalePlaymodeStepJobs()
+        {
+            try
+            {
+                foreach (var job in BatchPersistence.ListJobs(100))
+                {
+                    if (job != null && string.Equals(job.kind, PlaymodeStepJobKind, StringComparison.OrdinalIgnoreCase) &&
+                        job.status == "running")
+                    {
+                        AsyncJobService.FailJob(job.jobId,
+                            "Frame stepping was interrupted by a domain reload or Editor restart before it finished.",
+                            "failed_interrupted", job.resultData);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogWarning("[UnitySkills] EditorSkills stale playmode_step job recovery failed: " + ex);
+            }
+        }
+
+        [UnitySkill("editor_playmode_inspect", "Inspect a GameObject's live runtime state: transform (position/rotation/scale), activeSelf/activeInHierarchy, and optionally one component's public fields and properties. Works during Play Mode (including while paused) and also in Edit Mode, where it returns editor-time values - check the isPlaying/isPaused flags in the response to know which. Combine with editor_playmode_step to assert state changes frame by frame.",
+            Category = SkillCategory.Editor, Operation = SkillOperation.Query,
+            Tags = new[] { "play", "runtime", "inspect", "state", "component", "debug" },
+            Outputs = new[] { "gameObject", "transform", "activeSelf", "isPlaying", "isPaused", "component" },
+            RequiresInput = new[] { "gameObject" },
+            ReadOnly = true,
+            Mode = SkillMode.SemiAuto)]
+        public static object EditorPlaymodeInspect(string name = null, int instanceId = 0, string path = null, string componentType = null)
+        {
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            if (findErr != null) return findErr;
+
+            var t = go.transform;
+            object componentInfo = string.IsNullOrEmpty(componentType)
+                ? null
+                : ComponentSkills.ComponentGetProperties(name, instanceId, path, componentType);
+
+            return new
+            {
+                success = true,
+                gameObject = go.name,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
+                path = GameObjectFinder.GetPath(go),
+                activeSelf = go.activeSelf,
+                activeInHierarchy = go.activeInHierarchy,
+                transform = new
+                {
+                    position = new { x = t.position.x, y = t.position.y, z = t.position.z },
+                    localPosition = new { x = t.localPosition.x, y = t.localPosition.y, z = t.localPosition.z },
+                    rotation = new { x = t.eulerAngles.x, y = t.eulerAngles.y, z = t.eulerAngles.z },
+                    localScale = new { x = t.localScale.x, y = t.localScale.y, z = t.localScale.z }
+                },
+                isPlaying = EditorApplication.isPlaying,
+                isPaused = EditorApplication.isPaused,
+                component = componentInfo
+            };
         }
 
         [UnitySkill("editor_select", "Select a GameObject",

@@ -47,6 +47,7 @@ namespace UnitySkills
         {
             var pathErr = Validate.SafePath(controllerPath, "controllerPath");
             if (pathErr != null) return pathErr;
+            if (Validate.Required(paramName, "paramName") is object paramNameErr) return paramNameErr;
 
             var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
             if (controller == null)

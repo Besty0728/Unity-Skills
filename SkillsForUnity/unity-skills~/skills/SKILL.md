@@ -72,6 +72,8 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 | [yooasset](./yooasset/SKILL.md) | Mixed* | YooAsset hot-update: build bundles, Collector CRUD, BuildReport asset/dependency analysis, PlayMode runtime validation, Reporter/Debugger/AssetArtScanner tools | Yes |
 | [dotween](./dotween/SKILL.md) | Mixed* | DOTween Pro DOTweenAnimation editor-time configuration (add/batch/stagger/tune) | Yes |
 | [primetween](./primetween/SKILL.md) | Mixed* | PrimeTween Free inspection, factory discovery, and runtime tween/sequence script generation | No |
+| [behavior](./behavior/SKILL.md) | Mixed* | Unity Behavior graph assets, agents, blackboard variables (com.unity.behavior, reflection-based) | Yes |
+| [hybridclr](./hybridclr/SKILL.md) | Mixed* | HybridCLR hot-update settings, codegen, DLL compile/copy pipeline (com.code-philosophy.hybridclr, reflection-based) | Yes |
 
 ## Advisory Design Modules
 

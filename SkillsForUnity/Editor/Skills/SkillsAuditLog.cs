@@ -43,6 +43,12 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(eventType)) return;
             try
             {
+                // Resolve+cache the path here (every current call site runs on the main thread —
+                // see SkillsHttpServer.cs HandlePermissionGrant comment) so the ThreadPool flush
+                // worker reuses the cached value instead of reading Application.dataPath off-thread,
+                // where it silently falls back to Path.GetTempPath() (see ResolveLibraryDir) and
+                // splits the session's audit trail across two files.
+                GetLogPath();
                 var line = BuildLine(eventType, data);
                 _queue.Enqueue(line);
                 ScheduleFlush();
@@ -257,7 +263,11 @@ namespace UnitySkills
             {
                 try
                 {
-                    var dir = _cachedDir ?? ResolveLibraryDir();
+                    // ??= writes the resolved dir back to _cachedDir (not just a local var) so a
+                    // worker-thread resolution here — e.g. if Append's main-thread pre-warm above
+                    // was somehow bypassed — is reused by every later call instead of silently
+                    // re-resolving (and potentially falling back to a different temp dir) each time.
+                    var dir = _cachedDir ??= ResolveLibraryDir();
                     if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
                     var path = _cachedPath ?? Path.Combine(dir, LogFileName);
 
@@ -309,14 +319,23 @@ namespace UnitySkills
                         }
                     }
 
-                    // File.Replace gives us an atomic swap on Windows + most POSIX FS.
-                    // Fall back to Delete+Move when the destination doesn't exist (shouldn't
-                    // happen here since we returned early above, but defensive).
-                    if (File.Exists(path))
+                    // File.Replace(tmp, path, null) is the actual atomic swap (no backup file,
+                    // since path is a JSONL log we already keep rotated copies of): there's no
+                    // window where `path` is missing, unlike the previous Delete-then-Move pair
+                    // where a crash between the two calls would drop the primary log entirely.
+                    // File.Replace requires the destination to exist; RewritePrimary already
+                    // early-returns above when it doesn't, so this holds except for the
+                    // vanishingly rare case of `path` being removed out-of-band between that
+                    // check and here (both happen under _writeLock, so not by our own code) —
+                    // fall back to a plain move rather than throwing away the rewritten content.
+                    try
                     {
-                        File.Delete(path);
+                        File.Replace(tmp, path, null);
                     }
-                    File.Move(tmp, path);
+                    catch (FileNotFoundException)
+                    {
+                        File.Move(tmp, path);
+                    }
                 }
                 catch (Exception ex)
                 {

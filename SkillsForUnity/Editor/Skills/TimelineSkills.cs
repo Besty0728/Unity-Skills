@@ -158,7 +158,8 @@ namespace UnitySkills
             Tags = new[] { "timeline", "track", "remove", "delete" },
             Outputs = new[] { "success", "removed" },
             RequiresInput = new[] { "director", "track" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            RiskLevel = "medium")]
         public static object TimelineRemoveTrack(string name = null, int instanceId = 0, string path = null, string trackName = null)
         {
             var (timeline, director, err) = GetTimeline(name, instanceId, path);

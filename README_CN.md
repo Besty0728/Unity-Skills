@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-740-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-776-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
@@ -30,14 +30,38 @@
 
 ## 🚀 核心特性
 
-- 🛠️ **740 REST Skills 全能库**：包含 52 个功能源码模块和 24 个 advisory 设计模块，支持 Batch 批处理，一次操控多个对象。
-- ⚡ **调用效率革命性提升 (v2.0.1+)**：Schema 缓存 + 指数退避轮询 + BATCH-FIRST 引导 → **Token 消耗 ↓ 96%**，**简单任务 4-6 次调用 → 1 次（↓ 75-83%）**。当前：v2.3.0。
+- 🛠️ **776 REST Skills 全能库**：包含 54 个功能源码模块和 24 个 advisory 设计模块，支持 Batch 批处理，一次操控多个对象。
+- ⚡ **调用效率革命性提升 (v2.0.1+)**：Schema 缓存 + 指数退避轮询 + BATCH-FIRST 引导 → **Token 消耗 ↓ 96%**，**简单任务 4-6 次调用 → 1 次（↓ 75-83%）**。当前：v2.4.0。
 - 🔐 **三档权限模式 (v1.9.0+)**：Approval / Auto / Bypass，配合双轨审批渠道（Dialog / Panel），对齐 Claude Code permission modes；老用户升级零感知。
 - 🤖 **4 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor，一键安装即用。
 - 🛡️ **事务原子性保障**：操作失败自动回滚，场景永不残留，确保流程安全。
 - 🌍 **多实例同时控制**：自动端口发现与全局注册表，支持同时操控多个 Unity 项目。
 - 🔗 **超长稳定连接**：请求超时可配（默认 15 分钟），Domain Reload 后自动恢复，脚本编译/资源重导入等短暂中断会提示重试。
 - 🛡️ **防幻觉 Guardrails**：每个 Skill 模块内置 DO NOT 清单和路由规则，防止 AI 调用不存在的命令或参数错误。
+
+---
+
+## 🛡️ 为什么选 UnitySkills：治理层
+
+AI 驱动编辑器，写的是真实的场景、Prefab 和 `.meta` 文件。真正的问题不是"它能不能做到"，而是"它做错时会发生什么"。UnitySkills 在调用生命周期的四个节点上回答这个问题。
+
+- **执行前 —— `?mode=dryRun` / `?mode=plan` 预演**：`POST /skill/{name}?mode=dryRun` 不落地任何改动，只返回参数校验（`missingParams` / `unknownParams` / `typeErrors` / `semanticErrors` / `warnings`）与影响预估（`mutatesScene` / `mutatesAssets` / `mayTriggerReload` / `mayEnterPlayMode` / `riskLevel`）；有语义 planner 的 skill 还会返回 `steps` / `changes`。
+- **执行时 —— 操作级风险拦截**：每个 skill 在 `[UnitySkill]` 元数据里声明 `RiskLevel` / `Operation` / `MayEnterPlayMode` / `MayTriggerReload`，服务端据此自动判定 NeverInSemi——拦不拦从不取决于 AI 是否自觉。**Allowlist** 可为单条 skill 持久放行；可选的 `ConfirmationToken` 二次确认（默认关闭，⚙ 设置 → Runtime → Require Confirmation）为高危 skill 再加一道闸。
+- **执行后 —— JSONL 审计留痕**：每次调用、授权、撤销、被拦命中都追加到 `Library/UnitySkillsAudit.jsonl`（1MB 滚动，主文件 + 3 份历史），可在面板内浏览与过滤；删除审计条目这个动作本身也会以 `audit_deleted` / `audit_cleared` 入账。
+- **出错后 —— 类型化持久快照回滚**：Workflow 快照分 `Modified` / `Created` / `Deleted` / `Moved` / `Setting` 五类，主文件与 `.meta` 各自独立内容寻址（`fileHash` / `metaFileHash`）落在 `Library/UnitySkills/`，跨 Domain Reload 与编辑器重启存活。`workflow_undo_task` 回退的是一个任务，不是整个项目。
+- **批量即事务**：`POST /skills/batch` 支持 fail-fast 或 `continueOnError`、跨步 `$ref` 引用前序步骤输出、失败回滚，以及 `?diff=1` 返回聚合后的净变化。
+
+### 横向对比
+
+| 维度 | UnitySkills | 典型 MCP 桥接方案 | Unity 官方 AI Assistant |
+| :--- | :--- | :--- | :--- |
+| **权限粒度** | 操作级：三档模式（Approval / Auto / Bypass）+ 每条 skill 的风险元数据 + 按 skill 的 Allowlist | 无权限模型，连上即可调用全部工具面 | 客户端级信任（Pending Connections → Allow / Revoke）；授权之后不再按操作区分 |
+| **审计** | 每次调用 / 授权 / 撤销 / 拦截写结构化 JSONL，面板内可浏览，删除动作同样入账 | 仅进程日志，无结构化的逐次调用留痕 | 以对话历史与 Checkpoints 呈现，而非逐操作的审计记录 |
+| **回滚粒度** | 任务级，五类快照，主文件与 `.meta` 内容寻址，跨会话持久 | 依赖 Unity 原生 Undo 栈，Domain Reload 后不保证仍可回退 | 每次 prompt 前对整项目打 Checkpoint，恢复即整项目回到该时点 |
+| **执行前预演** | `?mode=dryRun` / `?mode=plan`：参数语义校验 + 影响预估，不落地任何改动 | 调研未见对等能力 | 未见执行前的参数校验或影响预演 |
+| **批量事务** | `POST /skills/batch`：fail-fast / `continueOnError`、跨步 `$ref`、失败回滚、`?diff=1` 净变化 | 逐条工具调用，无事务语义 | 未以批量事务形式提供 |
+
+> **UnitySkills** 一列描述的都是本仓库中已实现、可对着源码或直接调端点核对的机制。另外两列基于 **2026-07 的公开资料与开源仓库调研**，描述的是一类方案的普遍形态而非某个具体项目，相关能力可能已经更新。
 
 ---
 
@@ -173,16 +197,18 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ---
 
 <details>
-<summary><h2>📦 Skills 分类概要 (740)</h2></summary>
+<summary><h2>📦 Skills 分类概要 (776)</h2></summary>
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
 | **YooAsset** | 40 | 热更新打包/Collector 完整 CRUD/BuildReport 资产与依赖分析/PlayMode 运行时验证/Reporter-Debugger-AssetArtScanner 工具 |
+| **Behavior** | 10 | Unity Behavior 行为图资产/Agent 组件/黑板变量（com.unity.behavior，反射实现） |
+| **HybridCLR** | 12 | HybridCLR 热更新设置/代码生成/DLL 编译与拷贝流水线（com.code-philosophy.hybridclr，反射实现） |
 | **Workflow** | 24 | 持久化历史/分级任务快照/内容寻址文件存储/自动清理/会话级撤销/回滚/清空历史/书签/批量查询预览执行作业 |
 | **Cinemachine** | 34 | 2.x/3.x双版本自动安装/混合相机/ClearShot/TargetGroup/Spline |
-| **Netcode** | 33 | Netcode for GameObjects 设置/预制体/生命周期/Host-Server-Client 工作流 |
+| **Netcode** | 39 | Netcode for GameObjects 设置/预制体/生命周期/Host-Server-Client 工作流 /NGO 2.5+ 挂载与组件控制器 |
 | **UI** | 29 | Canvas/Button/Text/InputField/Dropdown/ScrollView/Layout/对齐/Image 与 Selectable 工具 |
-| **UI Toolkit** | 25 | UXML/USS文件管理/UIDocument/PanelSettings全属性读写/模板生成/结构检查/批量创建 |
+| **UI Toolkit** | 31 | UXML/USS文件管理/UIDocument/PanelSettings全属性读写/模板生成/结构检查/批量创建 /运行时数据绑定/UXML 升级/世界空间面板 |
 | **ShaderGraph** | 23 | Shader Graph 创建/检查/黑板编辑/受限节点编辑 |
 | **ProBuilder** | 22 | ProBuilder 形体创建/面边操作/UV工具/枢轴编辑/批量创建/网格合并 |
 | **XR** | 22 | XR rig 搭建/Interactor/Interactable/传送/连续移动/UI/触觉反馈/交互层配置 |
@@ -196,7 +222,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 | **Decal** | 7 | URP Decal Projector 创建/检查/配置/删除工作流 |
 | **DOTween** | 21 | DOTweenAnimation 编辑器期配置与调参 |
 | **PrimeTween** | 5 | PrimeTween Free 检查、工厂方法发现与运行时补间/序列脚本生成 |
-| **Editor** | 14 | Play 模式运行捕获/选择/撤销重做/上下文获取/变更日志/菜单执行 |
+| **Editor** | 16 | Play 模式运行捕获/逐帧步进/运行时状态查询/选择/撤销重做/上下文获取/变更日志/菜单执行 |
 | **Physics** | 12 | 射线检测/球形投射/盒形投射/物理材质/层碰撞矩阵 |
 | **Script** | 12 | C#脚本创建/读取/替换/列表/信息/重命名/移动/分析 |
 | **Timeline** | 12 | 轨道创建/删除/Clip管理/播放控制/绑定/时长设置 |
@@ -249,7 +275,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │   │   │   └── unity_skills.py     # Python 客户端库
 │   │   ├── skills/                 # 72 个模块文档（48 个 REST/模块文档 + 24 个 advisory 文档）
 │   │   └── references/             # Unity 开发参考文档
-│   └── Editor/Skills/              # 核心 Skill 逻辑 (52 个 *Skills.cs, 共 740 Skills)
+│   └── Editor/Skills/              # 核心 Skill 逻辑 (54 个 *Skills.cs, 共 776 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP 服务器核心 (Producer-Consumer)
 │       ├── SkillRouter.cs          # 请求路由 & 反射发现 Skills
 │       ├── WorkflowManager.cs      # 持久化工作流 (Task/Session/Snapshot)
@@ -261,7 +287,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
 │       ├── WorkflowSkills.cs       # Workflow 撤销/回滚 (24 skills)
 │       ├── PerceptionSkills.cs     # 场景理解 (18 skills)
-│       └── ...                     # 740 Skills 源码
+│       └── ...                     # 776 Skills 源码
 ├── docs/
 │   └── SETUP_GUIDE.md              # 完整安装使用指南
 ├── CHANGELOG.md                    # 版本更新记录

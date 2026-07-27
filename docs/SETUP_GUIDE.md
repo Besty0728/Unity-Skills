@@ -110,6 +110,8 @@ The following tools have been officially tested:
 
 UnitySkills enforces permissions on the **server side** (not just as AI routing hints), aligned with Claude Code permission modes. Switch modes from the ⚙ Settings button in `Window → UnitySkills` → **Server** section.
 
+> Operating modes are one of four governance layers — the others are `?mode=dryRun` preview before execution, the JSONL audit trail after it, and typed workflow rollback when something goes wrong. See **Built for Trust** in the [README](../README.md) for how they fit together.
+
 | Mode | Default for | Behavior |
 |------|-------------|----------|
 | **Approval** | — | AI calls FullAuto skill → server returns `MODE_RESTRICTED` + grant token → user approves → AI replays token via `POST /permission/grant` → skill runs |

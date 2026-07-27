@@ -110,11 +110,14 @@ unity_skills.call_skill("light_set_properties_batch", items=[
 ### light_set_enabled
 Enable or disable a light.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | No* | Light object name |
-| `instanceId` | int | No* | Instance ID |
-| `enabled` | bool | Yes | Enable state |
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | - | Light object name |
+| `instanceId` | int | No* | - | Instance ID |
+| `path` | string | No* | - | Hierarchy path |
+| `enabled` | bool | No | `true` | Enable state |
+
+**Returns**: `{success, name, enabled}`
 
 ### light_set_enabled_batch
 Enable or disable multiple lights.

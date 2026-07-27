@@ -52,7 +52,8 @@ namespace UnitySkills
         [UnitySkill("volume_remove_component", "Remove a VolumeComponent override from a VolumeProfile",
             Category = SkillCategory.Volume, Operation = SkillOperation.Delete,
             Tags = new[] { "volume", "component", "remove", "profile" },
-            Outputs = new[] { "componentType", "profilePath" })]
+            Outputs = new[] { "componentType", "profilePath" },
+            RiskLevel = "medium")]
         public static object VolumeRemoveComponent(string profilePath, string componentType) => RenderPipelineSkillsCommon.NoSRP();
 
         [UnitySkill("volume_get_component", "Inspect a VolumeComponent override on a VolumeProfile",
@@ -279,7 +280,8 @@ namespace UnitySkills
             TracksWorkflow = true,
             MutatesAssets = true,
             RequiresInput = new[] { "profilePath", "componentType" },
-            RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" },
+            RiskLevel = "medium")]
         public static object VolumeRemoveComponent(string profilePath, string componentType)
         {
             var descriptorResult = ResolveDescriptor(componentType);

@@ -53,6 +53,8 @@ Create a C# script from template.
 | `folder` | string | No | "Assets/Scripts" | Save folder |
 | `template` | string | No | "MonoBehaviour" | Template type |
 | `namespaceName` | string | No | null | Optional namespace |
+| `checkCompile` | bool | No | true | Check compilation after create |
+| `diagnosticLimit` | int | No | 20 | Max compile diagnostics |
 
 **Templates**: MonoBehaviour, ScriptableObject, Editor, EditorWindow
 
@@ -116,6 +118,8 @@ Append content to a script.
 | `scriptPath` | string | Yes | - | Script path |
 | `content` | string | Yes | - | Content to append |
 | `atLine` | int | No | end | Line number to insert at |
+| `checkCompile` | bool | No | true | Check compilation after append |
+| `diagnosticLimit` | int | No | 20 | Max compile diagnostics |
 
 ### script_get_compile_feedback
 Get compile diagnostics related to one script.

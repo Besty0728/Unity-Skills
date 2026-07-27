@@ -151,7 +151,8 @@ namespace UnitySkills
             Outputs = new[] { "gameObject", "removed" },
             RequiresInput = new[] { "gameObject", "component" },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
-            MutatesScene = true)]
+            MutatesScene = true,
+            RiskLevel = "medium")]
         public static object ComponentRemove(string name = null, int instanceId = 0, string path = null, string componentType = null, int componentIndex = 0)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
@@ -192,7 +193,8 @@ namespace UnitySkills
             Tags = new[] { "remove", "detach", "destroy", "batch" },
             Outputs = new[] { "gameObject", "removed", "count" },
             RequiresInput = new[] { "gameObject", "component" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
+            RiskLevel = "medium")]
         public static object ComponentRemoveBatch(string items)
         {
             return BatchExecutor.Execute<BatchRemoveComponentItem>(items, item =>

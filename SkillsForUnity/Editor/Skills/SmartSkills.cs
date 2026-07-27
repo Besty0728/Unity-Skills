@@ -510,7 +510,8 @@ namespace UnitySkills
             Category = SkillCategory.Smart, Operation = SkillOperation.Modify | SkillOperation.Delete,
             Tags = new[] { "replace", "prefab", "swap", "substitute" },
             Outputs = new[] { "replaced", "prefab" },
-            RequiresInput = new[] { "selection", "prefabPath" })]
+            RequiresInput = new[] { "selection", "prefabPath" },
+            RiskLevel = "high")]
         public static object SmartReplaceObjects(string prefabPath)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);

@@ -499,7 +499,8 @@ namespace UnitySkills
             Tags = new[] { "camera", "pipeline", "body", "aim", "noise" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" },
+            RiskLevel = "medium")]
         public static object CinemachineSetComponent(string vcamName = null, int instanceId = 0, string path = null, string stage = null, string componentType = null)
         {
 #if CINEMACHINE_2 || CINEMACHINE_3
@@ -554,7 +555,7 @@ namespace UnitySkills
         [UnitySkill("cinemachine_impulse_generate", "Trigger an Impulse. Params: {velocity: {x,y,z}} or empty.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Execute,
             Tags = new[] { "camera", "impulse", "shake", "cinemachine" },
-            Outputs = new[] { "success", "message" },
+            Outputs = new[] { "success", "message", "warning" },
             RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineImpulseGenerate(string sourceParams)
         {
@@ -566,6 +567,7 @@ namespace UnitySkills
 
              var source = sources[0];
              Vector3 velocity = Vector3.down;
+             string parseWarning = null;
 
              if (!string.IsNullOrEmpty(sourceParams))
              {
@@ -578,11 +580,15 @@ namespace UnitySkills
                          velocity = new Vector3((float)v["x"], (float)v["y"], (float)v["z"]);
                      }
                  }
-                 catch (System.Exception ex) { UnityEngine.Debug.LogWarning($"[UnitySkills] Failed to parse impulse params: {ex.Message}"); }
+                 catch (System.Exception ex)
+                 {
+                     SkillsLogger.LogWarning($"Failed to parse impulse params: {ex.Message}");
+                     parseWarning = $"Failed to parse sourceParams, used default velocity {velocity}: {ex.Message}";
+                 }
              }
 
              source.GenerateImpulse(velocity);
-             return new { success = true, message = "Generated Impulse from " + source.name + " with velocity " + velocity };
+             return new { success = true, message = "Generated Impulse from " + source.name + " with velocity " + velocity, warning = parseWarning };
 #endif
         }
         
@@ -770,7 +776,7 @@ namespace UnitySkills
                 try {
                     object safeValue = SafeConvert(value, field.FieldType);
                     if (safeValue != null) { field.SetValue(target, safeValue); return true; }
-                } catch (System.Exception ex) { UnityEngine.Debug.LogWarning($"[UnitySkills] Failed to set field '{name}': {ex.Message}"); }
+                } catch (System.Exception ex) { SkillsLogger.LogWarning($"Failed to set field '{name}': {ex.Message}"); }
             }
 
             var prop = type.GetProperty(name, flags);
@@ -779,7 +785,7 @@ namespace UnitySkills
                 try {
                     object safeValue = SafeConvert(value, prop.PropertyType);
                     if (safeValue != null) { prop.SetValue(target, safeValue); return true; }
-                } catch (System.Exception ex) { UnityEngine.Debug.LogWarning($"[UnitySkills] Failed to set property '{name}': {ex.Message}"); }
+                } catch (System.Exception ex) { SkillsLogger.LogWarning($"Failed to set property '{name}': {ex.Message}"); }
             }
             return false;
         }
@@ -843,7 +849,8 @@ namespace UnitySkills
             Tags = new[] { "camera", "targetGroup", "member", "remove", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "targetGroup", "gameObject" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" },
+            RiskLevel = "medium")]
         public static object CinemachineTargetGroupRemoveMember(string groupName = null, int groupInstanceId = 0, string groupPath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -938,7 +945,8 @@ namespace UnitySkills
             Tags = new[] { "camera", "extension", "remove", "cinemachine" },
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" },
+            RiskLevel = "medium")]
         public static object CinemachineRemoveExtension(string vcamName = null, int instanceId = 0, string path = null, string extensionName = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -1510,7 +1518,7 @@ namespace UnitySkills
         [UnitySkill("cinemachine_configure_body", "Configure Body stage component (Follow, OrbitalFollow, ThirdPersonFollow, PositionComposer, etc.) in one call.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "body", "follow", "orbital", "thirdperson", "cinemachine" },
-            Outputs = new[] { "success", "componentType", "changes" },
+            Outputs = new[] { "success", "componentType", "changes", "warnings" },
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineConfigureBody(
@@ -1545,11 +1553,13 @@ namespace UnitySkills
             Undo.RecordObject(body, "Configure Body");
             var typeName = body.GetType().Name;
             var changes = new List<string>();
+            var warnings = new List<string>();
 
             void TrySet(string prop, object val, string label)
             {
                 if (val == null) return;
                 if (SetFieldOrProperty(body, prop, val)) changes.Add($"{label}={val}");
+                else warnings.Add($"Failed to set {label} ({prop})");
             }
 
             // --- Follow / Transposer ---
@@ -1700,15 +1710,15 @@ namespace UnitySkills
             }
 
             EditorUtility.SetDirty(body);
-            if (changes.Count == 0) return new { success = true, componentType = typeName, message = "No changes applied (parameters may not match this component type)." };
-            return new { success = true, componentType = typeName, changes = string.Join(", ", changes) };
+            if (changes.Count == 0) return new { success = true, componentType = typeName, message = "No changes applied (parameters may not match this component type).", warnings };
+            return new { success = true, componentType = typeName, changes = string.Join(", ", changes), warnings };
 #endif
         }
 
         [UnitySkill("cinemachine_configure_aim", "Configure Aim stage component (RotationComposer, PanTilt, Composer, POV, etc.) in one call.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "aim", "composer", "pantilt", "cinemachine" },
-            Outputs = new[] { "success", "componentType", "changes" },
+            Outputs = new[] { "success", "componentType", "changes", "warnings" },
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineConfigureAim(
@@ -1739,11 +1749,13 @@ namespace UnitySkills
             Undo.RecordObject(aim, "Configure Aim");
             var typeName = aim.GetType().Name;
             var changes = new List<string>();
+            var warnings = new List<string>();
 
             void TrySet(string prop, object val, string label)
             {
                 if (val == null) return;
                 if (SetFieldOrProperty(aim, prop, val)) changes.Add($"{label}={val}");
+                else warnings.Add($"Failed to set {label} ({prop})");
             }
 
             if (typeName.Contains("Composer") || typeName.Contains("GroupComposer"))
@@ -1806,8 +1818,8 @@ namespace UnitySkills
             }
 
             EditorUtility.SetDirty(aim);
-            if (changes.Count == 0) return new { success = true, componentType = typeName, message = "No changes applied." };
-            return new { success = true, componentType = typeName, changes = string.Join(", ", changes) };
+            if (changes.Count == 0) return new { success = true, componentType = typeName, message = "No changes applied.", warnings };
+            return new { success = true, componentType = typeName, changes = string.Join(", ", changes), warnings };
 #endif
         }
 
@@ -1865,6 +1877,10 @@ namespace UnitySkills
             var typeName = ext.GetType().Name;
             var changes = new List<string>();
 
+            // Note: several branches below intentionally probe two candidate field/property names
+            // per logical setting (e.g. "Damping" for CM3, "m_Damping" for CM2) — exactly one is
+            // expected to miss depending on the installed Cinemachine version, so failures here are
+            // not surfaced as warnings (that would be noise on every successful call).
             void TrySet(string prop, object val, string label)
             {
                 if (val == null) return;
@@ -1953,7 +1969,7 @@ namespace UnitySkills
         [UnitySkill("cinemachine_configure_impulse_source", "Configure CinemachineImpulseSource definition (shape, duration, gains).",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "impulse", "shake", "configure", "cinemachine" },
-            Outputs = new[] { "success", "changes" },
+            Outputs = new[] { "success", "changes", "warnings" },
             RequiresInput = new[] { "source" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineConfigureImpulseSource(
@@ -1984,11 +2000,13 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(source);
             Undo.RecordObject(source, "Configure Impulse Source");
             var changes = new List<string>();
+            var warnings = new List<string>();
 
             void TrySet(string prop, object val, string label)
             {
                 if (val == null) return;
                 if (SetFieldOrProperty(source, prop, val)) changes.Add($"{label}={val}");
+                else warnings.Add($"Failed to set {label} ({prop})");
             }
 
             // CM3: ImpulseDefinition is a direct field, CM2: m_ImpulseDefinition
@@ -2009,9 +2027,9 @@ namespace UnitySkills
 #endif
 
             if (changes.Count == 0)
-                return new { error = "No compatible impulse properties were changed. Check the installed Cinemachine version and supplied parameters." };
+                return new { error = "No compatible impulse properties were changed. Check the installed Cinemachine version and supplied parameters.", warnings };
             EditorUtility.SetDirty(source);
-            return new { success = true, source = source.gameObject.name, changes = string.Join(", ", changes) };
+            return new { success = true, source = source.gameObject.name, changes = string.Join(", ", changes), warnings };
 #endif
         }
     }

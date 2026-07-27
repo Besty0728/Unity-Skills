@@ -5,7 +5,7 @@ description: Set up Netcode for GameObjects (NGO 2.x) multiplayer — configure 
 
 # Unity Netcode for GameObjects Skills
 
-Automation for Netcode for GameObjects (NGO) multiplayer setup and operations. Every skill is source-verified against NGO 2.x; when the package is absent, each skill returns a `NoNetcode()` error with install instructions.
+Automation for Netcode for GameObjects (NGO) multiplayer setup and operations. Every skill is source-verified against NGO 2.x; when the package is absent, each skill returns a `NoNetcode()` error with install instructions. A subset of skills additionally require NGO **2.5.0+** (see [NGO 2.5+ features](#ngo-25-features)) — on an older 2.x install they return a structured "requires 2.5.0+" error instead of a compile error, since AttachableBehaviour/AttachableNode/ComponentController are detected by reflection, not by a dedicated version symbol.
 
 > **Requires**: `com.unity.netcode.gameobjects` (2.x), Unity 6000.0+.
 > **Strongly recommended**: before calling any `netcode_*` skill, load [netcode-design](../netcode-design/SKILL.md). NGO lifecycle and permission rules are strict; skills alone cannot prevent incorrect business code.
@@ -13,7 +13,7 @@ Automation for Netcode for GameObjects (NGO) multiplayer setup and operations. E
 ## Guardrails
 
 **Operating Mode** (v1.9 three-tier):
-- **Approval** (default): query/list/info skills (`netcode_check_setup`, `netcode_get_manager_info`, `netcode_get_transport_info`, `netcode_list_network_objects`, `netcode_get_network_object_info`, `netcode_list_network_prefabs`, `netcode_list_network_behaviours`, `netcode_get_spawn_manager_info`, `netcode_get_scene_manager_info`, `netcode_get_status`) run directly. Mutators (create/configure/attach/add) are FullAuto — on `MODE_RESTRICTED`, run the grant protocol.
+- **Approval** (default): query/list/info skills (`netcode_check_setup`, `netcode_get_manager_info`, `netcode_get_transport_info`, `netcode_list_network_objects`, `netcode_get_network_object_info`, `netcode_list_network_prefabs`, `netcode_list_network_behaviours`, `netcode_get_spawn_manager_info`, `netcode_get_scene_manager_info`, `netcode_get_status`, `netcode_version`, `netcode_attachable_info`) run directly. Mutators (create/configure/attach/add) are FullAuto — on `MODE_RESTRICTED`, run the grant protocol.
 - **Auto** / **Bypass**: SemiAuto and FullAuto run directly.
 - Auto-forbidden in this module:
   - `SkillOperation.Delete` → `netcode_remove_manager`, `netcode_remove_network_object`, `netcode_remove_from_prefabs_list`
@@ -90,7 +90,7 @@ Prefer `instanceId` when there is a chance of duplicate names.
 | `netcode_configure_network_transform` | Edit fields / thresholds on an existing NT | includes PositionThreshold etc. |
 | `netcode_add_network_rigidbody` | Attach NetworkRigidbody / NetworkRigidbody2D | `useRigidbody2D?`, `useRigidBodyForMotion?` |
 | `netcode_add_network_animator` | Attach NetworkAnimator (Animator required) | target |
-| `netcode_add_network_behaviour_script` | Generate a NetworkBehaviour script template (OnNetworkSpawn/Despawn + optional RPC/NetworkVariable/Ownership) | `className`, `path`, `includeRpc?`, `includeNetworkVariable?`, `includeOwnershipCallbacks?` |
+| `netcode_add_network_behaviour_script` | Generate a NetworkBehaviour script template (OnNetworkSpawn/Despawn + optional RPC/NetworkVariable/Ownership/NGO 2.5+ OnNetworkPreDespawn) | `className`, `path`, `includeRpc?`, `includeNetworkVariable?`, `includeOwnershipCallbacks?`, `includePreDespawn?` |
 | `netcode_list_network_behaviours` | List NetworkBehaviour subclass instances in the scene | `includeInactive?` |
 
 ### Scene & Spawning Query
@@ -108,6 +108,25 @@ Prefer `instanceId` when there is a chance of duplicate names.
 | `netcode_start_client` | Start Client |
 | `netcode_shutdown` | Shut down (optional `discardMessageQueue`) |
 | `netcode_get_status` | Read IsHost / IsServer / IsClient, LocalClientId, ConnectedClients, NetworkTime |
+
+### NGO 2.5+ Features {#ngo-25-features}
+
+Added in Netcode for GameObjects **2.5.0** (verified against the package CHANGELOG, PR #3518): `AttachableBehaviour` / `AttachableNode` are an alternate "attach" parenting system that avoids the classic `NetworkObject` parenting pitfalls; `ComponentController` network-synchronizes the enabled/disabled state of a list of components. On NGO 2.0–2.4.x (`NETCODE_GAMEOBJECTS` is still active, but these types don't exist yet) every skill below returns a structured `requires 2.5.0+` error instead of failing — call `netcode_version` first to confirm.
+
+| Skill | Purpose | Key Parameters |
+|-------|---------|----------------|
+| `netcode_version` | Report installed NGO version and 2.5+ feature availability | — |
+| `netcode_attachable_info` | Audit the scene's AttachableBehaviour / AttachableNode / ComponentController distribution | `includeInactive?` |
+| `netcode_attachable_add` | Attach an `AttachableBehaviour` to a GameObject nested under a NetworkObject | target + `autoDetach?` (`None`/`OnAttachNodeDestroy`/`OnDespawn`/`OnOwnershipChange`, comma-separated) |
+| `netcode_attachable_node_add` | Attach an `AttachableNode` (the socket an `AttachableBehaviour` attaches to) | target + `detachOnDespawn?` |
+| `netcode_component_controller_add` | Attach a `ComponentController` to a GameObject | target + `startEnabled?` |
+| `netcode_component_controller_configure` | Set `StartEnabled` and/or populate the synchronized component list from target GameObjects (mirrors dragging a GameObject onto the Components field in the Inspector) | target, `targetPaths?`, `clearExisting?`, `startEnabled?` |
+
+Notes:
+- `AttachableBehaviour` must live on a child GameObject nested under a `NetworkObject`'s hierarchy, not directly on the `NetworkObject`'s own GameObject.
+- `AttachableNode` must belong to a *different* `NetworkObject` than the `AttachableBehaviour` instances attaching to it.
+- `Attach()` / `Detach()` are runtime-only calls (require both instances spawned) and are intentionally **not** exposed as skills — same rationale as `netcode_spawn_object` not existing (see DO NOT above): the caller must already have a running NetworkManager and do this from NetworkBehaviour code.
+- `netcode_component_controller_configure`'s `targetPaths` accepts whole GameObjects; NGO's own `OnValidate()` (invoked by this skill) expands each into every eligible child component with a public `bool enabled` property, skipping `NetworkBehaviour`/`NetworkObject`/`NetworkManager` — identical to what happens when you drag a GameObject onto the Components field in the Inspector.
 
 ## Quick Start
 
@@ -165,7 +184,7 @@ u.call_skill("editor_stop")
 
 ## Version Scope
 
-Targets NGO **2.x** (validated against 2.11.0). Legacy 1.x (old prefabs list layout, different RPC model) is out of scope for this module.
+Targets NGO **2.x** (validated against 2.13.1). Legacy 1.x (old prefabs list layout, different RPC model) is out of scope for this module. The [NGO 2.5+ features](#ngo-25-features) skills additionally require 2.5.0+ within that range; call `netcode_version` to check before relying on them.
 
 ## Exact Signatures
 

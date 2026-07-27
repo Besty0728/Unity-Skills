@@ -1756,7 +1756,7 @@ namespace UnitySkills
             Category = SkillCategory.Perception, Operation = SkillOperation.Analyze | SkillOperation.Execute,
             Tags = new[] { "scene", "report", "export", "markdown", "documentation" },
             Outputs = new[] { "savedTo", "objectCount", "userScriptCount", "referenceCount" },
-            Mode = SkillMode.SemiAuto)]
+            MutatesAssets = true)]
         public static object SceneExportReport(
             string savePath = "Assets/Docs/SceneReport.md",
             int maxDepth = 10,

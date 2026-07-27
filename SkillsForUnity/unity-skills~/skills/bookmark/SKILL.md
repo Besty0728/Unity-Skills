@@ -10,7 +10,7 @@ Save and recall Scene View camera positions.
 ## Guardrails
 
 **Operating Mode** (v1.9 three-tier):
-- **Approval** (default): `bookmark_set` / `bookmark_goto` / `bookmark_list` 都标 `SkillMode.SemiAuto`，Approval 模式下可直接执行，无需走 grant 协议。与 `workflow` 模块文档保持一致（C# `WorkflowSkills.cs` 内三者均为 SemiAuto）。
+- **Approval** (default): 只有 `bookmark_list` 标 `SkillMode.SemiAuto`（纯读），Approval 模式下可直接执行，无需走 grant 协议。`bookmark_set`（`Operation.Create`，写入书签表）与 `bookmark_goto`（`Operation.Execute`，改动编辑器选中对象与 Scene View 视角）都有副作用，走默认 `SkillMode.FullAuto`，Approval 模式下需 grant。与 `workflow` 模块文档保持一致（以 C# `WorkflowSkills.cs` 的特性标注为准）。
 - **Auto** / **Bypass**: SemiAuto and FullAuto run directly.
 - Auto-forbidden in this module: `bookmark_delete` (`SkillOperation.Delete`). Reachable only under Bypass mode or via a user-managed Allowlist entry; the grant flow returns `MODE_FORBIDDEN`. Bookmarks themselves are in-memory only — `bookmark_delete` only removes the entry, no asset I/O.
 

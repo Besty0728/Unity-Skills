@@ -9,6 +9,10 @@ namespace UnitySkills
     [InitializeOnLoad]
     internal static class BatchJobService
     {
+        /// <summary>Per-frame time budget for chunk item processing, in milliseconds. Prevents a single
+        /// EditorApplication.update tick (or a job_wait Pump loop) from stalling on an oversized chunk.</summary>
+        private const double ChunkTimeBudgetMs = 12.0;
+
         private sealed class RuntimeJobContext
         {
             public BatchJobRecord Job;
@@ -220,6 +224,7 @@ namespace UnitySkills
                 AddLog(job, "info", job.currentStage, $"Processing chunk {chunkIndex + 1} with {chunkItems.Count} items.");
 
                 var granularity = Math.Max(1, job.progressGranularity);
+                var budgetDeadline = ChunkBudgetDeadline();
                 foreach (var item in chunkItems)
                 {
                     var result = BatchSkills.ExecutePreviewItem(job.preview, item, chunkIndex);
@@ -238,6 +243,12 @@ namespace UnitySkills
                             description = $"{job.processedItems}/{job.totalItems}"
                         });
                     }
+
+                    // Dual gate: item count (chunkSize, via .Take above) AND time budget. At least one item is
+                    // always processed before this check runs, so a slow item can't stall progress indefinitely
+                    // — it just yields the rest of the chunk to the next frame instead of freezing this one.
+                    if (IsChunkBudgetExpired(budgetDeadline))
+                        break;
                 }
 
                 job.progress = job.totalItems <= 0 ? 100 : (int)Math.Round(job.processedItems * 100.0 / job.totalItems);
@@ -342,6 +353,16 @@ namespace UnitySkills
                 return;
 
             RuntimeJobs.Remove(context.Job.jobId);
+        }
+
+        private static double ChunkBudgetDeadline()
+        {
+            return EditorApplication.timeSinceStartup + ChunkTimeBudgetMs / 1000.0;
+        }
+
+        private static bool IsChunkBudgetExpired(double deadline)
+        {
+            return EditorApplication.timeSinceStartup >= deadline;
         }
 
         private static bool IsTerminal(string status)

@@ -3,11 +3,11 @@
 > **本文件面向"开发这个项目的 AI"**，非"调用该项目 REST API 的 AI"。
 > 后者请读 `SkillsForUnity/unity-skills~/SKILL.md`。
 
-通过 REST API 让 AI 直接控制 Unity 编辑器。740 个 REST Skills + 24 个 Advisory 模块。
+通过 REST API 让 AI 直接控制 Unity 编辑器。776 个 REST Skills + 24 个 Advisory 模块。
 
 | 项目 | 值 |
 |------|----|
-| 版本 | 2.3.0 |
+| 版本 | 2.4.0 |
 | 技术栈 | C# (Unity Editor Plugin) + Python (Client) |
 | Unity | 2022.3+（已验证 Unity 6 / 6000.x） |
 | 协议 | MIT |
@@ -24,7 +24,7 @@ AI Agent ──HTTP──▶ unity_skills.py ──POST localhost:8090-8100─�
                                                         │
                                               SkillRouter (反射发现 [UnitySkill])
                                                         │
-                                              52 个 *Skills.cs (740 Skills)
+                                              54 个 *Skills.cs (776 Skills)
                                                         │
                                          WorkflowManager (持久化撤销/回滚)
                                          RegistryService (多实例发现)
@@ -58,7 +58,7 @@ Unity-Skills/
 │   │   │   ├── BatchExecutor.cs          # 批量操作框架
 │   │   │   ├── SkillInstaller.cs         # AI 工具一键安装
 │   │   │   ├── UnityCliService.cs        # Unity CLI 检测 + 项目绑定 (Library/UnitySkills/cli_config.json)
-│   │   │   └── *Skills.cs × 52           # 功能模块 (共 740 Skills)
+│   │   │   └── *Skills.cs × 54           # 功能模块 (共 776 Skills)
 │   │   └── UI/                           # Editor UI (USS + UXML + EditorWindow)
 │   │       ├── UnitySkillsWindow.{cs,uxml,uss}    # 主窗口
 │   │       ├── AuditLogWindow.{uxml,uss}          # 审计窗口
@@ -68,7 +68,7 @@ Unity-Skills/
 │   └── unity-skills~/                    # AI Skill 模板（波浪线隐藏，随包分发）
 │       ├── SKILL.md                      # 调用方文档（"用"项目）
 │       ├── scripts/unity_skills.py
-│       ├── skills/                       # 72 个模块文档 (48 REST + 24 advisory)
+│       ├── skills/                       # 74 个模块文档 (50 REST + 24 advisory)
 │       └── references/
 ├── .claude/commands/                     # 自定义命令
 ├── docs/SETUP_GUIDE.md
@@ -114,7 +114,7 @@ public static object SkillName(string name, float x = 0f) { ... }
 - **NeverInSemi 自动判定**：`SkillOperation.Delete` / `MayEnterPlayMode=true` / `MayTriggerReload=true` / `RiskLevel="high"` 会自动判为 Approval 模式必拦——元数据决定一切，不要靠运行时另写拦截逻辑。
 - **错误返回用 `SkillErrorResponse.Build(code, msg, ...)` 而非抛异常**：业务错误必须构造结构化响应（含 `errorCode` / `suggestedFixes` / `retryStrategy`）。仅当错误真的属于"框架级未知异常"时才向上抛由 SkillRouter 包装。
 - **参数校验链**：用 `Validate.Required(x, "x") is object err` 模式，提前 return err。
-- **撤销 / 工作流快照**：写型操作必须 `Undo.RegisterCreatedObjectUndo` / `Undo.RegisterCompleteObjectUndo`；`TracksWorkflow=true` 的 skill 内调用 `WorkflowManager.SnapshotXxx(...)`。快照分级为 `SnapshotType`（Modified/Created/Deleted/Moved/Setting）：新建存创建态、移动保留完整操作顺序、删除完整备份文件/非空目录/场景层级、设置类经 `WorkflowSettingRestorerRegistry` 注册回退。主文件与 `.meta` 独立内容寻址（`fileHash` / `metaFileHash`），base64 不再内嵌进 `workflow_history.json`（schemaVersion 4）；自动清理不得删除仍被历史引用的 blob，限制值 `0` 表示不限制。
+- **撤销 / 工作流快照**：写型操作必须 `Undo.RegisterCreatedObjectUndo` / `Undo.RegisterCompleteObjectUndo`；`TracksWorkflow=true` 的 skill 内调用 `WorkflowManager.SnapshotXxx(...)`。快照分级为 `SnapshotType`（Modified/Created/Deleted/Moved/Setting）：新建存创建态、移动保留完整操作顺序、删除完整备份文件/非空目录/场景层级、设置类经 `WorkflowSettingRestorerRegistry` 注册回退。主文件与 `.meta` 独立内容寻址（`fileHash` / `metaFileHash`），base64 不再内嵌进 `workflow_history.json`（schemaVersion 5）；自动清理不得删除仍被历史引用的 blob，限制值 `0` 表示不限制。
 - **批处理范式**：成对提供 `xxx` 和 `xxx_batch`（后者用 `BatchExecutor.Execute<TItem>(items, perItem, idFn)`）。
 
 ### 3. 公共辅助层（禁止重写）
@@ -170,17 +170,17 @@ public static object SkillName(string name, float x = 0f) { ... }
 
 ---
 
-## Skills 模块 (52 个功能模块, 740 Skills)
+## Skills 模块 (54 个功能模块, 776 Skills)
 
 | 模块 | 数量 | 模块 | 数量 | 模块 | 数量 |
 |------|:----:|------|:----:|------|:----:|
-| YooAsset* | 40 | Cinemachine | 34 | Netcode* | 33 |
-| UI | 29 | UIToolkit | 25 | ShaderGraph | 23 |
+| YooAsset* | 40 | Cinemachine | 34 | Netcode* | 39 |
+| UI | 29 | UIToolkit | 31 | ShaderGraph | 23 |
 | Workflow | 24 | ProBuilder* | 22 | XR* | 22 |
 | Batch | 22 | DOTween* | 21 | Material | 21 |
 | PrimeTween* | 5 | PostProcess† | 10 | GameObject | 19 |
 | Perception | 18 | Volume† | 9 | URP† | 7 |
-| Decal† | 7 | Test | 13 | Editor | 14 |
+| Decal† | 7 | Test | 13 | Editor | 16 |
 | Script | 12 | Timeline | 12 | Physics | 12 |
 | Asset | 12 | AssetImport | 11 | Camera | 12 |
 | Package | 11 | Prefab | 11 | Shader | 11 |
@@ -191,9 +191,9 @@ public static object SkillName(string name, float x = 0f) { ... }
 | Profiler | 10 | Scene | 10 | ScriptableObject | 13 |
 | Smart | 10 | Terrain | 10 | Texture | 10 |
 | Validation | 10 | Project | 10 | Sample | 8 |
-| Diagnose | 1 |  |  |  |
+| Behavior* | 10 | HybridCLR* | 12 | Diagnose | 1 |
 
-\*ProBuilder 需 `com.unity.probuilder`，XR 需 `com.unity.xr.interaction.toolkit`，Netcode 需 `com.unity.netcode.gameobjects`，YooAsset 需 `com.tuyoogame.yooasset (≥2.3.15)`，DOTween 需 `DG.Tweening`，PrimeTween 需 `com.kyrylokuzyk.primetween`
+\*ProBuilder 需 `com.unity.probuilder`，XR 需 `com.unity.xr.interaction.toolkit`，Netcode 需 `com.unity.netcode.gameobjects`，YooAsset 需 `com.tuyoogame.yooasset (≥2.3.15)`，DOTween 需 `DG.Tweening`，PrimeTween 需 `com.kyrylokuzyk.primetween`，Behavior 需 `com.unity.behavior`，HybridCLR 需 `com.code-philosophy.hybridclr`
 †Volume / PostProcess / Decal / URP 需 `com.unity.render-pipelines.universal`（URP 未安装时这 4 个模块以同名 stub 返回 `NoURP()` 提示）。
 
 **Advisory 模块 (24)**：architecture, patterns, performance, asmdef, async, inspector, blueprints, adr, project-scout, scene-contracts, script-roles, scriptdesign, testability, bookmark, history, netcode-design, yooasset-design, addressables-design, unitask-design, dotween-design, primetween-design, shadergraph-design, yaml-editing, unity-cli — **纯架构/设计指导文档，无 REST Skills，无 C# 实现**；新增 advisory 时只动 `unity-skills~/skills/` 下文档，不要在 Editor/Skills/ 加 stub。
@@ -207,4 +207,4 @@ public static object SkillName(string name, float x = 0f) { ... }
 - **扩展 Skill**：在 `Editor/Skills/` 已有模块文件内加 `[UnitySkill]` 静态方法（或新增 `XxxSkills.cs`），SkillRouter 启动反射自动发现。新增模块需在 `SkillCategory` 枚举里登记。
 - **新增 UI 窗口**：在 `Editor/UI/` 加 `.cs + .uxml + .uss` 三件套（参考 `UnitySkillsWindow` / `UnitySkillsAuditWindow`）。
 - **自定义命令**：`/skillcount`（数量同步）、`/skillcheck`（C# 与 SKILL.md 一致性）、`/metacheck`（.meta GUID）、`/updateversion`、`/release`。
-- **Domain Reload 期间**：脚本保存、包安装等会让 REST 服务短暂不可达（503/504 带诊断），客户端等待重试是预期行为——**不要为绕过此现象修改服务端**。`SkillsHttpServer` 已有 EditorPrefs 持久化端口、连续失败 5 次上限、Watchdog 自动重启死亡线程等容错机制。
+- **Domain Reload 期间**：脚本保存、包安装等会让 REST 服务短暂不可达（503/504 带诊断），客户端等待重试是预期行为——**不要为绕过此现象修改服务端**。`SkillsHttpServer` 已有 EditorPrefs 持久化端口、连续失败 10 次上限、Watchdog 自动重启死亡线程等容错机制。

@@ -231,7 +231,8 @@ namespace UnitySkills
             Tags = new[] { "destroy", "remove", "hierarchy", "batch" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "gameObject" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
+            RiskLevel = "medium")]
         public static object GameObjectDeleteBatch(string items)
         {
             if (Validate.RequiredJsonArray(items, "items") is object err) return err;

@@ -194,7 +194,8 @@ namespace UnitySkills
         [UnitySkill("validate_cleanup_empty_folders", "Find and optionally delete empty folders",
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze | SkillOperation.Delete,
             Tags = new[] { "validation", "cleanup", "folders", "empty" },
-            Outputs = new[] { "dryRun", "emptyFolderCount", "folders", "message" })]
+            Outputs = new[] { "dryRun", "emptyFolderCount", "folders", "message" },
+            TracksWorkflow = true, MutatesAssets = true, RiskLevel = "medium")]
         public static object ValidateCleanupEmptyFolders(string rootPath = "Assets", bool dryRun = true)
         {
             if (Validate.SafePath(rootPath, "rootPath") is object pathErr) return pathErr;
@@ -210,10 +211,9 @@ namespace UnitySkills
                 {
                     if (Directory.Exists(folder))
                     {
-                        AssetDatabase.DeleteAsset(folder);
+                        WorkflowManager.DeleteAssetToTrash(folder);
                     }
                 }
-                AssetDatabase.Refresh();
             }
 
             return new
@@ -395,7 +395,9 @@ namespace UnitySkills
         [UnitySkill("validate_fix_missing_scripts", "Remove missing script components from GameObjects",
             Category = SkillCategory.Validation, Operation = SkillOperation.Execute | SkillOperation.Delete,
             Tags = new[] { "validation", "fix", "missing", "scripts" },
-            Outputs = new[] { "dryRun", "fixedCount", "objects", "message" })]
+            Outputs = new[] { "dryRun", "fixedCount", "objects", "message" },
+            TracksWorkflow = true,
+            RiskLevel = "medium")]
         public static object ValidateFixMissingScripts(bool dryRun = true)
         {
             var fixedObjects = new List<object>();

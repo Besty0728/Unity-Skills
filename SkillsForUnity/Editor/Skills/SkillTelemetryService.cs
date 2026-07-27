@@ -73,6 +73,7 @@ namespace UnitySkills
                 "UNKNOWN_SKILL", "UNKNOWN_PARAM", "MISSING_PARAM", "TYPE_MISMATCH",
                 "INVALID_JSON", "SEMANTIC_INVALID", "INVALID_MODE", "MODE_RESTRICTED",
                 "CONFIRMATION_REQUIRED", "COMPILING",
+                "TARGET_NOT_FOUND", "MISSING_PACKAGE",
             };
         private static Dictionary<string, RecommendationHealth> _recommendationHealthCache;
         private static long _recommendationHealthCacheAtTicks;

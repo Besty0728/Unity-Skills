@@ -86,11 +86,14 @@
 
 ### 3e. Returns / Outputs 一致性检查
 
-三方交叉验证：
+> **背景**：曾出现 prefab 模块 9 个 skill 里 5 个 `Returns` 与代码漂移的案例——文档 `**Returns**` 声明的字段与 C# 方法体实际 `return new { ... }` 已经不一致。仅靠"以 Outputs 为中转"的两两比对，在 Outputs 元数据本身缺失、未更新、或审计时提取有误差的情况下，容易漏掉"文档 Returns 与实际返回值直接对不上"这一漂移，因此下述三条边必须**分别独立核对**，不能只做两两传递、省略第三边。
+
+三方独立交叉验证（三条边缺一不可，不依赖 Outputs 单点中转推导出第三边）：
 
 1. **Outputs 元数据 vs 文档 Returns**：`[UnitySkill]` 的 `Outputs = new[] { "field1", "field2" }` 与文档 `**Returns**: {field1, field2, ...}` 中的字段名比对
 2. **C# 实际返回值 vs Outputs 元数据**：解析方法体中 `return new { ... }` 的字段名，与 `Outputs` 数组比对（正则提取，覆盖主路径即可，不要求 100% 覆盖所有分支）
-3. 不一致标记为 🟡 中等（AI 依赖返回值做下一步决策，但不如参数不一致严重）
+3. **文档 Returns vs C# 实际返回值（直接比对）**：把文档 `**Returns**: {field1, field2, ...}` 与方法体 `return new { ... }` 的字段名直接对照，**不经 Outputs 中转**——这是唯一能抓出"Outputs 和 Returns 一起漂移、彼此表面仍然对齐"这类案例的手段
+4. 任一边不一致标记为 🟡 中等（AI 依赖返回值做下一步决策，但不如参数不一致严重）
 
 > **豁免 `entityId`**：`entityId` 由 `SkillRouter.GetEffectiveOutputs / GetSkillParameters / GetEffectiveDescription` 在 `/skills` manifest 层对所有含 `instanceId` 的 skill **自动注入**，因此**不需要在静态 `Outputs` 元数据中显式声明**。校验时遇到「C# `return new { ... entityId ... }` 含 `entityId`」或「文档 Returns 出现 `entityId`」而 `Outputs` 未声明的情况，**一律不算不一致**，跳过该字段（同理适用于 `parentEntityId` / `childEntityId` 等定位入参）。
 

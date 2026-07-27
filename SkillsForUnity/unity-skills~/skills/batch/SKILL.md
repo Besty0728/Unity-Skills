@@ -157,12 +157,18 @@ List recent UnitySkills jobs.
 | `limit` | int | No | 20 | Max jobs returned |
 
 ### job_wait
-Wait for a UnitySkills job to finish or until `timeoutMs` elapses.
+Wait for a UnitySkills job to finish or until `timeoutMs` elapses. **Blocks the Unity main thread** while waiting, so `timeoutMs` is clamped server-side to `[0, 2000]` regardless of the value you pass — a 10000/60000 request will actually wait at most 2s.
+
+For job kinds whose progress depends on Unity's own engine loop rather than this plugin's own pump (`compile`, `package`, `test`, `playmode`, `play_capture`, `build_player`), blocking this thread cannot make them advance — Unity's compiler/domain-reload, PackageManager Request resolution, TestRunner callbacks, PlayMode state machine, and BuildPipeline all need the main thread free to tick. For those kinds `job_wait` **does not enter a wait loop**: it returns the current snapshot immediately with `waitNotSupported: true` and a `hint` pointing at the non-blocking alternatives below. Self-driven kinds (batch executor jobs such as `rename` / `set_property` / `replace_material` / `set_render_layer` / `cleanup_temp_objects` / `fix_missing_scripts` / `standardize_naming`, and `test_smoke`) still block up to the clamped timeout since each `job_wait` tick genuinely advances their state.
+
+**Recommended pattern for compile/package/test/playmode/play_capture/build_player jobs**: poll `GET /jobs/{id}` (served off the HTTP thread, safe to call every 200-500ms) or long-poll `GET /events` — neither goes through the main-thread skill queue, so they stay responsive even while a job is mid-flight.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `jobId` | string | Yes | - | Job identifier |
-| `timeoutMs` | int | No | 10000 | Wait timeout in milliseconds |
+| `timeoutMs` | int | No | 10000 | Wait timeout in milliseconds; clamped to `[0, 2000]` |
+
+Response adds `terminal` (bool) and `waitNotSupported` (bool) to the fields listed under job_status; `hint` is populated only when `waitNotSupported` is true.
 
 ### job_cancel
 Cancel a UnitySkills job if the job supports cancellation.

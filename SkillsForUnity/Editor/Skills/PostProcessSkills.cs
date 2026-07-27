@@ -31,7 +31,8 @@ namespace UnitySkills
         [UnitySkill("postprocess_remove_effect", "Remove a post-processing effect override from a VolumeProfile",
             Category = SkillCategory.PostProcess, Operation = SkillOperation.Delete,
             Tags = new[] { "postprocess", "effect", "remove", "profile" },
-            Outputs = new[] { "effectType", "profilePath" })]
+            Outputs = new[] { "effectType", "profilePath" },
+            RiskLevel = "medium")]
         public static object PostProcessRemoveEffect(string profilePath, string effectType) => RenderPipelineSkillsCommon.NoSRP();
 
         [UnitySkill("postprocess_get_effect", "Inspect a post-processing effect override on a VolumeProfile",
@@ -135,7 +136,8 @@ namespace UnitySkills
             TracksWorkflow = true,
             MutatesAssets = true,
             RequiresInput = new[] { "profilePath", "effectType" },
-            RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" },
+            RiskLevel = "medium")]
         public static object PostProcessRemoveEffect(string profilePath, string effectType)
         {
             var descriptorResult = ResolveEffect(effectType);

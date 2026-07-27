@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace UnitySkills
 {
     /// <summary>
@@ -66,6 +69,33 @@ namespace UnitySkills
                 case SkillErrorCode.InvalidMode:          return "INVALID_MODE";
                 default:                                  return "UNKNOWN";
             }
+        }
+
+        private static Dictionary<string, SkillErrorCode> _byName;
+
+        /// <summary>
+        /// Reverse of <see cref="ToWireString"/>: accepts either the wire value ("TARGET_NOT_FOUND")
+        /// or the enum name ("TargetNotFound"), case-insensitively. Used when a skill declares an
+        /// errorCode on its own error object and the router honours it verbatim.
+        /// </summary>
+        public static bool TryParseWire(string value, out SkillErrorCode code)
+        {
+            code = SkillErrorCode.Unknown;
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            if (_byName == null)
+            {
+                var map = new Dictionary<string, SkillErrorCode>(StringComparer.OrdinalIgnoreCase);
+                foreach (SkillErrorCode candidate in Enum.GetValues(typeof(SkillErrorCode)))
+                {
+                    map[candidate.ToWireString()] = candidate;
+                    map[candidate.ToString()] = candidate;
+                }
+                _byName = map;
+            }
+
+            return _byName.TryGetValue(value.Trim(), out code);
         }
     }
 }

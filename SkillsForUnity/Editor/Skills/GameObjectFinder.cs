@@ -60,12 +60,44 @@ namespace UnitySkills
     /// </summary>
     public static class Validate
     {
+        // Every skill in the package funnels its parameter errors through these helpers, so the
+        // structured fields added here are what give several hundred skills a precise errorCode
+        // and a usable retryStrategy without touching the skills themselves. SkillRouter's
+        // TryGetErrorContext reads them verbatim; SkillErrorClassifier only fills what is absent.
+
+        private static object MissingParam(string message, string paramName) => new
+        {
+            error = message,
+            errorCode = SkillErrorCode.MissingParam.ToWireString(),
+            retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            suggestedFixes = new[]
+            {
+                new
+                {
+                    action = "fix_param",
+                    skill = "POST /skill/<name>?mode=dryRun",
+                    reason = $"Pass '{paramName}'. dryRun returns the full parameter schema without executing."
+                }
+            }
+        };
+
+        private static object InvalidParam(string message, string reason) => new
+        {
+            error = message,
+            errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+            retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            suggestedFixes = new[]
+            {
+                new { action = "fix_param", reason }
+            }
+        };
+
         /// <summary>
         /// Check if string parameter is provided. Returns error object if empty, null if valid.
         /// Usage: if (Validate.Required(x, "x") is object err) return err;
         /// </summary>
         public static object Required(string value, string paramName) =>
-            string.IsNullOrEmpty(value) ? new { error = $"{paramName} is required" } : null;
+            string.IsNullOrEmpty(value) ? MissingParam($"{paramName} is required", paramName) : null;
 
         /// <summary>
         /// Check if a JSON array parameter is provided and non-empty.
@@ -74,10 +106,11 @@ namespace UnitySkills
         public static object RequiredJsonArray(string jsonArray, string paramName)
         {
             if (string.IsNullOrEmpty(jsonArray))
-                return new { error = $"{paramName} is required" };
+                return MissingParam($"{paramName} is required", paramName);
             var trimmed = jsonArray.Trim();
             if (trimmed == "[]" || trimmed == "null")
-                return new { error = $"{paramName} must be a non-empty array" };
+                return InvalidParam($"{paramName} must be a non-empty array",
+                    $"'{paramName}' is a JSON array string — send at least one element, e.g. [\"first\"].");
             return null;
         }
 
@@ -88,7 +121,8 @@ namespace UnitySkills
         public static object InRange(float value, float min, float max, string paramName)
         {
             if (value < min || value > max)
-                return new { error = $"{paramName} must be between {min} and {max}, got {value}" };
+                return InvalidParam($"{paramName} must be between {min} and {max}, got {value}",
+                    $"Clamp '{paramName}' into [{min}, {max}] and retry.");
             return null;
         }
 
@@ -98,7 +132,8 @@ namespace UnitySkills
         public static object InRange(int value, int min, int max, string paramName)
         {
             if (value < min || value > max)
-                return new { error = $"{paramName} must be between {min} and {max}, got {value}" };
+                return InvalidParam($"{paramName} must be between {min} and {max}, got {value}",
+                    $"Clamp '{paramName}' into [{min}, {max}] and retry.");
             return null;
         }
 
@@ -109,7 +144,7 @@ namespace UnitySkills
         public static object SafePath(string path, string paramName, bool isDelete = false)
         {
             if (string.IsNullOrEmpty(path))
-                return new { error = $"{paramName} is required" };
+                return MissingParam($"{paramName} is required", paramName);
 
             // Normalize path
             var normalized = path.Replace('\\', '/');
@@ -118,17 +153,20 @@ namespace UnitySkills
 
             // Prevent path traversal
             if (normalized.Contains(".."))
-                return new { error = $"Path traversal not allowed: {path}" };
+                return InvalidParam($"Path traversal not allowed: {path}",
+                    "Send a normalized project-relative path with no '..' segments.");
 
             // Restrict to Assets/ or Packages/
             if (!normalized.StartsWith("Assets/") && !normalized.StartsWith("Packages/") &&
                 normalized != "Assets" && normalized != "Packages")
-                return new { error = $"Path must start with Assets/ or Packages/: {path}" };
+                return InvalidParam($"Path must start with Assets/ or Packages/: {path}",
+                    "Paths are project-relative: prefix with 'Assets/' (or 'Packages/'), not an absolute disk path.");
 
             // Prevent deleting root folders
             if (isDelete && (normalized == "Assets" || normalized == "Assets/" ||
                             normalized == "Packages" || normalized == "Packages/"))
-                return new { error = "Cannot delete root Assets or Packages folder" };
+                return InvalidParam("Cannot delete root Assets or Packages folder",
+                    "Target a specific asset or subfolder instead of the project root.");
 
             return null;
         }
@@ -142,7 +180,22 @@ namespace UnitySkills
             var safeErr = SafePath(path, paramName);
             if (safeErr != null) return safeErr;
             if (!SkillsCommon.PathExists(path))
-                return new { error = $"Path does not exist: {path}" };
+                return new
+                {
+                    error = $"Path does not exist: {path}",
+                    errorCode = SkillErrorCode.TargetNotFound.ToWireString(),
+                    retryStrategy = SkillErrorResponse.RetryFindAndRetry,
+                    relatedSkills = new[] { "asset_find", "asset_get_info" },
+                    suggestedFixes = new[]
+                    {
+                        new
+                        {
+                            action = "find_target",
+                            skill = "asset_find",
+                            reason = "Resolve the real project path first — asset paths are case-sensitive and must start with Assets/ or Packages/."
+                        }
+                    }
+                };
             return null;
         }
 
@@ -588,13 +641,45 @@ namespace UnitySkills
                     $"name '{name}'";
 
                 var suggestions = GetSuggestions(name, tag, componentType);
-                
-                return (null, new { 
+
+                return (null, new {
                     error = $"GameObject not found: {identifier}",
-                    suggestions = suggestions.Any() ? suggestions : null
+                    suggestions = suggestions.Any() ? suggestions : null,
+                    errorCode = SkillErrorCode.TargetNotFound.ToWireString(),
+                    retryStrategy = SkillErrorResponse.RetryFindAndRetry,
+                    relatedSkills = new[] { "gameobject_find", "scene_get_hierarchy" },
+                    suggestedFixes = BuildNotFoundFixes(identifier, suggestions)
                 });
             }
             return (go, null);
+        }
+
+        /// <summary>
+        /// Turn the near-miss candidates into suggestedFixes. Before this the candidates were
+        /// computed and then dropped by the router, which only ever read the error string.
+        /// </summary>
+        private static object[] BuildNotFoundFixes(string identifier, string[] suggestions)
+        {
+            var fixes = new List<object>();
+
+            foreach (var candidate in suggestions.Take(3))
+            {
+                fixes.Add(new
+                {
+                    action = "find_target",
+                    skill = "gameobject_find",
+                    reason = $"Close match already in an open scene: {candidate}"
+                });
+            }
+
+            fixes.Add(new
+            {
+                action = "find_target",
+                skill = "scene_get_hierarchy",
+                reason = $"Nothing matched {identifier}. List the open scenes' hierarchy, then retry with the exact path or the entityId it returns."
+            });
+
+            return fixes.ToArray();
         }
 
         /// <summary>

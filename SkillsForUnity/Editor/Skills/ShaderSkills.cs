@@ -195,7 +195,8 @@ namespace UnitySkills
             Tags = new[] { "shader", "delete", "asset" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
+            RiskLevel = "medium")]
         public static object ShaderDelete(string shaderPath)
         {
             if (Validate.SafePath(shaderPath, "shaderPath", isDelete: true) is object pathErr) return pathErr;

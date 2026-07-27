@@ -1,7 +1,116 @@
 using UnityEngine;
 using UnityEditor;
 using System.Linq;
+using System.Collections.Generic;
 using UnitySkills.Internal;
+
+namespace UnitySkills.Internal
+{
+    /// <summary>
+    /// Shared PNG downscale + base64 encoding for screenshot skills that support
+    /// <c>returnImage=true</c> (camera_screenshot, camera_sceneview_screenshot, scene_screenshot) —
+    /// lets AI clients without filesystem access (e.g. remote/MCP) consume pixel data directly
+    /// from the REST response instead of reading the file saved at <c>path</c>.
+    /// </summary>
+    internal static class ScreenshotImageEncoder
+    {
+        internal const int MinMaxDimension = 256;
+        internal const int MaxMaxDimension = 4096;
+
+        // Encoded PNG->base64 grows ~1.33x; this cap keeps responses well clear of
+        // SkillsHttpServer's own 10MB request-body ceiling (MaxBodySizeBytes).
+        internal const int MaxBase64Bytes = 8 * 1024 * 1024;
+
+        internal static int ClampMaxDimension(int maxDimension) =>
+            Mathf.Clamp(maxDimension, MinMaxDimension, MaxMaxDimension);
+
+        /// <summary>
+        /// Base64-encodes an already-captured PNG, downscaling first if either dimension exceeds
+        /// <paramref name="maxDimension"/>. Reuses <paramref name="pngBytes"/> unchanged when no
+        /// resize is needed (no decode/re-encode round trip).
+        /// Returns the fields to merge into the caller's response (imageBase64/imageWidth/
+        /// imageHeight/imageBytes) on success. On failure returns null and sets
+        /// <paramref name="error"/> to a response-shaped error object; the caller's file save is
+        /// unaffected — only the returnImage payload failed.
+        /// </summary>
+        internal static Dictionary<string, object> Encode(byte[] pngBytes, int width, int height, int maxDimension, out object error)
+        {
+            error = null;
+            if (pngBytes == null || pngBytes.Length == 0 || width <= 0 || height <= 0)
+            {
+                error = new { error = "No captured pixels available to encode for returnImage." };
+                return null;
+            }
+
+            var clamp = ClampMaxDimension(maxDimension);
+            var outBytes = pngBytes;
+            int outW = width, outH = height;
+
+            if (width > clamp || height > clamp)
+            {
+                Texture2D src = null, scaled = null;
+                try
+                {
+                    src = new Texture2D(2, 2);
+                    src.LoadImage(pngBytes); // resizes src to the PNG's own dimensions
+
+                    float scale = (float)clamp / Mathf.Max(src.width, src.height);
+                    int dstW = Mathf.Max(1, Mathf.RoundToInt(src.width * scale));
+                    int dstH = Mathf.Max(1, Mathf.RoundToInt(src.height * scale));
+
+                    scaled = Downscale(src, dstW, dstH);
+                    outBytes = scaled.EncodeToPNG();
+                    outW = scaled.width;
+                    outH = scaled.height;
+                }
+                finally
+                {
+                    if (src != null) Object.DestroyImmediate(src);
+                    if (scaled != null) Object.DestroyImmediate(scaled);
+                }
+            }
+
+            var base64 = System.Convert.ToBase64String(outBytes);
+            if (base64.Length > MaxBase64Bytes)
+            {
+                error = new
+                {
+                    error = $"Encoded image too large ({base64.Length} base64 bytes > {MaxBase64Bytes}). The screenshot file was already saved to disk; retry returnImage with a smaller maxDimension, or omit returnImage and read the file instead.",
+                    errorCode = "IMAGE_TOO_LARGE"
+                };
+                return null;
+            }
+
+            return new Dictionary<string, object>
+            {
+                ["imageBase64"] = base64,
+                ["imageWidth"] = outW,
+                ["imageHeight"] = outH,
+                ["imageBytes"] = outBytes.Length
+            };
+        }
+
+        private static Texture2D Downscale(Texture2D src, int dstW, int dstH)
+        {
+            var rt = RenderTexture.GetTemporary(dstW, dstH, 0, RenderTextureFormat.ARGB32);
+            var prevActive = RenderTexture.active;
+            try
+            {
+                Graphics.Blit(src, rt);
+                RenderTexture.active = rt;
+                var dst = new Texture2D(dstW, dstH, TextureFormat.RGB24, false);
+                dst.ReadPixels(new Rect(0, 0, dstW, dstH), 0, 0);
+                dst.Apply();
+                return dst;
+            }
+            finally
+            {
+                RenderTexture.active = prevActive;
+                RenderTexture.ReleaseTemporary(rt);
+            }
+        }
+    }
+}
 
 namespace UnitySkills
 {
@@ -167,6 +276,7 @@ namespace UnitySkills
             TracksWorkflow = true)]
         public static object CameraSetCullingMask(string layerNames, string name = null, int instanceId = 0, string path = null)
         {
+            if (Validate.Required(layerNames, "layerNames") is object layerNamesErr) return layerNamesErr;
             var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
             if (err != null) return err;
             WorkflowManager.SnapshotObject(cam);
@@ -181,12 +291,12 @@ namespace UnitySkills
             return new { success = true, cullingMask = mask };
         }
 
-        [UnitySkill("camera_screenshot", "Capture a screenshot from a Game Camera to file",
+        [UnitySkill("camera_screenshot", "Capture a screenshot from a Game Camera to file. Set returnImage=true to also get the PNG as base64 in the response, for clients without filesystem access (e.g. remote/MCP).",
             Category = SkillCategory.Camera, Operation = SkillOperation.Execute,
             Tags = new[] { "screenshot", "capture", "render", "png" },
-            Outputs = new[] { "path", "width", "height" },
+            Outputs = new[] { "path", "width", "height", "imageBase64", "imageWidth", "imageHeight", "imageBytes" },
             RequiresInput = new[] { "gameObject" })]
-        public static object CameraScreenshot(string savePath = "Assets/screenshot.png", int width = 1920, int height = 1080, string name = null, int instanceId = 0, string path = null)
+        public static object CameraScreenshot(string savePath = "Assets/screenshot.png", int width = 1920, int height = 1080, string name = null, int instanceId = 0, string path = null, bool returnImage = false, int maxDimension = 1280)
         {
             var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
             if (err != null) return err;
@@ -197,6 +307,7 @@ namespace UnitySkills
             var rt = new RenderTexture(width, height, 24);
             Texture2D tex = null;
             RenderTexture oldTarget = cam.targetTexture;
+            byte[] pngBytes = null;
             try
             {
                 cam.targetTexture = rt;
@@ -205,7 +316,8 @@ namespace UnitySkills
                 tex = new Texture2D(width, height, TextureFormat.RGB24, false);
                 tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
                 tex.Apply();
-                System.IO.File.WriteAllBytes(savePath, tex.EncodeToPNG());
+                pngBytes = tex.EncodeToPNG();
+                System.IO.File.WriteAllBytes(savePath, pngBytes);
             }
             finally
             {
@@ -215,14 +327,22 @@ namespace UnitySkills
                 if (tex != null) Object.DestroyImmediate(tex);
             }
             AssetDatabase.ImportAsset(savePath);
-            return new { success = true, path = savePath, width, height };
+
+            var result = new Dictionary<string, object> { ["success"] = true, ["path"] = savePath, ["width"] = width, ["height"] = height };
+            if (returnImage)
+            {
+                var imageFields = ScreenshotImageEncoder.Encode(pngBytes, width, height, maxDimension, out var imageError);
+                if (imageError != null) return imageError;
+                foreach (var kv in imageFields) result[kv.Key] = kv.Value;
+            }
+            return result;
         }
 
-        [UnitySkill("camera_sceneview_screenshot", "Capture the editor SCENE VIEW (the developer's editing viewport — can overlook the whole scene incl. off-camera objects; distinct from scene_screenshot which is the Game View/player camera, and camera_screenshot which is one Game Camera). By default captures the full Scene View incl. grid/gizmos/selection (on-screen read); auto-falls back to a clean offscreen render if the editor build doesn't support it. filename is a bare filename only (no path separators); saved under Assets/Screenshots/.",
+        [UnitySkill("camera_sceneview_screenshot", "Capture the editor SCENE VIEW (the developer's editing viewport — can overlook the whole scene incl. off-camera objects; distinct from scene_screenshot which is the Game View/player camera, and camera_screenshot which is one Game Camera). By default captures the full Scene View incl. grid/gizmos/selection (on-screen read); auto-falls back to a clean offscreen render if the editor build doesn't support it. filename is a bare filename only (no path separators); saved under Assets/Screenshots/. Set returnImage=true to also get the PNG as base64 in the response, for clients without filesystem access (e.g. remote/MCP).",
             Category = SkillCategory.Camera, Operation = SkillOperation.Execute,
             Tags = new[] { "screenshot", "capture", "scene-view", "editor", "gizmo" },
-            Outputs = new[] { "path", "width", "height", "mode", "note" })]
-        public static object CameraSceneViewScreenshot(string filename = "sceneview.png", bool includeOverlays = true)
+            Outputs = new[] { "path", "width", "height", "mode", "note", "imageBase64", "imageWidth", "imageHeight", "imageBytes" })]
+        public static object CameraSceneViewScreenshot(string filename = "sceneview.png", bool includeOverlays = true, bool returnImage = false, int maxDimension = 1280)
         {
             var sv = SceneView.lastActiveSceneView;
             if (sv == null)
@@ -270,7 +390,18 @@ namespace UnitySkills
             // The PNG is written synchronously above; refresh the AssetDatabase next tick so it shows in the Project window.
             EditorApplication.delayCall += () => AssetDatabase.Refresh();
 
-            return new { success = true, path, width = outW, height = outH, mode, note };
+            var result = new Dictionary<string, object> { ["success"] = true, ["path"] = path, ["width"] = outW, ["height"] = outH, ["mode"] = mode, ["note"] = note };
+            if (returnImage)
+            {
+                byte[] pngBytes;
+                try { pngBytes = System.IO.File.ReadAllBytes(path); }
+                catch (System.Exception e) { return new { error = $"Scene View screenshot was saved but could not be read back for returnImage: {e.Message}" }; }
+
+                var imageFields = ScreenshotImageEncoder.Encode(pngBytes, outW, outH, maxDimension, out var imageError);
+                if (imageError != null) return imageError;
+                foreach (var kv in imageFields) result[kv.Key] = kv.Value;
+            }
+            return result;
         }
 
         // Method 2: read the actual on-screen pixels of the Scene View window (incl. grid/gizmos/selection).

@@ -88,10 +88,14 @@ Capture a screenshot of the **Game View** — the final composited frame of all 
 | `filename` | string | No | "screenshot.png" | Bare filename only (no path separators); saved under `Assets/Screenshots/` |
 | `width` | int | No | 1920 | Image width |
 | `height` | int | No | 1080 | Image height |
+| `returnImage` | bool | No | false | Also return a PNG as base64 in the response (`imageBase64`), for clients without filesystem access |
+| `maxDimension` | int | No | 1280 | Only used when `returnImage=true`; downscales the returned image (not the saved file) so its longer edge is ≤ this value. Clamped to 256–4096 |
 
-**Returns**: `{success, path, width, height, isPlaying, note}`. `isPlaying` indicates whether the frame is a live runtime image (Play mode) or a static Edit-mode frame.
+**Returns**: `{success, path, width, height, isPlaying, note}`. `isPlaying` indicates whether the frame is a live runtime image (Play mode) or a static Edit-mode frame. Adds `{imageBase64, imageWidth, imageHeight, imageBytes}` when `returnImage=true`. If the base64 payload would exceed 8MB, the skill returns an error asking for a smaller `maxDimension` — the file at `path` is still saved.
 
-**Async**: `ScreenCapture.CaptureScreenshot` writes the PNG ~1 frame later. If reading `path` immediately fails, wait ~200ms and retry.
+**Async**: `ScreenCapture.CaptureScreenshot` writes the PNG ~1 frame later. If reading `path` immediately fails, wait ~200ms and retry. `returnImage` does **not** read that file back — since it isn't written yet — it instead does a separate synchronous capture of the Game View's current backbuffer (`ScreenCapture.CaptureScreenshotAsTexture`), so the returned image may be a moment older than the file eventually written to `path`.
+
+**returnImage usage tip:** a local agent that can read files (e.g. Claude Code against a local Unity Editor) should generally omit `returnImage` and just read the PNG at `path` once it's written — it's cheaper on tokens. Use `returnImage=true` for remote/MCP clients that have no filesystem access to the Unity project.
 
 ### scene_get_loaded
 Get list of all currently loaded scenes.

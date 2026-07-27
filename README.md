@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-740-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-776-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -30,14 +30,38 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **740 REST Skills Comprehensive Toolkit**: Includes 52 functional source modules plus 24 advisory design modules, with Batch operations for multi-object control.
-- ⚡ **Revolutionary Efficiency Boost (v2.0.1+)**: Schema caching + exponential backoff polling + BATCH-FIRST guidance → **Token consumption ↓ 96%**, **simple tasks 4-6 calls → 1 call (↓ 75-83%)**. Current: v2.3.0.
+- 🛠️ **776 REST Skills Comprehensive Toolkit**: Includes 54 functional source modules plus 24 advisory design modules, with Batch operations for multi-object control.
+- ⚡ **Revolutionary Efficiency Boost (v2.0.1+)**: Schema caching + exponential backoff polling + BATCH-FIRST guidance → **Token consumption ↓ 96%**, **simple tasks 4-6 calls → 1 call (↓ 75-83%)**. Current: v2.4.0.
 - 🔐 **Three-Tier Permission Modes (v1.9.0+)**: Approval / Auto / Bypass with dual approval channels (Dialog / Panel), aligned with Claude Code permission modes; zero-impact upgrade for existing users.
 - 🤖 **4 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor — one-click install and use.
 - 🛡️ **Transactional Atomicity**: Failed operations auto-rollback, leaving scenes clean and safe.
 - 🌍 **Multi-Instance Simultaneous Control**: Automatic port discovery and global registry for controlling multiple Unity projects at once.
 - 🔗 **Ultra-Stable Long Connections**: Configurable request timeout (default 15 minutes), automatic recovery after Domain Reload, with retry hints during script compilation/asset updates.
 - 🛡️ **Anti-Hallucination Guardrails**: Each Skill module includes DO NOT lists and routing rules to prevent calls to nonexistent commands or parameter errors.
+
+---
+
+## 🛡️ Built for Trust: The Governance Layer
+
+An AI driving the Editor writes to real scenes, prefabs and `.meta` files. The interesting question isn't whether it *can* — it's what happens when it gets something wrong. UnitySkills answers that at four points in the call lifecycle.
+
+- **Before execution — `?mode=dryRun` / `?mode=plan`**: `POST /skill/{name}?mode=dryRun` writes nothing and returns parameter validation (`missingParams` / `unknownParams` / `typeErrors` / `semanticErrors` / `warnings`) plus an impact estimate (`mutatesScene` / `mutatesAssets` / `mayTriggerReload` / `mayEnterPlayMode` / `riskLevel`). Skills with a semantic planner also return `steps` / `changes`.
+- **At execution — per-operation risk gating**: every skill declares `RiskLevel` / `Operation` / `MayEnterPlayMode` / `MayTriggerReload` in its `[UnitySkill]` metadata, and the server derives NeverInSemi from that metadata — gating never depends on the AI behaving well. **Allowlist** grants a persistent pass to individual skills; the optional `ConfirmationToken` handshake (off by default — ⚙ Settings → Runtime → Require Confirmation) adds one more gate on high-risk skills.
+- **After execution — JSONL audit trail**: every call, grant, revoke and blocked hit is appended to `Library/UnitySkillsAudit.jsonl` (1 MB rotation, primary + 3 historical files), browsable and filterable in the panel. Deleting audit entries is itself recorded, as `audit_deleted` / `audit_cleared`.
+- **After a mistake — typed, persistent snapshot rollback**: Workflow snapshots are typed (`Modified` / `Created` / `Deleted` / `Moved` / `Setting`), and the asset file and its `.meta` are content-addressed independently (`fileHash` / `metaFileHash`) under `Library/UnitySkills/`, so history survives Domain Reloads and editor restarts. `workflow_undo_task` rolls back one task, not the whole project.
+- **Batch as a transaction**: `POST /skills/batch` supports fail-fast or `continueOnError`, cross-step `$ref` to reuse an earlier step's output, rollback on failure, and `?diff=1` for the aggregated net change.
+
+### How this compares
+
+| Dimension | UnitySkills | Typical MCP bridge | Unity's official AI Assistant |
+| :--- | :--- | :--- | :--- |
+| **Permission granularity** | Per-operation: three modes (Approval / Auto / Bypass) + risk metadata on every skill + per-skill Allowlist | No permission model — once connected, the whole tool surface is callable | Per-client trust (Pending Connections → Allow / Revoke); after approval, calls are not distinguished by operation |
+| **Audit** | Structured JSONL for every call / grant / revoke / block, browsable in-panel; deletions are audited too | Process logs only; no structured per-call record | Surfaced as chat history and checkpoints rather than a per-operation audit record |
+| **Rollback granularity** | Per-task, five snapshot types, file and `.meta` content-addressed, persists across sessions | Relies on Unity's native Undo stack; not guaranteed to survive a Domain Reload | Project-wide checkpoints taken per prompt — restoring rewinds the entire project to that point |
+| **Pre-execution preview** | `?mode=dryRun` / `?mode=plan` — semantic parameter validation + impact estimate, nothing written | No equivalent found | No pre-execution parameter validation or impact preview found |
+| **Batch transactions** | `POST /skills/batch` — fail-fast / `continueOnError`, cross-step `$ref`, rollback, `?diff=1` net change | Per-call tool invocations, no transaction semantics | Not exposed as a batch transaction |
+
+> The **UnitySkills** column describes mechanisms that exist in this repository and can be checked against the source or by calling the endpoints. The other two columns reflect **public material and open-source repositories surveyed in 2026-07**; they characterise a class of tooling rather than any specific project, and those capabilities may have changed since.
 
 ---
 
@@ -173,16 +197,18 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><h2>📦 Skills Category Overview (740)</h2></summary>
+<summary><h2>📦 Skills Category Overview (776)</h2></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
 | **YooAsset** | 40 | Hot-update bundle builds/Collector full CRUD/BuildReport asset and dependency analysis/PlayMode runtime validation/Reporter-Debugger-AssetArtScanner tools |
+| **Behavior** | 10 | Unity Behavior graph assets/agents/blackboard variables (com.unity.behavior, reflection-based) |
+| **HybridCLR** | 12 | HybridCLR hot-update settings/codegen/DLL compile & copy pipeline (com.code-philosophy.hybridclr, reflection-based) |
 | **Workflow** | 24 | Persistent history/Tiered task snapshots/Content-addressed file store/Auto-clean/Session-level undo/Rollback/Clear history/Bookmarks/Batch query-preview-execute jobs |
 | **Cinemachine** | 34 | 2.x/3.x dual version auto-install/MixingCamera/ClearShot/TargetGroup/Spline |
-| **Netcode** | 33 | Netcode for GameObjects setup/prefabs/lifecycle/host-server-client workflows |
+| **Netcode** | 39 | Netcode for GameObjects setup/prefabs/lifecycle/host-server-client workflows/NGO 2.5+ attachable & component-controller helpers |
 | **UI** | 29 | Canvas/Button/Text/InputField/Dropdown/ScrollView/Layout/Alignment/Image and selectable utilities |
-| **UI Toolkit** | 25 | UXML/USS file management/UIDocument/PanelSettings full property read-write/Template generation/Structure inspection/Batch create |
+| **UI Toolkit** | 31 | UXML/USS file management/UIDocument/PanelSettings full property read-write/Template generation/Structure inspection/Batch create/Runtime data binding/UXML upgrade/World-space panels |
 | **ShaderGraph** | 23 | Shader Graph create/inspect/blackboard edit/constrained node editing |
 | **ProBuilder** | 22 | ProBuilder shape creation/face-edge operations/UV tools/pivot edits/batch creation/mesh combination |
 | **XR** | 22 | XR rig setup/interactors/interactables/teleportation/continuous move/UI/haptics/interaction layers |
@@ -196,7 +222,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Decal** | 7 | URP Decal Projector create/inspect/configure/delete workflows |
 | **DOTween** | 21 | DOTweenAnimation editor-time setup and tuning |
 | **PrimeTween** | 5 | PrimeTween Free inspection, factory discovery, and runtime tween/sequence script generation |
-| **Editor** | 14 | Play mode runtime capture/Selection/Undo-Redo/Context retrieval/Change journal/Menu execution |
+| **Editor** | 16 | Play mode runtime capture/Frame stepping/Live state inspect/Selection/Undo-Redo/Context retrieval/Change journal/Menu execution |
 | **Physics** | 12 | Raycast/SphereCast/BoxCast/Physics materials/Layer collision matrix |
 | **Script** | 12 | C# script create/Read/Replace/List/Info/Rename/Move/Analyze |
 | **Timeline** | 12 | Track create/Delete/Clip management/Playback control/Binding/Duration |
@@ -249,7 +275,7 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   │   └── unity_skills.py     # Python Client Library
 │   │   ├── skills/                 # 72 module docs (48 REST/module docs + 24 advisory docs)
 │   │   └── references/             # Unity Development References
-│   └── Editor/Skills/              # Core Skill Logic (52 *Skills.cs files, 740 Skills)
+│   └── Editor/Skills/              # Core Skill Logic (54 *Skills.cs files, 776 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
 │       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
 │       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
@@ -261,7 +287,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
 │       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (24 skills)
 │       ├── PerceptionSkills.cs     # Scene Understanding (18 skills)
-│       └── ...                     # 740 Skills source code
+│       └── ...                     # 776 Skills source code
 ├── docs/
 │   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
 ├── CHANGELOG.md                    # Version Update Log

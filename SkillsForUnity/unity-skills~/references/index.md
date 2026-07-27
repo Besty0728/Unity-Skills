@@ -26,10 +26,6 @@
 **File:** `editor.md`
 **Pages:** 3
 
-### Getting Started
-**File:** `getting_started.md`
-**Pages:** 4
-
 ### Networking
 **File:** `networking.md`
 **Pages:** 14

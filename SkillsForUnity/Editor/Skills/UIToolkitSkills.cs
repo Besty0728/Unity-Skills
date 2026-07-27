@@ -136,7 +136,8 @@ namespace UnitySkills
             Tags = new[] { "delete", "uss", "uxml", "file" },
             Outputs = new[] { "deleted" },
             RequiresInput = new[] { "filePath" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true,
+            RiskLevel = "medium")]
         public static object UitkDeleteFile(string filePath)
         {
             if (Validate.SafePath(filePath, "filePath", isDelete: true) is object pathErr) return pathErr;
@@ -1317,7 +1318,8 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             Tags = new[] { "remove", "uxml", "element", "delete" },
             Outputs = new[] { "path", "removedElement" },
             RequiresInput = new[] { "filePath", "elementName" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            RiskLevel = "medium")]
         public static object UitkRemoveElement(string filePath, string elementName)
         {
             if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
@@ -1466,7 +1468,8 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             Tags = new[] { "uss", "rule", "remove", "selector" },
             Outputs = new[] { "path", "removedSelector" },
             RequiresInput = new[] { "filePath", "selector" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            RiskLevel = "medium")]
         public static object UitkRemoveUssRule(string filePath, string selector)
         {
             if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
@@ -1712,7 +1715,829 @@ public class {className} : MonoBehaviour
             };
         }
 
+        // ============================ RUNTIME DATA BINDING (Unity 6000.0+) ============================
+
+        [UnitySkill("uitk_runtime_binding_add", "Add or update a runtime data binding on a UXML element (property + bindingMode; optional dataSource/dataSourcePath). Requires Unity 6000.0+",
+            Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create | SkillOperation.Modify,
+            Tags = new[] { "binding", "data-binding", "uxml", "runtime", "unity6" },
+            Outputs = new[] { "path", "elementName", "property", "bindingMode", "action" },
+            RequiresInput = new[] { "filePath", "elementName", "property" },
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RiskLevel = "medium")]
+        public static object UitkRuntimeBindingAdd(
+            string filePath,
+            string elementName,
+            string property,
+            string bindingMode = null,
+            string dataSource = null,
+            string dataSourcePath = null,
+            string extraAttributes = null)
+        {
+#if !UNITY_6000_0_OR_NEWER
+            return RequiresUnity("6000.0", "UI Toolkit runtime data binding (<Bindings> in UXML)",
+                new[] { "uitk_modify_element" });
+#else
+            if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
+            if (Validate.Required(elementName, "elementName") is object nameErr) return nameErr;
+            if (Validate.Required(property, "property") is object propErr) return propErr;
+            if (!File.Exists(filePath))
+                return new { error = $"File not found: {filePath}" };
+            if (!filePath.EndsWith(".uxml", System.StringComparison.OrdinalIgnoreCase))
+                return new { error = $"Runtime bindings can only be written into .uxml files, got: {filePath}" };
+
+            // BindingMode values are validated here because an unknown binding-mode makes the
+            // whole UXML asset fail to import.
+            var validModes = new[] { "TwoWay", "ToSource", "ToTarget", "ToTargetOnce" };
+            string mode = null;
+            if (!string.IsNullOrEmpty(bindingMode))
+            {
+                mode = validModes.FirstOrDefault(m => m.Equals(bindingMode.Trim(), System.StringComparison.OrdinalIgnoreCase));
+                if (mode == null)
+                    return new { error = $"Invalid bindingMode '{bindingMode}'. Valid values: {string.Join(", ", validModes)}" };
+            }
+
+            var extras = ParseAttributeJson(extraAttributes, out var extraErr);
+            if (extraErr != null) return new { error = extraErr };
+
+            var existingAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(filePath);
+            if (existingAsset != null) WorkflowManager.SnapshotObject(existingAsset);
+
+            XDocument xdoc;
+            try
+            {
+                xdoc = XDocument.Parse(File.ReadAllText(filePath, System.Text.Encoding.UTF8));
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Failed to parse UXML: {ex.Message}" };
+            }
+
+            var target = FindXmlElementByName(xdoc.Root, elementName);
+            if (target == null)
+                return new { error = $"Element with name '{elementName}' not found in {filePath}" };
+
+            if (dataSource != null) target.SetAttributeValue("data-source", dataSource);
+            if (dataSourcePath != null) target.SetAttributeValue("data-source-path", dataSourcePath);
+
+            // <Bindings> is authored without a namespace prefix; the importer matches on local name.
+            var bindings = target.Elements().FirstOrDefault(e => e.Name.LocalName == "Bindings");
+            if (bindings == null)
+            {
+                bindings = new XElement("Bindings");
+                target.AddFirst(bindings);
+            }
+
+            var binding = bindings.Elements().FirstOrDefault(e =>
+                e.Name.LocalName == "DataBinding" &&
+                string.Equals((string)e.Attribute("property"), property, System.StringComparison.Ordinal));
+
+            bool existed = binding != null;
+            if (!existed)
+            {
+                binding = new XElement(EngineNs + "DataBinding");
+                bindings.Add(binding);
+            }
+
+            binding.SetAttributeValue("property", property);
+            if (mode != null) binding.SetAttributeValue("binding-mode", mode);
+            foreach (var kv in extras)
+                binding.SetAttributeValue(kv.Key, kv.Value);
+
+            File.WriteAllText(filePath, xdoc.ToString(), SkillsCommon.Utf8NoBom);
+            AssetDatabase.ImportAsset(filePath);
+
+            return new
+            {
+                success = true,
+                path = filePath,
+                elementName,
+                property,
+                bindingMode = mode,
+                dataSource,
+                dataSourcePath,
+                action = existed ? "updated" : "added"
+            };
+#endif
+        }
+
+        [UnitySkill("uitk_runtime_binding_list", "List runtime data bindings declared in a UXML file (<Bindings> blocks plus data-source / data-source-path attributes)",
+            Category = SkillCategory.UIToolkit, Operation = SkillOperation.Query,
+            Tags = new[] { "binding", "data-binding", "uxml", "inspect" },
+            Outputs = new[] { "path", "count", "elements" },
+            RequiresInput = new[] { "filePath" },
+            ReadOnly = true,
+            Mode = SkillMode.SemiAuto)]
+        public static object UitkRuntimeBindingList(string filePath)
+        {
+            if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
+            if (!File.Exists(filePath))
+                return new { error = $"File not found: {filePath}" };
+
+            XDocument xdoc;
+            try
+            {
+                xdoc = XDocument.Parse(File.ReadAllText(filePath, System.Text.Encoding.UTF8));
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Failed to parse UXML: {ex.Message}" };
+            }
+
+            var elements = new System.Collections.Generic.List<object>();
+            if (xdoc.Root != null)
+            {
+                foreach (var el in xdoc.Root.DescendantsAndSelf())
+                {
+                    if (el.Name.LocalName == "Bindings") continue;
+
+                    var dataSource = (string)el.Attribute("data-source");
+                    var dataSourcePath = (string)el.Attribute("data-source-path");
+                    var bindingsNode = el.Elements().FirstOrDefault(e => e.Name.LocalName == "Bindings");
+                    if (dataSource == null && dataSourcePath == null && bindingsNode == null) continue;
+
+                    var bindings = bindingsNode == null
+                        ? new object[0]
+                        : bindingsNode.Elements().Select(b => (object)new
+                        {
+                            bindingType = b.Name.LocalName,
+                            property = (string)b.Attribute("property"),
+                            bindingMode = (string)b.Attribute("binding-mode"),
+                            attributes = b.Attributes()
+                                .Where(a => !a.IsNamespaceDeclaration)
+                                .ToDictionary(a => a.Name.LocalName, a => a.Value)
+                        }).ToArray();
+
+                    elements.Add(new
+                    {
+                        elementType = el.Name.LocalName,
+                        elementName = (string)el.Attribute("name"),
+                        dataSource,
+                        dataSourcePath,
+                        bindingCount = bindings.Length,
+                        bindings
+                    });
+                }
+            }
+
+            return new { path = filePath, count = elements.Count, elements };
+        }
+
+        // ============================ UXML UPGRADE (Unity 6000.3+) ============================
+
+        [UnitySkill("uitk_uxml_upgrade", "Run registered UXML upgraders over .uxml assets (filePath or folder; listOnly reports available upgraders without writing). Needs an editor that ships UxmlUpgradeService (Unity 6000.3+)",
+            Category = SkillCategory.UIToolkit, Operation = SkillOperation.Modify,
+            Tags = new[] { "uxml", "upgrade", "migration", "unity6" },
+            Outputs = new[] { "upgraders", "assets", "changedCount", "listOnly" },
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RiskLevel = "medium")]
+        public static object UitkUxmlUpgrade(
+            string filePath = null,
+            string folder = null,
+            string upgraderNames = null,
+            bool listOnly = false,
+            int limit = 200)
+        {
+            // UxmlUpgradeService is documented from 6000.3 on, but it is missing from some 6000.3
+            // builds, so the API is bound by reflection rather than by a compile-time reference.
+            var serviceType = FindEditorUiType("UnityEditor.UIElements.UxmlUpgradeService");
+            var upgraderType = FindEditorUiType("UnityEditor.UIElements.IUxmlUpgrader");
+            if (serviceType == null || upgraderType == null)
+                return UxmlUpgradeUnavailable(
+                    "UnityEditor.UIElements.UxmlUpgradeService is not present. The API is documented for Unity 6000.3+ but only ships in some builds of it.");
+
+            var assetListType = typeof(System.Collections.Generic.List<VisualTreeAsset>);
+            var upgraderListType = typeof(System.Collections.Generic.List<>).MakeGenericType(upgraderType);
+            var upgradersProp = serviceType.GetProperty("upgraders");
+            var applyAllMethod = serviceType.GetMethod("ApplyUpgrades", new[] { assetListType });
+            var applySelectedMethod = serviceType.GetMethod("ApplyUpgrades", new[] { assetListType, upgraderListType });
+            var getByNameMethod = serviceType.GetMethod("GetUpgraderByName", new[] { typeof(string) });
+            var isEnabledMethod = serviceType.GetMethod("IsUpgraderEnabled", new[] { upgraderType });
+            if (upgradersProp == null || applyAllMethod == null)
+                return UxmlUpgradeUnavailable(
+                    "UxmlUpgradeService exists but lacks the expected 'upgraders' property or ApplyUpgrades(List<VisualTreeAsset>) method.");
+
+            var paths = new System.Collections.Generic.List<string>();
+
+            if (!string.IsNullOrEmpty(filePath))
+            {
+                if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
+                if (!File.Exists(filePath))
+                    return new { error = $"File not found: {filePath}" };
+                paths.Add(filePath);
+            }
+            else if (!string.IsNullOrEmpty(folder))
+            {
+                if (Validate.SafePath(folder, "folder") is object folderErr) return folderErr;
+                foreach (var guid in AssetDatabase.FindAssets("t:VisualTreeAsset", new[] { folder }))
+                {
+                    if (paths.Count >= limit) break;
+                    var p = AssetDatabase.GUIDToAssetPath(guid);
+                    if (p.EndsWith(".uxml", System.StringComparison.OrdinalIgnoreCase))
+                        paths.Add(p);
+                }
+                paths.Sort();
+            }
+            else if (!listOnly)
+            {
+                return new { error = "Provide filePath or folder (or set listOnly=true to inspect available upgraders)" };
+            }
+
+            object service;
+            try
+            {
+                service = System.Activator.CreateInstance(serviceType);
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"Failed to create UxmlUpgradeService: {(ex.InnerException ?? ex).Message}" };
+            }
+
+            var nameProp = upgraderType.GetProperty("name");
+            var descProp = upgraderType.GetProperty("description");
+
+            var registered = new System.Collections.Generic.List<object>();
+            if (upgradersProp.GetValue(service) is System.Collections.IEnumerable sequence)
+                foreach (var u in sequence)
+                    if (u != null) registered.Add(u);
+
+            var enabledNames = new System.Collections.Generic.List<string>();
+            var upgraderInfo = new System.Collections.Generic.List<object>();
+            foreach (var u in registered)
+            {
+                var upgraderName = ReadUpgraderString(nameProp, u) ?? u.GetType().Name;
+                // A build without IsUpgraderEnabled cannot report the flag; treat those upgraders as
+                // enabled, which is what ApplyUpgrades will do with them anyway.
+                bool enabled = isEnabledMethod == null
+                    || (isEnabledMethod.Invoke(service, new[] { u }) is bool flag && flag);
+                if (enabled) enabledNames.Add(upgraderName);
+                upgraderInfo.Add(new { name = upgraderName, description = ReadUpgraderString(descProp, u), enabled });
+            }
+
+            if (listOnly)
+                return new { listOnly = true, upgraders = upgraderInfo.ToArray(), candidateAssets = paths.ToArray(), count = paths.Count };
+
+            System.Collections.IList selected = null;
+            var selectedNames = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrEmpty(upgraderNames))
+            {
+                if (getByNameMethod == null || applySelectedMethod == null)
+                    return UxmlUpgradeUnavailable(
+                        "This editor's UxmlUpgradeService cannot run a named subset of upgraders; omit upgraderNames to run every enabled upgrader.");
+
+                selected = (System.Collections.IList)System.Activator.CreateInstance(upgraderListType);
+                foreach (var raw in upgraderNames.Split(','))
+                {
+                    var wanted = raw.Trim();
+                    if (wanted.Length == 0) continue;
+                    var found = getByNameMethod.Invoke(service, new object[] { wanted });
+                    if (found == null)
+                        return new
+                        {
+                            error = $"Upgrader '{wanted}' not found",
+                            availableUpgraders = registered.Select(u => ReadUpgraderString(nameProp, u)).ToArray()
+                        };
+                    selected.Add(found);
+                    selectedNames.Add(ReadUpgraderString(nameProp, found) ?? wanted);
+                }
+                if (selected.Count == 0)
+                    return new { error = "upgraderNames contained no usable names" };
+            }
+
+            var assets = new System.Collections.Generic.List<VisualTreeAsset>();
+            var before = new System.Collections.Generic.Dictionary<string, string>();
+            foreach (var p in paths)
+            {
+                var vta = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(p);
+                if (vta == null)
+                    return new { error = $"VisualTreeAsset not found (is it a valid .uxml?): {p}" };
+                WorkflowManager.SnapshotObject(vta);
+                before[p] = File.ReadAllText(p, System.Text.Encoding.UTF8);
+                assets.Add(vta);
+            }
+
+            if (assets.Count == 0)
+                return new { error = "No .uxml assets matched the given filePath/folder" };
+
+            try
+            {
+                if (selected != null) applySelectedMethod.Invoke(service, new object[] { assets, selected });
+                else applyAllMethod.Invoke(service, new object[] { assets });
+            }
+            catch (System.Exception ex)
+            {
+                return new { error = $"UXML upgrade failed: {(ex.InnerException ?? ex).Message}" };
+            }
+
+            AssetDatabase.SaveAssets();
+
+            // Report per-file whether the upgraders actually rewrote the .uxml source, rather than
+            // assuming they did.
+            int changedCount = 0;
+            var results = new System.Collections.Generic.List<object>();
+            foreach (var p in paths)
+            {
+                AssetDatabase.ImportAsset(p);
+                var after = File.Exists(p) ? File.ReadAllText(p, System.Text.Encoding.UTF8) : null;
+                bool changed = after != null && !string.Equals(after, before[p], System.StringComparison.Ordinal);
+                if (changed) changedCount++;
+                results.Add(new { path = p, changed });
+            }
+
+            return new
+            {
+                success = true,
+                listOnly = false,
+                upgradersRun = selected != null ? selectedNames.ToArray() : enabledNames.ToArray(),
+                upgraders = upgraderInfo.ToArray(),
+                assets = results,
+                changedCount
+            };
+        }
+
+        // ============================ WORLD-SPACE PANELS (Unity 6000.2+) ============================
+
+        [UnitySkill("uitk_worldspace_panel_create", "Create a world-space UI Toolkit panel GameObject (PanelRenderer on Unity 6000.5+, world-space UIDocument on 6000.2-6000.4). Requires Unity 6000.2+",
+            Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
+            Tags = new[] { "world-space", "panel-renderer", "ui-document", "3d", "unity6" },
+            Outputs = new[] { "name", "instanceId", "component", "worldSpaceSizeMode", "worldSpaceSize" },
+            TracksWorkflow = true,
+            MutatesScene = true,
+            RiskLevel = "medium")]
+        public static object UitkWorldspacePanelCreate(
+            string name = "WorldSpaceUI",
+            string uxmlPath = null,
+            string panelSettingsPath = null,
+            string sizeMode = null,
+            float? worldSpaceSizeX = null,
+            float? worldSpaceSizeY = null,
+            string pivot = null,
+            string pivotReferenceSize = null,
+            bool setPanelRenderMode = true,
+            string parentName = null,
+            int parentInstanceId = 0,
+            string parentPath = null)
+        {
+#if !UNITY_6000_2_OR_NEWER
+            return RequiresUnity("6000.2", "world-space UI Toolkit panels", new[] { "uitk_create_document" });
+#else
+            VisualTreeAsset vta = null;
+            if (!string.IsNullOrEmpty(uxmlPath))
+            {
+                if (Validate.SafePath(uxmlPath, "uxmlPath") is object uxmlErr) return uxmlErr;
+                vta = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(uxmlPath);
+                if (vta == null) return new { error = $"VisualTreeAsset not found: {uxmlPath}" };
+            }
+
+            PanelSettings ps = null;
+            if (!string.IsNullOrEmpty(panelSettingsPath))
+            {
+                if (Validate.SafePath(panelSettingsPath, "panelSettingsPath") is object psErr) return psErr;
+                ps = AssetDatabase.LoadAssetAtPath<PanelSettings>(panelSettingsPath);
+                if (ps == null) return new { error = $"PanelSettings not found: {panelSettingsPath}" };
+            }
+
+            GameObject parent = null;
+            if (!string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
+            {
+                parent = GameObjectFinder.Find(parentName, parentInstanceId, parentPath);
+                if (parent == null)
+                    return new { error = $"Parent not found: {parentName ?? parentPath}" };
+            }
+
+            var go = new GameObject(name);
+            if (parent != null) go.transform.SetParent(parent.transform, false);
+
+#if UNITY_6000_5_OR_NEWER
+            Component panel = go.AddComponent<PanelRenderer>();
+            const string componentUsed = "PanelRenderer";
+#else
+            Component panel = go.AddComponent<UIDocument>();
+            const string componentUsed = "UIDocument";
+#endif
+            if (panel == null)
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+                return new { error = $"Failed to add {componentUsed} component to '{name}'" };
+            }
+
+            // Property names are identical on PanelRenderer and UIDocument, but the enum types are
+            // not (UIDocument.WorldSpaceSizeMode is nested on 6000.2-6000.4, top-level on 6000.5),
+            // so every enum/asset assignment goes through reflection to stay version-agnostic.
+            if (vta != null) TrySetPanelProperty(panel, "visualTreeAsset", vta);
+            if (ps != null) TrySetPanelProperty(panel, "panelSettings", ps);
+
+            foreach (var pair in new[]
+                     {
+                         new[] { "worldSpaceSizeMode", sizeMode },
+                         new[] { "pivot", pivot },
+                         new[] { "pivotReferenceSize", pivotReferenceSize }
+                     })
+            {
+                var enumErr = TrySetPanelEnum(panel, pair[0], pair[1]);
+                if (enumErr != null)
+                {
+                    UnityEngine.Object.DestroyImmediate(go);
+                    return new { error = enumErr };
+                }
+            }
+
+            if (worldSpaceSizeX.HasValue || worldSpaceSizeY.HasValue)
+            {
+                var current = TryGetPanelProperty(panel, "worldSpaceSize") is Vector2 v ? v : Vector2.zero;
+                TrySetPanelProperty(panel, "worldSpaceSize",
+                    new Vector2(worldSpaceSizeX ?? current.x, worldSpaceSizeY ?? current.y));
+            }
+
+            bool renderModeChanged = false;
+            if (setPanelRenderMode && ps != null)
+                renderModeChanged = TrySetWorldSpaceRenderMode(ps);
+
+            Undo.RegisterCreatedObjectUndo(go, "Create World-Space UI Panel");
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
+
+            var appliedSize = TryGetPanelProperty(panel, "worldSpaceSize") is Vector2 sz ? sz : Vector2.zero;
+            return new
+            {
+                success = true,
+                name = go.name,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
+                component = componentUsed,
+                visualTreeAsset = vta != null ? AssetDatabase.GetAssetPath(vta) : null,
+                panelSettings = ps != null ? AssetDatabase.GetAssetPath(ps) : null,
+                worldSpaceSizeMode = TryGetPanelProperty(panel, "worldSpaceSizeMode")?.ToString(),
+                worldSpaceSize = new { x = appliedSize.x, y = appliedSize.y },
+                pivot = TryGetPanelProperty(panel, "pivot")?.ToString(),
+                pivotReferenceSize = TryGetPanelProperty(panel, "pivotReferenceSize")?.ToString(),
+                panelRenderModeSetToWorldSpace = renderModeChanged
+            };
+#endif
+        }
+
+        [UnitySkill("uitk_worldspace_panel_get", "Read the world-space UI panel settings on a scene GameObject (PanelRenderer on Unity 6000.5+, UIDocument on 6000.2-6000.4)",
+            Category = SkillCategory.UIToolkit, Operation = SkillOperation.Query,
+            Tags = new[] { "world-space", "panel-renderer", "ui-document", "inspect" },
+            Outputs = new[] { "gameObject", "component", "worldSpaceSizeMode", "worldSpaceSize", "panelSettings" },
+            RequiresInput = new[] { "gameObject" },
+            ReadOnly = true,
+            Mode = SkillMode.SemiAuto)]
+        public static object UitkWorldspacePanelGet(string name = null, int instanceId = 0, string path = null)
+        {
+#if !UNITY_6000_2_OR_NEWER
+            return RequiresUnity("6000.2", "world-space UI Toolkit panels", new[] { "uitk_list_documents" });
+#else
+            var go = GameObjectFinder.Find(name, instanceId, path);
+            if (go == null)
+                return new { error = $"GameObject not found: {name ?? path}" };
+
+            Component panel = null;
+            string componentUsed = null;
+#if UNITY_6000_5_OR_NEWER
+            panel = go.GetComponent<PanelRenderer>();
+            if (panel != null) componentUsed = "PanelRenderer";
+#endif
+            if (panel == null)
+            {
+                panel = go.GetComponent<UIDocument>();
+                if (panel != null) componentUsed = "UIDocument";
+            }
+
+            if (panel == null)
+                return new { error = $"No PanelRenderer or UIDocument component on '{go.name}'" };
+
+            var ps = TryGetPanelProperty(panel, "panelSettings") as PanelSettings;
+            var vta = TryGetPanelProperty(panel, "visualTreeAsset") as VisualTreeAsset;
+            var size = TryGetPanelProperty(panel, "worldSpaceSize") is Vector2 v ? v : Vector2.zero;
+
+            string renderMode = null;
+            if (ps != null)
+            {
+                var rmProp = new SerializedObject(ps).FindProperty("m_RenderMode");
+                if (rmProp != null) renderMode = rmProp.intValue == 1 ? "WorldSpace" : "ScreenSpaceOverlay";
+            }
+
+            return new
+            {
+                gameObject = go.name,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
+                component = componentUsed,
+                visualTreeAsset = vta != null ? AssetDatabase.GetAssetPath(vta) : null,
+                panelSettings = ps != null ? AssetDatabase.GetAssetPath(ps) : null,
+                panelRenderMode = renderMode,
+                worldSpaceSizeMode = TryGetPanelProperty(panel, "worldSpaceSizeMode")?.ToString(),
+                worldSpaceSize = new { x = size.x, y = size.y },
+                pivot = TryGetPanelProperty(panel, "pivot")?.ToString(),
+                pivotReferenceSize = TryGetPanelProperty(panel, "pivotReferenceSize")?.ToString(),
+                worldPosition = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z }
+            };
+#endif
+        }
+
+        // ============================ AUTHORING IDS (VisualElementReference input) ============================
+
+        [UnitySkill("uitk_element_reference_get", "List authoring-id values in a UXML file and resolve nested authoring-id paths through <Instance> templates (the path input for VisualElementReference on Unity 6000.5+)",
+            Category = SkillCategory.UIToolkit, Operation = SkillOperation.Query,
+            Tags = new[] { "authoring-id", "visual-element-reference", "uxml", "inspect" },
+            Outputs = new[] { "path", "count", "references", "unresolvedTemplates" },
+            RequiresInput = new[] { "filePath" },
+            ReadOnly = true,
+            Mode = SkillMode.SemiAuto)]
+        public static object UitkElementReferenceGet(string filePath, int maxTemplateDepth = 3)
+        {
+            if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
+            if (!File.Exists(filePath))
+                return new { error = $"File not found: {filePath}" };
+
+            var references = new System.Collections.Generic.List<object>();
+            var unresolved = new System.Collections.Generic.List<string>();
+            var visiting = new System.Collections.Generic.HashSet<string>();
+
+            var collectErr = CollectAuthoringIds(filePath, new System.Collections.Generic.List<string>(),
+                0, maxTemplateDepth, references, unresolved, visiting);
+            if (collectErr != null) return new { error = collectErr };
+
+            return new
+            {
+                path = filePath,
+                count = references.Count,
+                references,
+                unresolvedTemplates = unresolved.Distinct().OrderBy(u => u).ToArray()
+            };
+        }
+
         // ============================ PRIVATE UITK HELPERS ============================
+
+        /// <summary>
+        /// Structured refusal for APIs that only exist on newer editors, so the caller gets an
+        /// actionable response instead of a compile failure or a silent no-op.
+        /// </summary>
+        private static object RequiresUnity(string minVersion, string feature, string[] relatedSkills = null) => new
+        {
+            error = $"{feature} requires Unity {minVersion} or newer. This editor is {Application.unityVersion}.",
+            errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+            retryStrategy = SkillErrorResponse.Abort,
+            suggestedFixes = new[]
+            {
+                new SuggestedFix
+                {
+                    action = "abort",
+                    reason = $"The underlying Unity API is not present before {minVersion}; upgrade the editor or use an alternative skill."
+                }
+            },
+            relatedSkills = relatedSkills ?? new string[0],
+            requiredUnityVersion = minVersion,
+            currentUnityVersion = Application.unityVersion
+        };
+
+        /// <summary>Parse a JSON object of extra XML attributes, rejecting names that are not valid XML.</summary>
+        private static System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, string>>
+            ParseAttributeJson(string json, out string error)
+        {
+            error = null;
+            var result = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, string>>();
+            if (string.IsNullOrWhiteSpace(json)) return result;
+
+            Newtonsoft.Json.Linq.JObject parsed;
+            try
+            {
+                parsed = Newtonsoft.Json.Linq.JObject.Parse(json);
+            }
+            catch (System.Exception ex)
+            {
+                error = $"extraAttributes must be a JSON object like {{\"update-trigger\":\"OnSourceChanged\"}}: {ex.Message}";
+                return result;
+            }
+
+            foreach (var prop in parsed.Properties())
+            {
+                if (!System.Text.RegularExpressions.Regex.IsMatch(prop.Name, @"^[A-Za-z_][\w.-]*$"))
+                {
+                    error = $"extraAttributes key '{prop.Name}' is not a valid XML attribute name";
+                    return result;
+                }
+                result.Add(new System.Collections.Generic.KeyValuePair<string, string>(
+                    prop.Name, prop.Value?.ToString() ?? ""));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Resolve an editor UI Toolkit type by full name. These types have moved between
+        /// UnityEditor.dll and UnityEditor.UIElementsModule.dll across releases, so fall back to a
+        /// scan of the loaded assemblies before giving up.
+        /// </summary>
+        private static System.Type FindEditorUiType(string fullName)
+        {
+            var type = System.Type.GetType($"{fullName}, UnityEditor.UIElementsModule")
+                       ?? System.Type.GetType($"{fullName}, UnityEditor");
+            if (type != null) return type;
+
+            foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+            {
+                type = asm.GetType(fullName, false);
+                if (type != null) return type;
+            }
+            return null;
+        }
+
+        private static string ReadUpgraderString(System.Reflection.PropertyInfo property, object upgrader)
+            => property != null && property.CanRead ? property.GetValue(upgrader) as string : null;
+
+        /// <summary>
+        /// Structured refusal for the UXML upgrade API, which Unity documents from 6000.3 on but does
+        /// not ship in every 6000.3 build, so it can go missing on an editor that is new enough.
+        /// </summary>
+        private static object UxmlUpgradeUnavailable(string detail) => new
+        {
+            error = $"Batch UXML upgrade is unavailable in this editor ({Application.unityVersion}). {detail}",
+            errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+            retryStrategy = SkillErrorResponse.Abort,
+            suggestedFixes = new[]
+            {
+                new SuggestedFix
+                {
+                    action = "abort",
+                    reason = "Edit the UXML directly with uitk_read_file / uitk_write_file, or run the upgrade in an editor whose UI Toolkit module ships UxmlUpgradeService."
+                }
+            },
+            relatedSkills = new[] { "uitk_read_file", "uitk_write_file" },
+            requiredUnityVersion = "6000.3",
+            currentUnityVersion = Application.unityVersion
+        };
+
+        private static object TryGetPanelProperty(object target, string propertyName)
+        {
+            if (target == null) return null;
+            var prop = target.GetType().GetProperty(propertyName);
+            return (prop == null || !prop.CanRead) ? null : prop.GetValue(target);
+        }
+
+        private static bool TrySetPanelProperty(object target, string propertyName, object value)
+        {
+            if (target == null) return false;
+            var prop = target.GetType().GetProperty(propertyName);
+            if (prop == null || !prop.CanWrite) return false;
+            prop.SetValue(target, value);
+            return true;
+        }
+
+        /// <summary>Set an enum-typed property by name. Returns null on success, or an error message.</summary>
+        private static string TrySetPanelEnum(object target, string propertyName, string value)
+        {
+            if (string.IsNullOrEmpty(value)) return null;
+            var prop = target?.GetType().GetProperty(propertyName);
+            if (prop == null || !prop.PropertyType.IsEnum || !prop.CanWrite)
+                return $"'{propertyName}' is not available on this Unity version ({Application.unityVersion})";
+            try
+            {
+                prop.SetValue(target, System.Enum.Parse(prop.PropertyType, value.Trim(), true));
+                return null;
+            }
+            catch (System.Exception)
+            {
+                return $"Invalid {propertyName} '{value}'. Valid values: {string.Join(", ", System.Enum.GetNames(prop.PropertyType))}";
+            }
+        }
+
+        /// <summary>Flip a PanelSettings asset to world-space render mode. Returns true if it changed.</summary>
+        private static bool TrySetWorldSpaceRenderMode(PanelSettings settings)
+        {
+            var so = new SerializedObject(settings);
+            var prop = so.FindProperty("m_RenderMode");
+            if (prop == null || prop.intValue == 1) return false;
+
+            WorkflowManager.SnapshotObject(settings);
+            Undo.RecordObject(settings, "Set PanelSettings World Space");
+            prop.intValue = 1;
+            so.ApplyModifiedProperties();
+            EditorUtility.SetDirty(settings);
+            AssetDatabase.SaveAssets();
+            return true;
+        }
+
+        /// <summary>
+        /// Walk a UXML file collecting authoring-id values, descending into &lt;Instance&gt; nodes so
+        /// nested elements report their full authoring-id path.
+        /// </summary>
+        private static string CollectAuthoringIds(
+            string uxmlPath,
+            System.Collections.Generic.List<string> prefix,
+            int depth,
+            int maxDepth,
+            System.Collections.Generic.List<object> output,
+            System.Collections.Generic.List<string> unresolved,
+            System.Collections.Generic.HashSet<string> visiting)
+        {
+            if (!File.Exists(uxmlPath))
+            {
+                unresolved.Add(uxmlPath);
+                return null;
+            }
+            if (!visiting.Add(uxmlPath)) return null; // template cycle
+
+            try
+            {
+                XDocument xdoc;
+                try
+                {
+                    xdoc = XDocument.Parse(File.ReadAllText(uxmlPath, System.Text.Encoding.UTF8));
+                }
+                catch (System.Exception ex)
+                {
+                    return $"Failed to parse UXML '{uxmlPath}': {ex.Message}";
+                }
+                if (xdoc.Root == null) return null;
+
+                // <Template name="X" src="..."/> declarations resolve <Instance template="X"/>.
+                var templates = new System.Collections.Generic.Dictionary<string, string>();
+                foreach (var t in xdoc.Root.DescendantsAndSelf().Where(e => e.Name.LocalName == "Template"))
+                {
+                    var tName = (string)t.Attribute("name");
+                    var src = (string)t.Attribute("src");
+                    if (!string.IsNullOrEmpty(tName) && !string.IsNullOrEmpty(src) && !templates.ContainsKey(tName))
+                        templates[tName] = src;
+                }
+
+                var baseDir = Path.GetDirectoryName(uxmlPath)?.Replace('\\', '/') ?? "";
+
+                foreach (var el in xdoc.Root.DescendantsAndSelf())
+                {
+                    var idAttr = (string)el.Attribute("authoring-id");
+                    if (string.IsNullOrEmpty(idAttr)) continue;
+
+                    var fullPath = new System.Collections.Generic.List<string>(prefix) { idAttr };
+                    output.Add(new
+                    {
+                        elementType = el.Name.LocalName,
+                        elementName = (string)el.Attribute("name"),
+                        authoringId = idAttr,
+                        authoringIdPath = fullPath.ToArray(),
+                        depth,
+                        sourceFile = uxmlPath
+                    });
+
+                    if (el.Name.LocalName != "Instance" || depth >= maxDepth) continue;
+
+                    var templateName = (string)el.Attribute("template");
+                    if (string.IsNullOrEmpty(templateName)) continue;
+                    if (!templates.TryGetValue(templateName, out var src))
+                    {
+                        unresolved.Add(templateName);
+                        continue;
+                    }
+
+                    var resolved = ResolveUxmlSrc(src, baseDir);
+                    if (resolved == null)
+                    {
+                        unresolved.Add(src);
+                        continue;
+                    }
+
+                    var err = CollectAuthoringIds(resolved, fullPath, depth + 1, maxDepth, output, unresolved, visiting);
+                    if (err != null) return err;
+                }
+            }
+            finally
+            {
+                visiting.Remove(uxmlPath);
+            }
+            return null;
+        }
+
+        /// <summary>Resolve a UXML src attribute (relative or project path) to an asset path, or null.</summary>
+        private static string ResolveUxmlSrc(string src, string baseDir)
+        {
+            if (string.IsNullOrEmpty(src)) return null;
+            // project:// URIs carry a GUID; prefer that when present.
+            if (src.StartsWith("project://", System.StringComparison.OrdinalIgnoreCase))
+            {
+                var guidMatch = System.Text.RegularExpressions.Regex.Match(src, @"guid=([0-9a-fA-F]{32})");
+                if (!guidMatch.Success) return null;
+                var byGuid = AssetDatabase.GUIDToAssetPath(guidMatch.Groups[1].Value);
+                return string.IsNullOrEmpty(byGuid) ? null : byGuid;
+            }
+
+            var trimmed = src.Replace('\\', '/');
+            if (trimmed.StartsWith("./", System.StringComparison.Ordinal)) trimmed = trimmed.Substring(2);
+
+            if (trimmed.StartsWith("Assets/", System.StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("Packages/", System.StringComparison.OrdinalIgnoreCase))
+                return File.Exists(trimmed) ? trimmed : null;
+
+            var combined = string.IsNullOrEmpty(baseDir) ? trimmed : $"{baseDir}/{trimmed}";
+            while (combined.Contains("/../"))
+            {
+                var idx = combined.IndexOf("/../", System.StringComparison.Ordinal);
+                var head = combined.Substring(0, idx);
+                var lastSlash = head.LastIndexOf('/');
+                if (lastSlash < 0) return null;
+                combined = head.Substring(0, lastSlash) + combined.Substring(idx + 3);
+            }
+            return File.Exists(combined) ? combined : null;
+        }
 
         private static XElement FindXmlElementByName(XElement root, string elementName)
         {
