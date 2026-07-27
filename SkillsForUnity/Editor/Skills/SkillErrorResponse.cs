@@ -228,6 +228,16 @@ namespace UnitySkills
         private static readonly Regex WrongKindPattern = new Regex(
             @"\bnot an?\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        // Rule 2b — the message *opens* by naming the failure kind ("Invalid bindingMode 'X': ...",
+        // "Unknown step 'y'."). Such a message often quotes an inner exception further along, and
+        // .NET's own enum parse failure reads "Requested value 'X' was not found" — which would
+        // otherwise match the not-found markers first and report a bad enum value as a missing
+        // scene object, sending the caller off to gameobject_find. Anchored at the start so only
+        // the message's own verdict wins, never a phrase buried in quoted inner text.
+        private static readonly Regex LeadingSemanticPattern = new Regex(
+            @"^\s*(invalid|unknown|unsupported|malformed)\b",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
         /// <summary>
         /// Map a raw skill error message onto a code, a retry strategy and concrete next steps.
         /// Case-insensitive; never returns null and never throws.
@@ -250,6 +260,9 @@ namespace UnitySkills
 
             if (ContainsAny(text, ConflictMarkers))
                 return AlreadyExists();
+
+            if (LeadingSemanticPattern.IsMatch(text))
+                return SemanticInvalid();
 
             if (ContainsAny(text, NotFoundMarkers))
                 return TargetNotFound(text);
@@ -374,6 +387,23 @@ namespace UnitySkills
                         action = "find_target",
                         skill = "asset_find",
                         reason = "Resolve the real project path first — asset paths are case-sensitive and must start with Assets/ or Packages/."
+                    },
+                };
+                return classification;
+            }
+
+            // A job id is not a scene object: pointing the caller at gameobject_find here sends it
+            // hunting through the hierarchy for something that only ever lived in the job table.
+            if (text.Contains("job"))
+            {
+                classification.RelatedSkills = new List<string> { "job_list", "job_status" };
+                classification.SuggestedFixes = new List<SuggestedFix>
+                {
+                    new SuggestedFix
+                    {
+                        action = "find_target",
+                        skill = "job_list",
+                        reason = "List the jobs this session still knows about — ids do not survive a domain reload."
                     },
                 };
                 return classification;

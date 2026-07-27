@@ -2,6 +2,25 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.4.1] - 2026-07-27
+
+> **2.4.0 真机验收修复** —— 在装齐 `com.unity.behavior` / NGO / HybridCLR 的 Unity 6000.3.9f1 工程上对 2.4.0 全部 36 个新 skill 做了一轮真机验收。功能均按文档生效，但暴露出两个 P0：装上 NGO 2.x 会让整个包编译失败，以及任何带工作流跟踪的 `.uxml` 写操作会把编辑器彻底卡死。本版修掉这两条及一批错误分类缺陷，无新增 skill，技能总数仍为 776。
+
+### Fixed
+
+- **装上 NGO 2.x 后整个包无法编译（P0）** — `NetcodeSkills.Version()` 把 `System.Version.TryParse(..., out var parsed)` 放在 `&&` 右侧，短路求值使 `parsed` 不满足 C# 的确定性赋值规则，触发 `CS0165: Use of unassigned local variable 'parsed'`。该分支位于 `#if NETCODE_GAMEOBJECTS` 内，只有装上 2.x 版 NGO（即 6 个 netcode 2.5 skill 的目标环境）才会参与编译，于是**一装包整个 `UnitySkills.Editor` 程序集编译失败、776 个 skill 全部不可用**。CI 编译矩阵不安装 NGO，因此该组合从未被覆盖。现改为显式声明 `System.Version parsed = null;`。
+- **`.uxml` 写操作导致编辑器无限卡死（P0）** — `WorkflowManager.CaptureObjectReferences` 用 `while (iterator.Next(true))` 做全深度 `SerializedProperty` 遍历，没有任何深度、节点数或时间预算。`.uxml` 导入出的 `VisualTreeAsset` 的序列化数据是一张 `[SerializeReference]` 托管引用**图**（含环与共享引用），`Next(true)` 会沿引用无限下降，主线程 100% CPU 且永不返回，只能强杀编辑器。由于 `SnapshotObject` 对**所有** `SnapshotType`（含 `Created`）都会调用它，任何 `TracksWorkflow=true` 的 uxml 写操作都会触发——包括 2.4.0 新增的 `uitk_runtime_binding_add` 以及既有的 `uitk_create_uxml` / `uitk_write_file` / `uitk_add_element` 等。现按 `managedReferenceId` 对托管引用去重（把引用图收敛回有限遍历，这是真正的环阻断），并另加 50000 节点 / 32 层深度 / 2000ms 三重兜底；触顶时记 verbose 日志并保留已采集的部分引用（属性路径逐条仍然有效，资源另有内容寻址文件备份兜底）。
+- **路由层错误分类会丢弃 skill 自带的诊断字段** — `SkillErrorResponse.Build()` 只透传 `errorCode` / `error` / `skill` / `suggestedFixes` / `relatedSkills` / `retryStrategy` 六个字段，skill 在错误对象上额外返回的内容被静默丢弃。实测 `hybridclr_generate_step` 明明返回了 `available`（全部合法步骤名）与 `hint`，客户端却只收到 `"Unknown step 'bogus'."`，而附带的 suggestedFix 还写着"读消息里的枚举"——消息里根本没有枚举；`behavior` 的 `package` / `docs` 同样被丢。现由 `SkillResultHelper` 收集非保留字段并经 `Build(extra:)` 原样透传，匿名类型 / 字典 / `JObject` 三种返回形态均支持，提取失败降级为原行为。
+- **枚举取值非法被误判为 `TARGET_NOT_FOUND`** — .NET 的枚举解析失败消息为 `Requested value 'X' was not found`，其中的 "not found" 会命中分类器的 not-found 规则，使"参数值不合法"被报成"目标对象不存在"，并附带 `gameobject_find` 建议，把调用方引向场景里去找一个根本不存在的对象。现新增在消息**开头**锚定的语义规则（`invalid` / `unknown` / `unsupported` / `malformed`），优先于 not-found 规则；仅匹配消息自身的判定词，不会被引号内嵌套的异常文本干扰。
+- **job 不存在时建议去找 GameObject** — `job_wait` / `job_status` 传入未知 jobId 时归为 `TARGET_NOT_FOUND`，落到默认分支后建议 `gameobject_find` / `scene_get_hierarchy`。现按消息识别 job 语境，改为建议 `job_list` / `job_status` 并说明 jobId 不跨域重载存活。
+- **域重载后首次查询包版本返回 `null`** — `PackageManagerHelper` 的包列表在每次域重载后异步重建，`GetInstalledVersion()` 在缓存落地前一律返回 `null`。而 `netcode_version` 在 `NETCODE_GAMEOBJECTS` 分支里把 `installed` 硬编码为 `true`，于是首次调用会返回 `installed:true` + `version:null` + `meetsMinimumFor25:null` 这种自相矛盾的结果，第二次才正常；`behavior_status` 同样受影响。现为 `IsPackageInstalled` / `GetInstalledVersion` 补同步兜底 `PackageInfo.FindForAssetPath("Packages/<id>")`，缓存未就绪时直接解析单个包。
+- **`netcode_attachable_add` 的 `autoDetach` 逗号组合会静默写入错误值** — NGO 把 `AttachableBehaviour.AutoDetachTypes` 标为 `[Flags]`，却让成员取隐式顺序值（`None=0, OnOwnershipChange=1, OnDespawn=2, OnAttachNodeDestroy=3`）而非 2 的幂，因此 `OnDespawn,OnOwnershipChange` 按位或得到 `3`，恰好等于**另一个无关成员** `OnAttachNodeDestroy`。上游缺陷，但本 skill 的报错信息此前主动宣传 "comma-separated to combine"，等于引导调用方写坏字段且无任何提示。现直接拒绝含逗号的取值并说明原因，同时在合法与非法两条路径上都返回 `available` 取值列表。
+- **备份 blob 损坏时 undo 只报 "Unknown failure"** — SHA1 校验失败会正确中止还原并把 blob 隔离为 `<hash>.corrupt`，但逐条明细里只有一句 "Unknown failure"，调用方无法区分"备份自身损坏"与其它任何失败——而这恰恰是最需要被明确告知的一种。现由 `WorkflowFileStore` 记录最近一次完整性失败原因，undo / redo 在无更具体错误时优先上报它。
+
+### Changed
+
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.4.1`。
+
 ## [2.4.0] - 2026-07-27
 
 > **全仓审计 + 内核加固** —— 一轮覆盖全仓的审计后修完全部 P0 内核缺陷，并对 HTTP 服务层、工作流备份、错误分类三条主链路做了架构深化；同时新增 `behavior` / `hybridclr` 两个模块与 14 个跨模块 skill。技能总数 740 → 776，功能模块 52 → 54，模块文档目录 74。

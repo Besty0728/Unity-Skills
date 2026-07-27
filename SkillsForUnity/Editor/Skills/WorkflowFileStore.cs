@@ -484,6 +484,16 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// Reason the most recent restore refused to run, or null when the last one was clean.
+        /// The undo path reports per-snapshot failures, and integrity aborts are otherwise
+        /// indistinguishable from any other failure ("Unknown failure") — which is the one case
+        /// where the caller most needs to know the backup itself is the problem, not the target.
+        /// </summary>
+        internal static string LastIntegrityError { get; private set; }
+
+        internal static void ClearLastIntegrityError() => LastIntegrityError = null;
+
+        /// <summary>
         /// Confirms a stored blob still hashes to the name it is filed under, quarantining it as
         /// "&lt;hash&gt;.corrupt" when it does not. Legacy "&lt;hash&gt;.meta" sidecars are named after the
         /// main file's hash rather than their own, so they are never checked here.
@@ -506,9 +516,11 @@ namespace UnitySkills
                 SkillsLogger.LogWarning($"[WorkflowFileStore] Failed to quarantine corrupt blob {hash}: {ex.Message}");
             }
 
-            SkillsLogger.LogError(
-                $"[WorkflowFileStore] Backup blob {hash} is damaged (contents hash to {actual ?? "unreadable"}); " +
-                $"kept as {Path.GetFileName(quarantinePath)} and the restore was aborted rather than writing bad data.");
+            LastIntegrityError =
+                $"Backup blob {hash} is damaged (contents hash to {actual ?? "unreadable"}); it was quarantined as " +
+                $"{Path.GetFileName(quarantinePath)} and the restore was aborted rather than writing bad data.";
+
+            SkillsLogger.LogError($"[WorkflowFileStore] {LastIntegrityError}");
             return false;
         }
 

@@ -1025,6 +1025,7 @@ namespace UnitySkills
             };
 
             int inverseCountBefore = redoTask.snapshots.Count;
+            WorkflowFileStore.ClearLastIntegrityError();
             try
             {
                 switch (snapshot.type)
@@ -1057,7 +1058,7 @@ namespace UnitySkills
             }
 
             if (!result.success && string.IsNullOrEmpty(result.error))
-                result.error = "Unknown failure";
+                result.error = WorkflowFileStore.LastIntegrityError ?? "Unknown failure";
 
             if (!result.success && redoTask.snapshots.Count > inverseCountBefore)
             {
@@ -1079,6 +1080,7 @@ namespace UnitySkills
                 objectName = snapshot.objectName
             };
 
+            WorkflowFileStore.ClearLastIntegrityError();
             try
             {
                 switch (snapshot.type)
@@ -1111,7 +1113,7 @@ namespace UnitySkills
             }
 
             if (!result.success && string.IsNullOrEmpty(result.error))
-                result.error = "Unknown failure";
+                result.error = WorkflowFileStore.LastIntegrityError ?? "Unknown failure";
 
             return result;
         }
@@ -1808,6 +1810,16 @@ namespace UnitySkills
             return instanceId != 0 ? UnityObjectIdUtility.ObjectIdToObject(instanceId) : null;
         }
 
+        // Budgets for the CaptureObjectReferences walk. A full-depth SerializedProperty descent is
+        // unbounded on assets whose serialized data is a [SerializeReference] graph: VisualTreeAsset
+        // (every imported .uxml) makes iterator.Next(true) follow managed references forever, pinning
+        // the main thread at 100% CPU with no way out but killing the editor. The managed-reference
+        // dedup below is the actual cycle break; the node/time caps are backstops for any other
+        // pathological layout we have not seen yet.
+        private const int MaxReferenceWalkNodes = 50000;
+        private const int MaxReferenceWalkDepth = 32;
+        private const int MaxReferenceWalkMilliseconds = 2000;
+
         private static List<ObjectReferenceData> CaptureObjectReferences(UnityEngine.Object obj,
             out bool captureSucceeded)
         {
@@ -1819,10 +1831,42 @@ namespace UnitySkills
             {
                 var serializedObject = new SerializedObject(obj);
                 var iterator = serializedObject.GetIterator();
+                var walkTimer = System.Diagnostics.Stopwatch.StartNew();
+                // Managed references form a graph, not a tree: the same instance can be reachable by
+                // many paths and can reference itself. Visiting each referenceId once turns that graph
+                // back into a finite walk. A repeat visit adds no restorable property path anyway.
+                var visitedManagedRefs = new HashSet<long>();
+                int visitedNodes = 0;
+                bool truncated = false;
                 bool enterChildren = true;
+
                 while (iterator.Next(enterChildren))
                 {
                     enterChildren = true;
+
+                    if (++visitedNodes > MaxReferenceWalkNodes ||
+                        walkTimer.ElapsedMilliseconds > MaxReferenceWalkMilliseconds)
+                    {
+                        truncated = true;
+                        break;
+                    }
+
+                    if (iterator.depth >= MaxReferenceWalkDepth)
+                    {
+                        enterChildren = false;
+                        truncated = true;
+                    }
+
+                    if (iterator.propertyType == SerializedPropertyType.ManagedReference)
+                    {
+                        long referenceId = iterator.managedReferenceId;
+                        if (referenceId != 0 && !visitedManagedRefs.Add(referenceId))
+                        {
+                            enterChildren = false;
+                            continue;
+                        }
+                    }
+
                     if (iterator.propertyType != SerializedPropertyType.ObjectReference ||
                         !IsRestorableObjectReferencePath(iterator.propertyPath))
                         continue;
@@ -1837,6 +1881,17 @@ namespace UnitySkills
                         objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(referencedObject)
                     });
                 }
+
+                if (truncated)
+                {
+                    // Partial is still usable: undo restores object references by property path, so the
+                    // paths we did collect remain individually valid. Assets additionally carry a
+                    // content-addressed file backup, which is the real restore path for them.
+                    SkillsLogger.LogVerbose(
+                        $"Object reference snapshot for '{obj.name}' ({obj.GetType().Name}) stopped at " +
+                        $"{visitedNodes} properties / {walkTimer.ElapsedMilliseconds}ms; captured {references.Count} references.");
+                }
+
                 captureSucceeded = true;
             }
             catch (Exception ex)

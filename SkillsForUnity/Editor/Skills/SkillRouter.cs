@@ -686,7 +686,8 @@ namespace UnitySkills
                         skill: name,
                         suggestedFixes: errorContext.SuggestedFixes ?? classified.SuggestedFixes,
                         relatedSkills: errorContext.RelatedSkills ?? classified.RelatedSkills,
-                        retryStrategy: errorContext.RetryStrategy ?? classified.RetryStrategy);
+                        retryStrategy: errorContext.RetryStrategy ?? classified.RetryStrategy,
+                        extra: errorContext.Extra);
                 }
 
                 // ========== AUTO WORKFLOW END ==========
@@ -2662,6 +2663,13 @@ namespace UnitySkills
         public string RetryStrategy;
         public List<SuggestedFix> SuggestedFixes;
         public List<string> RelatedSkills;
+
+        /// <summary>
+        /// Every other field the skill put on its error object (valid-value lists, docs URLs,
+        /// package ids, hints). Without this the classifier would answer with the message alone
+        /// and silently drop diagnostics the skill went out of its way to compute.
+        /// </summary>
+        public Dictionary<string, object> Extra;
     }
 
     internal static class SkillResultHelper
@@ -2716,6 +2724,8 @@ namespace UnitySkills
 
                 if (TryGetMemberValue(result, "suggestedFixes", out var fixesValue))
                     context.SuggestedFixes = ToSuggestedFixes(fixesValue);
+
+                context.Extra = CollectExtraErrorFields(result);
             }
             catch (Exception ex)
             {
@@ -2723,6 +2733,75 @@ namespace UnitySkills
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Fields on a skill's error object that the response envelope already models. Everything
+        /// else is forwarded verbatim so skill-authored diagnostics survive classification.
+        /// </summary>
+        private static readonly HashSet<string> ReservedErrorFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "error", "errorCode", "retryStrategy", "relatedSkills", "suggestedFixes",
+            "status", "skill", "details", "retryAfterSeconds", "success"
+        };
+
+        /// <summary>
+        /// Collects the non-reserved members of a skill's error object. Anonymous types, dictionaries
+        /// and JObject are all supported because skills return all three shapes. Exception-isolated:
+        /// a member that cannot be read is skipped rather than failing the whole response.
+        /// </summary>
+        private static Dictionary<string, object> CollectExtraErrorFields(object result)
+        {
+            if (result == null) return null;
+            var extra = new Dictionary<string, object>();
+
+            try
+            {
+                if (result is JObject jsonObject)
+                {
+                    foreach (var pair in jsonObject)
+                    {
+                        if (ReservedErrorFields.Contains(pair.Key)) continue;
+                        extra[pair.Key] = pair.Value == null || pair.Value.Type == JTokenType.Null
+                            ? null
+                            : pair.Value.ToObject<object>();
+                    }
+                }
+                else if (result is IDictionary<string, object> dictionary)
+                {
+                    foreach (var pair in dictionary)
+                    {
+                        if (ReservedErrorFields.Contains(pair.Key)) continue;
+                        extra[pair.Key] = pair.Value;
+                    }
+                }
+                else
+                {
+                    var resultType = result.GetType();
+                    foreach (var property in resultType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (ReservedErrorFields.Contains(property.Name) ||
+                            property.GetIndexParameters().Length > 0)
+                            continue;
+                        try { extra[property.Name] = property.GetValue(result); }
+                        catch { }
+                    }
+                    foreach (var field in resultType.GetFields(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (ReservedErrorFields.Contains(field.Name) || extra.ContainsKey(field.Name))
+                            continue;
+                        try { extra[field.Name] = field.GetValue(result); }
+                        catch { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogVerbose($"Skill error extra-field extraction failed: {ex.Message}");
+                return null;
+            }
+
+            return extra.Count > 0 ? extra : null;
         }
 
         /// <summary>Accepts string, string[], JArray or any sequence; returns null when empty.</summary>

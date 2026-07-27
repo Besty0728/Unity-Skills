@@ -1526,7 +1526,8 @@ namespace UnitySkills
 #else
             bool has25 = Has25Features();
             string normalized = StripPrereleaseSuffix(version);
-            bool parsedOk = !string.IsNullOrEmpty(normalized) && System.Version.TryParse(normalized, out var parsed);
+            System.Version parsed = null;
+            bool parsedOk = !string.IsNullOrEmpty(normalized) && System.Version.TryParse(normalized, out parsed);
             bool? meetsMinimumFor25 = parsedOk ? (bool?)(parsed.Major > 2 || (parsed.Major == 2 && parsed.Minor >= 5)) : null;
 
             return new
@@ -1666,10 +1667,32 @@ namespace UnitySkills
             object parsedAutoDetach = null;
             if (!string.IsNullOrEmpty(autoDetach))
             {
-                try { parsedAutoDetach = Enum.Parse(autoDetachField.FieldType, autoDetach, ignoreCase: true); }
+                // NGO declares AutoDetachTypes as [Flags] but gives its members the implicit
+                // sequential values 0,1,2,3 instead of powers of two. Combining therefore collides:
+                // OnOwnershipChange|OnDespawn == 1|2 == 3 == OnAttachNodeDestroy, so a comma list
+                // silently writes an unrelated member. Reject it rather than corrupting the field —
+                // one flag per call is the only shape that round-trips on this enum.
+                if (autoDetach.IndexOf(',') >= 0)
+                {
+                    return new
+                    {
+                        error = $"Invalid autoDetach '{autoDetach}': combining values is not supported. " +
+                                "com.unity.netcode.gameobjects declares AutoDetachTypes as [Flags] but assigns its members " +
+                                "sequential values (None=0, OnOwnershipChange=1, OnDespawn=2, OnAttachNodeDestroy=3), so a " +
+                                "comma-separated list ORs into a different, unrelated member instead of a combination.",
+                        available = new[] { "None", "OnOwnershipChange", "OnDespawn", "OnAttachNodeDestroy" },
+                        hint = "Pass exactly one value. A real combination has to be set in the Inspector; verify the result with netcode_attachable_info."
+                    };
+                }
+
+                try { parsedAutoDetach = Enum.Parse(autoDetachField.FieldType, autoDetach.Trim(), ignoreCase: true); }
                 catch (Exception ex)
                 {
-                    return new { error = $"Invalid autoDetach '{autoDetach}': {ex.Message}. Valid flags: None, OnAttachNodeDestroy, OnDespawn, OnOwnershipChange (comma-separated to combine)." };
+                    return new
+                    {
+                        error = $"Invalid autoDetach '{autoDetach}': {ex.Message}",
+                        available = new[] { "None", "OnOwnershipChange", "OnDespawn", "OnAttachNodeDestroy" }
+                    };
                 }
             }
 

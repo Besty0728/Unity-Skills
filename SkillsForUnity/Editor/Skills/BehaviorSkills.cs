@@ -121,7 +121,7 @@ namespace UnitySkills
                 "Or install manually: Window > Package Manager > Unity Registry > Behavior",
                 "After installing, wait for the Domain Reload to finish, then call behavior_status to confirm"
             },
-            retryStrategy = "Install the package, wait for compilation to finish, then retry the same call.",
+            retryStrategy = SkillErrorResponse.RetryInstallAndRetry,
             docs = DocsUrl
         };
 
@@ -139,7 +139,7 @@ namespace UnitySkills
                 "Edit the graph in the Behavior editor window instead, or edit the .asset text directly (see the yaml-editing advisory).",
                 "Do not retry with different argument shapes — this is a version mismatch, not a bad argument."
             },
-            retryStrategy = "none",
+            retryStrategy = SkillErrorResponse.Abort,
             docs = DocsUrl
         };
 
