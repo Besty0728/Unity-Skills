@@ -192,11 +192,13 @@ namespace UnitySkills
 
         private static string _prefServerShouldRun;
         private static string _prefAutoStart;
+        private static string _prefStartOnEditorLaunch;
         private static string _prefTotalProcessed;
         private static string _prefLastPort;
         private static string _prefConsecutiveFailures;
         private static string PREF_SERVER_SHOULD_RUN => _prefServerShouldRun ??= PrefKey("ServerShouldRun");
         private static string PREF_AUTO_START => _prefAutoStart ??= PrefKey("AutoStart");
+        private static string PREF_START_ON_EDITOR_LAUNCH => _prefStartOnEditorLaunch ??= PrefKey("StartOnEditorLaunch");
         private static string PREF_TOTAL_PROCESSED => _prefTotalProcessed ??= PrefKey("TotalProcessed");
         private static string PREF_LAST_PORT => _prefLastPort ??= PrefKey("LastPort");
         private static string PREF_CONSECUTIVE_FAILURES => _prefConsecutiveFailures ??= PrefKey("ConsecutiveRestartFailures");
@@ -227,6 +229,12 @@ namespace UnitySkills
         {
             get => EditorPrefs.GetBool(PREF_AUTO_START, true);
             set => EditorPrefs.SetBool(PREF_AUTO_START, value);
+        }
+
+        public static bool StartOnEditorLaunch
+        {
+            get => EditorPrefs.GetBool(PREF_START_ON_EDITOR_LAUNCH, false);
+            set => EditorPrefs.SetBool(PREF_START_ON_EDITOR_LAUNCH, value);
         }
 
         private const string PrefKeyPreferredPort = "UnitySkills_PreferredPort";
@@ -1009,6 +1017,8 @@ namespace UnitySkills
 
                 HookUpdateLoop();
 
+                _editorLaunchPending = !SessionState.GetBool(PrefKey("EditorLaunchHandled"), false);
+
                 // Check if we should auto-restart after Domain Reload
                 // Use delayed call to ensure Unity is fully initialized
                 EditorApplication.delayCall += () => ScheduleDelayedCall(1.0, CheckAndRestoreServer);
@@ -1091,8 +1101,18 @@ namespace UnitySkills
         
         // Retry counter for CheckAndRestoreServer
         private static int _restoreRetryCount = 0;
+        private static bool _editorLaunchPending;
+        private static bool _cliColdStartPending;
         private const int MaxRestoreRetries = 3;
         private static readonly double[] RestoreRetryDelays = { 1.0, 2.0, 4.0 }; // seconds
+
+        internal enum AutoStartReason
+        {
+            None,
+            DomainReload,
+            EditorLaunch,
+            CliColdStart
+        }
 
         /// <summary>
         /// Check if server should be restored after Domain Reload.
@@ -1102,16 +1122,18 @@ namespace UnitySkills
         private static void CheckAndRestoreServer()
         {
             bool shouldRun = EditorPrefs.GetBool(PREF_SERVER_SHOULD_RUN, false);
-            bool autoStart = AutoStart;
+            bool editorLaunchRequested = _editorLaunchPending && StartOnEditorLaunch;
             // Unity CLI 冷启动（--args -unityskills-coldstart + 已绑定）：本会话强制拉起一次，
             // 无视 AutoStart/shouldRun 偏好；后续 Domain Reload 走常规恢复路径。
-            bool cliColdStart = UnityCliService.ConsumeColdStartRequest();
-            if (cliColdStart)
+            _cliColdStartPending |= UnityCliService.ConsumeColdStartRequest();
+            if (_cliColdStartPending && _restoreRetryCount == 0)
                 SkillsLogger.Log("Unity CLI cold start detected — auto-starting server.");
 
-            if (((shouldRun && autoStart) || cliColdStart) && !_isRunning)
+            var reason = GetAutoStartReason(shouldRun && AutoStart, editorLaunchRequested, _cliColdStartPending);
+            if (reason != AutoStartReason.None && !_isRunning)
             {
-                int failures = EditorPrefs.GetInt(PREF_CONSECUTIVE_FAILURES, 0);
+                bool domainReload = reason == AutoStartReason.DomainReload;
+                int failures = domainReload ? EditorPrefs.GetInt(PREF_CONSECUTIVE_FAILURES, 0) : 0;
 
                 // Decay: if last failure was more than 5 minutes ago, reset counter
                 if (failures > 0)
@@ -1127,7 +1149,7 @@ namespace UnitySkills
                     }
                 }
 
-                if (failures >= MaxConsecutiveFailures)
+                if (domainReload && failures >= MaxConsecutiveFailures)
                 {
                     SkillsLogger.LogError(
                         $"[UnitySkills] Server restart abandoned after {failures} consecutive failures across Domain Reloads.\n" +
@@ -1139,13 +1161,14 @@ namespace UnitySkills
 
                 int lastPort = EditorPrefs.GetInt(PREF_LAST_PORT, 0);
                 int restorePort = (lastPort >= 8090 && lastPort <= 8100) ? lastPort : PreferredPort;
-                SkillsLogger.Log($"Auto-restoring server after Domain Reload (port={restorePort}, attempt {_restoreRetryCount + 1}/{MaxRestoreRetries + 1}, consecutive failures={failures})...");
+                SkillsLogger.Log($"Auto-starting server ({reason}, port={restorePort}, attempt {_restoreRetryCount + 1}/{MaxRestoreRetries + 1})...");
                 Start(restorePort, fallbackToAuto: true);
 
                 if (_isRunning)
                 {
                     // 启动成功（failures 已在 Start() 中清零）
                     _restoreRetryCount = 0;
+                    CompletePendingAutoStart(reason);
                 }
                 else if (_restoreRetryCount < MaxRestoreRetries)
                 {
@@ -1157,16 +1180,44 @@ namespace UnitySkills
                 {
                     // 本轮所有重试耗尽
                     _restoreRetryCount = 0;
-                    EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, failures + 1);
-                    EditorPrefs.SetString(PrefKey("LastFailTime"), EditorApplication.timeSinceStartup.ToString());
-                    SkillsLogger.LogError(
-                        $"[UnitySkills] Server failed to restart (consecutive failures: {failures + 1}/{MaxConsecutiveFailures}). " +
-                        "Will retry on next Domain Reload. Manual start: Window > UnitySkills > Start Server");
+                    CompletePendingAutoStart(reason);
+                    if (domainReload)
+                    {
+                        EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, failures + 1);
+                        EditorPrefs.SetString(PrefKey("LastFailTime"), EditorApplication.timeSinceStartup.ToString());
+                    }
+                    SkillsLogger.LogError($"[UnitySkills] Server auto-start failed ({reason}). Manual start: Window > UnitySkills > Start Server");
                 }
             }
             else
             {
                 _restoreRetryCount = 0;
+                if (_editorLaunchPending && (!editorLaunchRequested || _isRunning))
+                    CompletePendingAutoStart(AutoStartReason.EditorLaunch);
+                if (_cliColdStartPending && _isRunning)
+                    CompletePendingAutoStart(AutoStartReason.CliColdStart);
+            }
+        }
+
+        internal static AutoStartReason GetAutoStartReason(bool restoreRequested, bool editorLaunchRequested, bool cliColdStart)
+        {
+            if (cliColdStart) return AutoStartReason.CliColdStart;
+            if (editorLaunchRequested) return AutoStartReason.EditorLaunch;
+            if (restoreRequested) return AutoStartReason.DomainReload;
+            return AutoStartReason.None;
+        }
+
+        private static void CompletePendingAutoStart(AutoStartReason reason)
+        {
+            if (_editorLaunchPending)
+            {
+                SessionState.SetBool(PrefKey("EditorLaunchHandled"), true);
+                _editorLaunchPending = false;
+            }
+
+            if (reason == AutoStartReason.CliColdStart)
+            {
+                _cliColdStartPending = false;
             }
         }
 
