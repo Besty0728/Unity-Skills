@@ -105,6 +105,15 @@ namespace UnitySkills
                     isGlobInstalled = () => SkillInstaller.IsCursorGlobalInstalled,
                     installFunc = SkillInstaller.InstallCursor,
                     uninstallFunc = SkillInstaller.UninstallCursor
+                },
+                new AgentConfig
+                {
+                    id = "opencode", brandClass = "brand-opencode",
+                    nameDisplay = "OpenCode",
+                    isProjInstalled = () => SkillInstaller.IsOpenCodeProjectInstalled,
+                    isGlobInstalled = () => SkillInstaller.IsOpenCodeGlobalInstalled,
+                    installFunc = SkillInstaller.InstallOpenCode,
+                    uninstallFunc = SkillInstaller.UninstallOpenCode
                 }
             };
         }
