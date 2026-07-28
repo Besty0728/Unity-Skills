@@ -46,6 +46,8 @@ Window → UnitySkills          (或按 Alt+Shift+U)
 [UnitySkills] REST Server started at http://localhost:8090/
 ```
 
+如需每次打开此项目时自动启动服务器，请开启 **设置 → Server → 编辑器启动时运行**。该选项默认关闭，并且与 **编译后自动重启** 相互独立。
+
 验证：
 
 ```bash
