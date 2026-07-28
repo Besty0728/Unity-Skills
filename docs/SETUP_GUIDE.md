@@ -90,6 +90,7 @@ If one-click installation is not available for your tool, manually copy the cont
 | Antigravity | `.agents/skills/` | `~/.gemini/antigravity/skills/` |
 | Codex | `.agents/skills/` (shared with Antigravity) | `~/.agents/skills/` |
 | Cursor | `.cursor/skills/` | `~/.cursor/skills/` |
+| OpenCode | `.opencode/skills/` | `~/.config/opencode/skills/` |
 
 ### Supported AI Tools
 
@@ -101,6 +102,7 @@ The following tools have been officially tested:
 | **Claude Code** | ✅ | Intelligent skill intent recognition |
 | **Codex** | ✅ | `$skill` explicit call + implicit intent; auto-discovers `.agents/skills/` |
 | **Cursor** | ✅ | Auto-discovers `.cursor/skills/` and `.agents/skills/`; supports `/skill-name` explicit trigger; visible in Settings → Rules |
+| **OpenCode** | ✅ | Native `.opencode/skills/` workspace and `~/.config/opencode/skills/` global discovery |
 
 > ⚠️ **Universal Compatibility**: UnitySkills follows an open skill standard. **Any AI tool that can read markdown files and make HTTP requests** can use UnitySkills — not limited to the tools listed above. Simply copy the `unity-skills~/` directory contents to your tool's skill or prompt location and ensure the tool can reach `http://localhost:8090`.
 
