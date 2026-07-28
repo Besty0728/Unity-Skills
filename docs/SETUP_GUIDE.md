@@ -46,6 +46,8 @@ Then flip the server toggle switch in the top bar. On success, the Console will 
 [UnitySkills] REST Server started at http://localhost:8090/
 ```
 
+To start the server whenever this project opens, enable **Settings → Server → Start on Editor launch**. This is opt-in and separate from **Auto-restart after compile**.
+
 Verify with:
 
 ```bash
