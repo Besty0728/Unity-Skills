@@ -64,6 +64,8 @@ namespace UnitySkills
         private Label           _serverGroupTitle;
         private Toggle          _autoStartToggle;
         private Label           _autoStartHint;
+        private Toggle          _startOnLaunchToggle;
+        private Label           _startOnLaunchHint;
         private Label           _portLabel;
         private DropdownField   _portDropdown;
         private Label           _timeoutLabel;
@@ -184,6 +186,8 @@ namespace UnitySkills
             _serverGroupTitle = _drawerContainer.Q<Label>("group-server-title");
             _autoStartToggle  = _drawerContainer.Q<Toggle>("autostart-toggle");
             _autoStartHint    = _drawerContainer.Q<Label>("autostart-hint");
+            _startOnLaunchToggle = _drawerContainer.Q<Toggle>("start-on-launch-toggle");
+            _startOnLaunchHint   = _drawerContainer.Q<Label>("start-on-launch-hint");
             _portLabel        = _drawerContainer.Q<Label>("port-label");
             _portDropdown     = _drawerContainer.Q<DropdownField>("port-dropdown");
             _timeoutLabel     = _drawerContainer.Q<Label>("timeout-label");
@@ -246,6 +250,13 @@ namespace UnitySkills
                 {
                     if (evt.newValue != SkillsHttpServer.AutoStart)
                         SkillsHttpServer.AutoStart = evt.newValue;
+                });
+
+            if (_startOnLaunchToggle != null)
+                _startOnLaunchToggle.RegisterValueChangedCallback(evt =>
+                {
+                    if (evt.newValue != SkillsHttpServer.StartOnEditorLaunch)
+                        SkillsHttpServer.StartOnEditorLaunch = evt.newValue;
                 });
 
             if (_portDropdown != null)
@@ -334,6 +345,7 @@ namespace UnitySkills
             }
 
             if (_autoStartToggle != null) _autoStartToggle.value = SkillsHttpServer.AutoStart;
+            if (_startOnLaunchToggle != null) _startOnLaunchToggle.value = SkillsHttpServer.StartOnEditorLaunch;
             if (_timeoutField   != null) _timeoutField.value     = SkillsHttpServer.RequestTimeoutMinutes;
             if (_keepaliveField != null) _keepaliveField.value   = SkillsHttpServer.KeepAliveIntervalSeconds;
             if (_confirmToggle  != null) _confirmToggle.value    = ConfirmationTokenService.RequireConfirmation;
@@ -415,6 +427,8 @@ namespace UnitySkills
 
             if (_autoStartToggle != null) _autoStartToggle.label = SkillsLocalization.Get("auto_restart");
             if (_autoStartHint   != null) _autoStartHint.text    = SkillsLocalization.Get("auto_restart_hint");
+            if (_startOnLaunchToggle != null) _startOnLaunchToggle.label = SkillsLocalization.Get("start_on_editor_launch");
+            if (_startOnLaunchHint   != null) _startOnLaunchHint.text    = SkillsLocalization.Get("start_on_editor_launch_hint");
 
             if (_portLabel       != null) _portLabel.text     = SkillsLocalization.Get("drawer_port_label");
             if (_timeoutLabel    != null) _timeoutLabel.text  = SkillsLocalization.Get("drawer_timeout_label");

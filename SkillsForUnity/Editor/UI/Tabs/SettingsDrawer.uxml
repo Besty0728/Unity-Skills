@@ -97,6 +97,10 @@
                     <ui:Label name="autostart-hint" class="setting-hint"
                               style="margin-left: 18px;" />
 
+                    <ui:Toggle name="start-on-launch-toggle" style="margin-top: 6px;" />
+                    <ui:Label name="start-on-launch-hint" class="setting-hint"
+                              style="margin-left: 18px;" />
+
                     <ui:VisualElement name="row-port" class="setting-row"
                                       style="flex-direction: row; align-items: center;">
                         <ui:Label name="port-label" class="setting-row__label" text="Port" />
