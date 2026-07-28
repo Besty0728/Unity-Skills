@@ -7,7 +7,7 @@ using System.Text;
 namespace UnitySkills
 {
     /// <summary>
-    /// One-click skill installer for mainstream AI IDEs: Claude Code, Antigravity, Codex, and Cursor.
+    /// One-click skill installer for mainstream AI IDEs: Claude Code, Antigravity, Codex, Cursor, and OpenCode.
     /// </summary>
     public static class SkillInstaller
     {
@@ -29,6 +29,11 @@ namespace UnitySkills
         public static string CursorProjectPath => Path.Combine(Application.dataPath, "..", ".cursor", "skills", "unity-skills");
         public static string CursorGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "skills", "unity-skills");
 
+        // OpenCode paths - https://opencode.ai/docs/skills
+        // Workspace shared via .agents/skills (open Agent Skills standard)
+        public static string OpenCodeProjectPath => Path.Combine(Application.dataPath, "..", ".opencode", "skills", "unity-skills");
+        public static string OpenCodeGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "opencode", "skills", "unity-skills");
+
         public static bool IsClaudeProjectInstalled => Directory.Exists(ClaudeProjectPath) && File.Exists(Path.Combine(ClaudeProjectPath, "SKILL.md"));
         public static bool IsClaudeGlobalInstalled => Directory.Exists(ClaudeGlobalPath) && File.Exists(Path.Combine(ClaudeGlobalPath, "SKILL.md"));
         public static bool IsAntigravityProjectInstalled => Directory.Exists(AntigravityProjectPath) && File.Exists(Path.Combine(AntigravityProjectPath, "SKILL.md"));
@@ -37,6 +42,8 @@ namespace UnitySkills
         public static bool IsCodexGlobalInstalled => Directory.Exists(CodexGlobalPath) && File.Exists(Path.Combine(CodexGlobalPath, "SKILL.md"));
         public static bool IsCursorProjectInstalled => Directory.Exists(CursorProjectPath) && File.Exists(Path.Combine(CursorProjectPath, "SKILL.md"));
         public static bool IsCursorGlobalInstalled => Directory.Exists(CursorGlobalPath) && File.Exists(Path.Combine(CursorGlobalPath, "SKILL.md"));
+        public static bool IsOpenCodeProjectInstalled => Directory.Exists(OpenCodeProjectPath) && File.Exists(Path.Combine(OpenCodeProjectPath, "SKILL.md"));
+        public static bool IsOpenCodeGlobalInstalled => Directory.Exists(OpenCodeGlobalPath) && File.Exists(Path.Combine(OpenCodeGlobalPath, "SKILL.md"));
 
         public static (bool success, string message) InstallClaude(bool global)
         {
@@ -135,6 +142,32 @@ namespace UnitySkills
             {
                 var targetPath = global ? CursorGlobalPath : CursorProjectPath;
                 return UninstallSkill(targetPath, "Cursor");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public static (bool success, string message) InstallOpenCode(bool global)
+        {
+            try
+            {
+                var targetPath = global ? OpenCodeGlobalPath : OpenCodeProjectPath;
+                return InstallSkill(targetPath, "OpenCode", "OpenCode");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public static (bool success, string message) UninstallOpenCode(bool global)
+        {
+            try
+            {
+                var targetPath = global ? OpenCodeGlobalPath : OpenCodeProjectPath;
+                return UninstallSkill(targetPath, "OpenCode");
             }
             catch (Exception ex)
             {
