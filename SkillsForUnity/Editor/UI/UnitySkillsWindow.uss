@@ -771,6 +771,7 @@
 .agent-icon.brand-codex       { background-color: #ffffff; }
 .agent-icon.brand-antigravity { background-color: #ffffff; }
 .agent-icon.brand-cursor      { background-color: #ffffff; }
+.agent-icon.brand-opencode    { background-color: #ffffff; }
 .agent-icon.brand-custom {
     background-color: var(--color-button-bg);
     -unity-text-align: middle-center;
