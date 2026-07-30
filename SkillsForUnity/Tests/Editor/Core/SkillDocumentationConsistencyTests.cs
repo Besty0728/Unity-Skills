@@ -17,6 +17,32 @@ namespace UnitySkills.Tests.Core
         private static readonly Regex SkillHeadingRegex =
             new Regex(@"^###\s+`?(?<name>[a-z0-9]+(?:_[a-z0-9]+)+)`?\s*$", RegexOptions.Compiled);
 
+        /// <summary>
+        /// 顶层 SKILL.md 中形如 skill 名的完整 code-span。要求前后都是反引号，所以
+        /// `workflow_session_*` 这类通配写法整体不匹配，无需额外豁免。
+        /// </summary>
+        private static readonly Regex RootDocSkillTokenRegex =
+            new Regex(@"`(?<name>[a-z0-9]+(?:_[a-z0-9]+)+)`", RegexOptions.Compiled);
+
+        /// <summary>unity_skills.py 的模块级公开函数（缩进为 0 且不以 _ 开头）。</summary>
+        private static readonly Regex PythonModuleDefRegex =
+            new Regex(@"^def (?<name>[a-z][a-z0-9_]*)\(", RegexOptions.Compiled | RegexOptions.Multiline);
+
+        /// <summary>
+        /// 顶层 SKILL.md 里允许出现、但本就不是 skill 名的下划线 token。新增例外必须显式登记 ——
+        /// 这份显式清单正是幽灵 skill 名再也漏不出去的机制。
+        /// </summary>
+        private static readonly HashSet<string> RootDocNonSkillTokens = new HashSet<string>(StringComparer.Ordinal)
+        {
+            // errorCode / retryStrategy 取值
+            "fix_and_retry", "find_target_and_retry", "install_and_retry",
+            // GET /events 的事件类型
+            "compilation_started", "compilation_finished", "before_domain_reload", "after_domain_reload",
+            "server_restored", "playmode_changed", "console_error", "job_completed", "job_failed",
+            // 响应字段 / 正文用语
+            "rolled_back", "module_verb",
+        };
+
         private static readonly HashSet<string> AdvisoryModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "architecture",
@@ -141,6 +167,100 @@ namespace UnitySkills.Tests.Core
             }
 
             AssertNoIssues(issues, "YooAsset Skill 本地化不完整");
+        }
+
+        // ============================================================
+        // 顶层 unity-skills~/SKILL.md 的引用一致性（issue #52）
+        //
+        // 其余测试经 GetDocsRoot() 只遍历 skills/*/SKILL.md，顶层 SKILL.md 零覆盖 —— 25 个
+        // 幽灵 skill 名和一处裸 helper 名因此长期潜伏，最终导致 agent 反复调用不存在的
+        // `get_skill_schema` / `health_check`。以下三个测试把这块盲区补上。
+        // ============================================================
+
+        [Test]
+        public void RootSkillDoc_ShouldNotReferenceUnregisteredSkillNames()
+        {
+            var registered = LoadCodeSkills().Keys;
+            var doc = ReadRootSkillDoc(out var docPath);
+            var issues = new List<string>();
+
+            foreach (Match match in RootDocSkillTokenRegex.Matches(doc))
+            {
+                var token = match.Groups["name"].Value;
+                if (registered.Contains(token) || RootDocNonSkillTokens.Contains(token))
+                {
+                    continue;
+                }
+
+                issues.Add($"幽灵 Skill: SKILL.md -> `{token}`（不在已注册 skill 中；" +
+                           "若它本就不是 skill 名，登记到 RootDocNonSkillTokens）");
+            }
+
+            AssertNoIssues(issues, $"顶层 SKILL.md 引用了未注册的 skill 名: {docPath}");
+        }
+
+        [Test]
+        public void RootSkillDoc_ShouldQualifyPythonHelperCalls()
+        {
+            var helpers = LoadPythonHelperNames();
+            var doc = ReadRootSkillDoc(out var docPath);
+
+            // 只匹配调用形态 `name(`：文档里 `GET /health` 中的 health 与同名 helper 无关，
+            // 不该被当成未限定调用。
+            var pattern = new Regex(
+                @"(?<!unity_skills\.)\b(?<name>" +
+                string.Join("|", helpers.OrderByDescending(h => h.Length).Select(Regex.Escape)) +
+                @")\s*\(",
+                RegexOptions.Compiled);
+
+            var issues = pattern.Matches(doc)
+                .Cast<Match>()
+                .Select(m => m.Groups["name"].Value)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .Select(name => $"Python helper 缺少 `unity_skills.` 前缀: `{name}()` —— " +
+                                $"裸名会被 agent 当作 skill 名 POST 到 /skill/{name}")
+                .ToList();
+
+            AssertNoIssues(issues, $"顶层 SKILL.md 的 Python helper 名未限定: {docPath}");
+        }
+
+        [Test]
+        public void ClientHelperRestEquivalents_ShouldMapRealHelpersThatAreNotSkills()
+        {
+            var field = typeof(SkillRouter).GetField(
+                "k_ClientHelperRestEquivalents", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(field, Is.Not.Null, "未找到 SkillRouter.k_ClientHelperRestEquivalents");
+
+            var table = field.GetValue(null) as Dictionary<string, string>;
+            Assert.That(table, Is.Not.Null, "k_ClientHelperRestEquivalents 类型不是 Dictionary<string, string>");
+            Assert.That(table, Is.Not.Empty, "k_ClientHelperRestEquivalents 为空");
+
+            var helpers = LoadPythonHelperNames();
+            var registered = LoadCodeSkills().Keys;
+            var issues = new List<string>();
+
+            foreach (var entry in table.OrderBy(x => x.Key, StringComparer.Ordinal))
+            {
+                if (!helpers.Contains(entry.Key))
+                {
+                    issues.Add($"表键不是 unity_skills.py 的模块级 helper: `{entry.Key}`" +
+                               "（拼错的键永远命中不了，是静默失效）");
+                }
+
+                if (registered.Contains(entry.Key))
+                {
+                    issues.Add($"表键与已注册 skill 同名: `{entry.Key}`" +
+                               "（该名会走正常执行路径，定向纠正永远不触发）");
+                }
+
+                if (string.IsNullOrWhiteSpace(entry.Value))
+                {
+                    issues.Add($"表值为空: `{entry.Key}`");
+                }
+            }
+
+            AssertNoIssues(issues, "SkillRouter.k_ClientHelperRestEquivalents 与 Python 客户端脱钩");
         }
 
         private static void CompareParameters(string skillName, CodeSkill codeSkill, DocSkill docSkill, List<string> issues)
@@ -600,6 +720,35 @@ namespace UnitySkills.Tests.Core
             }
 
             return projectDocsRoot;
+        }
+
+        /// <summary>unity-skills~ 包根目录（GetDocsRoot() 的父级）。</summary>
+        private static string GetPackageRoot()
+        {
+            return Directory.GetParent(GetDocsRoot())?.FullName
+                   ?? throw new InvalidOperationException("无法解析 unity-skills~ 根目录。");
+        }
+
+        private static string ReadRootSkillDoc(out string path)
+        {
+            path = Path.Combine(GetPackageRoot(), "SKILL.md");
+            Assert.That(File.Exists(path), Is.True, $"顶层 SKILL.md 不存在: {path}");
+            return File.ReadAllText(path);
+        }
+
+        private static HashSet<string> LoadPythonHelperNames()
+        {
+            var scriptPath = Path.Combine(GetPackageRoot(), "scripts", "unity_skills.py");
+            Assert.That(File.Exists(scriptPath), Is.True, $"Python 客户端不存在: {scriptPath}");
+
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (Match match in PythonModuleDefRegex.Matches(File.ReadAllText(scriptPath)))
+            {
+                names.Add(match.Groups["name"].Value);
+            }
+
+            Assert.That(names, Is.Not.Empty, $"未从 {scriptPath} 解析到任何模块级 helper");
+            return names;
         }
 
         private static Dictionary<string, string> GetLocalizationDictionary(string fieldName)

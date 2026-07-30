@@ -562,8 +562,17 @@ namespace UnitySkills
             public int Errors;
             public long TotalMs;
             public long MaxMs;
+
+            // Success-only duration stats. A rejected call (unknown skill, failed validation,
+            // permission gate) never entered the skill body, so its duration says nothing about how
+            // slow that skill is — the "slowest" ranking uses these instead of the totals above.
+            public int OkCalls;
+            public long OkTotalMs;
+            public long OkMaxMs;
+
             public double AvgMs => Calls > 0 ? (double)TotalMs / Calls : 0.0;
             public double ErrorRate => Calls > 0 ? (double)Errors / Calls : 0.0;
+            public double OkAvgMs => OkCalls > 0 ? (double)OkTotalMs / OkCalls : 0.0;
         }
 
         /// <summary>Per-errorCode running aggregate.</summary>
@@ -655,6 +664,12 @@ namespace UnitySkills
                 sa.TotalMs += r.Ms;
                 if (r.Ms > sa.MaxMs) sa.MaxMs = r.Ms;
                 if (!r.Ok) sa.Errors++;
+                else
+                {
+                    sa.OkCalls++;
+                    sa.OkTotalMs += r.Ms;
+                    if (r.Ms > sa.OkMaxMs) sa.OkMaxMs = r.Ms;
+                }
 
                 string modeKey = string.IsNullOrEmpty(r.Mode) ? "(unknown)" : r.Mode;
                 perMode.TryGetValue(modeKey, out var mc);
@@ -724,19 +739,22 @@ namespace UnitySkills
                 })
                 .ToArray();
 
-            // Slowest: only skills with calls>=3 so a single outlier can't top the chart.
+            // Slowest: successful calls only, and only skills with >=3 of them so a single outlier
+            // can't top the chart. Failed calls are excluded because a rejection (unknown skill,
+            // validation, permission gate) is timed on the routing layer, not the skill body —
+            // including it would rank a name that never executed as if it were a slow skill.
             var slowestSkills = perSkill
-                .Where(kv => kv.Value.Calls >= 3)
-                .OrderByDescending(kv => kv.Value.AvgMs)
-                .ThenByDescending(kv => kv.Value.MaxMs)
+                .Where(kv => kv.Value.OkCalls >= 3)
+                .OrderByDescending(kv => kv.Value.OkAvgMs)
+                .ThenByDescending(kv => kv.Value.OkMaxMs)
                 .ThenBy(kv => kv.Key, StringComparer.Ordinal)
                 .Take(10)
                 .Select(kv => new
                 {
                     skill = kv.Key,
-                    avgMs = (long)Math.Round(kv.Value.AvgMs),
-                    maxMs = kv.Value.MaxMs,
-                    calls = kv.Value.Calls,
+                    avgMs = (long)Math.Round(kv.Value.OkAvgMs),
+                    maxMs = kv.Value.OkMaxMs,
+                    calls = kv.Value.OkCalls,
                 })
                 .ToArray();
 

@@ -138,6 +138,32 @@ namespace UnitySkills
                 retryStrategy: RetryFixAndRetry);
         }
 
+        /// <summary>
+        /// The caller sent a Python-client helper function name (e.g. <c>get_skill_schema</c>) as if
+        /// it were a REST skill. Reported as SKILL_NOT_FOUND like any other miss, but with the
+        /// concrete REST equivalent instead of fuzzy name candidates: these helpers share no token
+        /// with any registered skill, so <see cref="SkillNotFound"/>'s nearest-name search comes back
+        /// empty and leaves the caller with no way to self-correct.
+        /// </summary>
+        public static string ClientHelperNotASkill(string helperName, string restEquivalent)
+        {
+            return Build(
+                SkillErrorCode.SkillNotFound,
+                $"'{helperName}' is a Python client helper function (unity_skills.py), not a REST skill — " +
+                $"POST /skill/{helperName} can never succeed. Use {restEquivalent} instead.",
+                skill: helperName,
+                suggestedFixes: new List<SuggestedFix>
+                {
+                    new SuggestedFix
+                    {
+                        action = "retry",
+                        skill = restEquivalent,
+                        reason = "REST equivalent of the client-side helper",
+                    },
+                },
+                retryStrategy: RetryFixAndRetry);
+        }
+
         /// <summary>Generic internal error wrapper for caller convenience.</summary>
         public static string Internal(string message, string skill = null) =>
             Build(SkillErrorCode.Internal, message, skill: skill, retryStrategy: Abort);

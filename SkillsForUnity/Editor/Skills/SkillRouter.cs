@@ -1733,8 +1733,50 @@ namespace UnitySkills
             return FormatOperation(op);
         }
 
+        /// <summary>
+        /// Python-client helper function names that agents mistake for REST skill names, mapped to
+        /// the REST call that actually does the job. Keep in sync with the module-level defs in
+        /// <c>unity-skills~/scripts/unity_skills.py</c>.
+        ///
+        /// These need an exact table because the fuzzy fallback in <see cref="ResolveSkillNotFound"/>
+        /// structurally cannot reach them: a helper name shares no token with any registered skill,
+        /// so it is neither within edit distance 5 nor a substring of one — the caller gets an empty
+        /// suggestion list and no way to self-correct. Only the discovery/awareness helpers an agent
+        /// meets at session start are listed; the rest fall through to the fuzzy path as before.
+        /// </summary>
+        private static readonly Dictionary<string, string> k_ClientHelperRestEquivalents =
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                { "get_skill_schema",   "GET /skills/schema (add ?category=<Category> to scope it)" },
+                { "get_skills_summary", "GET /skills?summary=1" },
+                { "get_skills",         "GET /skills (or ?brief=1 for names only)" },
+                { "search_skills",      "GET /skills/recommend?intent=... (search_skills greps a local cache; it has no REST counterpart)" },
+                { "find_skills",        "GET /skills/recommend?intent=..." },
+                { "get_skill_chain",    "GET /skills/chain?output=<field>&maxDepth=<n>" },
+                { "health",             "GET /health" },
+                { "get_server_status",  "GET /health" },
+                { "is_unity_running",   "GET /health" },
+                { "wait_for_health",    "GET /health (poll it)" },
+                { "wait_for_unity",     "GET /health (poll it)" },
+                { "call_skill",         "POST /skill/<real skill name> — call_skill is the client wrapper, not a skill" },
+                { "dry_run_skill",      "POST /skill/<real skill name>?mode=dryRun" },
+                { "plan_skill",         "POST /skill/<real skill name>?mode=plan" },
+                { "plan_workflow",      "the 'workflow_plan' skill" },
+                { "create_script",      "the 'script_create' skill (note the word order)" },
+                { "diagnose",           "the 'unity_diagnose' skill" },
+                { "get_audit_log",      "GET /permission/audit" },
+            };
+
         internal static string ResolveSkillNotFound(string name)
         {
+            // A client-helper name can never fuzzy-match a skill — answer it with the REST
+            // equivalent before falling through to nearest-name search.
+            if (!string.IsNullOrEmpty(name) &&
+                k_ClientHelperRestEquivalents.TryGetValue(name, out var restEquivalent))
+            {
+                return SkillErrorResponse.ClientHelperNotASkill(name, restEquivalent);
+            }
+
             // Surface up to 5 nearest registered skill names so AI agents can self-correct typos.
             var nearest = _skills.Keys
                 .Select(k => new { Name = k, Distance = ComputeLevenshteinDistance(name ?? string.Empty, k) })

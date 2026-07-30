@@ -1591,6 +1591,20 @@ def _parse_cli_value(value: str) -> Any:
             return value
     return value
 
+def _module_helper_names() -> set:
+    """Public functions/classes defined in this module.
+
+    Introspected rather than hardcoded so a newly added helper is covered without touching
+    this list. Used by main() to reject a helper name passed where a skill name is expected.
+    """
+    return {
+        name for name, obj in globals().items()
+        if callable(obj)
+        and not name.startswith('_')
+        and getattr(obj, '__module__', None) == __name__
+    }
+
+
 # ============================================================
 # Main CLI Entry Point
 # ============================================================
@@ -1637,6 +1651,21 @@ def main():
     if not args.skill_name:
         parser.print_help()
         sys.exit(1)
+
+    # The positional argument is a skill name, so anything passed here gets POSTed to
+    # /skill/<name>. A helper name (get_skill_schema, health, create_script, ...) is not in the
+    # skill registry and can only come back as SKILL_NOT_FOUND — reject it locally with the
+    # correct call form instead of spending a round trip on a guaranteed failure.
+    if args.skill_name in _module_helper_names():
+        print(json.dumps({
+            "status": "error",
+            "errorCode": "SKILL_NOT_FOUND",
+            "error": f"'{args.skill_name}' is a Python helper in unity_skills.py, not a skill name. "
+                     f"POST /skill/{args.skill_name} would always fail.",
+            "callItAsAFunction": f'python -c "import unity_skills; print(unity_skills.{args.skill_name}())"',
+            "findRealSkills": 'python unity_skills.py --search "<keyword>"  |  python unity_skills.py --list',
+        }, ensure_ascii=False, indent=2))
+        sys.exit(2)
 
     params = {}
     for arg in args.params:
