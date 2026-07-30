@@ -2,6 +2,30 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.4.2] - 2026-07-30
+
+> **接入面扩展 + 一条 agent 诱导链的根治** —— 新增 OpenCode 内建支持与"编辑器启动时自动启动服务器"开关（均来自社区 PR），并修掉 issue #52 暴露的一条系统性问题：文档里的两处裸名会诱导任何 agent 把 Python 客户端函数当成 REST skill 调用，而错误提示对这类误用给不出任何纠正方向，导致无限重试。无新增 skill，技能总数仍为 776。
+
+### Added
+
+- **OpenCode 内建支持（AI 配置面板第 5 个工具）** — 面板 AI Config 标签页新增 OpenCode 卡片，支持项目级 `.opencode/skills/unity-skills/` 与全局 `~/.config/opencode/skills/unity-skills/` 两种安装位置。沿用与 Claude Code / Codex / Antigravity / Cursor 完全相同的 `SkillInstaller.InstallSkill` 路径，不另写写入逻辑。OpenCode 的 skill 发现是纯目录约定（`{skill,skills}/**/SKILL.md`），无需在 `opencode.json` 注册任何内容，因此安装/卸载全程不读写用户的 OpenCode 配置文件，冲突面仅限 `unity-skills/` 这一个专属目录名。Windows 上 OpenCode 的全局配置目录同样是 `%USERPROFILE%\.config\opencode`（其 `xdg-basedir` 依赖无 Windows 分支，不走 `%APPDATA%`），与实现一致。感谢 [@ShutovKS](https://github.com/ShutovKS)（#50）。
+- **编辑器启动时自动启动服务器（opt-in）** — 设置抽屉 → 服务器 节新增「编辑器启动时运行」开关，默认关闭。此前 `-unityskills-coldstart` 只覆盖"AI 通过 Unity CLI 拉起编辑器"的场景，而人先手动开 Unity 再让 AI 接入时，`OnEditorQuitting` 会主动清掉 `ServerShouldRun`，因此每次都必须手点一次启动。新实现用独立偏好 + `SessionState` 一次性哨兵保证每个编辑器会话只尝试一次，并引入显式的 `AutoStartReason` 优先级（`CliColdStart` > `EditorLaunch` > `DomainReload`），把连续失败熔断计数正确限定在域重载语境内，不污染既有容错机制；手动停服后不会被再次拉起。需配合「编译后自动重启」使用。感谢 [@ShutovKS](https://github.com/ShutovKS)（#51）。
+
+### Fixed
+
+- **Python 客户端 helper 名被当作 skill 反复调用（issue #52）** — 报告者观察到 agent 对 `get_skill_schema` 连发 29 次并全部得到 `SKILL_NOT_FOUND`。`get_skill_schema` 是 `unity_skills.py` 的模块级函数（内部走 `GET /skills/schema`），从来不是 REST skill，服务端返回本身正确，但成因在项目侧且可复现：**(1)** 主 `SKILL.md` 全文 6 处提到 helper 函数，5 处都写作 `unity_skills.xxx()`，唯独介绍 schema 分层那段是裸名 `get_skill_schema()` —— 被误调的正是这一个；**(2)** 同文件的 SemiAuto 模块清单列了 27 个"skill 名"，与运行时注册的 776 个真名比对后只有 `scene_analyze` 与 `project_stack_detect` 存在，其余 25 个是幽灵名（含报告截图里排第二的 `health_check`，真名 `scene_health_check`）；**(3)** `ResolveSkillNotFound` 的兜底是编辑距离 ≤5 或子串包含，而 `get_skill_schema` 到最近 skill 名的距离是 10 且不是任何 skill 的子串，建议列表因此为空。第 (3) 条解释了 29 : 1 的调用比 —— `health_check` 因 `scene_health_check` 含其子串而拿到建议、一次即自纠，`get_skill_schema` 拿不到任何方向只能重试。现补齐 helper 前缀并写明"不是 skill 名、不要 POST 到 `/skill/<name>`"，25 个幽灵名换成运行时逐条核对过的真名，并在 `SkillRouter` 新增客户端 helper → REST 端点的定向纠正表（命中时直接给出 `GET /skills/schema` 等等价调用；`errorCode` 保持 `SKILL_NOT_FOUND` 不动契约，fuzzy 路径行为不变）。
+- **顶层 `SKILL.md` 从未被一致性测试覆盖** — `SkillDocumentationConsistencyTests.GetDocsRoot()` 只遍历 `skills/*/SKILL.md` 的子目录，顶层 `unity-skills~/SKILL.md` 零覆盖，上述 25 个幽灵名因此长期潜伏（而 `/skillcheck` 明确把"幽灵 Skill"列为唯一硬错误）。新增 3 个测试补上盲区：顶层文档里的 helper 名必须带 `unity_skills.` 前缀；形如 skill 名的 code-span 必须是已注册 skill 或显式登记在白名单里；`k_ClientHelperRestEquivalents` 的每个键必须是真实的 Python helper 且不与任何注册 skill 同名（防止拼错导致的静默失效）。已通过"故意破坏三处 → 三个测试全部变红 → 还原"验证测试并非空跑。
+- **CLI 把 helper 名静默发成注定失败的请求** — `python unity_skills.py <name>` 的位置参一律进 `call_skill()`，所以 `python unity_skills.py get_skill_schema` 会真的 POST 一次 `/skill/get_skill_schema`。现在发请求前先本地拦截并给出正确调法，名单由 `globals()` 自省生成而非硬编码，新增 helper 自动覆盖。
+- **测试程序集因 `internal` 枚举进 `public` 签名而整体编译失败** — 新增的 `ServerAutoStartTests` 把 `internal` 的 `AutoStartReason` 用作 `public` 测试方法的参数类型，触发 `CS0051`（参数类型可访问性低于方法）。`InternalsVisibleTo` 只让类型**可访问**，不提升其声明可访问性，因此整个 `UnitySkills.Tests.Editor` 程序集编译失败、Test Runner 一条都跑不了。现改为在方法体内比对 `ToString()`，签名只用 `string`，枚举保持 `internal`。
+- **editor-launch 自启路径的四处缺口** — **(1)** 补 batchmode 守卫：`unity test` / `run` / `build` 等无头流程同样执行 `[InitializeOnLoad]`，开关打开后会在无头进程里抢占 8090–8100 并向全局注册表广告一个转瞬即逝的实例，把客户端的多实例发现引到即将退出的进程上；**(2)** SafetyNet 覆盖新路径：其判据 `shouldRun && AutoStart` 在首次启动时恰好为 false（`ServerShouldRun` 在退出时被清），使 editor-launch 成为全项目唯一一条 `delayCall` 不触发就彻底失效的自启路径；**(3)** 熔断早退补 `CompletePendingAutoStart`：否则待处理的 editor-launch 意图会越过刚触发的熔断，在后续域重载里再次拉起服务器；**(4)** 静态构造器里的 `SessionState` 读取挪到 `delayCall` 注册之后：`PrefKey()` 会触发 `RegistryService` 的静态初始化，一旦抛异常会被外层 `catch` 吞掉并连带跳过域重载恢复的注册。
+- **自启失败日志丢失熔断计数** — 重构后的失败文案统一简化为 `Server auto-start failed (reason)`，域重载路径下用户看不出离 `MaxConsecutiveFailures` 上限还有多远。现域重载分支恢复 `consecutive failures: N/Max` 与"下次域重载重试"的原文案，EditorLaunch / CliColdStart 因每会话只尝试一次而沿用简版。
+- **OpenCode 流量在审计日志里归为 `Unknown`** — `_agentKeywords` 未登记 opencode，而 `"opencode"` 不含表中任何现有关键字（`codex` 需 c-o-d-e-x，`openai` 需 a-i），因此 OpenCode 直接用内建 fetch 或 curl 打 REST 的流量（不经 Python helper 发 `X-Agent-Id`）会落到 `Unknown(...)`，与其它 4 个工具不对等。
+
+### Changed
+
+- **`/analytics` 的「最慢技能」只统计成功调用** — 该表列为 `skill/avgMs/maxMs/calls` 且没有失败率列（只有上方「最常用」表有），于是 issue #52 里 29 次全部被拒的 `get_skill_schema` 显示成"调用 29 次、均时 24ms"，看起来像一个真被调用了 29 次的慢技能。被拒绝的请求（未知 skill、参数校验失败、权限门）从未进入 skill 方法体，其耗时计的是路由层，对性能诊断无意义。现 `SkillAgg` 分离成功态统计（`OkCalls` / `OkTotalMs` / `OkMaxMs`），`slowestSkills` 改用这三项且门槛为 `OkCalls >= 3`，节标题同步改为「最慢（>=3 次成功调用）」。「最常用」表不变，仍以 100% 失败率暴露这类问题。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.4.2`。
+
 ## [2.4.1] - 2026-07-27
 
 > **2.4.0 真机验收修复** —— 在装齐 `com.unity.behavior` / NGO / HybridCLR 的 Unity 6000.3.9f1 工程上对 2.4.0 全部 36 个新 skill 做了一轮真机验收。功能均按文档生效，但暴露出两个 P0：装上 NGO 2.x 会让整个包编译失败，以及任何带工作流跟踪的 `.uxml` 写操作会把编辑器彻底卡死。本版修掉这两条及一批错误分类缺陷，无新增 skill，技能总数仍为 776。
