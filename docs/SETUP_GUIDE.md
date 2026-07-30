@@ -46,7 +46,7 @@ Then flip the server toggle switch in the top bar. On success, the Console will 
 [UnitySkills] REST Server started at http://localhost:8090/
 ```
 
-To start the server whenever this project opens, enable **Settings → Server → Start on Editor launch**. This is opt-in and separate from **Auto-restart after compile**.
+To start the server whenever this project opens, enable **Settings → Server → Start on Editor launch**. This is opt-in. It needs **Auto-restart after compile** to stay on as well — otherwise the server won't come back after the first script change triggers a Domain Reload.
 
 Verify with:
 

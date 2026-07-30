@@ -971,6 +971,7 @@ namespace UnitySkills
             ("cursor", "Cursor"),
             ("trae", "Trae"), ("bytedance", "Trae"),
             ("antigravity", "Antigravity"),
+            ("opencode", "OpenCode"),
             ("windsurf", "Windsurf"), ("codeium", "Windsurf"),
             ("cline", "Cline"), ("roo", "Cline"),
             ("amazon", "AmazonQ"), ("aws", "AmazonQ"),
@@ -1017,11 +1018,14 @@ namespace UnitySkills
 
                 HookUpdateLoop();
 
-                _editorLaunchPending = !SessionState.GetBool(PrefKey("EditorLaunchHandled"), false);
-
                 // Check if we should auto-restart after Domain Reload
                 // Use delayed call to ensure Unity is fully initialized
                 EditorApplication.delayCall += () => ScheduleDelayedCall(1.0, CheckAndRestoreServer);
+
+                // Read after the delayCall hookup: PrefKey() pulls in RegistryService's static
+                // init, and an exception here would be swallowed by the outer catch, silently
+                // taking the Domain Reload recovery hookup above down with it.
+                _editorLaunchPending = !SessionState.GetBool(PrefKey("EditorLaunchHandled"), false);
             }
             catch (Exception ex)
             {
@@ -1122,7 +1126,10 @@ namespace UnitySkills
         private static void CheckAndRestoreServer()
         {
             bool shouldRun = EditorPrefs.GetBool(PREF_SERVER_SHOULD_RUN, false);
-            bool editorLaunchRequested = _editorLaunchPending && StartOnEditorLaunch;
+            // batchmode 排除：`unity test` / `run` / `build` 等无头流程同样跑 [InitializeOnLoad]，
+            // 在那里抢占 8090-8100 并向全局注册表广告一个转瞬即逝的实例，会把客户端的多实例
+            // 发现引到一个即将退出的进程上。CLI 冷启动走的是 GUI 启动，不受这条限制。
+            bool editorLaunchRequested = _editorLaunchPending && StartOnEditorLaunch && !Application.isBatchMode;
             // Unity CLI 冷启动（--args -unityskills-coldstart + 已绑定）：本会话强制拉起一次，
             // 无视 AutoStart/shouldRun 偏好；后续 Domain Reload 走常规恢复路径。
             _cliColdStartPending |= UnityCliService.ConsumeColdStartRequest();
@@ -1156,6 +1163,10 @@ namespace UnitySkills
                         "Please restart manually: Window > UnitySkills > Start Server");
                     EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, false);
                     _restoreRetryCount = 0;
+                    // Clear here too, otherwise a pending editor-launch intent survives this early
+                    // return and would fire on a later reload — bypassing the circuit breaker we
+                    // just tripped.
+                    CompletePendingAutoStart(reason);
                     return;
                 }
 
@@ -1185,8 +1196,18 @@ namespace UnitySkills
                     {
                         EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, failures + 1);
                         EditorPrefs.SetString(PrefKey("LastFailTime"), EditorApplication.timeSinceStartup.ToString());
+                        // 域重载路径保留失败计数：用户需要知道离 MaxConsecutiveFailures 上限
+                        // 还有多远，否则排查时看不出熔断即将触发。
+                        SkillsLogger.LogError(
+                            $"[UnitySkills] Server failed to restart (consecutive failures: {failures + 1}/{MaxConsecutiveFailures}). " +
+                            "Will retry on next Domain Reload. Manual start: Window > UnitySkills > Start Server");
                     }
-                    SkillsLogger.LogError($"[UnitySkills] Server auto-start failed ({reason}). Manual start: Window > UnitySkills > Start Server");
+                    else
+                    {
+                        // EditorLaunch / CliColdStart 每会话只尝试一次，没有跨会话计数可报。
+                        SkillsLogger.LogError(
+                            $"[UnitySkills] Server auto-start failed ({reason}). Manual start: Window > UnitySkills > Start Server");
+                    }
                 }
             }
             else
@@ -2118,7 +2139,10 @@ namespace UnitySkills
                 {
                     _lastSafetyNetCheck = now;
                     bool shouldRun = EditorPrefs.GetBool(PREF_SERVER_SHOULD_RUN, false);
-                    if (shouldRun && AutoStart)
+                    // 也兜住 editor-launch：首次启动时 shouldRun 恰好是 false（退出时被清），
+                    // 否则新路径会是唯一一条 delayCall 不触发就彻底失效的自启路径。
+                    bool editorLaunchRequested = _editorLaunchPending && StartOnEditorLaunch && !Application.isBatchMode;
+                    if ((shouldRun && AutoStart) || editorLaunchRequested)
                     {
                         int failures = EditorPrefs.GetInt(PREF_CONSECUTIVE_FAILURES, 0);
                         if (failures < MaxConsecutiveFailures)
