@@ -4,7 +4,7 @@ namespace UnitySkills
 {
     /// <summary>
     /// Footer controller — version tag + live stats pill (Pending / Done)
-    /// + segmented language switch (EN | 中文).
+    /// + segmented language switch (EN | 中文 | RU).
     /// </summary>
     public class FooterController
     {
@@ -20,6 +20,7 @@ namespace UnitySkills
 
         private Button _langEnBtn;
         private Button _langCnBtn;
+        private Button _langRuBtn;
 
         public FooterController(VisualElement root, UnitySkillsWindow window)
         {
@@ -35,6 +36,7 @@ namespace UnitySkills
 
             _langEnBtn = _root.Q<Button>("lang-seg-en");
             _langCnBtn = _root.Q<Button>("lang-seg-cn");
+            _langRuBtn = _root.Q<Button>("lang-seg-ru");
 
             BindEvents();
             UpdateLiveData();
@@ -44,6 +46,7 @@ namespace UnitySkills
         {
             if (_langEnBtn != null) _langEnBtn.clicked += () => SwitchLanguage(SkillsLocalization.Language.English);
             if (_langCnBtn != null) _langCnBtn.clicked += () => SwitchLanguage(SkillsLocalization.Language.Chinese);
+            if (_langRuBtn != null) _langRuBtn.clicked += () => SwitchLanguage(SkillsLocalization.Language.Russian);
         }
 
         private void SwitchLanguage(SkillsLocalization.Language lang)
@@ -78,16 +81,21 @@ namespace UnitySkills
             if (_doneLabel  != null) _doneLabel.text  = SkillsLocalization.Get("footer_done");
 
             // Segmented active state
-            bool isCn = SkillsLocalization.Current == SkillsLocalization.Language.Chinese;
+            var lang = SkillsLocalization.Current;
             if (_langEnBtn != null)
             {
-                if (isCn) _langEnBtn.RemoveFromClassList("active");
-                else      _langEnBtn.AddToClassList("active");
+                if (lang == SkillsLocalization.Language.English) _langEnBtn.AddToClassList("active");
+                else _langEnBtn.RemoveFromClassList("active");
             }
             if (_langCnBtn != null)
             {
-                if (isCn) _langCnBtn.AddToClassList("active");
-                else      _langCnBtn.RemoveFromClassList("active");
+                if (lang == SkillsLocalization.Language.Chinese) _langCnBtn.AddToClassList("active");
+                else _langCnBtn.RemoveFromClassList("active");
+            }
+            if (_langRuBtn != null)
+            {
+                if (lang == SkillsLocalization.Language.Russian) _langRuBtn.AddToClassList("active");
+                else _langRuBtn.RemoveFromClassList("active");
             }
 
             var seg = _root.Q<VisualElement>("lang-segment");

@@ -117,6 +117,7 @@
                               style="flex-direction: row;">
                 <ui:Button name="lang-seg-en" class="lang-segment__seg active" text="EN" />
                 <ui:Button name="lang-seg-cn" class="lang-segment__seg" text="中文" />
+                <ui:Button name="lang-seg-ru" class="lang-segment__seg" text="RU" />
             </ui:VisualElement>
         </ui:VisualElement>
 

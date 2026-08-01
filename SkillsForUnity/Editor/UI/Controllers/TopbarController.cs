@@ -284,17 +284,15 @@ namespace UnitySkills
             var current = SkillsModeManager.CurrentMode;
 
             AddModeMenuItem(menu, SkillsOperatingMode.Approval, current,
-                PermissionUiHelpers.L("perm_mode_approval_short", "Approval", "Approval（审批）"));
+                SkillsLocalization.Get("perm_mode_approval_short"));
             AddModeMenuItem(menu, SkillsOperatingMode.Auto, current,
-                PermissionUiHelpers.L("perm_mode_auto_short", "Auto", "Auto（自动）"));
+                SkillsLocalization.Get("perm_mode_auto_short"));
             AddModeMenuItem(menu, SkillsOperatingMode.Bypass, current,
-                PermissionUiHelpers.L("perm_mode_bypass_short", "Bypass", "Bypass（全部直接放行）"));
+                SkillsLocalization.Get("perm_mode_bypass_short"));
 
             menu.AddSeparator("");
             menu.AddItem(
-                new GUIContent(PermissionUiHelpers.L("perm_open_settings_menu",
-                    "Open Permission Settings…",
-                    "打开权限设置…")),
+                new GUIContent(SkillsLocalization.Get("perm_open_settings_menu")),
                 false,
                 () => _window.OpenSettings());
 
@@ -318,9 +316,7 @@ namespace UnitySkills
             if (_settingsBtn != null) _settingsBtn.tooltip = SkillsLocalization.Get("topbar_settings_tooltip");
             if (_serverSwitch != null) _serverSwitch.tooltip = SkillsLocalization.Get("topbar_server_tooltip");
             if (_permBadge != null)
-                _permBadge.tooltip = PermissionUiHelpers.L("topbar_perm_badge_tooltip",
-                    "Click to switch operating mode",
-                    "点击切换运行模式");
+                _permBadge.tooltip = SkillsLocalization.Get("topbar_perm_badge_tooltip");
 
             // Force re-render running/stopped text in current language
             UpdateLiveData();

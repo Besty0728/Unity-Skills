@@ -72,8 +72,7 @@ namespace UnitySkills
         public void RefreshLocalization()
         {
             if (_settingsBtn != null)
-                _settingsBtn.text = PermissionUiHelpers.L("pending_banner_open_settings",
-                    "Open Permissions", "打开权限设置");
+                _settingsBtn.text = SkillsLocalization.Get("pending_banner_open_settings");
             // Title 在 Tick 内随计数动态刷新，无需在这里设。
         }
 
@@ -115,9 +114,7 @@ namespace UnitySkills
             if (_title != null)
             {
                 _title.text = string.Format(
-                    PermissionUiHelpers.L("pending_banner_title_fmt",
-                        "{0} pending approval(s)",
-                        "{0} 个待批权限请求"),
+                    SkillsLocalization.Get("pending_banner_title_fmt"),
                     pending.Count);
             }
 
@@ -128,9 +125,7 @@ namespace UnitySkills
             if (pending.Count > shown)
             {
                 var overflow = new Label(string.Format(
-                    PermissionUiHelpers.L("pending_banner_overflow_fmt",
-                        "+{0} more — open Permissions",
-                        "还有 {0} 条 — 打开权限设置查看"),
+                    SkillsLocalization.Get("pending_banner_overflow_fmt"),
                     pending.Count - shown));
                 overflow.AddToClassList("pending-banner__overflow");
                 _list.Add(overflow);
@@ -168,15 +163,13 @@ namespace UnitySkills
             // 渠道区分反馈：Panel 渠道走面板 Approve；Dialog 渠道的批准走 AI 对话
             if (isPanel && req.ApprovedByPanel)
             {
-                var status = new Label(PermissionUiHelpers.L("perm_approved_waiting",
-                    "Approved · waiting for AI to execute", "已批准 · 等待 AI 执行"));
+                var status = new Label(SkillsLocalization.Get("perm_approved_waiting"));
                 status.AddToClassList("pending-banner__args");
                 card.Add(status);
             }
             else if (!isPanel)
             {
-                var chatHint = new Label(PermissionUiHelpers.L("perm_approve_in_chat",
-                    "Dialog channel — approve in the AI chat", "对话渠道 · 请在 AI 对话中批准"));
+                var chatHint = new Label(SkillsLocalization.Get("perm_approve_in_chat"));
                 chatHint.AddToClassList("pending-banner__args");
                 card.Add(chatHint);
             }
@@ -186,7 +179,7 @@ namespace UnitySkills
 
             var approve = new Button(() => SkillsModeManager.Approve(req.Token))
             {
-                text = PermissionUiHelpers.L("perm_approve", "Approve", "批准"),
+                text = SkillsLocalization.Get("perm_approve"),
             };
             approve.AddToClassList("mini-btn");
             approve.style.marginRight = 4;
@@ -195,7 +188,7 @@ namespace UnitySkills
 
             var deny = new Button(() => SkillsModeManager.Deny(req.Token))
             {
-                text = PermissionUiHelpers.L("perm_deny", "Deny", "拒绝"),
+                text = SkillsLocalization.Get("perm_deny"),
             };
             deny.AddToClassList("mini-btn");
             deny.AddToClassList("danger");
