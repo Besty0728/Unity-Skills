@@ -114,14 +114,14 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchAddComponentItem>(items, item =>
             {
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) throw new System.Exception("Object not found");
+                if (error != null) return new { error = "Object not found", errorCode = "TARGET_NOT_FOUND", target = item.name ?? item.path };
 
                 if (string.IsNullOrEmpty(item.componentType))
-                    throw new System.Exception("componentType required");
+                    return new { error = "componentType required", errorCode = "MISSING_PARAM" };
 
                 var type = FindComponentType(item.componentType);
                 if (type == null)
-                    throw new System.Exception($"Component type not found: {item.componentType}");
+                    return new { error = $"Component type not found: {item.componentType}", errorCode = "TARGET_NOT_FOUND", suggestedFix = "Check component type spelling or use full namespace" };
 
                 // Check if component already exists (for single-instance components)
                 if (go.GetComponent(type) != null && !AllowMultiple(type))
@@ -200,24 +200,24 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchRemoveComponentItem>(items, item =>
             {
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) throw new System.Exception("Object not found");
+                if (error != null) return new { error = "Object not found", errorCode = "TARGET_NOT_FOUND", target = item.name ?? item.path };
 
                 if (string.IsNullOrEmpty(item.componentType))
-                    throw new System.Exception("componentType required");
+                    return new { error = "componentType required", errorCode = "MISSING_PARAM" };
 
                 var type = FindComponentType(item.componentType);
                 if (type == null)
-                    throw new System.Exception($"Component type not found: {item.componentType}");
+                    return new { error = $"Component type not found: {item.componentType}", errorCode = "TARGET_NOT_FOUND" };
 
                 var components = go.GetComponents(type);
                 if (components.Length == 0)
-                    throw new System.Exception($"Component not found: {item.componentType}");
+                    return new { error = $"Component not found: {item.componentType}", errorCode = "TARGET_NOT_FOUND", target = go.name };
 
                 Undo.RecordObject(go, "Batch Remove Component");
                 foreach (var c in components)
                 {
                     if (!WorkflowManager.DeleteSceneObject(c))
-                        throw new System.Exception($"Failed to capture and remove {item.componentType}");
+                        return new { error = $"Failed to capture and remove {item.componentType}", errorCode = "SKILL_ERROR" };
                 }
 
                 EditorUtility.SetDirty(go);
@@ -374,23 +374,23 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchSetPropertyItem>(items, item =>
             {
                 if (string.IsNullOrEmpty(item.componentType) || string.IsNullOrEmpty(item.propertyName))
-                    throw new System.Exception("componentType and propertyName required");
+                    return new { error = "componentType and propertyName required", errorCode = "MISSING_PARAM" };
 
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) throw new System.Exception("Object not found");
+                if (error != null) return new { error = "Object not found", errorCode = "TARGET_NOT_FOUND", target = item.name ?? item.path };
 
                 var type = FindComponentType(item.componentType);
                 if (type == null)
-                    throw new System.Exception($"Component type not found: {item.componentType}");
+                    return new { error = $"Component type not found: {item.componentType}", errorCode = "TARGET_NOT_FOUND" };
 
                 var comp = go.GetComponent(type);
                 if (comp == null)
-                    throw new System.Exception($"Component not found: {item.componentType}");
+                    return new { error = $"Component not found: {item.componentType}", errorCode = "TARGET_NOT_FOUND", target = go.name };
 
                 var (prop, field) = FindMember(type, item.propertyName);
 
                 if (prop == null && field == null)
-                    throw new System.Exception($"Property/field not found: {item.propertyName}");
+                    return new { error = $"Property/field not found: {item.propertyName}", errorCode = "TARGET_NOT_FOUND", suggestedFix = "Use component_get_properties to list available properties" };
 
                 WorkflowManager.SnapshotObject(comp);
                 Undo.RecordObject(comp, "Batch Set Property");
@@ -402,13 +402,13 @@ namespace UnitySkills
                 {
                     converted = ResolveAssetReference(targetType, item.assetPath);
                     if (converted == null)
-                        throw new System.Exception($"Asset not found or type mismatch: '{item.assetPath}' (expected {targetType.Name})");
+                        return new { error = $"Asset not found or type mismatch: '{item.assetPath}' (expected {targetType.Name})", errorCode = "TARGET_NOT_FOUND" };
                 }
                 else if (!string.IsNullOrEmpty(item.referencePath) || !string.IsNullOrEmpty(item.referenceName))
                 {
                     converted = ResolveReference(targetType, item.referencePath, item.referenceName);
                     if (converted == null)
-                        throw new System.Exception($"Reference resolution failed for {item.propertyName}");
+                        return new { error = $"Reference resolution failed for {item.propertyName}", errorCode = "TARGET_NOT_FOUND" };
                 }
                 else
                 {
@@ -421,7 +421,7 @@ namespace UnitySkills
                 else if (field != null)
                     field.SetValue(comp, converted);
                 else
-                    throw new System.Exception($"Property {item.propertyName} is read-only");
+                    return new { error = $"Property {item.propertyName} is read-only", errorCode = "INVALID_PARAMETER" };
 
                 EditorUtility.SetDirty(comp);
                 return new { target = go.name, success = true, property = item.propertyName };
@@ -535,7 +535,7 @@ namespace UnitySkills
                     item.assetPath, item.objectType);
                 if (SkillResultHelper.TryGetError(result, out var error))
                 {
-                    throw new System.Exception(error);
+                    return new { error = error, errorCode = "SKILL_ERROR", target = item.name ?? item.path };
                 }
                 return result;
             }, item => item.name ?? item.path ?? item.instanceId.ToString());

@@ -167,9 +167,9 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchImportItem>(items, item =>
             {
                 if (Validate.SafePath(item.destinationPath, "destinationPath") is object dstErr)
-                    throw new System.Exception(((dynamic)dstErr).error);
+                    return new { error = ((dynamic)dstErr).error, errorCode = "INVALID_PARAMETER", target = item.destinationPath };
                 if (!File.Exists(item.sourcePath))
-                    throw new System.Exception("File not found");
+                    return new { error = "Source file not found", errorCode = "TARGET_NOT_FOUND", target = item.sourcePath };
 
                 var dir = Path.GetDirectoryName(item.destinationPath);
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -223,11 +223,11 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchDeleteItem>(items, item =>
             {
                 if (Validate.SafePath(item.path, "path", isDelete: true) is object pathErr)
-                    throw new System.Exception(((dynamic)pathErr).error);
+                    return new { error = ((dynamic)pathErr).error, errorCode = "INVALID_PARAMETER", target = item.path };
 
                 // DeleteAssetToTrash self-manages backup + Deleted snapshot; no pre-snapshot needed.
                 if (!WorkflowManager.DeleteAssetToTrash(item.path))
-                    throw new System.Exception("Delete failed");
+                    return new { error = "Delete failed", errorCode = "SKILL_ERROR", target = item.path };
 
                 return new
                 {
@@ -259,16 +259,16 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchMoveItem>(items, item =>
             {
                 if (Validate.SafePath(item.sourcePath, "sourcePath") is object srcErr)
-                    throw new System.Exception(((dynamic)srcErr).error);
+                    return new { error = ((dynamic)srcErr).error, errorCode = "INVALID_PARAMETER", target = item.sourcePath };
                 if (Validate.SafePath(item.destinationPath, "destinationPath") is object dstErr)
-                    throw new System.Exception(((dynamic)dstErr).error);
+                    return new { error = ((dynamic)dstErr).error, errorCode = "INVALID_PARAMETER", target = item.destinationPath };
 
                 // Lightweight Moved snapshot (both paths only); undo moves the asset back.
                 WorkflowManager.SnapshotAssetMove(item.sourcePath, item.destinationPath);
 
                 string error = AssetDatabase.MoveAsset(item.sourcePath, item.destinationPath);
                 if (!string.IsNullOrEmpty(error))
-                    throw new System.Exception(error);
+                    return new { error = error, errorCode = "SKILL_ERROR", target = item.sourcePath };
 
                 return new
                 {
@@ -393,15 +393,15 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchFolderItem>(items, item =>
             {
                 if (Validate.SafePath(item.folderPath, "folderPath") is object pathErr)
-                    throw new System.Exception(((dynamic)pathErr).error);
+                    return new { error = ((dynamic)pathErr).error, errorCode = "INVALID_PARAMETER", target = item.folderPath };
                 if (Directory.Exists(item.folderPath))
-                    throw new System.Exception("Folder already exists");
+                    return new { error = "Folder already exists", errorCode = "INVALID_PARAMETER", target = item.folderPath };
 
                 var parent = Path.GetDirectoryName(item.folderPath);
                 var name = Path.GetFileName(item.folderPath);
                 var guid = AssetDatabase.CreateFolder(parent, name);
                 if (string.IsNullOrEmpty(guid))
-                    throw new System.Exception("Create folder failed (parent path may not exist)");
+                    return new { error = "Create folder failed (parent path may not exist)", errorCode = "SKILL_ERROR", target = item.folderPath };
 
                 WorkflowManager.SnapshotCreatedFolder(item.folderPath);
 

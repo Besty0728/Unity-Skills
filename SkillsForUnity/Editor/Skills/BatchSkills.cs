@@ -142,9 +142,16 @@ namespace UnitySkills
             string regexReplacement = null,
             int sampleLimit = DefaultSampleLimit)
         {
-            var query = ParseQuery(queryJson);
-            var preview = BuildRenamePreview(query, mode, prefix, suffix, search, replacement, regexPattern, regexReplacement);
-            return SavePreview(preview, sampleLimit);
+            try
+            {
+                var query = ParseQuery(queryJson);
+                var preview = BuildRenamePreview(query, mode, prefix, suffix, search, replacement, regexPattern, regexReplacement);
+                return SavePreview(preview, sampleLimit);
+            }
+            catch (ArgumentException ex)
+            {
+                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_preview_rename");
+            }
         }
 
         [UnitySkill("batch_preview_set_property", "Preview setting a component property or field across queried targets.",
@@ -164,9 +171,16 @@ namespace UnitySkills
             string assetPath = null,
             int sampleLimit = DefaultSampleLimit)
         {
-            var query = ParseQuery(queryJson);
-            var preview = BuildSetPropertyPreview(query, componentType, propertyName, value, referencePath, referenceName, assetPath);
-            return SavePreview(preview, sampleLimit);
+            try
+            {
+                var query = ParseQuery(queryJson);
+                var preview = BuildSetPropertyPreview(query, componentType, propertyName, value, referencePath, referenceName, assetPath);
+                return SavePreview(preview, sampleLimit);
+            }
+            catch (ArgumentException ex)
+            {
+                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_preview_set_property");
+            }
         }
 
         [UnitySkill("batch_preview_replace_material", "Preview replacing Renderer materials across queried targets.",
@@ -178,9 +192,16 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object BatchPreviewReplaceMaterial(string queryJson = null, string materialPath = null, int sampleLimit = DefaultSampleLimit)
         {
-            var query = ParseQuery(queryJson);
-            var preview = BuildReplaceMaterialPreview(query, materialPath);
-            return SavePreview(preview, sampleLimit);
+            try
+            {
+                var query = ParseQuery(queryJson);
+                var preview = BuildReplaceMaterialPreview(query, materialPath);
+                return SavePreview(preview, sampleLimit);
+            }
+            catch (ArgumentException ex)
+            {
+                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_preview_replace_material");
+            }
         }
 
         [UnitySkill("batch_execute", "Execute a previously previewed batch operation by confirmToken. Large operations return a jobId.",
@@ -499,8 +520,15 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object BatchSetRenderLayer(string queryJson = null, string layer = null, bool recursive = false, int sampleLimit = DefaultSampleLimit)
         {
-            var preview = BuildSetLayerPreview(ParseQuery(queryJson), layer, recursive);
-            return SavePreview(preview, sampleLimit);
+            try
+            {
+                var preview = BuildSetLayerPreview(ParseQuery(queryJson), layer, recursive);
+                return SavePreview(preview, sampleLimit);
+            }
+            catch (ArgumentException ex)
+            {
+                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_set_render_layer");
+            }
         }
 
         [UnitySkill("batch_replace_material", "Preview replacing materials in batch. Execute with batch_execute(confirmToken).",
@@ -511,8 +539,15 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object BatchReplaceMaterial(string queryJson = null, string materialPath = null, int sampleLimit = DefaultSampleLimit)
         {
-            var preview = BuildReplaceMaterialPreview(ParseQuery(queryJson), materialPath);
-            return SavePreview(preview, sampleLimit);
+            try
+            {
+                var preview = BuildReplaceMaterialPreview(ParseQuery(queryJson), materialPath);
+                return SavePreview(preview, sampleLimit);
+            }
+            catch (ArgumentException ex)
+            {
+                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_replace_material");
+            }
         }
 
         [UnitySkill("batch_validate_scene_objects", "Analyze scene objects for missing scripts, missing references, duplicate names, and empty objects.",
