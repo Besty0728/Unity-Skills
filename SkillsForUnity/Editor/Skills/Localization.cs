@@ -29,7 +29,8 @@ namespace UnitySkills
                 if (!_initialized)
                 {
                     // Restore from EditorPrefs on first access
-                    _current = (Language)EditorPrefs.GetInt(PREF_LANGUAGE, (int)Language.English);
+                    int saved = EditorPrefs.GetInt(PREF_LANGUAGE, (int)Language.English);
+                    _current = Enum.IsDefined(typeof(Language), saved) ? (Language)saved : Language.English;
                     _initialized = true;
                 }
                 return _current;
@@ -1077,6 +1078,9 @@ namespace UnitySkills
             {"history_clear_confirm_msg", "Are you sure you want to clear all history? This will also delete workflow cached snapshots on disk."},
             {"history_tab_title", "Workflow History"},
             {"history_cache_warning", "Workflow Cache Warning: undo restores scene hierarchies and asset snapshots. External side effects (e.g. Package Manager) cannot be reverted."},
+            {"history_result_none_fmt", "{0}: no snapshots to process"},
+            {"history_result_ok_fmt", "{0} succeeded: {1}/{2}"},
+            {"history_result_fail_fmt", "{0} completed with {1} failure(s) ({2}/{3})"},
 
             // Permission / CLI subsystem
             {"cli_bind", "Bind This Project"},
@@ -2282,6 +2286,9 @@ namespace UnitySkills
             {"history_clear_confirm_msg", "确定要清除所有历史记录吗？这也会删除磁盘上的工作流缓存快照。"},
             {"history_tab_title", "工作流历史"},
             {"history_cache_warning", "工作流缓存警告：撤销操作仅恢复场景状态和文件快照，不会撤销如包管理器操作或外部系统的副作用。"},
+            {"history_result_none_fmt", "{0}：没有快照可处理"},
+            {"history_result_ok_fmt", "{0} 成功：{1}/{2}"},
+            {"history_result_fail_fmt", "{0} 完成，出现 {1} 个失败（{2}/{3}）"},
 
             // Permission / CLI subsystem
             {"cli_bind", "绑定当前项目"},
@@ -3422,6 +3429,9 @@ namespace UnitySkills
             {"history_clear_confirm_msg", "Вы уверены, что хотите очистить всю историю? Это также удалит кэшированные снимки рабочего процесса на диске."},
             {"history_tab_title", "История рабочего процесса"},
             {"history_cache_warning", "Предупреждение о кэше рабочего процесса: отмена восстанавливает иерархии сцены и снимки ассетов. Побочные эффекты внешних систем (например, Package Manager) не могут быть отменены."},
+            {"history_result_none_fmt", "{0}: нет снимков для обработки"},
+            {"history_result_ok_fmt", "{0} успешно: {1}/{2}"},
+            {"history_result_fail_fmt", "{0} завершено с {1} ошибками ({2}/{3})"},
 
             // Permission / CLI subsystem
             {"drawer_section_permissions", "Разрешения"},
