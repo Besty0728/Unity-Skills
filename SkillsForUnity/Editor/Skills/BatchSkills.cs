@@ -150,7 +150,7 @@ namespace UnitySkills
             }
             catch (ArgumentException ex)
             {
-                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_preview_rename");
+                return new { error = ex.Message };
             }
         }
 
@@ -179,7 +179,7 @@ namespace UnitySkills
             }
             catch (ArgumentException ex)
             {
-                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_preview_set_property");
+                return new { error = ex.Message };
             }
         }
 
@@ -200,7 +200,7 @@ namespace UnitySkills
             }
             catch (ArgumentException ex)
             {
-                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_preview_replace_material");
+                return new { error = ex.Message };
             }
         }
 
@@ -527,7 +527,7 @@ namespace UnitySkills
             }
             catch (ArgumentException ex)
             {
-                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_set_render_layer");
+                return new { error = ex.Message };
             }
         }
 
@@ -546,7 +546,7 @@ namespace UnitySkills
             }
             catch (ArgumentException ex)
             {
-                return SkillErrorResponse.Build(SkillErrorCode.InvalidParameter, ex.Message, skill: "batch_replace_material");
+                return new { error = ex.Message };
             }
         }
 

@@ -90,7 +90,7 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchInstantiateItem>(items, item =>
             {
                 if (string.IsNullOrEmpty(item.prefabPath))
-                    return new { error = "prefabPath required" };
+                    return new { error = "prefabPath required", errorCode = "MISSING_PARAM" };
 
                 if (!prefabCache.TryGetValue(item.prefabPath, out var prefab))
                 {
@@ -107,15 +107,15 @@ namespace UnitySkills
                 }
 
                 if (prefab == null)
-                    return new { error = $"Prefab not found: {item.prefabPath}" };
+                    return new { error = $"Prefab not found: {item.prefabPath}", errorCode = "TARGET_NOT_FOUND", suggestedFix = "Check prefab path or use asset_find to locate it" };
 
                 var instance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
                 if (instance == null)
-                    return new { error = $"Failed to instantiate prefab: {item.prefabPath}" };
+                    return new { error = $"Failed to instantiate prefab: {item.prefabPath}", errorCode = "SKILL_ERROR" };
                 if (!string.IsNullOrEmpty(item.parentEntityId) || !string.IsNullOrEmpty(item.parentName) || item.parentInstanceId != 0 || !string.IsNullOrEmpty(item.parentPath))
                 {
                     var (parentGo, parentErr) = GameObjectFinder.FindOrError(item.parentName, item.parentInstanceId, item.parentPath, entityId: item.parentEntityId);
-                    if (parentErr != null) return new { error = $"Parent not found for '{item.name ?? item.prefabPath}'" };
+                    if (parentErr != null) return new { error = $"Parent not found for '{item.name ?? item.prefabPath}'", errorCode = "TARGET_NOT_FOUND" };
                     instance.transform.SetParent(parentGo.transform, false);
                 }
 

@@ -247,10 +247,10 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchLightEnabledItem>(items, item =>
             {
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
+                if (error != null) return new { error = "Object not found", errorCode = "TARGET_NOT_FOUND", target = item.name ?? item.path };
 
                 var light = go.GetComponent<Light>();
-                if (light == null) return new { error = "No Light component", target = go.name };
+                if (light == null) return new { error = "No Light component", errorCode = "TARGET_NOT_FOUND", target = go.name, suggestedFix = "Add Light component with light_create or component_add" };
 
                 WorkflowManager.SnapshotObject(light);
                 Undo.RecordObject(light, "Batch Set Light Enabled");
@@ -277,10 +277,10 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchLightPropsItem>(items, item =>
             {
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
+                if (error != null) return new { error = "Object not found", errorCode = "TARGET_NOT_FOUND", target = item.name ?? item.path };
 
                 var light = go.GetComponent<Light>();
-                if (light == null) return new { error = "No Light component", target = go.name };
+                if (light == null) return new { error = "No Light component", errorCode = "TARGET_NOT_FOUND", target = go.name };
 
                 WorkflowManager.SnapshotObject(light);
                 Undo.RecordObject(light, "Batch Set Light Properties");
