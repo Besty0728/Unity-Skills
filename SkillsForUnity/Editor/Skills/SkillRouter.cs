@@ -658,87 +658,45 @@ namespace UnitySkills
                     args.Remove("verbose");
                 }
 
-                // Pagination control for Summary Mode
+                // Pagination control for Summary Mode.
+                // Skipped when the skill declares a parameter of the same name: 'limit' belongs to
+                // asset_find/light_find_all/... and must reach the skill as its own argument rather
+                // than being consumed as envelope paging (which would also wrap small results).
                 int? offset = null;
                 int? limit = null;
 
-                if (args.TryGetValue("offset", StringComparison.OrdinalIgnoreCase, out var offsetToken))
+                if (!SkillDeclaresParameter(skill, "offset") &&
+                    args.TryGetValue("offset", StringComparison.OrdinalIgnoreCase, out var offsetToken))
                 {
-                    try
+                    if (!TryReadPagingArg(offsetToken, "offset", minValue: 0, out var offsetValue, out var offsetError))
                     {
-                        offset = offsetToken.ToObject<int>();
-                        if (offset.Value < 0)
-                        {
-                            if (autoStartedWorkflow && WorkflowManager.IsRecording)
-                                WorkflowManager.AbortTask();
-                            else if (WorkflowManager.IsRecording)
-                                WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
-                            if (undoGroup >= 0)
-                                UnityEditor.Undo.RevertAllInCurrentGroup();
-
-                            return SkillErrorResponse.Build(
-                                SkillErrorCode.TypeMismatch,
-                                $"Parameter 'offset' must be a non-negative integer, got: {offset.Value}",
-                                skill: name,
-                                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        if (autoStartedWorkflow && WorkflowManager.IsRecording)
-                            WorkflowManager.AbortTask();
-                        else if (WorkflowManager.IsRecording)
-                            WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
-                        if (undoGroup >= 0)
-                            UnityEditor.Undo.RevertAllInCurrentGroup();
-
+                        // Nothing was invoked yet; unwind the bookkeeping opened above.
+                        UnwindBeforeInvoke(autoStartedWorkflow, workflowSnapshotCountBefore, undoGroup);
                         return SkillErrorResponse.Build(
                             SkillErrorCode.TypeMismatch,
-                            $"Parameter 'offset' must be an integer, got: {offsetToken.ToString(Formatting.None)}",
+                            offsetError,
                             skill: name,
-                            details: new { typeErrors = new object[] { new { parameter = "offset", expectedType = "integer", error = $"Cannot convert {offsetToken.Type} to Int32" } } },
+                            details: new { typeErrors = new object[] { new { parameter = "offset", expectedType = "integer", error = offsetError } } },
                             retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                     }
+                    offset = offsetValue;
                     args.Remove("offset");
                 }
 
-                if (args.TryGetValue("limit", StringComparison.OrdinalIgnoreCase, out var limitToken))
+                if (!SkillDeclaresParameter(skill, "limit") &&
+                    args.TryGetValue("limit", StringComparison.OrdinalIgnoreCase, out var limitToken))
                 {
-                    try
+                    if (!TryReadPagingArg(limitToken, "limit", minValue: 1, out var limitValue, out var limitError))
                     {
-                        limit = limitToken.ToObject<int>();
-                        if (limit.Value <= 0)
-                        {
-                            if (autoStartedWorkflow && WorkflowManager.IsRecording)
-                                WorkflowManager.AbortTask();
-                            else if (WorkflowManager.IsRecording)
-                                WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
-                            if (undoGroup >= 0)
-                                UnityEditor.Undo.RevertAllInCurrentGroup();
-
-                            return SkillErrorResponse.Build(
-                                SkillErrorCode.TypeMismatch,
-                                $"Parameter 'limit' must be a positive integer, got: {limit.Value}",
-                                skill: name,
-                                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        if (autoStartedWorkflow && WorkflowManager.IsRecording)
-                            WorkflowManager.AbortTask();
-                        else if (WorkflowManager.IsRecording)
-                            WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
-                        if (undoGroup >= 0)
-                            UnityEditor.Undo.RevertAllInCurrentGroup();
-
+                        UnwindBeforeInvoke(autoStartedWorkflow, workflowSnapshotCountBefore, undoGroup);
                         return SkillErrorResponse.Build(
                             SkillErrorCode.TypeMismatch,
-                            $"Parameter 'limit' must be an integer, got: {limitToken.ToString(Formatting.None)}",
+                            limitError,
                             skill: name,
-                            details: new { typeErrors = new object[] { new { parameter = "limit", expectedType = "integer", error = $"Cannot convert {limitToken.Type} to Int32" } } },
+                            details: new { typeErrors = new object[] { new { parameter = "limit", expectedType = "integer", error = limitError } } },
                             retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                     }
+                    limit = limitValue;
                     args.Remove("limit");
                 }
 
@@ -1478,6 +1436,66 @@ namespace UnitySkills
                 .Concat(new[] { EntityIdParameterName })
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        /// <summary>
+        /// True when the skill itself declares a parameter with this name. Such names must reach
+        /// the skill as its own argument and must not be consumed as envelope-level paging.
+        /// </summary>
+        private static bool SkillDeclaresParameter(SkillInfo skill, string parameterName) =>
+            skill != null && ContainsParameter(skill.ParameterNames, parameterName);
+
+        /// <summary>
+        /// Reads an envelope paging argument ('offset'/'limit') as an integer >= minValue.
+        /// Accepts JSON numbers and their string forms ("10") so query-string callers work too.
+        /// </summary>
+        private static bool TryReadPagingArg(JToken token, string parameterName, int minValue, out int value, out string error)
+        {
+            value = 0;
+            error = null;
+
+            int parsed;
+            try
+            {
+                parsed = token.ToObject<int>();
+            }
+            catch (Exception)
+            {
+                var raw = token.Type == JTokenType.String ? token.Value<string>()?.Trim() : null;
+                if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out parsed))
+                {
+                    error = $"Parameter '{parameterName}' must be an integer, got: {token.ToString(Formatting.None)}";
+                    return false;
+                }
+            }
+
+            if (parsed < minValue)
+            {
+                error = minValue <= 0
+                    ? $"Parameter '{parameterName}' must be a non-negative integer, got: {parsed}"
+                    : $"Parameter '{parameterName}' must be a positive integer, got: {parsed}";
+                return false;
+            }
+
+            value = parsed;
+            return true;
+        }
+
+        /// <summary>
+        /// Unwinds the workflow/undo bookkeeping opened before <c>Method.Invoke</c> when an
+        /// envelope-level argument turns out to be invalid and nothing was executed yet.
+        /// Mirrors the cleanup performed by the catch handlers in Execute.
+        /// </summary>
+        private static void UnwindBeforeInvoke(bool autoStartedWorkflow, int workflowSnapshotCountBefore, int undoGroup)
+        {
+            if (autoStartedWorkflow && WorkflowManager.IsRecording)
+                WorkflowManager.AbortTask();
+            else if (WorkflowManager.IsRecording)
+                WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
+
+            if (undoGroup >= 0)
+                UnityEditor.Undo.RevertAllInCurrentGroup();
         }
 
         private static object[] BuildParameterSchema(SkillInfo skill)
