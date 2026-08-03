@@ -14,30 +14,164 @@ concurrency:
 
 jobs:
   update-star-history:
-    name: Generate static Star History SVGs
+    name: Render official Star History SVGs
     if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    env:
+      STAR_HISTORY_REPOSITORY: Besty0728/Unity-Skills
+      STAR_HISTORY_SOURCE_REF: bcddc9d532b10bac7e0187a741288bf9cab17616
+      STAR_HISTORY_SOURCE_DIR: .star-history-upstream
+      STAR_HISTORY_PORT: "18080"
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Check out official Star History renderer
+        uses: actions/checkout@v4
         with:
-          python-version: "3.x"
+          repository: star-history/star-history
+          ref: ${{ env.STAR_HISTORY_SOURCE_REF }}
+          path: ${{ env.STAR_HISTORY_SOURCE_DIR }}
+          persist-credentials: false
 
-      - name: Generate static Star History charts
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GH_STARGAZERS_TOKEN: ${{ secrets.GH_STARGAZERS_TOKEN }}
-          STAR_HISTORY_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}
-          STAR_HISTORY_REPOSITORY: Besty0728/Unity-Skills
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+          cache-dependency-path: |
+            ${{ env.STAR_HISTORY_SOURCE_DIR }}/pnpm-lock.yaml
+            ${{ env.STAR_HISTORY_SOURCE_DIR }}/backend/pnpm-lock.yaml
+
+      - name: Install official renderer dependencies
         run: |
           set -euo pipefail
-          python3 .github/scripts/generate_star_history.py \
-            --repo "$STAR_HISTORY_REPOSITORY" \
-            --output-dir docs \
-            --log-scale
+          (cd "${STAR_HISTORY_SOURCE_DIR}" && pnpm install --frozen-lockfile)
+          (cd "${STAR_HISTORY_SOURCE_DIR}/backend" && pnpm install --frozen-lockfile)
+
+      - name: Allow official renderer to use a free port
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path(os.environ["STAR_HISTORY_SOURCE_DIR"]) / "backend/main.ts"
+          source = path.read_text(encoding="utf-8")
+          original_server = "serve({ fetch: app.fetch, port: 8080 }, () => {"
+          patched_server = "const port = Number(process.env.PORT || 8080);\n  serve({ fetch: app.fetch, port }, () => {"
+          if original_server not in source and patched_server not in source:
+              raise SystemExit("official renderer port bootstrap changed upstream")
+          source = source.replace(
+              "serve({ fetch: app.fetch, port: 8080 }, () => {",
+              patched_server,
+          )
+          source = source.replace(
+              'logger.info("server running on port 8080");',
+              'logger.info("server running on port " + port);',
+          )
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Render static Star History charts
+        env:
+          STAR_HISTORY_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}
+          GH_STARGAZERS_TOKEN: ${{ secrets.GH_STARGAZERS_TOKEN }}
+          GITHUB_JOB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          token_file="${RUNNER_TEMP}/star-history-token.env"
+          server_log="${RUNNER_TEMP}/star-history-backend.log"
+          if [[ -n "${STAR_HISTORY_TOKEN}" ]]; then
+            printf '%s\n' "${STAR_HISTORY_TOKEN}" > "${token_file}"
+          elif [[ -n "${GH_STARGAZERS_TOKEN}" ]]; then
+            printf '%s\n' "${GH_STARGAZERS_TOKEN}" > "${token_file}"
+          elif [[ -n "${GITHUB_JOB_TOKEN}" ]]; then
+            printf '%s\n' "${GITHUB_JOB_TOKEN}" > "${token_file}"
+          else
+            echo "::error::No GitHub token is available for Star History rendering."
+            exit 1
+          fi
+
+          cleanup() {
+            if [[ -n "${server_pid:-}" ]]; then
+              kill "${server_pid}" 2>/dev/null || true
+              wait "${server_pid}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          (cd "${STAR_HISTORY_SOURCE_DIR}/backend" && pnpm run build)
+          (
+            cd "${STAR_HISTORY_SOURCE_DIR}/backend"
+            ENVPATH="${token_file}" PORT="${STAR_HISTORY_PORT}" pnpm exec tsx main.ts
+          ) >"${server_log}" 2>&1 &
+          server_pid=$!
+
+          for attempt in {1..60}; do
+            if curl --fail --silent "http://127.0.0.1:${STAR_HISTORY_PORT}/healthz" >/dev/null; then
+              break
+            fi
+            if ! kill -0 "${server_pid}" 2>/dev/null; then
+              cat "${server_log}" >&2
+              exit 1
+            fi
+            if [[ "${attempt}" == 60 ]]; then
+              cat "${server_log}" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          mkdir -p docs
+          tmp_dir="${RUNNER_TEMP}/star-history-svg"
+          mkdir -p "${tmp_dir}"
+          base_url="http://127.0.0.1:${STAR_HISTORY_PORT}/svg?repos=${STAR_HISTORY_REPOSITORY}&type=date&legend=top-left"
+          curl --fail --silent --show-error --location --max-time 120 \
+            "${base_url}" \
+            --output "${tmp_dir}/star-history-light.svg"
+          curl --fail --silent --show-error --location --max-time 120 \
+            "${base_url}&theme=dark" \
+            --output "${tmp_dir}/star-history-dark.svg"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          checks = {
+              "star-history-light.svg": "background:#fff",
+              "star-history-dark.svg": "background:#0d1117",
+          }
+          tmp_dir = Path(__import__("os").environ["RUNNER_TEMP"]) / "star-history-svg"
+          for filename, background in checks.items():
+              content = (tmp_dir / filename).read_text(encoding="utf-8")
+              if len(content) < 10000:
+                  raise SystemExit(f"{filename} is unexpectedly small")
+              root = ET.fromstring(content)
+              if root.tag.rsplit("}", 1)[-1] != "svg":
+                  raise SystemExit(f"{filename} is not an SVG")
+              required = [
+                  "Star History",
+                  "GitHub Stars",
+                  "xkcdify",
+                  "font-family:xkcd",
+                  "besty0728/unity-skills",
+                  background,
+              ]
+              missing = [fragment for fragment in required if fragment not in content]
+              if missing:
+                  raise SystemExit(f"{filename} is missing: {', '.join(missing)}")
+          PY
+          mv "${tmp_dir}/star-history-light.svg" docs/star-history-light.svg
+          mv "${tmp_dir}/star-history-dark.svg" docs/star-history-dark.svg
 
       - name: Commit updated charts
         env:
