@@ -92,14 +92,37 @@ jobs:
           server_log="${RUNNER_TEMP}/star-history-backend.log"
           if [[ -n "${STAR_HISTORY_TOKEN}" ]]; then
             printf '%s\n' "${STAR_HISTORY_TOKEN}" > "${token_file}"
+            api_token="${STAR_HISTORY_TOKEN}"
           elif [[ -n "${GH_STARGAZERS_TOKEN}" ]]; then
             printf '%s\n' "${GH_STARGAZERS_TOKEN}" > "${token_file}"
+            api_token="${GH_STARGAZERS_TOKEN}"
           elif [[ -n "${GITHUB_JOB_TOKEN}" ]]; then
             printf '%s\n' "${GITHUB_JOB_TOKEN}" > "${token_file}"
+            api_token="${GITHUB_JOB_TOKEN}"
           else
             echo "::error::No GitHub token is available for Star History rendering."
             exit 1
           fi
+
+          probe_file="${RUNNER_TEMP}/star-history-token-probe.json"
+          curl --fail --silent --show-error --location --max-time 30 \
+            -H "Accept: application/vnd.github.star+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -H "Authorization: token ${api_token}" \
+            "https://api.github.com/repos/${STAR_HISTORY_REPOSITORY}/stargazers?per_page=1" \
+            --output "${probe_file}"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          probe = json.loads(Path(os.environ["RUNNER_TEMP"], "star-history-token-probe.json").read_text())
+          if not isinstance(probe, list) or not probe:
+              raise SystemExit("GitHub token probe returned no stargazers")
+          if "starred_at" not in probe[0]:
+              raise SystemExit("GitHub token probe did not include starred_at")
+          print("GitHub token probe passed for timestamped stargazers.")
+          PY
 
           cleanup() {
             if [[ -n "${server_pid:-}" ]]; then
@@ -135,12 +158,24 @@ jobs:
           tmp_dir="${RUNNER_TEMP}/star-history-svg"
           mkdir -p "${tmp_dir}"
           base_url="http://127.0.0.1:${STAR_HISTORY_PORT}/svg?repos=${STAR_HISTORY_REPOSITORY}&type=date&legend=top-left"
-          curl --fail --silent --show-error --location --max-time 120 \
+          light_status="$(curl --silent --show-error --location --max-time 120 \
+            --write-out '%{http_code}' \
             "${base_url}" \
-            --output "${tmp_dir}/star-history-light.svg"
-          curl --fail --silent --show-error --location --max-time 120 \
+            --output "${tmp_dir}/star-history-light.svg")"
+          dark_status="$(curl --silent --show-error --location --max-time 120 \
+            --write-out '%{http_code}' \
             "${base_url}&theme=dark" \
-            --output "${tmp_dir}/star-history-dark.svg"
+            --output "${tmp_dir}/star-history-dark.svg")"
+          if [[ "${light_status}" != "200" || "${dark_status}" != "200" ]]; then
+            echo "::error::Star History renderer returned light=${light_status}, dark=${dark_status}."
+            echo "Light response preview:"
+            head -c 1000 "${tmp_dir}/star-history-light.svg" || true
+            echo
+            echo "Dark response preview:"
+            head -c 1000 "${tmp_dir}/star-history-dark.svg" || true
+            echo
+            exit 1
+          fi
 
           python3 - <<'PY'
           from pathlib import Path
