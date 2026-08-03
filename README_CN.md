@@ -23,6 +23,14 @@
 
 > 当前官方维护基线为 **Unity 2022.3+**。仓库中仍可能保留部分对 Unity 2021 的兼容逻辑，但后续功能开发、回归验证与适配工作将以 **2022.3+ / Unity 6** 为主。
 
+## 📈 项目贡献排名
+
+<p align="center">
+  <a href="https://trendshift.io/repositories/27085?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-27085" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/27085/daily?language=C%23" alt="Besty0728%2FUnity-Skills | Trendshift" width="250" height="55"/></a>
+  <a href="https://trendshift.io/repositories/27085?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-27085" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/27085/weekly?language=C%23" alt="Besty0728%2FUnity-Skills | Trendshift" width="250" height="55"/></a>
+  <a href="https://trendshift.io/repositories/27085?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-27085" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/27085/monthly?language=C%23" alt="Besty0728%2FUnity-Skills | Trendshift" width="250" height="55"/></a>
+</p>
+
 ## 🤝 致谢
 本项目基于 [unity-mcp](https://github.com/CoplayDev/unity-mcp) 的优秀理念深度重构与功能扩展。
 
