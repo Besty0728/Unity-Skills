@@ -1,0 +1,65 @@
+name: Update Star History
+
+"on":
+  workflow_dispatch:
+  schedule:
+    - cron: "23 3 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-star-history
+  cancel-in-progress: false
+
+jobs:
+  update-star-history:
+    name: Generate static Star History SVGs
+    if: github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Generate static Star History charts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_STARGAZERS_TOKEN: ${{ secrets.GH_STARGAZERS_TOKEN }}
+          STAR_HISTORY_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}
+          STAR_HISTORY_REPOSITORY: Besty0728/Unity-Skills
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/generate_star_history.py \
+            --repo "$STAR_HISTORY_REPOSITORY" \
+            --output-dir docs \
+            --log-scale
+
+      - name: Commit updated charts
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/star-history-light.svg docs/star-history-dark.svg; then
+            echo "Star History charts are already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/star-history-light.svg docs/star-history-dark.svg
+          git commit -m "docs: update Star History charts"
+          git push origin "HEAD:${DEFAULT_BRANCH}"
+
+          if git ls-remote --exit-code --heads origin beta >/dev/null 2>&1; then
+            git fetch origin beta
+            if git merge-base --is-ancestor origin/beta HEAD; then
+              git push origin HEAD:beta
+            else
+              echo "origin/beta has diverged; skipping beta fast-forward sync."
+            fi
+          fi

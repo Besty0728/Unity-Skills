@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="533" viewBox="0 0 800 533" role="img" aria-labelledby="title desc">
+  <title id="title">Star History for Besty0728/Unity-Skills</title>
+  <desc id="desc">Placeholder chart until the scheduled workflow generates the first static SVG.</desc>
+  <rect width="800" height="533" rx="18" fill="#0d1117"/>
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
+    <text x="400" y="190" text-anchor="middle" font-size="28" font-weight="700" fill="#f0f6fc">Star History</text>
+    <text x="400" y="232" text-anchor="middle" font-size="18" fill="#8b949e">Besty0728/Unity-Skills</text>
+    <path d="M130 350 C260 310 345 330 455 250 S620 130 690 165" fill="none" stroke="#ff6b6b" stroke-width="5" stroke-linecap="round"/>
+    <text x="400" y="398" text-anchor="middle" font-size="15" fill="#8b949e">Static chart will update after the scheduled workflow runs.</text>
+  </g>
+</svg>
