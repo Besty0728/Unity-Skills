@@ -56,7 +56,16 @@ jobs:
           (cd "${STAR_HISTORY_SOURCE_DIR}" && pnpm install --frozen-lockfile)
           (cd "${STAR_HISTORY_SOURCE_DIR}/backend" && pnpm install --frozen-lockfile)
 
-      - name: Allow official renderer to use a free port
+      - name: Prepare local Star History data
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/prepare_star_history_data.py \
+            --repository "${STAR_HISTORY_REPOSITORY}" \
+            --output "${RUNNER_TEMP}/star-history-data.json"
+
+      - name: Seed official renderer and allow a free port
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -65,6 +74,46 @@ jobs:
 
           path = Path(os.environ["STAR_HISTORY_SOURCE_DIR"]) / "backend/main.ts"
           source = path.read_text(encoding="utf-8")
+          original_startup = """const startServer = async () => {
+            await initTokenFromEnv();
+            initOgAssets();
+            const repoStore = loadRepos();
+
+            const app = new Hono();"""
+          patched_startup = """const startServer = async () => {
+            const seedPath = process.env.STAR_HISTORY_DATA_PATH;
+            if (!seedPath) {
+              await initTokenFromEnv();
+            }
+            initOgAssets();
+            const repoStore = loadRepos();
+
+            if (seedPath) {
+              const fs = await import("node:fs");
+              const seed = JSON.parse(fs.readFileSync(seedPath, "utf8"));
+              const series = seed.series;
+              if (!Array.isArray(series) || series.length === 0) {
+                throw new Error("Invalid STAR_HISTORY_DATA_PATH payload");
+              }
+              for (const item of series) {
+                const repository = String(item.repository || "").toLowerCase();
+                const starRecords = item.star_records;
+                const logoUrl = String(item.logo_url || "");
+                if (!repository || !Array.isArray(starRecords) || starRecords.length === 0 || !logoUrl) {
+                  throw new Error("Invalid STAR_HISTORY_DATA_PATH series");
+                }
+                cache.set(repository, {
+                  starRecords,
+                  starAmount: starRecords[starRecords.length - 1].count,
+                  logoUrl,
+                });
+              }
+            }
+
+            const app = new Hono();"""
+          if original_startup not in source:
+              raise SystemExit("official renderer startup changed upstream")
+          source = source.replace(original_startup, patched_startup)
           original_server = "serve({ fetch: app.fetch, port: 8080 }, () => {"
           patched_server = "const port = Number(process.env.PORT || 8080);\n  serve({ fetch: app.fetch, port }, () => {"
           if original_server not in source and patched_server not in source:
@@ -81,48 +130,11 @@ jobs:
           PY
 
       - name: Render static Star History charts
-        env:
-          STAR_HISTORY_TOKEN: ${{ secrets.STAR_HISTORY_TOKEN }}
-          GH_STARGAZERS_TOKEN: ${{ secrets.GH_STARGAZERS_TOKEN }}
-          GITHUB_JOB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          token_file="${RUNNER_TEMP}/star-history-token.env"
+          data_file="${RUNNER_TEMP}/star-history-data.json"
           server_log="${RUNNER_TEMP}/star-history-backend.log"
-          if [[ -n "${STAR_HISTORY_TOKEN}" ]]; then
-            printf '%s\n' "${STAR_HISTORY_TOKEN}" > "${token_file}"
-            api_token="${STAR_HISTORY_TOKEN}"
-          elif [[ -n "${GH_STARGAZERS_TOKEN}" ]]; then
-            printf '%s\n' "${GH_STARGAZERS_TOKEN}" > "${token_file}"
-            api_token="${GH_STARGAZERS_TOKEN}"
-          elif [[ -n "${GITHUB_JOB_TOKEN}" ]]; then
-            printf '%s\n' "${GITHUB_JOB_TOKEN}" > "${token_file}"
-            api_token="${GITHUB_JOB_TOKEN}"
-          else
-            echo "::error::No GitHub token is available for Star History rendering."
-            exit 1
-          fi
-
-          probe_file="${RUNNER_TEMP}/star-history-token-probe.json"
-          curl --fail --silent --show-error --location --max-time 30 \
-            -H "Accept: application/vnd.github.star+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            -H "Authorization: token ${api_token}" \
-            "https://api.github.com/repos/${STAR_HISTORY_REPOSITORY}/stargazers?per_page=1" \
-            --output "${probe_file}"
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          probe = json.loads(Path(os.environ["RUNNER_TEMP"], "star-history-token-probe.json").read_text())
-          if not isinstance(probe, list) or not probe:
-              raise SystemExit("GitHub token probe returned no stargazers")
-          if "starred_at" not in probe[0]:
-              raise SystemExit("GitHub token probe did not include starred_at")
-          print("GitHub token probe passed for timestamped stargazers.")
-          PY
 
           cleanup() {
             if [[ -n "${server_pid:-}" ]]; then
@@ -135,7 +147,9 @@ jobs:
           (cd "${STAR_HISTORY_SOURCE_DIR}/backend" && pnpm run build)
           (
             cd "${STAR_HISTORY_SOURCE_DIR}/backend"
-            ENVPATH="${token_file}" PORT="${STAR_HISTORY_PORT}" pnpm exec tsx main.ts
+            STAR_HISTORY_DATA_PATH="${data_file}" \
+              PORT="${STAR_HISTORY_PORT}" \
+              pnpm exec tsx main.ts
           ) >"${server_log}" 2>&1 &
           server_pid=$!
 
