@@ -68,6 +68,7 @@ namespace UnitySkills
     /// NeverInSemi (incl. FullAuto write skills) executes directly; only NeverInSemi
     /// (Delete / MayEnterPlayMode / MayTriggerReload / RiskLevel=high) returns MODE_FORBIDDEN.
     /// </summary>
+    [InitializeOnLoad]
     public static class SkillsModeManager
     {
         public enum AccessResult { Allowed, NeedsGrant, Forbidden }
@@ -82,6 +83,20 @@ namespace UnitySkills
         private const string PrefKeyMigrationDone = "UnitySkills_AllowlistMigratedFromGranted";
         /// <summary>旧 GrantedSkills key（仅用于一次性迁移读取，迁移后不删除以便回滚）。</summary>
         private const string PrefKeyLegacyGranted = "UnitySkills_GrantedSkills";
+
+        // ResetForTests temporarily clears these machine-wide preferences. SessionState survives
+        // a domain reload, allowing the user's settings to be restored if a test run is interrupted.
+        private const string TestRecoveryActiveKey = "UnitySkills.Tests.PreferenceRecovery.Active";
+        private const string TestRecoveryModeExistsKey = "UnitySkills.Tests.PreferenceRecovery.Mode.Exists";
+        private const string TestRecoveryModeValueKey = "UnitySkills.Tests.PreferenceRecovery.Mode.Value";
+        private const string TestRecoveryPanelApprovalExistsKey = "UnitySkills.Tests.PreferenceRecovery.PanelApproval.Exists";
+        private const string TestRecoveryPanelApprovalValueKey = "UnitySkills.Tests.PreferenceRecovery.PanelApproval.Value";
+        private const string TestRecoveryAllowlistExistsKey = "UnitySkills.Tests.PreferenceRecovery.Allowlist.Exists";
+        private const string TestRecoveryAllowlistValueKey = "UnitySkills.Tests.PreferenceRecovery.Allowlist.Value";
+        private const string TestRecoveryMigrationExistsKey = "UnitySkills.Tests.PreferenceRecovery.Migration.Exists";
+        private const string TestRecoveryMigrationValueKey = "UnitySkills.Tests.PreferenceRecovery.Migration.Value";
+        private const string TestRecoveryLegacyGrantedExistsKey = "UnitySkills.Tests.PreferenceRecovery.LegacyGranted.Exists";
+        private const string TestRecoveryLegacyGrantedValueKey = "UnitySkills.Tests.PreferenceRecovery.LegacyGranted.Value";
 
         private const int DefaultGrantTtlSeconds = 300;
         private const int MaxLiveGrants = 256;
@@ -135,6 +150,11 @@ namespace UnitySkills
         private static readonly TimeSpan OneShotLifetime = TimeSpan.FromSeconds(30);
 
         public static event Action OnChanged;
+
+        static SkillsModeManager()
+        {
+            RestorePreferencesAfterTestDomainReload();
+        }
 
         // ===== Properties =====
 
@@ -622,6 +642,7 @@ namespace UnitySkills
         /// <summary>Test-only: clear all state (allowlist, pending, prefs, migration flag) to a clean slate.</summary>
         internal static void ResetForTests()
         {
+            CapturePreferencesForTestRecovery();
             _grants.Clear();
             lock (_allowlistLock)
             {
@@ -635,6 +656,29 @@ namespace UnitySkills
             EditorPrefs.DeleteKey(PrefKeyMigrationDone);
             EditorPrefs.DeleteKey(PrefKeyLegacyGranted);
             RaiseChanged();
+        }
+
+        /// <summary>Test-only: clears recovery data after the fixture restores its original preferences.</summary>
+        internal static void CompleteTestPreferenceRecovery()
+        {
+            ClearTestPreferenceRecovery();
+        }
+
+        /// <summary>Test-only: simulates the recovery performed by the static initializer after a domain reload.</summary>
+        internal static void RestorePreferencesAfterTestDomainReload()
+        {
+            if (!SessionState.GetBool(TestRecoveryActiveKey, false)) return;
+
+            RestoreStringPreference(PrefKeyMode, TestRecoveryModeExistsKey, TestRecoveryModeValueKey);
+            RestoreBoolPreference(PrefKeyPanelApproval, TestRecoveryPanelApprovalExistsKey,
+                TestRecoveryPanelApprovalValueKey);
+            RestoreStringPreference(PrefKeyAllowlist, TestRecoveryAllowlistExistsKey,
+                TestRecoveryAllowlistValueKey);
+            RestoreBoolPreference(PrefKeyMigrationDone, TestRecoveryMigrationExistsKey,
+                TestRecoveryMigrationValueKey);
+            RestoreStringPreference(PrefKeyLegacyGranted, TestRecoveryLegacyGrantedExistsKey,
+                TestRecoveryLegacyGrantedValueKey);
+            ClearTestPreferenceRecovery();
         }
 
         /// <summary>Look up a pending grant entry by token (internal — used by SkillRouter to surface argsSummary).</summary>
@@ -793,6 +837,67 @@ namespace UnitySkills
                 foreach (var b in hash) sb.Append(b.ToString("x2"));
                 return sb.ToString();
             }
+        }
+
+        private static void CapturePreferencesForTestRecovery()
+        {
+            if (SessionState.GetBool(TestRecoveryActiveKey, false)) return;
+
+            StoreStringPreference(PrefKeyMode, TestRecoveryModeExistsKey, TestRecoveryModeValueKey);
+            StoreBoolPreference(PrefKeyPanelApproval, TestRecoveryPanelApprovalExistsKey,
+                TestRecoveryPanelApprovalValueKey);
+            StoreStringPreference(PrefKeyAllowlist, TestRecoveryAllowlistExistsKey,
+                TestRecoveryAllowlistValueKey);
+            StoreBoolPreference(PrefKeyMigrationDone, TestRecoveryMigrationExistsKey,
+                TestRecoveryMigrationValueKey);
+            StoreStringPreference(PrefKeyLegacyGranted, TestRecoveryLegacyGrantedExistsKey,
+                TestRecoveryLegacyGrantedValueKey);
+            SessionState.SetBool(TestRecoveryActiveKey, true);
+        }
+
+        private static void StoreStringPreference(string preferenceKey, string existsKey, string valueKey)
+        {
+            var exists = EditorPrefs.HasKey(preferenceKey);
+            SessionState.SetBool(existsKey, exists);
+            SessionState.SetString(valueKey, exists ? EditorPrefs.GetString(preferenceKey) : string.Empty);
+        }
+
+        private static void StoreBoolPreference(string preferenceKey, string existsKey, string valueKey)
+        {
+            var exists = EditorPrefs.HasKey(preferenceKey);
+            SessionState.SetBool(existsKey, exists);
+            SessionState.SetBool(valueKey, exists && EditorPrefs.GetBool(preferenceKey));
+        }
+
+        private static void RestoreStringPreference(string preferenceKey, string existsKey, string valueKey)
+        {
+            if (SessionState.GetBool(existsKey, false))
+                EditorPrefs.SetString(preferenceKey, SessionState.GetString(valueKey, string.Empty));
+            else
+                EditorPrefs.DeleteKey(preferenceKey);
+        }
+
+        private static void RestoreBoolPreference(string preferenceKey, string existsKey, string valueKey)
+        {
+            if (SessionState.GetBool(existsKey, false))
+                EditorPrefs.SetBool(preferenceKey, SessionState.GetBool(valueKey, false));
+            else
+                EditorPrefs.DeleteKey(preferenceKey);
+        }
+
+        private static void ClearTestPreferenceRecovery()
+        {
+            SessionState.EraseBool(TestRecoveryActiveKey);
+            SessionState.EraseBool(TestRecoveryModeExistsKey);
+            SessionState.EraseString(TestRecoveryModeValueKey);
+            SessionState.EraseBool(TestRecoveryPanelApprovalExistsKey);
+            SessionState.EraseBool(TestRecoveryPanelApprovalValueKey);
+            SessionState.EraseBool(TestRecoveryAllowlistExistsKey);
+            SessionState.EraseString(TestRecoveryAllowlistValueKey);
+            SessionState.EraseBool(TestRecoveryMigrationExistsKey);
+            SessionState.EraseBool(TestRecoveryMigrationValueKey);
+            SessionState.EraseBool(TestRecoveryLegacyGrantedExistsKey);
+            SessionState.EraseString(TestRecoveryLegacyGrantedValueKey);
         }
 
         /// <summary>
