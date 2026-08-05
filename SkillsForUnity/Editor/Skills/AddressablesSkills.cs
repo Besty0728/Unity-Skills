@@ -26,7 +26,6 @@ namespace UnitySkills
     public static class AddressablesSkills
     {
         private const string EditorAssemblyName  = "Unity.Addressables.Editor";
-        private const string RuntimeAssemblyName = "Unity.Addressables";
         private const string PackageId           = "com.unity.addressables";
         private const string DocsUrl             = "https://docs.unity3d.com/Packages/com.unity.addressables@latest";
 
@@ -68,21 +67,6 @@ namespace UnitySkills
 
         private static Type DefaultObjectType =>
             AddrType("UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject");
-
-        private static Type SettingsType =>
-            AddrType("UnityEditor.AddressableAssets.Settings.AddressableAssetSettings");
-
-        private static Type GroupType =>
-            AddrType("UnityEditor.AddressableAssets.Settings.AddressableAssetGroup");
-
-        private static Type EntryType =>
-            AddrType("UnityEditor.AddressableAssets.Settings.AddressableAssetEntry");
-
-        private static Type ProfileSettingsType =>
-            AddrType("UnityEditor.AddressableAssets.Settings.AddressableAssetProfileSettings");
-
-        private static Type BuildScriptType =>
-            AddrType("UnityEditor.AddressableAssets.Build.DataBuilders.BuildScriptPackedMode");
 
         /// <summary>Retrieves the AddressableAssetSettings singleton; returns null when not configured.</summary>
         private static object GetSettings()
@@ -133,6 +117,15 @@ namespace UnitySkills
             return v is T t ? t : default;
         }
 
+        private static bool IsDefaultGroup(object settings, object group)
+        {
+            if (ReferenceEquals(Prop(settings, "DefaultGroup"), group))
+                return true;
+
+            var method = group?.GetType().GetMethod("IsDefaultGroup", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            return method?.Invoke(group, null) is bool value ? value : PropT<bool>(group, "IsDefaultGroup");
+        }
+
         // ==================================================================================
         // Skills
         // ==================================================================================
@@ -167,8 +160,7 @@ namespace UnitySkills
             string version = null;
             try
             {
-                var asmName = editorAsm.GetName();
-                version = asmName.Version?.ToString();
+                version = UnityEditor.PackageManager.PackageInfo.FindForAssembly(editorAsm)?.version;
             }
             catch { }
 
@@ -215,13 +207,13 @@ namespace UnitySkills
 
                     var groupName = PropT<string>(group, "Name") ?? PropT<string>(group, "name");
                     var groupGuid = PropT<string>(group, "Guid");
-                    var isDefault = PropT<bool>(group, "IsDefaultGroup");
+                    var isDefault = IsDefaultGroup(settings, group);
                     var readOnly = PropT<bool>(group, "ReadOnly");
 
                     // Count entries
                     var entriesProp = group.GetType().GetProperty("entries");
-                    var entriesList = entriesProp?.GetValue(group) as System.Collections.IList;
-                    int entryCount = entriesList?.Count ?? 0;
+                    var entries = entriesProp?.GetValue(group);
+                    int entryCount = entries is System.Collections.ICollection collection ? collection.Count : 0;
 
                     results.Add(new
                     {
@@ -264,12 +256,18 @@ namespace UnitySkills
 
             try
             {
-                // Call settings.CreateGroup(groupName, setAsDefaultGroup: false, readOnly: false, postEvent: true, schemasToCopy: null)
-                var createMethod = settings.GetType().GetMethod("CreateGroup",
-                    BindingFlags.Public | BindingFlags.Instance);
+                var createMethod = settings.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                    .FirstOrDefault(method => method.Name == "CreateGroup" && method.GetParameters().Length == 6 &&
+                                              method.GetParameters()[4].ParameterType.IsGenericType &&
+                                              method.GetParameters()[5].ParameterType == typeof(Type[]));
 
                 if (createMethod == null)
                     return new { error = "CreateGroup method not found on AddressableAssetSettings" };
+
+                var bundledSchemaType = AddrType("UnityEditor.AddressableAssets.Settings.GroupSchemas.BundledAssetGroupSchema");
+                var contentUpdateSchemaType = AddrType("UnityEditor.AddressableAssets.Settings.GroupSchemas.ContentUpdateGroupSchema");
+                if (bundledSchemaType == null || contentUpdateSchemaType == null)
+                    return new { error = "Required Addressables group schema types were not found" };
 
                 object newGroup = createMethod.Invoke(settings, new object[]
                 {
@@ -277,7 +275,8 @@ namespace UnitySkills
                     false,  // setAsDefaultGroup
                     false,  // readOnly
                     true,   // postEvent
-                    null    // schemasToCopy
+                    null,   // schemasToCopy
+                    new[] { bundledSchemaType, contentUpdateSchemaType }
                 });
 
                 if (newGroup == null)
@@ -542,8 +541,9 @@ namespace UnitySkills
                 if (buildMethodType == null)
                     return new { error = "AddressableAssetSettings type not found" };
 
-                var buildMethod = buildMethodType.GetMethod("BuildPlayerContent",
-                    BindingFlags.Public | BindingFlags.Static);
+                var buildMethod = buildMethodType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .FirstOrDefault(method => method.Name == "BuildPlayerContent" && method.GetParameters().Length == 1 &&
+                                              method.GetParameters()[0].ParameterType.IsByRef);
 
                 if (buildMethod == null)
                     return new { error = "BuildPlayerContent method not found" };
@@ -558,8 +558,10 @@ namespace UnitySkills
 
                 var duration = (DateTime.UtcNow - startTime).TotalSeconds;
 
-                // The result object would be in parameters[0] if we had the type available
-                // For now, we assume success if no exception was thrown
+                var buildError = PropT<string>(parameters[0], "Error");
+                if (!string.IsNullOrEmpty(buildError))
+                    return new { success = false, duration, error = buildError };
+
                 return new
                 {
                     success = true,
@@ -619,7 +621,7 @@ namespace UnitySkills
                     return new { error = $"Group not found: {groupName}" };
 
                 // Check if it's default group (can't delete)
-                var isDefault = PropT<bool>(targetGroup, "IsDefaultGroup");
+                var isDefault = IsDefaultGroup(settings, targetGroup);
                 if (isDefault)
                     return new { error = $"Cannot delete default group: {groupName}" };
 
