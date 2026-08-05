@@ -122,6 +122,8 @@ namespace UnitySkills
             "verbose",
             "offset",
             "limit",
+            "pageOffset",
+            "pageLimit",
             "_confirm"
         };
 
@@ -665,7 +667,31 @@ namespace UnitySkills
                 int? offset = null;
                 int? limit = null;
 
-                if (!SkillDeclaresParameter(skill, "offset") &&
+                if (args.TryGetValue("pageOffset", StringComparison.OrdinalIgnoreCase, out var pageOffsetToken))
+                {
+                    if (!TryReadPagingArg(pageOffsetToken, "pageOffset", 0, out var value, out var error))
+                    {
+                        UnwindBeforeInvoke(autoStartedWorkflow, workflowSnapshotCountBefore, undoGroup);
+                        return SkillErrorResponse.Build(SkillErrorCode.TypeMismatch, error, skill: name,
+                            retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                    }
+                    offset = value;
+                    args.Remove("pageOffset");
+                }
+
+                if (args.TryGetValue("pageLimit", StringComparison.OrdinalIgnoreCase, out var pageLimitToken))
+                {
+                    if (!TryReadPagingArg(pageLimitToken, "pageLimit", 1, out var value, out var error))
+                    {
+                        UnwindBeforeInvoke(autoStartedWorkflow, workflowSnapshotCountBefore, undoGroup);
+                        return SkillErrorResponse.Build(SkillErrorCode.TypeMismatch, error, skill: name,
+                            retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                    }
+                    limit = value;
+                    args.Remove("pageLimit");
+                }
+
+                if (!offset.HasValue && !SkillDeclaresParameter(skill, "offset") &&
                     args.TryGetValue("offset", StringComparison.OrdinalIgnoreCase, out var offsetToken))
                 {
                     if (!TryReadPagingArg(offsetToken, "offset", minValue: 0, out var offsetValue, out var offsetError))
@@ -683,7 +709,7 @@ namespace UnitySkills
                     args.Remove("offset");
                 }
 
-                if (!SkillDeclaresParameter(skill, "limit") &&
+                if (!limit.HasValue && !SkillDeclaresParameter(skill, "limit") &&
                     args.TryGetValue("limit", StringComparison.OrdinalIgnoreCase, out var limitToken))
                 {
                     if (!TryReadPagingArg(limitToken, "limit", minValue: 1, out var limitValue, out var limitError))
@@ -778,8 +804,8 @@ namespace UnitySkills
                     // 1. Convert result to JToken to inspect it
                     var jsonResult = JToken.FromObject(result);
 
-                    // 2. Check if it's a large Array (> 10 items, or any array with explicit offset/limit)
-                    if (jsonResult is JArray arr && (arr.Count > 10 || offset.HasValue || limit.HasValue))
+                    var arr = FindPageArray(jsonResult, out var arrayProperty);
+                    if (arr != null && (arr.Count > 10 || offset.HasValue || limit.HasValue))
                     {
                         int startIndex = offset ?? 0;
                         int pageSize = limit ?? 5;
@@ -798,10 +824,18 @@ namespace UnitySkills
                                 ["items"] = new JArray(),
                                 ["hint"] = $"Offset {startIndex} is beyond array bounds (totalCount: {arr.Count}). To see items, pass a lower 'offset' value."
                             };
+                            if (arrayProperty != null)
+                            {
+                                var preserved = (JObject)jsonResult.DeepClone();
+                                preserved[arrayProperty] = new JArray();
+                                foreach (var property in emptyWrapper.Properties().Where(property => property.Name != "items"))
+                                    preserved[property.Name] = property.Value;
+                                return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs);
+                            }
                             return SerializeSuccessResponse(emptyWrapper, sceneDiff, workflowEndMs);
                         }
 
-                        int endIndex = Math.Min(startIndex + pageSize, arr.Count);
+                        int endIndex = (int)Math.Min((long)startIndex + pageSize, arr.Count);
                         int actualCount = endIndex - startIndex;
 
                         var paginatedItems = new JArray();
@@ -830,6 +864,15 @@ namespace UnitySkills
                         else
                         {
                             wrapper["hint"] = $"Showing items {startIndex}-{endIndex - 1} of {arr.Count} (last page).";
+                        }
+
+                        if (arrayProperty != null)
+                        {
+                            var preserved = (JObject)jsonResult.DeepClone();
+                            preserved[arrayProperty] = paginatedItems;
+                            foreach (var property in wrapper.Properties().Where(property => property.Name != "items"))
+                                preserved[property.Name] = property.Value;
+                            return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs);
                         }
 
                         return SerializeSuccessResponse(wrapper, sceneDiff, workflowEndMs);
@@ -1454,20 +1497,14 @@ namespace UnitySkills
             value = 0;
             error = null;
 
-            int parsed;
-            try
+            var raw = token.Type == JTokenType.Integer
+                ? token.ToString(Formatting.None)
+                : token.Type == JTokenType.String ? token.Value<string>()?.Trim() : null;
+            if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out var parsed))
             {
-                parsed = token.ToObject<int>();
-            }
-            catch (Exception)
-            {
-                var raw = token.Type == JTokenType.String ? token.Value<string>()?.Trim() : null;
-                if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer,
-                        System.Globalization.CultureInfo.InvariantCulture, out parsed))
-                {
-                    error = $"Parameter '{parameterName}' must be an integer, got: {token.ToString(Formatting.None)}";
-                    return false;
-                }
+                error = $"Parameter '{parameterName}' must be an integer, got: {token.ToString(Formatting.None)}";
+                return false;
             }
 
             if (parsed < minValue)
@@ -1480,6 +1517,25 @@ namespace UnitySkills
 
             value = parsed;
             return true;
+        }
+
+        private static JArray FindPageArray(JToken result, out string propertyName)
+        {
+            propertyName = null;
+            if (result is JArray array)
+                return array;
+            if (!(result is JObject obj))
+                return null;
+
+            foreach (var name in new[] { "items", "assets", "objects", "groups", "entries" })
+            {
+                if (obj[name] is JArray nested)
+                {
+                    propertyName = name;
+                    return nested;
+                }
+            }
+            return null;
         }
 
         /// <summary>

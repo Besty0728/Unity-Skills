@@ -1,5 +1,6 @@
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
+using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -19,6 +20,7 @@ namespace UnitySkills.Tests.Core
     [TestFixture]
     public class SkillRouterExecuteEndToEndTests
     {
+        private const string PaginationAssetPrefix = "Assets/UnitySkillsPaginationProbe";
         private const string PrefKeyMode = "UnitySkills_OperatingMode";
         private const string PrefKeyPanelApproval = "UnitySkills_PanelApprovalRequired";
 
@@ -58,12 +60,39 @@ namespace UnitySkills.Tests.Core
         [TearDown]
         public void TearDown()
         {
+            for (var i = 0; i < 3; i++)
+                AssetDatabase.DeleteAsset($"{PaginationAssetPrefix}{i}.txt");
             SkillsModeManager.ClearOneShotBypass();
             SkillsModeManager.ResetForTests();
             SkillsModeManager.ExistingInstallOverrideForTests = null;
             SkillsAuditLog.ResetForTests();
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             GameObjectFinder.InvalidateCache();
+        }
+
+        [Test]
+        public void Execute_AssetFind_PagesNestedAssetsAndPreservesMetadata()
+        {
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
+            for (var i = 0; i < 3; i++)
+            {
+                File.WriteAllText($"{PaginationAssetPrefix}{i}.txt", i.ToString());
+                AssetDatabase.ImportAsset($"{PaginationAssetPrefix}{i}.txt");
+            }
+
+            var full = JObject.Parse(SkillRouter.Execute("asset_find",
+                "{\"searchFilter\":\"UnitySkillsPaginationProbe\",\"limit\":10,\"verbose\":false}"));
+            var page = JObject.Parse(SkillRouter.Execute("asset_find",
+                "{\"searchFilter\":\"UnitySkillsPaginationProbe\",\"limit\":10,\"pageOffset\":1,\"pageLimit\":1,\"verbose\":false}"));
+
+            Assert.That(page["status"]?.ToString(), Is.EqualTo("success"));
+            Assert.That(page["result"]?["count"]?.Value<int>(), Is.EqualTo(3));
+            Assert.That(page["result"]?["totalFound"]?.Value<int>(), Is.EqualTo(3));
+            Assert.That(page["result"]?["assets"], Has.Count.EqualTo(1));
+            Assert.That(page["result"]?["assets"]?[0]?["path"]?.ToString(),
+                Is.EqualTo(full["result"]?["assets"]?[1]?["path"]?.ToString()));
+            Assert.That(page["result"]?["offset"]?.Value<int>(), Is.EqualTo(1));
+            Assert.That(page["result"]?["limit"]?.Value<int>(), Is.EqualTo(1));
         }
 
         [Test]
