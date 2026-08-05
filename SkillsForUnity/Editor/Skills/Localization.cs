@@ -13,6 +13,8 @@ namespace UnitySkills
         public enum Language { English, Chinese, Russian }
 
         private const string PREF_LANGUAGE = "UnitySkills_Language";
+        private const string PREF_PINNED_PRIMARY = "UnitySkills_PinnedLanguagePrimary";
+        private const string PREF_PINNED_SECONDARY = "UnitySkills_PinnedLanguageSecondary";
         private static bool _initialized = false;
         private static Language _current = Language.English;
 
@@ -48,6 +50,33 @@ namespace UnitySkills
                     catch (Exception ex) { SkillsLogger.LogWarning($"LanguageChanged handler failed: {ex.Message}"); }
                 }
             }
+        }
+
+        public static Language PinnedPrimary
+        {
+            get => ReadPinned(PREF_PINNED_PRIMARY, Language.English);
+            set => SetPinned(PREF_PINNED_PRIMARY, PREF_PINNED_SECONDARY, value);
+        }
+
+        public static Language PinnedSecondary
+        {
+            get => ReadPinned(PREF_PINNED_SECONDARY, Language.Chinese);
+            set => SetPinned(PREF_PINNED_SECONDARY, PREF_PINNED_PRIMARY, value);
+        }
+
+        private static Language ReadPinned(string key, Language fallback)
+        {
+            int saved = EditorPrefs.GetInt(key, (int)fallback);
+            return Enum.IsDefined(typeof(Language), saved) ? (Language)saved : fallback;
+        }
+
+        private static void SetPinned(string key, string otherKey, Language value)
+        {
+            var previous = ReadPinned(key, key == PREF_PINNED_PRIMARY ? Language.English : Language.Chinese);
+            if (ReadPinned(otherKey, otherKey == PREF_PINNED_PRIMARY ? Language.English : Language.Chinese) == value)
+                EditorPrefs.SetInt(otherKey, (int)previous);
+            EditorPrefs.SetInt(key, (int)value);
+            LanguageChanged?.Invoke();
         }
 
         public static string Get(string key)
@@ -201,6 +230,7 @@ namespace UnitySkills
             {"footer_queue", "Pending"},
             {"footer_done", "Done"},
             {"footer_lang_tooltip", "Switch language"},
+            {"language_pins_title", "Pinned languages"},
 
             {"skills_search_placeholder", "Search skills…"},
             {"skills_count_format", "{0} skills · {1} categories"},
@@ -1345,6 +1375,7 @@ namespace UnitySkills
             {"footer_queue", "待处理"},
             {"footer_done", "已完成"},
             {"footer_lang_tooltip", "切换语言"},
+            {"language_pins_title", "固定语言"},
 
             {"skills_search_placeholder", "搜索 Skill…"},
             {"skills_count_format", "{0} 个 Skill · {1} 个分组"},
@@ -2553,6 +2584,7 @@ namespace UnitySkills
             {"footer_queue", "В ожидании"},
             {"footer_done", "Готово"},
             {"footer_lang_tooltip", "Сменить язык"},
+            {"language_pins_title", "Закреплённые языки"},
 
             {"skills_search_placeholder", "Поиск skills…"},
             {"skills_count_format", "{0} skills · {1} категорий"},

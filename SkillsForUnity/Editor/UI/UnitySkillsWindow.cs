@@ -79,12 +79,16 @@ namespace UnitySkills
         private void OnDisable()
         {
             SkillsModeManager.OnChanged -= Repaint;
+            SkillsLocalization.LanguageChanged -= RefreshLocalization;
             _liveUpdateItem?.Pause();
             _liveUpdateItem = null;
         }
 
         public void CreateGUI()
         {
+            SkillsLocalization.LanguageChanged -= RefreshLocalization;
+            SkillsLocalization.LanguageChanged += RefreshLocalization;
+
             // Load USS first so :root variables resolve when UXML clones
             var uss = AssetDatabase.LoadAssetAtPath<StyleSheet>(UssPath);
             if (uss != null) rootVisualElement.styleSheets.Add(uss);
@@ -200,11 +204,12 @@ namespace UnitySkills
         {
             if (SkillsLocalization.Current == lang) return;
             SkillsLocalization.Current = lang;
-            RefreshLocalization();
         }
 
         public void RefreshLocalization()
         {
+            UISkillsFont.Apply(rootVisualElement);
+
             // Main tabs
             if (_tabButtons[0] != null) _tabButtons[0].text = SkillsLocalization.Get("tab_skills");
             if (_tabButtons[1] != null) _tabButtons[1].text = SkillsLocalization.Get("tab_ai_config");

@@ -31,6 +31,10 @@ namespace UnitySkills
         private readonly VisualElement _root;
         private readonly UnitySkillsWindow _window;
 
+        private Label _languagePinsTitle;
+        private DropdownField _languagePinPrimary;
+        private DropdownField _languagePinSecondary;
+
         private VisualElement _drawerContainer;
         private VisualElement _drawerMask;
 
@@ -209,6 +213,9 @@ namespace UnitySkills
             _statsGroupTitle = _drawerContainer.Q<Label>("group-stats-title");
             _statsHint       = _drawerContainer.Q<Label>("stats-hint");
             _statsResetBtn   = _drawerContainer.Q<Button>("stats-reset-btn");
+            _languagePinsTitle = _drawerContainer.Q<Label>("language-pins-title");
+            _languagePinPrimary = _drawerContainer.Q<DropdownField>("language-pin-primary");
+            _languagePinSecondary = _drawerContainer.Q<DropdownField>("language-pin-secondary");
         }
 
         private void BindEvents()
@@ -309,6 +316,13 @@ namespace UnitySkills
                 {
                     SkillsHttpServer.ResetStatistics();
                 };
+
+            if (_languagePinPrimary != null)
+                _languagePinPrimary.RegisterValueChangedCallback(evt =>
+                    SkillsLocalization.PinnedPrimary = ParseLanguage(evt.newValue));
+            if (_languagePinSecondary != null)
+                _languagePinSecondary.RegisterValueChangedCallback(evt =>
+                    SkillsLocalization.PinnedSecondary = ParseLanguage(evt.newValue));
         }
 
         private void InitializeValues()
@@ -355,6 +369,7 @@ namespace UnitySkills
             if (_keepaliveField != null) _keepaliveField.value   = SkillsHttpServer.KeepAliveIntervalSeconds;
             if (_confirmToggle  != null) _confirmToggle.value    = ConfirmationTokenService.RequireConfirmation;
             if (_telemetryToggle != null) _telemetryToggle.value = SkillTelemetryService.Enabled;
+            RefreshLanguagePins();
         }
 
         public void Open()
@@ -447,9 +462,29 @@ namespace UnitySkills
 
             if (_statsHint     != null) _statsHint.text     = SkillsLocalization.Get("drawer_stats_hint");
             if (_statsResetBtn != null) _statsResetBtn.text = SkillsLocalization.Get("drawer_reset_stats_btn");
+            if (_languagePinsTitle != null) _languagePinsTitle.text = SkillsLocalization.Get("language_pins_title");
+            RefreshLanguagePins();
 
             _shortcutsController?.RefreshLocalization();
         }
+
+        private void RefreshLanguagePins()
+        {
+            var choices = new List<string> { "English", "Chinese", "Russian" };
+            if (_languagePinPrimary != null)
+            {
+                _languagePinPrimary.choices = choices;
+                _languagePinPrimary.SetValueWithoutNotify(SkillsLocalization.PinnedPrimary.ToString());
+            }
+            if (_languagePinSecondary != null)
+            {
+                _languagePinSecondary.choices = choices;
+                _languagePinSecondary.SetValueWithoutNotify(SkillsLocalization.PinnedSecondary.ToString());
+            }
+        }
+
+        private static SkillsLocalization.Language ParseLanguage(string value) =>
+            (SkillsLocalization.Language)Enum.Parse(typeof(SkillsLocalization.Language), value);
 
         // ===== Permissions group helpers =====
 
