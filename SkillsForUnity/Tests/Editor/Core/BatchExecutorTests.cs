@@ -34,6 +34,10 @@ namespace UnitySkills.Tests.Core
             var json = ToJObject(result);
 
             Assert.That(json["success"]?.Value<bool>(), Is.False);
+            Assert.That(json["error"]?.ToString(), Is.Not.Empty);
+            Assert.That(json["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"));
+            Assert.That(json["retryStrategy"]?.ToString(), Is.EqualTo(SkillErrorResponse.RetryFixAndRetry));
+            Assert.That(json["suggestedFixes"], Has.Count.GreaterThan(0));
             Assert.That(json["totalItems"]?.Value<int>(), Is.EqualTo(3));
             Assert.That(json["successCount"]?.Value<int>(), Is.EqualTo(2));
             Assert.That(json["failCount"]?.Value<int>(), Is.EqualTo(1));
