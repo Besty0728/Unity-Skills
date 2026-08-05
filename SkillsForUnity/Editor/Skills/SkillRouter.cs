@@ -822,7 +822,7 @@ namespace UnitySkills
                                 ["limit"] = pageSize,
                                 ["showing"] = 0,
                                 ["items"] = new JArray(),
-                                ["hint"] = $"Offset {startIndex} is beyond array bounds (totalCount: {arr.Count}). To see items, pass a lower 'offset' value."
+                                ["hint"] = $"Offset {startIndex} is beyond array bounds (totalCount: {arr.Count}). To see items, pass a lower 'pageOffset' value."
                             };
                             if (arrayProperty != null)
                             {
@@ -859,7 +859,7 @@ namespace UnitySkills
                         if (hasMore)
                         {
                             wrapper["nextOffset"] = nextOffset;
-                            wrapper["hint"] = $"Showing items {startIndex}-{endIndex - 1} of {arr.Count}. To see more, pass 'offset={nextOffset}' (or 'verbose=true' for all items).";
+                            wrapper["hint"] = $"Showing items {startIndex}-{endIndex - 1} of {arr.Count}. To see more, pass 'pageOffset={nextOffset}' (or 'verbose=true' for all items).";
                         }
                         else
                         {

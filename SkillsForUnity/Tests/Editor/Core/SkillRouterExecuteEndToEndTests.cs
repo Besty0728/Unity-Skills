@@ -93,6 +93,7 @@ namespace UnitySkills.Tests.Core
                 Is.EqualTo(full["result"]?["assets"]?[1]?["path"]?.ToString()));
             Assert.That(page["result"]?["offset"]?.Value<int>(), Is.EqualTo(1));
             Assert.That(page["result"]?["limit"]?.Value<int>(), Is.EqualTo(1));
+            Assert.That(page["result"]?["hint"]?.ToString(), Does.Contain("pageOffset=2"));
         }
 
         [Test]
