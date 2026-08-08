@@ -120,6 +120,10 @@ namespace UnitySkills
         private static readonly HashSet<string> _reservedBodyParameters = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "verbose",
+            "offset",
+            "limit",
+            "pageOffset",
+            "pageLimit",
             "_confirm"
         };
 
@@ -656,6 +660,72 @@ namespace UnitySkills
                     args.Remove("verbose");
                 }
 
+                // Pagination control for Summary Mode.
+                // Skipped when the skill declares a parameter of the same name: 'limit' belongs to
+                // asset_find/light_find_all/... and must reach the skill as its own argument rather
+                // than being consumed as envelope paging (which would also wrap small results).
+                int? offset = null;
+                int? limit = null;
+
+                if (args.TryGetValue("pageOffset", StringComparison.OrdinalIgnoreCase, out var pageOffsetToken))
+                {
+                    if (!TryReadPagingArg(pageOffsetToken, "pageOffset", 0, out var value, out var error))
+                    {
+                        UnwindBeforeInvoke(autoStartedWorkflow, workflowSnapshotCountBefore, undoGroup);
+                        return SkillErrorResponse.Build(SkillErrorCode.TypeMismatch, error, skill: name,
+                            retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                    }
+                    offset = value;
+                    args.Remove("pageOffset");
+                }
+
+                if (args.TryGetValue("pageLimit", StringComparison.OrdinalIgnoreCase, out var pageLimitToken))
+                {
+                    if (!TryReadPagingArg(pageLimitToken, "pageLimit", 1, out var value, out var error))
+                    {
+                        UnwindBeforeInvoke(autoStartedWorkflow, workflowSnapshotCountBefore, undoGroup);
+                        return SkillErrorResponse.Build(SkillErrorCode.TypeMismatch, error, skill: name,
+                            retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                    }
+                    limit = value;
+                    args.Remove("pageLimit");
+                }
+
+                if (!offset.HasValue && !SkillDeclaresParameter(skill, "offset") &&
+                    args.TryGetValue("offset", StringComparison.OrdinalIgnoreCase, out var offsetToken))
+                {
+                    if (!TryReadPagingArg(offsetToken, "offset", minValue: 0, out var offsetValue, out var offsetError))
+                    {
+                        // Nothing was invoked yet; unwind the bookkeeping opened above.
+                        UnwindBeforeInvoke(autoStartedWorkflow, workflowSnapshotCountBefore, undoGroup);
+                        return SkillErrorResponse.Build(
+                            SkillErrorCode.TypeMismatch,
+                            offsetError,
+                            skill: name,
+                            details: new { typeErrors = new object[] { new { parameter = "offset", expectedType = "integer", error = offsetError } } },
+                            retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                    }
+                    offset = offsetValue;
+                    args.Remove("offset");
+                }
+
+                if (!limit.HasValue && !SkillDeclaresParameter(skill, "limit") &&
+                    args.TryGetValue("limit", StringComparison.OrdinalIgnoreCase, out var limitToken))
+                {
+                    if (!TryReadPagingArg(limitToken, "limit", minValue: 1, out var limitValue, out var limitError))
+                    {
+                        UnwindBeforeInvoke(autoStartedWorkflow, workflowSnapshotCountBefore, undoGroup);
+                        return SkillErrorResponse.Build(
+                            SkillErrorCode.TypeMismatch,
+                            limitError,
+                            skill: name,
+                            details: new { typeErrors = new object[] { new { parameter = "limit", expectedType = "integer", error = limitError } } },
+                            retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                    }
+                    limit = limitValue;
+                    args.Remove("limit");
+                }
+
                 var result = skill.Method.Invoke(null, invoke);
 
                 if (!skill.ReadOnly)
@@ -730,26 +800,80 @@ namespace UnitySkills
 
                 if (!verbose && result != null)
                 {
-                    // "Summary Mode" Logic
+                    // "Summary Mode" Logic with Pagination
                     // 1. Convert result to JToken to inspect it
                     var jsonResult = JToken.FromObject(result);
 
-                    // 2. Check if it's a large Array (> 10 items)
-                    if (jsonResult is JArray arr && arr.Count > 10)
+                    var arr = FindPageArray(jsonResult, out var arrayProperty);
+                    if (arr != null && (arr.Count > 10 || offset.HasValue || limit.HasValue))
                     {
-                        var truncatedItems = new JArray();
-                        for (int i = 0; i < 5; i++) truncatedItems.Add(arr[i]);
+                        int startIndex = offset ?? 0;
+                        int pageSize = limit ?? 5;
 
-                        // Return a wrapper object instead of the list
-                        // This keeps 'items' clean (same type) while providing meta info
+                        // Clamp to valid range
+                        if (startIndex >= arr.Count)
+                        {
+                            // offset beyond array bounds — return empty page
+                            var emptyWrapper = new JObject
+                            {
+                                ["isTruncated"] = true,
+                                ["totalCount"] = arr.Count,
+                                ["offset"] = startIndex,
+                                ["limit"] = pageSize,
+                                ["showing"] = 0,
+                                ["items"] = new JArray(),
+                                ["hint"] = $"Offset {startIndex} is beyond array bounds (totalCount: {arr.Count}). To see items, pass a lower 'pageOffset' value."
+                            };
+                            if (arrayProperty != null)
+                            {
+                                var preserved = (JObject)jsonResult.DeepClone();
+                                preserved[arrayProperty] = new JArray();
+                                foreach (var property in emptyWrapper.Properties().Where(property => property.Name != "items"))
+                                    preserved[property.Name] = property.Value;
+                                return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs);
+                            }
+                            return SerializeSuccessResponse(emptyWrapper, sceneDiff, workflowEndMs);
+                        }
+
+                        int endIndex = (int)Math.Min((long)startIndex + pageSize, arr.Count);
+                        int actualCount = endIndex - startIndex;
+
+                        var paginatedItems = new JArray();
+                        for (int i = startIndex; i < endIndex; i++)
+                            paginatedItems.Add(arr[i]);
+
+                        bool hasMore = endIndex < arr.Count;
+                        int? nextOffset = hasMore ? (int?)endIndex : null;
+
+                        // Return a wrapper object with pagination metadata
                         var wrapper = new JObject
                         {
                             ["isTruncated"] = true,
                             ["totalCount"] = arr.Count,
-                            ["showing"] = 5,
-                            ["items"] = truncatedItems,
-                            ["hint"] = "Result is truncated. To see all items, pass 'verbose=true' parameter."
+                            ["offset"] = startIndex,
+                            ["limit"] = pageSize,
+                            ["showing"] = actualCount,
+                            ["items"] = paginatedItems
                         };
+
+                        if (hasMore)
+                        {
+                            wrapper["nextOffset"] = nextOffset;
+                            wrapper["hint"] = $"Showing items {startIndex}-{endIndex - 1} of {arr.Count}. To see more, pass 'pageOffset={nextOffset}' (or 'verbose=true' for all items).";
+                        }
+                        else
+                        {
+                            wrapper["hint"] = $"Showing items {startIndex}-{endIndex - 1} of {arr.Count} (last page).";
+                        }
+
+                        if (arrayProperty != null)
+                        {
+                            var preserved = (JObject)jsonResult.DeepClone();
+                            preserved[arrayProperty] = paginatedItems;
+                            foreach (var property in wrapper.Properties().Where(property => property.Name != "items"))
+                                preserved[property.Name] = property.Value;
+                            return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs);
+                        }
 
                         return SerializeSuccessResponse(wrapper, sceneDiff, workflowEndMs);
                     }
@@ -1355,6 +1479,79 @@ namespace UnitySkills
                 .Concat(new[] { EntityIdParameterName })
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
+
+        /// <summary>
+        /// True when the skill itself declares a parameter with this name. Such names must reach
+        /// the skill as its own argument and must not be consumed as envelope-level paging.
+        /// </summary>
+        private static bool SkillDeclaresParameter(SkillInfo skill, string parameterName) =>
+            skill != null && ContainsParameter(skill.ParameterNames, parameterName);
+
+        /// <summary>
+        /// Reads an envelope paging argument ('offset'/'limit') as an integer >= minValue.
+        /// Accepts JSON numbers and their string forms ("10") so query-string callers work too.
+        /// </summary>
+        private static bool TryReadPagingArg(JToken token, string parameterName, int minValue, out int value, out string error)
+        {
+            value = 0;
+            error = null;
+
+            var raw = token.Type == JTokenType.Integer
+                ? token.ToString(Formatting.None)
+                : token.Type == JTokenType.String ? token.Value<string>()?.Trim() : null;
+            if (!int.TryParse(raw, System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out var parsed))
+            {
+                error = $"Parameter '{parameterName}' must be an integer, got: {token.ToString(Formatting.None)}";
+                return false;
+            }
+
+            if (parsed < minValue)
+            {
+                error = minValue <= 0
+                    ? $"Parameter '{parameterName}' must be a non-negative integer, got: {parsed}"
+                    : $"Parameter '{parameterName}' must be a positive integer, got: {parsed}";
+                return false;
+            }
+
+            value = parsed;
+            return true;
+        }
+
+        private static JArray FindPageArray(JToken result, out string propertyName)
+        {
+            propertyName = null;
+            if (result is JArray array)
+                return array;
+            if (!(result is JObject obj))
+                return null;
+
+            foreach (var name in new[] { "items", "assets", "objects", "groups", "entries" })
+            {
+                if (obj[name] is JArray nested)
+                {
+                    propertyName = name;
+                    return nested;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Unwinds the workflow/undo bookkeeping opened before <c>Method.Invoke</c> when an
+        /// envelope-level argument turns out to be invalid and nothing was executed yet.
+        /// Mirrors the cleanup performed by the catch handlers in Execute.
+        /// </summary>
+        private static void UnwindBeforeInvoke(bool autoStartedWorkflow, int workflowSnapshotCountBefore, int undoGroup)
+        {
+            if (autoStartedWorkflow && WorkflowManager.IsRecording)
+                WorkflowManager.AbortTask();
+            else if (WorkflowManager.IsRecording)
+                WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
+
+            if (undoGroup >= 0)
+                UnityEditor.Undo.RevertAllInCurrentGroup();
         }
 
         private static object[] BuildParameterSchema(SkillInfo skill)
