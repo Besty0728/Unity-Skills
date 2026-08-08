@@ -107,6 +107,21 @@ namespace UnitySkills.Tests.Core
             Assert.That(GameObject.Find(objectName), Is.Null,
                 "A MODE_RESTRICTED response must mean the skill never actually ran.");
         }
+
+        [Test]
+        public void Execute_AssetCreateFolderBatchForExistingFolder_ReturnsStructuredRootError()
+        {
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
+
+            var json = JObject.Parse(SkillRouter.Execute("asset_create_folder_batch",
+                "{\"items\":[{\"folderPath\":\"Assets\"}]}"));
+
+            Assert.That(json["status"]?.ToString(), Is.EqualTo("error"));
+            Assert.That(json["error"]?.ToString(), Is.Not.Empty);
+            Assert.That(json["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"));
+            Assert.That(json["retryStrategy"]?.ToString(), Is.EqualTo(SkillErrorResponse.RetryFixAndRetry));
+            Assert.That(json["suggestedFixes"], Has.Count.GreaterThan(0));
+        }
     }
 }
 

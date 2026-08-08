@@ -225,7 +225,7 @@ namespace UnitySkills
             {
                 var result = MaterialCreate(item.name, item.shaderName, item.savePath);
                 if (SkillResultHelper.TryGetError(result, out string errorText))
-                    throw new System.Exception(errorText);
+                    return new { error = errorText, target = item.name };
                 return result;
             }, item => item.name);
         }
@@ -244,7 +244,7 @@ namespace UnitySkills
             {
                 var result = MaterialAssign(name: item.name, instanceId: item.instanceId, path: item.path, materialPath: item.materialPath);
                 if (SkillResultHelper.TryGetError(result, out string errorText))
-                    throw new System.Exception(errorText);
+                    return new { error = errorText, target = item.name ?? item.path };
                 return result;
             }, item => item.name ?? item.path);
         }
@@ -384,7 +384,7 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchColorItem>(items, item =>
             {
                 var (material, go, error) = FindMaterial(item.name, item.instanceId, item.path);
-                if (error != null) throw new System.Exception("Material not found");
+                if (error != null) return new { error = "Material not found", target = item.name ?? item.path };
 
                 var color = new Color(item.r, item.g, item.b, item.a);
 
@@ -404,7 +404,7 @@ namespace UnitySkills
                 }
 
                 if (!colorSet)
-                    throw new System.Exception("No color property found");
+                    return new { error = "No color property found on material", target = material.name };
 
                 if (go == null) EditorUtility.SetDirty(material);
                 return new { target = go?.name ?? item.path, success = true };
@@ -495,7 +495,7 @@ namespace UnitySkills
                 var result = MaterialSetEmission(name: item.name, instanceId: item.instanceId, path: item.path,
                     r: item.r, g: item.g, b: item.b, intensity: item.intensity > 0 ? item.intensity : 1f, enableEmission: item.enableEmission);
                 if (SkillResultHelper.TryGetError(result, out string errorText))
-                    throw new System.Exception(errorText);
+                    return new { error = errorText, target = item.name ?? item.path };
                 return result;
             }, item => item.name ?? item.path);
         }

@@ -93,6 +93,13 @@ namespace UnitySkills
             return new
             {
                 success = failCount == 0,
+                error = failCount == 0 ? null : $"Batch completed with {failCount} failed item(s).",
+                errorCode = failCount == 0 ? null : "SEMANTIC_INVALID",
+                retryStrategy = failCount == 0 ? null : SkillErrorResponse.RetryFixAndRetry,
+                suggestedFixes = failCount == 0 ? null : new[]
+                {
+                    new { action = "fix_param", reason = "Inspect failed item results, correct those inputs, then retry the batch." }
+                },
                 totalItems = itemList.Count,
                 successCount,
                 failCount,

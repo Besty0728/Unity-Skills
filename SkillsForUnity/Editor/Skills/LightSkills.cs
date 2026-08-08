@@ -247,10 +247,10 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchLightEnabledItem>(items, item =>
             {
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) throw new System.Exception("Object not found");
+                if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
 
                 var light = go.GetComponent<Light>();
-                if (light == null) throw new System.Exception("No Light component");
+                if (light == null) return new { error = "No Light component", target = go.name };
 
                 WorkflowManager.SnapshotObject(light);
                 Undo.RecordObject(light, "Batch Set Light Enabled");
@@ -277,10 +277,10 @@ namespace UnitySkills
             return BatchExecutor.Execute<BatchLightPropsItem>(items, item =>
             {
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) throw new System.Exception("Object not found");
+                if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
 
                 var light = go.GetComponent<Light>();
-                if (light == null) throw new System.Exception("No Light component");
+                if (light == null) return new { error = "No Light component", target = go.name };
 
                 WorkflowManager.SnapshotObject(light);
                 Undo.RecordObject(light, "Batch Set Light Properties");
@@ -300,7 +300,7 @@ namespace UnitySkills
                         case "hard": light.shadows = LightShadows.Hard; break;
                         case "soft": light.shadows = LightShadows.Soft; break;
                         case "none": light.shadows = LightShadows.None; break;
-                        default: throw new System.Exception($"Unknown shadow type: '{item.shadows}'. Valid values: hard, soft, none");
+                        default: return new { error = $"Unknown shadow type: '{item.shadows}'. Valid values: hard, soft, none", target = go.name };
                     }
                 }
 
