@@ -88,6 +88,8 @@ namespace UnitySkills
         private Label         _confirmHint;
         private Toggle        _telemetryToggle;
         private Label         _telemetryHint;
+        private Toggle        _summaryTruncateToggle;
+        private Label         _summaryTruncateHint;
 
         // Stats group
         private Label  _statsGroupTitle;
@@ -209,6 +211,8 @@ namespace UnitySkills
             _confirmHint       = _drawerContainer.Q<Label>("confirm-hint");
             _telemetryToggle   = _drawerContainer.Q<Toggle>("telemetry-toggle");
             _telemetryHint     = _drawerContainer.Q<Label>("telemetry-hint");
+            _summaryTruncateToggle = _drawerContainer.Q<Toggle>("summary-truncate-toggle");
+            _summaryTruncateHint   = _drawerContainer.Q<Label>("summary-truncate-hint");
 
             _statsGroupTitle = _drawerContainer.Q<Label>("group-stats-title");
             _statsHint       = _drawerContainer.Q<Label>("stats-hint");
@@ -311,6 +315,13 @@ namespace UnitySkills
                         SkillTelemetryService.Enabled = evt.newValue;
                 });
 
+            if (_summaryTruncateToggle != null)
+                _summaryTruncateToggle.RegisterValueChangedCallback(evt =>
+                {
+                    if (evt.newValue != SkillRouter.SummaryAutoTruncate)
+                        SkillRouter.SummaryAutoTruncate = evt.newValue;
+                });
+
             if (_statsResetBtn != null)
                 _statsResetBtn.clicked += () =>
                 {
@@ -369,6 +380,7 @@ namespace UnitySkills
             if (_keepaliveField != null) _keepaliveField.value   = SkillsHttpServer.KeepAliveIntervalSeconds;
             if (_confirmToggle  != null) _confirmToggle.value    = ConfirmationTokenService.RequireConfirmation;
             if (_telemetryToggle != null) _telemetryToggle.value = SkillTelemetryService.Enabled;
+            if (_summaryTruncateToggle != null) _summaryTruncateToggle.value = SkillRouter.SummaryAutoTruncate;
             RefreshLanguagePins();
         }
 
@@ -459,6 +471,11 @@ namespace UnitySkills
                 _telemetryToggle.label = SkillsLocalization.Get("drawer_telemetry_label");
             if (_telemetryHint != null)
                 _telemetryHint.text = SkillsLocalization.Get("drawer_telemetry_hint");
+
+            if (_summaryTruncateToggle != null)
+                _summaryTruncateToggle.label = SkillsLocalization.Get("drawer_summary_truncate_label");
+            if (_summaryTruncateHint != null)
+                _summaryTruncateHint.text = SkillsLocalization.Get("drawer_summary_truncate_hint");
 
             if (_statsHint     != null) _statsHint.text     = SkillsLocalization.Get("drawer_stats_hint");
             if (_statsResetBtn != null) _statsResetBtn.text = SkillsLocalization.Get("drawer_reset_stats_btn");

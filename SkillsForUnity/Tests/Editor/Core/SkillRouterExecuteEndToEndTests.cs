@@ -98,6 +98,54 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void Execute_SummaryAutoTruncateOff_LargeNestedArrayPassesThrough()
+        {
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
+            bool saved = SkillRouter.SummaryAutoTruncate;
+            try
+            {
+                SkillRouter.SummaryAutoTruncate = false;
+
+                var response = JObject.Parse(SkillRouter.Execute("asset_find",
+                    "{\"searchFilter\":\"\",\"limit\":15,\"verbose\":false}"));
+
+                Assert.That(response["status"]?.ToString(), Is.EqualTo("success"));
+                Assert.That(response["result"]?["assets"], Has.Count.EqualTo(15),
+                    "With auto-truncation off, the skill's full result list must pass through.");
+                Assert.That(response["result"]?["isTruncated"], Is.Null);
+            }
+            finally
+            {
+                SkillRouter.SummaryAutoTruncate = saved;
+            }
+        }
+
+        [Test]
+        public void Execute_SummaryAutoTruncateOn_LargeNestedArrayReturnsFirstPage()
+        {
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
+            bool saved = SkillRouter.SummaryAutoTruncate;
+            try
+            {
+                SkillRouter.SummaryAutoTruncate = true;
+
+                var response = JObject.Parse(SkillRouter.Execute("asset_find",
+                    "{\"searchFilter\":\"\",\"limit\":15,\"verbose\":false}"));
+
+                Assert.That(response["status"]?.ToString(), Is.EqualTo("success"));
+                Assert.That(response["result"]?["isTruncated"]?.Value<bool>(), Is.True);
+                Assert.That(response["result"]?["assets"], Has.Count.EqualTo(5));
+                Assert.That(response["result"]?["totalCount"]?.Value<int>(), Is.EqualTo(15));
+                Assert.That(response["result"]?["showing"]?.Value<int>(), Is.EqualTo(5));
+                Assert.That(response["result"]?["hint"]?.ToString(), Does.Contain("pageOffset=5"));
+            }
+            finally
+            {
+                SkillRouter.SummaryAutoTruncate = saved;
+            }
+        }
+
+        [Test]
         public void Execute_ReadOnlySemiAutoSkill_SucceedsEvenUnderApprovalMode()
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;

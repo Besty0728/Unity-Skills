@@ -129,6 +129,30 @@ namespace UnitySkills
 
         private const string EntityIdParameterName = "entityId";
 
+        private const string PrefKeySummaryAutoTruncate = "UnitySkills_SummaryAutoTruncate";
+        private static bool? _summaryAutoTruncate;
+
+        /// <summary>
+        /// Opt-in switch for Summary Mode auto-truncation. Off by default: non-verbose
+        /// results pass through untouched unless the caller explicitly pages with
+        /// pageOffset/pageLimit. When enabled, non-verbose page arrays with more than
+        /// 10 items are truncated to the first page with isTruncated metadata.
+        /// </summary>
+        public static bool SummaryAutoTruncate
+        {
+            get
+            {
+                if (!_summaryAutoTruncate.HasValue)
+                    _summaryAutoTruncate = EditorPrefs.GetBool(PrefKeySummaryAutoTruncate, false);
+                return _summaryAutoTruncate.Value;
+            }
+            set
+            {
+                _summaryAutoTruncate = value;
+                EditorPrefs.SetBool(PrefKeySummaryAutoTruncate, value);
+            }
+        }
+
         private static readonly string[] _entityIdPathFallbackParameters =
         {
             "path",
@@ -805,7 +829,7 @@ namespace UnitySkills
                     var jsonResult = JToken.FromObject(result);
 
                     var arr = FindPageArray(jsonResult, out var arrayProperty);
-                    if (arr != null && (arr.Count > 10 || offset.HasValue || limit.HasValue))
+                    if (arr != null && ((SummaryAutoTruncate && arr.Count > 10) || offset.HasValue || limit.HasValue))
                     {
                         int startIndex = offset ?? 0;
                         int pageSize = limit ?? 5;

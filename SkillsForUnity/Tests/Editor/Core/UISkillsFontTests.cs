@@ -52,8 +52,8 @@ namespace UnitySkills.Tests.Core
             var root = new VisualElement();
             root.style.unityFontDefinition = new StyleFontDefinition(StyleKeyword.Null);
 
-            UISkillsFont.Apply(root, SkillsLocalization.Language.Chinese);
-            UISkillsFont.Apply(root, SkillsLocalization.Language.Chinese);
+            UISkillsFont.Apply(root);
+            UISkillsFont.Apply(root);
 
             Assert.That(root.style.unityFont.keyword, Is.EqualTo(StyleKeyword.Null));
 #if UNITY_6000_0_OR_NEWER
@@ -84,18 +84,38 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void Apply_ForRussian_UsesVersionCompatibleFont()
+        public void Apply_UsesCustomFontRegardlessOfCurrentLanguage()
         {
-            var root = new VisualElement();
+            var saved = SkillsLocalization.Current;
+            try
+            {
+                foreach (var language in new[]
+                         {
+                             SkillsLocalization.Language.English,
+                             SkillsLocalization.Language.Russian,
+                             SkillsLocalization.Language.Chinese
+                         })
+                {
+                    SkillsLocalization.Current = language;
+                    var root = new VisualElement();
 
-            UISkillsFont.Apply(root, SkillsLocalization.Language.Russian);
+                    UISkillsFont.Apply(root);
 
 #if UNITY_6000_0_OR_NEWER
-            Assert.That(root.style.unityFontDefinition.keyword, Is.EqualTo(StyleKeyword.Null));
+                    var expected = AssetDatabase.LoadAssetAtPath<Font>(UISkillsFont.TtfPath);
+                    Assert.That(root.style.unityFontDefinition.value.font, Is.SameAs(expected),
+                        $"Custom font must be applied for {language}");
 #else
-            var expected = AssetDatabase.LoadAssetAtPath<FontAsset>(UISkillsFont.FontAssetPath);
-            Assert.That(root.style.unityFontDefinition.value.fontAsset, Is.SameAs(expected));
+                    var expected = AssetDatabase.LoadAssetAtPath<FontAsset>(UISkillsFont.FontAssetPath);
+                    Assert.That(root.style.unityFontDefinition.value.fontAsset, Is.SameAs(expected),
+                        $"Custom font must be applied for {language}");
 #endif
+                }
+            }
+            finally
+            {
+                SkillsLocalization.Current = saved;
+            }
         }
 
 #if !UNITY_6000_0_OR_NEWER

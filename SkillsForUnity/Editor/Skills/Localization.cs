@@ -54,13 +54,13 @@ namespace UnitySkills
 
         public static Language PinnedPrimary
         {
-            get => ReadPinned(PREF_PINNED_PRIMARY, Language.English);
+            get => ReadPinned(PREF_PINNED_PRIMARY, Language.Chinese);
             set => SetPinned(PREF_PINNED_PRIMARY, PREF_PINNED_SECONDARY, value);
         }
 
         public static Language PinnedSecondary
         {
-            get => ReadPinned(PREF_PINNED_SECONDARY, Language.Chinese);
+            get => ReadPinned(PREF_PINNED_SECONDARY, Language.English);
             set => SetPinned(PREF_PINNED_SECONDARY, PREF_PINNED_PRIMARY, value);
         }
 
@@ -72,8 +72,8 @@ namespace UnitySkills
 
         private static void SetPinned(string key, string otherKey, Language value)
         {
-            var previous = ReadPinned(key, key == PREF_PINNED_PRIMARY ? Language.English : Language.Chinese);
-            if (ReadPinned(otherKey, otherKey == PREF_PINNED_PRIMARY ? Language.English : Language.Chinese) == value)
+            var previous = ReadPinned(key, key == PREF_PINNED_PRIMARY ? Language.Chinese : Language.English);
+            if (ReadPinned(otherKey, otherKey == PREF_PINNED_PRIMARY ? Language.Chinese : Language.English) == value)
                 EditorPrefs.SetInt(otherKey, (int)previous);
             EditorPrefs.SetInt(key, (int)value);
             LanguageChanged?.Invoke();
@@ -173,6 +173,8 @@ namespace UnitySkills
             {"drawer_confirm_label", "Confirm high-risk skills"},
             {"drawer_telemetry_label", "Record execution telemetry"},
             {"drawer_telemetry_hint", "Logs each skill call (name, agent, mode, ok, duration — no arguments or field values) to Library/UnitySkillsTelemetry.jsonl, powering the Analytics tab and GET /analytics. Local only; never leaves your machine. Turn off to stop recording."},
+            {"drawer_summary_truncate_label", "Summary Mode auto-truncation"},
+            {"drawer_summary_truncate_hint", "When on, non-verbose responses whose result list exceeds 10 items return only the first 5 with isTruncated metadata (saves tokens for AI clients). Explicit pageOffset/pageLimit paging always works regardless of this switch."},
 
             // Shortcuts settings (panel hotkeys)
             {"shortcut_section_title", "Shortcuts"},
@@ -1318,6 +1320,8 @@ namespace UnitySkills
             {"drawer_confirm_label", "高风险技能二次确认"},
             {"drawer_telemetry_label", "记录执行数据"},
             {"drawer_telemetry_hint", "将每次技能调用（名称、agent、模式、成功与否、用时——不含参数或字段值）记录到 Library/UnitySkillsTelemetry.jsonl，为 Analytics 标签与 GET /analytics 供数。仅存本地，绝不外传。关闭即停止记录。"},
+            {"drawer_summary_truncate_label", "摘要模式自动截断"},
+            {"drawer_summary_truncate_hint", "开启后，非 verbose 响应中超过 10 项的结果列表只返回前 5 项并附带 isTruncated 元数据（为 AI 客户端节省 token）。无论开关状态，显式传 pageOffset/pageLimit 分页始终有效。"},
 
             // Shortcuts settings (panel hotkeys)
             {"shortcut_section_title", "快捷键"},
@@ -2527,6 +2531,8 @@ namespace UnitySkills
             {"drawer_confirm_label", "Подтверждать высокорисковые skills"},
             {"drawer_telemetry_label", "Записывать телеметрию выполнения"},
             {"drawer_telemetry_hint", "Записывает каждый вызов skill (имя, агент, режим, успех, длительность — без аргументов и значений полей) в Library/UnitySkillsTelemetry.jsonl, питая вкладку Analytics и GET /analytics. Только локально; никогда не покидает ваш компьютер. Выключите, чтобы прекратить запись."},
+            {"drawer_summary_truncate_label", "Автоусечение в режиме сводки"},
+            {"drawer_summary_truncate_hint", "Если включено, ответы без verbose, где список результатов превышает 10 элементов, возвращают только первые 5 с метаданными isTruncated (экономит токены для ИИ-клиентов). Явная пагинация pageOffset/pageLimit работает всегда, независимо от переключателя."},
 
             // Shortcuts settings (panel hotkeys)
             {"shortcut_section_title", "Горячие клавиши"},
