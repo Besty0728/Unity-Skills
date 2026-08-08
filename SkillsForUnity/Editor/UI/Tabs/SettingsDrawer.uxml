@@ -141,15 +141,33 @@
                         <ui:DropdownField name="loglevel-dropdown" class="setting-row__field" />
                     </ui:VisualElement>
 
-                    <ui:Toggle name="confirm-toggle" />
+                    <ui:VisualElement name="confirm-row"
+                                      style="flex-direction: row; align-items: center;">
+                        <ui:Label name="confirm-label" style="margin-right: 6px;" />
+                        <ui:VisualElement name="confirm-switch" class="server-switch">
+                            <ui:VisualElement class="server-switch__knob" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                     <ui:Label name="confirm-hint" class="setting-hint"
                               style="margin-left: 18px;" />
 
-                    <ui:Toggle name="telemetry-toggle" style="margin-top: 6px;" />
+                    <ui:VisualElement name="telemetry-row"
+                                      style="flex-direction: row; align-items: center; margin-top: 6px;">
+                        <ui:Label name="telemetry-label" style="margin-right: 6px;" />
+                        <ui:VisualElement name="telemetry-switch" class="server-switch">
+                            <ui:VisualElement class="server-switch__knob" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                     <ui:Label name="telemetry-hint" class="setting-hint"
                               style="margin-left: 18px;" />
 
-                    <ui:Toggle name="summary-truncate-toggle" style="margin-top: 6px;" />
+                    <ui:VisualElement name="summary-truncate-row"
+                                      style="flex-direction: row; align-items: center; margin-top: 6px;">
+                        <ui:Label name="summary-truncate-label" style="margin-right: 6px;" />
+                        <ui:VisualElement name="summary-truncate-switch" class="server-switch">
+                            <ui:VisualElement class="server-switch__knob" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                     <ui:Label name="summary-truncate-hint" class="setting-hint"
                               style="margin-left: 18px;" />
                 </ui:VisualElement>

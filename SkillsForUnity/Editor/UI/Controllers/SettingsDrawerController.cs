@@ -84,11 +84,14 @@ namespace UnitySkills
         private Label         _runtimeGroupTitle;
         private Label         _loglevelLabel;
         private DropdownField _logDropdown;
-        private Toggle        _confirmToggle;
+        private VisualElement _confirmSwitch;
+        private Label         _confirmLabel;
         private Label         _confirmHint;
-        private Toggle        _telemetryToggle;
+        private VisualElement _telemetrySwitch;
+        private Label         _telemetryLabel;
         private Label         _telemetryHint;
-        private Toggle        _summaryTruncateToggle;
+        private VisualElement _summaryTruncateSwitch;
+        private Label         _summaryTruncateLabel;
         private Label         _summaryTruncateHint;
 
         // Stats group
@@ -207,11 +210,14 @@ namespace UnitySkills
             _runtimeGroupTitle = _drawerContainer.Q<Label>("group-runtime-title");
             _loglevelLabel     = _drawerContainer.Q<Label>("loglevel-label");
             _logDropdown       = _drawerContainer.Q<DropdownField>("loglevel-dropdown");
-            _confirmToggle     = _drawerContainer.Q<Toggle>("confirm-toggle");
+            _confirmSwitch     = _drawerContainer.Q<VisualElement>("confirm-switch");
+            _confirmLabel      = _drawerContainer.Q<Label>("confirm-label");
             _confirmHint       = _drawerContainer.Q<Label>("confirm-hint");
-            _telemetryToggle   = _drawerContainer.Q<Toggle>("telemetry-toggle");
+            _telemetrySwitch   = _drawerContainer.Q<VisualElement>("telemetry-switch");
+            _telemetryLabel    = _drawerContainer.Q<Label>("telemetry-label");
             _telemetryHint     = _drawerContainer.Q<Label>("telemetry-hint");
-            _summaryTruncateToggle = _drawerContainer.Q<Toggle>("summary-truncate-toggle");
+            _summaryTruncateSwitch = _drawerContainer.Q<VisualElement>("summary-truncate-switch");
+            _summaryTruncateLabel  = _drawerContainer.Q<Label>("summary-truncate-label");
             _summaryTruncateHint   = _drawerContainer.Q<Label>("summary-truncate-hint");
 
             _statsGroupTitle = _drawerContainer.Q<Label>("group-stats-title");
@@ -301,25 +307,25 @@ namespace UnitySkills
                         SkillsLogger.Level = (LogLevel)idx;
                 });
 
-            if (_confirmToggle != null)
-                _confirmToggle.RegisterValueChangedCallback(evt =>
+            if (_confirmSwitch != null)
+                _confirmSwitch.RegisterCallback<ClickEvent>(_ =>
                 {
-                    if (evt.newValue != ConfirmationTokenService.RequireConfirmation)
-                        ConfirmationTokenService.RequireConfirmation = evt.newValue;
+                    ConfirmationTokenService.RequireConfirmation = !ConfirmationTokenService.RequireConfirmation;
+                    SyncSettingSwitches();
                 });
 
-            if (_telemetryToggle != null)
-                _telemetryToggle.RegisterValueChangedCallback(evt =>
+            if (_telemetrySwitch != null)
+                _telemetrySwitch.RegisterCallback<ClickEvent>(_ =>
                 {
-                    if (evt.newValue != SkillTelemetryService.Enabled)
-                        SkillTelemetryService.Enabled = evt.newValue;
+                    SkillTelemetryService.Enabled = !SkillTelemetryService.Enabled;
+                    SyncSettingSwitches();
                 });
 
-            if (_summaryTruncateToggle != null)
-                _summaryTruncateToggle.RegisterValueChangedCallback(evt =>
+            if (_summaryTruncateSwitch != null)
+                _summaryTruncateSwitch.RegisterCallback<ClickEvent>(_ =>
                 {
-                    if (evt.newValue != SkillRouter.SummaryAutoTruncate)
-                        SkillRouter.SummaryAutoTruncate = evt.newValue;
+                    SkillRouter.SummaryAutoTruncate = !SkillRouter.SummaryAutoTruncate;
+                    SyncSettingSwitches();
                 });
 
             if (_statsResetBtn != null)
@@ -378,9 +384,7 @@ namespace UnitySkills
             if (_startOnLaunchToggle != null) _startOnLaunchToggle.value = SkillsHttpServer.StartOnEditorLaunch;
             if (_timeoutField   != null) _timeoutField.value     = SkillsHttpServer.RequestTimeoutMinutes;
             if (_keepaliveField != null) _keepaliveField.value   = SkillsHttpServer.KeepAliveIntervalSeconds;
-            if (_confirmToggle  != null) _confirmToggle.value    = ConfirmationTokenService.RequireConfirmation;
-            if (_telemetryToggle != null) _telemetryToggle.value = SkillTelemetryService.Enabled;
-            if (_summaryTruncateToggle != null) _summaryTruncateToggle.value = SkillRouter.SummaryAutoTruncate;
+            SyncSettingSwitches();
             RefreshLanguagePins();
         }
 
@@ -461,19 +465,19 @@ namespace UnitySkills
             if (_keepaliveHint   != null) _keepaliveHint.text  = SkillsLocalization.Get("keepalive_hint");
 
             if (_loglevelLabel != null) _loglevelLabel.text = SkillsLocalization.Get("drawer_loglevel_label");
-            if (_confirmToggle != null) _confirmToggle.label = SkillsLocalization.Get("drawer_confirm_label");
+            if (_confirmLabel != null) _confirmLabel.text = SkillsLocalization.Get("drawer_confirm_label");
             if (_confirmHint   != null)
             {
                 _confirmHint.text = SkillsLocalization.Get("drawer_confirm_hint");
             }
 
-            if (_telemetryToggle != null)
-                _telemetryToggle.label = SkillsLocalization.Get("drawer_telemetry_label");
+            if (_telemetryLabel != null)
+                _telemetryLabel.text = SkillsLocalization.Get("drawer_telemetry_label");
             if (_telemetryHint != null)
                 _telemetryHint.text = SkillsLocalization.Get("drawer_telemetry_hint");
 
-            if (_summaryTruncateToggle != null)
-                _summaryTruncateToggle.label = SkillsLocalization.Get("drawer_summary_truncate_label");
+            if (_summaryTruncateLabel != null)
+                _summaryTruncateLabel.text = SkillsLocalization.Get("drawer_summary_truncate_label");
             if (_summaryTruncateHint != null)
                 _summaryTruncateHint.text = SkillsLocalization.Get("drawer_summary_truncate_hint");
 
@@ -498,6 +502,13 @@ namespace UnitySkills
                 _languagePinSecondary.choices = choices;
                 _languagePinSecondary.SetValueWithoutNotify(SkillsLocalization.PinnedSecondary.ToString());
             }
+        }
+
+        private void SyncSettingSwitches()
+        {
+            _confirmSwitch?.EnableInClassList("on", ConfirmationTokenService.RequireConfirmation);
+            _telemetrySwitch?.EnableInClassList("on", SkillTelemetryService.Enabled);
+            _summaryTruncateSwitch?.EnableInClassList("on", SkillRouter.SummaryAutoTruncate);
         }
 
         private static SkillsLocalization.Language ParseLanguage(string value) =>
