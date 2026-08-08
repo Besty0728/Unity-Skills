@@ -141,35 +141,29 @@
                         <ui:DropdownField name="loglevel-dropdown" class="setting-row__field" />
                     </ui:VisualElement>
 
-                    <ui:VisualElement name="confirm-row"
-                                      style="flex-direction: row; align-items: center;">
-                        <ui:Label name="confirm-label" style="margin-right: 6px;" />
-                        <ui:VisualElement name="confirm-switch" class="server-switch">
+                    <ui:VisualElement name="confirm-row" class="setting-row">
+                        <ui:Label name="confirm-label" class="setting-row__label" />
+                        <ui:VisualElement name="confirm-switch" class="server-switch" style="margin: 0;">
                             <ui:VisualElement class="server-switch__knob" />
                         </ui:VisualElement>
                     </ui:VisualElement>
-                    <ui:Label name="confirm-hint" class="setting-hint"
-                              style="margin-left: 18px;" />
+                    <ui:Label name="confirm-hint" class="setting-hint" />
 
-                    <ui:VisualElement name="telemetry-row"
-                                      style="flex-direction: row; align-items: center; margin-top: 6px;">
-                        <ui:Label name="telemetry-label" style="margin-right: 6px;" />
-                        <ui:VisualElement name="telemetry-switch" class="server-switch">
+                    <ui:VisualElement name="telemetry-row" class="setting-row">
+                        <ui:Label name="telemetry-label" class="setting-row__label" />
+                        <ui:VisualElement name="telemetry-switch" class="server-switch" style="margin: 0;">
                             <ui:VisualElement class="server-switch__knob" />
                         </ui:VisualElement>
                     </ui:VisualElement>
-                    <ui:Label name="telemetry-hint" class="setting-hint"
-                              style="margin-left: 18px;" />
+                    <ui:Label name="telemetry-hint" class="setting-hint" />
 
-                    <ui:VisualElement name="summary-truncate-row"
-                                      style="flex-direction: row; align-items: center; margin-top: 6px;">
-                        <ui:Label name="summary-truncate-label" style="margin-right: 6px;" />
-                        <ui:VisualElement name="summary-truncate-switch" class="server-switch">
+                    <ui:VisualElement name="summary-truncate-row" class="setting-row">
+                        <ui:Label name="summary-truncate-label" class="setting-row__label" />
+                        <ui:VisualElement name="summary-truncate-switch" class="server-switch" style="margin: 0;">
                             <ui:VisualElement class="server-switch__knob" />
                         </ui:VisualElement>
                     </ui:VisualElement>
-                    <ui:Label name="summary-truncate-hint" class="setting-hint"
-                              style="margin-left: 18px;" />
+                    <ui:Label name="summary-truncate-hint" class="setting-hint" />
                 </ui:VisualElement>
 
                 <!-- Shortcuts group — panel hotkeys (rows built by ShortcutsSettingsController) -->
