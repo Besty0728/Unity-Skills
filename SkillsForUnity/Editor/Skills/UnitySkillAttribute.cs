@@ -59,7 +59,8 @@ namespace UnitySkills
         PostProcess,
         ShaderGraph,
         Behavior,
-        HybridCLR
+        HybridCLR,
+        Addressables
     }
 
     /// <summary>
