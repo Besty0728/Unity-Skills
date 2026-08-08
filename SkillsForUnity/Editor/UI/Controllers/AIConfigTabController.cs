@@ -84,9 +84,8 @@ namespace UnitySkills
                     installFunc = SkillInstaller.InstallCodex,
                     uninstallFunc = SkillInstaller.UninstallCodex,
                     getInstallSuccessMsg = (global, msg) =>
-                        SkillsLocalization.Current == SkillsLocalization.Language.Chinese
-                            ? "安装成功！\n" + msg + (global ? "" : "\n\n注意：Antigravity 和 Codex 工作区共享 .agents/skills 路径。")
-                            : "Install success!\n" + msg + (global ? "" : "\n\nNote: Antigravity and Codex share .agents/skills in workspace mode.")
+                        string.Format(SkillsLocalization.Get("agent_codex_install_success_fmt"), msg)
+                        + (global ? "" : SkillsLocalization.Get("agent_codex_install_note"))
                 },
                 new AgentConfig
                 {
@@ -288,8 +287,7 @@ namespace UnitySkills
 
             var browseBtn = new Button(() =>
             {
-                string title = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
-                    ? "选择安装目录" : "Select Install Directory";
+                string title = SkillsLocalization.Get("agent_select_install_dir");
                 string p = EditorUtility.OpenFolderPanel(title, _customPath, "");
                 if (!string.IsNullOrEmpty(p))
                 {
@@ -335,14 +333,14 @@ namespace UnitySkills
                 string msg = cfg.getInstallSuccessMsg != null
                     ? cfg.getInstallSuccessMsg(isGlobal, result.message)
                     : SkillsLocalization.Get("install_success") + "\n" + result.message;
-                EditorUtility.DisplayDialog("Success", msg, "OK");
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_success"), msg, SkillsLocalization.Get("dialog_ok"));
             }
             else
             {
                 string errMsg = isUpdate
                     ? string.Format(SkillsLocalization.Get("update_failed"), result.message)
                     : string.Format(SkillsLocalization.Get("install_failed"), result.message);
-                EditorUtility.DisplayDialog("Error", errMsg, "OK");
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"), errMsg, SkillsLocalization.Get("dialog_ok"));
             }
             RebuildAgentsList();
         }
@@ -356,15 +354,15 @@ namespace UnitySkills
             if (!EditorUtility.DisplayDialog(
                 SkillsLocalization.Get("uninstall"),
                 string.Format(SkillsLocalization.Get("uninstall_confirm"), cfg.nameDisplay + scopeText),
-                "OK", "Cancel"))
+                SkillsLocalization.Get("dialog_ok"), SkillsLocalization.Get("dialog_cancel")))
                 return;
 
             var result = cfg.uninstallFunc(isGlobal);
             if (result.success)
-                EditorUtility.DisplayDialog("Success", SkillsLocalization.Get("uninstall_success"), "OK");
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_success"), SkillsLocalization.Get("uninstall_success"), SkillsLocalization.Get("dialog_ok"));
             else
-                EditorUtility.DisplayDialog("Error",
-                    string.Format(SkillsLocalization.Get("uninstall_failed"), result.message), "OK");
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"),
+                    string.Format(SkillsLocalization.Get("uninstall_failed"), result.message), SkillsLocalization.Get("dialog_ok"));
 
             RebuildAgentsList();
         }
@@ -373,26 +371,23 @@ namespace UnitySkills
         {
             if (string.IsNullOrEmpty(_customPath))
             {
-                string msg = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
-                    ? "路径不能为空" : "Path cannot be empty";
-                EditorUtility.DisplayDialog("Error", msg, "OK");
+                string msg = SkillsLocalization.Get("agent_path_empty");
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"), msg, SkillsLocalization.Get("dialog_ok"));
                 return;
             }
             var result = SkillInstaller.InstallCustom(_customPath, _customName);
             if (result.success)
-                EditorUtility.DisplayDialog("Success", SkillsLocalization.Get("install_success"), "OK");
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_success"), SkillsLocalization.Get("install_success"), SkillsLocalization.Get("dialog_ok"));
             else
-                EditorUtility.DisplayDialog("Error",
-                    string.Format(SkillsLocalization.Get("install_failed"), result.message), "OK");
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"),
+                    string.Format(SkillsLocalization.Get("install_failed"), result.message), SkillsLocalization.Get("dialog_ok"));
         }
 
         public void RefreshLocalization()
         {
             if (_helpBox != null)
             {
-                _helpBox.text = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
-                    ? "项目安装：将 Skill 安装到当前 Unity 项目目录\n全局安装：将 Skill 安装到用户目录，所有项目可用\n\n注意：Antigravity 和 Codex 工作区都使用 .agents/skills，安装一次即两边可用"
-                    : "Project Install: install skill to current Unity project\nGlobal Install: install skill to user folder, available to all projects\n\nNote: Antigravity and Codex both use .agents/skills in workspace mode — install once works for both.";
+                _helpBox.text = SkillsLocalization.Get("agent_config_help");
             }
             RebuildAgentsList();
         }

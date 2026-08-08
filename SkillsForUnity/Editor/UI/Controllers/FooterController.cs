@@ -4,7 +4,7 @@ namespace UnitySkills
 {
     /// <summary>
     /// Footer controller — version tag + live stats pill (Pending / Done)
-    /// + segmented language switch (EN | 中文).
+    /// + two pinned language buttons.
     /// </summary>
     public class FooterController
     {
@@ -42,14 +42,13 @@ namespace UnitySkills
 
         private void BindEvents()
         {
-            if (_langEnBtn != null) _langEnBtn.clicked += () => SwitchLanguage(SkillsLocalization.Language.English);
-            if (_langCnBtn != null) _langCnBtn.clicked += () => SwitchLanguage(SkillsLocalization.Language.Chinese);
+            if (_langEnBtn != null) _langEnBtn.clicked += () => SwitchLanguage(SkillsLocalization.PinnedPrimary);
+            if (_langCnBtn != null) _langCnBtn.clicked += () => SwitchLanguage(SkillsLocalization.PinnedSecondary);
         }
 
         private void SwitchLanguage(SkillsLocalization.Language lang)
         {
             _window.SetLanguage(lang);
-            RefreshLocalization();
         }
 
         public void UpdateLiveData()
@@ -77,21 +76,19 @@ namespace UnitySkills
             if (_queueLabel != null) _queueLabel.text = SkillsLocalization.Get("footer_queue");
             if (_doneLabel  != null) _doneLabel.text  = SkillsLocalization.Get("footer_done");
 
-            // Segmented active state
-            bool isCn = SkillsLocalization.Current == SkillsLocalization.Language.Chinese;
-            if (_langEnBtn != null)
-            {
-                if (isCn) _langEnBtn.RemoveFromClassList("active");
-                else      _langEnBtn.AddToClassList("active");
-            }
-            if (_langCnBtn != null)
-            {
-                if (isCn) _langCnBtn.AddToClassList("active");
-                else      _langCnBtn.RemoveFromClassList("active");
-            }
+            ConfigureButton(_langEnBtn, SkillsLocalization.PinnedPrimary);
+            ConfigureButton(_langCnBtn, SkillsLocalization.PinnedSecondary);
 
             var seg = _root.Q<VisualElement>("lang-segment");
             if (seg != null) seg.tooltip = SkillsLocalization.Get("footer_lang_tooltip");
+        }
+
+        private static void ConfigureButton(Button button, SkillsLocalization.Language language)
+        {
+            if (button == null) return;
+            button.text = language == SkillsLocalization.Language.Chinese ? "中文" :
+                language == SkillsLocalization.Language.Russian ? "RU" : "EN";
+            button.EnableInClassList("active", SkillsLocalization.Current == language);
         }
     }
 }

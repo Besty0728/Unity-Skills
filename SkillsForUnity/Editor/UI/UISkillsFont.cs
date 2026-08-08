@@ -109,13 +109,18 @@ namespace UnitySkills
         /// </summary>
         public static void Apply(VisualElement root)
         {
+            Apply(root, SkillsLocalization.Current);
+        }
+
+        internal static void Apply(VisualElement root, SkillsLocalization.Language language)
+        {
             if (root == null)
                 return;
 
 #if UNITY_6000_0_OR_NEWER
-            Apply(root, GetFont());
+            Apply(root, language == SkillsLocalization.Language.Chinese ? GetFont() : null);
 #else
-            Apply(root, GetFontAsset());
+            Apply(root, language == SkillsLocalization.Language.English ? null : GetFontAsset());
 #endif
         }
 

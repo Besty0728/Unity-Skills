@@ -302,7 +302,7 @@ namespace UnitySkills
             EditorUtility.DisplayDialog(
                 SkillsLocalization.Get("shortcut_section_title"),
                 SkillsLocalization.Get("shortcut_profile_readonly"),
-                "OK");
+                SkillsLocalization.Get("dialog_ok"));
         }
     }
 }

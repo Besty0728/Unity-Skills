@@ -183,13 +183,10 @@ namespace UnitySkills
 
         private void ClearHistory()
         {
-            string title = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
-                ? "清除历史" : "Clear History";
-            string msg = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
-                ? "确定要清除所有历史记录吗？这也会删除磁盘上的工作流缓存快照。"
-                : "Are you sure you want to clear all history? This will also delete workflow cached snapshots on disk.";
+            string title = SkillsLocalization.Get("history_clear_title");
+            string msg = SkillsLocalization.Get("history_clear_confirm_msg");
 
-            if (EditorUtility.DisplayDialog(title, msg, "Yes", "No"))
+            if (EditorUtility.DisplayDialog(title, msg, SkillsLocalization.Get("dialog_yes"), SkillsLocalization.Get("dialog_no")))
             {
                 WorkflowManager.ClearHistory();
                 RefreshHistory();
@@ -290,11 +287,11 @@ namespace UnitySkills
                 var undoBtn = new Button(() =>
                 {
                     var result = WorkflowManager.UndoTask(task.id);
-                    ShowResult(result, "Undo");
+                    ShowResult(result, SkillsLocalization.Get("btn_undo"));
                     RefreshHistory();
                 });
                 undoBtn.AddToClassList("mini-btn");
-                undoBtn.text = "Undo";
+                undoBtn.text = SkillsLocalization.Get("btn_undo");
                 actions.Add(undoBtn);
 
                 var delBtn = new Button(() => { WorkflowManager.DeleteTask(task.id); RefreshHistory(); });
@@ -308,12 +305,12 @@ namespace UnitySkills
                 var redoBtn = new Button(() =>
                 {
                     var result = WorkflowManager.RedoTask(task.id);
-                    ShowResult(result, "Redo");
+                    ShowResult(result, SkillsLocalization.Get("btn_redo"));
                     RefreshHistory();
                 });
                 redoBtn.AddToClassList("mini-btn");
                 redoBtn.AddToClassList("install");
-                redoBtn.text = "Redo";
+                redoBtn.text = SkillsLocalization.Get("btn_redo");
                 actions.Add(redoBtn);
 
                 var delBtn = new Button(() => { WorkflowManager.DeleteTask(task.id); RefreshHistory(); });
@@ -352,16 +349,13 @@ namespace UnitySkills
         public void RefreshLocalization()
         {
             if (_historyTitle != null)
-                _historyTitle.text = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
-                    ? "工作流历史" : "Workflow History";
+                _historyTitle.text = SkillsLocalization.Get("history_tab_title");
             if (_refreshBtn != null) _refreshBtn.tooltip = SkillsLocalization.Get("refresh");
             if (_clearBtn   != null) _clearBtn.text      = SkillsLocalization.Get("history_clear_all");
 
             if (_cacheWarning != null)
             {
-                _cacheWarning.text = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
-                    ? "工作流缓存警告：撤销操作仅恢复场景状态和文件快照，不会撤销如包管理器操作或外部系统的副作用。"
-                    : "Workflow Cache Warning: undo restores scene hierarchies and asset snapshots. External side effects (e.g. Package Manager) cannot be reverted.";
+                _cacheWarning.text = SkillsLocalization.Get("history_cache_warning");
             }
 
             ApplyAutoCleanLocalization();
@@ -373,17 +367,17 @@ namespace UnitySkills
         {
             if (result.total == 0)
             {
-                ShowResultMessage($"{operation}: no snapshots to process", false);
+                ShowResultMessage(string.Format(SkillsLocalization.Get("history_result_none_fmt"), operation), false);
                 return;
             }
 
             if (result.failed == 0)
             {
-                ShowResultMessage($"{operation} succeeded: {result.succeeded}/{result.total}", false);
+                ShowResultMessage(string.Format(SkillsLocalization.Get("history_result_ok_fmt"), operation, result.succeeded, result.total), false);
             }
             else
             {
-                ShowResultMessage($"{operation} completed with {result.failed} failure(s) ({result.succeeded}/{result.total})", true);
+                ShowResultMessage(string.Format(SkillsLocalization.Get("history_result_fail_fmt"), operation, result.failed, result.succeeded, result.total), true);
                 foreach (var detail in result.details)
                 {
                     if (!detail.success)

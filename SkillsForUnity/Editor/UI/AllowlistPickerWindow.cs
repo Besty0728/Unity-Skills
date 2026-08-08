@@ -31,7 +31,7 @@ namespace UnitySkills
 
         public static void Open()
         {
-            var w = GetWindow<AllowlistPickerWindow>(true, L("perm_picker_title", "Add Skills to Allowlist", "添加 Skill 到白名单"), true);
+            var w = GetWindow<AllowlistPickerWindow>(true, SkillsLocalization.Get("perm_picker_title"), true);
             w.minSize = new Vector2(460, 520);
             w.Show();
             w.Focus();
@@ -64,7 +64,7 @@ namespace UnitySkills
 
             if (_cancelBtn != null)
             {
-                _cancelBtn.text = L("perm_picker_cancel", "Cancel", "取消");
+                _cancelBtn.text = SkillsLocalization.Get("perm_picker_cancel");
                 _cancelBtn.clicked += Close;
             }
             if (_addBtn != null)
@@ -105,11 +105,9 @@ namespace UnitySkills
             var btn = new Button(SelectCodingAssistPreset)
             {
                 text = string.Format(
-                    L("perm_picker_preset_coding", "+ Coding Assist pack ({0})", "+ 辅助代码编写包 ({0})"),
+                    SkillsLocalization.Get("perm_picker_preset_coding"),
                     AllowlistPresets.CodingAssist.Length),
-                tooltip = L("perm_picker_preset_tip",
-                    "Selects the script-write + Inspector-set skills. Once allowlisted, high-risk script writes bypass approval with no per-call confirm unless you enable Server > Settings > Require Confirmation.",
-                    "勾选脚本写 + Inspector 赋值类 skill。加入白名单后，高危脚本写操作将绕过审批且默认无二次确认（除非在 Server > Settings 开启 Require Confirmation）。")
+                tooltip = SkillsLocalization.Get("perm_picker_preset_tip")
             };
             btn.AddToClassList("picker-btn");
             bar.Add(btn);
@@ -141,9 +139,9 @@ namespace UnitySkills
             {
                 var extra = new List<string>();
                 if (already > 0)
-                    extra.Add(string.Format(L("perm_picker_preset_already", "{0} already added", "{0} 个已在白名单"), already));
+                    extra.Add(string.Format(SkillsLocalization.Get("perm_picker_preset_already"), already));
                 if (missing > 0)
-                    extra.Add(string.Format(L("perm_picker_preset_missing", "{0} unavailable", "{0} 个不可用"), missing));
+                    extra.Add(string.Format(SkillsLocalization.Get("perm_picker_preset_missing"), missing));
                 _summaryLabel.text += "  (" + string.Join(", ", extra) + ")";
             }
         }
@@ -169,8 +167,7 @@ namespace UnitySkills
 
             if (_grouped == null || _grouped.Count == 0)
             {
-                AppendEmptyLabel(L("perm_picker_all_in_allowlist",
-                    "All skills already in allowlist", "全部 skill 已在白名单中"));
+                AppendEmptyLabel(SkillsLocalization.Get("perm_picker_all_in_allowlist"));
                 return;
             }
 
@@ -190,7 +187,7 @@ namespace UnitySkills
 
                 int selectedInGroup = visible.Count(s => _selected.Contains(s.Name));
                 string headerSuffix = selectedInGroup > 0
-                    ? string.Format(L("perm_picker_selected_suffix", "  [{0} selected]", "  [已选 {0}]"), selectedInGroup)
+                    ? string.Format(SkillsLocalization.Get("perm_picker_selected_suffix"), selectedInGroup)
                     : string.Empty;
                 var foldout = new Foldout
                 {
@@ -203,12 +200,12 @@ namespace UnitySkills
                 groupOps.AddToClassList("picker-group-ops");
                 var allBtn = new Button(() => ToggleGroup(visible, true))
                 {
-                    text = L("perm_picker_select_all", "Select all in group", "全选本组")
+                    text = SkillsLocalization.Get("perm_picker_select_all")
                 };
                 allBtn.AddToClassList("picker-group-btn");
                 var noneBtn = new Button(() => ToggleGroup(visible, false))
                 {
-                    text = L("perm_picker_clear_group", "Clear", "清空")
+                    text = SkillsLocalization.Get("perm_picker_clear_group")
                 };
                 noneBtn.AddToClassList("picker-group-btn");
                 groupOps.Add(allBtn);
@@ -225,7 +222,7 @@ namespace UnitySkills
             if (totalShown == 0)
             {
                 AppendEmptyLabel(string.Format(
-                    L("perm_picker_no_match", "No skills match '{0}'", "没有匹配 '{0}' 的 skill"), q));
+                    SkillsLocalization.Get("perm_picker_no_match"), q));
             }
         }
 
@@ -257,7 +254,7 @@ namespace UnitySkills
 
             if (highRisk)
             {
-                var tag = new Label(L("perm_picker_high_risk_tag", "HIGH RISK", "高危"));
+                var tag = new Label(SkillsLocalization.Get("perm_picker_high_risk_tag"));
                 tag.AddToClassList("picker-row-risk");
                 row.Add(tag);
             }
@@ -280,11 +277,11 @@ namespace UnitySkills
             if (_summaryLabel == null || _addBtn == null) return;
             int n = _selected.Count;
             _summaryLabel.text = n == 0
-                ? L("perm_picker_none_selected", "No skills selected", "未选中任何 skill")
-                : string.Format(L("perm_picker_n_selected", "{0} skill(s) selected", "已选中 {0} 个 skill"), n);
+                ? SkillsLocalization.Get("perm_picker_none_selected")
+                : string.Format(SkillsLocalization.Get("perm_picker_n_selected"), n);
             _addBtn.text = n == 0
-                ? L("perm_picker_add_selected", "Add Selected", "添加所选")
-                : string.Format(L("perm_picker_add_selected_n", "Add Selected ({0})", "添加所选 ({0})"), n);
+                ? SkillsLocalization.Get("perm_picker_add_selected")
+                : string.Format(SkillsLocalization.Get("perm_picker_add_selected_n"), n);
             _addBtn.SetEnabled(n > 0);
         }
 
@@ -304,14 +301,12 @@ namespace UnitySkills
             if (highRiskNames.Count > 0)
             {
                 string list = string.Join("\n  • ", highRiskNames);
-                string title = L("perm_picker_confirm_title", "Add high-risk skills?", "添加高危 Skill？");
+                string title = SkillsLocalization.Get("perm_picker_confirm_title");
                 string msg = string.Format(
-                    L("perm_picker_confirm_msg",
-                        "The following {0} skill(s) are HIGH RISK and would bypass all approval gates:\n\n  • {1}\n\nContinue adding all {2} selected skills?",
-                        "以下 {0} 个 skill 属于高危，加入白名单后将绕过所有审批拦截：\n\n  • {1}\n\n继续添加全部 {2} 个所选 skill？"),
+                    SkillsLocalization.Get("perm_picker_confirm_msg"),
                     highRiskNames.Count, list, _selected.Count);
-                string ok = L("perm_picker_confirm_ok", "Add All", "全部添加");
-                string cancel = L("perm_picker_confirm_cancel", "Cancel", "取消");
+                string ok = SkillsLocalization.Get("perm_picker_confirm_ok");
+                string cancel = SkillsLocalization.Get("perm_picker_confirm_cancel");
                 if (!EditorUtility.DisplayDialog(title, msg, ok, cancel))
                     return;
             }
@@ -330,8 +325,6 @@ namespace UnitySkills
                 || s.MayTriggerReload
                 || string.Equals(s.RiskLevel, "high", StringComparison.OrdinalIgnoreCase);
         }
-
-        private static string L(string key, string en, string zh) => PermissionUiHelpers.L(key, en, zh);
     }
 }
 

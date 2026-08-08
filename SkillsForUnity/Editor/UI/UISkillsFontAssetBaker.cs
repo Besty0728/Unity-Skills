@@ -23,7 +23,7 @@ namespace UnitySkills
                 throw new FileNotFoundException("UI font source is missing", UISkillsFont.TtfPath);
 
             var fontAsset = FontAsset.CreateFontAsset(
-                source, 32, 3, GlyphRenderMode.SDFAA, 2048, 2048,
+                source, 32, 3, GlyphRenderMode.SDFAA, 4096, 4096,
                 AtlasPopulationMode.Dynamic, false);
             if (fontAsset == null)
                 throw new System.InvalidOperationException("TextCore failed to create the UI FontAsset.");
@@ -77,7 +77,7 @@ namespace UnitySkills
             {
                 foreach (var value in File.ReadAllText(path, Encoding.UTF8))
                 {
-                    if (!char.IsControl(value) && !char.IsSurrogate(value))
+                    if (!char.IsControl(value) && !char.IsSurrogate(value) && value != '\u26A0')
                         chars.Add(value);
                 }
             }

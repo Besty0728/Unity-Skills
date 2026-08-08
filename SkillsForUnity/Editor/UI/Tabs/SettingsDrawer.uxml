@@ -74,6 +74,12 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
 
+                <ui:VisualElement name="group-language" class="settings-group">
+                    <ui:Label name="language-pins-title" class="settings-group-title" text="Pinned languages" />
+                    <ui:DropdownField name="language-pin-primary" />
+                    <ui:DropdownField name="language-pin-secondary" />
+                </ui:VisualElement>
+
                 <!-- Unity CLI group — entry to the standalone UnityCliWindow -->
                 <ui:VisualElement name="group-cli" class="settings-group">
                     <ui:Label name="group-cli-title" class="settings-group-title"

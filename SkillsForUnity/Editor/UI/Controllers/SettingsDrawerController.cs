@@ -31,6 +31,10 @@ namespace UnitySkills
         private readonly VisualElement _root;
         private readonly UnitySkillsWindow _window;
 
+        private Label _languagePinsTitle;
+        private DropdownField _languagePinPrimary;
+        private DropdownField _languagePinSecondary;
+
         private VisualElement _drawerContainer;
         private VisualElement _drawerMask;
 
@@ -209,6 +213,9 @@ namespace UnitySkills
             _statsGroupTitle = _drawerContainer.Q<Label>("group-stats-title");
             _statsHint       = _drawerContainer.Q<Label>("stats-hint");
             _statsResetBtn   = _drawerContainer.Q<Button>("stats-reset-btn");
+            _languagePinsTitle = _drawerContainer.Q<Label>("language-pins-title");
+            _languagePinPrimary = _drawerContainer.Q<DropdownField>("language-pin-primary");
+            _languagePinSecondary = _drawerContainer.Q<DropdownField>("language-pin-secondary");
         }
 
         private void BindEvents()
@@ -309,6 +316,13 @@ namespace UnitySkills
                 {
                     SkillsHttpServer.ResetStatistics();
                 };
+
+            if (_languagePinPrimary != null)
+                _languagePinPrimary.RegisterValueChangedCallback(evt =>
+                    SkillsLocalization.PinnedPrimary = ParseLanguage(evt.newValue));
+            if (_languagePinSecondary != null)
+                _languagePinSecondary.RegisterValueChangedCallback(evt =>
+                    SkillsLocalization.PinnedSecondary = ParseLanguage(evt.newValue));
         }
 
         private void InitializeValues()
@@ -337,7 +351,12 @@ namespace UnitySkills
             {
                 _logDropdown.choices = new List<string>
                 {
-                    "Off", "Error", "Warning", "Info", "Agent", "Verbose"
+                    SkillsLocalization.Get("loglevel_off"),
+                    SkillsLocalization.Get("loglevel_error"),
+                    SkillsLocalization.Get("loglevel_warning"),
+                    SkillsLocalization.Get("loglevel_info"),
+                    SkillsLocalization.Get("loglevel_agent"),
+                    SkillsLocalization.Get("loglevel_verbose")
                 };
                 int lvl = (int)SkillsLogger.Level;
                 if (lvl < 0 || lvl >= _logDropdown.choices.Count) lvl = 0;
@@ -350,6 +369,7 @@ namespace UnitySkills
             if (_keepaliveField != null) _keepaliveField.value   = SkillsHttpServer.KeepAliveIntervalSeconds;
             if (_confirmToggle  != null) _confirmToggle.value    = ConfirmationTokenService.RequireConfirmation;
             if (_telemetryToggle != null) _telemetryToggle.value = SkillTelemetryService.Enabled;
+            RefreshLanguagePins();
         }
 
         public void Open()
@@ -386,34 +406,25 @@ namespace UnitySkills
             if (_drawerTitle != null) _drawerTitle.text = SkillsLocalization.Get("drawer_settings_title");
             if (_closeBtn != null)    _closeBtn.tooltip = SkillsLocalization.Get("drawer_close_tooltip");
 
-            // Permissions group — uses PermissionUiHelpers.L fallback so missing keys
-            // don't render raw keys before Localization.cs is updated.
+            // Permissions group
             if (_permGroupTitle != null)
-                _permGroupTitle.text = PermissionUiHelpers.L("drawer_section_permissions",
-                    "Permissions", "权限");
+                _permGroupTitle.text = SkillsLocalization.Get("drawer_section_permissions");
 
             if (_modeLabel != null)
-                _modeLabel.text = PermissionUiHelpers.L("perm_mode_label",
-                    "Operating Mode", "操作模式");
+                _modeLabel.text = SkillsLocalization.Get("perm_mode_label");
             ApplyModeHintText(SkillsModeManager.CurrentMode);
 
             if (_panelApprovalToggle != null)
-                _panelApprovalToggle.label = PermissionUiHelpers.L("perm_require_panel_approval",
-                    "Require Panel Approval", "必须面板批准");
+                _panelApprovalToggle.label = SkillsLocalization.Get("perm_require_panel_approval");
             if (_panelApprovalHint != null)
-                _panelApprovalHint.text = PermissionUiHelpers.L("perm_require_panel_approval_hint",
-                    "When checked, grant tokens must be Approved here on the panel; otherwise verbal consent in the AI chat is enough.",
-                    "勾选后 grant token 必须在此面板点 Approve 才生效；否则 AI 对话中用户文字同意即可。");
+                _panelApprovalHint.text = SkillsLocalization.Get("perm_require_panel_approval_hint");
 
             if (_allowlistClearBtn != null)
-                _allowlistClearBtn.text = PermissionUiHelpers.L("perm_allowlist_clear_all",
-                    "Clear All", "全部清除");
+                _allowlistClearBtn.text = SkillsLocalization.Get("perm_allowlist_clear_all");
             if (_allowlistAddBtn != null)
-                _allowlistAddBtn.text = PermissionUiHelpers.L("perm_add_skill_btn",
-                    "+ Add Skill", "+ 添加 Skill");
+                _allowlistAddBtn.text = SkillsLocalization.Get("perm_add_skill_btn");
             if (_viewAuditBtn != null)
-                _viewAuditBtn.text = PermissionUiHelpers.L("perm_view_audit_log",
-                    "View Audit Log", "查看审计日志");
+                _viewAuditBtn.text = SkillsLocalization.Get("perm_view_audit_log");
 
             RefreshCliGroup();
 
@@ -441,9 +452,7 @@ namespace UnitySkills
             if (_confirmToggle != null) _confirmToggle.label = SkillsLocalization.Get("drawer_confirm_label");
             if (_confirmHint   != null)
             {
-                _confirmHint.text = SkillsLocalization.Current == SkillsLocalization.Language.Chinese
-                    ? "开启后：删除类/RiskLevel=high 技能首次调用返回 _confirm token + dryRun 预览，5 分钟内带 token 重试才执行。"
-                    : "When ON: delete / high-risk skills first return a _confirm token + dryRun preview; re-call within 5 min with the token to execute.";
+                _confirmHint.text = SkillsLocalization.Get("drawer_confirm_hint");
             }
 
             if (_telemetryToggle != null)
@@ -453,9 +462,29 @@ namespace UnitySkills
 
             if (_statsHint     != null) _statsHint.text     = SkillsLocalization.Get("drawer_stats_hint");
             if (_statsResetBtn != null) _statsResetBtn.text = SkillsLocalization.Get("drawer_reset_stats_btn");
+            if (_languagePinsTitle != null) _languagePinsTitle.text = SkillsLocalization.Get("language_pins_title");
+            RefreshLanguagePins();
 
             _shortcutsController?.RefreshLocalization();
         }
+
+        private void RefreshLanguagePins()
+        {
+            var choices = new List<string> { "English", "Chinese", "Russian" };
+            if (_languagePinPrimary != null)
+            {
+                _languagePinPrimary.choices = choices;
+                _languagePinPrimary.SetValueWithoutNotify(SkillsLocalization.PinnedPrimary.ToString());
+            }
+            if (_languagePinSecondary != null)
+            {
+                _languagePinSecondary.choices = choices;
+                _languagePinSecondary.SetValueWithoutNotify(SkillsLocalization.PinnedSecondary.ToString());
+            }
+        }
+
+        private static SkillsLocalization.Language ParseLanguage(string value) =>
+            (SkillsLocalization.Language)Enum.Parse(typeof(SkillsLocalization.Language), value);
 
         // ===== Permissions group helpers =====
 
@@ -473,19 +502,13 @@ namespace UnitySkills
             switch (mode)
             {
                 case SkillsOperatingMode.Approval:
-                    _modeHint.text = PermissionUiHelpers.L("perm_mode_approval_hint",
-                        "AI must ask the user before invoking each FullAuto skill (per-skill grant).",
-                        "AI 必须询问用户后才能调用 FullAuto 技能（逐技能授权）。");
+                    _modeHint.text = SkillsLocalization.Get("perm_mode_approval_hint");
                     break;
                 case SkillsOperatingMode.Auto:
-                    _modeHint.text = PermissionUiHelpers.L("perm_mode_auto_hint",
-                        "AI decides on its own. Server only blocks high-risk skills (Delete / PlayMode / Reload).",
-                        "AI 自动决策；服务端仅拦截真高危技能（Delete / PlayMode / Reload）。");
+                    _modeHint.text = SkillsLocalization.Get("perm_mode_auto_hint");
                     break;
                 case SkillsOperatingMode.Bypass:
-                    _modeHint.text = PermissionUiHelpers.L("perm_mode_bypass_hint",
-                        "All skills pass through. ConfirmationToken still gates high-risk operations.",
-                        "全部技能直接放行；ConfirmationToken 仍对高危操作生效。");
+                    _modeHint.text = SkillsLocalization.Get("perm_mode_bypass_hint");
                     break;
                 default:
                     _modeHint.text = string.Empty;
@@ -504,24 +527,17 @@ namespace UnitySkills
         private void RefreshCliGroup()
         {
             if (_cliGroupTitle != null)
-                _cliGroupTitle.text = "Unity CLI";
+                _cliGroupTitle.text = SkillsLocalization.Get("cli_group_title");
             if (_cliOpenBtn != null)
             {
-                _cliOpenBtn.text = PermissionUiHelpers.L("cli_setup_entry",
-                    "Unity CLI Setup…", "Unity CLI 配置…");
-                _cliOpenBtn.tooltip = PermissionUiHelpers.L("cli_setup_entry_tip",
-                    "Detect / bind the experimental Unity CLI to enable cold start without Unity Hub",
-                    "检测 / 绑定实验性 Unity CLI，启用免 Unity Hub 冷启动");
+                _cliOpenBtn.text = SkillsLocalization.Get("cli_setup_entry");
+                _cliOpenBtn.tooltip = SkillsLocalization.Get("cli_setup_entry_tip");
             }
             if (_cliHint != null)
             {
                 _cliHint.text = UnityCliService.IsBound
-                    ? PermissionUiHelpers.L("cli_drawer_hint_bound",
-                        "Bound — AI agents may cold-start this project via Unity CLI.",
-                        "已绑定 —— AI Agent 可通过 Unity CLI 冷启动本项目。")
-                    : PermissionUiHelpers.L("cli_drawer_hint_unbound",
-                        "Not bound — open setup to detect the CLI and bind this project.",
-                        "未绑定 —— 打开配置面板检测 CLI 并绑定本项目。");
+                    ? SkillsLocalization.Get("cli_drawer_hint_bound")
+                    : SkillsLocalization.Get("cli_drawer_hint_unbound");
             }
         }
 
@@ -547,9 +563,7 @@ namespace UnitySkills
             {
                 if (_pendingTitle != null)
                     _pendingTitle.text = string.Format(
-                        PermissionUiHelpers.L("perm_pending_requests_fmt",
-                            "Pending Grant Requests ({0})",
-                            "待批请求 ({0})"),
+                        SkillsLocalization.Get("perm_pending_requests_fmt"),
                         pending.Count);
                 RebuildPendingList(pending);
             }
@@ -566,9 +580,7 @@ namespace UnitySkills
             {
                 if (_allowlistFoldout != null)
                     _allowlistFoldout.text = string.Format(
-                        PermissionUiHelpers.L("perm_allowlist_skills_fmt",
-                            "Allowlist Skills ({0})",
-                            "白名单 Skills ({0})"),
+                        SkillsLocalization.Get("perm_allowlist_skills_fmt"),
                         allowlist.Count);
                 if (_allowlistAddBtn != null)
                     _allowlistAddBtn.SetEnabled(true);
@@ -628,16 +640,14 @@ namespace UnitySkills
             // 渠道区分反馈：Panel 渠道走面板 Approve；Dialog 渠道的批准走 AI 对话，面板按钮无效，给出明确指引
             if (isPanel && req.ApprovedByPanel)
             {
-                var status = new Label(PermissionUiHelpers.L("perm_approved_waiting",
-                    "Approved · waiting for AI to execute", "已批准 · 等待 AI 执行"));
+                var status = new Label(SkillsLocalization.Get("perm_approved_waiting"));
                 status.AddToClassList("setting-hint");
                 status.style.marginBottom = 2;
                 card.Add(status);
             }
             else if (!isPanel)
             {
-                var chatHint = new Label(PermissionUiHelpers.L("perm_approve_in_chat",
-                    "Dialog channel — approve in the AI chat", "对话渠道 · 请在 AI 对话中批准"));
+                var chatHint = new Label(SkillsLocalization.Get("perm_approve_in_chat"));
                 chatHint.AddToClassList("setting-hint");
                 chatHint.style.marginBottom = 2;
                 card.Add(chatHint);
@@ -646,7 +656,7 @@ namespace UnitySkills
             var actions = new VisualElement { style = { flexDirection = FlexDirection.Row, justifyContent = Justify.FlexEnd, marginTop = 2 } };
             var approveBtn = new Button(() => SkillsModeManager.Approve(req.Token))
             {
-                text = PermissionUiHelpers.L("perm_approve", "Approve", "批准")
+                text = SkillsLocalization.Get("perm_approve")
             };
             approveBtn.AddToClassList("mini-btn");
             approveBtn.style.marginRight = 4;
@@ -655,7 +665,7 @@ namespace UnitySkills
 
             var denyBtn = new Button(() => SkillsModeManager.Deny(req.Token))
             {
-                text = PermissionUiHelpers.L("perm_deny", "Deny", "拒绝")
+                text = SkillsLocalization.Get("perm_deny")
             };
             denyBtn.AddToClassList("mini-btn");
             denyBtn.AddToClassList("danger");
@@ -681,8 +691,7 @@ namespace UnitySkills
 
             if (allowlist.Count == 0)
             {
-                var empty = new Label(PermissionUiHelpers.L("perm_no_allowlist",
-                    "No allowlisted skills.", "白名单为空。"));
+                var empty = new Label(SkillsLocalization.Get("perm_no_allowlist"));
                 empty.AddToClassList("setting-hint");
                 _allowlistList.Add(empty);
                 return;
@@ -733,7 +742,7 @@ namespace UnitySkills
 
             var removeBtn = new Button(() => SkillsModeManager.RemoveFromAllowlist(skillName))
             {
-                text = PermissionUiHelpers.L("perm_remove_from_allowlist", "Remove", "移除")
+                text = SkillsLocalization.Get("perm_remove_from_allowlist")
             };
             removeBtn.AddToClassList("mini-btn");
             row.Add(removeBtn);

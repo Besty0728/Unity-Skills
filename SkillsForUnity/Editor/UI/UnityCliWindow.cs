@@ -48,12 +48,10 @@ namespace UnitySkills
         // 轮询句柄：语言切换整树重建时先 Pause 旧项，避免在 root 上累积重复调度。
         private UnityEngine.UIElements.IVisualElementScheduledItem _pollSchedule;
 
-        private static string L(string key, string en, string zh) => PermissionUiHelpers.L(key, en, zh);
-
         public static void ShowWindow()
         {
             var w = GetWindow<UnityCliWindow>(
-                L("cli_window_title", "Unity CLI Setup", "Unity CLI 配置"));
+                SkillsLocalization.Get("cli_window_title"));
             w.minSize = new Vector2(460, 420);
             w.Focus();
         }
@@ -65,7 +63,7 @@ namespace UnitySkills
 
         private void RebuildForLanguage()
         {
-            titleContent = new GUIContent(L("cli_window_title", "Unity CLI Setup", "Unity CLI 配置"));
+            titleContent = new GUIContent(SkillsLocalization.Get("cli_window_title"));
             rootVisualElement.Clear();
             rootVisualElement.styleSheets.Clear();
             CreateGUI();
@@ -119,53 +117,42 @@ namespace UnitySkills
         private void WireStaticTexts()
         {
             var detectTitle = rootVisualElement.Q<Label>("cli-detect-title");
-            if (detectTitle != null) detectTitle.text = L("cli_detect_title", "Detection", "环境检测");
+            if (detectTitle != null) detectTitle.text = SkillsLocalization.Get("cli_detect_title");
 
             var pathLabel = rootVisualElement.Q<Label>("cli-path-label");
-            if (pathLabel != null) pathLabel.text = L("cli_path_label", "Path", "路径");
+            if (pathLabel != null) pathLabel.text = SkillsLocalization.Get("cli_path_label");
             if (_pathField != null)
-                _pathField.tooltip = L("cli_path_tip",
-                    "Optional: full path to the unity CLI executable (leave empty to auto-detect)",
-                    "可选：unity CLI 可执行文件完整路径（留空自动探测）");
+                _pathField.tooltip = SkillsLocalization.Get("cli_path_tip");
 
             var detectBtn = rootVisualElement.Q<Button>("cli-detect-btn");
-            if (detectBtn != null) detectBtn.text = L("cli_detect", "Detect", "检测");
+            if (detectBtn != null) detectBtn.text = SkillsLocalization.Get("cli_detect");
 
             var bindTitle = rootVisualElement.Q<Label>("cli-bind-title");
-            if (bindTitle != null) bindTitle.text = L("cli_bind_title", "Project Binding", "项目绑定");
+            if (bindTitle != null) bindTitle.text = SkillsLocalization.Get("cli_bind_title");
 
             var featTitle = rootVisualElement.Q<Label>("cli-features-title");
-            if (featTitle != null) featTitle.text = L("cli_features_title", "Features", "能力开关");
+            if (featTitle != null) featTitle.text = SkillsLocalization.Get("cli_features_title");
 
             var installHint = rootVisualElement.Q<Label>("cli-install-hint");
             if (installHint != null)
-                installHint.text = L("cli_install_hint",
-                    "Unity CLI not found. Install it with the command below, or fill in a custom path above.",
-                    "未检测到 Unity CLI。可用下方命令安装，或在上方填写自定义路径。");
+                installHint.text = SkillsLocalization.Get("cli_install_hint");
 
             var installCmd = rootVisualElement.Q<TextField>("cli-install-cmd");
             if (installCmd != null) installCmd.SetValueWithoutNotify(InstallCmd);
 
             if (_featColdStart != null)
-                _featColdStart.label = L("cli_feat_coldstart",
-                    "Cold start (open project without Unity Hub)", "冷启动（免 Unity Hub 直接打开本项目）");
+                _featColdStart.label = SkillsLocalization.Get("cli_feat_coldstart");
             if (_featOpenArgs != null)
-                _featOpenArgs.label = L("cli_feat_openargs",
-                    "Launch with arguments (unity open --args)", "传参启动（unity open --args）");
+                _featOpenArgs.label = SkillsLocalization.Get("cli_feat_openargs");
             if (_featTest != null)
-                _featTest.label = L("cli_feat_test",
-                    "Headless test runs (unity test)", "无头测试（unity test）");
+                _featTest.label = SkillsLocalization.Get("cli_feat_test");
             if (_featRun != null)
-                _featRun.label = L("cli_feat_run",
-                    "Batch runs (unity run)", "批处理运行（unity run）");
+                _featRun.label = SkillsLocalization.Get("cli_feat_run");
             if (_featBuild != null)
-                _featBuild.label = L("cli_feat_build",
-                    "Headless builds (unity build)", "无头构建（unity build）");
+                _featBuild.label = SkillsLocalization.Get("cli_feat_build");
 
             if (_helpBox != null)
-                _helpBox.text = L("cli_help",
-                    "After binding, AI agents read Library/UnitySkills/cli_config.json and may use the Unity CLI to cold-start this project without Unity Hub. Unity CLI is experimental (beta); unbinding disables all CLI capabilities. The binding is machine-local and never committed to git.",
-                    "绑定后，AI Agent 会读取 Library/UnitySkills/cli_config.json，并可通过 Unity CLI 免 Unity Hub 冷启动本项目。Unity CLI 目前为实验性（beta）；解绑即关闭全部 CLI 能力。绑定信息仅存本机，不会进入 git。");
+                _helpBox.text = SkillsLocalization.Get("cli_help");
         }
 
         private void WireActions()
@@ -173,11 +160,11 @@ namespace UnitySkills
             var browseBtn = rootVisualElement.Q<Button>("cli-browse-btn");
             if (browseBtn != null)
             {
-                browseBtn.tooltip = L("cli_browse_tip", "Browse for the unity executable", "浏览选择 unity 可执行文件");
+                browseBtn.tooltip = SkillsLocalization.Get("cli_browse_tip");
                 browseBtn.clicked += () =>
                 {
                     string p = EditorUtility.OpenFilePanel(
-                        L("cli_browse_title", "Select unity CLI executable", "选择 unity CLI 可执行文件"), "", "");
+                        SkillsLocalization.Get("cli_browse_title"), "", "");
                     if (!string.IsNullOrEmpty(p)) _pathField?.SetValueWithoutNotify(p);
                 };
             }
@@ -188,14 +175,14 @@ namespace UnitySkills
             var copyBtn = rootVisualElement.Q<Button>("cli-copy-cmd-btn");
             if (copyBtn != null)
             {
-                copyBtn.text = L("cli_copy", "Copy", "复制");
+                copyBtn.text = SkillsLocalization.Get("cli_copy");
                 copyBtn.clicked += () => EditorGUIUtility.systemCopyBuffer = InstallCmd;
             }
 
             var docsBtn = rootVisualElement.Q<Button>("cli-docs-btn");
             if (docsBtn != null)
             {
-                docsBtn.text = L("cli_docs", "Docs", "文档");
+                docsBtn.text = SkillsLocalization.Get("cli_docs");
                 docsBtn.clicked += () => Application.OpenURL(DocsUrl);
             }
 
@@ -205,7 +192,7 @@ namespace UnitySkills
             var revealBtn = rootVisualElement.Q<Button>("cli-reveal-cfg-btn");
             if (revealBtn != null)
             {
-                revealBtn.text = L("cli_reveal_cfg", "Reveal Config", "打开配置文件");
+                revealBtn.text = SkillsLocalization.Get("cli_reveal_cfg");
                 revealBtn.clicked += () =>
                 {
                     string cfgPath = System.IO.Path.Combine(
@@ -238,7 +225,7 @@ namespace UnitySkills
             string userPath = _pathField?.value?.Trim();
             UnityCliService.DetectAsync(string.IsNullOrEmpty(userPath) ? null : userPath);
             _detectionPending = true;
-            SetBadge(_statusBadge, "unknown", L("cli_detecting", "Detecting…", "检测中…"));
+            SetBadge(_statusBadge, "unknown", SkillsLocalization.Get("cli_detecting"));
         }
 
         private void PollDetection()
@@ -250,14 +237,14 @@ namespace UnitySkills
             bool found = r != null && r.found;
             if (found)
             {
-                SetBadge(_statusBadge, "installed", L("cli_status_found", "Installed", "已安装"));
+                SetBadge(_statusBadge, "installed", SkillsLocalization.Get("cli_status_found"));
                 if (_versionLabel != null) _versionLabel.text = $"{r.version}  ·  {r.cliPath}";
                 if (_pathField != null && string.IsNullOrEmpty(_pathField.value))
                     _pathField.SetValueWithoutNotify(r.cliPath);
             }
             else
             {
-                SetBadge(_statusBadge, "not-installed", L("cli_status_missing", "Not Found", "未安装"));
+                SetBadge(_statusBadge, "not-installed", SkillsLocalization.Get("cli_status_missing"));
                 if (_versionLabel != null) _versionLabel.text = "";
             }
             if (_installGuide != null)
@@ -272,10 +259,8 @@ namespace UnitySkills
             var r = UnityCliService.LastResult;
             if (r == null || !r.found)
             {
-                EditorUtility.DisplayDialog("Unity CLI",
-                    L("cli_bind_need_cli",
-                        "Unity CLI must be detected before binding. Run Detect first.",
-                        "绑定前需要先成功检测到 Unity CLI，请先点击“检测”。"), "OK");
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("cli_group_title"),
+                    SkillsLocalization.Get("cli_bind_need_cli"), SkillsLocalization.Get("dialog_ok"));
                 return;
             }
             UnityCliService.Bind(r.cliPath, r.version);
@@ -285,11 +270,9 @@ namespace UnitySkills
         private void OnUnbindClicked()
         {
             if (!EditorUtility.DisplayDialog(
-                    L("cli_unbind", "Unbind", "解绑"),
-                    L("cli_unbind_confirm",
-                        "Disable Unity CLI capabilities for this project? AI agents will stop using the CLI (cold start, --args, headless tests, batch runs, headless builds).",
-                        "确定关闭本项目的 Unity CLI 能力吗？AI Agent 将停止使用 CLI（冷启动、传参启动、无头测试、批处理运行、无头构建）。"),
-                    "OK", "Cancel"))
+                    SkillsLocalization.Get("cli_unbind"),
+                    SkillsLocalization.Get("cli_unbind_confirm"),
+                    SkillsLocalization.Get("dialog_ok"), SkillsLocalization.Get("dialog_cancel")))
                 return;
             UnityCliService.Unbind();
             RefreshBindingUi();
@@ -302,31 +285,29 @@ namespace UnitySkills
 
             SetBadge(_bindBadge,
                 bound ? "installed" : "not-installed",
-                bound ? L("cli_bound", "Bound", "已绑定")
-                      : L("cli_unbound", "Not Bound", "未绑定"));
+                bound ? SkillsLocalization.Get("cli_bound")
+                      : SkillsLocalization.Get("cli_unbound"));
 
             if (_bindInfo != null)
             {
                 _bindInfo.text = bound
                     ? string.Format(
-                        L("cli_bind_info_fmt", "CLI {0} · bound {1}", "CLI {0} · 绑定于 {1}"),
+                        SkillsLocalization.Get("cli_bind_info_fmt"),
                         cfg.cliVersion,
                         FormatLocalTime(cfg.boundAt))
-                    : L("cli_bind_none",
-                        "Bind this project to enable CLI capabilities for AI agents.",
-                        "绑定当前项目后，AI Agent 才会启用 CLI 能力。");
+                    : SkillsLocalization.Get("cli_bind_none");
             }
 
             var detected = UnityCliService.LastResult;
             if (_bindBtn != null)
             {
-                _bindBtn.text = bound ? L("cli_rebind", "Re-bind", "重新绑定")
-                                      : L("cli_bind", "Bind This Project", "绑定当前项目");
+                _bindBtn.text = bound ? SkillsLocalization.Get("cli_rebind")
+                                      : SkillsLocalization.Get("cli_bind");
                 _bindBtn.SetEnabled(detected != null && detected.found);
             }
             if (_unbindBtn != null)
             {
-                _unbindBtn.text = L("cli_unbind", "Unbind", "解绑");
+                _unbindBtn.text = SkillsLocalization.Get("cli_unbind");
                 _unbindBtn.SetEnabled(bound);
             }
 

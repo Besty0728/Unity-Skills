@@ -148,7 +148,7 @@ namespace UnitySkills
             {
                 EditorUtility.DisplayDialog(title,
                     string.Format(SkillsLocalization.Get("analytics_clear_failed_fmt"), ex.Message),
-                    "OK");
+                    SkillsLocalization.Get("dialog_ok"));
                 return;
             }
 
@@ -160,10 +160,10 @@ namespace UnitySkills
                 bool success = jo?["success"]?.Value<bool>() ?? false;
                 if (!success)
                 {
-                    string err = jo?["error"]?.ToString() ?? "unknown error";
+                    string err = jo?["error"]?.ToString() ?? SkillsLocalization.Get("analytics_unknown_error");
                     EditorUtility.DisplayDialog(title,
                         string.Format(SkillsLocalization.Get("analytics_clear_failed_fmt"), err),
-                        "OK");
+                        SkillsLocalization.Get("dialog_ok"));
                 }
                 else
                 {
@@ -174,7 +174,7 @@ namespace UnitySkills
                     // feedback so the user sees the count.
                     EditorUtility.DisplayDialog(title,
                         string.Format(SkillsLocalization.Get("analytics_clear_done_fmt"), removed, remaining),
-                        "OK");
+                        SkillsLocalization.Get("dialog_ok"));
                 }
             }
             catch (Exception ex)
