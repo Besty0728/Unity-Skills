@@ -43,6 +43,7 @@ namespace UnitySkills.Tests.Core
             else EditorPrefs.DeleteKey(PrefKeyMode);
             if (_hadPanelApproval) EditorPrefs.SetBool(PrefKeyPanelApproval, _savedPanelApproval);
             else EditorPrefs.DeleteKey(PrefKeyPanelApproval);
+            SkillsModeManager.CompleteTestPreferenceRecovery();
         }
 
         [SetUp]

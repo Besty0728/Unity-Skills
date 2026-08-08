@@ -69,6 +69,7 @@ namespace UnitySkills.Tests.Core
             RestoreString(PrefKeyLegacyGranted, _hadLegacyGranted, _savedLegacyGranted);
             SkillsModeManager.ExistingInstallOverrideForTests = null;
             ForceAllowlistReload();
+            SkillsModeManager.CompleteTestPreferenceRecovery();
         }
 
         [SetUp]
@@ -491,6 +492,21 @@ namespace UnitySkills.Tests.Core
             // SetUp left zero UnitySkills_* keys behind.
             Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
             Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
+        }
+
+        [Test]
+        public void ResetForTests_DomainReloadRecovery_RestoresExplicitBypassMode()
+        {
+            SkillsModeManager.CompleteTestPreferenceRecovery();
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
+
+            SkillsModeManager.ResetForTests();
+            Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
+
+            SkillsModeManager.RestorePreferencesAfterTestDomainReload();
+
+            Assert.IsTrue(EditorPrefs.HasKey(PrefKeyMode));
+            Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode);
         }
 
         // ═════════════════════════════════════════════════════════════════
