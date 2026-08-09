@@ -269,7 +269,7 @@ namespace UnitySkills
                 var p = AssetDatabase.GUIDToAssetPath(guid);
                 var mat = AssetDatabase.LoadAssetAtPath<Material>(p);
                 if (mat == null || mat.shader == null) continue;
-                var colorStr = mat.HasProperty("_Color") ? mat.color.ToString() : (mat.HasProperty("_BaseColor") ? mat.GetColor("_BaseColor").ToString() : "none");
+                var colorStr = TryGetMaterialColorString(mat);
                 matInfos.Add((p, mat.shader.name + "|" + colorStr + "|" + mat.renderQueue));
             }
 
@@ -277,6 +277,17 @@ namespace UnitySkills
                 .Select(g => new { shader = g.Key.Split('|')[0], count = g.Count(), paths = g.Select(m => m.path).ToArray() }).ToArray();
 
             return new { success = true, duplicateGroups = duplicates.Length, groups = duplicates, note = "Comparison is approximate (color/texture similarity). Manual review recommended." };
+        }
+
+        private static string TryGetMaterialColorString(Material mat)
+        {
+            foreach (var prop in new[] { "_Color", "_BaseColor" })
+            {
+                if (!mat.HasProperty(prop)) continue;
+                try { return mat.GetColor(prop).ToString(); }
+                catch { /* property exists but is not a readable color */ }
+            }
+            return "none";
         }
 
         [UnitySkill("optimize_analyze_overdraw", "Analyze transparent objects that may cause overdraw",
