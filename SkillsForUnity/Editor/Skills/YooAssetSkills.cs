@@ -2004,6 +2004,14 @@ namespace UnitySkills
                 job.Progress = 5;
                 if (!EditorApplication.isPlaying)
                 {
+                    // If we already tried to start Play Mode in a previous domain reload and it
+                    // clearly did not happen, fail instead of looping forever.
+                    if (job.StartedPlayMode)
+                    {
+                        FailRuntimeValidationJob(job, "Play Mode did not start after restore; aborting validation.", "PlayModeStartFailed");
+                        return;
+                    }
+
                     job.StartedPlayMode = true;
                     job.Status = RuntimeValidationStatus.Running;
                     PersistRuntimeValidationJobs();

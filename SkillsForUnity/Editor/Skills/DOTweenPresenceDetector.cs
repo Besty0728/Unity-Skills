@@ -32,6 +32,10 @@ namespace UnitySkills
             if (SessionState.GetBool(SessionDoneKey, false))
                 return;
 
+            // Mark as done before doing any work so an exception can never cause
+            // this method to re-request compilation on every subsequent domain reload.
+            SessionState.SetBool(SessionDoneKey, true);
+
             try
             {
                 bool hasDOTween = DOTweenReflectionHelper.IsDOTweenInstalled;
@@ -43,13 +47,8 @@ namespace UnitySkills
 
                 if (changed)
                 {
-                    SessionState.SetBool(SessionDoneKey, true);
                     try { CompilationPipeline.RequestScriptCompilation(); }
                     catch { /* editor may refuse during certain lifecycle moments */ }
-                }
-                else
-                {
-                    SessionState.SetBool(SessionDoneKey, true);
                 }
             }
             catch (System.Exception ex)

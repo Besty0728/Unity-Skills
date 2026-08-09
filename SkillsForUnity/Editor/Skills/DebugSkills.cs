@@ -46,10 +46,20 @@ namespace UnitySkills
         private static string CaptureDefinesValue()
         {
             var group = EditorUserBuildSettings.selectedBuildTargetGroup;
+            string defines;
+            try
+            {
+                defines = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group)) ?? string.Empty;
+            }
+            catch (System.Exception ex)
+            {
+                SkillsLogger.LogWarning($"[DebugSkills] Failed to capture defines for {group}: {ex.Message}");
+                defines = string.Empty;
+            }
             return JsonConvert.SerializeObject(new DefinesSettingValue
             {
                 group = group.ToString(),
-                defines = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group)) ?? string.Empty
+                defines = defines
             });
         }
 
@@ -65,8 +75,16 @@ namespace UnitySkills
             if (!System.Enum.TryParse(value.group, out BuildTargetGroup group))
                 return false;
 
-            PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group), value.defines ?? string.Empty);
-            return true;
+            try
+            {
+                PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group), value.defines ?? string.Empty);
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                SkillsLogger.LogWarning($"[DebugSkills] Failed to apply defines for {group}: {ex.Message}");
+                return false;
+            }
         }
 
         // Unity LogEntry mode bits (from UnityCsReference)
@@ -333,8 +351,20 @@ namespace UnitySkills
         public static object DebugGetDefines()
         {
             var group = EditorUserBuildSettings.selectedBuildTargetGroup;
-            var defines = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group));
-            return new { success = true, buildTargetGroup = group.ToString(), defines };
+            try
+            {
+                var defines = PlayerSettings.GetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group));
+                return new { success = true, buildTargetGroup = group.ToString(), defines };
+            }
+            catch (System.Exception ex)
+            {
+                return new
+                {
+                    success = false,
+                    error = $"Failed to read scripting define symbols for {group}: {ex.Message}",
+                    buildTargetGroup = group.ToString()
+                };
+            }
         }
 
         [UnitySkill("debug_set_defines", "Set scripting define symbols for current platform", TracksWorkflow = true,
@@ -350,7 +380,21 @@ namespace UnitySkills
                 WorkflowManager.SnapshotSetting("debug.scriptingDefines", CaptureDefinesValue(), "Debug: Scripting Define Symbols");
 
             var group = EditorUserBuildSettings.selectedBuildTargetGroup;
-            PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group), defines);
+            try
+            {
+                PlayerSettings.SetScriptingDefineSymbols(NamedBuildTarget.FromBuildTargetGroup(group), defines);
+            }
+            catch (System.Exception ex)
+            {
+                return new
+                {
+                    success = false,
+                    error = $"Failed to set scripting define symbols for {group}: {ex.Message}",
+                    buildTargetGroup = group.ToString(),
+                    defines
+                };
+            }
+
             return new
             {
                 success = true,
