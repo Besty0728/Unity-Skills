@@ -13,7 +13,7 @@ namespace UnitySkills
     /// Auto-detects DOTween and DOTween Pro installation and maintains
     /// DOTWEEN / DOTWEEN_PRO Scripting Define Symbols accordingly.
     ///
-    /// Runs on every Domain Reload. If the user installs DOTween, the macro
+    /// Runs once per editor session. If the user installs DOTween, the macro
     /// is added automatically and a recompile is requested so DOTweenSkills
     /// become available without any manual configuration. If the user removes
     /// DOTween, the macro is removed so the UnitySkills.Editor assembly
@@ -24,9 +24,14 @@ namespace UnitySkills
         private const string DOTweenDefine = "DOTWEEN";
         private const string DOTweenProDefine = "DOTWEEN_PRO";
 
+        private const string SessionDoneKey = "UnitySkills.DOTweenPresenceDetector.Done";
+
         [InitializeOnLoadMethod]
         private static void Synchronize()
         {
+            if (SessionState.GetBool(SessionDoneKey, false))
+                return;
+
             try
             {
                 bool hasDOTween = DOTweenReflectionHelper.IsDOTweenInstalled;
@@ -38,8 +43,13 @@ namespace UnitySkills
 
                 if (changed)
                 {
+                    SessionState.SetBool(SessionDoneKey, true);
                     try { CompilationPipeline.RequestScriptCompilation(); }
                     catch { /* editor may refuse during certain lifecycle moments */ }
+                }
+                else
+                {
+                    SessionState.SetBool(SessionDoneKey, true);
                 }
             }
             catch (System.Exception ex)
