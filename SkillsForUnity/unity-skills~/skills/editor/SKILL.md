@@ -1,7 +1,14 @@
 ---
 name: unity-editor
-description: Control and observe the Unity Editor — read persistent scene/file changes, enter/exit/pause/step play mode, inspect live GameObject runtime state, select objects, undo/redo, and execute menu items. Use after the user edited Unity while the AI was away, when file watching reports changes, or when driving Editor state. 控制并观察 Unity 编辑器(读取持久化场景/文件变更、进入/退出/暂停/单帧步进 play mode、检查运行时状态、选中对象、撤销/重做、执行菜单项);当用户在 AI 离开期间修改了 Unity、文件监控发现变化、或需要操控编辑器状态时使用。
+description: Control and observe the Unity Editor state. 控制并观察 Unity 编辑器状态。
 ---
+
+## Triggers
+- Reading persistent scene/file changes
+- Driving play mode
+- Inspecting runtime state
+- Executing menu items
+- 读取持久化场景/文件变更、操控 Play Mode、检查运行时状态、执行菜单项
 
 # Unity Editor Skills
 

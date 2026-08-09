@@ -1,7 +1,13 @@
 ---
 name: unity-scriptdesign
-description: Advises on Unity gameplay script quality — code review, reducing coupling, improving maintainability, and refactoring. Use when reviewing code quality, untangling tightly-coupled scripts, or planning a refactor for maintainability, even if the user just says "看看我代码" or "代码有点乱". 为 Unity 游戏脚本质量提供建议(代码审查、降低耦合、提升可维护性、重构);当用户要审查代码质量、理顺高耦合脚本、或为可维护性规划重构时使用。
+description: Advise on Unity gameplay script quality. 为 Unity 游戏脚本质量提供建议。
 ---
+
+## Triggers
+- Reviewing code quality
+- Untangling tightly-coupled scripts
+- Planning a refactor for maintainability
+- 审查代码质量、理顺高耦合脚本、为可维护性规划重构
 
 # Unity Script Design Review
 

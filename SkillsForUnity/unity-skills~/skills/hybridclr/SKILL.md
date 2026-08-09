@@ -1,7 +1,15 @@
 ---
 name: unity-hybridclr
-description: Automate HybridCLR C# hot-update prebuild in the Unity Editor — read and write HybridCLRSettings, probe the il2cpp_plus install, compile hot-update DLLs, run the Generate/All pipeline or a single generation step, inspect AOTGenericReferences, and stage compiled DLLs into a YooAsset collector directory. Use when the user is working on C# hot update / HybridCLR — configuring hot-update assemblies, compiling hot-update dll, generating AOTGenericReferences or link.xml, diagnosing a broken HybridCLR setup, or wiring HybridCLR output into a YooAsset bundle build. 自动化 HybridCLR 的 C# 热更新预构建(读写 HybridCLRSettings、检测 il2cpp_plus 安装状态、编译热更 dll、执行 Generate/All 或单步生成、查看 AOTGenericReferences、把产物拷进 YooAsset 收集目录);当用户配置热更程序集、编译热更 dll、生成 AOTGenericReferences/link.xml、排查热更环境问题,或要把 HybridCLR 产物接进 YooAsset 打包链路时使用。
+description: Automate HybridCLR C# hot-update prebuild. 自动化 HybridCLR C# 热更新预构建。
 ---
+
+## Triggers
+- Configuring hot-update assemblies
+- Compiling hot-update DLLs
+- Generating AOTGenericReferences/link.xml
+- Diagnosing HybridCLR setup
+- Wiring output into YooAsset builds
+- 配置热更程序集、编译热更 DLL、生成 AOTGenericReferences/link.xml、排查 HybridCLR 环境、把产物接进 YooAsset 打包链路
 
 # Unity HybridCLR Skills
 

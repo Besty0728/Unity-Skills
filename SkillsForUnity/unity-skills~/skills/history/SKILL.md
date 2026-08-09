@@ -1,7 +1,13 @@
 ---
 name: unity-history
-description: Manage undo/redo history over the Unity Editor native undo stack — inspect, step through, and control recorded operations. Use when reviewing or navigating the undo history, stepping undo/redo, or auditing what changed, even if the user just says "撤销历史" or "回退操作". 管理 Unity 编辑器原生撤销栈上的撤销/重做历史(查看、逐步遍历、控制已记录的操作);当用户要查看或浏览撤销历史、逐步撤销/重做、或审查改动时使用。
+description: Manage undo/redo history over the native undo stack. 管理原生撤销栈上的撤销/重做历史。
 ---
+
+## Triggers
+- Reviewing or navigating undo history
+- Stepping undo/redo
+- Auditing what changed
+- 查看或浏览撤销历史、逐步撤销/重做、审查改动
 
 # History Skills
 

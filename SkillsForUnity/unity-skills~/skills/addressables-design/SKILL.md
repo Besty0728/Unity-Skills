@@ -1,7 +1,14 @@
 ---
 name: unity-addressables-design
-description: Source-anchored design rules for Unity Addressables across two versions — 1.22.3 on Unity 2022 and 2.9.1 on Unity 6 — covering initialization, async operation handles, asset/scene loading, catalog updates, content download, AssetReference, and version migration. Use when writing or reviewing Addressables code, loading assets/scenes asynchronously, setting up hot-update or catalog refresh, or migrating between versions, even if the user just says "可寻址" or "热更". 为 Unity Addressables 提供源码锚定的设计规则(覆盖两个版本,Unity 2022 用 1.22.3、Unity 6 用 2.9.1;含初始化、异步操作句柄、资源/场景加载、目录更新、资源下载、AssetReference、版本迁移);当用户要编写或审查 Addressables 代码、异步加载资源/场景、配置热更新或目录刷新时使用。
+description: Source-anchored design rules for Unity Addressables 1.22.3/2.9.1. 为 Unity Addressables 1.22.3/2.9.1 提供源码锚定的设计规则。
 ---
+
+## Triggers
+- Writing or reviewing Addressables code
+- Async asset/scene loading
+- Hot-update or catalog refresh
+- Version migration
+- 编写或审查 Addressables 代码、异步加载资源/场景、配置热更新或目录刷新、版本迁移
 
 # Addressables - Design Rules
 

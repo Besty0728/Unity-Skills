@@ -1,7 +1,15 @@
 ---
 name: unity-uitoolkit
-description: Build Unity UI Toolkit (UITK) UIs — create/edit USS stylesheets and UXML layouts, configure UIDocument components, declare runtime data bindings in UXML, create world-space UI panels, and run UXML upgraders. Use when authoring runtime or editor UI with UI Toolkit, writing USS/UXML, wiring a UIDocument, binding UI to a data source, or building 3D/world-space UI, even if the user just says "UITK" or "UXML". 构建 Unity UI Toolkit(UITK)界面(创建/编辑 USS 样式表与 UXML 布局、配置 UIDocument 组件、在 UXML 中声明运行时数据绑定、创建世界空间 UI 面板、批量升级 UXML);当用户要用 UI Toolkit 编写运行时或编辑器 UI、编写 USS/UXML、接入 UIDocument、把 UI 绑定到数据源、或做 3D/世界空间 UI 时使用。
+description: Build Unity UI Toolkit (UITK) UIs. 构建 Unity UI Toolkit(UITK)界面。
 ---
+
+## Triggers
+- Authoring runtime or editor UI with UI Toolkit
+- Writing USS/UXML
+- Wiring a UIDocument
+- Binding UI to data
+- Building world-space UI
+- 用 UI Toolkit 编写运行时或编辑器 UI、编写 USS/UXML、接入 UIDocument、把 UI 绑定到数据源、做世界空间 UI
 
 # Unity UI Toolkit Skills
 

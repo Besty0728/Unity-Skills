@@ -1,7 +1,13 @@
 ---
 name: unity-skills-index
-description: Index of all Unity Skills modules — functional (REST) modules and advisory (design) modules. Browse available modules, check operating-mode requirements (Approval/Auto/Bypass), and pick the right module for a task. Use when looking for which Unity module handles something, browsing the module catalog, or checking a module's mode requirements, even if the user just says "有哪些 Unity 技能" or "Unity 模块列表". Unity Skills 所有模块的索引(功能型 REST 模块与建议型设计模块);当用户要查找某事由哪个 Unity 模块处理、浏览模块目录、或确认模块的模式要求时使用。
+description: Index of all Unity Skills modules and operating modes. Unity Skills 全模块索引与模式说明。
 ---
+
+## Triggers
+- Browsing the module catalog
+- Finding which module handles a task
+- Checking mode requirements
+- 浏览模块目录、查找某事由哪个模块处理、确认模式要求
 
 # Unity Skills - Module Index
 

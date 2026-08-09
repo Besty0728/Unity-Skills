@@ -1,7 +1,13 @@
 ---
 name: unity-blueprints
-description: Advises on starter architecture blueprints for small games — platformer, shooter, runner, puzzle, tower-defense, clicker, card. Use when starting a small game from scratch, scaffolding a genre's core structure, or asking how to organize a specific game type, even if the user just says "做个平台跳跃" or "塔防怎么搭". 为小游戏提供起步架构蓝图(平台跳跃、射击、跑酷、解谜、塔防、点击、卡牌);当用户要从零开始做小游戏、搭建某类型的核心结构、或询问特定玩法怎么组织时使用。
+description: Advise on starter architecture blueprints for small games. 为小游戏提供起步架构蓝图建议。
 ---
+
+## Triggers
+- Starting a small game from scratch
+- Scaffolding a genre core structure
+- Organizing a specific game type
+- 从零开始做小游戏、搭建某类型核心结构、组织特定玩法
 
 # Unity Gameplay Blueprints
 

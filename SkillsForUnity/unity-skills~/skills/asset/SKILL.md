@@ -1,7 +1,14 @@
 ---
 name: unity-asset
-description: Manage the Unity AssetDatabase — import, delete, move/rename, duplicate, find, get info, and create assets. Use when organizing project assets, importing or relocating files, querying asset metadata, or scripting AssetDatabase operations, even if the user just says "资源" or "资产". 管理 Unity AssetDatabase(导入、删除、移动/重命名、复制、查找、获取信息、创建资源);当用户要整理工程资源、导入或移动文件、查询资源元数据时使用。
+description: Manage Unity AssetDatabase operations. 管理 Unity AssetDatabase 操作。
 ---
+
+## Triggers
+- Organizing project assets
+- Importing or relocating files
+- Querying asset metadata
+- Scripting AssetDatabase operations
+- 整理工程资源、导入或移动文件、查询资源元数据、脚本化 AssetDatabase 操作
 
 # Unity Asset Skills
 

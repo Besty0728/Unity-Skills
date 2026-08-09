@@ -4,7 +4,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ## [2.4.3] - 2026-08-09
 
-> **扩展接入面 + 初始化链路加固** —— 合并社区 PR #53–#57（俄语本地化、Addressables REST 模块、Summary Mode 分页、结构化错误响应、Bypass 模式持久化），新增 8 个 Addressables skill；同时修复 issue #58（DOTweenPresenceDetector 在缺少平台 SDK 时触发无限重编译）和 Decal shader 材质颜色读取异常，并加固 4 处初始化/编译相关风险点。
+> **扩展接入面 + 初始化链路加固** —— 合并社区 PR #53–#57（俄语本地化、Addressables REST 模块、Summary Mode 分页、结构化错误响应、Bypass 模式持久化），新增 8 个 Addressables skill，技能总数由 776 增至 784；同时修复 issue #58（DOTweenPresenceDetector 在缺少平台 SDK 时触发无限重编译）和 Decal shader 材质颜色读取异常，并加固 4 处初始化/编译相关风险点。
 
 ### Added
 

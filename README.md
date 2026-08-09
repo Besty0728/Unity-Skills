@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-817-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-784-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -38,7 +38,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **817 REST Skills Comprehensive Toolkit**: Includes 55 functional source modules plus 24 advisory design modules, with Batch operations for multi-object control.
+- 🛠️ **784 REST Skills Comprehensive Toolkit**: Includes 54 functional source modules plus 24 advisory design modules, with Batch operations for multi-object control.
 - ⚡ **Revolutionary Efficiency Boost (v2.0.1+)**: Schema caching + exponential backoff polling + BATCH-FIRST guidance → **Token consumption ↓ 96%**, **simple tasks 4-6 calls → 1 call (↓ 75-83%)**. Current: v2.4.3.
 - 🔐 **Three-Tier Permission Modes (v1.9.0+)**: Approval / Auto / Bypass with dual approval channels (Dialog / Panel), aligned with Claude Code permission modes; zero-impact upgrade for existing users.
 - 🤖 **5 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode — one-click install and use.
@@ -207,14 +207,14 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><h2>📦 Skills Category Overview (817)</h2></summary>
+<summary><h2>📦 Skills Category Overview (784)</h2></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
 | **YooAsset** | 40 | Hot-update bundle builds/Collector full CRUD/BuildReport asset and dependency analysis/PlayMode runtime validation/Reporter-Debugger-AssetArtScanner tools |
 | **Behavior** | 10 | Unity Behavior graph assets/agents/blackboard variables (com.unity.behavior, reflection-based) |
 | **HybridCLR** | 12 | HybridCLR hot-update settings/codegen/DLL compile & copy pipeline (com.code-philosophy.hybridclr, reflection-based) |
-| **Workflow** | 24 | Persistent history/Tiered task snapshots/Content-addressed file store/Auto-clean/Session-level undo/Rollback/Clear history/Bookmarks/Batch query-preview-execute jobs |
+| **Workflow** | 40 | Persistent history/Tiered task snapshots/Content-addressed file store/Auto-clean/Session-level undo/Rollback/Clear history/Bookmarks/Batch query-preview-execute jobs |
 | **Cinemachine** | 34 | 2.x/3.x dual version auto-install/MixingCamera/ClearShot/TargetGroup/Spline |
 | **Netcode** | 39 | Netcode for GameObjects setup/prefabs/lifecycle/host-server-client workflows/NGO 2.5+ attachable & component-controller helpers |
 | **UI** | 29 | Canvas/Button/Text/InputField/Dropdown/ScrollView/Layout/Alignment/Image and selectable utilities |
@@ -222,15 +222,14 @@ If you're using other tools that support Skills, install according to the Skills
 | **ShaderGraph** | 23 | Shader Graph create/inspect/blackboard edit/constrained node editing |
 | **ProBuilder** | 22 | ProBuilder shape creation/face-edge operations/UV tools/pivot edits/batch creation/mesh combination |
 | **XR** | 22 | XR rig setup/interactors/interactables/teleportation/continuous move/UI/haptics/interaction layers |
-| **Batch** | 22 | Unified batch query/preview/execute framework across GameObjects, components, and assets; async job status/progress/logs/cancel |
 | **Material** | 21 | Batch material property modification/HDR/PBR/Emission/Keywords/Render queue |
-| **PostProcess** | 20 | SRP post-processing effect management |
+| **PostProcess** | 10 | SRP post-processing effect management |
 | **GameObject** | 19 | Create/Find/Transform sync/Batch operations/Hierarchy management/Rename/Duplicate |
 | **Perception** | 18 | Scene summary/health checks/stack detection/context export/dependency analysis/hotspots/diff/tag-layer stats/performance hints |
-| **Volume** | 18 | VolumeProfile/Volume/VolumeComponent creation and parameter editing |
-| **Validation** | 10 | Project validation/Empty folder cleanup/Reference detection/Mesh collider/Shader errors |
-| **URP** | 14 | URP asset/renderer/renderer feature inspection and edits |
-| **Decal** | 14 | URP Decal Projector create/inspect/configure/delete workflows |
+| **Volume** | 9 | VolumeProfile/Volume/VolumeComponent creation and parameter editing |
+| **Validation** | 16 | Project validation/Empty folder cleanup/Reference detection/Mesh collider/Shader errors |
+| **URP** | 7 | URP asset/renderer/renderer feature inspection and edits |
+| **Decal** | 7 | URP Decal Projector create/inspect/configure/delete workflows |
 | **DOTween** | 21 | DOTweenAnimation editor-time setup and tuning |
 | **PrimeTween** | 5 | PrimeTween Free inspection, factory discovery, and runtime tween/sequence script generation |
 | **Editor** | 16 | Play mode runtime capture/Frame stepping/Live state inspect/Selection/Undo-Redo/Context retrieval/Change journal/Menu execution |
@@ -250,7 +249,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Cleaner** | 10 | Unused assets/Duplicate files/Empty folders/Missing script fix/Dependency tree |
 | **Component** | 14 | Add/Remove/Property config/Batch operations/Copy/Enable-Disable |
 | **Console** | 10 | Log capture/Clear/Export/Statistics/Pause control/Collapse/Clear on play |
-| **Debug** | 10 | Error logs/Compile check/Stack trace/Assemblies/Define symbols/Memory info |
+| **Debug** | 11 | Error logs/Compile check/Stack trace/Assemblies/Define symbols/Memory info/Editor health diagnose |
 | **Event** | 11 | UnityEvent listener management/Batch add/Copy/State control/List |
 | **Light** | 10 | Light create/Type config/Intensity-Color/Batch toggle/Probe groups/Reflection probes/Lightmaps |
 | **Model** | 10 | Model import settings/Mesh info/Material mapping/Animation/Skeleton/Batch |
@@ -265,7 +264,6 @@ If you're using other tools that support Skills, install according to the Skills
 | **Project** | 10 | Player builds/Render pipeline/Build settings/Package management/Layer/Tag/PlayerSettings/Quality |
 | **Addressables** | 8 | Addressable asset groups/Profiles/Labels/Build paths/Build/Entry add-remove (com.unity.addressables, reflection-based) |
 | **Sample** | 8 | Basic examples: Create/Delete/Transform/Scene info |
-| **Diagnose** | 1 | Aggregated Editor health snapshot (console/compile/workflow/server/jobs) |
 
 > ⚠️ Most modules support `*_batch` batch operations. When operating on multiple objects, prioritize batch Skills for better performance.
 >
@@ -287,7 +285,7 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   │   └── unity_skills.py     # Python Client Library
 │   │   ├── skills/                 # 74 module docs (50 REST/module docs + 24 advisory docs)
 │   │   └── references/             # Unity Development References
-│   └── Editor/Skills/              # Core Skill Logic (55 *Skills.cs files, 817 Skills)
+│   └── Editor/Skills/              # Core Skill Logic (54 functional source modules, 55 *Skills.cs files, 784 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
 │       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
 │       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
@@ -299,7 +297,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
 │       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (24 skills)
 │       ├── PerceptionSkills.cs     # Scene Understanding (18 skills)
-│       └── ...                     # 817 Skills source code
+│       └── ...                     # 784 Skills source code
 ├── docs/
 │   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
 ├── CHANGELOG.md                    # Version Update Log

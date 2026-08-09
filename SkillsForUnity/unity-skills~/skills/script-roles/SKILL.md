@@ -1,7 +1,13 @@
 ---
 name: unity-script-roles
-description: Advises on assigning Unity script roles — whether a class should be a MonoBehaviour, ScriptableObject, plain C# service, or installer. Use when deciding a class's role, splitting responsibilities across types, or choosing between MonoBehaviour and plain C#, even if the user just asks "这个该用MonoBehaviour吗" or "职责怎么分". 为 Unity 脚本职责划分提供建议(某个类应作 MonoBehaviour、ScriptableObject、纯 C# 服务还是 installer);当用户要确定类的职责、在类型间拆分职责、或在 MonoBehaviour 与纯 C# 间抉择时使用。
+description: Advise on assigning Unity script roles. 为 Unity 脚本职责划分提供建议。
 ---
+
+## Triggers
+- Deciding a class's role
+- Splitting responsibilities across types
+- Choosing between MonoBehaviour and plain C#
+- 确定类的职责、在类型间拆分职责、在 MonoBehaviour 与纯 C# 间抉择
 
 # Unity Script Roles
 
