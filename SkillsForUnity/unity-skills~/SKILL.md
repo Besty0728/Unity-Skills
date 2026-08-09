@@ -39,7 +39,7 @@ Python helper shortcuts — **these are `unity_skills.py` functions, not skill n
 
 Use module `SKILL.md` files for routing guidance, guardrails, and minimal examples, not as the canonical source of exact signatures.
 
-Current snapshot: `784` REST skills, `55` functional source modules, `74` module documentation directories (`50` REST/module docs + `24` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `784` REST skills, `54` functional source modules, `74` module documentation directories (`50` REST/module docs + `24` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`
 
