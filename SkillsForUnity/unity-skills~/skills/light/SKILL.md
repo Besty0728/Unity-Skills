@@ -1,7 +1,13 @@
 ---
 name: unity-light
-description: Create and configure Unity lights — Directional/Point/Spot/Area lights and batch-toggling scene lights. Use when adding or tuning lights, setting up scene lighting, or batch-enabling/disabling lights, even if the user just says "加个灯" or "打光". 创建与配置 Unity 灯光(Directional/Point/Spot/Area 灯光、批量开关场景灯光);当用户要添加或调校灯光、布置场景照明、或批量启用/禁用灯光时使用。
+description: Create and configure Unity lights. 创建与配置 Unity 灯光。
 ---
+
+## Triggers
+- Adding or tuning lights
+- Setting up scene lighting
+- Batch-enabling/disabling lights
+- 添加或调校灯光、布置场景照明、批量开关灯光
 
 # Unity Light Skills
 

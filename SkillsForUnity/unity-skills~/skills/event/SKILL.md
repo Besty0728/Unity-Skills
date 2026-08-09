@@ -1,7 +1,13 @@
 ---
 name: unity-event
-description: Wire UnityEvent persistent listeners at editor time — add, remove, and configure serialized event callbacks on components. Use when hooking up UnityEvents in the Inspector, wiring button or trigger callbacks, or scripting persistent listener setup, even if the user just says "事件绑定" or "按钮点击". 在编辑器期连接 UnityEvent 持久化监听器(在组件上添加、移除、配置序列化的事件回调);当用户要在 Inspector 里挂接 UnityEvent、连接按钮或触发器回调、或脚本化设置持久监听时使用。
+description: Wire UnityEvent persistent listeners at editor time. 在编辑器期连接 UnityEvent 持久化监听器。
 ---
+
+## Triggers
+- Hooking up UnityEvents in the Inspector
+- Wiring button or trigger callbacks
+- Scripting persistent listeners
+- 在 Inspector 里挂接 UnityEvent、连接按钮或触发器回调、脚本化持久监听
 
 # Event Skills
 

@@ -1,7 +1,14 @@
 ---
 name: unity-shadergraph-design
-description: Source-anchored Shader Graph design rules for Unity 2022.3 — graph structure, node subset, SubGraph boundaries, master stack, blackboard/keywords, recipes, and review. Use when building or reviewing Shader Graphs, structuring node chains or SubGraphs, laying out blackboard/keywords, or following URP/HDRP graph recipes, even if the user just says "连个shader graph" or "着色器节点". 为 Unity 2022.3 的 Shader Graph 提供源码锚定的设计规则(图结构、节点子集、SubGraph 边界、主节点堆栈、黑板/关键字、配方、审查);当用户要构建或审查 Shader Graph、组织节点链或 SubGraph、布置黑板/关键字、或参考 URP/HDRP 图配方时使用。
+description: Source-anchored Shader Graph design rules for Unity 2022.3. 为 Unity 2022.3 的 Shader Graph 提供源码锚定的设计规则。
 ---
+
+## Triggers
+- Building or reviewing Shader Graphs
+- Structuring node chains or SubGraphs
+- Laying out blackboard/keywords
+- Following URP/HDRP graph recipes
+- 构建或审查 Shader Graph、组织节点链或 SubGraph、布置黑板/关键字、参考 URP/HDRP 图配方
 
 # ShaderGraph - Design Rules
 

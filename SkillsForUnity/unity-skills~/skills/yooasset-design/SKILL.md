@@ -1,7 +1,15 @@
 ---
 name: unity-yooasset-design
-description: Source-anchored design rules for YooAsset v2.3.18 — initialization, default-package shortcuts, play modes, asset handles, loading, updates, filesystem, build, and pitfalls. Use when writing or reviewing YooAsset code, initializing packages, loading assets via handles, setting up hot-update/download, or choosing a play mode, even if the user just says "热更" or "资源包". 为 YooAsset v2.3.18 提供源码锚定的设计规则(初始化、默认包快捷方式、运行模式、资源句柄、加载、更新、文件系统、构建、陷阱);当用户要编写或审查 YooAsset 代码、初始化 package、用句柄加载资源、配置热更/下载、或选择运行模式时使用。
+description: Source-anchored design rules for YooAsset v2.3.18. 为 YooAsset v2.3.18 提供源码锚定的设计规则。
 ---
+
+## Triggers
+- Writing or reviewing YooAsset code
+- Initializing packages
+- Loading assets via handles
+- Setting up hot-update/download
+- Choosing a play mode
+- 编写或审查 YooAsset 代码、初始化 package、用句柄加载资源、配置热更/下载、选择运行模式
 
 # YooAsset - Design Rules
 

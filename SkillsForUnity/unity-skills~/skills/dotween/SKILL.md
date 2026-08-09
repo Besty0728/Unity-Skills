@@ -1,7 +1,13 @@
 ---
 name: unity-dotween
-description: Automate DOTween Free/Pro at editor time — probe/validate/configure DOTween settings, list modules/shortcuts, and add/batch/stagger/tune DOTweenAnimation components. Use when setting up DOTween in a project, validating its install/modules, or configuring DOTweenAnimation components in the editor, even if the user just says "DOTween" or "配置动画插件". 在编辑器期自动化 DOTween Free/Pro(探测/校验/配置 DOTween 设置、列出模块/快捷方法、添加/批量/错峰/调校 DOTweenAnimation 组件);当用户要在项目中接入 DOTween、校验其安装/模块、或配置 DOTweenAnimation 组件时使用。
+description: Automate DOTween Free/Pro at editor time. 在编辑器期自动化 DOTween Free/Pro。
 ---
+
+## Triggers
+- Setting up DOTween
+- Validating install/modules
+- Configuring DOTweenAnimation components
+- 接入 DOTween、校验安装/模块、配置 DOTweenAnimation 组件
 
 # DOTween Skills
 

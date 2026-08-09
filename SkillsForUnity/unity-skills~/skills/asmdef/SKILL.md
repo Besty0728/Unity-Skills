@@ -1,7 +1,14 @@
 ---
 name: unity-asmdef
-description: Advises on Unity assembly definitions (asmdef) — module boundaries, dependency graphs, editor/runtime/test splits, and faster compile times. Use when planning asmdef layout, untangling assembly dependencies, speeding up compilation, or splitting editor and runtime code, even if the user just says "编译太慢" or "程序集怎么分". 为 Unity 程序集定义(asmdef)提供建议(模块边界、依赖关系、editor/runtime/test 拆分、加快编译);当用户要规划 asmdef 结构、理顺程序集依赖、加速编译或拆分编辑器与运行时代码时使用。
+description: Advise on Unity assembly definitions (asmdef). 为 Unity 程序集定义(asmdef)提供建议。
 ---
+
+## Triggers
+- Planning asmdef layout
+- Untangling assembly dependencies
+- Speeding up compilation
+- Splitting editor/runtime/test code
+- 规划 asmdef 结构、理顺程序集依赖、加速编译、拆分编辑器/运行时代码
 
 # Unity asmdef Advisor
 

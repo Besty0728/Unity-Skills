@@ -1,7 +1,13 @@
 ---
 name: unity-optimization
-description: Optimize project assets and scenes — batch texture/mesh/audio compression and analyze poly/material counts. Use when reducing build size, batch-compressing assets, or analyzing scene poly and material usage for optimization, even if the user just says "优化资源" or "包体太大". 优化工程资源与场景(批量压缩 texture/mesh/audio、分析面数/材质数);当用户要缩减包体、批量压缩资源、或分析场景面数与材质用量以优化时使用。
+description: Optimize project assets and scenes. 优化工程资源与场景。
 ---
+
+## Triggers
+- Reducing build size
+- Batch-compressing assets
+- Analyzing scene poly/material usage
+- 缩减包体、批量压缩资源、分析场景面数与材质用量
 
 # Optimization Skills
 

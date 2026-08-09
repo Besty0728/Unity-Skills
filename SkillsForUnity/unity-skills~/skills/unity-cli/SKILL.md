@@ -1,6 +1,6 @@
 ---
 name: unity-cli
-description: Advisory guidance for using the experimental Unity CLI (the official `unity` command-line tool) alongside UnitySkills — cold-start a bound project without Unity Hub, probe editor liveness, launch with arguments, run headless tests, run one-shot batch automation, and build headlessly. Only applies when the project has been bound in the UnitySkills panel (Library/UnitySkills/cli_config.json exists with enabled:true). 实验性 Unity CLI(官方 unity 命令行工具)与 UnitySkills 协同的指导文档——免 Unity Hub 冷启动已绑定项目、探测编辑器存活、传参启动、无头测试、批处理运行、无头构建;仅当项目已在 UnitySkills 面板完成绑定(存在 Library/UnitySkills/cli_config.json 且 enabled:true)时适用。
+description: Guide for using the experimental Unity CLI with bound UnitySkills projects. 与已绑定的 UnitySkills 项目协同使用实验性 Unity CLI。
 ---
 
 # Unity CLI (advisory)

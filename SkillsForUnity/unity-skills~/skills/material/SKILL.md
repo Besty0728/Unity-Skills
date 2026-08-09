@@ -1,7 +1,13 @@
 ---
 name: unity-material
-description: Edit Unity material and shader properties across Built-in/URP/HDRP — colors, textures, floats, keywords, render queue, batch-apply. Use when changing how a surface looks, tweaking material parameters, or swapping shaders. 编辑材质与 Shader 属性(Built-in/URP/HDRP:颜色、贴图、浮点值、关键字、渲染队列、批量应用);当用户要调整物体外观、改材质参数或切换 Shader 时使用。
+description: Edit material and shader properties across Built-in/URP/HDRP. 编辑 Built-in/URP/HDRP 材质与 Shader 属性。
 ---
+
+## Triggers
+- Changing how a surface looks
+- Tweaking material parameters
+- Swapping shaders
+- 调整物体外观、修改材质参数、切换 Shader
 
 # Unity Material Skills
 

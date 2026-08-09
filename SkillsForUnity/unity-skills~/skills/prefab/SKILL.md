@@ -1,7 +1,14 @@
 ---
 name: unity-prefab
-description: Manage Prefabs — create, instantiate, apply overrides, unpack, find instances, edit prefab assets, and create variants. Use when working with prefabs, instantiating or applying prefab changes, finding instances in scenes, or creating prefab variants, even if the user just says "做成预制体" or "prefab". 管理 Prefab(创建、实例化、应用覆盖、解包、查找实例、编辑预制体资产、创建变体);当用户要处理预制体、实例化或应用预制体改动、在场景中查找实例、或创建预制体变体时使用。
+description: Manage Prefabs and variants. 管理 Prefab 与变体。
 ---
+
+## Triggers
+- Creating or editing prefabs
+- Instantiating or applying prefab changes
+- Finding instances in scenes
+- Creating prefab variants
+- 创建或编辑预制体、实例化或应用预制体改动、在场景中查找实例、创建预制体变体
 
 # Unity Prefab Skills
 

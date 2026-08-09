@@ -1,7 +1,14 @@
 ---
 name: unity-test
-description: Run Unity Test Runner operations asynchronously — run/discover/list/cancel tests, poll job results, and create test templates. Use when running EditMode/PlayMode tests, discovering or listing tests, polling async test results, or scaffolding test files, even if the user just says "跑测试" or "单元测试". 异步执行 Unity Test Runner 操作(运行/发现/列出/取消测试、轮询任务结果、创建测试模板);当用户要运行 EditMode/PlayMode 测试、发现或列出测试、轮询异步测试结果、或生成测试文件时使用。
+description: Run Unity Test Runner operations asynchronously. 异步执行 Unity Test Runner 操作。
 ---
+
+## Triggers
+- Running EditMode/PlayMode tests
+- Discovering or listing tests
+- Polling async test results
+- Scaffolding test files
+- 运行 EditMode/PlayMode 测试、发现或列出测试、轮询异步测试结果、生成测试文件
 
 # Test Skills
 

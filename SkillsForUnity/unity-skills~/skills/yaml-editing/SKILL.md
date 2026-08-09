@@ -1,7 +1,13 @@
 ---
 name: unity-yaml-editing
-description: Last-resort guidance for safely hand-editing Unity serialized YAML (.unity/.prefab/.asset/.meta/ProjectSettings) — reference/fileID repair, GUID safety, and merge-conflict fixes. Use when REST cannot reach the change and YAML must be hand-edited — fixing m_Script GUIDs, broken fileID references, .meta files, or merge conflicts, even if the user just says "场景文件打不开" or "引用丢了". 安全手编 Unity 序列化 YAML(.unity/.prefab/.asset/.meta/ProjectSettings)的最后手段(引用/fileID 修复、GUID 安全、合并冲突修复);当 REST 无法触达、必须手编 YAML 时使用——修复 m_Script GUID、断裂 fileID 引用、.meta 文件或合并冲突。
+description: Last-resort guidance for safely hand-editing Unity YAML. 安全手编 Unity YAML 的最后手段。
 ---
+
+## Triggers
+- Hand-editing YAML when REST cannot reach
+- Fixing m_Script GUIDs or broken fileID references
+- Fixing .meta files or merge conflicts
+- REST 无法触达时手编 YAML、修复 m_Script GUID 或断裂 fileID 引用、修复 .meta 文件或合并冲突
 
 # YAML Editing - Safe Hand-Edit Rules
 

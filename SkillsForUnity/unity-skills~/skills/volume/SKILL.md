@@ -1,7 +1,13 @@
 ---
 name: unity-volume
-description: Work with the SRP Volume framework — create/load VolumeProfile assets and create global/local Volume GameObjects with components. Use when setting up volumes, creating or loading a VolumeProfile, or adding global/local volumes to a scene, even if the user just says "Volume" or "体积". 使用 SRP Volume 框架(创建/加载 VolumeProfile 资产、创建全局/局部 Volume GameObject 及组件);当用户要搭建 Volume、创建或加载 VolumeProfile、或向场景添加全局/局部 Volume 时使用。
+description: Work with the SRP Volume framework. 使用 SRP Volume 框架。
 ---
+
+## Triggers
+- Setting up volumes
+- Creating or loading a VolumeProfile
+- Adding global/local volumes
+- 搭建 Volume、创建或加载 VolumeProfile、向场景添加全局/局部 Volume
 
 # Volume Skills
 

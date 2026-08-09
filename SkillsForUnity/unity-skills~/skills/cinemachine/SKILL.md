@@ -1,7 +1,13 @@
 ---
 name: unity-cinemachine
-description: Set up Cinemachine Virtual Cameras — VCam/FreeLook/ClearShot/StateDriven cameras and the Body/Aim/Noise pipeline. Use when creating or tuning Cinemachine cameras, configuring follow/look-at or noise, or building cinematic camera behavior, even if the user just says "虚拟相机" or "运镜". 配置 Cinemachine 虚拟相机(VCam/FreeLook/ClearShot/StateDriven 及 Body/Aim/Noise 管线);当用户要创建或调校 Cinemachine 相机、设置跟随/注视或噪声、或构建运镜效果时使用。
+description: Set up Cinemachine Virtual Cameras. 配置 Cinemachine 虚拟相机。
 ---
+
+## Triggers
+- Creating or tuning Cinemachine cameras
+- Configuring follow/look-at/noise
+- Building cinematic camera behavior
+- 创建或调校 Cinemachine 相机、设置跟随/注视/噪声、构建运镜效果
 
 # Cinemachine Skills
 
