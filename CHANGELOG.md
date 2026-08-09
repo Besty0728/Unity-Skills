@@ -2,6 +2,29 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.4.3] - 2026-08-09
+
+> **扩展接入面 + 初始化链路加固** —— 合并社区 PR #53–#57（俄语本地化、Addressables REST 模块、Summary Mode 分页、结构化错误响应、Bypass 模式持久化），新增 8 个 Addressables skill；同时修复 issue #58（DOTweenPresenceDetector 在缺少平台 SDK 时触发无限重编译）和 Decal shader 材质颜色读取异常，并加固 4 处初始化/编译相关风险点。
+
+### Added
+
+- **Addressables REST 模块（+8 skills）** — 对接 `com.unity.addressables` 热更新资源管线：`addressables_status`、`addressables_build_player_content`、`addressables_build_asset_bundle`、`addressables_create_group`、`addressables_add_asset_to_group`、`addressables_remove_asset_from_group`、`addressables_list_groups`、`addressables_list_assets_in_group`。全程反射、不静态链接该程序集，未装包时返回带 `package_install` 指引的明确 error。感谢 PR #55。
+- **俄语本地化** — UI 面板与设置抽屉完整支持俄语，同时消除所有硬编码 UI 文本，所有字符串走 Localization 表。感谢 PR #53。
+- **Summary Mode 分页** — `/skills` summary 响应不再硬截断为 5 条，支持 `offset`/`limit` 分页参数，客户端可按需拉取。感谢 PR #56。
+
+### Fixed
+
+- **DOTweenPresenceDetector 无限重编译循环（issue #58）** — 在缺少 PS4/PS5/Switch/Xbox 等平台 SDK 的项目上，`PlayerSettings.GetScriptingDefineSymbols` 对这些平台返回空，导致检测逻辑每次域重载都判定 define 缺失并请求重新编译，形成死循环。现添加 `SessionState` 会话级守卫，每编辑器会话只执行一次检测。
+- **Decal shader 材质颜色读取异常** — `optimize_find_duplicate_materials` 直接访问 `Material.color`，对 `Hidden/Decal/*` 等无 `_Color` color property 的 shader 会抛异常。现改为通过 `HasProperty` + `GetColor` 尝试并捕获异常，异常时回退 `"none"`。
+- **Bypass 模式域重载后丢失** — `SkillsModeManager` 在域重载时未恢复用户选择的 Bypass 模式，导致每次编译后回退到默认模式。现持久化并在恢复路径中还原。感谢 PR #57。
+- **核心模块错误响应由 throw 改为结构化错误** — `ComponentSkills` / `GameObjectSkills` / `LightSkills` / `MaterialSkills` / `PrefabSkills` 等模块中部分路径仍直接抛异常，客户端收到 500 但无 `errorCode`/`retryStrategy`。现统一返回结构化错误体。感谢 PR #54。
+
+### Changed
+
+- **设置抽屉开关行统一右对齐** — 三个布尔设置项改为滑动开关样式，并采用 `setting-row` 布局使开关统一右对齐。
+- **语言与摘要配置调整** — 默认固定语言简化为中/英文；恢复全语言自定义字体支持；Summary 截断改为手动开启（默认关闭）。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.4.3`。
+
 ## [2.4.2] - 2026-07-30
 
 > **接入面扩展 + 一条 agent 诱导链的根治** —— 新增 OpenCode 内建支持与"编辑器启动时自动启动服务器"开关（均来自社区 PR），并修掉 issue #52 暴露的一条系统性问题：文档里的两处裸名会诱导任何 agent 把 Python 客户端函数当成 REST skill 调用，而错误提示对这类误用给不出任何纠正方向，导致无限重试。无新增 skill，技能总数仍为 776。

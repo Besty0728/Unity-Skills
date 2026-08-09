@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-776-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-817-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -38,8 +38,8 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **776 REST Skills Comprehensive Toolkit**: Includes 54 functional source modules plus 24 advisory design modules, with Batch operations for multi-object control.
-- ⚡ **Revolutionary Efficiency Boost (v2.0.1+)**: Schema caching + exponential backoff polling + BATCH-FIRST guidance → **Token consumption ↓ 96%**, **simple tasks 4-6 calls → 1 call (↓ 75-83%)**. Current: v2.4.2.
+- 🛠️ **817 REST Skills Comprehensive Toolkit**: Includes 55 functional source modules plus 24 advisory design modules, with Batch operations for multi-object control.
+- ⚡ **Revolutionary Efficiency Boost (v2.0.1+)**: Schema caching + exponential backoff polling + BATCH-FIRST guidance → **Token consumption ↓ 96%**, **simple tasks 4-6 calls → 1 call (↓ 75-83%)**. Current: v2.4.3.
 - 🔐 **Three-Tier Permission Modes (v1.9.0+)**: Approval / Auto / Bypass with dual approval channels (Dialog / Panel), aligned with Claude Code permission modes; zero-impact upgrade for existing users.
 - 🤖 **5 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode — one-click install and use.
 - 🛡️ **Transactional Atomicity**: Failed operations auto-rollback, leaving scenes clean and safe.
@@ -207,7 +207,7 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><h2>📦 Skills Category Overview (776)</h2></summary>
+<summary><h2>📦 Skills Category Overview (817)</h2></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
@@ -222,14 +222,15 @@ If you're using other tools that support Skills, install according to the Skills
 | **ShaderGraph** | 23 | Shader Graph create/inspect/blackboard edit/constrained node editing |
 | **ProBuilder** | 22 | ProBuilder shape creation/face-edge operations/UV tools/pivot edits/batch creation/mesh combination |
 | **XR** | 22 | XR rig setup/interactors/interactables/teleportation/continuous move/UI/haptics/interaction layers |
+| **Batch** | 22 | Unified batch query/preview/execute framework across GameObjects, components, and assets; async job status/progress/logs/cancel |
 | **Material** | 21 | Batch material property modification/HDR/PBR/Emission/Keywords/Render queue |
-| **PostProcess** | 10 | SRP post-processing effect management |
+| **PostProcess** | 20 | SRP post-processing effect management |
 | **GameObject** | 19 | Create/Find/Transform sync/Batch operations/Hierarchy management/Rename/Duplicate |
 | **Perception** | 18 | Scene summary/health checks/stack detection/context export/dependency analysis/hotspots/diff/tag-layer stats/performance hints |
-| **Volume** | 9 | VolumeProfile/Volume/VolumeComponent creation and parameter editing |
+| **Volume** | 18 | VolumeProfile/Volume/VolumeComponent creation and parameter editing |
 | **Validation** | 10 | Project validation/Empty folder cleanup/Reference detection/Mesh collider/Shader errors |
-| **URP** | 7 | URP asset/renderer/renderer feature inspection and edits |
-| **Decal** | 7 | URP Decal Projector create/inspect/configure/delete workflows |
+| **URP** | 14 | URP asset/renderer/renderer feature inspection and edits |
+| **Decal** | 14 | URP Decal Projector create/inspect/configure/delete workflows |
 | **DOTween** | 21 | DOTweenAnimation editor-time setup and tuning |
 | **PrimeTween** | 5 | PrimeTween Free inspection, factory discovery, and runtime tween/sequence script generation |
 | **Editor** | 16 | Play mode runtime capture/Frame stepping/Live state inspect/Selection/Undo-Redo/Context retrieval/Change journal/Menu execution |
@@ -262,6 +263,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Terrain** | 10 | Terrain create/Heightmap/Perlin noise/Smooth/Flatten/Texture painting |
 | **Texture** | 10 | Texture import settings/Platform settings/Sprite/Type/Size search/Batch |
 | **Project** | 10 | Player builds/Render pipeline/Build settings/Package management/Layer/Tag/PlayerSettings/Quality |
+| **Addressables** | 8 | Addressable asset groups/Profiles/Labels/Build paths/Build/Entry add-remove (com.unity.addressables, reflection-based) |
 | **Sample** | 8 | Basic examples: Create/Delete/Transform/Scene info |
 | **Diagnose** | 1 | Aggregated Editor health snapshot (console/compile/workflow/server/jobs) |
 
@@ -283,9 +285,9 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   ├── SKILL.md                # Main Skill Definitions (AI-readable)
 │   │   ├── scripts/
 │   │   │   └── unity_skills.py     # Python Client Library
-│   │   ├── skills/                 # 72 module docs (48 REST/module docs + 24 advisory docs)
+│   │   ├── skills/                 # 74 module docs (50 REST/module docs + 24 advisory docs)
 │   │   └── references/             # Unity Development References
-│   └── Editor/Skills/              # Core Skill Logic (54 *Skills.cs files, 776 Skills)
+│   └── Editor/Skills/              # Core Skill Logic (55 *Skills.cs files, 817 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
 │       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
 │       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
@@ -297,7 +299,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
 │       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (24 skills)
 │       ├── PerceptionSkills.cs     # Scene Understanding (18 skills)
-│       └── ...                     # 776 Skills source code
+│       └── ...                     # 817 Skills source code
 ├── docs/
 │   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
 ├── CHANGELOG.md                    # Version Update Log
