@@ -3,7 +3,7 @@
 > **本文件面向"开发这个项目的 AI"**，非"调用该项目 REST API 的 AI"。
 > 后者请读 `SkillsForUnity/unity-skills~/SKILL.md`。
 
-通过 REST API 让 AI 直接控制 Unity 编辑器。817 个 REST Skills + 24 个 Advisory 模块。
+通过 REST API 让 AI 直接控制 Unity 编辑器。784 个 REST Skills + 24 个 Advisory 模块。
 
 | 项目 | 值 |
 |------|----|
@@ -24,7 +24,7 @@ AI Agent ──HTTP──▶ unity_skills.py ──POST localhost:8090-8100─�
                                                         │
                                               SkillRouter (反射发现 [UnitySkill])
                                                         │
-                                              55 个 *Skills.cs (817 Skills)
+                                              55 个 *Skills.cs (784 Skills)
                                                         │
                                          WorkflowManager (持久化撤销/回滚)
                                          RegistryService (多实例发现)
@@ -58,7 +58,7 @@ Unity-Skills/
 │   │   │   ├── BatchExecutor.cs          # 批量操作框架
 │   │   │   ├── SkillInstaller.cs         # AI 工具一键安装
 │   │   │   ├── UnityCliService.cs        # Unity CLI 检测 + 项目绑定 (Library/UnitySkills/cli_config.json)
-│   │   │   └── *Skills.cs × 55           # 功能模块 (共 817 Skills)
+│   │   │   └── *Skills.cs × 55           # 功能模块 (共 784 Skills)
 │   │   └── UI/                           # Editor UI (USS + UXML + EditorWindow)
 │   │       ├── UnitySkillsWindow.{cs,uxml,uss}    # 主窗口
 │   │       ├── AuditLogWindow.{uxml,uss}          # 审计窗口
@@ -170,29 +170,28 @@ public static object SkillName(string name, float x = 0f) { ... }
 
 ---
 
-## Skills 模块 (55 个功能模块, 817 Skills)
+## Skills 模块 (53 个功能分类, 784 Skills)
 
 | 模块 | 数量 | 模块 | 数量 | 模块 | 数量 |
 |------|:----:|------|:----:|------|:----:|
 | YooAsset* | 40 | Cinemachine | 34 | Netcode* | 39 |
 | UI | 29 | UIToolkit | 31 | ShaderGraph | 23 |
-| Workflow | 24 | ProBuilder* | 22 | XR* | 22 |
-| Batch | 22 | DOTween* | 21 | Material | 21 |
-| PrimeTween* | 5 | PostProcess† | 20 | GameObject | 19 |
-| Perception | 18 | Volume† | 18 | URP† | 14 |
-| Decal† | 14 | Test | 13 | Editor | 16 |
-| Script | 12 | Timeline | 12 | Physics | 12 |
-| Asset | 12 | AssetImport | 11 | Camera | 12 |
-| Package | 11 | Prefab | 11 | Shader | 11 |
-| Graphics | 11 | Animator | 10 | Audio | 10 |
-| Cleaner | 10 | Component | 14 | Console | 10 |
-| Debug | 10 | Event | 11 | Light | 10 |
-| Model | 10 | NavMesh | 10 | Optimization | 10 |
-| Profiler | 10 | Scene | 10 | ScriptableObject | 13 |
-| Smart | 10 | Terrain | 10 | Texture | 10 |
-| Validation | 10 | Project | 10 | Sample | 8 |
-| Behavior* | 10 | HybridCLR* | 12 | Diagnose | 1 |
-| Addressables* | 8 | | | |
+| Workflow | 40 | ProBuilder* | 22 | XR* | 22 |
+| DOTween* | 21 | Material | 21 | PrimeTween* | 5 |
+| PostProcess† | 10 | GameObject | 19 | Perception | 18 |
+| Volume† | 9 | URP† | 7 | Decal† | 7 |
+| Test | 13 | Editor | 16 | Script | 12 |
+| Timeline | 12 | Physics | 12 | Asset | 12 |
+| AssetImport | 11 | Camera | 12 | Package | 11 |
+| Prefab | 11 | Shader | 11 | Graphics | 11 |
+| Animator | 10 | Audio | 10 | Cleaner | 10 |
+| Component | 14 | Console | 10 | Debug | 11 |
+| Event | 11 | Light | 10 | Model | 10 |
+| NavMesh | 10 | Optimization | 10 | Profiler | 10 |
+| Scene | 10 | ScriptableObject | 13 | Smart | 10 |
+| Terrain | 10 | Texture | 10 | Validation | 16 |
+| Project | 10 | Sample | 8 | Behavior* | 10 |
+| HybridCLR* | 12 | Addressables* | 8 | | |
 
 \*ProBuilder 需 `com.unity.probuilder`，XR 需 `com.unity.xr.interaction.toolkit`，Netcode 需 `com.unity.netcode.gameobjects`，YooAsset 需 `com.tuyoogame.yooasset (≥2.3.15)`，DOTween 需 `DG.Tweening`，PrimeTween 需 `com.kyrylokuzyk.primetween`，Behavior 需 `com.unity.behavior`，HybridCLR 需 `com.code-philosophy.hybridclr`，Addressables 需 `com.unity.addressables`
 †Volume / PostProcess / Decal / URP 需 `com.unity.render-pipelines.universal`（URP 未安装时这 4 个模块以同名 stub 返回 `NoURP()` 提示）。
