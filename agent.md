@@ -203,7 +203,8 @@ public static object SkillName(string name, float x = 0f) { ... }
 ## 开发流程
 
 - **Git 分支**：开发在 `beta`，通过 `/release` 同步到 `main`（线性历史，无 merge commit）。
-- **版本更新**：`/updateversion <版本号>` 自动改 10 处位点 + 生成 CHANGELOG；只允许通过它修改版本号。
+- **版本更新**：`/updateversion <版本号>` 只更新明确的项目版本锚点并生成 CHANGELOG，随后用 `.github/scripts/check_project_version.py` 验证一致性；禁止按数字全局替换，以免误改第三方 SDK 版本说明。
+- **正式发布**：`/release [版本号]` 必须依次通过 beta 候选矩阵、main/beta 同步、tag 自身矩阵，最后才创建稳定 GitHub Release 并核对 `releases/latest`；Unity 更新横幅以该稳定 Release 为准。
 - **扩展 Skill**：在 `Editor/Skills/` 已有模块文件内加 `[UnitySkill]` 静态方法（或新增 `XxxSkills.cs`），SkillRouter 启动反射自动发现。新增模块需在 `SkillCategory` 枚举里登记。
 - **新增 UI 窗口**：在 `Editor/UI/` 加 `.cs + .uxml + .uss` 三件套（参考 `UnitySkillsWindow` / `UnitySkillsAuditWindow`）。
 - **自定义命令**：`/skillcount`（数量同步）、`/skillcheck`（C# 与 SKILL.md 一致性）、`/metacheck`（.meta GUID）、`/updateversion`、`/release`。

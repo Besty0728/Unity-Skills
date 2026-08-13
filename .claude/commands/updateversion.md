@@ -1,116 +1,175 @@
-# Update Version — 版本号更新 + CHANGELOG 自动生成
+# Update Version — 安全更新项目版本 + 生成 CHANGELOG
 
-你是 UnitySkills 项目的版本更新助手。执行以下流程：
+你是 UnitySkills 项目的版本更新助手。此命令只负责准备一个可发布的版本候选；它不会创建 tag 或 GitHub Release，也不会立即向已安装用户发送更新提醒。
+
+Unity 内的更新提醒使用 `SkillsLogger.Version` 与 GitHub `releases/latest` 的稳定 Release 比较。只有正式发布新的非 draft、非 prerelease GitHub Release 后，用户才会看到更新横幅，并跳转到该版本的 `/releases/tag/v{VERSION}` 页面。
 
 ## 输入
 
-用户必须提供新版本号参数（如 `/updateversion 1.6.8`）。
-- 如果未提供版本号：停止执行，提示用法 `/updateversion <新版本号>`
+用户必须提供不带 `v` 的稳定语义版本号，例如 `/updateversion 2.6.0`。
 
-## 步骤 1：预检查
+- 只接受严格的 `MAJOR.MINOR.PATCH`。
+- 不接受 `v2.6.0`、`2.6`、`2.6.0-beta.1` 或四段版本号。
+- 未提供或格式不合法时停止，并提示：`/updateversion <新版本号>`。
 
-1. 确认当前在 `beta` 分支（`git branch --show-current`），不在则停止
-2. 检查是否有未提交的更改（`git status --porcelain`），如果有则**警告**用户（不阻止，因为可能正是要更新版本的改动）
-3. 从 **main 分支**读取当前版本号：
+## 步骤 1：远端与版本线预检查
+
+1. 确认当前在 `beta` 分支；不在则停止。
+2. 确认 GitHub CLI 已登录：
    ```bash
-   git show main:SkillsForUnity/Editor/Skills/SkillsLogger.cs | grep 'public const string Version'
+   gh auth status
    ```
-4. 比较版本号：新版本号必须严格高于 main 的当前版本号（按语义化版本比较 major.minor.patch）
-   - 如果不满足：告知用户 `当前 main 版本为 x.x.x，新版本号必须高于此值` 并停止
-5. **Tag 冲突检查**：检查是否已存在 `v{NEW_VER}` tag：
+3. 获取最新远端引用。任何 fetch 失败都必须停止，不能用过期的本地引用继续判断：
    ```bash
-   git tag -l "v{NEW_VER}"
+   git fetch origin main beta --tags
    ```
-   如果已存在，停止并提示用户：该版本 tag 已发布，不应重复使用已发布的版本号。
-6. **变更内容检查**：预览 `git log main..beta --oneline`，如果输出为空（beta 与 main 完全一致，无任何新提交），告知用户"beta 相对 main 没有新提交，无法推断更新内容"，询问是否仍要创建一个仅包含版本号变更的空版本。
-
-## 步骤 2：分析 beta 相对 main 的变更内容
-
-通过 git 对比 beta 与 main 之间的差异，推断本次更新内容：
-
-1. 获取提交列表：
+4. 检查工作区：
    ```bash
-   git log main..beta --oneline
+   git status --porcelain
    ```
-
-2. 获取变更文件概览：
+   有未提交改动时明确警告，但不阻止，因为这些改动可能正是本次待发布内容。后续只修改约定的版本锚点，不覆盖其他改动。
+5. 确认 `beta` 没有遗漏远端提交：
    ```bash
-   git diff main..beta --stat
+   git log beta..origin/beta --oneline
+   git log beta..origin/main --oneline
    ```
-
-3. 对**关键变更文件**（`Editor/Skills/*.cs`、`unity-skills~/skills/**/*.md`、`unity_skills.py` 等功能文件）查看具体 diff：
+   任一命令有输出都停止：本地 `beta` 落后于远端，必须先同步或处理分歧。
+6. 从 `origin/main` 的 `SkillsLogger.Version` 读取当前稳定版本 `{OLD_VER}`，不要依赖可能过期的本地 `main`：
    ```bash
-   git diff main..beta -- <关键文件>
+   git show origin/main:SkillsForUnity/Editor/Skills/SkillsLogger.cs
    ```
-   - 忽略纯版本号变更、纯文档格式调整
-   - 重点关注：新增/修改的 Skill 方法、参数变化、bug 修复、行为变更
+7. 查询 GitHub 当前最新稳定 Release：
+   ```bash
+   gh api repos/Besty0728/Unity-Skills/releases/latest \
+     --jq '{tag_name,html_url,draft,prerelease}'
+   ```
+   - `tag_name` 必须严格为 `vMAJOR.MINOR.PATCH`。
+   - 必须是非 draft、非 prerelease。
+   - 正常情况下其版本应等于 `{OLD_VER}`；若不一致，停止并报告“main 当前版本与 latest Release 已错位”，不要猜测基准版本。
+8. 验证当前工作树内的所有项目版本锚点仍等于 `{OLD_VER}`：
+   ```bash
+   python3 .github/scripts/check_project_version.py . --expected "{OLD_VER}"
+   ```
+   不一致时先修复已有漂移，不得继续批量升版。
+9. 用数值元组比较语义版本。`{NEW_VER}` 必须严格高于 `{OLD_VER}`，也必须严格高于 GitHub latest Release 的版本；禁止使用字符串字典序比较。
 
-4. 基于 commit messages + 实际代码 diff，按以下分类组织更新内容：
-   - **Added**：新增功能、新 Skill、新参数
-   - **Changed**：行为变更、API 调整、文档更新
-   - **Fixed**：bug 修复
-   - **Docs**（可选）：纯文档改动
+## 步骤 2：版本号占用检查
 
-5. 撰写风格参考 `CHANGELOG.md` 已有条目：
-   - 每条以 **粗体标题** 开头，后跟 em dash（—）和描述
-   - 描述要具体，包含技术细节但不冗长
-   - 使用中文
-
-## 步骤 3：更新版本号
-
-按以下 **10 处**位点规范，依次更新版本号：
-
-> ⚠️ 将下文 `{NEW_VER}` 替换为用户指定的新版本号，`{OLD_VER}` 为 main 当前版本号，`{TODAY}` 为今天日期 YYYY-MM-DD。
-
-| 序号 | 文件 | 操作 |
-|:----:|------|------|
-| 1 | `SkillsForUnity/Editor/Skills/SkillsLogger.cs` | `Version = "{OLD_VER}"` → `Version = "{NEW_VER}"` |
-| 2 | `agent.md` | 概览表格中版本行 `| 版本 | {OLD_VER} |` → `| 版本 | {NEW_VER} |` |
-| 3 | `SkillsForUnity/package.json` | `"version": "{OLD_VER}"` → `"version": "{NEW_VER}"` |
-| 4 | `CHANGELOG.md` | 在文件顶部（`## [{OLD_VER}]` 之前）插入新的 `## [{NEW_VER}] - {TODAY}` 条目，内容为步骤 2 推断的更新内容 |
-| 5 | `SkillsForUnity/unity-skills~/scripts/unity_skills.py` | `__version__ = "{OLD_VER}"` → `__version__ = "{NEW_VER}"` |
-| 6 | `README_CN.md` | 搜索 `{OLD_VER}` 并替换为 `{NEW_VER}`（如果存在） |
-| 7 | `README.md` | 搜索 `{OLD_VER}` 并替换为 `{NEW_VER}`（如果存在） |
-| 8 | `SkillsForUnity/unity-skills~/SKILL.md` | 搜索 `{OLD_VER}` 并替换为 `{NEW_VER}`（如果存在） |
-| 9 | `SkillsForUnity/unity-skills~/skills/SKILL.md` | 搜索 `{OLD_VER}` 并替换为 `{NEW_VER}`（如果存在） |
-| 10 | CHANGELOG 最后一条 Changed 追加 | `- **版本号更新** — ... 同步提升到 \`{NEW_VER}\`。` |
-
-> ⚠️ **不要更新** `docs/SETUP_GUIDE.md` 和 `docs/SETUP_GUIDE_CN.md` 中的"指定版本"URL（如 `#v1.6.7`），这些由用户手动管理。
-
-## 步骤 4：验证
-
-执行快速检查命令，确认旧版本号只残留在 CHANGELOG.md 的历史条目中：
+同时检查本地 tag、远端 tag 和 GitHub Release；任一已存在都停止，版本号不可复用：
 
 ```bash
-rg -n "{OLD_VER}" agent.md README.md README_CN.md SkillsForUnity/package.json SkillsForUnity/unity-skills~/scripts/unity_skills.py SkillsForUnity/Editor/Skills/SkillsLogger.cs SkillsForUnity/unity-skills~/SKILL.md SkillsForUnity/unity-skills~/skills/SKILL.md
+git tag -l "v{NEW_VER}"
+git ls-remote --tags origin \
+  "refs/tags/v{NEW_VER}" \
+  "refs/tags/v{NEW_VER}^{}"
+gh release view "v{NEW_VER}"
 ```
 
-- 上述文件中不应有任何匹配（CHANGELOG.md 不在检查列表中，历史条目保留旧版本号是正确的）
-- 如果有残留，继续修复
+- `gh release view` 返回“未找到”才表示该检查通过。
+- 不得删除、移动或强制重推已发布 tag。
+- 若版本曾经创建过 tag 但尚未创建 Release，同样视为已占用；修复后应换用新的 patch 版本。
 
-## 步骤 5：输出摘要
+## 步骤 3：分析 beta 相对稳定版的变更
 
-以表格形式展示更新结果：
+统一以 `origin/main` 为稳定基线，不使用本地 `main`：
 
+```bash
+git log origin/main..beta --oneline
+git diff origin/main --stat
+git status --short
 ```
-✅ 版本号已从 {OLD_VER} 更新到 {NEW_VER}
 
-已更新文件：
-| 文件 | 状态 |
-|------|------|
-| SkillsLogger.cs | ✅ |
-| agent.md | ✅ |
-| ... | ... |
+`git diff origin/main` 会同时覆盖 `beta` 已提交差异及当前已跟踪的工作区改动。还要单独审阅 `git status` 中的未跟踪文件。
 
-CHANGELOG 新增内容：
-{显示新增的 CHANGELOG 条目}
+如果既没有提交差异，也没有实质性工作区差异，停止并询问用户是否确实要创建仅含版本号的空版本。
 
-请审阅后提交：git add -A && git commit -m "chore: bump version to {NEW_VER}"
+对关键功能文件查看具体 diff，重点关注：
+
+- `SkillsForUnity/Editor/**/*.cs`
+- `SkillsForUnity/Editor/**/*.uxml`、`*.uss`
+- `SkillsForUnity/unity-skills~/skills/**/*.md`
+- `SkillsForUnity/unity-skills~/scripts/unity_skills.py`
+- `.github/workflows/**` 与 `.github/scripts/**`
+- 用户可感知的 README、安装和兼容性变化
+
+基于 commit message 与实际 diff 组织 CHANGELOG：
+
+- **Added**：新增功能、新 Skill、新参数。
+- **Changed**：行为、API、工作流或文档契约变化。
+- **Fixed**：缺陷修复。
+- **Docs**：纯文档变化，可选。
+
+每条使用中文，以 `**粗体标题** — 描述` 编写；描述具体但不堆砌实现细节。
+
+## 步骤 4：只更新明确的项目版本锚点
+
+使用 `apply_patch` 精确修改以下 7 类锚点：
+
+| 文件 | 唯一允许修改的版本锚点 |
+|------|------------------------|
+| `SkillsForUnity/Editor/Skills/SkillsLogger.cs` | `public const string Version = "{OLD_VER}";` |
+| `SkillsForUnity/package.json` | 顶层 `"version": "{OLD_VER}"` |
+| `SkillsForUnity/unity-skills~/scripts/unity_skills.py` | `__version__ = "{OLD_VER}"` |
+| `agent.md` | 项目表格行 `| 版本 | {OLD_VER} |` |
+| `README.md` | `Current: v{OLD_VER}.` 当前版本标记 |
+| `README_CN.md` | `当前：v{OLD_VER}。` 当前版本标记 |
+| `CHANGELOG.md` | 在原最新条目前插入 `## [{NEW_VER}] - {TODAY}` 与本次变更内容 |
+
+CHANGELOG 的 `Changed` 中追加：
+
+```markdown
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `{NEW_VER}`。
 ```
+
+### 禁止宽泛替换
+
+- 不得在 README、SKILL.md 或整个仓库里把所有 `{OLD_VER}` 替换成 `{NEW_VER}`。
+- 第三方 SDK、NGO、PICO、Unity 包兼容性说明中的相同数字必须保留。
+- `VersionCheckServiceTests` 中用于边界测试的旧版本字符串是测试数据，不随项目升版机械修改。
+- 不修改 `docs/SETUP_GUIDE.md`、`docs/SETUP_GUIDE_CN.md` 中用户手动维护的 `#v...` 指定版本安装示例。
+- `SkillsHttpServer.cs`、`SkillRouter.cs`、`FooterController.cs` 等运行时位置引用 `SkillsLogger.Version`，无需硬编码修改。
+
+## 步骤 5：机器可验证的一致性检查
+
+依次执行：
+
+```bash
+python3 .github/scripts/check_project_version.py . --expected "{NEW_VER}"
+python3 -m json.tool SkillsForUnity/package.json >/dev/null
+git diff --check
+```
+
+另外确认：
+
+1. `CHANGELOG.md` 顶部最新版本恰好为 `{NEW_VER}`，且只新增一个该版本标题。
+2. 没有创建 `v{NEW_VER}` tag，也没有 GitHub Release。
+3. `git diff` 只改动预期文件与本次原有功能改动，没有第三方版本文档被误替换。
+4. 若本次改动涉及版本提醒代码，运行 `VersionCheckServiceTests`；普通版本号更新无需改写其中的测试数据，完整测试由 `/release` 的预发布矩阵负责。
+
+验证标准是“所有当前版本锚点都等于新版本”，不是“旧版本号在仓库中完全消失”。旧版本作为历史记录、兼容性边界或测试数据存在是正确的。
+
+## 步骤 6：输出交接摘要
+
+输出必须明确区分“版本候选已准备”和“更新通知已发布”：
+
+```text
+✅ 版本候选已从 {OLD_VER} 更新到 {NEW_VER}
+✅ 项目版本锚点一致性检查通过
+✅ 本地 / 远端 tag 与 GitHub Release 均未占用 v{NEW_VER}
+
+当前尚未向用户发送更新通知。
+只有 /release 完成双矩阵检查并发布稳定 GitHub Release 后，
+releases/latest 才会变为 v{NEW_VER}，Unity 更新横幅才会生效。
+
+请审阅后提交：
+git add <本次预期文件>
+git commit -m "chore: bump version to {NEW_VER}"
+```
+
+同时列出所有修改文件，并完整展示新增的 CHANGELOG 条目。
 
 ## 注意事项
 
-- 不要自动执行 `git commit`，只提示用户审阅后提交
-- CHANGELOG 内容使用中文（与项目风格一致）
-- 如果 beta 相对 main 没有实质性代码变更（只有版本号变更），告知用户并询问是否继续
-- `SkillsHttpServer.cs` / `SkillRouter.cs` 中的版本引用使用 `SkillsLogger.Version`，不需要修改
+- 不自动执行 `git commit`、`git tag`、`git push` 或 `gh release create`。
+- 不把“package.json 已更新”“tag 已创建”和“用户会收到提醒”混为一谈。
+- 更新提醒的唯一远端来源是 GitHub 最新稳定 Release，而不是最新 commit 或孤立 tag。

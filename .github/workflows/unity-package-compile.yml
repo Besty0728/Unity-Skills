@@ -4,13 +4,34 @@ name: Unity Package Compile Matrix
   workflow_dispatch:
   push:
     tags:
-      - '*'
+      - 'v*.*.*'
 
 permissions:
   contents: read
   checks: write
 
 jobs:
+  project-version-check:
+    name: Project Version & Release Tag Consistency
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Check project version anchors and release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(.)
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            args+=(--tag "${GITHUB_REF_NAME}")
+          fi
+          python3 .github/scripts/check_project_version.py "${args[@]}"
+
   skill-frontmatter-check:
     name: SKILL.md Frontmatter Compliance
     runs-on: ubuntu-latest
@@ -44,6 +65,10 @@ jobs:
 
   editmode:
     name: Unity ${{ matrix.unityVersion }} EditMode
+    needs:
+      - project-version-check
+      - skill-frontmatter-check
+      - meta-guid-check
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -121,7 +146,11 @@ jobs:
 
   summary:
     name: Test Summary & License Check
-    needs: editmode
+    needs:
+      - project-version-check
+      - skill-frontmatter-check
+      - meta-guid-check
+      - editmode
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -245,3 +274,27 @@ jobs:
                   f.write('\n'.join(md))
           else:
               print('\n'.join(md))
+
+      - name: Enforce all required checks succeeded
+        env:
+          VERSION_RESULT: ${{ needs.project-version-check.result }}
+          FRONTMATTER_RESULT: ${{ needs.skill-frontmatter-check.result }}
+          META_RESULT: ${{ needs.meta-guid-check.result }}
+          EDITMODE_RESULT: ${{ needs.editmode.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+          for entry in \
+            "project-version-check=${VERSION_RESULT}" \
+            "skill-frontmatter-check=${FRONTMATTER_RESULT}" \
+            "meta-guid-check=${META_RESULT}" \
+            "editmode=${EDITMODE_RESULT}"; do
+            name="${entry%%=*}"
+            result="${entry#*=}"
+            if [[ "${result}" != "success" ]]; then
+              echo "::error::${name} concluded with ${result}."
+              failed=1
+            fi
+          done
+          exit "${failed}"

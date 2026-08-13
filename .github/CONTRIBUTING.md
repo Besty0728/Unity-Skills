@@ -65,33 +65,32 @@ public static object YourSkill(params)
 
 ## Version Update | 版本号更新
 
-Update **10 locations** when releasing | 发布时需同步更新 10 处：
+Use `/updateversion <version>` to update the explicit project-version anchors below. Do not globally replace a version number: third-party SDK compatibility docs may legitimately contain the same number. | 使用 `/updateversion <版本号>` 更新下列明确的项目版本锚点。不要全局替换版本数字：第三方 SDK 兼容性文档可能合法包含相同数字。
 
 | File | Location |
 |------|----------|
 | `SkillsForUnity/Editor/Skills/SkillsLogger.cs` | `Version` constant (single C# source of truth) |
-| `agent.md` | Version table and release notes |
+| `agent.md` | Version table |
 | `SkillsForUnity/package.json` | `"version"` field |
 | `CHANGELOG.md` | Add new entry at top |
 | `SkillsForUnity/unity-skills~/scripts/unity_skills.py` | `__version__` |
-| `README.md` | Release URL/version references and counts |
-| `README_EN.md` | Release URL/version references and counts |
-| `docs/SETUP_GUIDE.md` | Timeout, baseline, and installation details |
-| `SkillsForUnity/unity-skills~/SKILL.md` | Root skill snapshot and behavior notes |
-| `SkillsForUnity/unity-skills~/skills/SKILL.md` | Module index and coverage summary |
+| `README.md` | Explicit `Current: v...` marker only |
+| `README_CN.md` | Explicit `当前：v...` marker only |
 
 > If Unity baseline, skill counts, advisory-module counts, or install layout change, also update the matching `.github` docs/templates. | 若 Unity 基线、技能数、advisory 模块数或安装结构有变化，也要同步更新 `.github` 下相关文档和模板。
 
-Verify command | 检查命令：
+Version consistency check | 版本一致性检查：
 ```bash
-rg -n "1\\.6\\.2|2022\\.3\\+|447|15 分钟|15 minutes|SkillsLogger.Version|__version__" agent.md CHANGELOG.md README.md README_EN.md docs/SETUP_GUIDE.md SkillsForUnity/unity-skills~/SKILL.md SkillsForUnity/unity-skills~/skills/SKILL.md SkillsForUnity/package.json SkillsForUnity/unity-skills~/scripts/unity_skills.py SkillsForUnity/Editor/Skills/SkillsLogger.cs
+python3 .github/scripts/check_project_version.py . --expected 2.6.0
 ```
+
+The Unity update banner compares `SkillsLogger.Version` with GitHub's latest stable Release. Updating files or creating a tag does not notify users by itself; the maintainer-only `/release` workflow runs a candidate matrix, synchronizes `main`/`beta`, runs the tag matrix, and only then creates and verifies the stable GitHub Release. | Unity 更新横幅会比较 `SkillsLogger.Version` 与 GitHub 最新稳定 Release。仅更新文件或创建 tag 不会通知用户；维护者专用 `/release` 会先运行候选矩阵、同步 `main`/`beta`、运行 tag 矩阵，最后才创建并核验稳定 GitHub Release。
 
 ## CI & Tooling Etiquette | CI 与工具使用约定
 
 ### Compile-check workflow | 编译检查工作流
 
-The **Unity Package Compile Matrix** (`.github/workflows/unity-package-compile.yml`) compiles and tests the package across multiple Unity versions and **consumes the maintainer's Unity license quota and CI minutes**. It is wired to run **only on tag push** (releases), not on every branch push. | **Unity Package Compile Matrix**（`.github/workflows/unity-package-compile.yml`）会跨多个 Unity 版本编译并测试本包，**会消耗维护者的 Unity 许可证配额与 CI 时长**。它被设计为**仅在 tag push（发布）时触发**，而非每次分支 push。
+The **Unity Package Compile Matrix** (`.github/workflows/unity-package-compile.yml`) compiles and tests the package across multiple Unity versions and **consumes the maintainer's Unity license quota and CI minutes**. It runs automatically for release-tag pushes and may be dispatched manually by the maintainer for a pinned pre-release candidate. | **Unity Package Compile Matrix**（`.github/workflows/unity-package-compile.yml`）会跨多个 Unity 版本编译并测试本包，**会消耗维护者的 Unity 许可证配额与 CI 时长**。它会在发布 tag push 时自动运行，也可由维护者为固定的预发布候选提交手动触发。
 
 > Please use it responsibly | 请合理使用：
 > - Do **not** push tags just to trigger CI | **不要**为了触发 CI 而随意打 tag
@@ -104,7 +103,7 @@ This repo ships maintainer slash-commands under `.claude/commands/`: `updatevers
 
 > Please use them responsibly | 请合理使用：
 > - `skillcount` / `metacheck` / `skillcheck` / `updateversion` may be used to self-check your changes | 这几个可用于自检你的改动
-> - **Do not run `release`** — it is maintainer-only: it hard-resets and force-pushes `main`, then creates the GitHub Release and tag. Running it from a fork or PR will damage the release flow. | **请勿运行 `release`**——它是维护者专用：会对 `main` 执行 hard reset 与 force push，并创建 GitHub Release 和 tag，从 fork 或 PR 运行会破坏发布流程。
+> - **Do not run `release`** — it is maintainer-only: it dispatches license-consuming Unity matrices, updates `main` with a guarded force-with-lease, creates the release tag, and publishes the GitHub Release. Running it from a fork or PR will damage the release flow. | **请勿运行 `release`**——它是维护者专用：会触发消耗许可证额度的 Unity 矩阵、通过受保护的 force-with-lease 更新 `main`、创建发布 tag 并发布 GitHub Release，从 fork 或 PR 运行会破坏发布流程。
 
 ## Feedback | 问题反馈
 
