@@ -41,6 +41,7 @@ namespace UnitySkills
         private FooterController         _footer;
         private SettingsDrawerController _drawer;
         private PendingApprovalBannerController _pendingBanner;
+        private VersionUpdateBannerController _versionUpdateBanner;
         private SkillsTabController      _skillsController;
         private AIConfigTabController    _configController;
         private HistoryTabController     _historyController;
@@ -112,6 +113,7 @@ namespace UnitySkills
             _footer         = new FooterController(rootVisualElement, this);
             _drawer         = new SettingsDrawerController(rootVisualElement, this);
             _pendingBanner  = new PendingApprovalBannerController(rootVisualElement, this);
+            _versionUpdateBanner = new VersionUpdateBannerController(rootVisualElement);
 
             _skillsController  = new SkillsTabController(_tabContents[0], this);
             _configController  = new AIConfigTabController(_tabContents[1], this);
@@ -197,6 +199,7 @@ namespace UnitySkills
         {
             _topbar?.UpdateLiveData();
             _footer?.UpdateLiveData();
+            _versionUpdateBanner?.UpdateLiveData();
         }
 
         // ----- Language switch (called by FooterController) -----
@@ -220,6 +223,7 @@ namespace UnitySkills
             _footer?.RefreshLocalization();
             _drawer?.RefreshLocalization();
             _pendingBanner?.RefreshLocalization();
+            _versionUpdateBanner?.RefreshLocalization();
             _skillsController?.RefreshLocalization();
             _configController?.RefreshLocalization();
             _historyController?.RefreshLocalization();

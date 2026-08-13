@@ -1290,6 +1290,54 @@
     border-bottom-color: var(--color-card-border);
 }
 
+/* ---------- Global Notice Stack ---------- */
+
+.global-notice-stack {
+    flex-shrink: 0;
+}
+
+.version-update-banner {
+    min-height: 32px;
+    padding: 4px 6px 4px 10px;
+    background-color: rgb(24, 55, 83);
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(13, 35, 55);
+    border-left-width: 3px;
+    border-left-color: var(--color-accent);
+}
+
+.unity-theme-light .version-update-banner {
+    background-color: rgb(207, 229, 250);
+    border-bottom-color: rgb(145, 184, 219);
+}
+
+.version-update-banner.is-hidden {
+    display: none;
+}
+
+.version-update-banner__message {
+    min-width: 0;
+    margin-right: 8px;
+    color: rgb(205, 229, 250);
+    font-size: 11px;
+    white-space: normal;
+}
+
+.unity-theme-light .version-update-banner__message {
+    color: rgb(25, 64, 97);
+}
+
+.version-update-banner__view {
+    flex-shrink: 0;
+    margin-right: 4px;
+}
+
+.version-update-banner__dismiss {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+}
+
 /* ---------- Pending Approval Banner (v1.9) ---------- */
 
 .pending-banner {

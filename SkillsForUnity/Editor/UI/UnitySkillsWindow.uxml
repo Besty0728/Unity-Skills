@@ -37,22 +37,35 @@
         </ui:VisualElement>
 
         <!-- ============================================
-             1b. PENDING APPROVAL BANNER — global cross-tab
-             (Hidden when there are no pending grant requests.
-              Each row exposes Approve / Deny inline so the user
-              doesn't need to open the Settings drawer.)
+             1b. GLOBAL NOTICES — persistent cross-tab messages
+             Pending approvals have priority; the version notice is
+             shown below them when a newer stable release is available.
              ============================================ -->
-        <ui:VisualElement name="pending-banner" class="pending-banner"
-                          style="display: none; flex-direction: column; flex-shrink: 0;">
-            <ui:VisualElement class="pending-banner__header"
-                              style="flex-direction: row; align-items: center;">
-                <ui:Label name="pending-banner-title" class="pending-banner__title"
-                          text="Pending approvals" />
-                <ui:VisualElement style="flex-grow: 1;" />
-                <ui:Button name="pending-banner-settings-btn" class="mini-btn"
-                           text="Open Permissions" />
+        <ui:VisualElement name="global-notice-stack" class="global-notice-stack"
+                          style="flex-direction: column; flex-shrink: 0;">
+            <ui:VisualElement name="pending-banner" class="pending-banner"
+                              style="display: none; flex-direction: column; flex-shrink: 0;">
+                <ui:VisualElement class="pending-banner__header"
+                                  style="flex-direction: row; align-items: center;">
+                    <ui:Label name="pending-banner-title" class="pending-banner__title"
+                              text="Pending approvals" />
+                    <ui:VisualElement style="flex-grow: 1;" />
+                    <ui:Button name="pending-banner-settings-btn" class="mini-btn"
+                               text="Open Permissions" />
+                </ui:VisualElement>
+                <ui:VisualElement name="pending-banner-list" class="pending-banner__list" />
             </ui:VisualElement>
-            <ui:VisualElement name="pending-banner-list" class="pending-banner__list" />
+
+            <ui:VisualElement name="version-update-banner"
+                              class="version-update-banner is-hidden"
+                              style="flex-direction: row; flex-shrink: 0; align-items: center;">
+                <ui:Label name="version-update-message" class="version-update-banner__message flex-grow"
+                          text="A new UnitySkills version is available." />
+                <ui:Button name="version-update-view-btn" class="mini-btn version-update-banner__view"
+                           text="View release" />
+                <ui:Button name="version-update-dismiss-btn" class="icon-btn version-update-banner__dismiss"
+                           text="×" tooltip="Dismiss this release" />
+            </ui:VisualElement>
         </ui:VisualElement>
 
         <!-- ============================================
