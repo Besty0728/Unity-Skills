@@ -69,6 +69,7 @@ namespace UnitySkills.Tests.Core
             "netcode-design",
             "unitask-design",
             "yooasset-design",
+            "pico-design",
             "yaml-editing"
         };
 

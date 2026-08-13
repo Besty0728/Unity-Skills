@@ -1323,7 +1323,7 @@ namespace UnitySkills
             {"drawer_keepalive_label", "保活"},
             {"drawer_loglevel_label", "日志级别"},
             {"drawer_update_notifications_label", "接收版本更新提醒"},
-            {"drawer_update_notifications_hint", "定期检查 GitHub 上的新稳定版本。忽略某个版本后，重启 Unity 也不会再次提示；关闭此项将停止检查并隐藏所有更新提醒。"},
+            {"drawer_update_notifications_hint", "定期检查 GitHub 上的新稳定版本。忽略当前版本后，重启 Unity 也不会再次提示；关闭此项将停止检查并隐藏所有更新提醒。"},
             {"drawer_confirm_label", "高风险技能二次确认"},
             {"drawer_telemetry_label", "记录执行数据"},
             {"drawer_telemetry_hint", "将每次技能调用（名称、agent、模式、成功与否、用时——不含参数或字段值）记录到 Library/UnitySkillsTelemetry.jsonl，为 Analytics 标签与 GET /analytics 供数。仅存本地，绝不外传。关闭即停止记录。"},
