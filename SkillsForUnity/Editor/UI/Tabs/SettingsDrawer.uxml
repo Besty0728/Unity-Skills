@@ -141,6 +141,14 @@
                         <ui:DropdownField name="loglevel-dropdown" class="setting-row__field" />
                     </ui:VisualElement>
 
+                    <ui:VisualElement name="update-notifications-row" class="setting-row">
+                        <ui:Label name="update-notifications-label" class="setting-row__label" />
+                        <ui:VisualElement name="update-notifications-switch" class="server-switch" style="margin: 0;">
+                            <ui:VisualElement class="server-switch__knob" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:Label name="update-notifications-hint" class="setting-hint" />
+
                     <ui:VisualElement name="confirm-row" class="setting-row">
                         <ui:Label name="confirm-label" class="setting-row__label" />
                         <ui:VisualElement name="confirm-switch" class="server-switch" style="margin: 0;">

@@ -1,3 +1,4 @@
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -14,7 +15,11 @@ namespace UnitySkills
         private readonly Button _viewReleaseButton;
         private readonly Button _dismissButton;
 
+        private const double CheckPollIntervalSeconds = 60.0;
+
         private string _lastSnapshot;
+        private double _nextCheckAtEditorTime;
+        private VersionCheckService.ReleaseInfo _displayedRelease;
 
         public VersionUpdateBannerController(VisualElement root)
         {
@@ -29,22 +34,33 @@ namespace UnitySkills
                 _dismissButton.clicked += Dismiss;
 
             VersionCheckService.StartCheck();
+            _nextCheckAtEditorTime = EditorApplication.timeSinceStartup + CheckPollIntervalSeconds;
             RefreshLocalization();
         }
 
         public void UpdateLiveData()
         {
+            PollForReleaseCheck();
+
             var release = VersionCheckService.LatestRelease;
             var shouldShow = VersionCheckService.HasUpdate;
             var snapshot = shouldShow
-                ? $"{SkillsLogger.Version}|{release?.Version}|show"
+                ? $"{SkillsLogger.Version}|{release?.TagName}|{release?.ReleaseUrl}|show"
                 : $"{SkillsLogger.Version}|{release?.Version}|hide";
 
             if (snapshot == _lastSnapshot) return;
             _lastSnapshot = snapshot;
 
-            _banner?.EnableInClassList("is-hidden", !shouldShow);
-            if (shouldShow) RefreshMessage();
+            if (!shouldShow || release == null)
+            {
+                _displayedRelease = null;
+                _banner?.EnableInClassList("is-hidden", true);
+                return;
+            }
+
+            _displayedRelease = release;
+            RefreshMessage(release);
+            _banner?.EnableInClassList("is-hidden", false);
         }
 
         public void RefreshLocalization()
@@ -58,10 +74,18 @@ namespace UnitySkills
             UpdateLiveData();
         }
 
-        private void RefreshMessage()
+        private void PollForReleaseCheck()
         {
-            var release = VersionCheckService.LatestRelease;
-            if (_message == null || release == null) return;
+            var now = EditorApplication.timeSinceStartup;
+            if (now < _nextCheckAtEditorTime) return;
+
+            _nextCheckAtEditorTime = now + CheckPollIntervalSeconds;
+            VersionCheckService.StartCheck();
+        }
+
+        private void RefreshMessage(VersionCheckService.ReleaseInfo release)
+        {
+            if (_message == null) return;
 
             _message.text = string.Format(
                 SkillsLocalization.Get("version_update_message_fmt"),
@@ -69,15 +93,19 @@ namespace UnitySkills
                 release.Version);
         }
 
-        private static void OpenRelease()
+        private void OpenRelease()
         {
-            var url = VersionCheckService.LatestRelease?.ReleaseUrl;
+            var url = _displayedRelease?.ReleaseUrl;
             if (!string.IsNullOrWhiteSpace(url)) Application.OpenURL(url);
         }
 
         private void Dismiss()
         {
-            VersionCheckService.DismissLatest();
+            var release = _displayedRelease;
+            if (release == null) return;
+
+            VersionCheckService.Dismiss(release);
+            _displayedRelease = null;
             _lastSnapshot = null;
             UpdateLiveData();
         }

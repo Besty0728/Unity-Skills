@@ -10,11 +10,18 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 - **pico-design advisory 模块（10 个文档）** — 入口 `SKILL.md`（双语 description + Critical Rules + 子文档路由）+ 9 个子文档：`SETUP`（双插件路线/项目配置/Manifest/Building Blocks/AR Foundation + 工具与示例索引）、`RENDERING`（FFR/ETFR/合成层/超分/AppSW/互斥矩阵）、`INTERACTION`（输入映射/触觉/手眼面身追踪/体感追踪器）、`MR`（透视/空间锚点/网格/场景标定/平面检测/空间数据权限）、`SECUREMR`（3.2.0+ Tensor/Operator/Pipeline 框架）、`PLATFORM`（平台服务精要：初始化链/各 Service 核心签名与陷阱）、`API_REFERENCE`（XR 9 类逐方法签名表含 Deprecated 标记）、`VERSIONS`（v2.0.1→v3.4.0 时间线 + 8 版本方法级 API 增删废弃表，废弃清单单一事实源）、`PITFALLS`（防幻觉总闸六节：废弃 API 黑名单、签名语义陷阱、互斥约束、构建陷阱、官方文档自身矛盾清单、能力边界）。中文正文、API 名保英文，关键规则均带官方文档 URL 锚点可点击复核。
 - **语料底座与可复现更新链路** — 语料含指南 203 页（PICO 官方 llms.txt Markdown 通道）、API 参考 32 页与更新说明 14 个版本（站点 RSC/Quill zone 数据确定性解析）、8 个版本 XR 类 API 快照的方法级 diff；提炼产物经 1068 个 API token 对语料全量反查校验（仅 1 个真实幻觉，已修正）。爬取脚本保留在 `temp/pico-crawl/`（不入库），SDK 发新版后重跑即可增量更新。
+- **稳定版更新提醒** — UnitySkills 窗口新增全局更新横幅，通过 GitHub `releases/latest` 检查已发布的稳定版本，展示当前版本与最新版本，并可直接打开该版本对应的 Release 页面；草稿与预发布版本不会触发提醒。
+- **更新通知偏好** — 设置抽屉新增默认开启的更新通知开关；用户可关闭全部提醒，也可仅忽略当前版本，忽略状态会跨 Unity 重启保留，直到出现更新版本才再次显示。
 
 ### Changed
 
 - **模块登记同步** — advisory 计数 24→25（`agent.md`、双语 README），design-only 模块 20→21 与模块文档目录 74→75（顶层 `SKILL.md`），模块索引 Advisory 表与 Coding Reference Index 各新增 `pico-design` 行。
+- **更新检查缓存与刷新策略** — 成功检查缓存 24 小时、失败尝试冷却 1 小时；长时间保持打开的窗口会按缓存状态继续检查，并迁移旧缓存中的版本、tag 与 Release URL，避免必须重启 Unity 才能发现新版本。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.5.0`。
+
+### Fixed
+
+- **更新横幅操作与目标版本可能错位** — 横幅的“查看版本”和“忽略”操作现在绑定当前显示的 Release 快照；Release URL 由校验后的 `tag_name` 构造，不再信任可能不匹配的 API URL 或后续异步状态，确保每次始终指向并忽略横幅上显示的那个 tag。
 
 ## [2.4.3] - 2026-08-09
 

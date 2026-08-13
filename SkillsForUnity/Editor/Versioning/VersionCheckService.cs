@@ -14,23 +14,29 @@ namespace UnitySkills
         internal sealed class ReleaseInfo
         {
             public string Version { get; }
+            public string TagName { get; }
             public string ReleaseUrl { get; }
 
-            public ReleaseInfo(string version, string releaseUrl)
+            public ReleaseInfo(string version, string tagName, string releaseUrl)
             {
                 Version = version;
+                TagName = tagName;
                 ReleaseUrl = releaseUrl;
             }
         }
 
         private const string LatestReleaseApi =
             "https://api.github.com/repos/Besty0728/Unity-Skills/releases/latest";
+        private const string ReleasePageBase =
+            "https://github.com/Besty0728/Unity-Skills/releases/tag/";
 
         private const string PrefCachedVersion = "UnitySkills_UpdateCachedVersion";
+        private const string PrefCachedTagName = "UnitySkills_UpdateCachedTagName";
         private const string PrefCachedReleaseUrl = "UnitySkills_UpdateCachedReleaseUrl";
         private const string PrefLastSuccessfulCheckUtc = "UnitySkills_UpdateLastSuccessfulCheckUtc";
         private const string PrefLastAttemptUtc = "UnitySkills_UpdateLastAttemptUtc";
         private const string PrefDismissedVersion = "UnitySkills_UpdateDismissedVersion";
+        private const string PrefNotificationsEnabled = "UnitySkills_UpdateNotificationsEnabled";
 
         private static readonly TimeSpan SuccessCacheLifetime = TimeSpan.FromHours(24);
         private static readonly TimeSpan FailedAttemptCooldown = TimeSpan.FromHours(1);
@@ -47,18 +53,39 @@ namespace UnitySkills
 
         internal static ReleaseInfo LatestRelease => _latestRelease;
 
+        internal static bool NotificationsEnabled
+        {
+            get => EditorPrefs.GetBool(PrefNotificationsEnabled, true);
+            set
+            {
+                if (NotificationsEnabled == value) return;
+                EditorPrefs.SetBool(PrefNotificationsEnabled, value);
+
+                if (value) StartCheck();
+                else
+                {
+                    CancelActiveRequest();
+                    // A user-initiated pause is not a failed network attempt. Allow an
+                    // immediate fresh check if notifications are turned back on.
+                    EditorPrefs.DeleteKey(PrefLastAttemptUtc);
+                }
+            }
+        }
+
         internal static bool HasUpdate =>
-            ShouldShowUpdate(
+            NotificationsEnabled && ShouldShowUpdate(
                 SkillsLogger.Version,
                 _latestRelease?.Version,
                 EditorPrefs.GetString(PrefDismissedVersion, string.Empty));
 
         internal static void StartCheck()
         {
+            if (!NotificationsEnabled) return;
             if (_activeRequest != null) return;
 
             var now = DateTime.UtcNow;
-            if (IsRecent(PrefLastSuccessfulCheckUtc, now, SuccessCacheLifetime)) return;
+            if (_latestRelease != null &&
+                IsRecent(PrefLastSuccessfulCheckUtc, now, SuccessCacheLifetime)) return;
             if (IsRecent(PrefLastAttemptUtc, now, FailedAttemptCooldown)) return;
 
             WriteUtc(PrefLastAttemptUtc, now);
@@ -83,10 +110,10 @@ namespace UnitySkills
             }
         }
 
-        internal static void DismissLatest()
+        internal static void Dismiss(ReleaseInfo release)
         {
-            if (_latestRelease == null) return;
-            EditorPrefs.SetString(PrefDismissedVersion, _latestRelease.Version);
+            if (release == null || !TryParseVersion(release.Version, out _)) return;
+            EditorPrefs.SetString(PrefDismissedVersion, NormalizeVersion(release.Version));
         }
 
         internal static bool ShouldShowUpdate(
@@ -121,13 +148,19 @@ namespace UnitySkills
             try
             {
                 var root = JObject.Parse(json);
-                var version = NormalizeVersion(root.Value<string>("tag_name"));
-                var releaseUrl = root.Value<string>("html_url");
-
-                if (!TryParseVersion(version, out _) || string.IsNullOrWhiteSpace(releaseUrl))
+                if (root.Value<bool?>("draft") == true ||
+                    root.Value<bool?>("prerelease") == true)
                     return false;
 
-                release = new ReleaseInfo(version, releaseUrl);
+                var tagName = root.Value<string>("tag_name")?.Trim();
+                var version = NormalizeVersion(tagName);
+
+                if (!TryParseVersion(version, out _) ||
+                    string.IsNullOrWhiteSpace(root.Value<string>("html_url")) ||
+                    !TryBuildReleaseUrl(tagName, out var releaseUrl))
+                    return false;
+
+                release = new ReleaseInfo(version, tagName, releaseUrl);
                 return true;
             }
             catch
@@ -159,17 +192,58 @@ namespace UnitySkills
         private static void LoadCachedRelease()
         {
             var version = EditorPrefs.GetString(PrefCachedVersion, string.Empty);
+            var tagName = EditorPrefs.GetString(PrefCachedTagName, string.Empty);
             var releaseUrl = EditorPrefs.GetString(PrefCachedReleaseUrl, string.Empty);
-            if (!TryParseVersion(version, out _) || string.IsNullOrWhiteSpace(releaseUrl)) return;
 
-            _latestRelease = new ReleaseInfo(NormalizeVersion(version), releaseUrl);
+            // Migration for caches written before TagName was stored separately.
+            if (string.IsNullOrWhiteSpace(tagName) &&
+                !TryExtractTagName(releaseUrl, out tagName))
+                return;
+
+            var normalizedVersion = NormalizeVersion(version);
+            if (!TryParseVersion(normalizedVersion, out _) ||
+                !TryParseVersion(tagName, out _) ||
+                !string.Equals(normalizedVersion, NormalizeVersion(tagName), StringComparison.OrdinalIgnoreCase) ||
+                !TryBuildReleaseUrl(tagName, out var canonicalReleaseUrl))
+                return;
+
+            _latestRelease = new ReleaseInfo(normalizedVersion, tagName, canonicalReleaseUrl);
         }
 
         private static void CacheRelease(ReleaseInfo release, DateTime checkedAtUtc)
         {
             EditorPrefs.SetString(PrefCachedVersion, release.Version);
+            EditorPrefs.SetString(PrefCachedTagName, release.TagName);
             EditorPrefs.SetString(PrefCachedReleaseUrl, release.ReleaseUrl);
             WriteUtc(PrefLastSuccessfulCheckUtc, checkedAtUtc);
+        }
+
+        private static bool TryBuildReleaseUrl(string tagName, out string releaseUrl)
+        {
+            releaseUrl = null;
+            if (!TryParseVersion(tagName, out _)) return false;
+
+            releaseUrl = ReleasePageBase + Uri.EscapeDataString(tagName.Trim());
+            return true;
+        }
+
+        private static bool TryExtractTagName(string releaseUrl, out string tagName)
+        {
+            tagName = null;
+            if (!Uri.TryCreate(releaseUrl, UriKind.Absolute, out var uri) ||
+                !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            const string pathPrefix = "/Besty0728/Unity-Skills/releases/tag/";
+            if (!uri.AbsolutePath.StartsWith(pathPrefix, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            var encodedTag = uri.AbsolutePath.Substring(pathPrefix.Length);
+            if (string.IsNullOrWhiteSpace(encodedTag) || encodedTag.Contains("/")) return false;
+
+            tagName = Uri.UnescapeDataString(encodedTag);
+            return TryParseVersion(tagName, out _);
         }
 
         private static bool IsRecent(string key, DateTime nowUtc, TimeSpan lifetime)

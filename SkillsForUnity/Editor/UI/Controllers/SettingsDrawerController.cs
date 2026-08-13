@@ -84,6 +84,9 @@ namespace UnitySkills
         private Label         _runtimeGroupTitle;
         private Label         _loglevelLabel;
         private DropdownField _logDropdown;
+        private VisualElement _updateNotificationsSwitch;
+        private Label         _updateNotificationsLabel;
+        private Label         _updateNotificationsHint;
         private VisualElement _confirmSwitch;
         private Label         _confirmLabel;
         private Label         _confirmHint;
@@ -210,6 +213,9 @@ namespace UnitySkills
             _runtimeGroupTitle = _drawerContainer.Q<Label>("group-runtime-title");
             _loglevelLabel     = _drawerContainer.Q<Label>("loglevel-label");
             _logDropdown       = _drawerContainer.Q<DropdownField>("loglevel-dropdown");
+            _updateNotificationsSwitch = _drawerContainer.Q<VisualElement>("update-notifications-switch");
+            _updateNotificationsLabel  = _drawerContainer.Q<Label>("update-notifications-label");
+            _updateNotificationsHint   = _drawerContainer.Q<Label>("update-notifications-hint");
             _confirmSwitch     = _drawerContainer.Q<VisualElement>("confirm-switch");
             _confirmLabel      = _drawerContainer.Q<Label>("confirm-label");
             _confirmHint       = _drawerContainer.Q<Label>("confirm-hint");
@@ -305,6 +311,14 @@ namespace UnitySkills
                     int idx = _logDropdown.choices.IndexOf(evt.newValue);
                     if (idx >= 0 && idx != (int)SkillsLogger.Level)
                         SkillsLogger.Level = (LogLevel)idx;
+                });
+
+            if (_updateNotificationsSwitch != null)
+                _updateNotificationsSwitch.RegisterCallback<ClickEvent>(_ =>
+                {
+                    VersionCheckService.NotificationsEnabled =
+                        !VersionCheckService.NotificationsEnabled;
+                    SyncSettingSwitches();
                 });
 
             if (_confirmSwitch != null)
@@ -465,6 +479,10 @@ namespace UnitySkills
             if (_keepaliveHint   != null) _keepaliveHint.text  = SkillsLocalization.Get("keepalive_hint");
 
             if (_loglevelLabel != null) _loglevelLabel.text = SkillsLocalization.Get("drawer_loglevel_label");
+            if (_updateNotificationsLabel != null)
+                _updateNotificationsLabel.text = SkillsLocalization.Get("drawer_update_notifications_label");
+            if (_updateNotificationsHint != null)
+                _updateNotificationsHint.text = SkillsLocalization.Get("drawer_update_notifications_hint");
             if (_confirmLabel != null) _confirmLabel.text = SkillsLocalization.Get("drawer_confirm_label");
             if (_confirmHint   != null)
             {
@@ -506,6 +524,8 @@ namespace UnitySkills
 
         private void SyncSettingSwitches()
         {
+            _updateNotificationsSwitch?.EnableInClassList(
+                "on", VersionCheckService.NotificationsEnabled);
             _confirmSwitch?.EnableInClassList("on", ConfirmationTokenService.RequireConfirmation);
             _telemetrySwitch?.EnableInClassList("on", SkillTelemetryService.Enabled);
             _summaryTruncateSwitch?.EnableInClassList("on", SkillRouter.SummaryAutoTruncate);
