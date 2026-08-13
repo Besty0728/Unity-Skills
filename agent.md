@@ -3,11 +3,11 @@
 > **本文件面向"开发这个项目的 AI"**，非"调用该项目 REST API 的 AI"。
 > 后者请读 `SkillsForUnity/unity-skills~/SKILL.md`。
 
-通过 REST API 让 AI 直接控制 Unity 编辑器。784 个 REST Skills + 24 个 Advisory 模块。
+通过 REST API 让 AI 直接控制 Unity 编辑器。784 个 REST Skills + 25 个 Advisory 模块。
 
 | 项目 | 值 |
 |------|----|
-| 版本 | 2.4.3 |
+| 版本 | 2.5.0 |
 | 技术栈 | C# (Unity Editor Plugin) + Python (Client) |
 | Unity | 2022.3+（已验证 Unity 6 / 6000.x） |
 | 协议 | MIT |
@@ -68,7 +68,7 @@ Unity-Skills/
 │   └── unity-skills~/                    # AI Skill 模板（波浪线隐藏，随包分发）
 │       ├── SKILL.md                      # 调用方文档（"用"项目）
 │       ├── scripts/unity_skills.py
-│       ├── skills/                       # 74 个模块文档 (50 REST + 24 advisory)
+│       ├── skills/                       # 75 个模块文档 (50 REST + 25 advisory)
 │       └── references/
 ├── .claude/commands/                     # 自定义命令
 ├── docs/SETUP_GUIDE.md
@@ -196,7 +196,7 @@ public static object SkillName(string name, float x = 0f) { ... }
 \*ProBuilder 需 `com.unity.probuilder`，XR 需 `com.unity.xr.interaction.toolkit`，Netcode 需 `com.unity.netcode.gameobjects`，YooAsset 需 `com.tuyoogame.yooasset (≥2.3.15)`，DOTween 需 `DG.Tweening`，PrimeTween 需 `com.kyrylokuzyk.primetween`，Behavior 需 `com.unity.behavior`，HybridCLR 需 `com.code-philosophy.hybridclr`，Addressables 需 `com.unity.addressables`
 †Volume / PostProcess / Decal / URP 需 `com.unity.render-pipelines.universal`（URP 未安装时这 4 个模块以同名 stub 返回 `NoURP()` 提示）。
 
-**Advisory 模块 (24)**：architecture, patterns, performance, asmdef, async, inspector, blueprints, adr, project-scout, scene-contracts, script-roles, scriptdesign, testability, bookmark, history, netcode-design, yooasset-design, addressables-design, unitask-design, dotween-design, primetween-design, shadergraph-design, yaml-editing, unity-cli — **纯架构/设计指导文档，无 REST Skills，无 C# 实现**；新增 advisory 时只动 `unity-skills~/skills/` 下文档，不要在 Editor/Skills/ 加 stub。
+**Advisory 模块 (25)**：architecture, patterns, performance, asmdef, async, inspector, blueprints, adr, project-scout, scene-contracts, script-roles, scriptdesign, testability, bookmark, history, netcode-design, yooasset-design, addressables-design, unitask-design, dotween-design, primetween-design, shadergraph-design, pico-design, yaml-editing, unity-cli — **纯架构/设计指导文档，无 REST Skills，无 C# 实现**；新增 advisory 时只动 `unity-skills~/skills/` 下文档，不要在 Editor/Skills/ 加 stub。
 
 ---
 

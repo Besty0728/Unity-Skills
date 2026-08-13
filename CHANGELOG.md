@@ -2,6 +2,20 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.5.0] - 2026-08-13
+
+> **pico-design：第 25 个 advisory 模块** —— 面向 PICO Unity Integration SDK v3.4.0 的官方文档锚定防幻觉知识库。AI 训练语料对 PICO 的记忆大量停留在 2.x/早期 3.x（旧振动接口、AnchorEntity 三段式、`PXR_SDK >` 菜单等，3.2.0 一个版本就废弃了 PXR_Input 30 个成员），凭记忆写 PICO 代码是高频幻觉区；本模块以 2026-08-13 全量抓取的官方文档为唯一事实源，无 REST Skills、无 C# 改动。
+
+### Added
+
+- **pico-design advisory 模块（10 个文档）** — 入口 `SKILL.md`（双语 description + Critical Rules + 子文档路由）+ 9 个子文档：`SETUP`（双插件路线/项目配置/Manifest/Building Blocks/AR Foundation + 工具与示例索引）、`RENDERING`（FFR/ETFR/合成层/超分/AppSW/互斥矩阵）、`INTERACTION`（输入映射/触觉/手眼面身追踪/体感追踪器）、`MR`（透视/空间锚点/网格/场景标定/平面检测/空间数据权限）、`SECUREMR`（3.2.0+ Tensor/Operator/Pipeline 框架）、`PLATFORM`（平台服务精要：初始化链/各 Service 核心签名与陷阱）、`API_REFERENCE`（XR 9 类逐方法签名表含 Deprecated 标记）、`VERSIONS`（v2.0.1→v3.4.0 时间线 + 8 版本方法级 API 增删废弃表，废弃清单单一事实源）、`PITFALLS`（防幻觉总闸六节：废弃 API 黑名单、签名语义陷阱、互斥约束、构建陷阱、官方文档自身矛盾清单、能力边界）。中文正文、API 名保英文，关键规则均带官方文档 URL 锚点可点击复核。
+- **语料底座与可复现更新链路** — 语料含指南 203 页（PICO 官方 llms.txt Markdown 通道）、API 参考 32 页与更新说明 14 个版本（站点 RSC/Quill zone 数据确定性解析）、8 个版本 XR 类 API 快照的方法级 diff；提炼产物经 1068 个 API token 对语料全量反查校验（仅 1 个真实幻觉，已修正）。爬取脚本保留在 `temp/pico-crawl/`（不入库），SDK 发新版后重跑即可增量更新。
+
+### Changed
+
+- **模块登记同步** — advisory 计数 24→25（`agent.md`、双语 README），design-only 模块 20→21 与模块文档目录 74→75（顶层 `SKILL.md`），模块索引 Advisory 表与 Coding Reference Index 各新增 `pico-design` 行。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.5.0`。
+
 ## [2.4.3] - 2026-08-09
 
 > **扩展接入面 + 初始化链路加固** —— 合并社区 PR #53–#57（俄语本地化、Addressables REST 模块、Summary Mode 分页、结构化错误响应、Bypass 模式持久化），新增 8 个 Addressables skill，技能总数由 776 增至 784；同时修复 issue #58（DOTweenPresenceDetector 在缺少平台 SDK 时触发无限重编译）和 Decal shader 材质颜色读取异常，并加固 4 处初始化/编译相关风险点。
