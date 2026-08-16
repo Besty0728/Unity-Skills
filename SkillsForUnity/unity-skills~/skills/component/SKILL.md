@@ -1,7 +1,9 @@
 ---
 name: unity-component
-description: Manage GameObject components. 管理 GameObject 组件。
+description: Manage GameObject components
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Attaching or removing components
@@ -365,3 +367,14 @@ Enable or disable a component (Behaviour, Renderer, Collider, etc.).
 ## Exact Signatures
 
 Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+
+## Common Errors
+
+Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
+
+| Error | Trigger | Fix |
+|---|---|---|
+| `TARGET_NOT_FOUND` | The GameObject, component type, component instance, property/field, or asset reference could not be located. | List components with `component_list`, resolve asset paths with `asset_find`, or verify the object with `gameobject_find` / `scene_get_hierarchy`. |
+| `MISSING_PARAM` | A required parameter is missing, such as `componentType` in `component_add` or `componentType`/`propertyName` in `component_set_property`. | Provide the missing parameter; use `mode=dryRun` to preview the required arguments. |
+| `SEMANTIC_INVALID` | A value is out of range or otherwise invalid, such as a `componentIndex` that exceeds the available components. | Adjust the value to fit the valid range or enum described in the error message. |
+| `SKILL_ERROR` | A runtime constraint blocked the operation, such as a read-only property or a component that cannot be removed because it is required. | Read the error message, resolve the underlying constraint (e.g., choose a writable property), then retry. |

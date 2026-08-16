@@ -1,7 +1,9 @@
 ---
 name: unity-editor
-description: Control and observe the Unity Editor state. 控制并观察 Unity 编辑器状态。
+description: Control and observe the Unity Editor state
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Reading persistent scene/file changes
@@ -257,3 +259,12 @@ print(step_status["details"]["frameCount"], step_status["details"]["isPaused"])
 ## Exact Signatures
 
 Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+
+## Common Errors
+
+Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
+
+| Error | Trigger | Fix |
+|---|---|---|
+| `TARGET_NOT_FOUND` | The requested GameObject or menu item could not be found (e.g., `Menu item not found or failed`). | Verify the object with `gameobject_find` / `scene_get_hierarchy`, or check the exact menu path spelling before retrying. |
+| `SKILL_ERROR` | A play-mode state conflict occurred, such as `Already in play mode`, `Not in play mode`, or an active frame-step job already exists. | Match the editor state to the skill requirement: enter/exit play mode first, or wait for the existing step job to finish. |

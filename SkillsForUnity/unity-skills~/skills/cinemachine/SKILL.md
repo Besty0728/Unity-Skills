@@ -1,7 +1,9 @@
 ---
 name: unity-cinemachine
-description: Set up Cinemachine Virtual Cameras. 配置 Cinemachine 虚拟相机。
+description: Set up Cinemachine Virtual Cameras
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Creating or tuning Cinemachine cameras

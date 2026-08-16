@@ -1,7 +1,9 @@
 ---
 name: unity-pico-design
-description: Doc-anchored design rules for PICO Unity Integration SDK v3.4.0 — XR/MR/platform services, version diffs 2.x-3.4, hallucination shields. 为 PICO Unity Integration SDK v3.4.0 提供官方文档锚定的设计规则——XR/MR/平台服务、版本差异与迁移、防幻觉清单。
+description: Doc-anchored design rules for PICO Unity Integration SDK v3.4.0 — XR/MR/platform services, version diffs 2.x-3.4, hallucination shields
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Writing or reviewing PICO Unity Integration SDK (`PXR_*` / `Pico.Platform`) code

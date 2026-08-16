@@ -1,7 +1,9 @@
 ---
 name: unity-shadergraph-design
-description: Source-anchored Shader Graph design rules for Unity 2022.3. 为 Unity 2022.3 的 Shader Graph 提供源码锚定的设计规则。
+description: Source-anchored Shader Graph design rules for Unity 2022.3
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Building or reviewing Shader Graphs

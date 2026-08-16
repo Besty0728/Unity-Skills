@@ -1,7 +1,9 @@
 ---
 name: unity-timeline
-description: Edit Unity Timeline assets and tracks. 编辑 Unity Timeline 资产与轨道。
+description: Edit Unity Timeline assets and tracks
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Building cutscenes or sequences

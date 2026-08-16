@@ -1,7 +1,9 @@
 ---
 name: unity-yaml-editing
-description: Last-resort guidance for safely hand-editing Unity YAML. 安全手编 Unity YAML 的最后手段。
+description: Last-resort guidance for safely hand-editing Unity YAML
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Hand-editing YAML when REST cannot reach

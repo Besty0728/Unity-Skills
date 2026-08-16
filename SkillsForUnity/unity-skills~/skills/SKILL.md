@@ -1,6 +1,6 @@
 ---
 name: unity-skills-index
-description: Index of all Unity Skills modules and operating modes. Unity Skills 全模块索引与模式说明。
+description: Index of all Unity Skills modules with per-module mode labels (SA/FA/Mixed). Use to find which module covers a task before loading its doc.
 ---
 
 ## Triggers
@@ -109,6 +109,10 @@ These modules provide design guidance only.
 | [shadergraph-design](./shadergraph-design/SKILL.md) | ShaderGraph dual-version source-anchored rules (versions/node subset/recipes/pitfalls/review) |
 | [pico-design](./pico-design/SKILL.md) | PICO Unity Integration SDK v3.4.0 doc-anchored rules (setup/rendering/interaction/MR/SecureMR/platform/API signatures/version diffs 2.x-3.4/pitfalls) |
 | [yaml-editing](./yaml-editing/SKILL.md) | Safe hand-edit rules for serialized YAML (.unity/.prefab/.asset/.meta/ProjectSettings) when REST cannot reach — reference/fileID repair, .meta/GUID safety, ProjectSettings patch, merge conflict |
+| [manual-gameobject](./manual-gameobject/SKILL.md) | Manually create GameObjects, organize the Hierarchy, and adjust Transforms using Unity Editor UI |
+| [manual-component](./manual-component/SKILL.md) | Manually add, configure, reorder, and copy components on GameObjects using Unity Editor UI |
+| [manual-material](./manual-material/SKILL.md) | Manually create and edit Materials and assign them to objects using Unity Editor UI |
+| [manual-scene](./manual-scene/SKILL.md) | Manually navigate, save, and manage scenes using Unity Editor UI |
 
 ## Batch-First Rule
 

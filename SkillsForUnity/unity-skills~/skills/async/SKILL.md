@@ -1,7 +1,9 @@
 ---
 name: unity-async
-description: Advise on Unity async and lifecycle strategy. 为 Unity 异步与生命周期策略提供建议。
+description: Advise on Unity async and lifecycle strategy
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Choosing Update/coroutine/UniTask/timer

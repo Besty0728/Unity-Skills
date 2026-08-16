@@ -1,7 +1,9 @@
 ---
 name: unity-perception
-description: Read-only scene, project and script analysis for AI context. 只读的场景、项目与脚本分析,为 AI 编码提供上下文。
+description: Read-only scene, project and script analysis for AI context
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Gathering context before editing

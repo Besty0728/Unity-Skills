@@ -1,7 +1,9 @@
 ---
 name: unity-history
-description: Manage undo/redo history over the native undo stack. 管理原生撤销栈上的撤销/重做历史。
+description: Manage undo/redo history over the native undo stack
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Reviewing or navigating undo history

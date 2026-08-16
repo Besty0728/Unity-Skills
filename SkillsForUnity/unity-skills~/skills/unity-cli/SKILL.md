@@ -1,7 +1,9 @@
 ---
 name: unity-cli
-description: Guide for using the experimental Unity CLI with bound UnitySkills projects. 与已绑定的 UnitySkills 项目协同使用实验性 Unity CLI。
+description: Guide for using the experimental Unity CLI with bound UnitySkills projects
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 # Unity CLI (advisory)
 

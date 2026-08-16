@@ -1,7 +1,9 @@
 ---
 name: unity-primetween
-description: Inspect PrimeTween Free and generate runtime tween scripts. 检查 PrimeTween Free 并生成运行时代码。
+description: Inspect PrimeTween Free and generate runtime tween scripts
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Checking a PrimeTween installation

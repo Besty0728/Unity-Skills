@@ -1,7 +1,9 @@
 ---
 name: unity-batch
-description: Unified batch and async-job orchestration. 统一的批量与异步任务编排。
+description: Unified batch and async-job orchestration
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Operating on many objects at once

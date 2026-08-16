@@ -1,7 +1,9 @@
 ---
 name: unity-smart
-description: AI-powered scene queries, layout and auto-binding. AI 驱动的场景查询、布局与自动绑定。
+description: AI-powered scene queries, layout and auto-binding. AI
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Querying scene objects by condition or proximity

@@ -1,7 +1,9 @@
 ---
 name: unity-shadergraph
-description: Create and inspect Shader Graph assets. 创建与检查 Shader Graph 资产。
+description: Create and inspect Shader Graph assets
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Creating a Shader Graph

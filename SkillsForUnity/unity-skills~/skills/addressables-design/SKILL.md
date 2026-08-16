@@ -1,7 +1,9 @@
 ---
 name: unity-addressables-design
-description: Source-anchored design rules for Unity Addressables 1.22.3/2.9.1. 为 Unity Addressables 1.22.3/2.9.1 提供源码锚定的设计规则。
+description: Source-anchored design rules for Unity Addressables 1.22.3/2.9.1
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Writing or reviewing Addressables code

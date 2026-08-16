@@ -1,7 +1,9 @@
 ---
 name: unity-material
-description: Edit material and shader properties across Built-in/URP/HDRP. 编辑 Built-in/URP/HDRP 材质与 Shader 属性。
+description: Edit material and shader properties across Built-in/URP/HDRP
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Changing how a surface looks
@@ -347,3 +349,13 @@ Skills auto-detect and adapt to your render pipeline:
 ## Exact Signatures
 
 Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+
+## Common Errors
+
+Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
+
+| Error | Trigger | Fix |
+|---|---|---|
+| `TARGET_NOT_FOUND` | The material asset, GameObject/renderer, shader, texture, or property could not be found (e.g., `Material asset not found`, `No Renderer component found`, `Shader not found`). | Verify the asset path with `asset_find`, the object with `gameobject_find`, or inspect available properties with `material_get_properties`. |
+| `MISSING_PARAM` | A required parameter is missing, such as `materialPath`, `sourcePath`, `texturePath`, `propertyName`, `keyword`, or `shaderName`. | Supply the parameter named in the error and retry; use `mode=dryRun` for the full schema. |
+| `SEMANTIC_INVALID` | An invalid value was supplied, such as an unrecognized GI flag, an invalid asset path, or a property name the shader does not use. | Correct the value using the allowed range/enum/path convention described in the error. |

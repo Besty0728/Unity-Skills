@@ -1,7 +1,9 @@
 ---
 name: unity-navmesh
-description: Bake and query Unity NavMesh. 烘焙与查询 Unity NavMesh。
+description: Bake and query Unity NavMesh
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Setting up navigation

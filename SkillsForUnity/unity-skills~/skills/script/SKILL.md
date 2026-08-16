@@ -1,7 +1,9 @@
 ---
 name: unity-script
-description: Create, read and analyze C# scripts. 创建、读取与分析 C# 脚本。
+description: Create, read and analyze C# scripts
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Authoring or editing C# code
@@ -256,3 +258,14 @@ Move a script to a new folder.
 ## Exact Signatures
 
 Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+
+## Common Errors
+
+Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
+
+| Error | Trigger | Fix |
+|---|---|---|
+| `MISSING_PARAM` | A required parameter is missing, such as `scriptName` in `script_create` or `pattern` in `script_find_in_file`. | Supply the parameter named in the error; use `mode=dryRun` to see the schema. |
+| `SEMANTIC_INVALID` | The input violates a naming/path rule, such as `scriptName must not contain path separators`, `newName must not contain path separators`, or the script already exists. | Remove path separators, choose a unique name, or rename/move the existing file first. |
+| `TARGET_NOT_FOUND` | The script file, MonoScript, or target directory could not be found. | Verify the path with `asset_find` or `script_list`, then retry with the correct `scriptPath`. |
+| `SKILL_ERROR` | A filesystem operation failed, such as `Failed to delete script` or an AssetDatabase move/rename error. | Read the error details, resolve the underlying file/AssetDatabase issue, and retry. |

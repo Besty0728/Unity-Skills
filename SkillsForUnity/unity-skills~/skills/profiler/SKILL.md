@@ -1,7 +1,9 @@
 ---
 name: unity-profiler
-description: Capture read-only Unity runtime performance snapshots. 采集只读的 Unity 运行时性能快照。
+description: Capture read-only Unity runtime performance snapshots
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Checking runtime performance

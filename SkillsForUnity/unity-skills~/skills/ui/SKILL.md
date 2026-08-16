@@ -1,7 +1,9 @@
 ---
 name: unity-ui
-description: Create and lay out Unity UGUI screens. 创建与布局 Unity UGUI 界面。
+description: Create and lay out Unity UGUI screens
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Building UGUI screens
@@ -209,3 +211,13 @@ unity_skills.call_skill("ui_layout_children", name="MenuPanel", layoutType="Vert
 
 Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
 Load `UI_REFERENCE.md` for extended element creation details, property tables, and larger UGUI examples.
+
+## Common Errors
+
+Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
+
+| Error | Trigger | Fix |
+|---|---|---|
+| `TARGET_NOT_FOUND` | The parent GameObject, UI element, RectTransform, Text/Image/Selectable component, or sprite asset could not be found. | Use `ui_find_all`, `gameobject_find`, or `scene_get_hierarchy` to locate the element, and verify sprite paths with `asset_find`. |
+| `SEMANTIC_INVALID` | An invalid value was supplied, such as an unknown anchor preset, layout type, alignment, or name/path with separators. | Choose a valid preset/type from the error context (e.g., `MiddleCenter`, `Vertical`, `TopLeft`) and retry. |
+| `SKILL_ERROR` | A selection-based operation failed because fewer than the required number of UI elements were selected (e.g., `Select at least 2 UI elements`). | Select the required UI elements in the Hierarchy before calling alignment/distribution skills. |

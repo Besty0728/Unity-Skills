@@ -1,7 +1,9 @@
 ---
 name: unity-performance
-description: Advise on Unity performance red flags. 为 Unity 性能红线提供建议。
+description: Advise on Unity performance red flags
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Reviewing performance

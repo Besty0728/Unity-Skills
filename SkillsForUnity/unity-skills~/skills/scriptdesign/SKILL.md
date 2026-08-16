@@ -1,7 +1,9 @@
 ---
 name: unity-scriptdesign
-description: Advise on Unity gameplay script quality. 为 Unity 游戏脚本质量提供建议。
+description: Advise on Unity gameplay script quality
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Reviewing code quality

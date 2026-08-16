@@ -1,0 +1,5 @@
+# Protocol: Unity CLI Cold Start
+
+> Unity CLI cold start is opt-in (v2.3+). Most sessions do not need it.
+
+If the REST server is unreachable at session start, check `<projectRoot>/Library/UnitySkills/cli_config.json` (helper: `unity_skills.get_cli_config()`). **Only if** it exists with `enabled: true` has the user bound the experimental Unity CLI in the panel — then read `skills/unity-cli/SKILL.md` and you may: triage liveness via the registry (`~/.unity_skills/registry.json` → is the project entry's `pid` alive? alive → it's a Domain Reload window, keep waiting; not alive → cold-start; note `unity status` alone is NOT authoritative — it misses editors without the Unity Pipeline package), launch the project without Unity Hub via `<cliPath> open "<projectPath>" --args -unityskills-coldstart` (the marker makes the plugin auto-start the REST server regardless of the Auto-start preference), then `unity_skills.wait_for_health()` until REST is ready. If the file is absent or `enabled: false`, Unity CLI is off for this project — ignore it completely and never suggest installing it unprompted.

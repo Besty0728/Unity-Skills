@@ -1,7 +1,9 @@
 ---
 name: unity-package
-description: Manage Unity Package Manager (UPM) packages. 管理 Unity Package Manager(UPM)包。
+description: Manage Unity Package Manager (UPM) packages
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Adding or removing UPM packages

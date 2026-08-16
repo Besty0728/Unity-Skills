@@ -1,7 +1,9 @@
 ---
 name: unity-scene
-description: Manage Unity scenes. 管理 Unity 场景。
+description: Manage Unity scenes
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Opening or saving scenes
@@ -178,3 +180,14 @@ unity_skills.call_skill("scene_screenshot", filename="preview.png", width=1920, 
 ## Exact Signatures
 
 Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+
+## Common Errors
+
+Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
+
+| Error | Trigger | Fix |
+|---|---|---|
+| `TARGET_NOT_FOUND` | The requested scene is not found or not currently loaded (e.g., `Scene not found`, `Scene is not loaded`). | Verify the scene path with `asset_find` or list loaded scenes with `scene_get_loaded`, then retry. |
+| `MISSING_PARAM` | A required parameter is missing, such as `scenePath` for `scene_create`, or the current scene has no save path. | Provide `scenePath` or save the scene once before the operation. |
+| `SEMANTIC_INVALID` | An invalid tag or component type was passed to `scene_find_objects`. | Use a valid tag or component type name, and consider `gameobject_find` for more complex filters. |
+| `SKILL_ERROR` | A state constraint blocked the operation, such as attempting to unload the only loaded scene. | Adjust the request to a valid editor state (e.g., keep at least one scene loaded). |

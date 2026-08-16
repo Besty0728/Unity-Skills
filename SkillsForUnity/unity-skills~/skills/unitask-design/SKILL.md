@@ -1,7 +1,9 @@
 ---
 name: unity-unitask-design
-description: Source-anchored design rules for UniTask 2.5.10. 为 UniTask 2.5.10 提供源码锚定的设计规则。
+description: Source-anchored design rules for UniTask 2.5.10
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Writing or reviewing async UniTask code

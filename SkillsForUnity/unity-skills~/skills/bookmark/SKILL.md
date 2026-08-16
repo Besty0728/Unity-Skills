@@ -1,7 +1,9 @@
 ---
 name: unity-bookmark
-description: Manage Scene View bookmarks and saved viewpoints. 管理 Scene View 书签与已存视角。
+description: Manage Scene View bookmarks and saved viewpoints
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Saving or restoring Scene View viewpoints

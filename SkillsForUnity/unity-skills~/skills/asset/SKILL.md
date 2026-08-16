@@ -1,7 +1,9 @@
 ---
 name: unity-asset
-description: Manage Unity AssetDatabase operations. 管理 Unity AssetDatabase 操作。
+description: Manage Unity AssetDatabase operations
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Organizing project assets
@@ -242,3 +244,14 @@ unity_skills.call_skill("asset_move_batch", items=[
 ## Exact Signatures
 
 Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+
+## Common Errors
+
+Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
+
+| Error | Trigger | Fix |
+|---|---|---|
+| `TARGET_NOT_FOUND` | The source file, asset path, or target asset could not be found. | Verify the path with `asset_find` / `asset_get_info`, ensure the file exists, and retry with the exact project-relative path. |
+| `MISSING_PARAM` | A required path parameter is empty or not provided (caught by path validation). | Provide the required `assetPath`, `sourcePath`, `destinationPath`, or `folderPath`. |
+| `SEMANTIC_INVALID` | The path is invalid (e.g., contains `..`, does not start with `Assets/`/`Packages/`, or the folder already exists). | Use a normalized project-relative path under `Assets/` or `Packages/`; choose a different folder name if it already exists. |
+| `SKILL_ERROR` | A low-level AssetDatabase or filesystem operation failed, such as `Failed to delete asset`, `AssetDatabase.MoveAsset` returned an error, or folder creation failed. | Resolve the issue described in the message (e.g., close locked files, fix parent path) and retry. |

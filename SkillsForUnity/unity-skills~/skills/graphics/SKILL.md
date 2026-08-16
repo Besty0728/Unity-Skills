@@ -1,7 +1,9 @@
 ---
 name: unity-graphics
-description: Manage project-wide GraphicsSettings and QualitySettings. 管理工程级 GraphicsSettings 与 QualitySettings。
+description: Manage project-wide GraphicsSettings and QualitySettings
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Configuring project graphics/quality settings

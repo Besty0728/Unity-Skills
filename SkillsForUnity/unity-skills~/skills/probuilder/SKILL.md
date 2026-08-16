@@ -1,7 +1,9 @@
 ---
 name: unity-probuilder
-description: Model editable meshes with ProBuilder for blockout. 用 ProBuilder 建模做关卡灰盒。
+description: Model editable meshes with ProBuilder for blockout
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Blocking out levels

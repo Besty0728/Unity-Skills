@@ -1,7 +1,9 @@
 ---
 name: unity-prefab
-description: Manage Prefabs and variants. 管理 Prefab 与变体。
+description: Manage Prefabs and variants
 ---
+
+> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
 
 ## Triggers
 - Creating or editing prefabs
@@ -252,3 +254,14 @@ unity_skills.call_skill("prefab_instantiate_batch", items=[
 ## Exact Signatures
 
 Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+
+## Common Errors
+
+Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/protocol-error-codes.md
+
+| Error | Trigger | Fix |
+|---|---|---|
+| `TARGET_NOT_FOUND` | The prefab asset, source prefab, child GameObject inside a prefab, component, or asset reference could not be found. | Confirm the prefab path with `asset_find` / `prefab_find_instances`, check child/component names, and retry with exact identifiers. |
+| `MISSING_PARAM` | A required parameter is missing, such as `savePath`, `prefabPath`, `sourcePrefabPath`, `componentType`, or `propertyName`. | Provide the missing parameter; use `mode=dryRun` to inspect the full schema. |
+| `SEMANTIC_INVALID` | The target is not a prefab instance, the property is not an Object reference field, or a serialized value could not be parsed. | Ensure the object is a prefab instance (`prefab_get_overrides` can verify), match the property type, and retry with a valid value. |
+| `SKILL_ERROR` | A low-level operation failed, such as `Failed to instantiate prefab` or `Failed to set value ... (type: ...)`. | Resolve the underlying cause named in the message (e.g., prefab corruption, type mismatch) and retry. |

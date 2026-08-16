@@ -2,6 +2,25 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.6.0] - 2026-08-16
+
+> **调用方文档大瘦身 + 指导模式（Guide Mode）** —— 根 SKILL.md 从 31.4KB（~7.8K tokens）瘦到 6.2KB（~1.6K tokens），典型简单任务会话文档成本 ↓ ~84%，纯概念问答 ↓ ~85–100%；新增"指导模式"：AI 对≤3 次点击就能完成的简单任务给出手动步骤指引，而非直接调用 REST。
+
+### Added
+
+- **SKILL_GUIDE.md 指导模式入口文档** — 定义 AI 作为"指导者"的行为协议：含"≤3 次点击→文档指导 / 遍历·批量·精确数值→自动化"通用判据、7 行手动/自动任务边界表、手动步骤输出规范（菜单路径/Inspector 字段/快捷键）、只读 skill 辅助说明与反幻觉规则表。
+- **4 个 manual-* advisory 模块** — `manual-gameobject` / `manual-component` / `manual-material` / `manual-scene`：手动创建物体、配置组件、编辑材质、场景导航的分步 UI 操作指引，各附对应 REST 模块的自动化入口指针。advisory 模块 25 → 29，模块文档总数 75 → 79。
+- **服务端 guideMode 标志与面板开关** — `/health` 新增 `guideMode` / `guideModeHint` 字段（camelCase，客户端宽松解析零兼容风险）；Settings 抽屉 Runtime 节新增"指导模式（建议性）"开关（`server-switch` 样式与其他开关一致，EditorPrefs `UnitySkills_GuideMode` 持久化，中英俄三语文案）。建议性提示，无强制拦截，是否遵循由 AI 客户端决定。
+- **frontmatter `compatibility` 字段** — 根 SKILL.md 声明运行环境要求（Unity 2022.3+/6000.x + 本地 REST 服务 + Python 3），对齐 Agent Skills 规范。
+
+### Changed
+
+- **根 SKILL.md 瘦身至 6.2KB（~1.6K tokens，原 31.4KB）** — 只保留硬协议：First Contact 握手、schema 四层路由表（显式默认层 `recommend?includeSchema=true`）、dryRun 门禁 + 反幻觉规则、Mode 速览、类别级模块路由、错误码速查；Operating Mode 细节、完整错误码表、Observability、Unity CLI 冷启动下沉为 `references/protocol-*.md` 四件按需加载文档，原完整版归档为 `references/SKILL_FULL.md`；所有下沉点均带"触发条件 + 相对链接"的条件式指针。
+- **frontmatter description 收窄** — 删除宽触发 catch-all 从句（"even if they just say…"）并新增负向指引：纯概念问答（不触碰编辑器状态）不再注入协议文档，直接路由到对应 advisory 模块文档；保留核心动作关键词与压缩中文锚点以兼容弱模型跨语言匹配。
+- **75 个模块文档批量强化** — frontmatter 后插入条件式防呆引导语（凭名字猜参数则必读模块文档；已从 recommend/schema 拿到参数定义可直接 dryRun，不与省 token 路径冲突）；模块 description 统一英文单语（下级文档不参与 harness 触发匹配，消除中英文案漂移，description 总量降至 4,557 字符）。
+- **Top 10 高频 REST 模块补齐 Common Errors 章节** — gameobject / component / material / prefab / scene / script / asset / ui / physics / editor 各附 3–5 条该模块真实错误码的触发条件与修复建议（此前仅 1/75 模块有错误说明，是小模型参数幻觉重灾区）。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.6.0`。
+
 ## [2.5.0] - 2026-08-13
 
 > **pico-design：第 25 个 advisory 模块** —— 面向 PICO Unity Integration SDK v3.4.0 的官方文档锚定防幻觉知识库。AI 训练语料对 PICO 的记忆大量停留在 2.x/早期 3.x（旧振动接口、AnchorEntity 三段式、`PXR_SDK >` 菜单等，3.2.0 一个版本就废弃了 PXR_Input 30 个成员），凭记忆写 PICO 代码是高频幻觉区；本模块以 2026-08-13 全量抓取的官方文档为唯一事实源，无 REST Skills、无 C# 改动。
