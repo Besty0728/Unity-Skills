@@ -70,7 +70,12 @@ namespace UnitySkills.Tests.Core
             "unitask-design",
             "yooasset-design",
             "pico-design",
-            "yaml-editing"
+            "yaml-editing",
+            // v2.6.0 新增：manual-* 为纯手动操作指引（0 个 REST skill 端点），与 adr 同质，同样豁免。
+            "manual-gameobject",
+            "manual-component",
+            "manual-material",
+            "manual-scene"
         };
 
         private static readonly HashSet<string> ExactSignatureOptionalModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
