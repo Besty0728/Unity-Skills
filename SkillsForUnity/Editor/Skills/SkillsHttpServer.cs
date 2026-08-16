@@ -148,6 +148,7 @@ namespace UnitySkills
         private static volatile string _snapProjectName;
         private static volatile string _snapCurrentMode;
         private static volatile bool _snapPanelApprovalRequired;
+        private static volatile bool _snapGuideMode;
         private static volatile int _snapPendingCount;
         private static volatile int _snapAllowlistCount;
         private static volatile bool _snapAutoStart = true;
@@ -157,9 +158,10 @@ namespace UnitySkills
         // Until the first full refresh lands, the fast path declines and /health falls back
         // to the main-thread queue rather than reporting placeholder values.
         private static volatile bool _snapReady;
-        // Set from any thread by the SkillsModeManager.OnChanged hook; consumed on the next
-        // main-thread frame. A flag rather than a direct refresh so every Unity API read in
-        // RefreshHealthSnapshot stays on the main thread regardless of who raised the event.
+        // Set from any thread by the SkillsModeManager.OnChanged / SkillsGuideMode.OnChanged
+        // hooks; consumed on the next main-thread frame. A flag rather than a direct refresh so
+        // every Unity API read in RefreshHealthSnapshot stays on the main thread regardless of
+        // who raised the event.
         private static volatile bool _healthSnapshotDirty = true;
         private static bool _modeHookInstalled = false;
 
@@ -730,6 +732,7 @@ namespace UnitySkills
             public string ProjectName;
             public string CurrentMode;
             public bool PanelApprovalRequired;
+            public bool GuideMode;
             public int PendingCount;
             public int AllowlistCount;
             public bool AutoRestart;
@@ -745,6 +748,7 @@ namespace UnitySkills
                 ProjectName = _snapProjectName,
                 CurrentMode = _snapCurrentMode,
                 PanelApprovalRequired = _snapPanelApprovalRequired,
+                GuideMode = _snapGuideMode,
                 PendingCount = _snapPendingCount,
                 AllowlistCount = _snapAllowlistCount,
                 AutoRestart = _snapAutoStart,
@@ -763,6 +767,7 @@ namespace UnitySkills
                     ProjectName = RegistryService.ProjectName,
                     CurrentMode = SkillsModeManager.ModeToWire(SkillsModeManager.CurrentMode),
                     PanelApprovalRequired = SkillsModeManager.PanelApprovalRequired,
+                    GuideMode = SkillsGuideMode.Enabled,
                     PendingCount = SkillsModeManager.PendingGrantRequests.Count,
                     AllowlistCount = SkillsModeManager.AllowlistSkills.Count,
                     // Qualified: the field names below shadow the enclosing class's
@@ -801,6 +806,7 @@ namespace UnitySkills
                 _snapProjectName = vitals.ProjectName;
                 _snapCurrentMode = vitals.CurrentMode;
                 _snapPanelApprovalRequired = vitals.PanelApprovalRequired;
+                _snapGuideMode = vitals.GuideMode;
                 _snapPendingCount = vitals.PendingCount;
                 _snapAllowlistCount = vitals.AllowlistCount;
                 _snapAutoStart = vitals.AutoRestart;
@@ -819,8 +825,9 @@ namespace UnitySkills
 
         /// <summary>
         /// Marks the expensive half of the health snapshot for refresh on the next main-thread
-        /// frame. Hooked to <see cref="SkillsModeManager.OnChanged"/> so a mode switch, a grant
-        /// or an allowlist edit shows up on /health immediately instead of waiting out
+        /// frame. Hooked to <see cref="SkillsModeManager.OnChanged"/> and
+        /// <see cref="SkillsGuideMode.OnChanged"/> so mode / grant / allowlist / guide-mode
+        /// changes show up on /health immediately instead of waiting out
         /// <see cref="HealthSnapshotInterval"/>. Setting a volatile flag (rather than
         /// refreshing inline) keeps every Unity API read on the main thread no matter which
         /// thread raised the event.
@@ -867,6 +874,8 @@ namespace UnitySkills
                 // (mirrors the `granted` / `counts.granted` aliases on /permission/status).
                 // Safe to remove in a future major version once external consumers migrate.
                 grantedCount = allowlistCount,
+                guideMode = v.GuideMode,
+                guideModeHint = "AI should read SKILL_GUIDE.md and guide manual steps for simple tasks instead of calling write skills.",
                 threads = new
                 {
                     listenerAlive = _listenerThread?.IsAlive ?? false,
@@ -1366,6 +1375,7 @@ namespace UnitySkills
                 if (!_modeHookInstalled)
                 {
                     SkillsModeManager.OnChanged += OnPermissionStateChanged;
+                    SkillsGuideMode.OnChanged += OnPermissionStateChanged;
                     _modeHookInstalled = true;
                 }
 

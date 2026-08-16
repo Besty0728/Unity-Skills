@@ -177,6 +177,8 @@ namespace UnitySkills
             {"drawer_telemetry_hint", "Logs each skill call (name, agent, mode, ok, duration — no arguments or field values) to Library/UnitySkillsTelemetry.jsonl, powering the Analytics tab and GET /analytics. Local only; never leaves your machine. Turn off to stop recording."},
             {"drawer_summary_truncate_label", "Summary Mode auto-truncation"},
             {"drawer_summary_truncate_hint", "When on, non-verbose responses whose result list exceeds 10 items return only the first 5 with isTruncated metadata (saves tokens for AI clients). Explicit pageOffset/pageLimit paging always works regardless of this switch."},
+            {"guide_mode", "Guide mode (advisory)"},
+            {"guide_mode_tooltip", "When on, /health reports guideMode=true, suggesting AI read SKILL_GUIDE.md and give manual steps for simple tasks instead of calling write skills. No enforcement — AI clients decide whether to follow."},
 
             // Shortcuts settings (panel hotkeys)
             {"shortcut_section_title", "Shortcuts"},
@@ -1329,6 +1331,8 @@ namespace UnitySkills
             {"drawer_telemetry_hint", "将每次技能调用（名称、agent、模式、成功与否、用时——不含参数或字段值）记录到 Library/UnitySkillsTelemetry.jsonl，为 Analytics 标签与 GET /analytics 供数。仅存本地，绝不外传。关闭即停止记录。"},
             {"drawer_summary_truncate_label", "摘要模式自动截断"},
             {"drawer_summary_truncate_hint", "开启后，非 verbose 响应中超过 10 项的结果列表只返回前 5 项并附带 isTruncated 元数据（为 AI 客户端节省 token）。无论开关状态，显式传 pageOffset/pageLimit 分页始终有效。"},
+            {"guide_mode", "指导模式（建议性）"},
+            {"guide_mode_tooltip", "开启后 /health 返回 guideMode=true，提示 AI 对简单手动任务阅读 SKILL_GUIDE.md 并给出手动指引，而非自动调用写型 skill。无强制拦截，是否遵循由 AI 客户端决定。"},
 
             // Shortcuts settings (panel hotkeys)
             {"shortcut_section_title", "快捷键"},
@@ -2508,6 +2512,8 @@ namespace UnitySkills
             {"architecture", "Архитектура"},
             {"auto_restart", "Авто-перезапуск после компиляции"},
             {"auto_restart_hint", "Сервер автоматически перезапустится после перекомпиляции скриптов Unity"},
+            {"guide_mode", "Режим подсказок (рекомендательный)"},
+            {"guide_mode_tooltip", "Когда включено, /health возвращает guideMode=true, предлагая ИИ прочитать SKILL_GUIDE.md и давать пошаговые инструкции для простых задач вместо вызова навыков записи. Без принудительного применения — клиент ИИ сам решает, следовать ли этому."},
             {"start_on_editor_launch", "Запускать при старте редактора"},
             {"start_on_editor_launch_hint", "Автоматически запускать сервер при открытии проекта — требуется также включить «Авто-перезапуск после компиляции»"},
             {"timeout_unit", "мин"},

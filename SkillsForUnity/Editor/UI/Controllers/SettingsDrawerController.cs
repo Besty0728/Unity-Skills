@@ -96,6 +96,9 @@ namespace UnitySkills
         private VisualElement _summaryTruncateSwitch;
         private Label         _summaryTruncateLabel;
         private Label         _summaryTruncateHint;
+        private VisualElement _guideModeSwitch;
+        private Label         _guideModeLabel;
+        private Label         _guideModeHint;
 
         // Stats group
         private Label  _statsGroupTitle;
@@ -225,6 +228,9 @@ namespace UnitySkills
             _summaryTruncateSwitch = _drawerContainer.Q<VisualElement>("summary-truncate-switch");
             _summaryTruncateLabel  = _drawerContainer.Q<Label>("summary-truncate-label");
             _summaryTruncateHint   = _drawerContainer.Q<Label>("summary-truncate-hint");
+            _guideModeSwitch       = _drawerContainer.Q<VisualElement>("guide-mode-switch");
+            _guideModeLabel        = _drawerContainer.Q<Label>("guide-mode-label");
+            _guideModeHint         = _drawerContainer.Q<Label>("guide-mode-hint");
 
             _statsGroupTitle = _drawerContainer.Q<Label>("group-stats-title");
             _statsHint       = _drawerContainer.Q<Label>("stats-hint");
@@ -339,6 +345,13 @@ namespace UnitySkills
                 _summaryTruncateSwitch.RegisterCallback<ClickEvent>(_ =>
                 {
                     SkillRouter.SummaryAutoTruncate = !SkillRouter.SummaryAutoTruncate;
+                    SyncSettingSwitches();
+                });
+
+            if (_guideModeSwitch != null)
+                _guideModeSwitch.RegisterCallback<ClickEvent>(_ =>
+                {
+                    SkillsGuideMode.Enabled = !SkillsGuideMode.Enabled;
                     SyncSettingSwitches();
                 });
 
@@ -499,6 +512,13 @@ namespace UnitySkills
             if (_summaryTruncateHint != null)
                 _summaryTruncateHint.text = SkillsLocalization.Get("drawer_summary_truncate_hint");
 
+            if (_guideModeLabel != null)
+                _guideModeLabel.text = SkillsLocalization.Get("guide_mode");
+            if (_guideModeSwitch != null)
+                _guideModeSwitch.tooltip = SkillsLocalization.Get("guide_mode_tooltip");
+            if (_guideModeHint != null)
+                _guideModeHint.text = SkillsLocalization.Get("guide_mode_tooltip");
+
             if (_statsHint     != null) _statsHint.text     = SkillsLocalization.Get("drawer_stats_hint");
             if (_statsResetBtn != null) _statsResetBtn.text = SkillsLocalization.Get("drawer_reset_stats_btn");
             if (_languagePinsTitle != null) _languagePinsTitle.text = SkillsLocalization.Get("language_pins_title");
@@ -529,6 +549,7 @@ namespace UnitySkills
             _confirmSwitch?.EnableInClassList("on", ConfirmationTokenService.RequireConfirmation);
             _telemetrySwitch?.EnableInClassList("on", SkillTelemetryService.Enabled);
             _summaryTruncateSwitch?.EnableInClassList("on", SkillRouter.SummaryAutoTruncate);
+            _guideModeSwitch?.EnableInClassList("on", SkillsGuideMode.Enabled);
         }
 
         private static SkillsLocalization.Language ParseLanguage(string value) =>
