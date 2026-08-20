@@ -2,6 +2,33 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.6.1] - 2026-08-20
+
+> **Unity CLI beta5 advisory/protocol 适配** —— 官方 Unity CLI 从 `1.0.0-beta.3` 走到 `1.0.0-beta.5`，`build` 语义、退出码分类、NDJSON 终态帧和 Linux glibc 要求均发生变化。本次只对齐 advisory 文档协议与 CLI 探测失败分类，`cli_config.json` schema 保持 `1`，不新增 feature key，旧配置照常读取。
+
+### Added
+
+- **CLI 探测失败原因分类** — `UnityCliService` 新增 `not_found` / `not_executable` / `launch_failed` / `incompatible_system` 四个诊断常量。旧 glibc Linux（Ubuntu 20.04 及更早、Debian 11、RHEL/CentOS 8、Amazon Linux 2）上 CLI 启动失败会被识别为系统兼容性问题，不再一律显示成"未安装"而误导用户去重装。仅供运行时/UI 诊断，不写入 `cli_config.json`。
+- **`UnityCliServiceTests` 测试套件** — 覆盖无配置文件、`enabled: false`、`cliRun`/`cliBuild` 缺失默认关闭三条授权边界，以及探测失败分类的文件缺失、glibc 报错、通用失败三条路径（后两条用临时脚本模拟，不依赖本机是否安装 Unity CLI）。
+- **`build` 三种构建路径文档** — Unity 6 Build Profile（`--profile`）、beta4+ 内置桌面构建（`--target` + `--output-path`，桌面目标可省 `--execute-method`）、自定义 C# 构建方法（Android/iOS/WebGL 必需，且优先级最高）。`cliBuild` 继续默认关闭。
+- **官方退出码表与 signal 诊断规则** — 补齐 `0`/`1`/`2`/`3`/`4`/`6`/`7`/`130`/`143` 完整语义（`6` 终态、`7` 可有限重试），并要求区分业务失败（`TEST_FAILED`/`BUILD_FAILED`）、Editor 崩溃（beta5+ 的 `SIGSEGV`/`SIGILL`/`SIGTRAP`/`SIGFPE`/`SIGBUS`）与 CLI 自身失败。
+- **自动化推荐环境变量** — `UNITY_NON_INTERACTIVE=1` / `UNITY_FORMAT=json` / `UNITY_NO_PAGER=1` / `UNITY_NO_CRASH_REPORT=1`，仅作 advisory 建议，不在插件代码中强制注入。
+- **Linux 兼容性章节与能力分支说明** — 明确 beta3 / beta4+ / beta5+ 的能力差异，不设置全局硬性最低 CLI 版本，仍停留在 beta3 的用户不受影响。
+
+### Changed
+
+- **Editor 存活探测顺序纳入 `editors running` 与 lockfile** — 冷启动判断改为：项目自身 `cli_config.json` 授权 → registry PID → `<cliPath> editors running --format json --non-interactive` 交叉确认 → `Library/UnityLockfile`；四项都未显示活跃 Editor 才允许冷启动。`unity status` 明确降级为补充证据，空表不代表 Editor 已关闭。
+- **退出码 `6` 不再描述为测试失败专用** — 改为官方通用语义"主要操作失败"，涵盖测试失败、构建失败和 Editor 异常退出；要求结合 JSON envelope、`errors[].code` 与 stderr 综合判断，不能只看单一退出码或 XML。
+- **NDJSON 结果解析约定** — beta4+ 以最后一个 `type=result` 帧为最终状态，进度帧和 stderr 日志行都不算结果；旧版本无终态帧时回退到退出码加 stderr。
+- **`--version` 探测消除管道死锁风险** — 改为先启动 stdout/stderr 异步读取再 `WaitForExit`，避免子进程输出填满管道缓冲区后卡死 8 秒超时。
+- **registry heartbeat fallback 分支补齐 CLI 绑定字段** — 服务器先发心跳、后走 `Register` 的时序下，注册表条目此前会丢失 `cliBound` / `cliPath`；现与 `Register` 一致写入。该字段仍只用于存活发现，绝不作为授权凭据。
+- **`unity-cli` advisory 新增禁止项** — `projects exec` / `projects clean`、`editors prune` / `editors verify`、`command --detach` / `eval --detach` / `job`、`skill install` / `skill refresh`、`shell --protocol ndjson`，以及 CLI 自更新，均明确列为不得使用：它们跨项目操作、修改全局 Editor 安装集，或绕开 UnitySkills 自己的 advisory 与 feature gate。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.6.1`。
+
+### Fixed
+
+- **CLI 探测在 Mono 上把"文件不存在"误判为"启动失败"** — 原实现按异常 `Message` 子串匹配（`"cannot find the file"` / `"access is denied"`），而 Unity 的 Mono 实际抛出的是 `Win32Exception`，措辞为 `"Cannot find the specified file"` / `"Access denied"`，两者都匹配不上，导致任一不存在的候选路径都会把 `error` 污染成 `launch_failed`，进而在面板上掩盖真正的"未检测到 CLI"。现改为按 `NativeErrorCode`（2/3 → 不存在，5/13 → 不可执行）判断，并保留措辞匹配作为未知 errno 的兜底。
+
 ## [2.6.0] - 2026-08-16
 
 > **调用方文档大瘦身 + 指导模式（Guide Mode）** —— 根 SKILL.md 从 31.4KB（~7.8K tokens）瘦到 6.2KB（~1.6K tokens），典型简单任务会话文档成本 ↓ ~84%，纯概念问答 ↓ ~85–100%；新增"指导模式"：AI 对≤3 次点击就能完成的简单任务给出手动步骤指引，而非直接调用 REST。

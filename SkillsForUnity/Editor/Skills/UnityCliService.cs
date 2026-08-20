@@ -22,6 +22,12 @@ namespace UnitySkills
     {
         public const int ConfigSchemaVersion = 1;
 
+        // 检测失败原因常量（DetectResult.error 取值）。不写入 cli_config.json，仅供运行时/UI 诊断。
+        public const string CliErrorNotFound = "not_found";
+        public const string CliErrorNotExecutable = "not_executable";
+        public const string CliErrorLaunchFailed = "launch_failed";
+        public const string CliErrorIncompatibleSystem = "incompatible_system";
+
         // ===== 配置模型（Newtonsoft 序列化，字段名即 JSON key，客户端按此契约读取）=====
 
         public class CliFeatures
@@ -94,19 +100,25 @@ namespace UnitySkills
                 var result = new DetectResult();
                 try
                 {
+                    string lastConcreteError = null;
                     foreach (var candidate in EnumerateCandidates(userPath, configuredPath))
                     {
                         if (string.IsNullOrEmpty(candidate)) continue;
-                        if (TryGetVersion(candidate, out var version))
+                        var attempt = TryGetVersion(candidate);
+                        if (attempt.success)
                         {
                             result.found = true;
                             result.cliPath = candidate;
-                            result.version = version;
+                            result.version = attempt.version;
                             break;
                         }
+                        // 记录最后一个“找到了文件但启动失败”的具体原因；
+                        // 若某个候选根本不存在，则保留更具体的错误。
+                        if (attempt.error != null)
+                            lastConcreteError = attempt.error;
                     }
                     if (!result.found)
-                        result.error = "not_found";
+                        result.error = lastConcreteError ?? CliErrorNotFound;
                 }
                 catch (Exception ex)
                 {
@@ -187,10 +199,26 @@ namespace UnitySkills
             catch { return null; }
         }
 
-        /// <summary>跑 `&lt;path&gt; --version` 验证可执行并取版本号；失败返回 false。</summary>
-        private static bool TryGetVersion(string cliPath, out string version)
+        private readonly struct VersionAttempt
         {
-            version = "";
+            public readonly bool success;
+            public readonly string version;
+            public readonly string error;
+            public VersionAttempt(bool success, string version = "", string error = null)
+            {
+                this.success = success;
+                this.version = version ?? "";
+                this.error = error;
+            }
+        }
+
+        /// <summary>跑 `&lt;path&gt; --version` 验证可执行并取版本号；返回具体失败原因。</summary>
+        /// <remarks>
+        /// 先异步启动 stdout/stderr 读取再 WaitForExit，避免子进程输出填满管道缓冲区后死锁。
+        /// 仅用于输出极小的 `--version` 探测；不适用于可能产生大量日志的命令。
+        /// </remarks>
+        private static VersionAttempt TryGetVersion(string cliPath)
+        {
             try
             {
                 var psi = new System.Diagnostics.ProcessStartInfo
@@ -204,15 +232,76 @@ namespace UnitySkills
                 };
                 using (var p = System.Diagnostics.Process.Start(psi))
                 {
-                    p.BeginErrorReadLine();
-                    string stdout = p.StandardOutput.ReadToEnd();
-                    if (!p.WaitForExit(8000)) { try { p.Kill(); } catch { } return false; }
-                    if (p.ExitCode != 0) return false;
-                    version = (stdout ?? "").Trim();
-                    return !string.IsNullOrEmpty(version);
+                    // 先开始异步读取，防止管道缓冲区满导致 WaitForExit 无限等待。
+                    var stdoutTask = p.StandardOutput.ReadToEndAsync();
+                    var stderrTask = p.StandardError.ReadToEndAsync();
+
+                    if (!p.WaitForExit(8000)) { try { p.Kill(); } catch { } return new VersionAttempt(false, error: CliErrorLaunchFailed); }
+
+                    string stdout = stdoutTask.Result;
+                    string stderr = stderrTask.Result;
+
+                    if (p.ExitCode != 0)
+                    {
+                        if (LooksLikeGlibcError(stderr) || LooksLikeGlibcError(stdout))
+                            return new VersionAttempt(false, error: CliErrorIncompatibleSystem);
+                        return new VersionAttempt(false, error: CliErrorLaunchFailed);
+                    }
+                    string version = (stdout ?? "").Trim();
+                    if (string.IsNullOrEmpty(version))
+                        return new VersionAttempt(false, error: CliErrorLaunchFailed);
+                    return new VersionAttempt(true, version);
                 }
             }
-            catch { return false; }
+            catch (System.ComponentModel.Win32Exception w32)
+            {
+                // NativeErrorCode 比 Message 可靠：Mono 的措辞（"Cannot find the specified file" /
+                // "Access denied"）与 .NET Framework 不同，且随 locale 变化。
+                // 2 = ERROR_FILE_NOT_FOUND / ENOENT，3 = ERROR_PATH_NOT_FOUND，5 = ERROR_ACCESS_DENIED / EACCES，13 = EACCES(POSIX)。
+                switch (w32.NativeErrorCode)
+                {
+                    // 文件不存在或 PATH 上找不到：不算“启动失败”，让探测继续下一个候选。
+                    case 2:
+                    case 3:
+                        return new VersionAttempt(false);
+                    case 5:
+                    case 13:
+                        return new VersionAttempt(false, error: CliErrorNotExecutable);
+                    default:
+                        // 未知 errno：回退到措辞匹配，覆盖 Mono / .NET / 各平台的不同文案。
+                        return ClassifyByMessage(w32.Message);
+                }
+            }
+            catch (FileNotFoundException)
+            {
+                return new VersionAttempt(false);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return new VersionAttempt(false, error: CliErrorNotExecutable);
+            }
+            catch (Exception ex)
+            {
+                return ClassifyByMessage(ex.Message);
+            }
+        }
+
+        /// <summary>无可用 errno 时的兜底分类：按异常措辞区分“不存在”“不可执行”和其他启动失败。</summary>
+        private static VersionAttempt ClassifyByMessage(string message)
+        {
+            string msg = (message ?? "").ToLowerInvariant();
+            if (msg.Contains("no such file") || msg.Contains("cannot find") || msg.Contains("not found"))
+                return new VersionAttempt(false);
+            if (msg.Contains("permission denied") || msg.Contains("access denied") || msg.Contains("access is denied"))
+                return new VersionAttempt(false, error: CliErrorNotExecutable);
+            return new VersionAttempt(false, error: CliErrorLaunchFailed);
+        }
+
+        private static bool LooksLikeGlibcError(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            string t = text.ToLowerInvariant();
+            return t.Contains("glibc") || t.Contains("libc.so") || t.Contains("version `glib");
         }
 
         // ===== 配置读写 =====

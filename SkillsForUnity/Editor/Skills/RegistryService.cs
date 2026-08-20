@@ -148,6 +148,7 @@ namespace UnitySkills
                     else
                     {
                         // First heartbeat before Register — write full entry
+                        UnityCliService.GetRegistryBinding(out var cliBound, out var cliPath);
                         registry[ProjectPath] = new InstanceInfo
                         {
                             id = InstanceId,
@@ -156,7 +157,9 @@ namespace UnitySkills
                             port = port,
                             pid = System.Diagnostics.Process.GetCurrentProcess().Id,
                             last_active = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-                            unityVersion = Application.unityVersion
+                            unityVersion = Application.unityVersion,
+                            cliBound = cliBound,
+                            cliPath = cliPath
                         };
                     }
 
