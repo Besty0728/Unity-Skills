@@ -7,7 +7,7 @@ using System.Text;
 namespace UnitySkills
 {
     /// <summary>
-    /// One-click skill installer for mainstream AI IDEs: Claude Code, Antigravity, Codex, Cursor, and OpenCode.
+    /// One-click skill installer for mainstream AI IDEs: Claude Code, Antigravity, Codex, Cursor, OpenCode, and Kimi Code.
     /// </summary>
     public static class SkillInstaller
     {
@@ -34,6 +34,39 @@ namespace UnitySkills
         public static string OpenCodeProjectPath => Path.Combine(Application.dataPath, "..", ".opencode", "skills", "unity-skills");
         public static string OpenCodeGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "opencode", "skills", "unity-skills");
 
+        // Kimi Code paths - https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html
+        // Kimi Code CLI scans four scopes; we target its dedicated dirs (not the shared .agents/skills
+        // used by Codex/Antigravity) so install state and uninstall stay isolated per tool. A global
+        // Codex install under ~/.agents/skills is still discovered by Kimi Code as a bonus.
+        // The user-level root follows KIMI_CODE_HOME when the Editor inherits it, else ~/.kimi-code.
+        public static string KimiCodeProjectPath => Path.Combine(Application.dataPath, "..", ".kimi-code", "skills", "unity-skills");
+        public static string KimiCodeGlobalPath => Path.Combine(KimiCodeHome, "skills", "unity-skills");
+
+        /// <summary>
+        /// Resolves $KIMI_CODE_HOME (default ~/.kimi-code). Unity only sees the variable when it was
+        /// launched from a shell that exported it; otherwise the documented default applies.
+        /// </summary>
+        private static string KimiCodeHome
+        {
+            get
+            {
+                var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                var configured = Environment.GetEnvironmentVariable("KIMI_CODE_HOME");
+                if (string.IsNullOrWhiteSpace(configured))
+                    return Path.Combine(home, ".kimi-code");
+
+                configured = configured.Trim();
+                // Shells do not expand a quoted leading "~", so accept it here rather than creating a
+                // literal "~" directory next to the project.
+                if (configured == "~")
+                    return home;
+                if (configured.StartsWith("~/", StringComparison.Ordinal) || configured.StartsWith("~\\", StringComparison.Ordinal))
+                    return Path.Combine(home, configured.Substring(2));
+
+                return configured;
+            }
+        }
+
         public static bool IsClaudeProjectInstalled => Directory.Exists(ClaudeProjectPath) && File.Exists(Path.Combine(ClaudeProjectPath, "SKILL.md"));
         public static bool IsClaudeGlobalInstalled => Directory.Exists(ClaudeGlobalPath) && File.Exists(Path.Combine(ClaudeGlobalPath, "SKILL.md"));
         public static bool IsAntigravityProjectInstalled => Directory.Exists(AntigravityProjectPath) && File.Exists(Path.Combine(AntigravityProjectPath, "SKILL.md"));
@@ -44,6 +77,8 @@ namespace UnitySkills
         public static bool IsCursorGlobalInstalled => Directory.Exists(CursorGlobalPath) && File.Exists(Path.Combine(CursorGlobalPath, "SKILL.md"));
         public static bool IsOpenCodeProjectInstalled => Directory.Exists(OpenCodeProjectPath) && File.Exists(Path.Combine(OpenCodeProjectPath, "SKILL.md"));
         public static bool IsOpenCodeGlobalInstalled => Directory.Exists(OpenCodeGlobalPath) && File.Exists(Path.Combine(OpenCodeGlobalPath, "SKILL.md"));
+        public static bool IsKimiCodeProjectInstalled => Directory.Exists(KimiCodeProjectPath) && File.Exists(Path.Combine(KimiCodeProjectPath, "SKILL.md"));
+        public static bool IsKimiCodeGlobalInstalled => Directory.Exists(KimiCodeGlobalPath) && File.Exists(Path.Combine(KimiCodeGlobalPath, "SKILL.md"));
 
         public static (bool success, string message) InstallClaude(bool global)
         {
@@ -168,6 +203,32 @@ namespace UnitySkills
             {
                 var targetPath = global ? OpenCodeGlobalPath : OpenCodeProjectPath;
                 return UninstallSkill(targetPath, "OpenCode");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public static (bool success, string message) InstallKimiCode(bool global)
+        {
+            try
+            {
+                var targetPath = global ? KimiCodeGlobalPath : KimiCodeProjectPath;
+                return InstallSkill(targetPath, "Kimi Code", "KimiCode");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        public static (bool success, string message) UninstallKimiCode(bool global)
+        {
+            try
+            {
+                var targetPath = global ? KimiCodeGlobalPath : KimiCodeProjectPath;
+                return UninstallSkill(targetPath, "Kimi Code");
             }
             catch (Exception ex)
             {

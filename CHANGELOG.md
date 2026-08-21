@@ -2,6 +2,25 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.6.2] - 2026-08-21
+
+> **接入面扩展：Kimi Code 内建支持** —— AI 配置面板新增第 6 个一键安装工具 Kimi Code，并补上其 REST 流量的 agent 识别。安装路径取自 [Kimi Code CLI 官方 Skills 文档](https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html)，沿用与其余 5 个工具完全一致的模板复制路径，无新增 skill，技能总数仍为 784。
+
+### Added
+
+- **Kimi Code 内建支持（AI 配置面板第 6 个工具）** — 面板 AI Config 标签页新增 Kimi Code 卡片，支持项目级 `.kimi-code/skills/unity-skills/` 与用户级 `$KIMI_CODE_HOME/skills/unity-skills/`（未设置该变量时为 `~/.kimi-code/skills/unity-skills/`）两种安装位置。沿用与 Claude Code / Codex / Antigravity / Cursor / OpenCode 完全相同的 `SkillInstaller.InstallSkill` 路径，不另写写入逻辑。Kimi Code CLI 的 skill 发现是纯目录约定（作用域目录下的子目录含 `SKILL.md` 即为一个 skill），无需在 `config.toml` 注册任何内容，因此安装/卸载全程不读写用户的 Kimi 配置文件，冲突面仅限 `unity-skills/` 这一个专属目录名。
+- **`KIMI_CODE_HOME` 环境变量支持** — 用户级安装根目录跟随该变量迁移，与 Kimi Code CLI「隔离数据根时一并隔离 Kimi 专属 Skills」的语义一致；变量未设置或编辑器未继承到时回落官方默认值 `~/.kimi-code`。同时兼容被引号包裹而未被 shell 展开的前导 `~/` 写法，避免在项目旁生成字面量 `~` 目录。
+
+### Changed
+
+- **Kimi 流量不再在审计日志里归为 `Unknown`** — `_agentKeywords` 登记 `("kimi", "KimiCode")`。此前 `"kimi"` 不含表中任何现有关键字，Kimi Code 直接用内建 fetch 或 curl 打 REST 的流量（不经 Python helper 发 `X-Agent-Id`）会落到 `Unknown(...)`，与其它 5 个工具不对等。一键安装写入的 `agent_config.json` 同样使用 `KimiCode` 作为 agentId，两条识别路径口径统一。
+- **安装位置选用 Kimi 专属目录而非共享 `.agents/skills`** — Kimi Code CLI 按 Project > User > Extra > Built-in 四档扫描，其中也包含 Codex / Antigravity 共用的 `.agents/skills`。为使各工具的安装状态与卸载互不干扰，卡片只写 `.kimi-code/`；已有的 Codex 全局安装（`~/.agents/skills/`）仍会被 Kimi Code 顺带发现，属额外收益而非冲突。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` / README 当前版本标记同步提升到 `2.6.2`。
+
+### Docs
+
+- **README / README_CN / SETUP_GUIDE 双语同步** — 原生支持的 IDE 数量由 5 提升到 6，工具支持表、一键安装步骤与手动安装路径表均补充 Kimi Code 条目（含 `$KIMI_CODE_HOME` 说明与 `/skill:unity-skills` 显式触发方式）。
+
 ## [2.6.1] - 2026-08-20
 
 > **Unity CLI beta5 advisory/protocol 适配** —— 官方 Unity CLI 从 `1.0.0-beta.3` 走到 `1.0.0-beta.5`，`build` 语义、退出码分类、NDJSON 终态帧和 Linux glibc 要求均发生变化。本次只对齐 advisory 文档协议与 CLI 探测失败分类，`cli_config.json` schema 保持 `1`，不新增 feature key，旧配置照常读取。

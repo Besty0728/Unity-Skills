@@ -39,9 +39,9 @@
 ## 🚀 核心特性
 
 - 🛠️ **784 REST Skills 全能库**：包含 54 个功能源码模块和 29 个 advisory 设计模块，支持 Batch 批处理，一次操控多个对象。
-- ⚡ **调用效率革命性提升 (v2.0.1+)**：Schema 缓存 + 指数退避轮询 + BATCH-FIRST 引导 → **Token 消耗 ↓ 96%**，**简单任务 4-6 次调用 → 1 次（↓ 75-83%）**。当前：v2.6.1。
+- ⚡ **调用效率革命性提升 (v2.0.1+)**：Schema 缓存 + 指数退避轮询 + BATCH-FIRST 引导 → **Token 消耗 ↓ 96%**，**简单任务 4-6 次调用 → 1 次（↓ 75-83%）**。当前：v2.6.2。
 - 🔐 **三档权限模式 (v1.9.0+)**：Approval / Auto / Bypass，配合双轨审批渠道（Dialog / Panel），对齐 Claude Code permission modes；老用户升级零感知。
-- 🤖 **5 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor / OpenCode，一键安装即用。
+- 🤖 **6 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code，一键安装即用。
 - 🛡️ **事务原子性保障**：操作失败自动回滚，场景永不残留，确保流程安全。
 - 🌍 **多实例同时控制**：自动端口发现与全局注册表，支持同时操控多个 Unity 项目。
 - 🔗 **超长稳定连接**：请求超时可配（默认 15 分钟），Domain Reload 后自动恢复，脚本编译/资源重导入等短暂中断会提示重试。
@@ -109,6 +109,7 @@ UnitySkills 引入真正的服务端权限系统，对齐 Claude Code permission
 | **Claude Code** | ✅ 支持 | 智能识别 Skill 意图，支持复杂多步自动化。 |
 | **Codex** | ✅ 支持 | 支持 `$skill` 显式调用和隐式意图识别。工作区与 Antigravity 共享 `.agents/skills/`。 |
 | **Cursor** | ✅ 支持 | 自动扫描 `.cursor/skills/` 和 `.agents/skills/`；支持 `/skill-name` 显式触发；可在 设置 → Rules 查看已加载技能。 |
+| **Kimi Code** | ✅ 支持 | 原生扫描项目级 `.kimi-code/skills/` 和用户级 `~/.kimi-code/skills/`（跟随 `$KIMI_CODE_HOME`）；支持 `/skill:unity-skills` 显式触发。同时也会扫描 `.agents/skills/`。 |
 | **OpenCode** | ✅ 支持 | 原生扫描工作区 `.opencode/skills/` 和全局 `~/.config/opencode/skills/`。 |
 
 ---
@@ -148,7 +149,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 
 ### 3. 一键配置 AI Skills
 1. 打开 `Window > UnitySkills`，切到 **AI Config** 标签页。
-2. 选择对应的终端图标（Claude / Antigravity / Codex / Cursor / OpenCode）。
+2. 选择对应的终端图标（Claude / Antigravity / Codex / Cursor / OpenCode / Kimi Code）。
 3. 点击 **"Install"** 即可完成环境配置，无需手动拷贝代码。
 
 > 安装器会复制包内的 `unity-skills~/` 模板目录到目标位置。
@@ -198,6 +199,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 - OpenAI Codex：`~/.agents/skills/`（全局）或 `.agents/skills/`（工作区，与 Antigravity 共享）
 - Cursor：`~/.cursor/skills/`（全局）或 `.cursor/skills/`（工作区）；也会自动扫描 `.agents/skills/`
 - OpenCode：`~/.config/opencode/skills/`（全局）或 `.opencode/skills/`（工作区）
+- Kimi Code：`~/.kimi-code/skills/`（全局，或 `$KIMI_CODE_HOME/skills/`）或 `.kimi-code/skills/`（项目）；也会自动扫描 `.agents/skills/`
 
 #### 🧩 其他支持 Skills 的工具
 若你使用的是其他支持 Skills 的工具，请按照该工具文档指定的 Skills 根目录进行安装。只要满足**标准安装规范**（根目录包含 `SKILL.md` 并保持 `skills/`、`references/` 与 `scripts/` 结构），即可被正确识别。

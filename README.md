@@ -39,9 +39,9 @@ This project is a deep refactoring and feature extension based on the excellent 
 ## 🚀 Core Features
 
 - 🛠️ **784 REST Skills Comprehensive Toolkit**: Includes 54 functional source modules plus 29 advisory design modules, with Batch operations for multi-object control.
-- ⚡ **Revolutionary Efficiency Boost (v2.0.1+)**: Schema caching + exponential backoff polling + BATCH-FIRST guidance → **Token consumption ↓ 96%**, **simple tasks 4-6 calls → 1 call (↓ 75-83%)**. Current: v2.6.1.
+- ⚡ **Revolutionary Efficiency Boost (v2.0.1+)**: Schema caching + exponential backoff polling + BATCH-FIRST guidance → **Token consumption ↓ 96%**, **simple tasks 4-6 calls → 1 call (↓ 75-83%)**. Current: v2.6.2.
 - 🔐 **Three-Tier Permission Modes (v1.9.0+)**: Approval / Auto / Bypass with dual approval channels (Dialog / Panel), aligned with Claude Code permission modes; zero-impact upgrade for existing users.
-- 🤖 **5 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode — one-click install and use.
+- 🤖 **6 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code — one-click install and use.
 - 🛡️ **Transactional Atomicity**: Failed operations auto-rollback, leaving scenes clean and safe.
 - 🌍 **Multi-Instance Simultaneous Control**: Automatic port discovery and global registry for controlling multiple Unity projects at once.
 - 🔗 **Ultra-Stable Long Connections**: Configurable request timeout (default 15 minutes), automatic recovery after Domain Reload, with retry hints during script compilation/asset updates.
@@ -109,6 +109,7 @@ This project has been deeply optimized for the following environments to ensure 
 | **Claude Code** | ✅ Supported | Intelligent Skill intent recognition, supports complex multi-step automation. |
 | **Codex** | ✅ Supported | Supports `$skill` explicit invocation and implicit intent recognition. Shares `.agents/skills/` with Antigravity in workspace mode. |
 | **Cursor** | ✅ Supported | Auto-discovers `.cursor/skills/` and `.agents/skills/`; supports `/skill-name` explicit invocation; visible in Settings → Rules. |
+| **Kimi Code** | ✅ Supported | Native `.kimi-code/skills/` project and `~/.kimi-code/skills/` user discovery (follows `$KIMI_CODE_HOME`); supports `/skill:unity-skills` explicit invocation. Also picks up `.agents/skills/`. |
 | **OpenCode** | ✅ Supported | Native `.opencode/skills/` workspace and `~/.config/opencode/skills/` global discovery. |
 
 ---
@@ -148,7 +149,7 @@ In Unity, open menu: `Window > UnitySkills` (or press <kbd>Alt</kbd>+<kbd>Shift<
 
 ### 3. One-Click AI Skills Configuration
 1. Open `Window > UnitySkills` and go to the **AI Config** tab.
-2. Select the corresponding terminal icon (Claude / Antigravity / Codex / Cursor / OpenCode).
+2. Select the corresponding terminal icon (Claude / Antigravity / Codex / Cursor / OpenCode / Kimi Code).
 3. Click **"Install"** to complete the environment configuration without manual code copying.
 
 > The installer copies the `unity-skills~/` template directory from the package to the target location.
@@ -198,6 +199,7 @@ The following are verified default directories (if the tool has a custom path co
 - OpenAI Codex: `~/.agents/skills/` (global) or `.agents/skills/` (workspace, shared with Antigravity)
 - Cursor: `~/.cursor/skills/` (global) or `.cursor/skills/` (workspace); also auto-discovers `.agents/skills/`
 - OpenCode: `~/.config/opencode/skills/` (global) or `.opencode/skills/` (workspace)
+- Kimi Code: `~/.kimi-code/skills/` (global, or `$KIMI_CODE_HOME/skills/`) or `.kimi-code/skills/` (project); also auto-discovers `.agents/skills/`
 
 #### 🧩 Other Tools Supporting Skills
 If you're using other tools that support Skills, install according to the Skills root directory specified in that tool's documentation. As long as the **standard installation specification** is met (root directory contains `SKILL.md` and maintains `skills/`, `references/`, and `scripts/` structure), it will be correctly recognized.

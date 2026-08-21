@@ -981,6 +981,7 @@ namespace UnitySkills
             ("trae", "Trae"), ("bytedance", "Trae"),
             ("antigravity", "Antigravity"),
             ("opencode", "OpenCode"),
+            ("kimi", "KimiCode"),
             ("windsurf", "Windsurf"), ("codeium", "Windsurf"),
             ("cline", "Cline"), ("roo", "Cline"),
             ("amazon", "AmazonQ"), ("aws", "AmazonQ"),

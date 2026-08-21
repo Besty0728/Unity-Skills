@@ -93,6 +93,7 @@ references/                 # Unity 开发参考文档
 | Codex | `.agents/skills/`（与 Antigravity 共享） | `~/.agents/skills/` |
 | Cursor | `.cursor/skills/` | `~/.cursor/skills/` |
 | OpenCode | `.opencode/skills/` | `~/.config/opencode/skills/` |
+| Kimi Code | `.kimi-code/skills/` | `~/.kimi-code/skills/`（或 `$KIMI_CODE_HOME/skills/`） |
 
 ### 支持的 AI 工具
 
@@ -105,6 +106,7 @@ references/                 # Unity 开发参考文档
 | **Codex** | ✅ | `$skill` 显式调用 + 隐式意图识别；自动扫描 `.agents/skills/` |
 | **Cursor** | ✅ | 自动扫描 `.cursor/skills/` 和 `.agents/skills/`；支持 `/skill-name` 显式触发；可在 设置 → Rules 查看已加载技能 |
 | **OpenCode** | ✅ | 原生扫描工作区 `.opencode/skills/` 和全局 `~/.config/opencode/skills/` |
+| **Kimi Code** | ✅ | 原生扫描项目级 `.kimi-code/skills/` 和用户级 `~/.kimi-code/skills/`（跟随 `$KIMI_CODE_HOME`）；支持 `/skill:unity-skills` 显式触发；同时扫描 `.agents/skills/` |
 
 > ⚠️ **通用兼容性**：UnitySkills 遵循开放的 Skill 标准。**任何能读取 markdown 文件并发送 HTTP 请求的 AI 工具**都可以使用 UnitySkills — 不限于上述列表。只需将 `unity-skills~/` 目录内容复制到你的工具的 skill 或 prompt 位置，确保工具能访问 `http://localhost:8090` 即可。
 

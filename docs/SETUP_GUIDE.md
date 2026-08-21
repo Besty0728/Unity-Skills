@@ -93,6 +93,7 @@ If one-click installation is not available for your tool, manually copy the cont
 | Codex | `.agents/skills/` (shared with Antigravity) | `~/.agents/skills/` |
 | Cursor | `.cursor/skills/` | `~/.cursor/skills/` |
 | OpenCode | `.opencode/skills/` | `~/.config/opencode/skills/` |
+| Kimi Code | `.kimi-code/skills/` | `~/.kimi-code/skills/` (or `$KIMI_CODE_HOME/skills/`) |
 
 ### Supported AI Tools
 
@@ -105,6 +106,7 @@ The following tools have been officially tested:
 | **Codex** | ✅ | `$skill` explicit call + implicit intent; auto-discovers `.agents/skills/` |
 | **Cursor** | ✅ | Auto-discovers `.cursor/skills/` and `.agents/skills/`; supports `/skill-name` explicit trigger; visible in Settings → Rules |
 | **OpenCode** | ✅ | Native `.opencode/skills/` workspace and `~/.config/opencode/skills/` global discovery |
+| **Kimi Code** | ✅ | Native `.kimi-code/skills/` project and `~/.kimi-code/skills/` user discovery (follows `$KIMI_CODE_HOME`); `/skill:unity-skills` explicit trigger; also scans `.agents/skills/` |
 
 > ⚠️ **Universal Compatibility**: UnitySkills follows an open skill standard. **Any AI tool that can read markdown files and make HTTP requests** can use UnitySkills — not limited to the tools listed above. Simply copy the `unity-skills~/` directory contents to your tool's skill or prompt location and ensure the tool can reach `http://localhost:8090`.
 
