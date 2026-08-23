@@ -36,7 +36,24 @@ namespace UnitySkills
             Category = SkillCategory.Decal, Operation = SkillOperation.Modify,
             Tags = new[] { "decal", "projector", "modify" },
             Outputs = new[] { "name", "material", "size" })]
-        public static object DecalSetProperties(string name = null, int instanceId = 0, string path = null, string materialPath = null) => RenderPipelineSkillsCommon.NoURP();
+        // 参数表必须与 URP 分支的真实现逐字一致：文档一致性测试在无 URP 的 CI 工程里
+        // 只能看到这个 stub，参数少一个就会把文档判成"多出参数"。
+        public static object DecalSetProperties(
+            string name = null,
+            int instanceId = 0,
+            string path = null,
+            string materialPath = null,
+            float? drawDistance = null,
+            float? fadeScale = null,
+            float? fadeFactor = null,
+            float? startAngleFade = null,
+            float? endAngleFade = null,
+            string uvScale = null,
+            string uvBias = null,
+            string size = null,
+            string pivot = null,
+            uint? renderingLayerMask = null,
+            string scaleMode = null) => RenderPipelineSkillsCommon.NoURP();
 
         [UnitySkill("decal_find_all", "Find all Decal Projectors in the scene",
             Category = SkillCategory.Decal, Operation = SkillOperation.Query,
