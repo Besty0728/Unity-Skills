@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -10,7 +10,7 @@ using UnityEngine.Rendering.Universal;
 namespace UnitySkills
 {
     /// <summary>
-    /// URP-specific asset and renderer feature skills.
+    /// URP 专属的资产与 Renderer Feature 技能。
     /// </summary>
     public static class URPSkills
     {
@@ -26,7 +26,7 @@ namespace UnitySkills
         [UnitySkill("urp_set_asset_settings", "Modify key settings on a URP asset",
             Category = SkillCategory.URP, Operation = SkillOperation.Modify,
             Tags = new[] { "urp", "asset", "settings", "modify" },
-            Outputs = new[] { "asset", "settings" })]
+            Outputs = new[] { "asset" })]
         public static object URPSetAssetSettings(string assetPath = null, bool? supportsHDR = null, int? msaaSampleCount = null,
             float? renderScale = null, bool? supportsMainLightShadows = null, bool? supportsAdditionalLightShadows = null,
             bool? supportsCameraDepthTexture = null, bool? supportsCameraOpaqueTexture = null, float? shadowDistance = null) => RenderPipelineSkillsCommon.NoURP();
@@ -92,7 +92,7 @@ namespace UnitySkills
         [UnitySkill("urp_set_asset_settings", "Modify key settings on a URP asset",
             Category = SkillCategory.URP, Operation = SkillOperation.Modify,
             Tags = new[] { "urp", "asset", "settings", "modify" },
-            Outputs = new[] { "asset", "settings" },
+            Outputs = new[] { "asset" },
             TracksWorkflow = true,
             MutatesAssets = true,
             RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
@@ -109,6 +109,28 @@ namespace UnitySkills
         {
             var asset = LoadAssetOrError(assetPath, out var error);
             if (error != null) return error;
+
+            // 所有数值都在动 SerializedObject 之前校验。下面三个属性虽有会 clamp/拒绝的公共 C# setter
+            // （UniversalRenderPipelineAsset.msaaSampleCount 直接转成 MsaaQuality 枚举、完全不做范围检查；
+            // .renderScale 与 .shadowDistance 分别 clamp 到 [minRenderScale, maxRenderScale] 与 [0, +inf)），
+            // 但本技能是通过 SerializedObject 直写背后的序列化字段（m_MSAA/m_RenderScale/m_ShadowDistance），
+            // 绕过了全部 setter：msaaSampleCount=3 会被原样接受并回显（URP 只支持 1/2/4/8 采样），
+            // 负的 renderScale 或 shadowDistance 同样会被原样写入。
+            if (msaaSampleCount.HasValue)
+            {
+                var msaa = msaaSampleCount.Value;
+                if (msaa != 1 && msaa != 2 && msaa != 4 && msaa != 8)
+                    return SkillParamUtil.InvalidValueError(msaa.ToString(), "msaaSampleCount", new[] { "1", "2", "4", "8" });
+            }
+            if (renderScale.HasValue)
+            {
+                var scale = renderScale.Value;
+                if (scale < UniversalRenderPipeline.minRenderScale || scale > UniversalRenderPipeline.maxRenderScale)
+                    return SkillParamUtil.InvalidValueError(SkillParamUtil.FormatFloatR(scale), "renderScale",
+                        new[] { $"{SkillParamUtil.FormatFloatR(UniversalRenderPipeline.minRenderScale)}-{SkillParamUtil.FormatFloatR(UniversalRenderPipeline.maxRenderScale)}" });
+            }
+            if (shadowDistance.HasValue && shadowDistance.Value < 0f)
+                return SkillParamUtil.InvalidValueError(SkillParamUtil.FormatFloatR(shadowDistance.Value), "shadowDistance", new[] { ">= 0" });
 
             WorkflowManager.SnapshotObject(asset);
             Undo.RegisterCompleteObjectUndo(asset, "Modify URP Asset Settings");

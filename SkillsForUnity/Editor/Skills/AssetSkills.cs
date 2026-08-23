@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.IO;
@@ -7,14 +7,14 @@ using System.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// Asset management skills - import, create, delete, search.
+    /// 资源管理技能：导入、创建、删除、查找。
     /// </summary>
     public static class AssetSkills
     {
         [UnitySkill("asset_import", "Import an asset from external path",
             Category = SkillCategory.Asset, Operation = SkillOperation.Create,
             Tags = new[] { "import", "copy", "external" },
-            Outputs = new[] { "imported", "assetPath" },
+            Outputs = new[] { "imported" },
             TracksWorkflow = true,
             MutatesAssets = true, RiskLevel = "high")]
         public static object AssetImport(string sourcePath, string destinationPath)
@@ -30,7 +30,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            // Back up any existing asset before it is overwritten, so undo can restore the old contents.
+            // 覆盖前先备份已有资源，撤销时才能还原旧内容。
             bool overwriting = File.Exists(destinationPath);
             if (overwriting)
             {
@@ -84,8 +84,8 @@ namespace UnitySkills
             if (!SkillsCommon.PathExists(assetPath))
                 return new { error = $"Asset not found: {assetPath}" };
 
-            // DeleteAssetToTrash backs up the file (+ .meta) to the content-addressed store
-            // and records a Deleted snapshot, so no explicit pre-snapshot is needed.
+            // DeleteAssetToTrash 自己会把文件（含 .meta）备份进内容寻址库并记录 Deleted 快照，
+            // 无需再显式做前置快照。
             if (!WorkflowManager.DeleteAssetToTrash(assetPath))
                 return new { error = $"Failed to delete asset: {assetPath}" };
 
@@ -125,7 +125,7 @@ namespace UnitySkills
             if (Validate.SafePath(sourcePath, "sourcePath") is object err1) return err1;
             if (Validate.SafePath(destinationPath, "destinationPath") is object err2) return err2;
 
-            // Lightweight Moved snapshot (stores both paths only); undo moves the asset back.
+            // 轻量 Moved 快照（只存两个路径），撤销时把资源移回原处。
             WorkflowManager.SnapshotAssetMove(sourcePath, destinationPath);
 
             var error = AssetDatabase.MoveAsset(sourcePath, destinationPath);
@@ -160,8 +160,9 @@ namespace UnitySkills
         [UnitySkill("asset_import_batch", "Import multiple assets. items: JSON array of {sourcePath, destinationPath}",
             Category = SkillCategory.Asset, Operation = SkillOperation.Create,
             Tags = new[] { "import", "copy", "external", "batch" },
-            Outputs = new[] { "imported", "assetPath" },
-            TracksWorkflow = true)]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, MutatesAssets = true,
+            RiskLevel = "high")]
         public static object AssetImportBatch(string items)
         {
             return BatchExecutor.Execute<BatchImportItem>(items, item =>
@@ -175,7 +176,7 @@ namespace UnitySkills
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
-                // Back up any existing asset before overwrite so undo can restore old contents.
+                // 覆盖前先备份已有资源，撤销时才能还原旧内容。
                 bool overwriting = File.Exists(item.destinationPath);
                 if (overwriting)
                 {
@@ -214,9 +215,9 @@ namespace UnitySkills
         [UnitySkill("asset_delete_batch", "Delete multiple assets. items: JSON array of {path}",
             Category = SkillCategory.Asset, Operation = SkillOperation.Delete,
             Tags = new[] { "delete", "remove", "cleanup", "batch" },
-            Outputs = new[] { "deleted" },
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true,
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true,
             RiskLevel = "medium")]
         public static object AssetDeleteBatch(string items)
         {
@@ -225,7 +226,7 @@ namespace UnitySkills
                 if (Validate.SafePath(item.path, "path", isDelete: true) is object pathErr)
                     return pathErr;
 
-                // DeleteAssetToTrash self-manages backup + Deleted snapshot; no pre-snapshot needed.
+                // DeleteAssetToTrash 自带备份与 Deleted 快照，无需前置快照。
                 if (!WorkflowManager.DeleteAssetToTrash(item.path))
                     return new { error = "Delete failed", target = item.path };
 
@@ -253,7 +254,8 @@ namespace UnitySkills
             Tags = new[] { "move", "rename", "reorganize", "batch" },
             Outputs = new[] { "from", "to" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true, SkipAutoPresnapshot = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true,
+            RiskLevel = "medium")]
         public static object AssetMoveBatch(string items)
         {
             return BatchExecutor.Execute<BatchMoveItem>(items, item =>
@@ -263,7 +265,7 @@ namespace UnitySkills
                 if (Validate.SafePath(item.destinationPath, "destinationPath") is object dstErr)
                     return dstErr;
 
-                // Lightweight Moved snapshot (both paths only); undo moves the asset back.
+                // 轻量 Moved 快照（只存两个路径），撤销时把资源移回原处。
                 WorkflowManager.SnapshotAssetMove(item.sourcePath, item.destinationPath);
 
                 string error = AssetDatabase.MoveAsset(item.sourcePath, item.destinationPath);
@@ -303,7 +305,15 @@ namespace UnitySkills
             if (Validate.SafePath(assetPath, "assetPath") is object err) return err;
 
             var newPath = AssetDatabase.GenerateUniqueAssetPath(assetPath);
-            AssetDatabase.CopyAsset(assetPath, newPath);
+
+            // CopyAsset 的 bool 返回值必须检查：源不存在（或任何其他复制失败）时它只是返回
+            // false，忽略掉就会报出 success:true 和一对根本没落盘的 original/copy 路径。
+            if (!AssetDatabase.CopyAsset(assetPath, newPath))
+                return new
+                {
+                    error = $"Failed to duplicate asset (source may not exist): {assetPath}",
+                    errorCode = SkillErrorCode.TargetNotFound.ToWireString()
+                };
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(newPath);
             if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
@@ -336,7 +346,7 @@ namespace UnitySkills
         [UnitySkill("asset_find", "Find assets by name, type, or label",
             Category = SkillCategory.Asset, Operation = SkillOperation.Query,
             Tags = new[] { "search", "filter", "database" },
-            Outputs = new[] { "count", "assets", "assetPath" },
+            Outputs = new[] { "count", "totalFound", "assets" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object AssetFind(string searchFilter, int limit = 50)
@@ -372,9 +382,8 @@ namespace UnitySkills
             var name = Path.GetFileName(folderPath);
             var guid = AssetDatabase.CreateFolder(parent, name);
 
-            // AssetDatabase.CreateFolder returns an empty guid (and logs its own error) when it
-            // fails, e.g. the parent folder does not exist. Don't report success or record a
-            // workflow snapshot for a folder that was never created.
+            // AssetDatabase.CreateFolder 失败时（例如父目录不存在）只返回空 guid 并自行打日志，
+            // 不检查就会给一个根本没创建的目录报成功并记录工作流快照。
             if (string.IsNullOrEmpty(guid))
                 return new { error = $"Failed to create folder '{folderPath}'. The parent folder may not exist." };
 
@@ -438,7 +447,7 @@ namespace UnitySkills
         [UnitySkill("asset_get_info", "Get information about an asset",
             Category = SkillCategory.Asset, Operation = SkillOperation.Query,
             Tags = new[] { "info", "metadata", "inspect" },
-            Outputs = new[] { "assetPath", "name", "type", "guid", "labels" },
+            Outputs = new[] { "path", "name", "type", "guid", "labels" },
             RequiresInput = new[] { "assetPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]

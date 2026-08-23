@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System;
 using System.Linq;
@@ -8,20 +8,18 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// Addressables (com.unity.addressables) Editor skills — asset grouping, build pipeline,
-    /// and profile management.
+    /// Addressables（com.unity.addressables）编辑器技能：资源分组、构建管线与 Profile 管理。
     ///
-    /// The package is optional and this module keeps ZERO direct references to it: every call
-    /// resolves through reflection against the Unity.Addressables.Editor assembly, so the
-    /// UnitySkills Editor assembly compiles identically with or without Addressables present.
-    /// <c>addressables_check_installed</c> works either way; every other skill returns
-    /// <see cref="NoAddressables"/> when the package is missing.
+    /// 该包是可选的，本模块对它保持零直接引用：所有调用都通过反射访问
+    /// Unity.Addressables.Editor 程序集，因此无论项目是否安装 Addressables，
+    /// UnitySkills 编辑器程序集都能同样编译通过。<c>addressables_check_installed</c>
+    /// 两种情况下都可用；其余技能在缺包时一律返回 <see cref="NoAddressables"/>。
     ///
-    /// API anchors follow com.unity.addressables 2.x Editor source
+    /// 反射用到的 API 以 com.unity.addressables 2.x 编辑器源码为准
     /// (UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject,
     ///  UnityEditor.AddressableAssets.Settings.AddressableAssetSettings,
     ///  UnityEditor.AddressableAssets.Settings.AddressableAssetGroup,
-    ///  UnityEditor.AddressableAssets.Build.AddressableAssetSettingsDefaultObject).
+    ///  UnityEditor.AddressableAssets.Build.AddressableAssetSettingsDefaultObject)。
     /// </summary>
     public static class AddressablesSkills
     {
@@ -30,7 +28,7 @@ namespace UnitySkills
         private const string DocsUrl             = "https://docs.unity3d.com/Packages/com.unity.addressables@latest";
 
         // ==================================================================================
-        // Reflection layer — resolves Unity.Addressables.Editor lazily, never links against it.
+        // 反射层 —— 惰性解析 Unity.Addressables.Editor，绝不与之静态链接。
         // ==================================================================================
 
         private static Assembly _editorAssembly;
@@ -68,7 +66,7 @@ namespace UnitySkills
         private static Type DefaultObjectType =>
             AddrType("UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject");
 
-        /// <summary>Retrieves the AddressableAssetSettings singleton; returns null when not configured.</summary>
+        /// <summary>取 AddressableAssetSettings 单例；尚未配置时返回 null。</summary>
         private static object GetSettings()
         {
             var t = DefaultObjectType;
@@ -101,7 +99,63 @@ namespace UnitySkills
             error = "Addressables package is installed but no AddressableAssetSettings asset was found. " +
                     "Create one via Window > Asset Management > Addressables > Groups, then click 'Create Addressables Settings'.",
             errorCode = "TARGET_NOT_FOUND",
-            hint = "After creating settings, retry your original command."
+            hint = "After creating settings, retry your original command.",
+            // 必须显式声明：交给分类器自动推断时，这段文案会命中 TARGET_NOT_FOUND 的
+            // 资源标记分支而给出 asset_find —— 但这里没有资源可找，settings 单例尚不存在，
+            // 只能由人（或 Groups 窗口）创建。
+            relatedSkills = new[] { "addressables_check_installed" },
+            suggestedFixes = new[]
+            {
+                new
+                {
+                    action = "confirm",
+                    skill = "addressables_check_installed",
+                    reason = "Reports installed/configured separately — 'configured:false' means the settings asset must be created from Window > Asset Management > Addressables > Groups before any other Addressables skill can work."
+                }
+            }
+        };
+
+        /// <summary>
+        /// 组名未命中，按路由层 1 的错误契约（<c>SkillResultHelper.TryGetErrorContext</c>）封装。
+        /// "Group not found: X" 查的是 AddressableAssetSettings 资源内部，不是场景对象；
+        /// 而分类器通用的 TARGET_NOT_FOUND 分支会回以 gameobject_find / scene_get_hierarchy，
+        /// 把调用方引去 Hierarchy 里找一个只存在于设置资源中的东西。
+        /// 这里只声明 relatedSkills/suggestedFixes：推断出的错误码（TARGET_NOT_FOUND）
+        /// 与策略（find_target_and_retry）对这条消息本身是正确的。
+        /// </summary>
+        private static object GroupNotFound(string groupName) => new
+        {
+            error = $"Group not found: {groupName}",
+            relatedSkills = new[] { "addressables_group_list" },
+            suggestedFixes = new[]
+            {
+                new
+                {
+                    action = "find_target",
+                    skill = "addressables_group_list",
+                    reason = "Lists the group names that exist in this project's Addressables settings — retry with one of those. Note that addressables_group_create renames on collision (TestGroup -> TestGroup1), so the name on disk may not be the name you asked for."
+                }
+            }
+        };
+
+        /// <summary>
+        /// <see cref="GroupNotFound"/> 的 Profile 版本。这里比组名的情况更糟：
+        /// "Profile not found: …" 含子串 "file"，会命中分类器的资源标记分支而导向 asset_find，
+        /// 让调用方全工程搜索一个其实只是 AddressableAssetProfileSettings 里字符串字段的名字。
+        /// </summary>
+        private static object ProfileNotFound(string profileName) => new
+        {
+            error = $"Profile not found: {profileName}",
+            relatedSkills = new[] { "addressables_profile_get" },
+            suggestedFixes = new[]
+            {
+                new
+                {
+                    action = "find_target",
+                    skill = "addressables_profile_get",
+                    reason = "Returns activeProfile plus the full profiles list from the Addressables settings — retry with a name from that list."
+                }
+            }
         };
 
         private static object Prop(object obj, string name)
@@ -127,7 +181,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Skills
+        // 技能
         // ==================================================================================
 
         [UnitySkill("addressables_check_installed",
@@ -210,7 +264,6 @@ namespace UnitySkills
                     var isDefault = IsDefaultGroup(settings, group);
                     var readOnly = PropT<bool>(group, "ReadOnly");
 
-                    // Count entries
                     var entriesProp = group.GetType().GetProperty("entries");
                     var entries = entriesProp?.GetValue(group);
                     int entryCount = entries is System.Collections.ICollection collection ? collection.Count : 0;
@@ -243,7 +296,11 @@ namespace UnitySkills
             Category = SkillCategory.Addressables,
             Operation = SkillOperation.Create,
             Tags = new[] { "addressables", "group", "create" },
-            Outputs = new[] { "groupName", "guid" },
+            Outputs = new[] { "groupName", "requestedName", "renamed", "guid" },
+            // groupName 没有 CLR 默认值，但对 IsParameterRequired 而言无默认值的引用类型算可选，
+            // 于是 schema 会声明 required:false，而下面的方法体对缺省和空串都会拒绝。
+            // 这里显式声明，让 schema、dryRun 判定与运行时行为三者一致。
+            RequiresInput = new[] { "groupName" },
             TracksWorkflow = false)]
         public static object AddressablesGroupCreate(string groupName)
         {
@@ -282,17 +339,26 @@ namespace UnitySkills
                 if (newGroup == null)
                     return new { error = $"Failed to create group '{groupName}'" };
 
+                // CreateGroup 撞名时不会失败，而是追加计数器去重（"TestGroup" -> "TestGroup1"），
+                // 所以请求的名字未必就是落盘的名字。必须从返回的 group 对象上读回真实名字，
+                // 否则回显的名字 addressables_group_add_entry / _delete 都解析不到。
+                var actualName = PropT<string>(newGroup, "Name") ?? PropT<string>(newGroup, "name") ?? groupName;
+                bool renamed = !string.Equals(actualName, groupName, StringComparison.Ordinal);
                 var groupGuid = PropT<string>(newGroup, "Guid");
 
-                // Mark settings dirty and save
                 EditorUtility.SetDirty(settings as UnityEngine.Object);
                 AssetDatabase.SaveAssets();
 
                 return new
                 {
                     success = true,
-                    groupName,
-                    guid = groupGuid
+                    groupName = actualName,
+                    requestedName = groupName,
+                    renamed,
+                    guid = groupGuid,
+                    note = renamed
+                        ? $"A group named '{groupName}' already existed, so Addressables created '{actualName}' instead. Use groupName ('{actualName}') for every follow-up call."
+                        : null
                 };
             }
             catch (Exception ex)
@@ -323,12 +389,10 @@ namespace UnitySkills
 
             try
             {
-                // Get asset GUID
                 string guid = AssetDatabase.AssetPathToGUID(assetPath);
                 if (string.IsNullOrEmpty(guid))
                     return new { error = $"Asset not found: {assetPath}" };
 
-                // Find group by name
                 var groupsProp = settings.GetType().GetProperty("groups");
                 var groupsList = groupsProp?.GetValue(settings) as System.Collections.IList;
 
@@ -345,9 +409,8 @@ namespace UnitySkills
                 }
 
                 if (targetGroup == null)
-                    return new { error = $"Group not found: {groupName}" };
+                    return GroupNotFound(groupName);
 
-                // Call settings.CreateOrMoveEntry(guid, targetGroup, readOnly: false, postEvent: true)
                 var createOrMoveMethod = settings.GetType().GetMethod("CreateOrMoveEntry",
                     BindingFlags.Public | BindingFlags.Instance);
 
@@ -365,7 +428,6 @@ namespace UnitySkills
                 if (entry == null)
                     return new { error = $"Failed to create entry for {assetPath}" };
 
-                // Set custom address if provided
                 if (!string.IsNullOrWhiteSpace(address))
                 {
                     var addressProp = entry.GetType().GetProperty("address",
@@ -416,7 +478,6 @@ namespace UnitySkills
 
                 var activeProfileId = PropT<string>(settings, "activeProfileId");
 
-                // Get profile names
                 var getProfileNameMethod = profileSettings.GetType().GetMethod("GetProfileName",
                     BindingFlags.Public | BindingFlags.Instance);
 
@@ -426,7 +487,6 @@ namespace UnitySkills
                     activeProfileName = getProfileNameMethod.Invoke(profileSettings, new object[] { activeProfileId }) as string;
                 }
 
-                // Get all profile IDs
                 var profileIdsProp = profileSettings.GetType().GetMethod("GetAllProfileNames",
                     BindingFlags.Public | BindingFlags.Instance);
 
@@ -481,7 +541,6 @@ namespace UnitySkills
                 if (profileSettings == null)
                     return new { error = "ProfileSettings not found on AddressableAssetSettings" };
 
-                // Get profile ID by name
                 var getProfileIdMethod = profileSettings.GetType().GetMethod("GetProfileId",
                     BindingFlags.Public | BindingFlags.Instance);
 
@@ -491,12 +550,11 @@ namespace UnitySkills
                 string profileId = getProfileIdMethod.Invoke(profileSettings, new object[] { profileName }) as string;
 
                 if (string.IsNullOrEmpty(profileId))
-                    return new { error = $"Profile not found: {profileName}" };
+                    return ProfileNotFound(profileName);
 
                 var previousProfileId = PropT<string>(settings, "activeProfileId");
                 bool changed = !string.Equals(previousProfileId, profileId, StringComparison.Ordinal);
 
-                // Set active profile
                 var activeProfileIdProp = settings.GetType().GetProperty("activeProfileId",
                     BindingFlags.Public | BindingFlags.Instance);
                 activeProfileIdProp?.SetValue(settings, profileId);
@@ -526,7 +584,8 @@ namespace UnitySkills
             Outputs = new[] { "success", "duration", "error" },
             TracksWorkflow = false,
             MayTriggerReload = false,
-            RiskLevel = "medium")]
+            RiskLevel = "medium",
+            LongRunning = true)]
         public static object AddressablesBuild()
         {
             if (!Installed) return NoAddressables();
@@ -536,7 +595,6 @@ namespace UnitySkills
 
             try
             {
-                // Get AddressableAssetSettings.BuildPlayerContent method
                 var buildMethodType = AddrType("UnityEditor.AddressableAssets.Settings.AddressableAssetSettings");
                 if (buildMethodType == null)
                     return new { error = "AddressableAssetSettings type not found" };
@@ -550,9 +608,8 @@ namespace UnitySkills
 
                 var startTime = DateTime.UtcNow;
 
-                // Call AddressableAssetSettings.BuildPlayerContent(out result)
-                // The method signature is: static void BuildPlayerContent(out AddressablesPlayerBuildResult result)
-                // We'll invoke with a null output parameter since we're using reflection
+                // 签名为 static void BuildPlayerContent(out AddressablesPlayerBuildResult result)，
+                // 反射调用时 out 参数先占位为 null，回填后再从 parameters[0] 读取结果。
                 var parameters = new object[] { null };
                 buildMethod.Invoke(null, parameters);
 
@@ -601,7 +658,6 @@ namespace UnitySkills
 
             try
             {
-                // Find group by name
                 var groupsProp = settings.GetType().GetProperty("groups");
                 var groupsList = groupsProp?.GetValue(settings) as System.Collections.IList;
 
@@ -618,14 +674,12 @@ namespace UnitySkills
                 }
 
                 if (targetGroup == null)
-                    return new { error = $"Group not found: {groupName}" };
+                    return GroupNotFound(groupName);
 
-                // Check if it's default group (can't delete)
                 var isDefault = IsDefaultGroup(settings, targetGroup);
                 if (isDefault)
                     return new { error = $"Cannot delete default group: {groupName}" };
 
-                // Call settings.RemoveGroup(group)
                 var removeMethod = settings.GetType().GetMethod("RemoveGroup",
                     BindingFlags.Public | BindingFlags.Instance);
 

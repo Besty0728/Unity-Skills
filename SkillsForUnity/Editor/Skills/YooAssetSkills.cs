@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System;
 using System.IO;
@@ -15,12 +15,11 @@ using YooAsset.Editor;
 namespace UnitySkills
 {
     /// <summary>
-    /// YooAsset Editor-side skills — build pipeline orchestration, Collector configuration,
-    /// and build-report analysis. Requires com.tuyoogame.yooasset (2.3.15+).
+    /// YooAsset 编辑器侧技能——构建流水线编排、Collector 配置与构建报告分析。
+    /// 需要 com.tuyoogame.yooasset（2.3.15+）。
     ///
-    /// `yooasset_check_installed` works WITHOUT the package via reflection; every other skill
-    /// returns a NoYooAsset() hint when the package is missing. All API calls anchor to YooAsset
-    /// 2.3.18 Editor source — see yooasset-design advisory module for the design contract.
+    /// `yooasset_check_installed` 走反射，未装包也能用；其余技能在缺包时统一返回 NoYooAsset() 提示。
+    /// 所有 API 调用以 YooAsset 2.3.18 的 Editor 源码为准——设计契约见 yooasset-design 指导模块。
     /// </summary>
     public static class YooAssetSkills
     {
@@ -176,7 +175,7 @@ namespace UnitySkills
 #endif
 
         // ==================================================================================
-        // A. Environment (1 skill) — works WITHOUT the YOO_ASSET define (pure reflection)
+        // A. 环境探测（1 个技能）——不依赖 YOO_ASSET 宏，纯反射实现
         // ==================================================================================
 
         [UnitySkill("yooasset_check_installed",
@@ -233,15 +232,16 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // B. Build pipeline (5 skills)
+        // B. 构建流水线（5 个技能）
         // ==================================================================================
 
         [UnitySkill("yooasset_build_bundles",
             "Build YooAsset bundles via ScriptableBuildPipeline or RawFileBuildPipeline. Writes bundles to BuildOutputRoot/<PackageName>/<Version>.",
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Execute,
             Tags = new[] { "yooasset", "build", "bundles", "pipeline" },
-            Outputs = new[] { "success", "outputDirectory", "packageVersion", "errorInfo", "failedTask" },
+            Outputs = new[] { "success", "outputDirectory", "packageVersion", "errorInfo", "failedTask", "error", "errorCode", "details", "reportPath" },
             MutatesAssets = true, RiskLevel = "medium", SupportsDryRun = false,
+            LongRunning = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" })]
         public static object BuildBundles(
             string packageName,
@@ -362,9 +362,32 @@ namespace UnitySkills
                 return new { success = false, error = ex.Message, exceptionType = ex.GetType().Name };
             }
 
+            if (!result.Success)
+            {
+                // router 只有在结果带着字面上非 null 的 "error" 字段时才认它是错误
+                // （见 SkillResultHelper.TryGetError）——光有 success:false 它看不见。
+                // 缺了 "error"/"errorCode" 时这里会被当成普通（非错误）响应放过去，调用方只能在 errorInfo
+                // 里看到裸的 C# 堆栈、没有可分支的 errorCode，与其他所有技能的失败契约都不一致。
+                return new
+                {
+                    success = false,
+                    error = string.IsNullOrEmpty(result.ErrorInfo) ? $"YooAsset build failed for '{packageName}' (task: {result.FailedTask})." : result.ErrorInfo,
+                    errorCode = SkillErrorCode.SkillError.ToWireString(),
+                    packageName,
+                    packageVersion = version,
+                    pipeline = eBp.ToString(),
+                    buildTarget = target.ToString(),
+                    outputDirectory = result.OutputPackageDirectory,
+                    failedTask = result.FailedTask,
+                    details = result.ErrorInfo,
+                    errorInfo = result.ErrorInfo,
+                    reportPath = (string)null
+                };
+            }
+
             return new
             {
-                success = result.Success,
+                success = true,
                 packageName,
                 packageVersion = version,
                 pipeline = eBp.ToString(),
@@ -372,7 +395,7 @@ namespace UnitySkills
                 outputDirectory = result.OutputPackageDirectory,
                 errorInfo = result.ErrorInfo,
                 failedTask = result.FailedTask,
-                reportPath = result.Success ? Path.Combine(result.OutputPackageDirectory, $"{packageName}_{version}.report") : null
+                reportPath = Path.Combine(result.OutputPackageDirectory, $"{packageName}_{version}.report")
             };
 #endif
         }
@@ -439,6 +462,9 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Query,
             Tags = new[] { "yooasset", "build", "settings", "query" },
             Outputs = new[] { "packageName", "pipeline", "compression", "fileNameStyle" },
+            // 下面会拒绝（"packageName is required."），但在 schema 生成器眼里，
+            // 没有 CLR 默认值的引用类型参数一律算可选。
+            RequiresInput = new[] { "packageName" },
             ReadOnly = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
@@ -760,6 +786,32 @@ namespace UnitySkills
             return NoYooAsset();
 #else
             if (string.IsNullOrEmpty(packageName)) return new { error = "packageName is required." };
+
+            // 当 package 没有任何 group/collector 时，EditorSimulateModeHelper.SimulateBuild
+            // （本作业推进到 ProcessRuntimeValidationJob 里的 InitializeYooAssets 时被调用）
+            // 会在 YooAsset 自己的 collector 构建代码深处崩掉，对外只表现为 stage:failed、progress:15
+            // 上一个不透明的 TargetInvocationException；又因为它是在 RuntimeValidationJobs 而非通用作业库里
+            // 失败的（见 yooasset_runtime_get_validation_result），job_status/job_list 约 1 秒内都看不到。
+            // 在创建任何作业之前就拦住"空 package"这种情形，可把该崩溃变成一条前置的、可据以行动的错误。
+            var collectorSetting = AssetBundleCollectorSettingData.Setting;
+            var collectorPkg = collectorSetting?.Packages?.FirstOrDefault(p => p.PackageName == packageName);
+            if (collectorPkg == null)
+            {
+                return new
+                {
+                    error = $"No collector package named '{packageName}' is configured. Use yooasset_list_collector_packages to see available packages, or yooasset_create_collector_package to create one.",
+                    errorCode = SkillErrorCode.SemanticInvalid.ToWireString()
+                };
+            }
+            if (collectorPkg.Groups == null || collectorPkg.Groups.Count == 0 || collectorPkg.Groups.Sum(g => g.Collectors?.Count ?? 0) == 0)
+            {
+                return new
+                {
+                    error = $"Collector package '{packageName}' has no groups/collectors configured, so there is nothing to build or validate. Add a group and collector first (yooasset_create_collector_group, then yooasset_add_collector) and retry.",
+                    errorCode = SkillErrorCode.SemanticInvalid.ToWireString()
+                };
+            }
+
             var job = new RuntimeValidationJob
             {
                 JobId = Guid.NewGuid().ToString("N").Substring(0, 8),
@@ -796,6 +848,8 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Query,
             Tags = new[] { "yooasset", "runtime", "playmode", "validation", "result" },
             Outputs = new[] { "jobId", "status", "stage", "result" },
+            // 下面会拒绝（"jobId is required."）；签名本身无法让 schema 标出这一点。
+            RequiresInput = new[] { "jobId" },
             ReadOnly = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
@@ -806,7 +860,7 @@ namespace UnitySkills
 #else
             if (string.IsNullOrEmpty(jobId)) return new { error = "jobId is required." };
             if (!RuntimeValidationJobs.TryGetValue(jobId, out var job))
-                return new { error = $"Runtime validation job '{jobId}' not found." };
+                return UnknownRuntimeValidationJob(jobId);
             return new
             {
                 jobId = job.JobId,
@@ -818,6 +872,52 @@ namespace UnitySkills
                 result = job.Result
             };
 #endif
+        }
+
+        /// <summary>
+        /// <c>yooasset_runtime_get_validation_result</c> 遇到未知 jobId 时的回答，
+        /// 已按 router 第一层错误契约（<c>SkillResultHelper.TryGetErrorContext</c>）封装。
+        ///
+        /// <para>若交给 <see cref="SkillErrorClassifier"/> 处理，裸的 "…job 'x' not found" 文本会命中
+        /// TARGET_NOT_FOUND 的 job 分支，回答里给出 <c>job_list</c> 并称"id 撑不过域重载"——这两点在此处都是错的。
+        /// 运行时校验作业存在本模块自己的 <c>RuntimeValidationJobs</c> 字典里，<c>job_list</c>/<c>job_status</c>
+        /// （AsyncJobService 的库）永远看不到它们；而它们确实能撑过域重载：每次变更都会持久化到 EditorPrefs
+        /// （<c>UnitySkills_YooAsset_RuntimeValidationJobs_v1</c>）并在重载后恢复。
+        /// 于是调用方被引去查一张不可能装有该 id 的表，理由还是一条根本不适用的生命周期规则。</para>
+        ///
+        /// <para>存活的 id 直接列在响应里，而不是另开一个技能：这个私有库没有列举端点，
+        /// 而枚举调用方本就在问的那个字典，比把它指向一个给不出答案的地方更省事。</para>
+        /// </summary>
+        private static object UnknownRuntimeValidationJob(string jobId)
+        {
+            var known = RuntimeValidationJobs.Keys.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+            return new
+            {
+                error = $"Runtime validation job '{jobId}' not found. These jobs are kept in YooAsset's own " +
+                        "runtime-validation store (persisted to EditorPrefs and restored across domain reloads), " +
+                        "not in the generic async job table — job_list / job_status never see them. " +
+                        (known.Length > 0
+                            ? $"Currently tracked ids: {string.Join(", ", known)}."
+                            : "No runtime validation jobs are tracked right now, so this id was either already " +
+                              "removed by yooasset_runtime_cleanup or never created; a lost jobId cannot be recovered."),
+                knownJobIds = known,
+                relatedSkills = new[] { "yooasset_runtime_validate_package", "yooasset_runtime_cleanup" },
+                suggestedFixes = new[]
+                {
+                    new
+                    {
+                        action = "fix_param",
+                        skill = "yooasset_runtime_get_validation_result",
+                        reason = "knownJobIds in this response is the complete list of runtime validation jobs this project still tracks — retry with one of those ids."
+                    },
+                    new
+                    {
+                        action = "retry",
+                        skill = "yooasset_runtime_validate_package",
+                        reason = "When knownJobIds is empty the job is unrecoverable (cleaned up or never created); start a new validation run and keep the jobId it returns."
+                    }
+                }
+            };
         }
 
         [UnitySkill("yooasset_runtime_cleanup",
@@ -854,7 +954,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // C. Collector configuration (6 skills)
+        // C. Collector 配置（6 个技能）
         // ==================================================================================
 
         [UnitySkill("yooasset_list_collector_packages",
@@ -1121,7 +1221,7 @@ namespace UnitySkills
             "Persist the AssetBundleCollectorSetting ScriptableObject to disk; optionally run FixFile() first to repair dangling rule names.",
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Modify,
             Tags = new[] { "yooasset", "collector", "save", "persist" },
-            Outputs = new[] { "saved", "fixed", "isDirty" },
+            Outputs = new[] { "saved", "fixesApplied", "isDirty" },
             MutatesAssets = true, RiskLevel = "low",
             RequiresPackages = new[] { "com.tuyoogame.yooasset" })]
         public static object SaveCollectorConfig(bool fixErrors = true)
@@ -1139,7 +1239,10 @@ namespace UnitySkills
             return new
             {
                 saved = true,
-                fixed_ = fixedApplied,
+                // "fixed" 是 C# 保留字，字段只能声明成 "fixed_"，转义用的下划线于是直接漏进 JSON 线格式。
+                // 上面的 Outputs 数组本来就（错误地）按不带下划线的 "fixed" 对外宣告，
+                // 所以这次改名不只是修个怪名字，也修掉了文档与实际输出的不一致。
+                fixesApplied = fixedApplied,
                 isDirty = AssetBundleCollectorSettingData.IsDirty
             };
 #endif
@@ -1377,7 +1480,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // D. Build report analysis (4 skills)
+        // D. 构建报告分析（4 个技能）
         // ==================================================================================
 
         [UnitySkill("yooasset_load_build_report",
@@ -1386,6 +1489,7 @@ namespace UnitySkills
             Tags = new[] { "yooasset", "report", "build", "analyze" },
             Outputs = new[] { "summary", "bundleCount", "assetCount", "independAssetCount" },
             ReadOnly = true,
+            RequiresInput = new[] { "reportPath" },
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
         public static object LoadBuildReport(string reportPath)
@@ -1451,6 +1555,7 @@ namespace UnitySkills
             Tags = new[] { "yooasset", "report", "bundle", "list", "analyze" },
             Outputs = new[] { "total", "returned", "items" },
             ReadOnly = true,
+            RequiresInput = new[] { "reportPath" },
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
         public static object ListReportBundles(
@@ -1521,6 +1626,7 @@ namespace UnitySkills
             Tags = new[] { "yooasset", "report", "bundle", "detail", "dependency" },
             Outputs = new[] { "bundleName", "fileSize", "dependBundles", "referenceBundles", "bundleContents" },
             ReadOnly = true,
+            RequiresInput = new[] { "reportPath", "bundleName" },
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
         public static object GetBundleDetail(string reportPath, string bundleName)
@@ -1567,6 +1673,7 @@ namespace UnitySkills
             Tags = new[] { "yooasset", "report", "asset", "list", "analyze" },
             Outputs = new[] { "total", "returned", "items" },
             ReadOnly = true,
+            RequiresInput = new[] { "reportPath" },
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
         public static object ListReportAssets(
@@ -1629,6 +1736,7 @@ namespace UnitySkills
             Tags = new[] { "yooasset", "report", "asset", "detail", "dependency" },
             Outputs = new[] { "assetPath", "mainBundleName", "dependAssets", "dependBundles" },
             ReadOnly = true,
+            RequiresInput = new[] { "reportPath" },
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
         public static object GetAssetDetail(string reportPath, string assetPath = null, string address = null)
@@ -1667,6 +1775,7 @@ namespace UnitySkills
             Tags = new[] { "yooasset", "report", "graph", "dependency", "analyze" },
             Outputs = new[] { "nodes", "edges" },
             ReadOnly = true,
+            RequiresInput = new[] { "reportPath" },
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
         public static object GetDependencyGraph(string reportPath, string rootBundle = null, string rootAssetPath = null, int maxNodes = 200)
@@ -1724,6 +1833,7 @@ namespace UnitySkills
             Tags = new[] { "yooasset", "report", "compare", "diff", "analyze" },
             Outputs = new[] { "bundleDiff", "assetDiff" },
             ReadOnly = true,
+            RequiresInput = new[] { "oldReportPath", "newReportPath" },
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
         public static object CompareBuildReports(string oldReportPath, string newReportPath, int limit = 100)
@@ -1771,6 +1881,7 @@ namespace UnitySkills
             Tags = new[] { "yooasset", "report", "independent", "orphan", "cleanup" },
             Outputs = new[] { "total", "returned", "items" },
             ReadOnly = true,
+            RequiresInput = new[] { "reportPath" },
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
             Mode = SkillMode.SemiAuto)]
         public static object ListIndependAssets(string reportPath, int limit = 100, int offset = 0)
@@ -1985,7 +2096,15 @@ namespace UnitySkills
                 }
                 catch (Exception ex)
                 {
-                    FailRuntimeValidationJob(job, ex.Message, ex.GetType().Name);
+                    // YooAsset 自己的构建/collector 代码在反射调用中失败时，到这里表现为
+                    // System.Reflection.TargetInvocationException，其 Message 只是那句泛泛的
+                    // "Exception has been thrown by the target of an invocation."，真正的原因在 InnerException。
+                    // 这里剥开一层，好让 FailRuntimeValidationJob 的错误文本（作业失败原因的唯一可见处，
+                    // job_status/job_list 压根看不到这些作业）说出调用方能据以行动的内容。
+                    var innermost = ex;
+                    while (innermost.InnerException != null)
+                        innermost = innermost.InnerException;
+                    FailRuntimeValidationJob(job, innermost.Message, innermost.GetType().Name);
                 }
             }
 
@@ -2004,8 +2123,7 @@ namespace UnitySkills
                 job.Progress = 5;
                 if (!EditorApplication.isPlaying)
                 {
-                    // If we already tried to start Play Mode in a previous domain reload and it
-                    // clearly did not happen, fail instead of looping forever.
+                    // 若上一次域重载中已尝试进入 Play Mode 且明显没进去，就直接失败，不要无限循环。
                     if (job.StartedPlayMode)
                     {
                         FailRuntimeValidationJob(job, "Play Mode did not start after restore; aborting validation.", "PlayModeStartFailed");

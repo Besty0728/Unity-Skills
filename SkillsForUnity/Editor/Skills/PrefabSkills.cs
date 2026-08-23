@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.IO;
 using System.Linq;
@@ -7,7 +7,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// Prefab management skills - create, edit, save.
+    /// Prefab 管理技能：创建、编辑、保存。
     /// </summary>
     public static class PrefabSkills
     {
@@ -84,7 +84,7 @@ namespace UnitySkills
             TracksWorkflow = true)]
         public static object PrefabInstantiateBatch(string items)
         {
-            // Cache loaded prefabs to avoid repeated AssetDatabase calls
+            // 缓存已加载的 prefab，避免重复走 AssetDatabase
             var prefabCache = new System.Collections.Generic.Dictionary<string, GameObject>();
 
             return BatchExecutor.Execute<BatchInstantiateItem>(items, item =>
@@ -179,6 +179,7 @@ namespace UnitySkills
                 return new { error = "GameObject is not a prefab instance" };
 
             WorkflowManager.SnapshotObject(prefabRoot);
+            PushInstanceOverridesToSource(prefabRoot);
             var prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabRoot);
             PrefabUtility.ApplyPrefabInstance(prefabRoot, InteractionMode.UserAction);
 
@@ -227,13 +228,58 @@ namespace UnitySkills
             var propOverrides = new System.Collections.Generic.List<object>();
             if (overrides != null)
             {
+                // GetPropertyModifications 会返回 Unity 写进每个新建 prefab 实例修改列表的记账条目，
+                // 无论其值是否真的与源不同——实地核查确认：即使是完全未动过的实例，
+                // m_LocalPosition.x/y/z、m_LocalRotation.w/x/y/z、m_LocalEulerAnglesHint.x/y/z
+                // 和 m_Name 都在列表里，恒定给出约 11 个"override"，hasOverrides 永远为 true。
+                //
+                // PropertyModification.target 并非场景中的活实例对象，而是指向*源 prefab 资产*的引用
+                //（实测确认：其 instance ID 与资产加载出的对象一致，而不是场景实例那种负数/仅本会话有效的
+                // ID；且 PrefabUtility.GetCorrespondingObjectFromSource(o.target) 恒返回 null，
+                // 因为源自身没有源）。因此要比较"实例值"与"源值"，唯一办法是先把每个源对象映射回
+                // 本实例中的活对象——正好是 GetCorrespondingObjectFromSource 所支持方向的反向——
+                // 做法是遍历实例层级一遍，按 GetCorrespondingObjectFromSource(live) 建索引。
+                var liveBySource = new System.Collections.Generic.Dictionary<UnityEngine.Object, UnityEngine.Object>();
+                void RegisterLive(UnityEngine.Object live)
+                {
+                    if (live == null) return;
+                    var src = PrefabUtility.GetCorrespondingObjectFromSource(live);
+                    if (src != null) liveBySource[src] = live;
+                }
+                RegisterLive(prefabRoot);
+                foreach (var t in prefabRoot.GetComponentsInChildren<Transform>(true))
+                {
+                    RegisterLive(t.gameObject);
+                    foreach (var comp in t.GetComponents<Component>())
+                        RegisterLive(comp);
+                }
+
                 foreach (var o in overrides)
                 {
                     if (o.target == null) continue;
-                    propOverrides.Add(new { 
-                        target = o.target.name, 
-                        property = o.propertyPath, 
-                        value = o.value 
+
+                    // 实例自身的名字无条件排除在 override 判定之外，与它是否不同于源名无关——
+                    // 对照 PrefabUtility.HasPrefabInstanceAnyOverrides 确认过：即使给实例改了自定义名，
+                    // 它依然为 false。若此处只按值相等过滤，场景里几乎每个改过名的实例都会被误报为有 override。
+                    if (o.propertyPath == "m_Name") continue;
+
+                    // 找不到该源对象在活实例中的对应物（例如它属于本次遍历未触及的嵌套 prefab 结构）——
+                    // 无法证明它只是幽灵默认值，因此保留，以免静默丢弃一个真实 override。
+                    if (!liveBySource.TryGetValue(o.target, out var liveInstance))
+                    {
+                        propOverrides.Add(new { target = o.target.name, property = o.propertyPath, value = o.value });
+                        continue;
+                    }
+
+                    var instProp = new SerializedObject(liveInstance).FindProperty(o.propertyPath);
+                    var srcProp = new SerializedObject(o.target).FindProperty(o.propertyPath);
+                    if (instProp != null && srcProp != null && SerializedProperty.DataEquals(instProp, srcProp))
+                        continue; // 实例值与源资产一致，属幽灵记账条目而非真实 override
+
+                    propOverrides.Add(new {
+                        target = o.target.name,
+                        property = o.propertyPath,
+                        value = o.value
                     });
                 }
             }
@@ -246,7 +292,12 @@ namespace UnitySkills
                 addedComponents = addedComponents.Count,
                 removedComponents = removedComponents.Count,
                 addedGameObjects = addedObjects.Count,
-                hasOverrides = propOverrides.Count > 0 || addedComponents.Count > 0 || removedComponents.Count > 0
+                // 沿用上面实地比对得出的计数，不用 PrefabUtility.HasPrefabInstanceAnyOverrides——
+                // 那个汇总值读的是 Unity 缓存的修改列表，对于刚在内存里改过、尚未刷进该缓存的属性
+                // 可能是过期的（例如调用方绕过 SetDirty/RecordPrefabInstancePropertyModifications
+                // 直接改了 Transform 字段）。由 propOverrides.Count 推导 hasOverrides，
+                // 才能让同一份响应里的这两个字段自洽。
+                hasOverrides = propOverrides.Count > 0 || addedComponents.Count > 0 || removedComponents.Count > 0 || addedObjects.Count > 0
             };
         }
 
@@ -265,6 +316,7 @@ namespace UnitySkills
 
             WorkflowManager.SnapshotObject(prefabRoot);
             Undo.RecordObject(prefabRoot, "Revert Prefab Overrides");
+            PullSourceValuesToInstance(prefabRoot);
             PrefabUtility.RevertPrefabInstance(prefabRoot, InteractionMode.UserAction);
 
             return new { success = true, reverted = prefabRoot.name };
@@ -284,6 +336,7 @@ namespace UnitySkills
             if (prefabRoot == null) return new { error = "Not a prefab instance" };
 
             WorkflowManager.SnapshotObject(prefabRoot);
+            PushInstanceOverridesToSource(prefabRoot);
             var prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabRoot);
             PrefabUtility.ApplyPrefabInstance(prefabRoot, InteractionMode.UserAction);
 
@@ -341,7 +394,11 @@ namespace UnitySkills
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             Tags = new[] { "prefab", "property", "set", "component", "asset" },
             Outputs = new[] { "prefabPath", "gameObject", "component", "property", "valueSet" },
-            RequiresInput = new[] { "prefabAsset", "componentType" },
+            // 不能写 "prefabAsset"：全代码库里只此一处出现——本 skill 不接受该参数（资产由 prefabPath 传入），
+            // 也没有任何 skill 输出它，于是这个记号既约束不到什么也串不起链路，照字面理解它的 agent
+            // 只会拿到 UNKNOWN_PARAM。prefabPath 同时也是 prefab_create 的返回值，
+            // 改正后的记号还顺带把两者接进 Outputs→RequiresInput 链。
+            RequiresInput = new[] { "prefabPath", "componentType" },
             TracksWorkflow = true)]
         public static object PrefabSetProperty(
             string prefabPath = null, string componentType = null, string propertyName = null,
@@ -355,14 +412,13 @@ namespace UnitySkills
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             if (prefab == null) return new { error = $"Prefab not found: {prefabPath}" };
 
-            // Find target GameObject inside prefab (root or child by name)
+            // 在 prefab 内定位目标 GameObject（根，或按名字找子节点）
             GameObject targetGo = prefab;
             if (!string.IsNullOrEmpty(gameObjectName))
             {
                 var child = prefab.transform.Find(gameObjectName);
                 if (child == null)
                 {
-                    // Deep search
                     foreach (var t in prefab.GetComponentsInChildren<Transform>(true))
                     {
                         if (t.name == gameObjectName) { child = t; break; }
@@ -373,7 +429,6 @@ namespace UnitySkills
                 targetGo = child.gameObject;
             }
 
-            // Find component
             var compType = ComponentSkills.FindComponentType(componentType);
             if (compType == null)
                 return new { error = $"Component type not found: {componentType}" };
@@ -389,7 +444,7 @@ namespace UnitySkills
 
             WorkflowManager.SnapshotObject(comp);
 
-            // Set value based on property type
+            // 按属性类型分派写入
             if (!string.IsNullOrEmpty(assetReferencePath))
             {
                 if (prop.propertyType != SerializedPropertyType.ObjectReference)
@@ -403,8 +458,32 @@ namespace UnitySkills
             }
             else if (!string.IsNullOrEmpty(value))
             {
-                if (!SetSerializedPropertyValue(prop, value))
-                    return new { error = $"Failed to set value '{value}' on property '{propertyName}' (type: {prop.propertyType})" };
+                bool applied = false;
+                bool typeSupported = true;
+                try
+                {
+                    applied = SetSerializedPropertyValue(prop, value, out typeSupported);
+                }
+                catch (System.Exception ex)
+                {
+                    // 文本格式非法时转换器是抛异常而不是返回 null（如给 Vector3 传 "1,2"、
+                    // 只给两个分量的 Quaternion、JSON 对象形式里出现非数字键）。不捕获就会表现为
+                    // 未分类的 SKILL_ERROR + abort，且只带原始解析器消息。此调用内不会有别的异常来源，
+                    // 因此这里判定为"值有问题"而非吞掉一个 bug。
+                    return new { error = $"Invalid value '{value}' for property '{propertyName}' (type: {prop.propertyType}): {ex.Message}" };
+                }
+
+                if (!applied)
+                {
+                    // "Failed to set value" 会被读成"你的值不对"——但对不受支持的属性类型来说，
+                    // 调用方写什么都不可能成功，只有把这点说清楚才能阻止它换个格式重试同一次调用。
+                    // 两条消息都以自己的判定词开头（"Invalid" / "Unsupported"），
+                    // 以便 SkillErrorClassifier 的首词判定规则给出 SEMANTIC_INVALID + fix_and_retry，
+                    // 而不是旧文案 "Failed to set value …" 换来的未分类 SKILL_ERROR + abort。
+                    return typeSupported
+                        ? new { error = $"Invalid value '{value}' for property '{propertyName}' (type: {prop.propertyType}) — that property type is supported but the text could not be parsed into it." }
+                        : new { error = $"Unsupported serialized property type {prop.propertyType} for property '{propertyName}'. prefab_set_property writes Integer, Float, Boolean, String, Enum, Color, Vector2/3/4, Vector2Int/3Int, Quaternion, Rect, Bounds and LayerMask from 'value'; use assetReferencePath for an ObjectReference field." };
+                }
             }
             else
             {
@@ -429,24 +508,127 @@ namespace UnitySkills
         #region Prefab SerializedProperty Helpers
 
         /// <summary>
-        /// Find a SerializedProperty by name with Unity naming convention fallbacks (m_PropertyName, _propertyName).
+        /// 找出 prefab 实例与其源资产之间真正的属性差异（值确实不同），区别于
+        /// PrefabUtility.GetPropertyModifications 对每个新实例都会附带的幽灵记账条目
+        /// （m_LocalPosition/m_LocalRotation/m_LocalEulerAnglesHint/m_Name）。
+        ///
+        /// <para>PropertyModification.target 指向的是*源* prefab 资产对象而非活实例
+        /// （经 instance ID 实测确认），因此不能对它直接调 GetCorrespondingObjectFromSource——
+        /// 那样恒返回 null。此处遍历活实例层级一遍，按 GetCorrespondingObjectFromSource(live) -&gt; live
+        /// 建索引（这才是该 API 支持的方向），再反查每条修改对应的活对象。
+        /// 检测逻辑与 PrefabGetOverrides 相同；此处保留一份独立副本而不抽取共用，
+        /// 以免动到那个已验证过的方法。</para>
+        /// </summary>
+        private static System.Collections.Generic.List<(UnityEngine.Object live, UnityEngine.Object source, string propertyPath)> FindGenuineOverrides(GameObject instanceRoot)
+        {
+            var result = new System.Collections.Generic.List<(UnityEngine.Object, UnityEngine.Object, string)>();
+            var overrides = PrefabUtility.GetPropertyModifications(instanceRoot);
+            if (overrides == null) return result;
+
+            var liveBySource = new System.Collections.Generic.Dictionary<UnityEngine.Object, UnityEngine.Object>();
+            void RegisterLive(UnityEngine.Object live)
+            {
+                if (live == null) return;
+                var src = PrefabUtility.GetCorrespondingObjectFromSource(live);
+                if (src != null) liveBySource[src] = live;
+            }
+            RegisterLive(instanceRoot);
+            foreach (var t in instanceRoot.GetComponentsInChildren<Transform>(true))
+            {
+                RegisterLive(t.gameObject);
+                foreach (var comp in t.GetComponents<Component>())
+                    RegisterLive(comp);
+            }
+
+            foreach (var o in overrides)
+            {
+                if (o.target == null) continue;
+                if (o.propertyPath == "m_Name") continue; // 按 PrefabUtility.HasPrefabInstanceAnyOverrides 的行为，无条件排除在 override 判定外
+                if (!liveBySource.TryGetValue(o.target, out var liveInstance)) continue;
+
+                var instProp = new SerializedObject(liveInstance).FindProperty(o.propertyPath);
+                var srcProp = new SerializedObject(o.target).FindProperty(o.propertyPath);
+                if (instProp == null || srcProp == null) continue;
+                if (SerializedProperty.DataEquals(instProp, srcProp)) continue; // 与源一致，属幽灵记账条目而非真实 override
+
+                result.Add((liveInstance, o.target, o.propertyPath));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// 把每个真实 override 属性的活实例值写到对应的 prefab 源资产对象上，并保存资产。
+        ///
+        /// <para>在 PrefabUtility.ApplyPrefabInstance 之前调用。实测（直接查看磁盘上的原始 YAML）确认：
+        /// 单靠那个 API 对 Transform override 会让源资产完全不变，即便先分别试过
+        /// EditorUtility.SetDirty、RecordPrefabInstancePropertyModifications、Undo.RecordObject
+        /// 和 SerializedObject.ApplyModifiedProperties 也一样——在这个无头、Inspector 不重绘的环境里，
+        /// 没有一种能让 Unity 原生的 prefab override 比对识别出差异。因此不依赖那套比对，
+        /// 直接做值拷贝并显式调用 AssetDatabase.SaveAssets；本代码库在"文件变更触发域重载"上
+        /// 已经确认过同一模式：Unity 平时自动做的后台工作，在没有窗口聚焦/空闲事件时不会发生。</para>
+        /// </summary>
+        private static void PushInstanceOverridesToSource(GameObject instanceRoot)
+        {
+            var diffs = FindGenuineOverrides(instanceRoot);
+            var touchedSources = new System.Collections.Generic.HashSet<UnityEngine.Object>();
+            foreach (var (live, source, propertyPath) in diffs)
+            {
+                var liveProp = new SerializedObject(live).FindProperty(propertyPath);
+                var srcSO = new SerializedObject(source);
+                var srcProp = srcSO.FindProperty(propertyPath);
+                if (liveProp == null || srcProp == null) continue;
+                try { srcProp.boxedValue = liveProp.boxedValue; }
+                catch { continue; /* 并非所有属性类型都支持 boxedValue */ }
+                srcSO.ApplyModifiedProperties();
+                EditorUtility.SetDirty(source);
+                touchedSources.Add(source);
+            }
+            if (touchedSources.Count > 0)
+                AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>
+        /// 把每个真实 override 属性的 prefab 源资产值写回活实例，与 PushInstanceOverridesToSource
+        /// 方向相反。
+        ///
+        /// <para>在 PrefabUtility.RevertPrefabInstance 之前调用，原因相同：那个 API 依赖与 Apply
+        /// 同一套原生 override 比对缓存，而该缓存在本环境下不会因脚本驱动的改动而填充，
+        /// 否则 revert 会静默地放着实例上已偏离的 Transform 值不动。</para>
+        /// </summary>
+        private static void PullSourceValuesToInstance(GameObject instanceRoot)
+        {
+            var diffs = FindGenuineOverrides(instanceRoot);
+            foreach (var (live, source, propertyPath) in diffs)
+            {
+                var liveSO = new SerializedObject(live);
+                var liveProp = liveSO.FindProperty(propertyPath);
+                var srcProp = new SerializedObject(source).FindProperty(propertyPath);
+                if (liveProp == null || srcProp == null) continue;
+                try { liveProp.boxedValue = srcProp.boxedValue; }
+                catch { continue; /* 并非所有属性类型都支持 boxedValue */ }
+                liveSO.ApplyModifiedProperties();
+                EditorUtility.SetDirty(live);
+            }
+        }
+
+        /// <summary>
+        /// 按名字查找 SerializedProperty，并按 Unity 命名约定回退尝试（m_PropertyName、_propertyName）。
         /// </summary>
         private static SerializedProperty FindSerializedProperty(SerializedObject so, string propertyName)
         {
-            // Direct match
             var prop = so.FindProperty(propertyName);
             if (prop != null) return prop;
 
-            // Unity convention: m_PropertyName
+            // Unity 约定：m_PropertyName
             var mName = "m_" + char.ToUpper(propertyName[0]) + propertyName.Substring(1);
             prop = so.FindProperty(mName);
             if (prop != null) return prop;
 
-            // Underscore prefix: _propertyName
+            // 下划线前缀：_propertyName
             prop = so.FindProperty("_" + propertyName);
             if (prop != null) return prop;
 
-            // Try lowercase first char with m_ prefix
+            // m_ 前缀 + 首字母保持小写
             var mLower = "m_" + propertyName;
             prop = so.FindProperty(mLower);
             if (prop != null) return prop;
@@ -455,10 +637,16 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Set a SerializedProperty value from a string. Returns true on success.
+        /// 从字符串写入 SerializedProperty 的值，成功返回 true。
+        ///
+        /// <para><paramref name="typeSupported"/> 区分两种失败——单一的 "Failed to set value"
+        /// 消息曾把它们混为一谈：false 表示此处根本没有该 <see cref="SerializedPropertyType"/>
+        /// 的分支（调用方在 <c>value</c> 里写什么都不行）；true 表示类型支持，但给的文本解析不出来。
+        /// 哪些类型受支持以这个 switch 为唯一事实来源——只有 default 分支会清掉该标志。</para>
         /// </summary>
-        private static bool SetSerializedPropertyValue(SerializedProperty prop, string value)
+        private static bool SetSerializedPropertyValue(SerializedProperty prop, string value, out bool typeSupported)
         {
+            typeSupported = true;
             switch (prop.propertyType)
             {
                 case SerializedPropertyType.Integer:
@@ -483,7 +671,7 @@ namespace UnitySkills
                     return true;
 
                 case SerializedPropertyType.Enum:
-                    // Try name match first
+                    // 先按名字匹配，再退回按索引
                     if (prop.enumDisplayNames != null)
                     {
                         for (int i = 0; i < prop.enumDisplayNames.Length; i++)
@@ -492,7 +680,6 @@ namespace UnitySkills
                             { prop.enumValueIndex = i; return true; }
                         }
                     }
-                    // Try index
                     if (int.TryParse(value, out var enumIdx)) { prop.enumValueIndex = enumIdx; return true; }
                     return false;
 
@@ -514,6 +701,14 @@ namespace UnitySkills
                 case SerializedPropertyType.Vector4:
                     var v4 = ComponentSkills.ConvertValue(value, typeof(Vector4));
                     if (v4 is Vector4 vec4) { prop.vector4Value = vec4; return true; }
+                    return false;
+
+                // m_LocalRotation 是 prefab 上被写得最多的属性，而它是 Quaternion；此处缺了这一分支
+                // 就会让所有旋转写入落到 default，返回 "Failed to set value ... (type: Quaternion)"。
+                // ConvertValue 接受 3 分量（欧拉角，度）或 4 分量（原始 x,y,z,w），与上面的 Vector 分支一致。
+                case SerializedPropertyType.Quaternion:
+                    var quat = ComponentSkills.ConvertValue(value, typeof(Quaternion));
+                    if (quat is Quaternion q) { prop.quaternionValue = q; return true; }
                     return false;
 
                 case SerializedPropertyType.Rect:
@@ -543,12 +738,13 @@ namespace UnitySkills
                     return false;
 
                 default:
+                    typeSupported = false;
                     return false;
             }
         }
 
         /// <summary>
-        /// List top-level serialized properties for error diagnostics.
+        /// 列出顶层序列化属性，用于错误诊断。
         /// </summary>
         private static string[] ListSerializedProperties(SerializedObject so)
         {

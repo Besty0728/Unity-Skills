@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.IO;
 using System.Linq;
@@ -7,7 +7,7 @@ using System.Text;
 namespace UnitySkills
 {
     /// <summary>
-    /// Shader management skills.
+    /// Shader 管理技能。
     /// </summary>
     public static class ShaderSkills
     {
@@ -20,9 +20,12 @@ namespace UnitySkills
         public static object ShaderCreate(string shaderName, string savePath, string template = null)
         {
             if (Validate.Required(shaderName, "shaderName") is object err) return err;
-            if (!string.IsNullOrEmpty(savePath) && Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
+            // Validate.SafePath 对 null/空串本身就会返回 MISSING_PARAM；不能再用
+            // !string.IsNullOrEmpty(savePath) 包一层——那会在 savePath 缺省时把校验整个跳过，
+            // 让 null 路径落到下面的 Path.GetDirectoryName 抛 ArgumentNullException。
+            if (Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
 
-            if (!string.IsNullOrEmpty(savePath) && File.Exists(savePath))
+            if (File.Exists(savePath))
                 return new { error = $"File already exists: {savePath}" };
 
             var dir = Path.GetDirectoryName(savePath);
@@ -173,10 +176,16 @@ namespace UnitySkills
             Category = SkillCategory.Shader, Operation = SkillOperation.Query,
             Tags = new[] { "shader", "find", "search" },
             Outputs = new[] { "found", "name", "path" },
+            // Shader.Find(null) 会抛异常，Shader.Find("") 返回 "Shader not found: "，
+            // 对空请求体来说两者都不是可用的答复；而 schema 把 searchName 标为可选，
+            // 只因为它是没有 CLR 默认值的引用类型。
+            RequiresInput = new[] { "searchName" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object ShaderFind(string searchName)
         {
+            if (Validate.Required(searchName, "searchName") is object nameErr) return nameErr;
+
             var shader = Shader.Find(searchName);
             if (shader == null)
                 return new { error = $"Shader not found: {searchName}" };
@@ -268,6 +277,11 @@ namespace UnitySkills
         public static object ShaderCreateUrp(string shaderName, string savePath, string type = "Unlit")
         {
             if (Validate.SafePath(savePath, "savePath") is object pathErr2) return pathErr2;
+            // 无法识别的 type（如 "Wizard"）会顺着下面的三元表达式落到 Unlit 模板，却把调用方的
+            // 原始字符串当作 "type" 回显——success:true 而载荷谎报了实际写入的模板。因此直接拒绝。
+            if (!string.Equals(type, "Unlit", System.StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(type, "Lit", System.StringComparison.OrdinalIgnoreCase))
+                return SkillParamUtil.InvalidValueError(type, "type", new[] { "Unlit", "Lit" });
             if (File.Exists(savePath)) return new { error = $"File already exists: {savePath}" };
             var dir = Path.GetDirectoryName(savePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
@@ -336,7 +350,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Find a shader by name or asset path. Tries asset path first if it ends with .shader, then falls back to Shader.Find.
+        /// 按名称或资产路径查找 shader：以 .shader 结尾时先按资产路径找，否则回退到 Shader.Find。
         /// </summary>
         private static Shader FindShaderByNameOrPath(string shaderNameOrPath)
         {

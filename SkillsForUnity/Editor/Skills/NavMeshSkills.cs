@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.AI;
 using UnityEditor;
 using UnityEditor.AI;
@@ -6,14 +6,15 @@ using UnityEditor.AI;
 namespace UnitySkills
 {
     /// <summary>
-    /// NavMesh skills - baking, pathfinding.
+    /// NavMesh 技能：烘焙与寻路。
     /// </summary>
     public static class NavMeshSkills
     {
-        [UnitySkill("navmesh_bake", "Bake the NavMesh (Synchronous). Warning: Can be slow.",
+        [UnitySkill("navmesh_bake", "Bake the NavMesh (Synchronous). Warning: blocks the Editor, can be slow on large scenes.",
             Category = SkillCategory.NavMesh, Operation = SkillOperation.Execute,
             Tags = new[] { "navmesh", "bake", "pathfinding", "navigation" },
-            Outputs = new[] { "success", "message" })]
+            Outputs = new[] { "success", "message" },
+            LongRunning = true, MutatesScene = true)]
         public static object NavMeshBake()
         {
             // CS0618 豁免：UnityEditor.AI.NavMeshBuilder 仍是编辑器全局烘焙的唯一入口；
@@ -150,9 +151,15 @@ namespace UnitySkills
             if (err != null) return err;
             var obs = go.GetComponent<NavMeshObstacle>();
             if (obs == null) return new { error = $"No NavMeshObstacle on {go.name}" };
+
+            // 必须在任何写入之前解析：否则非法 shape 被静默丢弃，同一次调用里的 size/carving 照写，
+            // 响应还报 success。
+            if (!SkillParamUtil.TryParseOptionalEnum<NavMeshObstacleShape>(shape, "shape", out var s, out var shapeError))
+                return shapeError;
+
             WorkflowManager.SnapshotObject(obs);
             Undo.RecordObject(obs, "Set NavMeshObstacle");
-            if (!string.IsNullOrEmpty(shape) && System.Enum.TryParse<NavMeshObstacleShape>(shape, true, out var s)) obs.shape = s;
+            if (s.HasValue) obs.shape = s.Value;
             if (sizeX.HasValue || sizeY.HasValue || sizeZ.HasValue)
             {
                 var sz = obs.size;

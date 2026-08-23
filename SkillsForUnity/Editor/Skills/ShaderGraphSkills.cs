@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -7,7 +7,7 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Shader Graph asset creation, inspection, and constrained editing skills.
+    /// Shader Graph 资产的创建、检视与受约束编辑技能。
     /// </summary>
     public static class ShaderGraphSkills
     {
@@ -265,7 +265,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryAddNode(assetPath, nodeType, x, y, settings, out var nodeInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -292,7 +292,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryRemoveNode(assetPath, nodeId, out var removedInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -318,7 +318,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryMoveNode(assetPath, nodeId, x, y, out var nodeInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -345,7 +345,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryConnectNodes(assetPath, fromNodeId, fromSlotId, toNodeId, toSlotId, out var edgeInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -372,7 +372,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryDisconnectNodes(assetPath, fromNodeId, fromSlotId, toNodeId, toSlotId, out var edgeInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -398,7 +398,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TrySetNodeDefaults(assetPath, nodeId, slotId, value, out var nodeInfo, out var error))
-                return new { error };
+                return SetNodeDefaultsError(error);
 
             return new
             {
@@ -424,7 +424,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TrySetNodeSettings(assetPath, nodeId, settings, out var nodeInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -483,7 +483,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryAddProperty(assetPath, propertyType, displayName, referenceName, value, exposed, hidden, out var propertyInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -518,7 +518,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryUpdateProperty(assetPath, propertyName, referenceName, newDisplayName, newReferenceName, value, exposed, hidden, out var propertyInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -546,7 +546,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryRemoveProperty(assetPath, propertyName, referenceName, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -605,7 +605,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryAddKeyword(assetPath, keywordType, displayName, referenceName, definition, scope, entries, value, out var keywordInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -641,7 +641,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryUpdateKeyword(assetPath, displayName, referenceName, newDisplayName, newReferenceName, definition, scope, entries, value, out var keywordInfo, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -669,7 +669,7 @@ namespace UnitySkills
 
             SnapshotGraphAsset(assetPath);
             if (!ShaderGraphReflectionHelper.TryRemoveKeyword(assetPath, displayName, referenceName, out var error))
-                return new { error };
+                return GraphError(error);
 
             return new
             {
@@ -708,6 +708,72 @@ namespace UnitySkills
             var asset = AssetDatabase.LoadMainAssetAtPath(assetPath);
             if (asset != null)
                 WorkflowManager.SnapshotObject(asset);
+        }
+
+        /// <summary>
+        /// 把 <c>ShaderGraphReflectionHelper</c> 的失败包装成 router 的第一层错误契约
+        /// （<c>SkillResultHelper.TryGetErrorContext</c>）。此处所有 node/slot/edge/property/keyword
+        /// 失败讲的都是图自身的内部状态——本资产内不存在的 nodeId、slotId、propertyName 或 keyword，
+        /// 与场景 GameObject 或材质暴露的 shader 属性无关。若交给 router 的消息模式分类器
+        /// （<see cref="SkillErrorClassifier"/>）处理，"Node 'x' was not found" 和
+        /// "Keyword not found: x" 会被读成泛化的 not-found，配上 relatedSkills =
+        /// gameobject_find/scene_get_hierarchy；"Property not found: x" 会被读成 PropertyNotOnTarget，
+        /// 配上 material_get_properties——两者都把调用方引去场景/材质系统里翻找一个只存在于本图资产
+        /// 内部的东西。在此显式声明 relatedSkills/suggestedFixes 会无条件覆盖那份猜测
+        /// （<c>errorContext.RelatedSkills ?? classified.RelatedSkills</c>）；errorCode 仍交由分类器
+        /// 从消息文本推断，因为对这些消息它推得本就正确
+        /// （TARGET_NOT_FOUND / SEMANTIC_INVALID / MISSING_PACKAGE）。
+        /// </summary>
+        private static object GraphError(string error) => new
+        {
+            error,
+            relatedSkills = new[] { "shadergraph_get_structure", "shadergraph_get_info" },
+            suggestedFixes = new[]
+            {
+                new
+                {
+                    action = "find_target",
+                    skill = "shadergraph_get_structure",
+                    reason = "List the graph's actual nodes, slots, edges, properties, and keywords, then retry with an id/name from that structure."
+                }
+            }
+        };
+
+        /// <summary>
+        /// <c>shadergraph_set_node_defaults</c> 把 <paramref name="value"/> 交给
+        /// <c>ShaderGraphReflectionHelper.TrySetNodeDefaults</c>，后者按 slot 的 CLR 类型用
+        /// <c>Convert.ToSingle</c> 等做转换。形状不匹配时——给只要裸数字的 Vector1 slot 传了对象
+        /// （<c>{"x":3.14}</c>），或反过来给 DynamicVector slot 传了裸数字——转换内部抛
+        /// <c>InvalidCastException</c>，helper 捕获后原样透出为 <c>ex.Message</c>：
+        /// "Specified cast is not valid."，既不说哪个参数、哪个 slot，也不说期望什么形状。
+        /// 该文本还匹配不上 <see cref="SkillErrorClassifier"/> 的任何规则，于是落到
+        /// SKILL_ERROR + abort——等于告诉调用方放弃，而不是换个形状重试。
+        /// 这里按子串识别，因为确切措辞是运行时消息而非契约；helper 的其他错误仍走
+        /// <see cref="GraphError"/>。
+        /// </summary>
+        private static object SetNodeDefaultsError(string error)
+        {
+            if (!string.IsNullOrEmpty(error) && error.IndexOf("cast is not valid", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return new
+                {
+                    error = "The 'value' shape does not match this slot's default value type. A Vector1 (float) slot needs a bare number, e.g. 3.14. A Vector2/Vector3/Vector4/Color slot needs an object with matching component keys (x/y/z/w or r/g/b/a), a JSON array, or a comma-separated string. A boolean slot needs true/false.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = "value",
+                    relatedSkills = new[] { "shadergraph_get_structure" },
+                    suggestedFixes = new[]
+                    {
+                        new
+                        {
+                            action = "fix_param",
+                            skill = "shadergraph_get_structure",
+                            reason = "Inspect the target slot's concreteValueType/slot kind, then retry with a value shaped for that type."
+                        }
+                    }
+                };
+            }
+
+            return GraphError(error);
         }
     }
 }

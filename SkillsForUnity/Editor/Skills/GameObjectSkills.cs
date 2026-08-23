@@ -1,21 +1,23 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
+using UnityEditorInternal;
 using System.Linq;
 using System.Collections.Generic;
 
 namespace UnitySkills
 {
     /// <summary>
-    /// GameObject management skills - create, modify, delete, find.
-    /// Supports finding by name, entityId, legacy instanceId, or path.
+    /// GameObject 管理技能：创建、修改、删除、查找。
+    /// 支持按 name、entityId、旧版 instanceId 或 path 定位。
     /// </summary>
     public static class GameObjectSkills
     {
         [UnitySkill("gameobject_create_batch", "Create multiple GameObjects in one call (Efficient). items: JSON array of {name, primitiveType, x, y, z, parentName, parentInstanceId, parentPath}",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Create,
             Tags = new[] { "primitive", "empty", "hierarchy", "batch" },
-            Outputs = new[] { "gameObject", "instanceId", "path", "position" },
-            TracksWorkflow = true)]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, MutatesScene = true,
+            RiskLevel = "medium")]
         public static object GameObjectCreateBatch(string items)
         {
             return BatchExecutor.Execute<BatchCreateItem>(items, item =>
@@ -23,13 +25,13 @@ namespace UnitySkills
                 GameObject go;
                 string primitiveType = item.primitiveType;
 
-                // Support "Empty", "", or null to create an empty GameObject
+                // "Empty"、"" 或 null 都表示创建空 GameObject。
                 if (string.IsNullOrEmpty(primitiveType) ||
                     primitiveType.Equals("Empty", System.StringComparison.OrdinalIgnoreCase) ||
                     primitiveType.Equals("None", System.StringComparison.OrdinalIgnoreCase))
                 {
                     go = new GameObject(item.name);
-                    primitiveType = null; // Normalize to null for downstream metadata and workflow tracking.
+                    primitiveType = null; // 归一为 null，供下游元数据与工作流追踪使用。
                 }
                 else if (System.Enum.TryParse<PrimitiveType>(primitiveType, true, out var pt))
                 {
@@ -41,7 +43,6 @@ namespace UnitySkills
                     return new { error = $"Unknown primitive type: {primitiveType}" };
                 }
 
-                // Set parent if specified
                 if (!string.IsNullOrEmpty(item.parentEntityId) || !string.IsNullOrEmpty(item.parentName) || item.parentInstanceId != 0 || !string.IsNullOrEmpty(item.parentPath))
                 {
                     var (parentGo, parentErr) = GameObjectFinder.FindOrError(item.parentName, item.parentInstanceId, item.parentPath, entityId: item.parentEntityId);
@@ -92,13 +93,17 @@ namespace UnitySkills
         [UnitySkill("gameobject_create", "Create a new GameObject. primitiveType: Cube, Sphere, Capsule, Cylinder, Plane, Quad, or Empty/null for empty object",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Create,
             Tags = new[] { "primitive", "empty", "hierarchy" },
-            Outputs = new[] { "gameObject", "instanceId", "path", "position" },
+            // 这里列的必须是响应真正带的键。写 "gameObject" 是错的——那是 RequiresInput 的
+            // token 名，不是本技能返回的键，会让按 Outputs 做规划的 agent 等到一个永不出现的字段。
+            // 两种写法都不影响链式调用：规划器是从响应里的 name/path/instanceId/entityId
+            // 满足 "gameObject" token 的，从不读 Outputs 里的字面量。
+            Outputs = new[] { "name", "entityId", "instanceId", "path", "parent", "position" },
             TracksWorkflow = true,
             MutatesScene = true, RiskLevel = "medium")]
         public static object GameObjectCreate(string name, string primitiveType = null, float x = 0, float y = 0, float z = 0,
             string parentName = null, int parentInstanceId = 0, string parentPath = null, string parentEntityId = null)
         {
-            // Resolve parent first so we fail fast before creating the object
+            // 先解析父对象，父路径有误时在创建对象之前就失败。
             GameObject parentGo = null;
             if (!string.IsNullOrEmpty(parentEntityId) || !string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
             {
@@ -109,13 +114,13 @@ namespace UnitySkills
 
             GameObject go;
 
-            // Support "Empty", "", or null to create an empty GameObject
+            // "Empty"、"" 或 null 都表示创建空 GameObject。
             if (string.IsNullOrEmpty(primitiveType) ||
                 primitiveType.Equals("Empty", System.StringComparison.OrdinalIgnoreCase) ||
                 primitiveType.Equals("None", System.StringComparison.OrdinalIgnoreCase))
             {
                 go = new GameObject(name);
-                primitiveType = null; // Normalize to null for downstream metadata and workflow tracking.
+                primitiveType = null; // 归一为 null，供下游元数据与工作流追踪使用。
             }
             else if (System.Enum.TryParse<PrimitiveType>(primitiveType, true, out var pt))
             {
@@ -177,7 +182,7 @@ namespace UnitySkills
         [UnitySkill("gameobject_rename_batch", "Rename multiple GameObjects in one call (Efficient). items: JSON array of {name, instanceId, path, newName}. Returns array with oldName, newName for each.",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "rename", "name", "identity", "batch" },
-            Outputs = new[] { "oldName", "newName", "instanceId" },
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true)]
         public static object GameObjectRenameBatch(string items)
@@ -229,9 +234,10 @@ namespace UnitySkills
         [UnitySkill("gameobject_delete_batch", "Delete multiple GameObjects. items: JSON array of strings (names) or objects {name, instanceId, path}",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Delete,
             Tags = new[] { "destroy", "remove", "hierarchy", "batch" },
-            Outputs = new[] { "deleted" },
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
+            MutatesScene = true,
             RiskLevel = "medium")]
         public static object GameObjectDeleteBatch(string items)
         {
@@ -283,20 +289,24 @@ namespace UnitySkills
         [UnitySkill("gameobject_find", "Find GameObjects by name/regex, tag, layer, or component",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Query,
             Tags = new[] { "search", "filter", "regex", "tag", "layer" },
-            Outputs = new[] { "list", "instanceId", "path", "tag", "layer" },
+            Outputs = new[] { "count", "objects" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object GameObjectFind(string name = null, bool useRegex = false, string tag = null, string layer = null, string component = null, int limit = 50)
         {
-            // Efficiency: If tag is provided, use FindGameObjectsWithTag (faster).
-            // But we need to filter further anyway.
+            // TagManager 里没注册的标签会让 GameObject.FindGameObjectsWithTag 抛
+            // UnityException，因此必须在入口拒掉，不能让它走到那次调用变成未处理异常。
+            if (!string.IsNullOrEmpty(tag) && !IsTagDefined(tag))
+                return SkillParamUtil.InvalidValueError(tag, "tag", InternalEditorUtility.tags);
+
+            // 给了 tag 就先用 FindGameObjectsWithTag 缩小范围（更快），后面仍要继续过滤。
             IEnumerable<GameObject> results;
             if (!string.IsNullOrEmpty(tag))
                 results = GameObject.FindGameObjectsWithTag(tag);
             else
                 results = GameObjectFinder.GetSceneObjects();
 
-            // Filter by Name (Regex or Contains)
+            // 按名过滤（正则或包含）。
             if (!string.IsNullOrEmpty(name))
             {
                 if (useRegex)
@@ -310,11 +320,10 @@ namespace UnitySkills
                 }
             }
             
-            // Filter by Tag (if not already fetched by tag - double check in case we fell back)
+            // 再按标签复核一遍，防止前面走的是回退路径。
             if (!string.IsNullOrEmpty(tag))
                 results = results.Where(go => go.CompareTag(tag));
                 
-            // Filter by Layer
             if (!string.IsNullOrEmpty(layer))
             {
                 int layerId = LayerMask.NameToLayer(layer);
@@ -322,7 +331,7 @@ namespace UnitySkills
                     results = results.Where(go => go.layer == layerId);
             }
 
-            // Filter by Component
+            // 按组件类型过滤。
             if (!string.IsNullOrEmpty(component))
             {
                 var compType = ComponentSkills.FindComponentType(component);
@@ -350,16 +359,16 @@ namespace UnitySkills
             Tags = new[] { "transform", "position", "rotation", "scale", "rectTransform" },
             Outputs = new[] { "instanceId", "position", "rotation", "scale" },
             RequiresInput = new[] { "gameObject" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, MutatesScene = true)]
         public static object GameObjectSetTransform(
             string name = null, int instanceId = 0, string path = null,
-            // World transform (3D objects)
+            // 世界变换（3D 对象）
             float? posX = null, float? posY = null, float? posZ = null,
             float? rotX = null, float? rotY = null, float? rotZ = null,
             float? scaleX = null, float? scaleY = null, float? scaleZ = null,
-            // Local transform (both 3D and UI)
+            // 本地变换（3D 与 UI 通用）
             float? localPosX = null, float? localPosY = null, float? localPosZ = null,
-            // RectTransform specific (UI)
+            // RectTransform 专有（UI）
             float? anchoredPosX = null, float? anchoredPosY = null,
             float? anchorMinX = null, float? anchorMinY = null,
             float? anchorMaxX = null, float? anchorMaxY = null,
@@ -386,7 +395,7 @@ namespace UnitySkills
             if (TryMergeVector3(scaleX, scaleY, scaleZ, go.transform.localScale, out var newScale))
                 go.transform.localScale = newScale;
 
-            // RectTransform specific properties
+            // RectTransform 专有属性。
             if (isUI)
             {
                 if (TryMergeVector2(anchoredPosX, anchoredPosY, rt.anchoredPosition, out var newAnchoredPos))
@@ -400,7 +409,7 @@ namespace UnitySkills
                 if (TryMergeVector2(sizeDeltaX, sizeDeltaY, rt.sizeDelta, out var newSizeDelta))
                     rt.sizeDelta = newSizeDelta;
 
-                // Width/Height shortcuts
+                // width/height 是 sizeDelta 的便捷写法。
                 if (width.HasValue || height.HasValue)
                 {
                     rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width ?? rt.rect.width);
@@ -440,12 +449,14 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("gameobject_set_transform_batch", "Set transform properties for multiple objects (Efficient). items: JSON array of objects with optional fields (name, posX, rotX, scaleX, etc.)",
+        [UnitySkill("gameobject_set_transform_batch", "Set transform properties for multiple objects (Efficient). items: JSON array of {name, instanceId, path, entityId, posX/Y/Z, rotX/Y/Z, scaleX/Y/Z, localPosX/Y/Z, anchoredPosX/Y, anchorMinX/Y, anchorMaxX/Y, pivotX/Y, sizeDeltaX/Y, width, height}",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "transform", "position", "rotation", "scale", "batch" },
-            Outputs = new[] { "instanceId", "position" },
+            // 只列外层信封的键，逐项回显在 results[] 里面。在这里声明 entityId
+            // 会让链式规划器误以为本技能能产出顶层 entityId。
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "gameObject" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, MutatesScene = true)]
         public static object GameObjectSetTransformBatch(string items)
         {
             return BatchExecutor.Execute<BatchTransformItem>(items, item =>
@@ -484,6 +495,28 @@ namespace UnitySkills
                         rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, item.width.Value);
                     if (item.height.HasValue)
                         rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, item.height.Value);
+
+                    EditorUtility.SetDirty(rt);
+
+                    // 回显本次调用能写的全部字段，与 gameobject_set_transform 的两种响应形状对齐。
+                    // pos 是历史遗留字段名，保持不变。
+                    return new
+                    {
+                        success = true,
+                        name = go.name,
+                        entityId = UnityObjectIdUtility.GetEntityId(go),
+                        isUI = true,
+                        pos = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z },
+                        localPosition = new { x = go.transform.localPosition.x, y = go.transform.localPosition.y, z = go.transform.localPosition.z },
+                        rotation = new { x = go.transform.eulerAngles.x, y = go.transform.eulerAngles.y, z = go.transform.eulerAngles.z },
+                        scale = new { x = go.transform.localScale.x, y = go.transform.localScale.y, z = go.transform.localScale.z },
+                        anchoredPosition = new { x = rt.anchoredPosition.x, y = rt.anchoredPosition.y },
+                        anchorMin = new { x = rt.anchorMin.x, y = rt.anchorMin.y },
+                        anchorMax = new { x = rt.anchorMax.x, y = rt.anchorMax.y },
+                        pivot = new { x = rt.pivot.x, y = rt.pivot.y },
+                        sizeDelta = new { x = rt.sizeDelta.x, y = rt.sizeDelta.y },
+                        rect = new { width = rt.rect.width, height = rt.rect.height }
+                    };
                 }
 
                 return new
@@ -491,7 +524,11 @@ namespace UnitySkills
                     success = true,
                     name = go.name,
                     entityId = UnityObjectIdUtility.GetEntityId(go),
-                    pos = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z }
+                    isUI = false,
+                    pos = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z },
+                    localPosition = new { x = go.transform.localPosition.x, y = go.transform.localPosition.y, z = go.transform.localPosition.z },
+                    rotation = new { x = go.transform.eulerAngles.x, y = go.transform.eulerAngles.y, z = go.transform.eulerAngles.z },
+                    scale = new { x = go.transform.localScale.x, y = go.transform.localScale.y, z = go.transform.localScale.z }
                 };
             }, item => item.name ?? item.path ?? item.entityId);
         }
@@ -503,7 +540,7 @@ namespace UnitySkills
             public int instanceId { get; set; }
             public string path { get; set; }
 
-            // World transform
+            // 世界变换
             public float? posX { get; set; }
             public float? posY { get; set; }
             public float? posZ { get; set; }
@@ -514,12 +551,12 @@ namespace UnitySkills
             public float? scaleY { get; set; }
             public float? scaleZ { get; set; }
 
-            // Local transform
+            // 本地变换
             public float? localPosX { get; set; }
             public float? localPosY { get; set; }
             public float? localPosZ { get; set; }
 
-            // RectTransform (UI)
+            // RectTransform（UI）
             public float? anchoredPosX { get; set; }
             public float? anchoredPosY { get; set; }
             public float? anchorMinX { get; set; }
@@ -577,8 +614,9 @@ namespace UnitySkills
         [UnitySkill("gameobject_duplicate_batch", "Duplicate multiple GameObjects in one call (Efficient). items: JSON array of {name, instanceId, path}. Returns array with originalName, copyName, copyInstanceId for each.",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Create,
             Tags = new[] { "duplicate", "copy", "clone", "hierarchy", "batch" },
-            Outputs = new[] { "copyName", "copyInstanceId", "copyPath" },
-            RequiresInput = new[] { "gameObject" })]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "gameObject" },
+            TracksWorkflow = true)]
         public static object GameObjectDuplicateBatch(string items)
         {
             return BatchExecutor.Execute<BatchDuplicateItem>(items, item =>
@@ -646,7 +684,8 @@ namespace UnitySkills
         [UnitySkill("gameobject_get_info", "Get detailed info about a GameObject (supports name/instanceId/path)",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Query,
             Tags = new[] { "inspect", "info", "details", "components" },
-            Outputs = new[] { "instanceId", "path", "tag", "layer", "components", "children" },
+            Outputs = new[] { "name", "entityId", "instanceId", "path", "tag", "layer", "isActive",
+                "position", "rotation", "scale", "parent", "parentPath", "childCount", "children", "components" },
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
@@ -750,8 +789,9 @@ namespace UnitySkills
         [UnitySkill("gameobject_set_active_batch", "Enable or disable multiple GameObjects. items: JSON array of {name, active}",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "active", "enable", "disable", "visibility", "batch" },
-            Outputs = new[] { "name", "active" },
-            RequiresInput = new[] { "gameObject" })]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "gameObject" },
+            TracksWorkflow = true)]
         public static object GameObjectSetActiveBatch(string items)
         {
             return BatchExecutor.Execute<BatchSetActiveItem>(items, item =>
@@ -778,8 +818,9 @@ namespace UnitySkills
         [UnitySkill("gameobject_set_layer_batch", "Set layer for multiple GameObjects. items: JSON array of {name, layer, recursive}",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "layer", "rendering", "physics", "batch" },
-            Outputs = new[] { "name", "layer" },
-            RequiresInput = new[] { "gameObject" })]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "gameObject" },
+            TracksWorkflow = true, MutatesScene = true)]
         public static object GameObjectSetLayerBatch(string items)
         {
             return BatchExecutor.Execute<BatchSetLayerItem>(items, item =>
@@ -821,8 +862,9 @@ namespace UnitySkills
         [UnitySkill("gameobject_set_tag_batch", "Set tag for multiple GameObjects. items: JSON array of {name, tag}",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "tag", "identity", "batch" },
-            Outputs = new[] { "name", "tag" },
-            RequiresInput = new[] { "gameObject" })]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "gameObject" },
+            TracksWorkflow = true, MutatesScene = true)]
         public static object GameObjectSetTagBatch(string items)
         {
             return BatchExecutor.Execute<BatchSetTagItem>(items, item =>
@@ -830,11 +872,31 @@ namespace UnitySkills
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                 if (error != null) return new { error = "Object not found", target = item.name ?? item.path ?? item.entityId };
 
+                // 给 go.tag 赋一个未注册的标签在编辑器里会静默失败（赋值等于空操作，
+                // 对象保持原标签），也不抛异常，所以标签拼错的条目必须显式拒绝，
+                // 不能报 success:true。
+                string target = item.name ?? item.path ?? item.entityId;
+                if (!IsTagDefined(item.tag))
+                    return SkillParamUtil.InvalidValueError(item.tag, "tag", InternalEditorUtility.tags, target);
+
                 WorkflowManager.SnapshotObject(go);
                 Undo.RecordObject(go, "Batch Set Tag");
                 go.tag = item.tag;
                 return new { target = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), success = true, tag = item.tag };
             }, item => item.name ?? item.path ?? item.entityId);
+        }
+
+        /// <summary>
+        /// 判断 <paramref name="tag"/> 是否已在 TagManager 中注册。未注册的标签会让
+        /// GameObject.tag 的 setter 与 GameObject.FindGameObjectsWithTag 双双失败——
+        /// 前者静默（不抛异常也不生效），后者抛 UnityException——所以任何标签写入
+        /// 或按标签过滤的读取都必须先过这一关，而不是撞上去才发现。
+        /// </summary>
+        private static bool IsTagDefined(string tag)
+        {
+            if (string.IsNullOrEmpty(tag))
+                return false;
+            return InternalEditorUtility.tags.Contains(tag);
         }
 
         private class BatchSetTagItem
@@ -849,8 +911,9 @@ namespace UnitySkills
         [UnitySkill("gameobject_set_parent_batch", "Set parent for multiple GameObjects. items: JSON array of {childName, parentName, ...}",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "parent", "hierarchy", "reparent", "batch" },
-            Outputs = new[] { "child", "parent" },
-            RequiresInput = new[] { "gameObject" })]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "gameObject" },
+            TracksWorkflow = true)]
         public static object GameObjectSetParentBatch(string items)
         {
             return BatchExecutor.Execute<BatchSetParentItem>(items, item =>

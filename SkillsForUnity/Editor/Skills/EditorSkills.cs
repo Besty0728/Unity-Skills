@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnityEditorInternal;
 using System;
@@ -8,7 +8,7 @@ using System.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// Editor control skills - play mode, selection, tools.
+    /// 编辑器控制技能：播放模式、选中对象、工具。
     /// </summary>
     [InitializeOnLoad]
     public static class EditorSkills
@@ -124,10 +124,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Advances one <see cref="PlaymodeStepJobKind"/> job per Editor tick. Each <see cref="EditorApplication.Step"/>
-        /// call is confirmed by observing <see cref="Time.frameCount"/> advance past the value recorded when that
-        /// step was issued before the next one is issued - back-to-back Step() calls within the same tick are not
-        /// guaranteed to land, so this never issues a new one until the previous one is confirmed.
+        /// 每个编辑器 tick 推进一个 <see cref="PlaymodeStepJobKind"/> 作业。每次
+        /// <see cref="EditorApplication.Step"/> 都要先观察到 <see cref="Time.frameCount"/>
+        /// 越过发起时记录的值，确认这一步落实后才发下一步——同一 tick 内连续调用 Step()
+        /// 并不保证都生效。
         /// </summary>
         private static void ProcessPlaymodeStepJob(string jobId, EditorApplication.CallbackFunction handler)
         {
@@ -171,7 +171,7 @@ namespace UnitySkills
                 return;
             }
 
-            // Frame count advanced past the value recorded at issue time - the previous Step() landed.
+            // 帧号已越过发起时记录的值，说明上一次 Step() 生效了。
             if (framesIssued >= framesRequested)
             {
                 job.resultData["framesCompleted"] = framesIssued;
@@ -208,9 +208,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// The step job is advanced by a dynamically-subscribed <see cref="EditorApplication.update"/> handler
-        /// (see <see cref="EditorPlaymodeStep"/>), which does not survive a domain reload. Fail any job left
-        /// "running" from before a reload so callers polling job_status get a terminal state instead of hanging.
+        /// 步进作业由动态订阅的 <see cref="EditorApplication.update"/> 处理器推进
+        /// （见 <see cref="EditorPlaymodeStep"/>），而该订阅撑不过域重载。因此把重载前
+        /// 遗留为 running 的作业统统判失败，让轮询 job_status 的调用方拿到终态而不是一直挂着。
         /// </summary>
         private static void RecoverStalePlaymodeStepJobs()
         {
@@ -309,7 +309,8 @@ namespace UnitySkills
         [UnitySkill("editor_undo", "Undo the last action (single step). For multiple undo steps use history_undo(steps=N). For workflow-level undo use workflow_undo_task.",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "undo", "revert", "history" },
-            Outputs = new[] { "message" })]
+            Outputs = new[] { "message" },
+            MutatesScene = true)]
         public static object EditorUndo()
         {
             Undo.FlushUndoRecordObjects();
@@ -322,7 +323,8 @@ namespace UnitySkills
         [UnitySkill("editor_redo", "Redo the last undone action (single step). For multiple redo steps use history_redo(steps=N).",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "redo", "restore", "history" },
-            Outputs = new[] { "message" })]
+            Outputs = new[] { "message" },
+            MutatesScene = true)]
         public static object EditorRedo()
         {
             Undo.FlushUndoRecordObjects();
@@ -365,7 +367,14 @@ namespace UnitySkills
         [UnitySkill("editor_execute_menu", "Execute a Unity menu item",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "menu", "command", "action" },
-            Outputs = new[] { "executed" })]
+            Outputs = new[] { "executed" },
+            // 这个技能能执行任意菜单项——包括 GameObject/Create 和 Edit/Delete——
+            // 所以即便它自己不碰任何 GameObject，也必须声明会改动 Hierarchy。
+            // reload 标志同理："Assets/Reimport All" 和 "Assets/Refresh" 都是菜单项，
+            // 而事务性批处理的预检要靠这个标志拒绝那些会因域重载抹掉 undo 栈、
+            // 从而无法兑现回滚承诺的调用。
+            MutatesScene = true,
+            MayTriggerReload = true)]
         public static object EditorExecuteMenu(string menuPath)
         {
             var result = EditorApplication.ExecuteMenuItem(menuPath);

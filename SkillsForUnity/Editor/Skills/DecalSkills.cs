@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -10,7 +10,7 @@ using UnityEngine.Rendering.Universal;
 namespace UnitySkills
 {
     /// <summary>
-    /// URP decal projector skills.
+    /// URP 贴花投射器（Decal Projector）技能。
     /// </summary>
     public static class DecalSkills
     {
@@ -25,6 +25,9 @@ namespace UnitySkills
             Category = SkillCategory.Decal, Operation = SkillOperation.Query,
             Tags = new[] { "decal", "projector", "info" },
             Outputs = new[] { "name", "material", "size" },
+            // 必须与下面装了 URP 时的声明逐字一致：两个变体是同一个端点，
+            // 只有其中一个会参与编译。
+            RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object DecalGetInfo(string name = null, int instanceId = 0, string path = null) => RenderPipelineSkillsCommon.NoURP();
@@ -50,7 +53,7 @@ namespace UnitySkills
             RiskLevel = "medium")]
         public static object DecalDelete(string name = null, int instanceId = 0, string path = null) => RenderPipelineSkillsCommon.NoURP();
 
-        [UnitySkill("decal_set_properties_batch", "Modify multiple Decal Projectors in one request",
+        [UnitySkill("decal_set_properties_batch", "Modify multiple Decal Projectors in one request. items: JSON array of {name, instanceId, path, materialPath, drawDistance, fadeScale, fadeFactor, startAngleFade, endAngleFade, uvScale, uvBias, size, pivot, renderingLayerMask, scaleMode}",
             Category = SkillCategory.Decal, Operation = SkillOperation.Modify,
             Tags = new[] { "decal", "projector", "batch" },
             Outputs = new[] { "successCount", "failCount", "results" })]
@@ -94,6 +97,10 @@ namespace UnitySkills
             Category = SkillCategory.Decal, Operation = SkillOperation.Query,
             Tags = new[] { "decal", "projector", "info" },
             Outputs = new[] { "name", "material", "size" },
+            // 三个定位参数单看都是可选的，不声明这个组 token 的话，空请求体会一路执行到
+            // GameObjectFinder 报 "not found"——为一个调用方压根没指定的目标报查找失败。
+            // 有了组 token 才能在入口就说清"你没有指定对象"。
+            RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             RequiresPackages = new[] { "com.unity.render-pipelines.universal" },
             Mode = SkillMode.SemiAuto)]
@@ -244,7 +251,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("decal_set_properties_batch", "Modify multiple Decal Projectors in one request",
+        [UnitySkill("decal_set_properties_batch", "Modify multiple Decal Projectors in one request. items: JSON array of {name, instanceId, path, materialPath, drawDistance, fadeScale, fadeFactor, startAngleFade, endAngleFade, uvScale, uvBias, size, pivot, renderingLayerMask, scaleMode}",
             Category = SkillCategory.Decal, Operation = SkillOperation.Modify,
             Tags = new[] { "decal", "projector", "batch" },
             Outputs = new[] { "successCount", "failCount", "results" },

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.IO;
@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 namespace UnitySkills
 {
     /// <summary>
-    /// Script management skills - create, read, modify.
+    /// 脚本管理技能：创建、读取、修改。
     /// </summary>
     public static class ScriptSkills
     {
@@ -71,8 +71,9 @@ namespace UnitySkills
         [UnitySkill("script_create_batch", "Create multiple scripts efficiently. Before batch-generating gameplay scripts, actively consider coupling, performance, and maintainability for each class role. items: JSON array of {scriptName, folder, template, namespace}", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Create,
             Tags = new[] { "script", "batch", "create", "bulk" },
-            Outputs = new[] { "totalItems", "successCount", "results" },
-            MayTriggerReload = true)]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            MayTriggerReload = true, MutatesAssets = true,
+            RiskLevel = "high")]
         public static object ScriptCreateBatch(string items)
         {
             return BatchExecutor.Execute<BatchScriptItem>(items, item =>
@@ -149,6 +150,9 @@ namespace UnitySkills
             Category = SkillCategory.Script, Operation = SkillOperation.Query,
             Tags = new[] { "script", "search", "pattern", "grep" },
             Outputs = new[] { "pattern", "matchCount", "matches" },
+            // 该参数没有 CLR 默认值，但 IsParameterRequired 把"无默认值的引用类型参数"判为可选，
+            // 于是 schema 报 required:false，而 Validate.Required 对缺省和空串都会拒绝——两者需在此对齐。
+            RequiresInput = new[] { "pattern" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object ScriptFindInFile(string pattern, string folder = "Assets", bool isRegex = false, int limit = 50)
@@ -337,7 +341,7 @@ namespace UnitySkills
             Category = SkillCategory.Script, Operation = SkillOperation.Modify,
             Tags = new[] { "script", "move", "reorganize", "file" },
             Outputs = new[] { "oldPath", "newPath", "jobId" },
-            RequiresInput = new[] { "scriptPath" },
+            RequiresInput = new[] { "scriptPath", "newFolder" },
             MayTriggerReload = true, RiskLevel = "high")]
         public static object ScriptMove(string scriptPath, string newFolder, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
@@ -345,10 +349,13 @@ namespace UnitySkills
             if (!File.Exists(scriptPath)) return new { error = $"Script not found: {scriptPath}" };
             if (Validate.SafePath(newFolder, "newFolder") is object folderErr) return folderErr;
 
-            if (!Directory.Exists(newFolder)) Directory.CreateDirectory(newFolder);
-
             var fileName = Path.GetFileName(scriptPath);
             var newPath = Path.Combine(newFolder, fileName);
+            // 不能用 System.IO 建目录：它只动文件系统，AssetDatabase 在 Refresh 之前不知道该文件夹，
+            // MoveAsset 对未登记的父目录会失败（"Could not find parent directory GUID:0000..."），
+            // 还会留下没有 .meta 的孤儿目录。EnsureAssetFolderExists 改用 AssetDatabase.CreateFolder
+            // 逐级创建，创建即登记。
+            RenderPipelineSkillsCommon.EnsureAssetFolderExists(newPath);
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(scriptPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 

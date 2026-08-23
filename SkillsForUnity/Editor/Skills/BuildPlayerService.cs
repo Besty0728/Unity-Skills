@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -33,7 +33,14 @@ namespace UnitySkills
                 return new { error = $"Build target '{buildTarget}' is not supported by this Unity installation. Install its platform module first." };
 
             if (!TryResolveScenes(scenes, out var resolvedScenes, out var scenesError))
-                return new { error = scenesError };
+                // TryResolveScenes 只在"没有场景可构建"这一种情况下返回空的 resolvedScenes；
+                // 一旦解析出场景（非空），后续逐场景校验失败仍保留这个非空列表。靠这一点就能
+                // 区分两条失败分支，不必去解析 scenesError 的文本。
+                // 空列表那条的消息（"...has no enabled scenes"）在 SkillErrorClassifier 的
+                // MissingOnTargetPattern 看来像 "GameObject has no Rigidbody"，会被误判成
+                // TARGET_NOT_FOUND 并把调用方指向 gameobject_find/scene_get_hierarchy——
+                // 对构建设置问题毫无意义。显式声明 errorCode/suggestedFixes 即可跳过该启发式。
+                return resolvedScenes.Length == 0 ? (object)NoScenesConfigured() : new { error = scenesError };
             if (!TryResolveOutputPath(outputPath, buildTarget, overwrite, out var resolvedOutput, out var outputError))
                 return new { error = outputError };
             if (!ValidateDirtyScenes(resolvedScenes, out var dirtyError))
@@ -235,6 +242,21 @@ namespace UnitySkills
             error = null;
             return true;
         }
+
+        private static object NoScenesConfigured() => new
+        {
+            error = "No scenes were provided and Build Settings has no enabled scenes.",
+            errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+            retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            suggestedFixes = new[]
+            {
+                new
+                {
+                    action = "fix_param",
+                    reason = "Add and enable scenes in File > Build Settings, or pass the scenes parameter with explicit Assets/*.unity paths."
+                }
+            }
+        };
 
         private static string DefaultRelativeOutput(BuildTarget target)
         {

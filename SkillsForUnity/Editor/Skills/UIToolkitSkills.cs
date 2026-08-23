@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor;
 using System.IO;
@@ -10,18 +10,19 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// UI Toolkit skills - create/edit USS/UXML files and configure UIDocument in scenes.
-    /// Requires Unity 2022.3+ (package minimum supported version).
+    /// UI Toolkit 技能——创建/编辑 USS、UXML 文件，并在场景中配置 UIDocument。
+    /// 需要 Unity 2022.3+（本包支持的最低版本）。
     /// </summary>
     public static class UIToolkitSkills
     {
-        // ============================ FILE OPERATIONS ============================
+        // ============================ 文件操作 ============================
 
         [UnitySkill("uitk_create_uss", "Create a USS stylesheet file for UI Toolkit",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
             Tags = new[] { "uss", "stylesheet", "ui-toolkit", "style" },
             Outputs = new[] { "path", "lines" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object UitkCreateUss(string savePath, string content = null)
         {
             if (Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
@@ -46,7 +47,8 @@ namespace UnitySkills
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
             Tags = new[] { "uxml", "layout", "ui-toolkit", "visual-tree" },
             Outputs = new[] { "path", "lines" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object UitkCreateUxml(string savePath, string content = null, string ussPath = null)
         {
             if (Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
@@ -97,15 +99,37 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("uitk_write_file", "Write or overwrite a USS or UXML file",
+        [UnitySkill("uitk_write_file", "Write or overwrite a USS or UXML file. filePath must end in .uss or .uxml; any other extension is rejected (use script_create for C# files)",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create | SkillOperation.Modify,
             Tags = new[] { "write", "uss", "uxml", "file" },
             Outputs = new[] { "path", "lines" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object UitkWriteFile(string filePath, string content)
         {
             if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
             if (Validate.Required(content, "content") is object contentErr) return contentErr;
+
+            // 扩展名是契约，不是形式。本技能声称只写 "USS 或 UXML"，却没人强制，于是它兼职成了无限制文件写入器：
+            // 传一个 .cs 路径它就会写出脚本并触发域重载，而它并未声明 MayTriggerReload——
+            // 那正是事务性预检与 SemiAuto 闸门用来判断一次调用是否安全的唯一标志。
+            // 拒绝发生在创建目录之前，所以不会留下任何残留。
+            var extension = Path.GetExtension(filePath);
+            if (!string.Equals(extension, ".uss", System.StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(extension, ".uxml", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return new
+                {
+                    error = $"Invalid value '{filePath}' for parameter 'filePath': this skill writes UI Toolkit " +
+                            $"markup, so the extension must be .uss or .uxml (got " +
+                            $"'{(string.IsNullOrEmpty(extension) ? "no extension" : extension)}'). " +
+                            "Use script_create for C# files.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = "filePath",
+                    validValues = new[] { ".uss", ".uxml" },
+                    relatedSkills = new[] { "script_create" },
+                };
+            }
 
             var dir = Path.GetDirectoryName(filePath);
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -121,7 +145,7 @@ namespace UnitySkills
             File.WriteAllText(filePath, content, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(filePath);
 
-            // New files get a Created snapshot (undo = delete) so they are as reversible as overwrites.
+            // 新建文件记 Created 快照（撤销即删除），使其与覆盖写一样可回滚。
             if (!overwriting)
             {
                 var created = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(filePath);
@@ -189,7 +213,7 @@ namespace UnitySkills
             return new { count = files.Length, files };
         }
 
-        // ============================ SCENE OPERATIONS ============================
+        // ============================ 场景操作 ============================
 
         [UnitySkill("uitk_create_document", "Create a GameObject with UIDocument component in the scene",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
@@ -322,11 +346,12 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("uitk_create_panel_settings", "Create a PanelSettings asset for UI Toolkit",
+        [UnitySkill("uitk_create_panel_settings", "Create a PanelSettings asset for UI Toolkit. renderMode/forceGammaRendering/bindingLogLevel/colliderUpdateMode/colliderIsTrigger/vertexBudget need Unity 6 and textureSlotCount needs Unity 6000.3; on an older editor they are rejected by name rather than silently ignored.",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
             Tags = new[] { "panel-settings", "asset", "scaling", "resolution" },
             Outputs = new[] { "path", "scaleMode", "referenceResolution", "screenMatchMode" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object UitkCreatePanelSettings(
             string savePath,
             string scaleMode = "ScaleWithScreenSize",
@@ -334,7 +359,7 @@ namespace UnitySkills
             int referenceResolutionY = 1080,
             string screenMatchMode = "MatchWidthOrHeight",
             string themeStyleSheetPath = null,
-            // General properties
+            // 通用属性
             string textSettingsPath = null,
             string targetTexturePath = null,
             int? targetDisplay = null,
@@ -344,19 +369,19 @@ namespace UnitySkills
             float? referenceDpi = null,
             float? fallbackDpi = null,
             float? referenceSpritePixelsPerUnit = null,
-            // Dynamic Atlas
+            // 动态图集
             int? dynamicAtlasMinSize = null,
             int? dynamicAtlasMaxSize = null,
             int? dynamicAtlasMaxSubTextureSize = null,
             string dynamicAtlasFilters = null,
-            // Color Clear
+            // 清屏颜色
             bool? clearColor = null,
             float? colorClearR = null,
             float? colorClearG = null,
             float? colorClearB = null,
             float? colorClearA = null,
             bool? clearDepthStencil = null,
-            // Unity 6+ (ignored on older versions)
+            // Unity 6+ 专属（旧版本按参数名直接拒绝——见 TryResolvePanelSettingsArgs）
             string renderMode = null,
             bool? forceGammaRendering = null,
             string bindingLogLevel = null,
@@ -373,24 +398,15 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
+            // 在资产实例创建之前解析，使被拒的取值不留任何残留。
+            if (!SkillParamUtil.TryParseOptionalEnum<PanelScaleMode>(scaleMode, "scaleMode", out var parsedScale, out var scaleModeError))
+                return scaleModeError;
+            if (!SkillParamUtil.TryParseOptionalEnum<PanelScreenMatchMode>(screenMatchMode, "screenMatchMode", out var parsedMatch, out var screenMatchModeError))
+                return screenMatchModeError;
+
             var settings = ScriptableObject.CreateInstance<PanelSettings>();
 
-            if (System.Enum.TryParse<PanelScaleMode>(scaleMode, true, out var parsedScale))
-                settings.scaleMode = parsedScale;
-
-            settings.referenceResolution = new Vector2Int(referenceResolutionX, referenceResolutionY);
-
-            if (System.Enum.TryParse<PanelScreenMatchMode>(screenMatchMode, true, out var parsedMatch))
-                settings.screenMatchMode = parsedMatch;
-
-            if (!string.IsNullOrEmpty(themeStyleSheetPath))
-            {
-                if (Validate.SafePath(themeStyleSheetPath, "themeStyleSheetPath") is object tssErr) return tssErr;
-                var tss = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(themeStyleSheetPath);
-                if (tss != null) settings.themeStyleSheet = tss;
-            }
-
-            var applyErr = ApplyPanelSettings(settings, new PanelSettingsArgs
+            var args = new PanelSettingsArgs
             {
                 textSettingsPath = textSettingsPath, targetTexturePath = targetTexturePath,
                 targetDisplay = targetDisplay, sortOrder = sortOrder, scale = scale, match = match,
@@ -402,8 +418,34 @@ namespace UnitySkills
                 renderMode = renderMode, forceGammaRendering = forceGammaRendering, bindingLogLevel = bindingLogLevel,
                 colliderUpdateMode = colliderUpdateMode, colliderIsTrigger = colliderIsTrigger,
                 vertexBudget = vertexBudget, textureSlotCount = textureSlotCount
-            });
-            if (applyErr != null) return applyErr;
+            };
+
+            // 该实例存在的唯一目的是让解析器探测其序列化字段；在所有取值确认合法之前不会向它写入任何东西，
+            // 一旦被拒就销毁它，而不是留下一个无主 ScriptableObject 让 GC 打日志。
+            if (!TryResolvePanelSettingsArgs(settings, args, out var resolved, out var resolveErr))
+            {
+                Object.DestroyImmediate(settings);
+                return resolveErr;
+            }
+
+            if (parsedScale.HasValue) settings.scaleMode = parsedScale.Value;
+
+            settings.referenceResolution = new Vector2Int(referenceResolutionX, referenceResolutionY);
+
+            if (parsedMatch.HasValue) settings.screenMatchMode = parsedMatch.Value;
+
+            if (!string.IsNullOrEmpty(themeStyleSheetPath))
+            {
+                if (Validate.SafePath(themeStyleSheetPath, "themeStyleSheetPath") is object tssErr)
+                {
+                    Object.DestroyImmediate(settings);
+                    return tssErr;
+                }
+                var tss = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(themeStyleSheetPath);
+                if (tss != null) settings.themeStyleSheet = tss;
+            }
+
+            ApplyPanelSettings(settings, args, resolved);
 
             AssetDatabase.CreateAsset(settings, savePath);
             AssetDatabase.SaveAssets();
@@ -437,7 +479,7 @@ namespace UnitySkills
             var cc = settings.colorClearValue;
 
 #if UNITY_6000_0_OR_NEWER
-            // renderMode, colliderUpdateMode, and colliderIsTrigger are internal; read them via SerializedObject.
+            // renderMode、colliderUpdateMode、colliderIsTrigger 都是 internal，需经 SerializedObject 读取。
             var so = new SerializedObject(settings);
             var rmProp = so.FindProperty("m_RenderMode");
             int rmVal = rmProp != null ? rmProp.intValue : 0;
@@ -474,7 +516,7 @@ namespace UnitySkills
                 clearColor = settings.clearColor,
                 colorClearValue = new { r = cc.r, g = cc.g, b = cc.b, a = cc.a },
                 clearDepthStencil = settings.clearDepthStencil,
-                // Unity 6+ properties (renderMode/collider* read via SerializedObject)
+                // Unity 6+ 属性（renderMode/collider* 经 SerializedObject 读取）
                 renderMode = renderModeStr,
                 forceGammaRendering = settings.forceGammaRendering,
                 bindingLogLevel = settings.bindingLogLevel.ToString(),
@@ -518,7 +560,7 @@ namespace UnitySkills
 #endif
         }
 
-        [UnitySkill("uitk_set_panel_settings", "Modify properties on an existing PanelSettings asset",
+        [UnitySkill("uitk_set_panel_settings", "Modify properties on an existing PanelSettings asset. Every value is validated before the first write, so a rejected call leaves the asset untouched. renderMode/forceGammaRendering/bindingLogLevel/colliderUpdateMode/colliderIsTrigger/vertexBudget need Unity 6 and textureSlotCount needs Unity 6000.3; on an older editor they are rejected by name rather than silently ignored.",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Modify,
             Tags = new[] { "panel-settings", "configure", "scaling", "resolution" },
             Outputs = new[] { "path", "scaleMode", "referenceResolution", "screenMatchMode" },
@@ -563,31 +605,15 @@ namespace UnitySkills
             if (settings == null)
                 return new { error = $"PanelSettings not found: {assetPath}" };
 
-            Undo.RecordObject(settings, "Set PanelSettings");
+            // 调用中所有取值型参数都在 Undo.RecordObject 之前解析——此处两个枚举，以及 args 块内经
+            // TryResolvePanelSettingsArgs 处理的四个。无论哪个非法，资产都不会被碰：
+            // bindingLogLevel 过去是在 apply 流程深处才解析的，非法值返回错误时已经写进去十几个字段了。
+            if (!SkillParamUtil.TryParseOptionalEnum<PanelScaleMode>(scaleMode, "scaleMode", out var parsedScale, out var scaleModeError))
+                return scaleModeError;
+            if (!SkillParamUtil.TryParseOptionalEnum<PanelScreenMatchMode>(screenMatchMode, "screenMatchMode", out var parsedMatch, out var screenMatchModeError))
+                return screenMatchModeError;
 
-            if (!string.IsNullOrEmpty(scaleMode) && System.Enum.TryParse<PanelScaleMode>(scaleMode, true, out var parsedScale))
-                settings.scaleMode = parsedScale;
-
-            if (referenceResolutionX.HasValue || referenceResolutionY.HasValue)
-            {
-                var cur = settings.referenceResolution;
-                settings.referenceResolution = new Vector2Int(
-                    referenceResolutionX ?? cur.x,
-                    referenceResolutionY ?? cur.y);
-            }
-
-            if (!string.IsNullOrEmpty(screenMatchMode) && System.Enum.TryParse<PanelScreenMatchMode>(screenMatchMode, true, out var parsedMatch))
-                settings.screenMatchMode = parsedMatch;
-
-            if (!string.IsNullOrEmpty(themeStyleSheetPath))
-            {
-                if (Validate.SafePath(themeStyleSheetPath, "themeStyleSheetPath") is object tssErr) return tssErr;
-                var tss = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(themeStyleSheetPath);
-                if (tss == null) return new { error = $"ThemeStyleSheet not found: {themeStyleSheetPath}" };
-                settings.themeStyleSheet = tss;
-            }
-
-            var applyErr = ApplyPanelSettings(settings, new PanelSettingsArgs
+            var args = new PanelSettingsArgs
             {
                 textSettingsPath = textSettingsPath, targetTexturePath = targetTexturePath,
                 targetDisplay = targetDisplay, sortOrder = sortOrder, scale = scale, match = match,
@@ -599,8 +625,36 @@ namespace UnitySkills
                 renderMode = renderMode, forceGammaRendering = forceGammaRendering, bindingLogLevel = bindingLogLevel,
                 colliderUpdateMode = colliderUpdateMode, colliderIsTrigger = colliderIsTrigger,
                 vertexBudget = vertexBudget, textureSlotCount = textureSlotCount
-            });
-            if (applyErr != null) return applyErr;
+            };
+            if (!TryResolvePanelSettingsArgs(settings, args, out var resolved, out var resolveErr))
+                return resolveErr;
+
+            // themeStyleSheetPath 是最后一个可能失败的点，且它在任何写入之前就失败。
+            ThemeStyleSheet themeStyleSheet = null;
+            if (!string.IsNullOrEmpty(themeStyleSheetPath))
+            {
+                if (Validate.SafePath(themeStyleSheetPath, "themeStyleSheetPath") is object tssErr) return tssErr;
+                themeStyleSheet = AssetDatabase.LoadAssetAtPath<ThemeStyleSheet>(themeStyleSheetPath);
+                if (themeStyleSheet == null) return new { error = $"ThemeStyleSheet not found: {themeStyleSheetPath}" };
+            }
+
+            Undo.RecordObject(settings, "Set PanelSettings");
+
+            if (parsedScale.HasValue) settings.scaleMode = parsedScale.Value;
+
+            if (referenceResolutionX.HasValue || referenceResolutionY.HasValue)
+            {
+                var cur = settings.referenceResolution;
+                settings.referenceResolution = new Vector2Int(
+                    referenceResolutionX ?? cur.x,
+                    referenceResolutionY ?? cur.y);
+            }
+
+            if (parsedMatch.HasValue) settings.screenMatchMode = parsedMatch.Value;
+
+            if (themeStyleSheet != null) settings.themeStyleSheet = themeStyleSheet;
+
+            ApplyPanelSettings(settings, args, resolved);
 
             EditorUtility.SetDirty(settings);
             AssetDatabase.SaveAssets();
@@ -639,7 +693,7 @@ namespace UnitySkills
             return new { count = result.Length, documents = result };
         }
 
-        // ============================ INSPECTION ============================
+        // ============================ 检视 ============================
 
         [UnitySkill("uitk_inspect_uxml", "Parse and display UXML element hierarchy (depth controls max traversal depth)",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Query,
@@ -667,13 +721,14 @@ namespace UnitySkills
             }
         }
 
-        // ============================ TEMPLATES ============================
+        // ============================ 模板 ============================
 
         [UnitySkill("uitk_create_from_template", "Create a UXML+USS file pair from a template (menu/hud/dialog/settings/inventory/list/tab-view/toolbar/card/notification)",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
             Tags = new[] { "template", "uxml", "uss", "scaffold" },
             Outputs = new[] { "template", "ussPath", "uxmlPath", "name" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object UitkCreateFromTemplate(string template, string savePath, string name = null)
         {
             if (Validate.Required(template, "template") is object tErr) return tErr;
@@ -708,13 +763,13 @@ namespace UnitySkills
             return new { success = true, template, ussPath = ussFilePath, uxmlPath = uxmlFilePath, name = uiName };
         }
 
-        // ============================ BATCH ============================
+        // ============================ 批量 ============================
 
         [UnitySkill("uitk_create_batch", "Batch create USS/UXML files. items: JSON array of {type,savePath,content?,ussPath?}",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
             Tags = new[] { "batch", "uss", "uxml", "bulk" },
-            Outputs = new[] { "totalRequested", "succeeded", "failed", "results" },
-            TracksWorkflow = true)]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, MutatesAssets = true)]
         public static object UitkCreateBatch(string items)
         {
             return BatchExecutor.Execute<UitkFileItem>(
@@ -738,24 +793,41 @@ namespace UnitySkills
             );
         }
 
-        // ============================ PANEL SETTINGS HELPERS ============================
+        // ============================ PanelSettings 辅助 ============================
 
-        private static DynamicAtlasFilters ParseDynamicAtlasFilters(string filters)
+        // PanelSettings.renderMode 与 .colliderUpdateMode 是 internal，只能经 SerializedObject 按数值写入。
+        // 下面这些镜像了序列化顺序，其存在意义是让可接受词表成为一个真枚举：
+        // 这样 SkillParamUtil 才能拒绝非法值并列出候选，而不是像旧的 string.Equals 链那样一路落空成空转。
+        private enum PanelRenderModeOption
         {
-            if (string.IsNullOrEmpty(filters)) return DynamicAtlasFilters.None;
-            var trimmed = filters.Trim();
-            if (string.Equals(trimmed, "Everything", System.StringComparison.OrdinalIgnoreCase))
-                return (DynamicAtlasFilters)(-1);
-            if (string.Equals(trimmed, "None", System.StringComparison.OrdinalIgnoreCase))
-                return DynamicAtlasFilters.None;
+            ScreenSpaceOverlay = 0,
+            WorldSpace = 1,
+        }
 
-            DynamicAtlasFilters result = DynamicAtlasFilters.None;
-            foreach (var part in trimmed.Split(','))
-            {
-                if (System.Enum.TryParse<DynamicAtlasFilters>(part.Trim(), true, out var flag))
-                    result |= flag;
-            }
-            return result;
+        private enum ColliderUpdateModeOption
+        {
+            Match3DBoundingBox = 0,
+            Match2DDocumentRect = 1,
+            KeepExistingCollider = 2,
+        }
+
+        /// <summary>
+        /// 逗号分隔的 flag 列表，另加枚举本身没有声明的 "Everything" 别名。每一段都必须解析成功：
+        /// 旧版本会把能解析的部分 OR 进去、其余丢掉，于是列表里一个拼错的 flag 会悄悄产出
+        /// 比调用方所要求更窄的过滤集。
+        ///
+        /// <para>此处空白表示"未提供"，而这恰是
+        /// <see cref="SkillParamUtil.TryParseFlagsParam{TEnum}"/> 唯一表达不了的语义（它把空白当成缺失的必填参数）；
+        /// 该检查之后的部分仍是共享实现，所以这里同样享有那道把 "999" 挡在 activeFilters 之外的掩码校验。</para>
+        /// </summary>
+        private static bool TryParseDynamicAtlasFilters(string filters, out DynamicAtlasFilters result, out object error)
+        {
+            result = DynamicAtlasFilters.None;
+            error = null;
+            if (string.IsNullOrWhiteSpace(filters)) return true;
+
+            return SkillParamUtil.TryParseFlagsParam<DynamicAtlasFilters>(
+                filters, "dynamicAtlasFilters", out result, out error);
         }
 
         private struct PanelSettingsArgs
@@ -789,29 +861,154 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Shared helper to apply extended PanelSettings properties (used by create and set).
-        /// Returns null on success, or an error object on failure.
+        /// <see cref="ApplyPanelSettings"/> 所需的、必须先行校验的全部内容，
+        /// 以保证 <see cref="PanelSettingsArgs"/> 里没有任何字段是在写入落地之后才解析的。
         /// </summary>
-        private static object ApplyPanelSettings(PanelSettings settings, in PanelSettingsArgs a)
+        private struct PanelSettingsResolved
         {
-            // --- Asset references ---
+            public DynamicAtlasFilters atlasFilters;
+            public PanelRenderModeOption? renderMode;
+            public ColliderUpdateModeOption? colliderUpdateMode;
+            public PanelTextSettings textSettings;
+            public RenderTexture targetTexture;
+#if UNITY_6000_0_OR_NEWER
+            public UnityEngine.UIElements.BindingLogLevel? bindingLogLevel;
+#endif
+        }
+
+        /// <summary>
+        /// 在调用方写入任何东西之前，解析所有取值型参数，并拒绝当前 Unity 版本无法兑现的那些。
+        ///
+        /// <para>这个拆分修的是一次真实存在的半写入。bindingLogLevel 过去在 apply 流程约四分之三处才解析，
+        /// 意味着非法值要等到 scaleMode、referenceResolution、screenMatchMode、themeStyleSheet
+        /// 以及十几个数值属性都已提交进资产之后才报出来——调用方拿到一个错误和一份改了一半的 PanelSettings。
+        /// 那两处 "no serialized field" 检查上移也是同样的理由。</para>
+        ///
+        /// <para><paramref name="settings"/> 只会被读取（经 SerializedObject），用于确认 internal 字段存在；
+        /// 请在写入它之前把实例传进来。</para>
+        /// </summary>
+        private static bool TryResolvePanelSettingsArgs(PanelSettings settings, in PanelSettingsArgs a,
+            out PanelSettingsResolved resolved, out object error)
+        {
+            resolved = default(PanelSettingsResolved);
+            error = null;
+
+            // --- 版本闸门。这些参数在所有 Unity 版本的签名里都有，但它们背后的属性并非都有，
+            // 于是在旧编辑器上取值曾被接受后丢弃——正是枚举拒绝机制要防的那种静默丢值。 ---
+#if !UNITY_6000_0_OR_NEWER
+            var needsUnity6 =
+                !string.IsNullOrEmpty(a.renderMode) ? "renderMode" :
+                a.forceGammaRendering.HasValue ? "forceGammaRendering" :
+                !string.IsNullOrEmpty(a.bindingLogLevel) ? "bindingLogLevel" :
+                !string.IsNullOrEmpty(a.colliderUpdateMode) ? "colliderUpdateMode" :
+                a.colliderIsTrigger.HasValue ? "colliderIsTrigger" :
+                a.vertexBudget.HasValue ? "vertexBudget" :
+                a.textureSlotCount.HasValue ? "textureSlotCount" : null;
+            if (needsUnity6 != null)
+            {
+                error = UnsupportedInThisUnityVersion(needsUnity6, "Unity 6.0");
+                return false;
+            }
+#elif !UNITY_6000_3_OR_NEWER
+            if (a.textureSlotCount.HasValue)
+            {
+                error = UnsupportedInThisUnityVersion("textureSlotCount", "Unity 6000.3");
+                return false;
+            }
+#endif
+
+            // --- 过去会被静默丢弃的取值型参数 ---
+            if (!TryParseDynamicAtlasFilters(a.dynamicAtlasFilters, out resolved.atlasFilters, out error))
+                return false;
+            if (!SkillParamUtil.TryParseOptionalEnum<PanelRenderModeOption>(a.renderMode, "renderMode", out resolved.renderMode, out error))
+                return false;
+            if (!SkillParamUtil.TryParseOptionalEnum<ColliderUpdateModeOption>(a.colliderUpdateMode, "colliderUpdateMode", out resolved.colliderUpdateMode, out error))
+                return false;
+
+            // --- 资产引用。在此加载而不放到 apply 流程里，使路径拼写错误同样无法落在写入中途。 ---
             if (!string.IsNullOrEmpty(a.textSettingsPath))
             {
-                if (Validate.SafePath(a.textSettingsPath, "textSettingsPath") is object tsErr) return tsErr;
-                var ts = AssetDatabase.LoadAssetAtPath<PanelTextSettings>(a.textSettingsPath);
-                if (ts == null) return new { error = $"PanelTextSettings not found: {a.textSettingsPath}" };
-                settings.textSettings = ts;
+                if (Validate.SafePath(a.textSettingsPath, "textSettingsPath") is object tsErr)
+                {
+                    error = tsErr;
+                    return false;
+                }
+                resolved.textSettings = AssetDatabase.LoadAssetAtPath<PanelTextSettings>(a.textSettingsPath);
+                if (resolved.textSettings == null)
+                {
+                    error = new { error = $"PanelTextSettings not found: {a.textSettingsPath}" };
+                    return false;
+                }
             }
 
             if (!string.IsNullOrEmpty(a.targetTexturePath))
             {
-                if (Validate.SafePath(a.targetTexturePath, "targetTexturePath") is object ttErr) return ttErr;
-                var rt = AssetDatabase.LoadAssetAtPath<RenderTexture>(a.targetTexturePath);
-                if (rt == null) return new { error = $"RenderTexture not found: {a.targetTexturePath}" };
-                settings.targetTexture = rt;
+                if (Validate.SafePath(a.targetTexturePath, "targetTexturePath") is object ttErr)
+                {
+                    error = ttErr;
+                    return false;
+                }
+                resolved.targetTexture = AssetDatabase.LoadAssetAtPath<RenderTexture>(a.targetTexturePath);
+                if (resolved.targetTexture == null)
+                {
+                    error = new { error = $"RenderTexture not found: {a.targetTexturePath}" };
+                    return false;
+                }
             }
 
-            // --- Numeric properties ---
+#if UNITY_6000_0_OR_NEWER
+            if (!SkillParamUtil.TryParseOptionalEnum<UnityEngine.UIElements.BindingLogLevel>(
+                    a.bindingLogLevel, "bindingLogLevel", out resolved.bindingLogLevel, out error))
+                return false;
+
+            // renderMode 与 colliderUpdateMode 是 internal 属性，只能经其序列化字段访问。
+            // 这些字段是否存在取决于 Unity 版本而非取值本身，所以在此处判定，不留到写入中途。
+            if (resolved.renderMode.HasValue || resolved.colliderUpdateMode.HasValue)
+            {
+                var probe = new SerializedObject(settings);
+                if (resolved.renderMode.HasValue && probe.FindProperty("m_RenderMode") == null)
+                {
+                    error = new { error = "Cannot set renderMode: PanelSettings has no serialized m_RenderMode field in this Unity version." };
+                    return false;
+                }
+                if (resolved.colliderUpdateMode.HasValue && probe.FindProperty("m_ColliderUpdateMode") == null)
+                {
+                    error = new { error = "Cannot set colliderUpdateMode: PanelSettings has no serialized m_ColliderUpdateMode field in this Unity version." };
+                    return false;
+                }
+            }
+#endif
+
+            return true;
+        }
+
+        /// <summary>
+        /// 调用方传了一个当前编辑器没有对应属性的参数。以 SEMANTIC_INVALID 报出并点名该参数，
+        /// 使修法明确为"去掉这一个参数"，而不是让人去猜。
+        /// </summary>
+        private static object UnsupportedInThisUnityVersion(string paramName, string minimumVersion)
+        {
+            return new
+            {
+                error = $"Invalid value for parameter '{paramName}': it requires {minimumVersion} or newer, " +
+                        $"and this editor is {Application.unityVersion}. Omit the parameter.",
+                errorCode = SkillParamUtil.SemanticInvalidCode,
+                parameter = paramName,
+            };
+        }
+
+        /// <summary>
+        /// PanelSettings 扩展属性的共用写入器（create 与 set 共用）。它写下的每个值都已由
+        /// <see cref="TryResolvePanelSettingsArgs"/> 校验过，而调用方必须在首次写入之前跑那个校验——
+        /// 这既是本方法不会失败的原因，也是本技能再不可能"报 error 而资产已改一半"的原因。
+        /// </summary>
+        private static void ApplyPanelSettings(PanelSettings settings, in PanelSettingsArgs a, in PanelSettingsResolved r)
+        {
+            // --- 资产引用 ---
+            if (r.textSettings != null)  settings.textSettings = r.textSettings;
+            if (r.targetTexture != null) settings.targetTexture = r.targetTexture;
+
+            // --- 数值属性 ---
             if (a.targetDisplay.HasValue)  settings.targetDisplay = a.targetDisplay.Value;
             if (a.sortOrder.HasValue)      settings.sortingOrder = a.sortOrder.Value;
             if (a.scale.HasValue)          settings.scale = a.scale.Value;
@@ -824,7 +1021,7 @@ namespace UnitySkills
                 rsppu?.SetValue(settings, a.referenceSpritePixelsPerUnit.Value);
             }
 
-            // --- Dynamic Atlas Settings (struct: read -> modify -> write back) ---
+            // --- 动态图集设置（结构体：读 -> 改 -> 写回） ---
             if (a.dynamicAtlasMinSize.HasValue || a.dynamicAtlasMaxSize.HasValue ||
                 a.dynamicAtlasMaxSubTextureSize.HasValue || !string.IsNullOrEmpty(a.dynamicAtlasFilters))
             {
@@ -832,11 +1029,11 @@ namespace UnitySkills
                 if (a.dynamicAtlasMinSize.HasValue)        atlas.minAtlasSize = a.dynamicAtlasMinSize.Value;
                 if (a.dynamicAtlasMaxSize.HasValue)        atlas.maxAtlasSize = a.dynamicAtlasMaxSize.Value;
                 if (a.dynamicAtlasMaxSubTextureSize.HasValue) atlas.maxSubTextureSize = a.dynamicAtlasMaxSubTextureSize.Value;
-                if (!string.IsNullOrEmpty(a.dynamicAtlasFilters)) atlas.activeFilters = ParseDynamicAtlasFilters(a.dynamicAtlasFilters);
+                if (!string.IsNullOrEmpty(a.dynamicAtlasFilters)) atlas.activeFilters = r.atlasFilters;
                 settings.dynamicAtlasSettings = atlas;
             }
 
-            // --- Color Clear ---
+            // --- 清屏颜色 ---
             if (a.clearColor.HasValue)        settings.clearColor = a.clearColor.Value;
             if (a.clearDepthStencil.HasValue) settings.clearDepthStencil = a.clearDepthStencil.Value;
 
@@ -847,39 +1044,23 @@ namespace UnitySkills
                     a.colorClearR ?? c.r, a.colorClearG ?? c.g, a.colorClearB ?? c.b, a.colorClearA ?? c.a);
             }
 
-            // --- Unity 6+ properties ---
+            // --- Unity 6+ 专属属性 ---
 #if UNITY_6000_0_OR_NEWER
             if (a.forceGammaRendering.HasValue) settings.forceGammaRendering = a.forceGammaRendering.Value;
-            if (!string.IsNullOrEmpty(a.bindingLogLevel) && System.Enum.TryParse<UnityEngine.UIElements.BindingLogLevel>(a.bindingLogLevel, true, out var parsedLogLevel))
-                settings.bindingLogLevel = parsedLogLevel;
+            if (r.bindingLogLevel.HasValue) settings.bindingLogLevel = r.bindingLogLevel.Value;
             if (a.vertexBudget.HasValue)     settings.vertexBudget = (uint)a.vertexBudget.Value;
 #if UNITY_6000_3_OR_NEWER
             if (a.textureSlotCount.HasValue) settings.textureSlotCount = (TextureSlotCount)a.textureSlotCount.Value;
 #endif
 
-            // renderMode, colliderUpdateMode, and colliderIsTrigger are internal; update them via SerializedObject.
+            // renderMode、colliderUpdateMode、colliderIsTrigger 都是 internal，需经 SerializedObject 更新。
             if (!string.IsNullOrEmpty(a.renderMode) || !string.IsNullOrEmpty(a.colliderUpdateMode) || a.colliderIsTrigger.HasValue)
             {
                 var so = new SerializedObject(settings);
-                if (!string.IsNullOrEmpty(a.renderMode))
-                {
-                    var prop = so.FindProperty("m_RenderMode");
-                    if (prop != null)
-                    {
-                        if (a.renderMode.Equals("ScreenSpaceOverlay", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 0;
-                        else if (a.renderMode.Equals("WorldSpace", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 1;
-                    }
-                }
-                if (!string.IsNullOrEmpty(a.colliderUpdateMode))
-                {
-                    var prop = so.FindProperty("m_ColliderUpdateMode");
-                    if (prop != null)
-                    {
-                        if (a.colliderUpdateMode.Equals("Match3DBoundingBox", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 0;
-                        else if (a.colliderUpdateMode.Equals("Match2DDocumentRect", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 1;
-                        else if (a.colliderUpdateMode.Equals("KeepExistingCollider", System.StringComparison.OrdinalIgnoreCase)) prop.intValue = 2;
-                    }
-                }
+                if (r.renderMode.HasValue)
+                    so.FindProperty("m_RenderMode").intValue = (int)r.renderMode.Value;
+                if (r.colliderUpdateMode.HasValue)
+                    so.FindProperty("m_ColliderUpdateMode").intValue = (int)r.colliderUpdateMode.Value;
                 if (a.colliderIsTrigger.HasValue)
                 {
                     var prop = so.FindProperty("m_ColliderIsTrigger");
@@ -888,11 +1069,9 @@ namespace UnitySkills
                 so.ApplyModifiedProperties();
             }
 #endif
-
-            return null; // success
         }
 
-        // ============================ PRIVATE HELPERS ============================
+        // ============================ 私有辅助 ============================
 
         private class UitkFileItem
         {
@@ -939,7 +1118,7 @@ namespace UnitySkills
             }
         }
 
-        // Default templates
+        // 默认模板
         private static string DefaultUss(string name) =>
 $@"/* {name} Stylesheet */
 :root {{
@@ -956,7 +1135,7 @@ $@"/* {name} Stylesheet */
             return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<engine:UXML xmlns:engine=\"UnityEngine.UIElements\">\n</engine:UXML>\n";
         }
 
-        // --- Menu ---
+        // --- 主菜单 ---
         private static string MenuUss(string n) =>
 $@"/* {n} Menu */
 :root {{ --bg: #1A1A2E; --btn-bg: #16213E; --btn-hover: #0F3460; --text: #E0E0E0; --accent: #E94560; }}
@@ -1003,7 +1182,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 </engine:UXML>
 ";
 
-        // --- Dialog ---
+        // --- 对话框 ---
         private static string DialogUss(string n) =>
 $@"/* {n} Dialog */
 .dialog-overlay {{ width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); align-items: center; justify-content: center; }}
@@ -1033,7 +1212,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 </engine:UXML>
 ";
 
-        // --- Settings ---
+        // --- 设置页 ---
         private static string SettingsUss(string n) =>
 $@"/* {n} Settings */
 .settings-root {{ width: 100%; height: 100%; background-color: #1E1E1E; padding: 24px; }}
@@ -1069,7 +1248,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 </engine:UXML>
 ";
 
-        // --- Inventory ---
+        // --- 背包 ---
         private static string InventoryUss(string n) =>
 $@"/* {n} Inventory */
 .inv-root {{ width: 100%; height: 100%; background-color: rgba(20,20,20,0.95); padding: 16px; }}
@@ -1103,7 +1282,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 </engine:UXML>
 ";
 
-        // --- List ---
+        // --- 列表 ---
         private static string ListUss(string n) =>
 $@"/* {n} List */
 .list-root {{ width: 100%; height: 100%; background-color: #1A1A1A; padding: 16px; }}
@@ -1129,7 +1308,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 </engine:UXML>
 ";
 
-        // --- Tab View ---
+        // --- 标签页 ---
         private static string TabViewUss(string n) =>
 $@"/* {n} Tab View */
 .tab-root {{ width: 100%; height: 100%; background-color: #1E1E1E; }}
@@ -1164,7 +1343,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 </engine:UXML>
 ";
 
-        // --- Toolbar ---
+        // --- 工具栏 ---
         private static string ToolbarUss(string n) =>
 $@"/* {n} Toolbar */
 .toolbar-root {{ width: 100%; flex-direction: row; background-color: #333; height: 40px; align-items: center; padding: 0 8px; border-bottom-width: 1px; border-color: #555; }}
@@ -1191,7 +1370,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 </engine:UXML>
 ";
 
-        // --- Card ---
+        // --- 卡片 ---
         private static string CardUss(string n) =>
 $@"/* {n} Card */
 .card-container {{ flex-direction: row; flex-wrap: wrap; padding: 16px; }}
@@ -1225,7 +1404,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 </engine:UXML>
 ";
 
-        // --- Notification ---
+        // --- 通知 ---
         private static string NotificationUss(string n) =>
 $@"/* {n} Notification */
 .notif-container {{ position: absolute; top: 16px; right: 16px; width: 320px; }}
@@ -1260,7 +1439,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
 </engine:UXML>
 ";
 
-        // ============================ UXML ELEMENT OPERATIONS ============================
+        // ============================ UXML 元素操作 ============================
 
         private static readonly XNamespace EngineNs = "UnityEngine.UIElements";
 
@@ -1269,7 +1448,8 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             Tags = new[] { "add", "uxml", "element", "visual-element" },
             Outputs = new[] { "path", "elementType", "elementName", "parentName" },
             RequiresInput = new[] { "filePath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object UitkAddElement(
             string filePath, string elementType, string parentName = null,
             string elementName = null, string text = null,
@@ -1319,7 +1499,8 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             Outputs = new[] { "path", "removedElement" },
             RequiresInput = new[] { "filePath", "elementName" },
             TracksWorkflow = true,
-            RiskLevel = "medium")]
+            RiskLevel = "medium",
+            MutatesAssets = true)]
         public static object UitkRemoveElement(string filePath, string elementName)
         {
             if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
@@ -1349,7 +1530,8 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             Tags = new[] { "modify", "uxml", "element", "attribute" },
             Outputs = new[] { "path", "element" },
             RequiresInput = new[] { "filePath", "elementName" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object UitkModifyElement(
             string filePath, string elementName,
             string text = null, string classes = null, string style = null,
@@ -1390,7 +1572,8 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             Tags = new[] { "clone", "uxml", "duplicate", "element" },
             Outputs = new[] { "path", "clonedFrom", "newName" },
             RequiresInput = new[] { "filePath", "elementName" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object UitkCloneElement(string filePath, string elementName, string newName = null)
         {
             if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
@@ -1419,14 +1602,15 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             return new { success = true, path = filePath, clonedFrom = elementName, newName = newName ?? "(copy)" };
         }
 
-        // ============================ USS OPERATIONS ============================
+        // ============================ USS 操作 ============================
 
         [UnitySkill("uitk_add_uss_rule", "Add or update a USS rule in a stylesheet file",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create | SkillOperation.Modify,
             Tags = new[] { "uss", "rule", "selector", "style" },
             Outputs = new[] { "path", "selector", "action" },
             RequiresInput = new[] { "filePath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object UitkAddUssRule(string filePath, string selector, string properties)
         {
             if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
@@ -1441,7 +1625,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             var content = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
             var normalizedSelector = selector.Trim();
 
-            // Try to find existing rule and replace it
+            // 先找现有规则，找到则替换
             var pattern = System.Text.RegularExpressions.Regex.Escape(normalizedSelector) + @"\s*\{[^}]*\}";
             var regex = new System.Text.RegularExpressions.Regex(pattern, System.Text.RegularExpressions.RegexOptions.None, System.TimeSpan.FromSeconds(1));
             var newRule = $"{normalizedSelector} {{\n{FormatUssProperties(properties)}\n}}";
@@ -1469,7 +1653,8 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             Outputs = new[] { "path", "removedSelector" },
             RequiresInput = new[] { "filePath", "selector" },
             TracksWorkflow = true,
-            RiskLevel = "medium")]
+            RiskLevel = "medium",
+            MutatesAssets = true)]
         public static object UitkRemoveUssRule(string filePath, string selector)
         {
             if (Validate.SafePath(filePath, "filePath") is object pathErr) return pathErr;
@@ -1525,7 +1710,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
                     variables.Add(new { name = varName, value = varValue });
             }
 
-            // Also find usages of var()
+            // 同时统计 var() 的引用处
             var usageRegex = new System.Text.RegularExpressions.Regex(
                 @"var\((--[\w-]+)\)",
                 System.Text.RegularExpressions.RegexOptions.None,
@@ -1543,13 +1728,15 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             };
         }
 
-        // ============================ CODE GENERATION ============================
+        // ============================ 代码生成 ============================
 
         [UnitySkill("uitk_create_editor_window", "Generate an EditorWindow C# script with UI Toolkit (CreateGUI + UXML/USS binding)",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
             Tags = new[] { "editor-window", "codegen", "script", "ui-toolkit" },
             Outputs = new[] { "path", "className", "windowTitle", "menuPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            MayTriggerReload = true)]
         public static object UitkCreateEditorWindow(
             string savePath, string className, string windowTitle = null,
             string uxmlPath = null, string ussPath = null,
@@ -1611,11 +1798,13 @@ public class {className} : EditorWindow
             return new { success = true, path = savePath, className, windowTitle = title, menuPath = menu };
         }
 
-        [UnitySkill("uitk_create_runtime_ui", "Generate a runtime MonoBehaviour script for UI Toolkit (UIDocument query & binding)",
+        [UnitySkill("uitk_create_runtime_ui", "Generate a runtime MonoBehaviour script for UI Toolkit (UIDocument query & binding). elementQueries: comma-separated \"Type:elementName\" pairs, e.g. \"Button:my-button,Label:score-label\" - the type comes first, since it becomes the generated field's C# type",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
             Tags = new[] { "runtime", "codegen", "monobehaviour", "ui-document" },
             Outputs = new[] { "path", "className" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            MayTriggerReload = true)]
         public static object UitkCreateRuntimeUi(
             string savePath, string className,
             string elementQueries = null)
@@ -1629,18 +1818,59 @@ public class {className} : EditorWindow
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            // Parse element queries: "Button:my-button,Label:score-label"
+            // 解析元素查询串："Button:my-button,Label:score-label"（格式为 Type:elementName——
+            // 类型在前，因为它会成为生成字段的 C# 类型）。
             var queryLines = new System.Text.StringBuilder();
             var fields = new System.Text.StringBuilder();
             if (!string.IsNullOrEmpty(elementQueries))
             {
                 foreach (var q in elementQueries.Split(','))
                 {
-                    var parts = q.Trim().Split(':');
-                    if (parts.Length != 2) continue;
+                    var token = q.Trim();
+                    if (token.Length == 0) continue;
+
+                    var parts = token.Split(':');
+                    if (parts.Length != 2)
+                    {
+                        // 此处过去只是 "continue"，把畸形记号从生成脚本里静默丢掉，且毫无出错提示。
+                        return new
+                        {
+                            error = $"Invalid elementQueries entry '{token}'. Each entry must be \"Type:elementName\" (e.g. \"Button:my-button\").",
+                            errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+                            parameter = "elementQueries"
+                        };
+                    }
+
                     var elType = parts[0].Trim();
                     var elName = parts[1].Trim();
+
+                    // 生成的脚本只 import UnityEngine 与 UnityEngine.UIElements，所以 elType 必须能在那里
+                    // 解析成真实的 VisualElement 派生类型——否则这里会静默产出编译失败（CS0246
+                    // "找不到类型或命名空间"）的 C#，错误出现在生成文件里，追不回引发它的那次
+                    // uitk_create_runtime_ui 调用（例如把类型与名字写反成 "my-button:Button"，
+                    // elType 就成了 "my-button" 这个根本不存在的类型）。
+                    if (ResolveVisualElementType(elType) == null)
+                    {
+                        return new
+                        {
+                            error = $"Unknown UI Toolkit element type '{elType}' in elementQueries entry '{token}'. Expected a VisualElement-derived type from UnityEngine.UIElements, e.g. Button, Label, TextField, Toggle, Slider, ScrollView, ListView, DropdownField.",
+                            errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+                            parameter = "elementQueries",
+                            validValues = new[] { "Button", "Label", "TextField", "Toggle", "Slider", "ScrollView", "ListView", "DropdownField", "Foldout", "VisualElement", "Image" }
+                        };
+                    }
+
                     var fieldName = "m_" + elName.Replace("-", "").Replace("_", "");
+                    if (!ValidIdentifierPattern.IsMatch(fieldName))
+                    {
+                        return new
+                        {
+                            error = $"elementQueries entry '{token}' produces an invalid C# field name ('{fieldName}'). elementName must start with a letter or underscore and contain only letters, digits, '-' or '_'.",
+                            errorCode = SkillErrorCode.SemanticInvalid.ToWireString(),
+                            parameter = "elementQueries"
+                        };
+                    }
+
                     fields.AppendLine($"    private {elType} {fieldName};");
                     queryLines.AppendLine($"        {fieldName} = root.Q<{elType}>(\"{elName}\");");
                 }
@@ -1680,7 +1910,7 @@ public class {className} : MonoBehaviour
             return new { success = true, path = savePath, className };
         }
 
-        // ============================ SCENE INSPECTION ============================
+        // ============================ 场景检视 ============================
 
         [UnitySkill("uitk_inspect_document", "Inspect the live VisualElement hierarchy of a UIDocument in the scene",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Query,
@@ -1715,7 +1945,7 @@ public class {className} : MonoBehaviour
             };
         }
 
-        // ============================ RUNTIME DATA BINDING (Unity 6000.0+) ============================
+        // ============================ 运行时数据绑定（Unity 6000.0+） ============================
 
         [UnitySkill("uitk_runtime_binding_add", "Add or update a runtime data binding on a UXML element (property + bindingMode; optional dataSource/dataSourcePath). Requires Unity 6000.0+",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create | SkillOperation.Modify,
@@ -1746,8 +1976,7 @@ public class {className} : MonoBehaviour
             if (!filePath.EndsWith(".uxml", System.StringComparison.OrdinalIgnoreCase))
                 return new { error = $"Runtime bindings can only be written into .uxml files, got: {filePath}" };
 
-            // BindingMode values are validated here because an unknown binding-mode makes the
-            // whole UXML asset fail to import.
+            // BindingMode 取值在此校验，因为未知的 binding-mode 会导致整个 UXML 资产导入失败。
             var validModes = new[] { "TwoWay", "ToSource", "ToTarget", "ToTargetOnce" };
             string mode = null;
             if (!string.IsNullOrEmpty(bindingMode))
@@ -1780,7 +2009,7 @@ public class {className} : MonoBehaviour
             if (dataSource != null) target.SetAttributeValue("data-source", dataSource);
             if (dataSourcePath != null) target.SetAttributeValue("data-source-path", dataSourcePath);
 
-            // <Bindings> is authored without a namespace prefix; the importer matches on local name.
+            // <Bindings> 书写时不带命名空间前缀；导入器按 local name 匹配。
             var bindings = target.Elements().FirstOrDefault(e => e.Name.LocalName == "Bindings");
             if (bindings == null)
             {
@@ -1883,7 +2112,7 @@ public class {className} : MonoBehaviour
             return new { path = filePath, count = elements.Count, elements };
         }
 
-        // ============================ UXML UPGRADE (Unity 6000.3+) ============================
+        // ============================ UXML 升级（Unity 6000.3+） ============================
 
         [UnitySkill("uitk_uxml_upgrade", "Run registered UXML upgraders over .uxml assets (filePath or folder; listOnly reports available upgraders without writing). Needs an editor that ships UxmlUpgradeService (Unity 6000.3+)",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Modify,
@@ -1899,8 +2128,8 @@ public class {className} : MonoBehaviour
             bool listOnly = false,
             int limit = 200)
         {
-            // UxmlUpgradeService is documented from 6000.3 on, but it is missing from some 6000.3
-            // builds, so the API is bound by reflection rather than by a compile-time reference.
+            // UxmlUpgradeService 文档上从 6000.3 起提供，但部分 6000.3 构建里并不存在，
+            // 所以这个 API 走反射绑定而非编译期引用。
             var serviceType = FindEditorUiType("UnityEditor.UIElements.UxmlUpgradeService");
             var upgraderType = FindEditorUiType("UnityEditor.UIElements.IUxmlUpgrader");
             if (serviceType == null || upgraderType == null)
@@ -1967,8 +2196,8 @@ public class {className} : MonoBehaviour
             foreach (var u in registered)
             {
                 var upgraderName = ReadUpgraderString(nameProp, u) ?? u.GetType().Name;
-                // A build without IsUpgraderEnabled cannot report the flag; treat those upgraders as
-                // enabled, which is what ApplyUpgrades will do with them anyway.
+                // 没有 IsUpgraderEnabled 的构建报不出这个标志；把这类 upgrader 视为已启用——
+                // 反正 ApplyUpgrades 对它们就是这么处理的。
                 bool enabled = isEnabledMethod == null
                     || (isEnabledMethod.Invoke(service, new[] { u }) is bool flag && flag);
                 if (enabled) enabledNames.Add(upgraderName);
@@ -2032,8 +2261,7 @@ public class {className} : MonoBehaviour
 
             AssetDatabase.SaveAssets();
 
-            // Report per-file whether the upgraders actually rewrote the .uxml source, rather than
-            // assuming they did.
+            // 逐文件上报 upgrader 是否真的改写了 .uxml 源文件，而不是假定它改了。
             int changedCount = 0;
             var results = new System.Collections.Generic.List<object>();
             foreach (var p in paths)
@@ -2056,7 +2284,7 @@ public class {className} : MonoBehaviour
             };
         }
 
-        // ============================ WORLD-SPACE PANELS (Unity 6000.2+) ============================
+        // ============================ 世界空间面板（Unity 6000.2+） ============================
 
         [UnitySkill("uitk_worldspace_panel_create", "Create a world-space UI Toolkit panel GameObject (PanelRenderer on Unity 6000.5+, world-space UIDocument on 6000.2-6000.4). Requires Unity 6000.2+",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create,
@@ -2122,9 +2350,9 @@ public class {className} : MonoBehaviour
                 return new { error = $"Failed to add {componentUsed} component to '{name}'" };
             }
 
-            // Property names are identical on PanelRenderer and UIDocument, but the enum types are
-            // not (UIDocument.WorldSpaceSizeMode is nested on 6000.2-6000.4, top-level on 6000.5),
-            // so every enum/asset assignment goes through reflection to stay version-agnostic.
+            // PanelRenderer 与 UIDocument 上的属性名相同，但枚举类型不同
+            // （UIDocument.WorldSpaceSizeMode 在 6000.2-6000.4 是嵌套类型，6000.5 变成顶层类型），
+            // 所以每次枚举/资产赋值都走反射以保持版本无关。
             if (vta != null) TrySetPanelProperty(panel, "visualTreeAsset", vta);
             if (ps != null) TrySetPanelProperty(panel, "panelSettings", ps);
 
@@ -2236,7 +2464,7 @@ public class {className} : MonoBehaviour
 #endif
         }
 
-        // ============================ AUTHORING IDS (VisualElementReference input) ============================
+        // ============================ authoring-id（VisualElementReference 输入） ============================
 
         [UnitySkill("uitk_element_reference_get", "List authoring-id values in a UXML file and resolve nested authoring-id paths through <Instance> templates (the path input for VisualElementReference on Unity 6000.5+)",
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Query,
@@ -2268,11 +2496,11 @@ public class {className} : MonoBehaviour
             };
         }
 
-        // ============================ PRIVATE UITK HELPERS ============================
+        // ============================ UITK 私有辅助 ============================
 
         /// <summary>
-        /// Structured refusal for APIs that only exist on newer editors, so the caller gets an
-        /// actionable response instead of a compile failure or a silent no-op.
+        /// 针对仅存在于较新编辑器的 API 给出结构化拒绝，使调用方拿到可行动的响应，
+        /// 而不是一次编译失败或一次静默空转。
         /// </summary>
         private static object RequiresUnity(string minVersion, string feature, string[] relatedSkills = null) => new
         {
@@ -2292,7 +2520,7 @@ public class {className} : MonoBehaviour
             currentUnityVersion = Application.unityVersion
         };
 
-        /// <summary>Parse a JSON object of extra XML attributes, rejecting names that are not valid XML.</summary>
+        /// <summary>解析附加 XML 属性的 JSON 对象，拒绝不是合法 XML 名称的键。</summary>
         private static System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, string>>
             ParseAttributeJson(string json, out string error)
         {
@@ -2324,10 +2552,34 @@ public class {className} : MonoBehaviour
             return result;
         }
 
+        private static readonly System.Text.RegularExpressions.Regex ValidIdentifierPattern =
+            new System.Text.RegularExpressions.Regex(@"^[A-Za-z_][A-Za-z0-9_]*$");
+
         /// <summary>
-        /// Resolve an editor UI Toolkit type by full name. These types have moved between
-        /// UnityEditor.dll and UnityEditor.UIElementsModule.dll across releases, so fall back to a
-        /// scan of the loaded assemblies before giving up.
+        /// 在 UnityEngine.UIElements 下解析运行时 UI Toolkit 元素类型名（如 "Button"、"TextField"）——
+        /// 那正是生成的运行时脚本实际 import 的命名空间。
+        /// 解析不到时回退到扫描已加载程序集，因为部分控件（ListView、TreeView 等）在不同 Unity 版本间
+        /// 换过所属程序集。名称解析不出 VisualElement 派生类型时返回 null。
+        /// </summary>
+        private static System.Type ResolveVisualElementType(string typeName)
+        {
+            if (string.IsNullOrEmpty(typeName)) return null;
+
+            var type = typeof(VisualElement).Assembly.GetType($"UnityEngine.UIElements.{typeName}");
+            if (type == null)
+            {
+                foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    type = asm.GetType($"UnityEngine.UIElements.{typeName}", false);
+                    if (type != null) break;
+                }
+            }
+            return type != null && typeof(VisualElement).IsAssignableFrom(type) ? type : null;
+        }
+
+        /// <summary>
+        /// 按全名解析编辑器侧 UI Toolkit 类型。这些类型在不同版本间曾在 UnityEditor.dll 与
+        /// UnityEditor.UIElementsModule.dll 之间搬迁，所以放弃前先回退扫描已加载程序集。
         /// </summary>
         private static System.Type FindEditorUiType(string fullName)
         {
@@ -2347,8 +2599,8 @@ public class {className} : MonoBehaviour
             => property != null && property.CanRead ? property.GetValue(upgrader) as string : null;
 
         /// <summary>
-        /// Structured refusal for the UXML upgrade API, which Unity documents from 6000.3 on but does
-        /// not ship in every 6000.3 build, so it can go missing on an editor that is new enough.
+        /// 针对 UXML 升级 API 的结构化拒绝：Unity 文档称它从 6000.3 起提供，但并非每个 6000.3 构建都带，
+        /// 所以在版本足够新的编辑器上它也可能缺失。
         /// </summary>
         private static object UxmlUpgradeUnavailable(string detail) => new
         {
@@ -2384,7 +2636,7 @@ public class {className} : MonoBehaviour
             return true;
         }
 
-        /// <summary>Set an enum-typed property by name. Returns null on success, or an error message.</summary>
+        /// <summary>按名称设置枚举类型的属性。成功返回 null，否则返回错误信息。</summary>
         private static string TrySetPanelEnum(object target, string propertyName, string value)
         {
             if (string.IsNullOrEmpty(value)) return null;
@@ -2402,7 +2654,7 @@ public class {className} : MonoBehaviour
             }
         }
 
-        /// <summary>Flip a PanelSettings asset to world-space render mode. Returns true if it changed.</summary>
+        /// <summary>把 PanelSettings 资产切到世界空间渲染模式。发生变更返回 true。</summary>
         private static bool TrySetWorldSpaceRenderMode(PanelSettings settings)
         {
             var so = new SerializedObject(settings);
@@ -2419,8 +2671,8 @@ public class {className} : MonoBehaviour
         }
 
         /// <summary>
-        /// Walk a UXML file collecting authoring-id values, descending into &lt;Instance&gt; nodes so
-        /// nested elements report their full authoring-id path.
+        /// 遍历 UXML 文件收集 authoring-id，并下钻进 &lt;Instance&gt; 节点，
+        /// 使嵌套元素能上报其完整的 authoring-id 路径。
         /// </summary>
         private static string CollectAuthoringIds(
             string uxmlPath,
@@ -2436,7 +2688,7 @@ public class {className} : MonoBehaviour
                 unresolved.Add(uxmlPath);
                 return null;
             }
-            if (!visiting.Add(uxmlPath)) return null; // template cycle
+            if (!visiting.Add(uxmlPath)) return null; // 模板循环引用
 
             try
             {
@@ -2451,7 +2703,7 @@ public class {className} : MonoBehaviour
                 }
                 if (xdoc.Root == null) return null;
 
-                // <Template name="X" src="..."/> declarations resolve <Instance template="X"/>.
+                // <Template name="X" src="..."/> 声明用于解析 <Instance template="X"/>。
                 var templates = new System.Collections.Generic.Dictionary<string, string>();
                 foreach (var t in xdoc.Root.DescendantsAndSelf().Where(e => e.Name.LocalName == "Template"))
                 {
@@ -2507,11 +2759,11 @@ public class {className} : MonoBehaviour
             return null;
         }
 
-        /// <summary>Resolve a UXML src attribute (relative or project path) to an asset path, or null.</summary>
+        /// <summary>把 UXML 的 src 属性（相对路径或项目路径）解析为资产路径，失败返回 null。</summary>
         private static string ResolveUxmlSrc(string src, string baseDir)
         {
             if (string.IsNullOrEmpty(src)) return null;
-            // project:// URIs carry a GUID; prefer that when present.
+            // project:// URI 里带 GUID，存在时优先用它。
             if (src.StartsWith("project://", System.StringComparison.OrdinalIgnoreCase))
             {
                 var guidMatch = System.Text.RegularExpressions.Regex.Match(src, @"guid=([0-9a-fA-F]{32})");

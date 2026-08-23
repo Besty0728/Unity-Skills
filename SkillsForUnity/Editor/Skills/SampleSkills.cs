@@ -1,12 +1,11 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnitySkills.Internal;
 
 namespace UnitySkills
 {
     /// <summary>
-    /// Sample/convenience skills - simplified API for common operations.
-    /// For full-featured equivalents, see GameObjectSkills and SceneSkills.
+    /// 示例/便捷技能：常用操作的简化 API。完整功能见 GameObjectSkills 与 SceneSkills。
     /// </summary>
     public static class SampleSkills
     {
@@ -118,6 +117,11 @@ namespace UnitySkills
             Category = SkillCategory.Sample, Operation = SkillOperation.Query,
             Tags = new[] { "find", "search", "name", "quick" },
             Outputs = new[] { "query", "count", "objects" },
+            // 这里写的是 "A 或 B" 记号而非单个参数名：`name` 是 `nameContains` 的合法别名
+            // （见下方的合并逻辑），硬性要求其中任一个都会拒掉本 skill 完全能处理的请求体。
+            // SkillPlanningService._requiredInputGroups 把该记号映射为 {nameContains, name}，
+            // 于是空请求体会以 "Provide one of: nameContains, name" 被拒，而不是执行到 Validate.Required。
+            RequiresInput = new[] { "nameContains|name" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object FindObjectsByName(string nameContains = null, string name = null)

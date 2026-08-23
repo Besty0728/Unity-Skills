@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,9 +12,8 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// PrimeTween Free diagnostics, API discovery, and runtime-script generation.
-    /// All PrimeTween access is reflective so UnitySkills continues to compile
-    /// when the optional package is not installed.
+    /// PrimeTween Free 的诊断、API 探测与运行时脚本生成。
+    /// 所有对 PrimeTween 的访问都走反射，以保证该可选包未安装时 UnitySkills 仍能编译。
     /// </summary>
     public static class PrimeTweenSkills
     {
@@ -377,6 +376,28 @@ namespace UnitySkills
                 return enumValue.ToString();
             }
 
+            // 较新的 PrimeTween 把 UpdateType 改成了 struct，上面的 enum 分支不再命中——
+            // 匿名对象序列化器在没有公开属性的 struct 上无字段可遍历，会静默输出 "{}"。
+            // 因此值类型一律降级为 ToString()；引用类型仍原样透传，因为它的 ToString()
+            // 不保证是有意义的表示。
+            if (value is ValueType && !(value is string) && !value.GetType().IsPrimitive)
+            {
+                var type = value.GetType();
+                var text = value.ToString();
+                if (text != type.ToString())
+                {
+                    return text;
+                }
+
+                // ValueType.ToString() 的默认实现只给出类型名，状态不可见。
+                // PrimeTween 的 UpdateType 把真实值存在内部 enum 字段（enumValue）里，
+                // 因此对这类"伪枚举" struct 拆到该字段的名字。
+                var enumField = type
+                    .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .FirstOrDefault(field => field.FieldType.IsEnum);
+                return enumField != null ? enumField.GetValue(value).ToString() : text;
+            }
+
             return value;
         }
 
@@ -722,3 +743,5 @@ namespace UnitySkills
         }
     }
 }
+
+// Producer:Betsy

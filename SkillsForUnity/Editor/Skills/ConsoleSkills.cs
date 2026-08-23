@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,7 +7,7 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// Console and debug skills.
+    /// Console 面板相关技能：日志读取 / 捕获 / 导出与控制台开关。
     /// </summary>
     public static class ConsoleSkills
     {
@@ -15,14 +15,14 @@ namespace UnitySkills
         private static readonly object _logLock = new object();
         private static bool _capturing;
 
-        // Console flag bit masks (match Unity's internal ConsoleWindow flags).
+        // 控制台标志位掩码，取值与 Unity 内部 ConsoleWindow 的 flags 保持一致。
         private const int FlagClearOnPlay = 16;
         private const int FlagCollapse = 32;
         private const int FlagErrorPause = 256;
 
         /// <summary>
-        /// Registers setting getters/setters so console flag changes are truly reversible
-        /// via the workflow undo/redo system. Runs on domain load.
+        /// 注册设置项的读写器，使控制台标志的改动能真正通过工作流 undo/redo 回滚。
+        /// 在域加载时执行。
         /// </summary>
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
@@ -41,8 +41,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Reads the current state of a console flag, mirroring the write path's primary source
-        /// (the ConsoleWindow s_ConsoleFlags field), with an EditorPrefs fallback.
+        /// 读取某个控制台标志的当前状态。数据源与写入路径保持一致
+        /// （ConsoleWindow 的 s_ConsoleFlags 字段），取不到时退回 EditorPrefs。
         /// </summary>
         private static bool GetConsoleFlagValue(int flag, string prefFallbackKey)
         {
@@ -105,7 +105,7 @@ namespace UnitySkills
         {
             if (_capturing)
             {
-                // Capture mode: return buffered logs with timestamps
+                // 捕获模式：返回缓冲区里带时间戳的日志。
                 lock (_logLock)
                 {
                     IEnumerable<LogEntry> results = _logs;
@@ -124,7 +124,7 @@ namespace UnitySkills
                 }
             }
 
-            // Direct mode: read existing entries from Unity Console via LogEntries reflection
+            // 直读模式：通过反射 LogEntries 读取 Unity Console 里已有的条目。
             int targetMask = 0;
             if (type == "All" || type.Contains("Error"))   targetMask |= DebugSkills.ErrorModeMask;
             if (type == "All" || type.Contains("Warning")) targetMask |= DebugSkills.WarningModeMask;
@@ -164,10 +164,12 @@ namespace UnitySkills
         [UnitySkill("console_log", "Write a message to the console",
             Category = SkillCategory.Console, Operation = SkillOperation.Execute,
             Tags = new[] { "console", "log", "debug", "message" },
-            Outputs = new[] { "logged" })]
+            Outputs = new[] { "logged", "warning" })]
         public static object ConsoleLog(string message, string type = "log")
         {
-            switch (type.ToLower())
+            string normalized = type?.ToLower() ?? "log";
+            string warning = null;
+            switch (normalized)
             {
                 case "warning":
                     Debug.LogWarning(message);
@@ -175,11 +177,17 @@ namespace UnitySkills
                 case "error":
                     Debug.LogError(message);
                     break;
+                case "log":
+                    Debug.Log(message);
+                    break;
                 default:
+                    // 无法识别的 type（如 "Fatal"）仍按 Log 尽力写出，但必须回一条 warning：
+                    // 静默降级会把拼错或凭空编造的取值瞒下来，让调用方以为 type 生效了。
+                    warning = $"Unrecognized type '{type}'; valid values are Log, Warning, Error. Logged as Log.";
                     Debug.Log(message);
                     break;
             }
-            return new { success = true, logged = message };
+            return new { success = true, logged = message, warning };
         }
 
         private static void OnLogMessage(string message, string stackTrace, LogType type)
@@ -194,7 +202,7 @@ namespace UnitySkills
                     time = System.DateTime.Now
                 });
 
-                // Keep only last 1000 entries
+                // 只保留最近 1000 条。
                 if (_logs.Count > 1000)
                     _logs.RemoveAt(0);
             }
@@ -231,7 +239,11 @@ namespace UnitySkills
             var dir = System.IO.Path.GetDirectoryName(savePath);
             if (!string.IsNullOrEmpty(dir) && !System.IO.Directory.Exists(dir)) System.IO.Directory.CreateDirectory(dir);
 
-            if (_capturing || _logs.Count > 0)
+            // 只有 capture 分支读 _logs，因此判据必须只看 _capturing。
+            // console_stop_capture 之后 _logs 仍保留上一轮捕获的条目（有意如此，
+            // 这样 console_get_logs 那条同样受 _capturing 把关的分支也看不到它们），
+            // 若这里改判 _logs.Count > 0，就会永远导出那份过期快照。
+            if (_capturing)
             {
                 lock (_logLock)
                 {
@@ -241,7 +253,7 @@ namespace UnitySkills
                 }
             }
 
-            // Direct mode: read from Unity Console when no capture buffer is available
+            // 直读模式：没有捕获缓冲时直接读 Unity Console。
             int allMask = DebugSkills.ErrorModeMask | DebugSkills.WarningModeMask | DebugSkills.LogModeMask;
             var entries = DebugSkills.ReadLogEntries(allMask, null, 1000);
             var directLines = entries.Select(e => { dynamic d = e; return $"[{d.type}] {d.message}"; });
@@ -257,7 +269,9 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object ConsoleGetStats()
         {
-            if (_capturing || _logs.Count > 0)
+            // 同 console_export 的规则：捕获停止后 _logs 只是残留快照，
+            // 判据必须只看 _capturing，否则会一直报 "source: capture"。
+            if (_capturing)
             {
                 lock (_logLock)
                 {
@@ -273,7 +287,7 @@ namespace UnitySkills
                 }
             }
 
-            // Direct mode: read from Unity Console
+            // 直读模式：直接读 Unity Console。
             int allMask = DebugSkills.ErrorModeMask | DebugSkills.WarningModeMask | DebugSkills.LogModeMask;
             var entries = DebugSkills.ReadLogEntries(allMask, null, 10000);
             int errCount = 0, warnCount = 0, logCount = 0;
@@ -322,7 +336,7 @@ namespace UnitySkills
             var consoleType = System.Type.GetType("UnityEditor.ConsoleWindow, UnityEditor");
             if (consoleType == null) return new { error = "ConsoleWindow not found" };
 
-            // Unity 6+: try SetConsoleFlag method
+            // Unity 6+：优先走 ConsoleWindow.SetConsoleFlag 方法。
             var setFlagMethod = consoleType.GetMethod("SetConsoleFlag", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
             if (setFlagMethod != null)
             {
@@ -330,7 +344,7 @@ namespace UnitySkills
                 catch { /* fall through */ }
             }
 
-            // Legacy: try s_ConsoleFlags field
+            // 旧版本：直接改 s_ConsoleFlags 字段。
             var flagField = consoleType.GetField("s_ConsoleFlags", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
             if (flagField != null)
             {
@@ -340,7 +354,7 @@ namespace UnitySkills
                 return new { success = true, setting = name, enabled };
             }
 
-            // Fallback: LogEntries API
+            // 再退一步：LogEntries API。
             var logEntriesType = System.Type.GetType("UnityEditor.LogEntries, UnityEditor");
             if (logEntriesType != null)
             {
@@ -352,7 +366,7 @@ namespace UnitySkills
                 }
             }
 
-            // Final fallback: EditorPrefs
+            // 最后兜底：只写 EditorPrefs。
             EditorPrefs.SetBool("UnitySkills_Console_" + name, enabled);
             return new { success = true, setting = name, enabled, note = "Set via EditorPrefs fallback" };
         }

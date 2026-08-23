@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System;
 using System.Linq;
@@ -17,20 +17,19 @@ using Unity.Netcode.Transports.UTP;
 namespace UnitySkills
 {
     /// <summary>
-    /// Netcode for GameObjects skills — NetworkManager setup, NetworkObject/NetworkTransform
-    /// management, prefab list registration, host/server/client runtime control.
+    /// Netcode for GameObjects 技能：NetworkManager 配置、NetworkObject/NetworkTransform 管理、
+    /// prefab 列表注册、host/server/client 运行时控制。
     ///
-    /// Requires com.unity.netcode.gameobjects (2.x). Gracefully degrades when the package is not
-    /// installed (each skill returns a clear NoNetcode() error).
+    /// 依赖 com.unity.netcode.gameobjects（2.x）。未安装该包时优雅降级（每个 skill 返回明确的
+    /// NoNetcode() 错误）。
     ///
-    /// All API calls are anchored to NGO 2.x source (see netcode-design advisory module for the
-    /// contract: lifecycle, ownership, RPC, variables, spawning, scene, transport, pitfalls).
+    /// 所有 API 调用均以 NGO 2.x 源码为准（契约详见 netcode-design advisory 模块：生命周期、
+    /// ownership、RPC、变量、spawn、场景、transport、陷阱）。
     ///
-    /// NGO 2.5+ features (AttachableBehaviour / AttachableNode / ComponentController) are outside
-    /// the versionDefine range this file compiles against (NETCODE_GAMEOBJECTS covers all of
-    /// [2.0,3.0)), so those types are never referenced at compile time. Presence is probed at
-    /// runtime via reflection instead (see Has25Features()/ResolveXxxType() below) — the same
-    /// optional-sub-feature pattern used by DOTweenReflectionHelper for DOTween Pro.
+    /// NGO 2.5+ 的特性（AttachableBehaviour / AttachableNode / ComponentController）落在本文件
+    /// 编译所依据的 versionDefine 范围之外（NETCODE_GAMEOBJECTS 覆盖整个 [2.0,3.0)），
+    /// 因此这些类型在编译期一律不引用，改为运行时反射探测（见下方 Has25Features()/ResolveXxxType()）——
+    /// 与 DOTweenReflectionHelper 处理 DOTween Pro 独有特性所用的可选子特性模式相同。
     /// </summary>
     public static class NetcodeSkills
     {
@@ -43,7 +42,7 @@ namespace UnitySkills
 #endif
 
         // ==================================================================================
-        // 1. Setup & Validation (5 skills)
+        // 1. 配置与校验（5 个 skill）
         // ==================================================================================
 
         [UnitySkill("netcode_check_setup",
@@ -97,10 +96,6 @@ namespace UnitySkills
                         issues.Add($"PlayerPrefab '{pp.name}' not found in any assigned NetworkPrefabsList.");
                 }
 
-                // Scene-placed NetworkObjects (not yet spawned in edit mode)
-                var netObjects = FindHelper.FindAll<NetworkObject>(includeInactive: true);
-                info["scenePlacedNetworkObjects"] = netObjects.Length;
-
                 if (Application.isPlaying)
                 {
                     info["isListening"] = nm.IsListening;
@@ -109,6 +104,14 @@ namespace UnitySkills
                     info["isClient"] = nm.IsClient;
                 }
             }
+
+            // 场景中摆放的 NetworkObject（编辑模式下尚未 spawn）可以在场景里完全没有 NetworkManager
+            // 的情况下存在——例如在添加 NetworkManager 之前就拖入的 prefab 实例。因此这段不能放进
+            // 上面的 managers.Length > 0 分支：那样零 NetworkManager 的场景会静默丢掉计数而不上报
+            //（netcode_list_network_objects 用的是同一个 includeInactive:true 调用，
+            // 与 NetworkManager 是否存在无关都能找到它们）。
+            var netObjects = FindHelper.FindAll<NetworkObject>(includeInactive: true);
+            info["scenePlacedNetworkObjects"] = netObjects.Length;
 
             info["issueCount"] = issues.Count;
             info["issues"] = issues;
@@ -318,7 +321,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 2. Transport Configuration (4 skills)
+        // 2. Transport 配置（4 个 skill）
         // ==================================================================================
 
         [UnitySkill("netcode_set_transport_address",
@@ -448,10 +451,10 @@ namespace UnitySkills
         }
 
         [UnitySkill("netcode_get_transport_info",
-            "Read current UnityTransport connection data and type",
+            "Read current UnityTransport connection data and type. When protocol is RelayUnityTransport (set via netcode_set_relay_server_data), address/port/serverListenAddress are omitted rather than shown, because UnityTransport keeps the active relay allocation in a private field with no public getter — those fields would otherwise still show the stale direct-connect values.",
             Category = SkillCategory.Netcode, Operation = SkillOperation.Query,
-            Tags = new[] { "netcode", "ngo", "transport", "info" },
-            Outputs = new[] { "found", "type", "address", "port", "serverListenAddress" },
+            Tags = new[] { "netcode", "ngo", "transport", "info", "relay" },
+            Outputs = new[] { "found", "type", "isUnityTransport", "protocol", "address", "port", "serverListenAddress", "note" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object GetTransportInfo(string name = null)
@@ -469,11 +472,32 @@ namespace UnitySkills
             {
                 return new { found = true, type = transport.GetType().Name, isUnityTransport = false };
             }
+
+            bool relayActive = utp.Protocol == UnityTransport.ProtocolType.RelayUnityTransport;
+            if (relayActive)
+            {
+                // ConnectionData.Address/Port 是直连字段，SetRelayServerData 从不碰它们；
+                // 切到 Relay 后它们仍保留之前配置的直连值（或 UnityTransport 默认值）——
+                // 在此上报会被读成"当前连接"，而它们既不当前也未被使用。
+                return new
+                {
+                    found = true,
+                    type = nameof(UnityTransport),
+                    isUnityTransport = true,
+                    protocol = utp.Protocol.ToString(),
+                    address = (string)null,
+                    port = (int?)null,
+                    serverListenAddress = (string)null,
+                    note = "Protocol is RelayUnityTransport (set via netcode_set_relay_server_data); the direct-connect address/port are not used and UnityTransport exposes no public getter for the active relay allocation, so they are omitted rather than shown stale."
+                };
+            }
+
             return new
             {
                 found = true,
                 type = nameof(UnityTransport),
                 isUnityTransport = true,
+                protocol = utp.Protocol.ToString(),
                 address = utp.ConnectionData.Address,
                 port = (int)utp.ConnectionData.Port,
                 serverListenAddress = utp.ConnectionData.ServerListenAddress
@@ -482,7 +506,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 3. NetworkObject Management (5 skills)
+        // 3. NetworkObject 管理（5 个 skill）
         // ==================================================================================
 
         [UnitySkill("netcode_add_network_object",
@@ -639,6 +663,10 @@ namespace UnitySkills
             Category = SkillCategory.Netcode, Operation = SkillOperation.Query,
             Tags = new[] { "netcode", "ngo", "networkobject", "info" },
             Outputs = new[] { "found", "networkObjectId", "ownerClientId", "isSpawned", "isPlayerObject" },
+            // 每个定位参数单独看都是可选的，空请求体会一路走到 GameObjectFinder 并返回
+            // "GameObject not found."——把"从未指定目标"报成了查找失败。
+            // 用分组记号才能在前置阶段直接说清"你没有指定任何对象"。
+            RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object GetNetworkObjectInfo(string name = null, int instanceId = 0, string path = null)
@@ -676,7 +704,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 4. NetworkPrefabsList (5 skills)
+        // 4. NetworkPrefabsList（5 个 skill）
         // ==================================================================================
 
         [UnitySkill("netcode_create_prefabs_list",
@@ -824,6 +852,10 @@ namespace UnitySkills
             Category = SkillCategory.Netcode, Operation = SkillOperation.Query,
             Tags = new[] { "netcode", "ngo", "prefabs", "list" },
             Outputs = new[] { "count", "entries" },
+            // 这不是测试夹具缺失：listPath 缺省时下面的加载会去取路径 "" 的资产，
+            // 答复 "NetworkPrefabsList not found at ."，读起来像资产不存在而不是参数缺失。
+            // listPath 是没有 CLR 默认值的引用类型，schema 不会自动把它标为 required。
+            RequiresInput = new[] { "listPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object ListNetworkPrefabs(string listPath)
@@ -905,7 +937,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 5. Components (6 skills)
+        // 5. 组件（6 个 skill）
         // ==================================================================================
 
         [UnitySkill("netcode_add_network_transform",
@@ -1254,7 +1286,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 6. Scene & Spawning query (3 skills)
+        // 6. 场景与 spawn 查询（3 个 skill）
         // ==================================================================================
 
         [UnitySkill("netcode_configure_scene_management",
@@ -1374,7 +1406,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 7. Runtime Control (5 skills; all MayEnterPlayMode)
+        // 7. 运行时控制（5 个 skill，均标 MayEnterPlayMode）
         // ==================================================================================
 
         [UnitySkill("netcode_start_host",
@@ -1494,7 +1526,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 8. NGO 2.5+ Features — Attachable / ComponentController (6 skills)
+        // 8. NGO 2.5+ 特性 —— Attachable / ComponentController（6 个 skill）
         // ==================================================================================
 
         [UnitySkill("netcode_version",
@@ -1667,11 +1699,10 @@ namespace UnitySkills
             object parsedAutoDetach = null;
             if (!string.IsNullOrEmpty(autoDetach))
             {
-                // NGO declares AutoDetachTypes as [Flags] but gives its members the implicit
-                // sequential values 0,1,2,3 instead of powers of two. Combining therefore collides:
-                // OnOwnershipChange|OnDespawn == 1|2 == 3 == OnAttachNodeDestroy, so a comma list
-                // silently writes an unrelated member. Reject it rather than corrupting the field —
-                // one flag per call is the only shape that round-trips on this enum.
+                // NGO 把 AutoDetachTypes 声明为 [Flags]，但成员取的是隐式连续值 0,1,2,3 而非 2 的幂，
+                // 因此组合会撞车：OnOwnershipChange|OnDespawn == 1|2 == 3 == OnAttachNodeDestroy，
+                // 逗号列表会静默写入一个毫不相干的成员。宁可拒绝也不能污染字段——
+                // 在这个枚举上，每次只传一个 flag 是唯一能往返的形态。
                 if (autoDetach.IndexOf(',') >= 0)
                 {
                     return new
@@ -1831,9 +1862,8 @@ namespace UnitySkills
             if (comp == null)
                 return new { error = $"'{go.name}' has no ComponentController. Use netcode_component_controller_add first." };
 
-            // `Components` is `internal [SerializeField] List<ComponentEntry>` inside ComponentController
-            // (verified against NGO source, PR #3518) — not part of the public API, so every access
-            // below goes through reflection rather than a compile-time reference.
+            // `Components` 在 ComponentController 内部是 `internal [SerializeField] List<ComponentEntry>`
+            //（对照 NGO 源码 PR #3518 核实过），不属于公开 API，因此下面每次访问都走反射而非编译期引用。
             var componentsField = ccType.GetField("Components", BindingFlags.NonPublic | BindingFlags.Instance);
             var entryType = ccType.GetNestedType("ComponentEntry", BindingFlags.NonPublic);
             if (componentsField == null || entryType == null)
@@ -1841,8 +1871,8 @@ namespace UnitySkills
 
             try
             {
-                // Record before any reflection mutation below (list contents + StartEnabled), matching
-                // the Undo.RecordObject-before-write convention used by every other netcode_configure_* skill.
+                // 必须在下面任何反射改动（列表内容 + StartEnabled）之前记录，
+                // 与其余所有 netcode_configure_* skill 的"先 Undo.RecordObject 再写"约定一致。
                 Undo.RecordObject(comp, "Configure ComponentController");
 
                 var currentList = componentsField.GetValue(comp) as IList;
@@ -1875,10 +1905,9 @@ namespace UnitySkills
                 if (startEnabled.HasValue)
                     startEnabledField.SetValue(comp, startEnabled.Value);
 
-                // Mirror the Inspector's own drag-and-drop expansion: OnValidate() strips whole-GameObject
-                // entries and replaces them with every eligible child component, skipping
-                // NetworkBehaviour/NetworkObject/NetworkManager. Invoking it here keeps this skill's
-                // result identical to what a human would get dragging the same GameObjects onto the field.
+                // 复现 Inspector 自身的拖放展开逻辑：OnValidate() 会剔除整 GameObject 条目，
+                // 换成其下所有符合条件的子组件，并跳过 NetworkBehaviour/NetworkObject/NetworkManager。
+                // 在此主动调用，可让本 skill 的结果与人工把同样的 GameObject 拖到该字段上完全一致。
                 var onValidate = ccType.GetMethod("OnValidate", BindingFlags.NonPublic | BindingFlags.Instance);
                 try { onValidate?.Invoke(comp, null); }
                 catch (Exception ex) { SkillsLogger.LogWarning($"[netcode_component_controller_configure] OnValidate reflection call failed: {ex.Message}"); }
@@ -1922,7 +1951,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Internal helpers
+        // 内部辅助
         // ==================================================================================
 
 #if NETCODE_GAMEOBJECTS
@@ -1935,14 +1964,13 @@ namespace UnitySkills
                 ?? all.FirstOrDefault(n => string.Equals(n.gameObject.name, name, StringComparison.OrdinalIgnoreCase));
         }
 
-        // ---- NGO 2.5+ reflection gate (AttachableBehaviour / AttachableNode / ComponentController) ----
-        // These types live inside the same [2.0,3.0) versionDefine window as the rest of the file
-        // (NETCODE_GAMEOBJECTS), so there is no dedicated compile-time symbol for "2.5+" to branch
-        // on without editing the asmdef's versionDefines. Detecting them by type-name lookup instead
-        // means every skill above degrades to No25Features() on NGO 2.0–2.4.x instead of failing to
-        // compile — the same tradeoff DOTweenReflectionHelper makes for DOTween Pro-only features.
+        // ---- NGO 2.5+ 反射闸门（AttachableBehaviour / AttachableNode / ComponentController）----
+        // 这些类型与本文件其余部分处在同一个 [2.0,3.0) versionDefine 窗口内（NETCODE_GAMEOBJECTS），
+        // 不改 asmdef 的 versionDefines 就没有专属于 "2.5+" 的编译期符号可供分支。改用按类型名查找，
+        // 于是上面所有 skill 在 NGO 2.0–2.4.x 上降级为 No25Features() 而不是编译失败——
+        // 与 DOTweenReflectionHelper 对 DOTween Pro 独有特性所做的取舍相同。
         private const string AttachableBehaviourTypeName = "Unity.Netcode.Components.AttachableBehaviour";
-        private const string AttachableNodeTypeName = "AttachableNode"; // NGO ships this one in the global namespace
+        private const string AttachableNodeTypeName = "AttachableNode"; // 这个类型 NGO 放在全局命名空间
         private const string ComponentControllerTypeName = "Unity.Netcode.Components.ComponentController";
 
         private static Type ResolveAttachableBehaviourType() => SkillsCommon.FindTypeByName(AttachableBehaviourTypeName);
@@ -1969,12 +1997,12 @@ namespace UnitySkills
                 if (member is FieldInfo f) return f.GetValue(instance);
                 if (member is PropertyInfo p) return p.GetValue(instance);
             }
-            catch { /* tolerate cross-version layout drift */ }
+            catch { /* 容忍跨版本的字段布局漂移 */ }
             return null;
         }
 #endif
 
-        /// <summary>Strips a pre-release/build suffix (e.g. "2.5.0-pre.1" -&gt; "2.5.0") so System.Version can parse it.</summary>
+        /// <summary>剥掉预发布/构建后缀（如 "2.5.0-pre.1" -&gt; "2.5.0"），使 System.Version 能够解析。</summary>
         private static string StripPrereleaseSuffix(string version)
         {
             if (string.IsNullOrEmpty(version)) return null;

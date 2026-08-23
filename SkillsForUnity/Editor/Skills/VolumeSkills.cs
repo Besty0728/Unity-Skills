@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -11,7 +11,7 @@ using UnityEngine.Rendering;
 namespace UnitySkills
 {
     /// <summary>
-    /// Shared SRP volume framework skills.
+    /// SRP 通用 Volume 框架相关技能。
     /// </summary>
     public static class VolumeSkills
     {
@@ -70,7 +70,7 @@ namespace UnitySkills
             Outputs = new[] { "componentType", "parameterName", "value" })]
         public static object VolumeSetParameter(string profilePath, string componentType, string parameterName, object value, bool? overrideState = true) => RenderPipelineSkillsCommon.NoSRP();
 
-        [UnitySkill("volume_set_parameter_batch", "Set multiple parameters on a single VolumeComponent override",
+        [UnitySkill("volume_set_parameter_batch", "Set multiple parameters on a single VolumeComponent override. items: JSON array of {parameterName, value, overrideState}",
             Category = SkillCategory.Volume, Operation = SkillOperation.Modify,
             Tags = new[] { "volume", "component", "parameter", "batch" },
             Outputs = new[] { "successCount", "failCount", "results" })]
@@ -369,7 +369,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("volume_set_parameter_batch", "Set multiple parameters on a single VolumeComponent override",
+        [UnitySkill("volume_set_parameter_batch", "Set multiple parameters on a single VolumeComponent override. items: JSON array of {parameterName, value, overrideState}",
             Category = SkillCategory.Volume, Operation = SkillOperation.Modify,
             Tags = new[] { "volume", "component", "parameter", "batch" },
             Outputs = new[] { "successCount", "failCount", "results" },

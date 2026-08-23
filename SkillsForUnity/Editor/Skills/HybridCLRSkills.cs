@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnityEditorInternal;
 using System;
@@ -12,19 +12,17 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// HybridCLR (com.code-philosophy.hybridclr) Editor skills — C# hot-update prebuild
-    /// orchestration: settings read/write, il2cpp_plus install probing, hot-update assembly
-    /// compilation, and generation-pipeline execution.
+    /// HybridCLR（com.code-philosophy.hybridclr）编辑器技能：C# 热更新的预构建编排——
+    /// 设置读写、il2cpp_plus 安装探测、热更程序集编译、生成管线执行。
     ///
-    /// The package is optional and this module keeps ZERO direct references to it: every call
-    /// resolves through reflection against the `HybridCLR.Editor` assembly, so the UnitySkills
-    /// Editor assembly compiles identically with or without HybridCLR present. `hybridclr_status`
-    /// works either way; every other skill returns <see cref="NoHybridCLR"/> when the package
-    /// is missing.
+    /// 该包是可选的，本模块对它保持零直接引用：所有调用都通过反射访问 HybridCLR.Editor
+    /// 程序集，因此无论是否安装 HybridCLR，UnitySkills 编辑器程序集都能同样编译通过。
+    /// hybridclr_status 两种情况下都可用；其余技能在缺包时一律返回
+    /// <see cref="NoHybridCLR"/>。
     ///
-    /// API anchors follow hybridclr_unity 8.12.0 Editor source (HybridCLR.Editor.SettingsUtil,
-    /// HybridCLR.Editor.Settings.HybridCLRSettings, HybridCLR.Editor.Commands.*,
-    /// HybridCLR.Editor.Installer.InstallerController).
+    /// 反射用到的 API 以 hybridclr_unity 8.12.0 编辑器源码为准
+    /// (HybridCLR.Editor.SettingsUtil、HybridCLR.Editor.Settings.HybridCLRSettings、
+    ///  HybridCLR.Editor.Commands.*、HybridCLR.Editor.Installer.InstallerController)。
     /// </summary>
     public static class HybridCLRSkills
     {
@@ -36,12 +34,12 @@ namespace UnitySkills
         private const string GeneratedSourcesKey = "hybridclr.generatedSources";
         private const string FileSetKey = "hybridclr.fileSet";
 
-        // Backups written by hybridclr_compile_dlls / hybridclr_copy_hotupdate_dlls live outside the
-        // workflow blob store, so nothing prunes them for us. Keep a bounded ring per label.
+        // hybridclr_compile_dlls / hybridclr_copy_hotupdate_dlls 写出的备份不在工作流 blob 库内，
+        // 没人替我们清理，所以按 label 各留一个有界环形队列。
         private const int MaxBackupGenerations = 5;
 
         // ==================================================================================
-        // Reflection layer — resolves HybridCLR.Editor lazily, never links against it.
+        // 反射层 —— 惰性解析 HybridCLR.Editor，绝不与之静态链接。
         // ==================================================================================
 
         private static Assembly _editorAssembly;
@@ -101,7 +99,7 @@ namespace UnitySkills
             docs = DocsUrl
         };
 
-        /// <summary>Reads a public static property off a HybridCLR type; returns null on any failure.</summary>
+        /// <summary>读取 HybridCLR 某个类型上的 public static 属性；任何失败都返回 null。</summary>
         private static object StaticProp(Type type, string name)
         {
             try
@@ -129,8 +127,8 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                // SettingsUtil.HotUpdateAssemblyNamesIncludePreserved throws on duplicate preserved
-                // names, which is a user configuration error worth surfacing rather than swallowing.
+                // SettingsUtil.HotUpdateAssemblyNamesIncludePreserved 在 preserved 名字重复时会抛异常，
+                // 那是值得暴露给用户的配置错误，不能吞掉。
                 error = (ex.InnerException ?? ex).Message;
                 return null;
             }
@@ -190,7 +188,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Path helpers
+        // 路径辅助
         // ==================================================================================
 
         private static string ProjectRoot()
@@ -206,8 +204,8 @@ namespace UnitySkills
             string.IsNullOrEmpty(path) ? path : path.Replace('\\', '/').TrimEnd('/');
 
         /// <summary>
-        /// HybridCLR stores output roots as project-relative strings ("HybridCLRData/HotUpdateDlls"),
-        /// but also accepts absolute ones. Resolve against the project root either way.
+        /// HybridCLR 把输出根目录存成工程相对路径（如 "HybridCLRData/HotUpdateDlls"），
+        /// 但也接受绝对路径。两种情况都统一按工程根目录解析。
         /// </summary>
         private static string ResolveProjectPath(string maybeRelative)
         {
@@ -290,7 +288,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Workflow snapshot restorers (registered on domain load)
+        // 工作流快照还原器（域加载时注册）
         // ==================================================================================
 
         private sealed class SettingsSnapshot
@@ -338,9 +336,8 @@ namespace UnitySkills
         private static void RegisterSettingRestorers()
         {
             WorkflowSettingRestorerRegistry.Register(SettingsKey, CaptureSettingsJson, ApplySettingsJson);
-            // Generated sources and DLL file sets have no meaningful "read current value" form —
-            // capturing a redo value would mean producing another backup — so both use the
-            // restorer-only overload.
+            // 生成的源码与 DLL 文件集没有有意义的"读当前值"形式——为 redo 采样等于再做一次
+            // 备份——所以这两项都用只带还原器的重载。
             WorkflowSettingRestorerRegistry.Register(GeneratedSourcesKey, ApplyGeneratedSources);
             WorkflowSettingRestorerRegistry.Register(FileSetKey, ApplyFileSetBackup);
         }
@@ -470,9 +467,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// The two Assets-side artifacts HybridCLR regenerates: link.xml and AOTGenericReferences.cs.
-        /// Everything else the pipeline emits lands in HybridCLRData/ or LocalIl2CppData-*/ and is a
-        /// rebuildable intermediate, so it is deliberately outside the snapshot.
+        /// HybridCLR 会重新生成的两个 Assets 侧产物：link.xml 与 AOTGenericReferences.cs。
+        /// 管线产出的其余文件都落在 HybridCLRData/ 或 LocalIl2CppData-*/ 下，属于可重建的
+        /// 中间产物，因此刻意不纳入快照。
         /// </summary>
         private static List<string> GeneratedSourceFiles()
         {
@@ -484,7 +481,7 @@ namespace UnitySkills
             return result;
         }
 
-        /// <summary>Resolves a settings field holding an Assets-relative path. Null when unset.</summary>
+        /// <summary>解析存放 Assets 相对路径的设置字段；未设置时返回 null。</summary>
         private static string AssetsRelativeSetting(string fieldName)
         {
             var s = SettingsInstance();
@@ -619,7 +616,7 @@ namespace UnitySkills
 
             var tracked = new HashSet<string>(snap.files ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
 
-            // Remove whatever the operation added on top of the tracked set.
+            // 先删掉本次操作在受跟踪集合之外新增的文件。
             if (Directory.Exists(snap.targetDir))
             {
                 foreach (var f in Directory.GetFiles(snap.targetDir, "*", SearchOption.TopDirectoryOnly))
@@ -639,7 +636,7 @@ namespace UnitySkills
                 }
             }
 
-            // Put the pre-operation files back.
+            // 再把操作前的文件放回去。
             if (tracked.Count > 0 && !string.IsNullOrEmpty(snap.backupDir) && Directory.Exists(snap.backupDir))
             {
                 try { Directory.CreateDirectory(snap.targetDir); } catch { }
@@ -674,7 +671,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // A. Environment (3 skills) — hybridclr_status works WITHOUT the package
+        // A. 环境（3 个技能）—— hybridclr_status 在缺包时也能用
         // ==================================================================================
 
         [UnitySkill("hybridclr_status",
@@ -846,7 +843,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // B. Settings (2 skills)
+        // B. 设置（2 个技能）
         // ==================================================================================
 
         [UnitySkill("hybridclr_settings_get",
@@ -953,9 +950,9 @@ namespace UnitySkills
                     "HybridCLR: Settings");
             }
 
-            // In-memory revert for Ctrl+Z. The file-side revert comes from the workflow restorer —
-            // this object lives in ProjectSettings/ and is written by HybridCLRSettings.Save(),
-            // which Unity's undo stack does not drive.
+            // 这一步只负责 Ctrl+Z 的内存回退；文件侧的回退由工作流还原器完成——
+            // 该对象位于 ProjectSettings/，由 HybridCLRSettings.Save() 写盘，
+            // 不受 Unity 撤销栈驱动。
             if (settings is UnityEngine.Object settingsObject)
                 Undo.RegisterCompleteObjectUndo(settingsObject, "HybridCLR Settings");
 
@@ -1029,7 +1026,7 @@ namespace UnitySkills
                 .ToArray();
 
         // ==================================================================================
-        // C. Diagnostics (1 skill)
+        // C. 诊断（1 个技能）
         // ==================================================================================
 
         [UnitySkill("hybridclr_validate_setup",
@@ -1172,7 +1169,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // D. Compile & generate (3 skills) — long-running, main-thread blocking
+        // D. 编译与生成（3 个技能）—— 耗时长，会阻塞主线程
         // ==================================================================================
 
         [UnitySkill("hybridclr_compile_dlls",
@@ -1182,7 +1179,8 @@ namespace UnitySkills
             Outputs = new[] { "success", "buildTarget", "outputDir", "files", "elapsedSeconds" },
             RequiresPackages = new[] { PackageId },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
-            MutatesAssets = true, SupportsDryRun = false, RiskLevel = "high")]
+            MutatesAssets = true, SupportsDryRun = false, RiskLevel = "high",
+            LongRunning = true)]
         public static object CompileDlls(string buildTarget = null, bool developmentBuild = false)
         {
             if (!Installed) return NoHybridCLR();
@@ -1232,8 +1230,8 @@ namespace UnitySkills
             }
             finally
             {
-                // CompileDllCommand only clears the progress bar on Unity 2022; do it unconditionally
-                // so a failure part-way through cannot leave the Editor with a stuck bar.
+                // CompileDllCommand 只在 Unity 2022 上清进度条，所以这里无条件再清一次，
+                // 免得中途失败把编辑器卡在进度条上。
                 try { EditorUtility.ClearProgressBar(); } catch { }
             }
 
@@ -1260,7 +1258,8 @@ namespace UnitySkills
             Outputs = new[] { "success", "buildTarget", "elapsedSeconds", "generatedArtifacts" },
             RequiresPackages = new[] { PackageId },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
-            MutatesAssets = true, MayTriggerReload = true, SupportsDryRun = false, RiskLevel = "high")]
+            MutatesAssets = true, MayTriggerReload = true, SupportsDryRun = false, RiskLevel = "high",
+            LongRunning = true)]
         public static object GenerateAll()
         {
             if (!Installed) return NoHybridCLR();
@@ -1275,8 +1274,8 @@ namespace UnitySkills
             if (EditorApplication.isCompiling)
                 return new { error = "Unity is still compiling scripts. Wait for compilation to finish before running the prebuild pipeline." };
 
-            // The aot_dlls stage inside GenerateAll runs a scripts-only BuildPipeline.BuildPlayer,
-            // which throws if another build is already running.
+            // GenerateAll 内部的 aot_dlls 阶段会跑一次 scripts-only 的 BuildPipeline.BuildPlayer，
+            // 已有构建在跑时它会抛异常。
             if (BuildPipeline.isBuildingPlayer)
                 return new { error = "A player build is already in progress. GenerateAll runs its own scripts-only player build internally and cannot be nested." };
 
@@ -1341,9 +1340,9 @@ namespace UnitySkills
             };
         }
 
-        // Step order matches PrebuildCommand.GenerateAll. "aot_dlls" is the expensive one: it runs a
-        // scripts-only BuildPipeline.BuildPlayer into a temp project and temporarily flips several
-        // EditorUserBuildSettings flags, restoring them in a finally block.
+        // 步骤顺序与 PrebuildCommand.GenerateAll 保持一致。"aot_dlls" 是最耗时的一步：
+        // 它会往临时工程里跑一次 scripts-only 的 BuildPipeline.BuildPlayer，
+        // 期间临时改动若干 EditorUserBuildSettings 标志，并在 finally 中还原。
         private static readonly Dictionary<string, (string Type, string Method, bool TakesTarget, bool TouchesAssets)> GenerateSteps =
             new Dictionary<string, (string Type, string Method, bool TakesTarget, bool TouchesAssets)>(StringComparer.OrdinalIgnoreCase)
             {
@@ -1363,7 +1362,8 @@ namespace UnitySkills
             RequiresInput = new[] { "step" },
             RequiresPackages = new[] { PackageId },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
-            MutatesAssets = true, MayTriggerReload = true, SupportsDryRun = false, RiskLevel = "high")]
+            MutatesAssets = true, MayTriggerReload = true, SupportsDryRun = false, RiskLevel = "high",
+            LongRunning = true)]
         public static object GenerateStep(string step, string buildTarget = null)
         {
             if (!Installed) return NoHybridCLR();
@@ -1443,7 +1443,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // E. Artifacts (3 skills)
+        // E. 产物（3 个技能）
         // ==================================================================================
 
         [UnitySkill("hybridclr_get_hotupdate_dlls",
@@ -1727,8 +1727,8 @@ namespace UnitySkills
             var patched = ParsePatchedAotAssemblyList(content);
             var fi = new FileInfo(absolute);
 
-            // HybridCLR writes patchAOTAssemblies without the .dll suffix but emits module names
-            // (which carry it) into PatchedAOTAssemblyList, so compare on the stem.
+            // HybridCLR 写 patchAOTAssemblies 时不带 .dll 后缀，但写进 PatchedAOTAssemblyList
+            // 的是带后缀的模块名，因此必须去掉后缀后再比较。
             string Stem(string s) => s.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? s.Substring(0, s.Length - 4) : s;
             var patchedStems = new HashSet<string>(patched.Select(Stem), StringComparer.OrdinalIgnoreCase);
             var configuredStems = new HashSet<string>(configured.Select(Stem), StringComparer.OrdinalIgnoreCase);
@@ -1773,8 +1773,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Counts the `// xxx` lines inside one of the writer's `// {{ label` ... `// }}` blocks.
-        /// The generator emits generic types as comments only, so this is the sole way to size them.
+        /// 统计生成器某个 <c>// {{ label</c> ... <c>// }}</c> 区块内的 <c>// xxx</c> 行数。
+        /// 泛型类型只以注释形式产出，因此这是唯一能统计其数量的办法。
         /// </summary>
         private static int CountCommentBlockLines(string content, string blockHeader)
         {
@@ -1793,8 +1793,8 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // InstallerController handle — constructing it reads package metadata off disk and can
-        // throw, so every access funnels through here.
+        // InstallerController 句柄 —— 构造它会从磁盘读包元数据且可能抛异常，
+        // 因此所有访问都收敛到这里。
         // ==================================================================================
 
         private sealed class InstallerHandle

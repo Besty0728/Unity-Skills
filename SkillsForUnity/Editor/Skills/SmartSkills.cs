@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,8 +9,8 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// Smart Agentic Skills for advanced scene querying, layout, and auto-binding.
-    /// Designed to give AI "reasoning" and "practical design" capabilities.
+    /// 面向 Agent 的智能技能：高级场景查询、布局与自动绑线。
+    /// 目的是给 AI 提供"推理"与"实操设计"的能力。
     /// </summary>
     public static class SmartSkills
     {
@@ -29,19 +29,23 @@ namespace UnitySkills
         };
 
         // ==================================================================================
-        // 1. Smart Query ("The SQL for Unity Scene")
+        // 1. 智能查询（"Unity 场景版 SQL"）
         // ==================================================================================
 
         [UnitySkill("smart_scene_query", "Query objects by component property (params: componentName, propertyName, op, value). e.g. componentName='Light', propertyName='intensity', op='>', value='10'",
             Category = SkillCategory.Smart, Operation = SkillOperation.Query,
             Tags = new[] { "query", "component", "property", "filter", "search" },
             Outputs = new[] { "count", "query", "results" },
+            // 两者都会被下面的 Validate.Required 拒绝；由于二者都没有 CLR 默认值，schema 曾把它们标为可选，
+            // 空请求体的 dry-run 也判为合法。这里声明的是参数名（而非语义化的 "component" 标记），
+            // 因为这才是本技能真正接受的形式，且两者确实都必填——不存在"二选一"。
+            RequiresInput = new[] { "componentName", "propertyName" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object SmartSceneQuery(
             string componentName = null,
             string propertyName = null,
-            string op = "==",       // ==, !=, >, <, >=, <=, contains
+            string op = "==",       // 取值：==、!=、>、<、>=、<=、contains
             string value = null,
             int limit = 50,
             string query = null)
@@ -98,7 +102,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 2. Smart Layout ("The Automated Designer")
+        // 2. 智能布局（"自动化设计师"）
         // ==================================================================================
 
         [UnitySkill("smart_scene_layout", "Organize selected objects into a layout (Linear, Grid, Circle, Arc). Requires objects selected in Hierarchy first.", TracksWorkflow = true,
@@ -107,16 +111,27 @@ namespace UnitySkills
             Outputs = new[] { "layout", "count", "spacing" },
             RequiresInput = new[] { "selection" })]
         public static object SmartSceneLayout(
-            string layoutType = "Linear",   // Linear, Grid, Circle, Arc
-            string axis = "X",              // X, Y, Z for Linear; ignored for Circle
-            float spacing = 2.0f,           // Distance between items (or radius for Circle)
-            int columns = 3,                // For Grid layout
-            float arcAngle = 180f,          // For Arc layout (degrees)
-            bool lookAtCenter = false)      // For Circle/Arc: rotate to face center
+            string layoutType = "Linear",   // 取值：Linear、Grid、Circle、Arc
+            string axis = "X",              // Linear 用 X/Y/Z；Circle 下忽略
+            float spacing = 2.0f,           // 元素间距（Circle 下为半径）
+            int columns = 3,                // 仅 Grid 布局使用
+            float arcAngle = 180f,          // 仅 Arc 布局使用（角度）
+            bool lookAtCenter = false)      // Circle/Arc 用：旋转朝向圆心
         {
             var selected = Selection.gameObjects.OrderBy(g => g.transform.GetSiblingIndex()).ToList();
-            if (selected.Count == 0) 
+            if (selected.Count == 0)
                 return new { success = false, error = "No GameObjects selected. Select objects in Hierarchy first." };
+
+            // 两套词表都在移动任何东西之前校验。未知的 layoutType 匹配不到任何 switch 分支，
+            // 会让每个对象都停在 newPos = startPos——即整个选择集塌到第一个对象的位置上，还报成功。
+            var layout = layoutType?.ToLower();
+            if (layout != "linear" && layout != "grid" && layout != "circle" && layout != "arc")
+                return SkillParamUtil.InvalidValueError(layoutType, "layoutType",
+                    new[] { "Linear", "Grid", "Circle", "Arc" });
+
+            if (!TryParseAxis(axis, out var axisVec))
+                return SkillParamUtil.InvalidValueError(axis, "axis",
+                    new[] { "X", "Y", "Z", "-X", "-Y", "-Z" });
 
             // Workflow 支持
             foreach (var go in selected)
@@ -125,13 +140,12 @@ namespace UnitySkills
             Undo.RecordObjects(selected.Select(g => g.transform).ToArray(), "Smart Layout");
 
             var startPos = selected[0].transform.position;
-            Vector3 axisVec = ParseAxis(axis);
 
             for (int i = 0; i < selected.Count; i++)
             {
                 Vector3 newPos = startPos;
                 
-                switch (layoutType.ToLower())
+                switch (layout)
                 {
                     case "linear":
                         newPos = startPos + axisVec * (i * spacing);
@@ -140,7 +154,7 @@ namespace UnitySkills
                     case "grid":
                         int row = i / columns;
                         int col = i % columns;
-                        // Grid on XZ plane by default
+                        // Grid 默认铺在 XZ 平面
                         newPos = startPos + new Vector3(col * spacing, 0, -row * spacing); 
                         break;
 
@@ -161,7 +175,7 @@ namespace UnitySkills
                 
                 selected[i].transform.position = newPos;
                 
-                if (lookAtCenter && (layoutType.ToLower() == "circle" || layoutType.ToLower() == "arc"))
+                if (lookAtCenter && (layout == "circle" || layout == "arc"))
                 {
                     selected[i].transform.LookAt(startPos);
                 }
@@ -171,7 +185,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 3. Smart Binder ("The Auto-Wiring Engineer")
+        // 3. 智能绑线（"自动接线工程师"）
         // ==================================================================================
 
         [UnitySkill("smart_reference_bind", "Auto-fill a List/Array field with objects matching tag or name pattern", TracksWorkflow = true,
@@ -180,16 +194,16 @@ namespace UnitySkills
             Outputs = new[] { "boundCount", "field", "appendMode" },
             RequiresInput = new[] { "gameObject", "component" })]
         public static object SmartReferenceBind(
-            string targetName,          // Target GameObject name
-            string componentName,       // Component on target
-            string fieldName,           // Field to fill
-            string sourceTag = null,    // Find by tag
-            string sourceName = null,   // Find by name contains
-            bool appendMode = false)    // If true, append to existing; if false, replace
+            string targetName,          // 目标 GameObject 名称
+            string componentName,       // 目标上的组件
+            string fieldName,           // 要填充的字段
+            string sourceTag = null,    // 按 tag 查找
+            string sourceName = null,   // 按名称包含查找
+            bool appendMode = false)    // true 追加到现有元素，false 整体替换
         {
             if (string.IsNullOrEmpty(fieldName)) return new { error = "fieldName is required" };
 
-            // 1. Find Target
+            // 1. 找目标对象
             var targetGo = GameObjectFinder.Find(name: targetName);
             if (targetGo == null) 
                 return new { success = false, error = $"Target '{targetName}' not found" };
@@ -198,7 +212,7 @@ namespace UnitySkills
             if (comp == null) 
                 return new { success = false, error = $"Component '{componentName}' not found on target" };
 
-            // 2. Find Member (field, then Unity naming conventions, then property)
+            // 2. 找成员（先字段，再按 Unity 命名习惯变体，最后属性）
             var type = comp.GetType();
             var field = type.GetField(fieldName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             if (field == null)
@@ -216,7 +230,7 @@ namespace UnitySkills
             if (field == null && propFallback == null)
                 return new { success = false, error = $"Field '{fieldName}' not found on {componentName}" };
 
-            // 3. Find Source Objects
+            // 3. 找源对象
             var sources = new List<GameObject>();
             if (!string.IsNullOrEmpty(sourceTag))
             {
@@ -232,7 +246,7 @@ namespace UnitySkills
             if (sources.Count == 0) 
                 return new { success = false, error = "No source objects found matching criteria" };
 
-            // 4. Validate field type
+            // 4. 校验字段类型
             var fieldType = field != null ? field.FieldType : propFallback.PropertyType;
             bool isList = fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() == typeof(List<>);
             bool isArray = fieldType.IsArray;
@@ -240,15 +254,28 @@ namespace UnitySkills
             if (!isList && !isArray)
                 return new { success = false, error = $"Field '{fieldName}' is not a List<> or Array type" };
 
-            WorkflowManager.SnapshotObject(comp);
-            Undo.RecordObject(comp, "Smart Bind");
-
             var elementType = isArray ? fieldType.GetElementType() : fieldType.GetGenericArguments()[0];
 
-            // Convert GameObjects to ElementType
+            // sourceTag/sourceName 都解析成 GameObject，下面的循环也只能把它们转成 GameObject 或
+            // Component 元素（经 GetComponent）。既非二者的元素类型（Material、ScriptableObject、
+            // 纯接口……）永远匹配不上任何源对象，于是所有项被静默丢弃、字段被空数组/空表覆盖——
+            // success:true、boundCount:0、无报错。故在任何写入前就拒绝，而不是清掉调用方从未要求清的字段。
+            if (elementType != typeof(GameObject) && !typeof(Component).IsAssignableFrom(elementType))
+            {
+                return new
+                {
+                    success = false,
+                    error = $"Field '{fieldName}' has element type '{elementType.Name}', which is neither GameObject nor a Component — sourceTag/sourceName resolve to GameObjects, so this field can never be bound this way.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = "fieldName",
+                };
+            }
+
+            WorkflowManager.SnapshotObject(comp);
+            Undo.RecordObject(comp, "Smart Bind");
             var convertedList = new ArrayList();
             
-            // Append mode: start with existing items
+            // append 模式：以现有元素为起点
             if (appendMode)
             {
                 var existing = (field != null ? field.GetValue(comp) : propFallback.GetValue(comp)) as IEnumerable;
@@ -292,17 +319,17 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Helpers
+        // 辅助方法
         // ==================================================================================
 
         private static System.Type GetTypeByName(string name)
         {
             if (string.IsNullOrWhiteSpace(name)) return null;
 
-            // Fast path: common Unity types (static dictionary)
+            // 快路径：常见 Unity 类型（静态字典）
             if (CommonUnityTypes.TryGetValue(name, out var t)) return t;
 
-            // Slow path: reflection
+            // 慢路径：反射查找
             return SkillsCommon.GetAllLoadedTypes()
                 .FirstOrDefault(type => type.Name.Equals(name, System.StringComparison.OrdinalIgnoreCase));
         }
@@ -327,14 +354,14 @@ namespace UnitySkills
             {
                 string valStr = val.ToString();
                 
-                // Boolean special case
+                // 布尔特例
                 if (val is bool b)
                 {
                     bool targetBool = target?.ToLower() == "true";
                     return op == "==" ? b == targetBool : b != targetBool;
                 }
                 
-                // Numeric comparison
+                // 数值比较
                 if (double.TryParse(valStr, out double vNum) && double.TryParse(target, out double tNum))
                 {
                     switch (op)
@@ -348,7 +375,7 @@ namespace UnitySkills
                     }
                 }
 
-                // String comparison
+                // 字符串比较
                 switch (op)
                 {
                     case "==": return valStr.Equals(target, System.StringComparison.OrdinalIgnoreCase);
@@ -360,27 +387,31 @@ namespace UnitySkills
             return false;
         }
 
-        private static Vector3 ParseAxis(string axis)
+        /// <summary>
+        /// 把 axis 记号转成方向向量。非法值返回 false，而不是悄悄给出 Vector3.right——
+        /// 后者会让一个拼写错误看起来像是刻意沿 +X 布局。
+        /// </summary>
+        private static bool TryParseAxis(string axis, out Vector3 direction)
         {
-            switch (axis?.ToUpper())
+            switch (axis?.Trim().ToUpperInvariant())
             {
-                case "X": return Vector3.right;
-                case "Y": return Vector3.up;
-                case "Z": return Vector3.forward;
-                case "-X": return Vector3.left;
-                case "-Y": return Vector3.down;
-                case "-Z": return Vector3.back;
+                case "X": direction = Vector3.right; return true;
+                case "Y": direction = Vector3.up; return true;
+                case "Z": direction = Vector3.forward; return true;
+                case "-X": direction = Vector3.left; return true;
+                case "-Y": direction = Vector3.down; return true;
+                case "-Z": direction = Vector3.back; return true;
+                default: direction = Vector3.right; return false;
             }
-            return Vector3.right;
         }
-        
+
+        // 可往返解析且与区域设置无关。此处替换掉的 F2/F1 写法会把上报值四舍五入成读回来已不等于实存值的数字，
+        // 且跟随编辑器 locale——小数点为逗号的机器上会输出 "(1,5, 0, 0)"，根本无法当向量解析。
         private static string FormatValue(object val)
         {
-            if (val is float f) return f.ToString("F2");
-            if (val is double d) return d.ToString("F2");
-            if (val is Vector3 v3) return $"({v3.x:F1}, {v3.y:F1}, {v3.z:F1})";
-            if (val is Color c) return $"RGBA({c.r:F2}, {c.g:F2}, {c.b:F2}, {c.a:F2})";
-            return val?.ToString() ?? "null";
+            if (val is Vector3 v3) return SkillParamUtil.FormatVector3(v3);
+            if (val is Color c) return $"RGBA{SkillParamUtil.FormatColor(c)}";
+            return SkillParamUtil.FormatScalarR(val);
         }
 
         [UnitySkill("smart_scene_query_spatial", "Find objects within a sphere/box region, optionally filtered by component",
@@ -448,7 +479,11 @@ namespace UnitySkills
         {
             var selected = Selection.gameObjects.OrderBy(g => g.transform.GetSiblingIndex()).ToList();
             if (selected.Count < 3) return new { error = "Need at least 3 selected objects" };
-            Vector3 axisVec = ParseAxis(axis);
+            // 非法 axis 曾被静默当成 +X，于是对象沿调用方从未指定的轴排布，
+            // 响应里回显的却还是它自己传进来的那个轴。
+            if (!TryParseAxis(axis, out var axisVec))
+                return SkillParamUtil.InvalidValueError(axis, "axis",
+                    new[] { "X", "Y", "Z", "-X", "-Y", "-Z" });
             foreach (var go in selected) WorkflowManager.SnapshotObject(go.transform);
             Undo.RecordObjects(selected.Select(g => g.transform).ToArray(), "Smart Distribute");
             float startVal = Vector3.Dot(selected[0].transform.position, axisVec);

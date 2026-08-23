@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Linq;
 
@@ -25,10 +25,10 @@ namespace UnitySkills
             return new { success = true, count = list.Count, packages = list };
         }
 
-        [UnitySkill("package_check", "Check if a package is installed. Returns version if installed.",
+        [UnitySkill("package_check", "Check if a package is installed. Returns version if installed. isDirectDependency distinguishes a manifest.json entry from a package that is only present because another installed package requires it.",
             Category = SkillCategory.Package, Operation = SkillOperation.Query,
             Tags = new[] { "package", "check", "version", "installed" },
-            Outputs = new[] { "packageId", "installed", "version" },
+            Outputs = new[] { "packageId", "installed", "version", "isDirectDependency" },
             RequiresInput = new[] { "packageId" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
@@ -40,7 +40,13 @@ namespace UnitySkills
 
             var installed = PackageManagerHelper.IsPackageInstalled(packageId);
             var version = PackageManagerHelper.GetInstalledVersion(packageId);
-            return new { packageId, installed, version };
+            // 仅凭 "installed:true" 无法区分真正的 manifest 依赖与"因其他已安装包仍需要它
+            // 而残留"的包（后者 package_remove 现在报告为 "retained transitively"，
+            // 而不是笼统的失败）。
+            bool? isDirectDependency = installed && PackageManagerHelper.InstalledPackages.TryGetValue(packageId, out var info)
+                ? info.isDirectDependency
+                : (bool?)null;
+            return new { packageId, installed, version, isDirectDependency };
         }
 
         [UnitySkill("package_install", "Install a package. version is optional.",

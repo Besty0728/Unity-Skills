@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Linq;
+using System.Reflection;
 using UnityEditor;
 
 #if SRP_CORE
@@ -9,7 +10,7 @@ using UnityEngine.Rendering;
 namespace UnitySkills
 {
     /// <summary>
-    /// Modern SRP post-processing skills built on top of the volume framework.
+    /// 基于 Volume 框架的现代 SRP 后处理技能。
     /// </summary>
     public static class PostProcessSkills
     {
@@ -251,7 +252,11 @@ namespace UnitySkills
             var result = GetOrAddEffect(profilePath, "DepthOfField", overrides: true);
             if (result.error != null) return result.error;
 
-            if (!string.IsNullOrWhiteSpace(mode) && !SetParameter(result.component, result.profile, mode, out var e1, "mode", "focusMode")) return new { error = e1 };
+            if (!string.IsNullOrWhiteSpace(mode))
+            {
+                if (ValidateModeParameter(result.component, mode, "mode", "focusMode") is object modeErr) return modeErr;
+                if (!SetParameter(result.component, result.profile, mode, out var e1, "mode", "focusMode")) return new { error = e1 };
+            }
             if (focusDistance.HasValue && !SetParameter(result.component, result.profile, focusDistance.Value, out var e2, "focusDistance")) return new { error = e2 };
             if (gaussianStart.HasValue && !SetParameter(result.component, result.profile, gaussianStart.Value, out var e3, "gaussianStart", "nearFocusStart")) return new { error = e3 };
             if (gaussianEnd.HasValue && !SetParameter(result.component, result.profile, gaussianEnd.Value, out var e4, "gaussianEnd", "farFocusStart")) return new { error = e4 };
@@ -272,7 +277,11 @@ namespace UnitySkills
             var result = GetOrAddEffect(profilePath, "Tonemapping", overrides: true);
             if (result.error != null) return result.error;
 
-            if (!string.IsNullOrWhiteSpace(mode) && !SetParameter(result.component, result.profile, mode, out var e1, "mode")) return new { error = e1 };
+            if (!string.IsNullOrWhiteSpace(mode))
+            {
+                if (ValidateModeParameter(result.component, mode, "mode") is object modeErr) return modeErr;
+                if (!SetParameter(result.component, result.profile, mode, out var e1, "mode")) return new { error = e1 };
+            }
             return EffectResponse(profilePath, result.descriptor.Name, result.component);
         }
 
@@ -318,6 +327,47 @@ namespace UnitySkills
             if (saturation.HasValue && !SetParameter(result.component, result.profile, saturation.Value, out var e5, "saturation")) return new { error = e5 };
 
             return EffectResponse(profilePath, result.descriptor.Name, result.component);
+        }
+
+        /// <summary>
+        /// 在 <see cref="SetParameter"/> 调入 RenderPipelineSkillsCommon 之前，先校验枚举形态的
+        /// "mode" 类参数。没有这一步，非法字符串（mode="NotARealMode"）会在该 helper 深处的
+        /// Enum.Parse 失败，而 SetParameter 的别名循环把每次尝试的错误丢弃（<c>out _</c>），
+        /// 调用方最终只看到 "None of the parameters matched: mode, focusMode"（SKILL_ERROR/abort）——
+        /// 值非法与组件压根没这个参数，两种情况读起来一模一样。此处反射组件自身的字段拿到真实枚举
+        /// 类型（正是 RenderPipelineSkillsCommon.TrySetVolumeParameter 将要写入的那个字段），
+        /// 非法值于是能拿到模块统一的 SEMANTIC_INVALID + validValues 形态。
+        /// <paramref name="parameterNames"/> 是按顺序尝试的别名（URP/HDRP 字段名不同），
+        /// 该组件上第一个存在的字段决定取值词表。
+        /// </summary>
+        private static object ValidateModeParameter(VolumeComponent component, string value, params string[] parameterNames)
+        {
+            if (component == null || string.IsNullOrWhiteSpace(value))
+                return null;
+
+            foreach (var parameterName in parameterNames)
+            {
+                var field = component.GetType()
+                    .GetFields(BindingFlags.Public | BindingFlags.Instance)
+                    .FirstOrDefault(f => string.Equals(f.Name, parameterName, StringComparison.OrdinalIgnoreCase));
+                if (field == null)
+                    continue;
+
+                if (!(field.GetValue(component) is VolumeParameter parameter))
+                    return null;
+
+                var valueType = RenderPipelineSkillsCommon.GetVolumeParameterValueType(parameter);
+                if (valueType == null || !valueType.IsEnum)
+                    return null;
+
+                var validValues = Enum.GetNames(valueType);
+                if (validValues.Any(name => string.Equals(name, value, StringComparison.OrdinalIgnoreCase)))
+                    return null;
+
+                return SkillParamUtil.InvalidValueError(value, "mode", validValues);
+            }
+
+            return null;
         }
 
         private static bool SetParameter(VolumeComponent component, VolumeProfile profile, object value, out string error, params string[] parameterNames)

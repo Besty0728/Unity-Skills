@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json.Linq;
@@ -9,7 +9,7 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Test runner skills.
+    /// Test Runner 相关技能。
     /// </summary>
     public static class TestSkills
     {
@@ -86,10 +86,10 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("test_list", "List available tests via Unity Test Runner async discovery. Returns pendingDiscovery=true + discoveryJobId on first call (cache miss) — poll test_discover_get_result(jobId) then retry test_list.",
+        [UnitySkill("test_list", "List available tests via Unity Test Runner async discovery. Returns pendingDiscovery=true + discoveryJobId on first call (cache miss) — poll test_discover_get_result(jobId) then retry test_list. limit caps how many tests are returned (default 100); count is the number returned, total is how many were discovered, and truncated=true means raise limit to see the rest.",
             Category = SkillCategory.Test, Operation = SkillOperation.Query,
             Tags = new[] { "test", "list", "discover", "enumerate" },
-            Outputs = new[] { "testMode", "count", "tests", "pendingDiscovery", "discoveryJobId", "discoveryStatus" },
+            Outputs = new[] { "testMode", "count", "total", "truncated", "tests", "pendingDiscovery", "discoveryJobId", "discoveryStatus" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object TestList(string testMode = "EditMode", int limit = 100)
@@ -110,7 +110,8 @@ namespace UnitySkills
                 };
             }
 
-            var tests = GetDiscoveredTests(discovery)
+            var discoveredTests = GetDiscoveredTests(discovery);
+            var tests = discoveredTests
                 .Take(Mathf.Max(1, limit))
                 .Select(test => new
                 {
@@ -124,7 +125,10 @@ namespace UnitySkills
             {
                 success = true,
                 testMode,
+                // count 仍是返回条数（v1 契约）；截断情况由 total/truncated 体现。
                 count = tests.Length,
+                total = discoveredTests.Count,
+                truncated = discoveredTests.Count > tests.Length,
                 discoveryMode = TestDiscoveryMode,
                 tests
             };
@@ -149,10 +153,10 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("test_discover_get_result", "Get the result of an asynchronous Unity Test Runner discovery job.",
+        [UnitySkill("test_discover_get_result", "Get the result of an asynchronous Unity Test Runner discovery job. limit caps how many tests are returned (default 100); count is the total discovered, returned is how many are in this response, and truncated=true means raise limit to see the rest.",
             Category = SkillCategory.Test, Operation = SkillOperation.Query,
             Tags = new[] { "test", "discover", "result", "poll", "job" },
-            Outputs = new[] { "jobId", "status", "count", "tests" },
+            Outputs = new[] { "jobId", "status", "count", "returned", "truncated", "tests" },
             RequiresInput = new[] { "jobId" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
@@ -184,7 +188,10 @@ namespace UnitySkills
                 status = job.status,
                 testMode = GetMetadataString(job, "testMode"),
                 discoveryMode = TestDiscoveryMode,
+                // count 仍是截断前的总数（v1 契约）；截断情况由 returned/truncated 体现。
                 count = discoveredTests.Count,
+                returned = tests.Length,
+                truncated = discoveredTests.Count > tests.Length,
                 tests,
                 error = job.error
             };
@@ -696,21 +703,53 @@ public class {testName}
             }
         }
 
+        /// <summary>
+        /// 这些错误的含义是"该只读技能要报告的东西在本项目/场景/模式下不存在"，而不是"该技能坏了"。
+        /// 干净项目里没有 CinemachineBrain、没有 NetworkManager，也不在 PlayMode，这类技能只能拒答——
+        /// 把它算作冒烟失败会淹没真正要紧的失败。
+        ///
+        /// <para>按技能 + 具体错误短语双重匹配，绝不只按技能名：只按名字的条目会吞掉该技能未来所有回归。
+        /// 技能说的其他任何话——NullReferenceException、变了的错误文案、走了别的分支——仍判为失败。
+        /// 这也是白名单只在"返回了错误对象"时才查、而不在上面的异常处理器里查的原因：抛异常从来不是
+        /// 预期的环境性回答，而是技能没能给出回答。</para>
+        /// </summary>
+        private static readonly Dictionary<string, string[]> _expectedMissingFixtureMarkers =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            // 场景里没有 Cinemachine 装配。
+            ["cinemachine_get_brain_info"] = new[] { "No Main Camera", "No CinemachineBrain" },
+            ["cinemachine_inspect_vcam"]   = new[] { "GameObject not found" },
+            // 场景里没有 NetworkManager（装了 NGO 但还没搭起来）。netcode_get_status 与
+            // netcode_get_transport_info 也会优先报缺 manager；transport_info 的第二道闸
+            // （"NetworkTransport not assigned"）是同一类"缺失"，只是下沉了一层。
+            ["netcode_get_manager_info"]   = new[] { "NetworkManager not found" },
+            ["netcode_get_status"]         = new[] { "NetworkManager not found" },
+            ["netcode_get_transport_info"] = new[] { "NetworkManager not found", "NetworkTransport not assigned" },
+            // 仅 PlayMode 可用的读取类技能：EditMode 不是坏环境，只是模式不对，而冒烟探针刻意永不进 PlayMode。
+            // manager/started 两道闸也列在这里，因为在"确有 NetworkManager 但尚未启动"的项目上，
+            // 它们给的是同一种"暂时没东西可读"的回答。
+            ["netcode_get_spawn_manager_info"] = new[]
+            {
+                "SpawnManager only accessible in PlayMode", "NetworkManager not found",
+                "NetworkManager is not started", "SpawnManager not initialized"
+            },
+            ["netcode_get_scene_manager_info"] = new[]
+            {
+                "SceneManager info only available in PlayMode", "NetworkManager not found",
+                "NetworkManager is not started", "NetworkSceneManager not initialized"
+            },
+        };
+
         private static bool IsExpectedMissingSceneFixture(string skillName, string error)
         {
-            if (string.IsNullOrEmpty(error)) return false;
+            if (string.IsNullOrEmpty(error) || string.IsNullOrEmpty(skillName)) return false;
+            if (!_expectedMissingFixtureMarkers.TryGetValue(skillName, out var markers)) return false;
 
-            if (string.Equals(skillName, "cinemachine_get_brain_info", StringComparison.OrdinalIgnoreCase))
+            foreach (var marker in markers)
             {
-                return error.IndexOf("No Main Camera", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                       error.IndexOf("No CinemachineBrain", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (error.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
             }
-
-            if (string.Equals(skillName, "cinemachine_inspect_vcam", StringComparison.OrdinalIgnoreCase))
-            {
-                return error.IndexOf("GameObject not found", StringComparison.OrdinalIgnoreCase) >= 0;
-            }
-
             return false;
         }
 
@@ -726,6 +765,9 @@ public class {testName}
 
             var excludedNames = ParseCsv(excludeNamesCsv);
             var metadataIssues = SkillRouter.ValidateMetadata().ToArray();
+            // 必须用过滤后的快照：探针直接调 skill.Method（见 ExecuteSmokeProbe 里的 Method.Invoke），
+            // 既不经过 Execute，也不会撞上暴露面闸门。换成 Unfiltered 就变成一条绕过通道，
+            // 会批量执行恰好是该档位要收掉的那些写技能。
             IEnumerable<SkillRouter.SkillInfo> skills = SkillRouter.GetAllSkillsSnapshot();
 
             if (!string.IsNullOrWhiteSpace(category) &&

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Linq;
 using System.Collections.Generic;
@@ -6,10 +6,29 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// Texture import settings skills - get/set texture importer properties.
+    /// 纹理导入设置技能——读写 TextureImporter 属性。
     /// </summary>
     public static class TextureSkills
     {
+        /// <summary>
+        /// <c>TextureImporter.Get/SetPlatformTextureSettings</c> 真正认得的平台 ID 字符串。
+        /// 它们不是 <c>BuildTarget</c>/<c>BuildTargetGroup</c> 的枚举名——importer 保留着自己的历史词表，
+        /// 最典型的是 "iPhone"（不是 "iOS"）和 "Windows Store Apps"（不是 "WSA"）。
+        /// getter 与 setter 都做精确字符串匹配，匹配不上时静默空转而非报错：get 返回 <c>overridden=false</c>
+        /// 并附上无关的默认设置，set 则写入一个任何构建都不会读的 override 组。
+        /// "DefaultTexturePlatform" 是 Unity 自己表示共享/默认组的哨兵值，是合法取值而非拼写错误。
+        /// </summary>
+        private static readonly string[] ValidTexturePlatforms =
+        {
+            "DefaultTexturePlatform", "Standalone", "iPhone", "Android", "WebGL", "Windows Store Apps",
+            "PS4", "PS5", "XboxOne", "GameCoreXboxOne", "GameCoreXboxSeries", "Switch", "tvOS",
+            "VisionOS", "EmbeddedLinux", "QNX", "Lumin", "WiiU", "Nintendo 3DS", "PSP2",
+        };
+
+        private static object InvalidPlatformError(string platform) =>
+            SkillParamUtil.InvalidValueError(platform, "platform", ValidTexturePlatforms);
+
+
         [UnitySkill("texture_get_settings", "Get texture import settings for an image asset",
             Category = SkillCategory.Texture, Operation = SkillOperation.Query,
             Tags = new[] { "texture", "import", "settings", "inspect" },
@@ -48,11 +67,12 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("texture_set_settings", "Set texture import settings. textureType: Default/NormalMap/Sprite/Editor GUI/Cursor/Cookie/Lightmap/SingleChannel. maxSize: 32-8192. filterMode: Point/Bilinear/Trilinear. compression: None/LowQuality/Normal/HighQuality",
+        [UnitySkill("texture_set_settings", "Set texture import settings. textureType: Default/NormalMap/GUI/Sprite/Cursor/Cookie/Lightmap/SingleChannel/Shadowmask/DirectionalLightmap (Inspector alias: 'Editor GUI' = GUI). maxSize: 32-8192. filterMode: Point/Bilinear/Trilinear. compression: Uncompressed/Compressed/CompressedHQ/CompressedLQ (Inspector aliases: None=Uncompressed, Normal or NormalQuality=Compressed, HighQuality=CompressedHQ, LowQuality=CompressedLQ)",
             Category = SkillCategory.Texture, Operation = SkillOperation.Modify,
             Tags = new[] { "texture", "import", "settings", "compression" },
             Outputs = new[] { "changesApplied", "changes" },
-            RequiresInput = new[] { "assetPath" })]
+            RequiresInput = new[] { "assetPath" },
+            MutatesAssets = true)]
         public static object TextureSetSettings(
             string assetPath,
             string textureType = null,
@@ -73,56 +93,53 @@ namespace UnitySkills
             if (importer == null)
                 return new { error = $"Not a texture or asset not found: {assetPath}" };
 
+            // 所有枚举都在第一次赋值之前解析——也在 undo 快照之前，否则会为一次什么都没改的调用留下还原点。
+            // 其中 filterMode/wrapMode/npotScale/compression 四个若解析失败会被静默丢弃：拼错时其余参数
+            // 仍报 changesApplied>0，而丢值这件事毫无提示。textureType 与 compression 另带别名表——
+            // 文档教的是 Inspector 里的写法（"Editor GUI"、"Low Quality"），二者都不是 CLR 名称。
+            if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterType>(
+                    textureType, "textureType", SkillParamUtil.TextureTypeAliases,
+                    out var tt, out var ttError)) return ttError;
+            if (!SkillParamUtil.TryParseOptionalEnum<FilterMode>(
+                    filterMode, "filterMode", out var fm, out var fmError)) return fmError;
+            if (!SkillParamUtil.TryParseOptionalEnum<TextureWrapMode>(
+                    wrapMode, "wrapMode", out var wm, out var wmError)) return wmError;
+            if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterNPOTScale>(
+                    npotScale, "npotScale", out var ns, out var nsError)) return nsError;
+            if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterCompression>(
+                    compression, "compression", SkillParamUtil.TextureCompressionAliases,
+                    out var tc, out var tcError)) return tcError;
+
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
             var changes = new List<string>();
 
-            // Texture Type
-            if (!string.IsNullOrEmpty(textureType))
+            if (tt.HasValue)
             {
-                if (System.Enum.TryParse<TextureImporterType>(textureType.Replace(" ", ""), true, out var tt))
-                {
-                    importer.textureType = tt;
-                    changes.Add($"textureType={tt}");
-                }
-                else
-                {
-                    return new { error = $"Invalid textureType: {textureType}. Valid: Default, NormalMap, Sprite, EditorGUI, Cursor, Cookie, Lightmap, SingleChannel" };
-                }
+                importer.textureType = tt.Value;
+                changes.Add($"textureType={tt.Value}");
             }
 
-            // Filter Mode
-            if (!string.IsNullOrEmpty(filterMode))
+            if (fm.HasValue)
             {
-                if (System.Enum.TryParse<FilterMode>(filterMode, true, out var fm))
-                {
-                    importer.filterMode = fm;
-                    changes.Add($"filterMode={fm}");
-                }
+                importer.filterMode = fm.Value;
+                changes.Add($"filterMode={fm.Value}");
             }
 
-            // Wrap Mode
-            if (!string.IsNullOrEmpty(wrapMode))
+            if (wm.HasValue)
             {
-                if (System.Enum.TryParse<TextureWrapMode>(wrapMode, true, out var wm))
-                {
-                    importer.wrapMode = wm;
-                    changes.Add($"wrapMode={wm}");
-                }
+                importer.wrapMode = wm.Value;
+                changes.Add($"wrapMode={wm.Value}");
             }
 
-            // NPOT Scale
-            if (!string.IsNullOrEmpty(npotScale))
+            if (ns.HasValue)
             {
-                if (System.Enum.TryParse<TextureImporterNPOTScale>(npotScale, true, out var ns))
-                {
-                    importer.npotScale = ns;
-                    changes.Add($"npotScale={ns}");
-                }
+                importer.npotScale = ns.Value;
+                changes.Add($"npotScale={ns.Value}");
             }
 
-            // Boolean settings
+            // 布尔类设置
             if (mipmapEnabled.HasValue)
             {
                 importer.mipmapEnabled = mipmapEnabled.Value;
@@ -147,15 +164,15 @@ namespace UnitySkills
                 changes.Add($"alphaIsTransparency={alphaIsTransparency.Value}");
             }
 
-            // Sprite settings
+            // Sprite 相关设置
             if (spritePixelsPerUnit.HasValue)
             {
                 importer.spritePixelsPerUnit = spritePixelsPerUnit.Value;
-                changes.Add($"spritePixelsPerUnit={spritePixelsPerUnit.Value}");
+                changes.Add($"spritePixelsPerUnit={SkillParamUtil.FormatFloatR(spritePixelsPerUnit.Value)}");
             }
 
-            // Platform-specific settings (maxSize, compression)
-            if (maxSize.HasValue || !string.IsNullOrEmpty(compression))
+            // 平台专属设置（maxSize、compression）
+            if (maxSize.HasValue || tc.HasValue)
             {
                 var platformSettings = importer.GetDefaultPlatformTextureSettings();
 
@@ -165,13 +182,10 @@ namespace UnitySkills
                     changes.Add($"maxSize={maxSize.Value}");
                 }
 
-                if (!string.IsNullOrEmpty(compression))
+                if (tc.HasValue)
                 {
-                    if (System.Enum.TryParse<TextureImporterCompression>(compression, true, out var tc))
-                    {
-                        platformSettings.textureCompression = tc;
-                        changes.Add($"compression={tc}");
-                    }
+                    platformSettings.textureCompression = tc.Value;
+                    changes.Add($"compression={tc.Value}");
                 }
 
                 importer.SetPlatformTextureSettings(platformSettings);
@@ -191,7 +205,8 @@ namespace UnitySkills
         [UnitySkill("texture_set_settings_batch", "Set texture import settings for multiple images. items: JSON array of {assetPath, textureType, maxSize, filterMode, ...}",
             Category = SkillCategory.Texture, Operation = SkillOperation.Modify,
             Tags = new[] { "texture", "import", "batch", "settings" },
-            Outputs = new[] { "totalItems", "successCount", "results" })]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            MutatesAssets = true)]
         public static object TextureSetSettingsBatch(string items)
         {
             return BatchExecutor.Execute<BatchTextureItem>(items, item =>
@@ -200,29 +215,36 @@ namespace UnitySkills
                 if (importer == null)
                     throw new System.Exception("Not a texture");
 
+                // 提前解析并挂在该条目的 assetPath 上报错，使坏值能被精确定位，而不是悄悄消失、
+                // 该条目却仍报成功。别名表与单对象 setter 完全相同——只在两者之一生效的词表，
+                // 比两边都不认还糟。
+                if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterType>(
+                        item.textureType, "textureType", SkillParamUtil.TextureTypeAliases, out var tt, out _))
+                    return SkillParamUtil.InvalidEnumError<TextureImporterType>(
+                        item.textureType, "textureType", SkillParamUtil.TextureTypeAliases, item.assetPath);
+                if (!SkillParamUtil.TryParseOptionalEnum<FilterMode>(item.filterMode, "filterMode", out var fm, out _))
+                    return SkillParamUtil.InvalidEnumError<FilterMode>(item.filterMode, "filterMode", item.assetPath);
+                if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterCompression>(
+                        item.compression, "compression", SkillParamUtil.TextureCompressionAliases, out var tc, out _))
+                    return SkillParamUtil.InvalidEnumError<TextureImporterCompression>(
+                        item.compression, "compression", SkillParamUtil.TextureCompressionAliases, item.assetPath);
+
                 var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.assetPath);
                 if (asset != null) WorkflowManager.SnapshotObject(asset);
 
-                if (!string.IsNullOrEmpty(item.textureType) &&
-                    System.Enum.TryParse<TextureImporterType>(item.textureType.Replace(" ", ""), true, out var tt))
-                    importer.textureType = tt;
-
-                if (!string.IsNullOrEmpty(item.filterMode) &&
-                    System.Enum.TryParse<FilterMode>(item.filterMode, true, out var fm))
-                    importer.filterMode = fm;
+                if (tt.HasValue) importer.textureType = tt.Value;
+                if (fm.HasValue) importer.filterMode = fm.Value;
 
                 if (item.mipmapEnabled.HasValue) importer.mipmapEnabled = item.mipmapEnabled.Value;
                 if (item.sRGB.HasValue) importer.sRGBTexture = item.sRGB.Value;
                 if (item.readable.HasValue) importer.isReadable = item.readable.Value;
                 if (item.spritePixelsPerUnit.HasValue) importer.spritePixelsPerUnit = item.spritePixelsPerUnit.Value;
 
-                if (item.maxSize.HasValue || !string.IsNullOrEmpty(item.compression))
+                if (item.maxSize.HasValue || tc.HasValue)
                 {
                     var ps = importer.GetDefaultPlatformTextureSettings();
                     if (item.maxSize.HasValue) ps.maxTextureSize = item.maxSize.Value;
-                    if (!string.IsNullOrEmpty(item.compression) &&
-                        System.Enum.TryParse<TextureImporterCompression>(item.compression, true, out var tc))
-                        ps.textureCompression = tc;
+                    if (tc.HasValue) ps.textureCompression = tc.Value;
                     importer.SetPlatformTextureSettings(ps);
                 }
 
@@ -284,19 +306,21 @@ namespace UnitySkills
                 filterMode = tex.filterMode.ToString(), wrapMode = tex.wrapMode.ToString(), memorySizeKB = memSize / 1024f };
         }
 
-        [UnitySkill("texture_set_type", "Set texture type. textureType: Default/NormalMap/Sprite/EditorGUI/Cursor/Cookie/Lightmap/SingleChannel",
+        [UnitySkill("texture_set_type", "Set texture type. textureType: Default/NormalMap/GUI/Sprite/Cursor/Cookie/Lightmap/SingleChannel/Shadowmask/DirectionalLightmap (Inspector alias: 'Editor GUI' = GUI)",
             Category = SkillCategory.Texture, Operation = SkillOperation.Modify,
             Tags = new[] { "texture", "type", "import" },
             Outputs = new[] { "path", "textureType" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object TextureSetType(string assetPath, string textureType)
         {
             if (Validate.Required(assetPath, "assetPath") is object err) return err;
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null) return new { error = $"Not a texture: {assetPath}" };
-            if (!System.Enum.TryParse<TextureImporterType>(textureType.Replace(" ", ""), true, out var tt))
-                return new { error = $"Invalid textureType: {textureType}" };
+            if (!SkillParamUtil.TryParseRequiredEnum<TextureImporterType>(
+                    textureType, "textureType", SkillParamUtil.TextureTypeAliases, out var tt, out var ttError))
+                return ttError;
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
@@ -310,20 +334,24 @@ namespace UnitySkills
             Tags = new[] { "texture", "platform", "compression", "optimization" },
             Outputs = new[] { "path", "platform", "maxSize", "format" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object TextureSetPlatformSettings(string assetPath, string platform, int? maxSize = null, string format = null, int? compressionQuality = null, bool? overridden = null)
         {
             if (Validate.Required(assetPath, "assetPath") is object err) return err;
             if (Validate.Required(platform, "platform") is object err2) return err2;
+            if (System.Array.IndexOf(ValidTexturePlatforms, platform) < 0) return InvalidPlatformError(platform);
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null) return new { error = $"Not a texture: {assetPath}" };
+
+            if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterFormat>(format, "format", out var tf, out var tfError))
+                return tfError;
 
             var ps = importer.GetPlatformTextureSettings(platform);
             if (overridden.HasValue) ps.overridden = overridden.Value;
             else ps.overridden = true;
             if (maxSize.HasValue) ps.maxTextureSize = maxSize.Value;
-            if (!string.IsNullOrEmpty(format) && System.Enum.TryParse<TextureImporterFormat>(format, true, out var tf))
-                ps.format = tf;
+            if (tf.HasValue) ps.format = tf.Value;
             if (compressionQuality.HasValue) ps.compressionQuality = compressionQuality.Value;
 
             importer.SetPlatformTextureSettings(ps);
@@ -342,6 +370,7 @@ namespace UnitySkills
         {
             if (Validate.Required(assetPath, "assetPath") is object err) return err;
             if (Validate.Required(platform, "platform") is object err2) return err2;
+            if (System.Array.IndexOf(ValidTexturePlatforms, platform) < 0) return InvalidPlatformError(platform);
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null) return new { error = $"Not a texture: {assetPath}" };
 
@@ -355,19 +384,22 @@ namespace UnitySkills
             Tags = new[] { "sprite", "texture", "2d", "import" },
             Outputs = new[] { "pixelsPerUnit", "spriteMode" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object TextureSetSpriteSettings(string assetPath, float? pixelsPerUnit = null, string spriteMode = null)
         {
             if (Validate.Required(assetPath, "assetPath") is object err) return err;
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null) return new { error = $"Not a texture: {assetPath}" };
 
+            if (!SkillParamUtil.TryParseOptionalEnum<SpriteImportMode>(spriteMode, "spriteMode", out var sm, out var smError))
+                return smError;
+
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
             if (pixelsPerUnit.HasValue) importer.spritePixelsPerUnit = pixelsPerUnit.Value;
-            if (!string.IsNullOrEmpty(spriteMode) && System.Enum.TryParse<SpriteImportMode>(spriteMode, true, out var sm))
-                importer.spriteImportMode = sm;
+            if (sm.HasValue) importer.spriteImportMode = sm.Value;
 
             importer.SaveAndReimport();
             return new { success = true, path = assetPath, pixelsPerUnit = importer.spritePixelsPerUnit,

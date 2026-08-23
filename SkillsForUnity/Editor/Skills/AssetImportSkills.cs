@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.IO;
 using System.Linq;
@@ -7,7 +7,7 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// Asset import skills - reimport and importer configuration.
+    /// 资源导入技能：重新导入与导入器配置。
     /// </summary>
     public static class AssetImportSkills
     {
@@ -16,7 +16,8 @@ namespace UnitySkills
             Tags = new[] { "asset", "reimport", "refresh", "import" },
             Outputs = new[] { "reimported" },
             RequiresInput = new[] { "assetPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object AssetReimport(string assetPath)
         {
             if (string.IsNullOrEmpty(assetPath))
@@ -64,7 +65,8 @@ namespace UnitySkills
             Category = SkillCategory.AssetImport, Operation = SkillOperation.Execute,
             Tags = new[] { "asset", "reimport", "batch", "import", "refresh" },
             Outputs = new[] { "count", "assets" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object AssetReimportBatch(string searchFilter = "*", string folder = "Assets", int limit = 100)
         {
             if (Validate.SafePath(folder, "folder") is object folderErr) return folderErr;
@@ -107,12 +109,13 @@ namespace UnitySkills
             return result;
         }
 
-        [UnitySkill("texture_set_import_settings", "Set texture import settings (maxSize, compression, readable)",
+        [UnitySkill("texture_set_import_settings", "Set texture import settings (maxSize, compression, readable). compression: Uncompressed/Compressed/CompressedHQ/CompressedLQ (Inspector aliases: None=Uncompressed, Normal or NormalQuality=Compressed, HighQuality=CompressedHQ, LowQuality=CompressedLQ)",
             Category = SkillCategory.AssetImport, Operation = SkillOperation.Modify,
             Tags = new[] { "texture", "import", "settings", "compression", "mipmap" },
             Outputs = new[] { "assetPath", "maxSize", "compression", "readable", "mipmaps" },
             RequiresInput = new[] { "textureAsset" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object TextureSetImportSettings(
             string assetPath,
             int? maxSize = null,
@@ -125,6 +128,20 @@ namespace UnitySkills
             if (importer == null)
                 return new { success = false, error = $"Not a texture or not found: {assetPath}" };
 
+            // 两个枚举都必须在第一次写入前解析完：任一解析失败若被放过，会置 changed=true
+            // 并触发一次什么都没改的 SaveAndReimport。别名表用的是共享表，保证本技能与
+            // texture_set_settings、texture_set_settings_batch 接受完全相同的词汇
+            // （Inspector 显示名与 CLR 枚举名都收）。
+            if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterCompression>(
+                    compression, "compression", SkillParamUtil.TextureCompressionAliases,
+                    out var parsedCompression, out var compressionError))
+                return compressionError;
+
+            if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterType>(
+                    textureType, "textureType", SkillParamUtil.TextureTypeAliases,
+                    out var parsedTextureType, out var textureTypeError))
+                return textureTypeError;
+
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
@@ -136,15 +153,9 @@ namespace UnitySkills
                 changed = true;
             }
 
-            if (!string.IsNullOrEmpty(compression))
+            if (parsedCompression.HasValue)
             {
-                switch (compression.ToLower())
-                {
-                    case "none": importer.textureCompression = TextureImporterCompression.Uncompressed; break;
-                    case "lowquality": importer.textureCompression = TextureImporterCompression.CompressedLQ; break;
-                    case "normalquality": importer.textureCompression = TextureImporterCompression.Compressed; break;
-                    case "highquality": importer.textureCompression = TextureImporterCompression.CompressedHQ; break;
-                }
+                importer.textureCompression = parsedCompression.Value;
                 changed = true;
             }
 
@@ -160,17 +171,9 @@ namespace UnitySkills
                 changed = true;
             }
 
-            if (!string.IsNullOrEmpty(textureType))
+            if (parsedTextureType.HasValue)
             {
-                switch (textureType.ToLower())
-                {
-                    case "default": importer.textureType = TextureImporterType.Default; break;
-                    case "normalmap": importer.textureType = TextureImporterType.NormalMap; break;
-                    case "sprite": importer.textureType = TextureImporterType.Sprite; break;
-                    case "cursor": importer.textureType = TextureImporterType.Cursor; break;
-                    case "cookie": importer.textureType = TextureImporterType.Cookie; break;
-                    case "lightmap": importer.textureType = TextureImporterType.Lightmap; break;
-                }
+                importer.textureType = parsedTextureType.Value;
                 changed = true;
             }
 
@@ -193,7 +196,8 @@ namespace UnitySkills
             Tags = new[] { "model", "fbx", "import", "settings", "mesh" },
             Outputs = new[] { "assetPath", "globalScale", "importAnimation", "meshCompression" },
             RequiresInput = new[] { "modelAsset" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object ModelSetImportSettings(
             string assetPath,
             float? globalScale = null,
@@ -206,6 +210,9 @@ namespace UnitySkills
             var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null)
                 return new { success = false, error = $"Not a model or not found: {assetPath}" };
+
+            if (!SkillParamUtil.TryParseOptionalEnum<ModelImporterMeshCompression>(meshCompression, "meshCompression", out var parsedMeshCompression, out var meshCompressionError))
+                return meshCompressionError;
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
@@ -244,15 +251,9 @@ namespace UnitySkills
                 changed = true;
             }
 
-            if (!string.IsNullOrEmpty(meshCompression))
+            if (parsedMeshCompression.HasValue)
             {
-                switch (meshCompression.ToLower())
-                {
-                    case "off": importer.meshCompression = ModelImporterMeshCompression.Off; break;
-                    case "low": importer.meshCompression = ModelImporterMeshCompression.Low; break;
-                    case "medium": importer.meshCompression = ModelImporterMeshCompression.Medium; break;
-                    case "high": importer.meshCompression = ModelImporterMeshCompression.High; break;
-                }
+                importer.meshCompression = parsedMeshCompression.Value;
                 changed = true;
             }
 
@@ -274,7 +275,8 @@ namespace UnitySkills
             Tags = new[] { "audio", "import", "settings", "compression", "clip" },
             Outputs = new[] { "assetPath", "forceToMono", "loadType", "compressionFormat" },
             RequiresInput = new[] { "audioAsset" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object AudioSetImportSettings(
             string assetPath,
             bool? forceToMono = null,
@@ -286,6 +288,11 @@ namespace UnitySkills
             var importer = AssetImporter.GetAtPath(assetPath) as AudioImporter;
             if (importer == null) return new { error = $"Not an audio asset: {assetPath}" };
 
+            if (!SkillParamUtil.TryParseOptionalEnum<AudioClipLoadType>(loadType, "loadType", out var parsedLoadType, out var loadTypeError))
+                return loadTypeError;
+            if (!SkillParamUtil.TryParseOptionalEnum<AudioCompressionFormat>(compressionFormat, "compressionFormat", out var parsedCompression, out var compressionError))
+                return compressionError;
+
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
@@ -293,10 +300,8 @@ namespace UnitySkills
             if (loadInBackground.HasValue) importer.loadInBackground = loadInBackground.Value;
 
             var settings = importer.defaultSampleSettings;
-            if (!string.IsNullOrEmpty(loadType) && System.Enum.TryParse<AudioClipLoadType>(loadType, true, out var parsedLoadType))
-                settings.loadType = parsedLoadType;
-            if (!string.IsNullOrEmpty(compressionFormat) && System.Enum.TryParse<AudioCompressionFormat>(compressionFormat, true, out var parsedCompression))
-                settings.compressionFormat = parsedCompression;
+            if (parsedLoadType.HasValue) settings.loadType = parsedLoadType.Value;
+            if (parsedCompression.HasValue) settings.compressionFormat = parsedCompression.Value;
             if (quality.HasValue) settings.quality = quality.Value / 100f;
 
             importer.defaultSampleSettings = settings;
@@ -312,12 +317,13 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("sprite_set_import_settings", "Set sprite import settings (mode, pivot, packingTag, pixelsPerUnit)",
+        [UnitySkill("sprite_set_import_settings", "Set sprite import settings (mode, pivot, packingTag, pixelsPerUnit). spriteMode: Single/Multiple/Polygon force textureType to Sprite; spriteMode=None leaves the texture type alone (a Sprite-typed texture with no sprite is unusable). Response echoes the resulting textureType.",
             Category = SkillCategory.AssetImport, Operation = SkillOperation.Modify,
             Tags = new[] { "sprite", "import", "settings", "2d", "texture" },
-            Outputs = new[] { "assetPath", "spriteMode", "pixelsPerUnit" },
+            Outputs = new[] { "assetPath", "spriteMode", "pixelsPerUnit", "textureType" },
             RequiresInput = new[] { "textureAsset" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true)]
         public static object SpriteSetImportSettings(
             string assetPath,
             string spriteMode = null,
@@ -329,19 +335,21 @@ namespace UnitySkills
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null) return new { error = $"Not a texture: {assetPath}" };
 
+            // 必须在下面强制 textureType=Sprite 之前校验：否则非法 spriteMode 会让资源
+            // 已被转成 Sprite，而请求的模式被静默丢弃。
+            if (!SkillParamUtil.TryParseOptionalEnum<SpriteImportMode>(spriteMode, "spriteMode", out var parsedSpriteMode, out var spriteModeError))
+                return spriteModeError;
+
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
-            importer.textureType = TextureImporterType.Sprite;
-            if (!string.IsNullOrEmpty(spriteMode))
-            {
-                switch (spriteMode.ToLower())
-                {
-                    case "single": importer.spriteImportMode = SpriteImportMode.Single; break;
-                    case "multiple": importer.spriteImportMode = SpriteImportMode.Multiple; break;
-                    case "polygon": importer.spriteImportMode = SpriteImportMode.Polygon; break;
-                }
-            }
+            // spriteMode=None 意为"这张贴图没有 sprite"，此时不能强制 textureType=Sprite：
+            // 那会产出一个 Sprite 类型却没有 Sprite 子对象的资源，谁都引用不了，
+            // Inspector 里也退不回去。其余模式仍隐含 Sprite 类型，这是调用方依赖的便利行为。
+            if (parsedSpriteMode != SpriteImportMode.None)
+                importer.textureType = TextureImporterType.Sprite;
+            if (parsedSpriteMode.HasValue)
+                importer.spriteImportMode = parsedSpriteMode.Value;
 
             if (pixelsPerUnit.HasValue) importer.spritePixelsPerUnit = pixelsPerUnit.Value;
             if (!string.IsNullOrEmpty(packingTag))
@@ -366,7 +374,8 @@ namespace UnitySkills
                 success = true,
                 assetPath,
                 spriteMode = importer.spriteImportMode.ToString(),
-                pixelsPerUnit = importer.spritePixelsPerUnit
+                pixelsPerUnit = importer.spritePixelsPerUnit,
+                textureType = importer.textureType.ToString()
             };
         }
 

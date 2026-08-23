@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Linq;
 using System.Collections.Generic;
@@ -7,7 +7,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// Audio import settings skills - get/set audio importer properties.
+    /// 音频导入设置技能：读写 AudioImporter 属性。
     /// </summary>
     public static class AudioSkills
     {
@@ -63,9 +63,17 @@ namespace UnitySkills
             if (importer == null)
                 return new { error = $"Not an audio file or asset not found: {assetPath}" };
 
+            // 三个枚举必须在第一次赋值之前全部解析完，否则报错时
+            // forceToMono/loadInBackground/ambisonic 已经写进导入器了。
+            if (!SkillParamUtil.TryParseOptionalEnum<AudioClipLoadType>(loadType, "loadType", out var lt, out var ltError))
+                return ltError;
+            if (!SkillParamUtil.TryParseOptionalEnum<AudioCompressionFormat>(compressionFormat, "compressionFormat", out var cf, out var cfError))
+                return cfError;
+            if (!SkillParamUtil.TryParseOptionalEnum<AudioSampleRateSetting>(sampleRateSetting, "sampleRateSetting", out var srs, out var srsError))
+                return srsError;
+
             var changes = new List<string>();
 
-            // Basic settings
             if (forceToMono.HasValue)
             {
                 importer.forceToMono = forceToMono.Value;
@@ -84,53 +92,35 @@ namespace UnitySkills
                 changes.Add($"ambisonic={ambisonic.Value}");
             }
 
-            // Sample settings
             var sampleSettings = importer.defaultSampleSettings;
             bool sampleSettingsChanged = false;
 
-            if (!string.IsNullOrEmpty(loadType))
+            if (lt.HasValue)
             {
-                if (System.Enum.TryParse<AudioClipLoadType>(loadType, true, out var lt))
-                {
-                    sampleSettings.loadType = lt;
-                    changes.Add($"loadType={lt}");
-                    sampleSettingsChanged = true;
-                }
-                else
-                {
-                    return new { error = $"Invalid loadType: {loadType}. Valid: DecompressOnLoad, CompressedInMemory, Streaming" };
-                }
+                sampleSettings.loadType = lt.Value;
+                changes.Add($"loadType={lt.Value}");
+                sampleSettingsChanged = true;
             }
 
-            if (!string.IsNullOrEmpty(compressionFormat))
+            if (cf.HasValue)
             {
-                if (System.Enum.TryParse<AudioCompressionFormat>(compressionFormat, true, out var cf))
-                {
-                    sampleSettings.compressionFormat = cf;
-                    changes.Add($"compressionFormat={cf}");
-                    sampleSettingsChanged = true;
-                }
-                else
-                {
-                    return new { error = $"Invalid compressionFormat: {compressionFormat}. Valid: PCM, Vorbis, ADPCM" };
-                }
+                sampleSettings.compressionFormat = cf.Value;
+                changes.Add($"compressionFormat={cf.Value}");
+                sampleSettingsChanged = true;
             }
 
             if (quality.HasValue)
             {
                 sampleSettings.quality = Mathf.Clamp01(quality.Value);
-                changes.Add($"quality={sampleSettings.quality}");
+                changes.Add($"quality={SkillParamUtil.FormatFloatR(sampleSettings.quality)}");
                 sampleSettingsChanged = true;
             }
 
-            if (!string.IsNullOrEmpty(sampleRateSetting))
+            if (srs.HasValue)
             {
-                if (System.Enum.TryParse<AudioSampleRateSetting>(sampleRateSetting, true, out var srs))
-                {
-                    sampleSettings.sampleRateSetting = srs;
-                    changes.Add($"sampleRateSetting={srs}");
-                    sampleSettingsChanged = true;
-                }
+                sampleSettings.sampleRateSetting = srs.Value;
+                changes.Add($"sampleRateSetting={srs.Value}");
+                sampleSettingsChanged = true;
             }
 
             if (sampleSettingsChanged)
@@ -162,6 +152,13 @@ namespace UnitySkills
                 if (importer == null)
                     throw new System.Exception("Not an audio file");
 
+                // 在写入任何属性之前解析，并把出错项的 assetPath 带上，
+                // 免得枚举拼错的条目被报成成功。
+                if (!SkillParamUtil.TryParseOptionalEnum<AudioClipLoadType>(item.loadType, "loadType", out var lt, out _))
+                    return SkillParamUtil.InvalidEnumError<AudioClipLoadType>(item.loadType, "loadType", item.assetPath);
+                if (!SkillParamUtil.TryParseOptionalEnum<AudioCompressionFormat>(item.compressionFormat, "compressionFormat", out var cf, out _))
+                    return SkillParamUtil.InvalidEnumError<AudioCompressionFormat>(item.compressionFormat, "compressionFormat", item.assetPath);
+
                 if (item.forceToMono.HasValue)
                     importer.forceToMono = item.forceToMono.Value;
                 if (item.loadInBackground.HasValue)
@@ -170,13 +167,8 @@ namespace UnitySkills
                 var ss = importer.defaultSampleSettings;
                 bool ssChanged = false;
 
-                if (!string.IsNullOrEmpty(item.loadType) &&
-                    System.Enum.TryParse<AudioClipLoadType>(item.loadType, true, out var lt))
-                { ss.loadType = lt; ssChanged = true; }
-
-                if (!string.IsNullOrEmpty(item.compressionFormat) &&
-                    System.Enum.TryParse<AudioCompressionFormat>(item.compressionFormat, true, out var cf))
-                { ss.compressionFormat = cf; ssChanged = true; }
+                if (lt.HasValue) { ss.loadType = lt.Value; ssChanged = true; }
+                if (cf.HasValue) { ss.compressionFormat = cf.Value; ssChanged = true; }
 
                 if (item.quality.HasValue)
                 { ss.quality = Mathf.Clamp01(item.quality.Value); ssChanged = true; }
@@ -246,16 +238,26 @@ namespace UnitySkills
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
 
+            // clipPath 给了却解析不到时必须在 AddComponent 之前就拒绝：否则组件已经加上去
+            // （真实副作用），而 clip 被静默丢弃，调用方看不出播放其实是静音的。
+            // 与本仓库其余 setter 一致——目标解析不到就整体拒绝，不做部分生效。
+            AudioClip clip = null;
+            if (!string.IsNullOrEmpty(clipPath))
+            {
+                clip = AssetDatabase.LoadAssetAtPath<AudioClip>(clipPath);
+                if (clip == null)
+                    return new
+                    {
+                        error = $"AudioClip not found: {clipPath}",
+                        errorCode = SkillErrorCode.TargetNotFound.ToWireString()
+                    };
+            }
+
             var source = Undo.AddComponent<AudioSource>(go);
             source.playOnAwake = playOnAwake;
             source.loop = loop;
             source.volume = volume;
-
-            if (!string.IsNullOrEmpty(clipPath))
-            {
-                var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(clipPath);
-                if (clip != null) source.clip = clip;
-            }
+            if (clip != null) source.clip = clip;
 
             return new { success = true, gameObject = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go) };
         }
@@ -333,7 +335,7 @@ namespace UnitySkills
             var savePath = System.IO.Path.Combine(folder, mixerName + ".mixer").Replace("\\", "/");
             if (System.IO.File.Exists(savePath)) return new { error = $"Mixer already exists: {savePath}" };
 
-            // Find AudioMixerController type across assemblies (location varies by Unity version)
+            // AudioMixerController 所在程序集随 Unity 版本变化，只能遍历全部程序集查找。
             System.Type mixerType = null;
             foreach (var asm in System.AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -342,7 +344,7 @@ namespace UnitySkills
             }
             if (mixerType == null) return new { error = "AudioMixerController type not found" };
 
-            // Use CreateMixerControllerAtPath - the proper internal factory method
+            // CreateMixerControllerAtPath 是官方内部工厂方法，优先走它。
             var createMethod = mixerType.GetMethod("CreateMixerControllerAtPath",
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
             if (createMethod != null)
@@ -355,7 +357,7 @@ namespace UnitySkills
                 }
             }
 
-            // Fallback: ScriptableObject.CreateInstance (may log warnings in Unity 6)
+            // 兜底：直接 CreateInstance（Unity 6 下可能打警告）。
             var mixer = ScriptableObject.CreateInstance(mixerType);
             if (mixer != null)
             {

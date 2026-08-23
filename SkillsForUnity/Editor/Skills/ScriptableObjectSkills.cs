@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.IO;
 using System.Linq;
@@ -8,7 +8,7 @@ using System.Globalization;
 namespace UnitySkills
 {
     /// <summary>
-    /// ScriptableObject management skills.
+    /// ScriptableObject 管理技能。
     /// </summary>
     public static class ScriptableObjectSkills
     {
@@ -166,7 +166,7 @@ namespace UnitySkills
         [UnitySkill("scriptableobject_set_batch", "Set multiple fields on a ScriptableObject at once. fields: JSON object {fieldName: value, ...}",
             Category = SkillCategory.ScriptableObject, Operation = SkillOperation.Modify,
             Tags = new[] { "scriptableobject", "set", "batch", "fields" },
-            Outputs = new[] { "fieldsSet" },
+            Outputs = new[] { "fieldsSet", "failed", "results" },
             RequiresInput = new[] { "assetPath" },
             TracksWorkflow = true)]
         public static object ScriptableObjectSetBatch(string assetPath, string fields)
@@ -179,14 +179,33 @@ namespace UnitySkills
             Undo.RecordObject(asset, "Set SO Batch");
             var type = asset.GetType();
             int set = 0;
+            var failedKeys = new System.Collections.Generic.List<string>();
             foreach (var kv in dict)
             {
+                // 与 scriptableobject_set 一样采用"先字段后属性"的回退：只查字段会静默跳过所有
+                // 公开属性目标（如 Tile.colliderType / Tile.color，它们在 Unity 内置类型上是
+                // 自动属性），该键的 fieldsSet 原封不动，且不提示跳过了哪个键、为什么跳过。
                 var field = type.GetField(kv.Key, BindingFlags.Public | BindingFlags.Instance);
-                if (field != null) { field.SetValue(asset, ComponentSkills.ConvertValue(kv.Value, field.FieldType)); set++; }
+                if (field != null)
+                {
+                    field.SetValue(asset, ComponentSkills.ConvertValue(kv.Value, field.FieldType));
+                    set++;
+                    continue;
+                }
+
+                var prop = type.GetProperty(kv.Key, BindingFlags.Public | BindingFlags.Instance);
+                if (prop != null && prop.CanWrite)
+                {
+                    prop.SetValue(asset, ComponentSkills.ConvertValue(kv.Value, prop.PropertyType));
+                    set++;
+                    continue;
+                }
+
+                failedKeys.Add(kv.Key);
             }
             EditorUtility.SetDirty(asset);
             AssetDatabase.SaveAssets();
-            return new { success = true, fieldsSet = set };
+            return new { success = failedKeys.Count == 0, fieldsSet = set, failed = failedKeys.Count, results = failedKeys.Select(k => new { field = k, error = "Field/property not found or not writable" }).ToArray() };
         }
 
         [UnitySkill("scriptableobject_delete", "Delete a ScriptableObject asset",
@@ -228,7 +247,9 @@ namespace UnitySkills
             Tags = new[] { "scriptableobject", "export", "json", "serialize" },
             Outputs = new[] { "json", "path" },
             RequiresInput = new[] { "assetPath" },
-            ReadOnly = true,
+            // 与 scene_dependency_analyze 同一形态：带 savePath 时本 skill 会执行 File.WriteAllText，
+            // 若标 ReadOnly=true 就会绕过 surface profile 与 diff 捕获。
+            MutatesAssets = true,
             Mode = SkillMode.SemiAuto)]
         public static object ScriptableObjectExportJson(string assetPath, string savePath = null)
         {
@@ -262,8 +283,8 @@ namespace UnitySkills
             }
             if (string.IsNullOrEmpty(data)) return new { error = "No JSON data provided" };
 
-            // EditorJsonUtility.FromJsonOverwrite silently ignores bare field JSON; it expects the
-            // {"MonoBehaviour":{...}} envelope that scriptableobject_export_json produces, so wrap bare objects.
+            // EditorJsonUtility.FromJsonOverwrite 会静默忽略裸字段 JSON，它期望的是
+            // scriptableobject_export_json 产出的 {"MonoBehaviour":{...}} 外壳，因此这里给裸对象补壳。
             try
             {
                 var root = Newtonsoft.Json.Linq.JToken.Parse(data);

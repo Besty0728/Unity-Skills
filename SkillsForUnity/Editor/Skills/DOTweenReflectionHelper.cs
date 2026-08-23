@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -8,18 +8,16 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Reflection helper for DOTween / DOTween Pro. All field access on
-    /// DOTweenAnimation goes through this class so the project compiles
-    /// cleanly without a compile-time reference to DOTween.
+    /// DOTween / DOTween Pro 的反射助手。对 DOTweenAnimation 的一切字段访问都走本类，
+    /// 使工程在不引用 DOTween 的情况下也能干净编译。
     ///
-    /// Field naming in DOTween Pro has historically been stable but not
-    /// source-public — candidate arrays are used for the high-frequency
-    /// fields so minor renames across versions are tolerated.
+    /// DOTween Pro 的字段命名历来稳定但并非公开契约，因此高频字段用候选名数组，
+    /// 以容忍跨版本的小幅改名。
     /// </summary>
     internal static class DOTweenReflectionHelper
     {
         // ==================================================================================
-        // Type Lookup
+        // 类型查找
         // ==================================================================================
 
         public const string DOTweenTypeName = "DG.Tweening.DOTween";
@@ -46,7 +44,7 @@ namespace UnitySkills
         };
 
         // ==================================================================================
-        // High-frequency Field Name Candidates
+        // 高频字段的候选名
         // ==================================================================================
 
         public static readonly string[] DurationFieldCandidates = { "duration" };
@@ -71,8 +69,8 @@ namespace UnitySkills
         public static readonly string[] EndValueRectCandidates = { "endValueRect" };
 
         /// <summary>
-        /// Field names that MUST be modified via dedicated skills (set_duration,
-        /// set_ease, set_loops). The generic set_animation_field rejects these.
+        /// 只能通过专用技能（set_duration、set_ease、set_loops）修改的字段名，
+        /// 通用的 set_animation_field 会拒绝它们。
         /// </summary>
         public static readonly HashSet<string> ReservedByDedicatedSkills =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -82,7 +80,7 @@ namespace UnitySkills
             };
 
         // ==================================================================================
-        // Field Access (reflection)
+        // 字段访问（反射）
         // ==================================================================================
 
         private const BindingFlags InstanceFlags =
@@ -134,6 +132,35 @@ namespace UnitySkills
             return field?.GetValue(instance);
         }
 
+        /// <summary>
+        /// <c>dotween_pro_set_animation_field</c> 真正能写的字段名，用于未知字段被拒时的
+        /// <c>validValues</c> 列表。只取 public 实例字段（DOTweenAnimation 只序列化这些），
+        /// 并剔除归专用技能管的那些，保证列出的每个名字调用方都真能用。
+        /// </summary>
+        public static string[] SettableFieldNames(Type owner)
+        {
+            if (owner == null) return Array.Empty<string>();
+            return owner.GetFields(BindingFlags.Public | BindingFlags.Instance)
+                .Where(f => !f.IsInitOnly && !f.IsLiteral)
+                .Select(f => f.Name)
+                .Where(name => !ReservedByDedicatedSkills.Contains(name))
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        /// <summary>
+        /// 单个字段的格式化输出，与 <see cref="DumpAllFields"/> 的格式完全一致——
+        /// 这样 setter 回显的写入值与 <c>dotween_pro_get_animation</c> 对同一字段的报告
+        /// 逐字节相同。
+        /// </summary>
+        public static object DumpFieldValue(object instance, string fieldName)
+        {
+            var field = ResolveField(instance?.GetType(), fieldName);
+            if (field == null) return null;
+            try { return StringifyForPayload(field.GetValue(instance)); }
+            catch { return null; }
+        }
+
         public static Dictionary<string, object> DumpAllFields(object instance)
         {
             var result = new Dictionary<string, object>();
@@ -153,34 +180,82 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Ease & Loop Parsing (enum-by-name with curve fallback)
+        // Ease 与 Loop 解析（按名解析枚举，曲线兜底）
         // ==================================================================================
 
-        public static bool TrySetEase(object animInstance, string easeName, string easeCurveJson)
+        /// <summary>
+        /// 枚举字段允许调用方传入的取值名，同时也是被拒时回给 <c>validValues</c> 的列表。
+        ///
+        /// <para>两类取值被过滤掉，因为按名传它们从来都不对。DOTween 的 <c>Ease</c> 声明了
+        /// <c>Unset</c> 与 <c>INTERNAL_Zero</c> / <c>INTERNAL_Custom</c>：<c>Unset</c> 意为
+        /// "沿用工程默认"（本 setter 表达不了，它只写具体值），而 <c>INTERNAL_Custom</c> 是
+        /// <see cref="TrySetEaseCurve"/> 代调用方写入的标记——只报这个名字而不给曲线，
+        /// 得到的会是一个自定义缓动却没有曲线的动画。</para>
+        /// </summary>
+        public static string[] EnumNames(Type enumType)
         {
-            if (animInstance == null) return false;
+            if (enumType == null || !enumType.IsEnum) return Array.Empty<string>();
+            return Enum.GetNames(enumType)
+                .Where(name => !name.StartsWith("INTERNAL_", StringComparison.Ordinal) &&
+                               !string.Equals(name, "Unset", StringComparison.Ordinal))
+                .ToArray();
+        }
 
-            if (!string.IsNullOrEmpty(easeCurveJson))
+        /// <summary>对按候选名定位到的字段取 <see cref="EnumNames"/>。</summary>
+        public static string[] EnumNamesForField(Type owner, string[] candidates)
+        {
+            var field = ResolveField(owner, candidates);
+            return field == null ? Array.Empty<string>() : EnumNames(field.FieldType);
+        }
+
+        /// <summary>
+        /// 判断枚举字段是否接受 <paramref name="name"/>。判据与 <see cref="EnumNamesForField"/>
+        /// 对外公布的词表同源，保证"接受"与"列为合法"永不打架；且不同于
+        /// <c>Enum.TryParse</c>，裸整数字面量（如 "999"）会被拒绝，
+        /// 而不是当成未定义的枚举成员写进去。
+        /// </summary>
+        public static bool EnumFieldAccepts(Type owner, string[] candidates, string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            var trimmed = name.Trim();
+            return EnumNamesForField(owner, candidates)
+                .Any(candidate => string.Equals(candidate, trimmed, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// 解析 <c>easeCurveJson</c> 参数。刻意与 <see cref="TrySetEaseCurve"/> 分开暴露，
+        /// 好让调用方在动组件之前就能拒绝解析不了的曲线：合并成一个入口时，解析失败会掉进
+        /// 按名设置缓动的分支，装上 OutQuad 后报成功——那是静默的错误值，而不是拒绝。
+        /// </summary>
+        public static bool TryParseEaseCurve(string easeCurveJson, out AnimationCurve curve)
+        {
+            curve = string.IsNullOrEmpty(easeCurveJson) ? null : ParseAnimationCurve(easeCurveJson);
+            return curve != null;
+        }
+
+        /// <summary>
+        /// 写入自定义曲线，并把 ease 枚举翻成 DOTween 的 <c>INTERNAL_Custom</c> 标记——
+        /// 曲线要靠这个标记才生效。两步中任一步做不到就返回 false，
+        /// 免得调用方报告一条运行时其实会被忽略的曲线。
+        /// </summary>
+        public static bool TrySetEaseCurve(object animInstance, AnimationCurve curve)
+        {
+            if (animInstance == null || curve == null) return false;
+            if (!SetFieldByCandidates(animInstance, EaseCurveFieldCandidates, curve)) return false;
+
+            var easeField = ResolveField(animInstance.GetType(), EaseFieldCandidates);
+            if (easeField == null || !easeField.FieldType.IsEnum) return false;
+            try
             {
-                var curve = ParseAnimationCurve(easeCurveJson);
-                if (curve != null)
-                {
-                    SetFieldByCandidates(animInstance, EaseCurveFieldCandidates, curve);
-                    var easeField = ResolveField(animInstance.GetType(), EaseFieldCandidates);
-                    if (easeField != null && easeField.FieldType.IsEnum)
-                    {
-                        try
-                        {
-                            var customValue = Enum.Parse(easeField.FieldType, "INTERNAL_Custom", ignoreCase: true);
-                            easeField.SetValue(animInstance, customValue);
-                            return true;
-                        }
-                        catch { /* INTERNAL_Custom may not exist on very old versions */ }
-                    }
-                }
+                easeField.SetValue(animInstance, Enum.Parse(easeField.FieldType, "INTERNAL_Custom", ignoreCase: true));
+                return true;
             }
+            catch { return false; /* INTERNAL_Custom may not exist on very old versions */ }
+        }
 
-            if (string.IsNullOrEmpty(easeName)) return false;
+        public static bool TrySetEase(object animInstance, string easeName)
+        {
+            if (animInstance == null || string.IsNullOrEmpty(easeName)) return false;
 
             var field = ResolveField(animInstance.GetType(), EaseFieldCandidates);
             if (field == null || !field.FieldType.IsEnum) return false;
@@ -223,7 +298,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // animationType → endValue routing
+        // animationType → endValue 字段路由
         // ==================================================================================
 
         private static readonly HashSet<string> _vec3AnimTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -260,8 +335,8 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// Routes a string end-value into the correct endValueXxx field based on animationType.
-        /// Returns (success, error).
+        /// 依据 animationType 把字符串形式的终值路由到对应的 endValueXxx 字段。
+        /// 返回 (是否成功, 错误信息)。
         /// </summary>
         public static (bool ok, string error) ApplyEndValue(
             object animInstance,
@@ -338,7 +413,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Value Conversion
+        // 值转换
         // ==================================================================================
 
         public static object ConvertValue(object value, Type targetType)

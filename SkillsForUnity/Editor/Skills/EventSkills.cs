@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.Events;
 using UnityEditor;
 using UnityEditor.Events;
@@ -9,7 +9,7 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// Event management skills - inspect and modify UnityEvents (e.g. Button.onClick).
+    /// 事件管理技能：检视与修改 UnityEvent（如 Button.onClick）。
     /// </summary>
     public static class EventSkills
     {
@@ -73,11 +73,12 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("event_add_listener", "Add a persistent listener to a UnityEvent (Editor time). Supported args: void, int, float, string, bool, Object.", TracksWorkflow = true,
+        [UnitySkill("event_add_listener", "Add a persistent listener to a UnityEvent (Editor time). Supported args: void, int, float, string, bool, Object. mode: Off/EditorAndRuntime/RuntimeOnly.", TracksWorkflow = true,
             Category = SkillCategory.Event, Operation = SkillOperation.Modify,
             Tags = new[] { "event", "listener", "add", "callback" },
-            Outputs = new[] { "message", "index" },
-            RequiresInput = new[] { "gameObject", "componentName", "eventName", "targetObjectName", "methodName" })]
+            Outputs = new[] { "message", "index", "mode" },
+            RequiresInput = new[] { "gameObject", "componentName", "eventName", "targetObjectName", "methodName" },
+            MutatesScene = true)]
         public static object EventAddListener(
             string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null,
             string targetObjectName = null, string targetComponentName = null, string methodName = null,
@@ -85,6 +86,12 @@ namespace UnitySkills
             string argType = "void", // void, int, float, string, bool, object
             float floatArg = 0, int intArg = 0, string stringArg = null, bool boolArg = false)
         {
+            // mode 必须在最前面严格解析：若只用两次 string.Equals 比较，识别不了的取值会在
+            // 监听器已经添加完之后落到 RuntimeOnly 上，"EditorOnly" 就会静默变成运行时监听
+            // 却报成功。
+            if (!SkillParamUtil.TryParseRequiredEnum<UnityEventCallState>(mode, "mode", out var callState, out var modeError))
+                return modeError;
+
             var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (goErr != null) return goErr;
 
@@ -94,7 +101,7 @@ namespace UnitySkills
             var (targetGo, tgtErr) = GameObjectFinder.FindOrError(name: targetObjectName);
             if (tgtErr != null) return tgtErr;
 
-            // Resolve target: "GameObject" is not a Component, use GO itself as Object target
+            // "GameObject" 不是组件，这种情况下直接拿 GameObject 本身当目标对象。
             Object targetObj = null;
             System.Type targetType = null;
             if (targetComponentName == "GameObject" || targetComponentName == "UnityEngine.GameObject")
@@ -130,7 +137,7 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(component);
             Undo.RecordObject(component, "Add Event Listener");
 
-            // Resolve Method - also handles property setters (set_XXX)
+            // 方法解析，同时兼顾属性 setter（set_XXX）。
             MethodInfo methodInfo = null;
 
             MethodInfo FindMethodOnTarget(System.Type[] paramTypes)
@@ -191,19 +198,16 @@ namespace UnitySkills
                     return new { error = $"Unsupported argType: {argType}" };
             }
 
-            // The newly added listener is always the last one
+            // 刚添加的监听器一定在列表末尾。
             int index = unityEvent.GetPersistentEventCount() - 1;
-            UnityEventCallState callState = UnityEventCallState.RuntimeOnly;
-            if (mode.ToLower() == "editorandruntime") callState = UnityEventCallState.EditorAndRuntime;
-            else if (mode.ToLower() == "off") callState = UnityEventCallState.Off;
-            
             unityEvent.SetPersistentListenerState(index, callState);
 
             return new
             {
                 success = true,
                 message = $"Added listener {targetComponentName}.{methodName} to {componentName}.{eventName}",
-                index
+                index,
+                mode = callState.ToString()
             };
         }
 
@@ -212,6 +216,7 @@ namespace UnitySkills
             Tags = new[] { "event", "listener", "remove", "delete" },
             Outputs = new[] { "remainingCount" },
             RequiresInput = new[] { "gameObject", "componentName", "eventName" },
+            MutatesScene = true,
             RiskLevel = "medium")]
         public static object EventRemoveListener(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, int index = 0)
         {
@@ -244,7 +249,10 @@ namespace UnitySkills
             Category = SkillCategory.Event, Operation = SkillOperation.Execute,
             Tags = new[] { "event", "invoke", "trigger", "runtime" },
             Outputs = new[] { "message" },
-            RequiresInput = new[] { "gameObject", "componentName", "eventName" })]
+            RequiresInput = new[] { "gameObject", "componentName", "eventName" },
+            // 触发本身不写任何东西，但会执行持久监听器对场景做的一切，且没有快照、无法撤销。
+            // 只有把它声明为场景改动，surface profile 的"不做场景编辑"承诺才站得住。
+            MutatesScene = true)]
         public static object EventInvoke(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
         {
              var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
@@ -426,11 +434,112 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// 反射进 UnityEventBase 的内部类 PersistentCallGroup/PersistentCall/ArgumentCache，
+        /// 读出某条持久调用的参数类型与取值。用的字段名与 UnityEventDrawer 自己依赖的一致，
+        /// 跨 Unity 版本稳定。这里全部按字符串查找，所以版本不匹配绝不会编译失败：
+        /// 最坏也只是返回 "unknown"，调用方降级为只按无参重载查找，而不是抛异常。
+        /// </summary>
+        private static (string argType, Object objectArg, int intArg, float floatArg, string stringArg, bool boolArg) ReadPersistentCallArguments(UnityEventBase evt, int index)
+        {
+            try
+            {
+                var callsField = typeof(UnityEventBase).GetField("m_PersistentCalls", BindingFlags.Instance | BindingFlags.NonPublic);
+                var callGroup = callsField?.GetValue(evt);
+                if (callGroup == null) return ("unknown", null, 0, 0f, null, false);
+
+                var callsListField = callGroup.GetType().GetField("m_Calls", BindingFlags.Instance | BindingFlags.NonPublic);
+                if (!(callsListField?.GetValue(callGroup) is System.Collections.IList callsList) || index < 0 || index >= callsList.Count)
+                    return ("unknown", null, 0, 0f, null, false);
+
+                var call = callsList[index];
+                if (call == null) return ("unknown", null, 0, 0f, null, false);
+
+                var callType = call.GetType();
+                var mode = callType.GetField("m_Mode", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(call);
+                var args = callType.GetField("m_Arguments", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(call);
+                if (mode == null || args == null) return ("unknown", null, 0, 0f, null, false);
+
+                var argsType = args.GetType();
+                object ReadRaw(string field) => argsType.GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(args);
+
+                switch (mode.ToString())
+                {
+                    case "Void": return ("void", null, 0, 0f, null, false);
+                    case "Object": return ("object", ReadRaw("m_ObjectArgument") as Object, 0, 0f, null, false);
+                    case "Int": return ("int", null, (int)(ReadRaw("m_IntArgument") ?? 0), 0f, null, false);
+                    case "Float": return ("float", null, 0, (float)(ReadRaw("m_FloatArgument") ?? 0f), null, false);
+                    case "String": return ("string", null, 0, 0f, ReadRaw("m_StringArgument") as string, false);
+                    case "Bool": return ("bool", null, 0, 0f, null, (bool)(ReadRaw("m_BoolArgument") ?? false));
+                    default: return ("unknown", null, 0, 0f, null, false); // EventDefined 或无法识别的模式
+                }
+            }
+            catch
+            {
+                return ("unknown", null, 0, 0f, null, false);
+            }
+        }
+
+        /// <summary>
+        /// 追加一条 Object 类型的持久监听器。优先用 UnityEventTools.AddObjectPersistentListener&lt;T&gt;；
+        /// 没有时退回 Inspector 上 "+" 按钮的同款两步走：先用
+        /// AddPersistentListener(UnityEventBase) 追加一条空的持久调用，再在该下标上用
+        /// RegisterObjectPersistentListener&lt;T&gt; 填内容（由
+        /// <see cref="TryRegisterObjectPersistentListener"/> 实现）。两处查找都走反射，
+        /// 因此某些 Unity 版本缺少重载时只会报错，不会编译失败。
+        /// </summary>
+        private static bool TryAddObjectPersistentListener(UnityEventBase evt, Object targetObj, MethodInfo method, Object argument, out string error)
+        {
+            error = null;
+            try
+            {
+                var parameterType = method.GetParameters()[0].ParameterType;
+                var delegateType = typeof(UnityAction<>).MakeGenericType(parameterType);
+                var listener = System.Delegate.CreateDelegate(delegateType, targetObj, method);
+
+                var addObjectMethod = typeof(UnityEventTools)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .FirstOrDefault(m =>
+                        m.Name == "AddObjectPersistentListener" &&
+                        m.IsGenericMethodDefinition &&
+                        m.GetParameters().Length == 3);
+                if (addObjectMethod != null)
+                {
+                    addObjectMethod.MakeGenericMethod(parameterType).Invoke(null, new object[] { evt, listener, argument });
+                    return true;
+                }
+
+                var addBlank = typeof(UnityEventTools)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .FirstOrDefault(m => m.Name == "AddPersistentListener" && m.GetParameters().Length == 1);
+                if (addBlank == null)
+                {
+                    error = "Neither UnityEventTools.AddObjectPersistentListener<T> nor AddPersistentListener(UnityEventBase) was found";
+                    return false;
+                }
+
+                addBlank.Invoke(null, new object[] { evt });
+                int newIndex = evt.GetPersistentEventCount() - 1;
+                if (!TryRegisterObjectPersistentListener(evt, newIndex, targetObj, method, argument, out error))
+                {
+                    UnityEventTools.RemovePersistentListener(evt, newIndex);
+                    return false;
+                }
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                error = (ex.InnerException ?? ex).Message;
+                return false;
+            }
+        }
+
         [UnitySkill("event_clear_listeners", "Remove all persistent listeners from a UnityEvent", TracksWorkflow = true,
             Category = SkillCategory.Event, Operation = SkillOperation.Delete,
             Tags = new[] { "event", "clear", "listeners", "remove" },
             Outputs = new[] { "removed" },
             RequiresInput = new[] { "gameObject", "componentName", "eventName" },
+            MutatesScene = true,
             RiskLevel = "medium")]
         public static object EventClearListeners(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
         {
@@ -448,13 +557,14 @@ namespace UnitySkills
             Category = SkillCategory.Event, Operation = SkillOperation.Modify,
             Tags = new[] { "event", "listener", "state", "callstate" },
             Outputs = new[] { "index", "state" },
-            RequiresInput = new[] { "gameObject", "componentName", "eventName" })]
+            RequiresInput = new[] { "gameObject", "componentName", "eventName" },
+            MutatesScene = true)]
         public static object EventSetListenerState(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, int index = 0, string state = null)
         {
             var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);
             if (err != null) return err;
             if (index < 0 || index >= evt.GetPersistentEventCount()) return new { error = "Index out of range" };
-            if (!System.Enum.TryParse<UnityEventCallState>(state, true, out var callState)) return new { error = $"Invalid state: {state}" };
+            if (!SkillParamUtil.TryParseRequiredEnum<UnityEventCallState>(state, "state", out var callState, out var stateError)) return stateError;
             WorkflowManager.SnapshotObject(comp);
             Undo.RecordObject(comp, "Set Listener State");
             evt.SetPersistentListenerState(index, callState);
@@ -466,7 +576,7 @@ namespace UnitySkills
             Tags = new[] { "event", "listener", "set", "replace", "persistent" },
             Outputs = new[] { "index", "target", "method", "state", "argType" },
             RequiresInput = new[] { "gameObject", "componentName", "eventName", "targetName", "methodName" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, MutatesScene = true)]
         public static object EventSetListener(
             string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null,
             int index = 0,
@@ -488,9 +598,9 @@ namespace UnitySkills
                 return new { error = targetError };
             }
 
-            if (!System.Enum.TryParse<UnityEventCallState>(mode, true, out var callState))
+            if (!SkillParamUtil.TryParseRequiredEnum<UnityEventCallState>(mode, "mode", out var callState, out var modeError))
             {
-                return new { error = $"Invalid mode: {mode}" };
+                return modeError;
             }
 
             WorkflowManager.SnapshotObject(comp);
@@ -592,23 +702,44 @@ namespace UnitySkills
             return new { success = true, component = componentName, count = events.Length, events };
         }
 
-        [UnitySkill("event_add_listener_batch", "Add multiple listeners at once. items: JSON array of {targetObjectName, targetComponentName, methodName}", TracksWorkflow = true,
+        [UnitySkill("event_add_listener_batch", "Add multiple listeners at once. items: JSON array of {targetObjectName, targetComponentName, methodName, mode, argType, floatArg, intArg, stringArg, boolArg}", TracksWorkflow = true,
             Category = SkillCategory.Event, Operation = SkillOperation.Modify,
             Tags = new[] { "event", "listener", "batch", "bulk" },
-            Outputs = new[] { "added", "total" },
-            RequiresInput = new[] { "gameObject", "componentName", "eventName", "items" })]
+            Outputs = new[] { "added", "total", "failed", "results" },
+            RequiresInput = new[] { "gameObject", "componentName", "eventName", "items" },
+            MutatesScene = true)]
         public static object EventAddListenerBatch(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, string items = null)
         {
             var list = Newtonsoft.Json.JsonConvert.DeserializeObject<List<BatchListenerItem>>(items);
             if (list == null || list.Count == 0) return new { error = "No items provided" };
             int added = 0;
+            int failed = 0;
+            var results = new List<object>();
             foreach (var item in list)
             {
-                var result = EventAddListener(name, instanceId, path, componentName, eventName, item.targetObjectName, item.targetComponentName, item.methodName);
-                if (!SkillResultHelper.TryGetError(result, out _))
+                // 每一项都要走完整签名的单项重载：只转发
+                // targetObjectName/targetComponentName/methodName 的话，argType 不是 "void"
+                // 的情形（如 GameObject.SetActive(bool)）会去匹配一个并不存在的无参重载，
+                // 失败后在下面被静默丢弃——added 不增加，失败原因也没了，批处理还报 success:true。
+                var result = EventAddListener(
+                    name, instanceId, path, componentName, eventName,
+                    item.targetObjectName, item.targetComponentName, item.methodName,
+                    string.IsNullOrEmpty(item.mode) ? "RuntimeOnly" : item.mode,
+                    string.IsNullOrEmpty(item.argType) ? "void" : item.argType,
+                    item.floatArg, item.intArg, item.stringArg, item.boolArg);
+
+                if (SkillResultHelper.TryGetError(result, out var itemError))
+                {
+                    failed++;
+                    results.Add(new { target = item.targetObjectName, method = item.methodName, success = false, error = itemError });
+                }
+                else
+                {
                     added++;
+                    results.Add(new { target = item.targetObjectName, method = item.methodName, success = true });
+                }
             }
-            return new { success = true, added, total = list.Count };
+            return new { success = failed == 0, added, failed, total = list.Count, results };
         }
 
         private class BatchListenerItem
@@ -616,13 +747,20 @@ namespace UnitySkills
             public string targetObjectName { get; set; }
             public string targetComponentName { get; set; }
             public string methodName { get; set; }
+            public string mode { get; set; }
+            public string argType { get; set; }
+            public float floatArg { get; set; }
+            public int intArg { get; set; }
+            public string stringArg { get; set; }
+            public bool boolArg { get; set; }
         }
 
-        [UnitySkill("event_copy_listeners", "Copy listeners from one event to another", TracksWorkflow = true,
+        [UnitySkill("event_copy_listeners", "Copy listeners from one event to another, preserving each listener's argument type and value (void/int/float/string/bool/Object)", TracksWorkflow = true,
             Category = SkillCategory.Event, Operation = SkillOperation.Modify,
             Tags = new[] { "event", "copy", "listeners", "duplicate" },
-            Outputs = new[] { "copied" },
-            RequiresInput = new[] { "sourceObject", "sourceComponent", "sourceEvent", "targetObject", "targetComponent", "targetEvent" })]
+            Outputs = new[] { "copied", "skipped", "failures" },
+            RequiresInput = new[] { "sourceObject", "sourceComponent", "sourceEvent", "targetObject", "targetComponent", "targetEvent" },
+            MutatesScene = true)]
         public static object EventCopyListeners(string sourceObject, string sourceComponent, string sourceEvent,
             string targetObject, string targetComponent, string targetEvent)
         {
@@ -634,20 +772,98 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(tgtComp);
             Undo.RecordObject(tgtComp, "Copy Listeners");
             int copied = 0;
+            var failures = new List<object>();
             for (int i = 0; i < srcEvt.GetPersistentEventCount(); i++)
             {
                 var target = srcEvt.GetPersistentTarget(i);
                 var method = srcEvt.GetPersistentMethodName(i);
-                if (target == null) continue;
-                var mi = target.GetType().GetMethod(method, BindingFlags.Instance | BindingFlags.Public, null, System.Type.EmptyTypes, null);
-                if (mi != null)
+                if (target == null)
                 {
-                    var del = System.Delegate.CreateDelegate(typeof(UnityAction), target, mi) as UnityAction;
-                    UnityEventTools.AddPersistentListener(tgtUnityEvent, del);
-                    copied++;
+                    failures.Add(new { index = i, method, reason = "Source listener target is missing/destroyed" });
+                    continue;
                 }
+
+                // 必须按实际参数类型查重载：只查无参重载（Type.EmptyTypes）的话，
+                // 带存储参数的监听器（常见情形，如 GameObject.SetActive(bool)）会解析成 null
+                // 而被静默跳过，copied 不增加也不说明原因。
+                var (argType, objectArg, intArg, floatArg, stringArg, boolArg) = ReadPersistentCallArguments(srcEvt, i);
+                var targetType = target.GetType();
+                string failReason = null;
+
+                try
+                {
+                    switch (argType)
+                    {
+                        case "void":
+                        case "unknown": // 内部结构读不出来，降级为只按无参处理
+                        {
+                            var mi = FindTargetMethod(targetType, method, System.Type.EmptyTypes);
+                            if (mi == null) { failReason = $"Method '{method}()' not found on {targetType.Name}"; break; }
+                            var del = System.Delegate.CreateDelegate(typeof(UnityAction), target, mi) as UnityAction;
+                            UnityEventTools.AddPersistentListener(tgtUnityEvent, del);
+                            break;
+                        }
+                        case "int":
+                        {
+                            var mi = FindTargetMethod(targetType, method, new[] { typeof(int) });
+                            if (mi == null) { failReason = $"Method '{method}(int)' not found on {targetType.Name}"; break; }
+                            var del = System.Delegate.CreateDelegate(typeof(UnityAction<int>), target, mi) as UnityAction<int>;
+                            UnityEventTools.AddIntPersistentListener(tgtUnityEvent, del, intArg);
+                            break;
+                        }
+                        case "float":
+                        {
+                            var mi = FindTargetMethod(targetType, method, new[] { typeof(float) });
+                            if (mi == null) { failReason = $"Method '{method}(float)' not found on {targetType.Name}"; break; }
+                            var del = System.Delegate.CreateDelegate(typeof(UnityAction<float>), target, mi) as UnityAction<float>;
+                            UnityEventTools.AddFloatPersistentListener(tgtUnityEvent, del, floatArg);
+                            break;
+                        }
+                        case "string":
+                        {
+                            var mi = FindTargetMethod(targetType, method, new[] { typeof(string) });
+                            if (mi == null) { failReason = $"Method '{method}(string)' not found on {targetType.Name}"; break; }
+                            var del = System.Delegate.CreateDelegate(typeof(UnityAction<string>), target, mi) as UnityAction<string>;
+                            UnityEventTools.AddStringPersistentListener(tgtUnityEvent, del, stringArg);
+                            break;
+                        }
+                        case "bool":
+                        {
+                            var mi = FindTargetMethod(targetType, method, new[] { typeof(bool) });
+                            if (mi == null) { failReason = $"Method '{method}(bool)' not found on {targetType.Name}"; break; }
+                            var del = System.Delegate.CreateDelegate(typeof(UnityAction<bool>), target, mi) as UnityAction<bool>;
+                            UnityEventTools.AddBoolPersistentListener(tgtUnityEvent, del, boolArg);
+                            break;
+                        }
+                        case "object":
+                        {
+                            var mi = FindObjectArgumentMethod(targetType, method, objectArg);
+                            if (mi == null) { failReason = $"Compatible object method '{method}(Object)' not found on {targetType.Name}"; break; }
+                            if (!TryAddObjectPersistentListener(tgtUnityEvent, target, mi, objectArg, out var addError))
+                                failReason = addError;
+                            break;
+                        }
+                        default:
+                            failReason = $"Unsupported source listener argument mode for '{method}'";
+                            break;
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    failReason = ex.Message;
+                }
+
+                if (failReason != null)
+                {
+                    failures.Add(new { index = i, method, reason = failReason });
+                    continue;
+                }
+
+                int newIndex = tgtUnityEvent.GetPersistentEventCount() - 1;
+                tgtUnityEvent.SetPersistentListenerState(newIndex, srcEvt.GetPersistentListenerState(i));
+                copied++;
             }
-            return new { success = true, copied };
+            return new { success = failures.Count == 0, copied, skipped = failures.Count, failures };
         }
 
         [UnitySkill("event_get_listener_count", "Get the number of persistent listeners on a UnityEvent",

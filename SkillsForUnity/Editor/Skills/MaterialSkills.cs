@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.IO;
 using System.Linq;
@@ -7,17 +7,21 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// Material management skills - create, modify, assign.
-    /// Supports finding by name, instanceId, or path.
-    /// Automatically detects render pipeline for correct shader selection.
-    /// Supports HDR, keyword, and GI flag operations.
+    /// 材质技能：创建、修改、赋予。支持按名称、instanceId 或路径查找，
+    /// 自动检测渲染管线以选择正确的 shader，并覆盖 HDR、keyword 与 GI flag 操作。
     /// </summary>
     public static class MaterialSkills
     {
         #region Helper Methods
         
         /// <summary>
-        /// Find material by various methods: asset path, GameObject name/instanceId/path
+        /// 按资产路径或 GameObject 的 name/instanceId/path 查找材质。
+        ///
+        /// <para>两个分支返回的都是磁盘上的材质：直接加载的 .mat，或 <c>renderer.sharedMaterial</c>——
+        /// 后者就是同一个 .mat，不是每个 renderer 的副本。因此经由此处的所有 setter 无论调用方怎么寻址
+        /// 都在写资产，必须声明 <c>MutatesAssets = true</c>：surface profile 靠该 flag 撤下资产写操作，
+        /// 漏标的 setter 会在明令禁止此类操作的 profile 下仍然可调用。用 GameObject 名寻址并不会让写入
+        /// 变成场景局部的——它改的是所有使用该材质的对象共享的材质。</para>
         /// </summary>
         private static (Material material, GameObject go, object error) FindMaterial(string name = null, int instanceId = 0, string path = null)
         {
@@ -42,10 +46,31 @@ namespace UnitySkills
             
             return (renderer.sharedMaterial, go, null);
         }
-        
+
         /// <summary>
-        /// Smart path resolution for saving materials
+        /// 返回调用方可以作为 <c>materialPath</c> 回传、并确实能取回<em>本</em>材质的路径；
+        /// 不存在这样的路径时返回 ""。
+        ///
+        /// <para>陷阱：AssetDatabase.GetAssetPath 给的是<em>容器</em>文件，模型内嵌材质会得到
+        /// "Assets/Models/Robot.fbx"。而 LoadAssetAtPath&lt;Material&gt; 会解析子资产（6000.3 上验证），
+        /// 并且永远返回该路径下的<em>第一个</em>材质。于是多材质模型的每个材质都回显同一个路径，
+        /// 回传后一律解析到 1 号材质——agent 拿 2 号材质的 materialPath 去调 material_set_color，
+        /// 改的是 1 号却被告知成功。悄悄写错目标比没有目标更糟。</para>
+        ///
+        /// <para>因此直接检验主张本身而非其代理：只有把路径载回来恰好得到本材质时才回显它。
+        /// .mat 通过（它是自己的主资产），容器里的第一个材质通过（往返确实忠实），其余返回 ""；
+        /// 内置材质也返回 ""——GetAssetPath 给它们的是 "Resources/unity_builtin_extra"，
+        /// 该路径根本加载不出 Material。</para>
         /// </summary>
+        private static string ResolveFeedableMaterialPath(Material material)
+        {
+            var path = AssetDatabase.GetAssetPath(material);
+            if (string.IsNullOrEmpty(path))
+                return string.Empty;
+
+            return AssetDatabase.LoadAssetAtPath<Material>(path) == material ? path : string.Empty;
+        }
+
         private static string ResolveSavePath(string savePath, string materialName)
         {
             if (string.IsNullOrEmpty(savePath))
@@ -56,7 +81,7 @@ namespace UnitySkills
                 savePath = "Assets/" + savePath;
             }
             
-            // Smart Path Handling: If it looks like a folder (no extension or directory exists), append name
+            // 看起来像文件夹（无扩展名，或目录已存在）时补上文件名
             if (Directory.Exists(savePath) || !Path.HasExtension(savePath))
             {
                 string fileName = string.IsNullOrEmpty(materialName) ? "NewMaterial" : materialName;
@@ -70,9 +95,6 @@ namespace UnitySkills
             return savePath;
         }
         
-        /// <summary>
-        /// Ensure directory exists for the given path
-        /// </summary>
         private static void EnsureDirectoryExists(string filePath)
         {
             var dir = Path.GetDirectoryName(filePath);
@@ -99,7 +121,10 @@ namespace UnitySkills
         [UnitySkill("material_create", "Create a new material (auto-detects render pipeline if shader not specified). savePath can be a folder or full path.",
             Category = SkillCategory.Material, Operation = SkillOperation.Create,
             Tags = new[] { "material", "shader", "pipeline", "asset" },
-            Outputs = new[] { "name", "shader", "path", "renderPipeline", "instanceId" },
+            // 此处只声明两种成功形态都带的键：agent 在不知道会走哪个分支之前就要据此规划，
+            // 这是对 Outputs 唯一诚实的读法。带 savePath 时材质落盘；不带时只存在于内存，
+            // 响应额外附带 instanceId + warning——instanceId 恰恰是落盘分支不带的键，不能声明。
+            Outputs = new[] { "name", "shader", "path", "entityId", "renderPipeline", "colorProperty", "textureProperty" },
             TracksWorkflow = true,
             MutatesAssets = true)]
         public static object MaterialCreate(string name, string shaderName = null, string savePath = null)
@@ -114,7 +139,6 @@ namespace UnitySkills
             var shader = Shader.Find(shaderName);
             if (shader == null)
             {
-                // Try fallback shaders
                 var pipeline = ProjectSkills.DetectRenderPipeline();
                 var fallbackShaders = pipeline switch
                 {
@@ -157,7 +181,7 @@ namespace UnitySkills
             }
             else
             {
-                // No savePath: return instanceId so caller can reference or destroy later
+                // 未落盘：额外返回 instanceId，供调用方后续引用或销毁
                 var pipelineType2 = ProjectSkills.DetectRenderPipeline();
                 return new {
                     success = true,
@@ -191,7 +215,7 @@ namespace UnitySkills
             Tags = new[] { "material", "assign", "renderer" },
             Outputs = new[] { "gameObject", "material" },
             RequiresInput = new[] { "gameObject", "materialPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, MutatesScene = true)]
         public static object MaterialAssign(string name = null, int instanceId = 0, string path = null, string materialPath = null)
         {
             if (Validate.Required(materialPath, "materialPath") is object err) return err;
@@ -217,8 +241,8 @@ namespace UnitySkills
         [UnitySkill("material_create_batch", "Create multiple materials (Efficient). items: JSON array of {name, shaderName?, savePath?}",
             Category = SkillCategory.Material, Operation = SkillOperation.Create,
             Tags = new[] { "material", "batch", "shader", "pipeline" },
-            Outputs = new[] { "totalItems", "successCount", "results" },
-            TracksWorkflow = true)]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialCreateBatch(string items)
         {
             return BatchExecutor.Execute<BatchMaterialCreateItem>(items, item =>
@@ -235,9 +259,9 @@ namespace UnitySkills
         [UnitySkill("material_assign_batch", "Assign materials to multiple objects (Efficient). items: JSON array of {name, materialPath}",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "material", "assign", "batch", "renderer" },
-            Outputs = new[] { "totalItems", "successCount", "results" },
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "gameObject", "materialPath" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, MutatesScene = true)]
         public static object MaterialAssignBatch(string items)
         {
             return BatchExecutor.Execute<BatchMaterialAssignItem>(items, item =>
@@ -255,7 +279,9 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Create,
             Tags = new[] { "material", "duplicate", "copy", "asset" },
             Outputs = new[] { "name", "path", "sourcePath", "shader" },
-            RequiresInput = new[] { "materialPath" })]
+            RequiresInput = new[] { "materialPath" },
+            // CreateAsset + SaveAssets：与 material_create 一样在磁盘上新建 .mat
+            MutatesAssets = true)]
         public static object MaterialDuplicate(string sourcePath, string newName, string savePath = null)
         {
             if (Validate.Required(sourcePath, "sourcePath") is object err) return err;
@@ -301,7 +327,7 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "color", "hdr", "emission", "rendering" },
             Outputs = new[] { "color", "propertyUsed", "intensity", "hdrEnabled" },
-            RequiresInput = new[] { "gameObject|materialPath" },
+            RequiresInput = new[] { "gameObject|path" },
             TracksWorkflow = true,
             MutatesAssets = true)]
         public static object MaterialSetColor(string name = null, int instanceId = 0, string path = null, 
@@ -316,7 +342,7 @@ namespace UnitySkills
                 propertyName = ProjectSkills.GetColorPropertyName();
             }
 
-            // Apply HDR intensity (for emission, values > 1 create bloom effect)
+            // HDR 强度：自发光场景下大于 1 才会产生 bloom
             var color = new Color(r, g, b, a);
             if (intensity != 1.0f)
             {
@@ -326,7 +352,6 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Material Color");
             
-            // Try setting color with detected property, fallback to common names
             bool colorSet = false;
             var propertiesToTry = new[] { propertyName, "_BaseColor", "_Color", "_TintColor", "_EmissionColor" };
             
@@ -338,7 +363,7 @@ namespace UnitySkills
                     propertyName = prop;
                     colorSet = true;
                     
-                    // Smart Emission Handling: Auto-enable emission when setting emission color
+                    // 设置自发光颜色时自动打开 emission，否则改了颜色也不发光
                     if (prop == "_EmissionColor" && intensity > 0)
                     {
                         material.EnableKeyword("_EMISSION");
@@ -370,12 +395,12 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("material_set_colors_batch", "Set colors on multiple GameObjects in a single call. items is a JSON array like [{name:'Obj1',r:1,g:0,b:0},{name:'Obj2',r:0,g:1,b:0}]. Much more efficient than calling material_set_color multiple times.",
+        [UnitySkill("material_set_colors_batch", "Set colors on multiple GameObjects in a single call. items: JSON array of {name, instanceId, path, r, g, b, a}, e.g. [{name:'Obj1',r:1,g:0,b:0},{name:'Obj2',r:0,g:1,b:0}]. Much more efficient than calling material_set_color multiple times.",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "color", "batch", "rendering" },
-            Outputs = new[] { "totalItems", "successCount", "results" },
-            RequiresInput = new[] { "gameObject|materialPath" },
-            TracksWorkflow = true)]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "gameObject|path" },
+            TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetColorsBatch(string items = null, string propertyName = null)
         {
             if (string.IsNullOrEmpty(propertyName))
@@ -426,8 +451,10 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "emission", "hdr", "glow", "lighting" },
             Outputs = new[] { "emissionColor", "intensity", "hdrColor", "emissionEnabled" },
-            RequiresInput = new[] { "gameObject|materialPath" },
-            TracksWorkflow = true)]
+            RequiresInput = new[] { "gameObject|path" },
+            // FindMaterial 解析到 renderer.sharedMaterial，即磁盘上的 .mat，
+            // 与 material_set_color 已声明的是同一种写入
+            TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetEmission(string name = null, int instanceId = 0, string path = null,
             float r = 1, float g = 1, float b = 1, float intensity = 1.0f, bool enableEmission = true)
         {
@@ -486,8 +513,9 @@ namespace UnitySkills
         [UnitySkill("material_set_emission_batch", "Set emission on multiple objects (Efficient). items: JSON array of {name, r, g, b, intensity?, enableEmission?}",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "emission", "hdr", "batch", "lighting" },
-            Outputs = new[] { "totalItems", "successCount", "results" },
-            RequiresInput = new[] { "gameObject|materialPath" })]
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "gameObject|path" },
+            TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetEmissionBatch(string items)
         {
             return BatchExecutor.Execute<BatchEmissionItem>(items, item =>
@@ -510,8 +538,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "texture", "material", "rendering" },
             Outputs = new[] { "texture", "propertyUsed" },
-            RequiresInput = new[] { "gameObject|materialPath", "texturePath" },
-            TracksWorkflow = true)]
+            RequiresInput = new[] { "gameObject|path", "texturePath" },
+            TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetTexture(string name = null, int instanceId = 0, string path = null, string texturePath = null, string propertyName = null)
         {
             if (Validate.Required(texturePath, "texturePath") is object err) return err;
@@ -546,8 +574,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "property", "float", "material" },
             Outputs = new[] { "property", "value" },
-            RequiresInput = new[] { "gameObject|materialPath" },
-            TracksWorkflow = true)]
+            RequiresInput = new[] { "gameObject|path" },
+            TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetFloat(string name = null, int instanceId = 0, string path = null, string propertyName = null, float value = 0)
         {
             if (Validate.Required(propertyName, "propertyName") is object err) return err;
@@ -577,7 +605,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "property", "integer", "material" },
             Outputs = new[] { "property", "value" },
-            RequiresInput = new[] { "gameObject|materialPath" })]
+            RequiresInput = new[] { "gameObject|path" },
+            MutatesAssets = true)]
         public static object MaterialSetInt(string name = null, int instanceId = 0, string path = null, string propertyName = null, int value = 0)
         {
             if (Validate.Required(propertyName, "propertyName") is object err) return err;
@@ -606,7 +635,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "property", "vector", "material" },
             Outputs = new[] { "property", "value" },
-            RequiresInput = new[] { "gameObject|materialPath" })]
+            RequiresInput = new[] { "gameObject|path" },
+            MutatesAssets = true)]
         public static object MaterialSetVector(string name = null, int instanceId = 0, string path = null, 
             string propertyName = null, float x = 0, float y = 0, float z = 0, float w = 0)
         {
@@ -636,7 +666,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "texture", "offset", "tiling", "uv" },
             Outputs = new[] { "property", "offset" },
-            RequiresInput = new[] { "gameObject|materialPath" })]
+            RequiresInput = new[] { "gameObject|path" },
+            MutatesAssets = true)]
         public static object MaterialSetTextureOffset(string name = null, int instanceId = 0, string path = null,
             string propertyName = null, float x = 0, float y = 0)
         {
@@ -659,7 +690,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "texture", "scale", "tiling", "uv" },
             Outputs = new[] { "property", "scale" },
-            RequiresInput = new[] { "gameObject|materialPath" })]
+            RequiresInput = new[] { "gameObject|path" },
+            MutatesAssets = true)]
         public static object MaterialSetTextureScale(string name = null, int instanceId = 0, string path = null,
             string propertyName = null, float x = 1, float y = 1)
         {
@@ -686,7 +718,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "keyword", "shader", "rendering" },
             Outputs = new[] { "keyword", "enabled", "allKeywords" },
-            RequiresInput = new[] { "gameObject|materialPath" })]
+            RequiresInput = new[] { "gameObject|path" },
+            MutatesAssets = true)]
         public static object MaterialSetKeyword(string name = null, int instanceId = 0, string path = null, 
             string keyword = null, bool enable = true)
         {
@@ -702,13 +735,18 @@ namespace UnitySkills
                 material.EnableKeyword(keyword);
             else
                 material.DisableKeyword(keyword);
-            
-            if (go == null) EditorUtility.SetDirty(material);
 
-            return new { 
-                success = true, 
-                target = go != null ? go.name : path, 
-                keyword, 
+            // 与普通属性值不同，keyword 的启用不会被 Unity 自身的脏标记可靠地识别为"已变更"，
+            // 没有显式 SetDirty + SaveAssets 就写不进磁盘 .mat 的 m_ValidKeywords——
+            // 与 PrefabSetProperty 写入时依赖的是同一套约定。此处不按 go == null 分支：
+            // 经由 GameObject 的 renderer 寻址到的仍是同一个共享 .mat 资产，不是场景局部副本。
+            EditorUtility.SetDirty(material);
+            AssetDatabase.SaveAssets();
+
+            return new {
+                success = true,
+                target = go != null ? go.name : path,
+                keyword,
                 enabled = enable,
                 allKeywords = material.shaderKeywords
             };
@@ -718,7 +756,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "renderQueue", "sorting", "transparency" },
             Outputs = new[] { "renderQueue", "queueCategory" },
-            RequiresInput = new[] { "gameObject|materialPath" })]
+            RequiresInput = new[] { "gameObject|path" },
+            MutatesAssets = true)]
         public static object MaterialSetRenderQueue(string name = null, int instanceId = 0, string path = null, int renderQueue = -1)
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
@@ -727,8 +766,12 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(material);
             Undo.RecordObject(material, "Set Render Queue");
             material.renderQueue = renderQueue;
-            
-            if (go == null) EditorUtility.SetDirty(material);
+
+            // 与 material_set_keyword 同样的不落盘问题：缺少显式 SetDirty + SaveAssets，
+            // 磁盘上的 m_CustomRenderQueue 会保持 -1，内存值也可能在下次重导入时被算回 shader 默认值。
+            // 同样不分支：无论调用方怎么寻址，renderer.sharedMaterial 都是磁盘资产而非逐对象副本。
+            EditorUtility.SetDirty(material);
+            AssetDatabase.SaveAssets();
 
             string queueName = renderQueue switch
             {
@@ -753,8 +796,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "shader", "material", "pipeline" },
             Outputs = new[] { "shader" },
-            RequiresInput = new[] { "gameObject|materialPath" },
-            TracksWorkflow = true)]
+            RequiresInput = new[] { "gameObject|path" },
+            TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetShader(string name = null, int instanceId = 0, string path = null, string shaderName = null)
         {
             if (Validate.Required(shaderName, "shaderName") is object err) return err;
@@ -788,7 +831,8 @@ namespace UnitySkills
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "gi", "globalIllumination", "emission", "lighting" },
             Outputs = new[] { "giFlags" },
-            RequiresInput = new[] { "gameObject|materialPath" })]
+            RequiresInput = new[] { "gameObject|path" },
+            MutatesAssets = true)]
         public static object MaterialSetGIFlags(string name = null, int instanceId = 0, string path = null, string flags = "RealtimeEmissive")
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
@@ -820,11 +864,11 @@ namespace UnitySkills
         
         #region Property Query
 
-        [UnitySkill("material_get_properties", "Get all properties of a material (colors, floats, textures, keywords)",
+        [UnitySkill("material_get_properties", "Get all properties of a material (colors, floats, textures, keywords). Responds with materialPath = a path that loads back to exactly the material inspected, so a lookup by GameObject name can be traced to a concrete asset and reused. Empty when no such path exists: built-in materials, and materials embedded in a model file past the first one (a .fbx shares one path across all its materials, and that path always loads the first, so echoing it for the others would send a follow-up write to the wrong material).",
             Category = SkillCategory.Material, Operation = SkillOperation.Query,
             Tags = new[] { "property", "inspect", "shader", "material" },
-            Outputs = new[] { "shader", "renderQueue", "keywords", "giFlags", "properties" },
-            RequiresInput = new[] { "gameObject|materialPath" },
+            Outputs = new[] { "materialPath", "shader", "renderQueue", "keywords", "giFlags", "properties" },
+            RequiresInput = new[] { "gameObject|path" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object MaterialGetProperties(string name = null, int instanceId = 0, string path = null)
@@ -877,6 +921,7 @@ namespace UnitySkills
             return new {
                 success = true,
                 target = go != null ? go.name : path,
+                materialPath = ResolveFeedableMaterialPath(material),
                 shader = shader.name,
                 renderQueue = material.renderQueue,
                 keywords = material.shaderKeywords,
@@ -891,11 +936,11 @@ namespace UnitySkills
             };
         }
         
-        [UnitySkill("material_get_keywords", "Get all enabled shader keywords on a material",
+        [UnitySkill("material_get_keywords", "Get all enabled shader keywords on a material. Responds with materialPath = a path that loads back to exactly the material inspected, empty when no such path exists (built-in materials, and materials embedded in a model file past the first one — see material_get_properties).",
             Category = SkillCategory.Material, Operation = SkillOperation.Query,
             Tags = new[] { "keyword", "shader", "inspect" },
-            Outputs = new[] { "shader", "enabledKeywords", "commonKeywordStatus" },
-            RequiresInput = new[] { "gameObject|materialPath" },
+            Outputs = new[] { "materialPath", "shader", "enabledKeywords", "commonKeywordStatus" },
+            RequiresInput = new[] { "gameObject|path" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object MaterialGetKeywords(string name = null, int instanceId = 0, string path = null)
@@ -922,6 +967,7 @@ namespace UnitySkills
             return new {
                 success = true,
                 target = go != null ? go.name : path,
+                materialPath = ResolveFeedableMaterialPath(material),
                 shader = material.shader.name,
                 enabledKeywords,
                 commonKeywordStatus = keywordStatus

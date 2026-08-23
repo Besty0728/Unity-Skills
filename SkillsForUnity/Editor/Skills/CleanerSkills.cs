@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.IO;
 using System.Linq;
@@ -9,7 +9,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// Cleaner skills - find unused assets, duplicates, and missing references.
+    /// 清理技能：查找未引用资源、重复文件与丢失的引用。
     /// </summary>
     public static class CleanerSkills
     {
@@ -96,7 +96,7 @@ namespace UnitySkills
             var filter = $"t:{assetType}";
             var guids = AssetDatabase.FindAssets(filter, new[] { searchPath });
             
-            // Group by file size first (fast filter)
+            // 先按文件大小分组做快速筛选，只对同大小的文件算 MD5。
             var sizeGroups = new Dictionary<long, List<string>>();
             foreach (var guid in guids)
             {
@@ -110,7 +110,6 @@ namespace UnitySkills
                 sizeGroups[size].Add(path);
             }
 
-            // Only check files with same size
             var duplicateGroups = new List<object>();
             using (var md5 = MD5.Create())
             {
@@ -178,7 +177,7 @@ namespace UnitySkills
 
             foreach (var go in allObjects)
             {
-                // Check for missing scripts
+                // 脚本丢失的组件在 GetComponents 结果里表现为 null 元素。
                 var components = go.GetComponents<Component>();
                 for (int i = 0; i < components.Length; i++)
                 {
@@ -194,7 +193,6 @@ namespace UnitySkills
                     }
                 }
 
-                // Check serialized properties for missing references
                 foreach (var component in components.Where(c => c != null))
                 {
                     var so = new SerializedObject(component);
@@ -229,7 +227,7 @@ namespace UnitySkills
             };
         }
 
-        // Store pending delete operations for confirmation
+        // 暂存等待确认的删除操作，按 confirmToken 索引。
         private static Dictionary<string, PendingDeleteOperation> _pendingDeletes = new Dictionary<string, PendingDeleteOperation>();
 
         private class PendingDeleteOperation
@@ -248,7 +246,7 @@ namespace UnitySkills
             string[] paths = null,
             string confirmToken = null)
         {
-            // Step 2: Execute deletion with confirmation token
+            // 第二步：带 confirmToken 调用时执行真正的删除。
             if (!string.IsNullOrEmpty(confirmToken))
             {
                 if (!_pendingDeletes.TryGetValue(confirmToken, out var pending))
@@ -276,7 +274,7 @@ namespace UnitySkills
                     bool deleted = false;
                     if (existed)
                     {
-                        // One-shot delete: backs up file (+ .meta) to the store and records a Deleted snapshot.
+                        // 一步到位：把文件（含 .meta）备份进仓库并记录 Deleted 快照。
                         deleted = WorkflowManager.DeleteAssetToTrash(path);
                         if (deleted) deletedCount++;
                     }
@@ -297,7 +295,7 @@ namespace UnitySkills
                 };
             }
 
-            // Step 1: Preview and generate confirmation token
+            // 第一步：不带 token 时只做预览并签发 confirmToken。
             if (paths == null || paths.Length == 0)
                 return new { success = false, error = "No paths provided. Provide paths array to preview deletion." };
 
@@ -474,8 +472,8 @@ namespace UnitySkills
             int deleted = 0;
             foreach (var folder in empty.OrderByDescending(f => f.Length))
             {
-                // Folder branch of DeleteAssetToTrash records a metadata-only Deleted snapshot
-                // (undo re-creates the empty folder) and removes it via AssetDatabase.DeleteAsset.
+                // DeleteAssetToTrash 的目录分支只记录元数据级 Deleted 快照
+                // （撤销时重建空目录），实际删除走 AssetDatabase.DeleteAsset。
                 if (WorkflowManager.DeleteAssetToTrash(folder)) deleted++;
             }
             AssetDatabase.Refresh();
@@ -485,7 +483,8 @@ namespace UnitySkills
         [UnitySkill("cleaner_fix_missing_scripts", "Remove missing script components from GameObjects", TracksWorkflow = true,
             Category = SkillCategory.Cleaner, Operation = SkillOperation.Execute | SkillOperation.Modify,
             Tags = new[] { "cleaner", "fix", "missing", "scripts" },
-            Outputs = new[] { "removedComponents" })]
+            Outputs = new[] { "removedComponents" },
+            MutatesScene = true, RiskLevel = "medium")]
         public static object CleanerFixMissingScripts(bool includeInactive = true)
         {
             var allObjects = includeInactive
