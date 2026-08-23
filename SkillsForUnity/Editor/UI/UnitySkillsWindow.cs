@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UIElements;
@@ -36,6 +36,9 @@ namespace UnitySkills
         private Dictionary<string, List<SkillInfo>> _skillsByCategory;
         public Dictionary<string, List<SkillInfo>> SkillsByCategory => _skillsByCategory;
 
+        // Coalesces surface-profile switches into one deferred catalog rebuild.
+        private bool _catalogRebuildQueued;
+
         // ----- Sub-controllers -----
         private TopbarController         _topbar;
         private FooterController         _footer;
@@ -59,7 +62,7 @@ namespace UnitySkills
 
         // Single flat entry: clicking "Window ▸ UnitySkills" opens the main panel directly.
         // CONSTRAINT: a "Window/UnitySkills" leaf cannot coexist with any
-        // "Window/UnitySkills/..." submenu item — Unity swallows the leaf. Secondary panels
+        // "Window/UnitySkills/..." submenu item — Unity swallows the leaf.
         // Secondary panels (such as Audit Log) are therefore reachable only via in-panel buttons and
         // shortcuts (ShortcutActions); never add another [MenuItem] under this prefix.
         [MenuItem("Window/UnitySkills", false, 1)]
@@ -74,12 +77,16 @@ namespace UnitySkills
             RefreshSkillsList();
             // 模式/授权变化时联动 topbar/footer 的下次重绘，避免分别在每个子 Controller 里订阅。
             SkillsModeManager.OnChanged += Repaint;
+            // A profile switch changes the visible skill set, so the catalog needs rebuilding
+            // rather than repainting — see OnSurfaceProfileChanged.
+            SkillsSurfaceProfile.OnChanged += OnSurfaceProfileChanged;
             MaybeShowFirstRunToast();
         }
 
         private void OnDisable()
         {
             SkillsModeManager.OnChanged -= Repaint;
+            SkillsSurfaceProfile.OnChanged -= OnSurfaceProfileChanged;
             SkillsLocalization.LanguageChanged -= RefreshLocalization;
             _liveUpdateItem?.Pause();
             _liveUpdateItem = null;
@@ -235,30 +242,72 @@ namespace UnitySkills
         public void RefreshSkillsList()
         {
             _skillsByCategory = new Dictionary<string, List<SkillInfo>>();
-            // 与路由器使用相同的 Unity 编辑器索引，避免窗口刷新时再次全量枚举类型。
-            var methods = TypeCache.GetMethodsWithAttribute<UnitySkillAttribute>();
 
-            foreach (var method in methods)
+            // Must go through the router's PROFILE-FILTERED snapshot, not a raw TypeCache sweep.
+            // The surface profile is the user's statement about which skills may be offered at all;
+            // enumerating types directly ignores it, so under the guide profile the panel would
+            // still list gameobject_create, let the user select it and press Run, and answer with a
+            // SURFACE_EXCLUDED rejection whose wording is addressed to an AI agent. Same source and
+            // same reasoning as AllowlistPickerWindow.
+            SkillRouter.SkillInfo[] snapshot;
+            try
             {
-                if (!method.IsPublic || !method.IsStatic || method.DeclaringType == null)
+                snapshot = SkillRouter.GetAllSkillsSnapshot();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[UnitySkills] Skill snapshot failed; Skills tab left empty: {ex.Message}");
+                return;
+            }
+
+            foreach (var skill in snapshot ?? Array.Empty<SkillRouter.SkillInfo>())
+            {
+                if (skill == null || string.IsNullOrEmpty(skill.Name) || skill.Method == null)
                     continue;
 
-                UnitySkillAttribute attr;
-                try { attr = method.GetCustomAttribute<UnitySkillAttribute>(); }
-                catch { continue; }
-                if (attr == null) continue;
+                // Group by the declared category rather than the declaring type's file name: the
+                // two agree for most modules but not all (skills split across helper files landed
+                // in their own bogus group), and the category is what the rest of the product uses.
+                var category = skill.Category.ToString();
+                if (!_skillsByCategory.TryGetValue(category, out var list))
+                    _skillsByCategory[category] = list = new List<SkillInfo>();
 
-                var category = method.DeclaringType.Name.Replace("Skills", "");
-                if (!_skillsByCategory.ContainsKey(category))
-                    _skillsByCategory[category] = new List<SkillInfo>();
-
-                _skillsByCategory[category].Add(new SkillInfo
+                list.Add(new SkillInfo
                 {
-                    Name = attr.Name ?? method.Name,
-                    Description = attr.Description ?? "",
-                    Method = method
+                    Name = skill.Name,
+                    Description = skill.Description ?? "",
+                    Method = skill.Method
                 });
             }
+        }
+
+        /// <summary>
+        /// The surface profile decides which skills exist at all, so a switch has to rebuild the
+        /// catalog and the rows, not merely repaint. Deferred through EditorUiScheduler because
+        /// OnChanged can arrive mid-layout and rebuilding the tree there throws (issue #44); the
+        /// flag coalesces a burst of switches into a single rebuild.
+        /// </summary>
+        private void OnSurfaceProfileChanged()
+        {
+            if (_catalogRebuildQueued) return;
+            _catalogRebuildQueued = true;
+
+            // Routed through EditorUiScheduler.RepeatSafe rather than a bare delayCall: the
+            // rebuild below mutates the visual tree, and a hand-written delayCall has none of
+            // RepeatSafe's InvalidOperationException/MissingReferenceException guard for a
+            // deferred callback that lands mid-render (issue #44). RepeatSafe's item is a
+            // recurring schedule, so it is paused from inside its own first firing to keep this a
+            // one-shot coalesced rebuild rather than a real repeating tick.
+            IVisualElementScheduledItem rebuildItem = null;
+            rebuildItem = EditorUiScheduler.RepeatSafe(rootVisualElement, 1, () =>
+            {
+                rebuildItem?.Pause();
+                _catalogRebuildQueued = false;
+                if (!this) return; // window closed while the rebuild was queued
+                RefreshSkillsList();
+                _skillsController?.RefreshCatalog();
+                Repaint();
+            });
         }
 
         public string BuildDefaultParams(MethodInfo method)

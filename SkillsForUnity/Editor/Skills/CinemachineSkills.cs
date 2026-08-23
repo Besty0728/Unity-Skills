@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System.Reflection;
 using System.Collections.Generic;
@@ -21,7 +21,7 @@ using UnityEngine.Splines;
 namespace UnitySkills
 {
     /// <summary>
-    /// Cinemachine skills - 支持 Cinemachine 2.x 和 3.x
+    /// Cinemachine 技能 —— 同时支持 Cinemachine 2.x 和 3.x
     /// </summary>
     public static class CinemachineSkills
     {
@@ -111,14 +111,14 @@ namespace UnitySkills
             var result = new Dictionary<string, object>();
             result["_type"] = t.Name;
 
-            // Collect serialized fields (what appears in Inspector)
             var serialized = new Dictionary<string, object>();
             var flags = BindingFlags.Public | BindingFlags.Instance;
 
             foreach (var field in t.GetFields(flags))
             {
                 try { if (field.GetCustomAttribute<System.ObsoleteAttribute>() != null) continue; } catch { continue; }
-                // Include: public fields with m_ prefix, [SerializeField], [Tooltip], or simple value types
+                // 认定会出现在 Inspector 里的字段：m_ 前缀的 public 字段、带
+                // [SerializeField] / [Tooltip] 的字段，以及简单值类型。
                 bool isInspector = field.Name.StartsWith("m_")
                     || field.GetCustomAttribute<SerializeField>() != null
                     || field.GetCustomAttribute<TooltipAttribute>() != null
@@ -127,7 +127,7 @@ namespace UnitySkills
                     || typeof(Object).IsAssignableFrom(field.FieldType);
 
                 if (!isInspector) continue;
-                // Skip internal/runtime fields
+                // 跳过 MonoBehaviour 自带的内部 / 运行时字段。
                 if (field.Name == "destroyCancellationToken" || field.Name == "useGUILayout"
                     || field.Name == "runInEditMode" || field.Name == "enabled") continue;
 
@@ -141,7 +141,6 @@ namespace UnitySkills
 
             result["settings"] = serialized;
 
-            // Stage detection
             if (CinemachineAdapter.TryGetPipelineStage(mb, out var pipelineStage))
                 result["stage"] = pipelineStage.ToString();
             else if (typeof(CinemachineExtension).IsAssignableFrom(t)) result["stage"] = "Extension";
@@ -163,7 +162,7 @@ namespace UnitySkills
             if (val is Color c) return new { c.r, c.g, c.b, c.a };
             if (val is Object uo) return uo != null ? uo.name : "None";
 
-            // For structs, recurse one level
+            // 结构体再往下递归一层。
             if (t.IsValueType && !t.IsPrimitive)
             {
                 var dict = new Dictionary<string, object>();
@@ -178,7 +177,7 @@ namespace UnitySkills
         }
 #endif
 
-        // --- Custom Sanitizer to break Loops ---
+        // --- 自定义序列化清洗器，用于打断循环引用 ---
 #if CINEMACHINE_2 || CINEMACHINE_3
         private static object Sanitize(object obj, int depth = 0, HashSet<int> visited = null)
         {
@@ -188,7 +187,7 @@ namespace UnitySkills
             var t = obj.GetType();
             if (t.IsPrimitive || t == typeof(string) || t == typeof(bool) || t.IsEnum) return obj;
 
-            // Handle Unity Structs manually
+            // Unity 结构体手工展开。
             if (obj is Vector2 v2) return new { v2.x, v2.y };
             if (obj is Vector3 v3) return new { v3.x, v3.y, v3.z };
             if (obj is Vector4 v4) return new { v4.x, v4.y, v4.z, v4.w };
@@ -196,7 +195,7 @@ namespace UnitySkills
             if (obj is Color c) return new { c.r, c.g, c.b, c.a };
             if (obj is Rect r) return new { r.x, r.y, r.width, r.height };
 
-            // Cycle detection for reference types
+            // 引用类型做循环检测。
             if (!t.IsValueType)
             {
                 if (visited == null) visited = new HashSet<int>();
@@ -204,7 +203,7 @@ namespace UnitySkills
                 if (!visited.Add(id)) return $"[Circular: {t.Name}]";
             }
 
-            // Handle Dictionaries (before IEnumerable to preserve key-value structure)
+            // 字典必须排在 IEnumerable 之前处理，否则键值结构会被拍平成列表。
             if (obj is System.Collections.IDictionary dict)
             {
                 var dictResult = new Dictionary<string, object>();
@@ -213,7 +212,6 @@ namespace UnitySkills
                 return dictResult;
             }
 
-            // Handle Arrays/Lists
             if (obj is System.Collections.IEnumerable list)
             {
                 var result = new List<object>();
@@ -221,7 +219,7 @@ namespace UnitySkills
                 return result;
             }
 
-            // Deep Sanitization for complex Structs/Classes
+            // 复杂结构体 / 类走深度清洗。
             var memberDict = new Dictionary<string, object>();
             var members = t.GetMembers(BindingFlags.Public | BindingFlags.Instance)
                 .Where(m => m.MemberType == MemberTypes.Field || m.MemberType == MemberTypes.Property);
@@ -364,12 +362,33 @@ namespace UnitySkills
             var vcam = CinemachineAdapter.GetVCam(go);
             if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
 
+            // GameObjectFinder.Find(...)?.transform 找不到时返回 null，而 null 对
+            // CinemachineAdapter.SetFollow/SetLookAt 恰恰意味着"清空这个绑定"——于是
+            // followName/lookAtName 拼错会抹掉本来好用的目标却仍报 success:true。
+            // 因此两个目标都先用 FindOrError 解析（未命中给 TARGET_NOT_FOUND）再去动绑定；
+            // 空串 / 省略表示"保持原样"而非"清空"，所以在查找前就短路掉。
+            Transform followTransform = null;
+            if (!string.IsNullOrEmpty(followName))
+            {
+                var (followGo, followErr) = GameObjectFinder.FindOrError(name: followName);
+                if (followErr != null) return followErr;
+                followTransform = followGo.transform;
+            }
+
+            Transform lookAtTransform = null;
+            if (!string.IsNullOrEmpty(lookAtName))
+            {
+                var (lookAtGo, lookAtErr) = GameObjectFinder.FindOrError(name: lookAtName);
+                if (lookAtErr != null) return lookAtErr;
+                lookAtTransform = lookAtGo.transform;
+            }
+
             WorkflowManager.SnapshotObject(vcam);
             Undo.RecordObject(vcam, "Set Targets");
-            if (followName != null)
-                CinemachineAdapter.SetFollow(vcam, GameObjectFinder.Find(followName)?.transform);
-            if (lookAtName != null)
-                CinemachineAdapter.SetLookAt(vcam, GameObjectFinder.Find(lookAtName)?.transform);
+            if (!string.IsNullOrEmpty(followName))
+                CinemachineAdapter.SetFollow(vcam, followTransform);
+            if (!string.IsNullOrEmpty(lookAtName))
+                CinemachineAdapter.SetLookAt(vcam, lookAtTransform);
 
             EditorUtility.SetDirty(go);
             return new { success = true };
@@ -429,7 +448,7 @@ namespace UnitySkills
 #endif
         }
 
-        [UnitySkill("cinemachine_set_lens", "Quickly configure Lens settings (FOV, Near, Far, OrthoSize).",
+        [UnitySkill("cinemachine_set_lens", "Quickly configure Lens settings (FOV, Near, Far, OrthoSize) and the projection ModeOverride. 'mode' accepts None / Orthographic / Perspective / Physical (case-insensitive); an invalid value rejects the whole call without writing anything.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "lens", "fov", "clip", "cinemachine" },
             Outputs = new[] { "success", "message" },
@@ -446,6 +465,14 @@ namespace UnitySkills
             var vcam = CinemachineAdapter.GetVCam(go);
             if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
 
+            // mode 要在碰 lens 之前解析完：否则拼错的投影模式被静默丢弃，
+            // 而同一次调用里的 fov/裁面照样写了进去。
+            if (!SkillParamUtil.TryParseOptionalEnum<LensSettings.OverrideModes>(
+                    mode, "mode", out var modeOverride, out var modeError))
+            {
+                return modeError;
+            }
+
             WorkflowManager.SnapshotObject(vcam);
             var lens = CinemachineAdapter.GetLens(vcam);
             bool changed = false;
@@ -454,6 +481,8 @@ namespace UnitySkills
             if (nearClip.HasValue) { lens.NearClipPlane = nearClip.Value; changed = true; }
             if (farClip.HasValue) { lens.FarClipPlane = farClip.Value; changed = true; }
             if (orthoSize.HasValue) { lens.OrthographicSize = orthoSize.Value; changed = true; }
+            // LensSettings.ModeOverride 在 CM2 与 CM3 里同名同义，和上面几个字段一样无需版本分支。
+            if (modeOverride.HasValue) { lens.ModeOverride = modeOverride.Value; changed = true; }
 
             if (changed)
             {
@@ -525,7 +554,7 @@ namespace UnitySkills
                     return new { error = requestedType.Name + " belongs to the " + actualStage + " stage, not " + stageEnum + "." };
             }
 
-            // 1. Remove existing component at this stage
+            // 1. 先移除该阶段上已有的组件
             var existing = CinemachineAdapter.GetPipelineComponent(go, stageEnum.ToString());
             if (existing != null && requestedType != null && existing.GetType() == requestedType)
                 return new { success = true, message = "Set " + stageEnum + " to " + requestedType.Name + " (already configured)" };
@@ -537,7 +566,7 @@ namespace UnitySkills
                 CinemachineAdapter.InvalidatePipeline(go);
             }
 
-            // 2. Add new component if not "None"
+            // 2. 不是 "None" 时再添加新组件
             if (requestedType != null)
             {
                 var comp = CinemachineAdapter.AddPipelineComponent(go, requestedType, out var addError);
@@ -693,7 +722,7 @@ namespace UnitySkills
 #endif
         }
 
-        // --- Helpers ---
+        // --- 辅助方法 ---
 
         private static void RecordAndSetDirty(Object target, string name)
         {
@@ -1115,7 +1144,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== Brain / Priority / Blend =====================
+        // ===================== Brain / 优先级 / 混合 =====================
 
         [UnitySkill("cinemachine_set_brain", "Configure CinemachineBrain: update method, default blend, debug display.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
@@ -1251,7 +1280,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== Sequencer =====================
+        // ===================== 序列器相机 =====================
 
         [UnitySkill("cinemachine_create_sequencer", "Create a Sequencer camera (CM3) or BlendList camera (CM2) that plays child cameras in sequence.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
@@ -1324,7 +1353,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== FreeLook =====================
+        // ===================== FreeLook 相机 =====================
 
         [UnitySkill("cinemachine_create_freelook", "Create a FreeLook camera. CM2: CinemachineFreeLook. CM3: CinemachineCamera + OrbitalFollow(ThreeRing) + RotationComposer.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Create,
@@ -1386,7 +1415,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== Camera Manager Configure =====================
+        // ===================== 相机管理器配置 =====================
 
         [UnitySkill("cinemachine_configure_camera_manager", "Configure ClearShot/StateDriven/Sequencer camera properties.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
@@ -1403,7 +1432,7 @@ namespace UnitySkills
             // StateDriven
             string animatorName = null,
             int? layerIndex = null,
-            // Common
+            // 三者通用
             string defaultBlendStyle = null,
             float? defaultBlendTime = null,
             // Sequencer
@@ -1513,7 +1542,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== Body / Aim Configure =====================
+        // ===================== Body / Aim 阶段配置 =====================
 
         [UnitySkill("cinemachine_configure_body", "Configure Body stage component (Follow, OrbitalFollow, ThirdPersonFollow, PositionComposer, etc.) in one call.",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
@@ -1523,7 +1552,7 @@ namespace UnitySkills
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" })]
         public static object CinemachineConfigureBody(
             string vcamName = null, int instanceId = 0, string path = null,
-            // Follow / Transposer offset
+            // Follow / Transposer 偏移
             float? offsetX = null, float? offsetY = null, float? offsetZ = null,
             string bindingMode = null,
             float? dampingX = null, float? dampingY = null, float? dampingZ = null,
@@ -1705,7 +1734,7 @@ namespace UnitySkills
             }
             else
             {
-                // Generic fallback - try all offset/damping params
+                // 通用兜底：未识别的组件类型就把 offset/damping 各参数都试一遍。
                 TrySet("FollowOffset", offsetX.HasValue || offsetY.HasValue || offsetZ.HasValue ? (object)new Vector3(offsetX ?? 0, offsetY ?? 0, offsetZ ?? 0) : null, "offset");
             }
 
@@ -1733,7 +1762,7 @@ namespace UnitySkills
             // PanTilt / POV
             string referenceFrame = null,
             float? panValue = null, float? tiltValue = null,
-            // Target offset
+            // 目标偏移
             float? targetOffsetX = null, float? targetOffsetY = null, float? targetOffsetZ = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
@@ -1771,6 +1800,31 @@ namespace UnitySkills
                     comp.ScreenPosition = pos;
                     rc.Composition = comp;
                     changes.Add($"screen=({pos.x},{pos.y})");
+                }
+                // CM3 的 RotationComposer 没有 m_DeadZoneWidth/Height、m_SoftZoneWidth/Height
+                // 字段（那些是 CM2 Composer 的），对应物是 Composition.DeadZone.Size 和
+                // Composition.HardLimits.Size（Unity 自家的 CM2->CM3 升级器把 SoftZone 映射到
+                // HardLimits，而非同名的 "SoftZone" 字段）。没有这个分支时这四个参数会静默失效：
+                // TrySet 只认旧字段名，而旧名在这里并不存在，等于什么都没试。
+                if (deadZoneWidth.HasValue || deadZoneHeight.HasValue)
+                {
+                    var rc = (CinemachineRotationComposer)aim;
+                    var comp = rc.Composition;
+                    var cur = comp.DeadZone.Size;
+                    comp.DeadZone.Size = new Vector2(deadZoneWidth ?? cur.x, deadZoneHeight ?? cur.y);
+                    comp.DeadZone.Enabled = true;
+                    rc.Composition = comp;
+                    changes.Add($"deadZone=({comp.DeadZone.Size.x},{comp.DeadZone.Size.y})");
+                }
+                if (softZoneWidth.HasValue || softZoneHeight.HasValue)
+                {
+                    var rc = (CinemachineRotationComposer)aim;
+                    var comp = rc.Composition;
+                    var cur = comp.HardLimits.Size;
+                    comp.HardLimits.Size = new Vector2(softZoneWidth ?? cur.x, softZoneHeight ?? cur.y);
+                    comp.HardLimits.Enabled = true;
+                    rc.Composition = comp;
+                    changes.Add($"softZone=({comp.HardLimits.Size.x},{comp.HardLimits.Size.y})");
                 }
                 TrySet("Damping", horizontalDamping.HasValue && verticalDamping.HasValue ? (object)new Vector2(horizontalDamping.Value, verticalDamping.Value) : null, "damping");
                 if (horizontalDamping.HasValue && !verticalDamping.HasValue) TrySet("Damping.x", horizontalDamping, "hDamping");
@@ -1823,7 +1877,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== Extension / Impulse Configure =====================
+        // ===================== 扩展 / Impulse 配置 =====================
 
         [UnitySkill("cinemachine_configure_extension", "Configure Cinemachine extension properties (Confiner, Deoccluder, FollowZoom, GroupFraming, etc.).",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
@@ -1866,7 +1920,7 @@ namespace UnitySkills
             }
             if (ext == null)
             {
-                // Auto-detect: find first CinemachineExtension on the GO
+                // 未指定时自动取该对象上第一个 CinemachineExtension。
                 var exts = go.GetComponents<CinemachineExtension>();
                 ext = exts.Length > 0 ? exts[0] : null;
             }
@@ -1877,10 +1931,9 @@ namespace UnitySkills
             var typeName = ext.GetType().Name;
             var changes = new List<string>();
 
-            // Note: several branches below intentionally probe two candidate field/property names
-            // per logical setting (e.g. "Damping" for CM3, "m_Damping" for CM2) — exactly one is
-            // expected to miss depending on the installed Cinemachine version, so failures here are
-            // not surfaced as warnings (that would be noise on every successful call).
+            // 注意：下面若干分支会为同一个逻辑设置刻意尝试两个候选字段 / 属性名
+            // （如 CM3 的 "Damping" 与 CM2 的 "m_Damping"）。按已安装的 Cinemachine 版本，
+            // 其中必有一个会失配，所以这里的失败不上报为 warning——否则每次成功调用都会有噪声。
             void TrySet(string prop, object val, string label)
             {
                 if (val == null) return;
@@ -1895,7 +1948,7 @@ namespace UnitySkills
                     var shapeGo = GameObjectFinder.Find(boundingShapeName);
                     if (shapeGo != null)
                     {
-                        // Try Collider2D, then Collider
+                        // 先试 Collider2D，再退到 Collider。
                         var col2d = shapeGo.GetComponent<Collider2D>();
                         var col3d = shapeGo.GetComponent<Collider>();
                         if (col2d != null && SetFieldOrProperty(ext, "BoundingShape2D", col2d))
@@ -1954,7 +2007,7 @@ namespace UnitySkills
             }
             else
             {
-                // Generic: try all params
+                // 通用兜底：各参数都试一遍。
                 TrySet("Damping", damping, "damping");
                 TrySet("CameraRadius", cameraRadius, "camRadius");
             }
@@ -2009,7 +2062,7 @@ namespace UnitySkills
                 else warnings.Add($"Failed to set {label} ({prop})");
             }
 
-            // CM3: ImpulseDefinition is a direct field, CM2: m_ImpulseDefinition
+            // 字段名按版本不同：CM3 是 ImpulseDefinition，CM2 是 m_ImpulseDefinition。
 #if CINEMACHINE_3
             TrySet("ImpulseDefinition.ImpactRadius", impactRadius, "impactRadius");
             TrySet("ImpulseDefinition.DissipationRate", dissipationRate, "dissipationRate");

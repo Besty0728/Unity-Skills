@@ -80,6 +80,15 @@
                     <ui:DropdownField name="language-pin-secondary" />
                 </ui:VisualElement>
 
+                <!-- AI tools group -->
+                <ui:VisualElement name="group-agent-sync" class="settings-group">
+                    <ui:Label name="group-agent-sync-title" class="settings-group-title"
+                              text="AI Tools" />
+                    <ui:Toggle name="agent-autosync-toggle" />
+                    <ui:Label name="agent-autosync-hint" class="setting-hint"
+                              style="margin-left: 18px;" />
+                </ui:VisualElement>
+
                 <!-- Unity CLI group — entry to the standalone UnityCliWindow -->
                 <ui:VisualElement name="group-cli" class="settings-group">
                     <ui:Label name="group-cli-title" class="settings-group-title"
@@ -141,13 +150,12 @@
                         <ui:DropdownField name="loglevel-dropdown" class="setting-row__field" />
                     </ui:VisualElement>
 
-                    <ui:VisualElement name="guide-mode-row" class="setting-row">
-                        <ui:Label name="guide-mode-label" class="setting-row__label" />
-                        <ui:VisualElement name="guide-mode-switch" class="server-switch" style="margin: 0;">
-                            <ui:VisualElement class="server-switch__knob" />
-                        </ui:VisualElement>
+                    <ui:VisualElement name="surface-profile-row" class="setting-row">
+                        <ui:Label name="surface-profile-label" class="setting-row__label" />
+                        <ui:DropdownField name="surface-profile-dropdown" class="setting-row__field"
+                                          style="width: 170px;" />
                     </ui:VisualElement>
-                    <ui:Label name="guide-mode-hint" class="setting-hint" />
+                    <ui:Label name="surface-profile-hint" class="setting-hint" />
 
                     <ui:VisualElement name="update-notifications-row" class="setting-row">
                         <ui:Label name="update-notifications-label" class="setting-row__label" />

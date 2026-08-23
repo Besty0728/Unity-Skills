@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -26,6 +26,17 @@ namespace UnitySkills
             SkillsOperatingMode.Approval,
             SkillsOperatingMode.Auto,
             SkillsOperatingMode.Bypass,
+        };
+
+        // Same contract as _modeOrder: choice position maps one-to-one onto SurfaceProfileKind, so
+        // the reverse lookup never depends on localized text.
+        // (English on purpose — CollectUiCharacters scans this file for the baked font atlas, and
+        // new CJK in comments forces an atlas top-up. See the note above _russian in Localization.cs.)
+        private static readonly SurfaceProfileKind[] _profileOrder = new[]
+        {
+            SurfaceProfileKind.Full,
+            SurfaceProfileKind.Guide,
+            SurfaceProfileKind.NoSceneAuthoring,
         };
 
         private readonly VisualElement _root;
@@ -59,6 +70,11 @@ namespace UnitySkills
         private Button        _allowlistClearBtn;
         private Button        _allowlistAddBtn;
         private Button        _viewAuditBtn;
+
+        // AI tools group
+        private Label  _agentSyncGroupTitle;
+        private Toggle _agentAutoSyncToggle;
+        private Label  _agentAutoSyncHint;
 
         private Label  _cliGroupTitle;
         private Label  _cliHint;
@@ -96,9 +112,9 @@ namespace UnitySkills
         private VisualElement _summaryTruncateSwitch;
         private Label         _summaryTruncateLabel;
         private Label         _summaryTruncateHint;
-        private VisualElement _guideModeSwitch;
-        private Label         _guideModeLabel;
-        private Label         _guideModeHint;
+        private Label         _surfaceProfileLabel;
+        private DropdownField _surfaceProfileDropdown;
+        private Label         _surfaceProfileHint;
 
         // Stats group
         private Label  _statsGroupTitle;
@@ -122,7 +138,6 @@ namespace UnitySkills
                 return;
             }
 
-            // Clone drawer content into the drawer container
             var uxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(DrawerUxmlPath);
             if (uxml == null)
             {
@@ -148,6 +163,9 @@ namespace UnitySkills
             // 权限状态由 SkillsModeManager 全局广播；订阅以同步抽屉 UI。
             // 用 DetachFromPanelEvent 解绑，避免 EditorWindow 关闭后泄漏。
             SkillsModeManager.OnChanged += RefreshPermissionsUi;
+            // The profile can also change outside the panel (EditorPrefs migration, test fixtures),
+            // so subscribe to keep the drawer showing the profile that is actually in force.
+            SkillsSurfaceProfile.OnChanged += RefreshSurfaceProfileUi;
             _root.RegisterCallback<DetachFromPanelEvent>(OnRootDetached);
 
             // 倒计时每秒推进一次；ScheduleItem 跟随 _root 生命周期自动停止。
@@ -161,6 +179,7 @@ namespace UnitySkills
         private void OnRootDetached(DetachFromPanelEvent _)
         {
             SkillsModeManager.OnChanged -= RefreshPermissionsUi;
+            SkillsSurfaceProfile.OnChanged -= RefreshSurfaceProfileUi;
         }
 
         private void ApplyCloseIcon()
@@ -193,6 +212,10 @@ namespace UnitySkills
             _allowlistClearBtn   = _drawerContainer.Q<Button>("perm-allowlist-clear-btn");
             _allowlistAddBtn     = _drawerContainer.Q<Button>("perm-allowlist-add-btn");
             _viewAuditBtn        = _drawerContainer.Q<Button>("perm-view-audit-btn");
+
+            _agentSyncGroupTitle = _drawerContainer.Q<Label>("group-agent-sync-title");
+            _agentAutoSyncToggle = _drawerContainer.Q<Toggle>("agent-autosync-toggle");
+            _agentAutoSyncHint   = _drawerContainer.Q<Label>("agent-autosync-hint");
 
             _cliGroupTitle = _drawerContainer.Q<Label>("group-cli-title");
             _cliHint       = _drawerContainer.Q<Label>("cli-drawer-hint");
@@ -228,9 +251,9 @@ namespace UnitySkills
             _summaryTruncateSwitch = _drawerContainer.Q<VisualElement>("summary-truncate-switch");
             _summaryTruncateLabel  = _drawerContainer.Q<Label>("summary-truncate-label");
             _summaryTruncateHint   = _drawerContainer.Q<Label>("summary-truncate-hint");
-            _guideModeSwitch       = _drawerContainer.Q<VisualElement>("guide-mode-switch");
-            _guideModeLabel        = _drawerContainer.Q<Label>("guide-mode-label");
-            _guideModeHint         = _drawerContainer.Q<Label>("guide-mode-hint");
+            _surfaceProfileLabel    = _drawerContainer.Q<Label>("surface-profile-label");
+            _surfaceProfileDropdown = _drawerContainer.Q<DropdownField>("surface-profile-dropdown");
+            _surfaceProfileHint     = _drawerContainer.Q<Label>("surface-profile-hint");
 
             _statsGroupTitle = _drawerContainer.Q<Label>("group-stats-title");
             _statsHint       = _drawerContainer.Q<Label>("stats-hint");
@@ -270,6 +293,13 @@ namespace UnitySkills
 
             if (_viewAuditBtn != null)
                 _viewAuditBtn.clicked += () => UnitySkillsAuditWindow.ShowWindow();
+
+            if (_agentAutoSyncToggle != null)
+                _agentAutoSyncToggle.RegisterValueChangedCallback(evt =>
+                {
+                    if (evt.newValue != SkillInstallSyncService.Enabled)
+                        SkillInstallSyncService.Enabled = evt.newValue;
+                });
 
             if (_cliOpenBtn != null)
                 _cliOpenBtn.clicked += () => UnityCliWindow.ShowWindow();
@@ -348,11 +378,17 @@ namespace UnitySkills
                     SyncSettingSwitches();
                 });
 
-            if (_guideModeSwitch != null)
-                _guideModeSwitch.RegisterCallback<ClickEvent>(_ =>
+            // Index is resolved back to the enum through _profileOrder. Writing
+            // SkillsSurfaceProfile.Current makes its setter raise OnChanged, which reaches
+            // RefreshSurfaceProfileUi and repaints the row, so no manual sync is needed here.
+            if (_surfaceProfileDropdown != null)
+                _surfaceProfileDropdown.RegisterValueChangedCallback(evt =>
                 {
-                    SkillsGuideMode.Enabled = !SkillsGuideMode.Enabled;
-                    SyncSettingSwitches();
+                    int idx = _surfaceProfileDropdown.choices.IndexOf(evt.newValue);
+                    if (idx < 0 || idx >= _profileOrder.Length) return;
+                    var target = _profileOrder[idx];
+                    if (SkillsSurfaceProfile.Current != target)
+                        SkillsSurfaceProfile.Current = target;
                 });
 
             if (_statsResetBtn != null)
@@ -409,9 +445,11 @@ namespace UnitySkills
 
             if (_autoStartToggle != null) _autoStartToggle.value = SkillsHttpServer.AutoStart;
             if (_startOnLaunchToggle != null) _startOnLaunchToggle.value = SkillsHttpServer.StartOnEditorLaunch;
+            if (_agentAutoSyncToggle != null) _agentAutoSyncToggle.value = SkillInstallSyncService.Enabled;
             if (_timeoutField   != null) _timeoutField.value     = SkillsHttpServer.RequestTimeoutMinutes;
             if (_keepaliveField != null) _keepaliveField.value   = SkillsHttpServer.KeepAliveIntervalSeconds;
             SyncSettingSwitches();
+            RebuildSurfaceProfileDropdown();
             RefreshLanguagePins();
         }
 
@@ -469,6 +507,13 @@ namespace UnitySkills
             if (_viewAuditBtn != null)
                 _viewAuditBtn.text = SkillsLocalization.Get("perm_view_audit_log");
 
+            if (_agentSyncGroupTitle != null)
+                _agentSyncGroupTitle.text = SkillsLocalization.Get("drawer_section_agent_sync");
+            if (_agentAutoSyncToggle != null)
+                _agentAutoSyncToggle.label = SkillsLocalization.Get("agent_autosync_label");
+            if (_agentAutoSyncHint != null)
+                _agentAutoSyncHint.text = SkillsLocalization.Get("agent_autosync_hint");
+
             RefreshCliGroup();
 
             // Pending / Allowlist titles include counts, so rebuild via RefreshPermissionsUi
@@ -512,12 +557,14 @@ namespace UnitySkills
             if (_summaryTruncateHint != null)
                 _summaryTruncateHint.text = SkillsLocalization.Get("drawer_summary_truncate_hint");
 
-            if (_guideModeLabel != null)
-                _guideModeLabel.text = SkillsLocalization.Get("guide_mode");
-            if (_guideModeSwitch != null)
-                _guideModeSwitch.tooltip = SkillsLocalization.Get("guide_mode_tooltip");
-            if (_guideModeHint != null)
-                _guideModeHint.text = SkillsLocalization.Get("guide_mode_tooltip");
+            if (_surfaceProfileLabel != null)
+            {
+                _surfaceProfileLabel.text    = SkillsLocalization.Get("surface_profile");
+                _surfaceProfileLabel.tooltip = SkillsLocalization.Get("surface_profile_tooltip");
+            }
+            if (_surfaceProfileDropdown != null)
+                _surfaceProfileDropdown.tooltip = SkillsLocalization.Get("surface_profile_tooltip");
+            RebuildSurfaceProfileDropdown();
 
             if (_statsHint     != null) _statsHint.text     = SkillsLocalization.Get("drawer_stats_hint");
             if (_statsResetBtn != null) _statsResetBtn.text = SkillsLocalization.Get("drawer_reset_stats_btn");
@@ -549,11 +596,144 @@ namespace UnitySkills
             _confirmSwitch?.EnableInClassList("on", ConfirmationTokenService.RequireConfirmation);
             _telemetrySwitch?.EnableInClassList("on", SkillTelemetryService.Enabled);
             _summaryTruncateSwitch?.EnableInClassList("on", SkillRouter.SummaryAutoTruncate);
-            _guideModeSwitch?.EnableInClassList("on", SkillsGuideMode.Enabled);
         }
 
         private static SkillsLocalization.Language ParseLanguage(string value) =>
             (SkillsLocalization.Language)Enum.Parse(typeof(SkillsLocalization.Language), value);
+
+        // ===== Surface profile (skill surface) =====
+
+        /// <summary>
+        /// Fills the localized option names in <see cref="_profileOrder"/> order, then writes back
+        /// the current profile and its description. Rebuilt on language change, because choices
+        /// hold display text.
+        /// </summary>
+        private void RebuildSurfaceProfileDropdown()
+        {
+            if (_surfaceProfileDropdown == null) return;
+            _surfaceProfileDropdown.choices = new List<string>
+            {
+                SkillsLocalization.Get("surface_profile_full"),
+                SkillsLocalization.Get("surface_profile_guide"),
+                SkillsLocalization.Get("surface_profile_no_scene_authoring"),
+            };
+            RefreshSurfaceProfileUi();
+        }
+
+        /// <summary>
+        /// Writes the current profile back into the dropdown and recomputes the hint. This is also
+        /// the <see cref="SkillsSurfaceProfile.OnChanged"/> handler, which is why the value must go
+        /// in via SetValueWithoutNotify — otherwise it and its own ValueChanged callback would
+        /// trigger each other.
+        /// </summary>
+        private void RefreshSurfaceProfileUi()
+        {
+            if (_surfaceProfileDropdown != null)
+            {
+                int idx = Array.IndexOf(_profileOrder, SkillsSurfaceProfile.Current);
+                if (idx >= 0 && idx < _surfaceProfileDropdown.choices.Count)
+                    _surfaceProfileDropdown.SetValueWithoutNotify(_surfaceProfileDropdown.choices[idx]);
+            }
+            ApplySurfaceProfileHintText();
+        }
+
+        private void ApplySurfaceProfileHintText()
+        {
+            if (_surfaceProfileHint == null) return;
+
+            var profile = SkillsSurfaceProfile.Current;
+            var stats = MeasureHiddenSurface();
+            string text;
+            switch (profile)
+            {
+                case SurfaceProfileKind.Guide:
+                    text = string.Format(
+                        SkillsLocalization.Get("surface_profile_guide_hint"),
+                        stats.IsKnown ? string.Join(" / ", stats.Modules) : FallbackModuleList(profile));
+                    break;
+                case SurfaceProfileKind.NoSceneAuthoring:
+                    // This profile covers too many modules to list without filling the drawer, so
+                    // it gets prose plus the measured count appended below.
+                    text = SkillsLocalization.Get("surface_profile_no_scene_authoring_hint");
+                    break;
+                default:
+                    text = SkillsLocalization.Get("surface_profile_full_hint");
+                    break;
+            }
+
+            if (stats.IsKnown && stats.Writes > 0)
+                text += " " + string.Format(
+                    SkillsLocalization.Get("surface_profile_hidden_count_fmt"),
+                    stats.Writes, stats.Modules.Count);
+
+            _surfaceProfileHint.text = text;
+        }
+
+        /// <summary>
+        /// What the current profile hides, measured against the registry rather than restated from
+        /// the category sets. <see cref="Modules"/> is null when the measurement could not be taken.
+        /// </summary>
+        private readonly struct HiddenSurfaceStats
+        {
+            public readonly int Writes;
+            public readonly List<string> Modules;
+            public HiddenSurfaceStats(int writes, List<string> modules) { Writes = writes; Modules = modules; }
+            public bool IsKnown => Modules != null;
+        }
+
+        /// <summary>
+        /// Counts the hidden writes and collects the modules they belong to in one pass over the
+        /// unfiltered registry, asking <see cref="SkillsSurfaceProfile.IsExcluded(SkillRouter.SkillInfo)"/>
+        /// about each skill.
+        ///
+        /// Deriving both numbers from the same verdict the router enforces is the entire point.
+        /// Neither can be read off the category sets any more: escape-hatch skills are hidden by
+        /// name under every non-full profile, and NoSceneAuthoring additionally hides any write
+        /// declaring MutatesScene whatever its module — so <c>HiddenCategories</c> understates both
+        /// the module list and the count. The category-only IsExcluded overload documents the same
+        /// caveat and is deliberately not used here.
+        ///
+        /// Returns the default (IsKnown false) when the registry cannot be read, and the caller
+        /// then drops the count sentence rather than printing a wrong number.
+        /// </summary>
+        private static HiddenSurfaceStats MeasureHiddenSurface()
+        {
+            if (SkillsSurfaceProfile.IsFull) return default;
+            try
+            {
+                var all = SkillRouter.GetAllSkillsSnapshotUnfiltered();
+                if (all == null) return default;
+
+                int writes = 0;
+                var modules = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var skill in all)
+                {
+                    if (skill == null || !SkillsSurfaceProfile.IsExcluded(skill)) continue;
+                    writes++;
+                    modules.Add(skill.Category.ToString());
+                }
+                return new HiddenSurfaceStats(writes, modules.ToList());
+            }
+            catch
+            {
+                return default;
+            }
+        }
+
+        /// <summary>
+        /// Module list used only when the registry could not be measured. Reads the category set
+        /// directly, which understates what is hidden but beats leaving the sentence blank.
+        /// <see cref="SkillsSurfaceProfile.HiddenCategories"/> hands back a reference to an internal
+        /// HashSet, so this only enumerates it — never mutate it in place.
+        /// </summary>
+        private static string FallbackModuleList(SurfaceProfileKind profile)
+        {
+            var categories = SkillsSurfaceProfile.HiddenCategories(profile);
+            if (categories == null || categories.Count == 0) return string.Empty;
+            return string.Join(" / ", categories
+                .Select(c => c.ToString())
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase));
+        }
 
         // ===== Permissions group helpers =====
 
@@ -586,10 +766,6 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 同步三类权限 UI：模式 toggles、Approval 设置 row、Pending/Granted 列表。
-        /// 由 OnChanged 事件、本类初始化、Localization 切换调用。
-        /// </summary>
-        /// <summary>
         /// Unity CLI 组：标题/按钮文案 + 绑定状态提示。绑定发生在 UnityCliWindow，
         /// 抽屉每次本地化刷新（含 Open）时顺带取一次最新状态即可，无需轮询。
         /// </summary>
@@ -610,6 +786,10 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// 同步三类权限 UI：模式 toggles、Approval 设置 row、Pending/Granted 列表。
+        /// 由 OnChanged 事件、本类初始化、Localization 切换调用。
+        /// </summary>
         private void RefreshPermissionsUi()
         {
             if (_drawerContainer == null) return;
@@ -768,10 +948,14 @@ namespace UnitySkills
 
             // 用 SkillRouter snapshot 解析 name → Category；未注册 skill（注册表 refresh 间隔等）
             // 归入特殊分组 "(Unknown)" 而不是丢弃，让用户至少能看到并 Remove。
+            // The unfiltered snapshot is required here: an allowlist can hold skill names the
+            // current profile hides (switching profile does not clear the allowlist), and the
+            // filtered snapshot would drop every one of them into "(Unknown)", leaving the user
+            // unable to tell which module an entry belongs to.
             var nameToCategory = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                foreach (var s in SkillRouter.GetAllSkillsSnapshot() ?? Array.Empty<SkillRouter.SkillInfo>())
+                foreach (var s in SkillRouter.GetAllSkillsSnapshotUnfiltered() ?? Array.Empty<SkillRouter.SkillInfo>())
                 {
                     if (s != null && !string.IsNullOrEmpty(s.Name))
                         nameToCategory[s.Name] = s.Category.ToString();
@@ -819,10 +1003,6 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 每秒扫一遍 pending 列表中的 expires Label，按 userData 中的 UTC 过期时间重算文字。
-        /// 不重建条目，避免破坏潜在的 hover/focus；过期到 0 后下次 OnChanged 会清掉条目。
-        /// </summary>
-        /// <summary>
         /// 每秒一次：先比对 pending+granted 快照决定是否需要重建 list，否则只刷新倒计时。
         /// OnChanged 事件链路如果丢失（后台窗口、跨域调用等场景），这条 polling 就是兜底。
         /// </summary>
@@ -858,6 +1038,10 @@ namespace UnitySkills
             return sb.ToString();
         }
 
+        /// <summary>
+        /// 每秒扫一遍 pending 列表中的 expires Label，按 userData 中的 UTC 过期时间重算文字。
+        /// 不重建条目，避免破坏潜在的 hover/focus；过期到 0 后下次 OnChanged 会清掉条目。
+        /// </summary>
         private void RefreshPendingExpiry()
         {
             if (_pendingList == null) return;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEditor;
 
@@ -142,6 +142,9 @@ namespace UnitySkills
             {"auto_restart_hint", "Server will automatically restart after Unity recompiles scripts"},
             {"start_on_editor_launch", "Start on Editor launch"},
             {"start_on_editor_launch_hint", "Start the server automatically when this project opens — needs Auto-restart after compile to stay on too"},
+            {"drawer_section_agent_sync", "AI Tools"},
+            {"agent_autosync_label", "Auto-sync installed AI tools"},
+            {"agent_autosync_hint", "After the package updates, refresh the unity-skills files already installed for Claude Code, Codex, Cursor and other tools. Only targets you installed yourself are refreshed; nothing new is ever installed."},
             {"timeout_unit", "min"},
             {"keepalive_unit", "sec"},
             {"keepalive_hint", "How often to wake Unity main thread when idle (min 5s)"},
@@ -177,8 +180,15 @@ namespace UnitySkills
             {"drawer_telemetry_hint", "Logs each skill call (name, agent, mode, ok, duration — no arguments or field values) to Library/UnitySkillsTelemetry.jsonl, powering the Analytics tab and GET /analytics. Local only; never leaves your machine. Turn off to stop recording."},
             {"drawer_summary_truncate_label", "Summary Mode auto-truncation"},
             {"drawer_summary_truncate_hint", "When on, non-verbose responses whose result list exceeds 10 items return only the first 5 with isTruncated metadata (saves tokens for AI clients). Explicit pageOffset/pageLimit paging always works regardless of this switch."},
-            {"guide_mode", "Guide mode (advisory)"},
-            {"guide_mode_tooltip", "When on, /health reports guideMode=true, suggesting AI read SKILL_GUIDE.md and give manual steps for simple tasks instead of calling write skills. No enforcement — AI clients decide whether to follow."},
+            {"surface_profile", "Skill surface"},
+            {"surface_profile_tooltip", "A filter on which skills exist at all — not a hint the AI may ignore. Hidden skills are removed from every list the AI sees, and calling one anyway is rejected with SURFACE_EXCLUDED. No operating mode gets around it: Bypass and the allowlist obey it too, because those grant authority you delegated while this states work you do not want attempted. This dropdown is the only place it can be changed — the AI cannot switch it back."},
+            {"surface_profile_full", "Full automation"},
+            {"surface_profile_guide", "Guide mode"},
+            {"surface_profile_no_scene_authoring", "Scene hands-off"},
+            {"surface_profile_full_hint", "Nothing is hidden. The AI may create and modify anything its operating mode allows."},
+            {"surface_profile_guide_hint", "Hides the write skills of these modules: {0}. Reads stay available, so instead of authoring for you the AI reads the matching manual-* document where one exists and walks you through the Editor steps by hand."},
+            {"surface_profile_no_scene_authoring_hint", "Hides every write that authors what you see in the Scene view — objects, components, materials, prefabs, cameras, lighting, animation, physics, rendering — and additionally any skill that declares it mutates the scene, whichever module it lives in. Asset, project, scripting, test and diagnostic work stays available except where a skill reaches into the scene."},
+            {"surface_profile_hidden_count_fmt", "Hidden write skills: {0}, across {1} modules."},
 
             // Shortcuts settings (panel hotkeys)
             {"shortcut_section_title", "Shortcuts"},
@@ -444,7 +454,7 @@ namespace UnitySkills
             {"audio_set_settings", "Set audio import settings"},
             {"audio_set_settings_batch", "Set audio import settings for multiple audio files"},
             {"camera_align_view_to_object", "Align Scene View camera to look at an object."},
-            {"camera_get_info", "Get Scene View camera position and rotation."},
+            {"camera_get_info", "Get the editor SceneView viewport camera position and rotation (editor tooling, not a scene GameObject camera)."},
             {"camera_look_at", "Focus Scene View camera on a world-space point (x/y/z only, not object name)."},
             {"camera_set_transform", "Set Scene View camera position/rotation manually."},
             {"cinemachine_add_component", "Add a Cinemachine component (e.g., OrbitalFollow)."},
@@ -462,7 +472,7 @@ namespace UnitySkills
             {"cinemachine_remove_extension", "Remove a CinemachineExtension"},
             {"cinemachine_set_active", "Force activation of a VCam (SOLO) by setting highest priority."},
             {"cinemachine_set_component", "Switch VCam pipeline component (Body/Aim/Noise)"},
-            {"cinemachine_set_lens", "Quickly configure Lens settings (FOV, Near, Far, OrthoSize)."},
+            {"cinemachine_set_lens", "Quickly configure Lens settings (FOV, Near, Far, OrthoSize, projection ModeOverride)."},
             {"cinemachine_set_noise", "Configure Noise settings (Basic Multi Channel Perlin)."},
             {"cinemachine_set_spline", "Set Spline for VCam Body"},
             {"cinemachine_set_targets", "Set Follow and LookAt targets."},
@@ -502,6 +512,7 @@ namespace UnitySkills
             {"light_create", "Create a new light (Directional, Point, Spot, Area)"},
             {"light_find_all", "Find all lights in the scene"},
             {"light_get_info", "Get information about a light (supports name/instanceId/path)"},
+            {"light_get_properties", "Alias of light_get_info — get information about a light (supports name/instanceId/path)"},
             {"light_set_enabled", "Enable or disable a light (supports name/instanceId/path)"},
             {"light_set_enabled_batch", "Enable/disable multiple lights in one call (Efficient)"},
             {"light_set_properties", "Set light properties (supports name/instanceId/path)"},
@@ -525,7 +536,7 @@ namespace UnitySkills
             {"model_get_settings", "Get model import settings for a 3D model asset (FBX, OBJ, etc)"},
             {"model_set_settings", "Set model import settings"},
             {"model_set_settings_batch", "Set model import settings for multiple 3D models"},
-            {"navmesh_bake", "Bake the NavMesh (Synchronous)"},
+            {"navmesh_bake", "Bake the NavMesh (Synchronous). Warning: blocks the Editor, can be slow on large scenes"},
             {"navmesh_calculate_path", "Calculate a path between two points"},
             {"navmesh_clear", "Clear the NavMesh data"},
             {"optimize_mesh_compression", "Set mesh compression for 3D models"},
@@ -1296,6 +1307,9 @@ namespace UnitySkills
             {"auto_restart_hint", "Unity 重新编译脚本后服务器将自动重启"},
             {"start_on_editor_launch", "编辑器启动时运行"},
             {"start_on_editor_launch_hint", "打开此项目时自动启动服务器 — 需同时开启「编译后自动重启」"},
+            {"drawer_section_agent_sync", "AI 工具"},
+            {"agent_autosync_label", "自动同步已安装的 AI 工具"},
+            {"agent_autosync_hint", "包升级后，自动把新版 unity-skills 文件同步到已安装的 Claude Code、Codex、Cursor 等工具。只更新你已经装过的目标，不会自动安装新目标。"},
             {"timeout_unit", "分钟"},
             {"keepalive_unit", "秒"},
             {"keepalive_hint", "空闲时唤醒 Unity 主线程的间隔（最小 5 秒）"},
@@ -1331,8 +1345,15 @@ namespace UnitySkills
             {"drawer_telemetry_hint", "将每次技能调用（名称、agent、模式、成功与否、用时——不含参数或字段值）记录到 Library/UnitySkillsTelemetry.jsonl，为 Analytics 标签与 GET /analytics 供数。仅存本地，绝不外传。关闭即停止记录。"},
             {"drawer_summary_truncate_label", "摘要模式自动截断"},
             {"drawer_summary_truncate_hint", "开启后，非 verbose 响应中超过 10 项的结果列表只返回前 5 项并附带 isTruncated 元数据（为 AI 客户端节省 token）。无论开关状态，显式传 pageOffset/pageLimit 分页始终有效。"},
-            {"guide_mode", "指导模式（建议性）"},
-            {"guide_mode_tooltip", "开启后 /health 返回 guideMode=true，提示 AI 对简单手动任务阅读 SKILL_GUIDE.md 并给出手动指引，而非自动调用写型 skill。无强制拦截，是否遵循由 AI 客户端决定。"},
+            {"surface_profile", "技能范围"},
+            {"surface_profile_tooltip", "这是对「有哪些技能存在」的强制过滤，不是 AI 可以不理的建议。被隐藏的技能不会出现在 AI 看到的任何清单里，硬调也会被 SURFACE_EXCLUDED 拒绝。任何操作模式都绕不过去：Bypass 和白名单同样受限 —— 这两项授予的是你已经委托出去的权限，而档位表达的是你不希望被尝试的操作。只有这个下拉框能改档，AI 自己改不回来。"},
+            {"surface_profile_full", "完全自动"},
+            {"surface_profile_guide", "指导模式"},
+            {"surface_profile_no_scene_authoring", "场景免打扰"},
+            {"surface_profile_full_hint", "不隐藏任何技能。在操作模式允许的范围内，AI 可以自由创建和修改。"},
+            {"surface_profile_guide_hint", "隐藏这些模块的写型技能：{0}。读型技能保留，所以 AI 不再替你动手，而是去读对应的 manual-* 文档（若有），一步步教你在编辑器里手动完成。"},
+            {"surface_profile_no_scene_authoring_hint", "隐藏所有会改动 Scene 视图内容的写型技能 —— 物体、组件、材质、预制体、相机、灯光、动画、物理、渲染；此外，任何自己声明会改动场景的技能，不管属于哪个模块，一律隐藏。资源、项目设置、脚本、测试与诊断除动到场景的部分之外仍然可用。"},
+            {"surface_profile_hidden_count_fmt", "当前隐藏写型技能 {0} 个，覆盖 {1} 个模块。"},
 
             // Shortcuts settings (panel hotkeys)
             {"shortcut_section_title", "快捷键"},
@@ -1554,6 +1575,7 @@ namespace UnitySkills
             {"light_create", "创建新灯光"},
             {"light_set_properties", "设置灯光属性"},
             {"light_get_info", "获取灯光信息"},
+            {"light_get_properties", "light_get_info 的别名 —— 获取灯光信息（支持 name/instanceId/path）"},
             {"light_find_all", "查找场景中所有灯光"},
             {"light_set_enabled", "启用/禁用灯光"},
             {"light_set_enabled_batch", "批量启用/禁用灯光"},
@@ -1602,7 +1624,7 @@ namespace UnitySkills
             {"physics_set_gravity", "设置全局重力"},
             
             // NavMesh Skills
-            {"navmesh_bake", "烘焙寻路网格 (可能较慢)"},
+            {"navmesh_bake", "烘焙寻路网格 (同步执行，大场景可能长时间阻塞编辑器)"},
             {"navmesh_clear", "清除寻路网格数据"},
             {"navmesh_calculate_path", "计算两点简的路径 (检测可达性)"},
             
@@ -1621,7 +1643,7 @@ namespace UnitySkills
             
             // Camera Skills
             {"camera_align_view_to_object", "对齐 Scene 视图到物体"},
-            {"camera_get_info", "获取 Scene 相机信息"},
+            {"camera_get_info", "获取 SceneView 视口相机的位置与旋转（编辑器工具，不是场景里的相机 GameObject）"},
             {"camera_set_transform", "设置 Scene 相机位置/旋转"},
             {"camera_look_at", "Scene 相机看向世界坐标点（仅支持 x/y/z，不支持对象名）"},
             
@@ -1698,7 +1720,7 @@ namespace UnitySkills
 
             // Cinemachine Skills
             {"cinemachine_add_component", "添加 Cinemachine 组件 (如 OrbitalFollow)"},
-            {"cinemachine_set_lens", "快速配置镜头设置 (FOV/近裁面/远裁面/正交尺寸)"},
+            {"cinemachine_set_lens", "快速配置镜头设置 (FOV/近裁面/远裁面/正交尺寸/投影模式覆盖)"},
             {"cinemachine_list_components", "列出所有可用的 Cinemachine 组件名称"},
             {"cinemachine_impulse_generate", "触发震动脉冲"},
             {"cinemachine_get_brain_info", "获取活动相机和混合信息"},
@@ -2463,6 +2485,22 @@ namespace UnitySkills
 
         };
 
+        // GLYPH CONSTRAINT — read this before adding or editing any Russian string below.
+        //
+        // Unity 2022 renders the panel from the pre-baked atlas Editor/UI/Fonts/UnitySkillsCN-UI.asset.
+        // That atlas is MISSING six uppercase Cyrillic letters and one vowel, named here by code point
+        // on purpose (spelling them out in this comment would itself break the build, because the
+        // atlas character set is collected by scanning this file as raw text, comments included):
+        //     U+0426  U+0427  U+0428  U+0429  U+042A  U+042C  and  U+0401
+        // The bundled TTF contains no Cyrillic whatsoever; the 59 Cyrillic glyphs the atlas does have
+        // came from a historical bake and cannot be regenerated from the font we ship, so the absent
+        // ones cannot simply be added — see UISkillsFontAssetBaker, whose full rebake now always fails.
+        //
+        // New Russian copy must avoid those seven characters. Reword instead of capitalizing: prefer a
+        // plural noun phrase over a sentence that opens with the verb "read" (U+0427 initial), which is
+        // exactly why the guide hint below starts "Navyki chteniya..." rather than "Chteniye...".
+        // Violations are caught by UISkillsFontTests.CustomFont_ContainsEveryFixedUiCharacter — that
+        // test is the enforcement mechanism, so never relax it to make new copy fit.
         private static readonly Dictionary<string, string> _russian = new Dictionary<string, string>
         {
             // Window
@@ -2512,10 +2550,20 @@ namespace UnitySkills
             {"architecture", "Архитектура"},
             {"auto_restart", "Авто-перезапуск после компиляции"},
             {"auto_restart_hint", "Сервер автоматически перезапустится после перекомпиляции скриптов Unity"},
-            {"guide_mode", "Режим подсказок (рекомендательный)"},
-            {"guide_mode_tooltip", "Когда включено, /health возвращает guideMode=true, предлагая ИИ прочитать SKILL_GUIDE.md и давать пошаговые инструкции для простых задач вместо вызова навыков записи. Без принудительного применения — клиент ИИ сам решает, следовать ли этому."},
+            {"surface_profile", "Набор навыков"},
+            {"surface_profile_tooltip", "Это жёсткий фильтр того, какие навыки вообще существуют, а не подсказка, которую ИИ может проигнорировать. Скрытые навыки удаляются из всех списков, которые видит ИИ, а прямой вызов отклоняется с кодом SURFACE_EXCLUDED. Обойти фильтр не может ни один режим работы: Bypass и белый список тоже ему подчиняются, потому что они выдают полномочия, которые вы уже делегировали, а профиль говорит о работе, которую вы не хотите даже пробовать. Переключить профиль можно только здесь — сам ИИ вернуть его не может."},
+            {"surface_profile_full", "Полная автоматизация"},
+            {"surface_profile_guide", "Режим подсказок"},
+            {"surface_profile_no_scene_authoring", "Сцена без правок"},
+            {"surface_profile_full_hint", "Ничего не скрыто. ИИ может создавать и изменять всё, что разрешает режим работы."},
+            {"surface_profile_guide_hint", "Скрывает навыки записи этих модулей: {0}. Навыки чтения остаются доступными, поэтому вместо работы за вас ИИ читает соответствующий документ manual-* (если он есть) и пошагово объясняет, что сделать в редакторе вручную."},
+            {"surface_profile_no_scene_authoring_hint", "Скрывает все навыки записи, которые формируют содержимое окна Scene: объекты, компоненты, материалы, префабы, камеры, освещение, анимацию, физику, рендеринг, а также любой навык, объявляющий, что он меняет сцену, в каком бы модуле он ни находился. Работа с ресурсами, проектом, скриптами, тестами и диагностикой остаётся доступной, кроме тех мест, где навык затрагивает сцену."},
+            {"surface_profile_hidden_count_fmt", "Скрыто навыков записи: {0}, модулей: {1}."},
             {"start_on_editor_launch", "Запускать при старте редактора"},
             {"start_on_editor_launch_hint", "Автоматически запускать сервер при открытии проекта — требуется также включить «Авто-перезапуск после компиляции»"},
+            {"drawer_section_agent_sync", "AI-инструменты"},
+            {"agent_autosync_label", "Автосинхронизация установленных AI-инструментов"},
+            {"agent_autosync_hint", "После обновления пакета автоматически обновляет файлы unity-skills, уже установленные для Claude Code, Codex, Cursor и других инструментов. Обновляются только те цели, которые вы установили сами; ничего нового не устанавливается."},
             {"timeout_unit", "мин"},
             {"keepalive_unit", "сек"},
             {"keepalive_hint", "Как часто будить основной поток Unity при простое (мин 5 сек)"},
@@ -2815,7 +2863,7 @@ namespace UnitySkills
             {"audio_set_settings", "Задать настройки импорта аудио"},
             {"audio_set_settings_batch", "Задать настройки импорта для нескольких аудиофайлов"},
             {"camera_align_view_to_object", "Совместить камеру Scene View на объект."},
-            {"camera_get_info", "Получить позицию и поворот камеры Scene View."},
+            {"camera_get_info", "Получить позицию и поворот камеры вьюпорта SceneView (инструмент редактора, а не камера-GameObject в сцене)."},
             {"camera_look_at", "Навести камеру Scene View на мировую точку (только x/y/z, не имя объекта)."},
             {"camera_set_transform", "Задать позицию/поворот камеры Scene View вручную."},
             {"cinemachine_add_component", "Добавить компонент Cinemachine (например, OrbitalFollow)."},
@@ -2873,6 +2921,7 @@ namespace UnitySkills
             {"light_create", "Создать новый источник света (Directional, Point, Spot, Area)"},
             {"light_find_all", "Найти все источники света в сцене"},
             {"light_get_info", "Получить информацию об источнике света (имя/instanceId/путь)"},
+            {"light_get_properties", "Псевдоним для light_get_info — получить информацию об источнике света (имя/instanceId/путь)"},
             {"light_set_enabled", "Включить или отключить источник света (имя/instanceId/путь)"},
             {"light_set_enabled_batch", "Включить/отключить несколько источников света за один вызов (эффективно)"},
             {"light_set_properties", "Задать свойства источника света (имя/instanceId/путь)"},
@@ -2896,7 +2945,7 @@ namespace UnitySkills
             {"model_get_settings", "Получить настройки импорта 3D-модели (FBX, OBJ и т.д.)"},
             {"model_set_settings", "Задать настройки импорта модели"},
             {"model_set_settings_batch", "Задать настройки импорта для нескольких 3D-моделей"},
-            {"navmesh_bake", "Запечь NavMesh (синхронно)"},
+            {"navmesh_bake", "Запечь NavMesh (синхронно; на больших сценах может надолго заблокировать редактор)"},
             {"navmesh_calculate_path", "Вычислить путь между двумя точками"},
             {"navmesh_clear", "Очистить данные NavMesh"},
             {"optimize_mesh_compression", "Задать сжатие сеток для 3D-моделей"},

@@ -26,7 +26,7 @@
     "versionDefines": [
         {
             "name": "com.unity.cinemachine",
-            "expression": "[2.0,3.0)",
+            "expression": "[2.6,3.0)",
             "define": "CINEMACHINE_2"
         },
         {
