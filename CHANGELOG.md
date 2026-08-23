@@ -47,6 +47,8 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Fixed
 
+- **`decal_set_properties` 无 URP stub 的参数表与真实现对齐** — 无 URP 工程中该端点此前只暴露 4 参签名（真实现 15 参），补齐文档参数表后 CI 清洁工程全矩阵文档一致性红；stub 声明必须与 URP 分支逐字一致（同规则此前已注明于 `decal_get_info`）。
+- **CI 汇总的许可证到期检查修正** — `StopDate` 在 `.ulf` 里是 `<StopDate Value="..."/>` 子元素而非 `<License>` 属性，旧解析恒报"未找到 StopDate"误导用户；现按元素解析（含正则兜底），Personal 许可证无固定到期时间时给出如实的 ℹ️ 提示而非 ❓ 告警。
 - **Prefab Transform 覆盖的写回 / 回滚 / 属性设置全部真正生效** — `prefab_apply` / `prefab_apply_overrides` / `prefab_revert_overrides` 此前对 Transform 覆盖返回成功却不落盘（Unity 原生覆盖比较缓存在无头服务器环境不填充）；改为直接在 source ↔ instance 间复制发生真实差异的属性值并显式保存，已用磁盘 YAML 逐字节验证。`prefab_get_overrides` 的 `propertyOverrides` 从恒定虚值改为真实差异计数，`hasOverrides` 不再永真。
 - **材质关键字 / 渲染队列写入持久化** — `material_set_keyword` / `material_set_render_queue` 此前在 URP Lit 材质上返回成功但不写盘（缺少 SetDirty + SaveAssets）；现真正持久化到 `.mat`。
 - **批量 / 复制类技能支持带参目标方法** — `event_add_listener_batch` / `event_copy_listeners` / `scriptableobject_set_batch` 此前硬编码"无参方法"假设，对最常见的 `SetActive(bool)` 等带参目标静默失败却报 `added:0` 的成功；现复用单项版的完整签名解析，逐项失败计入 `failCount`。

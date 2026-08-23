@@ -221,14 +221,19 @@ jobs:
               stop_date_str = None
               try:
                   root = ET.fromstring(license_xml.strip())
-                  license_node = root.find('.//License')
-                  if license_node is not None:
-                      stop_date_str = license_node.attrib.get('StopDate')
+                  # .ulf 中 StopDate 是 <StopDate Value="..."/> 子元素，不是 <License> 的属性
+                  stop_node = root.find('.//StopDate')
+                  if stop_node is not None:
+                      stop_date_str = stop_node.attrib.get('Value') or (stop_node.text or '').strip()
+                  if not stop_date_str:
+                      license_node = root.find('.//License')
+                      if license_node is not None:
+                          stop_date_str = license_node.attrib.get('StopDate')
               except Exception:
                   pass
-              
+
               if not stop_date_str:
-                  match = re.search(r'StopDate="([^"]+)"', license_xml)
+                  match = re.search(r'StopDate(?:\s+Value)?="([^"]*)"', license_xml)
                   if match:
                       stop_date_str = match.group(1)
 
@@ -245,7 +250,7 @@ jobs:
                   except Exception as ex:
                       license_info = f'❓ 无法解析许可证的到期时间格式: {ex}'
               else:
-                  license_info = '❓ 未能在 `UNITY_LICENSE` 中找到 `StopDate` 属性，请确认密文内容是否完整。'
+                  license_info = 'ℹ️ 许可证中没有固定到期时间（`StopDate` 缺失或为空，Unity Personal 的 `.ulf` 属正常情况）。本次运行已使用该许可证完成激活，无需处理。'
           else:
               license_info = '❌ 未配置 `UNITY_LICENSE` 环境变量，无法检测过期时间。'
 
