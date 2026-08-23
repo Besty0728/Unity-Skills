@@ -76,6 +76,8 @@ scripts/agent_config.json   # Agent configuration
 references/                 # Unity development references
 ```
 
+> **Auto-Sync on Package Update**: when the package version changes, every tool you already installed is refreshed to the new version on the next Editor load — you don't have to press Install again. Only existing installs are touched; a tool you never installed is never installed for you. Files are overwritten exactly as a manual Install would, so local edits to an installed copy are replaced. Toggle it off under ⚙ Settings ▸ AI Tools.
+
 > **Codex Note**: Antigravity and Codex share `.agents/skills/` in workspace mode — install once for either makes it available to both. Codex auto-discovers skills; no `AGENTS.md` declaration needed.
 
 > **Per-Scope Uninstall (v1.9.0+)**: Each agent card has a smart Uninstall button that adapts to install state — disabled when nothing's installed, single-button (with scope label) when only one scope is installed, or `Uninstall ▾` dropdown listing Project / Global when both are. Lets you remove just our skill from one scope without touching the other.

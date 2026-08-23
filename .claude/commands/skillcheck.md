@@ -1,6 +1,6 @@
-# Skill Check — C# 代码与 SKILL.md 文档一致性审计
+# Skill Check — C# 代码与 SKILL.md 一致性审计 + 技能数量同步
 
-你是 UnitySkills 项目的一致性审计助手。扫描所有 `[UnitySkill]` C# 定义与 `skills/*/SKILL.md` 文档，报告不一致问题。
+你是 UnitySkills 项目的一致性审计助手。扫描所有 `[UnitySkill]` C# 定义与 `skills/*/SKILL.md` 文档，报告不一致问题；同时统计实际技能数量，与文档中声称的数字对比并修正（原 `/skillcount` 已并入本命令）。
 
 ## 目标
 
@@ -10,6 +10,7 @@
 2. **完全无文档的 Skill**：C# 中存在 `[UnitySkill]` 但在整个 `skills/` 文档树中**完全无提及**的 Skill（注意：本项目为 schema-first 设计——skill 无需逐个写 `### skill_name` 定义，故"无 `###` 定义"本身**不算缺陷**，详见步骤 3a）
 3. **参数不一致**：SKILL.md 文档的参数表与 C# 方法签名不匹配（多余参数、缺失参数、类型不匹配）
 4. **元数据缺失**：`[UnitySkill]` 特性中缺少 `Category`、`Operation`、`Tags`、`Outputs` 等关键元数据
+5. **数量失同步**：文档（agent.md / README / README_CN / SKILL.md）中声称的技能总数与模块计数表和实际代码不一致
 
 ## 步骤 1：收集 C# Skill 定义
 
@@ -24,9 +25,15 @@
    - **条件编译宏**：检查 Skill 方法是否位于 `#if XXX` 块内（如 `PROBUILDER`、`XRI`、`UNITY_NETCODE`、`CINEMACHINE_2`、`CINEMACHINE_3` 等），记录对应的宏名称；不在任何 `#if` 块内的标记为"无条件"
    - **返回值字段**：解析方法体中 `return new { ... }` 匿名对象的字段名列表（正则提取即可，不需要完美覆盖所有分支）
 
-2. **Batch Skill 额外处理**：对 `*_batch` 后缀的 Skill，其方法签名通常只有 `string items`，真正的参数定义在同文件的 `BatchXxxItem` 内部类中。额外提取该类的所有 `public` 属性（属性名、类型、默认值），作为 batch skill 的"实际参数列表"。
+2. **解析纪律（历史假绿源头，必须遵守）**：
+   - **括号配平切分 attribute 块**：一个 skill 的元数据只能取它自己 `[UnitySkill(...)]` 块内的标注，严禁把同文件相邻块的元数据算到本 skill 头上
+   - **先剥 `//` 注释再按逗号切分**：带说明注释的 flag 否则会静默读成 false，审计报"零违规"是假绿
+   - **按技能名去重**：`#if`/`#else` 分支下的同名 stub（URP 缺包时 Decal/PostProcess/URP/Volume 四个文件以相同技能名注册 `NoURP()` 占位实现）会让裸 `rg -c "\[UnitySkill\("` 多算 33 个 attribute（如 818 attribute → 785 唯一技能）。**一切后续比对和计数都以"按第一个字符串参数去重后的唯一技能名"为准**
+   - `SkillRouter.cs` 等非 `*Skills.cs` 文件中出现的 `[UnitySkill(` 多为注释/文档文字，不计入
 
-3. 汇总为 C# Skill 清单
+3. **Batch Skill 额外处理**：对 `*_batch` 后缀的 Skill，其方法签名通常只有 `string items`，真正的参数定义在同文件的 `BatchXxxItem` 内部类中。额外提取该类的所有 `public` 属性（属性名、类型、默认值），作为 batch skill 的"实际参数列表"。
+
+4. 汇总为 C# Skill 清单
 
 ## 步骤 2：收集 SKILL.md 文档定义
 
@@ -167,10 +174,47 @@
 3. **YAML frontmatter 结构合法**：文件以 `---` 开头并正确闭合；`name` 与 `description` 两个必填键存在且非空 → 缺失 / 不闭合 → 🔴 严重。
 4. **无 UTF-8 BOM**：文件开头不得有 `EF BB BF` 字节（`SkillInstaller.cs` 明确：BOM 会让部分 agent 拒析 frontmatter）→ 有 BOM → 🟡 中等。
 5. **（信息项 🟢）discovery 总量**：累加所有 `SKILL.md` 的 `description` 字符数，提示总和是否逼近发现器 ~8000 字符软预算（超出时发现器可能截断或省略部分 skill）。
+6. **根 SKILL.md 字节硬红线**：`unity-skills~/SKILL.md` 全文件 ≤ **8,192 字节**（`wc -c` 口径，用户拍板的硬红线；v2.6.0 瘦身后长期在 8,1xx 徘徊）→ 超限 🔴 严重。报告中始终给出当前字节数与剩余余量；新增内容一律下沉 `references/` 或模块文档，不进根文件。
 
 > 正常预期：0 项超限、0 BOM。本项是防止"超 1024 拒载" bug 复发的核心闸门。
 
-## 步骤 4：输出审计报告
+## 步骤 4：技能数量统计与文档同步（原 /skillcount，唯一允许写文件的步骤）
+
+基于步骤 1 **去重后**的唯一技能清单做数量统计，与文档声称的数字对比并修正。
+
+### 4a. 统计口径（历史踩坑，必须遵守）
+
+- **总数 = 唯一技能名数**，不是 attribute 出现次数。裸 `rg -c "\[UnitySkill\("` 会把 `#if/#else` 同名 stub 双算（Decal 7 + PostProcess 10 + URP 7 + Volume 9 = 33 个重复），**禁止**直接拿裸 grep 结果去改文档。
+- **模块计数表按 `SkillCategory` 归组，不按文件**。枚举里没有 `Batch` 和 `Diagnose`：`BatchSkills.cs` 的技能拆进 Workflow + Validation，`DiagnoseSkills.cs` 的并入 Debug。按文件口径会误报 Workflow/Validation/Debug 三处"不一致"并"顺手"加出 Batch/Diagnose 两行——那是把正确的表改坏。
+- **相邻数字各有定义，别互相"对齐"**：`*Skills.cs` 文件数（55）≠ 功能模块数（54，Diagnose 无独立模块文档）≠ SkillCategory 数（53）。三者不同是自洽的。
+- **以工作区为基线**：若存在未提交变更，数量以工作区为准，不要拿 HEAD 复核后误改。
+
+### 4b. 读取文档中的数字
+
+| 文件 | 搜索内容 |
+|------|---------|
+| `agent.md` | 总数引用（如 "785 个 REST Skills"）、模块计数表 |
+| `README.md` | badge 数字、正文中的总数 |
+| `README_CN.md` | 同上中文版 |
+| `SkillsForUnity/unity-skills~/SKILL.md` | 总数引用 |
+
+用 Grep 搜索文档中与实际总数不同的旧数字（如 `\d+ 个 REST`、`\d+ Skills`、`Skills-\d+` 等上下文）。
+
+> ⚠️ **不修改** `CHANGELOG.md` 中的历史条目 — 那些是版本发布时的快照。
+
+### 4c. 对比并修正
+
+如果实际总数与文档不一致：
+
+1. **替换总数**：将文档中所有旧总数替换为实际统计总数
+2. **更新模块计数表**：更新 `agent.md` 中 `## Skills 模块` 表格的每个模块数量（SkillCategory 口径）
+3. **更新 README 模块表**：同步 `README.md` 和 `README_CN.md` 中的分类概要表
+
+替换时注意上下文匹配，避免误替换（如版本号中的数字）。修正后用 `rg -n "{旧数字}"` 验证旧数字不再出现（非技能计数上下文除外）。
+
+如果一致：不改任何文件，报告中输出 `✅ 所有文档中的技能数量已是最新（{N} Skills）`。
+
+## 步骤 5：输出审计报告
 
 按严重程度分级输出：
 
@@ -179,7 +223,7 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📊 统计
-- C# Skills 总数：{N}（无条件：{X}，条件编译：{Y}）
+- C# Skills 总数：{N} 唯一（attribute {M} 个，#if/#else 同名 stub 去重 {M-N}）；无条件：{X}，条件编译：{Y}
 - 文档 Skills 总数：{M}
 - 匹配：{X}
 - Advisory 模块（自动跳过）：{列出跳过的模块名}
@@ -187,6 +231,11 @@
 - NeverInSemi 自动判定：{N}（纯元数据规则，无兜底名单）
 - /permission API 校验：{已通过 / 已跳过：服务离线 / N 项失败}
 - Frontmatter 合规：{通过（0 超限）/ N 项超限}（最长 description：{module} {len} 字符；discovery 总量：{sum} / ~8000 软预算）
+
+📊 数量同步（原 /skillcount）
+- 实际总数：{N}（SkillCategory 口径 {K} 个分类）
+- 文档核对：{✅ 全部一致（未改文件） / 已修正 {列出文件}，旧值 {old} → {new}}
+- 模块计数表：{✅ 逐行匹配 / 修正明细}
 
 🔴 严重问题（AI 会被误导）
 
@@ -259,12 +308,13 @@
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {问题总数} 个问题，其中 {严重} 个严重、{中等} 个中等、{建议} 个建议
+数量同步：{✅ 一致 / 已修正 N 处}
 ```
 
 ## 注意事项
 
-- 这是**只读审计**，不修改任何文件
-- 如果审计通过无问题，输出 `✅ 所有 Skill 定义与文档一致，无问题发现`
+- **审计部分（步骤 1–3）是只读的**；唯一允许修改文件的是步骤 4 的数量同步（且仅限 agent.md / README.md / README_CN.md / unity-skills~/SKILL.md 四个文件中的数量引用），不修改 C# 代码，不自动 `git commit`，只提示用户审阅后提交
+- 如果审计通过且数量一致，输出 `✅ 所有 Skill 定义与文档一致，数量已同步（{N} Skills），无问题发现`
 - 对于 batch 类 Skill（如 `gameobject_create_batch`），参数通常是 `string items`（JSON 数组），文档中以 `items` + Item properties 形式描述，这种情况视为一致。**真正的参数比对**应在 `BatchXxxItem` 类属性与文档 Item properties 之间进行
 - `*_batch` 的 Item properties 与对应单个 Skill 的参数应保持一致，可作为额外检查项。但 batch 版本可能比单个版本多出属性（如 `gameobject_create_batch` 的 BatchItem 有 `rotX/scaleX` 而单个 `gameobject_create` 没有），这种"batch 扩展"标注但不算错误
 - 大型审计可能需要读取大量文件，优先使用 Grep 批量提取而非逐文件读取

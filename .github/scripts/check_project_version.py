@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Validate UnitySkills project-version anchors and an optional release tag.
 
 The editor update banner compares ``SkillsLogger.Version`` with GitHub's latest
@@ -88,18 +88,7 @@ def collect_versions(repo_root: Path) -> dict[str, str]:
             rf"^\|\s*版本\s*\|\s*({SEMVER_PATTERN})\s*\|\s*$",
             "项目版本表格行",
         ),
-        "README.md current marker": extract_single(
-            repo_root,
-            "README.md",
-            rf"Current:\s*v({SEMVER_PATTERN})\.",
-            "Current 版本标记",
-        ),
-        "README_CN.md current marker": extract_single(
-            repo_root,
-            "README_CN.md",
-            rf"当前：v({SEMVER_PATTERN})。",
-            "当前版本标记",
-        ),
+        # README 的"当前版本"标记已于 2.7.0 移除（README 不再承载版本锚点），勿回加。
         "CHANGELOG.md latest entry": changelog_match.group(1),
     }
 
@@ -178,3 +167,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# Producer:Betsy

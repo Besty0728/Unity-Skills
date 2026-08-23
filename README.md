@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-784-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-785-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -38,26 +38,27 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **784 REST Skills Comprehensive Toolkit**: Includes 54 functional source modules plus 29 advisory design modules, with Batch operations for multi-object control.
-- ⚡ **Revolutionary Efficiency Boost (v2.0.1+)**: Schema caching + exponential backoff polling + BATCH-FIRST guidance → **Token consumption ↓ 96%**, **simple tasks 4-6 calls → 1 call (↓ 75-83%)**. Current: v2.6.2.
-- 🔐 **Three-Tier Permission Modes (v1.9.0+)**: Approval / Auto / Bypass with dual approval channels (Dialog / Panel), aligned with Claude Code permission modes; zero-impact upgrade for existing users.
+- 🛠️ **785 REST Skills Toolkit**: 55 source files across 53 categories, plus 27 advisory design modules, with Batch operations.
+- ⚡ **UnityCLI Support**: Bind UnityCLI to cold-start the bound project — no need to launch Unity Hub.
+- 🔐 **Three-Tier Permission Modes**: Approval / Auto / Bypass with dual approval channels, aligned with Claude Code permission modes.
 - 🤖 **6 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code — one-click install and use.
-- 🛡️ **Transactional Atomicity**: Failed operations auto-rollback, leaving scenes clean and safe.
-- 🌍 **Multi-Instance Simultaneous Control**: Automatic port discovery and global registry for controlling multiple Unity projects at once.
-- 🔗 **Ultra-Stable Long Connections**: Configurable request timeout (default 15 minutes), automatic recovery after Domain Reload, with retry hints during script compilation/asset updates.
-- 🛡️ **Anti-Hallucination Guardrails**: Each Skill module includes DO NOT lists and routing rules to prevent calls to nonexistent commands or parameter errors.
+- 🛡️ **Transactional Atomicity**: Failed operations auto-rollback, leaving scenes clean.
+- 🌍 **Multi-Instance Control**: Automatic port discovery and global registry for controlling multiple Unity projects at once.
+- 🔗 **Stable Long Connections**: Configurable request timeout (default 15 minutes), automatic recovery after Domain Reload.
+- 🛡️ **Anti-Hallucination Guardrails**: Each Skill module includes DO NOT lists and routing rules.
 
 ---
 
 ## 🛡️ Built for Trust: The Governance Layer
 
-An AI driving the Editor writes to real scenes, prefabs and `.meta` files. The interesting question isn't whether it *can* — it's what happens when it gets something wrong. UnitySkills answers that at four points in the call lifecycle.
+An AI driving the Editor writes to real scenes, prefabs and `.meta` files. The interesting question isn't whether it *can* — it's what happens when it gets something wrong. UnitySkills answers that at four points in the call lifecycle:
 
-- **Before execution — `?mode=dryRun` / `?mode=plan`**: `POST /skill/{name}?mode=dryRun` writes nothing and returns parameter validation (`missingParams` / `unknownParams` / `typeErrors` / `semanticErrors` / `warnings`) plus an impact estimate (`mutatesScene` / `mutatesAssets` / `mayTriggerReload` / `mayEnterPlayMode` / `riskLevel`). Skills with a semantic planner also return `steps` / `changes`.
-- **At execution — per-operation risk gating**: every skill declares `RiskLevel` / `Operation` / `MayEnterPlayMode` / `MayTriggerReload` in its `[UnitySkill]` metadata, and the server derives NeverInSemi from that metadata — gating never depends on the AI behaving well. **Allowlist** grants a persistent pass to individual skills; the optional `ConfirmationToken` handshake (off by default — ⚙ Settings → Runtime → Require Confirmation) adds one more gate on high-risk skills.
-- **After execution — JSONL audit trail**: every call, grant, revoke and blocked hit is appended to `Library/UnitySkillsAudit.jsonl` (1 MB rotation, primary + 3 historical files), browsable and filterable in the panel. Deleting audit entries is itself recorded, as `audit_deleted` / `audit_cleared`.
-- **After a mistake — typed, persistent snapshot rollback**: Workflow snapshots are typed (`Modified` / `Created` / `Deleted` / `Moved` / `Setting`), and the asset file and its `.meta` are content-addressed independently (`fileHash` / `metaFileHash`) under `Library/UnitySkills/`, so history survives Domain Reloads and editor restarts. `workflow_undo_task` rolls back one task, not the whole project.
-- **Batch as a transaction**: `POST /skills/batch` supports fail-fast or `continueOnError`, cross-step `$ref` to reuse an earlier step's output, rollback on failure, and `?diff=1` for the aggregated net change.
+- **Before execution**: `?mode=dryRun` / `?mode=plan` rehearsal — returns parameter validation and an impact estimate, writes nothing.
+- **At execution**: the server derives high-risk gating (NeverInSemi) from each skill's risk metadata — gating never depends on the AI behaving well; **Allowlist** grants a persistent per-skill pass.
+- **After execution**: every call, grant, revoke and blocked hit lands in a JSONL audit trail, browsable in the panel; deletions are audited too.
+- **After a mistake**: five types of persistent snapshots survive Domain Reloads; `workflow_undo_task` rolls back one task, not the whole project; `POST /skills/batch` runs as a transaction (cross-step `$ref`, rollback on failure, `?diff=1` net change).
+
+Full mechanics → [Operating Modes & Governance](docs/OPERATING_MODES.md)
 
 ### How this compares
 
@@ -73,44 +74,34 @@ An AI driving the Editor writes to real scenes, prefabs and `.meta` files. The i
 
 ---
 
-## 🔐 Operating Modes (v1.9.0+)
+## 🔐 Operating Modes
 
-UnitySkills ships with a true server-side permission system aligned with Claude Code permission modes. All mode switching happens in the Unity panel — open **Window > UnitySkills**, click the ⚙ (Settings) button, and use the **Server** section — chat trigger words are no longer supported.
+UnitySkills ships with a true server-side permission system aligned with Claude Code permission modes. All mode switching happens in the Unity panel: **Window > UnitySkills** → ⚙ Settings → **Server** section (chat trigger words are no longer supported).
 
-| Mode | Default | Behavior | Use Case |
-|:-----|:-------:|:---------|:---------|
-| **Approval** | — | AI must request → user approves → execute (returns `MODE_RESTRICTED` + grant token) | Manual control, sensitive projects |
-| **Auto** | New installs | AI runs FullAuto skills directly; server only blocks auto-detected high-risk ops (NeverInSemi) | Day-to-day development |
-| **Bypass** | Existing installs (upgrade) | All skills run unrestricted; only `ConfirmationToken` gate remains for high-risk ops | Automation, CI, fast iteration |
+| Mode | Default | Behavior |
+|:-----|:-------:|:---------|
+| **Approval** | — | Server returns a grant token; the AI executes after user approval |
+| **Auto** | New installs | FullAuto skills run directly; high-risk ops (NeverInSemi) are auto-blocked |
+| **Bypass** | Existing installs (upgrade) | All skills run unrestricted; only the optional high-risk confirmation gate remains |
 
-**Two approval channels under Approval mode**:
-- **Dialog** (default) — AI explains intent + grant token, user agrees in chat, AI replays the token via `POST /permission/grant`
-- **Panel** (opt-in) — grant token only takes effect after user clicks **[Approve]** in the Unity panel; AI-issued grants without panel approval return `GRANT_PENDING_APPROVAL`
+Upgrading users are detected automatically and stay on **Bypass**, preserving the previous Full-Auto behavior with no action required. Dual approval channels (Dialog / Panel), the audit log (`Library/UnitySkillsAudit.jsonl`), Allowlist and installer details → [Operating Modes & Governance](docs/OPERATING_MODES.md).
 
-**Zero-impact upgrade for existing users**: the plugin detects legacy `UnitySkills_*` EditorPrefs keys and keeps **Bypass** as the default, preserving the previous Full-Auto behavior with no action required. New installations default to **Auto** — FullAuto skills run directly, only NeverInSemi (Delete / MayEnterPlayMode / MayTriggerReload / high-risk) operations are blocked. Switch to **Approval** from the ⚙ Settings drawer's Server section if you need per-skill manual gating.
-
-> ❌ Chat trigger words (e.g. `"full auto"` / `"semi-auto"`) are no longer recognized. Switch modes via the ⚙ Settings button in **Window > UnitySkills**.
->
-> 📜 Audit log: `Library/UnitySkillsAudit.jsonl` (per-project, jsonl, auto-rolls at 1MB, keeps 3 files) records every grant / revoke / restricted hit / call. Open it from the ⚙ Settings drawer → **View Audit Log** (or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>) to browse, filter, delete individual entries (✕), or wipe everything (🗑 Clear All) — deletions themselves are appended as `audit_deleted` / `audit_cleared` events so the log stays auditable.
->
-> 🗑 The Skill Installer card shows a **per-scope uninstall** button that auto-adapts: disabled when nothing's installed, a single button labeled with its scope when only one is installed, and a dropdown (`Uninstall ▾`) listing Project / Global when both are installed.
->
-> 29 advisory design modules (architecture, performance, design patterns, testability, package-specific source rules, etc.) are available in all modes and loaded on demand.
+> 27 advisory design modules (architecture, performance, design patterns, testability, package-specific source rules, etc.) are available in all modes and loaded on demand.
 
 ---
 
 ## 🏗️ Quick Install Supported IDE/Terminals
 
-This project has been deeply optimized for the following environments to ensure a continuous and stable development experience (tools not listed below are not necessarily unsupported — they just lack a quick installer; use ***Custom Installation*** to the corresponding directory):
+This project has been deeply optimized for the following environments (tools not listed are not necessarily unsupported — they just lack a quick installer; use ***Custom Installation*** instead. Per-tool skill directories are listed in the Manual Installation section below):
 
-| AI Terminal | Support Status | Special Features |
+| AI Terminal | Support Status | Notes |
 | :--- | :---: | :--- |
-| **Antigravity** | ✅ Supported | Open Agent Skills standard via `.agents/skills/` (workspace) and `~/.gemini/antigravity/skills/` (global). |
-| **Claude Code** | ✅ Supported | Intelligent Skill intent recognition, supports complex multi-step automation. |
-| **Codex** | ✅ Supported | Supports `$skill` explicit invocation and implicit intent recognition. Shares `.agents/skills/` with Antigravity in workspace mode. |
-| **Cursor** | ✅ Supported | Auto-discovers `.cursor/skills/` and `.agents/skills/`; supports `/skill-name` explicit invocation; visible in Settings → Rules. |
-| **Kimi Code** | ✅ Supported | Native `.kimi-code/skills/` project and `~/.kimi-code/skills/` user discovery (follows `$KIMI_CODE_HOME`); supports `/skill:unity-skills` explicit invocation. Also picks up `.agents/skills/`. |
-| **OpenCode** | ✅ Supported | Native `.opencode/skills/` workspace and `~/.config/opencode/skills/` global discovery. |
+| **Antigravity** | ✅ Supported | Open Agent Skills standard; shares `.agents/skills/` with Codex in workspace mode |
+| **Claude Code** | ✅ Supported | Intelligent Skill intent recognition, supports complex multi-step automation |
+| **Codex** | ✅ Supported | Supports `$skill` explicit invocation and implicit intent recognition |
+| **Cursor** | ✅ Supported | Auto-discovers skill directories; supports `/skill-name` explicit invocation |
+| **Kimi Code** | ✅ Supported | Native skill directory discovery; supports `/skill:unity-skills` explicit invocation |
+| **OpenCode** | ✅ Supported | Native workspace and global skill directory discovery |
 
 ---
 
@@ -149,24 +140,16 @@ In Unity, open menu: `Window > UnitySkills` (or press <kbd>Alt</kbd>+<kbd>Shift<
 
 ### 3. One-Click AI Skills Configuration
 1. Open `Window > UnitySkills` and go to the **AI Config** tab.
-2. Select the corresponding terminal icon (Claude / Antigravity / Codex / Cursor / OpenCode / Kimi Code).
-3. Click **"Install"** to complete the environment configuration without manual code copying.
+2. Select the corresponding terminal icon and click **"Install"** — the installer copies the `unity-skills~/` template from the package to the target location, no manual copying needed.
 
-> The installer copies the `unity-skills~/` template directory from the package to the target location.
+> 🔄 **Auto-sync on update**: after you upgrade the package, tools you already installed are refreshed to the new version automatically (nothing new is ever installed for you); turn it off in ⚙ Settings ▸ **AI Tools**.
 >
-> Installer output files (generated in target directory):
-> - `SKILL.md`
-> - `skills/`
-> - `references/`
-> - `scripts/unity_skills.py`
-> - `scripts/agent_config.json` (contains Agent identifier)
-
-> **Codex Note**: Antigravity and Codex share `.agents/skills/` in workspace mode — installing once for either makes the skill available to both. Codex auto-discovers skills in `.agents/skills/`; no `AGENTS.md` declaration needed.
+> **Codex Note**: Antigravity and Codex share `.agents/skills/` in workspace mode — installing once makes the skill available to both; no `AGENTS.md` declaration needed for Codex.
 
 📘 For complete installation and usage instructions, see: [Setup Guide](docs/SETUP_GUIDE.md) | [安装指南](docs/SETUP_GUIDE_CN.md)
 
 <details>
-<summary><h3>4. Manual Skills Installation (Optional)</h3></summary>
+<summary><b>4. Manual Skills Installation (Optional)</b></summary>
 
 If one-click installation is not supported or preferred, follow this **standard procedure** for manual deployment (applicable to all tools supporting Skills):
 
@@ -209,7 +192,7 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><h2>📦 Skills Category Overview (784)</h2></summary>
+<summary><b>📦 Skills Category Overview (785)</b></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
@@ -253,7 +236,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Console** | 10 | Log capture/Clear/Export/Statistics/Pause control/Collapse/Clear on play |
 | **Debug** | 11 | Error logs/Compile check/Stack trace/Assemblies/Define symbols/Memory info/Editor health diagnose |
 | **Event** | 11 | UnityEvent listener management/Batch add/Copy/State control/List |
-| **Light** | 10 | Light create/Type config/Intensity-Color/Batch toggle/Probe groups/Reflection probes/Lightmaps |
+| **Light** | 11 | Light create/Type config/Intensity-Color/Batch toggle/Probe groups/Reflection probes/Lightmaps |
 | **Model** | 10 | Model import settings/Mesh info/Material mapping/Animation/Skeleton/Batch |
 | **NavMesh** | 10 | Bake/Path calculation/Agent/Obstacle/Sampling/Area cost |
 | **Optimization** | 10 | Texture compression/Mesh compression/Audio compression/Scene analysis/Static flags/LOD/Duplicate materials/Overdraw |
@@ -269,7 +252,7 @@ If you're using other tools that support Skills, install according to the Skills
 
 > ⚠️ Most modules support `*_batch` batch operations. When operating on multiple objects, prioritize batch Skills for better performance.
 >
-> 🧠 `unity-skills/skills/` also includes **29 advisory design modules** for architecture, script design, performance, maintainability, Inspector guidance, and package-specific source rules.
+> 🧠 `unity-skills/skills/` also includes **27 advisory design modules** for architecture, script design, performance, maintainability, Inspector guidance, and package-specific source rules.
 
 </details>
 
@@ -285,9 +268,9 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   ├── SKILL.md                # Main Skill Definitions (AI-readable)
 │   │   ├── scripts/
 │   │   │   └── unity_skills.py     # Python Client Library
-│   │   ├── skills/                 # 79 module docs (50 REST/module docs + 29 advisory docs)
+│   │   ├── skills/                 # 80 module docs (53 REST/module docs + 27 documentation-only docs)
 │   │   └── references/             # Unity Development References
-│   └── Editor/Skills/              # Core Skill Logic (54 functional source modules, 55 *Skills.cs files, 784 Skills)
+│   └── Editor/Skills/              # Core Skill Logic (55 *Skills.cs files → 53 SkillCategory categories, 785 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
 │       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
 │       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
@@ -299,7 +282,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
 │       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (24 skills)
 │       ├── PerceptionSkills.cs     # Scene Understanding (18 skills)
-│       └── ...                     # 784 Skills source code
+│       └── ...                     # 785 Skills source code
 ├── docs/
 │   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
 ├── CHANGELOG.md                    # Version Update Log

@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-784-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-785-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
@@ -38,26 +38,27 @@
 
 ## 🚀 核心特性
 
-- 🛠️ **784 REST Skills 全能库**：包含 54 个功能源码模块和 29 个 advisory 设计模块，支持 Batch 批处理，一次操控多个对象。
-- ⚡ **调用效率革命性提升 (v2.0.1+)**：Schema 缓存 + 指数退避轮询 + BATCH-FIRST 引导 → **Token 消耗 ↓ 96%**，**简单任务 4-6 次调用 → 1 次（↓ 75-83%）**。当前：v2.6.2。
-- 🔐 **三档权限模式 (v1.9.0+)**：Approval / Auto / Bypass，配合双轨审批渠道（Dialog / Panel），对齐 Claude Code permission modes；老用户升级零感知。
+- 🛠️ **785 REST Skills 全能库**：55 个源文件、53 个分类，另有 27 个 advisory 设计模块，支持 Batch 批处理。
+- ⚡ **支持UnityCLI**：支持绑定UnityCLI，对应项目冷启动，不用开启UnityHub
+- 🔐 **三档权限模式**：Approval / Auto / Bypass + 双轨审批，对齐 Claude Code permission modes。
 - 🤖 **6 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code，一键安装即用。
-- 🛡️ **事务原子性保障**：操作失败自动回滚，场景永不残留，确保流程安全。
-- 🌍 **多实例同时控制**：自动端口发现与全局注册表，支持同时操控多个 Unity 项目。
-- 🔗 **超长稳定连接**：请求超时可配（默认 15 分钟），Domain Reload 后自动恢复，脚本编译/资源重导入等短暂中断会提示重试。
-- 🛡️ **防幻觉 Guardrails**：每个 Skill 模块内置 DO NOT 清单和路由规则，防止 AI 调用不存在的命令或参数错误。
+- 🛡️ **事务原子性**：操作失败自动回滚，场景永不残留。
+- 🌍 **多实例同时控制**：自动端口发现与全局注册表，同时操控多个 Unity 项目。
+- 🔗 **超长稳定连接**：请求超时可配（默认 15 分钟），Domain Reload 后自动恢复。
+- 🛡️ **防幻觉 Guardrails**：每个 Skill 模块内置 DO NOT 清单与路由规则。
 
 ---
 
 ## 🛡️ 为什么选 UnitySkills：治理层
 
-AI 驱动编辑器，写的是真实的场景、Prefab 和 `.meta` 文件。真正的问题不是"它能不能做到"，而是"它做错时会发生什么"。UnitySkills 在调用生命周期的四个节点上回答这个问题。
+AI 驱动编辑器，写的是真实的场景、Prefab 和 `.meta` 文件。真正的问题不是"它能不能做到"，而是"它做错时会发生什么"。UnitySkills 在调用生命周期的四个节点回答这个问题：
 
-- **执行前 —— `?mode=dryRun` / `?mode=plan` 预演**：`POST /skill/{name}?mode=dryRun` 不落地任何改动，只返回参数校验（`missingParams` / `unknownParams` / `typeErrors` / `semanticErrors` / `warnings`）与影响预估（`mutatesScene` / `mutatesAssets` / `mayTriggerReload` / `mayEnterPlayMode` / `riskLevel`）；有语义 planner 的 skill 还会返回 `steps` / `changes`。
-- **执行时 —— 操作级风险拦截**：每个 skill 在 `[UnitySkill]` 元数据里声明 `RiskLevel` / `Operation` / `MayEnterPlayMode` / `MayTriggerReload`，服务端据此自动判定 NeverInSemi——拦不拦从不取决于 AI 是否自觉。**Allowlist** 可为单条 skill 持久放行；可选的 `ConfirmationToken` 二次确认（默认关闭，⚙ 设置 → Runtime → Require Confirmation）为高危 skill 再加一道闸。
-- **执行后 —— JSONL 审计留痕**：每次调用、授权、撤销、被拦命中都追加到 `Library/UnitySkillsAudit.jsonl`（1MB 滚动，主文件 + 3 份历史），可在面板内浏览与过滤；删除审计条目这个动作本身也会以 `audit_deleted` / `audit_cleared` 入账。
-- **出错后 —— 类型化持久快照回滚**：Workflow 快照分 `Modified` / `Created` / `Deleted` / `Moved` / `Setting` 五类，主文件与 `.meta` 各自独立内容寻址（`fileHash` / `metaFileHash`）落在 `Library/UnitySkills/`，跨 Domain Reload 与编辑器重启存活。`workflow_undo_task` 回退的是一个任务，不是整个项目。
-- **批量即事务**：`POST /skills/batch` 支持 fail-fast 或 `continueOnError`、跨步 `$ref` 引用前序步骤输出、失败回滚，以及 `?diff=1` 返回聚合后的净变化。
+- **执行前**：`?mode=dryRun` / `?mode=plan` 预演——只返回参数校验与影响预估，不落地任何改动。
+- **执行时**：每条 skill 的风险元数据由服务端自动判定高危拦截（NeverInSemi）——拦不拦从不取决于 AI 是否自觉；Allowlist 可按条持久放行。
+- **执行后**：每次调用、授权、撤销、拦截写入 JSONL 审计日志，面板内可浏览，删除审计条目本身也入账。
+- **出错后**：五类持久化快照跨 Domain Reload 存活，`workflow_undo_task` 回退一个任务而非整个项目；`POST /skills/batch` 批量即事务（跨步 `$ref`、失败回滚、`?diff=1` 净变化）。
+
+完整机制说明 → [操作模式与治理层](docs/OPERATING_MODES_CN.md)
 
 ### 横向对比
 
@@ -73,44 +74,34 @@ AI 驱动编辑器，写的是真实的场景、Prefab 和 `.meta` 文件。真�
 
 ---
 
-## 🔐 操作模式 (v1.9.0+)
+## 🔐 操作模式
 
-UnitySkills 引入真正的服务端权限系统，对齐 Claude Code permission modes。模式切换统一在 Unity 面板完成——打开 **Window > UnitySkills**，点 ⚙（设置）按钮进入 **Server** 区——**不再支持对话触发词**。
+UnitySkills 引入真正的服务端权限系统，对齐 Claude Code permission modes。模式切换统一在 Unity 面板完成：**Window > UnitySkills** → ⚙ 设置 → **Server** 区（不再支持对话触发词）。
 
-| 模式 | 默认 | 行为 | 适用场景 |
-|:-----|:----:|:-----|:---------|
-| **Approval（审批）** | — | AI 想做事 → 服务端返回 `MODE_RESTRICTED` + grant token → 用户审批 → AI 重放 token 后执行 | 重控制、敏感项目 |
-| **Auto（自动）** | 新安装 | AI 直接执行 FullAuto skill；服务端仅拦自动判定的高危操作（NeverInSemi） | 日常开发 |
-| **Bypass（全部直接放行）** | 老安装升级保持 | 全部放行，仅保留高危 `ConfirmationToken` 二次确认 | 自动化任务、CI、快速迭代 |
+| 模式 | 默认 | 行为 |
+|:-----|:----:|:-----|
+| **Approval（审批）** | — | 服务端返回 grant token，用户审批后 AI 重放执行 |
+| **Auto（自动）** | 新安装 | FullAuto skill 直接执行，高危操作（NeverInSemi）自动拦截 |
+| **Bypass（放行）** | 老安装升级 | 全部放行，仅保留可选的高危二次确认 |
 
-**Approval 模式双轨审批**：
-- **Dialog 渠道**（默认）—— AI 对话说明意图 + grant token，用户文字同意后 AI 调 `POST /permission/grant` 重放
-- **Panel 渠道**（面板可选开启）—— grant token 必须在 Unity 面板点 **[Approve]** 才生效；AI 未经面板批准直接 grant 会返回 `GRANT_PENDING_APPROVAL`
+老用户升级自动识别旧安装并保持 **Bypass**，行为与原 Full-Auto 完全一致，无需任何操作。双轨审批（Dialog / Panel）、审计日志（`Library/UnitySkillsAudit.jsonl`）、Allowlist 与卸载按钮等完整说明 → [操作模式与治理层](docs/OPERATING_MODES_CN.md)。
 
-**老用户升级零感知**：插件检测旧版 `UnitySkills_*` EditorPrefs key 自动识别老安装，默认保持 **Bypass**，行为与原 Full-Auto 完全一致，无需任何操作。新安装默认 **Auto** —— FullAuto skill 直接执行，仅 NeverInSemi（Delete / MayEnterPlayMode / MayTriggerReload / 高危）操作会被服务端拦截。若需要按 skill 手动审批，在 ⚙ 设置抽屉的 Server 区切到 **Approval**。
-
-> ❌ 不再识别对话触发词（如 `"全自动模式"` / `"semi-auto"`），请在 **Window > UnitySkills** 面板点 ⚙ 设置按钮切换。
->
-> 📜 审计日志：`Library/UnitySkillsAudit.jsonl`（per-project，jsonl，1MB 滚动，保留 3 份），记录每次 grant / revoke / 被拒命中 / 调用。从 ⚙ 设置抽屉 → **查看审计日志**（或快捷键 <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>）打开浏览器，可浏览、过滤、单条删除（✕）或整体清空（🗑 Clear All）—— 删除动作本身会写 `audit_deleted` / `audit_cleared` 追踪事件，日志依然可审计。
->
-> 🗑 Skill Installer 卡片的"卸载"按钮按 scope 智能形变：未装为灰态；仅一处装则按钮自带 scope 标签直接卸载；两处都装则显示 `Uninstall ▾` 下拉，分别选择 Project / Global。
->
-> 29 个 advisory 设计模块（架构、性能、设计模式、可测试性、包级源码规则等）在所有模式下均可用，按需自动加载。
+> 27 个 advisory 设计模块（架构、性能、设计模式、可测试性、包级源码规则等）在所有模式下均可用，按需自动加载。
 
 ---
 
 ## 🏗️ 快速安装支持的IDE/终端
 
-本项目针对以下环境进行了深度优化，确保持续、稳定的开发体验（未在下表中的不代表不支持，只是没有快捷安装，可选用 ***自定义安装*** 到对应目录）：
+本项目针对以下环境深度优化（未列出的工具不代表不支持，只是没有快捷安装，可选用 ***自定义安装***；各工具的技能目录见下方「手动安装」折叠区）：
 
-| AI 终端 | 支持状态 | 特色功能 |
+| AI 终端 | 支持状态 | 说明 |
 | :--- | :---: | :--- |
-| **Antigravity** | ✅ 支持 | 基于开放 Agent Skills 标准，工作区使用 `.agents/skills/`，全局使用 `~/.gemini/antigravity/skills/`。 |
-| **Claude Code** | ✅ 支持 | 智能识别 Skill 意图，支持复杂多步自动化。 |
-| **Codex** | ✅ 支持 | 支持 `$skill` 显式调用和隐式意图识别。工作区与 Antigravity 共享 `.agents/skills/`。 |
-| **Cursor** | ✅ 支持 | 自动扫描 `.cursor/skills/` 和 `.agents/skills/`；支持 `/skill-name` 显式触发；可在 设置 → Rules 查看已加载技能。 |
-| **Kimi Code** | ✅ 支持 | 原生扫描项目级 `.kimi-code/skills/` 和用户级 `~/.kimi-code/skills/`（跟随 `$KIMI_CODE_HOME`）；支持 `/skill:unity-skills` 显式触发。同时也会扫描 `.agents/skills/`。 |
-| **OpenCode** | ✅ 支持 | 原生扫描工作区 `.opencode/skills/` 和全局 `~/.config/opencode/skills/`。 |
+| **Antigravity** | ✅ 支持 | 开放 Agent Skills 标准，工作区与 Codex 共享 `.agents/skills/` |
+| **Claude Code** | ✅ 支持 | 智能识别 Skill 意图，支持复杂多步自动化 |
+| **Codex** | ✅ 支持 | 支持 `$skill` 显式调用和隐式意图识别 |
+| **Cursor** | ✅ 支持 | 自动扫描技能目录，支持 `/skill-name` 显式触发 |
+| **Kimi Code** | ✅ 支持 | 原生技能目录扫描，支持 `/skill:unity-skills` 显式触发 |
+| **OpenCode** | ✅ 支持 | 原生扫描工作区与全局技能目录 |
 
 ---
 
@@ -149,24 +140,16 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 
 ### 3. 一键配置 AI Skills
 1. 打开 `Window > UnitySkills`，切到 **AI Config** 标签页。
-2. 选择对应的终端图标（Claude / Antigravity / Codex / Cursor / OpenCode / Kimi Code）。
-3. 点击 **"Install"** 即可完成环境配置，无需手动拷贝代码。
+2. 选择对应的终端图标，点击 **"Install"** 即完成配置——安装器会把包内 `unity-skills~/` 模板复制到目标位置，无需手动拷贝。
 
-> 安装器会复制包内的 `unity-skills~/` 模板目录到目标位置。
+> 🔄 **更新自动同步**：升级插件后，已安装过的 AI 工具会自动同步到新版本（不会自动安装新目标）；可在 ⚙ 设置抽屉的 **AI 工具** 区关闭。
 >
-> 安装器落盘文件说明（生成于目标目录）：
-> - `SKILL.md`
-> - `skills/`
-> - `references/`
-> - `scripts/unity_skills.py`
-> - `scripts/agent_config.json`（包含 Agent 标识）
-
-> **Codex 特别说明**：Antigravity 和 Codex 工作区都使用 `.agents/skills/` —— 装一次即两边可用。Codex 自动扫描 `.agents/skills/` 发现 skills，无需在 `AGENTS.md` 中声明。
+> **Codex 特别说明**：Antigravity 和 Codex 工作区共享 `.agents/skills/`——装一次即两边可用，Codex 无需在 `AGENTS.md` 中声明。
 
 📘 需要更完整的安装与使用说明，请查看：[安装指南](docs/SETUP_GUIDE_CN.md) | [Setup Guide](docs/SETUP_GUIDE.md)
 
 <details>
-<summary><h3>4. 手动安装 Skills（可选）</h3></summary>
+<summary><b>4. 手动安装 Skills（可选）</b></summary>
 
 如果不使用一键安装，可按以下**标准流程**手动部署（适用于所有支持 Skills 的工具）：
 
@@ -209,7 +192,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ---
 
 <details>
-<summary><h2>📦 Skills 分类概要 (784)</h2></summary>
+<summary><b>📦 Skills 分类概要 (785)</b></summary>
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -253,7 +236,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 | **Console** | 10 | 日志捕获/清理/导出/统计/暂停控制/折叠/播放清除 |
 | **Debug** | 11 | 错误日志/编译检查/堆栈/程序集/定义符号/内存信息/编辑器健康诊断 |
 | **Event** | 11 | UnityEvent监听器管理/批量添加/复制/状态控制/列举 |
-| **Light** | 10 | 灯光创建/类型配置/强度颜色/批量开关/探针组/反射探针/光照贴图 |
+| **Light** | 11 | 灯光创建/类型配置/强度颜色/批量开关/探针组/反射探针/光照贴图 |
 | **Model** | 10 | 模型导入设置/Mesh信息/材质映射/动画/骨骼/批量 |
 | **NavMesh** | 10 | 烘焙/路径计算/Agent/Obstacle/采样/区域代价 |
 | **Optimization** | 10 | 纹理压缩/网格压缩/音频压缩/场景分析/静态标记/LOD/重复材质/过度绘制 |
@@ -269,7 +252,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 
 > ⚠️ 大部分模块支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills 以提升性能。
 >
-> 🧠 `unity-skills/skills/` 目录下额外提供 **29 个 advisory 设计模块**，用于在脚本编写前辅助 AI 进行架构、性能、可维护性、Inspector 设计与包级源码规则决策。
+> 🧠 `unity-skills/skills/` 目录下额外提供 **27 个 advisory 设计模块**，用于在脚本编写前辅助 AI 进行架构、性能、可维护性、Inspector 设计与包级源码规则决策。
 
 </details>
 
@@ -285,9 +268,9 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │   │   ├── SKILL.md                # 主 Skill 定义 (AI 读取)
 │   │   ├── scripts/
 │   │   │   └── unity_skills.py     # Python 客户端库
-│   │   ├── skills/                 # 79 个模块文档（50 个 REST/模块文档 + 29 个 advisory 文档）
+│   │   ├── skills/                 # 80 个模块文档（53 个 REST/模块文档 + 27 个 advisory 文档）
 │   │   └── references/             # Unity 开发参考文档
-│   └── Editor/Skills/              # 核心 Skill 逻辑 (54 个功能模块，55 个 *Skills.cs，共 784 Skills)
+│   └── Editor/Skills/              # 核心 Skill 逻辑 (55 个 *Skills.cs → 53 个 SkillCategory 分类，共 785 Skills)
 │       ├── SkillsHttpServer.cs     # HTTP 服务器核心 (Producer-Consumer)
 │       ├── SkillRouter.cs          # 请求路由 & 反射发现 Skills
 │       ├── WorkflowManager.cs      # 持久化工作流 (Task/Session/Snapshot)
@@ -299,7 +282,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
 │       ├── WorkflowSkills.cs       # Workflow 撤销/回滚 (24 skills)
 │       ├── PerceptionSkills.cs     # 场景理解 (18 skills)
-│       └── ...                     # 784 Skills 源码
+│       └── ...                     # 785 Skills 源码
 ├── docs/
 │   └── SETUP_GUIDE.md              # 完整安装使用指南
 ├── CHANGELOG.md                    # 版本更新记录

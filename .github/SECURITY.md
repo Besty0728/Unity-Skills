@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 2.0.x   | ✅ |
-| < 2.0   | ❌ |
+| 2.7.x   | ✅ |
+| < 2.7   | ❌ |
 
 Security fixes and regression testing prioritize **Unity 2022.3+ / Unity 6** environments. Legacy Unity compatibility logic may still exist, but ongoing support is not guaranteed. | 当前安全修复与回归验证优先覆盖 **Unity 2022.3+ / Unity 6** 环境。旧版 Unity 兼容逻辑可能仍存在，但不承诺持续适配。
 

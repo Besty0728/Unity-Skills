@@ -76,6 +76,8 @@ scripts/agent_config.json   # Agent 配置
 references/                 # Unity 开发参考文档
 ```
 
+> **升级自动同步**：包版本变化后，下次编辑器加载时会把你已安装过的每个工具刷新到新版本，不用再点一次 Install。只更新已存在的安装；从未装过的工具不会被自动装上。覆盖方式与手动 Install 完全一致，因此对已安装副本的本地修改会被替换。可在 ⚙ 设置抽屉的 **AI 工具** 区关闭。
+
 > **Codex 说明**：Antigravity 和 Codex 工作区共享 `.agents/skills/`，装一次即两边可用。Codex 自动扫描发现 skills，无需在 `AGENTS.md` 中声明。
 
 > **按 scope 卸载（v1.9.0+）**：每个 Agent 卡片的"卸载"按钮按当前安装状态智能形变 —— 未安装为灰态；仅一处装则按钮自带 scope 标签直接卸载该 scope；两处都装则显示 `Uninstall ▾` 下拉，分别选择 Project / Global。允许只移除一个 scope 的 skill，不动另一个。

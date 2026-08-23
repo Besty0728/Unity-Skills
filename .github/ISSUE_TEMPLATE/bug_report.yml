@@ -2,6 +2,12 @@ name: "\U0001F41B Bug 报告 / Bug Report"
 description: 报告一个 Bug / Report a bug
 labels: ["bug"]
 body:
+  - type: markdown
+    attributes:
+      value: >-
+        感谢反馈！提交前请先确认问题在**当前最新版本**上仍可复现。
+        / Thanks for the report! Before filing, please confirm the issue still reproduces on the **latest release**.
+
   - type: input
     id: unity-version
     attributes:
@@ -9,9 +15,65 @@ body:
       description: >-
         当前官方维护基线为 Unity 2022.3+ / Unity 6+；若问题发生在更早版本，请明确说明。
         / The current supported baseline is Unity 2022.3+ / Unity 6+. If the issue occurs on an earlier version, please specify.
-      placeholder: "e.g. 2022.3.20f1"
+      placeholder: "e.g. 2022.3.62f1"
     validations:
       required: true
+
+  - type: input
+    id: unityskills-version
+    attributes:
+      label: UnitySkills 版本 / UnitySkills Version
+      description: >-
+        见 Window > UnitySkills 面板底栏，或 SkillsForUnity/package.json 的 version 字段，或 GET /health 返回的 version。
+        / Shown in the Window > UnitySkills footer, in SkillsForUnity/package.json, or in the GET /health response.
+      placeholder: "e.g. 2.7.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-source
+    attributes:
+      label: 安装方式 / Install Source
+      description: 你是如何安装该包的？ / How did you install the package?
+      options:
+        - UPM Git URL（默认分支 / default branch）
+        - UPM Git URL + "#beta"
+        - UPM Git URL + 指定版本 "#vX.Y.Z" / pinned version tag
+        - Releases 页面下载 / downloaded from Releases
+        - 本地路径 "file:..." / local path
+        - 其他或不确定 / other or not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ai-tool
+    attributes:
+      label: AI 工具 / AI Tool
+      description: 通过哪个工具调用 Skills？ / Which tool was calling the Skills?
+      options:
+        - Claude Code
+        - Antigravity
+        - Codex
+        - Cursor
+        - OpenCode
+        - Kimi Code
+        - 其他工具（手动/自定义安装） / other tool (manual or custom install)
+        - 不涉及，问题只出现在 Unity 面板或服务端 / N/A, Unity panel or server side only
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating-mode
+    attributes:
+      label: 操作模式 / Operating Mode
+      description: >-
+        见 Window > UnitySkills → ⚙ Settings → Server，或 GET /health 的 currentMode。
+        / See Window > UnitySkills → ⚙ Settings → Server, or currentMode in GET /health.
+      options:
+        - Auto
+        - Approval
+        - Bypass
+        - 不确定 / not sure
 
   - type: textarea
     id: description
@@ -22,23 +84,25 @@ body:
       required: true
 
   - type: textarea
-    id: logs
-    attributes:
-      label: 错误日志 / Error Logs
-      description: 粘贴相关的 Console 日志 / Paste relevant Console logs
-      render: shell
-
-  - type: textarea
     id: steps
     attributes:
       label: 复现步骤 / Steps to Reproduce
-      description: 如何复现这个问题？ / How to reproduce this issue?
+      description: 如何复现这个问题？涉及某个 Skill 时请写出技能名与参数。 / How to reproduce this issue? If a specific skill is involved, include its name and parameters.
       placeholder: |
         1. 打开 Unity 项目 / Open Unity project
         2. 执行 ... / Do ...
         3. 出现错误 / Error occurs
     validations:
       required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误日志 / Error Logs
+      description: >-
+        粘贴相关的 Unity Console 日志，以及失败请求的 HTTP 响应体（含 errorCode）。
+        / Paste relevant Unity Console logs, plus the HTTP response body of the failing request (including errorCode).
+      render: shell
 
   - type: textarea
     id: expected

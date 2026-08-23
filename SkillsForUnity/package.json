@@ -1,6 +1,6 @@
 {
   "name": "com.besty.unity-skills",
-  "version": "2.6.2",
+  "version": "2.7.0",
   "displayName": "UnitySkills",
   "description": "AI automation skills specifically designed for Unity",
   "unity": "2022.3",
@@ -9,7 +9,8 @@
   "licensesUrl": "https://github.com/Besty0728/Unity-Skills/blob/main/LICENSE",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.0.2",
-    "com.unity.timeline": "1.7.7"
+    "com.unity.timeline": "1.7.7",
+    "com.unity.ugui": "1.0.0"
   },
   "keywords": [
     "unity",
