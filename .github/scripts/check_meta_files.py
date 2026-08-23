@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Meta Check (CI) — .meta 配对与 GUID 重复校验.
 
 只读校验，覆盖 /metacheck 提示词中可自动化、无需人工判断的两项核心检查：
@@ -117,3 +117,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# Producer:Betsy

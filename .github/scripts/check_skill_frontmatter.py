@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """SKILL.md Frontmatter Compliance Check (CI).
 
 背景：Codex / Claude 等原生 skill 发现器把每个含 SKILL.md 的子目录当成一个独立
@@ -156,3 +156,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# Producer:Betsy

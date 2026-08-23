@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor.ShortcutManagement;
@@ -101,7 +101,6 @@ namespace UnitySkills
     /// </summary>
     public static class ShortcutConflictUtil
     {
-        /// <summary>单个组合相等：非修饰键 keyCode 与修饰键集合都相同。</summary>
         public static bool CombinationsEqual(KeyCombination a, KeyCombination b)
             => a.keyCode == b.keyCode && a.modifiers == b.modifiers;
 

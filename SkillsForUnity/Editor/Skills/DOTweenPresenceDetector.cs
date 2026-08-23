@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -10,14 +10,12 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Auto-detects DOTween and DOTween Pro installation and maintains
-    /// DOTWEEN / DOTWEEN_PRO Scripting Define Symbols accordingly.
+    /// 自动检测 DOTween 与 DOTween Pro 是否安装，并据此维护
+    /// DOTWEEN / DOTWEEN_PRO 两个 Scripting Define Symbol。
     ///
-    /// Runs once per editor session. If the user installs DOTween, the macro
-    /// is added automatically and a recompile is requested so DOTweenSkills
-    /// become available without any manual configuration. If the user removes
-    /// DOTween, the macro is removed so the UnitySkills.Editor assembly
-    /// continues to compile cleanly.
+    /// 每个编辑器会话只跑一次。用户装上 DOTween 后会自动补上宏并请求重新编译，
+    /// 无需任何手动配置 DOTweenSkills 即可用；用户移除 DOTween 后宏会被摘掉，
+    /// 保证 UnitySkills.Editor 程序集仍能干净编译。
     /// </summary>
     internal static class DOTweenPresenceDetector
     {
@@ -32,8 +30,8 @@ namespace UnitySkills
             if (SessionState.GetBool(SessionDoneKey, false))
                 return;
 
-            // Mark as done before doing any work so an exception can never cause
-            // this method to re-request compilation on every subsequent domain reload.
+            // 先置完成标记再干活：否则中途抛异常会让本方法在此后每次域重载时
+            // 都重新请求一次编译。
             SessionState.SetBool(SessionDoneKey, true);
 
             try

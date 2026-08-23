@@ -1,24 +1,16 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
 namespace UnitySkills.Tests.Core
 {
     [TestFixture]
     public class ValidateTests
     {
-        // ──────────────────────────────────────────────
-        //  Helper: extract "error" from anonymous object
-        // ──────────────────────────────────────────────
-
         private static string GetError(object result)
         {
             if (result == null) return null;
             var prop = result.GetType().GetProperty("error");
             return prop?.GetValue(result)?.ToString();
         }
-
-        // ══════════════════════════════════════════════
-        //  Required
-        // ══════════════════════════════════════════════
 
         [Test]
         public void Required_NullValue_ReturnsError()
@@ -46,10 +38,6 @@ namespace UnitySkills.Tests.Core
 
             Assert.IsNull(result);
         }
-
-        // ══════════════════════════════════════════════
-        //  RequiredJsonArray
-        // ══════════════════════════════════════════════
 
         [Test]
         public void RequiredJsonArray_NullValue_ReturnsError()
@@ -104,10 +92,6 @@ namespace UnitySkills.Tests.Core
             Assert.IsNull(result);
         }
 
-        // ══════════════════════════════════════════════
-        //  InRange (float)
-        // ══════════════════════════════════════════════
-
         [Test]
         public void InRange_Float_BelowMin_ReturnsError()
         {
@@ -150,10 +134,6 @@ namespace UnitySkills.Tests.Core
             Assert.IsNull(result);
         }
 
-        // ══════════════════════════════════════════════
-        //  InRange (int)
-        // ══════════════════════════════════════════════
-
         [Test]
         public void InRange_Int_BelowMin_ReturnsError()
         {
@@ -195,10 +175,6 @@ namespace UnitySkills.Tests.Core
 
             Assert.IsNull(result);
         }
-
-        // ══════════════════════════════════════════════
-        //  SafePath
-        // ══════════════════════════════════════════════
 
         [Test]
         public void SafePath_NullPath_ReturnsError()

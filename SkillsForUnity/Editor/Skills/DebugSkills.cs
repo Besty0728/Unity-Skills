@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Compilation;
@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// Debug skills - self-healing, active error checking, compilation control.
+    /// 调试技能：自愈、主动错误检查、编译控制。
     /// </summary>
     public static class DebugSkills
     {
@@ -22,9 +22,8 @@ namespace UnitySkills
             public int line;
         }
 
-        // Serialized snapshot value for scripting define symbols. The build target group is
-        // captured alongside the defines so undo/redo applies to the correct group even if the
-        // active build target changed in between.
+        // Scripting Define Symbols 的快照值。必须连 build target group 一起记录，
+        // 这样即便期间切换了活动构建目标，undo/redo 也能作用到正确的 group 上。
         private sealed class DefinesSettingValue
         {
             public string group;
@@ -32,8 +31,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Registers the scripting-define restorer so debug_set_defines changes are reversible
-        /// via workflow undo/redo. Runs on domain load.
+        /// 注册 Scripting Define 的还原器，使 debug_set_defines 的改动可通过
+        /// 工作流 undo/redo 回滚。在域加载时执行。
         /// </summary>
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
@@ -87,12 +86,7 @@ namespace UnitySkills
             }
         }
 
-        // Unity LogEntry mode bits (from UnityCsReference)
-        // Error=1, Assert=2, Log=4, Fatal=16,
-        // DontPreprocessCondition=32, AssetImportError=64, AssetImportWarning=128,
-        // ScriptingError=256, ScriptingWarning=512, ScriptingLog=1024,
-        // ScriptCompileError=2048, ScriptCompileWarning=4096,
-        // ScriptingException=131072
+        // Unity LogEntry 的 mode 位，取值来自 UnityCsReference。
         private const int ModeError = 1;
         private const int ModeAssert = 2;
         private const int ModeLog = 4;
@@ -110,7 +104,7 @@ namespace UnitySkills
         internal const int WarningModeMask = ModeAssetImportWarning | ModeScriptingWarning | ModeScriptCompileWarning;
         internal const int LogModeMask = ModeLog | ModeScriptingLog;
 
-        // Cached reflection members (initialized on first use, cleared on failure to allow retry)
+        // 反射成员缓存：首次使用时初始化，失败时清空以便下次重试。
         private static System.Type _logEntriesType;
         private static System.Type _logEntryType;
         private static MethodInfo _getCountMethod;

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEngine.Rendering;
@@ -9,14 +9,13 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// Project information and configuration skills - detect render pipeline, project settings, etc.
+    /// 工程信息与配置技能：检测渲染管线、读写工程设置等。
     /// </summary>
     public static class ProjectSkills
     {
         /// <summary>
-        /// Registers a restorer for the project Tags list so project_add_tag is reversible via
-        /// workflow undo/redo (undo removes the added tag by restoring the prior tag set).
-        /// Runs on domain load.
+        /// 为工程 Tags 列表注册 restorer，使 project_add_tag 可经 workflow undo/redo 回滚
+        /// （undo 通过还原先前的 tag 集合来移除新增项）。在域加载时运行。
         /// </summary>
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
@@ -63,9 +62,7 @@ namespace UnitySkills
             return true;
         }
 
-        /// <summary>
-        /// Enum representing different render pipelines
-        /// </summary>
+        /// <summary>渲染管线类型。</summary>
         public enum RenderPipelineType
         {
             BuiltIn,
@@ -74,9 +71,7 @@ namespace UnitySkills
             Custom
         }
 
-        /// <summary>
-        /// Detects the current render pipeline used in the project
-        /// </summary>
+        /// <summary>检测当前工程使用的渲染管线。</summary>
         public static RenderPipelineType DetectRenderPipeline()
         {
             var currentRP = GraphicsSettings.currentRenderPipeline;
@@ -95,9 +90,7 @@ namespace UnitySkills
             return RenderPipelineType.Custom;
         }
 
-        /// <summary>
-        /// Gets the recommended default shader for the current render pipeline
-        /// </summary>
+        /// <summary>取当前渲染管线推荐的默认 shader。</summary>
         public static string GetDefaultShaderName()
         {
             var pipeline = DetectRenderPipeline();
@@ -111,9 +104,7 @@ namespace UnitySkills
             };
         }
 
-        /// <summary>
-        /// Gets the recommended unlit shader for the current render pipeline
-        /// </summary>
+        /// <summary>取当前渲染管线推荐的 unlit shader。</summary>
         public static string GetUnlitShaderName()
         {
             var pipeline = DetectRenderPipeline();
@@ -127,9 +118,7 @@ namespace UnitySkills
             };
         }
 
-        /// <summary>
-        /// Gets the correct color property name for the current render pipeline
-        /// </summary>
+        /// <summary>取当前渲染管线下正确的颜色属性名。</summary>
         public static string GetColorPropertyName()
         {
             var pipeline = DetectRenderPipeline();
@@ -143,9 +132,7 @@ namespace UnitySkills
             };
         }
 
-        /// <summary>
-        /// Gets the correct main texture property name for the current render pipeline
-        /// </summary>
+        /// <summary>取当前渲染管线下正确的主贴图属性名。</summary>
         public static string GetMainTexturePropertyName()
         {
             var pipeline = DetectRenderPipeline();

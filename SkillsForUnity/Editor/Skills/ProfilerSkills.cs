@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -10,7 +10,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// Profiler skills - FPS, memory, stats.
+    /// 性能分析技能：帧率、内存、统计数据。
     /// </summary>
     public static class ProfilerSkills
     {

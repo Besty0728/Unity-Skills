@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -340,7 +340,7 @@ namespace UnitySkills
                         ? "null"
                         : $"{UnityObjectIdUtility.GetEntityId(property.objectReferenceValue)}:{property.objectReferenceValue.GetType().FullName}:{property.objectReferenceValue.name}";
                 case SerializedPropertyType.Enum:
-                    // enumValueIndex is -1 for combined [Flags] masks; fall back to the raw bitmask.
+                    // 组合过的 [Flags] 掩码下 enumValueIndex 为 -1，退回到原始位掩码。
                     return property.enumValueIndex >= 0
                         ? property.enumValueIndex.ToString(CultureInfo.InvariantCulture)
                         : $"flags:{property.intValue.ToString(CultureInfo.InvariantCulture)}";
@@ -417,8 +417,8 @@ namespace UnitySkills
                     return true;
                 }
 
-                // Out-of-range numbers are written as a raw bitmask so [Flags] combinations
-                // (e.g. "3" = A|B, "-1" = Everything) stay expressible.
+                // 越界数值按原始位掩码写入，以保留 [Flags] 组合的表达能力
+                // （如 "3" = A|B，"-1" = Everything）。
                 property.intValue = index;
                 return true;
             }
@@ -477,8 +477,8 @@ namespace UnitySkills
                     return false;
                 }
 
-                // The enumValueIndex round-trip resolves each name to its underlying constant,
-                // so combined masks work without reflecting on the enum type (native enums included).
+                // 借 enumValueIndex 往返把每个名字解析为其底层常量，因此无需反射枚举类型
+                // 即可处理组合掩码（原生枚举同样适用）。
                 property.enumValueIndex = matchIndex;
                 combined |= property.intValue;
             }

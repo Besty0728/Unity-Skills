@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
@@ -86,8 +86,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Flush pending changes to disk if the state has been modified.
-        /// Call at key transition points (job completion, cancellation, failure).
+        /// 状态被修改过时把待写更改刷盘。应在关键状态转换点调用（作业完成、取消、失败）。
         /// </summary>
         internal static void FlushIfDirty()
         {

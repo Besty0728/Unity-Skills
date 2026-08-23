@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System;
 using System.Linq;
@@ -9,9 +9,9 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// XR Interaction Toolkit skills — setup, interactors, interactables, locomotion, and UI.
-    /// Requires com.unity.xr.interaction.toolkit (2.x or 3.x).
-    /// All XRI API calls use reflection for cross-version compatibility.
+    /// XR Interaction Toolkit 技能——搭建、交互器、可交互物、移动与 UI。
+    /// 需要 com.unity.xr.interaction.toolkit（2.x 或 3.x）。
+    /// 所有 XRI API 调用均走反射以兼容不同版本。
     /// </summary>
     public static class XRSkills
     {
@@ -21,7 +21,7 @@ namespace UnitySkills
 #endif
 
         // ==================================================================================
-        // Setup & Validation (5 skills)
+        // 搭建与校验（5 个技能）
         // ==================================================================================
 
         [UnitySkill("xr_check_setup", "Comprehensive XR project setup validation: checks XRI package, XR Origin, InteractionManager, EventSystem, InputSystem, controllers",
@@ -38,7 +38,7 @@ namespace UnitySkills
             var issues = new List<string>();
             var info = new Dictionary<string, object>();
 
-            // 1. XRI version
+            // 1. XRI 版本
             info["xriInstalled"] = XRReflectionHelper.IsXRIInstalled;
             info["xriMajorVersion"] = XRReflectionHelper.XRIMajorVersion;
 
@@ -50,13 +50,13 @@ namespace UnitySkills
             if (managers.Length > 1)
                 issues.Add($"Multiple XRInteractionManagers found ({managers.Length}). Typically only one is needed.");
 
-            // 3. XR Origin
+            // 3. XR Origin 根节点
             var origins = XRReflectionHelper.FindComponentsOfXRType("XROrigin");
             info["xrOriginCount"] = origins.Length;
             if (origins.Length == 0)
                 issues.Add("No XR Origin found in scene. Create one via xr_setup_rig.");
 
-            // 4. Camera
+            // 4. 相机
             var mainCam = Camera.main;
             info["mainCamera"] = mainCam != null ? mainCam.gameObject.name : null;
             if (mainCam == null)
@@ -83,13 +83,13 @@ namespace UnitySkills
                     issues.Add("EventSystem exists but lacks XRUIInputModule. Fix via xr_setup_event_system.");
             }
 
-            // 6. Interactors & Interactables
+            // 6. 交互器与可交互物
             var interactors = XRReflectionHelper.FindComponentsOfXRType("XRBaseInteractor");
             var interactables = XRReflectionHelper.FindComponentsOfXRType("XRBaseInteractable");
             info["interactorCount"] = interactors.Length;
             info["interactableCount"] = interactables.Length;
 
-            // 7. Locomotion
+            // 7. 移动系统
             var teleportProvider = XRReflectionHelper.FindFirstOfXRType("TeleportationProvider");
             var moveProvider = XRReflectionHelper.FindFirstOfXRType("ActionBasedContinuousMoveProvider")
                                ?? XRReflectionHelper.FindFirstOfXRType("ContinuousMoveProvider");
@@ -101,7 +101,7 @@ namespace UnitySkills
             info["hasContinuousMove"] = moveProvider != null;
             info["hasTurnProvider"] = turnProvider != null;
 
-            // 8. Collider validation — most common XR setup error
+            // 8. Collider 校验——XR 搭建最常见的错误
             var colliderIssues = new List<string>();
             foreach (var interactor in interactors)
             {
@@ -136,7 +136,7 @@ namespace UnitySkills
                 info["colliderIssues"] = colliderIssues;
             }
 
-            // 9. TrackedPoseDriver check
+            // 9. TrackedPoseDriver 检查
             var tpdType = FindTrackedPoseDriverType();
             if (tpdType != null && origins.Length > 0)
             {
@@ -444,7 +444,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Interactor Skills (4 skills)
+        // 交互器技能（4 个）
         // ==================================================================================
 
         [UnitySkill("xr_add_ray_interactor", "Add XRRayInteractor to a controller GameObject (with LineRenderer and line visual)", TracksWorkflow = true,
@@ -651,7 +651,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Interactable Skills (4 skills)
+        // 可交互物技能（4 个）
         // ==================================================================================
 
         [UnitySkill("xr_add_grab_interactable", "Make an object grabbable (adds XRGrabInteractable + Rigidbody + Collider if needed)", TracksWorkflow = true,
@@ -689,7 +689,7 @@ namespace UnitySkills
 
             if (go.GetComponent<Collider>() == null)
             {
-                // Auto-detect best collider based on mesh
+                // 依据网格自动选取最合适的 collider
                 var meshFilter = go.GetComponent<MeshFilter>();
                 if (meshFilter != null && meshFilter.sharedMesh != null)
                     go.AddComponent<MeshCollider>().convex = true;
@@ -710,7 +710,7 @@ namespace UnitySkills
             XRReflectionHelper.SetProperty(comp, "smoothPositionAmount", smoothPositionAmount);
             XRReflectionHelper.SetProperty(comp, "smoothRotationAmount", smoothRotationAmount);
 
-            // Create and set custom attach transform if offset specified
+            // 指定了 offset 时创建并设置自定义 attach transform
             if (!string.IsNullOrEmpty(attachTransformOffset))
             {
                 var offsets = ParseVector3(attachTransformOffset);
@@ -762,7 +762,7 @@ namespace UnitySkills
 
             Undo.RegisterCreatedObjectUndo(comp, "Add XRSimpleInteractable");
 
-            // Ensure collider exists for interaction detection
+            // 交互检测依赖 collider，确保其存在
             if (go.GetComponent<Collider>() == null)
                 go.AddComponent<BoxCollider>();
 
@@ -886,7 +886,7 @@ namespace UnitySkills
                 }
             }
 
-            // Also find TeleportationArea/Anchor since they are interactables
+            // TeleportationArea/Anchor 也是可交互物，一并查出
             foreach (var typeName in new[] { "TeleportationArea", "TeleportationAnchor" })
             {
                 var found = XRReflectionHelper.FindComponentsOfXRType(typeName);
@@ -915,7 +915,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Locomotion Skills (5 skills)
+        // 移动技能（5 个）
         // ==================================================================================
 
         [UnitySkill("xr_setup_teleportation", "Set up TeleportationProvider on XR Origin for teleport locomotion", TracksWorkflow = true,
@@ -928,7 +928,7 @@ namespace UnitySkills
 #if !XRI
             return NoXRI();
 #else
-            // Find XR Origin
+            // 定位 XR Origin
             GameObject go;
             if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path))
             {
@@ -991,7 +991,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(matchOrientation))
                 XRReflectionHelper.SetEnumProperty(comp, "matchOrientation", matchOrientation);
 
-            // Ensure collider for raycast detection
+            // 射线检测依赖 collider，确保其存在
             if (go.GetComponent<Collider>() == null)
             {
                 var meshFilter = go.GetComponent<MeshFilter>();
@@ -1051,11 +1051,9 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(matchOrientation))
                 XRReflectionHelper.SetEnumProperty(comp, "matchOrientation", matchOrientation);
 
-            // Add a small collider for raycast detection
+            // 加一个小 collider 供射线检测
             var collider = go.AddComponent<BoxCollider>();
             collider.size = new Vector3(1, 0.01f, 1);
-
-            // Add visual indicator
             var visual = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             visual.name = "Anchor Visual";
             visual.transform.SetParent(go.transform, false);
@@ -1066,7 +1064,7 @@ namespace UnitySkills
                 renderer.sharedMaterial = new Material(Shader.Find("Sprites/Default"));
                 renderer.sharedMaterial.color = new Color(0, 0.8f, 1, 0.5f);
             }
-            // Remove auto-generated collider from visual primitive
+            // 移除可视化基元自带的 collider
             var visualCollider = visual.GetComponent<Collider>();
             if (visualCollider != null)
                 UnityEngine.Object.DestroyImmediate(visualCollider);
@@ -1101,7 +1099,7 @@ namespace UnitySkills
 #if !XRI
             return NoXRI();
 #else
-            // Find XR Origin
+            // 定位 XR Origin
             GameObject go;
             if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path))
             {
@@ -1119,7 +1117,7 @@ namespace UnitySkills
 
             Undo.RecordObject(go, "Setup Continuous Move");
 
-            // Try ActionBased first, then generic
+            // 先试 ActionBased，再退回通用类型
             var comp = XRReflectionHelper.AddXRComponent(go, "ActionBasedContinuousMoveProvider")
                     ?? XRReflectionHelper.AddXRComponent(go, "ContinuousMoveProvider");
 
@@ -1161,7 +1159,7 @@ namespace UnitySkills
 #if !XRI
             return NoXRI();
 #else
-            // Find XR Origin
+            // 定位 XR Origin
             GameObject go;
             if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path))
             {
@@ -1218,7 +1216,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Advanced Skills (4 skills)
+        // 进阶技能（4 个）
         // ==================================================================================
 
         [UnitySkill("xr_setup_ui_canvas", "Make a Canvas XR-compatible by adding TrackedDeviceGraphicRaycaster", TracksWorkflow = true,
@@ -1244,7 +1242,7 @@ namespace UnitySkills
             if (canvas.renderMode != RenderMode.WorldSpace)
             {
                 canvas.renderMode = RenderMode.WorldSpace;
-                // Set reasonable defaults for world-space XR canvas
+                // 为世界空间 XR canvas 设置合理默认值
                 var rt = canvas.GetComponent<RectTransform>();
                 if (rt != null)
                 {
@@ -1311,7 +1309,7 @@ namespace UnitySkills
 
             var changed = new List<string>();
 
-            // Haptic properties vary by version but try common names
+            // 触感属性名各版本不同，逐个试常见命名
             if (XRReflectionHelper.SetProperty(comp, "playHapticsOnSelectEntered", true))
                 changed.Add("playHapticsOnSelectEntered");
             if (XRReflectionHelper.SetProperty(comp, "hapticSelectEnterIntensity", selectIntensity))
@@ -1471,7 +1469,7 @@ namespace UnitySkills
             Undo.RecordObject(comp, "Configure Interaction Layers");
             WorkflowManager.SnapshotObject(comp);
 
-            // Try to set interaction layers via InteractionLayerMask
+            // 尝试通过 InteractionLayerMask 设置交互层
             var ilmType = XRReflectionHelper.ResolveXRType("InteractionLayerMask");
             if (ilmType != null)
             {
@@ -1486,7 +1484,7 @@ namespace UnitySkills
                     }
                     catch
                     {
-                        // Fallback: try setting by integer value
+                        // 回退：改用整数值赋值
                         if (int.TryParse(layers, out int layerMask))
                             XRReflectionHelper.SetProperty(comp, "interactionLayers", layerMask);
                     }
@@ -1507,7 +1505,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Helpers
+        // 辅助方法
         // ==================================================================================
 
         private static Vector3? ParseVector3(string csv)
@@ -1524,15 +1522,15 @@ namespace UnitySkills
 
         private static Type FindTrackedPoseDriverType()
         {
-            // Unity 2022+: UnityEngine.InputSystem.XR.TrackedPoseDriver (Input System package)
+            // Unity 2022+：UnityEngine.InputSystem.XR.TrackedPoseDriver（Input System 包）
             var newType = XRReflectionHelper.FindTypeInAssemblies("UnityEngine.InputSystem.XR.TrackedPoseDriver");
             if (newType != null) return newType;
 
-            // Legacy: UnityEngine.XR.TrackedPoseDriver (built-in)
+            // 旧版：UnityEngine.XR.TrackedPoseDriver（内置）
             var legacyType = XRReflectionHelper.FindTypeInAssemblies("UnityEngine.XR.TrackedPoseDriver");
             if (legacyType != null) return legacyType;
 
-            // Fallback: UnityEngine.SpatialTracking.TrackedPoseDriver
+            // 再退一档：UnityEngine.SpatialTracking.TrackedPoseDriver
             return XRReflectionHelper.FindTypeInAssemblies("UnityEngine.SpatialTracking.TrackedPoseDriver");
         }
     }

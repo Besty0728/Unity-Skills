@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -42,7 +42,7 @@ namespace UnitySkills
         private Toggle    _featTest;
         private Toggle    _featRun;
         private Toggle    _featBuild;
-        private Label     _helpBox;   // 方案 A：无框脚注文字（原 HelpBox 扁平化）
+        private Label     _helpBox;
 
         private bool _detectionPending;
         // 轮询句柄：语言切换整树重建时先 Pause 旧项，避免在 root 上累积重复调度。

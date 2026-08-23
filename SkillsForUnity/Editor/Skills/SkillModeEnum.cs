@@ -1,4 +1,4 @@
-namespace UnitySkills
+﻿namespace UnitySkills
 {
     /// <summary>
     /// 服务端三档操作模式，对齐 Claude Code permission modes。

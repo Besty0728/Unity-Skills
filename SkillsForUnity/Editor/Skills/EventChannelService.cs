@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using UnityEditor;
@@ -9,24 +9,21 @@ using Newtonsoft.Json.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// In-memory event channel backing GET /events long-polling: editor-side sources publish
-    /// events, HTTP-side waiters read them — turning the REST API from pull-only into
-    /// "Unity can push".
+    /// 支撑 GET /events 长轮询的内存事件通道：编辑器侧事件源发布，HTTP 侧等待者读取，
+    /// 让 REST API 从纯拉取变成"Unity 也能推"。
     ///
-    /// Threading contract (mirrors SkillsHttpServer's producer-consumer split):
-    /// - Publish and all event-source callbacks run on the MAIN THREAD only (they serialize
-    ///   the payload, append to the ring buffer, persist the seq via SessionState and set the
-    ///   wakeup signal).
-    /// - TryReadEventsAfter / GetCurrentSeq / ResetSignal / WaitSignal are safe on ThreadPool
-    ///   threads: zero Unity API, zero SessionState — buffer access is guarded by a lock whose
-    ///   critical section only appends/copies list entries (payload serialization happens
-    ///   outside it).
-    /// - Long-poll correctness relies on waiters re-scanning the buffer every 250ms; the
-    ///   signal only reduces latency, so its multi-consumer Reset race is harmless.
+    /// 线程契约（与 SkillsHttpServer 的生产者-消费者划分一致）：
+    /// - Publish 及所有事件源回调只在主线程执行（序列化载荷、追加环形缓冲、
+    ///   通过 SessionState 持久化 seq、置唤醒信号）。
+    /// - TryReadEventsAfter / GetCurrentSeq / ResetSignal / WaitSignal 可在线程池线程上安全调用：
+    ///   不碰任何 Unity API，也不碰 SessionState；缓冲访问由锁保护，
+    ///   临界区内只做列表的追加 / 复制（载荷序列化在锁外完成）。
+    /// - 长轮询的正确性靠等待者每 250ms 重扫一次缓冲；信号只用来降低延迟，
+    ///   因此多消费者下 Reset 的竞态无害。
     ///
-    /// Persistence: only the seq counter survives a domain reload (SessionState), so cursors
-    /// never move backwards; buffered events are lost with the old domain — clients detect the
-    /// gap via oldestSeq/dropped and learn the compile outcome from server_restored.
+    /// 持久化：只有 seq 计数器跨域重载存活（SessionState），保证游标不会倒退；
+    /// 缓冲中的事件随旧域一起丢失——客户端通过 oldestSeq/dropped 察觉断档，
+    /// 并从 server_restored 事件得知编译结果。
     /// </summary>
     [InitializeOnLoad]
     public static class EventChannelService
@@ -44,29 +41,28 @@ namespace UnitySkills
             public string ReadyJson;
         }
 
-        // Ring buffer + seq counter, shared between the main thread (Publish) and ThreadPool
-        // waiters (TryReadEventsAfter/GetCurrentSeq) — every access goes through _bufferLock.
+        // 环形缓冲与 seq 计数器由主线程（Publish）和线程池等待者
+        // （TryReadEventsAfter/GetCurrentSeq）共享，一切访问都必须经过 _bufferLock。
         private static readonly object _bufferLock = new object();
         private static readonly Queue<BufferedEvent> _buffer = new Queue<BufferedEvent>(BufferCapacity + 1);
         private static long _seq;
 
-        // Set by Publish (main thread), Reset/Wait by long-poll waiters (ThreadPool).
+        // 由 Publish（主线程）置位，由长轮询等待者（线程池）Reset / Wait。
         private static readonly ManualResetEventSlim _signal = new ManualResetEventSlim(false);
 
-        // console_error throttle state — main thread only (logMessageReceived, non-Threaded).
+        // console_error 的限流状态，仅主线程访问（logMessageReceived 非 Threaded 版本）。
         private static long _consoleWindowStartTicks;
         private static int _consoleErrorsThisWindow;
         private static long _consoleDroppedSinceLast;
-        // Guards against Publish-failure logging re-entering OnLogMessageReceived.
+        // 防止 Publish 失败时打的日志再次进入 OnLogMessageReceived 造成递归。
         private static bool _publishingConsoleError;
 
         static EventChannelService()
         {
             try
             {
-                // Restore the seq counter so cursors held by clients across a domain reload
-                // never observe a seq going backwards. C# guarantees this runs before the
-                // first Publish (static constructor precedes any static member access).
+                // 恢复 seq 计数器，使客户端跨域重载持有的游标不会看到 seq 倒退。
+                // C# 保证静态构造先于任何静态成员访问执行，因此必定早于第一次 Publish。
                 long.TryParse(SessionState.GetString(SessionKeySeq, "0"), out _seq);
 
                 AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
@@ -81,9 +77,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Publishes one event to the channel. MAIN THREAD ONLY (serializes the payload,
-        /// touches SessionState). <paramref name="type"/> must be a plain identifier
-        /// (snake_case, no quotes/escapes) — it is embedded into JSON without escaping.
+        /// 向通道发布一个事件。仅限主线程（要序列化载荷、要碰 SessionState）。
+        /// <paramref name="type"/> 必须是纯标识符（snake_case，不含引号或转义）——
+        /// 它会被不加转义地直接嵌进 JSON。
         /// </summary>
         public static void Publish(string type, object payload)
         {
@@ -97,9 +93,8 @@ namespace UnitySkills
                 long seq;
                 lock (_bufferLock)
                 {
-                    // seq assignment stays inside the lock so readers never observe a seq
-                    // without its event in the buffer (the concat here is trivial; the
-                    // expensive JsonConvert call is done above, outside the lock).
+                    // seq 的分配必须留在锁内，读者才不会看到某个 seq 而缓冲里还没有对应事件。
+                    // 这里的字符串拼接很轻；昂贵的 JsonConvert 已在锁外完成。
                     seq = ++_seq;
                     _buffer.Enqueue(new BufferedEvent
                     {
@@ -120,17 +115,16 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                // LogWarning, never LogError: an Error here would re-enter the console_error
-                // source (logMessageReceived) and risk recursion.
+                // 只能 LogWarning，绝不能 LogError：Error 会重新进入 console_error 事件源
+                // （logMessageReceived），有递归风险。
                 SkillsLogger.LogWarning($"EventChannel publish failed for '{type}': {ex.Message}");
             }
         }
 
         /// <summary>
-        /// Publishes server_restored with a summary of the last compilation result. The
-        /// compilation_finished event for a successful compile is published in the OLD domain
-        /// and dies with the in-memory buffer on reload — a reconnecting client learns the
-        /// compile outcome from this event instead. MAIN THREAD ONLY.
+        /// 发布 server_restored，附带上次编译结果摘要。编译成功时的 compilation_finished
+        /// 事件是在旧域里发布的，会随内存缓冲一起在重载中消失——重连的客户端改从这个事件
+        /// 得知编译结果。仅限主线程。
         /// </summary>
         internal static void PublishServerRestored(int port)
         {
@@ -140,8 +134,8 @@ namespace UnitySkills
                 string json = CompilationResultService.GetLastCompilationJson();
                 if (!string.IsNullOrEmpty(json))
                 {
-                    // DateParseHandling.None keeps finishedAtUtc as the raw ISO-8601 string
-                    // (plain JObject.Parse would coerce it into a localized Date.ToString()).
+                    // DateParseHandling.None 保住 finishedAtUtc 的原始 ISO-8601 字符串；
+                    // 直接用 JObject.Parse 会把它强转成本地化的 Date.ToString()。
                     JObject parsed;
                     using (var reader = new JsonTextReader(new System.IO.StringReader(json))
                            { DateParseHandling = DateParseHandling.None })
@@ -162,13 +156,12 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Copies the ready-made JSON of every buffered event with seq &gt; <paramref name="since"/>
-        /// (optionally filtered by type) into <paramref name="jsons"/>. Returns true when at
-        /// least one event matched. SAFE OFF THE MAIN THREAD — zero Unity API.
-        /// <paramref name="cursor"/> is the current max seq (scan upper bound: pass it back as
-        /// the next 'since' even when type filtering skipped events). <paramref name="oldestSeq"/>
-        /// is the seq of the oldest buffered event, or max+1 when the buffer is empty
-        /// ("nothing older is available").
+        /// 把缓冲中 seq &gt; <paramref name="since"/> 的事件（可按类型过滤）已备好的 JSON
+        /// 复制进 <paramref name="jsons"/>，至少命中一条时返回 true。
+        /// 可在非主线程安全调用——不碰任何 Unity API。
+        /// <paramref name="cursor"/> 是当前最大 seq（扫描上界：即便类型过滤跳过了事件，
+        /// 也应把它作为下次的 since 传回）。<paramref name="oldestSeq"/> 是缓冲中最老事件的 seq，
+        /// 缓冲为空时取 max+1，表示"再老的都没有了"。
         /// </summary>
         public static bool TryReadEventsAfter(long since, string[] typeFilter,
             out List<string> jsons, out long cursor, out long oldestSeq)
@@ -196,7 +189,7 @@ namespace UnitySkills
             return jsons.Count > 0;
         }
 
-        /// <summary>Current max seq — used as the default 'since' ("wait for new events only"). Thread-safe.</summary>
+        /// <summary>当前最大 seq，用作默认的 since（即"只等新事件"）。线程安全。</summary>
         public static long GetCurrentSeq()
         {
             lock (_bufferLock)
@@ -204,13 +197,12 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Resets the wakeup signal. Call BEFORE scanning the buffer so a publish landing
-        /// after the scan sets it again; races with other waiters are harmless because every
-        /// waiter re-scans on a 250ms interval regardless. Thread-safe.
+        /// 重置唤醒信号。必须在扫描缓冲之前调用，这样扫描之后到来的发布能重新置位；
+        /// 与其他等待者的竞态无害，因为每个等待者无论如何都会以 250ms 间隔重扫。线程安全。
         /// </summary>
         public static void ResetSignal() => _signal.Reset();
 
-        /// <summary>Blocks until a publish or the timeout, whichever first. Thread-safe.</summary>
+        /// <summary>阻塞直到有事件发布或超时，以先到者为准。线程安全。</summary>
         public static bool WaitSignal(int millisecondsTimeout) => _signal.Wait(millisecondsTimeout);
 
         private static bool MatchesTypeFilter(string typeName, string[] typeFilter)
@@ -223,12 +215,12 @@ namespace UnitySkills
             return false;
         }
 
-        // ===== Event sources (all callbacks arrive on the main thread) =====
+        // ===== 事件源（所有回调都在主线程到达） =====
 
         private static void OnBeforeAssemblyReload()
         {
-            // Best-effort: the buffer dies with this domain moments later, but a waiter
-            // already blocked in a long poll can still be signalled and deliver it.
+            // 尽力而为：缓冲马上就随本域一起消失，但已经阻塞在长轮询里的等待者
+            // 仍可能被唤醒并把这条事件送出去。
             Publish("before_domain_reload", new { reason = "assembly_reload" });
         }
 

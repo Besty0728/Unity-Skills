@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -9,11 +9,11 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// Graphics and quality settings skills for SRP-aware projects.
+    /// 面向 SRP 工程的图形与质量设置技能。
     /// </summary>
     public static class GraphicsSkills
     {
-        // --- Workflow setting restorers (real, reversible undo/redo) ---
+        // --- 工作流设置还原器（提供真正可回滚的 undo/redo） ---
 
         private sealed class ShaderStrippingValue
         {
@@ -23,10 +23,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Registers getters/setters for graphics settings so their skill changes are truly
-        /// reversible via workflow undo/redo. Stateless keys are registered here on domain load;
-        /// the per-quality-level render pipeline key is registered on demand (its getter needs
-        /// the level) in <see cref="GraphicsSetQualityRenderPipeline"/>.
+        /// 注册图形设置的读写器，使相关技能的改动能真正通过工作流 undo/redo 回滚。
+        /// 无状态的键在域加载时统一注册；按质量等级区分的渲染管线键因为 getter 需要等级参数，
+        /// 改为在 <see cref="GraphicsSetQualityRenderPipeline"/> 里按需注册。
         /// </summary>
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
@@ -60,8 +59,8 @@ namespace UnitySkills
                 CaptureShaderStripping,
                 ApplyShaderStripping);
 
-            // Register a per-level render pipeline restorer for every existing quality level so
-            // undo/redo works even after a domain reload (which clears the in-memory registry).
+            // 为每个已存在的质量等级都注册一份渲染管线还原器，
+            // 这样域重载清空内存注册表之后 undo/redo 依然可用。
             for (var level = 0; level < QualitySettings.names.Length; level++)
                 EnsureQualityRenderPipelineRestorer(level);
         }
@@ -69,8 +68,8 @@ namespace UnitySkills
         private static string QualityRenderPipelineKey(int level) => "graphics.qualityRenderPipeline:" + level;
 
         /// <summary>
-        /// Registers (idempotently) a getter/setter for a specific quality level's render pipeline.
-        /// The level is captured in the closures because the registry passes no key to handlers.
+        /// 幂等地为指定质量等级的渲染管线注册读写器。
+        /// 等级由闭包捕获，因为注册表不会把键传给处理函数。
         /// </summary>
         private static void EnsureQualityRenderPipelineRestorer(int level)
         {

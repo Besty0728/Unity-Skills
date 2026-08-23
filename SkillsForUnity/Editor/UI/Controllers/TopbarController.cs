@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor;
 
@@ -64,8 +64,6 @@ namespace UnitySkills
                 _topbarElement.RegisterCallback<GeometryChangedEvent>(OnTopbarGeometryChanged);
                 // 兜底自愈：Unity 6 双击最大化会让窗口 detach→attach 并在同帧多次 layout，
                 // GeometryChangedEvent 可能漏派发"最终尺寸"那次，使响应式卡在窄布局。
-                // 低频轮询真实 layout 宽度重算——schedule 挂在元素上，detach 自动暂停、
-                // attach 自动恢复，不依赖事件派发；ApplyResponsiveLayout 内有状态早退，重复调用零副作用。
                 // 经 EditorUiScheduler.RepeatSafe 把 class 变更推迟到 delayCall，避免落在
                 // repaint/generateVisualContent 期间触发 InvalidOperationException（issue #44）。
                 EditorUiScheduler.RepeatSafe(_topbarElement, SelfHealIntervalMs, SelfHealResponsiveLayout);
@@ -85,7 +83,6 @@ namespace UnitySkills
             ApplyResponsiveLayout(evt.newRect.width);
         }
 
-        // 周期兜底：直接读取 topbar 当前 layout 宽度重算断点，覆盖 GeometryChangedEvent 漏派发的情况。
         private void SelfHealResponsiveLayout()
         {
             if (_topbarElement == null) return;
@@ -168,7 +165,6 @@ namespace UnitySkills
 
             if (_serverSwitch != null)
             {
-                // Click anywhere on the switch toggles the server
                 _serverSwitch.RegisterCallback<ClickEvent>(_ => ToggleServer());
             }
         }
@@ -208,7 +204,6 @@ namespace UnitySkills
                 _statusText.AddToClassList(running ? "on" : "off");
             }
 
-            // Refresh URL only when state changes or text differs
             if (_urlField != null)
             {
                 string url = running ? SkillsHttpServer.Url ?? "" : "";
@@ -222,7 +217,6 @@ namespace UnitySkills
 
         /// <summary>
         /// 同步权限模式徽章的文字 + tooltip。
-        /// Approval 模式下若有待批，追加 ⚠N 计数提示用户。
         /// </summary>
         private void RefreshPermBadge()
         {

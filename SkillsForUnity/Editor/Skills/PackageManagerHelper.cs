@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
@@ -103,8 +103,8 @@ namespace UnitySkills
             _isRefreshing = true;
             _currentOperation = "refresh";
             _currentPackageId = "(package_list)";
-            // Include resolved transitive dependencies. Cinemachine 3, for example, brings
-            // Splines indirectly and skills must still recognize it as installed.
+            // 必须带上已解析的传递依赖：例如 Cinemachine 3 会间接引入 Splines，
+            // skill 仍须把它识别为已安装。
             try
             {
                 _listRequest = Client.List(offlineMode: true, includeIndirectDependencies: true);
@@ -169,12 +169,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Synchronous single-package lookup, used when the cached list is not up yet.
-        /// <see cref="RefreshPackageList"/> is asynchronous and restarts after every domain reload,
-        /// so the first call of a session lands in the window where the cache is still null. Without
-        /// this fallback a skill would report a package as installed (a check that succeeded some
-        /// other way, e.g. a version define) while its version came back null — an internally
-        /// inconsistent answer that also made version gates silently evaluate to "unknown".
+        /// 单包同步查询，用于缓存列表尚未就绪时的兜底。
+        /// <see cref="RefreshPackageList"/> 是异步的，且每次域重载后都要重来，
+        /// 因此一个会话的首次调用必然落在缓存仍为 null 的窗口里。没有这个兜底，
+        /// skill 会一边报告包已安装（安装判定由 version define 等其他途径得出），
+        /// 一边把版本返回成 null——自相矛盾的答案，还会让版本闸门静默判为 "unknown"。
         /// </summary>
         private static PkgInfo ResolveDirectly(string packageId)
         {

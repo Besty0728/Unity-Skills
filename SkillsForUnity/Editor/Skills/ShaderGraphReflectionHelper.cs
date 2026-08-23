@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
@@ -2172,7 +2172,7 @@ namespace UnitySkills
             }
             catch
             {
-                // Some nodes do not expose this path in the same way across versions.
+                // 部分节点在不同版本间并不以同样方式暴露该调用路径。
             }
         }
 
@@ -2363,7 +2363,7 @@ namespace UnitySkills
                 }
                 catch
                 {
-                    // Try the next overload.
+                    // 换下一个重载再试。
                 }
             }
 
@@ -2515,7 +2515,7 @@ namespace UnitySkills
             }
             catch
             {
-                // Fall through to heuristic path resolution.
+                // 落到启发式路径解析。
             }
 
             try
@@ -2543,7 +2543,7 @@ namespace UnitySkills
             }
             catch
             {
-                // Ignore filesystem probing failures.
+                // 文件系统探测失败可忽略。
             }
 
             return false;

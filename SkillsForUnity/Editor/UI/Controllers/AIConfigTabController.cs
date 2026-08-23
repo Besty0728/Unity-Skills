@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -141,13 +141,11 @@ namespace UnitySkills
         {
             bool projInstalled = cfg.isProjInstalled();
             bool globInstalled = cfg.isGlobInstalled();
-            // Show "Installed" badge if either scope has been installed.
             bool anyInstalled = projInstalled || globInstalled;
 
             var card = new VisualElement();
             card.AddToClassList("agent-card");
 
-            // Head
             var head = new VisualElement();
             head.AddToClassList("agent-card-head");
             head.style.flexDirection = FlexDirection.Row;
@@ -178,7 +176,6 @@ namespace UnitySkills
 
             card.Add(head);
 
-            // Actions row
             var actions = new VisualElement();
             actions.AddToClassList("agent-card-actions");
             actions.style.flexDirection = FlexDirection.Row;
@@ -280,7 +277,6 @@ namespace UnitySkills
 
             card.Add(head);
 
-            // Path row
             var pathRow = new VisualElement();
             pathRow.AddToClassList("setting-row");
             pathRow.style.flexDirection = FlexDirection.Row;
@@ -310,7 +306,6 @@ namespace UnitySkills
             pathRow.Add(browseBtn);
             card.Add(pathRow);
 
-            // Name row
             var nameRow = new VisualElement();
             nameRow.AddToClassList("setting-row");
             nameRow.style.flexDirection = FlexDirection.Row;

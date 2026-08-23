@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -7,11 +7,11 @@ using UnityEditor;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// Unit tests for the Skill mode permission system (plan section 11).
+    /// 技能权限模式系统的单元测试。
     ///
-    /// Covers three operating modes (Approval / Auto / Bypass), two approval channels
-    /// (Dialog / Panel), auto NeverInSemi judgement, grant token lifecycle, EditorPrefs
-    /// persistence and the upgrade-compat rule (existing install → Bypass).
+    /// 覆盖三种操作模式（Approval / Auto / Bypass）、两条审批通道（Dialog / Panel）、
+    /// NeverInSemi 自动判定、grant token 生命周期、EditorPrefs 持久化，
+    /// 以及升级兼容规则（老安装 → Bypass）。
     ///
     /// 另外覆盖：
     /// - Allowlist 通道 (AddToAllowlist / RemoveFromAllowlist / ClearAllowlist / IsInAllowlist)
@@ -20,9 +20,9 @@ namespace UnitySkills.Tests.Core
     /// - TryGrantAndReturnArgs (方案 B 一步执行) + ConsumeOneShotBypass
     /// - 老 GrantedSkills EditorPrefs → 新 AllowlistSkills 迁移幂等
     ///
-    /// Permission prefs are backed up for the fixture and restored on completion.
-    /// Existing-install behavior is simulated with a test-only override so unrelated
-    /// UnitySkills EditorPrefs (language, port, logging) are never modified.
+    /// 权限相关的 EditorPrefs 在夹具开始时备份、结束时还原。
+    /// "老安装"行为用测试专用 override 模拟，从而绝不改动无关的 UnitySkills EditorPrefs
+    /// （语言、端口、日志等）。
     /// </summary>
     [TestFixture]
     public class SkillsModeManagerTests
@@ -100,14 +100,9 @@ namespace UnitySkills.Tests.Core
             else EditorPrefs.DeleteKey(key);
         }
 
-        // ─────────────────────────────────────────────────────────────────
-        //  helpers
-        // ─────────────────────────────────────────────────────────────────
-
         /// <summary>
-        /// Build a SkillInfo with only the fields CheckAccess / IsForbiddenInSemi read.
-        /// All other fields (Method, Parameters, etc.) are intentionally null because
-        /// the mode manager never touches them.
+        /// 只填 CheckAccess / IsForbiddenInSemi 会读的字段来构造 SkillInfo。
+        /// 其余字段（Method、Parameters 等）故意留 null——模式管理器从不碰它们。
         /// </summary>
         private static SkillRouter.SkillInfo MakeSkill(
             string name,
@@ -128,23 +123,18 @@ namespace UnitySkills.Tests.Core
             };
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #1 — Bypass mode allows everything
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void CheckAccess_BypassMode_AnySkill_AlwaysAllowed()
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
 
-            // Plain SemiAuto / FullAuto — trivially allowed.
+            // 普通 SemiAuto / FullAuto，理应直接放行。
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("safe", SkillMode.SemiAuto)));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("normal")));
 
-            // Every metadata flavour that IsForbiddenInSemi would normally trip on —
-            // Bypass mode bypasses the check entirely.
+            // 平时会被 IsForbiddenInSemi 拦下的各种元数据组合——Bypass 模式完全跳过该检查。
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("del", op: SkillOperation.Delete)));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
@@ -153,15 +143,11 @@ namespace UnitySkills.Tests.Core
                 SkillsModeManager.CheckAccess(MakeSkill("reload", mayTriggerReload: true)));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("high_risk", risk: "high")));
-            // a former never-list name (scene_clear) — no longer auto-forbidden after the
-            // _explicitNeverList removal, but Bypass allows it like any other skill anyway.
+            // 曾在 never-list 里的名字（scene_clear）：_explicitNeverList 移除后已不再被自动禁止，
+            // 而 Bypass 下它和别的技能一样放行。
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("scene_clear")));
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #2 — Auto mode allows Semi & Full
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void CheckAccess_AutoMode_SemiAutoAndFullAuto_Allowed()
@@ -174,10 +160,6 @@ namespace UnitySkills.Tests.Core
                 SkillsModeManager.CheckAccess(MakeSkill("full_one", SkillMode.FullAuto)));
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #3 — Auto mode still blocks auto-judged NeverInSemi
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void CheckAccess_AutoMode_NeverInSemiSkill_Forbidden()
         {
@@ -186,10 +168,6 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(SkillsModeManager.AccessResult.Forbidden,
                 SkillsModeManager.CheckAccess(MakeSkill("delete_thing", op: SkillOperation.Delete)));
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #4 — Approval + SemiAuto bypasses the grant gate
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void CheckAccess_ApprovalMode_SemiAutoSkill_Allowed()
@@ -200,10 +178,6 @@ namespace UnitySkills.Tests.Core
                 SkillsModeManager.CheckAccess(MakeSkill("preview_thing", SkillMode.SemiAuto)));
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #5 — Approval + FullAuto without grant → NeedsGrant
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void CheckAccess_ApprovalMode_FullAutoUngranted_NeedsGrant()
         {
@@ -213,15 +187,11 @@ namespace UnitySkills.Tests.Core
                 SkillsModeManager.CheckAccess(MakeSkill("smart_layout")));
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #6 — Approval + Dialog grant：单次有效，不进白名单
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void Approval_DialogChannel_GrantIsOneShot_NotWrittenToAllowlist()
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
-            SkillsModeManager.PanelApprovalRequired = false; // explicit, default
+            SkillsModeManager.PanelApprovalRequired = false; // 与默认值相同，显式写出以示意图
 
             const string skillName = "smart_layout";
             const string args = "{\"target\":\"Cube\"}";
@@ -239,10 +209,6 @@ namespace UnitySkills.Tests.Core
                 SkillsModeManager.CheckAccess(MakeSkill(skillName)));
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #7 — Approval + Panel ON + no approval yet → PendingApproval
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void Approval_PanelChannel_GrantBeforeApprove_ReturnsPendingApproval()
         {
@@ -255,21 +221,17 @@ namespace UnitySkills.Tests.Core
             var (token, _, channel) = SkillsModeManager.IssueGrantRequest(skillName, args);
             Assert.AreEqual(SkillsModeManager.ApprovalChannel.Panel, channel);
 
-            // AI re-plays the token before the user clicks Approve on the panel.
+            // 用户还没在面板上点 Approve，AI 就先把 token 回放了一次。
             Assert.AreEqual(GrantOutcome.PendingApproval,
                 SkillsModeManager.TryGrantDetailed(skillName, token, args));
             CollectionAssert.DoesNotContain(SkillsModeManager.AllowlistSkills, skillName);
 
-            // The entry is still alive in the panel pending list.
+            // 该条目仍然活在面板的待批列表里。
             var pending = SkillsModeManager.PeekPendingForTests(token);
             Assert.IsNotNull(pending);
             Assert.AreEqual(skillName, pending.SkillName);
             Assert.IsFalse(pending.ApprovedByPanel);
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #8 — Approval + Panel Approve → entry 保留、单次有效
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void Approval_PanelChannel_ApproveKeepsEntry_GrantThenOneShot()
@@ -297,10 +259,6 @@ namespace UnitySkills.Tests.Core
                 "Entry must be consumed after Granted.");
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #9 — Panel Deny + grant → false
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void Approval_PanelChannel_DenyThenGrant_ReturnsFalse()
         {
@@ -314,17 +272,12 @@ namespace UnitySkills.Tests.Core
 
             Assert.IsTrue(SkillsModeManager.Deny(token));
 
-            // Token entry is gone, grant must fail and the skill stays out of allowlist.
             Assert.IsFalse(SkillsModeManager.TryGrant(skillName, token, args));
             Assert.AreEqual(GrantOutcome.Invalid,
                 SkillsModeManager.TryGrantDetailed(skillName, token, args));
             CollectionAssert.DoesNotContain(SkillsModeManager.AllowlistSkills, skillName);
             Assert.IsNull(SkillsModeManager.PeekPendingForTests(token));
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #10 — Approval + NeverInSemi → Forbidden (no grant route)
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void CheckAccess_ApprovalMode_NeverInSemiSkill_Forbidden()
@@ -337,36 +290,28 @@ namespace UnitySkills.Tests.Core
                 SkillsModeManager.CheckAccess(MakeSkill("hot_skill", risk: "high")));
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #11 — invalid token paths
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void TryGrant_InvalidToken_ReturnsFalseAndInvalid()
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
 
-            // Never-issued token.
+            // 从未签发过的 token。
             Assert.IsFalse(SkillsModeManager.TryGrant("any_skill", "bogus_token_xxx", "{}"));
             Assert.AreEqual(GrantOutcome.Invalid,
                 SkillsModeManager.TryGrantDetailed("any_skill", "bogus_token_xxx", "{}"));
 
-            // Empty / whitespace token.
+            // 空串 / 纯空白 token。
             Assert.AreEqual(GrantOutcome.Invalid,
                 SkillsModeManager.TryGrantDetailed("any_skill", "", "{}"));
             Assert.AreEqual(GrantOutcome.Invalid,
                 SkillsModeManager.TryGrantDetailed("any_skill", "   ", "{}"));
 
-            // Valid token but mismatched args → Invalid.
+            // token 有效但 args 不匹配 → Invalid。
             const string skill = "smart_layout";
             var (token, _, _) = SkillsModeManager.IssueGrantRequest(skill, "{\"a\":1}");
             Assert.AreEqual(GrantOutcome.Invalid,
                 SkillsModeManager.TryGrantDetailed(skill, token, "{\"a\":2}"));
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #12 — Allowlist + remove → 回到 NeedsGrant
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void RemoveFromAllowlist_AfterAdd_CheckAccessReturnsNeedsGrant()
@@ -385,34 +330,26 @@ namespace UnitySkills.Tests.Core
                 SkillsModeManager.CheckAccess(MakeSkill(skillName)));
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #13 — CurrentMode persists via EditorPrefs
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void CurrentMode_Setter_PersistsToEditorPrefs_AndGetterReadsIt()
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Auto;
 
-            // Direct EditorPrefs verification — the setter persisted under PrefKeyMode.
+            // 直接查 EditorPrefs：确认 setter 真的写进了 PrefKeyMode。
             Assert.IsTrue(EditorPrefs.HasKey(PrefKeyMode));
             Assert.AreEqual("Auto", EditorPrefs.GetString(PrefKeyMode));
             Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
 
-            // Switching writes the new value (overwrite, not append).
+            // 切换模式是覆盖写新值，而非追加。
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
             Assert.AreEqual("Approval", EditorPrefs.GetString(PrefKeyMode));
             Assert.AreEqual(SkillsOperatingMode.Approval, SkillsModeManager.CurrentMode);
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #14 — IsForbiddenInSemi auto judgement
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void IsForbiddenInSemi_CoversAllAutoJudgementBranches()
         {
-            // Four flavours that MUST be forbidden in Approval / Auto (purely metadata-driven).
+            // 在 Approval / Auto 下必须被禁止的四种组合（纯由元数据判定）。
             Assert.IsTrue(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("del", op: SkillOperation.Delete)),
                 "SkillOperation.Delete must be forbidden");
@@ -426,20 +363,16 @@ namespace UnitySkills.Tests.Core
                 MakeSkill("hot", risk: "high")),
                 "RiskLevel=\"high\" must be forbidden");
 
-            // Plain SemiAuto / FullAuto without any flag must NOT be forbidden.
+            // 不带任何高危标记的普通 SemiAuto / FullAuto 不得被禁止。
             Assert.IsFalse(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("plain_semi", SkillMode.SemiAuto)));
             Assert.IsFalse(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("plain_full", SkillMode.FullAuto)));
 
-            // Combined-flags Operation (Query|Modify) without Delete remains allowed.
+            // 组合标记的 Operation（Query|Modify）只要不含 Delete 就仍然放行。
             Assert.IsFalse(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("query_modify", op: SkillOperation.Query | SkillOperation.Modify)));
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #15 — Audit log records grant events
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void AuditLog_GrantEvent_AppendThenFlushSync_ReadRecentContainsIt()
@@ -451,7 +384,7 @@ namespace UnitySkills.Tests.Core
             var (token, _, _) = SkillsModeManager.IssueGrantRequest(skillName, args);
             Assert.IsTrue(SkillsModeManager.TryGrant(skillName, token, args));
 
-            // Append is async; force a flush so ReadRecent sees the line.
+            // 写入是异步的，必须强制 flush，ReadRecent 才看得到这一行。
             SkillsAuditLog.FlushSync();
             var recent = SkillsAuditLog.ReadRecent(50);
 
@@ -467,29 +400,20 @@ namespace UnitySkills.Tests.Core
                 "Expected a 'grant' audit event for skill=" + skillName + " token=" + token);
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #16 — Old install (legacy pref exists) → Bypass default
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void CurrentMode_OldInstall_NoExplicitMode_DefaultsToBypass()
         {
             SkillsModeManager.ExistingInstallOverrideForTests = true;
 
             Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode);
-            // Getter must NOT write PrefKeyMode as a side effect — that would prevent
-            // the next upgrade from re-evaluating the default.
+            // getter 绝不能顺手把 PrefKeyMode 写进去——一旦写了，下次升级就没法重新判定默认值。
             Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #17 — Fresh install (no legacy, no explicit) → Auto
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void CurrentMode_FreshInstall_NoKeys_DefaultsToAuto()
         {
-            // SetUp left zero UnitySkills_* keys behind.
+            // SetUp 之后不应残留任何 UnitySkills_* 键。
             Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
             Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
         }
@@ -509,43 +433,32 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode);
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #18 — Allowlist API: add / remove / clear / IsInAllowlist
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void Allowlist_AddRemoveClear_RoundTripsAndAudits()
         {
             Assert.IsFalse(SkillsModeManager.IsInAllowlist("alpha"));
             CollectionAssert.IsEmpty(SkillsModeManager.AllowlistSkills);
 
-            // Add new → true; Add same → false; query reflects.
             Assert.IsTrue(SkillsModeManager.AddToAllowlist("alpha"));
             Assert.IsFalse(SkillsModeManager.AddToAllowlist("alpha"));
             Assert.IsTrue(SkillsModeManager.IsInAllowlist("alpha"));
             Assert.IsTrue(SkillsModeManager.AddToAllowlist("beta"));
             CollectionAssert.AreEquivalent(new[] { "alpha", "beta" }, SkillsModeManager.AllowlistSkills);
 
-            // Remove existing → true; remove missing → false.
             Assert.IsTrue(SkillsModeManager.RemoveFromAllowlist("alpha"));
             Assert.IsFalse(SkillsModeManager.RemoveFromAllowlist("alpha"));
             Assert.IsFalse(SkillsModeManager.IsInAllowlist("alpha"));
 
-            // Clear → empty.
             SkillsModeManager.ClearAllowlist();
             CollectionAssert.IsEmpty(SkillsModeManager.AllowlistSkills);
 
-            // Whitespace/null inputs are no-ops.
+            // 空白 / null 入参一律无操作。
             Assert.IsFalse(SkillsModeManager.AddToAllowlist(""));
             Assert.IsFalse(SkillsModeManager.AddToAllowlist("   "));
             Assert.IsFalse(SkillsModeManager.AddToAllowlist(null));
             Assert.IsFalse(SkillsModeManager.RemoveFromAllowlist(null));
             Assert.IsFalse(SkillsModeManager.IsInAllowlist(null));
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #19 — Allowlist overrides IsForbiddenInSemi
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void Allowlist_OverridesForbiddenInSemi_HighRiskSkillAllowed()
@@ -566,10 +479,6 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("delete_thing", op: SkillOperation.Delete)));
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #20 — TryGrantAndReturnArgs（方案 B 一步执行）
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void TryGrantAndReturnArgs_OnGranted_ReturnsCachedArgsAndConsumesEntry()
@@ -617,10 +526,6 @@ namespace UnitySkills.Tests.Core
             Assert.IsNotNull(SkillsModeManager.PeekPendingForTests(token));
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #21 — One-shot bypass：grant 方案 B 让 CheckAccess 单次放行
-        // ═════════════════════════════════════════════════════════════════
-
         [Test]
         public void OneShotBypass_AfterTryGrantAndReturnArgs_CheckAccessAllowedOnce()
         {
@@ -662,14 +567,10 @@ namespace UnitySkills.Tests.Core
             Assert.IsFalse(SkillsModeManager.ConsumeOneShotBypass("alpha"));
         }
 
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #22 — EditorPrefs 迁移：legacy granted → allowlist，幂等
-        // ═════════════════════════════════════════════════════════════════
-
         /// <summary>
-        /// Force the in-memory allowlist cache field to null so the next public access
-        /// re-runs <c>EnsureAllowlistLoaded</c> → <c>MigrateLegacyGrantedToAllowlist</c>.
-        /// Mirrors what a fresh editor launch would do.
+        /// 把内存里的白名单缓存字段强制置 null，使下一次公开访问重新走
+        /// <c>EnsureAllowlistLoaded</c> → <c>MigrateLegacyGrantedToAllowlist</c>。
+        /// 等价于模拟一次编辑器冷启动。
         /// </summary>
         private static void ForceAllowlistReload()
         {
@@ -756,10 +657,6 @@ namespace UnitySkills.Tests.Core
             Assert.IsTrue(EditorPrefs.GetBool(PrefKeyMigrationDone, false),
                 "Done flag must still be set on fresh install so future reads skip migration");
         }
-
-        // ═════════════════════════════════════════════════════════════════
-        //  Test matrix #23 — AllowlistPresets「辅助代码编写包」内容 + 导入后放行
-        // ═════════════════════════════════════════════════════════════════
 
         [Test]
         public void AllowlistPresets_CodingAssist_IsNonEmptyDistinct_AndMergesBothGroups()

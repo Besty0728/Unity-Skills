@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -243,7 +243,6 @@ namespace UnitySkills
             card.AddToClassList("task-card");
             if (!isActive) card.AddToClassList("undone");
 
-            // Head
             var head = new VisualElement();
             head.AddToClassList("task-card__head");
             head.style.flexDirection = FlexDirection.Row;
@@ -269,7 +268,6 @@ namespace UnitySkills
 
             card.Add(head);
 
-            // Description
             if (!string.IsNullOrEmpty(task.description))
             {
                 var desc = new Label(task.description);
@@ -277,7 +275,6 @@ namespace UnitySkills
                 card.Add(desc);
             }
 
-            // Actions
             var actions = new VisualElement();
             actions.AddToClassList("task-card__actions");
             actions.style.flexDirection = FlexDirection.Row;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using UnityEditor;
 using UnityEditor.ShortcutManagement;
@@ -100,7 +100,7 @@ namespace UnitySkills
 
             var clearBtn = new Button(() => ClearBinding(cmd)) { text = SkillsLocalization.Get("shortcut_btn_clear") };
             clearBtn.AddToClassList("mini-btn");
-            clearBtn.SetEnabled(!unset); // 无绑定时清除无意义
+            clearBtn.SetEnabled(!unset);
             row.Add(clearBtn);
 
             return row;
@@ -136,7 +136,7 @@ namespace UnitySkills
 
                 var applyBtn = new Button(() => ApplyCapture(cmd)) { text = SkillsLocalization.Get("shortcut_btn_apply") };
                 applyBtn.AddToClassList("mini-btn");
-                applyBtn.SetEnabled(_conflictName == null); // 有冲突拒绝保存
+                applyBtn.SetEnabled(_conflictName == null);
                 line.Add(applyBtn);
             }
 
@@ -204,7 +204,7 @@ namespace UnitySkills
         private void OnRootPointerDown(PointerDownEvent evt)
         {
             if (_capturingId == null || _capturingRow == null) return;
-            if (evt.target is VisualElement ve && IsDescendantOf(ve, _capturingRow)) return; // 点在捕获行内
+            if (evt.target is VisualElement ve && IsDescendantOf(ve, _capturingRow)) return;
             CancelCapture();
         }
 

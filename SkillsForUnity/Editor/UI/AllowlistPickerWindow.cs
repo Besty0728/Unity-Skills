@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -86,7 +86,6 @@ namespace UnitySkills
             UpdateFooter();
         }
 
-        // 预置包快捷栏：在搜索栏与列表之间插入"勾选辅助代码编写包"按钮。
         // 点击预填勾选预置项，用户可继续叠加自选，再走统一的 OnConfirmAdd 提交。
         private void BuildPresetBar()
         {

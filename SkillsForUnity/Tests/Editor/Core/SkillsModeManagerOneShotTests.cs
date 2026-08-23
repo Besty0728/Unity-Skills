@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
@@ -6,14 +6,12 @@ using UnityEditor;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// Focused coverage for the one-shot grant-bypass token hardening added alongside the P0 fix
-    /// pass. SkillRouter.Execute's four parameter-validation early-returns sit between
-    /// TryGrantAndReturnArgs (which sets the ThreadStatic token) and CheckAccess (which consumes
-    /// it), so any early exit that skips ClearOneShotBypass would leak the token into an unrelated
-    /// request on the same thread. A hard 30s deadline is the second line of defense against that.
+    /// 专项覆盖一次性授权放行 token 的加固。SkillRouter.Execute 有四处参数校验提前返回，位置正好夹在
+    /// TryGrantAndReturnArgs（写入 ThreadStatic token）与 CheckAccess（消费它）之间，任何一处提前退出
+    /// 若漏了 ClearOneShotBypass，token 就会泄漏到同一线程上的另一个无关请求里。
+    /// 硬性 30 秒 deadline 是针对这点的第二道防线。
     ///
-    /// Complements SkillsModeManagerTests.cs (not modified here) rather than duplicating its
-    /// existing grant/allowlist/migration coverage.
+    /// 本夹具与 SkillsModeManagerTests.cs 互补，不重复它已有的授权/白名单/迁移覆盖。
     /// </summary>
     [TestFixture]
     public class SkillsModeManagerOneShotTests
@@ -62,7 +60,7 @@ namespace UnitySkills.Tests.Core
             SkillsAuditLog.ResetForTests();
         }
 
-        /// <summary>Minimal SkillInfo — only the fields CheckAccess / IsForbiddenInSemi read.</summary>
+        /// <summary>最小 SkillInfo：只填 CheckAccess / IsForbiddenInSemi 会读的字段。</summary>
         private static SkillRouter.SkillInfo MakeSkill(string name, SkillMode mode = SkillMode.FullAuto)
         {
             return new SkillRouter.SkillInfo
@@ -87,8 +85,8 @@ namespace UnitySkills.Tests.Core
             var (outcome, _, _) = SkillsModeManager.TryGrantAndReturnArgs(skillName, token, "{}");
             Assert.AreEqual(GrantOutcome.Granted, outcome);
 
-            // Simulate a caller (e.g. SkillRouter.Execute hitting a validation early-return
-            // between the grant and CheckAccess) unconditionally clearing the pending one-shot.
+            // 模拟调用方在授权与 CheckAccess 之间无条件清掉待用的一次性 token
+            // （例如 SkillRouter.Execute 撞上参数校验提前返回）。
             SkillsModeManager.ClearOneShotBypass();
 
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,
@@ -107,9 +105,8 @@ namespace UnitySkills.Tests.Core
             var (outcome, _, _) = SkillsModeManager.TryGrantAndReturnArgs(skillName, token, "{}");
             Assert.AreEqual(GrantOutcome.Granted, outcome);
 
-            // SkillsModeManager has no injectable clock, and the deadline is a ThreadStatic field
-            // — push it into the past via reflection on this same thread rather than sleeping 30+
-            // real seconds in a unit test.
+            // SkillsModeManager 没有可注入的时钟，而 deadline 是 ThreadStatic 字段——在同一线程上
+            // 用反射把它推到过去，而不是在单测里真睡 30 多秒。
             var deadlineField = typeof(SkillsModeManager).GetField("_oneShotDeadlineUtc",
                 BindingFlags.NonPublic | BindingFlags.Static);
             Assert.IsNotNull(deadlineField, "_oneShotDeadlineUtc field must exist for expiry simulation");
@@ -133,14 +130,13 @@ namespace UnitySkills.Tests.Core
             var (outcome, _, _) = SkillsModeManager.TryGrantAndReturnArgs(skillName, token, "{}");
             Assert.AreEqual(GrantOutcome.Granted, outcome);
 
-            // A CheckAccess for a different skill name must not consume the pending one-shot.
+            // 换个 skill 名字来查权限，不得消费掉待用的一次性 token。
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,
                 SkillsModeManager.CheckAccess(MakeSkill("unrelated_skill")));
 
-            // The original skill's one-shot grant is still intact...
+            // 原 skill 的一次性授权仍然有效，且这一次之后即被消费掉。
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill(skillName)));
-            // ...and is now consumed.
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,
                 SkillsModeManager.CheckAccess(MakeSkill(skillName)));
         }

@@ -1,4 +1,4 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
 namespace UnitySkills.Tests.Core
 {
@@ -26,3 +26,5 @@ namespace UnitySkills.Tests.Core
         }
     }
 }
+
+// Producer:Betsy

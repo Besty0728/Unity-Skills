@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -11,8 +11,7 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// Handles registration of this Unity instance to a global file.
-    /// Allows clients to discover active Unity instances and their ports.
+    /// 把本 Unity 实例注册到一个全局文件，供客户端发现当前活跃的 Unity 实例及其端口。
     /// </summary>
     [InitializeOnLoad]
     public static class RegistryService
@@ -39,7 +38,7 @@ namespace UnitySkills
                     Directory.CreateDirectory(GlobalConfigDir);
 
                 EditorApplication.quitting += Unregister;
-                // Assembly reload cleanup handled by SkillsHttpServer calling Stop()
+                // 程序集重载时的清理由 SkillsHttpServer 调用 Stop() 负责，此处不重复挂钩
             }
             catch (Exception ex)
             {
@@ -72,7 +71,7 @@ namespace UnitySkills
 
                     registry[ProjectPath] = info;
 
-                    // Clean up stale entries (older than 120 seconds or dead process)
+                    // 清理陈旧条目：心跳超过 120 秒，或进程已死
                     var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     var keysToRemove = registry
                         .Where(k => k.Value.pid != info.pid &&
@@ -147,7 +146,7 @@ namespace UnitySkills
                     }
                     else
                     {
-                        // First heartbeat before Register — write full entry
+                        // 心跳早于 Register 到达，此时需要写入完整条目
                         UnityCliService.GetRegistryBinding(out var cliBound, out var cliPath);
                         registry[ProjectPath] = new InstanceInfo
                         {
@@ -183,15 +182,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Atomic read-modify-write with cross-process file locking.
-        /// Uses FileStream(FileShare.None) for mutual exclusion and .tmp file for atomic writes.
+        /// 带跨进程文件锁的原子读-改-写：以 FileStream(FileShare.None) 互斥，
+        /// 并借助 .tmp 文件保证写入的原子性。
         /// </summary>
         private static void AtomicReadModifyWrite(Action<Dictionary<string, InstanceInfo>> modifier)
         {
             const int maxRetries = 5;
             const int retryDelayMs = 100;
 
-            // Recover from interrupted writes: if .tmp exists and main file is missing/empty, restore from .tmp
+            // 从中断的写入中恢复：.tmp 存在而主文件缺失或为空时，用 .tmp 还原
             var tmpFile = RegistryFile + ".tmp";
             if (File.Exists(tmpFile) && (!File.Exists(RegistryFile) || new FileInfo(RegistryFile).Length == 0))
             {
@@ -203,7 +202,6 @@ namespace UnitySkills
                 FileStream lockStream = null;
                 try
                 {
-                    // Acquire exclusive lock on the registry file
                     lockStream = new FileStream(
                         RegistryFile,
                         FileMode.OpenOrCreate,
@@ -223,7 +221,7 @@ namespace UnitySkills
 
                     modifier(registry);
 
-                    // Write to .tmp file first for atomic replacement
+                    // 先写 .tmp，再整体替换，保证原子性
                     var newJson = JsonConvert.SerializeObject(registry, Formatting.Indented);
                     File.WriteAllText(tmpFile, newJson, Encoding.UTF8);
 
@@ -239,7 +237,7 @@ namespace UnitySkills
                 }
                 catch (IOException) when (attempt < maxRetries - 1)
                 {
-                    // File locked by another process, retry
+                    // 文件被其他进程占用，退避重试
                     System.Threading.Thread.Sleep(retryDelayMs * (attempt + 1));
                 }
                 finally
@@ -252,8 +250,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Computes a stable hash string from input using SHA256 (first 4 bytes).
-        /// Unlike GetHashCode(), this is deterministic across processes and runtimes.
+        /// 用 SHA256 的前 4 字节算出稳定哈希字符串。
+        /// 与 GetHashCode() 不同，它跨进程、跨运行时都是确定的。
         /// </summary>
         private static string ComputeStableHash(string input)
         {

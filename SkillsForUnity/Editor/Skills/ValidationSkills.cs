@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnityEngine.SceneManagement;
 using System.IO;
@@ -9,7 +9,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// Validation and cleanup skills - find issues, optimize assets, clean project.
+    /// 校验与清理技能——发现问题、优化资产、清理项目。
     /// </summary>
     public static class ValidationSkills
     {
@@ -36,7 +36,6 @@ namespace UnitySkills
             var scene = SceneManager.GetActiveScene();
             var allObjects = FindHelper.FindAll<GameObject>();
 
-            // Check for missing scripts
             if (checkMissingScripts)
             {
                 foreach (var go in allObjects)
@@ -59,7 +58,6 @@ namespace UnitySkills
                 }
             }
 
-            // Check for missing prefab references
             if (checkMissingPrefabs)
             {
                 foreach (var go in allObjects)
@@ -78,7 +76,6 @@ namespace UnitySkills
                 }
             }
 
-            // Check for duplicate names
             if (checkDuplicateNames)
             {
                 var nameGroups = allObjects.GroupBy(go => go.name).Where(g => g.Count() > 1);
@@ -95,13 +92,12 @@ namespace UnitySkills
                 }
             }
 
-            // Check for empty GameObjects
             if (checkEmptyGameObjects)
             {
                 foreach (var go in allObjects)
                 {
                     var components = go.GetComponents<Component>();
-                    if (components.Length == 1 && go.transform.childCount == 0) // Only Transform
+                    if (components.Length == 1 && go.transform.childCount == 0) // 只有 Transform
                     {
                         issues.Add(new ValidationIssue
                         {
@@ -141,7 +137,6 @@ namespace UnitySkills
         {
             var results = new List<object>();
 
-            // Search in scene
             var sceneObjects = FindHelper.FindAll<GameObject>();
             foreach (var go in sceneObjects)
             {
@@ -159,7 +154,6 @@ namespace UnitySkills
                 }
             }
 
-            // Search in prefabs
             if (searchInPrefabs)
             {
                 var prefabGuids = AssetDatabase.FindAssets("t:Prefab");
@@ -205,7 +199,7 @@ namespace UnitySkills
 
             if (!dryRun && emptyFolders.Count > 0)
             {
-                // Delete in reverse order (deepest first) to handle nested empty folders
+                // 倒序删除（最深的先删）以处理嵌套的空文件夹
                 var sorted = emptyFolders.OrderByDescending(f => f.Length).ToList();
                 foreach (var folder in sorted)
                 {
@@ -239,7 +233,7 @@ namespace UnitySkills
             var files = Directory.GetFiles(path);
             var directories = Directory.GetDirectories(path);
 
-            // Check if folder is empty (only .meta files don't count)
+            // 判断文件夹是否为空（只有 .meta 文件的不算有内容）
             var hasRealFiles = files.Any(f => !f.EndsWith(".meta"));
             var hasSubDirs = directories.Length > 0;
 
@@ -263,7 +257,7 @@ namespace UnitySkills
                 guids.Select(AssetDatabase.GUIDToAssetPath).Where(p => !string.IsNullOrEmpty(p)),
                 System.StringComparer.OrdinalIgnoreCase);
 
-            // Pre-build dependency index: collect all paths that are depended upon by any asset
+            // 预建依赖索引：收集被任意资产依赖到的全部路径
             var allGuids = AssetDatabase.FindAssets("t:Object", new[] { "Assets" });
             var referencedPaths = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
             foreach (var g in allGuids)
@@ -277,7 +271,7 @@ namespace UnitySkills
                 }
             }
 
-            // Collect candidates not found in the referenced set
+            // 挑出不在被引用集合中的候选项
             var potentiallyUnused = new List<object>();
             foreach (var path in candidatePaths)
             {

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -16,10 +16,9 @@ namespace UnitySkills.Tests.Core
         [SetUp]
         public void SetUp()
         {
-            // Batch steps here exercise write skills (incl. never-in-semi ones like
-            // gameobject_delete). Force Bypass so mode gating never silently turns a
-            // step into a MODE_FORBIDDEN no-op — otherwise diff assertions fail only
-            // when the persisted EditorPref mode happens to be auto/semi (e.g. fresh CI).
+            // 这里的批处理步骤会调写类 skill（含 gameobject_delete 这种 semi 下永不放行的）。
+            // 强制 Bypass，免得模式闸门把某一步悄悄变成 MODE_FORBIDDEN 空操作——否则 diff 断言
+            // 只在持久化的 EditorPref 模式恰好是 auto/semi 时才失败（例如全新 CI 环境）。
             _savedMode = SkillsModeManager.CurrentMode;
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -75,8 +74,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void BuildPlayer_ExplicitScenesValidate()
         {
-            // Create a throwaway scene on disk so the check never depends on the host
-            // project shipping Assets/Scenes/SampleScene.unity (a fresh CI project has none).
+            // 现建一个一次性场景落盘，免得校验依赖宿主项目自带 Assets/Scenes/SampleScene.unity
+            // （全新 CI 项目没有这个文件）。
             const string dir = "Assets/Temp";
             var path = $"{dir}/BuildPlayerValidation_{Guid.NewGuid():N}.unity";
             if (!AssetDatabase.IsValidFolder(dir))

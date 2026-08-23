@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -204,8 +204,8 @@ namespace UnitySkills
             if (removedGameObjectIds.Count == 0 || componentSnapshot == null)
                 return false;
 
-            // Destroyed Unity components can no longer expose gameObject, so ownership is fixed in
-            // the pre-execution snapshot and remains usable after Unity's fake-null transition.
+            // 已销毁的 Unity 组件不再能访问 gameObject，故归属关系在前捕获快照里就已固化，
+            // 在 Unity 转为假 null 之后仍然可用。
             return !string.IsNullOrEmpty(componentSnapshot.OwnerEntityId) &&
                 removedGameObjectIds.Contains(componentSnapshot.OwnerEntityId);
         }

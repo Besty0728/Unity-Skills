@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Text;
 using UnityEditor;
 using UnityEngine.UIElements;
@@ -52,8 +52,6 @@ namespace UnitySkills
             SkillsModeManager.OnChanged += OnModeChanged;
             _root.RegisterCallback<DetachFromPanelEvent>(OnRootDetached);
 
-            // Active polling — 这是关键兜底：OnChanged 可能因为 EditorWindow 不在前台
-            // 而没及时驱动重绘；每秒一次主动检查保证 UI 永远和服务端状态对齐。
             // 经 EditorUiScheduler.RepeatSafe 把实际 mutation 推迟到 delayCall，避免落在
             // repaint/generateVisualContent 期间触发 InvalidOperationException（issue #44）。
             EditorUiScheduler.RepeatSafe(_root, PollIntervalMs, Tick);

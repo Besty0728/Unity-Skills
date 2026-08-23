@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -6,9 +6,8 @@ using NUnit.Framework;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// Unit coverage for BatchExecutor's per-item error isolation and input-validation contract.
-    /// BatchExecutor is a stateless generic helper (no EditorPrefs, files, or scene state), so
-    /// this fixture needs no SetUp/TearDown.
+    /// 覆盖 BatchExecutor 的逐项错误隔离与入参校验契约。
+    /// BatchExecutor 是无状态泛型辅助类（不碰 EditorPrefs、文件、场景状态），故本夹具无需 SetUp/TearDown。
     /// </summary>
     [TestFixture]
     public class BatchExecutorTests
