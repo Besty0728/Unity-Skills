@@ -19,6 +19,8 @@ Manage Unity Editor undo/redo history.
 
 本模块 `history_get_current`（纯读）标 `SkillMode.SemiAuto`，三档下均可直接执行；`history_undo` / `history_redo` 会改变场景状态，为默认 `SkillMode.FullAuto`（Operation=Execute），Approval 模式下需 grant。**不含 NeverInSemi 高危 skill**。
 
+`history_undo` / `history_redo` replay Unity's own native Undo/Redo stack, whose contents cannot be classified by write category the way `workflow` module's task snapshots can, so unlike `workflow_undo_task` / `workflow_session_undo` they carry no payload-level `SURFACE_EXCLUDED` check.
+
 **DO NOT** (common hallucinations):
 - `history_list` / `history_get` do not exist → use `history_get_current` for current undo group
 - `history_clear` does not exist → Unity undo history cannot be cleared via API
@@ -32,18 +34,29 @@ Manage Unity Editor undo/redo history.
 ## Skills
 
 ### `history_undo`
-Undo the last operation.
-**Parameters:**
-- `steps` (int, optional, default 1): Number of operations to undo.
+Undo the last operation (or multiple steps).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| steps | int | No | 1 | Number of undo steps to perform |
+
+**Returns:** `{ success, undoneSteps }`
 
 ### `history_redo`
-Redo the last undone operation.
-**Parameters:**
-- `steps` (int, optional, default 1): Number of operations to redo.
+Redo the last undone operation (or multiple steps).
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| steps | int | No | 1 | Number of redo steps to perform |
+
+**Returns:** `{ success, redoneSteps }`
 
 ### `history_get_current`
-Get current undo history state.
-**Parameters:** None.
+Get the name of the current undo group.
+
+No parameters.
+
+**Returns:** `{ success, currentGroup, groupIndex }`
 
 ## Exact Signatures
 

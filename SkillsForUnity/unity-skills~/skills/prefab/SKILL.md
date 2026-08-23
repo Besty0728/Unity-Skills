@@ -185,11 +185,13 @@ Set a property on a component inside a Prefab asset file (without instantiating 
 | `prefabPath` | string | Yes | - | Path to the prefab asset |
 | `componentType` | string | Yes | - | Component type name |
 | `propertyName` | string | Yes | - | Serialized property name |
-| `value` | string | Cond. | null | Value for basic types (int/float/bool/string/enum/vector/color) |
+| `value` | string | Cond. | null | Value for basic types (int/float/bool/string/enum/vector/color/quaternion) |
 | `assetReferencePath` | string | Cond. | null | Asset path for Object reference fields (Material, Texture, AudioClip, ScriptableObject, etc.) |
 | `gameObjectName` | string | No | null | Child object name inside prefab (defaults to root) |
 
 > Provide either `value` (basic types) or `assetReferencePath` (asset references).
+
+`value` covers Integer, Float, Boolean, String, Enum, Color, Vector2/3/4, Vector2Int/3Int, Quaternion, Rect, Bounds and LayerMask. A quaternion (`localRotation`) accepts 3 components as euler degrees (`"0,90,0"`) or 4 as raw x,y,z,w. Any other serialized type answers `SEMANTIC_INVALID` naming the type — that is the signal to use `assetReferencePath`, not to reformat `value`.
 
 **Returns:** `{ success, prefabPath, gameObject, component, property, valueSet }`
 

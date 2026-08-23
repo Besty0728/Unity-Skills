@@ -122,12 +122,16 @@ Useful fields:
 - `transition`
 - `interactable`
 - `navigationMode`
-- `normalR/G/B`
-- `highlightedR/G/B`
-- `pressedR/G/B`
-- `disabledR/G/B`
+- `normalR/G/B/A`
+- `highlightedR/G/B/A`
+- `pressedR/G/B/A`
+- `disabledR/G/B/A`
 - `colorMultiplier`
 - `fadeDuration`
+
+Each of the four ColorBlock states takes an optional alpha (`normalA`, `highlightedA`, `pressedA`, `disabledA`) alongside its RGB channels — useful for a `disabledA` fade without restating the colour. **Every channel is independent and omitting one keeps the block's current value**, so `pressedA=0.5` alone dims the pressed state and leaves its hue untouched; you never have to resend all four numbers to change one.
+
+Any single channel is enough to trigger the write. (Earlier versions tested only the four `*R` channels, so a call passing nothing but `normalG` was silently dropped along with the rest of the block — if you remember working around that, the workaround is no longer needed.) `transition` and `navigationMode` are parsed before anything is applied: an unknown value rejects the whole call with `SEMANTIC_INVALID` + `validValues` rather than committing the colours from the same call.
 
 ## Best Practices
 

@@ -22,6 +22,10 @@ Basic examples for testing the API.
 - **Auto** / **Bypass**: SemiAuto and FullAuto run directly.
 - Auto-forbidden in this module: `delete_object` (`SkillOperation.Delete`). It is reachable only under Bypass or via a user-managed Allowlist entry; the grant flow returns `MODE_FORBIDDEN`.
 
+**Surface profile**: this module's write skills count as GameObject authoring under another name, so both the `guide` and `noSceneAuthoring` profiles hide them and answer `SURFACE_EXCLUDED` — the exclusion cannot be bypassed by mode or Allowlist. Under `guide`, `details.manualDoc` points at `manual-gameobject`, which teaches these same primitive/transform steps by hand. The query skills stay available in every profile.
+
+`SURFACE_EXCLUDED` has a second source beyond a hidden skill name: visible shell skills that replay a payload — `batch_execute` / `batch_retry_failed` (batch module) and the workflow undo/redo/revert skills (workflow module) — return the same code at execution time when the payload they are about to apply lands in a category the active profile withdraws, even though those shell skills are never themselves hidden.
+
 **DO NOT** (common hallucinations):
 - Sample skills are basic test/demo skills — do not use them for production work
 - `sample_create` is a simplified version of `gameobject_create` — prefer the full gameobject module

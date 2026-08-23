@@ -19,7 +19,7 @@ description: Create and configure Unity lights
 
 - **Approval** (default): mutating skills (`light_create`, `light_set_properties`, `light_set_properties_batch`, `light_set_enabled`, `light_set_enabled_batch`, `light_add_probe_group`, `light_add_reflection_probe`) need user grant; grant triggers a single server-side execution that returns the result.
 - **Auto / Bypass**: those skills execute directly.
-- Query skills (`light_get_info`, `light_find_all`, `light_get_lightmap_settings`) are `SkillMode.SemiAuto` — they run in all three modes without grant.
+- Query skills (`light_get_info`, `light_get_properties`, `light_find_all`, `light_get_lightmap_settings`) are `SkillMode.SemiAuto` — they run in all three modes without grant.
 - This module contains **no** Delete / PlayMode / Reload / high-risk skills (no NeverInSemi); to remove a Light, call `gameobject_delete` from the `gameobject` module.
 
 ## Guardrails
@@ -28,7 +28,8 @@ description: Create and configure Unity lights
 - `light_add` does not exist → use `light_create` (creates a new light GameObject)
 - `light_set_color` / `light_set_intensity` do not exist → use `light_set_properties` (sets color, intensity, range, shadows together)
 - `light_delete` does not exist → use `gameobject_delete` on the light's GameObject
-- `light_set_shadow` does not exist → use `light_set_properties` with `shadows` parameter ("none"/"hard"/"soft")
+- `light_set_shadow` does not exist → use `light_set_properties` with the `shadows` parameter
+- `shadows` values are the Unity enum members `None` / `Hard` / `Soft`. Input is matched case-insensitively (`"soft"` still works) but responses always echo the capitalised form, so compare against `Soft`, not `soft`, when verifying
 
 **Routing**:
 - For lightmap baking settings → `light_get_lightmap_settings` (this module)
@@ -46,7 +47,7 @@ description: Create and configure Unity lights
 
 **No batch needed**:
 - `light_create` - Create a light
-- `light_get_info` - Get light information
+- `light_get_info` - Get light information (`light_get_properties` is an alias of it)
 - `light_find_all` - Find all lights (returns list)
 - `light_add_probe_group` - Add a Light Probe Group with optional grid layout
 - `light_add_reflection_probe` - Create a Reflection Probe at a position
@@ -79,27 +80,31 @@ Create a new light.
 | `intensity` | float | No | 1 | Light intensity |
 | `range` | float | No | 10 | Range (Point/Spot) |
 | `spotAngle` | float | No | 30 | Cone angle (Spot only) |
-| `shadows` | string | No | "soft" | none/hard/soft |
+| `shadows` | string | No | "Soft" | `None` / `Hard` / `Soft` |
 
 **Returns**: `{success, name, instanceId, lightType, position, color, intensity, shadows}`
 
 ### light_set_properties
-Configure light properties.
+Configure light properties. Every parameter is optional and omitted ones keep their current value.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Light object name |
 | `instanceId` | int | No* | Instance ID (preferred) |
-| `r`, `g`, `b` | float | No | Color (0-1) |
+| `path` | string | No* | Hierarchy path |
+| `r`, `g`, `b` | float | No | Color (0-1); each channel defaults to the light's current value |
+| `a` | float | No | Colour alpha (0-1) |
 | `intensity` | float | No | Light intensity |
-| `range` | float | No | Range (Point/Spot) |
+| `range` | float | No | Range (Point/Spot only) |
 | `spotAngle` | float | No | Cone angle (Spot only) |
-| `shadows` | string | No | none/hard/soft |
+| `shadows` | string | No | `None` / `Hard` / `Soft` |
 
-**Returns**: `{success, name, lightType, color, intensity, range, spotAngle, shadows}`
+**Returns**: `{success, name, applied, skipped, lightType, color, intensity, range, spotAngle, shadows}` — `applied` lists the parameters that took effect, named exactly as you passed them (the colour channels appear individually as `r`, `g`, `b`, `a`, not lumped under `color`), and `skipped` the ones the light type cannot carry (a `range` on a Directional light, a `spotAngle` on anything but a Spot), each with the reason. A parameter in neither list was not supplied.
+
+An unrecognised `shadows` value rejects the **whole call** with `SEMANTIC_INVALID` + `validValues` and applies nothing, so a typo can no longer leave a half-configured light behind.
 
 ### light_set_properties_batch
-Configure multiple lights. Each item accepts: `name`/`instanceId`/`path` (identifier) + `r`, `g`, `b`, `intensity`, `range`, `shadows` (all optional).
+Configure multiple lights. Each item accepts: `name`/`instanceId`/`path` (identifier) + `r`, `g`, `b`, `a`, `intensity`, `range`, `shadows` (all optional). A bad `shadows` value fails that item with `SEMANTIC_INVALID` + `validValues` and names the object in `target`; the other items still run.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
@@ -151,8 +156,20 @@ Get detailed light information.
 |-----------|------|----------|-------------|
 | `name` | string | No* | Light object name |
 | `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
 
-**Returns**: `{name, instanceId, path, lightType, color, intensity, range, spotAngle, shadows, enabled, cullingMask, bounceIntensity}`
+**Returns**: `{name, entityId, instanceId, path, lightType, color, intensity, range, spotAngle, shadows, enabled, cullingMask, bounceIntensity}`
+
+### light_get_properties
+Alias of `light_get_info` — same parameters, same response. It exists because the setter is `light_set_properties`, so the matching getter name resolves instead of 404-ing.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | No* | Light object name |
+| `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
+
+**Returns**: identical to `light_get_info`.
 
 ### light_find_all
 Find all lights in scene.

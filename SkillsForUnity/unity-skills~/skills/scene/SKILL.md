@@ -25,7 +25,7 @@ Control Unity scenes - the containers that hold all your GameObjects.
 **DO NOT** (common hallucinations):
 - `scene_delete` / `scene_rename` do not exist → delete scene files via `asset_delete`, rename via `asset_move`
 - `scene_list` does not exist → use `scene_get_loaded` (loaded scenes) or `asset_find` with `t:Scene` (all scene assets)
-- `scene_find_objects` is a simple name/tag/component filter; for regex/layer/path search use `gameobject_find` (SkillMode.FullAuto)
+- `scene_find_objects` is a simple name/tag/component filter; for regex/layer/path search use `gameobject_find` (SkillMode.SemiAuto, 只读，任何模式可直接调用)
 
 **Routing**:
 - For detailed hierarchy tree → use `perception` module's `hierarchy_describe`
@@ -78,16 +78,26 @@ Get current scene information.
 
 No parameters.
 
-**Returns**: `{success, name, path, isDirty, rootObjectCount, rootObjects: [name]}`
+**Returns**: `{sceneName, scenePath, isDirty, rootObjectCount, rootObjects: [{name, entityId, instanceId, childCount}]}` — root entries carry `childCount`, so you can tell which roots are worth descending into before paying for a hierarchy call.
 
 ### scene_get_hierarchy
-Get full scene hierarchy tree.
+Get the scene hierarchy tree, depth-limited.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `maxDepth` | int | No | 10 | Maximum hierarchy depth |
+| `maxDepth` | int | No | 3 | Maximum hierarchy depth to expand |
 
-**Returns**: `{success, hierarchy: [{name, instanceId, children: [...]}]}`
+**Returns**: `{sceneName, hierarchy: [node, ...]}` where each node is `{name, entityId, instanceId, components: [type, ...], childCount, children}`.
+
+> **`childCount` vs `children` — how to tell a leaf from a truncation.** `childCount` is always the node's *real* number of children, independent of `maxDepth`; `children` is `null` once the depth limit is reached. So:
+>
+> | `childCount` | `children` | Meaning |
+> |---|---|---|
+> | `0` | `null` | Genuine leaf — nothing below it. |
+> | `> 0` | `null` | **Clipped by `maxDepth`** — there are children you have not been shown. |
+> | `> 0` | array | Fully expanded at this level. |
+>
+> Never read `children: null` as "empty". When you see `childCount > 0` with `children: null` and you need what is below it, re-call with a larger `maxDepth` — the default is only `3`, so deep hierarchies are truncated by default — or query that subtree directly (`gameobject_find`, `hierarchy_describe` in the `perception` module).
 
 ### scene_screenshot
 Capture a screenshot of the **Game View** — the final composited frame of all cameras + UI. In Play mode this is the live runtime image, **not** the Scene/editor view. For a single Game Camera's render use `camera_screenshot` instead.

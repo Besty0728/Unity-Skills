@@ -25,6 +25,8 @@ Use this module for Unity UI Toolkit only: `UXML` for structure, `USS` for styli
 - **Approval**：查询类 skill（`uitk_read_file` / `uitk_find_files` / `uitk_get_panel_settings` / `uitk_list_documents` / `uitk_inspect_uxml` / `uitk_list_uss_variables` / `uitk_inspect_document` / `uitk_runtime_binding_list` / `uitk_worldspace_panel_get` / `uitk_element_reference_get`，源码标 `SkillMode.SemiAuto`）直接执行；其余文件/场景写入类（`uitk_create_*` / `uitk_write_file` / `uitk_add_*` / `uitk_modify_element` / `uitk_runtime_binding_add` / `uitk_uxml_upgrade` / `uitk_worldspace_panel_create` 等，标 `SkillMode.FullAuto`）需用户 grant，grant 后服务端一步执行返结果。
 - **Auto / Bypass**：未被禁列表拦截的 skill 直接执行。
 - 本模块**含 Delete 类 skill**：`uitk_delete_file`、`uitk_remove_element`、`uitk_remove_uss_rule` 标记为 `SkillOperation.Delete`，被 `IsForbiddenInSemi` 静态拦截 —— 仅 **Bypass** 模式或加入 **Allowlist** 才能调用。
+- 本模块**另含 2 个域重载类 skill**：`uitk_create_editor_window` 与 `uitk_create_runtime_ui` 会生成 `.cs` 文件、必然触发域重载，因此标 `MayTriggerReload = true`。`IsForbiddenInSemi` 直读这个 flag，所以它们和上面的 Delete 类同样被静态拦截 —— **Approval 与 Auto 下都返 `MODE_FORBIDDEN`，且这不是"需 grant"、grant 也给不了**，仅 **Bypass** 或命中 **Allowlist** 才能调用。这两个是上面第一条"其余写入类需用户 grant"的例外。
+- 同一个 flag 还有第二个后果：**`?mode=transactional` 的批量链里含这两步，会在执行前被 400 拒绝**，错误点名违规的 `steps[i]`。原因是域重载会清空编辑器 undo 栈，事务批量的回滚承诺无法兑现，所以服务端选择前置拒绝而不是事后失败。要在事务批量的流程里生成脚本，把这两步拆出去单独调用。
 - **Asset 重导行为**：所有写文件/删文件 skill 通过 `AssetDatabase.ImportAsset(path)` 对单个 USS/UXML 资产单独触发导入，**不会**调 `AssetDatabase.Refresh()` 触发全项目扫描；批量创建依次单独 Import。但 USS/UXML 是 ScriptedImporter 类型，Import 仍会重建依赖此资产的 PanelSettings/UIDocument 引用，触发 IMGUI 检查器刷新与场景视图重绘。
 
 **DO NOT** (common hallucinations):
@@ -51,10 +53,12 @@ Use this module for Unity UI Toolkit only: `UXML` for structure, `USS` for styli
 | `uitk_create_uss` | Create USS file | `savePath`, `content?` |
 | `uitk_create_uxml` | Create UXML file | `savePath`, `content?`, `ussPath?` |
 | `uitk_read_file` | Read USS/UXML content | `filePath` |
-| `uitk_write_file` | Overwrite file content | `filePath`, `content` |
+| `uitk_write_file` | Overwrite USS/UXML content | `filePath` (**must end `.uss` or `.uxml`**), `content` |
 | `uitk_delete_file` | Delete USS/UXML file | `filePath` |
 | `uitk_find_files` | Search files by name/path | `type?`, `folder?`, `filter?`, `limit?` |
 | `uitk_create_batch` | Create 2+ files in one call | `items` |
+
+> **`uitk_write_file` is not a general file writer.** `filePath` must end in `.uss` or `.uxml` (case-insensitive). Any other extension — including none at all — is rejected with `SEMANTIC_INVALID`, `validValues: [".uss", ".uxml"]` and a `relatedSkills` pointer to `script_create`. The check runs **before** the target directory is created, so a rejected call leaves no file and no stray folder behind. Do not reach for this to write a `.cs` file: use `script_create`, which correctly declares the domain reload that writing a script causes.
 
 ### Scene Skills
 
@@ -67,6 +71,8 @@ Use this module for Unity UI Toolkit only: `UXML` for structure, `USS` for styli
 | `uitk_set_panel_settings` | Update PanelSettings selectively | `assetPath`, changed fields only |
 | `uitk_list_documents` | List scene UIDocuments | none |
 | `uitk_inspect_document` | Inspect live VisualElement tree | `name`/`instanceId`/`path`, `depth` |
+
+> **Version-gated `PanelSettings` parameters — rejected by name, never silently dropped.** On both `uitk_create_panel_settings` and `uitk_set_panel_settings`, `renderMode`, `forceGammaRendering`, `bindingLogLevel`, `colliderUpdateMode`, `colliderIsTrigger` and `vertexBudget` require **Unity 6.0+**, and `textureSlotCount` requires **Unity 6000.3+**. Passing one on an older editor returns `SEMANTIC_INVALID` naming the parameter rather than ignoring it, so a value you sent either took effect or came back as an error — it is never quietly discarded. Both skills also resolve every enum and asset path **before** the first write, so a rejected call leaves the asset byte-identical; there is no partial application to clean up.
 
 ### UXML Structure Skills
 

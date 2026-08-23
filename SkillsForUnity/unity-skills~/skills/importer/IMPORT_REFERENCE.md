@@ -25,10 +25,10 @@ unity_skills.call_skill("texture_set_settings_batch", items=[
 
 | Field | Meaning |
 |-------|---------|
-| `textureType` | `Default`, `NormalMap`, `Sprite`, `EditorGUI`, `Cursor`, `Cookie`, `Lightmap`, `SingleChannel` |
+| `textureType` | All ten `TextureImporterType` members: `Default`(0), `NormalMap`(1), `GUI`(2), `Cookie`(4), `Lightmap`(6), `Cursor`(7), `Sprite`(8), `SingleChannel`(10), `Shadowmask`(11), `DirectionalLightmap`(12). Verified identical on Unity 2022.3 and 6000.3, so this list holds across the whole supported range. The Inspector calls `GUI` "Editor GUI and Legacy GUI", and `EditorGUI` is an alias for it. Because interior spaces are stripped before the parse, Inspector labels paste in verbatim even without an alias: `"Normal Map"` → `NormalMap`, `"Single Channel"` → `SingleChannel`, `"Editor GUI"` → `GUI`. Deprecated members that own a value no live member claims are **rejected**: `Image`, `Bump`, `Cubemap`, `Reflection`, `Advanced`, `HDRI` |
 | `maxSize` | `32` to `8192` |
 | `filterMode` | `Point`, `Bilinear`, `Trilinear` |
-| `compression` | `None`, `LowQuality`, `Normal`, `HighQuality` |
+| `compression` | `Uncompressed`(0), `Compressed`(1), `CompressedHQ`(2), `CompressedLQ`(3) — CLR member names of `TextureImporterCompression`, and what the getters echo. Five aliases are accepted: `None` → `Uncompressed`, `Normal` **and** `NormalQuality` → `Compressed`, `LowQuality` → `CompressedLQ`, `HighQuality` → `CompressedHQ`. Interior spaces are stripped before the lookup, so the Inspector's own wording (`"Low Quality"`, `"High Quality"`, `"Normal Quality"`) pastes in verbatim |
 | `mipmapEnabled` | Generate mipmaps |
 | `sRGB` | sRGB color space |
 | `readable` | CPU-readable texture data |
@@ -54,6 +54,7 @@ unity_skills.call_skill("texture_set_settings_batch", items=[
 | Field | Meaning |
 |-------|---------|
 | `platform` | `Standalone`, `iPhone`, `Android`, `WebGL` |
+| `format` | A `TextureImporterFormat` member. **The accepted set depends on the editor you are running**, because members Unity has deprecated are rejected: 6000.3 refuses the legacy `PVRTC_*` / `ATC_*` families that 2022.3 still accepts, and renamed members are only valid under their new spelling (`ASTC_6x6`, not `ASTC_RGB_6x6`). Do not hard-code a version matrix — send your best guess and read the **`validValues`** list on a rejection, which always enumerates the names this editor will take |
 | `maxSize` | Max texture size for that platform |
 | `format` | `TextureImporterFormat` enum value |
 | `compressionQuality` | `0-100` |
@@ -106,7 +107,7 @@ unity_skills.call_skill("texture_set_settings_batch", items=[
 | `importBlendShapes` | Import blend shapes |
 | `importCameras` | Import embedded cameras |
 | `importLights` | Import embedded lights |
-| `animationType` | `None`, `Legacy`, `Generic`, `Humanoid` |
+| `animationType` | `None`, `Legacy`, `Generic`, `Human` — CLR member name; the Inspector labels it "Humanoid" and that spelling is accepted as an alias |
 | `importAnimation` | Import clip data |
 | `materialImportMode` | Material import behavior |
 
@@ -127,7 +128,7 @@ unity_skills.call_skill("texture_set_settings_batch", items=[
 
 | Asset type | Suggested settings |
 |-----------|--------------------|
-| Humanoid character | `animationType="Humanoid"` |
+| Humanoid character | `animationType="Human"` (alias `Humanoid`) |
 | Static prop | disable cameras/lights/animation, compress mesh |
 | Baked environment mesh | enable secondary UVs when needed |
 

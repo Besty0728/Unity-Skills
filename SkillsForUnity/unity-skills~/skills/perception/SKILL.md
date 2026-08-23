@@ -17,7 +17,8 @@ Use this module for read-only scene and project analysis.
 
 ## Operating Mode
 
-- **Approval / Auto / Bypass**: 本模块 18 个 skill 里的 17 个纯读 skill（`scene_analyze` / `scene_summarize` / `scene_health_check` / `scene_component_stats` / `scene_find_hotspots` / `scene_tag_layer_stats` / `scene_performance_hints` / `scene_diff` / `hierarchy_describe` / `scene_context` / `scene_dependency_analyze` / `scene_spatial_query` / `scene_materials` / `scene_contract_validate` / `project_stack_detect` / `script_analyze` / `script_dependency_graph`）都标 `Mode = SkillMode.SemiAuto` 且 `ReadOnly = true`，三档模式下直接执行无需 grant。
+- **Approval / Auto / Bypass**: 本模块 18 个 skill 里有 17 个标 `Mode = SkillMode.SemiAuto`，三档模式下直接执行无需 grant。其中 16 个是**纯读**（`ReadOnly = true`）：`scene_analyze` / `scene_summarize` / `scene_health_check` / `scene_component_stats` / `scene_find_hotspots` / `scene_tag_layer_stats` / `scene_performance_hints` / `scene_diff` / `hierarchy_describe` / `scene_context` / `scene_spatial_query` / `scene_materials` / `scene_contract_validate` / `project_stack_detect` / `script_analyze` / `script_dependency_graph`。
+- **`scene_dependency_analyze` 是第 17 个 SemiAuto，但它不是纯读**：传 `savePath` 会 `Directory.CreateDirectory` + `File.WriteAllText` + `ImportAsset` 落一个新工程资产，所以它标 `MutatesAssets = true` 而**不再**标 `ReadOnly`。仍然无需 grant，但它会进 router 的 diff 捕获，schema/flags 里也会带 `mutatesAssets` —— 不传 `savePath` 时才真的什么都不写。
 - **特别说明**：`scene_export_report` 写 markdown 文件到磁盘（`Operation = Analyze | Execute`，标 `MutatesAssets = true`），因此**不是** SemiAuto——它走默认 `SkillMode.FullAuto`，Approval 模式下需要 grant 才能执行。
 - **本模块不含 Delete / PlayMode / Reload / RiskLevel=high 类 skill** —— 没有 `IsForbiddenInSemi` 拦截。
 
@@ -53,7 +54,9 @@ Use this module for read-only scene and project analysis.
 | `hierarchy_describe` | Return text hierarchy tree | `maxDepth?`, `includeInactive?`, `maxItemsPerLevel?` |
 | `scene_context` | Export hierarchy, components, references | `maxDepth?`, `maxObjects?`, `rootPath?`, `includeValues?`, `includeReferences?`, `includeCodeDeps?` |
 | `scene_export_report` | Save markdown scene report | `savePath?`, `maxDepth?`, `maxObjects?` |
-| `scene_dependency_analyze` | Analyze impact / dependency graph in-scene | `targetPath?`, `savePath?` |
+| `scene_dependency_analyze` | Analyze impact / dependency graph in-scene | `targetPath?`, **`savePath?` — writes** |
+
+> **`savePath` on `scene_dependency_analyze` is a write, not an output option.** Supplying it creates the directory, writes the markdown report and imports it as a project asset, which is why the skill is flagged `mutatesAssets` rather than `ReadOnly`. Omit `savePath` and you get the same analysis in the response (`analysis`, `markdown`) with nothing touched on disk — that is the form to use for a pure "what depends on this" question. Only pass `savePath` when the user actually asked for a file, and expect `savedTo` in the response naming it.
 
 ### Project and Script Analysis
 

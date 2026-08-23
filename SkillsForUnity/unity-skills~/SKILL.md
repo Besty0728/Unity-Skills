@@ -6,31 +6,51 @@ compatibility: Requires Unity Editor 2022.3+/6000.x with the UnitySkills package
 
 # Unity Skills
 
-> All module and reference docs below are English-only. Match the user's request to modules by meaning, regardless of the user's language, and always reply in the user's language.
-> Pure conceptual Unity Q&A that touches no Editor state → do not load this protocol; read the matching advisory doc under `skills/` instead.
+> Module and reference docs are English-only. Match requests to modules by meaning in any language, and always reply in the user's language.
+
+## Route first: automate, or guide the user?
+
+- **Automate** — you call REST skills and drive the Editor yourself. Stay here when the user asked you to do it, or the task needs traversal, search, batch, exact numeric values, or consistency across many objects.
+- **Guide** — you name the menus and Inspector fields and write nothing through REST. Switch to [SKILL_GUIDE.md](SKILL_GUIDE.md) (guidance boundary table + `manual-*` routing) when the user asked how to do it themselves, **or** `/health` reports a `surfaceProfile` other than `full`.
 
 ## First Contact Checklist
 
 Before the first skill call in a session:
 
-1. **`GET /health`** — discover the server (ports `8090`–`8100`) and read `currentMode` (`"approval"` / `"auto"` / `"bypass"`), `panelApprovalRequired`, and `pendingCount`.
-2. **Branch on `currentMode`**: under `approval`, the first write call to any `FullAuto` skill returns `MODE_RESTRICTED` and you must run the grant protocol before it executes; under `auto`/`bypass`, writes execute directly (self-assess risk under `auto`). Full protocol and mode table: see "Operating Mode" → "Boot Handshake" below.
-3. Only then proceed to skill discovery (below) and calls.
+1. **`GET /health`** — discover the server (ports `8090`–`8100`); read `currentMode` (`"approval"` / `"auto"` / `"bypass"`), `panelApprovalRequired`, `pendingCount`, and `surfaceProfile` (`full` / `guide` / `noSceneAuthoring`). `surfaceProfileHint` is text only when the profile is not `full`, else null.
+2. **Branch on `currentMode`**: under `approval` the first write to any `FullAuto` skill returns `MODE_RESTRICTED` and needs a grant; under `auto`/`bypass` writes execute directly (self-assess risk under `auto`). Grants are single-shot; the permanent form is the user-managed Allowlist. Gates, grant protocol and mode table → [operating mode](references/protocol-operating-mode.md).
+3. **`GET /skills/meta`** — once per session: the constants shared by every skill (`categories`, `operationTypes`, `reservedBodyParameters`, `workflowTrackedSkills`, `schemaVersion`, `defaults`). Read them here, not out of each manifest, then start discovery.
 
 ## Schema: pick the cheapest layer
 
-All layers are server-cached with ETag/304 and served off the main thread; send `Accept-Encoding: gzip`.
+Server-cached (ETag/304), off the main thread; send `Accept-Encoding: gzip`.
 
 | Layer | Endpoint | Size | Use when |
 |---|---|---|---|
-| **Default: start from `GET /skills/recommend?intent=...&includeSchema=true`** | | ~2–5 KB | Specific intent; returns scored candidates with parameter schemas. |
-| brief + category | `GET /skills?brief=1` then `GET /skills/schema?category=<Category>` | ~19 KB + 13–44 KB | Task touches one or two areas. |
-| summary | `GET /skills?summary=1` | ~143 KB | Exploratory / cross-module / cheaper layers left you unsure. |
-| full | `GET /skills/schema` | ~618 KB | Rare; many modules' exact signatures at once. |
+| **Default: start here** | `GET /skills/recommend?intent=...&includeSchema=true` | 4–14 KB | One intent; scored candidates + schemas. `topN` caps how many (default 10), `wire=v2` about halves it. |
+| directory + category | `GET /skills` then `GET /skills/schema?category=<Category>` | ~19 KB + 13–44 KB | Touches one or two areas. |
+| summary | `GET /skills?summary=1` | ~143 KB | Exploratory / cross-module, or cheaper layers left you unsure. |
+| full schema | `GET /skills/schema` | ~618 KB | Rare; many modules' signatures at once. |
 
-## dryRun gate and anti-hallucination rules
+Bare `GET /skills` is the **brief directory** — names by category only; the old full listing needs `?full=1`.
 
-Before executing any skill whose exact parameters you don't already hold, dryRun it: `POST /skill/<name>?mode=dryRun`. Iterate until `valid: true`, then execute without `?mode=dryRun`.
+Module docs and the scoped schema are complements: schema has exact signatures; the module doc has guardrails, return shapes and traps schema omits. On an unfamiliar module read both.
+
+## Wire format v2 (`?wire=v2`)
+
+`?wire=v2` slims per-skill entries on `?full=1`, `/skills/schema` (full or scoped), a filtered `/skills`, and recommend — never bare `GET /skills` (always the brief directory). v1 is default:
+
+- A **`flags`** array replaces v1's six booleans and adds v2-only `longRunning`: `readOnly`, `tracksWorkflow`, `mutatesScene`, `mutatesAssets`, `mayTriggerReload`, `mayEnterPlayMode`, `longRunning`. An absent flag is false.
+- **Omitted means default**: `riskLevel` appears only when not `"low"`, `supportsDryRun` only when `false`, null members are dropped — an absent key never reads as null.
+- Every v2 response carries a **`defaults`** block — take the rule from the payload, don't memorize it.
+
+## Execute: batch, dryRun gate, anti-hallucination rules
+
+**`POST /skills/batch`** — up to 50 steps per call (`{"steps":[{"skill","args"}],"continueOnError":false}`; `?mode=dryRun` validates every step): the largest round-trip saving available → [batch](skills/batch/SKILL.md).
+
+Before executing any skill whose exact parameters you don't already hold, dryRun it: `POST /skill/<name>?mode=dryRun`. Iterate until `valid: true`, then execute without `?mode=dryRun`. `valid: true` means the four `validation` error buckets are empty — `warnings` never block, and target existence is never checked. The top-level `authorization` (`{allowed, blockedBy, currentMode, allowlisted, hint}`, plus `surfaceProfile` on a `SURFACE_EXCLUDED` block) previews interception: `blockedBy` is `MODE_RESTRICTED`, `MODE_FORBIDDEN`, `SURFACE_EXCLUDED`, or null when the call would run — settle grants and exclusions there, not on the real call.
+
+After a write, verify in the Editor, not from the echo: `*_get_info` / `*_get_properties`, or `find_objects_by_name`.
 
 | Rule | Requirement |
 |---|---|
@@ -38,51 +58,35 @@ Before executing any skill whose exact parameters you don't already hold, dryRun
 | Skill name mismatch | If the name does not appear in schema/recommend results, do not invent it. |
 | Call failure | Read `suggestedFixes`; when pointed to a module doc, actually read it. |
 
-## Operating Mode
+## Surface profile
 
-Three server-side permission gates: **Approval** (first FullAuto call needs a grant), **Auto** (executes directly, self-assess risky batches), **Bypass** (executes directly). Grants are single-shot per call; permanent bypass is the user-managed Allowlist. Details → [operating mode](references/protocol-operating-mode.md).
+`surfaceProfile` says which slice of the skill surface the user exposed. You cannot change it — the user switches it in the UnitySkills panel. (`guideMode` is legacy; `surfaceProfile` is authoritative.)
 
-## Module routing by category
+| Profile | Hidden | What to do |
+|---|---|---|
+| `full` | nothing | Normal automation. |
+| `guide` | write skills in GameObject, Component, Material, Scene and Sample | Give manual steps via [SKILL_GUIDE.md](SKILL_GUIDE.md) and the `manual-*` docs. Read-only skills there still work, as does every other module. |
+| `noSceneAuthoring` | every scene-authoring write, incl. any `mutatesScene` skill | Do the rest of the task normally; if it genuinely needs scene authoring, say so and let the user switch back to `full`. |
 
-Load the matching module `SKILL.md` for guardrails and minimal examples; use schema/recommend for exact signatures, not module docs.
+Calling a hidden skill returns **`SURFACE_EXCLUDED`**, and the response names the document to read (or the profile to leave). It is a configuration boundary, not a failure: never retry it, never route around it through another module.
 
-| Category | Modules |
-|---|---|
-| GameObject & Scene | `gameobject`, `scene`, `prefab`, `component`, `terrain`, `navmesh` |
-| UI | `ui`, `uitoolkit` |
-| Rendering & URP | `material`, `shader`, `shadergraph`, `light`, `graphics`, `urp`, `volume`, `decal`, `postprocess` |
-| Animation & Camera | `animator`, `timeline`, `cinemachine`, `camera` |
-| Physics & Behavior | `physics`, `behavior` |
-| Scripting & Testing | `script`, `test`, `debug`, `console`, `validation`, `smart` |
-| Assets & Packages | `asset`, `importer`, `package`, `scriptableobject` |
-| Tween & Modeling | `dotween`, `primetween`, `probuilder` |
-| Networking | `netcode` |
-| Hot-update & Bundles | `hybridclr`, `yooasset` |
-| Editor & Workflow | `editor`, `project`, `profiler`, `workflow`, `batch`, `cleaner`, `event`, `optimization`, `perception`, `sample` |
-| XR | `xr` |
-| Advisory & design docs | `architecture`, `patterns`, `performance`, `*-design` (8), and more → see index |
-| Manual tasks (docs-only) | `manual-gameobject`, `manual-component`, `manual-material`, `manual-scene` |
-| Full index (all 79 modules) | → [module index](skills/SKILL.md) |
+## Module routing
 
-## guideMode
-
-If `/health` returns `guideMode: true`, read [SKILL_GUIDE.md](SKILL_GUIDE.md) and give manual steps for simple tasks instead of calling REST.
+Every skill is named `module_verb`, so the prefix is the routing key. `GET /skills/recommend?intent=...` ranks candidates, or read the index — all 80 modules with mode labels, incl. docs-only ones (`manual-*`, `*-design`, `unity-cli`) that define no REST skills → [module index](skills/SKILL.md).
 
 ## Error codes quick reference
 
 | Code | Meaning | Pointer |
 |---|---|---|
-| `MODE_RESTRICTED` | Approval mode: FullAuto skill needs a user grant. | Grant protocol → [operating mode](references/protocol-operating-mode.md) |
-| `MODE_FORBIDDEN` | Skill is `NeverInSemi`; needs Bypass or Allowlist. | Details → [operating mode](references/protocol-operating-mode.md) |
-| `MISSING_PARAM` | Required parameter omitted. | Get schema via dryRun; full list → [error codes](references/protocol-error-codes.md) |
-| `TARGET_NOT_FOUND` | GameObject / asset / component not found. | Locate first; full list → [error codes](references/protocol-error-codes.md) |
-| `COMPILING` / `RATE_LIMIT` / `QUEUE_FULL` / `SERVER_STOPPED` | Transient; Python client auto-retries. | Full list → [error codes](references/protocol-error-codes.md) |
+| `MODE_RESTRICTED` / `MODE_FORBIDDEN` | Needs a user grant / needs Bypass or Allowlist. | [operating mode](references/protocol-operating-mode.md) |
+| `SURFACE_EXCLUDED` | Hidden by the current `surfaceProfile`. | "Surface profile" above; read the doc named in the response. |
+| `MISSING_PARAM` / `TARGET_NOT_FOUND` | Bad or unresolvable arguments. | dryRun for the schema; locate the target first. |
+| any other code | — | [error codes](references/protocol-error-codes.md) — transient ones (`COMPILING`/`RATE_LIMIT`/`QUEUE_FULL`/`SERVER_STOPPED`) are auto-retried by the Python client. |
 
 ## Observability and Unity CLI pointers
 
-- Compilation status, events, analytics → [observability](references/protocol-observability.md)
-- Unity CLI cold start (opt-in, v2.3+) → [unity-cli](references/protocol-unity-cli.md)
+Compilation status, events, analytics → [observability](references/protocol-observability.md). Unity CLI cold start (opt-in, v2.3+) → [unity-cli](references/protocol-unity-cli.md).
 
-Current snapshot: `784` REST skills, `54` functional source modules, `79` module documentation directories (`50` REST/module docs + `29` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `785` REST skills, `55` source files, `53` categories, `80` module documentation directories (`53` REST/module docs + `27` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`

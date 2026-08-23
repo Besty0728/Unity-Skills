@@ -18,9 +18,9 @@ description: Manage Unity AssetDatabase operations
 
 ## Operating Mode
 
-- **Approval**：本模块 Mixed —— `asset_find` / `asset_get_info` / `asset_get_labels` 标 `SkillMode.SemiAuto`，可直接执行；写类 skill (`asset_move` / `asset_move_batch` / `asset_duplicate` / `asset_create_folder` / `asset_refresh` / `asset_reimport*` / `asset_set_labels`) 走默认 `SkillMode.FullAuto`，需 grant。
+- **Approval**：本模块 Mixed —— `asset_find` / `asset_get_info` / `asset_get_labels` 标 `SkillMode.SemiAuto`，可直接执行；写类 skill (`asset_move` / `asset_move_batch` / `asset_duplicate` / `asset_create_folder` / `asset_create_folder_batch` / `asset_refresh` / `asset_reimport*` / `asset_set_labels`) 走默认 `SkillMode.FullAuto`，需 grant。
 - **Auto / Bypass**：FullAuto 直接执行。
-- **含 NeverInSemi 高危 skill**：`asset_import` (标 `RiskLevel = "high"` —— 写入项目)；`asset_delete` / `asset_delete_batch` (Operation.Delete)。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
+- **含 NeverInSemi 高危 skill**：`asset_import` / `asset_import_batch` (标 `RiskLevel = "high"` —— 写入项目)；`asset_delete` / `asset_delete_batch` (Operation.Delete)。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
 
 **DO NOT** (common hallucinations):
 - `asset_create` does not exist → use `asset_create_folder` (folders), `material_create` (materials), `script_create` (scripts)
@@ -40,11 +40,11 @@ description: Manage Unity AssetDatabase operations
 | `asset_import` | `asset_import_batch` | Importing 2+ files |
 | `asset_delete` | `asset_delete_batch` | Deleting 2+ assets |
 | `asset_move` | `asset_move_batch` | Moving 2+ assets |
+| `asset_create_folder` | `asset_create_folder_batch` | Creating 2+ folders |
 
 **No batch needed**:
 - `asset_duplicate` - Duplicate single asset
 - `asset_find` - Search assets (returns list)
-- `asset_create_folder` - Create folder
 - `asset_refresh` - Refresh AssetDatabase
 - `asset_get_info` - Get asset information
 - `asset_reimport` - Force reimport asset
@@ -168,6 +168,26 @@ Create a folder in the project.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `folderPath` | string | Yes | Full folder path |
+
+### asset_create_folder_batch
+Create multiple folders.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
+
+
+`items` currently expects a JSON string, not a native array. The parent folder of each entry must already exist, so order nested folders outermost-first within one call.
+
+**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, path, guid}]}`
+
+```python
+import json
+
+unity_skills.call_skill("asset_create_folder_batch", items=json.dumps([
+    {"folderPath": "Assets/Art"},
+    {"folderPath": "Assets/Art/Textures"}
+]))
+```
 
 ### asset_refresh
 Refresh the AssetDatabase after external changes.

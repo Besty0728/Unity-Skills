@@ -100,30 +100,39 @@ Set a component property value.
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
 | `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
 | `componentType` | string | Yes | Component type |
-| `propertyName` | string | Yes | Property to set |
-| `value` | any | Cond. | New value (for basic types, vectors, colors) |
+| `propertyName` | string | Yes | C# property/field name — see the serialized-name note below |
+| `value` | string | Cond. | New value (basic types, vectors, colors, enums) — wire format below |
 | `referencePath` | string | No | Scene object hierarchy path (for scene references) |
 | `referenceName` | string | No | Scene object name (for scene references) |
 | `assetPath` | string | No | Project asset path (for asset references: Material, Texture, AudioClip, ScriptableObject, Prefab, etc.) |
 
-> Provide one of: `value` (basic types), `referencePath`/`referenceName` (scene objects), or `assetPath` (project assets).
+**Which of the four value parameters to use** — exactly one carries the payload, and they are checked in this order: `assetPath` first, then `referencePath` / `referenceName`, and `value` only if neither reference form was supplied. So a `value` sent alongside an `assetPath` is silently ignored; never send two.
 
-**`value` type examples**:
+| Use | When the target field is | Example |
+|---|---|---|
+| `value` | a primitive, vector, colour, enum, `LayerMask`, `Rect`, `Bounds`, `Quaternion` | `value="2.5"`, `value="Interpolate"` |
+| `referencePath` | a scene object, addressed by hierarchy path (unambiguous) | `referencePath="Root/Player/Hand"` |
+| `referenceName` | a scene object, addressed by name (first match wins) | `referenceName="Player"` |
+| `assetPath` | a project asset — Material, Texture, AudioClip, ScriptableObject, Prefab | `assetPath="Assets/Materials/Red.mat"` |
+
+**Wire format of `value`** — multi-component values travel as a **comma-separated string**: `"1,2,3"` for a Vector3, `"1,0.5,0,1"` for an RGBA colour, `"0,90,0"` for a Quaternion (3 values = Euler, 4 = xyzw). The JSON object form (`{"x":1,"y":2,"z":3}` / `{"r":1,"g":0,"b":0,"a":1}`) is accepted **only** for `Vector2`/`Vector3`/`Vector4` and `Color`/`Color32`, and every component is **required**: `{"y":2}` for a Vector3 is rejected naming the missing `x, z` rather than silently zeroing them. The one optional key is a colour's `a`, which defaults to `1` — `r`, `g`, `b` are required. An explicit `null` counts as not supplied, so it fails the same way for a required key. An unrecognised key is rejected with the list of keys that were expected, and a non-numeric value is rejected naming the offending key. `Vector2Int`/`Vector3Int`, `Quaternion`, `Rect` and `Bounds` take the comma-separated string only — a JSON object for those fails. Colours additionally accept `#RRGGBB` / `#RRGGBBAA` hex and ten names: `red`, `green`, `blue`, `white`, `black`, `yellow`, `cyan`, `magenta`, `gray`/`grey`, `clear`. Enums take the member name, case-insensitively. Bools accept `true`/`1`/`yes`/`on`.
+
 ```python
 # float / int / bool / string
 call_skill("component_set_property", name="Obj", componentType="Rigidbody", propertyName="mass", value=2.5)
 call_skill("component_set_property", name="Obj", componentType="Rigidbody", propertyName="useGravity", value=False)
 
-# Vector3 (JSON object with x, y, z)
+# Vector3
 call_skill("component_set_property", name="Obj", componentType="Transform", propertyName="localPosition",
-           value={"x": 1, "y": 2, "z": 3})
+           value="1,2,3")
 
-# Color (JSON object with r, g, b, a — values 0-1)
-call_skill("component_set_property", name="Obj", componentType="Light", propertyName="color",
-           value={"r": 1, "g": 0.5, "b": 0, "a": 1})
+# Color — comma string, hex, or a name
+call_skill("component_set_property", name="Obj", componentType="Light", propertyName="color", value="1,0.5,0,1")
+call_skill("component_set_property", name="Obj", componentType="Light", propertyName="color", value="#FF8000")
 
-# Enum (use string name)
+# Enum (member name)
 call_skill("component_set_property", name="Obj", componentType="Rigidbody", propertyName="interpolation",
            value="Interpolate")
 ```
@@ -154,6 +163,8 @@ List Inspector serialized properties on a component via `SerializedObject`.
 | `limit` | int | No | Max properties returned |
 
 **Returns**: `{success, gameObject, component, fullTypeName, properties}`
+
+> **The names here are not the names you write with.** This skill reads Unity's serialized backing fields, so a Rigidbody's kinematic flag comes back as `m_IsKinematic`, its mass as `m_Mass`. `component_set_property` / `component_get_properties` work on the **C# API names** instead — `isKinematic`, `mass`. To convert: drop the `m_` prefix and lowercase the first letter. Feed the `m_`-prefixed path back only to `component_set_serialized_property`, which expects a `propertyPath` verbatim. Writing `m_IsKinematic` through `component_set_property` fails with "Property/field not found" (and the error lists the available properties).
 
 ### component_set_serialized_property
 Set an Inspector serialized property by `propertyPath`.

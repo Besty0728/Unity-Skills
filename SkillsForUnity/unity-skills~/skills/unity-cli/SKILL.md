@@ -81,7 +81,7 @@ If the PID, the CLI process list, or the lockfile indicates an Editor is already
 <cliPath> open "<projectPath>" --args -openscene "Assets/Scenes/Main.unity"
 ```
 
-Anything after `--args` is passed to the Unity Editor as standard command-line arguments. Useful to land in a known state (specific scene, custom `-executeMethod`). Only at launch time — for an already-running editor use REST `scene_open` instead.
+Anything after `--args` is passed to the Unity Editor as standard command-line arguments. Useful to land in a known state (specific scene, custom `-executeMethod`). Only at launch time — for an already-running editor use REST `scene_load` instead.
 
 ## 3. Headless tests (`features.cliTest`)
 

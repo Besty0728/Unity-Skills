@@ -18,7 +18,8 @@ PrimeTween Free support is intentionally tailored to its API rather than mirrori
 ## Guardrails
 
 - PrimeTween must be installed as `com.kyrylokuzyk.primetween`.
-- Query skills run directly in all operating modes. Script generators create a C# asset and can trigger compilation, so they are high-risk and require Bypass or an Allowlist entry in Auto/Approval modes.
+- Query skills (`primetween_get_status`, `primetween_get_config`, `primetween_list_factories`) run directly in all operating modes.
+- Auto-forbidden in this module: the two script generators `primetween_generate_tween_script` and `primetween_generate_sequence_script` (both `MayTriggerReload = true`, `RiskLevel = "high"` — writing a new `.cs` triggers compilation + Domain Reload). They return `MODE_FORBIDDEN` under Approval **and** Auto, and are reachable only under Bypass mode or via a user-managed Allowlist entry; the grant flow returns `MODE_FORBIDDEN` too, so do not attempt it.
 - `primetween_get_config` is read-only. `PrimeTweenConfig` is runtime state, not a serialized project configuration asset.
 - Generated scripts support Transform `Position`, `LocalPosition`, `EulerAngles`, `LocalEulerAngles`, and `Scale`. Use `primetween_list_factories` before requesting an API outside that supported generator set.
 - PrimeTween handles are non-reusable. Generated scripts stop their owned live handle on disable instead of using a DOTween `SetLink` equivalent.

@@ -19,9 +19,9 @@ Manage installed Unity packages and package-related helper flows such as Cinemac
 ## Guardrails
 
 **Operating Mode** (v1.9 three-tier):
-- **Approval** (default): query skills (`package_list`, `package_check`, `package_search`, `package_get_dependencies`, `package_get_versions`, `package_get_cinemachine_status`) run directly. Mutators (`package_install`, `package_remove`, `package_install_cinemachine`, `package_install_splines`, `package_refresh`) are FullAuto — on `MODE_RESTRICTED`, run the grant protocol.
+- **Approval** (default): query skills (`package_list`, `package_check`, `package_search`, `package_get_dependencies`, `package_get_versions`, `package_get_cinemachine_status`) run directly. `package_refresh` is the only FullAuto mutator — on `MODE_RESTRICTED`, run the grant protocol for it. Every other mutator is auto-forbidden (next bullet) and grant does **not** unlock it.
 - **Auto** / **Bypass**: SemiAuto and FullAuto run directly.
-- Auto-forbidden in this module: `package_install` and `package_remove` (`MayTriggerReload = true`, `RiskLevel = "high"`; `package_remove` also carries `SkillOperation.Delete`). They are reachable only under Bypass mode or via a user-managed Allowlist entry; the grant flow returns `MODE_FORBIDDEN`.
+- Auto-forbidden in this module: `package_install`, `package_remove`, `package_install_cinemachine`, `package_install_splines` (all `MayTriggerReload = true`, `RiskLevel = "high"`; `package_remove` also carries `SkillOperation.Delete`). They return `MODE_FORBIDDEN` under **both** Approval and Auto, and are reachable only under Bypass mode or via a user-managed Allowlist entry; the grant flow returns `MODE_FORBIDDEN` too, so do not attempt it.
 - Install/remove/refresh jobs return immediately with a `jobId`; the actual package import + Domain Reload happens asynchronously and may make the REST server transiently unavailable. Poll with `job_status` / `job_wait`.
 
 **DO NOT** (common hallucinations):

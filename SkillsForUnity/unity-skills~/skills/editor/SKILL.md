@@ -18,9 +18,9 @@ Observe and control the Unity Editor without parsing scene YAML.
 
 ## Operating Mode
 
-- **Approval**：本模块 Mixed —— `editor_get_changes` / `editor_get_selection` / `editor_get_context` / `editor_get_state` / `editor_get_tags` / `editor_get_layers` / `editor_playmode_inspect` 标 `SkillMode.SemiAuto`，可直接执行；其余 `editor_select` / `editor_undo` / `editor_redo` / `editor_execute_menu` / `editor_playmode_step` 默认 FullAuto，Approval 模式下需 grant。
+- **Approval**：本模块 Mixed —— `editor_get_changes` / `editor_get_selection` / `editor_get_context` / `editor_get_state` / `editor_get_tags` / `editor_get_layers` / `editor_playmode_inspect` 标 `SkillMode.SemiAuto`，可直接执行；其余 `editor_select` / `editor_undo` / `editor_redo` / `editor_playmode_step` 默认 FullAuto，Approval 模式下需 grant。
 - **Auto / Bypass**：FullAuto 直接执行。
-- **含 NeverInSemi 高危 skill**：`editor_play` / `editor_play_capture` / `editor_stop` / `editor_pause`（标 `MayEnterPlayMode = true`）。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
+- **含 NeverInSemi 高危 skill**：`editor_play` / `editor_play_capture` / `editor_stop` / `editor_pause`（标 `MayEnterPlayMode = true`）；`editor_execute_menu`（标 `MayTriggerReload = true` —— `Assets/Refresh`、`Assets/Reimport All` 之类的菜单项会触发域重载）。这些在 Approval **和** Auto 下都返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调；**grant 流程对它们不适用**，不要尝试。
 
 **DO NOT** (common hallucinations):
 - `editor_run` does not exist → use `editor_play` to enter play mode

@@ -36,30 +36,67 @@ Inspect and modify persistent listeners on UnityEvents (e.g. `Button.onClick`, `
 
 ### `event_get_listeners`
 Get persistent listeners of a UnityEvent.
-**Parameters:**
-- `name` / `instanceId` / `path`: Target GameObject locator.
-- `componentName` (string): Component name.
-- `eventName` (string): Event field name (e.g. "onClick").
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | GameObject name |
+| instanceId | int | No | 0 | GameObject instance ID |
+| path | string | No | null | GameObject hierarchy path |
+| componentName | string | Yes | - | Component name |
+| eventName | string | Yes | - | Event field name (e.g. "onClick") |
+
+**Returns:** `{ success, gameObject, component, eventName, listenerCount, listeners }`
 
 ### `event_add_listener`
 Add a persistent listener to a UnityEvent (Editor time).
-**Parameters:**
-- `name` / `instanceId` / `path`, `componentName`, `eventName`: Target event.
-- `targetObjectName`, `targetComponentName`, `methodName`: Method to call.
-- `mode` (string, optional): "RuntimeOnly", "EditorAndRuntime", "Off".
-- `argType` (string, optional): "void", "int", "float", "string", "bool".
-- `floatArg`, `intArg`, `stringArg`, `boolArg`: Argument value if needed.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | GameObject name |
+| instanceId | int | No | 0 | GameObject instance ID |
+| path | string | No | null | GameObject hierarchy path |
+| componentName | string | Yes | - | Component owning the event |
+| eventName | string | Yes | - | Event field name (e.g. "onClick") |
+| targetObjectName | string | Yes | - | GameObject holding the method to call |
+| targetComponentName | string | No | null | Component on the target, or `GameObject` to call the object itself |
+| methodName | string | Yes | - | Public method or `set_PropertyName` |
+| mode | string | No | RuntimeOnly | Off, RuntimeOnly, or EditorAndRuntime |
+| argType | string | No | void | void, int, float, string, or bool |
+| floatArg | float | No | 0 | Static float argument |
+| intArg | int | No | 0 | Static int argument |
+| stringArg | string | No | null | Static string argument |
+| boolArg | bool | No | false | Static bool argument |
+
+**Returns:** `{ success, message, index, mode }`
+
+Unlike `event_set_listener`, this skill has no `object` `argType` — it only reaches the standard `UnityEvent` overloads.
 
 ### `event_remove_listener`
 Remove a persistent listener by index.
-**Parameters:**
-- `name` / `instanceId` / `path`, `componentName`, `eventName`: Target event.
-- `index` (int): Listener index.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | GameObject name |
+| instanceId | int | No | 0 | GameObject instance ID |
+| path | string | No | null | GameObject hierarchy path |
+| componentName | string | Yes | - | Component name |
+| eventName | string | Yes | - | Event field name |
+| index | int | No | 0 | Listener index |
+
+**Returns:** `{ success, remainingCount }`
 
 ### `event_invoke`
 Invoke a UnityEvent explicitly (Runtime only).
-**Parameters:**
-- `name` / `instanceId` / `path`, `componentName`, `eventName`: Target event.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| name | string | No | null | GameObject name |
+| instanceId | int | No | 0 | GameObject instance ID |
+| path | string | No | null | GameObject hierarchy path |
+| componentName | string | Yes | - | Component name |
+| eventName | string | Yes | - | Event field name |
+
+**Returns:** `{ success, message }`
 
 ### `event_clear_listeners`
 Remove all persistent listeners from a UnityEvent.
@@ -69,8 +106,8 @@ Remove all persistent listeners from a UnityEvent.
 | name | string | No | null | GameObject name |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
-| componentName | string | No | null | Component name |
-| eventName | string | No | null | Event field name (e.g. "onClick") |
+| componentName | string | Yes | - | Component name |
+| eventName | string | Yes | - | Event field name (e.g. "onClick") |
 
 **Returns:** `{ success, removed }`
 
@@ -82,8 +119,8 @@ Set a listener's call state (Off, RuntimeOnly, EditorAndRuntime).
 | name | string | No | null | GameObject name |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
-| componentName | string | No | null | Component name |
-| eventName | string | No | null | Event field name |
+| componentName | string | Yes | - | Component name |
+| eventName | string | Yes | - | Event field name |
 | index | int | No | 0 | Listener index |
 | state | string | No | null | Call state: "Off", "RuntimeOnly", or "EditorAndRuntime" |
 
@@ -97,14 +134,14 @@ Replace a persistent listener at a specific index.
 | name | string | No | null | GameObject name |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
-| componentName | string | No | null | Source component name |
-| eventName | string | No | null | Event field name |
+| componentName | string | Yes | - | Source component name |
+| eventName | string | Yes | - | Event field name |
 | index | int | No | 0 | Listener index to replace |
-| targetName | string | No | null | Target GameObject name |
+| targetName | string | Yes | - | Target GameObject name |
 | targetInstanceId | int | No | 0 | Target GameObject instance ID |
 | targetPath | string | No | null | Target hierarchy path |
 | targetComponentName | string | No | null | Target component name, or `GameObject` |
-| methodName | string | No | null | Public method or `set_PropertyName` |
+| methodName | string | Yes | - | Public method or `set_PropertyName` |
 | mode | string | No | RuntimeOnly | Off, RuntimeOnly, or EditorAndRuntime |
 | argType | string | No | void | void, int, float, string, bool, object |
 | floatArg | float | No | 0 | Static float argument |
@@ -127,7 +164,7 @@ List all UnityEvent fields on a component.
 | name | string | No | null | GameObject name |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
-| componentName | string | No | null | Component name |
+| componentName | string | Yes | - | Component name |
 
 **Returns:** `{ success, component, count, events }`
 
@@ -139,9 +176,9 @@ Add multiple listeners at once. items: JSON array of {targetObjectName, targetCo
 | name | string | No | null | GameObject name |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
-| componentName | string | No | null | Component name |
-| eventName | string | No | null | Event field name |
-| items | string | No | null | JSON array of {targetObjectName, targetComponentName, methodName} |
+| componentName | string | Yes | - | Component name |
+| eventName | string | Yes | - | Event field name |
+| items | string | Yes | - | JSON array of {targetObjectName, targetComponentName, methodName} |
 
 **Returns:** `{ success, added, total }`
 
@@ -167,8 +204,8 @@ Get the number of persistent listeners on a UnityEvent.
 | name | string | No | null | GameObject name |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
-| componentName | string | No | null | Component name |
-| eventName | string | No | null | Event field name |
+| componentName | string | Yes | - | Component name |
+| eventName | string | Yes | - | Event field name |
 
 **Returns:** `{ success, count }`
 

@@ -53,6 +53,8 @@ Import settings:
 | `texture_get_import_settings` | Read minimal importer settings (type/maxSize/compression/filter/srgb/readable/mipmap) | `assetPath` |
 | `texture_set_import_settings` | Alternative texture import bridge | similar texture fields |
 
+> **`compression` vocabulary.** Pass the CLR member names of `TextureImporterCompression` — `Uncompressed`, `Compressed`, `CompressedHQ`, `CompressedLQ` — which are also what the getters echo back. The Inspector's wording is accepted as aliases: `None` → `Uncompressed`, `Normal` and `NormalQuality` → `Compressed`, `LowQuality` → `CompressedLQ`, `HighQuality` → `CompressedHQ`; spaces are stripped first, so `"Low Quality"` and `"High Quality"` also work. `texture_set_settings` and `texture_set_import_settings` share this one vocabulary — they used to disagree, so a value that works on one now works on the other. Per-platform `compressionQuality` is a separate `0-100` integer, not this enum. Full field list → [IMPORT_REFERENCE.md](IMPORT_REFERENCE.md).
+
 Query and runtime info:
 
 | Skill | Use | Key parameters |
@@ -65,11 +67,13 @@ Typed / platform overrides:
 
 | Skill | Use | Key parameters |
 |-------|-----|----------------|
-| `texture_set_type` | Switch texture type | `assetPath`, `textureType` (`Default`/`NormalMap`/`Sprite`/`EditorGUI`/`Cursor`/`Cookie`/`Lightmap`/`SingleChannel`) |
-| `texture_set_platform_settings` | Override per-platform settings | `assetPath`, `platform` (`Standalone`/`iPhone`/`Android`/`WebGL`), `maxSize?`, `format?`, `compressionQuality?`, `overridden?` |
+| `texture_set_type` | Switch texture type | `assetPath`, `textureType` (`Default`/`NormalMap`/`GUI`/`Sprite`/`Cursor`/`Cookie`/`Lightmap`/`SingleChannel`/`Shadowmask`/`DirectionalLightmap`; `EditorGUI` aliases `GUI`, and Inspector labels like `"Normal Map"` work as-is) |
+| `texture_set_platform_settings` | Override per-platform settings | `assetPath`, `platform` (`Standalone`/`iPhone`/`Android`/`WebGL`), `maxSize?`, `format?` (accepted set is editor-version dependent — take it from `validValues` on a rejection), `compressionQuality?`, `overridden?` |
 | `texture_get_platform_settings` | Read per-platform override | `assetPath`, `platform` |
-| `texture_set_sprite_settings` | Sprite-specific knobs (PPU, mode) | `assetPath`, `pixelsPerUnit?`, `spriteMode?` (`Single`/`Multiple`/`Polygon`) |
-| `sprite_set_import_settings` | Sprite importer bridge (PPU, packingTag, pivot) | `assetPath`, `spriteMode?`, `pixelsPerUnit?`, `packingTag?`, `pivotX?`, `pivotY?` |
+| `texture_set_sprite_settings` | Sprite-specific knobs (PPU, mode) | `assetPath`, `pixelsPerUnit?`, `spriteMode?` (`None`/`Single`/`Multiple`/`Polygon`) |
+| `sprite_set_import_settings` | Sprite importer bridge (PPU, packingTag, pivot) | `assetPath`, `spriteMode?` (same four values), `pixelsPerUnit?`, `packingTag?`, `pivotX?`, `pivotY?` |
+
+> **`spriteMode` is the plain `SpriteImportMode` vocabulary — all four members, `None` included.** The two skills differ in what they do around it: `sprite_set_import_settings` forces `textureType` to `Sprite` for `Single`/`Multiple`/`Polygon` and deliberately leaves the texture type alone for `None` (a Sprite-typed texture with no sprite is unusable), and it echoes the resulting `textureType` back. `texture_set_sprite_settings` only writes the mode and pixels-per-unit.
 
 Common texture decisions:
 - UI sprites -> `textureType="Sprite"`, usually `mipmapEnabled=false`
@@ -139,10 +143,12 @@ Animation and rig:
 | Skill | Use | Key parameters |
 |-------|-----|----------------|
 | `model_set_animation_clips` | Configure animation clip splits | `assetPath`, `clips` (JSON array of `{name, firstFrame, lastFrame, loop}`) |
-| `model_set_rig` | Switch rig/skeleton mode | `assetPath`, `animationType` (`None`/`Legacy`/`Generic`/`Humanoid`), `avatarSetup?` |
+| `model_set_rig` | Switch rig/skeleton mode | `assetPath`, `animationType` (`None`/`Legacy`/`Generic`/`Human`), `avatarSetup?` |
+
+> `animationType` rig mode: the CLR enum member is `Human` — `Humanoid` is the Inspector's label for it and is accepted as an alias, so either spelling works. `model_get_rig_info` echoes the CLR name (`Human`) and also returns `isHuman`.
 
 Common model decisions:
-- Characters -> `animationType="Humanoid"` when retargeting is required
+- Characters -> `animationType="Human"` (or the `Humanoid` alias) when retargeting is required
 - Static props -> disable cameras/lights/animation imports when unused
 - Baked-lighting meshes -> enable secondary UVs when appropriate
 - After `model_set_rig` or `model_set_animation_clips` -> call `asset_reimport` to refresh clips and avatar

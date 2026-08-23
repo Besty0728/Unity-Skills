@@ -17,7 +17,7 @@ Create and manage ScriptableObject assets.
 
 ## Operating Mode
 
-- **Approval**：本模块 Mixed —— `scriptableobject_get` / `scriptableobject_get_serialized_properties` / `scriptableobject_list_types` / `scriptableobject_find` / `scriptableobject_export_json` 标 `SkillMode.SemiAuto`，可直接执行；写类 skill (`scriptableobject_create` / `scriptableobject_set` / `scriptableobject_set_batch` / `scriptableobject_set_serialized_property` / `scriptableobject_set_serialized_property_batch` / `scriptableobject_duplicate` / `scriptableobject_import_json`) 标 `SkillMode.FullAuto`，需 grant 单次执行返结果。
+- **Approval**：本模块 Mixed —— `scriptableobject_get` / `scriptableobject_get_serialized_properties` / `scriptableobject_list_types` / `scriptableobject_find` / `scriptableobject_export_json` 标 `SkillMode.SemiAuto`，可直接执行（注意 `scriptableobject_export_json` 传 `savePath` 会落盘，因此标 `MutatesAssets = true` 而非 `ReadOnly`）；写类 skill (`scriptableobject_create` / `scriptableobject_set` / `scriptableobject_set_batch` / `scriptableobject_set_serialized_property` / `scriptableobject_set_serialized_property_batch` / `scriptableobject_duplicate` / `scriptableobject_import_json`) 标 `SkillMode.FullAuto`，需 grant 单次执行返结果。
 - **Auto / Bypass**：FullAuto 直接执行。
 - **含 NeverInSemi 高危 skill**：`scriptableobject_delete`（Operation.Delete）。该 skill 在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
 
@@ -147,9 +147,11 @@ Export a ScriptableObject to JSON.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | assetPath | string | Yes | - | Asset path of the ScriptableObject to export |
-| savePath | string | No | `null` | File path to save the JSON output; if omitted, JSON is returned inline |
+| savePath | string | No | `null` | File path to write the JSON to; **omit it** to get the JSON inline instead |
 
-**Returns:** `{ success, path }` or `{ success, json }`
+**Returns:** `{ success, path }` when `savePath` was given (the JSON is *not* echoed), `{ success, json }` otherwise.
+
+> **`savePath` makes this a write.** With it the skill does a `File.WriteAllText`, so it is flagged `MutatesAssets = true` and not `ReadOnly`, even though it stays `SkillMode.SemiAuto` (no grant needed in any mode). Reading a ScriptableObject's values costs nothing on disk as long as you leave `savePath` out — and note the two return shapes are mutually exclusive, so passing `savePath` when you wanted to *read* the data means a second call.
 
 ### `scriptableobject_import_json`
 Import JSON data into a ScriptableObject. Two accepted formats:

@@ -47,6 +47,7 @@ description: Create and manipulate GameObjects
 | `gameobject_set_parent` | `gameobject_set_parent_batch` | Parenting 2+ objects |
 | - | `gameobject_set_layer_batch` | Setting layer on 2+ objects |
 | - | `gameobject_set_tag_batch` | Setting tag on 2+ objects |
+| `gameobject_set_sibling_index` | - | No batch variant — reorder one object at a time |
 
 **Query Skills** (no batch needed):
 - `gameobject_find` - Find objects by name/tag/layer/component
@@ -103,6 +104,7 @@ Rename a GameObject.
 | `entityId` | string | No* | Entity ID (Unity 6000.4+, preferred) |
 | `name` | string | No* | Current object name |
 | `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Hierarchy path |
 | `newName` | string | Yes | New name |
 
 **Returns**: `{success, oldName, newName, entityId, instanceId}`

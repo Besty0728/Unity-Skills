@@ -47,6 +47,17 @@ Maintain project health - find problems, clean up, and validate your Unity proje
 | `validate_mesh_collider_convex` | Find non-convex MeshColliders |
 | `validate_shader_errors` | Find shaders with compilation errors |
 
+Six more skills carry `SkillCategory.Validation` but are implemented and documented in the **`batch`** module, so `GET /skills/recommend?category=validation` returns them alongside the ten above. Their parameters live in [../batch/SKILL.md](../batch/SKILL.md); each is a preview that you commit with `batch_execute(confirmToken)`, except `batch_validate_scene_objects`, which is a plain read-only report.
+
+| Skill | Description |
+|-------|-------------|
+| `batch_validate_scene_objects` | Analyze scene objects for missing scripts, missing references, duplicate names, and empty objects |
+| `batch_fix_missing_scripts` | Preview batch removal of missing scripts |
+| `batch_cleanup_temp_objects` | Preview deleting temporary helper objects by common temp-name patterns |
+| `batch_standardize_naming` | Preview standardizing names by trimming whitespace and normalizing separators |
+| `batch_set_render_layer` | Preview setting GameObject layers in batch |
+| `batch_replace_material` | Preview replacing materials in batch |
+
 ---
 
 ## Skills

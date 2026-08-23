@@ -48,7 +48,7 @@ List available tests via Unity Test Runner async discovery. **Returns `pendingDi
 - `testMode` (string, optional): EditMode or PlayMode. Default: EditMode.
 - `limit` (int, optional): Max tests to list. Default: 100.
 
-**Returns:** `{ success, testMode, count, tests, pendingDiscovery, discoveryJobId, discoveryStatus }`
+**Returns:** `{ success, testMode, count, total, truncated, tests, pendingDiscovery, discoveryJobId, discoveryStatus }` — here `count` is how many came back and `total` is how many were discovered, `truncated: true` means raise `limit`. (`test_discover_get_result` uses `count` for the total instead — see the warning there.)
 
 ### `test_run`
 Run Unity tests asynchronously. Returns a `jobId` immediately; poll with `test_get_result(jobId)`.
@@ -85,9 +85,13 @@ Get the result of an asynchronous Unity Test Runner discovery job.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | jobId | string | Yes | - | Discovery job ID |
-| limit | int | No | 100 | Max tests to return |
+| limit | int | No | 100 | Max tests in the response; **the default silently caps a larger suite** |
 
-**Returns:** `{ success, jobId, status, testMode, discoveryMode, count, tests, error }`
+**Returns:** `{ success, jobId, status, testMode, discoveryMode, count, returned, truncated, tests, error }`
+
+> **Here `count` is the total and `returned` is what you got.** `count` is how many tests the discovery found, `returned` is how many are in `tests` after `limit` was applied, `truncated: true` says the two differ — raise `limit` to see the rest. A project with 300 tests answers `count: 300, returned: 100, truncated: true` under the default. Never derive the suite size from `len(tests)`.
+>
+> ⚠️ **`count` means the opposite thing in `test_list`.** There `count` is the *returned* length and `total` is the discovered size; here `count` is the *discovered* size and `returned` is the returned length. The two skills were shipped that way and each one's `count` is frozen for wire compatibility, so do not assume symmetry — read `truncated` (present on both) to know whether you are looking at a partial list, and take the total from `total` in `test_list` but from `count` here.
 
 ### `test_run_by_name`
 Run specific tests by class or method name.

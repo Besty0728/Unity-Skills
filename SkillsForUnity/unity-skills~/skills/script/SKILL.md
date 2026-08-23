@@ -19,9 +19,9 @@ description: Create, read and analyze C# scripts
 
 ## Operating Mode
 
-- **Approval**: 只读类 skill（`script_read` / `script_list` / `script_find_in_file` / `script_get_info` / `script_get_compile_feedback`，标 `SkillMode.SemiAuto`）直接执行；写型 skill（`script_create` / `script_create_batch` / `script_replace` / `script_append` / `script_rename` / `script_move` / `script_delete`，默认 `SkillMode.FullAuto`）需用户 grant，grant 后服务端一步执行返结果。
-- **Auto / Bypass**: 直接执行。
-- **本模块含 Delete / Reload 类高危 skill**：`script_create` / `script_create_batch` / `script_replace` / `script_append` / `script_delete` 会触发 Domain Reload（且多标 `RiskLevel=high`），`script_delete` 同时是 Delete 操作 —— 这些 skill 在 Approval / Auto 下被 `IsForbiddenInSemi` 自动拦截，**仅 Bypass 或 Allowlist 命中可执行**。
+- **Approval**: 只读类 skill（`script_read` / `script_list` / `script_find_in_file` / `script_get_info` / `script_get_compile_feedback`，标 `SkillMode.SemiAuto`）直接执行；本模块**没有可 grant 的写型 skill** —— 每一个写型 skill 都命中下一条的自动拦截，grant 只会再返一次 `MODE_FORBIDDEN`。
+- **Auto / Bypass**: SemiAuto 与（Bypass 下的）写型 skill 直接执行。
+- **本模块全部 7 个写型 skill 都是 Delete / Reload 类高危**：`script_create` / `script_create_batch` / `script_replace` / `script_append` / `script_rename` / `script_move` / `script_delete` 均标 `MayTriggerReload = true` + `RiskLevel = "high"`（落盘 .cs 必然触发 Domain Reload），`script_delete` 另标 `SkillOperation.Delete` —— 这些 skill 被 `IsForbiddenInSemi` 静态拦截，在 Approval **和** Auto 下都返 `MODE_FORBIDDEN`，**仅 Bypass 或 Allowlist 命中可执行**，不要尝试 grant 流程。
 
 **DO NOT** (common hallucinations):
 - `script_edit` / `script_update` do not exist → use `script_replace` for find-and-replace
@@ -43,9 +43,14 @@ description: Create, read and analyze C# scripts
 
 **No batch needed**:
 - `script_read` - Read script content
+- `script_list` - List C# script files under a folder
+- `script_get_info` - Read class name, base class, public methods/fields
 - `script_delete` - Delete script
 - `script_find_in_file` - Search in scripts
 - `script_append` - Append content to script
+- `script_replace` - Find and replace inside one script (plain text or regex)
+- `script_rename` - Rename a script file in place
+- `script_move` - Move a script to another folder; a missing destination folder is created automatically
 - `script_get_compile_feedback` - Check compile errors for one script after Unity finishes compiling
 - `create_script()` in `scripts/unity_skills.py` now waits for Unity to come back once and refreshes compile feedback automatically after script creation.
 
@@ -248,7 +253,7 @@ Move a script to a new folder.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `scriptPath` | string | Yes | - | Script asset path |
-| `newFolder` | string | Yes | - | Destination folder. Must already exist. |
+| `newFolder` | string | Yes | - | Destination folder. Created (and registered in AssetDatabase) automatically if missing. |
 | `checkCompile` | bool | No | true | Check compilation after move |
 | `diagnosticLimit` | int | No | 20 | Max compile diagnostics |
 

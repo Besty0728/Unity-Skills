@@ -35,7 +35,7 @@ Bake / clear NavMesh data, calculate paths, sample positions, and configure NavM
 ## Skills
 
 ### `navmesh_bake`
-Bake the NavMesh (Synchronous). **Warning: Can be slow.**
+Bake the NavMesh (Synchronous). **Warning: blocks the Editor, can be slow on large scenes.**
 **Parameters:** None.
 
 ### `navmesh_clear`

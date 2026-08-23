@@ -27,6 +27,8 @@ Allows tagging tasks, snapshotting objects before modification, and undoing spec
 
 > 注意：`workflow_undo_task` / `workflow_session_undo` 不是 Delete operation（标的是 Modify/Execute），它们能在 Approval/Auto 直接撤销已记录任务。
 
+**Surface profile:** `workflow_undo_task` / `workflow_redo_task` / `workflow_revert_task` / `workflow_session_undo` inspect every snapshot the target task(s) would restore. If any snapshot would author a category the active profile withdraws — a scene GameObject, or a `.unity` / `.mat` asset — the whole call is refused with `SURFACE_EXCLUDED` (`surfaceProfile`/`category`/`operation`/`manualDoc`/`userControlled`/`hint` at the top level, not nested under `details`) rather than partially applied. Snapshots of scripts, prefabs, textures, ScriptableObjects, and Editor/project settings are unaffected — those stay undoable under every profile.
+
 **DO NOT** (common hallucinations):
 - `workflow_save` does not exist → use `workflow_task_end` to end and save a task
 - `workflow_rollback` does not exist → use `workflow_undo_task` (by taskId) or `workflow_session_undo` (by sessionId)

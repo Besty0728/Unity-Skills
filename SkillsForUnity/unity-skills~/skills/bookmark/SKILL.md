@@ -35,23 +35,39 @@ Save and recall Scene View camera positions.
 ## Skills
 
 ### `bookmark_set`
-Save current Scene View camera position as a bookmark.
-**Parameters:**
-- `bookmarkName` (string): Bookmark name.
+Save current selection and scene view position as a bookmark.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| bookmarkName | string | Yes | - | Bookmark name |
+| note | string | No | null | Optional note for the bookmark |
+
+**Returns:** `{ success, bookmark, selectedCount, hasSceneView, note }`
 
 ### `bookmark_goto`
-Move Scene View camera to a saved bookmark.
-**Parameters:**
-- `bookmarkName` (string): Bookmark name.
+Restore selection and scene view from a bookmark.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| bookmarkName | string | Yes | - | Bookmark name |
+
+**Returns:** `{ success, bookmark, restoredSelection, note }`
 
 ### `bookmark_list`
 List all saved bookmarks.
-**Parameters:** None.
+
+No parameters.
+
+**Returns:** `{ success, count, bookmarks: [{ name, selectedCount, hasSceneView, note, createdAt }] }`
 
 ### `bookmark_delete`
-Delete a saved bookmark.
-**Parameters:**
-- `bookmarkName` (string): Bookmark name.
+Delete a bookmark.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| bookmarkName | string | Yes | - | Bookmark name |
+
+**Returns:** `{ success, deleted }`
 
 ## Exact Signatures
 

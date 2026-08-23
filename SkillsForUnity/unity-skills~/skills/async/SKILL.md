@@ -12,6 +12,8 @@ description: Advise on Unity async and lifecycle strategy
 
 # Unity Async Strategy
 
+> **Scope**: this module is about **async code you write into the Unity runtime** — `Update`, coroutines, UniTask, cancellation and lifecycle ownership. It is not about the REST protocol's own async jobs. For `jobId` / polling / `job_status` / `GET /jobs/{id}`, see [batch](../batch/SKILL.md).
+
 Use this skill when the user is deciding how runtime work should be scheduled or cleaned up.
 
 ## Guardrails
