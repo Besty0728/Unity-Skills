@@ -1,4 +1,4 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
 using System.IO;
 using System.Linq;
 using UnityEngine;
@@ -57,7 +57,7 @@ namespace UnitySkills.Tests.Core
             }
             catch
             {
-                // Best-effort cleanup for test-only files.
+                // 仅测试用文件，清理失败不影响结果，尽力而为即可。
             }
 #endif
         }
@@ -84,6 +84,73 @@ namespace UnitySkills.Tests.Core
             var result = CinemachineSkills.CinemachineSetVCamProperty(vcamName: _vcamGo.name);
 
             Assert.That(GetError(result), Is.EqualTo("propertyName is required unless using shorthand lens parameters (fov/nearClip/farClip/orthoSize)."));
+        }
+
+        [Test]
+        public void SetLens_WithMode_WritesLensModeOverride()
+        {
+            Assert.That(GetError(CinemachineSkills.CinemachineSetLens(
+                vcamName: _vcamGo.name, mode: "orthographic")), Is.Null);
+            Assert.That(GetLens().ModeOverride, Is.EqualTo(LensSettings.OverrideModes.Orthographic));
+
+            Assert.That(GetError(CinemachineSkills.CinemachineSetLens(
+                vcamName: _vcamGo.name, mode: "Perspective")), Is.Null);
+            Assert.That(GetLens().ModeOverride, Is.EqualTo(LensSettings.OverrideModes.Perspective));
+
+            Assert.That(GetError(CinemachineSkills.CinemachineSetLens(
+                vcamName: _vcamGo.name, mode: "NONE")), Is.Null);
+            Assert.That(GetLens().ModeOverride, Is.EqualTo(LensSettings.OverrideModes.None));
+        }
+
+        [Test]
+        public void SetLens_WithInvalidMode_RejectsWholeCallBeforeWriting()
+        {
+            var lens = GetLens();
+            lens.ModeOverride = LensSettings.OverrideModes.Perspective;
+            lens.FieldOfView = 55f;
+            SetLens(lens);
+
+            var result = CinemachineSkills.CinemachineSetLens(
+                vcamName: _vcamGo.name, fov: 33f, mode: "ortho2");
+
+            StringAssert.Contains("Invalid value 'ortho2' for parameter 'mode'", GetError(result));
+            Assert.That(GetErrorCode(result), Is.EqualTo("SEMANTIC_INVALID"));
+            Assert.That(GetValidValues(result), Contains.Item("Orthographic"));
+            // 拒绝必须发生在任何写入之前，同一次调用里的 fov 也不能落地。
+            Assert.That(GetLens().ModeOverride, Is.EqualTo(LensSettings.OverrideModes.Perspective));
+            Assert.That(GetLens().FieldOfView, Is.EqualTo(55f).Within(0.001f));
+        }
+
+        [Test]
+        public void SetLens_WithoutMode_LeavesModeOverrideUntouched()
+        {
+            var lens = GetLens();
+            lens.ModeOverride = LensSettings.OverrideModes.Orthographic;
+            SetLens(lens);
+
+            Assert.That(GetError(CinemachineSkills.CinemachineSetLens(
+                vcamName: _vcamGo.name, fov: 42f)), Is.Null);
+
+            Assert.That(GetLens().ModeOverride, Is.EqualTo(LensSettings.OverrideModes.Orthographic));
+            Assert.That(GetLens().FieldOfView, Is.EqualTo(42f).Within(0.001f));
+        }
+
+        private LensSettings GetLens()
+        {
+#if CINEMACHINE_3
+            return _vcamGo.GetComponent<CinemachineCamera>().Lens;
+#else
+            return _vcamGo.GetComponent<CinemachineVirtualCamera>().m_Lens;
+#endif
+        }
+
+        private void SetLens(LensSettings lens)
+        {
+#if CINEMACHINE_3
+            _vcamGo.GetComponent<CinemachineCamera>().Lens = lens;
+#else
+            _vcamGo.GetComponent<CinemachineVirtualCamera>().m_Lens = lens;
+#endif
         }
 
         [Test]
@@ -329,6 +396,20 @@ namespace UnitySkills.Tests.Core
             if (result == null) return null;
             var prop = result.GetType().GetProperty("error");
             return prop?.GetValue(result)?.ToString();
+        }
+
+        private static string GetErrorCode(object result)
+        {
+            if (result == null) return null;
+            var prop = result.GetType().GetProperty("errorCode");
+            return prop?.GetValue(result)?.ToString();
+        }
+
+        private static string[] GetValidValues(object result)
+        {
+            if (result == null) return null;
+            var prop = result.GetType().GetProperty("validValues");
+            return prop?.GetValue(result) as string[];
         }
 #else
         [Test]

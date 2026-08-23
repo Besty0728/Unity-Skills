@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -27,6 +27,10 @@ namespace UnitySkills.Tests.Core
         /// <summary>unity_skills.py 的模块级公开函数（缩进为 0 且不以 _ 开头）。</summary>
         private static readonly Regex PythonModuleDefRegex =
             new Regex(@"^def (?<name>[a-z][a-z0-9_]*)\(", RegexOptions.Compiled | RegexOptions.Multiline);
+
+        /// <summary>skills/SKILL.md 里指向同级模块文档的相对链接 `(./&lt;module&gt;/SKILL.md)`。</summary>
+        private static readonly Regex ModuleLinkRegex =
+            new Regex(@"\(\./(?<module>[A-Za-z0-9._-]+)/SKILL\.md\)", RegexOptions.Compiled);
 
         /// <summary>
         /// 顶层 SKILL.md 里允许出现、但本就不是 skill 名的下划线 token。新增例外必须显式登记 ——
@@ -58,8 +62,6 @@ namespace UnitySkills.Tests.Core
             "script-roles",
             "scriptdesign",
             "testability",
-            "bookmark",
-            "history",
             "shadergraph-design",
             // 以下 *-design 均为纯设计指南（0 个 ### skill 端点定义），与 shadergraph-design 同质，
             // 统一豁免 schema-first（Exact Signatures）校验，避免误报。
@@ -75,7 +77,11 @@ namespace UnitySkills.Tests.Core
             "manual-gameobject",
             "manual-component",
             "manual-material",
-            "manual-scene"
+            "manual-scene",
+            // skills/SKILL.md 的索引里已写明 unity-cli 与 manual-* / *-design 同属「不定义任何 REST
+            // skill 的纯文档模块」。它此前不在册却没红，只是因为那份文档恰好留着一段 Exact
+            // Signatures + /skills/schema 的样板话；删掉那段（对一个零端点模块完全合理）就会红。
+            "unity-cli"
         };
 
         private static readonly HashSet<string> ExactSignatureOptionalModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -267,6 +273,100 @@ namespace UnitySkills.Tests.Core
             }
 
             AssertNoIssues(issues, "SkillRouter.k_ClientHelperRestEquivalents 与 Python 客户端脱钩");
+        }
+
+        // ============================================================
+        // 文档树的可达性与预算（v2.7）
+        // ============================================================
+
+        /// <summary>
+        /// 模块目录 ↔ skills/SKILL.md 索引链接双向齐平，无豁免。
+        ///
+        /// 索引是 agent 找模块文档的唯一入口：目录建了而索引没登记，那份文档就等于不存在；
+        /// 索引指向一个不存在的目录，agent 会去读一个 404。两个方向都必须为空差集 ——
+        /// AdvisoryModules 那类豁免在这里没有意义，因为纯设计指南同样要能被找到。
+        /// </summary>
+        [Test]
+        public void SkillsIndexDoc_ShouldLinkEveryModuleDirectory_BothWays()
+        {
+            var docsRoot = GetDocsRoot();
+            var indexPath = Path.Combine(docsRoot, "SKILL.md");
+            Assert.That(File.Exists(indexPath), Is.True, $"模块索引不存在: {indexPath}");
+            var index = File.ReadAllText(indexPath);
+
+            var directories = Directory.GetDirectories(docsRoot)
+                .Select(Path.GetFileName)
+                .ToHashSet(StringComparer.Ordinal);
+            Assert.That(directories, Is.Not.Empty, $"{docsRoot} 下没有任何模块目录。");
+
+            var linked = ModuleLinkRegex.Matches(index)
+                .Cast<Match>()
+                .Select(m => m.Groups["module"].Value)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var issues = new List<string>();
+            foreach (var missing in directories.Except(linked).OrderBy(x => x, StringComparer.Ordinal))
+            {
+                issues.Add($"模块目录未登记进索引: {missing}/SKILL.md" +
+                           "（agent 只从 skills/SKILL.md 找模块，没登记等于这份文档不存在）");
+            }
+
+            foreach (var dangling in linked.Except(directories).OrderBy(x => x, StringComparer.Ordinal))
+            {
+                issues.Add($"索引指向不存在的模块目录: {dangling}");
+            }
+
+            AssertNoIssues(issues, $"模块索引与目录树不齐平: {indexPath}");
+        }
+
+        /// <summary>
+        /// SURFACE_EXCLUDED 载荷里指出的 manual-* 文档必须真的存在。
+        ///
+        /// 那条路径是拒绝可执行性的全部依托：agent 被告知「读这份文档，然后手动带用户做」，
+        /// 路径失效就把一个可操作的拒绝变成死胡同。<see cref="SkillsSurfaceProfile.ManualDocFor"/>
+        /// 返回的是相对包根的路径，这里逐个落到磁盘上核。
+        /// </summary>
+        [Test]
+        public void ManualDocsReferencedBySurfaceProfile_ShouldExistOnDisk()
+        {
+            var packageRoot = GetPackageRoot();
+            var issues = new List<string>();
+
+            foreach (SkillCategory category in Enum.GetValues(typeof(SkillCategory)))
+            {
+                var relativePath = SkillsSurfaceProfile.ManualDocFor(category);
+                if (string.IsNullOrEmpty(relativePath))
+                {
+                    continue;
+                }
+
+                var absolutePath = Path.Combine(packageRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(absolutePath))
+                {
+                    issues.Add($"{category} 指向的 manual 文档不存在: {relativePath}" +
+                               "（SURFACE_EXCLUDED 会把这条路径交给 agent，失效即拒绝无法执行）");
+                }
+            }
+
+            AssertNoIssues(issues, "SkillsSurfaceProfile.ManualDocFor 指向了不存在的文档");
+        }
+
+        /// <summary>
+        /// 顶层 SKILL.md 的字节预算。这份文档每次会话都被完整读入上下文，所以它的体积是所有
+        /// 用户共同支付的固定成本 —— 上限存在的意义就是逼新内容下沉到 references/ 里按需加载。
+        /// </summary>
+        [Test]
+        public void RootSkillDoc_ShouldStayWithinByteBudget()
+        {
+            const int budgetBytes = 8192;
+
+            ReadRootSkillDoc(out var docPath);
+            var actual = new FileInfo(docPath).Length;
+
+            Assert.That(actual, Is.LessThanOrEqualTo(budgetBytes),
+                $"顶层 SKILL.md 为 {actual} 字节，超出 {budgetBytes} 字节预算 {actual - budgetBytes} 字节。" +
+                "这份文档每次会话都全量入上下文；要加内容请先把等量内容下沉到 references/ " +
+                "（见 references/SKILL_FULL.md 与 references/README.md），不要抬预算。");
         }
 
         private static void CompareParameters(string skillName, CodeSkill codeSkill, DocSkill docSkill, List<string> issues)

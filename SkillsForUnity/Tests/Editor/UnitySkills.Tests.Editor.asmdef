@@ -20,13 +20,18 @@
     "versionDefines": [
         {
             "name": "com.unity.cinemachine",
-            "expression": "[2.0,3.0)",
+            "expression": "[2.6,3.0)",
             "define": "CINEMACHINE_2"
         },
         {
             "name": "com.unity.cinemachine",
             "expression": "[3.0,4.0)",
             "define": "CINEMACHINE_3"
+        },
+        {
+            "name": "com.unity.ugui",
+            "expression": "[1.0,3.0)",
+            "define": "UGUI"
         }
     ],
     "noEngineReferences": false

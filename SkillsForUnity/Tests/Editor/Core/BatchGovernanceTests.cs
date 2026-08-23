@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -16,9 +16,19 @@ namespace UnitySkills.Tests.Core
             return JObject.Parse(JsonConvert.SerializeObject(result));
         }
 
+        private SkillsOperatingMode _savedMode;
+        private SurfaceProfileKind _savedProfile;
+
         [SetUp]
         public void SetUp()
         {
+            _savedMode = SkillsModeManager.CurrentMode;
+            _savedProfile = SkillsSurfaceProfile.Current;
+            // 直调 BatchExecute/BatchRetryFailed 也受档位执行期强制,开发机 EditorPrefs
+            // 若存着 guide/nsa 会把这批用例拒成 SURFACE_EXCLUDED,必须钉 full。
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
+            SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
+
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             GameObjectFinder.InvalidateCache();
         }
@@ -26,6 +36,8 @@ namespace UnitySkills.Tests.Core
         [TearDown]
         public void TearDown()
         {
+            SkillsModeManager.CurrentMode = _savedMode;
+            SkillsSurfaceProfile.Current = _savedProfile;
             GameObjectFinder.InvalidateCache();
         }
 
@@ -151,7 +163,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void BatchRetryFailed_WithNoFailedItems_ReturnsZeroCount()
         {
-            // Create a mock report with no failed items by running a successful batch
+            // 先跑一批全成功的批处理，借此拿到一份没有失败项的报告。
             new GameObject("RetryTestObj");
             GameObjectFinder.InvalidateCache();
 
@@ -162,7 +174,6 @@ namespace UnitySkills.Tests.Core
             var reportId = exec["reportId"]?.ToString();
             Assert.IsNotNull(reportId);
 
-            // Retry should find 0 failed items
             var retry = ToJObject(BatchSkills.BatchRetryFailed(reportId));
             Assert.AreEqual(0, retry["retryCount"]?.Value<int>());
         }
