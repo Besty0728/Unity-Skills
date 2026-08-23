@@ -1,9 +1,9 @@
-using System;
+﻿using System;
 
 namespace UnitySkills
 {
     /// <summary>
-    /// Skill module category. Each value maps to a *Skills.cs file.
+    /// 技能模块分类，每个值对应一个 *Skills.cs 文件。
     /// </summary>
     public enum SkillCategory
     {
@@ -64,7 +64,7 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// CRUD + Execute + Analyze operation types. Flags allow combinations.
+    /// CRUD + Execute + Analyze 操作类型，Flags 可组合。
     /// </summary>
     [Flags]
     public enum SkillOperation
@@ -78,67 +78,71 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// Marks a static method as a Unity Skill.
-    /// Skills are automatically discovered and exposed via REST API.
+    /// 标记一个静态方法为 Unity Skill，标记后会被自动发现并通过 REST API 暴露。
     /// </summary>
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
     public class UnitySkillAttribute : Attribute
     {
-        // === Existing fields ===
+        // === 基础字段 ===
         public string Name { get; set; }
         public string Description { get; set; }
         public bool TracksWorkflow { get; set; }
 
         /// <summary>
-        /// True if this skill manages its own workflow snapshots and should skip the router's
-        /// generic pre-execution snapshot (<c>TrySnapshotTargetsFromArgs</c>). Set this on skills
-        /// like asset_move/asset_delete/asset_duplicate/create_folder that capture purpose-built
-        /// snapshots themselves, so the generic pre-snapshot doesn't produce a redundant backup.
-        /// Default false — normal skills still get the automatic pre-snapshot.
+        /// 该技能自行管理工作流快照、应跳过 router 的通用执行前快照（<c>TrySnapshotTargetsFromArgs</c>）时为 true。
+        /// 用于 asset_move/asset_delete/asset_duplicate/create_folder 这类自己拍专用快照的技能，避免通用
+        /// 前置快照产生冗余备份。默认 false——普通技能仍自动拍前置快照。
         /// </summary>
         public bool SkipAutoPresnapshot { get; set; }
 
-        // === Intent-level metadata ===
+        // === 意图层元数据 ===
 
-        /// <summary>Module category, maps to the *Skills.cs file this skill belongs to.</summary>
+        /// <summary>模块分类，对应该技能所属的 *Skills.cs 文件。</summary>
         public SkillCategory Category { get; set; }
 
-        /// <summary>CRUD operation type(s) this skill performs.</summary>
+        /// <summary>该技能执行的 CRUD 操作类型。</summary>
         public SkillOperation Operation { get; set; }
 
-        /// <summary>Semantic tags for AI search and filtering.</summary>
+        /// <summary>供 AI 检索与过滤的语义标签。</summary>
         public string[] Tags { get; set; }
 
-        /// <summary>Key fields produced in the result object (e.g. "gameObject", "instanceId").</summary>
+        /// <summary>结果对象中产出的关键字段（如 "gameObject"、"instanceId"）。</summary>
         public string[] Outputs { get; set; }
 
-        /// <summary>What existing objects/resources this skill needs (e.g. "gameObject", "materialPath").</summary>
+        /// <summary>该技能需要的既有对象/资源（如 "gameObject"、"materialPath"）。</summary>
         public string[] RequiresInput { get; set; }
 
-        /// <summary>True if this skill has no side effects (pure query/read).</summary>
+        /// <summary>无副作用（纯查询/只读）时为 true。</summary>
         public bool ReadOnly { get; set; }
 
-        // === Risk & impact metadata ===
+        // === 风险与影响元数据 ===
 
-        /// <summary>True if this skill modifies the scene hierarchy (GameObjects, Components, transforms).</summary>
+        /// <summary>会修改场景层级（GameObject、Component、Transform）时为 true。</summary>
         public bool MutatesScene { get; set; }
 
-        /// <summary>True if this skill creates, modifies, or deletes on-disk assets.</summary>
+        /// <summary>会创建、修改或删除磁盘资产时为 true。</summary>
         public bool MutatesAssets { get; set; }
 
-        /// <summary>True if this skill may trigger script compilation or Domain Reload.</summary>
+        /// <summary>可能触发脚本编译或域重载时为 true。</summary>
         public bool MayTriggerReload { get; set; }
 
-        /// <summary>True if this skill may enter or exit Play Mode.</summary>
+        /// <summary>可能进入或退出 Play Mode 时为 true。</summary>
         public bool MayEnterPlayMode { get; set; }
 
-        /// <summary>False if this skill cannot provide a meaningful dry-run preview (e.g. async jobs, external processes).</summary>
+        /// <summary>无法提供有意义的 dry-run 预览（如异步作业、外部进程）时为 false。</summary>
         public bool SupportsDryRun { get; set; } = true;
 
-        /// <summary>Risk level: "low" (default), "medium", or "high".</summary>
+        /// <summary>
+        /// 该技能同步执行且可能阻塞编辑器主线程数秒以上（完整 NavMesh 烘焙、player 脚本编译、HybridCLR 预构建）时为 true。
+        /// 其运行期间主线程上一切都不推进——包括 HTTP 请求队列——所以 agent 应把这次调用视为有意的停顿：
+        /// 有异步作业路径时优先走异步，返回前不要期待任何响应，看似超时也不要重试。默认 false。
+        /// </summary>
+        public bool LongRunning { get; set; } = false;
+
+        /// <summary>风险等级："low"（默认）、"medium" 或 "high"。</summary>
         public string RiskLevel { get; set; } = "low";
 
-        /// <summary>Optional packages this skill requires (e.g. "com.unity.probuilder").</summary>
+        /// <summary>该技能依赖的可选包（如 "com.unity.probuilder"）。</summary>
         public string[] RequiresPackages { get; set; }
 
         /// <summary>

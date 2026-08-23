@@ -1,12 +1,12 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace UnitySkills
 {
     /// <summary>
-    /// Stable, AI-parseable error codes for REST responses.
-    /// Wire format is SCREAMING_SNAKE_CASE (see <see cref="SkillErrorCodeExtensions.ToWireString"/>).
-    /// Add new values to the END to keep numeric ordering stable.
+    /// REST 响应用的稳定错误码，供 AI 解析。
+    /// 线上格式为 SCREAMING_SNAKE_CASE（见 <see cref="SkillErrorCodeExtensions.ToWireString"/>）。
+    /// 新增值一律追加到末尾，以保持数值顺序稳定。
     /// </summary>
     public enum SkillErrorCode
     {
@@ -35,6 +35,7 @@ namespace UnitySkills
         ModeForbidden,
         GrantPendingApproval,
         InvalidMode,
+        SurfaceExcluded,
     }
 
     internal static class SkillErrorCodeExtensions
@@ -67,6 +68,7 @@ namespace UnitySkills
                 case SkillErrorCode.ModeForbidden:        return "MODE_FORBIDDEN";
                 case SkillErrorCode.GrantPendingApproval: return "GRANT_PENDING_APPROVAL";
                 case SkillErrorCode.InvalidMode:          return "INVALID_MODE";
+                case SkillErrorCode.SurfaceExcluded:      return "SURFACE_EXCLUDED";
                 default:                                  return "UNKNOWN";
             }
         }
@@ -74,9 +76,9 @@ namespace UnitySkills
         private static Dictionary<string, SkillErrorCode> _byName;
 
         /// <summary>
-        /// Reverse of <see cref="ToWireString"/>: accepts either the wire value ("TARGET_NOT_FOUND")
-        /// or the enum name ("TargetNotFound"), case-insensitively. Used when a skill declares an
-        /// errorCode on its own error object and the router honours it verbatim.
+        /// <see cref="ToWireString"/> 的逆操作：线上值（"TARGET_NOT_FOUND"）与枚举名
+        /// （"TargetNotFound"）都接受，大小写不敏感。用于 skill 在自己的错误对象上声明
+        /// errorCode、由 router 原样沿用的场景。
         /// </summary>
         public static bool TryParseWire(string value, out SkillErrorCode code)
         {

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using System;
 using System.Collections.Generic;
@@ -9,12 +9,12 @@ using Newtonsoft.Json.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// Workflow Skills - Bookmarks, history, undo management.
-    /// Designed to help AI agents navigate and manage work sessions.
+    /// 工作流技能——书签、历史与撤销管理。
+    /// 目的是帮助 AI agent 导航并管理工作会话。
     /// </summary>
     public static class WorkflowSkills
     {
-        // In-memory bookmark storage (persists until domain reload)
+        // 书签存于内存，域重载即失效
         private static Dictionary<string, BookmarkData> _bookmarks = new Dictionary<string, BookmarkData>();
 
         private class BookmarkData
@@ -45,7 +45,7 @@ namespace UnitySkills
                 createdAt = System.DateTime.Now
             };
 
-            // Try to capture Scene View camera position
+            // 尝试记录 Scene View 相机位置
             var sceneView = SceneView.lastActiveSceneView;
             if (sceneView != null)
             {
@@ -76,7 +76,7 @@ namespace UnitySkills
             if (!_bookmarks.TryGetValue(bookmarkName, out var bookmark))
                 return new { success = false, error = $"Bookmark '{bookmarkName}' not found" };
 
-            // Restore selection. Prefer Unity 6000.5-safe EntityIds; legacy instanceIds are kept for older bookmarks.
+            // 还原选择集。优先用 Unity 6000.5 安全的 EntityId；保留 instanceId 仅为兼容旧书签。
             var validEntityIds = (bookmark.selectedEntityIds ?? Array.Empty<string>())
                 .Where(id => UnityObjectIdUtility.EntityIdToObject(id) != null)
                 .ToArray();
@@ -92,7 +92,7 @@ namespace UnitySkills
                 UnityObjectIdUtility.SetSelectionObjectIds(validIds);
             }
 
-            // Restore scene view
+            // 还原 Scene View 视角
             if (bookmark.sceneViewPosition.HasValue)
             {
                 var sceneView = SceneView.lastActiveSceneView;
@@ -156,7 +156,8 @@ namespace UnitySkills
         [UnitySkill("history_undo", "Undo the last operation (or multiple steps)",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "undo", "history", "revert" },
-            Outputs = new[] { "undoneSteps" })]
+            Outputs = new[] { "undoneSteps" },
+            MutatesScene = true)]
         public static object HistoryUndo(int steps = 1)
         {
             if (steps < 1)
@@ -174,7 +175,8 @@ namespace UnitySkills
         [UnitySkill("history_redo", "Redo the last undone operation (or multiple steps)",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "redo", "history", "restore" },
-            Outputs = new[] { "redoneSteps" })]
+            Outputs = new[] { "redoneSteps" },
+            MutatesScene = true)]
         public static object HistoryRedo(int steps = 1)
         {
             if (steps < 1)
@@ -205,7 +207,7 @@ namespace UnitySkills
             };
         }
 
-        // --- Persistent Workflow Skills ---
+        // --- 持久化工作流技能 ---
 
         [UnitySkill("workflow_task_start", "Start a new persistent workflow task to track changes for undo. Call workflow_task_end when done.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
@@ -286,7 +288,7 @@ namespace UnitySkills
                 description = t.description,
                 time = t.GetFormattedTime(),
                 changes = t.snapshots.Count
-            }).ToList<object>(); // Cast to object list for JSON serializability
+            }).ToList<object>(); // 转成 object 列表以便 JSON 序列化
 
             return new { success = true, count = list.Count, history = list };
         }
@@ -295,9 +297,17 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "undo", "task", "revert", "restore" },
             Outputs = new[] { "success", "taskId", "total", "succeeded", "failed", "details", "error" },
-            RequiresInput = new[] { "taskId" })]
+            RequiresInput = new[] { "taskId" },
+            // 还原快照会重写该任务碰过的一切：场景对象，以及——经由
+            // UndoMovedSnapshot / RedoDeletedSnapshot / RestoreModifiedSnapshot——项目资产。
+            MutatesScene = true, MutatesAssets = true)]
         public static object WorkflowUndoTask(string taskId)
         {
+            var withdrawn = SurfaceRejectionForTasks("workflow_undo_task", "restoring this task's snapshots",
+                WorkflowManager.History.tasks.Where(t => t.id == taskId));
+            if (withdrawn != null)
+                return withdrawn;
+
             var result = WorkflowManager.UndoTask(taskId);
             return new
             {
@@ -314,10 +324,11 @@ namespace UnitySkills
         [UnitySkill("workflow_redo_task", "Redo a previously undone task (restore changes)",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "redo", "task", "restore", "changes" },
-            Outputs = new[] { "success", "taskId", "total", "succeeded", "failed", "details", "error" })]
+            Outputs = new[] { "success", "taskId", "total", "succeeded", "failed", "details", "error" },
+            MutatesScene = true, MutatesAssets = true)]
         public static object WorkflowRedoTask(string taskId = null)
         {
-            // If no taskId provided, redo the most recent undone task
+            // 未给 taskId 时，重做最近一次被撤销的任务
             if (string.IsNullOrEmpty(taskId))
             {
                 var undoneStack = WorkflowManager.GetUndoneStack();
@@ -325,6 +336,11 @@ namespace UnitySkills
                     return new { success = false, error = "No undone tasks to redo" };
                 taskId = undoneStack[undoneStack.Count - 1].id;
             }
+
+            var withdrawn = SurfaceRejectionForTasks("workflow_redo_task", "re-applying this task's snapshots",
+                WorkflowManager.GetUndoneStack().Where(t => t.id == taskId));
+            if (withdrawn != null)
+                return withdrawn;
 
             var result = WorkflowManager.RedoTask(taskId);
             return new
@@ -364,9 +380,17 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "undo", "task", "revert", "deprecated" },
             Outputs = new[] { "taskId" },
-            RequiresInput = new[] { "taskId" })]
+            RequiresInput = new[] { "taskId" },
+            MutatesScene = true, MutatesAssets = true)]
         public static object WorkflowRevertTask(string taskId)
         {
+            // 用本技能自己的名字去问，而不是交给被委派方：agent 调的是 workflow_revert_task，
+            // 拒绝信息里却出现 workflow_undo_task，读起来像"别名没问题、目标有问题"，等于在诱导重试。
+            var withdrawn = SurfaceRejectionForTasks("workflow_revert_task", "restoring this task's snapshots",
+                WorkflowManager.History.tasks.Where(t => t.id == taskId));
+            if (withdrawn != null)
+                return withdrawn;
+
             return WorkflowUndoTask(taskId);
         }
 
@@ -448,7 +472,7 @@ namespace UnitySkills
             };
         }
 
-        // --- Session Management (Conversation-Level Undo) ---
+        // --- 会话管理（对话级撤销）---
 
         [UnitySkill("workflow_session_start", "Start a new session (conversation-level). All changes will be tracked and can be undone together.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
@@ -487,10 +511,11 @@ namespace UnitySkills
         [UnitySkill("workflow_session_undo", "Undo all changes made during a specific session (conversation-level undo)",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "session", "undo", "conversation", "revert" },
-            Outputs = new[] { "success", "sessionId", "total", "succeeded", "failed", "details", "error", "message" })]
+            Outputs = new[] { "success", "sessionId", "total", "succeeded", "failed", "details", "error", "message" },
+            MutatesScene = true, MutatesAssets = true)]
         public static object WorkflowSessionUndo(string sessionId = null)
         {
-            // If no sessionId provided, try to get the most recent session
+            // 未给 sessionId 时，取最近的会话
             if (string.IsNullOrEmpty(sessionId))
             {
                 var sessions = WorkflowManager.GetSessions();
@@ -498,6 +523,11 @@ namespace UnitySkills
                     return new { success = false, error = "No sessions found in history" };
                 sessionId = sessions[0].sessionId;
             }
+
+            var withdrawn = SurfaceRejectionForTasks("workflow_session_undo", "restoring this session's snapshots",
+                WorkflowManager.History.tasks.Where(t => t.sessionId == sessionId));
+            if (withdrawn != null)
+                return withdrawn;
 
             var result = WorkflowManager.UndoSession(sessionId);
             return new
@@ -618,17 +648,17 @@ namespace UnitySkills
                 var planJson = SkillRouter.Plan(skillName, paramsObj.ToString());
                 var planResult = JObject.Parse(planJson);
 
-                // Extract risk level from plan
+                // 从计划中取出风险等级
                 var stepRisk = planResult.SelectToken("skill.riskLevel")?.ToString()
                                ?? planResult.SelectToken("impact.riskLevel")?.ToString()
                                ?? "low";
                 highestRisk = MaxRisk(highestRisk, stepRisk);
 
-                // Check serverAvailability
+                // 检查 serverAvailability
                 if (planResult["serverAvailability"] != null)
                     mayDisconnect = true;
 
-                // Detect dependencies: if this step uses a name that a previous step creates
+                // 依赖检测：本步用到的名字是否由前面某步创建
                 var targetName = GetTargetFromPlan(planResult);
                 if (!string.IsNullOrEmpty(targetName) && createdNames.Contains(targetName))
                 {
@@ -640,10 +670,10 @@ namespace UnitySkills
                     });
                 }
 
-                // Track created names for dependency detection
+                // 记录已创建的名字，供依赖检测使用
                 TrackCreatedNames(planResult, createdNames);
 
-                // Collect warnings from individual plan
+                // 汇总各单步计划的告警
                 if (planResult["validation"] is JObject valJObj)
                 {
                     var warnings = valJObj["warnings"] as JArray;
@@ -675,6 +705,84 @@ namespace UnitySkills
             };
 
             return result;
+        }
+
+        /// <summary>
+        /// 当还原这些任务会写入当前档位已收掉的类别时，返回 SURFACE_EXCLUDED 载荷；所有快照都被允许时返回 null，
+        /// full 档下恒为 null。
+        ///
+        /// 撤销/重做的写入动作藏在记录下来的快照里，而不在本模块的元数据里，所以必须拿快照去问档位。
+        /// 采取整体拒绝而非逐快照拒绝：对要求回滚的用户来说一个任务就是一次操作，
+        /// 半还原的任务会留下双方都没要过的状态。
+        ///
+        /// 空任务集不算拒绝——那个 id 可能只是不存在，为不存在的任务回答"已收掉"，
+        /// 等于把一个单纯的拼写错误藏在策略墙后面。
+        /// </summary>
+        private static object SurfaceRejectionForTasks(
+            string skillName, string subject, IEnumerable<WorkflowTask> tasks)
+        {
+            if (SkillsSurfaceProfile.IsFull || tasks == null)
+                return null;
+
+            foreach (var task in tasks)
+            {
+                if (task?.snapshots == null) continue;
+
+                foreach (var snapshot in task.snapshots)
+                {
+                    if (!TryClassifySnapshot(snapshot, out var category, out var operation)) continue;
+                    if (!SkillsSurfaceProfile.WithdrawsWriteIn(category)) continue;
+
+                    return SkillsSurfaceProfile.CarriedWriteRejection(skillName, category, subject, operation);
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 判定还原某条快照会造成哪一类写入。若该还原不被任何档位收掉则返回 false——这是常态，
+        /// 也正是值得做这次分类的原因。
+        ///
+        /// <c>assetPath</c> 为空是"它原本在场景里"的判别依据：WorkflowManager 用
+        /// AssetDatabase.GetAssetPath 填这个字段，场景对象得到空串，其余一律得到项目路径。
+        /// Setting 类快照两者都没有，故优先判定——它们还原的是编辑器/项目设置，不是场景内容。
+        ///
+        /// 资产还原按扩展名分类，且只针对档位真正会收掉的那几种：.unity 就是场景本身，.mat 属于材质创作。
+        /// 其余一切——脚本、预制体、纹理、ScriptableObject——刻意保持可用：这些正是教学档位留给 AI 的写入，
+        /// 若连它们的撤销也收掉，就等于抽走了它仍允许的工作的安全网。
+        /// </summary>
+        private static bool TryClassifySnapshot(
+            Internal.ObjectSnapshot snapshot, out SkillCategory category, out string operation)
+        {
+            category = default;
+            operation = null;
+            if (snapshot == null || snapshot.type == SnapshotType.Setting)
+                return false;
+
+            if (string.IsNullOrEmpty(snapshot.assetPath))
+            {
+                category = SkillCategory.GameObject;
+                operation = "scene_object_snapshot";
+                return true;
+            }
+
+            var extension = System.IO.Path.GetExtension(snapshot.assetPath);
+            if (string.Equals(extension, ".unity", StringComparison.OrdinalIgnoreCase))
+            {
+                category = SkillCategory.Scene;
+                operation = "scene_asset_snapshot";
+                return true;
+            }
+
+            if (string.Equals(extension, ".mat", StringComparison.OrdinalIgnoreCase))
+            {
+                category = SkillCategory.Material;
+                operation = "material_asset_snapshot";
+                return true;
+            }
+
+            return false;
         }
 
         private static string MaxRisk(string a, string b)

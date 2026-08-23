@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 
 namespace UnitySkills
@@ -11,10 +11,10 @@ namespace UnitySkills
         private static LogLevel? _level;
 
         /// <summary>
-        /// Centralized version constant. Update this when releasing a new version.
-        /// Referenced by SkillsHttpServer (/health), SkillRouter (/skills manifest), and docs tooling.
+        /// 版本号唯一来源，发版时更新。
+        /// 被 SkillsHttpServer（/health）、SkillRouter（/skills 清单）与文档工具引用。
         /// </summary>
-        public const string Version = "2.6.2";
+        public const string Version = "2.7.0";
 
         public const string PREFIX_INFO = "<color=#4A9EFF>[UnitySkills]</color>";
         public const string PREFIX_SUCCESS = "<color=#5EE05E>[UnitySkills]</color>";

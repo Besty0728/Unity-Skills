@@ -1,9 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -209,6 +210,15 @@ namespace UnitySkills
             Tags = new[] { "batch", "execute", "job", "report" },
             Outputs = new[] { "jobId", "reportId", "workflowId", "status" },
             RequiresInput = new[] { "confirmToken" },
+            // 真正执行什么由 confirmToken 决定，所以这一个入口覆盖了 ExecutePreviewItem
+            // 分发到的全部执行器——包括 WorkflowManager.DeleteSceneObject 和资源删除。
+            // 少声明不只是标错，而是留洞：铸造 token 的 preview 技能都是 ReadOnly，
+            // 于是撤下场景/资源写权限的 profile 仍会把 token 交给 agent，再在这里执行掉。
+            // 这条声明关掉的是隐藏一切 MutatesScene 写操作的 profile（noSceneAuthoring）；
+            // 它关不掉按类别撤下的 profile——Workflow 不在任何一个隐藏集合里——所以 token
+            // 自身的操作还要在 SurfaceRejectionForKind 里按当前 profile 再分类一次。
+            MutatesScene = true,
+            MutatesAssets = true,
             SupportsDryRun = false)]
         public static object BatchExecute(string confirmToken, bool runAsync = true, int chunkSize = 100, int progressGranularity = 10)
         {
@@ -220,6 +230,16 @@ namespace UnitySkills
             var preview = BatchPersistence.GetPreview(confirmToken);
             if (preview == null)
                 return new { success = false, error = "Invalid or expired confirmToken. Call preview again to get a new token." };
+
+            // 要问 surface profile 的是 token 而不是本技能的元数据：被撤下的从来不是本技能，
+            // 而铸造 token 的 preview 是 ReadOnly、任何 profile 下都提供。
+            // 这一步放在 RemovePreview 之前，拒绝时 token 保持有效——用户把 profile 切回来
+            // 即可继续执行，不必再走一轮 preview。
+            var withdrawn = SurfaceRejectionForKind(preview.kind, "batch_execute",
+                "the operation this confirmToken was minted for");
+            if (withdrawn != null)
+                return withdrawn;
+
             if (preview.executableCount <= 0)
             {
                 BatchPersistence.RemovePreview(confirmToken);
@@ -241,7 +261,11 @@ namespace UnitySkills
                 };
             }
 
-            var completed = BatchJobService.Wait(job.jobId, Math.Max(5000, preview.executableCount * 50));
+            // 每项 50ms 预算、下限 5s，再夹到共享的主线程等待上限，
+            // 免得超大的内联预览让 Wait 把编辑器冻住超过允许的时长。
+            var inlineTimeoutMs = Math.Min(BatchJobService.MaxWaitTimeoutMs,
+                Math.Max(5000, preview.executableCount * 50));
+            var completed = BatchJobService.Wait(job.jobId, inlineTimeoutMs);
             if (completed == null)
                 return new { success = false, error = "Job disappeared during execution." };
 
@@ -318,14 +342,14 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("job_status", "Get status for an asynchronous UnitySkills job.",
+        [UnitySkill("job_status", "Get status for an asynchronous UnitySkills job. Built for repeated polling, so the job's full result payload is NOT inlined by default: resultAvailable says whether one exists and resultHint names the skill that returns it. Pass includeDetails=true to inline it as `details` (the pre-2.7 behaviour).",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
             Tags = new[] { "job", "status", "async" },
-            Outputs = new[] { "jobId", "status", "progress", "currentStage" },
+            Outputs = new[] { "jobId", "status", "progress", "currentStage", "resultAvailable", "resultHint" },
             RequiresInput = new[] { "jobId" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object JobStatus(string jobId)
+        public static object JobStatus(string jobId, bool includeDetails = false)
         {
             if (Validate.Required(jobId, "jobId") is object err)
                 return err;
@@ -333,6 +357,8 @@ namespace UnitySkills
             var job = AsyncJobService.Get(jobId);
             if (job == null)
                 return new { success = false, error = $"Job not found: {jobId}" };
+
+            bool resultAvailable = job.resultData != null && job.resultData.Count > 0;
 
             return new
             {
@@ -352,7 +378,9 @@ namespace UnitySkills
                 reportId = job.reportId,
                 canCancel = job.canCancel && !IsTerminalStatus(job.status),
                 error = job.error,
-                details = job.resultData
+                resultAvailable,
+                resultHint = includeDetails ? null : BuildJobResultHint(job, "job_status", resultAvailable),
+                details = includeDetails ? job.resultData : null
             };
         }
 
@@ -430,12 +458,14 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("job_wait", "Wait for a UnitySkills job to finish or until timeoutMs elapses (clamped to [0, 2000]ms — this blocks the Unity main thread, so longer waits are not allowed). For job kinds that advance via Unity's own engine loop (compile/package/test/playmode/play_capture/build_player), blocking cannot help them progress, so this returns the current snapshot immediately with waitNotSupported=true instead of spinning — poll GET /jobs/{id} or subscribe to GET /events instead, both of which run off the main thread.",
+        [UnitySkill("job_wait", "Wait for a UnitySkills job to finish or until timeoutMs elapses (clamped to [0, 2000]ms — this blocks the Unity main thread, so longer waits are not allowed). For job kinds that advance via Unity's own engine loop (compile/package/test/playmode/play_capture/build_player), blocking cannot help them progress, so this returns the current snapshot immediately with waitNotSupported=true instead of spinning — poll GET /jobs/{id} or subscribe to GET /events instead, both of which run off the main thread. The job's full result payload is NOT inlined by default: resultAvailable says whether one exists and resultHint names the skill that returns it. Pass includeDetails=true to inline it as `details` (the pre-2.7 behaviour).",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "job", "wait", "async" },
-            Outputs = new[] { "jobId", "status", "reportId", "waitNotSupported", "terminal" },
+            Outputs = new[] { "jobId", "status", "reportId", "waitNotSupported", "terminal", "resultAvailable", "resultHint" },
             RequiresInput = new[] { "jobId" })]
-        public static object JobWait(string jobId, int timeoutMs = 10000)
+        // 默认值必须等于夹取上限而不能高于它：写 10000 会让 manifest（进而让 agent）以为
+        // 省略该参数能等 10s，而 AsyncJobService.Wait 一直是砍到 2000 的。
+        public static object JobWait(string jobId, int timeoutMs = 2000, bool includeDetails = false)
         {
             if (Validate.Required(jobId, "jobId") is object err)
                 return err;
@@ -443,6 +473,8 @@ namespace UnitySkills
             var job = AsyncJobService.Wait(jobId, timeoutMs, out var waitNotSupported);
             if (job == null)
                 return new { success = false, error = $"Job not found: {jobId}" };
+
+            bool resultAvailable = job.resultData != null && job.resultData.Count > 0;
 
             return new
             {
@@ -455,7 +487,9 @@ namespace UnitySkills
                 workflowId = job.relatedWorkflowId,
                 resultSummary = job.resultSummary,
                 error = job.error,
-                details = job.resultData,
+                resultAvailable,
+                resultHint = includeDetails ? null : BuildJobResultHint(job, "job_wait", resultAvailable),
+                details = includeDetails ? job.resultData : null,
                 terminal = IsTerminalStatus(job.status),
                 waitNotSupported,
                 hint = waitNotSupported
@@ -516,6 +550,9 @@ namespace UnitySkills
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "layer", "rendering", "gameobject" },
             Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            // layer 为空时 BuildSetLayerPreview 会抛 "layer is required"，不声明就变成先执行后失败。
+            // queryJson 仍是可选的（缺省 = 全场景对象）。
+            RequiresInput = new[] { "layer" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchSetRenderLayer(string queryJson = null, string layer = null, bool recursive = false, int sampleLimit = DefaultSampleLimit)
@@ -535,6 +572,10 @@ namespace UnitySkills
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "material", "replace", "renderer" },
             Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            // 与 batch_preview_replace_material 走同一个 builder，两者的声明必须保持一致：
+            // 缺了这行，空 materialPath 会一路走到 BuildReplaceMaterialPreview 才失败，
+            // 而不是在入口直接拒绝。
+            RequiresInput = new[] { "materialPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchReplaceMaterial(string queryJson = null, string materialPath = null, int sampleLimit = DefaultSampleLimit)
@@ -584,7 +625,11 @@ namespace UnitySkills
         [UnitySkill("batch_retry_failed", "Re-run only the failed items from a previous batch execution report.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "batch", "retry", "failed", "recovery" },
-            Outputs = new[] { "jobId", "retryCount", "originalReportId" })]
+            Outputs = new[] { "jobId", "retryCount", "originalReportId" },
+            // 把记录下来的条目交给与 batch_execute 相同的执行器重跑，
+            // 因此必须带上与它相同的声明（原因同上）。
+            MutatesScene = true,
+            MutatesAssets = true)]
         public static object BatchRetryFailed(string reportId, bool runAsync = true, int chunkSize = 100)
         {
             chunkSize = Mathf.Clamp(chunkSize, 1, 200);
@@ -594,6 +639,13 @@ namespace UnitySkills
             var report = BatchPersistence.GetReport(reportId);
             if (report == null)
                 return new { error = $"Report not found: {reportId}" };
+
+            // 执行器与 batch_execute 相同，只是入口从 token 换成 reportId，
+            // 所以同样要拿记录下来的 kind 去问 surface profile。
+            var withdrawn = SurfaceRejectionForKind(report.kind, "batch_retry_failed",
+                "re-running this report's failed items");
+            if (withdrawn != null)
+                return withdrawn;
 
             var failedItems = report.items?.Where(i =>
                 string.Equals(i.status, "failed", StringComparison.OrdinalIgnoreCase)).ToList();
@@ -610,7 +662,6 @@ namespace UnitySkills
                 };
             }
 
-            // Reconstruct a preview envelope from failed items
             var preview = new BatchPreviewEnvelope
             {
                 confirmToken = Guid.NewGuid().ToString("N").Substring(0, 12),
@@ -646,11 +697,10 @@ namespace UnitySkills
 
             BatchPersistence.UpsertPreview(preview);
 
-            // Immediately execute
             var job = BatchJobService.Start(preview, chunkSize);
             if (!runAsync && job != null)
             {
-                var result = BatchJobService.Wait(job.jobId, 30000);
+                var result = BatchJobService.Wait(job.jobId, BatchJobService.MaxWaitTimeoutMs);
                 if (result != null && result.status == "completed")
                 {
                     return new
@@ -705,6 +755,50 @@ namespace UnitySkills
                         chunkIndex = chunkIndex
                     };
             }
+        }
+
+        /// <summary>
+        /// 某个 preview kind 属于哪个写类别，供执行路径上的 surface profile 检查使用。
+        /// 与 <see cref="ExecutePreviewItem"/> 的分发保持一致；类别的选取既为判定，
+        /// 也为随拒绝一起交给 agent 的手册文档——Guide 撤下的那三类都各自配有手册，
+        /// 拒绝时才能说"读这篇、照着教"。
+        ///
+        /// default 分支故意 fail closed：未映射的 kind 本来就执行不了
+        /// （ExecutePreviewItem 自己的 default 会让它的每一项都失败），当成场景写没有代价，
+        /// 还能防止新加的 kind 在映射未补齐前成为绕过 profile 的新缺口。
+        /// </summary>
+        private static SkillCategory SurfaceCategoryForKind(string kind)
+        {
+            switch (kind)
+            {
+                case "rename":
+                case "standardize_naming":
+                case "set_render_layer":
+                case "cleanup_temp_objects":
+                    return SkillCategory.GameObject;
+                // 移除脚本丢失的 MonoBehaviour 属于对象上的组件手术，对应 manual-component。
+                case "set_property":
+                case "fix_missing_scripts":
+                    return SkillCategory.Component;
+                // 写的是 Renderer.sharedMaterial：材质资源本身不动，变的是对象用哪个材质，
+                // 对应 manual-material 教的拖拽操作。
+                case "replace_material":
+                    return SkillCategory.Material;
+                default:
+                    return SkillCategory.GameObject;
+            }
+        }
+
+        /// <summary>
+        /// 当前 profile 撤下该 kind 的写权限时返回 SURFACE_EXCLUDED 载荷，允许时返回 null；
+        /// full profile 下恒为 null。
+        /// </summary>
+        private static object SurfaceRejectionForKind(string kind, string skillName, string subject)
+        {
+            var category = SurfaceCategoryForKind(kind);
+            return SkillsSurfaceProfile.WithdrawsWriteIn(category)
+                ? SkillsSurfaceProfile.CarriedWriteRejection(skillName, category, subject, kind)
+                : null;
         }
 
         internal static BatchReportRecord CreateReportFromJob(BatchJobRecord job)
@@ -1198,7 +1292,7 @@ namespace UnitySkills
                 .OrderByDescending(group => group.count)
                 .ToArray();
 
-            return new
+            var payload = new
             {
                 success = true,
                 status = "preview",
@@ -1214,6 +1308,18 @@ namespace UnitySkills
                 sampleChanges = samples,
                 skipReasons
             };
+
+            // 预览照旧成功、照旧铸 token、照旧返回 diff——在教学 profile 下这份 diff 本身就是目的。
+            // 只是提前告知 batch_execute 会拒绝该 token，让 agent 把这道墙读成用户的设置而非 bug。
+            // 这里是"新增字段"而不是置空，所以在允许该操作的 profile 下载荷与以前逐字节一致。
+            var category = SurfaceCategoryForKind(preview.kind);
+            if (!SkillsSurfaceProfile.WithdrawsWriteIn(category))
+                return payload;
+
+            var annotated = JObject.FromObject(payload);
+            annotated["surfaceExclusion"] =
+                JObject.FromObject(SkillsSurfaceProfile.CarriedWriteNotice("batch_execute", category));
+            return annotated;
         }
 
         private static BatchPreviewEnvelope CreatePreviewEnvelope(string kind, BatchTargetQuery query, string riskLevel)
@@ -1367,19 +1473,23 @@ namespace UnitySkills
             return Equals(currentValue, nextValue);
         }
 
+        // 报告里的 currentValue/nextValue 会被 agent 读回并原样回填，因此每个数字都必须能
+        // 无损往返。SkillParamUtil 的格式化器是统一答案：文化不变（本地化编辑器否则会输出
+        // "0,5"，这里没有解析器认它），并通过重新解析校验 "R"，在 "R" 仍是旧有损实现的
+        // 运行时上退回到按位数安全的格式。只有 SkillParamUtil 无从知晓的情形留在本地处理：
+        // Unity 的结构体（自带 ToString 会四舍五入到一位小数）与资源引用（回显为路径）。
         private static string FormatValue(object value)
         {
-            if (value == null) return "null";
-            if (value is Vector2 v2) return $"({v2.x}, {v2.y})";
-            if (value is Vector3 v3) return $"({v3.x}, {v3.y}, {v3.z})";
-            if (value is Vector4 v4) return $"({v4.x}, {v4.y}, {v4.z}, {v4.w})";
-            if (value is Color color) return $"({color.r}, {color.g}, {color.b}, {color.a})";
+            if (value is Vector2 v2) return SkillParamUtil.FormatVector2(v2);
+            if (value is Vector3 v3) return SkillParamUtil.FormatVector3(v3);
+            if (value is Vector4 v4) return SkillParamUtil.FormatVector4(v4);
+            if (value is Color color) return SkillParamUtil.FormatColor(color);
             if (value is UnityEngine.Object unityObject)
             {
                 var assetPath = AssetDatabase.GetAssetPath(unityObject);
                 return string.IsNullOrWhiteSpace(assetPath) ? unityObject.name : assetPath;
             }
-            return value.ToString();
+            return SkillParamUtil.FormatScalarR(value);
         }
 
         private static GameObject FindTarget(BatchPreviewItem item)
@@ -1551,6 +1661,29 @@ namespace UnitySkills
         private static bool IsTerminalStatus(string status)
         {
             return status == "completed" || status == "failed" || status == "cancelled";
+        }
+
+        /// <summary>
+        /// 告诉调用方去哪里取作业的完整载荷：job_status/job_wait 现在只报 resultAvailable
+        /// 而不再内联 resultData（一个完成的 test/compile 作业可达几十 KB，轮询会每次重发）。
+        /// 有专用结果技能的 kind 指向该技能；产出了批处理报告的作业指向 batch_report_get；
+        /// 其余告知带 includeDetails=true 重问——那是取到载荷的唯一途径。
+        /// 没有载荷可取时返回 null。
+        /// </summary>
+        private static string BuildJobResultHint(BatchJobRecord job, string selfSkill, bool resultAvailable)
+        {
+            if (!resultAvailable)
+                return null;
+
+            if (string.Equals(job.kind, "test", StringComparison.OrdinalIgnoreCase))
+                return "Call test_get_result(jobId) for the parsed totals, failed test names and failure details.";
+            if (string.Equals(job.kind, "test_discovery", StringComparison.OrdinalIgnoreCase))
+                return "Call test_discover_get_result(jobId) for the discovered test list.";
+
+            if (!string.IsNullOrEmpty(job.reportId))
+                return $"Call batch_report_get(reportId=\"{job.reportId}\") for the per-item execution report.";
+
+            return $"Job kind '{job.kind}' has no dedicated result skill — re-call {selfSkill} with includeDetails=true to inline the full result payload.";
         }
     }
 }

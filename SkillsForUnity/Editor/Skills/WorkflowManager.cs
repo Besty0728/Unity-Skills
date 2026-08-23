@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,14 +14,13 @@ namespace UnitySkills
         private static WorkflowTask _currentTask;
         private static string _currentSessionId;
 
-        // Set when the history file could not be read. Whatever history we end up with then
-        // references fewer blobs than the store actually holds, so reclaiming "unreferenced"
-        // entries would delete live backups; leaking them is the cheaper failure.
+        // 历史文件读取失败时置位。此时手上的历史所引用的 blob 少于库中实际持有的，
+        // 于是回收"无引用"条目会删掉活备份；宁可泄漏，代价更小。
         // volatile: SkillsHttpServer 的 /health 快路径在 HTTP 线程上读 IsHistoryRecoveryMode，
         // 写入始终发生在主线程（LoadHistory / ClearHistory）。
         private static volatile bool _historyRecoveryMode;
 
-        // Path to store the history file (Library folder persists but is local)
+        // 历史文件存放路径（Library 目录持久但只在本机）
         internal static string OverrideHistoryFilePathForTests;
         private static string HistoryFilePath => OverrideHistoryFilePathForTests ??
             Path.Combine(Application.dataPath, "../Library/UnitySkills/workflow_history.json");
@@ -42,8 +41,7 @@ namespace UnitySkills
         public static bool HasActiveSession => !string.IsNullOrEmpty(_currentSessionId);
 
         /// <summary>
-        /// True when the history file failed to load this session and file store cleanup is
-        /// therefore suspended. Cleared by ClearHistory.
+        /// 本次会话历史文件加载失败、因而暂停文件库清理时为 true。由 ClearHistory 清除。
         /// </summary>
         public static bool IsHistoryRecoveryMode => _historyRecoveryMode;
 
@@ -61,7 +59,7 @@ namespace UnitySkills
 
         public static void LoadHistory()
         {
-            // Crash recovery: if main file is missing but .tmp exists, promote it
+            // 崩溃恢复：主文件缺失但 .tmp 存在时，把 .tmp 提升为主文件
             string tmpPath = HistoryFilePath + ".tmp";
             if (!File.Exists(HistoryFilePath) && File.Exists(tmpPath))
             {
@@ -91,7 +89,7 @@ namespace UnitySkills
             {
                 if (TryLoadHistoryFrom(backupPath, out string backupError))
                 {
-                    // The backup is one save behind, so anything recorded after it is still missing.
+                    // 备份比当前落后一次保存，其后记录的内容仍然是丢的。
                     _historyRecoveryMode = true;
                     recoveredFromBackup = true;
                     SkillsLogger.LogWarning(
@@ -113,8 +111,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Parses a history file into <see cref="_history"/>. On failure _history is left null so
-        /// the caller can try the next candidate file, and <paramref name="error"/> carries the reason.
+        /// 把历史文件解析进 <see cref="_history"/>。失败时 _history 保持 null，
+        /// 使调用方能尝试下一个候选文件，失败原因由 <paramref name="error"/> 带出。
         /// </summary>
         private static bool TryLoadHistoryFrom(string path, out string error)
         {
@@ -143,8 +141,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Moves an unreadable history file aside under a timestamped name so the next save cannot
-        /// overwrite it. Returns the quarantine file name, or null if the move failed.
+        /// 把无法读取的历史文件按带时间戳的名字挪开，使下次保存不会覆盖它。
+        /// 返回隔离后的文件名，移动失败则返回 null。
         /// </summary>
         private static string QuarantineHistoryFile(string path)
         {
@@ -182,8 +180,7 @@ namespace UnitySkills
                 File.WriteAllText(tmpPath, json, SkillsCommon.Utf8NoBom);
                 if (File.Exists(HistoryFilePath))
                 {
-                    // The replaced file is retained as .bak: LoadHistory falls back to it when the
-                    // main file turns out to be unreadable.
+                    // 被替换掉的文件保留为 .bak：主文件读不出来时 LoadHistory 会回退到它。
                     File.Replace(tmpPath, HistoryFilePath, backupPath);
                 }
                 else
@@ -244,7 +241,7 @@ namespace UnitySkills
         public static WorkflowTask BeginTask(string tag, string description)
         {
             if (_currentTask != null)
-                EndTask(); // Auto-close previous task if open
+                EndTask(); // 若上一个任务还开着则自动收尾
 
             _currentTask = new WorkflowTask
             {
@@ -263,9 +260,8 @@ namespace UnitySkills
         {
             if (_currentTask == null) return;
 
-            // Only record tasks that captured at least one snapshot. A tracked skill that failed
-            // or made no changes has nothing to undo, so recording it would leave an empty
-            // (changes=0) entry that clutters the history and confuses undo/redo navigation.
+            // 只记录至少拍到一条快照的任务。被跟踪的技能若失败或没做任何改动，就没有东西可撤销，
+            // 记下来只会留下一条空条目（changes=0），既污染历史又干扰 undo/redo 导航。
             if (_currentTask.snapshots.Count == 0)
             {
                 _currentTask = null;
@@ -297,8 +293,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Registers a snapshot in the current task, deduplicating by globalObjectId.
-        /// When upgradeExisting is true, replaces a previously registered snapshot for the same id.
+        /// 把快照登记进当前任务，按 globalObjectId 去重。
+        /// upgradeExisting 为 true 时，替换同 id 已登记的快照。
         /// </summary>
         internal static ObjectSnapshot AddSnapshot(ObjectSnapshot snap, bool upgradeExisting = false)
         {
@@ -332,9 +328,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Captures the state of an object/component BEFORE modification.
-        /// Supports both scene objects and project assets (Materials, scripts, etc.).
-        /// Asset file backups are stored in the content-addressed WorkflowFileStore.
+        /// 在修改之前捕获对象/组件的状态。
+        /// 场景对象与项目资产（材质、脚本等）都支持。
+        /// 资产文件备份存入内容寻址的 WorkflowFileStore。
         /// </summary>
         public static void SnapshotObject(UnityEngine.Object obj, SnapshotType type = SnapshotType.Modified)
         {
@@ -346,7 +342,7 @@ namespace UnitySkills
                 return;
             }
 
-            // Limit snapshots per task to prevent unbounded memory growth
+            // 限制单任务快照数，避免内存无界增长
             const int MaxSnapshotsPerTask = 500;
             if (_currentTask.snapshots.Count >= MaxSnapshotsPerTask)
             {
@@ -366,7 +362,7 @@ namespace UnitySkills
                 json = EditorJsonUtility.ToJson(obj);
                 assetPath = AssetDatabase.GetAssetPath(obj);
 
-                // Backup asset file bytes in the content-addressed store (all extensions, including .cs)
+                // 把资产文件字节备份进内容寻址库（所有扩展名，含 .cs）
                 if (!string.IsNullOrEmpty(assetPath))
                 {
                     if (WorkflowFileStore.TryGetSafeAssetFullPath(assetPath, out string fullPath) && File.Exists(fullPath))
@@ -396,8 +392,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Records a newly created component for undo tracking.
-        /// Stores additional info (parent GameObject, component type) for reliable deletion.
+        /// 登记一个新建的组件以便撤销。
+        /// 额外存下父 GameObject 与组件类型，以保证删除可靠。
         /// </summary>
         public static void SnapshotCreatedComponent(Component comp)
         {
@@ -410,7 +406,7 @@ namespace UnitySkills
             {
                 globalObjectId = gid,
                 objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
-                originalJson = "",  // New objects don't need original state
+                originalJson = "",  // 新建对象无需原始状态
                 objectName = comp.name,
                 typeName = comp.GetType().Name,
                 type = SnapshotType.Created,
@@ -421,8 +417,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Records a newly created asset (Material, Prefab, ScriptableObject, script, etc.) for undo tracking.
-        /// Does not store file contents; undo of a created asset deletes the asset file.
+        /// 登记一个新建资产（材质、预制体、ScriptableObject、脚本等）以便撤销。
+        /// 不存文件内容；撤销"创建资产"就是删除该资产文件。
         /// </summary>
         public static void SnapshotCreatedAsset(UnityEngine.Object asset)
         {
@@ -444,20 +440,20 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Records a settings change (e.g. console flags, gravity, quality level) for undo tracking.
-        /// The setting must have a getter/setter registered in <see cref="WorkflowSettingRestorerRegistry"/>.
-        /// Undo restores <paramref name="oldValueJson"/>; redo re-applies the value captured at undo time.
+        /// 登记一次设置变更（如控制台标志、重力、质量等级）以便撤销。
+        /// 该设置必须已在 <see cref="WorkflowSettingRestorerRegistry"/> 注册 getter/setter。
+        /// 撤销时还原 <paramref name="oldValueJson"/>；重做时重新应用撤销那一刻捕获的值。
         /// </summary>
-        /// <param name="settingKey">Stable setting key, "module.property" (e.g. "console.pauseOnError").</param>
-        /// <param name="oldValueJson">JSON-encoded value BEFORE the change (captured by the caller).</param>
-        /// <param name="description">Human-readable label for display.</param>
+        /// <param name="settingKey">稳定的设置键，形如 "module.property"（如 "console.pauseOnError"）。</param>
+        /// <param name="oldValueJson">变更前的值，JSON 编码（由调用方捕获）。</param>
+        /// <param name="description">用于展示的可读标签。</param>
         public static ObjectSnapshot SnapshotSetting(string settingKey, string oldValueJson, string description)
         {
             if (_currentTask == null || string.IsNullOrEmpty(settingKey))
                 return null;
 
-            // Stable pseudo id so repeated changes to the same setting within one task dedupe
-            // (only the first snapshot's old value matters for a full undo of the task).
+            // 用稳定的伪 id，使同一任务内对同一设置的多次变更能去重
+            // （整任务撤销只关心第一条快照里的旧值）。
             return AddSnapshot(new ObjectSnapshot
             {
                 globalObjectId = "setting:" + settingKey,
@@ -470,8 +466,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Records a newly created GameObject for undo/redo tracking.
-        /// Stores primitiveType for recreation during redo.
+        /// 登记一个新建 GameObject 以便撤销/重做。
+        /// 存下 primitiveType，供重做时重建。
         /// </summary>
         public static void SnapshotCreatedGameObject(GameObject go, string primitiveType = null)
         {
@@ -519,8 +515,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Records an asset move (source -> destination) for undo/redo tracking.
-        /// Replaces any existing snapshot for the same global object id.
+        /// 登记一次资产移动（源 -> 目标）以便撤销/重做。
+        /// 会替换同一 global object id 上已有的快照。
         /// </summary>
         public static ObjectSnapshot SnapshotAssetMove(string sourcePath, string destinationPath)
         {
@@ -551,8 +547,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Records a newly created folder for undo tracking.
-        /// Folder deletions are handled via AssetDatabase.DeleteAsset (empty folders only).
+        /// 登记一个新建文件夹以便撤销。
+        /// 文件夹删除走 AssetDatabase.DeleteAsset（仅限空文件夹）。
         /// </summary>
         public static ObjectSnapshot SnapshotCreatedFolder(string folderPath)
         {
@@ -579,9 +575,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Deletes an asset after backing it up to the content-addressed file store.
-        /// Creates a Deleted snapshot so the operation can be undone.
-        /// Folder deletions capture every child file and folder .meta before deleting anything.
+        /// 先把资产备份进内容寻址文件库，再删除它。
+        /// 同时创建 Deleted 快照，使该操作可撤销。
+        /// 删除文件夹时，会在动手删除之前把每个子文件与文件夹的 .meta 全部捕获。
         /// </summary>
         public static bool DeleteAssetToTrash(string assetPath)
         {
@@ -778,8 +774,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Undoes a specific task. Returns detailed per-snapshot results.
-        /// Saves the inverse operations to undoneStack for potential redo.
+        /// 撤销指定任务，返回逐快照的详细结果。
+        /// 把逆操作存入 undoneStack 以备重做。
         /// </summary>
         public static TaskUndoResult UndoTask(string taskId)
         {
@@ -793,7 +789,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Redoes a previously undone task. Returns detailed per-snapshot results.
+        /// 重做一个先前被撤销的任务，返回逐快照的详细结果。
         /// </summary>
         public static TaskUndoResult RedoTask(string taskId)
         {
@@ -863,7 +859,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Gets the list of undone tasks that can be redone.
+        /// 取可重做的（已撤销）任务列表。
         /// </summary>
         public static List<WorkflowTask> GetUndoneStack()
         {
@@ -871,7 +867,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Clears the undo stack (called when new changes are made after undo).
+        /// 清空撤销栈（撤销之后又产生新改动时调用）。
         /// </summary>
         public static void ClearUndoneStack()
         {
@@ -883,7 +879,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Alias for UndoTask (backward compatibility).
+        /// UndoTask 的别名（向后兼容）。
         /// </summary>
         public static TaskUndoResult RevertTask(string taskId)
         {
@@ -895,7 +891,18 @@ namespace UnitySkills
             if (_history == null) LoadHistory();
             var task = _history.tasks.FirstOrDefault(t => t.id == taskId);
             if (task != null)
+            {
                 _history.tasks.Remove(task);
+            }
+            else
+            {
+                // 已被撤销的任务住在 undoneStack 里而不在 tasks 里。"delete" 之后仍把它留在那儿，
+                // 会让 workflow_redo_task 的缺省行为（取 undoneStack 最后一项）把调用方以为已经
+                // 消失的对象重新复活。
+                var undoneTask = _history.undoneStack.FirstOrDefault(t => t.id == taskId);
+                if (undoneTask != null)
+                    _history.undoneStack.Remove(undoneTask);
+            }
 
             SaveHistory();
 
@@ -909,8 +916,7 @@ namespace UnitySkills
         #region Session Management (Conversation-Level Undo)
 
         /// <summary>
-        /// Starts a new session (conversation-level). All tasks created during this session
-        /// will be grouped together and can be undone as a whole.
+        /// 开启一个新会话（对话级）。该会话期间创建的所有任务会被归为一组，可整体撤销。
         /// </summary>
         public static string BeginSession(string sessionTag = null)
         {
@@ -929,7 +935,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Ends the current session and saves all recorded changes.
+        /// 结束当前会话并保存所有已记录的改动。
         /// </summary>
         public static void EndSession()
         {
@@ -946,7 +952,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Undoes all changes made during a specific session. Returns detailed per-snapshot results.
+        /// 撤销指定会话期间的全部改动，返回逐快照的详细结果。
         /// </summary>
         public static TaskUndoResult UndoSession(string sessionId)
         {
@@ -968,8 +974,7 @@ namespace UnitySkills
                 return result;
             }
 
-            // Undo whole tasks newest-first. Keeping task boundaries preserves operation order
-            // when the same object was modified, moved, and deleted across the session.
+            // 按任务整体、从新到旧撤销。保留任务边界，才能在同一对象在会话中被修改、移动、删除时保持操作顺序。
             foreach (var task in sessionTasks)
             {
                 var taskResult = TransitionTask(task, _history.tasks, _history.undoneStack, "Undo Session");
@@ -987,7 +992,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Gets all sessions from history.
+        /// 取历史中的全部会话。
         /// </summary>
         public static List<SessionInfo> GetSessions()
         {
@@ -1014,7 +1019,7 @@ namespace UnitySkills
         #region Undo/Redo Snapshot Dispatch
 
         /// <summary>
-        /// Undoes a single snapshot and records the inverse operation in redoTask.
+        /// 撤销单条快照，并把逆操作记入 redoTask。
         /// </summary>
         private static SnapshotUndoResult UndoSnapshot(ObjectSnapshot snapshot, WorkflowTask redoTask)
         {
@@ -1070,7 +1075,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Redoes a single snapshot and records the inverse operation in newTask.
+        /// 重做单条快照，并把逆操作记入 newTask。
         /// </summary>
         private static SnapshotUndoResult RedoSnapshot(ObjectSnapshot snapshot, WorkflowTask newTask)
         {
@@ -1130,7 +1135,7 @@ namespace UnitySkills
 
         private static bool UndoCreatedSnapshot(ObjectSnapshot snapshot, WorkflowTask redoTask)
         {
-            // Component creation undo
+            // 撤销"创建组件"
             if (!string.IsNullOrEmpty(snapshot.componentTypeName) &&
                 !string.IsNullOrEmpty(snapshot.parentGameObjectId))
             {
@@ -1144,8 +1149,8 @@ namespace UnitySkills
                         if (comp != null && (comp.gameObject != go || !compType.IsInstanceOfType(comp)))
                             comp = null;
 
-                        // Legacy snapshots without an object identity can only fall back to type lookup.
-                        // For identified snapshots, failing is safer than deleting a different same-type component.
+                        // 没有对象标识的遗留快照只能退回按类型查找。
+                        // 对有标识的快照，宁可失败，也比删掉另一个同类型组件安全。
                         if (comp == null && string.IsNullOrEmpty(snapshot.globalObjectId) && snapshot.objectInstanceId == 0)
                             comp = go.GetComponent(compType);
                         if (comp != null)
@@ -1174,7 +1179,7 @@ namespace UnitySkills
                 return false;
             }
 
-            // GameObject creation undo
+            // 撤销"创建 GameObject"
             if (snapshot.typeName == "GameObject")
             {
                 var obj = TryResolveObject(snapshot.globalObjectId, snapshot.objectInstanceId);
@@ -1194,7 +1199,7 @@ namespace UnitySkills
                 return true;
             }
 
-            // Asset or folder creation undo
+            // 撤销"创建资产或文件夹"
             if (!string.IsNullOrEmpty(snapshot.assetPath))
             {
                 if (!WorkflowFileStore.TryGetSafeAssetFullPath(snapshot.assetPath, out string fullPath))
@@ -1220,7 +1225,7 @@ namespace UnitySkills
                 return false;
             }
 
-            // Generic object creation undo
+            // 撤销"创建通用对象"
             if (!GlobalObjectId.TryParse(snapshot.globalObjectId, out GlobalObjectId genericGid))
                 return false;
 
@@ -1291,14 +1296,12 @@ namespace UnitySkills
                 return true;
             }
 
-            // Asset/folder branch: an asset/folder Created snapshot only reaches the redo stack via
-            // UndoDeletedSnapshot (a deletion was undone, restoring the asset). Reversing that undo
-            // means re-deleting the asset/folder with a fresh content-addressed backup and pushing a
-            // proper Deleted inverse, which is exactly UndoCreatedSnapshot's asset/folder branch.
-            // Delegating avoids the earlier bug where a restored file (no fileHash) was misclassified
-            // as a folder and deleted without backup, corrupting the next undo. The component and
-            // GameObject branches above are intentionally NOT self-inverse (destroy vs recreate) and
-            // are handled before reaching here.
+            // 资产/文件夹分支：资产或文件夹的 Created 快照只可能经 UndoDeletedSnapshot 进入重做栈
+            // （撤销了一次删除，资产被还原）。反转那次撤销，就是带一份新的内容寻址备份重新删掉该资产/文件夹，
+            // 并压入一条正确的 Deleted 逆操作——这正是 UndoCreatedSnapshot 的资产/文件夹分支所做的事。
+            // 委派给它可以避开早先那个 bug：被还原的文件（没有 fileHash）被误判成文件夹、未备份即删除，
+            // 从而破坏下一次撤销。上面的组件与 GameObject 分支刻意不是自逆的（销毁 vs 重建），
+            // 在到达此处之前就已处理完。
             if (!string.IsNullOrEmpty(snapshot.assetPath))
             {
                 return UndoCreatedSnapshot(snapshot, newTask);
@@ -1396,7 +1399,7 @@ namespace UnitySkills
                             (string.IsNullOrEmpty(snapshot.fileHash) && snapshot.directoryEntries?.Count == 0);
 
             if (File.Exists(fullPath) || (isFolder && Directory.Exists(fullPath)))
-                return false; // Destination already exists
+                return false; // 目标已存在
 
             if (!isFolder && !string.IsNullOrEmpty(snapshot.fileHash))
             {
@@ -1444,11 +1447,10 @@ namespace UnitySkills
 
         private static bool RedoDeletedSnapshot(ObjectSnapshot snapshot, WorkflowTask newTask)
         {
-            // Redo reverses the undo, it does not re-run the original operation. A Deleted snapshot
-            // only ever reaches the redo stack via UndoCreatedSnapshot (undoing a creation deletes
-            // the asset/folder and records a Deleted inverse). Reversing that undo means restoring
-            // the asset/folder, which is exactly what UndoDeletedSnapshot does, so the redo of a
-            // Deleted snapshot is identical to the undo of one.
+            // 重做是反转撤销，不是重跑原操作。Deleted 快照只可能经 UndoCreatedSnapshot 进入重做栈
+            // （撤销一次创建 = 删掉该资产/文件夹并记下一条 Deleted 逆操作）。反转那次撤销就是把资产/文件夹
+            // 还原回来，而这恰恰就是 UndoDeletedSnapshot 干的事，所以"重做一条 Deleted 快照"与
+            // "撤销一条 Deleted 快照"完全相同。
             return UndoDeletedSnapshot(snapshot, newTask);
         }
 
@@ -1475,15 +1477,14 @@ namespace UnitySkills
 
         private static bool RedoMovedSnapshot(ObjectSnapshot snapshot, WorkflowTask newTask)
         {
-            // A Moved snapshot is a self-inverse: undoing it moves the asset back and records a
-            // snapshot with the two paths swapped. Reversing that undo is the same operation again,
-            // so redo replays the undo logic against the already-swapped snapshot on the redo stack.
+            // Moved 快照是自逆的：撤销它就是把资产移回去，并记下一条两个路径互换的快照。
+            // 反转那次撤销还是同一个操作，所以重做就是对重做栈上那条已互换的快照再跑一遍撤销逻辑。
             return UndoMovedSnapshot(snapshot, newTask);
         }
 
         /// <summary>
-        /// Undoes a settings change: captures the current (post-change) value into the redo snapshot,
-        /// then restores the recorded old value via the setting restorer registry.
+        /// 撤销一次设置变更：先把当前（变更后）值捕获进重做快照，
+        /// 再经设置还原注册表恢复已记录的旧值。
         /// </summary>
         private static bool UndoSettingSnapshot(ObjectSnapshot snapshot, WorkflowTask redoTask, out string error)
         {
@@ -1501,7 +1502,7 @@ namespace UnitySkills
                 return false;
             }
 
-            // Capture the current value (what the change set it to) so redo can re-apply it.
+            // 捕获当前值（即那次变更设成的值），供重做时重新应用。
             string redoValueJson = WorkflowSettingRestorerRegistry.TryGetCurrentValue(snapshot.settingKey);
 
             if (!WorkflowSettingRestorerRegistry.TryRestore(snapshot.settingKey, snapshot.settingOldValueJson))
@@ -1523,8 +1524,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Redoes a settings change: re-applies the value captured when the change was undone,
-        /// capturing the pre-redo value into the new snapshot so a later undo remains reversible.
+        /// 重做一次设置变更：重新应用撤销时捕获的值，
+        /// 同时把重做前的值捕获进新快照，使之后的撤销仍然可逆。
         /// </summary>
         private static bool RedoSettingSnapshot(ObjectSnapshot snapshot, WorkflowTask newTask, out string error)
         {
@@ -1542,7 +1543,7 @@ namespace UnitySkills
                 return false;
             }
 
-            // Capture the current (pre-redo, i.e. old) value so a subsequent undo can restore it.
+            // 捕获当前值（重做前，即旧值），供随后的撤销还原。
             string undoValueJson = WorkflowSettingRestorerRegistry.TryGetCurrentValue(snapshot.settingKey);
 
             if (snapshot.settingOldValueJson == null && undoValueJson == null)
@@ -1574,8 +1575,8 @@ namespace UnitySkills
         #region Internal Helpers
 
         /// <summary>
-        /// Captures transform and component data from a live GameObject into a new ObjectSnapshot,
-        /// copying base fields from the provided baseSnapshot.
+        /// 从活的 GameObject 上捕获 transform 与组件数据，生成新的 ObjectSnapshot，
+        /// 基础字段从传入的 baseSnapshot 复制。
         /// </summary>
         private static ObjectSnapshot CaptureGameObjectState(GameObject go, ObjectSnapshot baseSnapshot)
         {
@@ -1733,8 +1734,7 @@ namespace UnitySkills
                 }
             }
 
-            // References can point forward to children or components that did not exist during the
-            // first pass, so deserialize only after the whole hierarchy has been recreated.
+            // 引用可能前向指向第一遍时还不存在的子对象或组件，所以必须等整个层级重建完毕后再反序列化。
             foreach (var pair in restoredComponents)
             {
                 var componentData = pair.Key;
@@ -1810,12 +1810,10 @@ namespace UnitySkills
             return instanceId != 0 ? UnityObjectIdUtility.ObjectIdToObject(instanceId) : null;
         }
 
-        // Budgets for the CaptureObjectReferences walk. A full-depth SerializedProperty descent is
-        // unbounded on assets whose serialized data is a [SerializeReference] graph: VisualTreeAsset
-        // (every imported .uxml) makes iterator.Next(true) follow managed references forever, pinning
-        // the main thread at 100% CPU with no way out but killing the editor. The managed-reference
-        // dedup below is the actual cycle break; the node/time caps are backstops for any other
-        // pathological layout we have not seen yet.
+        // CaptureObjectReferences 遍历的预算上限。对序列化数据是 [SerializeReference] 图的资产而言，
+        // 全深度 SerializedProperty 下钻是无界的：VisualTreeAsset（每个导入的 .uxml）会让
+        // iterator.Next(true) 永远追着托管引用走下去，把主线程钉在 100% CPU 上，除了杀编辑器别无出路。
+        // 下面的托管引用去重才是真正的环路阻断；节点数/时间上限只是给尚未见过的其他病态结构兜底。
         private const int MaxReferenceWalkNodes = 50000;
         private const int MaxReferenceWalkDepth = 32;
         private const int MaxReferenceWalkMilliseconds = 2000;
@@ -1832,9 +1830,8 @@ namespace UnitySkills
                 var serializedObject = new SerializedObject(obj);
                 var iterator = serializedObject.GetIterator();
                 var walkTimer = System.Diagnostics.Stopwatch.StartNew();
-                // Managed references form a graph, not a tree: the same instance can be reachable by
-                // many paths and can reference itself. Visiting each referenceId once turns that graph
-                // back into a finite walk. A repeat visit adds no restorable property path anyway.
+                // 托管引用构成的是图而不是树：同一实例可由多条路径抵达，也可以引用自身。
+                // 每个 referenceId 只访问一次，就把这张图变回一次有限遍历。反正重复访问也提供不了新的可还原属性路径。
                 var visitedManagedRefs = new HashSet<long>();
                 int visitedNodes = 0;
                 bool truncated = false;
@@ -1884,9 +1881,8 @@ namespace UnitySkills
 
                 if (truncated)
                 {
-                    // Partial is still usable: undo restores object references by property path, so the
-                    // paths we did collect remain individually valid. Assets additionally carry a
-                    // content-addressed file backup, which is the real restore path for them.
+                    // 采到一部分仍然有用：撤销是按属性路径还原对象引用的，已收集到的路径各自依然有效。
+                    // 资产还额外带有内容寻址的文件备份，那才是它们真正的还原途径。
                     SkillsLogger.LogVerbose(
                         $"Object reference snapshot for '{obj.name}' ({obj.GetType().Name}) stopped at " +
                         $"{visitedNodes} properties / {walkTimer.ElapsedMilliseconds}ms; captured {references.Count} references.");
@@ -1970,8 +1966,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Captures the current state of a modified object into targetTask, then restores
-        /// the snapshot data (via file store restore, legacy base64, or JSON overlay).
+        /// 把被修改对象的当前状态捕获进 targetTask，然后还原快照数据
+        /// （经文件库还原、遗留 base64 或 JSON 覆盖三条途径之一）。
         /// </summary>
         private static bool RestoreModifiedSnapshot(ObjectSnapshot snapshot, WorkflowTask targetTask,
             bool removeFromStore, string undoLabel)
@@ -1979,8 +1975,7 @@ namespace UnitySkills
             UnityEngine.Object obj = null;
             obj = TryResolveObject(snapshot.globalObjectId, snapshot.objectInstanceId);
 
-            // Legacy deletion snapshots were recorded as Modified. The object no longer resolves,
-            // but the stored bytes are sufficient to restore it and create a proper inverse.
+            // 遗留的删除快照被记成了 Modified。此时对象已解析不到，但存下的字节足以还原它并生成正确的逆操作。
             if (obj == null && !string.IsNullOrEmpty(snapshot.assetPath) &&
                 (!string.IsNullOrEmpty(snapshot.fileHash) || !string.IsNullOrEmpty(snapshot.assetBytesBase64)))
             {
@@ -2017,7 +2012,7 @@ namespace UnitySkills
 
             if (obj == null) return false;
 
-            // Capture current state for the target task (including file store backup)
+            // 为目标任务捕获当前状态（含文件库备份）
             string currentFileHash = "";
             string currentMetaHash = "";
             if (!string.IsNullOrEmpty(snapshot.assetPath))
@@ -2046,7 +2041,7 @@ namespace UnitySkills
                 metaFileHash = currentMetaHash
             });
 
-            // Legacy base64 backup takes priority if present (old history data)
+            // 存在遗留 base64 备份时优先使用（旧历史数据）
             if (!string.IsNullOrEmpty(snapshot.assetBytesBase64) && !string.IsNullOrEmpty(snapshot.assetPath))
             {
                 if (!WorkflowFileStore.TryGetSafeAssetFullPath(snapshot.assetPath, out string fullPath))
@@ -2060,14 +2055,14 @@ namespace UnitySkills
                 return true;
             }
 
-            // Restore from content-addressed file store
+            // 从内容寻址文件库还原
             if (!string.IsNullOrEmpty(snapshot.fileHash) && !string.IsNullOrEmpty(snapshot.assetPath))
             {
                 return WorkflowFileStore.RestoreFile(snapshot.fileHash, snapshot.metaFileHash,
                     snapshot.assetPath, removeFromStore);
             }
 
-            // Fallback to JSON overlay for scene objects / assets without a file backup
+            // 没有文件备份的场景对象/资产退回 JSON 覆盖
             if (!string.IsNullOrEmpty(snapshot.originalJson))
             {
                 Undo.RecordObject(obj, undoLabel);
@@ -2083,8 +2078,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Recreates a GameObject from snapshot data (primitiveType, transform, components).
-        /// Registers the new object with Unity's Undo system.
+        /// 依据快照数据（primitiveType、transform、组件）重建 GameObject，
+        /// 并把新对象登记进 Unity 的 Undo 系统。
         /// </summary>
         private static GameObject RecreateGameObject(ObjectSnapshot snapshot)
         {
@@ -2115,7 +2110,7 @@ namespace UnitySkills
                     if (compType == null) compType = ComponentSkills.FindComponentType(compData.typeName);
                     if (compType == null) continue;
 
-                    // Skip if component already exists (e.g., MeshRenderer on primitives)
+                    // 组件已存在则跳过（如基元自带的 MeshRenderer）
                     var existing = newGo.GetComponent(compType);
                     if (existing != null)
                     {
@@ -2145,16 +2140,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Collects all file hashes referenced by the in-flight task plus every active and undone task.
+        /// 收集在途任务，以及所有活动任务与已撤销任务所引用的全部文件哈希。
         /// </summary>
         private static HashSet<string> CollectReferencedHashes()
         {
-            // Case-insensitive: store entries are enumerated upper-cased, so a snapshot hash that
-            // differs only in case still has to count as a reference.
+            // 忽略大小写：库条目枚举时统一转大写，所以仅大小写不同的快照哈希也必须算作一条引用。
             var referencedHashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // The task being recorded is not in _history yet — history is loaded lazily and both
-            // LoadHistory and EndTask reclaim before appending it — so it is protected from here.
+            // 正在记录的那个任务还不在 _history 里——历史是懒加载的，且 LoadHistory 与 EndTask 都在
+            // 追加它之前就先回收——所以它靠这里来保护。
             AddTaskHashes(_currentTask, referencedHashes);
 
             if (_history == null) return referencedHashes;
@@ -2194,8 +2188,8 @@ namespace UnitySkills
         #region Auto-Cleanup
 
         /// <summary>
-        /// Trims workflow history and the content-addressed file store according to
-        /// WorkflowAutoCleanConfig settings. Called automatically at EndTask and after LoadHistory.
+        /// 按 WorkflowAutoCleanConfig 的设置修剪工作流历史与内容寻址文件库。
+        /// 在 EndTask 与 LoadHistory 之后自动调用。
         /// </summary>
         public static WorkflowTrimReport TrimHistoryIfNeeded(bool force = false)
         {
@@ -2222,7 +2216,7 @@ namespace UnitySkills
 
             int beforeCount = _history.tasks.Count + _history.undoneStack.Count;
 
-            // Remove tasks older than MaxTaskAgeDays
+            // 删除早于 MaxTaskAgeDays 的任务
             if (maxAgeDays > 0)
             {
                 long cutoff = now.AddDays(-maxAgeDays).ToUnixTimeSeconds();
@@ -2230,7 +2224,7 @@ namespace UnitySkills
                 _history.undoneStack.RemoveAll(t => t?.timestamp < cutoff);
             }
 
-            // Remove oldest tasks until under MaxTasks
+            // 从最旧开始删，直到任务数低于 MaxTasks
             if (maxTasks > 0)
             {
                 while (_history.tasks.Count > maxTasks)
@@ -2239,7 +2233,7 @@ namespace UnitySkills
                     _history.undoneStack.RemoveAt(0);
             }
 
-            // Remove oldest tasks until estimated serialized size is under MaxHistoryMB
+            // 从最旧开始删，直到估算的序列化大小低于 MaxHistoryMB
             if (maxHistoryBytes > 0)
             {
                 long currentBytes = EstimateHistorySizeBytes();
@@ -2256,13 +2250,13 @@ namespace UnitySkills
             int afterCount = _history.tasks.Count + _history.undoneStack.Count;
             report.removedTasks = beforeCount - afterCount;
 
-            // Reclaim unreferenced file store entries
+            // 回收无引用的文件库条目
             var referencedHashes = CollectReferencedHashes();
             long beforeBytes = WorkflowFileStore.GetStoreSizeBytes();
             WorkflowFileStore.CollectGarbage(referencedHashes, out int reclaimedCount, out _);
             report.reclaimedFileEntries = reclaimedCount;
 
-            // Prune file store by age and total size
+            // 按存放时长与总大小修剪文件库
             int storeMaxAgeDays = WorkflowAutoCleanConfig.StoreMaxAgeDays;
             long maxStoreBytes = WorkflowAutoCleanConfig.MaxStoreMB > 0
                 ? WorkflowAutoCleanConfig.MaxStoreMB * 1024L * 1024L
@@ -2300,7 +2294,7 @@ namespace UnitySkills
         private static long EstimateTaskSizeBytes(WorkflowTask task)
         {
             if (task?.snapshots == null) return 0;
-            long size = 64; // task metadata overhead
+            long size = 64; // 任务元数据开销
             foreach (var s in task.snapshots)
             {
                 if (s == null) continue;
@@ -2318,7 +2312,7 @@ namespace UnitySkills
                         (s.primitiveType?.Length ?? 0) +
                         (s.settingKey?.Length ?? 0) +
                         (s.settingOldValueJson?.Length ?? 0) +
-                        64; // snapshot overhead
+                        64; // 单条快照开销
             }
             return size;
         }
@@ -2410,17 +2404,16 @@ namespace UnitySkills
         public static void ClearHistory()
         {
             _history = new WorkflowHistoryData();
-            // Blobs of the task still being recorded survive: it was never part of the history the
-            // user asked to clear. Everything else goes — the skill promises to empty the store, so
-            // the recent-write grace period does not apply — which also puts the store back in sync
-            // with the history and lifts recovery mode.
+            // 仍在记录中的那个任务的 blob 会保留：它本就不属于用户要求清空的那段历史。
+            // 其余全部清掉——该技能承诺清空文件库，所以"近期写入"宽限期在此不适用——
+            // 这同时也让文件库与历史重新同步，并解除恢复模式。
             WorkflowFileStore.CollectGarbage(CollectReferencedHashes(), out _, out _, includeRecentWrites: true);
             _historyRecoveryMode = false;
             SaveHistory();
         }
 
         /// <summary>
-        /// Returns the on-disk size of the workflow history JSON file in bytes (0 if absent).
+        /// 返回工作流历史 JSON 文件的磁盘大小（字节）；文件不存在返回 0。
         /// </summary>
         public static long GetHistoryFileSizeBytes()
         {

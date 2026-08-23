@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -20,8 +20,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Returns steps/changes data for inclusion in DryRun responses.
-        /// Returns null if no semantic planner exists for this skill.
+        /// 返回可嵌入 DryRun 响应的 steps/changes 数据；该 skill 没有语义 planner 时返回 null。
         /// </summary>
         public static IDictionary<string, object> BuildPlanData(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation)
         {
@@ -31,7 +30,7 @@ namespace UnitySkills
             var plan = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             ApplySemanticPlanner(skill, validation, plan);
 
-            // If planLevel was not set to "semantic", no planner matched
+            // planLevel 未被置为 "semantic"，说明没有任何 planner 命中
             if (!plan.ContainsKey("planLevel") || !"semantic".Equals(plan["planLevel"]?.ToString(), StringComparison.OrdinalIgnoreCase))
                 return null;
 
@@ -43,7 +42,12 @@ namespace UnitySkills
             return result.Count > 0 ? result : null;
         }
 
-        public static object BuildPlan(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation)
+        /// <summary>
+        /// <c>?mode=plan</c> 的载荷。返回具体字典而非 <c>object</c>，
+        /// 以便调用方无需反射即可追加属于自己的信封级区块（surface profile 的
+        /// <c>authorization</c> 预览）；键的插入顺序即序列化顺序，故追加的区块落在 "note" 之后。
+        /// </summary>
+        public static Dictionary<string, object> BuildPlan(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation)
         {
             var plan = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
             {
@@ -327,6 +331,261 @@ namespace UnitySkills
             return "(unspecified)";
         }
 
+        // RequiresInput 里装的是*语义*记号（"gameObject"、"assetPath"、"component"）而非参数名——
+        // 所以 SkillRouter.IsParameterRequired 拿它做名字比较几乎从不命中；在本检查出现之前，
+        // 那 136 个没有目标就什么都做不了的 skill 对空请求体一律 dryRun 成 valid:true。
+        // 每个记号映射到能满足它的参数名集合；广泛使用的记号只在有五个以上 skill 声明时才映射，
+        // 其余保持旧行为而不去猜。例外是那种为某个具体 skill 与其记号*一同*编写的映射
+        //（最后两条）——那不是对既有声明的猜测，而是新声明自带的强制。
+        // 每个候选都必须是某个声明了该记号的 skill 真正接受的参数名。下面的求交会静默丢掉其余的，
+        // 因此一个没有任何 skill 接受的名字不是无害的备份：它读起来像一层并不存在的覆盖。
+        // 已因此移除两个名字——material 记号下的 "materialPath"（声明它的 16 个 skill 无一接受该键，
+        // 材质资产路径是经双用途的 `path` 传入的），以及 assetPath 下的 "path"。
+        // "componentName" 保留，因为 smart_reference_bind 确实接受它——这正是肉眼扫查最容易漏掉的
+        // "仅一个真实使用者"的情形。
+        // 规则由 SkillMetadataGuardTests.RequiredInputGroups_NameOnlyRealParameters 钉住。
+        private static readonly Dictionary<string, string[]> _requiredInputGroups =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["gameObject"] = new[] { "name", "path", "instanceId", "entityId" },
+            // "A 或 B" 记号：材质 setter 既可作用于场景对象也可作用于材质资产，
+            // 两者都经同一个 `path` 参数传入——这正是记号写 `path`
+            // 而不写那些 skill 压根不接受的 "materialPath" 的原因。
+            ["gameObject|path"] = new[] { "name", "path", "instanceId", "entityId" },
+            ["assetPath"] = new[] { "assetPath" },
+            ["component"] = new[] { "componentType", "componentName" },
+            // 下面两条各自只有一个 skill 声明，仍然做了映射：它们是与该 skill 的记号一同编写的
+            //（2026-08-23），所以并没有猜测的成分——不映射的话，记号读起来像契约却什么都不强制，
+            // 而这正是这两个 skill 曾把空请求体 dryRun 成 valid 的原因。
+            // find_objects_by_name：`name` 是 `nameContains` 的文档化别名。
+            ["nameContains|name"] = new[] { "nameContains", "name" },
+            // behavior_blackboard_list：接受图资产路径*或*一个 agent 定位符。entityId 应当在此
+            //（该 skill 接受 instanceId + name + path，故合成定位符对它可用）——漏掉它会在一个仅仅是
+            // 解析失败的 entityId 之上再报一句 "provide one of …"。上面的 find_objects_by_name
+            // 出于镜像原因不带 entityId：它没有 instanceId，合成定位符不可用，
+            // 而一个没有任何声明方接受的候选读起来就是一层并不存在的覆盖
+            //（SkillMetadataGuardTests.RequiredInputGroups_NameOnlyRealParameters）。
+            ["gameObject|graphAssetPath"] = new[] { "name", "path", "instanceId", "entityId", "graphAssetPath" },
+            // dotween_pro_set_loops：两个互相独立的半边，任一单独就构成完整请求。
+            // 与上面两条同样的理由（2026-08-23 随该 skill 的记号一同编写）——不映射则记号什么都不强制，
+            // 而"两个都没传"恰恰是过去会成功、并把 loops 静默重置为 CLR 默认值 1 的那种调用。
+            // 注意 HasUsableArgument 把数值 0 视为不可用，这在此处是正确的：
+            // 0 也不是 DOTween 接受的循环次数（执行时该 skill 会给出更详细说明）。
+            ["loops|loopType"] = new[] { "loops", "loopType" },
+        };
+
+        /// <summary>
+        /// 强制执行 RequiresInput 中"必须指明目标"的那一半——此前无人强制：
+        /// 做一次组级检查，确认能满足某语义记号的参数中至少有一个带了可用值。
+        ///
+        /// <para>只追加"整组缺失"这一条判定。逐参数的必填性仍是 MissingParams 的职责且原样保留——
+        /// 两者重叠时（记号的键本身就是必填 CLR 参数），此处保持沉默，
+        /// 而不是把同一个空请求体用两种措辞报两遍。</para>
+        ///
+        /// <para>候选列表会与该 skill 实际接受的参数求交。没有这一步，对那 35 个声明了 RequiresInput
+        /// "gameObject" 却只接受 <c>items</c>（所有 <c>*_batch</c>）或使用不同名定位符
+        /// （component_copy 的 sourceName/targetName）的 skill 来说，本检查永远无法满足——
+        /// 那会把一处元数据不一致变成一个谁都调不动的 skill。这也是记号词表就此为止的原因：
+        /// cinemachine 的 <c>vcam</c> 记号求交后只剩 {instanceId, path}，
+        /// 会拒掉完全合理的 <c>{vcamName: "CM vcam1"}</c>。</para>
+        /// </summary>
+        private static void ApplyRequiredInputGroups(
+            SkillRouter.SkillInfo skill,
+            SkillRouter.ParameterValidationResult validation)
+        {
+            // BuildPlan 容许 validation 为 null，而与下面逐 skill 的分析器不同，本检查对每个 skill
+            // 都会运行——因此这是唯一必须显式处理该情况的地方。
+            if (skill == null || validation?.Args == null)
+                return;
+
+            var tokens = skill.RequiresInput;
+            if (tokens == null || tokens.Length == 0)
+                return;
+
+            foreach (var token in tokens)
+            {
+                if (token == null || !_requiredInputGroups.TryGetValue(token, out var candidates))
+                    continue;
+
+                var accepted = candidates.Where(candidate => SkillAcceptsParameter(skill, candidate)).ToArray();
+                if (accepted.Length == 0)
+                    continue;
+
+                if (accepted.Any(candidate => validation.MissingParams.Any(missing =>
+                        string.Equals(missing, candidate, StringComparison.OrdinalIgnoreCase))))
+                {
+                    continue;
+                }
+
+                if (accepted.Any(candidate => HasUsableArgument(validation.Args, candidate)))
+                    continue;
+
+                if (TokenAlreadyReported(validation, token, accepted))
+                    continue;
+
+                AddSemanticError(validation, RequiredInputGroupField(token),
+                    $"Provide one of: {string.Join(", ", accepted)}.");
+            }
+        }
+
+        /// <summary>
+        /// 判断是否已有分析器就该目标发过话——若有，则通用的 "Provide one of: …" 只是同一抱怨的
+        /// 第二种措辞。空的 gameobject_delete 请求体过去会同时收到本处的 <c>field: "target"</c>
+        /// 和 AnalyzeGameObjectDelete 的 <c>field: "gameObject"</c>，让 agent 去猜自己是有一个问题
+        /// 还是两个。
+        ///
+        /// <para>匹配时除了已接受的参数，也匹配记号自身的各部分：对象定位分析器报在 "gameObject" 名下，
+        /// 而那是记号名而非任何 skill 参数；双边记号 "gameObject|path" 则需要认出其中任一半。</para>
+        /// </summary>
+        private static bool TokenAlreadyReported(
+            SkillRouter.ParameterValidationResult validation, string token, string[] accepted)
+        {
+            if (validation.SemanticErrors.Count == 0)
+                return false;
+
+            var tokenParts = token.Split('|');
+
+            foreach (var entry in validation.SemanticErrors)
+            {
+                if (!SkillResultHelper.TryGetMemberValue(entry, "field", out var fieldValue))
+                    continue;
+
+                var field = fieldValue?.ToString();
+                if (string.IsNullOrEmpty(field))
+                    continue;
+
+                if (tokenParts.Any(part => string.Equals(field, part, StringComparison.OrdinalIgnoreCase)) ||
+                    accepted.Any(candidate => string.Equals(field, candidate, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 整组缺失错误报在哪个 <c>field</c> 名下。两个对象定位记号用 "target"，
+        /// 因为没有哪一个参数该被归咎——调用方一个都没给。
+        /// </summary>
+        private static string RequiredInputGroupField(string token)
+        {
+            if (token.StartsWith("gameObject", StringComparison.OrdinalIgnoreCase))
+                return "target";
+            return token;
+        }
+
+        /// <summary>
+        /// 判断该 skill 是否接受这个键：其声明的参数，加上 router 为接受 instanceId 的 skill
+        /// 注入的合成 entityId 定位符。AllowedParameterSet 正是 router 对该问题的答案，
+        /// 读它可保证两边一致。
+        /// </summary>
+        private static bool SkillAcceptsParameter(SkillRouter.SkillInfo skill, string parameterName)
+        {
+            if (skill.AllowedParameterSet != null)
+                return skill.AllowedParameterSet.Contains(parameterName);
+
+            return skill.ParameterNames != null &&
+                skill.ParameterNames.Any(name => string.Equals(name, parameterName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// 判断请求体是否给出了定位层真会据以行动的值。与 <see cref="ReadObjectLocator"/> 保持一致：
+        /// 空白字符串和 instanceId 0 都表示"没传"——若在此把它们算作已提供，
+        /// agent 例行原样发来的 <c>{"name": ""}</c> 或 <c>{"instanceId": 0}</c> 就能绕过本检查。
+        ///
+        /// <para>数值键里的带引号数字按数字判定，而非按非空字符串判定：
+        /// <see cref="GetIntArg"/> 会把 <c>{"instanceId": "0"}</c> 转成 0，定位层随即找不到目标，
+        /// 所以把它算作已提供，正是让一个绝无可能解析成功的请求体通过 dryRun、
+        /// 只在执行时才失败的原因。字符串定位符保持字符串语义——
+        /// <c>{"name": "0"}</c> 指的是名为 "0" 的 GameObject，执行器接受它。</para>
+        /// </summary>
+        private static bool HasUsableArgument(JObject args, string key)
+        {
+            if (!args.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token) ||
+                token == null ||
+                token.Type == JTokenType.Null)
+            {
+                return false;
+            }
+
+            if (token.Type == JTokenType.Integer || token.Type == JTokenType.Float)
+            {
+                try { return token.ToObject<double>() != 0d; }
+                catch { return false; }
+            }
+
+            if (token.Type == JTokenType.String && IsNumericLocatorKey(key))
+            {
+                // 与 GetIntArg 做同样的转换，因此给同样的判定：任何最终落到 0 的输入
+                //（包括它压根解析不了的文本）都会让定位层没有目标。
+                try { return token.ToObject<int>() != 0; }
+                catch { return false; }
+            }
+
+            return !string.IsNullOrWhiteSpace(token.ToString());
+        }
+
+        /// <summary>
+        /// 定位层经 <see cref="GetIntArg"/> 读取的键。本包中所有 instanceId 形态的 skill 参数
+        /// 都声明为 <c>int</c>（instanceId、parentInstanceId、sourceInstanceId、vcamInstanceId …），
+        /// 因此靠后缀即可识别，无需维护一份要跟二十来个调用点同步的清单。
+        /// </summary>
+        private static bool IsNumericLocatorKey(string key) =>
+            key != null && key.EndsWith("instanceId", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// 只做校验的 planner，用于那种唯一值得规划的风险就是某个枚举参数的 setter。
+        /// 在 dryRun 层拒掉非法值——那正是 agent 在提交前会看的地方——除此之外什么都不做。
+        ///
+        /// <para>它补充而非取代 skill 自身的拒绝：skill 体负责阻止非法值被写入，
+        /// 而这里负责阻止 agent 被告知"这次调用已就绪"。复用
+        /// <see cref="SkillParamUtil.TryParseEnumParam{TEnum}"/> 意味着同样的大小写不敏感、
+        /// 拒绝整数字面量的解析，以及与真正执行时一致的 "Invalid value 'X' for parameter 'Y'.
+        /// Valid values: …" 文案。</para>
+        ///
+        /// <para>刻意不调用 <see cref="MarkSemantic"/>：那会给这些 skill 的每一次 dryRun 都挂上
+        /// steps/changes，也就是改变了本来正确的请求体所得到的答复。此处的目的仅是不再对不正确的
+        /// 请求体说 valid:true。</para>
+        /// </summary>
+        private static void AnalyzeEnumSetterParameter<TEnum>(
+            SkillRouter.ParameterValidationResult validation,
+            string parameterName) where TEnum : struct
+        {
+            var raw = GetStringArg(validation?.Args, parameterName);
+            if (string.IsNullOrWhiteSpace(raw))
+                return;
+
+            if (!SkillParamUtil.TryParseEnumParam<TEnum>(raw, parameterName, out _, out var error))
+                AddSemanticError(validation, parameterName, ExtractError(error));
+        }
+
+        /// <summary>
+        /// 只做校验的 planner，用于 skill 以 <see cref="SkillParamUtil.TryParseRequiredEnum{TEnum}"/>
+        /// 读取的创建类枚举参数——即自身声明的默认值本就是成员名（"Point"、"soft"）的那种。
+        ///
+        /// <para>与 <see cref="AnalyzeEnumSetterParameter{TEnum}"/> 只有一处不同，且必须不同：空值。
+        /// 不传该键是合法的，因为绑定的是 CLR 默认值而它有效。显式传空串或 null 则不合法，
+        /// 因为 ValidateParameters 绑定的是所给的值而不会代入默认值，于是 skill 的
+        /// TryParseRequiredEnum 会拒绝它——而 setter 分析器那条"空值意味着别动它，放行"的规则
+        /// 会对唯一跑不起来的请求体答 valid:true。</para>
+        /// </summary>
+        private static void AnalyzeRequiredEnumParameter<TEnum>(
+            SkillRouter.ParameterValidationResult validation,
+            string parameterName) where TEnum : struct
+        {
+            var args = validation?.Args;
+            if (args == null ||
+                !args.TryGetValue(parameterName, StringComparison.OrdinalIgnoreCase, out var token))
+            {
+                return;
+            }
+
+            var raw = token == null || token.Type == JTokenType.Null ? null : token.ToString();
+            if (!SkillParamUtil.TryParseRequiredEnum<TEnum>(raw, parameterName, out _, out var error))
+                AddSemanticError(validation, parameterName, ExtractError(error));
+        }
+
         private static void ApplySemanticPlanner(
             SkillRouter.SkillInfo skill,
             SkillRouter.ParameterValidationResult validation,
@@ -334,6 +593,16 @@ namespace UnitySkills
         {
             switch (skill.Name)
             {
+                case "camera_set_properties":
+                    AnalyzeEnumSetterParameter<CameraClearFlags>(validation, "clearFlags");
+                    break;
+                case "light_set_properties":
+                    AnalyzeEnumSetterParameter<LightShadows>(validation, "shadows");
+                    break;
+                case "light_create":
+                    AnalyzeRequiredEnumParameter<LightType>(validation, "lightType");
+                    AnalyzeRequiredEnumParameter<LightShadows>(validation, "shadows");
+                    break;
                 case "gameobject_create":
                     AnalyzeGameObjectCreate(validation, plan);
                     break;
@@ -438,6 +707,11 @@ namespace UnitySkills
                     AnalyzeTimelineSceneLocatorSkill(skill.Name, validation);
                     break;
             }
+
+            // 必须放最后而非最前：上面逐 skill 的分析器会指名那个真正解析不了的参数，
+            // 而本通用检查在其中之一已覆盖同一目标时会主动让位（见 TokenAlreadyReported）。
+            // 若放在最前，空请求体会同时拿到两条判定——因为那时还没有任何已上报的内容可供让位。
+            ApplyRequiredInputGroups(skill, validation);
         }
 
         private static void AnalyzeTimelineSceneLocatorSkill(string skillName, SkillRouter.ParameterValidationResult validation)
@@ -1541,7 +1815,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Scene Semantic Planners
+        // 场景语义 planner
         // ==================================================================================
 
         private static void AnalyzeSceneCreate(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1677,7 +1951,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Prefab Semantic Planners
+        // Prefab 语义 planner
         // ==================================================================================
 
         private static void AnalyzePrefabCreate(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1776,7 +2050,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Script Semantic Planners
+        // 脚本语义 planner
         // ==================================================================================
 
         private static void AnalyzeScriptCreate(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
@@ -1790,7 +2064,7 @@ namespace UnitySkills
 
             if (!string.IsNullOrWhiteSpace(scriptName))
             {
-                // Validate C# class name
+                // 校验 C# 类名
                 if (!System.Text.RegularExpressions.Regex.IsMatch(scriptName, @"^[A-Za-z_][A-Za-z0-9_]*$"))
                     AddSemanticError(validation, "scriptName", $"'{scriptName}' is not a valid C# class name.");
 
@@ -2147,7 +2421,7 @@ namespace UnitySkills
             return semanticError?.ToString() ?? "Unknown semantic error";
         }
 
-        // ===================== Batch Analyze Helper =====================
+        // ===================== 批处理分析辅助 =====================
 
         private class BatchAnalyzeContext
         {
