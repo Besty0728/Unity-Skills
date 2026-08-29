@@ -156,6 +156,16 @@ def build_records(
     ]
 
 
+def stargazer_drift_tolerance(star_count: int) -> int:
+    """Return how far the stargazers listing may lag the aggregate counter.
+
+    GitHub keeps stars from suspended or deleted accounts in
+    ``stargazers_count`` but never lists those users, so a small permanent
+    gap is expected. A larger gap means the listing was truncated.
+    """
+    return max(2, star_count // 200)
+
+
 def main() -> int:
     args = parse_args()
     repository = validate_repository(args.repository)
@@ -168,14 +178,23 @@ def main() -> int:
     for attempt in range(1, 4):
         timestamps = fetch_stargazers(repository, token)
         metadata = fetch_metadata(repository, token)
-        if len(timestamps) == int(metadata["stargazers_count"]):
+        drift = abs(len(timestamps) - int(metadata["stargazers_count"]))
+        if drift == 0:
             break
         if attempt < 3:
             print("Star count changed while fetching; retrying a consistent snapshot.")
             time.sleep(attempt * 2)
-    else:
-        raise RuntimeError(
-            "GitHub star count kept changing while stargazers were fetched"
+            continue
+        tolerance = stargazer_drift_tolerance(int(metadata["stargazers_count"]))
+        if drift > tolerance:
+            raise RuntimeError(
+                f"GitHub listed {len(timestamps)} stargazers for a reported "
+                f"{metadata['stargazers_count']} stars; the drift of {drift} "
+                f"exceeds the tolerance of {tolerance}"
+            )
+        print(
+            f"Accepting a stargazer drift of {drift} (tolerance {tolerance}); "
+            "GitHub counts stars from accounts it no longer lists."
         )
 
     owner = metadata.get("owner")
