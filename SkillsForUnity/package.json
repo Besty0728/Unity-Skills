@@ -9,6 +9,7 @@
   "licensesUrl": "https://github.com/Besty0728/Unity-Skills/blob/main/LICENSE",
   "dependencies": {
     "com.unity.nuget.newtonsoft-json": "3.0.2",
+    "com.unity.test-framework": "1.1.33",
     "com.unity.timeline": "1.7.7",
     "com.unity.ugui": "1.0.0"
   },
