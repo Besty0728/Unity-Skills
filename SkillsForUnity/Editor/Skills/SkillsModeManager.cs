@@ -936,11 +936,21 @@ namespace UnitySkills
             return EditorPrefs.HasKey("UnitySkills_RequireConfirmation")
                 || EditorPrefs.HasKey("UnitySkills_PreferredPort")
                 || EditorPrefs.HasKey("UnitySkills_LogLevel")
+                || EditorPrefs.HasKey("UnitySkills_TelemetryEnabled")
                 || EditorPrefs.HasKey("UnitySkills_Language")
+                || EditorPrefs.HasKey("UnitySkills_GuideMode")
                 || EditorPrefs.HasKey("UnitySkills_RequestTimeoutMinutes")
                 || EditorPrefs.HasKey("UnitySkills_KeepAliveIntervalSeconds")
                 || EditorPrefs.HasKey("UnitySkills_AutoInstallPackagesOnStartup");
         }
+
+        /// <summary>
+        /// Shared upgrade-default probe for settings that were introduced after the initial
+        /// package release. Keep the key list in this method aligned with the permission panel's
+        /// <c>PermissionUiHelpers.IsExistingInstall</c>; callers must not infer installation age
+        /// from the presence of a setting that was introduced in the current release.
+        /// </summary>
+        internal static bool IsExistingInstallForDefaults() => IsExistingInstall();
     }
 }
 

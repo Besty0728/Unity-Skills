@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -40,6 +40,7 @@ namespace UnitySkills
         private Button        _clearBtn;
         private Label         _resultLabel;
         private TextField     _resultField;
+        private TokenLevelSliderWidget _tokenLevelWidget;
 
         private string _selectedSkillName;
         private string _filterText = "";
@@ -58,6 +59,7 @@ namespace UnitySkills
             uxml.CloneTree(_root);
 
             CacheUiReferences();
+            _tokenLevelWidget = new TokenLevelSliderWidget(_root);
             BindEvents();
             RebuildList();
             ShowEmpty();
@@ -394,9 +396,16 @@ namespace UnitySkills
             if (_clearBtn != null)    _clearBtn.text    = SkillsLocalization.Get("skills_detail_clear");
             if (_resultLabel != null) _resultLabel.text = SkillsLocalization.Get("skills_detail_result_label");
             if (_emptyLabel != null)  _emptyLabel.text  = SkillsLocalization.Get("skills_detail_empty");
+            _tokenLevelWidget?.RefreshTokenLevelLocalization();
 
             // Rebuild list to refresh badge texts in active language
             RebuildList();
+        }
+
+        public void Dispose()
+        {
+            _tokenLevelWidget?.Dispose();
+            _tokenLevelWidget = null;
         }
     }
 }

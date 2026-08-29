@@ -219,6 +219,7 @@ namespace UnitySkills
             if (!projInstalled && !globInstalled)
             {
                 btn.text = SkillsLocalization.Get("uninstall");
+                btn.tooltip = btn.text;
                 btn.SetEnabled(false);
                 return btn;
             }
@@ -228,16 +229,18 @@ namespace UnitySkills
                 // Show a "▾" affordance so the user knows it opens a menu rather than
                 // immediately wiping one scope.
                 btn.text = SkillsLocalization.Get("uninstall") + " ▾";
+                btn.tooltip = btn.text;
                 btn.clicked += () => ShowUninstallMenu(btn, cfg);
                 return btn;
             }
 
             // Exactly one scope installed → directly uninstall it.
             bool targetGlobal = globInstalled;
-            string scopeKey = targetGlobal ? "agent_install_global" : "agent_install_project";
-            // Compose a clear label like "Uninstall Project" / "卸载 全局" so the user
-            // sees which scope this single click will affect.
-            btn.text = SkillsLocalization.Get("uninstall") + " " + SkillsLocalization.Get(scopeKey);
+            string actionKey = targetGlobal ? "agent_uninstall_global" : "agent_uninstall_project";
+            // Use a localized action label that identifies the affected scope.
+            btn.text = SkillsLocalization.Get(actionKey);
+            // Keep the full action name available when the equal-width layout ellipsizes it.
+            btn.tooltip = btn.text;
             btn.clicked += () => OnUninstallClick(cfg, targetGlobal);
             return btn;
         }
@@ -246,11 +249,11 @@ namespace UnitySkills
         {
             var menu = new GenericMenu();
             menu.AddItem(
-                new GUIContent(SkillsLocalization.Get("uninstall") + " " + SkillsLocalization.Get("agent_install_project")),
+                new GUIContent(SkillsLocalization.Get("agent_uninstall_project")),
                 false,
                 () => OnUninstallClick(cfg, isGlobal: false));
             menu.AddItem(
-                new GUIContent(SkillsLocalization.Get("uninstall") + " " + SkillsLocalization.Get("agent_install_global")),
+                new GUIContent(SkillsLocalization.Get("agent_uninstall_global")),
                 false,
                 () => OnUninstallClick(cfg, isGlobal: true));
             menu.DropDown(anchor.worldBound);

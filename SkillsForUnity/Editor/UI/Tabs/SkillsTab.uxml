@@ -4,8 +4,59 @@
          editor="UnityEditor.UIElements"
          noNamespaceSchemaLocation="../../../../../../../UIElementsSchema/UIElementsSchema.xsd">
 
-    <ui:VisualElement name="skills-layout"
-                      style="flex-grow: 1; flex-direction: row; min-height: 0;">
+    <ui:VisualElement name="skills-tab-root" class="skills-tab-root"
+                      style="flex-grow: 1; flex-direction: column; min-height: 0;">
+
+        <!-- Token consumption level header at top of Skills page -->
+        <ui:VisualElement name="token-level-section" class="token-level-section"
+                          style="margin: 6px 10px 4px 10px; flex-shrink: 0;">
+            <ui:VisualElement name="token-level-header" class="token-level-header">
+                <ui:Label name="token-level-label" class="setting-row__label" text="Token consumption level" />
+                <ui:VisualElement style="flex-grow: 1;" />
+                <ui:Label name="token-level-value" class="token-level-value" />
+            </ui:VisualElement>
+            <ui:VisualElement name="token-level-slider-container" class="token-slider-container">
+                <ui:SliderInt name="token-level-slider" class="token-level-slider-native"
+                              low-value="0" high-value="3" value="2" />
+                <ui:VisualElement name="token-level-track" class="token-slider-track" />
+            </ui:VisualElement>
+            <ui:VisualElement name="token-level-scale" class="token-level-scale">
+                <ui:Label name="token-level-scale-minimal" class="token-level-scale__label" text="Minimal" />
+                <ui:Label name="token-level-scale-standard" class="token-level-scale__label" text="Standard" />
+                <ui:Label name="token-level-scale-full" class="token-level-scale__label" text="Full" />
+                <ui:Label name="token-level-scale-maximum" class="token-level-scale__label" text="Maximum" />
+            </ui:VisualElement>
+            <ui:Label name="token-level-hint" class="setting-hint token-level-hint" />
+
+            <ui:Foldout name="token-level-advanced-foldout" class="token-level-advanced" value="false"
+                        text="Advanced">
+                <ui:VisualElement name="token-level-advanced-body" class="token-level-advanced-body">
+                    <ui:VisualElement name="token-level-surface-profile-row" class="setting-row token-level-control-row">
+                        <ui:Label name="token-level-surface-profile-label" class="setting-row__label" text="Skill surface" />
+                        <ui:DropdownField name="token-level-surface-profile" class="setting-row__field" />
+                    </ui:VisualElement>
+                    <ui:Label name="token-level-surface-profile-hint" class="setting-hint" />
+
+                    <ui:VisualElement name="token-level-summary-truncate-row" class="setting-row token-level-control-row">
+                        <ui:Label name="token-level-summary-truncate-label" class="setting-row__label" text="Summary auto-truncation" />
+                        <ui:Toggle name="token-level-summary-truncate" class="token-level-toggle" />
+                    </ui:VisualElement>
+                    <ui:Label name="token-level-summary-truncate-hint" class="setting-hint" />
+
+                    <ui:VisualElement name="token-level-summary-page-size-row" class="setting-row token-level-control-row">
+                        <ui:Label name="token-level-summary-page-size-label" class="setting-row__label" text="Summary page size" />
+                        <ui:IntegerField name="token-level-summary-page-size" class="setting-row__field-narrow" value="10" />
+                    </ui:VisualElement>
+                    <ui:Label name="token-level-summary-page-size-hint" class="setting-hint" />
+                    <ui:Label name="token-level-summary-page-size-disabled-hint" class="setting-hint token-level-disabled-hint" />
+                </ui:VisualElement>
+            </ui:Foldout>
+            <ui:VisualElement name="token-level-maximum-effect" class="token-level-maximum-effect"
+                              picking-mode="Ignore" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="skills-layout"
+                          style="flex-grow: 1; flex-direction: row; min-height: 0;">
 
         <!-- ============================
              LEFT — list pane
@@ -84,5 +135,6 @@
             </ui:VisualElement>
         </ui:VisualElement>
 
+    </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

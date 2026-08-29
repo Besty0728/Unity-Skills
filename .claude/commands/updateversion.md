@@ -92,6 +92,7 @@ git status --short
 
 - `SkillsForUnity/Editor/**/*.cs`
 - `SkillsForUnity/Editor/**/*.uxml`、`*.uss`
+- `SkillsForUnity/Editor/Locales/*.json`
 - `SkillsForUnity/unity-skills~/skills/**/*.md`
 - `SkillsForUnity/unity-skills~/scripts/unity_skills.py`
 - `.github/workflows/**` 与 `.github/scripts/**`
@@ -166,6 +167,8 @@ CHANGELOG 的 `Changed` 中追加：
 
 ```bash
 python3 .github/scripts/check_project_version.py . --expected "{NEW_VER}"
+python3 .github/scripts/check_meta_files.py .
+python3 .github/scripts/check_locales.py .
 python3 -m json.tool SkillsForUnity/package.json >/dev/null
 git diff --check
 ```

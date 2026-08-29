@@ -271,19 +271,23 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   │   └── unity_skills.py     # Python Client Library
 │   │   ├── skills/                 # 82 module docs (54 REST/module docs + 28 documentation-only docs)
 │   │   └── references/             # Unity Development References
-│   └── Editor/Skills/              # Core Skill Logic (56 *Skills.cs files → 54 SkillCategory categories, 805 Skills)
-│       ├── SkillsHttpServer.cs     # HTTP Server Core (Producer-Consumer)
-│       ├── SkillRouter.cs          # Request Routing & Reflection-based Skill Discovery
-│       ├── WorkflowManager.cs      # Persistent Workflow (Task/Session/Snapshot)
-│       ├── RegistryService.cs      # Global Registry (Multi-instance Discovery)
-│       ├── GameObjectFinder.cs     # Unified GO Finder (name/instanceId/path)
-│       ├── BatchExecutor.cs        # Generic Batch Processing Framework
-│       ├── GameObjectSkills.cs     # GameObject Operations (18 skills)
-│       ├── MaterialSkills.cs       # Material Operations (21 skills)
-│       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
-│       ├── WorkflowSkills.cs       # Workflow Undo/Rollback (24 skills)
-│       ├── PerceptionSkills.cs     # Scene Understanding (18 skills)
-│       └── ...                     # 805 Skills source code
+│   └── Editor/
+│       ├── Locales/                # Decoupled JSON Localization Assets (en.json, zh-CN.json, ru.json)
+│       ├── Skills/                 # Core Skill Logic (56 *Skills.cs files → 54 SkillCategory categories, 805 Skills)
+│       │   ├── SkillsHttpServer.cs # HTTP Server Core (Producer-Consumer)
+│       │   ├── SkillRouter.cs      # Request Routing & Reflection-based Skill Discovery
+│       │   ├── WorkflowManager.cs  # Persistent Workflow (Task/Session/Snapshot)
+│       │   ├── RegistryService.cs  # Global Registry (Multi-instance Discovery)
+│       │   ├── GameObjectFinder.cs # Unified GO Finder (name/instanceId/path)
+│       │   ├── BatchExecutor.cs    # Generic Batch Processing Framework
+│       │   ├── Localization.cs     # Multi-Language Localization Engine
+│       │   └── ...                 # 805 Skills source code
+│       └── UI/                     # UI Toolkit Windows & Controllers
+│           ├── UnitySkillsWindow.{cs,uxml,uss} # Main Dashboard Window
+│           ├── UnityCliWindow.{cs,uxml,uss}    # Unity CLI Configuration Panel
+│           ├── AuditLogWindow.{uxml,uss}       # Audit Log Viewer
+│           ├── Controllers/                    # UI Tab & Widget Controllers
+│           └── Tabs/                           # UXML Tab Layouts & Settings Drawer
 ├── docs/
 │   └── SETUP_GUIDE.md              # Complete Setup & Usage Guide
 ├── CHANGELOG.md                    # Version Update Log

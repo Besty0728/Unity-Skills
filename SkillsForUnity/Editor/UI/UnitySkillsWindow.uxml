@@ -4,7 +4,7 @@
          editor="UnityEditor.UIElements"
          noNamespaceSchemaLocation="../../../../../../../UIElementsSchema/UIElementsSchema.xsd">
 
-    <ui:VisualElement name="root" class="root" style="flex-grow: 1; flex-direction: column;">
+    <ui:VisualElement name="root" class="root" style="flex-grow: 1; flex-direction: column; overflow: hidden;">
 
         <!-- ============================================
              1. TOPBAR — status / url / server toggle / settings
@@ -43,6 +43,12 @@
              ============================================ -->
         <ui:VisualElement name="global-notice-stack" class="global-notice-stack"
                           style="flex-direction: column; flex-shrink: 0;">
+            <ui:VisualElement name="narrow-warning-banner" class="narrow-warning-banner"
+                              style="display: none; flex-direction: row; align-items: center;">
+                <ui:Label name="narrow-warning-text" class="narrow-warning-text" text="" />
+                <ui:Button name="narrow-warning-close" class="icon-btn" text="✕" style="width: 18px; height: 18px; font-size: 10px; margin-left: 4px; padding: 0;" />
+            </ui:VisualElement>
+
             <ui:VisualElement name="pending-banner" class="pending-banner"
                               style="display: none; flex-direction: column; flex-shrink: 0;">
                 <ui:VisualElement class="pending-banner__header"
@@ -59,36 +65,53 @@
             <ui:VisualElement name="version-update-banner"
                               class="version-update-banner is-hidden"
                               style="flex-direction: row; flex-shrink: 0; align-items: center;">
-                <ui:Label name="version-update-message" class="version-update-banner__message flex-grow"
-                          text="A new UnitySkills version is available." />
-                <ui:Button name="version-update-view-btn" class="mini-btn version-update-banner__view"
-                           text="View release" />
-                <ui:Button name="version-update-dismiss-btn" class="icon-btn version-update-banner__dismiss"
-                           text="×" tooltip="Dismiss this release" />
+                <ui:Label name="version-update-message" class="version-update-banner__message flex-grow" text="" />
+                <ui:Button name="version-update-view-btn" class="mini-btn version-update-banner__view" text="View release" />
+                <ui:Button name="version-update-dismiss-btn" class="icon-btn version-update-banner__dismiss" text="×" />
             </ui:VisualElement>
         </ui:VisualElement>
 
         <!-- ============================================
-             2. TAB BAR — 4 tabs
+             2. TAB BAR — registry-driven, horizontally scrollable with symmetric scroll buttons
              ============================================ -->
-        <ui:VisualElement name="tab-bar" class="tab-bar"
-                          style="flex-direction: row; flex-shrink: 0;">
-            <ui:VisualElement class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
-                <ui:Button name="tab-btn-0" text="Skills" class="tab-btn" />
-                <ui:VisualElement name="tab-underline-0" class="tab-underline" />
-            </ui:VisualElement>
-            <ui:VisualElement class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
-                <ui:Button name="tab-btn-1" text="AI Config" class="tab-btn" />
-                <ui:VisualElement name="tab-underline-1" class="tab-underline" />
-            </ui:VisualElement>
-            <ui:VisualElement class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
-                <ui:Button name="tab-btn-2" text="History" class="tab-btn" />
-                <ui:VisualElement name="tab-underline-2" class="tab-underline" />
-            </ui:VisualElement>
-            <ui:VisualElement class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
-                <ui:Button name="tab-btn-3" text="Analytics" class="tab-btn" />
-                <ui:VisualElement name="tab-underline-3" class="tab-underline" />
-            </ui:VisualElement>
+        <ui:VisualElement name="tab-bar-container" class="tab-bar-container"
+                          style="flex-shrink: 0; flex-direction: row; align-items: center;">
+            <ui:Button name="tab-scroll-prev-btn" class="tab-scroll-arrow-btn tab-scroll-arrow-btn--prev"
+                       tooltip="Scroll left">
+                <ui:VisualElement name="tab-scroll-prev-icon" class="tab-scroll-arrow-icon" />
+            </ui:Button>
+            <ui:ScrollView name="tab-bar-scroll" class="tab-bar-scroll"
+                           mode="Horizontal" horizontal-scroller-visibility="Hidden"
+                           vertical-scroller-visibility="Hidden"
+                           style="flex-grow: 1; min-width: 0;">
+                <ui:VisualElement name="tab-bar-content" class="tab-bar"
+                                  style="flex-direction: row; flex-shrink: 0;">
+                    <ui:VisualElement name="tab-wrap-skills" class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
+                        <ui:Button name="tab-btn-skills" text="Skills" class="tab-btn" />
+                        <ui:VisualElement name="tab-underline-skills" class="tab-underline" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="tab-wrap-ai-config" class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
+                        <ui:Button name="tab-btn-ai-config" text="AI Config" class="tab-btn" />
+                        <ui:VisualElement name="tab-underline-ai-config" class="tab-underline" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="tab-wrap-unity-cli" class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
+                        <ui:Button name="tab-btn-unity-cli" text="Unity CLI" class="tab-btn" />
+                        <ui:VisualElement name="tab-underline-unity-cli" class="tab-underline" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="tab-wrap-history" class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
+                        <ui:Button name="tab-btn-history" text="History" class="tab-btn" />
+                        <ui:VisualElement name="tab-underline-history" class="tab-underline" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="tab-wrap-analytics" class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
+                        <ui:Button name="tab-btn-analytics" text="Analytics" class="tab-btn" />
+                        <ui:VisualElement name="tab-underline-analytics" class="tab-underline" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:ScrollView>
+            <ui:Button name="tab-scroll-next-btn" class="tab-scroll-arrow-btn tab-scroll-arrow-btn--next"
+                       tooltip="Scroll right">
+                <ui:VisualElement name="tab-scroll-next-icon" class="tab-scroll-arrow-icon" />
+            </ui:Button>
         </ui:VisualElement>
 
         <!-- ============================================
@@ -96,10 +119,11 @@
              ============================================ -->
         <ui:VisualElement name="tab-content" class="tab-content"
                           style="flex-grow: 1; flex-direction: column;">
-            <ui:VisualElement name="tab-content-0" class="tab-pane" style="flex-grow: 1;" />
-            <ui:VisualElement name="tab-content-1" class="tab-pane" style="flex-grow: 1;" />
-            <ui:VisualElement name="tab-content-2" class="tab-pane" style="flex-grow: 1;" />
-            <ui:VisualElement name="tab-content-3" class="tab-pane" style="flex-grow: 1;" />
+            <ui:VisualElement name="tab-content-skills" class="tab-pane" style="flex-grow: 1;" />
+            <ui:VisualElement name="tab-content-ai-config" class="tab-pane" style="flex-grow: 1;" />
+            <ui:VisualElement name="tab-content-unity-cli" class="tab-pane" style="flex-grow: 1;" />
+            <ui:VisualElement name="tab-content-history" class="tab-pane" style="flex-grow: 1;" />
+            <ui:VisualElement name="tab-content-analytics" class="tab-pane" style="flex-grow: 1;" />
         </ui:VisualElement>
 
         <!-- ============================================

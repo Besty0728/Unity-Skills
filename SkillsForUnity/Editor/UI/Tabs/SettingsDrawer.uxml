@@ -21,86 +21,95 @@
             <ui:VisualElement name="drawer-body" class="drawer-body"
                               style="flex-direction: column;">
 
-                <!-- Permissions group (v1.9 — first group so users see it first) -->
-                <ui:VisualElement name="group-permissions" class="settings-group">
-                    <ui:Label name="group-permissions-title" class="settings-group-title"
-                              text="Permissions" />
-
-                    <ui:VisualElement name="row-operating-mode" class="setting-row"
-                                      style="flex-direction: row; align-items: center; margin-bottom: 4px;">
-                        <ui:Label name="perm-mode-label" class="setting-row__label" text="Operating Mode" />
-                        <ui:DropdownField name="perm-mode-dropdown" class="setting-row__field" />
-                    </ui:VisualElement>
-                    <ui:Label name="perm-mode-hint" class="setting-hint"
-                              style="margin-left: 0; margin-bottom: 6px;" />
-
-                    <ui:VisualElement name="row-panel-approval"
-                                      style="flex-direction: column; display: none;">
-                        <ui:Toggle name="perm-panel-approval-toggle" />
-                        <ui:Label name="perm-panel-approval-hint" class="setting-hint"
-                                  style="margin-left: 18px;" />
-                    </ui:VisualElement>
-
-                    <ui:VisualElement name="perm-pending-section"
-                                      style="flex-direction: column; display: none; margin-top: 4px;">
-                        <ui:Label name="perm-pending-title" class="bold-label"
-                                  style="font-size: 11px; margin-bottom: 4px;" />
-                        <ui:VisualElement name="perm-pending-list"
-                                          style="flex-direction: column;" />
-                    </ui:VisualElement>
-
-                    <ui:VisualElement name="perm-allowlist-section"
-                                      style="flex-direction: column; display: none; margin-top: 6px;">
-                        <ui:Foldout name="perm-allowlist-foldout" value="false"
-                                    class="perm-allowlist-foldout">
-                            <ui:VisualElement style="flex-direction: row; align-items: center; margin-bottom: 4px;">
-                                <ui:VisualElement style="flex-grow: 1;" />
-                                <ui:Button name="perm-allowlist-add-btn" class="mini-btn"
-                                           text="+ Add Skill"
-                                           style="margin-right: 4px;" />
-                                <ui:Button name="perm-allowlist-clear-btn" class="mini-btn"
-                                           text="Clear All" />
-                            </ui:VisualElement>
-                            <ui:VisualElement name="perm-allowlist-list"
-                                              style="flex-direction: column;" />
-                        </ui:Foldout>
-                    </ui:VisualElement>
-
-                    <ui:VisualElement name="row-audit"
-                                      style="flex-direction: row; margin-top: 8px;">
-                        <ui:Button name="perm-view-audit-btn" class="mini-btn"
-                                   text="View Audit Log"
-                                   style="flex-grow: 1; height: 22px; margin: 0;" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
                 <ui:VisualElement name="group-language" class="settings-group">
                     <ui:Label name="language-pins-title" class="settings-group-title" text="Pinned languages" />
                     <ui:DropdownField name="language-pin-primary" />
                     <ui:DropdownField name="language-pin-secondary" />
                 </ui:VisualElement>
 
+                <!-- Tab Display group -->
+                <ui:VisualElement name="group-tab-visibility" class="settings-group">
+                    <ui:Label name="group-tab-visibility-title" class="settings-group-title" text="Tab Display" />
+                    <ui:Label name="tab-visibility-hint" class="setting-hint" style="margin-left: 0; margin-bottom: 6px;" />
+
+                    <ui:VisualElement class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                        <ui:Label name="tab-visible-skills-label" class="setting-row__label" text="Skills" />
+                        <ui:Toggle name="tab-visible-skills-toggle" class="setting-toggle" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                        <ui:Label name="tab-visible-aiconfig-label" class="setting-row__label" text="AI Config" />
+                        <ui:Toggle name="tab-visible-aiconfig-toggle" class="setting-toggle" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                        <ui:Label name="tab-visible-unitycli-label" class="setting-row__label" text="Unity CLI" />
+                        <ui:Toggle name="tab-visible-unitycli-toggle" class="setting-toggle" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                        <ui:Label name="tab-visible-history-label" class="setting-row__label" text="History" />
+                        <ui:Toggle name="tab-visible-history-toggle" class="setting-toggle" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="row-tab-visible-analytics" class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                        <ui:Label name="tab-visible-analytics-label" class="setting-row__label" text="Analytics" />
+                        <ui:Toggle name="tab-visible-analytics-toggle" class="setting-toggle" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Permissions group -->
+                <ui:VisualElement name="group-permissions" class="settings-group">
+                    <ui:Label name="group-permissions-title" class="settings-group-title" text="Permissions" />
+
+                    <ui:VisualElement name="row-operating-mode" class="setting-row"
+                                      style="flex-direction: row; align-items: center; margin-bottom: 4px;">
+                        <ui:Label name="perm-mode-label" class="setting-row__label" text="Operating Mode" />
+                        <ui:DropdownField name="perm-mode-dropdown" class="setting-row__field" />
+                    </ui:VisualElement>
+                    <ui:Label name="perm-mode-hint" class="setting-hint" style="margin-left: 0; margin-bottom: 6px;" />
+
+                    <ui:VisualElement name="row-panel-approval" style="flex-direction: column; display: none;">
+                        <ui:Toggle name="perm-panel-approval-toggle" class="setting-toggle" />
+                        <ui:Label name="perm-panel-approval-hint" class="setting-hint" style="margin-left: 18px;" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="confirm-row" class="setting-row"
+                                      style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 4px; margin-bottom: 2px;">
+                        <ui:Label name="confirm-label" class="setting-row__label" text="Confirm high-risk skills" />
+                        <ui:Toggle name="confirm-toggle" class="setting-toggle" />
+                    </ui:VisualElement>
+                    <ui:Label name="confirm-hint" class="setting-hint" style="margin-left: 0; margin-bottom: 6px;" />
+
+                    <ui:VisualElement name="perm-pending-section" style="flex-direction: column; display: none; margin-top: 4px;">
+                        <ui:Label name="perm-pending-title" class="bold-label" style="font-size: 11px; margin-bottom: 4px;" />
+                        <ui:VisualElement name="perm-pending-list" style="flex-direction: column;" />
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="perm-allowlist-section" style="flex-direction: column; display: none; margin-top: 6px;">
+                        <ui:Foldout name="perm-allowlist-foldout" value="false" class="perm-allowlist-foldout">
+                            <ui:VisualElement style="flex-direction: row; align-items: center; margin-bottom: 4px;">
+                                <ui:VisualElement style="flex-grow: 1;" />
+                                <ui:Button name="perm-allowlist-add-btn" class="mini-btn" text="+ Add Skill" style="margin-right: 4px;" />
+                                <ui:Button name="perm-allowlist-clear-btn" class="mini-btn" text="Clear All" />
+                            </ui:VisualElement>
+                            <ui:VisualElement name="perm-allowlist-list" style="flex-direction: column;" />
+                        </ui:Foldout>
+                    </ui:VisualElement>
+
+                    <ui:VisualElement name="row-audit" style="flex-direction: row; margin-top: 8px;">
+                        <ui:Button name="perm-view-audit-btn" class="mini-btn" text="View Audit Log"
+                                   style="flex-grow: 1; height: 22px; margin: 0;" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
                 <!-- AI tools group -->
                 <ui:VisualElement name="group-agent-sync" class="settings-group">
                     <ui:Label name="group-agent-sync-title" class="settings-group-title"
                               text="AI Tools" />
-                    <ui:Toggle name="agent-autosync-toggle" />
+                    <ui:Toggle name="agent-autosync-toggle" class="setting-toggle" />
                     <ui:Label name="agent-autosync-hint" class="setting-hint"
                               style="margin-left: 18px;" />
-                </ui:VisualElement>
-
-                <!-- Unity CLI group — entry to the standalone UnityCliWindow -->
-                <ui:VisualElement name="group-cli" class="settings-group">
-                    <ui:Label name="group-cli-title" class="settings-group-title"
-                              text="Unity CLI" />
-                    <ui:Label name="cli-drawer-hint" class="setting-hint"
-                              style="margin-left: 0; margin-bottom: 6px;" />
-                    <ui:VisualElement name="row-cli-setup"
-                                      style="flex-direction: row;">
-                        <ui:Button name="cli-open-setup-btn" class="mini-btn"
-                                   text="Unity CLI Setup…"
-                                   style="flex-grow: 1; height: 22px; margin: 0;" />
-                    </ui:VisualElement>
                 </ui:VisualElement>
 
                 <!-- Server group -->
@@ -108,11 +117,11 @@
                     <ui:Label name="group-server-title" class="settings-group-title"
                               text="Server" />
 
-                    <ui:Toggle name="autostart-toggle" />
+                    <ui:Toggle name="autostart-toggle" class="setting-toggle" />
                     <ui:Label name="autostart-hint" class="setting-hint"
                               style="margin-left: 18px;" />
 
-                    <ui:Toggle name="start-on-launch-toggle" style="margin-top: 6px;" />
+                    <ui:Toggle name="start-on-launch-toggle" class="setting-toggle" style="margin-top: 6px;" />
                     <ui:Label name="start-on-launch-hint" class="setting-hint"
                               style="margin-left: 18px;" />
 
@@ -150,13 +159,6 @@
                         <ui:DropdownField name="loglevel-dropdown" class="setting-row__field" />
                     </ui:VisualElement>
 
-                    <ui:VisualElement name="surface-profile-row" class="setting-row">
-                        <ui:Label name="surface-profile-label" class="setting-row__label" />
-                        <ui:DropdownField name="surface-profile-dropdown" class="setting-row__field"
-                                          style="width: 170px;" />
-                    </ui:VisualElement>
-                    <ui:Label name="surface-profile-hint" class="setting-hint" />
-
                     <ui:VisualElement name="update-notifications-row" class="setting-row">
                         <ui:Label name="update-notifications-label" class="setting-row__label" />
                         <ui:VisualElement name="update-notifications-switch" class="server-switch" style="margin: 0;">
@@ -164,14 +166,6 @@
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:Label name="update-notifications-hint" class="setting-hint" />
-
-                    <ui:VisualElement name="confirm-row" class="setting-row">
-                        <ui:Label name="confirm-label" class="setting-row__label" />
-                        <ui:VisualElement name="confirm-switch" class="server-switch" style="margin: 0;">
-                            <ui:VisualElement class="server-switch__knob" />
-                        </ui:VisualElement>
-                    </ui:VisualElement>
-                    <ui:Label name="confirm-hint" class="setting-hint" />
 
                     <ui:VisualElement name="telemetry-row" class="setting-row">
                         <ui:Label name="telemetry-label" class="setting-row__label" />
@@ -181,13 +175,6 @@
                     </ui:VisualElement>
                     <ui:Label name="telemetry-hint" class="setting-hint" />
 
-                    <ui:VisualElement name="summary-truncate-row" class="setting-row">
-                        <ui:Label name="summary-truncate-label" class="setting-row__label" />
-                        <ui:VisualElement name="summary-truncate-switch" class="server-switch" style="margin: 0;">
-                            <ui:VisualElement class="server-switch__knob" />
-                        </ui:VisualElement>
-                    </ui:VisualElement>
-                    <ui:Label name="summary-truncate-hint" class="setting-hint" />
                 </ui:VisualElement>
 
                 <!-- Shortcuts group — panel hotkeys (rows built by ShortcutsSettingsController) -->

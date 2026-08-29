@@ -1,6 +1,26 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to **UnitySkills** will be documented in this file.
+
+## [2.8.0] - 2026-08-30
+
+> **JSON 本地化解耦 + 多 Tab 窗口与 Tab 可见性配置 + Token 级别过滤** —— 本版三大核心升级：(1) 将原 `Localization.cs` 内庞大的硬编码多语言字典解耦迁移为独立的外部 JSON 资源体系（`Locales/en.json`、`zh-CN.json`、`ru.json`，1086 词条 100% 对齐），显著缩减代码体积与编译内存开销，并新增 CI 本地化检查工具；(2) UnitySkills 窗口全面升级多 Tab 架构，新增 Tab 可见性配置（`TabVisibilitySettings`）与 Unity CLI Tab 集成；(3) 新增 Skills Token Level（Compact / Normal / Verbose）档位与 UI 滑块组件，支持快速调节与过滤技能载荷，优化 AI 上下文消耗；(4) package.json 显式声明 `com.unity.test-framework` 依赖，修复无头 CI 环境测试程序集编译。
+
+### Added
+
+- **JSON 多语言本地化体系与 CI 校验** — 新增 `SkillsForUnity/Editor/Locales/` 目录（`en.json`, `zh-CN.json`, `ru.json`，各 1086 词条完整对齐），重构 `Localization.cs` 为轻量化 JSON 运行时加载器；新增 `.github/scripts/check_locales.py` CI 检查工具与 `SkillsLocalizationTests` 自动化测试。
+- **UnitySkills 窗口多 Tab 架构与 Tab 可见性设置** — 新增 `TabVisibilitySettings` 配置与持久化机制，支持自定义控制各功能 Tab（Unity CLI、Settings 等）的展示与隐藏；新增 `UnityCliTabController` 与 `UnityCliTab.uxml` 面板集成；新增 `UnitySkillsWindowTabTests` 单元测试。
+- **Skills Token Level 载荷过滤机制** — 新增 `SkillsTokenLevel` 枚举与 `TokenLevelSliderWidget` 滑块控件，支持按 Token 预算过滤技能元数据与 schema 输出；新增 `SkillsTokenLevelTests` 测试用例。
+
+### Changed
+
+- **`Localization.cs` 架构精简** — 移除近 3,800 行硬编码字典，改由 JSON 驱动，大幅降低编辑器内存占用与启动编译耗时。
+- **UI 控制器体验重构** — 优化 `SettingsDrawerController`、`SkillsTabController`、`PendingApprovalBannerController`、`AIConfigTabController` 与 `UnityCliWindow` 的交互与状态同步。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `2.8.0`。受支持版本表（.github/SECURITY.md）同步到 2.8.x。
+
+### Fixed
+
+- **测试程序集依赖缺失** — 在 `package.json` 中补齐 `"com.unity.test-framework": "1.1.33"` 依赖，修复无头模式与纯 UPM 导入下的单元测试编译与运行问题。
 
 ## [2.7.1] - 2026-08-29
 

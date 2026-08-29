@@ -41,6 +41,7 @@
     --color-error-hover: #ec7e7e;
     --color-warning: #e0b04a;
     --color-warning-hover: #eac06a;
+    --color-purple: #b58cff;
     --color-accent: #4a9eff;
     --color-accent-hover: #5cacff;
     --color-accent-dark: #2f6db8;
@@ -83,6 +84,7 @@
     --color-error-hover: #d63540;
     --color-warning: #d39e00;
     --color-warning-hover: #e2ad11;
+    --color-purple: #7040b0;
     --color-accent: #0066cc;
     --color-accent-hover: #1f7ad8;
     --color-accent-dark: #004c99;
@@ -254,6 +256,83 @@
     border-color: var(--color-warning);
 }
 
+/* Universal Blue Toggle Switch for settings and custom toggles (valid standard USS syntax) */
+.setting-toggle,
+.token-level-toggle,
+.cli-feature-toggle,
+.settings-group > .unity-toggle,
+.setting-row > .unity-toggle {
+    margin: 2px 0;
+}
+
+.setting-toggle .unity-toggle__input,
+.token-level-toggle .unity-toggle__input,
+.cli-feature-toggle .unity-toggle__input,
+.settings-group > .unity-toggle .unity-toggle__input,
+.setting-row > .unity-toggle .unity-toggle__input {
+    flex-grow: 0;
+    flex-shrink: 0;
+    width: 32px;
+    height: 18px;
+    background-color: var(--color-button-bg);
+    border-width: 1px;
+    border-color: var(--color-border-hard);
+    border-radius: 9px;
+    margin: 0;
+    padding: 0;
+    cursor: link;
+    transition-property: background-color, border-color;
+    transition-duration: 0.22s;
+}
+
+.setting-toggle .unity-toggle__checkmark,
+.token-level-toggle .unity-toggle__checkmark,
+.cli-feature-toggle .unity-toggle__checkmark,
+.settings-group > .unity-toggle .unity-toggle__checkmark,
+.setting-row > .unity-toggle .unity-toggle__checkmark {
+    width: 14px;
+    height: 14px;
+    margin-top: 1px;
+    margin-left: 1px;
+    background-color: #f0f0f0;
+    border-radius: 7px;
+    border-width: 0;
+    background-image: none;
+    -unity-background-image-tint-color: transparent;
+    transition-property: translate, background-color;
+    transition-duration: 0.22s;
+    transition-timing-function: ease-out;
+    translate: 0 0;
+}
+
+.setting-toggle:checked .unity-toggle__input,
+.token-level-toggle:checked .unity-toggle__input,
+.cli-feature-toggle:checked .unity-toggle__input,
+.settings-group > .unity-toggle:checked .unity-toggle__input,
+.setting-row > .unity-toggle:checked .unity-toggle__input {
+    background-color: var(--color-accent);
+    border-color: var(--color-accent-dark);
+}
+
+.setting-toggle:checked .unity-toggle__checkmark,
+.token-level-toggle:checked .unity-toggle__checkmark,
+.cli-feature-toggle:checked .unity-toggle__checkmark,
+.settings-group > .unity-toggle:checked .unity-toggle__checkmark,
+.setting-row > .unity-toggle:checked .unity-toggle__checkmark {
+    translate: 14px 0;
+    background-color: #ffffff;
+    background-image: none;
+    -unity-background-image-tint-color: transparent;
+}
+
+.setting-toggle:hover .unity-toggle__input,
+.token-level-toggle:hover .unity-toggle__input,
+.cli-feature-toggle:hover .unity-toggle__input,
+.settings-group > .unity-toggle:hover .unity-toggle__input,
+.setting-row > .unity-toggle:hover .unity-toggle__input {
+    border-color: var(--color-accent);
+}
+
 .server-status-text {
     flex-shrink: 0;
     min-width: 46px;
@@ -389,16 +468,85 @@
 }
 
 /* ===================================================================
- * 2. TAB BAR — 3 tabs
+ * 2. TAB BAR — registry-driven horizontal strip with symmetric scroll buttons
  * =================================================================== */
-.tab-bar {
+.tab-bar-container {
+    flex-shrink: 0;
+    min-width: 0;
+    height: 32px;
     background-color: var(--color-panel);
     border-bottom-width: 1px;
     border-bottom-color: var(--color-border-hard);
 }
 
+.tab-scroll-arrow-btn {
+    flex-shrink: 0;
+    width: 20px;
+    height: 28px;
+    margin: 0 1px;
+    padding: 0;
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    border-radius: 4px;
+    justify-content: center;
+    align-items: center;
+    cursor: link;
+    transition-property: background-color, opacity;
+    transition-duration: 0.12s;
+}
+
+.tab-scroll-arrow-btn:hover {
+    background-color: var(--color-tab-hover-bg);
+}
+
+.tab-scroll-arrow-btn:disabled {
+    opacity: 0.25;
+}
+
+.tab-scroll-arrow-icon {
+    width: 8px;
+    height: 10px;
+}
+
+.tab-bar-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    height: 32px;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.tab-bar-scroll .unity-scroll-view__content-viewport {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.tab-bar-scroll .unity-scroll-view__content-container {
+    flex-direction: row;
+    flex-shrink: 0;
+}
+
+.tab-bar-scroll .unity-scroller {
+    display: none;
+    opacity: 0;
+    height: 0;
+    width: 0;
+}
+
+.tab-bar {
+    flex-shrink: 0;
+    min-width: 0;
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.tab-wrap {
+    flex-shrink: 0;
+    min-width: 0;
+}
+
 .tab-btn {
     flex-grow: 1;
+    flex-shrink: 0;
     height: 30px;
     margin: 0;
     padding: 0 12px;
@@ -811,9 +959,22 @@
 
 .agent-card-actions > .mini-btn {
     flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-width: 0;
     height: 22px;
     font-size: 11px;
     margin: 0 2px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.agent-card-actions > .mini-btn .unity-button__text {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .mini-btn.update {
@@ -1064,11 +1225,13 @@
 .drawer-mask {
     background-color: rgba(0, 0, 0, 0.4);
     opacity: 0;
+    display: none;
     transition-property: opacity;
     transition-duration: 0.18s;
 }
 
 .drawer-mask.open {
+    display: flex;
     opacity: 1;
 }
 
@@ -1078,16 +1241,19 @@
 
 .drawer {
     width: 320px;
+    max-width: 100%;
     background-color: var(--color-drawer-bg);
     border-left-width: 1px;
     border-left-color: var(--color-border-hard);
-    translate: 320px 0;
+    translate: 100% 0;
+    display: none;
     transition-property: translate;
     transition-duration: 0.2s;
     transition-timing-function: ease-out;
 }
 
 .drawer.open {
+    display: flex;
     translate: 0 0;
 }
 
@@ -1109,7 +1275,9 @@
 }
 
 .drawer-body {
-    padding: 12px;
+    padding: 10px;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .settings-group {
@@ -1129,25 +1297,33 @@
 .setting-row {
     flex-direction: row;
     align-items: center;
+    justify-content: space-between;
     margin-bottom: 6px;
+    min-width: 0;
 }
 
 .setting-row__label {
     flex-grow: 1;
+    flex-shrink: 1;
+    white-space: normal;
     font-size: 11px;
     color: var(--color-text);
+    margin-right: 6px;
+    min-width: 0;
 }
 
 .setting-row__field {
     width: 120px;
     height: 20px;
     margin: 0;
+    flex-shrink: 0;
 }
 
 .setting-row__field-narrow {
     width: 80px;
     height: 20px;
     margin: 0;
+    flex-shrink: 0;
 }
 
 .setting-row__unit {
@@ -1161,6 +1337,177 @@
     color: var(--color-muted);
     margin: -2px 0 8px 0;
     white-space: normal;
+    overflow: hidden;
+}
+
+.narrow-warning-banner {
+    background-color: rgba(234, 179, 8, 0.16);
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(234, 179, 8, 0.35);
+    border-left-width: 3px;
+    border-left-color: #eab308;
+    padding: 4px 8px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.narrow-warning-text {
+    font-size: 10px;
+    color: #eab308;
+    white-space: normal;
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+/* ---------- Permissions / token level ---------- */
+.token-level-section {
+    margin: 2px 0 8px 0;
+    padding: 8px 10px 6px 10px;
+    background-color: var(--color-card-bg);
+    border-width: 1px;
+    border-color: var(--color-card-border);
+    border-radius: 6px;
+}
+
+.token-level-header {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.token-level-value {
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--color-text);
+}
+
+.token-level-value--minimal,
+.token-level-badge--minimal {
+    color: #10B981;
+    background-color: rgba(16, 185, 129, 0.16);
+    border-width: 1px;
+    border-color: rgba(16, 185, 129, 0.36);
+}
+
+.token-level-value--standard,
+.token-level-badge--standard {
+    color: #38BDF8;
+    background-color: rgba(56, 189, 248, 0.16);
+    border-width: 1px;
+    border-color: rgba(56, 189, 248, 0.36);
+}
+
+.token-level-value--full,
+.token-level-badge--full {
+    color: #FB923C;
+    background-color: rgba(251, 146, 60, 0.16);
+    border-width: 1px;
+    border-color: rgba(251, 146, 60, 0.36);
+}
+
+.token-level-value--maximum,
+.token-level-badge--maximum {
+    color: #C084FC;
+    background-color: rgba(192, 132, 252, 0.18);
+    border-width: 1px;
+    border-color: rgba(192, 132, 252, 0.40);
+}
+
+.token-level-value--custom,
+.token-level-badge--custom {
+    color: #94A3B8;
+    background-color: rgba(148, 163, 184, 0.14);
+    border-width: 1px;
+    border-color: rgba(148, 163, 184, 0.32);
+}
+
+.token-slider-container {
+    position: relative;
+    margin: 6px 0 6px 0;
+    height: 28px;
+}
+
+.token-level-slider-native {
+    display: none;
+}
+
+.token-slider-track {
+    flex-grow: 1;
+    height: 28px;
+    border-radius: 14px;
+    background-color: #222226;
+    cursor: slide-arrow;
+}
+
+.token-level-scale {
+    flex-direction: row;
+    justify-content: space-between;
+    margin: 2px 2px 4px 2px;
+}
+
+.token-level-scale__label {
+    color: var(--color-muted);
+    font-size: 11px;
+    -unity-text-align: middle-center;
+    cursor: link;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition-property: color, background-color;
+    transition-duration: 0.12s;
+}
+
+.token-level-scale__label:hover {
+    color: var(--color-text-hover);
+    background-color: var(--color-tab-hover-bg);
+}
+
+.token-level-scale__label--minimal.token-level-scale__label--active { color: #10B981; }
+.token-level-scale__label--standard.token-level-scale__label--active { color: #38BDF8; }
+.token-level-scale__label--full.token-level-scale__label--active { color: #FB923C; }
+.token-level-scale__label--maximum.token-level-scale__label--active { color: #C084FC; }
+.token-level-scale__label--active { -unity-font-style: normal; }
+
+.token-level-hint {
+    margin-bottom: 4px;
+}
+
+.token-level-advanced {
+    margin-top: 2px;
+}
+
+.token-level-advanced-body {
+    margin: 2px 0 0 4px;
+}
+
+.token-level-control-row {
+    margin-bottom: 3px;
+}
+
+.token-level-toggle {
+    flex-shrink: 0;
+    width: 32px;
+    margin: 0 0 0 6px;
+}
+
+.token-level-disabled-hint {
+    display: none;
+    color: var(--color-warning);
+}
+
+.token-level-disabled-hint--visible {
+    display: flex;
+}
+
+.token-level-maximum-effect {
+    display: none;
+    height: 0;
 }
 
 /* ---------- Shortcuts section (panel hotkeys) ---------- */

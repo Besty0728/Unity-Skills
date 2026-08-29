@@ -7,7 +7,7 @@
 
 | 项目 | 值 |
 |------|----|
-| 版本 | 2.7.1 |
+| 版本 | 2.8.0 |
 | 技术栈 | C# (Unity Editor Plugin) + Python (Client) |
 | Unity | 2022.3+（已验证 Unity 6 / 6000.x） |
 | 协议 | MIT |
@@ -59,6 +59,7 @@ Unity-Skills/
 │   │   │   ├── SkillInstaller.cs         # AI 工具一键安装
 │   │   │   ├── UnityCliService.cs        # Unity CLI 检测 + 项目绑定 (Library/UnitySkills/cli_config.json)
 │   │   │   └── *Skills.cs × 56           # 54 个 SkillCategory 分类 (共 805 Skills)
+│   │   ├── Locales/                      # 独立多语言 JSON 资产 (en.json, zh-CN.json, ru.json)
 │   │   └── UI/                           # Editor UI (USS + UXML + EditorWindow)
 │   │       ├── UnitySkillsWindow.{cs,uxml,uss}    # 主窗口
 │   │       ├── AuditLogWindow.{uxml,uss}          # 审计窗口
@@ -142,17 +143,18 @@ public static object SkillName(string name, float x = 0f) { ... }
 - ListView 等控件优先用 Unity 2022.2+ 的事件（如 `selectedIndicesChanged`），避免 obsolete API。
 - 命名空间：业务统一 `UnitySkills`，内部 helper 用 `UnitySkills.Internal`。
 
-### 6. 本地化
+### 6. 本地化 (多语言架构)
 
-- 所有面向用户的字符串走 `SkillsLocalization.Get(key)`。
-- UI 内需 fallback 时用 `PermissionUiHelpers.L(key, enFallback, cnFallback)`——允许 Localization 表暂缺该 key 时显示语种 fallback。
-- **禁止在 .cs 里硬编码中/英文界面文案**。
+- **JSON 解耦架构（硬约束）**：所有多语言文本彻底从 C# 业务代码解耦，统一存放于 `Editor/Locales/` 目录下（`en.json` 英文、`zh-CN.json` 中文、`ru.json` 俄文）。**严禁在 `.cs` 脚本中硬编码多语言静态字典或界面中英文字符串**。
+- **调用接口与性能**：业务与 UI 代码统一调用 `SkillsLocalization.Get(key)` 或 `SkillsLocalization.Get(key, params object[] args)`。底层由 `[InitializeOnLoad]` 在编辑器加载时解析 JSON 并缓存在内存字典中，提供 O(1) 瞬时查表与零运行时 IO。
+- **三语对齐契约**：新增或修改任何 UI 词条时，必须保证 `en.json`、`zh-CN.json`、`ru.json` 三者 100% 键名对齐，严禁漏填。
+- **字库安全（硬约束）**：`Editor/UI/` 与 `Locales/` 涉及的中文字符必须处于 `UnitySkillsCN-UI.asset` 已有字库中，**严禁运行 font baker**。
 
 ### 7. 注释语言
 
 - **源码注释一律英文**（`.cs` 的 `//` `///` `/* */`、`.py` 的 `#`）。仅在确有必要处保留中文：逐字引用中文界面文案、上游第三方的中文提示串、或中文本地化键值——保留的中文放在引号内，周围说明文字仍用英文。
 - 这条只约束**注释**。字符串字面量里的中文（Localization 词条值、生成代码模板、面向用户的错误文案）属于产品输出，不在此列，不要改。
-- `Editor/UI/` 与 `Localization.cs` 另有约束：字体图集扫描器会扫这些文件的字符（含注释），其中文只能减不能增。
+- `Editor/UI/` 与 `Locales/` 另有约束：字体图集扫描器会扫这些文件的字符（含注释），其中文只能减不能增。
 
 ---
 

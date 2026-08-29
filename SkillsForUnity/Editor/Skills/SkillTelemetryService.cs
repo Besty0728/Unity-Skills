@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -78,6 +78,8 @@ namespace UnitySkills
         private static Dictionary<string, RecommendationHealth> _recommendationHealthCache;
         private static long _recommendationHealthCacheAtTicks;
 
+        public static event Action OnChanged;
+
         /// <summary>
         /// Master switch (EditorPrefs, on by default). When off, <see cref="Record"/> returns immediately.
         /// The getter reads EditorPrefs, so it must be called on the main thread — every Record
@@ -86,7 +88,12 @@ namespace UnitySkills
         public static bool Enabled
         {
             get => EditorPrefs.GetBool(PrefEnabled, true);
-            set => EditorPrefs.SetBool(PrefEnabled, value);
+            set
+            {
+                if (EditorPrefs.GetBool(PrefEnabled, true) == value) return;
+                EditorPrefs.SetBool(PrefEnabled, value);
+                OnChanged?.Invoke();
+            }
         }
 
         /// <summary>

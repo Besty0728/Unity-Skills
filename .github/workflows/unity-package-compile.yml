@@ -63,12 +63,27 @@ jobs:
       - name: Check .meta pairing and GUID duplicates
         run: python3 .github/scripts/check_meta_files.py .
 
+  locale-check:
+    name: Locale JSON Compliance & Tri-Language Parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Check locale JSONs, key parity, and C# references
+        run: python3 .github/scripts/check_locales.py .
+
   editmode:
     name: Unity ${{ matrix.unityVersion }} EditMode
     needs:
       - project-version-check
       - skill-frontmatter-check
       - meta-guid-check
+      - locale-check
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:

@@ -47,7 +47,7 @@ namespace UnitySkills
             _list        = _root.Q<VisualElement>("pending-banner-list");
 
             if (_settingsBtn != null)
-                _settingsBtn.clicked += () => _window?.OpenSettings();
+                _settingsBtn.clicked += () => _window?.OpenPermissionsTab();
 
             SkillsModeManager.OnChanged += OnModeChanged;
             _root.RegisterCallback<DetachFromPanelEvent>(OnRootDetached);

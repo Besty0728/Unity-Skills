@@ -138,25 +138,106 @@ namespace UnitySkills
         private const string EntityIdParameterName = "entityId";
 
         private const string PrefKeySummaryAutoTruncate = "UnitySkills_SummaryAutoTruncate";
+        private const string PrefKeySummaryPageSize = "UnitySkills_SummaryPageSize";
+        public const int DefaultSummaryPageSize = 5;
         private static bool? _summaryAutoTruncate;
+        private static int? _summaryPageSize;
 
         /// <summary>
-        /// Toggle for automatic truncation in Summary mode; must be explicitly enabled. Off by
-        /// default: unless the caller explicitly paginates via pageOffset/pageLimit, non-verbose results pass through unchanged. When enabled, a non-verbose array with more than 10 items is
-        /// truncated to the first page, with isTruncated metadata attached.
+        /// Raised after either summary preference is changed through this class. EditorPrefs and
+        /// all subscribers are expected to run on Unity's main thread; HTTP worker threads only
+        /// enqueue requests and never access these properties directly.
+        /// </summary>
+        public static event Action SummarySettingsChanged;
+
+        /// <summary>
+        /// Toggle for automatic truncation in Summary mode. The first read performs the one-shot
+        /// upgrade default: existing installations retain the historic disabled behavior, while
+        /// fresh installations opt into truncation. Once read, the value is persisted and no
+        /// future package update can silently change a user's choice.
         /// </summary>
         public static bool SummaryAutoTruncate
         {
             get
             {
                 if (!_summaryAutoTruncate.HasValue)
-                    _summaryAutoTruncate = EditorPrefs.GetBool(PrefKeySummaryAutoTruncate, false);
+                {
+                    if (EditorPrefs.HasKey(PrefKeySummaryAutoTruncate))
+                        _summaryAutoTruncate = EditorPrefs.GetBool(PrefKeySummaryAutoTruncate, false);
+                    else
+                    {
+                        // Keep this list in lockstep with PermissionUiHelpers.IsExistingInstall
+                        // and SkillsModeManager.IsExistingInstall. The internal helper also lets
+                        // EditMode tests simulate an upgrade without creating machine prefs.
+                        _summaryAutoTruncate = !SkillsModeManager.IsExistingInstallForDefaults();
+                        EditorPrefs.SetBool(PrefKeySummaryAutoTruncate, _summaryAutoTruncate.Value);
+                    }
+                }
                 return _summaryAutoTruncate.Value;
             }
             set
             {
+                bool changed = !_summaryAutoTruncate.HasValue || _summaryAutoTruncate.Value != value;
                 _summaryAutoTruncate = value;
                 EditorPrefs.SetBool(PrefKeySummaryAutoTruncate, value);
+                if (changed) RaiseSummarySettingsChanged();
+            }
+        }
+
+        /// <summary>
+        /// Number of items returned for an automatic Summary page. Explicit pageLimit arguments
+        /// continue to override this value, and explicit paging remains available even when
+        /// automatic truncation is disabled. Values below one are treated as a malformed pref and
+        /// read as the safe default; the malformed value is left untouched for rollback safety.
+        /// </summary>
+        public static int SummaryPageSize
+        {
+            get
+            {
+                if (!_summaryPageSize.HasValue)
+                {
+                    if (!EditorPrefs.HasKey(PrefKeySummaryPageSize))
+                    {
+                        _summaryPageSize = DefaultSummaryPageSize;
+                        EditorPrefs.SetInt(PrefKeySummaryPageSize, DefaultSummaryPageSize);
+                    }
+                    else
+                    {
+                        int stored = EditorPrefs.GetInt(PrefKeySummaryPageSize, DefaultSummaryPageSize);
+                        _summaryPageSize = stored > 0 ? stored : DefaultSummaryPageSize;
+                    }
+                }
+                return _summaryPageSize.Value;
+            }
+            set
+            {
+                int normalized = value > 0 ? value : DefaultSummaryPageSize;
+                bool changed = !_summaryPageSize.HasValue || _summaryPageSize.Value != normalized;
+                _summaryPageSize = normalized;
+                EditorPrefs.SetInt(PrefKeySummaryPageSize, normalized);
+                if (changed) RaiseSummarySettingsChanged();
+            }
+        }
+
+        /// <summary>Test-only cache reset. Preference values themselves are intentionally preserved.</summary>
+        internal static void ResetSummaryPreferencesForTests()
+        {
+            _summaryAutoTruncate = null;
+            _summaryPageSize = null;
+        }
+
+        private static void RaiseSummarySettingsChanged()
+        {
+            var handlers = SummarySettingsChanged;
+            if (handlers == null) return;
+            foreach (var handler in handlers.GetInvocationList())
+            {
+                try { ((Action)handler)?.Invoke(); }
+                catch (Exception ex)
+                {
+                    SkillsLogger.LogWarning(
+                        $"SummarySettingsChanged handler '{handler.Method?.DeclaringType?.Name}.{handler.Method?.Name}' threw: {ex.Message}");
+                }
             }
         }
 
@@ -970,7 +1051,7 @@ namespace UnitySkills
                     if (arr != null && ((SummaryAutoTruncate && arr.Count > 10) || offset.HasValue || limit.HasValue))
                     {
                         int startIndex = offset ?? 0;
-                        int pageSize = limit ?? 5;
+                        int pageSize = limit ?? SummaryPageSize;
 
                         // Clamp to a valid range
                         if (startIndex >= arr.Count)

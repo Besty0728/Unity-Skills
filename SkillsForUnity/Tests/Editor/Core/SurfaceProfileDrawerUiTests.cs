@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -53,7 +53,7 @@ namespace UnitySkills.Tests.Core
         public void TearDown()
         {
             foreach (var controller in _builtControllers)
-                DetachDrawer(controller);
+                controller.Dispose();
             _builtControllers.Clear();
 
             SkillsSurfaceProfile.Current = _savedProfile;
@@ -144,7 +144,7 @@ namespace UnitySkills.Tests.Core
         public void Dropdown_ChoiceOrder_MatchesLocalizedLabelsInProfileOrder()
         {
             SkillsLocalization.Current = SkillsLocalization.Language.English;
-            var dropdown = BuildDrawerAndFindProfileDropdown(out _);
+            var dropdown = BuildPermissionAndFindProfileDropdown(out _);
 
             Assert.That(dropdown.choices.Count, Is.EqualTo(ExpectedProfileOrder.Length));
             var expectedLabels = new[]
@@ -161,7 +161,7 @@ namespace UnitySkills.Tests.Core
         public void Dropdown_InitialValue_ReflectsCurrentProfile()
         {
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Guide;
-            var dropdown = BuildDrawerAndFindProfileDropdown(out _);
+            var dropdown = BuildPermissionAndFindProfileDropdown(out _);
 
             Assert.That(dropdown.value, Is.EqualTo(dropdown.choices[1]),
                 "构造时就该把当前档位回填进下拉框。");
@@ -171,7 +171,7 @@ namespace UnitySkills.Tests.Core
         public void ExternalProfileChange_SyncsDropdownValue()
         {
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
-            var dropdown = BuildDrawerAndFindProfileDropdown(out _);
+            var dropdown = BuildPermissionAndFindProfileDropdown(out _);
             Assert.That(dropdown.value, Is.EqualTo(dropdown.choices[0]));
 
             // A profile change made outside the panel (EditorPrefs migration, test fixtures, a future CLI) must be picked
@@ -199,7 +199,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void ChoiceLookup_ResolvesEachLabelBackToItsProfile()
         {
-            var dropdown = BuildDrawerAndFindProfileDropdown(out _);
+            var dropdown = BuildPermissionAndFindProfileDropdown(out _);
             var order = GetProfileOrder();
 
             for (int index = 0; index < order.Length; index++)
@@ -216,9 +216,9 @@ namespace UnitySkills.Tests.Core
             var guideBefore = SkillsSurfaceProfile.HiddenCategories(SurfaceProfileKind.Guide).ToArray();
             var noSceneBefore = SkillsSurfaceProfile.HiddenCategories(SurfaceProfileKind.NoSceneAuthoring).ToArray();
 
-            BuildDrawerAndFindProfileDropdown(out var root);
-            var hint = root.Q<Label>("surface-profile-hint");
-            Assert.That(hint, Is.Not.Null, "抽屉里找不到 surface-profile-hint。");
+            BuildPermissionAndFindProfileDropdown(out var root);
+            var hint = root.Q<Label>("token-level-surface-profile-hint");
+            Assert.That(hint, Is.Not.Null, "权限页里找不到技能范围提示。");
 
             var texts = new List<string>();
             foreach (var profile in ExpectedProfileOrder)
@@ -244,48 +244,29 @@ namespace UnitySkills.Tests.Core
 
         private static SurfaceProfileKind[] GetProfileOrder()
         {
-            var field = typeof(SettingsDrawerController).GetField(
-                "_profileOrder", BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.That(field, Is.Not.Null, "未找到 SettingsDrawerController._profileOrder。");
+            var field = typeof(TokenLevelSliderWidget).GetField(
+                "SurfaceProfileOrder", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(field, Is.Not.Null, "未找到 TokenLevelSliderWidget.SurfaceProfileOrder。");
             return (SurfaceProfileKind[])field.GetValue(null);
         }
 
-        // Every drawer built by a test subscribes to SkillsSurfaceProfile.OnChanged. In real usage, unsubscribing
-        // happens via DetachFromPanelEvent, but an off-screen element tree has no panel, so SendEvent never dispatches;
-        // so here we record the controller and call its detach handler directly in TearDown. Failing to unsubscribe
-        // would let the subscription count accumulate across tests, running one extra refresh against a discarded UI tree on every subsequent profile change.
-        private readonly List<SettingsDrawerController> _builtControllers = new List<SettingsDrawerController>();
+        private readonly List<TokenLevelSliderWidget> _builtControllers = new List<TokenLevelSliderWidget>();
 
         /// <summary>
-        /// Builds a minimal drawer: the controller only requires a container named "drawer" under the root; window is only stored, never dereferenced.
+        /// Builds a minimal widget: clones SkillsTab.uxml and attaches TokenLevelSliderWidget.
         /// </summary>
-        private DropdownField BuildDrawerAndFindProfileDropdown(out VisualElement root)
+        private DropdownField BuildPermissionAndFindProfileDropdown(out VisualElement root)
         {
             root = new VisualElement();
-            root.Add(new VisualElement { name = "drawer" });
-            root.Add(new VisualElement { name = "drawer-mask" });
+            var uxml = UnityEditor.AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Packages/com.besty.unity-skills/Editor/UI/Tabs/SkillsTab.uxml");
+            uxml?.CloneTree(root);
+            var widget = new TokenLevelSliderWidget(root);
+            _builtControllers.Add(widget);
 
-            // Construction alone completes CloneTree + caching references + binding events + backfilling the current value.
-            var controller = new SettingsDrawerController(root, null);
-            _builtControllers.Add(controller);
-
-            var dropdown = root.Q<DropdownField>("surface-profile-dropdown");
+            var dropdown = root.Q<DropdownField>("token-level-surface-profile");
             Assert.That(dropdown, Is.Not.Null,
-                "抽屉 UXML 里找不到 surface-profile-dropdown —— 名字改了或该行被删了。");
+                "Skills 页 UXML 里找不到 token-level-surface-profile。");
             return dropdown;
-        }
-
-        /// <summary>
-        /// Calls the controller's own DetachFromPanelEvent handler to complete unsubscription. The handler completely
-        /// ignores the event argument, so passing null is safe -- what we want here is just those two lines it unsubscribes.
-        /// </summary>
-        private static void DetachDrawer(SettingsDrawerController controller)
-        {
-            var handler = typeof(SettingsDrawerController).GetMethod(
-                "OnRootDetached", BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(handler, Is.Not.Null,
-                "未找到 SettingsDrawerController.OnRootDetached —— 退订路径改了，这里要跟着改。");
-            handler.Invoke(controller, new object[] { null });
         }
 
         private static Dictionary<string, string> GetLocalizationDictionary(string fieldName)

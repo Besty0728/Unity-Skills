@@ -271,19 +271,23 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │   │   │   └── unity_skills.py     # Python 客户端库
 │   │   ├── skills/                 # 82 个模块文档（54 个 REST/模块文档 + 28 个 advisory 文档）
 │   │   └── references/             # Unity 开发参考文档
-│   └── Editor/Skills/              # 核心 Skill 逻辑 (56 个 *Skills.cs → 54 个 SkillCategory 分类，共 805 Skills)
-│       ├── SkillsHttpServer.cs     # HTTP 服务器核心 (Producer-Consumer)
-│       ├── SkillRouter.cs          # 请求路由 & 反射发现 Skills
-│       ├── WorkflowManager.cs      # 持久化工作流 (Task/Session/Snapshot)
-│       ├── RegistryService.cs      # 全局注册表 (多实例发现)
-│       ├── GameObjectFinder.cs     # 统一 GO 查找器 (name/instanceId/path)
-│       ├── BatchExecutor.cs        # 泛型批处理框架
-│       ├── GameObjectSkills.cs     # GameObject 操作 (18 skills)
-│       ├── MaterialSkills.cs       # Material 操作 (21 skills)
-│       ├── CinemachineSkills.cs    # Cinemachine 2.x/3.x (34 skills)
-│       ├── WorkflowSkills.cs       # Workflow 撤销/回滚 (24 skills)
-│       ├── PerceptionSkills.cs     # 场景理解 (18 skills)
-│       └── ...                     # 805 Skills 源码
+│   └── Editor/
+│       ├── Locales/                # 独立多语言 JSON 资产 (en.json, zh-CN.json, ru.json)
+│       ├── Skills/                 # 核心 Skill 逻辑 (56 个 *Skills.cs → 54 个 SkillCategory 分类，共 805 Skills)
+│       │   ├── SkillsHttpServer.cs # HTTP 服务器核心 (Producer-Consumer)
+│       │   ├── SkillRouter.cs      # 请求路由 & 反射发现 Skills
+│       │   ├── WorkflowManager.cs  # 持久化工作流 (Task/Session/Snapshot)
+│       │   ├── RegistryService.cs  # 全局注册表 (多实例发现)
+│       │   ├── GameObjectFinder.cs # 统一 GO 查找器 (name/instanceId/path)
+│       │   ├── BatchExecutor.cs    # 泛型批处理框架
+│       │   ├── Localization.cs     # 多语言本地化管理引擎
+│       │   └── ...                 # 805 Skills 源码
+│       └── UI/                     # UI Toolkit 窗口与控制器
+│           ├── UnitySkillsWindow.{cs,uxml,uss} # 主控制面板窗口
+│           ├── UnityCliWindow.{cs,uxml,uss}    # Unity CLI 配置面板
+│           ├── AuditLogWindow.{uxml,uss}       # 审计日志窗口
+│           ├── Controllers/                    # 页面与组件控制器
+│           └── Tabs/                           # UXML 页面结构与设置抽屉
 ├── docs/
 │   └── SETUP_GUIDE.md              # 完整安装使用指南
 ├── CHANGELOG.md                    # 版本更新记录
