@@ -7,7 +7,7 @@ using System.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// 资源管理技能：导入、创建、删除、查找。
+    /// Asset management skills: import, create, delete, find.
     /// </summary>
     public static class AssetSkills
     {
@@ -30,7 +30,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                 Directory.CreateDirectory(dir);
 
-            // 覆盖前先备份已有资源，撤销时才能还原旧内容。
+            // Back up the existing asset before overwriting, so the old content can be restored on undo.
             bool overwriting = File.Exists(destinationPath);
             if (overwriting)
             {
@@ -84,8 +84,8 @@ namespace UnitySkills
             if (!SkillsCommon.PathExists(assetPath))
                 return new { error = $"Asset not found: {assetPath}" };
 
-            // DeleteAssetToTrash 自己会把文件（含 .meta）备份进内容寻址库并记录 Deleted 快照，
-            // 无需再显式做前置快照。
+            // DeleteAssetToTrash backs the file (including .meta) into the content-addressed store
+            // and records a Deleted snapshot on its own, so no explicit pre-snapshot is needed here.
             if (!WorkflowManager.DeleteAssetToTrash(assetPath))
                 return new { error = $"Failed to delete asset: {assetPath}" };
 
@@ -125,7 +125,7 @@ namespace UnitySkills
             if (Validate.SafePath(sourcePath, "sourcePath") is object err1) return err1;
             if (Validate.SafePath(destinationPath, "destinationPath") is object err2) return err2;
 
-            // 轻量 Moved 快照（只存两个路径），撤销时把资源移回原处。
+            // Lightweight Moved snapshot (stores just the two paths); undo moves the asset back to its original location.
             WorkflowManager.SnapshotAssetMove(sourcePath, destinationPath);
 
             var error = AssetDatabase.MoveAsset(sourcePath, destinationPath);
@@ -176,7 +176,7 @@ namespace UnitySkills
                 if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
-                // 覆盖前先备份已有资源，撤销时才能还原旧内容。
+                // Back up the existing asset before overwriting, so the old content can be restored on undo.
                 bool overwriting = File.Exists(item.destinationPath);
                 if (overwriting)
                 {
@@ -226,7 +226,7 @@ namespace UnitySkills
                 if (Validate.SafePath(item.path, "path", isDelete: true) is object pathErr)
                     return pathErr;
 
-                // DeleteAssetToTrash 自带备份与 Deleted 快照，无需前置快照。
+                // DeleteAssetToTrash backs up and snapshots Deleted on its own; no pre-snapshot needed.
                 if (!WorkflowManager.DeleteAssetToTrash(item.path))
                     return new { error = "Delete failed", target = item.path };
 
@@ -265,7 +265,7 @@ namespace UnitySkills
                 if (Validate.SafePath(item.destinationPath, "destinationPath") is object dstErr)
                     return dstErr;
 
-                // 轻量 Moved 快照（只存两个路径），撤销时把资源移回原处。
+                // Lightweight Moved snapshot (stores just the two paths); undo moves the asset back to its original location.
                 WorkflowManager.SnapshotAssetMove(item.sourcePath, item.destinationPath);
 
                 string error = AssetDatabase.MoveAsset(item.sourcePath, item.destinationPath);
@@ -306,8 +306,8 @@ namespace UnitySkills
 
             var newPath = AssetDatabase.GenerateUniqueAssetPath(assetPath);
 
-            // CopyAsset 的 bool 返回值必须检查：源不存在（或任何其他复制失败）时它只是返回
-            // false，忽略掉就会报出 success:true 和一对根本没落盘的 original/copy 路径。
+            // CopyAsset's bool return value must be checked: if the source doesn't exist (or copy fails
+            // for any other reason) it just returns false; ignoring that reports success:true with an original/copy pair never written to disk.
             if (!AssetDatabase.CopyAsset(assetPath, newPath))
                 return new
                 {
@@ -382,8 +382,8 @@ namespace UnitySkills
             var name = Path.GetFileName(folderPath);
             var guid = AssetDatabase.CreateFolder(parent, name);
 
-            // AssetDatabase.CreateFolder 失败时（例如父目录不存在）只返回空 guid 并自行打日志，
-            // 不检查就会给一个根本没创建的目录报成功并记录工作流快照。
+            // AssetDatabase.CreateFolder just returns an empty guid and logs its own message on failure
+            // (e.g. parent directory missing); without this check, a never-created directory would be reported success with a workflow snapshot recorded.
             if (string.IsNullOrEmpty(guid))
                 return new { error = $"Failed to create folder '{folderPath}'. The parent folder may not exist." };
 

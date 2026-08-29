@@ -8,35 +8,38 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Unity CLI（官方 unity 命令行工具，实验性 beta）集成服务。
+    /// Integration service for the Unity CLI (the official <c>unity</c> command-line tool, experimental beta).
     ///
-    /// 职责：
-    ///  1. 检测本机是否安装 Unity CLI（后台线程跑 `unity --version`，结果供 UI 轮询）；
-    ///  2. 项目级绑定配置读写 —— Library/UnitySkills/cli_config.json（机器本地，不进 git，
-    ///     编辑器关闭时 AI 客户端也按该固定路径读取，用于冷启动门控）；
-    ///  3. 绑定状态同步进 RegistryService 全局注册表，便于跨项目发现。
+    /// Responsibilities:
+    ///  1. Detect whether Unity CLI is installed locally (a background thread runs `unity
+    ///     --version`; the result is polled by the UI);
+    ///  2. Read/write the project-level binding config — Library/UnitySkills/cli_config.json
+    ///     (machine-local, not checked into git; AI clients also read it at this fixed path
+    ///     while the editor is closed, for cold-start gating);
+    ///  3. Sync the binding state into RegistryService's global registry, for cross-project discovery.
     ///
-    /// 对 CLI 零硬依赖：检测失败只影响面板显示，不影响任何 REST skill。
+    /// Zero hard dependency on the CLI: a detection failure only affects the panel display, not any REST skill.
     /// </summary>
     public static class UnityCliService
     {
         public const int ConfigSchemaVersion = 1;
 
-        // 检测失败原因常量（DetectResult.error 取值）。不写入 cli_config.json，仅供运行时/UI 诊断。
+        // Detection-failure reason constants (values of DetectResult.error). Not written to
+        // cli_config.json, used only for runtime/UI diagnostics.
         public const string CliErrorNotFound = "not_found";
         public const string CliErrorNotExecutable = "not_executable";
         public const string CliErrorLaunchFailed = "launch_failed";
         public const string CliErrorIncompatibleSystem = "incompatible_system";
 
-        // ===== 配置模型（Newtonsoft 序列化，字段名即 JSON key，客户端按此契约读取）=====
+        // ===== Config model (Newtonsoft-serialized; field names are the JSON keys clients read against) =====
 
         public class CliFeatures
         {
-            public bool coldStart = true;   // 冷启动 / 生命周期管理
-            public bool openArgs  = true;   // unity open --args 传参启动
-            public bool cliTest   = true;   // unity test 无头测试
-            public bool cliRun    = false;  // unity run 批处理运行（新能力默认关，旧配置缺键=false，须在面板显式开启）
-            public bool cliBuild  = false;  // unity build 无头构建（同上，显式开启）
+            public bool coldStart = true;   // cold start / lifecycle management
+            public bool openArgs  = true;   // launch via unity open --args
+            public bool cliTest   = true;   // unity test headless tests
+            public bool cliRun    = false;  // unity run batch execution (new capability, off by default; a missing key in old configs = false, must be opted into explicitly in the panel)
+            public bool cliBuild  = false;  // unity build headless build (same as above, explicit opt-in)
         }
 
         public class CliConfig
@@ -51,7 +54,7 @@ namespace UnitySkills
             public CliFeatures features = new CliFeatures();
         }
 
-        // ===== 检测结果（后台线程写，主线程 UI 轮询读）=====
+        // ===== Detection result (written by a background thread, polled by the main-thread UI) =====
 
         public class DetectResult
         {
@@ -64,13 +67,13 @@ namespace UnitySkills
         private static volatile bool _detecting;
         private static volatile DetectResult _lastResult;
 
-        /// <summary>当前是否有检测在后台进行中。</summary>
+        /// <summary>Whether a detection is currently running in the background.</summary>
         public static bool IsDetecting => _detecting;
 
-        /// <summary>最近一次检测结果；未检测过为 null。UI 用 schedule.Execute 轮询。</summary>
+        /// <summary>The most recent detection result; null if never detected. The UI polls this via schedule.Execute.</summary>
         public static DetectResult LastResult => _lastResult;
 
-        // ===== 路径（在主线程静态初始化时捕获，后台线程只读缓存值）=====
+        // ===== Paths (captured on the main thread during static init; background threads only read the cached values) =====
 
         private static readonly string ConfigDir =
             Path.Combine(Application.dataPath, "../Library/UnitySkills");
@@ -81,12 +84,14 @@ namespace UnitySkills
 
         private static CliConfig _cached;
 
-        // ===== 检测 =====
+        // ===== Detection =====
 
         /// <summary>
-        /// 后台线程检测 Unity CLI。探测顺序：用户指定路径 → 已绑定配置里的路径 →
-        /// PATH（login shell，macOS GUI 进程不继承 shell PATH）→ 常见安装位。
-        /// 完成后写 <see cref="LastResult"/>，不回调（UI 侧轮询，避免跨线程触碰 Unity API）。
+        /// Detects Unity CLI on a background thread. Probe order: user-specified path → path
+        /// from the bound config → PATH (via a login shell, since macOS GUI processes don't
+        /// inherit the shell PATH) → common install locations.
+        /// Writes <see cref="LastResult"/> when done, with no callback (the UI polls instead, to
+        /// avoid touching Unity APIs across threads).
         /// </summary>
         public static void DetectAsync(string userPath = null)
         {
@@ -112,8 +117,8 @@ namespace UnitySkills
                             result.version = attempt.version;
                             break;
                         }
-                        // 记录最后一个“找到了文件但启动失败”的具体原因；
-                        // 若某个候选根本不存在，则保留更具体的错误。
+                        // Record the specific reason for the last "the file was found but launch
+                        // failed" case; if a candidate simply doesn't exist, keep the more specific error instead.
                         if (attempt.error != null)
                             lastConcreteError = attempt.error;
                     }
@@ -145,8 +150,9 @@ namespace UnitySkills
                 "Unity", "cli", "unity.exe");
             yield return "unity.exe";
 #else
-            // 官方 install.sh 的默认安装位（PATH 注入走 .zshrc 的 `. ~/.unity/env`，
-            // GUI 进程拿不到，必须直接探这个目录）
+            // The official install.sh's default install location (its PATH injection goes
+            // through .zshrc's `. ~/.unity/env`, which a GUI process can't pick up, so this
+            // directory must be probed directly)
             yield return Path.Combine(home, ".unity", "bin", "unity");
             yield return ResolveViaShell("command -v unity", winWhere: false);
             yield return Path.Combine(home, ".local", "bin", "unity");
@@ -157,8 +163,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 经 login shell 解析 PATH 上的 unity。Editor GUI 进程（尤其 macOS Dock 启动）
-        /// 不继承用户 shell 的 PATH，必须走 -lc 让 profile 生效。失败返回 null。
+        /// Resolves unity on PATH via a login shell. The editor's GUI process (especially when
+        /// launched from the macOS Dock) doesn't inherit the user shell's PATH, so this must go
+        /// through -lc to let the profile take effect. Returns null on failure.
         /// </summary>
         private static string ResolveViaShell(string cmd, bool winWhere)
         {
@@ -180,17 +187,18 @@ namespace UnitySkills
                 {
                     string shell = Environment.GetEnvironmentVariable("SHELL");
                     psi.FileName = string.IsNullOrEmpty(shell) ? "/bin/zsh" : shell;
-                    // -lic：login + interactive。仅 -l 不会加载 .zshrc（交互专属），
-                    // 而 Unity CLI 等工具的 PATH 注入恰恰写在 .zshrc —— 实测 -lc 找不到。
+                    // -lic: login + interactive. -l alone doesn't load .zshrc (that's
+                    // interactive-only), and Unity CLI and similar tools' PATH injection is
+                    // written precisely in .zshrc — verified in practice that -lc alone fails to find it.
                     psi.Arguments = "-lic \"" + cmd + "\"";
                 }
                 using (var p = System.Diagnostics.Process.Start(psi))
                 {
-                    p.BeginErrorReadLine();          // 排空 stderr，防缓冲区满死锁（rc 文件可能很吵）
+                    p.BeginErrorReadLine();          // Drain stderr, to avoid a deadlock from a full buffer (rc files can be noisy)
                     string stdout = p.StandardOutput.ReadToEnd();
                     if (!p.WaitForExit(8000)) { try { p.Kill(); } catch { } return null; }
                     if (p.ExitCode != 0) return null;
-                    // where 可能返回多行，取第一行
+                    // "where" may return multiple lines; take the first one
                     var first = (stdout ?? "").Trim()
                         .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
                     return first.Length > 0 ? first[0].Trim() : null;
@@ -212,10 +220,11 @@ namespace UnitySkills
             }
         }
 
-        /// <summary>跑 `&lt;path&gt; --version` 验证可执行并取版本号；返回具体失败原因。</summary>
+        /// <summary>Runs `&lt;path&gt; --version` to verify it's executable and get the version number; returns the specific failure reason.</summary>
         /// <remarks>
-        /// 先异步启动 stdout/stderr 读取再 WaitForExit，避免子进程输出填满管道缓冲区后死锁。
-        /// 仅用于输出极小的 `--version` 探测；不适用于可能产生大量日志的命令。
+        /// Starts async stdout/stderr reads before WaitForExit, to avoid a deadlock from the
+        /// child process's output filling the pipe buffer.
+        /// Only suitable for probes with tiny output like `--version`; not for commands that may produce a lot of log output.
         /// </remarks>
         private static VersionAttempt TryGetVersion(string cliPath)
         {
@@ -232,7 +241,7 @@ namespace UnitySkills
                 };
                 using (var p = System.Diagnostics.Process.Start(psi))
                 {
-                    // 先开始异步读取，防止管道缓冲区满导致 WaitForExit 无限等待。
+                    // Start the async reads first, to prevent WaitForExit from hanging forever due to a full pipe buffer.
                     var stdoutTask = p.StandardOutput.ReadToEndAsync();
                     var stderrTask = p.StandardError.ReadToEndAsync();
 
@@ -255,12 +264,12 @@ namespace UnitySkills
             }
             catch (System.ComponentModel.Win32Exception w32)
             {
-                // NativeErrorCode 比 Message 可靠：Mono 的措辞（"Cannot find the specified file" /
-                // "Access denied"）与 .NET Framework 不同，且随 locale 变化。
-                // 2 = ERROR_FILE_NOT_FOUND / ENOENT，3 = ERROR_PATH_NOT_FOUND，5 = ERROR_ACCESS_DENIED / EACCES，13 = EACCES(POSIX)。
+                // NativeErrorCode is more reliable than Message: Mono's wording ("Cannot find the
+                // specified file" / "Access denied") differs from .NET Framework's, and varies by locale.
+                // 2 = ERROR_FILE_NOT_FOUND / ENOENT, 3 = ERROR_PATH_NOT_FOUND, 5 = ERROR_ACCESS_DENIED / EACCES, 13 = EACCES (POSIX).
                 switch (w32.NativeErrorCode)
                 {
-                    // 文件不存在或 PATH 上找不到：不算“启动失败”，让探测继续下一个候选。
+                    // File doesn't exist or isn't found on PATH: not a "launch failure" — let probing continue to the next candidate.
                     case 2:
                     case 3:
                         return new VersionAttempt(false);
@@ -268,7 +277,7 @@ namespace UnitySkills
                     case 13:
                         return new VersionAttempt(false, error: CliErrorNotExecutable);
                     default:
-                        // 未知 errno：回退到措辞匹配，覆盖 Mono / .NET / 各平台的不同文案。
+                        // Unknown errno: fall back to message matching, covering the different wording across Mono / .NET / each platform.
                         return ClassifyByMessage(w32.Message);
                 }
             }
@@ -286,7 +295,7 @@ namespace UnitySkills
             }
         }
 
-        /// <summary>无可用 errno 时的兜底分类：按异常措辞区分“不存在”“不可执行”和其他启动失败。</summary>
+        /// <summary>Fallback classification when no errno is available: distinguishes "doesn't exist", "not executable", and other launch failures by the exception's wording.</summary>
         private static VersionAttempt ClassifyByMessage(string message)
         {
             string msg = (message ?? "").ToLowerInvariant();
@@ -304,9 +313,9 @@ namespace UnitySkills
             return t.Contains("glibc") || t.Contains("libc.so") || t.Contains("version `glib");
         }
 
-        // ===== 配置读写 =====
+        // ===== Config read/write =====
 
-        /// <summary>读取项目绑定配置；文件不存在或损坏返回 null。结果缓存，Bind/Unbind 后失效。</summary>
+        /// <summary>Reads the project binding config; returns null if the file doesn't exist or is corrupt. The result is cached and invalidated after Bind/Unbind.</summary>
         public static CliConfig LoadConfig()
         {
             if (_cached != null) return _cached;
@@ -323,7 +332,7 @@ namespace UnitySkills
             }
         }
 
-        /// <summary>当前项目是否已绑定且启用 Unity CLI。</summary>
+        /// <summary>Whether the current project is bound and Unity CLI is enabled.</summary>
         public static bool IsBound
         {
             get
@@ -333,7 +342,7 @@ namespace UnitySkills
             }
         }
 
-        /// <summary>绑定当前项目：写 cli_config.json 并同步注册表。保留已有 feature 开关。</summary>
+        /// <summary>Binds the current project: writes cli_config.json and syncs the registry. Preserves existing feature toggles.</summary>
         public static void Bind(string cliPath, string cliVersion)
         {
             var cfg = LoadConfig() ?? new CliConfig();
@@ -349,7 +358,7 @@ namespace UnitySkills
             SkillsLogger.Log($"Unity CLI bound: {cfg.cliPath} ({cfg.cliVersion})");
         }
 
-        /// <summary>解绑：enabled=false（保留路径便于重新绑定），注册表清除标记。</summary>
+        /// <summary>Unbinds: enabled=false (keeps the path to make rebinding easy), and clears the registry marker.</summary>
         public static void Unbind()
         {
             var cfg = LoadConfig();
@@ -360,7 +369,7 @@ namespace UnitySkills
             SkillsLogger.Log("Unity CLI unbound.");
         }
 
-        /// <summary>更新单个 feature 开关并落盘（面板 Toggle 直接调用）。</summary>
+        /// <summary>Updates a single feature toggle and saves it (called directly by the panel's Toggle).</summary>
         public static void SetFeature(Action<CliFeatures> mutate)
         {
             var cfg = LoadConfig();
@@ -384,7 +393,7 @@ namespace UnitySkills
             }
         }
 
-        /// <summary>供 RegistryService.Register 读取绑定状态（不触发检测）。</summary>
+        /// <summary>For RegistryService.Register to read the binding state (without triggering detection).</summary>
         public static void GetRegistryBinding(out bool bound, out string cliPath)
         {
             var cfg = LoadConfig();
@@ -392,18 +401,20 @@ namespace UnitySkills
             cliPath = bound ? cfg.cliPath : null;
         }
 
-        // ===== 冷启动自动开服 =====
+        // ===== Cold-start auto server start =====
 
-        /// <summary>AI 经 Unity CLI 冷启动时随 --args 传入的标记。</summary>
+        /// <summary>The marker AI passes via --args when cold-starting through Unity CLI.</summary>
         public const string ColdStartArg = "-unityskills-coldstart";
 
         private const string ColdStartConsumedKey = "UnitySkills_CliColdStartConsumed";
 
         /// <summary>
-        /// 编辑器本次会话是否由 Unity CLI 冷启动、且应自动拉起服务器。
-        /// 条件：命令行含 <see cref="ColdStartArg"/> + 项目已绑定 + coldStart 开关开启。
-        /// 每个编辑器会话只返回一次 true（SessionState 跨 Domain Reload 记忆已消费），
-        /// 避免用户会话中途手动停服后被每次 Reload 反复强启。
+        /// Whether this editor session was cold-started by Unity CLI and should auto-start the
+        /// server. Conditions: the command line contains <see cref="ColdStartArg"/> + the project
+        /// is bound + the coldStart toggle is on.
+        /// Returns true only once per editor session (SessionState remembers consumption across
+        /// Domain Reload), so a user who manually stops the server mid-session isn't force-started
+        /// again by every subsequent reload.
         /// </summary>
         public static bool ConsumeColdStartRequest()
         {

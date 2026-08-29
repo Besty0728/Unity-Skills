@@ -9,15 +9,17 @@ using UnityEngine;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// batch step 循环里的 GameObjectFinder 缓存选择性失效（#2 留下的零覆盖缺口）。
+    /// Selective invalidation of the GameObjectFinder cache inside a batch step loop (a zero-coverage gap left by #2).
     ///
-    /// 一个 batch 的所有 step 共用一个 POST job，所以 ProcessJobQueue 的每请求失效不会在 step
-    /// 之间跑；step 循环自己补了一次。#2 把它改成只对写 step 失效 —— 只读 step 按契约无副作用，
-    /// 让它清缓存等于每个只读 step 后面都白重建一次场景索引。
+    /// All steps in one batch share a single POST job, so ProcessJobQueue's per-request invalidation never runs
+    /// between steps; the step loop adds its own invalidation. #2 changed it to invalidate only after write
+    /// steps — read-only steps are contractually side-effect-free, so clearing the cache after one would mean
+    /// every subsequent read-only step rebuilds the scene index for nothing.
     ///
-    /// 缓存有效性靠反射读 <c>GameObjectFinder._cacheValid</c>。没有公开的观察点，而绕道行为观察
-    /// （造一个缓存看不见的对象再查）会把「缓存是否有效」和「查询是否走缓存」两件事搅在一起。
-    /// 字段改名会让这里立刻响铃并指明原因，这是可以接受的耦合。
+    /// Cache validity is read via reflection on <c>GameObjectFinder._cacheValid</c>. There's no public
+    /// observation point, and a workaround behavioral observation (create an object the cache can't see, then
+    /// query) would conflate two separate things: "is the cache valid" and "does the query go through the
+    /// cache". A field rename will make this test fail loudly and point at why — an acceptable coupling.
     /// </summary>
     [TestFixture]
     public class BatchStepCacheInvalidationTests
@@ -33,8 +35,9 @@ namespace UnitySkills.Tests.Core
         {
             _savedMode = SkillsModeManager.CurrentMode;
             _savedProfile = SkillsSurfaceProfile.Current;
-            // step 要真的执行，所以模式必须放行；档位必须 full，否则写 step 被 SURFACE_EXCLUDED
-            // 拦在 Execute 里，缓存失效那一行根本走不到（拦截路径不该失效缓存，这也是对的）。
+            // The step must actually execute, so the mode must let it through; the profile must be full,
+            // otherwise a write step gets caught in Execute by SURFACE_EXCLUDED and the cache-invalidation line
+            // is never reached (and it's correct for the intercepted path to not invalidate the cache).
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
 
@@ -88,7 +91,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void UnknownSkillStep_StillInvalidatesFinderCache()
         {
-            // 名字解析不到已注册技能时走保守分支：宁可白失效一次，也不能假设一个未知调用没副作用。
+            // When name resolution can't find a registered skill, take the conservative branch: better a
+            // needless invalidation than assuming an unknown call has no side effects.
             new GameObject("BatchCacheProbe");
             PrimeFinderCache();
 
@@ -101,8 +105,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void WriteStepFollowingReadStep_IsVisibleToLaterSteps()
         {
-            // 上面三条盯的是内部状态；这条盯的是那个状态存在的理由：同一个 batch 里，后面的
-            // step 必须能找到前面 step 创建的对象。
+            // The three tests above watch internal state; this one watches the reason that state exists: within
+            // the same batch, a later step must be able to find an object created by an earlier step.
             var steps = new JArray
             {
                 new JObject { ["skill"] = "gameobject_find", ["args"] = new JObject { ["name"] = "Nothing" } },
@@ -124,8 +128,8 @@ namespace UnitySkills.Tests.Core
         // ---------- helpers ----------
 
         /// <summary>
-        /// 让 GameObjectFinder 建起场景索引。走公开的按路径查找入口，不碰私有方法 ——
-        /// 结果不重要，重要的是它内部会调 GetOrBuildSceneCache。
+        /// Makes GameObjectFinder build its scene index. Goes through the public find-by-path entry point,
+        /// not a private method — the result doesn't matter, what matters is that it calls GetOrBuildSceneCache internally.
         /// </summary>
         private static void PrimeFinderCache()
         {

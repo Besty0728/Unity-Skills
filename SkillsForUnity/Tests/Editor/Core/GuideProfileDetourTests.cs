@@ -12,25 +12,25 @@ using UnitySkills.Internal;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 档位的「携带式写操作」关口：两个入口的写操作由载荷而不是由自身元数据决定，所以元数据规则
-    /// （<see cref="SkillsSurfaceProfileTests"/> 覆盖的四条）对它们是瞎的。
+    /// The profile gate for "carried write operations": for both entry points, whether a write happens
+    /// is decided by the payload, not by their own metadata, so the metadata rules (the four covered by <see cref="SkillsSurfaceProfileTests"/>) are blind to them.
     ///
     /// <list type="bullet">
-    /// <item><c>batch_execute</c> / <c>batch_retry_failed</c> 执行的是 confirmToken / report 里
-    /// 记着的操作，而铸令牌的 <c>batch_preview_*</c> 全是 ReadOnly —— 规则 1 保它们可见（应该的，
-    /// 预览正是 guide 档下 AI 讲解所需），于是 guide 档下「预览拿令牌 → 执行」这条链能真的改名、
-    /// 写组件属性、换材质、删对象。</item>
-    /// <item><c>workflow_undo_task</c> / <c>redo</c> / <c>revert</c> / <c>session_undo</c> 重放的是
-    /// 任务快照里记着的写操作。</item>
+    /// <item><c>batch_execute</c> / <c>batch_retry_failed</c> execute the operation recorded in
+    /// confirmToken / report, while the token-minting <c>batch_preview_*</c> are all ReadOnly — rule 1
+    /// keeps them visible (rightly so, since preview is exactly what AI explanation needs under the guide
+    /// profile), so under the guide profile the chain "preview for a token → execute" can actually rename, write component properties, swap materials, or delete objects.</item>
+    /// <item><c>workflow_undo_task</c> / <c>redo</c> / <c>revert</c> / <c>session_undo</c> replay the
+    /// write operation recorded in the task snapshot.</item>
     /// </list>
     ///
-    /// 两者都住在 Workflow 分类 —— 没有任何档位隐藏它（也不该：job_*、report_* 都在里面）。
-    /// noSceneAuthoring 靠规则 4（MutatesScene ⇒ 隐藏）关掉它们，guide 收回的是分类而不是这个
-    /// 标志，所以只剩执行期检查能关。这里钉的就是那层检查：guide 拒、full 照跑、nsa 仍然整只隐藏。
+    /// Both live in the Workflow category — no profile hides it (nor should it: job_*, report_* are all in there too).
+    /// noSceneAuthoring turns them off via rule 4 (MutatesScene ⇒ hidden); what guide withdraws is the
+    /// category, not this flag, so only an execution-time check remains to turn them off. This is exactly the check pinned down here: guide refuses, full runs unchanged, nsa still hides them entirely.
     ///
-    /// EditorPrefs 卫生：<c>UnitySkills_SurfaceProfile</c> 与操作模式都是按 Unity 版本全局共享、
-    /// 不分工程的机器级键，所以 setup 存原值、teardown 还原，每条测试自己显式设档。
-    /// 工作流历史与批处理令牌都改指临时目录 / 用完即删，测试不往用户真实历史里写东西。
+    /// EditorPrefs hygiene: <c>UnitySkills_SurfaceProfile</c> and the operating mode are both machine-level
+    /// keys shared globally per Unity version, not per project, so setup saves the original value and teardown restores it; each test sets its own profile explicitly.
+    /// Workflow history and batch tokens are both redirected to a temp directory / deleted when done; tests never write into the user's real history.
     /// </summary>
     [TestFixture]
     public class GuideProfileDetourTests
@@ -48,13 +48,13 @@ namespace UnitySkills.Tests.Core
         {
             _savedProfile = SkillsSurfaceProfile.Current;
             _savedMode = SkillsModeManager.CurrentMode;
-            // 档位必须显式设：干净 CI 工程上默认 full，本地开发机上可能任意档。模式必须放行，
-            // 否则拦在档位闸门之前的是 MODE_*，测出来的不是档位。
+            // The profile must be set explicitly: a clean CI project defaults to full, a local dev machine may be on any profile. The mode must allow it through,
+            // otherwise what blocks before the profile gate is MODE_*, and the test would not be testing the profile.
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
 
-            // 批处理执行会 BeginSession（写工作流历史），undo/redo 测试还要往历史里塞任务。
-            // 全部改指临时文件，跑完删掉 —— 用户的真实历史不参与本文件。
+            // Batch execution calls BeginSession (writes workflow history), and the undo/redo tests also need to push tasks into history.
+            // All of it is redirected to a temp file and deleted when done — the user's real history is never touched by this file.
             _tempRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsGuideDetour_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempRoot);
             WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(_tempRoot, "workflow_history.json");
@@ -73,7 +73,7 @@ namespace UnitySkills.Tests.Core
             _mintedTokens.Clear();
             if (_seededReports.Count > 0)
             {
-                // 报告没有删除入口（真实报告只按 100 条上限淘汰），所以直接从状态里摘掉再落盘。
+                // Reports have no delete entry point (real reports only age out past a 100-item cap), so we strip it directly from state and persist.
                 BatchPersistence.State.reports.RemoveAll(r => _seededReports.Contains(r.reportId));
                 BatchPersistence.Save();
                 _seededReports.Clear();
@@ -90,11 +90,11 @@ namespace UnitySkills.Tests.Core
             GameObjectFinder.InvalidateCache();
         }
 
-        // ---------- batch: 预览 → 令牌 → 执行 ----------
+        // ---------- batch: preview -> token -> execute ----------
 
         /// <summary>
-        /// guide 档下预览仍然可用（它是只读的，也是讲解所需），但用它铸出的令牌执行不了，
-        /// 而且对象真的没被改 —— 只断言错误码不够：拒绝载荷可以出现在写已经落地之后。
+        /// Preview stays usable under guide (it is read-only, and also what explanation needs), but the token minted from it cannot be executed,
+        /// and the object really is unchanged — asserting the error code alone isn't enough: a refusal payload can appear after the write has already landed.
         /// </summary>
         [Test]
         public void GuideProfile_PreviewStaysOpen_ButExecutingItsTokenIsRefused()
@@ -113,8 +113,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 预览必须自己说出「execute 会拒」。只给一个 confirmToken 的预览会让 agent 把执行期的墙
-        /// 读成 bug，然后去别的模块找同样的写操作 —— 那正是档位要避免的行为。
+        /// The preview must itself announce that "execute will refuse". A preview that only hands over a confirmToken would make an agent read the execution-time
+        /// wall as a bug, then go look for the same write operation in another module — exactly the behavior the profile is meant to prevent.
         /// </summary>
         [Test]
         public void GuideProfile_PreviewPayload_AnnouncesThatExecuteWillRefuse()
@@ -141,8 +141,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// full 档零行为变化：同一条链照跑到底，而且预览载荷里连 surfaceExclusion 这个键都不该出现
-        /// （是「不加字段」而不是「加个 null」—— 技能载荷的序列化设置会把 null 写出来）。
+        /// Zero behavior change under full: the same chain runs through to completion, and the preview payload should not even carry the surfaceExclusion
+        /// key (it's "field not added" rather than "field added as null" — the skill payload's serialization settings would otherwise write out nulls).
         /// </summary>
         [Test]
         public void FullProfile_SameChain_RunsAndPayloadCarriesNoExclusionField()
@@ -163,8 +163,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 拒绝不吃掉令牌：用户把档位调回 full 之后，同一个令牌应当直接可用，不必再跑一轮预览。
-        /// 这条也是「检查发生在 RemovePreview 之前」的行为化断言。
+        /// Refusal does not consume the token: once the user switches the profile back to full, the same token should work immediately, without another preview run.
+        /// This is also a behavioral assertion that "the check happens before RemovePreview".
         /// </summary>
         [Test]
         public void RefusedToken_SurvivesTheRefusal_AndRunsOnceProfileGoesBackToFull()
@@ -186,8 +186,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// kind → 分类的映射必须按操作真正写的东西给，因为分类决定了递给 agent 的是哪本手册。
-        /// 通过预览的公开预告观察，不碰私有方法。
+        /// The kind -> category mapping must be driven by what the operation actually writes, because the category decides which manual gets handed to the agent.
+        /// Observed through the preview's public notice, without touching private methods.
         /// </summary>
         [Test]
         public void GuideProfile_SetPropertyKind_IsClassifiedAsComponentWrite()
@@ -217,8 +217,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 第二个批处理入口：<c>batch_retry_failed</c> 走的是同一批执行器，只是经 reportId 而非令牌，
-        /// 所以同一个问题必须问 report 里记的 kind。
+        /// The second batch entry point: <c>batch_retry_failed</c> goes through the same batch executor, just via a reportId instead of a token,
+        /// so the same question must be asked of the kind recorded in the report.
         /// </summary>
         [Test]
         public void GuideProfile_BatchRetryFailed_IsRefusedForAWithdrawnKind()
@@ -238,8 +238,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// noSceneAuthoring 的既有关闭不能回退：那一档靠规则 4 把 <c>batch_execute</c> 整只隐藏，
-        /// 所以它连目录里都不该出现，拒绝也应当来自路由闸门（载荷嵌在 details 下）而不是执行期检查。
+        /// The existing shutoff for noSceneAuthoring must not regress: that profile hides <c>batch_execute</c> entirely via rule 4,
+        /// so it should not even appear in the directory, and the refusal should come from the routing gate (payload nested under details) rather than the execution-time check.
         /// </summary>
         [Test]
         public void NoSceneAuthoring_StillHidesBatchExecuteEntirely()
@@ -257,12 +257,12 @@ namespace UnitySkills.Tests.Core
                 "后者意味着它已经进了方法体，令牌若有效就只差一步。");
         }
 
-        // ---------- workflow: 快照重放 ----------
+        // ---------- workflow: snapshot replay ----------
 
         /// <summary>
-        /// 四个重放入口都必须拒绝含场景对象快照的任务。逐个点名而不是只测一个：
-        /// <c>workflow_revert_task</c> 是转发别名，若让它复用被转发方的名字做拒绝，agent 读到的是
-        /// 「别名没问题、目标有问题」，那是在邀请它重试。
+        /// All four replay entry points must refuse a task containing a scene object snapshot. Name each one individually rather than testing just one:
+        /// <c>workflow_revert_task</c> is a forwarding alias, and if it were allowed to reuse the forwarding target's name for the refusal, the agent would read it as
+        /// "the alias is fine, the target is the problem" — which invites a retry.
         /// </summary>
         [Test]
         public void GuideProfile_EverySnapshotReplayEntryPoint_RefusesASceneTask()
@@ -295,9 +295,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 精度的另一半：guide 档只收回 GameObject / Component / Material / Scene / Sample，
-        /// 脚本和普通资源的写是它留给 AI 的活。因此只碰这类资源的任务必须仍然能撤销 —— 一刀切隐藏
-        /// 这几个技能，等于把 guide 档仍然允许的那批写操作的安全网也一起拿掉。
+        /// The other half of precision: guide only withdraws GameObject / Component / Material / Scene / Sample; writes to scripts and
+        /// ordinary assets are work it leaves to the AI. So tasks that only touch this class of asset must still be undoable — blanket-hiding
+        /// these skills would also strip the safety net from the writes guide still allows.
         /// </summary>
         [Test]
         public void GuideProfile_AssetOnlyTask_IsStillUndoable()
@@ -308,14 +308,14 @@ namespace UnitySkills.Tests.Core
             var response = Envelope("workflow_undo_task",
                 new JObject { ["taskId"] = taskId }.ToString(Formatting.None));
 
-            // 快照指向不存在的资源，所以撤销本身会失败；这里唯一在意的是它不是被档位拦下的。
+            // The snapshot points at a nonexistent asset, so the undo itself will fail; the only thing this test cares about is that it wasn't blocked by the profile.
             Assert.That(response["errorCode"]?.ToString(), Is.Not.EqualTo("SURFACE_EXCLUDED"),
                 "只含资源快照的任务被 guide 档拦了 —— 撤销脚本/资源改动是 guide 档仍然允许的操作。");
         }
 
         /// <summary>
-        /// 资源快照按扩展名分类，只对档位真的收回的那几种：<c>.mat</c> 是材质创作。
-        /// 这条与上一条成对 —— 少了它，「资源快照放行」可以靠「什么都放行」通过。
+        /// Asset snapshots are classified by extension, only for the kinds the profile actually withdraws: <c>.mat</c> is material authoring.
+        /// This test is paired with the previous one — without it, "asset snapshots are allowed" could pass by "everything is allowed".
         /// </summary>
         [Test]
         public void GuideProfile_MaterialAssetTask_IsRefused()
@@ -329,8 +329,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 编辑器/工程设置快照不是场景创作，不该被这层检查误伤 —— 它们连 assetPath 都没有，
-        /// 正是「空 assetPath ⇒ 场景对象」这个判据最容易误判的一类。
+        /// Editor/project setting snapshots are not scene authoring and should not be caught by this check — they don't even have an assetPath,
+        /// which is exactly the class the "empty assetPath => scene object" criterion is most prone to misjudging.
         /// </summary>
         [Test]
         public void GuideProfile_SettingSnapshotTask_IsNotMistakenForSceneAuthoring()
@@ -353,8 +353,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 未知 taskId 必须仍然回「找不到」，不能被这层检查抢答成 SURFACE_EXCLUDED：
-        /// 把打错的 id 藏在政策墙后面，agent 会去改档位而不是改参数。
+        /// An unknown taskId must still report "not found", and must not be preempted by this check into SURFACE_EXCLUDED:
+        /// hiding a mistyped id behind the policy wall would make an agent go change the profile instead of fixing the argument.
         /// </summary>
         [Test]
         public void GuideProfile_UnknownTaskId_StillReportsNotFound()
@@ -368,13 +368,13 @@ namespace UnitySkills.Tests.Core
                 "不存在的任务不该报成被档位收回。");
         }
 
-        // ---------- 拒绝载荷本身 ----------
+        // ---------- the refusal payload itself ----------
 
         /// <summary>
-        /// 拒绝文案不能被 <see cref="SkillErrorClassifier"/> 二次归类。技能自报的 errorCode 之外，
-        /// suggestedFixes 若没自报就由分类器按消息文本填 —— 消息里出现 "missing" / "not found" /
-        /// "invalid" 这类词，会给 agent 递上「补个参数再重试」的建议，正好和拒绝要传达的相反。
-        /// 这也是操作标识（kind / 快照类型）走字段而不是插进文案的原因：kind 里就有
+        /// The refusal message must not be reclassified by <see cref="SkillErrorClassifier"/>. Beyond the skill's self-reported errorCode,
+        /// if suggestedFixes isn't self-reported, the classifier fills it in from the message text — words like "missing" / "not found" /
+        /// "invalid" appearing in the message would hand the agent a "supply a missing argument and retry" suggestion, exactly the opposite of what the refusal means to convey.
+        /// This is also why the operation identity (kind / snapshot type) goes through a field rather than being inserted into the message text: kind already has
         /// <c>fix_missing_scripts</c>。
         /// </summary>
         [Test]
@@ -418,7 +418,7 @@ namespace UnitySkills.Tests.Core
             ["prefix"] = "Ren_",
         }.ToString(Formatting.None);
 
-        /// <summary>runAsync=false 让作业在调用内自旋推进完成，省掉等 EditorApplication.update。</summary>
+        /// <summary>runAsync=false lets the job spin to completion within the call, skipping the wait for EditorApplication.update.</summary>
         private static string ExecuteArgs(string token) => new JObject
         {
             ["confirmToken"] = token,
@@ -428,7 +428,7 @@ namespace UnitySkills.Tests.Core
         private static JObject Envelope(string skill, string args) =>
             JObject.Parse(SkillRouter.Execute(skill, args));
 
-        /// <summary>技能自己的载荷在成功信封的 result 下，不在顶层。</summary>
+        /// <summary>A skill's own payload sits under result in the success envelope, not at the top level.</summary>
         private static JObject SuccessPayload(string skill, string args)
         {
             var response = Envelope(skill, args);
@@ -455,8 +455,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 执行期拒绝的结构断言。字段平铺在顶层而不是嵌在 details 下 —— 路由的技能错误直通会原样
-        /// 转发技能自报的未知字段，却会丢掉技能自报的 details；这条断言同时钉住那个约束。
+        /// Structural assertion for an execution-time refusal. Fields are flattened at the top level rather than nested under details — the router's
+        /// pass-through for skill errors forwards a skill's self-reported unknown fields as-is, but drops its self-reported details; this assertion pins down that constraint too.
         /// </summary>
         private static void AssertCarriedWriteRefusal(JObject response, SkillCategory category, string operation)
         {
@@ -482,11 +482,11 @@ namespace UnitySkills.Tests.Core
                 .ToArray();
         }
 
-        // ---------- 夹具数据 ----------
+        // ---------- fixture data ----------
 
         /// <summary>
-        /// 场景对象快照：assetPath 为空正是 WorkflowManager 记录场景对象时的样子
-        /// （AssetDatabase.GetAssetPath 对场景对象返回空串）。
+        /// Scene object snapshot: an empty assetPath is exactly what WorkflowManager records for a scene object
+        /// (AssetDatabase.GetAssetPath returns an empty string for a scene object).
         /// </summary>
         private static ObjectSnapshot SceneSnapshot(GameObject target) => new ObjectSnapshot
         {
@@ -499,8 +499,8 @@ namespace UnitySkills.Tests.Core
         };
 
         /// <summary>
-        /// 资源快照。刻意不给 fileHash / base64 且路径不存在：RestoreModifiedSnapshot 解析不到对象
-        /// 又没有备份字节时直接返回 false，所以放行分支的测试不会真的动任何文件。
+        /// Asset snapshot. Deliberately omits fileHash / base64 with a path that does not exist: RestoreModifiedSnapshot returns false outright when it
+        /// can't resolve the object and has no backup bytes, so the allow-path test never actually touches any file.
         /// </summary>
         private static ObjectSnapshot AssetSnapshot(string assetPath) => new ObjectSnapshot
         {
@@ -515,9 +515,9 @@ namespace UnitySkills.Tests.Core
         private static string SeedTask(params ObjectSnapshot[] snapshots) => SeedTask(snapshots, null);
 
         /// <summary>
-        /// 直接往历史里塞任务。走真技能入口 + 造好的快照，比先真改再撤销更可控：本文件测的是
-        /// 「重放会不会被拦」，而不是重放本身，后者已有 WorkflowPersistenceTests 覆盖。
-        /// 历史文件在 setup 里已改指临时目录。
+        /// Push a task directly into history. Going through the real skill entry point plus a hand-built snapshot is more controllable than really
+        /// making a change and then undoing it: this file tests "does replay get blocked", not replay itself, which is already covered by WorkflowPersistenceTests.
+        /// The history file is already redirected to a temp directory in setup.
         /// </summary>
         private static string SeedTask(IEnumerable<ObjectSnapshot> snapshots, string sessionId)
         {
@@ -544,8 +544,8 @@ namespace UnitySkills.Tests.Core
         };
 
         /// <summary>
-        /// 一份只含失败项的 rename 报告，供 batch_retry_failed 使用。operation 非空，
-        /// 所以 CanRetryFromReport 会放行到执行期，档位检查才是那条链上第一道关。
+        /// A rename report containing only a failed item, for batch_retry_failed to use. operation is non-empty,
+        /// so CanRetryFromReport lets it through to execution time, where the profile check is the first gate on that chain.
         /// </summary>
         private string SeedFailedRenameReport()
         {

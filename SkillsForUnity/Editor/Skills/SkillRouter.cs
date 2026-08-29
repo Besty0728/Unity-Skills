@@ -11,7 +11,7 @@ using Newtonsoft.Json.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// 把 REST API 请求路由到各 skill 方法。
+    /// Routes REST API requests to each skill method.
     /// </summary>
     public static class SkillRouter
     {
@@ -44,34 +44,34 @@ namespace UnitySkills
             public MethodInfo Method;
             public ParameterInfo[] Parameters;
             public bool TracksWorkflow;
-            // 为 true 表示该 skill 自行捕获 workflow 快照；跳过 TrySnapshotTargetsFromArgs 里的
-            // 通用执行前快照，避免重复备份。
+            // True means the skill captures its own workflow snapshot; skips the generic
+            // pre-execution snapshot in TrySnapshotTargetsFromArgs, to avoid backing up twice.
             public bool SkipAutoPresnapshot;
-            // 意图层元数据
+            // Intent-layer metadata
             public SkillCategory Category;
             public SkillOperation Operation;
             public string[] Tags;
             public string[] Outputs;
             public string[] RequiresInput;
             public bool ReadOnly;
-            // 风险与影响元数据
+            // Risk and impact metadata
             public bool MutatesScene;
             public bool MutatesAssets;
             public bool MayTriggerReload;
             public bool MayEnterPlayMode;
             public bool SupportsDryRun;
-            // 为 true 表示该 skill 会阻塞主线程数秒以上；有异步 job 路径时 agent 应优先走那条。
-            // 见 UnitySkillAttribute.LongRunning。
+            // True means this skill blocks the main thread for seconds or more; the agent should
+            // prefer the async job path when one exists. See UnitySkillAttribute.LongRunning.
             public bool LongRunning;
             public string RiskLevel;
             public string[] RequiresPackages;
-            // 权限档位。默认 FullAuto，使未标注的 skill 都要过 Approval 闸门；
-            // SemiAuto 必须经 [UnitySkill(Mode=...)] 显式声明才生效。
+            // Permission tier. Defaults to FullAuto, so an unannotated skill goes through the
+            // Approval gate; SemiAuto only takes effect when explicitly declared via [UnitySkill(Mode=...)].
             public SkillMode Mode;
-            // 缓存下来，避免每次 Execute/DryRun 重复分配
+            // Cached to avoid re-allocating on every Execute/DryRun
             public string[] ParameterNames;
             public HashSet<string> AllowedParameterSet;
-            // 预先算好的小写形式，供过滤/搜索用（省掉每次查询的 ToLowerInvariant）
+            // Precomputed lowercase form, for filtering/search (skips ToLowerInvariant on every query)
             public string NameLower;
             public string DescriptionLower;
             public string[] TagsLower;
@@ -79,41 +79,41 @@ namespace UnitySkills
 
         private static volatile Dictionary<string, SkillInfo> _skills;
         private static volatile bool _initialized;
-        // 对 SkillsSurfaceProfile.OnChanged 的一次性订阅，在 Initialize() 中接上。
+        // One-time subscription to SkillsSurfaceProfile.OnChanged, wired up in Initialize().
         private static bool _surfaceHookInstalled;
 
-        // 手动录制会话（workflow_begin_task）的脏标记：上次 SaveHistory 时记下的
-        //（taskId, snapshotCount）。使被跟踪的 skill 在上次保存之后没有新快照时可跳过一次多余的保存。
+        // Dirty marker for the manually-recorded session (workflow_begin_task): the (taskId, snapshotCount) recorded at the last SaveHistory. Lets a tracked skill skip a redundant save
+        // when there are no new snapshots since the last save.
         private static string _lastSavedTaskId;
         private static int _lastSavedSnapshotCount = -1;
-        // 这四个都必须是 volatile：它们构成 GET 快路径双重检查锁的读侧——
-        // HTTP 线程在 _initLock 之外读它们（TryGetCachedGetResponse），主线程在锁内发布它们。
-        // 没有 volatile，读侧可能持有被提升出循环的副本，把主线程在切换 profile 时已失效的载荷发出去。
+        // These four all have to be volatile: they form the read side of the GET fast-path double-
+        // checked lock -- the HTTP thread reads them outside _initLock (TryGetCachedGetResponse)
+        // while the main thread publishes inside the lock. Without volatile, the read side could hold a stale copy hoisted out of a loop after a profile switch invalidated it.
         private static volatile string _cachedManifest;
         private static volatile string _cachedSchema;
-        // 裸 GET /skills（目录层）与 GET /skills/meta（会话常量）。两者与上面两个一样是整载荷单例
-        // 而非按 query 建键的条目，因此 HTTP 线程快路径无需查 _filteredOutputCache 即可直接返回。
+        // Bare GET /skills (catalog layer) and GET /skills/meta (session constants). Like the two
+        // above, both are whole-payload singletons rather than query-keyed entries, so the HTTP thread's fast path can return them directly without consulting _filteredOutputCache.
         private static volatile string _cachedBrief;
         private static volatile string _cachedMeta;
         private static Dictionary<string, List<SkillInfo>> _outputIndex;
 
-        // 过滤（限定范围）后的 schema/manifest 缓存，以 query 字符串的规范形式为键。
-        // 完整 schema/manifest 已有缓存（_cachedSchema/_cachedManifest），但过滤变体
-        //（?category=… 等）过去每次请求都要重建并重新序列化——而那恰恰是 agent 用来省 token 的路径
-        //（限定范围约 24KB，完整约 618KB）。在 skill 集合不变的前提下，同一 query 的内容逐字节确定，
-        // 因此缓存是安全的；Refresh()（域重载 / skill 增删）时清空。只有已识别的过滤键会进入缓存键
-        //（见 StripUnrecognizedFilterKeys），使得取值无界的 query 参数（如用于破坏缓存的 ?nonce=N）
-        // 无法每次请求都造出一条几百 KB 的新条目；条目数另由 MaxCacheEntries 硬性封顶作为第二道防线。
+        // Cache of filtered (scoped) schema/manifest output, keyed by the canonical form of the
+        // query string. The full schema/manifest already has a cache (_cachedSchema/_cachedManifest),
+        // but the filtered variants (?category=... etc.) used to be rebuilt and re-serialized on
+        // every request -- and that's exactly the path an agent uses to save tokens (scoped is
+        // roughly 24KB, full roughly 618KB). As long as the skill set doesn't change, a given query's
+        // content is byte-for-byte deterministic, so caching is safe; cleared on Refresh() (domain
+        // reload / skill add-remove). Only recognized filter keys enter the cache key (see StripUnrecognizedFilterKeys), so an unbounded query parameter (e.g. a cache-busting ?nonce=N) can't manufacture a fresh several-hundred-KB entry per request; entry count is also hard-capped by MaxCacheEntries as a second line of defense.
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _filteredOutputCache =
             new System.Collections.Concurrent.ConcurrentDictionary<string, string>();
 
-        // _filteredOutputCache 与 _etagCache 共用的硬上限。两者都由 HTTP 线程读、主线程写；
-        // 容量检查加 Clear() 无需额外加锁（ConcurrentDictionary.Clear() 本身线程安全），
-        // 也把淘汰策略保持为最简单的"整个缓存重置"——真实调用方只会在一小组封闭的
-        // category/tag/summary 组合间轮转，所以这条只是防住病态的 query 变化。
+        // Shared hard cap between _filteredOutputCache and _etagCache. Both are read by the HTTP
+        // thread and written by the main thread; the capacity check plus Clear() needs no extra lock
+        // (ConcurrentDictionary.Clear() is itself thread-safe), keeping eviction as simple as "reset
+        // the whole cache" -- real callers only cycle through a small, closed set of category/tag/summary combinations, so this only guards against pathological query variation.
         private const int MaxCacheEntries = 256;
 
-        /// <summary>已注册 skill 数量。免去只为取个数而解析 manifest。</summary>
+        /// <summary>Number of registered skills. Avoids parsing the manifest just to get a count.</summary>
         public static int SkillCount
         {
             get
@@ -141,9 +141,9 @@ namespace UnitySkills
         private static bool? _summaryAutoTruncate;
 
         /// <summary>
-        /// Summary 模式自动截断的开关，需显式开启。默认关闭：除调用方用 pageOffset/pageLimit
-        /// 显式分页外，非 verbose 结果原样透传。开启后，超过 10 项的非 verbose 数组会被截到第一页，
-        /// 并附带 isTruncated 元数据。
+        /// Toggle for automatic truncation in Summary mode; must be explicitly enabled. Off by
+        /// default: unless the caller explicitly paginates via pageOffset/pageLimit, non-verbose results pass through unchanged. When enabled, a non-verbose array with more than 10 items is
+        /// truncated to the first page, with isTruncated metadata attached.
         /// </summary>
         public static bool SummaryAutoTruncate
         {
@@ -230,19 +230,19 @@ namespace UnitySkills
         {
             ["camera_look_at"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["targetName"] = "camera_look_at 只接受世界坐标 x/y/z，不支持对象名。"
+                ["targetName"] = "camera_look_at only accepts world coordinates x/y/z; object names are not supported."
             },
             ["timeline_list_tracks"] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["path"] = "timeline_list_tracks 的 path 是场景层级路径，不是 Assets 资源路径。"
+                ["path"] = "The path of timeline_list_tracks is a scene hierarchy path, not an Assets resource path."
             }
         };
 
-        // ========== 意图同义词映射表 ==========
+        // ========== Intent synonym map ==========
 
         private static readonly Dictionary<string, string[]> _synonymMap = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
-            // 中文 → 英文
+            // Chinese -> English
             {"创建", new[]{"create"}}, {"新建", new[]{"create"}}, {"添加", new[]{"add","create"}},
             {"删除", new[]{"delete"}}, {"移除", new[]{"delete","remove"}},
             {"移动", new[]{"move","position"}}, {"位置", new[]{"position","transform"}},
@@ -279,7 +279,7 @@ namespace UnitySkills
             {"测试", new[]{"test"}}, {"验证", new[]{"validate","validation"}},
             {"工作流", new[]{"workflow"}}, {"批量", new[]{"batch"}},
             {"包", new[]{"package"}}, {"资源", new[]{"asset"}}, {"导入", new[]{"import"}},
-            // 英文别名
+            // English aliases
             {"spawn", new[]{"instantiate","create"}}, {"remove", new[]{"delete"}},
             {"color", new[]{"material","set_color"}}, {"colour", new[]{"material","set_color"}},
             {"transform", new[]{"position","rotation","scale"}},
@@ -343,7 +343,7 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 按精确匹配 + 子串匹配把关键词对到字典上（子串匹配是为未分词的中文准备的）。
+        /// Maps keywords onto the dictionary via exact match plus substring match (substring matching is there for unsegmented Chinese).
         /// </summary>
         private static HashSet<TValue> MatchKeywords<TValue>(string[] keywords, Dictionary<string, TValue> map)
         {
@@ -376,11 +376,11 @@ namespace UnitySkills
 
         private static HashSet<SkillCategory> ExtractCategories(string[] keywords)
             => MatchKeywords(keywords, _categoryKeywords);
-        // 复用 SkillsCommon 里的 JSON 设置（单一定义，不重复）
+        // Reuses the JSON settings from SkillsCommon (single definition, no duplication)
         private static readonly JsonSerializerSettings _jsonSettings = SkillsCommon.JsonSettings;
 
-        // 仅用于 ?wire=v2 载荷。丢弃 null 才让 v2 的省略语义（"riskLevel 缺席即为 low"）真正省下字节；
-        // 所有 v1 路径继续用 _jsonSettings，以保证输出与 v2 出现之前逐字节一致。
+        // Only for the ?wire=v2 payload. Dropping nulls is what actually makes v2's omission semantics ("riskLevel absent means low") save bytes;
+        // every v1 path still uses _jsonSettings, to keep output byte-for-byte identical to before v2 existed.
         private static readonly JsonSerializerSettings _jsonSettingsV2 = SkillsCommon.JsonSettingsOmitNull;
 
         private static string ErrorJson(string error) =>
@@ -396,9 +396,9 @@ namespace UnitySkills
             {
                 if (_initialized) return;
 
-                // 装在这里而不是静态构造函数里：所有能产出缓存输出字符串的路径都先经过 Initialize()，
-                // 因此等到出现"切换 profile 会使之失效"的缓存时，这个钩子必定已在监听。
-                // 域重载时随其余静态字段一起重置。
+                // Installed here rather than in a static constructor: every path that can produce a
+                // cached output string first goes through Initialize(), so by the time a cache exists whose validity depends on the profile, this hook is guaranteed to already be listening.
+                // Reset along with the other static fields on a domain reload.
                 if (!_surfaceHookInstalled)
                 {
                     SkillsSurfaceProfile.OnChanged += InvalidateOutputCaches;
@@ -408,7 +408,7 @@ namespace UnitySkills
                 var skills = new Dictionary<string, SkillInfo>(StringComparer.OrdinalIgnoreCase);
                 var trackedSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                // 使用 Unity 编辑器索引直接查询 Skill 方法，避免在 Domain Reload 后枚举全部程序集和类型。
+                // Uses the Unity editor's index to query skill methods directly, avoiding enumerating every assembly and type after a Domain Reload.
                 var methods = TypeCache.GetMethodsWithAttribute<UnitySkillAttribute>();
                 foreach (var method in methods)
                 {
@@ -461,10 +461,10 @@ namespace UnitySkills
                     }
                 }
 
-                _skills = skills; // 整体构建完毕后原子赋值
+                _skills = skills; // Atomic assignment once the whole thing is built
                 _workflowTrackedSkills = trackedSkills;
 
-                // 反向索引：输出字段 → 产出它的 skill
+                // Reverse index: output field -> the skill that produces it
                 var outputIdx = new Dictionary<string, List<SkillInfo>>(StringComparer.OrdinalIgnoreCase);
                 foreach (var s in skills.Values)
                 {
@@ -488,30 +488,30 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 当前 surface profile 对外暴露的 skill 集合——所有对外的发现面
-        /// （manifest、schema、过滤后的 manifest/schema、brief、recommend、snapshot）
-        /// 都必须枚举它而不是 <c>_skills.Values</c>。唯一刻意的例外是 <see cref="ValidateMetadata"/>，
-        /// 它审计注册表本身，必须看到全部。
+        /// The set of skills the current surface profile exposes externally -- every external discovery
+        /// surface (manifest, schema, filtered manifest/schema, brief, recommend, snapshot)
+        /// must enumerate this rather than <c>_skills.Values</c>. The one deliberate exception is <see cref="ValidateMetadata"/>,
+        /// which audits the registry itself and must see everything.
         ///
-        /// 仅限主线程（要读 profile，首次调用可能命中 EditorPrefs）。对每个调用方都成立：
-        /// HTTP 线程快路径读到的永远只是本方法参与构建出来的字符串。
+        /// Main-thread only (needs to read the profile; the first call may hit EditorPrefs). True for every caller:
+        /// what the HTTP thread's fast path reads is always just a string this method helped build.
         /// </summary>
         private static IEnumerable<SkillInfo> VisibleSkills()
         {
-            // 默认 profile 下返回与之前同一个实例——不分配，也不逐 skill 判定。
+            // Under the default profile, returns the same instance as before -- no allocation, no per-skill check.
             if (SkillsSurfaceProfile.IsFull)
                 return _skills.Values;
             return _skills.Values.Where(s => !SkillsSurfaceProfile.IsExcluded(s));
         }
 
         /// <summary>
-        /// 真正对外提供的、被 workflow 跟踪的 skill 名，顺序与原始集合一致。
-        /// 携带该区块的载荷都是对外的，因此必须与 <see cref="VisibleSkills"/> 出自同一权威——
-        /// 在此列出一个被隐藏的名字，正是 profile 要防的泄漏，而且泄漏的是注册表里最要紧的那一半
-        ///（被跟踪的 skill 按定义都是写操作，而写操作恰恰是 profile 要撤下的）。
+        /// The workflow-tracked skill names actually offered externally, in the same order as the
+        /// original collection. Every payload carrying this block is external-facing, so it must draw from the same authority as <see cref="VisibleSkills"/> --
+        /// listing a hidden name here is exactly the leak the profile is meant to prevent, and what it would leak is the most consequential half of the registry
+        /// (tracked skills are by definition write operations, and write operations are exactly what a profile withdraws).
         ///
-        /// 默认的完整 profile 下过滤不到任何东西，因此该数组——以及由它构建的每个 v1 信封的字节——
-        /// 与未过滤集合完全相同。仅限主线程，理由同 VisibleSkills。
+        /// Under the default full profile nothing gets filtered, so this array -- and every byte of the v1 envelope built from it --
+        /// is identical to the unfiltered set. Main-thread only, for the same reason as VisibleSkills.
         /// </summary>
         private static string[] VisibleWorkflowTrackedSkills()
         {
@@ -525,11 +525,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 丢弃所有缓存的输出字符串，但不重跑 skill 发现。挂在
-        /// <see cref="SkillsSurfaceProfile.OnChanged"/> 上：切换 profile 不改变 skill 注册表，
-        /// 但由它构建的每个载荷都会变，所以字符串必须重建，反射则不必重做。
-        /// ETag 顺带自动跟上——<c>_etagCache</c> 的条目只在其源字符串与当前缓存引用相同时才有效，
-        /// 而重建出的字符串内容不同，哈希本来就不一样。
+        /// Drops every cached output string, but doesn't rerun skill discovery. Hooked onto
+        /// <see cref="SkillsSurfaceProfile.OnChanged"/>: switching profiles doesn't change the skill registry,
+        /// but every payload built from it changes, so the strings must be rebuilt, though reflection doesn't need to be redone.
+        /// ETag follows along automatically as a side effect -- an entry in <c>_etagCache</c> is only valid when its source string is reference-equal to the current cache,
+        /// and a rebuilt string's content differs, so its hash is naturally different too.
         /// </summary>
         internal static void InvalidateOutputCaches()
         {
@@ -577,9 +577,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 目录层——裸 <c>GET /skills</c>（以及 <c>?brief=1</c>）现在返回的内容。
-        /// 与完整 manifest 一样缓存为单个字符串：同一 skill 集合下载荷字节稳定，
-        /// 因此 HTTP 线程快路径可以带一个稳定的 ETag 直接返回。
+        /// The catalog layer -- what bare <c>GET /skills</c> (and <c>?brief=1</c>) now returns.
+        /// Cached as a single string just like the full manifest: under the same skill set the payload bytes are stable,
+        /// so the HTTP thread's fast path can return it directly with a stable ETag.
         /// </summary>
         public static string GetBrief()
         {
@@ -597,15 +597,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// <c>GET /skills/meta</c>——manifest 信封中会话恒定的那一半（category 与 operation 枚举、
-        /// 保留的请求体参数名、被 workflow 跟踪的 skill 列表），外加 <c>?wire=v2</c> 条目省略掉的
-        /// 字段默认值。v2 载荷丢掉这些区块并指向此处，使 agent 每会话只付一次代价，
-        /// 而不是每次限定范围拉取都付。
+        /// <c>GET /skills/meta</c> -- the session-constant half of the manifest envelope (the category and operation enums,
+        /// reserved request-body parameter names, the workflow-tracked skill list), plus the field defaults
+        /// that <c>?wire=v2</c> entries omit. The v2 payload drops these blocks and points here, so an agent pays this cost once per session,
+        /// rather than on every scoped fetch.
         ///
-        /// 除 <c>workflowTrackedSkills</c> 之外，此处一切都满足"会话恒定"：该字段会被 surface profile
-        /// 过滤（见 <see cref="VisibleWorkflowTrackedSkills"/>），因此用户切换 profile 时会变——
-        /// 切换时缓存与其 ETag 都会被丢弃，<c>metaHint</c> 也说明了这一点。
-        /// 为了恢复字面上的恒定而撤掉过滤，就等于把用户选择隐藏的名字发出去。
+        /// Except for <c>workflowTrackedSkills</c>, everything here satisfies "session constant": that field is filtered by the surface profile
+        /// (see <see cref="VisibleWorkflowTrackedSkills"/>), so it changes when the user switches profiles --
+        /// the cache and its ETag are both dropped on a switch, and <c>metaHint</c> says as much.
+        /// Removing the filtering to restore literal constancy would mean sending out names the user chose to hide.
         /// </summary>
         public static string GetMeta()
         {
@@ -627,18 +627,18 @@ namespace UnitySkills
                     operationTypes = Enum.GetNames(typeof(SkillOperation)),
                     reservedBodyParameters = _reservedBodyParameters.OrderBy(x => x).ToArray(),
                     workflowTrackedSkills = VisibleWorkflowTrackedSkills(),
-                    // 此处刻意不放 surfaceProfile 字段：profile 随时可被用户切换，把一个实时值混进
-                    // 一份"告诉 agent 每会话只拉一次"的载荷里，只会让人从这里读到过期值。
-                    // /health 是它唯一的权威，且每条拒绝响应也都带着它。这与 workflowTrackedSkills
-                    // 被 profile 过滤是两回事——用户撤下的名字绝不能发出去，
-                    // 下面的 hint 说明其后果（这一个区块可能在会话中途变化）而不是隐瞒它。
+                    // Deliberately no surfaceProfile field here: the profile can be switched by the user at any time, and mixing a live value into
+                    // a payload that says "fetch once per session" would only let someone read a stale value from here.
+                    // /health is its sole authority, and every rejection response carries it too. This is different from workflowTrackedSkills
+                    // being filtered by profile -- a name the user withdrew must never be sent out;
+                    // the hint below states the consequence (this one block may change mid-session) rather than concealing it.
                     metaHint = "SESSION CONSTANTS — fetch once, reuse for the whole session. The enums, reserved parameters and defaults change only with the plugin version; 'workflowTrackedSkills' lists only what the active surface profile offers, so it moves (and the ETag changes) if the user switches profile mid-session. 'defaults' states the values ?wire=v2 omits from skill entries: a missing riskLevel is \"low\", a missing supportsDryRun is true, and a flag absent from 'flags' is false. For the live surface profile read 'surfaceProfile' on GET /health — it is user-switchable and deliberately not mirrored here."
                 }, _jsonSettingsV2);
                 return _cachedMeta;
             }
         }
 
-        /// <summary>给定名字的 skill 是否已注册。</summary>
+        /// <summary>Whether a skill with the given name is registered.</summary>
         public static bool HasSkill(string name)
         {
             Initialize();
@@ -651,11 +651,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 执行一个 skill。<paramref name="captureDiff"/> 为 true 时（POST /skill/{name}?diff=1），
-        /// 以纯旁路观察者的身份捕获一份语义场景 diff，作为顶层 "sceneDiff" 字段附在成功响应上——
-        /// 告诉调用方本次操作实际改了什么。diff 绝不影响执行：undo/workflow/错误分支一概不动，
-        /// 任何 diff 失败只让 sceneDiff 降级为 {error:...}，不影响 skill 结果。
-        /// captureDiff:false 时输出与原来逐字节一致。
+        /// Executes a skill. When <paramref name="captureDiff"/> is true (POST /skill/{name}?diff=1),
+        /// captures a semantic scene diff as a pure side-channel observer, attached to a successful response as a top-level "sceneDiff" field --
+        /// telling the caller what this operation actually changed. The diff never affects execution: the undo/workflow/error branches are left entirely untouched,
+        /// and any diff failure only degrades sceneDiff to {error:...}, without affecting the skill's result.
+        /// When captureDiff is false, output is byte-for-byte identical to before.
         /// </summary>
         public static string Execute(string name, string json, bool captureDiff)
         {
@@ -666,14 +666,14 @@ namespace UnitySkills
             }
 
             bool autoStartedWorkflow = false;
-            // 自动 workflow 路径下 EndTask() 的持久化开销，以 workflowEndMs 附在成功信封上。
-            // 其他路径一律为 null，以保证输出逐字节不变。
+            // The persistence cost of EndTask() on the auto-workflow path, attached to the success envelope as workflowEndMs.
+            // Always null on every other path, to keep output byte-for-byte unchanged.
             long? workflowEndMs = null;
             var wrapWithUndoTransaction = !skill.ReadOnly && !_transactionlessSkills.Contains(name);
             int undoGroup = -1;
             int workflowSnapshotCountBefore = WorkflowManager.CurrentTask?.snapshots?.Count ?? 0;
-            // 在持久化的编辑器变更日志里，把本次调用造成的改动（含帧末的 ObjectChangeEvent）
-            // 归因到 REST。
+            // In the persisted editor change log, attributes the changes this call caused (including the
+            // end-of-frame ObjectChangeEvent) to REST.
             EditorChangeTrackerService.BeginRestExecution();
             try
             {
@@ -728,23 +728,23 @@ namespace UnitySkills
                         retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                 }
 
-                // surface profile 闸门。必须在权限闸门*之前*运行，这个顺序本身就是契约：
-                // 权限档位回答"这个 skill 可以跑吗"，profile 回答"用户到底有没有把它放进菜单"。
-                // Bypass 模式与白名单是授权，因此不能解除一项排除——只有用户把 profile 切回完整才能。
-                // 若把 profile 放在第二位，Bypass 就能发出面板上标为隐藏的 skill。
+                // The surface profile gate. Must run *before* the permission gate -- this ordering is itself a contract:
+                // the permission tier answers "can this skill run," the profile answers "did the user even put it on the menu."
+                // Bypass mode and the allowlist are authorization, so they cannot lift an exclusion -- only the user switching the profile back to full can.
+                // If the profile gate ran second, Bypass could hand out a skill the panel marks hidden.
                 var surfaceGate = ApplySurfaceGate(skill, name);
                 if (surfaceGate != null)
                     return surfaceGate;
 
-                // 权限档位闸门。放在高风险确认闸门之前，使既是 FullAuto 又属高风险的 skill
-                // 先报 MODE_RESTRICTED；只有当该 skill 本来就允许运行时，ConfirmationToken 那步才有意义。
+                // The permission tier gate. Placed before the high-risk confirmation gate, so a skill that is both FullAuto and high-risk
+                // reports MODE_RESTRICTED first; the ConfirmationToken step only matters once the skill is already allowed to run.
                 var modeGate = ApplyModeGate(skill, name, validation);
                 if (modeGate != null)
                     return modeGate;
 
-                // 确认闸门：启用 ConfirmationTokenService.RequireConfirmation 后，
-                // 高风险 skill 需要一个显式的一次性 token。
-                // 默认关闭——在 Window > UnitySkills > Server > Settings 中开启。
+                // Confirmation gate: once ConfirmationTokenService.RequireConfirmation is enabled,
+                // a high-risk skill requires an explicit one-time token.
+                // Off by default -- enable it in Window > UnitySkills > Server > Settings.
                 if (ConfirmationTokenService.RequireConfirmation && ConfirmationTokenService.IsHighRisk(skill))
                 {
                     var gateResult = ApplyConfirmationGate(skill, name, json, validation);
@@ -755,8 +755,8 @@ namespace UnitySkills
                 var args = validation.Args;
                 var invoke = validation.InvokeArgs;
 
-                // 语义 diff 的前捕获（?diff=1）。纯旁路观察者，位置在权限闸门之后、invoke 之前；
-                // 只读 skill 跳过（没有执行可 diff）。CaptureBefore 内部已完全隔离异常。
+                // Pre-capture for the semantic diff (?diff=1). A pure side-channel observer, positioned after the permission gates and before invoke;
+                // skipped for read-only skills (nothing to diff against). CaptureBefore fully isolates its own exceptions internally.
                 SkillSceneDiff.DiffCapture diffCapture = null;
                 if (captureDiff && !skill.ReadOnly)
                     diffCapture = SkillSceneDiff.CaptureBefore(args);
@@ -768,7 +768,7 @@ namespace UnitySkills
                     undoGroup = UnityEditor.Undo.GetCurrentGroup();
                 }
 
-                // ========== 自动 workflow 录制 ==========
+                // ========== Automatic workflow recording ==========
                 if (skill.TracksWorkflow && !WorkflowManager.IsRecording)
                 {
                     var desc = $"{name} - {(json?.Length > 80 ? json.Substring(0, 80) + "..." : json ?? "")}";
@@ -776,16 +776,16 @@ namespace UnitySkills
                     autoStartedWorkflow = true;
                 }
 
-                // 在 skill 执行*之前*自动快照目标对象，以支持回滚。
-                // 自行管理专用快照的 skill 通过 SkipAutoPresnapshot 退出，避免产生多余的通用备份。
+                // Automatically snapshots the target objects *before* the skill executes, to support rollback.
+                // A skill that manages its own dedicated snapshot opts out via SkipAutoPresnapshot, to avoid a redundant generic backup.
                 if (WorkflowManager.IsRecording && !skill.SkipAutoPresnapshot)
                 {
                     TrySnapshotTargetsFromArgs(args);
                 }
                 // ==============================================
 
-                // verbose 控制
-                bool verbose = true; // 未指定时默认 true，以保持直接调用的向后兼容
+                // verbose control
+                bool verbose = true; // Defaults to true when unspecified, for backward compatibility with direct calls
                 if (args.TryGetValue("verbose", StringComparison.OrdinalIgnoreCase, out var verboseToken))
                 {
                     try
@@ -794,11 +794,11 @@ namespace UnitySkills
                     }
                     catch (Exception)
                     {
-                        // ToObject<bool> 接受 true/false/"true"/1 但拒绝 "1"/"yes" 之类。
-                        // 先试常见的字符串形式；其余都属客户端错误，必须以
-                        // TYPE_MISMATCH + fix_and_retry 呈现——下面那个通用 catch 会把它误标为
-                        // INTERNAL "[Transactional Revert]" + wait_and_retry，
-                        // 让 agent 在一个只有它自己能修的请求体上陷入重试循环。
+                        // ToObject<bool> accepts true/false/"true"/1 but rejects things like "1"/"yes".
+                        // Try the common string forms first; everything else is a client error and must be presented as
+                        // TYPE_MISMATCH + fix_and_retry -- the generic catch below would mislabel it as
+                        // INTERNAL "[Transactional Revert]" + wait_and_retry,
+                        // trapping the agent in a retry loop on a request body only it can fix.
                         var raw = verboseToken.Type == JTokenType.String
                             ? verboseToken.Value<string>()?.Trim().ToLowerInvariant()
                             : null;
@@ -808,8 +808,8 @@ namespace UnitySkills
                             verbose = false;
                         else
                         {
-                            // 此时还没有 invoke 任何东西；把上面开启的记账回退掉，
-                            // 与下面的 catch 处理保持一致。
+                            // Nothing has been invoked yet at this point; roll back the bookkeeping started above,
+                            // consistent with the catch handling below.
                             if (autoStartedWorkflow && WorkflowManager.IsRecording)
                                 WorkflowManager.AbortTask();
                             else if (WorkflowManager.IsRecording)
@@ -828,9 +828,9 @@ namespace UnitySkills
                     args.Remove("verbose");
                 }
 
-                // Summary 模式的分页控制。
-                // 若 skill 自己声明了同名参数则跳过：'limit' 属于 asset_find/light_find_all/… 自己，
-                // 必须作为它们的参数送达，而不能被信封层当作分页吃掉（那还会把小结果也包一层）。
+                // Pagination control for Summary mode.
+                // Skipped if the skill itself declares a parameter with the same name: 'limit' belongs to asset_find/light_find_all/etc. themselves,
+                // and must reach them as their own parameter rather than being swallowed by the envelope layer as pagination (which would also wrap small results in a page).
                 int? offset = null;
                 int? limit = null;
 
@@ -863,7 +863,7 @@ namespace UnitySkills
                 {
                     if (!TryReadPagingArg(offsetToken, "offset", minValue: 0, out var offsetValue, out var offsetError))
                     {
-                        // 此时还没有 invoke 任何东西；把上面开启的记账回退掉。
+                        // Nothing has been invoked yet at this point; roll back the bookkeeping started above.
                         UnwindBeforeInvoke(autoStartedWorkflow, workflowSnapshotCountBefore, undoGroup);
                         return SkillErrorResponse.Build(
                             SkillErrorCode.TypeMismatch,
@@ -908,10 +908,10 @@ namespace UnitySkills
                     if (undoGroup >= 0)
                         UnityEditor.Undo.RevertAllInCurrentGroup();
 
-                    // 全部 skill 的业务错误都汇入此处。skill 自己声明了什么，就逐字段优先采用；
-                    // 分类器只补空缺，使那约 700 个只返回 { error = "..." } 的 skill 也能拿到错误码
-                    // 与重试策略，而不是统一的 SKILL_ERROR + abort。声明了 errorCode 还会带动其余字段，
-                    // 让部分声明保持自洽。
+                    // Every skill's business error funnels in here. Whatever the skill itself declared takes priority field by field;
+                    // the classifier only fills gaps, so the roughly 700 skills that just return { error = "..." } still get an error code
+                    // and retry strategy, instead of a uniform SKILL_ERROR + abort. Declaring errorCode also pulls the rest of the fields along,
+                    // keeping a partial declaration self-consistent.
                     var classified = errorContext.Code.HasValue
                         ? SkillErrorClassifier.ForCode(errorContext.Code.Value, errorContext.Message)
                         : SkillErrorClassifier.Classify(errorContext.Message);
@@ -926,11 +926,11 @@ namespace UnitySkills
                         extra: errorContext.Extra);
                 }
 
-                // ========== 自动 workflow 收尾 ==========
+                // ========== Automatic workflow wrap-up ==========
                 if (autoStartedWorkflow)
                 {
-                    // 自动 workflow 路径下持久化职责全在 EndTask（它内部会调 SaveHistory）。
-                    // 此处测量该开销用于观测。
+                    // On the auto-workflow path, persistence is entirely EndTask's responsibility (it calls SaveHistory internally).
+                    // The cost is measured here for observability.
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     WorkflowManager.EndTask();
                     sw.Stop();
@@ -938,8 +938,8 @@ namespace UnitySkills
                 }
                 else if (WorkflowManager.IsRecording)
                 {
-                    // 手动会话（workflow_begin_task）：否则每个被跟踪的 skill 每次调用都要存一遍。
-                    // 当前任务自上次保存以来没有新快照时跳过保存。
+                    // Manual session (workflow_begin_task): otherwise every tracked skill would save on every single call.
+                    // Skips the save when the current task has had no new snapshots since the last save.
                     if (ManualSessionIsDirty(WorkflowManager.CurrentTask))
                         WorkflowManager.SaveHistory();
                 }
@@ -947,23 +947,23 @@ namespace UnitySkills
 
                 if (wrapWithUndoTransaction)
                 {
-                    // 提交事务
+                    // Commit the transaction
                     UnityEditor.Undo.CollapseUndoOperations(undoGroup);
 
-                    // 经 REST 调用的 skill 不会经过推进 Unity undo 栈的那些常规菜单/鼠标事件边界。
-                    // 因此显式切到下一组，使 editor_undo/editor_redo 作用于刚完成的这次改动。
+                    // A skill invoked over REST never passes through the usual menu/mouse event boundaries that advance Unity's undo stack.
+                    // So explicitly move to the next group, so editor_undo/editor_redo act on the change that was just completed.
                     if (!skill.ReadOnly)
                         UnityEditor.Undo.IncrementCurrentGroup();
                 }
 
-                // 语义 diff 的后捕获与对比（?diff=1）。以顶层 "sceneDiff" 附在成功信封上；
-                // 默认路径下为 null，以保证输出逐字节不变。BuildSceneDiff 已隔离异常——
-                // diff 绝不会弄坏响应，而上面报了错的 skill 根本到不了这里。
+                // Post-capture and comparison for the semantic diff (?diff=1). Attached to the success envelope as a top-level "sceneDiff";
+                // null on the default path, to keep output byte-for-byte unchanged. BuildSceneDiff already isolates its own exceptions --
+                // the diff can never break the response, and a skill that reported an error above never reaches this point anyway.
                 JToken sceneDiff = BuildSceneDiff(captureDiff, skill, diffCapture, result);
 
                 if (!verbose && result != null)
                 {
-                    // 带分页的 "Summary Mode" 逻辑
+                    // "Summary Mode" logic with pagination
                     var jsonResult = JToken.FromObject(result);
 
                     var arr = FindPageArray(jsonResult, out var arrayProperty);
@@ -972,10 +972,10 @@ namespace UnitySkills
                         int startIndex = offset ?? 0;
                         int pageSize = limit ?? 5;
 
-                        // 夹到合法范围
+                        // Clamp to a valid range
                         if (startIndex >= arr.Count)
                         {
-                            // offset 越过数组边界，返回空页
+                            // offset is beyond the array bounds, return an empty page
                             var emptyWrapper = new JObject
                             {
                                 ["isTruncated"] = true,
@@ -1007,7 +1007,7 @@ namespace UnitySkills
                         bool hasMore = endIndex < arr.Count;
                         int? nextOffset = hasMore ? (int?)endIndex : null;
 
-                        // 返回带分页元数据的包装对象
+                        // Return a wrapper object carrying pagination metadata
                         var wrapper = new JObject
                         {
                             ["isTruncated"] = true,
@@ -1041,12 +1041,12 @@ namespace UnitySkills
                     }
                 }
 
-                // 完整模式（verbose=true 或结果本身很小）：原样返回
+                // Full mode (verbose=true, or the result is already small): return as-is
                 return SerializeSuccessResponse(result, sceneDiff, workflowEndMs);
             }
             catch (TargetInvocationException ex)
             {
-                // 出错时清理自动开启的 workflow
+                // Clean up an auto-started workflow on error
                 if (autoStartedWorkflow && WorkflowManager.IsRecording)
                     WorkflowManager.AbortTask();
                 else if (WorkflowManager.IsRecording)
@@ -1054,7 +1054,7 @@ namespace UnitySkills
 
                 if (undoGroup >= 0)
                 {
-                    // 回滚事务
+                    // Roll back the transaction
                     UnityEditor.Undo.RevertAllInCurrentGroup();
                 }
 
@@ -1068,10 +1068,10 @@ namespace UnitySkills
             }
             catch (Newtonsoft.Json.JsonException ex)
             {
-                // 请求体格式错误——ValidateParameters 内部的 JObject.Parse 在任何改动或 undo 组
-                // 开启之前就抛了。这是客户端错误，不是服务端或事务失败：返回
-                // InvalidJson + fix_and_retry，让 agent 去改请求体而不是在 wait_and_retry 上打转
-                //（下面那个通用 catch 会把它误标为 "[Transactional Revert]"）。与 DryRun 保持一致。
+                // Malformed request body -- JObject.Parse inside ValidateParameters throws before any change or undo group
+                // has been opened. This is a client error, not a server or transaction failure: return
+                // InvalidJson + fix_and_retry, so the agent edits the request body instead of spinning on wait_and_retry
+                // (the generic catch below would mislabel it as "[Transactional Revert]"). Consistent with DryRun.
                 return SkillErrorResponse.Build(
                     SkillErrorCode.InvalidJson,
                     $"Invalid JSON: {ex.Message}",
@@ -1080,7 +1080,7 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                // 出错时清理自动开启的 workflow
+                // Clean up an auto-started workflow on error
                 if (autoStartedWorkflow && WorkflowManager.IsRecording)
                     WorkflowManager.AbortTask();
                 else if (WorkflowManager.IsRecording)
@@ -1088,7 +1088,7 @@ namespace UnitySkills
 
                 if (undoGroup >= 0)
                 {
-                    // 回滚事务
+                    // Roll back the transaction
                     UnityEditor.Undo.RevertAllInCurrentGroup();
                 }
 
@@ -1135,10 +1135,10 @@ namespace UnitySkills
                         mayTriggerReload = skill.MayTriggerReload,
                         mayEnterPlayMode = skill.MayEnterPlayMode,
                         supportsDryRun = skill.SupportsDryRun,
-                        // 恒定输出，两种取值都发。此前该标志只存在于 ?wire=v2 的稀疏 "flags" 数组里，
-                        // 于是默认面（v1 载荷与本预览）从不提及"即将发起的这次调用会把主线程
-                        //（连同整个 HTTP 队列）阻塞数秒"。预览正是该说这件事的地方：
-                        // 只在 true 时输出会让"缺席"在"很快"与"旧版本"之间产生歧义，故两种取值都发。
+                        // Always output, regardless of value. This flag used to exist only in ?wire=v2's sparse "flags" array,
+                        // so the default surface (the v1 payload and this preview) never mentioned that the call about to be made
+                        // would block the main thread (and the whole HTTP queue) for seconds. The preview is exactly the place that should say this:
+                        // outputting it only when true would make "absent" ambiguous between "fast" and "old version," so both values are emitted.
                         longRunning = skill.LongRunning,
                         riskLevel = skill.RiskLevel,
                         requiresPackages = skill.RequiresPackages,
@@ -1181,9 +1181,9 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                // JSON 合法也仍可能让 plan/语义校验崩掉（例如 NRE）。把这种情况报成 INVALID_JSON
-                // 会让 agent 反复重写一个本来没问题的请求体；因此照 Execute 的 catch 分法，
-                // 如实上报真正的失败。
+                // Even valid JSON can still crash plan/semantic validation (e.g. an NRE). Reporting this case as INVALID_JSON
+                // would send the agent into repeatedly rewriting a request body that was never the problem; so, following Execute's catch split,
+                // the real failure is reported honestly.
                 return SkillErrorResponse.Build(
                     SkillErrorCode.Internal,
                     $"Dry-run failed: {ex.Message}",
@@ -1194,32 +1194,32 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 对 <see cref="ApplyModeGate"/> 将给出的判定做只读预览——使一次 dry run 能回答
-        /// "这个调用到底允不允许跑"，而不是让 agent 到 execute 时才撞上
-        /// MODE_FORBIDDEN / MODE_RESTRICTED 这堵墙。
+        /// A read-only preview of the verdict <see cref="ApplyModeGate"/> would give -- so a dry run can answer
+        /// "is this call actually allowed to run," rather than making the agent hit the
+        /// MODE_FORBIDDEN / MODE_RESTRICTED wall only once it reaches execute.
         ///
-        /// 刻意从 <see cref="SkillsModeManager.CurrentMode"/>、白名单和
-        /// <see cref="SkillsModeManager.IsForbiddenInSemi"/> 重新推导结论，而不是直接调
-        /// <c>CheckAccess</c>：CheckAccess 会消耗本线程的一次性授权 token，而包着它的闸门还会
-        /// 发起授权请求、写审计条目。预览一件都不该做。下面的顺序与 CheckAccess 完全一致，
-        /// 只少了一次性检查——待用的一次性放行属于紧随授权之后的那一次 execute 调用，不属于预览，
-        /// 在此上报它等于宣传一个下一个调用方可能拿不到的许可。
+        /// Deliberately re-derives the conclusion from <see cref="SkillsModeManager.CurrentMode"/>, the allowlist, and
+        /// <see cref="SkillsModeManager.IsForbiddenInSemi"/>, rather than calling
+        /// <c>CheckAccess</c> directly: CheckAccess consumes this thread's one-shot grant token, and the gate wrapping it would also
+        /// issue a grant request and write an audit entry -- none of which a preview should do. The order below matches CheckAccess exactly,
+        /// minus the one-shot check -- a pending one-shot bypass belongs to the one execute call right after the grant, not to a preview,
+        /// and reporting it here would be advertising a permission the next caller might not actually get.
         ///
-        /// 应当读作预测而非预留：mode 或白名单可能在本次 dry run 与 execute 之间发生变化，
-        /// 因此 <c>allowed:true</c> 不是保证。
+        /// Should be read as a prediction, not a reservation: the mode or allowlist may change between this dry run and the execute call,
+        /// so <c>allowed:true</c> is not a guarantee.
         ///
-        /// 判定依据是 skill 自身的元数据；对除"携带写入"入口
-        ///（batch_execute / batch_retry_failed，以及 workflow 的 undo/redo/revert 系列）之外的
-        /// 所有 skill，这就是全部依据。那些入口在执行时是按一份本预览拿不到的载荷的分类结果被拒的，
-        /// 因此此处附加一条说明而非给出判定——见
-        /// <see cref="SkillsSurfaceProfile.CarriedWritePreviewGate"/>。
+        /// The verdict is based on the skill's own metadata; for every skill except the "carried-write" entry points
+        /// (batch_execute / batch_retry_failed, and the workflow undo/redo/revert family),
+        /// that's the entire basis. Those entry points are rejected at execution time based on a classification of a payload this preview has no access to,
+        /// so an additional note is attached here instead of a verdict -- see
+        /// <see cref="SkillsSurfaceProfile.CarriedWritePreviewGate"/>.
         /// </summary>
         private static object BuildAuthorizationPreview(SkillInfo skill)
         {
             var verdict = BuildModeAuthorizationPreview(skill);
 
-            // 已在 skill 层被拒：SURFACE_EXCLUDED 区块已把载荷说明要讲的都讲了，
-            // 说两遍会被读成两堵不同的墙。
+            // Already rejected at the skill layer: the SURFACE_EXCLUDED block has already said everything the payload needs to say;
+            // saying it twice would read as two different walls.
             if (SkillsSurfaceProfile.IsExcluded(skill))
                 return verdict;
 
@@ -1227,7 +1227,7 @@ namespace UnitySkills
             if (payloadGate == null)
                 return verdict;
 
-            // 只追加、绝不替换，使原有字段的名称、取值与顺序都不变，唯一新增的是那条说明。
+            // Only appends, never replaces, so the original fields' names, values, and order are unchanged; the only addition is that note.
             var annotated = JObject.FromObject(verdict);
             foreach (var property in JObject.FromObject(payloadGate).Properties())
                 annotated[property.Name] = property.Value;
@@ -1235,8 +1235,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// <see cref="BuildAuthorizationPreview"/> 中只看元数据的那一半：先判 surface 排除，
-        /// 再按 CheckAccess 的顺序走 mode/白名单的判定阶梯。
+        /// The metadata-only half of <see cref="BuildAuthorizationPreview"/>: first checks surface exclusion,
+        /// then walks the mode/allowlist decision ladder in the same order as CheckAccess.
         /// </summary>
         private static object BuildModeAuthorizationPreview(SkillInfo skill)
         {
@@ -1244,10 +1244,10 @@ namespace UnitySkills
             var modeWire = SkillsModeManager.ModeToWire(mode);
             bool allowlisted = SkillsModeManager.IsInAllowlist(skill.Name);
 
-            // 首先，与 execute 路径一致：排除的优先级高于 Bypass 和白名单，
-            // 因此若对一个"在白名单但被隐藏"的 skill 在此报 allowed:true，
-            // agent 会径直撞上一个刚被告知不会遇到的 SURFACE_EXCLUDED。
-            // dry run 本身永不被拦——预览一个被排除的 skill，正是 agent 得知"用户需要改什么"的途径。
+            // First, consistent with the execute path: exclusion takes priority over Bypass and the allowlist,
+            // so reporting allowed:true here for a skill that is "allowlisted but hidden"
+            // would send the agent straight into a SURFACE_EXCLUDED it was just told it wouldn't hit.
+            // The dry run itself is never blocked -- previewing an excluded skill is exactly how the agent learns "what the user needs to change."
             if (SkillsSurfaceProfile.IsExcluded(skill))
             {
                 return new
@@ -1335,8 +1335,8 @@ namespace UnitySkills
             return BuildSuccessEnvelope(jsonResult, sceneDiff, workflowEndMs);
         }
 
-        // 序列化成功信封。sceneDiff（?diff=1）与 workflowEndMs（自动 workflow 的 EndTask 持久化
-        // 耗时，毫秒）都只在存在时作为顶层字段追加；两者都不存在时，输出与引入 diff 之前逐字节一致。
+        // Serializes the success envelope. sceneDiff (?diff=1) and workflowEndMs (the auto-workflow EndTask persistence
+        // time, in milliseconds) are only appended as top-level fields when present; when neither exists, output is byte-for-byte identical to before diff was introduced.
         private static string BuildSuccessEnvelope(JToken result, JToken sceneDiff, long? workflowEndMs = null)
         {
             if (sceneDiff == null && workflowEndMs == null)
@@ -1348,8 +1348,8 @@ namespace UnitySkills
             return JsonConvert.SerializeObject(new { status = "success", result, sceneDiff, workflowEndMs = workflowEndMs.Value }, _jsonSettings);
         }
 
-        // 为一次成功的 ?diff=1 执行构建 sceneDiff 载荷。只读 skill 只给一条 note（没什么可 diff）；
-        // 其余委托给 SkillSceneDiff.Build。完全隔离——任何失败都降级为 {error:...}，绝不扰动响应信封。
+        // Builds the sceneDiff payload for a successful ?diff=1 execution. A read-only skill just gets a note (nothing to diff);
+        // everything else is delegated to SkillSceneDiff.Build. Fully isolated -- any failure degrades to {error:...}, and never disturbs the response envelope.
         private static JToken BuildSceneDiff(bool captureDiff, SkillInfo skill, SkillSceneDiff.DiffCapture diffCapture, object result)
         {
             if (!captureDiff)
@@ -1578,8 +1578,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 同名的显式 RequiresInput 元数据会覆盖 CLR 层面的"可选（有默认值）"判定。
-        /// 否则，只有既无默认值又不接受 null 的参数才算必填。
+        /// Explicit RequiresInput metadata with the same name overrides the CLR-level "optional (has a default value)" determination.
+        /// Otherwise, only a parameter with neither a default value nor null acceptance counts as required.
         /// </summary>
         private static bool IsParameterRequired(SkillInfo skill, ParameterInfo p)
         {
@@ -1604,48 +1604,48 @@ namespace UnitySkills
             return list.Count > 0 ? list.ToArray() : null;
         }
 
-        // ========== 过滤后的 manifest ==========
+        // ========== Filtered manifest ==========
 
         /// <summary>
-        /// 按 query 参数返回过滤后的 skill manifest。
-        /// 支持 category、operation、tags、readOnly、q（文本搜索）。
+        /// Returns the skill manifest filtered by query parameters.
+        /// Supports category, operation, tags, readOnly, q (text search).
         /// </summary>
         public static string GetFilteredManifest(string queryString) => BuildFilteredOutput(queryString, "manifest", out _);
 
         /// <summary>
-        /// 过滤条件与 GetFilteredManifest 相同（category/operation/tags/readOnly/q），
-        /// 但把载荷的 manifestType 标为 "schema"——支撑 GET /skills/schema?category=…
-        ///（限定范围的 schema，只需一个 category 时免去拉取整份约 618KB 的 schema）。
+        /// Same filter conditions as GetFilteredManifest (category/operation/tags/readOnly/q),
+        /// but marks the payload's manifestType as "schema" -- backing GET /skills/schema?category=...
+        /// (a scoped schema, so needing just one category doesn't require pulling the whole roughly 618KB schema).
         /// </summary>
         public static string GetFilteredSchema(string queryString) => BuildFilteredOutput(queryString, "schema", out _);
 
         /// <summary>
-        /// 在 <see cref="GetFilteredManifest(string)"/> 之外，额外告知返回的字符串是拒绝响应
-        /// 还是 manifest。HTTP 层需要这一区分，且不嗅探文本就无法从载荷里还原出来，原因有两点：
-        /// 错误必须答 400 而不是 200；并且不能给它 ETag——被缓存的 400 响应体会让客户端下一次
-        /// If-None-Match 得到一个完全没有 body 的 304，读起来就像"你的查询没问题，且什么都没变"。
+        /// On top of <see cref="GetFilteredManifest(string)"/>, additionally reports whether the returned string is a rejection response
+        /// or a manifest. The HTTP layer needs this distinction, and can't recover it from the payload without sniffing the text, for two reasons:
+        /// an error must answer 400 rather than 200; and it must not get an ETag -- a cached 400 response body would give the client's next
+        /// If-None-Match a 304 with no body at all, which reads as "your query was fine, and nothing changed."
         /// </summary>
         public static string GetFilteredManifest(string queryString, out bool isError) =>
             BuildFilteredOutput(queryString, "manifest", out isError);
 
-        /// <summary><see cref="GetFilteredManifest(string, out bool)"/> 的 schema 对应版本。</summary>
+        /// <summary>The schema counterpart of <see cref="GetFilteredManifest(string, out bool)"/>.</summary>
         public static string GetFilteredSchema(string queryString, out bool isError) =>
             BuildFilteredOutput(queryString, "schema", out isError);
 
-        // BuildFilteredOutput 真正用来过滤或分支的 query 键。其余一切（拼写错误、用于破坏缓存的
-        // nonce、客户端埋点参数…）在进入缓存键之前就被剔除——否则每个不同的未识别取值都会造出
-        // 一条永久的约 618KB 缓存条目（见 _filteredOutputCache 上方 MaxCacheEntries 的注释）。
-        // 在此新增一个键，必须同时加进 _blankRejectingFilterKeys，否则 "?newKey=" 又会变成静默空操作。
+        // The query keys BuildFilteredOutput actually uses to filter or branch. Everything else (typos, cache-busting
+        // nonces, client telemetry parameters...) gets stripped before entering the cache key -- otherwise every distinct unrecognized value would create
+        // a permanent roughly 618KB cache entry (see the MaxCacheEntries comment above _filteredOutputCache).
+        // Adding a new key here must also add it to _blankRejectingFilterKeys, or "?newKey=" silently becomes a no-op again.
         private static readonly HashSet<string> _recognizedFilterKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "category", "operation", "tags", "readonly", "q", "summary", "includeSchema", "brief",
-            // 面/格式选择器——列在此处以免被剔除，但它们从不缩小 skill 集合（见 _surfaceSelectionKeys）。
+            // Surface/wire-format selectors -- listed here so they aren't stripped, but they never narrow the skill set (see _surfaceSelectionKeys).
             "wire", "full"
         };
 
-        // 这些已识别的键选的是载荷*形状*而非 skill 子集。它们既不得作为 "filters" 回显，
-        // 也不得把 "filtered" 置为 true：单独的 ?wire=v2 仍是完整未过滤的 manifest，
-        // 说成过滤过的会误报 totalSkills 的含义。
+        // These recognized keys select the payload's *shape*, not a subset of skills. They must never be echoed back as "filters,"
+        // nor set "filtered" to true: a bare ?wire=v2 is still the complete, unfiltered manifest,
+        // and calling it filtered would misrepresent the meaning of totalSkills.
         private static readonly HashSet<string> _surfaceSelectionKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "wire", "full"
@@ -1666,9 +1666,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 剔除 <see cref="_surfaceSelectionKeys"/>，只留真正缩小 skill 集合的键。
-        /// 无需剔除任何东西时原样返回入参实例——正是这一点让所有 v2 之前的 query
-        /// 回显出的 <c>filters</c> 对象逐字节不变。
+        /// Strips <see cref="_surfaceSelectionKeys"/>, leaving only keys that actually narrow the skill set.
+        /// Returns the argument instance unchanged when there's nothing to strip -- this alone is what keeps the <c>filters</c> object
+        /// echoed for every pre-v2 query byte-for-byte identical.
         /// </summary>
         private static Dictionary<string, string> StripSurfaceSelectionKeys(Dictionary<string, string> filters)
         {
@@ -1690,8 +1690,8 @@ namespace UnitySkills
                 (value == "1" || value.Equals("true", StringComparison.OrdinalIgnoreCase));
         }
 
-        // 线上格式版本。v1 是历史载荷，且永远保持为默认：未识别的 ?wire 取值解析为 v1 而不报错，
-        // 因此拼写错误绝不会静默地把一个调用方解析不了的形状发给它。
+        // Wire format version. v1 is the legacy payload and stays the default forever: an unrecognized ?wire value resolves to v1 rather than erroring,
+        // so a typo never silently sends a caller a shape it can't parse.
         private const int WireV1 = 1;
         private const int WireV2 = 2;
 
@@ -1706,16 +1706,16 @@ namespace UnitySkills
             return WireV1;
         }
 
-        /// <summary>manifest 家族的 GET 由哪一份缓存字符串应答。</summary>
+        /// <summary>Which cached string a GET in the manifest family answers with.</summary>
         private enum GetSurface
         {
-            /// <summary>_cachedManifest / _cachedSchema —— 原封不动的 v1 完整载荷。</summary>
+            /// <summary>_cachedManifest / _cachedSchema -- the untouched full v1 payload.</summary>
             FullV1,
-            /// <summary>_cachedBrief —— 裸 GET /skills，以及两条路径上的 ?brief=1。</summary>
+            /// <summary>_cachedBrief -- bare GET /skills, and ?brief=1 on either path.</summary>
             Brief,
-            /// <summary>_cachedMeta —— GET /skills/meta。</summary>
+            /// <summary>_cachedMeta -- GET /skills/meta.</summary>
             Meta,
-            /// <summary>_filteredOutputCache —— 所有限定范围、summary 或 wire=v2 的变体。</summary>
+            /// <summary>_filteredOutputCache -- every scoped, summary, or wire=v2 variant.</summary>
             Keyed
         }
 
@@ -1723,22 +1723,22 @@ namespace UnitySkills
         private const string MetaCacheKey = "meta|__full__";
 
         /// <summary>
-        /// "这个 query 选的是哪个面、用哪个缓存键"的唯一事实来源。主线程构建器
-        /// （<see cref="BuildFilteredOutput"/>）与 HTTP 线程快路径（<see cref="BuildGetCacheKey"/>）
-        /// 都调用它——两边一旦不一致，快路径就会用另一个面的字节来应答本面的请求。
+        /// The single source of truth for "which surface this query selects, and which cache key to use." The main-thread builder
+        /// (<see cref="BuildFilteredOutput"/>) and the HTTP thread's fast path (<see cref="BuildGetCacheKey"/>)
+        /// both call it -- the moment the two disagree, the fast path will answer a request for this surface with bytes from a different one.
         ///
-        /// 在 <paramref name="filters"/> 已剔除无关键的前提下，判定顺序为：
+        /// Given that <paramref name="filters"/> has already had irrelevant keys stripped, the determination order is:
         /// <list type="number">
-        /// <item>meta 路径 → <see cref="GetSurface.Meta"/>。</item>
-        /// <item>?brief 为真，或裸 /skills 请求（无缩小范围的过滤且无 ?full）→
-        /// <see cref="GetSurface.Brief"/>。这是 v2.7 的默认值翻转：裸 GET /skills 过去返回约 618KB
-        /// 的 manifest，现在返回目录；?full=1 可恢复旧行为。</item>
-        /// <item>无任何缩小范围的键且 wire 为 v1 → <see cref="GetSurface.FullV1"/>
-        /// （裸 /skills/schema，以及 /skills?full=1）。</item>
-        /// <item>其余一切 → <see cref="GetSurface.Keyed"/>。</item>
+        /// <item>meta path -> <see cref="GetSurface.Meta"/>.</item>
+        /// <item>?brief is true, or a bare /skills request (no narrowing filter and no ?full) ->
+        /// <see cref="GetSurface.Brief"/>. This is the v2.7 default flip: bare GET /skills used to return the roughly 618KB
+        /// manifest, and now returns the catalog; ?full=1 restores the old behavior.</item>
+        /// <item>No narrowing key at all and wire is v1 -> <see cref="GetSurface.FullV1"/>
+        /// (bare /skills/schema, and /skills?full=1).</item>
+        /// <item>Everything else -> <see cref="GetSurface.Keyed"/>.</item>
         /// </list>
-        /// Brief 与 wire 无关（它不携带任何可精简的逐 skill 标志），因此两种 wire 共用一条缓存条目，
-        /// 也因此共用一个 ETag。
+        /// Brief is independent of wire (it carries no per-skill flags that could be trimmed), so both wire versions share one cache entry,
+        /// and therefore share one ETag.
         /// </summary>
         private static string ResolveGetSurface(string manifestType, Dictionary<string, string> filters, out GetSurface surface)
         {
@@ -1764,16 +1764,16 @@ namespace UnitySkills
             }
 
             surface = GetSurface.Keyed;
-            // ?full 从键里剔除，?wire 不剔除。请求一旦走到 Keyed，?full 唯一的作用
-            //（击败上面分支里的 brief 默认值）已经完成，不可能再影响字节——留着它只会把同一份载荷
-            // 拆成两条内容相同的几百 KB 条目（/skills/schema?wire=v2 与 ?full=1&wire=v2）。
-            // ?wire 则确实会选出不同的字节，必须留在标识里。
+            // ?full is stripped from the key, ?wire is not. Once a request reaches Keyed, ?full's one job
+            // (defeating the brief default in the branch above) is already done, and it can no longer affect the bytes -- keeping it would only split the same payload
+            // into two several-hundred-KB entries with identical content (/skills/schema?wire=v2 and ?full=1&wire=v2).
+            // ?wire, on the other hand, really does select different bytes, and must stay in the identifier.
             return BuildFilteredOutputCacheKey(StripFullFlagKey(filters), manifestType);
         }
 
         /// <summary>
-        /// 只剔除 <c>full</c> 键，其余保持插入顺序。与
-        /// <see cref="StripSurfaceSelectionKeys"/> 一样，无需改动时直接返回入参实例。
+        /// Strips only the <c>full</c> key, keeping the rest in insertion order. Like
+        /// <see cref="StripSurfaceSelectionKeys"/>, returns the argument instance directly when there's nothing to change.
         /// </summary>
         private static Dictionary<string, string> StripFullFlagKey(Dictionary<string, string> filters)
         {
@@ -1789,28 +1789,28 @@ namespace UnitySkills
             return result;
         }
 
-        // ?category= / ?operation= 的合法取值。存下来而不是每次重算，因为 Enum.GetNames 每次调用
-        // 都要新分配一个数组，而未命中缓存的 manifest GET 每次都会读它们；
-        // 它们同时也是拒绝响应里回给调用方的那份列表。
+        // Valid values for ?category= / ?operation=. Stored rather than recomputed each time, because Enum.GetNames allocates a new array
+        // on every call, and a manifest GET that misses the cache reads them every time;
+        // they're also the list handed back to the caller in a rejection response.
         private static readonly string[] _validCategoryNames = Enum.GetNames(typeof(SkillCategory));
         private static readonly string[] _validOperationNames = Enum.GetNames(typeof(SkillOperation));
 
         /// <summary>
-        /// 拒绝未知的 <c>?category=</c> / <c>?operation=</c> 取值，以及留空的缩小范围键，
-        /// 而不是拿它悄悄去过滤。
+        /// Rejects unknown <c>?category=</c> / <c>?operation=</c> values, and a blank narrowing key,
+        /// rather than silently filtering with it.
         ///
-        /// <para>这两个过滤器过去都会静默地"失败即关闭"：未识别的 category 不可能等于任何
-        /// <c>Category.ToString()</c>，解析不出的 operation 会让下面每个 <c>Enum.TryParse</c> 都失败——
-        /// 于是答复是 200 加 <c>skills: []</c>，与"当前 surface profile 下该 category 确实空无一物"
-        /// 逐字节相同。agent 读到这个会断定本工程里没有该模块并停止查找，
-        /// 而它其实只是把 <c>?category=GameObjects</c> 拼错了。</para>
+        /// <para>Both filters used to silently "fail closed": an unrecognized category can never equal any
+        /// <c>Category.ToString()</c>, and an unparseable operation makes every <c>Enum.TryParse</c> below fail --
+        /// so the answer is 200 plus <c>skills: []</c>, byte-for-byte identical to "this category is genuinely
+        /// empty under the current surface profile." An agent reading that concludes the module doesn't exist in this project and stops looking,
+        /// when it actually just typo'd <c>?category=GameObjects</c>.</para>
         ///
-        /// <para>必须在 <see cref="ResolveGetSurface"/> 之前运行。category/operation 属缩小范围键，
-        /// 因此一个错误取值会走到 <see cref="GetSurface.Keyed"/>，并以那个拼写错误为键铸出——
-        /// 而后永久持有——一条 manifest 大小的缓存条目。</para>
+        /// <para>Must run before <see cref="ResolveGetSurface"/>. category/operation are narrowing keys,
+        /// so a bad value would fall into <see cref="GetSurface.Keyed"/>, and mint -- then permanently hold --
+        /// a manifest-sized cache entry keyed on that typo.</para>
         ///
-        /// <para>所有出现的取值都可接受时返回 null，包括压根没有缩小范围键的情形。
-        /// 绝不拒绝下面的过滤器本会匹配的取值，因此任何合法 query 的字节都不会改变。</para>
+        /// <para>Returns null when every value present is acceptable, including when there's no narrowing key at all.
+        /// Never rejects a value the filters below would actually match, so no legitimate query's bytes ever change.</para>
         /// </summary>
         private static string ValidateNarrowingFilterValues(Dictionary<string, string> filters)
         {
@@ -1841,13 +1841,13 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 返回下面的过滤器无法使用其取值的那个缩小范围键；所有取值都可接受时返回 null。
-        /// 从 <see cref="ValidateNarrowingFilterValues"/> 中拆出来，是为了让 HTTP 线程快路径也能问
-        /// 同一个问题：不碰 Unity API、不写日志、不调 Initialize()——这正是快路径区域的跨线程契约所要求的。
-        /// 快路径只需要知道"这个 query 是否该被拒"，从不需要错误体，故构建载荷仍留在主线程。
+        /// Returns the narrowing key whose value the filters below can't use; returns null when every value is acceptable.
+        /// Split out of <see cref="ValidateNarrowingFilterValues"/> so the HTTP thread's fast path can ask
+        /// the same question: it never touches the Unity API, never logs, never calls Initialize() -- exactly what the fast-path zone's cross-thread contract requires.
+        /// The fast path only needs to know "should this query be rejected," never the error body, so building the payload still happens on the main thread.
         ///
-        /// 每一项检查都必须与 <see cref="BuildFilteredOutput"/> 中对应过滤器所做的检查*完全相同*，
-        /// 绝不能更严：本处拒掉而过滤器本会匹配的取值，会把一个正常的 200 变成 400。
+        /// Every check here must be *exactly identical* to what the corresponding filter does in <see cref="BuildFilteredOutput"/>,
+        /// and never stricter: rejecting a value here that the filter would actually match would turn a normal 200 into a 400.
         /// </summary>
         private static string FindInvalidNarrowingFilterKey(Dictionary<string, string> filters)
         {
@@ -1858,18 +1858,18 @@ namespace UnitySkills
                 !_validCategoryNames.Contains(category, StringComparer.OrdinalIgnoreCase))
                 return "category";
 
-            // 用 Enum.TryParse 而非"名字是否在列表中"：SkillOperation 是 [Flags]，
-            // 过滤器接受逗号列表（"Query,Modify"——匹配同时声明两者的 skill）和数字字面量，
-            // 而按名字列表检查恰恰会拒掉这两种。
+            // Uses Enum.TryParse rather than "is the name in the list": SkillOperation is [Flags],
+            // the filter accepts a comma list ("Query,Modify" -- matching a skill that declares both) and numeric literals,
+            // and checking against a name list would reject exactly those two forms.
             if (filters.TryGetValue("operation", out var operation) &&
                 !Enum.TryParse<SkillOperation>(operation, true, out _))
                 return "operation";
 
-            // 写了键但没写值（"?tags="、"?summary="）现在会被 ParseQueryString 保留而非丢弃，
-            // 而这些键都没有有意义的"空值"读法：缩小范围键会变成什么都匹配不上的过滤条件，
-            // 形状类键则退回到调用方本想覆盖的那个默认值。两种答法都会让调用方误以为该键生效了，
-            // 所以直接拒绝。category/operation 无需列入——空串不属于这两个词表的任何成员，
-            // 上面两项检查已经拦住它们。
+            // A key written with no value ("?tags=", "?summary=") is now preserved by ParseQueryString rather than dropped,
+            // and none of these keys has a meaningful reading of "empty": a narrowing key would become a filter condition that matches nothing,
+            // while a shape key would fall back to the very default the caller meant to override. Either answer would leave the caller believing the key took effect,
+            // so it's rejected outright. category/operation don't need to be listed -- an empty string isn't a member of either word list,
+            // and the two checks above already catch them.
             foreach (var key in _blankRejectingFilterKeys)
             {
                 if (filters.TryGetValue(key, out var value) && string.IsNullOrWhiteSpace(value))
@@ -1879,8 +1879,8 @@ namespace UnitySkills
             return null;
         }
 
-        // 所有已识别的 query 键，顺序*固定*，使带多个空值的 query 每次拒绝时都指名同一个键——
-        // 错误体和其他缓存答复一样，必须对同一 query 字节稳定。需与 _recognizedFilterKeys 保持同步。
+        // All recognized query keys, in a *fixed* order, so a query with multiple blank values always names the same key on rejection --
+        // the error body, like any other cached response, must be byte-stable for the same query. Keep in sync with _recognizedFilterKeys.
         private static readonly string[] _blankRejectingFilterKeys =
         {
             "category", "operation", "tags", "readonly", "q", "summary", "includeSchema", "brief",
@@ -1893,10 +1893,10 @@ namespace UnitySkills
             isError = false;
             var filters = StripUnrecognizedFilterKeys(ParseQueryString(queryString));
 
-            // 放在 ResolveGetSurface 之前，使未知取值绝无可能成为缓存键；也放在 brief/meta 分支之前，
-            // 否则一个本该被拒的 query 会拿到一份完全合法的目录。HTTP 快路径经
-            // FindInvalidNarrowingFilterKey 问同一个问题并主动让位，
-            // 因此它不会为本处会返回错误的 query 发出 _cachedBrief。
+            // Placed before ResolveGetSurface, so an unknown value can never become a cache key; also placed before the brief/meta branches,
+            // otherwise a query that should be rejected would get a perfectly legitimate catalog. The HTTP fast path asks
+            // the same question via FindInvalidNarrowingFilterKey and voluntarily steps aside,
+            // so it never hands out _cachedBrief for a query that would return an error here.
             var filterValueError = ValidateNarrowingFilterValues(filters);
             if (filterValueError != null)
             {
@@ -1910,18 +1910,18 @@ namespace UnitySkills
             {
                 case GetSurface.Meta:
                     return GetMeta();
-                // ?brief=1（或 ?brief=true），以及现在的裸 GET /skills → 目录层：按 category 分组的
-                // skill 名，不含描述与参数 schema（约 19KB，对比 summary 约 139KB / 完整约 618KB）。
-                // 优先级高于 summary/category 等过滤（它们被忽略），以保持语义最小化：
-                // 先定位模块，再经 GET /skills/schema?category=<Category> 拉取精确签名。
+                // ?brief=1 (or ?brief=true), and now bare GET /skills too -> the catalog layer: skill names grouped by
+                // category, without descriptions or parameter schemas (roughly 19KB, versus roughly 139KB for summary / roughly 618KB for full).
+                // Takes priority over summary/category and other filters (which are ignored), to keep the semantics minimal:
+                // locate the module first, then pull the exact signature via GET /skills/schema?category=<Category>.
                 case GetSurface.Brief:
                     return GetBrief();
                 case GetSurface.FullV1:
                     return manifestType == "schema" ? GetSchema() : GetManifest();
             }
 
-            // 在 Refresh() 之前，过滤输出对同一 query 逐字节确定；缓存它，
-            // 使重复的限定范围拉取（?category=…）不必每次都重建并重新序列化全部 skill。
+            // Before Refresh(), filtered output is byte-for-byte deterministic for the same query; caching it means
+            // a repeated scoped fetch (?category=...) doesn't have to rebuild and re-serialize every skill each time.
             if (_filteredOutputCache.TryGetValue(cacheKey, out var cachedOutput))
                 return cachedOutput;
 
@@ -1952,17 +1952,17 @@ namespace UnitySkills
 
             var results = filtered.ToList();
 
-            // ?summary=1（或 ?includeSchema=false，与 /skills/recommend 的约定一致）
-            // → 轻量认知 manifest：省略参数 schema，截断描述。
+            // ?summary=1 (or ?includeSchema=false, consistent with the /skills/recommend convention)
+            // -> a lightweight cognitive manifest: omits parameter schemas, truncates descriptions.
             bool summary = filters.TryGetValue("summary", out var sumVal) &&
                 (sumVal == "1" || sumVal.Equals("true", StringComparison.OrdinalIgnoreCase));
             if (!summary && filters.TryGetValue("includeSchema", out var incVal) &&
                 (incVal == "0" || incVal.Equals("false", StringComparison.OrdinalIgnoreCase)))
                 summary = true;
 
-            // 只有真正缩小范围的键才作为 `filters` 回显、才被 `filtered` 计入；
-            // 一个什么都没缩小的 ?wire=v2 或 ?full=1 请求报 filtered:false。
-            // 对所有 v2 之前的 query，这里是与从前同一个字典实例，因此字节相同。
+            // Only keys that actually narrow the scope are echoed back as `filters` and counted toward `filtered`;
+            // a ?wire=v2 or ?full=1 request that narrows nothing reports filtered:false.
+            // For every pre-v2 query, this is the same dictionary instance as before, so the bytes match.
             var narrowingFilters = StripSurfaceSelectionKeys(filters);
             bool isFiltered = narrowingFilters.Count > 0;
             int wire = ResolveWireVersion(filters);
@@ -1976,10 +1976,10 @@ namespace UnitySkills
 
         private static string BuildFilteredOutputCacheKey(Dictionary<string, string> filters, string manifestType)
         {
-            // 规范化并统一大小写的键。BuildFilteredOutput 里每项过滤比较都是大小写不敏感的
-            //（category/tags/readonly 用 OrdinalIgnoreCase，operation 的 TryParse 传 ignoreCase=true，
-            // q 走 ToLowerInvariant），因此把键与值一起转小写可把等价 query
-            //（?category=GameObject 与 ?Category=gameobject）收敛到同一条缓存条目。
+            // Normalizes and lowercases the keys. Every filter comparison in BuildFilteredOutput is case-insensitive
+            // (category/tags/readonly use OrdinalIgnoreCase, operation's TryParse passes ignoreCase=true,
+            // q goes through ToLowerInvariant), so lowercasing both keys and values together converges equivalent queries
+            // (?category=GameObject and ?Category=gameobject) onto the same cache entry.
             var parts = filters.Keys
                 .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                 .Select(k => $"{k.ToLowerInvariant()}={(filters[k] ?? string.Empty).ToLowerInvariant()}");
@@ -2023,15 +2023,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// skill 自己是否声明了同名参数。这类名字必须作为它自己的参数送达，
-        /// 不得被信封层当作分页参数吃掉。
+        /// Whether the skill itself declares a parameter with this name. Such a name must reach it as its own parameter,
+        /// and must not be swallowed by the envelope layer as a pagination parameter.
         /// </summary>
         private static bool SkillDeclaresParameter(SkillInfo skill, string parameterName) =>
             skill != null && ContainsParameter(skill.ParameterNames, parameterName);
 
         /// <summary>
-        /// 把信封层的分页参数（'offset'/'limit'）读为不小于 minValue 的整数。
-        /// 同时接受 JSON 数字及其字符串形式（"10"），使经 query string 调用的一方也能工作。
+        /// Reads an envelope-layer pagination parameter ('offset'/'limit') as an integer no smaller than minValue.
+        /// Also accepts both a JSON number and its string form ("10"), so a caller going through a query string also works.
         /// </summary>
         private static bool TryReadPagingArg(JToken token, string parameterName, int minValue, out int value, out string error)
         {
@@ -2080,8 +2080,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 当某个信封层参数被判定非法、且尚未执行任何东西时，回退 <c>Method.Invoke</c> 之前开启的
-        /// workflow/undo 记账。与 Execute 中各 catch 处理的清理动作一致。
+        /// Rolls back the workflow/undo bookkeeping opened before <c>Method.Invoke</c>, for when an envelope-layer parameter
+        /// is judged invalid before anything has executed. Matches the cleanup each catch does in Execute.
         /// </summary>
         private static void UnwindBeforeInvoke(bool autoStartedWorkflow, int workflowSnapshotCountBefore, int undoGroup)
         {
@@ -2121,8 +2121,8 @@ namespace UnitySkills
             return parameters.ToArray();
         }
 
-        // internal：/skills/batch 的 dry-run 用它按被引用 skill 声明的 outputs
-        //（含合成的 entityId）对 $ref 路径做结构性校验。
+        // internal: /skills/batch's dry-run uses this to structurally validate $ref paths against the referenced skill's declared outputs
+        // (including the synthesized entityId).
         internal static string[] GetEffectiveOutputs(SkillInfo skill)
         {
             if (skill?.Outputs == null)
@@ -2177,9 +2177,9 @@ namespace UnitySkills
                 categories = Enum.GetNames(typeof(SkillCategory)).Where(c => c != "Uncategorized").ToArray(),
                 operationTypes = Enum.GetNames(typeof(SkillOperation)),
                 reservedBodyParameters = _reservedBodyParameters.OrderBy(x => x).ToArray(),
-                // 按 profile 过滤，而不按 query 过滤：本区块属信封常量，因此限定范围的 ?category=
-                // 拉取仍须列出所有对外提供的被跟踪 skill（把它收窄到当前页会改变每个限定范围 query
-                // 的 v1 字节）。见 VisibleWorkflowTrackedSkills——默认 profile 下它就是全集。
+                // Filtered by profile, not by query: this block is an envelope constant, so a scoped ?category=
+                // fetch must still list every externally-offered tracked skill (narrowing it to the current page would change the v1 bytes
+                // of every scoped query). See VisibleWorkflowTrackedSkills -- under the default profile it's the full set.
                 workflowTrackedSkills = VisibleWorkflowTrackedSkills(),
                 skills = summary
                     ? skillArray.Select(s => (object)new
@@ -2215,19 +2215,19 @@ namespace UnitySkills
             };
         }
 
-        // v1 与 v2 信封共用，使两者永不走偏。
+        // Shared between the v1 and v2 envelopes, so the two can never drift apart.
         private const string SummaryHintText = "AWARENESS ONLY — parameter schemas are omitted and descriptions are informal (human-written; some omit parameter hints entirely), not a formal signature. Before executing any skill listed here, validate its parameters with ?mode=dryRun (the server returns unknownParam suggestions + the full parameter schema) or fetch its scoped schema GET /skills/schema?category=<Category>. Do NOT guess parameters from descriptions alone.";
 
         internal const string MetaEndpointPath = "/skills/meta";
 
-        // v2 条目唯一会省略的 riskLevel 取值。比较用 Ordinal（而非 IgnoreCase），
-        // 使其他任何拼法都原样透传，而不是被静默归一化掉。
+        // The one riskLevel value a v2 entry omits. Compared with Ordinal (not IgnoreCase),
+        // so any other spelling passes through unchanged rather than being silently normalized away.
         private const string DefaultRiskLevel = "low";
 
         /// <summary>
-        /// <c>?wire=v2</c> 在条目中省略掉的那些逐 skill 取值，在此统一声明一次。
-        /// v2 信封与 <see cref="GetMeta"/> 都会输出它，且由构造方式保证两处完全相同——
-        /// 唯有这个区块让那些省略变得可还原。
+        /// The per-skill values that <c>?wire=v2</c> omits from an entry, declared here once, centrally.
+        /// Both the v2 envelope and <see cref="GetMeta"/> output it, and the way it's constructed guarantees the two are always identical --
+        /// this block alone is what makes those omissions reversible.
         /// </summary>
         private static object BuildWireDefaults() => new
         {
@@ -2236,18 +2236,18 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// <c>?wire=v2</c> 信封。与 v1 的每一处差异都是"减法"：
+        /// <c>?wire=v2</c> envelope. Every difference from v1 is a subtraction:
         /// <list type="bullet">
-        /// <item>四个会话恒定区块（categories / operationTypes / reservedBodyParameters /
-        /// workflowTrackedSkills）让位给 <c>metaUrl</c>——拉一次
-        /// <see cref="MetaEndpointPath"/> 即可，无需在每次限定范围拉取时都为它们付费；</item>
-        /// <item>六个影响布尔量加 longRunning 折叠为 <c>flags</c>，只列其中为真的；</item>
-        /// <item><c>riskLevel</c> 仅在非默认值时出现，<c>supportsDryRun</c> 仅在为 false 时出现，
-        /// 而 <c>defaults</c> 说明这些省略各自意味着什么；</item>
-        /// <item>为 null 的成员彻底消失（用 <c>_jsonSettingsV2</c> 序列化）。</item>
+        /// <item>Four session-constant blocks (categories / operationTypes / reservedBodyParameters /
+        /// workflowTrackedSkills) give way to <c>metaUrl</c> -- fetch
+        /// <see cref="MetaEndpointPath"/> once, no need to pay for them on every scoped fetch;</item>
+        /// <item>Six impact booleans plus longRunning collapse into <c>flags</c>, listing only the ones that are true;</item>
+        /// <item><c>riskLevel</c> appears only at a non-default value, <c>supportsDryRun</c> appears only when false,
+        /// and <c>defaults</c> states what each omission means;</item>
+        /// <item>Null members disappear entirely (serialized with <c>_jsonSettingsV2</c>).</item>
         /// </list>
-        /// <c>approvalBehavior</c> 刻意保留在每个条目上：它是 agent 在判断"这次调用到底会不会被允许"
-        /// 之前必须知道的唯一字段，而从 mode + flags 反推它，正是本载荷要消除的那种猜测。
+        /// <c>approvalBehavior</c> is deliberately kept on every entry: it's the one field an agent must know
+        /// before judging "will this call actually be allowed," and reverse-deriving it from mode + flags is exactly the guessing this payload exists to eliminate.
         /// </summary>
         private static object BuildManifestV2(SkillInfo[] skillArray, bool filtered, Dictionary<string, string> filters, string manifestType, bool summary)
         {
@@ -2274,12 +2274,12 @@ namespace UnitySkills
                         description = GetEffectiveDescription(s),
                         category = s.Category != SkillCategory.Uncategorized ? s.Category.ToString() : null,
                         operation = FormatOperation(s.Operation),
-                        // 尽管 v1 的 summary 两者都不带，flags 与 supportsDryRun 在此仍要带上。
-                        // `defaults` 会出现在每个 v2 载荷里，而它规定"标志缺席即为 false"——
-                        // 所以缺了它们的 summary 条目不会被读成"影响未知"，而会被读成
-                        //"该 skill 什么都不改，且 dry-run 正常"。在此省略它们，
-                        // 等于让每个 summary 条目对 784 个 skill 断言了恰恰相反的事实。
-                        // 所有 v2 面共用一份契约。
+                        // Even though v1's summary carries neither, flags and supportsDryRun still need to be carried here.
+                        // `defaults` appears in every v2 payload, and it states that "a flag's absence means false" --
+                        // so a summary entry missing them isn't read as "impact unknown", it's read as
+                        // "this skill changes nothing, and dry-run works fine." Omitting them here
+                        // would mean every summary entry asserts the exact opposite fact for 784 skills.
+                        // All v2 surfaces share one contract.
                         flags = BuildSkillFlags(s),
                         riskLevel = NonDefaultRiskLevel(s),
                         supportsDryRun = s.SupportsDryRun ? (bool?)null : false
@@ -2308,8 +2308,8 @@ namespace UnitySkills
             string.Equals(s.RiskLevel, DefaultRiskLevel, StringComparison.Ordinal) ? null : s.RiskLevel;
 
         /// <summary>
-        /// v2 中取代六个影响布尔量加 longRunning 的形式：只列已置位的标志，顺序固定以保持载荷字节稳定。
-        /// 一个都没置位时为 null（因而被省略）；标志未出现在数组中即表示 false。
+        /// Replaces the six impact booleans plus longRunning in v2: lists only the flags that are set, in a fixed order to keep payload bytes stable.
+        /// Null when none are set (and therefore omitted); a flag's absence from the array means false.
         /// </summary>
         private static string[] BuildSkillFlags(SkillInfo s)
         {
@@ -2325,9 +2325,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 目录层 manifest——裸 <c>GET /skills</c>（以及 <c>?brief=1</c>）返回的内容：
-        /// 按 category 分组的 skill 名，别无其他。模块键与名字都排序，使同一 skill 集合下载荷字节稳定，
-        /// 因此缓存字符串（及其快路径 ETag）在 Refresh() 之前一直有效。
+        /// The catalog-layer manifest -- what bare <c>GET /skills</c> (and <c>?brief=1</c>) returns:
+        /// skill names grouped by category, nothing else. Both module keys and names are sorted, so the payload bytes are stable for the same skill set,
+        /// which is why the cached string (and its fast-path ETag) stays valid until Refresh().
         /// </summary>
         private static object BuildBriefManifest()
         {
@@ -2349,19 +2349,19 @@ namespace UnitySkills
                 manifestType = "brief",
                 schemaVersion = SkillSchemaVersion,
                 version = SkillsLogger.Version,
-                // 这里报的是本载荷实际列出的数量。在非完整 surfaceProfile 下它小于注册表持有的数量——
-                // 若在此报注册表总数，会让 agent 去找目录里并不存在的名字。
+                // Reports the count actually listed in this payload. Under a non-full surfaceProfile it's smaller than the registry's total --
+                // reporting the registry's total count here would send the agent looking for names that don't exist in the catalog.
                 totalSkills = visibleCount,
                 briefHint = "DIRECTORY ONLY — names + categories, no descriptions or parameters. This is the default answer for GET /skills. Locate the module(s) you need, then fetch exact signatures via GET /skills/schema?category=<Category>, and always dryRun before first execution. If a name is ambiguous, fall back to GET /skills?summary=1 (full descriptions) or GET /skills/recommend?intent=... The complete manifest is still available at GET /skills?full=1 (~618KB — add &wire=v2 to cut it down), and session constants live at GET /skills/meta.",
                 modules
             };
         }
 
-        // ========== skill 推荐 ==========
+        // ========== Skill recommendations ==========
 
         /// <summary>
-        /// 基于意图的 skill 推荐。按关键词与 name（3 分）、tags（2 分）、description（1 分）的匹配打分，
-        /// 返回排名前 N 的结果。
+        /// Intent-based skill recommendation. Scores by keyword matches against name (3 points), tags (2 points), and description (1 point),
+        /// returning the top N results.
         /// </summary>
         public static string GetRecommendations(string queryString)
         {
@@ -2390,18 +2390,18 @@ namespace UnitySkills
             var healthBySkill = SkillTelemetryService.GetRecommendationHealth();
             var scored = new List<(SkillInfo skill, int score, int semanticScore, List<string> matchedOn, SkillTelemetryService.RecommendationHealth health)>();
 
-            // 预先算好 operation 与 category 的匹配（支持中文子串）
+            // Precomputes operation and category matches (supports Chinese substrings)
             var matchedOps = ExtractOperations(rawKeywords);
             var matchedCats = ExtractCategories(rawKeywords);
 
-            // 意图对齐的输入（见 ApplyIntentAlignment）。取自原始意图词而非同义词扩展集：
-            // 扩展的目的是放宽关键词匹配，若让它来决定"调用方是想观察还是想改动"，
-            // 就会把调用方从未写过的动词也算进去（材质 → material，hierarchy → parent/child/gameobject）。
+            // Input for intent alignment (see ApplyIntentAlignment). Drawn from the raw intent words rather than the synonym-expanded set:
+            // expansion exists to loosen keyword matching, and letting it decide "does the caller want to observe or to change"
+            // would count verbs the caller never wrote (材质 -> material, hierarchy -> parent/child/gameobject).
             bool readIntent = rawKeywords.Any(_readIntentVerbs.Contains);
             bool writeIntent = rawKeywords.Any(_writeIntentVerbs.Contains);
             bool sampleIntent = rawKeywords.Any(_sampleIntentWords.Contains);
-            // 包列表仍在异步刷新期间为 null——为什么这意味着"跳过检查"而不是"去查一下"，
-            // 见 HasUninstalledPackage。
+            // null while the package list is still refreshing asynchronously -- for why that means "skip the check" rather than "go find out,"
+            // see HasUninstalledPackage.
             var packageCache = PackageManagerHelper.InstalledPackages != null
                 ? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
                 : null;
@@ -2432,14 +2432,14 @@ namespace UnitySkills
                     }
                 }
 
-                // category 加分
+                // category bonus
                 if (matchedCats.Count > 0 && s.Category != SkillCategory.Uncategorized && matchedCats.Contains(s.Category))
                 {
                     score += 2;
                     matchedOn.Add($"category:{s.Category}");
                 }
 
-                // operation 加分
+                // operation bonus
                 if (matchedOps.Count > 0 && s.Operation != 0)
                 {
                     foreach (var op in matchedOps)
@@ -2455,8 +2455,8 @@ namespace UnitySkills
 
                 if (score > 0)
                 {
-                    // 只调整那些本就命中过东西的 skill。对零分 skill 施加读意图加分，
-                    // 会仅凭意图就把注册表里所有只读 skill 拽进结果里。
+                    // Only adjusts skills that already matched something. Applying the read-intent bonus to zero-score skills
+                    // would pull every read-only skill in the registry into the results based on intent alone.
                     score = ApplyIntentAlignment(s, score, readIntent, writeIntent, sampleIntent, packageCache, matchedOn);
                     healthBySkill.TryGetValue(s.Name, out var health);
                     var adjustedScore = Math.Max(1, score - (health?.Penalty ?? 0));
@@ -2466,9 +2466,9 @@ namespace UnitySkills
 
             var results = scored.OrderByDescending(x => x.score)
                 .ThenByDescending(x => x.semanticScore)
-                // 稳定的同分排序。没有它，同分 skill 会按反射发现顺序输出，
-                // 而该顺序在不同工程之间、不同域重载之间都不一样——
-                // 同一个意图会毫无理由地给同一批候选排出不同的名次。
+                // Stable tie-breaking. Without it, same-score skills would come out in reflection discovery order,
+                // and that order differs across projects and across domain reloads --
+                // the same intent would rank the same candidates differently for no reason.
                 .ThenBy(x => x.skill.Name, StringComparer.Ordinal)
                 .Take(topN).ToList();
             var response = new
@@ -2505,10 +2505,10 @@ namespace UnitySkills
 
             if (wire == WireV2)
             {
-                // v2 的 recommend 保持同一信封，只重塑逐 skill 的 schema，因此它与 manifest 受
-                // 同一份 `flags` / `defaults` 契约描述。此处显式声明而不留作隐含：
-                // 一个请求了 v2 却静默拿到 v1 的调用方，会把缺失的 `flags` 数组读成"没有置位标志"——
-                // 即把一个会改动的 skill 当成无害——而这条回显正是为了让该误读不可能发生。
+                // v2's recommend keeps the same envelope, only reshaping the per-skill schema, so it's described by the same
+                // `flags` / `defaults` contract as the manifest. Declared explicitly here rather than left implicit:
+                // a caller that requested v2 but silently got v1 would read a missing `flags` array as "no flags set" --
+                // treating a skill that mutates something as harmless -- and this echo exists to make that misreading impossible.
                 return JsonConvert.SerializeObject(new
                 {
                     response.intent,
@@ -2519,17 +2519,17 @@ namespace UnitySkills
                     wire = "v2",
                     metaUrl = MetaEndpointPath,
                     defaults = BuildWireDefaults(),
-                    // `full` 下为 null，而 v2 会丢弃 null——因此默认 profile 下它不花任何代价。
-                    // 排名类端点为何必须说明这一点，见 SurfaceProfilePrunedHint。
+                    // Null under `full`, and v2 drops nulls -- so under the default profile it costs nothing.
+                    // See SurfaceProfilePrunedHint for why a ranking-style endpoint must state this.
                     surfaceProfile = SkillsSurfaceProfile.IsFull ? null : SkillsSurfaceProfile.CurrentWire,
                     surfaceProfileHint = SkillsSurfaceProfile.IsFull ? null : SurfaceProfilePrunedHint,
                     response.results
                 }, _jsonSettingsV2);
             }
 
-            // 打分阶段已跳过被隐藏的 skill，因此非完整 profile 会静默缩短这份排名。
-            // 理由与 chain 信封相同，字节稳定性分支也相同：v1 序列化会写出 null，
-            // 所以 `full` 绝不能碰这些附加字段。
+            // The scoring stage already skipped hidden skills, so a non-full profile silently shortens this ranking.
+            // Same rationale as the chain envelope, and the same byte-stability branch: v1 serialization writes out null,
+            // so `full` must never touch these extra fields.
             if (!SkillsSurfaceProfile.IsFull)
             {
                 return JsonConvert.SerializeObject(new
@@ -2548,8 +2548,8 @@ namespace UnitySkills
             return JsonConvert.SerializeObject(response, _jsonSettings);
         }
 
-        // 用于判别调用方是想观察还是想改动的动词。只与原始意图词匹配（GetRecommendations），
-        // 绝不与同义词扩展集匹配。
+        // Verbs used to judge whether the caller wants to observe or to change something. Matched only against the raw intent words (GetRecommendations),
+        // never against the synonym-expanded set.
         private static readonly HashSet<string> _readIntentVerbs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "get", "read", "inspect", "list", "find", "query", "show", "what", "which"
@@ -2567,26 +2567,26 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 在关键词得分之上施加的三项修正，每一项都对应一个实测到的错误排名：
+        /// Three corrections applied on top of the keyword score, each addressing an observed bad ranking:
         ///
         /// <list type="bullet">
-        /// <item><b>读/写意图对齐。</b>"read current camera properties inspect fov" 曾把
-        /// camera_set_properties 排在 camera_get_properties 之前——setter 的描述必然会提到读取方
-        /// 返回的那些属性，而且它恰好提得更多。现在，形态上明确属"读"的意图会偏向只读 skill，
-        /// 明确属"写"的则把它们往下压。混合或无动词的意图不做处理：那里猜比不猜更糟。</item>
-        /// <item><b>压制 Sample。</b><see cref="SkillCategory.Sample"/> 下的 skill
-        ///（create_cube、set_object_position …）是真正的 gameobject_* / camera_* 的教学复制品，
-        /// 而它们的短名字会稳赢名字子串加分——agent 想移动一个对象时，
-        /// set_object_position 会排在 gameobject_set_transform 之前。它们仍然可达，
-        /// 但只有在意图里真的出现 sample/demo/example 时才进入排名。</item>
-        /// <item><b>未安装的可选包。</b>为一次普通材质编辑推荐 yooasset_* / probuilder_*
-        /// 比推荐不到更糟：skill 是注册着的，所以在调用因缺包而失败之前，没有任何东西提醒 agent。</item>
+        /// <item><b>Read/write intent alignment.</b> "read current camera properties inspect fov" once ranked
+        /// camera_set_properties above camera_get_properties -- a setter's description inevitably mentions the properties a getter
+        /// returns, and happens to mention them more. Now, an intent that's unambiguously "read" in shape favors read-only skills,
+        /// and one that's unambiguously "write" pushes them down. Mixed or verb-less intents are left untouched: guessing there is worse than not.</item>
+        /// <item><b>Demoting Sample.</b> Skills under <see cref="SkillCategory.Sample"/>
+        /// (create_cube, set_object_position, ...) are teaching duplicates of the real gameobject_* / camera_* skills,
+        /// and their short names reliably win the name-substring bonus -- when an agent wants to move an object,
+        /// set_object_position would outrank gameobject_set_transform. They're still reachable,
+        /// but only enter the ranking when sample/demo/example genuinely appears in the intent.</item>
+        /// <item><b>Uninstalled optional packages.</b> Recommending yooasset_* / probuilder_* for an ordinary material edit
+        /// is worse than not recommending it: the skill is registered, so nothing warns the agent before the call fails for a missing package.</item>
         /// </list>
         ///
-        /// <para>刻意不做重写。关键词权重（name 3 / tag 2 / desc 1）、category 与 operation 加分、
-        /// 观测惩罚以及排序键都原封不动。每项调整都追加到 <c>matchedOn</c>，
-        /// 使一个意外的名次仅凭响应即可审计；结果下限为 1，
-        /// 因此任何调整都不能把一个真实的关键词命中从 <c>totalMatches</c> 里剔除——只能把它压到最后。</para>
+        /// <para>Deliberately does not rewrite anything. Keyword weights (name 3 / tag 2 / desc 1), category and operation bonuses,
+        /// the telemetry penalty, and the sort key are all left untouched. Every adjustment is appended to <c>matchedOn</c>,
+        /// so an unexpected ranking can be audited from the response alone; the result floor is 1,
+        /// so no adjustment can strike a genuine keyword hit out of <c>totalMatches</c> -- it can only push it to the bottom.</para>
         /// </summary>
         private static int ApplyIntentAlignment(
             SkillInfo skill,
@@ -2599,7 +2599,7 @@ namespace UnitySkills
         {
             int delta = 0;
 
-            // readIntent != writeIntent 即"恰好只有一个成立"，也就是无歧义的那些情形。
+            // readIntent != writeIntent means "exactly one holds," i.e. the unambiguous cases.
             if (skill.ReadOnly && readIntent != writeIntent)
             {
                 if (readIntent)
@@ -2630,19 +2630,19 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 该 skill 是否指名了一个尚未安装的可选包。机制与冒烟测试的跳过闸门
-        ///（<c>TestSkills.EvaluateSmokeSkill</c>）相同，包括它的空缓存守卫：
-        /// <paramref name="packageCache"/> 为 null 表示
-        /// <see cref="PackageManagerHelper.InstalledPackages"/> 的异步刷新还没完成，
-        /// 此时打分器宁可*一个候选都不降权*，也不依据一份还不存在的包列表作答——
-        /// 把"暂时不知道"读成"没安装"，会在会话的最初几秒把所有可选包 skill 全压下去。
+        /// Whether this skill names an optional package that isn't installed yet. The mechanism matches the smoke test's skip gate
+        /// (<c>TestSkills.EvaluateSmokeSkill</c>), including its empty-cache guard:
+        /// <paramref name="packageCache"/> being null means
+        /// <see cref="PackageManagerHelper.InstalledPackages"/>'s async refresh hasn't finished yet,
+        /// and at that point the scorer would rather *demote no candidate at all* than answer based on a package list that doesn't exist yet --
+        /// reading "don't know yet" as "not installed" would suppress every optional-package skill during the first few seconds of a session.
         ///
-        /// 这道守卫是为了正确性而非省开销。<c>IsPackageInstalled</c> 的未命中路径是
-        /// <c>ResolveDirectly</c> → <c>PackageInfo.FindForAssetPath("Packages/&lt;id&gt;")</c>，
-        /// 属内存注册表查找而非 Package Manager 客户端请求——所以单个 id 足够便宜，
-        /// 而 <paramref name="packageCache"/> 会在*本次请求*余下的过程中记忆结果，
-        /// 使被二十个 skill 共用的包只解析一次。缓存刻意做成每请求一份：
-        /// 生命周期更长的缓存会在用户装好包之后仍然一直回答"缺失"。
+        /// This guard exists for correctness, not to save work. <c>IsPackageInstalled</c>'s miss path is
+        /// <c>ResolveDirectly</c> -> <c>PackageInfo.FindForAssetPath("Packages/&lt;id&gt;")</c>,
+        /// an in-memory registry lookup rather than a Package Manager client request -- so a single id is cheap enough,
+        /// and <paramref name="packageCache"/> memoizes the result for the rest of *this request*,
+        /// so a package shared by twenty skills is only resolved once. The cache is deliberately scoped per request:
+        /// a longer-lived cache would keep answering "missing" even after the user installed the package.
         /// </summary>
         private static bool HasUninstalledPackage(SkillInfo skill, Dictionary<string, bool> packageCache)
         {
@@ -2691,10 +2691,10 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// <see cref="BuildSkillSchemaForRecommend"/> 的 <c>?wire=v2</c> 形式：与 v2 manifest 条目
-        /// 使用同一个 <c>flags</c> 数组和同一套"省略默认值"规则，使 agent 在所有端点上只需解析一种形状。
-        /// 注意它输出全部七个标志，而 v1 只带三个布尔量（readOnly / mutatesScene / mutatesAssets）——
-        /// 用更少的字节给出严格更多的信息；v1 报告过的一项都没丢。
+        /// The <c>?wire=v2</c> form of <see cref="BuildSkillSchemaForRecommend"/>: uses the same <c>flags</c> array and the same
+        /// "omit the default" rule as a v2 manifest entry, so an agent only ever has to parse one shape across every endpoint.
+        /// Note it outputs all seven flags, while v1 only carries three booleans (readOnly / mutatesScene / mutatesAssets) --
+        /// strictly more information in fewer bytes; nothing v1 reported is lost.
         /// </summary>
         private static object BuildSkillSchemaForRecommendV2(SkillInfo s) => new
         {
@@ -2710,11 +2710,11 @@ namespace UnitySkills
             approvalBehavior = SkillsModeManager.ApprovalBehaviorForSkill(s),
         };
 
-        // ========== skill 依赖链 ==========
+        // ========== Skill dependency chain ==========
 
         /// <summary>
-        /// 用 BFS 沿 Outputs→RequiresInput 关系构建操作链。
-        /// 给定一个目标输出字段，找出所有产出它的 skill 及其依赖。
+        /// Builds an operation chain via BFS along the Outputs -> RequiresInput relationship.
+        /// Given a target output field, finds every skill that produces it and its dependencies.
         /// </summary>
         public static string GetSkillChain(string queryString)
         {
@@ -2735,7 +2735,7 @@ namespace UnitySkills
                     retryStrategy: SkillErrorResponse.RetryFixAndRetry);
             }
 
-            // BFS：先找产出目标字段的 skill，再顺着它们的 RequiresInput 追溯
+            // BFS: first find the skills that produce the target field, then trace back through their RequiresInput
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var queue = new Queue<(string field, int depth)>();
             queue.Enqueue((targetOutput, 0));
@@ -2752,10 +2752,10 @@ namespace UnitySkills
 
                 foreach (var s in fieldProducers)
                 {
-                    // _outputIndex 是对整个注册表的完整索引，因此在此处过滤而非在构建时过滤：
-                    // 指名一个被当前 profile 隐藏的 skill，会让 agent 走上一条第一步就答
-                    // SURFACE_EXCLUDED 的链。被排除的产出方整体跳过——它们的 RequiresInput 字段
-                    // 也不入队，因为一个跑不了的步骤不可能成为计划的一部分。
+                    // _outputIndex is a complete index over the entire registry, so filtering happens here rather than at build time:
+                    // naming a skill the current profile hides would send the agent down a chain whose first step answers
+                    // SURFACE_EXCLUDED. An excluded producer is skipped entirely -- its RequiresInput fields
+                    // are not enqueued either, because a step that can't run can't be part of the plan.
                     if (SkillsSurfaceProfile.IsExcluded(s))
                         continue;
 
@@ -2770,7 +2770,7 @@ namespace UnitySkills
                         requiresInput = s.RequiresInput
                     });
 
-                    // 把 RequiresInput 字段入队，供下一层深度使用
+                    // Enqueues the RequiresInput fields, for use at the next depth level
                     if (depth < maxDepth && s.RequiresInput != null)
                     {
                         foreach (var req in s.RequiresInput)
@@ -2785,10 +2785,10 @@ namespace UnitySkills
                 }
             }
 
-            // `full` 下什么都没被裁剪，载荷与 v1 逐字节一致。非完整 profile 下，上面的产出方列表
-            // 已静默丢掉了一些步骤，而本信封是唯一能说明这件事的地方：否则一条变短的链会被读成
-            //"Unity 没有任何办法产出该字段"，agent 会去汇报一件不可能的事，而实际上只是 skill 被隐藏了。
-            // 注意本信封用 _jsonSettings 序列化，它会写出 null——故此处用分支而不是一个值为 null 的字段。
+            // Under `full`, nothing was trimmed and the payload is byte-for-byte identical to v1. Under a non-full profile, the producers list above
+            // has already silently dropped some steps, and this envelope is the only place that can explain it: otherwise a shortened chain would be read as
+            // "Unity has no way to produce this field," and the agent would report something impossible when the skill was actually just hidden.
+            // Note this envelope serializes with _jsonSettings, which writes out null -- hence the branch here rather than a field that's simply null.
             if (SkillsSurfaceProfile.IsFull)
             {
                 return JsonConvert.SerializeObject(new
@@ -2812,10 +2812,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 附加在那些"非完整 surface profile 下会悄悄少返回 skill"的发现类信封上
-        ///（<c>/skills/recommend</c>、<c>/skills/chain</c>）。这两者是排名与遍历而非枚举，
-        /// 因此被裁剪的结果与空结果无从区分——没有这条提示，agent 会断定该操作不可能并如此告知用户，
-        /// 而事实是用户把它隐藏了，也可以取消隐藏。
+        /// Attached to discovery envelopes that "silently return fewer skills under a non-full surface profile"
+        /// (<c>/skills/recommend</c>, <c>/skills/chain</c>). Both are ranking and traversal rather than enumeration,
+        /// so a trimmed result is indistinguishable from an empty one -- without this hint, an agent would conclude the operation is impossible and tell the user so,
+        /// when in fact the user hid it, and can also un-hide it.
         /// </summary>
         private const string SurfaceProfilePrunedHint = "Results were pruned by the user's surface profile — a skill missing here may exist but be hidden, so do not conclude Unity cannot do it. GET /health for the active profile; only the user can switch it back to \"full\" in the UnitySkills panel.";
 
@@ -2825,14 +2825,14 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 被 agent 误当成 REST skill 名的 Python 客户端辅助函数名，映射到真正能干这件事的 REST 调用。
-        /// 需与 <c>unity-skills~/scripts/unity_skills.py</c> 中模块级的 def 保持同步。
+        /// Python client helper function names that an agent could mistake for a REST skill name, mapped to the REST call that actually does the thing.
+        /// Must stay in sync with the module-level defs in <c>unity-skills~/scripts/unity_skills.py</c>.
         ///
-        /// 之所以需要一张精确表，是因为 <see cref="ResolveSkillNotFound"/> 里的模糊回退在结构上
-        /// 触及不到它们：辅助函数名与任何已注册 skill 都没有共同 token，
-        /// 既不在编辑距离 5 之内，也不是任何 skill 名的子串——调用方会拿到空建议列表，
-        /// 无从自我纠正。此处只列 agent 在会话开始时会遇到的发现/认知类辅助函数；
-        /// 其余仍照旧走模糊路径。
+        /// An exact table is needed because the fuzzy fallback in <see cref="ResolveSkillNotFound"/> structurally
+        /// can't reach them: a helper function's name shares no token with any registered skill,
+        /// isn't within edit distance 5 of one, and isn't a substring of any skill name either -- the caller would get an empty suggestion list,
+        /// with no way to self-correct. Only the discovery/cognition-oriented helpers an agent would hit at the start of a session are listed here;
+        /// everything else still goes through the fuzzy path as before.
         /// </summary>
         private static readonly Dictionary<string, string> k_ClientHelperRestEquivalents =
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -2859,18 +2859,18 @@ namespace UnitySkills
 
         internal static string ResolveSkillNotFound(string name)
         {
-            // 客户端辅助函数名不可能模糊匹配到任何 skill——在落到最近名搜索之前，
-            // 先用对应的 REST 用法作答。
+            // A client helper function's name can never fuzzy-match any skill -- before falling back to nearest-name search,
+            // answer with its corresponding REST usage first.
             if (!string.IsNullOrEmpty(name) &&
                 k_ClientHelperRestEquivalents.TryGetValue(name, out var restEquivalent))
             {
                 return SkillErrorResponse.ClientHelperNotASkill(name, restEquivalent);
             }
 
-            // 给出最多 5 个最接近的*对外提供*的 skill 名，让 AI agent 能自行纠正拼写错误。
-            // 取自 VisibleSkills 而非注册表：对一个被隐藏 skill 的近似命中，
-            // 会把 surface profile 刚撤下的那个名字原样交回去，
-            // 使拼写纠错变成用户所选不暴露内容的枚举通道。
+            // Gives up to 5 closest *externally offered* skill names, letting the AI agent self-correct a typo.
+            // Drawn from VisibleSkills rather than the registry: an approximate match against a hidden skill
+            // would hand back, verbatim, the very name the surface profile just withdrew,
+            // turning typo correction into an enumeration channel for what the user chose not to expose.
             var nearest = VisibleSkills().Select(s => s.Name)
                 .Select(k => new { Name = k, Distance = ComputeLevenshteinDistance(name ?? string.Empty, k) })
                 .Where(x => x.Distance <= 5 ||
@@ -2895,10 +2895,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 遵循当前 surface profile 的对外 skill 集合。凡是要把 skill 提供给调用方的场合
-        ///（白名单选择器、skill 浏览器、冒烟探测）都该用这个：提供一个被 profile 隐藏的 skill，
-        /// 只会在之后换来一个 SURFACE_EXCLUDED。需要面向整个注册表记账时用
-        /// <see cref="GetAllSkillsSnapshotUnfiltered"/>。
+        /// The externally-offered skill set, honoring the current surface profile. Anywhere skills get offered to a caller
+        /// (allowlist picker, skill browser, smoke probing) should use this: offering a skill the profile hides
+        /// would only earn a SURFACE_EXCLUDED later on. Use <see cref="GetAllSkillsSnapshotUnfiltered"/> when accounting
+        /// needs to cover the entire registry.
         /// </summary>
         internal static SkillInfo[] GetAllSkillsSnapshot()
         {
@@ -2909,14 +2909,14 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 所有已注册 skill，忽略 surface profile——供那些必须就注册表本身（而非"对外提供了什么"）
-        /// 作推断的调用方使用：解析一个已持久化的 skill 名（白名单条目跨 profile 切换仍然有效，
-        /// 因此仅因当前 profile 隐藏了它就渲染成 "(Unknown)" 是在说谎），
-        /// 以及与 <see cref="ValidateMetadata"/> 同类的全注册表审计。
+        /// Every registered skill, ignoring the surface profile -- for callers that must reason about the registry itself
+        /// (rather than "what's offered externally"): resolving an already-persisted skill name (an allowlist entry stays valid
+        /// across a profile switch, so rendering it as "(Unknown)" just because the current profile hides it would be a lie),
+        /// and full-registry audits of the same kind as <see cref="ValidateMetadata"/>.
         ///
-        /// 仅限本地编辑器 UI 与诊断。绝不可把它接到任何 HTTP 面上：profile 是用户对
-        ///"可以把什么提供给 AI"的表态，任何从此处枚举的端点都会交回用户选择撤下的 skill 名——
-        /// 而这正是 <see cref="VisibleSkills"/> 存在所要防的泄漏。
+        /// Local editor UI and diagnostics only. Never wire this to any HTTP surface: the profile is the user's statement of
+        /// "what can be offered to the AI," and any endpoint enumerating from here would hand back a skill name the user chose to withdraw --
+        /// exactly the leak <see cref="VisibleSkills"/> exists to prevent.
         /// </summary>
         internal static SkillInfo[] GetAllSkillsSnapshotUnfiltered()
         {
@@ -2946,10 +2946,10 @@ namespace UnitySkills
                 {
                     try
                     {
-                        // 批处理类 skill 把 JSON 载荷声明为 string 参数，而 agent 经常直接发原生
-                        // 数组/对象。此处序列化回字符串，而不是以 TYPE_MISMATCH 失败——
-                        // skill 内部会重新解析该 JSON，所以往返是无损的。
-                        // 只有目标类型为 string 时才有此宽容，其他类型仍严格。
+                        // Batch-style skills declare a JSON payload as a string parameter, and an agent frequently sends a native
+                        // array/object directly. Serializes it back to a string here, instead of failing with TYPE_MISMATCH --
+                        // the skill re-parses that JSON internally, so the round trip is lossless.
+                        // This leniency only applies when the target type is string; every other type stays strict.
                         if (p.ParameterType == typeof(string) && (token is JArray || token is JObject))
                             invoke[i] = token.ToString(Formatting.None);
                         else
@@ -3080,18 +3080,18 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 当前 surface profile 暴露该 skill 时返回 null；否则返回一份序列化好的 SURFACE_EXCLUDED
-        /// 载荷，由调用方原样呈现。
+        /// Returns null when the current surface profile exposes this skill; otherwise returns a serialized SURFACE_EXCLUDED
+        /// payload, for the caller to present as-is.
         ///
-        /// 这条消息只有一个任务：阻止 agent 绕开该排除。agent 撞墙后会本能地重试，
-        /// 接着去找一个能做同样写入的邻近模块——两者都会让 profile 失去意义。
-        /// 因此载荷会点明是哪个 profile 在隐藏它、说明该设置归用户所有，
-        /// 并（在 guide 下）交出 manual-* 文档，让 agent 转而以指导者的身份把事情做完。
+        /// This message has exactly one job: stopping the agent from working around the exclusion. After hitting the wall, an
+        /// agent instinctively retries, then goes looking for a neighboring module that can do the same write -- either would defeat the profile's purpose.
+        /// So the payload names which profile is hiding it, states that the setting belongs to the user,
+        /// and (under guide) hands over the manual-* doc, so the agent switches to acting as an instructor to get the task done instead.
         /// </summary>
         /// <summary>
-        /// 对一个被排除的 skill，应交给 agent 的 manual-* 文档；没有则返回 null。
-        /// 该问题由 category 回答，唯独按名字隐藏的那些"逃生口"例外：它们之所以被隐藏，
-        /// 恰恰是因为其 category 说明不了它们能触及什么，因此由 category 推出的文档会是错误的指引。
+        /// For an excluded skill, the manual-* doc that should be handed to the agent; returns null if there is none.
+        /// That question is answered by category, with one exception for the "escape hatch" skills hidden by name: they're hidden
+        /// precisely because their category can't describe what they can reach, so a doc derived from category would be the wrong guidance.
         /// </summary>
         private static string SurfaceExclusionManualDoc(SkillInfo skill) =>
             SkillsSurfaceProfile.IsAlwaysHiddenSkill(skill.Name)
@@ -3099,14 +3099,14 @@ namespace UnitySkills
                 : SkillsSurfaceProfile.ManualDocFor(skill.Category);
 
         /// <summary>
-        /// 两条拒绝路径——dry-run 预览（<paramref name="forPreview"/>）与 execute 闸门——共用一份文案，
-        /// 使两者绝不会就同一堵墙对 agent 说出不同的话。预览说明"会发生什么"，
-        /// 闸门则告诉 agent"该改做什么"。按重要性排列的三种情形：
+        /// The two rejection paths -- the dry-run preview (<paramref name="forPreview"/>) and the execute gate -- share one copy,
+        /// so they never tell the agent something different about the same wall. The preview states "what would happen",
+        /// the gate tells the agent "what to do instead." Three cases, in order of precedence:
         /// <list type="bullet">
-        /// <item><b>按名字隐藏的逃生口：</b>没有适用的手工文档，原因在于该 skill 的触及范围而非其模块。
-        /// 指向 Editor 菜单——那正是这个 skill 本来要驱动的东西，用户可以亲手做 AI 不被允许替他们做的事。</item>
-        /// <item><b>guide 且有手工文档：</b>交出该文档；agent 以指导者身份把事情做完。</item>
-        /// <item><b>其余一切：</b>只有用户能解除。</item>
+        /// <item><b>An escape hatch hidden by name:</b> no manual doc applies, because the reason is this skill's reach, not its module.
+        /// Points at the Editor menu -- exactly what this skill was driving in the first place, so the user can do by hand what the AI isn't allowed to do for them.</item>
+        /// <item><b>guide, with a manual doc available:</b> hand over that doc; the agent finishes the task acting as an instructor.</item>
+        /// <item><b>Everything else:</b> only the user can lift it.</item>
         /// </list>
         /// </summary>
         private static string BuildSurfaceExclusionHint(SkillInfo skill, bool forPreview)
@@ -3125,18 +3125,18 @@ namespace UnitySkills
             {
                 return forPreview
                     ? $"Hidden by the \"{profile}\" surface profile — executing is impossible in any mode, allowlist included. Guide the user by hand ({manualDoc}), or they switch the profile back to \"full\" in the UnitySkills panel."
-                    // category 在消息里和 details.category 里都已点明，所以 hint 只说"这次改动"
-                    // 而不把它内插进去——"walk the user through the Sample change"
-                    // 对这里唯一重要的那个受众来说读起来毫无意义。
+                    // category is already named in the message and in details.category, so the hint just says "this change"
+                    // rather than interpolating it -- "walk the user through the Sample change"
+                    // reads as meaningless to the one audience that matters here.
                     : $"Do not retry and do not substitute another module — the write is off the menu, not failing. Read {manualDoc} and walk the user through the change in the Editor yourself, or ask them to switch the surface profile back to \"full\" in the UnitySkills panel if they want it automated.";
             }
 
-            // 目前只有 noSceneAuthoring 会走到这里，因此把 "excludes scene-authoring writes"
-            // 硬编码是安全的：guide 到不了这里，因为 guide 隐藏的每个 category 都随附一份 manual-* 文档，
-            // 会被上面的分支接住。该不变式由
-            // SkillsSurfaceProfileTests.EveryGuideHiddenCategory_ShipsAManualDoc 保障——
-            // 新增的 guide category 必须先备好它的 manual-* 文档，否则本分支会开始告诉 guide 用户
-            // 他们的写入是以"场景编排"为由被拦下的。
+            // Only noSceneAuthoring reaches here right now, so hardcoding "excludes scene-authoring writes"
+            // is safe: guide never gets here, because every category guide hides ships a manual-* doc,
+            // which gets caught by the branch above. That invariant is guarded by
+            // SkillsSurfaceProfileTests.EveryGuideHiddenCategory_ShipsAManualDoc --
+            // a newly added guide category must have its manual-* doc ready first, or this branch would start telling guide users
+            // their write was blocked for being "scene authoring" when it wasn't.
             return forPreview
                 ? $"Hidden by the \"{profile}\" surface profile, which excludes scene-authoring writes — executing is impossible in any mode, allowlist included. Only the user can switch the profile back to \"full\" in the UnitySkills panel."
                 : $"Do not retry and do not substitute another module. The \"{profile}\" profile excludes scene-authoring writes; tell the user this step needs one and let them switch the surface profile back to \"full\" in the UnitySkills panel.";
@@ -3162,9 +3162,9 @@ namespace UnitySkills
 
             return SkillErrorResponse.Build(
                 SkillErrorCode.SurfaceExcluded,
-                // 逃生口用它自己的措辞："a write skill in the Editor category" 既不对
-                //（它的 category 并没有被隐藏），又没用（它说明不了这个 skill 为什么被隐藏）。
-                // 其余所有排除确实都是 category + 写入。
+                // The escape hatch uses its own wording: "a write skill in the Editor category" would be both wrong
+                // (its category isn't what's hidden) and useless (it wouldn't explain why this skill is hidden).
+                // Every other exclusion really is category + write.
                 SkillsSurfaceProfile.IsAlwaysHiddenSkill(name)
                     ? $"Skill '{name}' is hidden by the current surface profile '{profile}': it can execute any Editor menu item, which would reach the writes this profile withdraws."
                     : $"Skill '{name}' is hidden by the current surface profile '{profile}': it is a write skill in the {category} category.",
@@ -3177,15 +3177,15 @@ namespace UnitySkills
                     userControlled = true,
                     hint,
                 },
-                // 最接近的可用策略：这次调用不得原样重复。与 ask_user_and_grant 不同，
-                // 这里没有 token 可拿——要么用户改面板设置，要么这件事由人工完成。
+                // The closest available strategy: this call must not be repeated as-is. Unlike ask_user_and_grant,
+                // there's no token to obtain here -- either the user changes a panel setting, or the task gets done by hand.
                 retryStrategy: SkillErrorResponse.Abort);
         }
 
         /// <summary>
-        /// 权限档位允许该 skill 时返回 null；否则返回一份序列化好的错误载荷
-        ///（MODE_RESTRICTED 或 MODE_FORBIDDEN），由调用方原样呈现。
-        /// 判定为 Allowed 时总会写一条审计 "call" 条目，使 Auto 模式下的静默执行仍可追溯。
+        /// Returns null when the permission tier allows this skill; otherwise returns a serialized error payload
+        /// (MODE_RESTRICTED or MODE_FORBIDDEN), for the caller to present as-is.
+        /// Always writes a "call" audit entry when the verdict is Allowed, so silent execution under Auto mode is still traceable.
         /// </summary>
         private static string ApplyModeGate(SkillInfo skill, string name, ParameterValidationResult validation)
         {
@@ -3193,8 +3193,8 @@ namespace UnitySkills
             argsForHash.Remove("_confirm");
             var argsJson = argsForHash.ToString(Formatting.None);
 
-            // 关键：必须先于 CheckAccess 读取 allowlist 状态——CheckAccess 内部会消费 one-shot 标记，
-            // 之后 IsInAllowlist 仍可重复查询。先记下 allowlist 命中，便于审计区分 allowlist vs oneShot vs auto。
+            // Critical: allowlist status must be read before CheckAccess -- CheckAccess consumes the one-shot marker internally,
+            // while IsInAllowlist can still be queried repeatedly afterward. Recording the allowlist hit first lets the audit distinguish allowlist vs oneShot vs auto.
             bool allowlistHit = SkillsModeManager.IsInAllowlist(skill.Name);
             var access = SkillsModeManager.CheckAccess(skill);
             var currentMode = SkillsModeManager.CurrentMode;
@@ -3207,9 +3207,9 @@ namespace UnitySkills
                         && (skill.MutatesScene || skill.MutatesAssets
                             || skill.Operation.HasFlag(SkillOperation.Modify)
                             || skill.Operation.HasFlag(SkillOperation.Create));
-                    // grantSource：allowlist 命中最高优先；否则若是 Bypass 模式视作 bypass；
-                    // 其余非 Allowlist/非 Bypass 的 Allowed 都归类为 auto（CheckAccess 在调用前已消费了
-                    // 任何 one-shot 令牌，无法事后区分；这是当前可观察到的最佳近似）。
+                    // grantSource: an allowlist hit takes top priority; otherwise Bypass mode counts as bypass;
+                    // every other Allowed that's neither Allowlist nor Bypass is classified as auto (CheckAccess already consumed
+                    // any one-shot token before this call, so it can't be told apart afterward; this is the best approximation currently observable).
                     string grantSource;
                     if (allowlistHit) grantSource = "allowlist";
                     else if (currentMode == SkillsOperatingMode.Bypass) grantSource = "bypass";
@@ -3275,7 +3275,7 @@ namespace UnitySkills
                             tokenTtlSeconds = ttl,
                             argsSummary = pendingSummary?.ArgsSummary,
                             hint = channel == SkillsModeManager.ApprovalChannel.Dialog
-                                ? "Ask the user; on consent POST /permission/grant {skill, token}. v1.9 方案 B: grant 调用本身会一步执行该 skill 并返回结果（response.result）——无需再 re-call 原 skill。"
+                                ? "Ask the user; on consent POST /permission/grant {skill, token}. That grant call executes the skill in-line and returns the result (response.result). Do not re-call the original skill."
                                 : "Tell the user to click Approve on the Unity panel; then POST /permission/grant {skill, token} once. That grant call executes the skill in-line and returns the result. Do not poll grant; do not re-call the original skill.",
                         },
                         retryStrategy: SkillErrorResponse.RetryAskUserAndGrant);
@@ -3284,8 +3284,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 允许该 skill 执行（token 已消耗）时返回 null；否则返回一份序列化好的错误载荷
-        ///（CONFIRMATION_REQUIRED 或 INVALID_TOKEN），调用方应原样回传给客户端。
+        /// Returns null when this skill is allowed to execute (the token has been consumed); otherwise returns a serialized error payload
+        /// (CONFIRMATION_REQUIRED or INVALID_TOKEN), which the caller should pass back to the client as-is.
         /// </summary>
         private static string ApplyConfirmationGate(
             SkillInfo skill,
@@ -3299,7 +3299,7 @@ namespace UnitySkills
                 token = ct.ToString();
             }
 
-            // argsHash 不含 _confirm，使同样的参数在两次调用中算出同样的哈希。
+            // argsHash excludes _confirm, so the same parameters hash identically across both calls.
             var argsForHash = (JObject)validation.Args.DeepClone();
             argsForHash.Remove("_confirm");
             var argsForHashJson = argsForHash.ToString(Formatting.None);
@@ -3316,7 +3316,7 @@ namespace UnitySkills
                 }
                 catch
                 {
-                    // dry-run 属尽力而为；即便失败，token 依然有效。
+                    // The dry-run is best-effort; the token is still valid even if it fails.
                 }
 
                 return SkillErrorResponse.Build(
@@ -3361,9 +3361,9 @@ namespace UnitySkills
                 string param = dict.TryGetValue("parameter", out var pv) ? pv?.ToString() : null;
                 string hint = dict.TryGetValue("hint", out var hv) ? hv?.ToString() : null;
 
-                // schema 的 supportsDryRun 标志宣告的是 router 层的预演传输方式
-                //（POST /skill/<name>?mode=dryRun），不是一个请求体参数——但读到该标志的 agent
-                // 总会真的传一个过来，而 Levenshtein 对 "dryRun" 找不到任何有用的邻居。
+                // The schema's supportsDryRun flag advertises a router-level preview transport mode
+                // (POST /skill/<name>?mode=dryRun), not a request-body parameter -- but an agent that reads that flag
+                // invariably passes one anyway, and Levenshtein finds no useful neighbor for "dryRun".
                 if (string.Equals(param, "dryRun", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(param, "dry_run", StringComparison.OrdinalIgnoreCase))
                 {
@@ -3436,10 +3436,10 @@ namespace UnitySkills
             if (fuzzyMatches.Length > 0)
                 return fuzzyMatches;
 
-            // 最后的兜底：别名表和编辑距离都抓不到 assetPath→savePath 这类改名
-            //（距离 4，且无子串重叠），但整个 skill 库的参数名会复用同一批 camelCase 词元
-            //（path/name/id/target/source/…），因此"共享任一词元"是很强的线索。
-            // 仅在更严格的层级什么都没找到时才启用，以免给本已有良好匹配的建议里添噪。
+            // Last-resort fallback: neither the alias table nor edit distance catches a rename like assetPath->savePath
+            // (distance 4, no substring overlap), but parameter names across the whole skill library reuse the same set of camelCase tokens
+            // (path/name/id/target/source/...), so "sharing any token" is a strong signal.
+            // Only enabled when the stricter tiers find nothing, to avoid adding noise to suggestions that already have a good match.
             var unknownTokens = SplitCamelCaseTokens(unknownParameter);
             if (unknownTokens.Count == 0)
                 return fuzzyMatches;
@@ -3566,14 +3566,14 @@ namespace UnitySkills
                 var validation = ValidateParameters(skill, json);
                 var plan = SkillPlanningService.BuildPlan(skill, validation);
 
-                // 为一个被 profile 隐藏的 skill 所做的计划是执行不了的计划，而 ?mode=plan 曾是唯一
-                // 从不说明这件事的预览——agent 规划好整个序列，第一次 execute 就撞上 SURFACE_EXCLUDED，
-                // 而计划里没有任何东西提示过。此处与 dry-run 分支用同一区块、同一形状
-                //（BuildAuthorizationPreview 在这里返回 SURFACE_EXCLUDED 判定），使调用方只读一份契约。
-                // 只在确有内容可说时才附加：对 profile 直接允许的每个 skill，计划字节保持不变，
-                // 而计划输出本已是三种预览载荷中最大的一份。第二个分支覆盖"携带写入"入口，
-                // 它们的拒绝由任何预览都拿不到的载荷决定——为一个 profile 将会拒绝的 batch_execute
-                // 做规划，是同一个陷阱在上一层的翻版。
+                // A plan made for a skill the profile hides is a plan that can never execute, and ?mode=plan used to be the one preview
+                // that never said so -- an agent would plan out the whole sequence, hit SURFACE_EXCLUDED on the very first execute,
+                // with nothing in the plan having hinted at it. This uses the same block, the same shape
+                // as the dry-run branch (BuildAuthorizationPreview returns the SURFACE_EXCLUDED verdict here too), so the caller only ever has to read one contract.
+                // Only appended when there's actually something to say: for every skill the profile directly allows, the plan bytes stay unchanged,
+                // and the plan output is already the largest of the three preview payloads. The second branch covers the "carried-write" entry points,
+                // whose rejection is decided by a payload no preview has access to -- planning for a batch_execute
+                // a profile is going to reject is the same trap one level up.
                 if (SkillsSurfaceProfile.IsExcluded(skill) ||
                     SkillsSurfaceProfile.CarriedWritePreviewGate(skill.Name) != null)
                     plan["authorization"] = BuildAuthorizationPreview(skill);
@@ -3590,9 +3590,9 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                // JSON 合法也仍可能让 plan/语义校验崩掉（例如 NRE）。把这种情况报成 INVALID_JSON
-                // 会让 agent 反复重写一个本来没问题的请求体；因此照 Execute 的 catch 分法，
-                // 如实上报真正的失败。
+                // Even valid JSON can still crash plan/semantic validation (e.g. an NRE). Reporting this case as INVALID_JSON
+                // would send the agent into repeatedly rewriting a request body that was never the problem; so, following Execute's catch split,
+                // the real failure is reported honestly.
                 return SkillErrorResponse.Build(
                     SkillErrorCode.Internal,
                     $"Plan failed: {ex.Message}",
@@ -3605,8 +3605,8 @@ namespace UnitySkills
 
 
         /// <summary>
-        /// 校验所有已发现 skill 的元数据完整性与一致性。
-        /// 返回一组诊断消息（以 WARN/ERROR 为前缀）。
+        /// Validates the metadata completeness and consistency of every discovered skill.
+        /// Returns a set of diagnostic messages (prefixed with WARN/ERROR).
         /// </summary>
         public static List<string> ValidateMetadata()
         {
@@ -3624,10 +3624,10 @@ namespace UnitySkills
                 if (s.ReadOnly && s.TracksWorkflow)
                     issues.Add($"[ERROR] {s.Name}: ReadOnly=true conflicts with TracksWorkflow=true");
 
-                // ReadOnly 不只是文档，它是承重的：surface profile 从不隐藏只读 skill，
-                // 因此一个被误标为 ReadOnly=true 的写操作，在一个专为撤下此类写入而存在的 profile 下
-                // 仍然可调用。下面这三条正是误标会造成的自相矛盾；它们是 ERROR 而不是 WARN，
-                // 因为每一条都会静默地击穿一项面向用户的保证。
+                // ReadOnly isn't just documentation, it's load-bearing: a surface profile never hides a read-only skill,
+                // so a write operation mislabeled ReadOnly=true remains callable under a profile that exists specifically
+                // to withdraw that kind of write. The three checks below are exactly the self-contradictions a mislabel would cause; they're ERROR rather than WARN,
+                // because each one silently breaks a user-facing guarantee.
                 if (s.ReadOnly)
                 {
                     if (s.MutatesScene)
@@ -3659,11 +3659,11 @@ namespace UnitySkills
                 if (!s.SupportsDryRun && s.ReadOnly)
                     issues.Add($"[WARN] {s.Name}: SupportsDryRun=false but ReadOnly=true — read-only skills should support dry run");
 
-                // RiskLevel 是自由格式字符串，而 RiskRank 会把它不认识的任何取值静默排为 "low"。
-                // 所以拼写错误（"hgih"）不会显式失败——它把该 skill 降级为风险最低，
-                // 而那恰恰是 agent 在决定要不要向用户确认时所读的字段，
-                // 也是 AppendBatchMirrorIssues 用来比较 batch 与单体的字段。
-                // 目前随包发布的每条声明都合法；本检查是为了让下一条不会朝着"隐藏风险"的方向写错。
+                // RiskLevel is a free-form string, and RiskRank silently ranks any value it doesn't recognize as "low".
+                // So a typo ("hgih") doesn't fail explicitly -- it demotes that skill to the lowest risk,
+                // which is exactly the field an agent reads when deciding whether to confirm with the user,
+                // and also the field AppendBatchMirrorIssues uses to compare a batch against its singular counterpart.
+                // Every declaration shipped with the package today is valid; this check exists so the next one doesn't get miswritten in the direction of hiding risk.
                 if (!IsKnownRiskLevel(s.RiskLevel))
                     issues.Add($"[WARN] {s.Name}: RiskLevel='{s.RiskLevel}' is not one of low/medium/high — it ranks as 'low'");
             }
@@ -3676,18 +3676,18 @@ namespace UnitySkills
         private const string BatchSkillSuffix = "_batch";
 
         /// <summary>
-        /// 跨 skill 规则：<c>X_batch</c> 声明的影响面必须不低于 <c>X</c>。
+        /// Cross-skill rule: what <c>X_batch</c> declares must not have a smaller impact footprint than <c>X</c>.
         ///
-        /// <para>批处理 skill 把单体 skill 的活干 N 遍，因此它不可能改得更少、跟踪得更少或风险更低。
-        /// 元数据若相反，那就是批处理条目写错了，而后果并非无关痛痒：
-        /// MutatesScene/MutatesAssets 决定 surface profile 撤下什么，TracksWorkflow 决定这次调用
-        /// 能不能撤销，RiskLevel 是 agent 在决定是否向用户确认前所读的字段。
-        /// 于是一个声明过轻的批处理，就成了那个能穿过所有拦住其单体孪生兄弟的闸门的变体——
-        /// 而且它碰的是 N 个对象而不是一个。</para>
+        /// <para>A batch skill does the same work as the singular skill, N times over, so it can never mutate less, track less, or carry less risk.
+        /// If the metadata says otherwise, the batch entry was written wrong, and the consequences aren't trivial:
+        /// MutatesScene/MutatesAssets decide what a surface profile withdraws, TracksWorkflow decides whether this call
+        /// can be undone, and RiskLevel is the field an agent reads before deciding whether to confirm with the user.
+        /// An under-declared batch thus becomes the variant that slips through every gate meant to stop its singular twin --
+        /// and it touches N objects instead of one.</para>
         ///
-        /// <para>只检查严格的 <c>X</c>/<c>X_batch</c> 名字配对。孪生单体拼法不同
-        ///（material_set_colors_batch ↔ material_set_color）或根本没有孪生体的批处理 skill
-        /// 一律跳过，不做猜测。</para>
+        /// <para>Only checks a strict <c>X</c>/<c>X_batch</c> name pairing. A singular twin spelled differently
+        /// (material_set_colors_batch <-> material_set_color), or a batch skill with no twin at all,
+        /// is skipped entirely, with no guessing.</para>
         /// </summary>
         private static void AppendBatchMirrorIssues(List<string> issues)
         {
@@ -3715,9 +3715,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// low &lt; medium &lt; high。其余一切都与 "low" 同级——这不算兜底，而是事实：
-        /// <see cref="UnitySkillAttribute.RiskLevel"/> 的默认值就是 "low"，
-        /// 所以一个未识别或缺失的等级，确实就是可得的最低风险声明。
+        /// low &lt; medium &lt; high. Everything else ranks the same as "low" -- that's not a fallback, it's a fact:
+        /// <see cref="UnitySkillAttribute.RiskLevel"/>'s default value is "low",
+        /// so an unrecognized or missing level genuinely is the lowest risk declaration available.
         /// </summary>
         private static int RiskRank(string riskLevel)
         {
@@ -3727,31 +3727,31 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// <paramref name="riskLevel"/> 是否是 <see cref="RiskRank"/> 真正认识的等级。
-        /// 把未知字符串排为 "low" 是正确的运行时行为，但对此保持沉默则不对，
-        /// 所以 <see cref="ValidateMetadata"/> 会就此发出 WARN。
+        /// Whether <paramref name="riskLevel"/> is a level <see cref="RiskRank"/> genuinely recognizes.
+        /// Ranking an unknown string as "low" is correct runtime behavior, but staying silent about it isn't,
+        /// so <see cref="ValidateMetadata"/> raises a WARN for it.
         /// </summary>
         private static bool IsKnownRiskLevel(string riskLevel) =>
             string.Equals(riskLevel, "low", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(riskLevel, "medium", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(riskLevel, "high", StringComparison.OrdinalIgnoreCase);
 
-        // ========== query string 解析 ==========
+        // ========== Query string parsing ==========
 
         /// <summary>
-        /// 把 query string 解析为大小写不敏感的 键→值 映射。
+        /// Parses a query string into a case-insensitive key -> value map.
         ///
-        /// 过去有两种写法被直接丢弃，而调用方写它们都是有意的：
+        /// Two forms used to be dropped outright, even though a caller writes them deliberately:
         /// <list type="bullet">
-        /// <item><b>裸键</b>（<c>?full</c>、<c>?brief</c>）——URL 中"出现即为真"的惯用写法。
-        /// 丢弃它会让 <c>GET /skills?full</c> 变成静默空操作，在调用方等着 618KB manifest 时
-        /// 返回 19KB 的目录。现在它被收集为值 <c>"1"</c>，与 <c>?full=1</c> 得到的值相同，
-        /// 因此两种写法共用一条缓存条目和一个 ETag。</item>
-        /// <item><b>值为空的键</b>（<c>?category=</c>）——收集为空串而不是丢弃，
-        /// 以便缩小范围过滤的守卫能连合法词表一起拒绝它。丢弃它会把一个写了一半的过滤条件
-        /// 变成"没有过滤"，于是一个限定范围的请求拿到了整份目录，看起来还像成功了。</item>
+        /// <item><b>A bare key</b> (<c>?full</c>, <c>?brief</c>) -- the URL idiom for "present means true."
+        /// Dropping it would turn <c>GET /skills?full</c> into a silent no-op, returning the 19KB catalog while the caller
+        /// waits on the 618KB manifest. It's now collected as the value <c>"1"</c>, the same value <c>?full=1</c> gets,
+        /// so both spellings share one cache entry and one ETag.</item>
+        /// <item><b>A key with an empty value</b> (<c>?category=</c>) -- collected as an empty string rather than dropped,
+        /// so the narrowing-filter guard can reject it alongside the valid word list. Dropping it would turn a half-written filter
+        /// condition into "no filter," so a scoped request would get the whole catalog while still looking like it succeeded.</item>
         /// </list>
-        /// 完全没有键的对（<c>?=v</c>，或 <c>?a&amp;&amp;b</c> 里的空段）仍然跳过——没有键可供索引。
+        /// A pair with no key at all (<c>?=v</c>, or an empty segment in <c>?a&amp;&amp;b</c>) is still skipped -- there's no key to index by.
         /// </summary>
         internal static Dictionary<string, string> ParseQueryString(string qs)
         {
@@ -3785,16 +3785,16 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 从 skill 参数中自动快照目标对象，为通用回滚提供支持。
-        /// 识别常见的目标参数（name、instanceId、path、materialPath 等）并对它们做快照。
-        /// 目标定位委托给 <see cref="CollectTargetsFromArgs"/>，
-        /// 使语义 diff 的前捕获复用完全相同的对象集合、顺序与尽力而为语义。
+        /// Automatically snapshots target objects from skill parameters, to support generic rollback.
+        /// Recognizes common target parameters (name, instanceId, path, materialPath, etc.) and snapshots them.
+        /// Target location is delegated to <see cref="CollectTargetsFromArgs"/>,
+        /// so the semantic diff's pre-capture reuses exactly the same object set, order, and best-effort semantics.
         /// </summary>
         /// <summary>
-        /// 当前手动录制会话（workflow_begin_task）自上次 SaveHistory 以来是否有新内容需要持久化——
-        /// 即换了另一个任务在活动，或活动任务新增了快照。每次返回 true 时都会推进已保存标记，
-        /// 使下次调用以本次保存点为基准比较。尽力而为：遇到任何异常（任务为 null）时默认保存，
-        /// 以确保绝不静默丢弃历史。
+        /// Whether the current manually-recorded session (workflow_begin_task) has anything new to persist since the last SaveHistory --
+        /// i.e. a different task is now active, or the active task gained new snapshots. Every time it returns true, it advances the saved marker,
+        /// so the next call compares against this save point. Best-effort: defaults to saving on any anomaly (a null task),
+        /// to guarantee history is never silently dropped.
         /// </summary>
         private static bool ManualSessionIsDirty(WorkflowTask currentTask)
         {
@@ -3824,21 +3824,21 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 定位由 skill 参数所指向的 UnityEngine.Object——它是自动 workflow 快照
-        ///（<see cref="TrySnapshotTargetsFromArgs"/>）与语义 diff 前捕获
-        ///（<see cref="SkillSceneDiff.CaptureBefore"/>）共用的底层原语。
+        /// Locates the UnityEngine.Object a skill parameter points to -- the shared low-level primitive behind both the
+        /// automatic workflow snapshot (<see cref="TrySnapshotTargetsFromArgs"/>) and the semantic diff's
+        /// pre-capture (<see cref="SkillSceneDiff.CaptureBefore"/>).
         ///
-        /// 对象按与历史快照序列一致的固定顺序返回，以保证快照行为不变：
-        /// 目标 GameObject + 其 Transform + Renderer.sharedMaterial，然后是 materialPath / assetPath
-        /// 指向的资产，然后是子 Transform，最后是 items[] 中的各个目标
-        ///（GameObject + Transform，取前 50 个）。定位属尽力而为，解析不出的目标跳过。
-        /// items[] 那一段自带 try/catch，使格式错误的批次绝不会中断其余部分——与原先的内联行为一致。
+        /// Objects are returned in a fixed order consistent with the historical snapshot sequence, to keep snapshot behavior unchanged:
+        /// the target GameObject + its Transform + Renderer.sharedMaterial, then the asset pointed to by materialPath / assetPath,
+        /// then child Transforms, and finally each target in items[]
+        /// (GameObject + Transform, capped at the first 50). Location is best-effort; a target that can't be resolved is skipped.
+        /// The items[] section carries its own try/catch, so a malformed batch never interrupts the rest -- matching the original inline behavior.
         /// </summary>
         internal static List<UnityEngine.Object> CollectTargetsFromArgs(JObject args)
         {
             var targets = new List<UnityEngine.Object>();
 
-            // 按常见参数名尝试定位目标 GameObject
+            // Tries to locate the target GameObject by common parameter names
             string targetName = null;
             int targetInstanceId = 0;
             string targetPath = null;
@@ -3853,23 +3853,23 @@ namespace UnitySkills
             if (args.TryGetValue(EntityIdParameterName, StringComparison.OrdinalIgnoreCase, out var entityIdToken))
                 targetEntityId = entityIdToken.ToString();
 
-            // 能识别出 GameObject 时快照它
+            // Snapshot the GameObject once it's identified
             if (!string.IsNullOrEmpty(targetEntityId) || !string.IsNullOrEmpty(targetName) || targetInstanceId != 0 || !string.IsNullOrEmpty(targetPath))
             {
                 var (go, _) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath, entityId: targetEntityId);
                 if (go != null)
                 {
                     targets.Add(go);
-                    // Transform 是最常被改的，一并快照
+                    // Transform is the most commonly modified, snapshot it too
                     targets.Add(go.transform);
-                    // 若有 Renderer，快照其材质
+                    // If there's a Renderer, snapshot its material
                     var renderer = go.GetComponent<UnityEngine.Renderer>();
                     if (renderer != null && renderer.sharedMaterial != null)
                         targets.Add(renderer.sharedMaterial);
                 }
             }
 
-            // 给了 materialPath 时快照该材质资产
+            // Snapshot the material asset when materialPath is given
             if (args.TryGetValue("materialPath", StringComparison.OrdinalIgnoreCase, out var matPathToken))
             {
                 var matPath = matPathToken.ToString();
@@ -3881,7 +3881,7 @@ namespace UnitySkills
                 }
             }
 
-            // 给了 assetPath 时快照该资产
+            // Snapshot the asset when assetPath is given
             if (args.TryGetValue("assetPath", StringComparison.OrdinalIgnoreCase, out var assetPathToken))
             {
                 var assetPath = assetPathToken.ToString();
@@ -3893,7 +3893,7 @@ namespace UnitySkills
                 }
             }
 
-            // 处理 child/parent 类操作（带 entityId 兜底的快照）
+            // Handles child/parent-style operations (snapshot with entityId fallback)
             {
                 args.TryGetValue("childName", StringComparison.OrdinalIgnoreCase, out var childNameToken);
                 args.TryGetValue("childEntityId", StringComparison.OrdinalIgnoreCase, out var childEntityIdToken);
@@ -3911,7 +3911,7 @@ namespace UnitySkills
                 }
             }
 
-            // 处理批次条目：逐个快照批次里的目标
+            // Handles batch entries: snapshot each target in the batch individually
             if (args.TryGetValue("items", StringComparison.OrdinalIgnoreCase, out var itemsToken))
             {
                 try
@@ -3938,40 +3938,40 @@ namespace UnitySkills
                         }
                     }
                 }
-                catch { /* 批次解析出错时忽略 */ }
+                catch { /* Ignored when batch parsing fails */ }
             }
 
             return targets;
         }
 
         #region HTTP-thread cached GET fast path (v2.1)
-        // ⚠ 跨线程契约：本 region 会被 SkillsHttpServer 的 HTTP 监听线程直接调用，必须保持
-        // 零 Unity API（UnityEngine.*/UnityEditor.*）、零 SkillsLogger（内部走 Debug.Log 且
-        // Level getter 首次会读 EditorPrefs）。只允许读取已由主线程构建好的字符串缓存
-        // （_cachedManifest / _cachedSchema / _filteredOutputCache，均为不可变 string 或
-        // ConcurrentDictionary）以及本 region 自有的 _etagCache。缓存未建立时必须返回 false，
-        // 交回主线程慢路径（主线程构建缓存后下一次请求即可命中）。
-        // 本 region 内代码不得调用 Initialize()/GetManifest()/GetSchema()/BuildFilteredOutput()
-        // ——它们会触发反射扫描与 SkillsLogger 日志，只能在主线程运行。
+        // ⚠ Cross-thread contract: this region is called directly by SkillsHttpServer's HTTP listener thread, and must stay at
+        // zero Unity API (UnityEngine.*/UnityEditor.*), zero SkillsLogger (internally routes through Debug.Log, and the
+        // Level getter reads EditorPrefs on first access). Only reading string caches already built by the main thread is allowed
+        // (_cachedManifest / _cachedSchema / _filteredOutputCache, all either immutable strings or
+        // ConcurrentDictionary) plus this region's own _etagCache. Must return false when the cache hasn't been built yet,
+        // handing back to the main thread's slow path (the main thread builds the cache, and the next request then hits it).
+        // Code in this region must not call Initialize()/GetManifest()/GetSchema()/BuildFilteredOutput()
+        // -- they trigger reflection scanning and SkillsLogger logging, and can only run on the main thread.
 
-        // ETag 缓存：键 = 输出缓存键，值 = (来源 json 引用, etag)。
-        // SkillRouter 非 [InitializeOnLoad]、无静态持久化，域重载即整体重置，天然失效；
-        // Refresh()（skill 增删）重建后旧 entry 的 json 引用与新缓存串不再相等，下方
-        // ReferenceEquals 不匹配即自动重算并覆盖同 key——正确性本不依赖清空。但 Refresh() 仍
-        // 主动 Clear()，避免旧 entry（及其引用的大字符串）在多次 Refresh 间累积；同时用
-        // MaxCacheEntries 兜底防止任意路径下的无界膨胀。
+        // ETag cache: key = output cache key, value = (source json reference, etag).
+        // SkillRouter is not [InitializeOnLoad] and has no static persistence, so a domain reload resets it wholesale, naturally invalidating it;
+        // after Refresh() (skill add-remove) rebuilds, an old entry's json reference no longer equals the new cached string, and
+        // a ReferenceEquals mismatch below automatically recomputes and overwrites the same key -- correctness never depended on clearing. But Refresh() still
+        // actively Clear()s, to avoid old entries (and the large strings they reference) accumulating across repeated Refreshes; MaxCacheEntries additionally
+        // guards against unbounded growth along any path.
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string Json, string Etag)> _etagCache =
             new System.Collections.Concurrent.ConcurrentDictionary<string, (string Json, string Etag)>();
 
         /// <summary>
-        /// HTTP 线程快速通道：GET /skills、GET /skills/schema（含 query 变体）与 GET /skills/meta
-        /// 在字符串缓存已由主线程构建时直接返回缓存 json + ETag（SHA256 前 16 hex），绕过主线程队列。
-        /// 未命中（缓存尚未构建 / 路径不属于这三个端点）返回 false。
-        /// /skills/recommend、/skills/chain、/skills/batch 等路径精确匹配不上，一律走慢路径。
-        /// 分流完全交给 <see cref="ResolveGetSurface"/>——与主线程 BuildFilteredOutput 同一把逻辑，
-        /// 所以裸 /skills 在两条路径上都落到 brief 缓存串，不会一条给 brief 一条给全量。
-        /// 同理，非法 ?category=/?operation= 值也必须在这里退回慢路径：分流一致还不够，两条路径
-        /// 对「这个 query 该不该被拒」的判断也得一致。
+        /// HTTP thread fast lane: GET /skills, GET /skills/schema (including query variants), and GET /skills/meta
+        /// return the cached json + ETag (first 16 hex of SHA256) directly once the string cache has been built by the main thread, bypassing the main-thread queue.
+        /// A miss (cache not yet built / path doesn't belong to these three endpoints) returns false.
+        /// /skills/recommend, /skills/chain, /skills/batch, and other paths that don't match exactly always go through the slow path.
+        /// Routing is delegated entirely to <see cref="ResolveGetSurface"/> -- the same logic as the main thread's BuildFilteredOutput,
+        /// so bare /skills lands on the brief cache string on both paths, never brief on one and full on the other.
+        /// Likewise, an invalid ?category=/?operation= value must also fall back to the slow path here: consistent routing alone isn't enough, the two paths'
+        /// judgment of "should this query be rejected" must agree too.
         /// </summary>
         internal static bool TryGetCachedGetResponse(string path, string query, out string json, out string etag)
         {
@@ -3984,16 +3984,16 @@ namespace UnitySkills
 
             var filters = StripUnrecognizedFilterKeys(ParseQueryString(query));
 
-            // 与主线程同一把判定（FindInvalidNarrowingFilterKey，纯字符串比较、不触 Unity API）：
-            // 非法 ?category=/?operation= 值一律退回慢路径去铸错误体。少了这一步，Brief/Meta 两个
-            // surface 会绕过校验——它们不查 _filteredOutputCache，而是直接返回主线程早已建好的
-            // _cachedBrief/_cachedMeta，于是 ?brief=1&category=Bogus 在缓存热时得到 200 目录、
-            // 冷时得到错误，同一个 URL 两种答案。
+            // Same determination as the main thread (FindInvalidNarrowingFilterKey, pure string comparison, no Unity API touched):
+            // an invalid ?category=/?operation= value always falls back to the slow path to mint the error body. Without this step, the Brief/Meta
+            // surfaces would bypass validation entirely -- they don't consult _filteredOutputCache, they return _cachedBrief/_cachedMeta
+            // (already built by the main thread) directly, so ?brief=1&category=Bogus would get a 200 catalog when the cache is warm,
+            // and an error when it's cold -- two different answers for the same URL.
             if (FindInvalidNarrowingFilterKey(filters) != null)
                 return false;
 
-            // ResolveGetSurface 直调而非经 BuildGetCacheKey：分流逻辑仍是同一把，只是 filters
-            // 已在上面解析过，再走一遍 BuildGetCacheKey 等于每个快路径请求白解析一次 query。
+            // Calls ResolveGetSurface directly rather than through BuildGetCacheKey: the routing logic is still the same one, but filters
+            // have already been parsed above, and going through BuildGetCacheKey again would parse the query a second time for nothing on every fast-path request.
             string cacheKey = ResolveGetSurface(manifestType, filters, out var surface);
             switch (surface)
             {
@@ -4019,11 +4019,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 主线程慢路径专用：为刚构建好的 /skills、/skills/schema 或 /skills/meta 输出取 ETag。与
-        /// <see cref="TryGetCachedGetResponse"/> 共用 <see cref="BuildGetCacheKey"/> 与
-        /// <see cref="GetOrComputeEtag"/>，所以同一份内容在慢路径与 HTTP 线程快路径上得到的
-        /// etag 完全一致——否则客户端会在两条路径间来回抖动，If-None-Match 永远命中不了 304。
-        /// json 为空（错误响应等）时返回 null，调用方不应发 ETag 头。
+        /// Main-thread slow path only: gets the ETag for output just built for /skills, /skills/schema, or /skills/meta. Shares
+        /// <see cref="BuildGetCacheKey"/> and
+        /// <see cref="GetOrComputeEtag"/> with <see cref="TryGetCachedGetResponse"/>, so the same content gets an identical etag
+        /// whether it comes from the slow path or the HTTP thread's fast path -- otherwise the client would flip-flop between the two paths, and If-None-Match would never hit a 304.
+        /// Returns null when json is empty (an error response, etc.); the caller should not send an ETag header in that case.
         /// </summary>
         internal static string GetEtagForCachedGet(string path, string query, string json)
         {
@@ -4033,7 +4033,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// manifest 家族路径 → manifestType；其他路径返回 null。纯字符串匹配，可安全在 HTTP 线程调用。
+        /// Manifest-family paths -> manifestType; every other path returns null. Pure string matching, safe to call on the HTTP thread.
         /// </summary>
         private static string ResolveManifestTypeForPath(string path)
         {
@@ -4044,9 +4044,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 与 BuildFilteredOutput 的分流保持一致：同一个 <see cref="ResolveGetSurface"/> 决定
-        /// surface 与缓存键（未知路径按 manifest 处理，仅 <see cref="GetEtagForCachedGet"/> 的
-        /// 防御性回退会走到）。
+        /// Stays consistent with BuildFilteredOutput's routing: the same <see cref="ResolveGetSurface"/> decides
+        /// the surface and the cache key (an unknown path is treated as manifest, reachable only through
+        /// <see cref="GetEtagForCachedGet"/>'s defensive fallback).
         /// </summary>
         private static string BuildGetCacheKey(string path, string query, out GetSurface surface)
         {
@@ -4056,8 +4056,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 按 (缓存键, json 引用) 记忆化的 ETag 获取：条目存在且 Json 引用与当前缓存串一致
-        /// 才复用，否则重算并覆盖——保证 Refresh() 重建缓存后不会拿旧 etag 误判 304。
+        /// Gets an ETag memoized by (cache key, json reference): only reused when the entry exists and its Json reference
+        /// matches the current cached string, otherwise recomputed and overwritten -- ensuring that after Refresh() rebuilds the cache, a stale etag never falsely triggers a 304.
         /// </summary>
         private static string GetOrComputeEtag(string cacheKey, string json)
         {
@@ -4086,9 +4086,9 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// router 能从 skill 错误对象上取到的全部内容。对于旧式的 <c>new { error = "..." }</c> 形状，
-    /// 只有 <see cref="Message"/> 会被填充；其余是 skill 可选声明、用于覆盖
-    /// <see cref="SkillErrorClassifier"/> 猜测结果的契约。
+    /// Everything the router can pull off a skill's error object. For the legacy <c>new { error = "..." }</c> shape,
+    /// only <see cref="Message"/> gets filled in; everything else is a contract a skill can optionally declare, to override
+    /// <see cref="SkillErrorClassifier"/>'s guessed result.
     /// </summary>
     internal sealed class SkillErrorContext
     {
@@ -4099,8 +4099,8 @@ namespace UnitySkills
         public List<string> RelatedSkills;
 
         /// <summary>
-        /// skill 放在错误对象上的其余所有字段（合法值列表、文档 URL、包 id、提示等）。
-        /// 没有它，分类器只会拿消息作答，并静默丢掉 skill 特意算出来的那些诊断信息。
+        /// Every other field a skill puts on its error object (a list of valid values, doc URL, package id, hints, etc.).
+        /// Without this, the classifier would only ever answer from the message, silently dropping the diagnostic information a skill deliberately computed.
         /// </summary>
         public Dictionary<string, object> Extra;
     }
@@ -4124,11 +4124,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// router 错误契约的第一层：取出消息，以及 skill 选择声明的任何结构化字段
-        ///（<c>errorCode</c>、<c>suggestedFixes</c>、<c>retryStrategy</c>、<c>relatedSkills</c>）。
-        /// 判定"这是不是错误"的条件与 <see cref="TryGetError(object, out string)"/> 完全相同，
-        /// 因此没有额外声明的 skill 行为与从前一致。字段提取已隔离异常——
-        /// 声明格式错误时降级为仅取消息，而不是让整个响应失败。
+        /// The first layer of the router's error contract: extracts the message, plus any structured fields a skill chooses to declare
+        /// (<c>errorCode</c>, <c>suggestedFixes</c>, <c>retryStrategy</c>, <c>relatedSkills</c>).
+        /// The condition for "is this an error" is exactly the same as <see cref="TryGetError(object, out string)"/>,
+        /// so a skill with no extra declarations behaves exactly as before. Field extraction isolates its own exceptions --
+        /// a malformed declaration degrades to taking just the message, rather than failing the whole response.
         /// </summary>
         public static bool TryGetErrorContext(object result, out SkillErrorContext context)
         {
@@ -4168,8 +4168,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// skill 错误对象上已被响应信封建模的字段。其余一律原样转发，
-        /// 使 skill 自己写的诊断信息能在分类过程中存活下来。
+        /// Fields on a skill's error object that the response envelope already models. Everything else is forwarded as-is,
+        /// so the diagnostic information a skill wrote itself survives the classification process.
         /// </summary>
         private static readonly HashSet<string> ReservedErrorFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -4178,8 +4178,8 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 收集 skill 错误对象上的非保留成员。匿名类型、字典和 JObject 都支持，
-        /// 因为 skill 这三种形状都会返回。已隔离异常：读不出来的成员跳过，而不是让整个响应失败。
+        /// Collects the non-reserved members on a skill's error object. Anonymous types, dictionaries, and JObject are all supported,
+        /// because skills return all three shapes. Isolates its own exceptions: a member that can't be read is skipped, rather than failing the whole response.
         /// </summary>
         private static Dictionary<string, object> CollectExtraErrorFields(object result)
         {
@@ -4235,7 +4235,7 @@ namespace UnitySkills
             return extra.Count > 0 ? extra : null;
         }
 
-        /// <summary>接受 string、string[]、JArray 或任意序列；为空时返回 null。</summary>
+        /// <summary>Accepts a string, string[], JArray, or any sequence; returns null when empty.</summary>
         private static List<string> ToStringList(object value)
         {
             if (value == null || value is JObject)
@@ -4262,8 +4262,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 接受单个修复建议或它们的序列，形状可以是完整的
-        ///（<c>{ action, skill, args, reason }</c>）或一个裸提示字符串。
+        /// Accepts a single suggested fix or a sequence of them, in either the full shape
+        /// (<c>{ action, skill, args, reason }</c>) or as a bare hint string.
         /// </summary>
         private static List<SuggestedFix> ToSuggestedFixes(object value)
         {

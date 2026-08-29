@@ -122,7 +122,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(copied.Mode, Is.EqualTo(DeepInspectorMode.Advanced));
         }
 
-        // Button 来自可选包 com.unity.ugui；缺包时整段编译掉，避免整个测试程序集构建失败。
+        // Button comes from the optional package com.unity.ugui; this whole block compiles out when the package is missing, to avoid breaking the whole test assembly build.
 #if UGUI
         [Test]
         public void EventSetListener_ReplacesButtonOnClickPersistentListener()

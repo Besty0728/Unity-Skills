@@ -8,15 +8,15 @@ using UnityEngine;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// workflow 历史备份/恢复加固的集成覆盖：
-    /// - 只被"当前正在记录（尚未 EndTask）的任务"引用的 blob 必须活过垃圾回收。
-    /// - 损坏的历史文件必须被隔离（而不是静默重置），且本次会话余下时间 GC 保持挂起，
-    ///   免得一份不完整的引用集合把还在用的备份回收掉。
-    /// - SaveHistory 必须把上一版主文件留成 .bak，而不是删掉。
-    /// - RestoreFile 必须拒绝交还被篡改的 store blob，并将其隔离。
+    /// Integration coverage for workflow history backup/restore hardening:
+    /// - A blob referenced only by a "task currently being recorded (not yet EndTask'd)" must survive garbage collection.
+    /// - A corrupted history file must be quarantined (not silently reset), and GC must stay suspended for the
+    ///   rest of this session, so an incomplete reference set doesn't reclaim backups still in use.
+    /// - SaveHistory must keep the previous main file as a .bak instead of deleting it.
+    /// - RestoreFile must refuse to hand back a tampered store blob, and must quarantine it.
     ///
-    /// 沿用 WorkflowPersistenceTests.cs 的夹具范式（路径 override + ResetStateForTests），
-    /// 不重复它的任何用例。
+    /// Reuses WorkflowPersistenceTests.cs's fixture pattern (path override + ResetStateForTests),
+    /// without duplicating any of its test cases.
     /// </summary>
     [TestFixture]
     public class WorkflowBackupResilienceTests
@@ -59,7 +59,7 @@ namespace UnitySkills.Tests.Core
             WorkflowManager.ResetStateForTests();
             WorkflowManager.OverrideHistoryFilePathForTests = null;
             WorkflowFileStore.OverrideStoreRootForTests = null;
-            // 整个 teardown 期间保持有一个有效目标场景，理由同 WorkflowPersistenceTests。
+            // Keep a valid target scene present for the whole teardown, same reasoning as WorkflowPersistenceTests.
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             if (AssetDatabase.IsValidFolder(AssetRoot)) AssetDatabase.DeleteAsset(AssetRoot);
             AssetDatabase.Refresh();
@@ -83,14 +83,14 @@ namespace UnitySkills.Tests.Core
 
             WorkflowManager.BeginTask("recording-in-progress", "test");
             WorkflowManager.SnapshotObject(asset);
-            // 故意不调 EndTask：模拟一个仍在记录中的任务（例如手工 workflow_begin_task 会话）
-            // 与 trim/GC 并发发生。
+            // Deliberately don't call EndTask: simulates a task still being recorded (e.g. a manual
+            // workflow_begin_task session) happening concurrently with trim/GC.
             string hash = WorkflowManager.CurrentTask.snapshots[0].fileHash;
             Assert.That(hash, Is.Not.Null.And.Not.Empty);
 
-            // 把 blob 的写入时间往前拨，越过 WorkflowFileStore 那 10 分钟"近期写入"宽限窗，
-            // 使得只有"进行中任务的引用"（即被测的修复）能保住它；否则光靠宽限期，
-            // 这条断言在没有修复的情况下也会通过。
+            // Push the blob's write time back, past WorkflowFileStore's 10-minute "recently written" grace
+            // window, so only the "in-progress task reference" (i.e. the fix under test) can save it;
+            // otherwise the grace period alone would make this assertion pass even without the fix.
             File.SetLastWriteTimeUtc(Path.Combine(WorkflowFileStore.StoreRoot, hash), DateTime.UtcNow.AddDays(-1));
 
             WorkflowAutoCleanConfig.Enabled = true;
@@ -108,8 +108,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void LoadHistory_CorruptMainFile_QuarantinesFileAndSuppressesGC()
         {
-            // 一个早于损坏发生的孤儿 blob。它确实没人引用，但历史一旦加载失败，我们就无法再证明
-            // 这一点——恢复模式必须放它不管，而不是删掉一份无法确认可弃的备份。
+            // An orphan blob predating the corruption. It genuinely has no references, but once history
+            // fails to load we can no longer prove that — restore mode must leave it alone rather than
+            // delete a backup that can't be confirmed disposable.
             string orphanHash = WorkflowFileStore.StoreBytes(System.Text.Encoding.UTF8.GetBytes("orphan-blob"));
             File.SetLastWriteTimeUtc(Path.Combine(WorkflowFileStore.StoreRoot, orphanHash), DateTime.UtcNow.AddDays(-1));
 
@@ -117,7 +118,7 @@ namespace UnitySkills.Tests.Core
             WorkflowManager.ResetStateForTests();
 
             var originalLevel = SkillsLogger.Level;
-            SkillsLogger.Level = LogLevel.Off; // 隔离路径会有意打一条 error，这里压掉。
+            SkillsLogger.Level = LogLevel.Off; // The quarantine path intentionally logs an error; suppress it here.
             try
             {
                 Assert.That(WorkflowManager.History, Is.Not.Null, "A fresh empty history must still be usable after quarantine.");
@@ -133,8 +134,8 @@ namespace UnitySkills.Tests.Core
             var quarantined = Directory.GetFiles(_tempRoot, "workflow_history.corrupt.*.json");
             Assert.That(quarantined, Has.Length.EqualTo(1));
 
-            // 即便显式 force=true，恢复模式也必须压住 GC。该路径同样会打一条 warning
-            // （恢复模式 + force），所以日志压制也要一并留着。
+            // Even with force=true explicitly set, restore mode must still suppress GC. That path also
+            // logs a warning (restore mode + force), so the log suppression needs to stay in place too.
             WorkflowAutoCleanConfig.Enabled = true;
             SkillsLogger.Level = LogLevel.Off;
             try

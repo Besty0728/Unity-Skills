@@ -9,7 +9,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// 清理技能：查找未引用资源、重复文件与丢失的引用。
+    /// Cleaner skills: find unreferenced assets, duplicate files, and missing references.
     /// </summary>
     public static class CleanerSkills
     {
@@ -96,7 +96,8 @@ namespace UnitySkills
             var filter = $"t:{assetType}";
             var guids = AssetDatabase.FindAssets(filter, new[] { searchPath });
             
-            // 先按文件大小分组做快速筛选，只对同大小的文件算 MD5。
+            // First group by file size for a quick filter, then only compute MD5 for files
+            // sharing the same size.
             var sizeGroups = new Dictionary<long, List<string>>();
             foreach (var guid in guids)
             {
@@ -177,7 +178,8 @@ namespace UnitySkills
 
             foreach (var go in allObjects)
             {
-                // 脚本丢失的组件在 GetComponents 结果里表现为 null 元素。
+                // A component with a missing script shows up as a null element in the
+                // GetComponents result.
                 var components = go.GetComponents<Component>();
                 for (int i = 0; i < components.Length; i++)
                 {
@@ -227,7 +229,7 @@ namespace UnitySkills
             };
         }
 
-        // 暂存等待确认的删除操作，按 confirmToken 索引。
+        // Pending delete operations awaiting confirmation, indexed by confirmToken.
         private static Dictionary<string, PendingDeleteOperation> _pendingDeletes = new Dictionary<string, PendingDeleteOperation>();
 
         private class PendingDeleteOperation
@@ -246,7 +248,7 @@ namespace UnitySkills
             string[] paths = null,
             string confirmToken = null)
         {
-            // 第二步：带 confirmToken 调用时执行真正的删除。
+            // Step 2: when called with confirmToken, perform the actual deletion.
             if (!string.IsNullOrEmpty(confirmToken))
             {
                 if (!_pendingDeletes.TryGetValue(confirmToken, out var pending))
@@ -274,7 +276,7 @@ namespace UnitySkills
                     bool deleted = false;
                     if (existed)
                     {
-                        // 一步到位：把文件（含 .meta）备份进仓库并记录 Deleted 快照。
+                        // All in one step: back up the file (plus .meta) into the repository and record a Deleted snapshot.
                         deleted = WorkflowManager.DeleteAssetToTrash(path);
                         if (deleted) deletedCount++;
                     }
@@ -295,7 +297,7 @@ namespace UnitySkills
                 };
             }
 
-            // 第一步：不带 token 时只做预览并签发 confirmToken。
+            // Step 1: when called without a token, only preview and issue a confirmToken.
             if (paths == null || paths.Length == 0)
                 return new { success = false, error = "No paths provided. Provide paths array to preview deletion." };
 
@@ -472,8 +474,9 @@ namespace UnitySkills
             int deleted = 0;
             foreach (var folder in empty.OrderByDescending(f => f.Length))
             {
-                // DeleteAssetToTrash 的目录分支只记录元数据级 Deleted 快照
-                // （撤销时重建空目录），实际删除走 AssetDatabase.DeleteAsset。
+                // The directory branch of DeleteAssetToTrash only records a metadata-level Deleted
+                // snapshot (recreating the empty folder on undo); the actual deletion goes through
+                // AssetDatabase.DeleteAsset.
                 if (WorkflowManager.DeleteAssetToTrash(folder)) deleted++;
             }
             AssetDatabase.Refresh();

@@ -11,7 +11,7 @@ using UnityEngine.Rendering;
 namespace UnitySkills
 {
     /// <summary>
-    /// SRP 通用 Volume 框架相关技能。
+    /// SRP-generic Volume framework skills.
     /// </summary>
     public static class VolumeSkills
     {

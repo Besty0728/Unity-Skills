@@ -3,17 +3,17 @@
 namespace UnitySkills
 {
     /// <summary>
-    /// 2.7 中被 <see cref="SkillsSurfaceProfile"/> 取代的布尔 guide 开关的向后兼容视图。
+    /// Backward-compatible view of the boolean guide switch that <see cref="SkillsSurfaceProfile"/> replaced in 2.7.
     ///
-    /// 包内刻意零调用者：这是 2.6.x 已发布的公共 API，用户自己的编辑器脚本可能仍在读它，删除只会
-    /// 白白破坏其构建。重命名的公共成员按惯例保留 <see cref="ObsoleteAttribute"/> 转发器直到大版本
-    /// （参考 <see cref="SkillsModeManager"/> 中的 AllowlistSkills 转发器）。本类与 <c>/health</c> 上
-    /// 已弃用的 <c>guideMode</c> 别名表示同一概念，须同时退役，不可失步。
+    /// Deliberately zero callers within the package: this is a public API already shipped in 2.6.x,
+    /// and a user's own editor scripts may still read it, so removing it would only break their build for nothing. Renamed public members conventionally keep an <see cref="ObsoleteAttribute"/> forwarder
+    /// until the next major version (see the AllowlistSkills forwarder in <see cref="SkillsModeManager"/>). This class represents the same concept as the deprecated <c>guideMode</c> alias on <c>/health</c>,
+    /// so the two must be retired together and never drift out of sync.
     /// </summary>
     [Obsolete("Use SkillsSurfaceProfile. v2.7 replaced the boolean guide switch with the three-way surfaceProfile; a bool cannot express noSceneAuthoring, so this shim only ever reports the guide profile.")]
     public static class SkillsGuideMode
     {
-        /// <summary>转发到 <see cref="SkillsSurfaceProfile.OnChanged"/>。</summary>
+        /// <summary>Forwards to <see cref="SkillsSurfaceProfile.OnChanged"/>.</summary>
         public static event Action OnChanged
         {
             add { SkillsSurfaceProfile.OnChanged += value; }
@@ -21,8 +21,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 当前档位为 <c>guide</c> 时为 true。赋 true 选中 guide 档；赋 false 只清除 guide，不动
-        /// <c>noSceneAuthoring</c>——布尔无法表达该状态，静默降级为 <c>full</c> 会扩大用户特意收窄的暴露面。
+        /// True when the current tier is <c>guide</c>. Setting true selects the guide tier; setting false only clears guide without touching <c>noSceneAuthoring</c> -- a bool cannot express that state, and
+        /// silently downgrading to <c>full</c> would widen an exposure surface the user deliberately narrowed.
         /// </summary>
         public static bool Enabled
         {

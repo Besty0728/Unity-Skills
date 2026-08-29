@@ -9,21 +9,21 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// XR Interaction Toolkit 版本兼容的反射辅助类。
-    /// 支持 XRI 2.x（Unity 2022，类型在根命名空间）与 XRI 3.x（Unity 6，类型下沉到子命名空间）。
-    /// 所有 XRI API 调用一律走反射——对 XRI 程序集没有编译期依赖。
+    /// Version-compatible reflection helper for XR Interaction Toolkit.
+    /// Supports XRI 2.x (Unity 2022, types in the root namespace) and XRI 3.x (Unity 6, types moved into sub-namespaces).
+    /// Every XRI API call goes through reflection — no compile-time dependency on the XRI assembly.
     /// </summary>
     internal static class XRReflectionHelper
     {
         // ==================================================================================
-        // 版本检测（带缓存）
+        // Version detection (cached)
         // ==================================================================================
 
         private static int? _majorVersion;
         private static readonly Dictionary<string, Type> _typeCache = new Dictionary<string, Type>();
 
         /// <summary>
-        /// 探测到的 XRI 主版本：3 = XRI 3.x，2 = XRI 2.x，0 = 未安装。
+        /// The detected XRI major version: 3 = XRI 3.x, 2 = XRI 2.x, 0 = not installed.
         /// </summary>
         public static int XRIMajorVersion
         {
@@ -38,14 +38,14 @@ namespace UnitySkills
 
         private static void DetectVersion()
         {
-            // XRI 3.x 把类型挪进了子命名空间（如 .Interactors.XRRayInteractor）
+            // XRI 3.x moved types into a sub-namespace (e.g. .Interactors.XRRayInteractor)
             if (FindTypeInAssemblies("UnityEngine.XR.Interaction.Toolkit.Interactors.XRRayInteractor") != null)
             {
                 _majorVersion = 3;
                 return;
             }
 
-            // XRI 2.x 的类型仍在根命名空间
+            // XRI 2.x types are still in the root namespace
             if (FindTypeInAssemblies("UnityEngine.XR.Interaction.Toolkit.XRRayInteractor") != null)
             {
                 _majorVersion = 2;
@@ -56,7 +56,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// XRI 未安装时的标准错误响应。
+        /// The standard error response when XRI is not installed.
         /// </summary>
         public static object NoXRI() => new
         {
@@ -65,15 +65,15 @@ namespace UnitySkills
         };
 
         // ==================================================================================
-        // 类型映射——短名 -> 全限定名，按 [v3, v2] 的回退顺序排列
+        // Type map — short name -> fully-qualified names, ordered [v3, v2] as the fallback order
         // ==================================================================================
 
         private static readonly Dictionary<string, string[]> TypeMap = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
-            // 核心类型（两个版本命名空间相同）
+            // Core types (same namespace across both versions)
             ["XRInteractionManager"] = new[] { "UnityEngine.XR.Interaction.Toolkit.XRInteractionManager" },
 
-            // 交互器
+            // Interactors
             ["XRRayInteractor"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.Interactors.XRRayInteractor",
                 "UnityEngine.XR.Interaction.Toolkit.XRRayInteractor" },
@@ -89,7 +89,7 @@ namespace UnitySkills
                 "UnityEngine.XR.Interaction.Toolkit.Interactors.XRBaseInteractor",
                 "UnityEngine.XR.Interaction.Toolkit.XRBaseInteractor" },
 
-            // 可交互物
+            // Interactables
             ["XRGrabInteractable"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable",
                 "UnityEngine.XR.Interaction.Toolkit.XRGrabInteractable" },
@@ -100,7 +100,7 @@ namespace UnitySkills
                 "UnityEngine.XR.Interaction.Toolkit.Interactables.XRBaseInteractable",
                 "UnityEngine.XR.Interaction.Toolkit.XRBaseInteractable" },
 
-            // 移动——传送
+            // Locomotion — teleportation
             ["TeleportationProvider"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation.TeleportationProvider",
                 "UnityEngine.XR.Interaction.Toolkit.TeleportationProvider" },
@@ -111,7 +111,7 @@ namespace UnitySkills
                 "UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation.TeleportationAnchor",
                 "UnityEngine.XR.Interaction.Toolkit.TeleportationAnchor" },
 
-            // 移动——位移
+            // Locomotion — movement
             ["ContinuousMoveProvider"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ContinuousMoveProvider",
                 "UnityEngine.XR.Interaction.Toolkit.ContinuousMoveProvider" },
@@ -119,7 +119,7 @@ namespace UnitySkills
                 "UnityEngine.XR.Interaction.Toolkit.Locomotion.Movement.ActionBasedContinuousMoveProvider",
                 "UnityEngine.XR.Interaction.Toolkit.ActionBasedContinuousMoveProvider" },
 
-            // 移动——转向
+            // Locomotion — turning
             ["SnapTurnProvider"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.Locomotion.Turning.SnapTurnProvider",
                 "UnityEngine.XR.Interaction.Toolkit.SnapTurnProvider" },
@@ -133,7 +133,7 @@ namespace UnitySkills
                 "UnityEngine.XR.Interaction.Toolkit.Locomotion.Turning.ActionBasedContinuousTurnProvider",
                 "UnityEngine.XR.Interaction.Toolkit.ActionBasedContinuousTurnProvider" },
 
-            // 移动——系统/调度
+            // Locomotion — system/mediator
             ["LocomotionSystem"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.LocomotionSystem" },
             ["LocomotionMediator"] = new[] {
@@ -145,7 +145,7 @@ namespace UnitySkills
             ["XRUIInputModule"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.UI.XRUIInputModule" },
 
-            // 输入控制器
+            // Input controllers
             ["ActionBasedController"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.Interactors.ActionBasedController",
                 "UnityEngine.XR.Interaction.Toolkit.ActionBasedController" },
@@ -153,33 +153,33 @@ namespace UnitySkills
                 "UnityEngine.XR.Interaction.Toolkit.Interactors.XRController",
                 "UnityEngine.XR.Interaction.Toolkit.XRController" },
 
-            // XR Origin（来自 com.unity.xr.core-utils）
+            // XR Origin (from com.unity.xr.core-utils)
             ["XROrigin"] = new[] { "Unity.XR.CoreUtils.XROrigin" },
 
-            // 射线可视化
+            // Ray visualization
             ["XRInteractorLineVisual"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.Interactors.Visuals.XRInteractorLineVisual",
                 "UnityEngine.XR.Interaction.Toolkit.XRInteractorLineVisual" },
 
-            // 交互层
+            // Interaction layers
             ["InteractionLayerMask"] = new[] {
                 "UnityEngine.XR.Interaction.Toolkit.InteractionLayerMask" },
         };
 
         // ==================================================================================
-        // 类型解析
+        // Type resolution
         // ==================================================================================
 
         /// <summary>
-        /// 在所有已加载程序集中按全名查找类型。
-        /// 先用 asm.GetType()，失败再退回全程序集扫描。
+        /// Looks up a type by full name across all loaded assemblies.
+        /// Tries asm.GetType() first, falls back to a full-assembly scan on failure.
         /// </summary>
         public static Type FindTypeInAssemblies(string fullName)
         {
             if (string.IsNullOrEmpty(fullName)) return null;
             if (_typeCache.TryGetValue(fullName, out var cached)) return cached;
 
-            // 第一遍：快路径——asm.GetType(fullName)
+            // Pass 1: fast path — asm.GetType(fullName)
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
                 try
@@ -194,7 +194,7 @@ namespace UnitySkills
                 catch { /* ignore assemblies that fail to enumerate */ }
             }
 
-            // 第二遍：回退——用 GetTypes() 全量扫描（覆盖程序集转发/加载的边角情形）
+            // Pass 2: fallback — full scan with GetTypes() (covers assembly-forwarding/loading edge cases)
             var shortName = fullName.Contains(".") ? fullName.Substring(fullName.LastIndexOf('.') + 1) : fullName;
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -217,8 +217,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 借助版本感知的映射表按短名解析 XR 类型。
-        /// 先试 v3 命名空间，再回退到 v2。
+        /// Resolves an XR type by short name using the version-aware type map.
+        /// Tries the v3 namespace first, then falls back to v2.
         /// </summary>
         public static Type ResolveXRType(string shortName)
         {
@@ -240,15 +240,15 @@ namespace UnitySkills
                 }
             }
 
-            // 回退：按简单名扫描所有类型（策略同 ComponentSkills.FindComponentType）
+            // Fallback: scan all types by simple name (same strategy as ComponentSkills.FindComponentType)
             var fallback = FindTypeBySimpleName(shortName);
             _typeCache[cacheKey] = fallback;
             return fallback;
         }
 
         /// <summary>
-        /// 按简单名扫描所有程序集查找 Component 类型。
-        /// 这是最宽的搜索——较慢，但能覆盖程序集加载的边角情形。
+        /// Scans all assemblies for a Component type by simple name.
+        /// This is the widest search — slower, but covers assembly-loading edge cases.
         /// </summary>
         private static Type FindTypeBySimpleName(string simpleName)
         {
@@ -259,7 +259,7 @@ namespace UnitySkills
 
             Type result = null;
 
-            // 在所有程序集的所有类型里按简单名匹配（忽略大小写）
+            // Match by simple name (case-insensitive) across every type in every assembly
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
                 try
@@ -283,12 +283,12 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 组件操作
+        // Component operations
         // ==================================================================================
 
         /// <summary>
-        /// 用反射给 GameObject 添加 XR 组件，成功返回该组件，失败返回 null。
-        /// 先走 ResolveXRType，失败再退回全程序集扫描。
+        /// Adds an XR component to a GameObject via reflection; returns the component on success, null on failure.
+        /// Tries ResolveXRType first, falls back to a full-assembly scan on failure.
         /// </summary>
         public static Component AddXRComponent(GameObject go, string typeName)
         {
@@ -296,7 +296,7 @@ namespace UnitySkills
 
             var type = ResolveXRType(typeName);
 
-            // 最后兜底：在所有程序集里按简单名扫描类型
+            // Final fallback: scan all assemblies for the type by simple name
             if (type == null)
                 type = FindTypeBySimpleName(typeName);
 
@@ -309,7 +309,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 用反射从 GameObject 上取 XR 组件。
+        /// Gets an XR component from a GameObject via reflection.
         /// </summary>
         public static Component GetXRComponent(GameObject go, string typeName)
         {
@@ -320,7 +320,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 判断 GameObject 是否挂有某个 XR 组件。
+        /// Determines whether a GameObject has a given XR component attached.
         /// </summary>
         public static bool HasXRComponent(GameObject go, string typeName)
         {
@@ -328,11 +328,11 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 属性访问
+        // Property access
         // ==================================================================================
 
         /// <summary>
-        /// 用反射读取对象的属性值。
+        /// Reads an object's property value via reflection.
         /// </summary>
         public static object GetProperty(object obj, string propName)
         {
@@ -342,14 +342,14 @@ namespace UnitySkills
             if (prop != null && prop.CanRead)
                 return prop.GetValue(obj);
 
-            // 属性取不到时退回字段
+            // Fall back to a field if the property can't be found
             var field = obj.GetType().GetField(propName,
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             return field?.GetValue(obj);
         }
 
         /// <summary>
-        /// 用反射设置对象的属性值，自动完成枚举转换。
+        /// Sets an object's property value via reflection, converting enums automatically.
         /// </summary>
         public static bool SetProperty(object obj, string propName, object value)
         {
@@ -367,7 +367,7 @@ namespace UnitySkills
                 }
             }
 
-            // 属性取不到时退回字段
+            // Fall back to a field if the property can't be found
             var field = obj.GetType().GetField(propName,
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
             if (field != null)
@@ -384,7 +384,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 设置枚举类型的属性，按名称解析字符串值。
+        /// Sets an enum-typed property, resolving the string value by name.
         /// </summary>
         public static bool SetEnumProperty(object obj, string propName, string enumValueName)
         {
@@ -411,7 +411,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 取某属性可用的枚举值列表。
+        /// Gets the list of available enum values for a given property.
         /// </summary>
         public static string[] GetEnumValues(object obj, string propName)
         {
@@ -425,11 +425,11 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 方法调用
+        // Method invocation
         // ==================================================================================
 
         /// <summary>
-        /// 用反射调用对象上的方法。
+        /// Invokes a method on an object via reflection.
         /// </summary>
         public static object InvokeMethod(object obj, string methodName, params object[] args)
         {
@@ -443,11 +443,11 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 场景查询
+        // Scene queries
         // ==================================================================================
 
         /// <summary>
-        /// 查找场景中某 XR 类型的全部组件。
+        /// Finds every component of a given XR type in the scene.
         /// </summary>
         public static Component[] FindComponentsOfXRType(string typeName)
         {
@@ -458,7 +458,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 查找场景中某 XR 类型的第一个组件。
+        /// Finds the first component of a given XR type in the scene.
         /// </summary>
         public static Component FindFirstOfXRType(string typeName)
         {
@@ -467,7 +467,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 取某 XR 组件关键属性的可读摘要。
+        /// Gets a readable summary of a given XR component's key properties.
         /// </summary>
         public static Dictionary<string, object> GetComponentInfo(Component comp)
         {
@@ -481,24 +481,24 @@ namespace UnitySkills
             info["instanceId"] = UnityObjectIdUtility.GetObjectId(comp.gameObject);
             info["enabled"] = comp is Behaviour b ? b.enabled : true;
 
-            // 读取常见 XR 属性（属性名已对照 XRI 源码核实）
+            // Read common XR properties (property names verified against the XRI source)
             var commonProps = new[] {
-                // 交互器属性
+                // Interactor properties
                 "interactionLayers", "selectMode", "maxRaycastDistance", "lineType",
                 "hitDetectionType", "enableUIInteraction", "useForceGrab", "anchorControl",
                 "sphereCastRadius",
-                // 可交互物属性
+                // Interactable properties
                 "movementType", "throwOnDetach", "forceGravityOnDetach",
                 "smoothPosition", "smoothPositionAmount", "smoothRotation", "smoothRotationAmount",
                 "trackPosition", "trackRotation", "trackScale",
                 "useDynamicAttach", "attachEaseInTime", "throwVelocityScale",
-                // 移动相关属性
+                // Locomotion-related properties
                 "moveSpeed", "enableStrafe", "enableFly",
                 "turnAmount", "turnSpeed", "enableTurnLeftRight", "enableTurnAround",
-                // Socket 属性
+                // Socket properties
                 "showInteractableHoverMeshes", "socketActive", "recycleDelayTime",
                 "socketSnappingRadius", "socketScaleMode",
-                // 运行时状态（只读）
+                // Runtime state (read-only)
                 "isSelected", "isHovered"
             };
 
@@ -520,7 +520,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 值转换
+        // Value conversion
         // ==================================================================================
 
         private static object ConvertValue(object value, Type targetType)
@@ -528,20 +528,20 @@ namespace UnitySkills
             if (value == null) return null;
             if (targetType.IsInstanceOfType(value)) return value;
 
-            // 字符串转枚举
+            // String to enum
             if (targetType.IsEnum && value is string s)
             {
                 try { return Enum.Parse(targetType, s, ignoreCase: true); }
                 catch { return null; }
             }
 
-            // 数值类型转换
+            // Numeric type conversion
             try { return Convert.ChangeType(value, targetType); }
             catch { return null; }
         }
 
         /// <summary>
-        /// 清空类型解析缓存（装包或域重载后有用）。
+        /// Clears the type resolution cache (useful after installing a package or a domain reload).
         /// </summary>
         public static void ClearCache()
         {

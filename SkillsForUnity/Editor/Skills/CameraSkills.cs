@@ -7,29 +7,31 @@ using UnitySkills.Internal;
 namespace UnitySkills.Internal
 {
     /// <summary>
-    /// 供支持 <c>returnImage=true</c> 的截图技能（camera_screenshot、
-    /// camera_sceneview_screenshot、scene_screenshot）共用的 PNG 降采样 + base64 编码：
-    /// 让没有文件系统访问权限的 AI 客户端（如远程 / MCP）直接从 REST 响应里取像素，
-    /// 而不必去读 <c>path</c> 保存的文件。
+    /// PNG downsampling + base64 encoding shared by the screenshot skills that support
+    /// <c>returnImage=true</c> (camera_screenshot, camera_sceneview_screenshot, scene_screenshot):
+    /// lets AI clients without filesystem access (e.g. remote / MCP) pull pixels directly from the
+    /// REST response instead of having to read the file saved at <c>path</c>.
     /// </summary>
     internal static class ScreenshotImageEncoder
     {
         internal const int MinMaxDimension = 256;
         internal const int MaxMaxDimension = 4096;
 
-        // PNG 转 base64 体积会涨约 1.33 倍；这个上限让响应远低于 SkillsHttpServer
-        // 自身 10MB 的请求体上限（MaxBodySizeBytes）。
+        // PNG to base64 inflates size by roughly 1.33x; this cap keeps the response well below
+        // SkillsHttpServer's own 10MB request body cap (MaxBodySizeBytes).
         internal const int MaxBase64Bytes = 8 * 1024 * 1024;
 
         internal static int ClampMaxDimension(int maxDimension) =>
             Mathf.Clamp(maxDimension, MinMaxDimension, MaxMaxDimension);
 
         /// <summary>
-        /// 把已截好的 PNG 编成 base64；任一边超过 <paramref name="maxDimension"/> 时先降采样。
-        /// 无需缩放时直接复用 <paramref name="pngBytes"/>，不做解码再编码的往返。
-        /// 成功返回待并入调用方响应的字段（imageBase64/imageWidth/imageHeight/imageBytes）；
-        /// 失败返回 null 并把 <paramref name="error"/> 置为响应形状的错误对象——
-        /// 调用方的存盘不受影响，失败的只是 returnImage 这部分载荷。
+        /// Encodes an already-captured PNG as base64; downsamples first if either dimension
+        /// exceeds <paramref name="maxDimension"/>. Reuses <paramref name="pngBytes"/> directly
+        /// when no scaling is needed, avoiding a decode-then-encode round trip.
+        /// On success returns fields to merge into the caller's response (imageBase64/imageWidth/
+        /// imageHeight/imageBytes); on failure returns null and sets <paramref name="error"/> to a
+        /// response-shaped error object — the caller's saved file is unaffected; only the
+        /// returnImage portion of the payload fails.
         /// </summary>
         internal static Dictionary<string, object> Encode(byte[] pngBytes, int width, int height, int maxDimension, out object error)
         {
@@ -50,7 +52,7 @@ namespace UnitySkills.Internal
                 try
                 {
                     src = new Texture2D(2, 2);
-                    src.LoadImage(pngBytes); // 会把 src 尺寸改为 PNG 自身的尺寸
+                    src.LoadImage(pngBytes); // This resizes src to the PNG's own dimensions
 
                     float scale = (float)clamp / Mathf.Max(src.width, src.height);
                     int dstW = Mathf.Max(1, Mathf.RoundToInt(src.width * scale));
@@ -113,7 +115,7 @@ namespace UnitySkills.Internal
 namespace UnitySkills
 {
     /// <summary>
-    /// 相机技能：控制 Scene View 相机与游戏相机。
+    /// Camera skills: control the Scene View camera and game cameras.
     /// </summary>
     public static class CameraSkills
     {
@@ -252,8 +254,9 @@ namespace UnitySkills
             var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
             if (err != null) return err;
 
-            // 所有值都要在动相机之前解析完：否则非法 clearFlags 会被静默丢弃，
-            // 而同一次调用里的数值参数照样写了进去。
+            // All values must be parsed before touching the camera: otherwise an invalid
+            // clearFlags would be silently dropped while the numeric parameters in the same
+            // call still get written.
             if (!SkillParamUtil.TryParseOptionalEnum<CameraClearFlags>(clearFlags, "clearFlags", out var cf, out var cfError))
                 return cfError;
 
@@ -270,8 +273,9 @@ namespace UnitySkills
             {
                 var c = cam.backgroundColor;
                 cam.backgroundColor = new Color(bgR ?? c.r, bgG ?? c.g, bgB ?? c.b, bgA ?? c.a);
-                // applied 列的是参数名，而参数名是这四个通道，不是聚合后的 "backgroundColor"；
-                // 回报聚合名会让核对"发出去的是否原样回来了"的调用方对不上。
+                // "applied" lists the parameter names, and the parameter names are these four
+                // channels, not the aggregated "backgroundColor"; reporting the aggregate name
+                // would leave callers checking "did what I sent come back unchanged" unable to match it up.
                 if (bgR.HasValue) applied.Add("bgR");
                 if (bgG.HasValue) applied.Add("bgG");
                 if (bgB.HasValue) applied.Add("bgB");
@@ -308,9 +312,10 @@ namespace UnitySkills
             var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
             if (err != null) return err;
 
-            // 所有层名都要在动 mask 之前解析完。Tags & Layers 窗口里没定义的名字，
-            // LayerMask.NameToLayer 返回 -1；静默跳过的话，一个拼写错误就会得到
-            // success:true 而 cullingMask 为 0（或恰好少一位），却看不出该名字从未生效。
+            // All layer names must be resolved before touching the mask. For a name that isn't
+            // defined in the Tags & Layers window, LayerMask.NameToLayer returns -1; silently
+            // skipping it would let a typo produce success:true with cullingMask 0 (or missing
+            // exactly one bit), with no way to see that the name never took effect.
             int mask = 0;
             foreach (var ln in layerNames.Split(','))
             {
@@ -327,7 +332,7 @@ namespace UnitySkills
             return new { success = true, cullingMask = mask };
         }
 
-        /// <summary>当前 Tags &amp; Layers 窗口中已定义的全部层名（内置 + 用户自定义）。</summary>
+        /// <summary>All layer names currently defined in the Tags &amp; Layers window (built-in + user-defined).</summary>
         private static string[] GetDefinedLayerNames()
         {
             var names = new List<string>();
@@ -398,8 +403,8 @@ namespace UnitySkills
             if (sv == null)
                 return new { error = "No active Scene View found. Open a Scene View window (Window > General > Scene)." };
 
-            // 与 scene_screenshot 用同一套安全处理：剥掉所有路径成分、强制 .png、
-            // 统一存到 Assets/Screenshots/ 下。
+            // Same safety handling as scene_screenshot: strip all path components, force .png,
+            // always save under Assets/Screenshots/.
             filename = System.IO.Path.GetFileName(filename);
             if (string.IsNullOrEmpty(filename)) filename = "sceneview";
             if (!System.IO.Path.HasExtension(filename)) filename += ".png";
@@ -411,7 +416,8 @@ namespace UnitySkills
             string note = null;
             int outW = 0, outH = 0;
 
-            // 方案 2（默认）：通过反射调内部 ReadScreenPixel 抓完整 Scene View，含网格 / gizmo。
+            // Path 2 (default): reflect into the internal ReadScreenPixel to capture the full
+            // Scene View, including grid / gizmos.
             if (includeOverlays)
             {
                 var (ok, w, h, err) = TryCaptureSceneViewScreen(sv, path);
@@ -427,7 +433,8 @@ namespace UnitySkills
                 }
             }
 
-            // 方案 1（兜底 / includeOverlays=false）：用 Scene View 相机做干净的离屏渲染。
+            // Path 1 (fallback / includeOverlays=false): do a clean offscreen render with the
+            // Scene View camera.
             if (mode == null)
             {
                 var (w, h) = CaptureSceneViewCameraOffscreen(sv, path);
@@ -437,7 +444,8 @@ namespace UnitySkills
                     note = "Clean scene render from the Scene View camera angle (no grid/gizmos).";
             }
 
-            // 上面是同步写盘的；下一 tick 再刷新 AssetDatabase，让文件出现在 Project 窗口里。
+            // The write above is synchronous to disk; refresh AssetDatabase on the next tick so
+            // the file shows up in the Project window.
             EditorApplication.delayCall += () => AssetDatabase.Refresh();
 
             var result = new Dictionary<string, object> { ["success"] = true, ["path"] = path, ["width"] = outW, ["height"] = outH, ["mode"] = mode, ["note"] = note };
@@ -454,9 +462,10 @@ namespace UnitySkills
             return result;
         }
 
-        // 方案 2：直接读 Scene View 窗口在屏幕上的真实像素（含网格 / gizmo / 选中高亮）。
-        // 通过反射调内部 API UnityEditorInternal.InternalEditorUtility.ReadScreenPixel，
-        // 这样在缺少该内部 API 的 Unity 版本上程序集仍能编译（运行时优雅降级）。
+        // Path 2: read the Scene View window's actual on-screen pixels directly (includes grid /
+        // gizmos / selection highlight). Reflects into the internal API
+        // UnityEditorInternal.InternalEditorUtility.ReadScreenPixel, so the assembly still
+        // compiles on Unity versions lacking that internal API (graceful runtime degradation).
         private static (bool ok, int width, int height, string error) TryCaptureSceneViewScreen(SceneView sv, string path)
         {
             Texture2D tex = null;
@@ -468,8 +477,8 @@ namespace UnitySkills
                 if (method == null)
                     return (false, 0, 0, "ReadScreenPixel not available in this Unity version");
 
-                // ReadScreenPixel 要的是逻辑（point）坐标而非物理像素，
-                // 千万不要用 EditorGUIUtility.pixelsPerPoint 去缩放窗口 rect。
+                // ReadScreenPixel wants logical (point) coordinates, not physical pixels — never
+                // scale the window rect with EditorGUIUtility.pixelsPerPoint.
                 var ew = (EditorWindow)sv;
                 var pos = ew.position;
                 int w = (int)pos.width;
@@ -497,13 +506,13 @@ namespace UnitySkills
             }
         }
 
-        // 方案 1：把 Scene View 相机渲到离屏 RenderTexture（干净画面，无编辑器叠加层），
-        // 与 camera_screenshot 的离屏渲染写法一致。
+        // Path 1: render the Scene View camera to an offscreen RenderTexture (clean image, no
+        // editor overlays), the same approach used by camera_screenshot's offscreen render.
         private static (int width, int height) CaptureSceneViewCameraOffscreen(SceneView sv, string path)
         {
             var cam = sv.camera;
-            // 相机的 pixel 尺寸才是真正的视口大小（不含工具栏），
-            // 用它离屏渲染才能保持正确的宽高比。
+            // The camera's pixel size is the actual viewport size (excludes the toolbar);
+            // offscreen rendering with it keeps the correct aspect ratio.
             int w = Mathf.Max(1, cam.pixelWidth);
             int h = Mathf.Max(1, cam.pixelHeight);
 

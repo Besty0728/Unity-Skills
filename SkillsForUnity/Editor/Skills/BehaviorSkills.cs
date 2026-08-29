@@ -13,17 +13,19 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// 可选包 Unity Behavior（com.unity.behavior）的反射桥。
+    /// Reflection bridge for the optional Unity Behavior package (com.unity.behavior).
     ///
-    /// 该包不是 com.besty.unity-skills 的声明依赖，所以这里所有类型、成员、方法都在运行时
-    /// 按名解析，对任何 Unity.Behavior 类型都没有编译期引用。类型查找有缓存；每次成员查找
-    /// 都做 null 检查，缺失时给出结构化的 API 不匹配错误而非抛异常。
+    /// This package isn't a declared dependency of com.besty.unity-skills, so every type, member, and
+    /// method here is resolved by name at runtime, with no compile-time reference to any Unity.Behavior
+    /// type. Type lookups are cached; every member lookup does a null check, and reports a structured
+    /// API-mismatch error rather than throwing when something is missing.
     ///
-    /// 下列成员名取自 com.unity.behavior 1.0.16 源码（needle-mirror/com.unity.behavior），
-    /// 公开部分与已发布的 Scripting API 交叉核对过：
+    /// The member names below were taken from the com.unity.behavior 1.0.16 source
+    /// (needle-mirror/com.unity.behavior); the public parts were cross-checked against the published
+    /// Scripting API:
     /// https://docs.unity3d.com/Packages/com.unity.behavior@1.0/api/Unity.Behavior.html
-    /// 属于 internal 的成员（BehaviorAuthoringGraph、GraphAsset、BlackboardAsset）
-    /// 在候选列表处的注释里标注了来源源码文件。
+    /// For members that are internal (BehaviorAuthoringGraph, GraphAsset, BlackboardAsset), the source
+    /// file they came from is noted in the comment at the candidate list.
     /// </summary>
     internal static class BehaviorReflectionHelper
     {
@@ -34,17 +36,17 @@ namespace UnitySkills
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
         // ==================================================================================
-        // 类型解析（带缓存）
+        // Type resolution (cached)
         // ==================================================================================
 
         /// <summary>
-        /// 短名 -> 候选全限定名，按顺序逐个探测。列多个候选是为了 1.x 线内发生命名空间
-        /// 迁移时仍能解析到。
+        /// Short name -> candidate fully-qualified names, probed in order. Multiple candidates are listed
+        /// so resolution still works across a namespace migration within the 1.x line.
         /// </summary>
         private static readonly Dictionary<string, string[]> TypeCandidates =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
-                // 运行时部分 —— public，Scripting API 有文档。
+                // Runtime part — public, documented in the Scripting API.
                 ["BehaviorGraphAgent"] = new[] { "Unity.Behavior.BehaviorGraphAgent" },
                 ["BehaviorGraph"] = new[] { "Unity.Behavior.BehaviorGraph" },
                 ["BlackboardReference"] = new[] { "Unity.Behavior.BlackboardReference" },
@@ -52,14 +54,14 @@ namespace UnitySkills
                 ["BlackboardVariable"] = new[] { "Unity.Behavior.BlackboardVariable" },
                 ["RuntimeBlackboardAsset"] = new[] { "Unity.Behavior.RuntimeBlackboardAsset" },
 
-                // 编辑（authoring）部分 —— internal 类型，源码位于 Authoring/Asset/*.cs 与
-                // Tools/Graph/Asset/*.cs；Assembly.GetType 能正常解析 internal 类型。
+                // Editing (authoring) part — internal types, source located under Authoring/Asset/*.cs and
+                // Tools/Graph/Asset/*.cs; Assembly.GetType resolves internal types just fine.
                 ["BehaviorAuthoringGraph"] = new[] { "Unity.Behavior.BehaviorAuthoringGraph" },
                 ["BehaviorBlackboardAuthoringAsset"] = new[] { "Unity.Behavior.BehaviorBlackboardAuthoringAsset" },
                 ["GraphAsset"] = new[] { "Unity.Behavior.GraphFramework.GraphAsset" },
                 ["BlackboardAsset"] = new[] { "Unity.Behavior.GraphFramework.BlackboardAsset" },
 
-                // authoring 资源用到的 public 模型类型。
+                // Public model types used by authoring assets.
                 ["VariableModel"] = new[] { "Unity.Behavior.GraphFramework.VariableModel" },
                 ["NodeModel"] = new[] { "Unity.Behavior.GraphFramework.NodeModel" }
             };
@@ -93,10 +95,10 @@ namespace UnitySkills
         public static Type BlackboardVariableType => Resolve("BlackboardVariable");
         public static Type VariableModelType => Resolve("VariableModel");
 
-        /// <summary>agent 组件与运行时图类型都能解析出来，即视为该包可用。</summary>
+        /// <summary>The package is considered available once both the agent component and runtime graph types resolve.</summary>
         public static bool IsInstalled => AgentType != null && GraphType != null;
 
-        /// <summary>已安装的包版本；包管理器没见过该包时返回 null。</summary>
+        /// <summary>The installed package version; returns null if the package manager has never seen this package.</summary>
         public static string InstalledVersion
         {
             get
@@ -106,7 +108,7 @@ namespace UnitySkills
             }
         }
 
-        /// <summary>缺包时所有技能统一返回的结构化响应。</summary>
+        /// <summary>The structured response every skill returns uniformly when the package is missing.</summary>
         public static object NotInstalled() => new
         {
             error = "Unity Behavior package (com.unity.behavior) is not installed. " +
@@ -123,7 +125,7 @@ namespace UnitySkills
             docs = DocsUrl
         };
 
-        /// <summary>包能解析到、但成员布局与本集成不再匹配时的结构化响应。</summary>
+        /// <summary>The structured response when the package resolves but its member layout no longer matches this integration.</summary>
         public static object ApiMismatch(string detail) => new
         {
             error = $"Unity Behavior API mismatch: {detail}",
@@ -144,12 +146,12 @@ namespace UnitySkills
         public static void ClearCache() => ResolvedTypes.Clear();
 
         // ==================================================================================
-        // 成员访问 —— 每次查找失败都返回结构化错误，绝不抛异常
+        // Member access — every failed lookup returns a structured error, never throws
         // ==================================================================================
 
         /// <summary>
-        /// 按候选名依次查找并读取第一个匹配的成员（先属性、后字段）。
-        /// 全部候选都不存在时返回 false 并给出描述性错误。
+        /// Looks up candidate names in order and reads the first matching member (properties first, then fields).
+        /// Returns false with a descriptive error when none of the candidates exist.
         /// </summary>
         public static bool TryGetMember(object target, out object value, out string error, params string[] names)
         {
@@ -200,7 +202,7 @@ namespace UnitySkills
             return false;
         }
 
-        /// <summary>读取成员，不存在时返回 null。仅用于描述性输出。</summary>
+        /// <summary>Reads a member, returning null if it doesn't exist. Used only for descriptive output.</summary>
         public static object GetMemberOrNull(object target, params string[] names)
         {
             return TryGetMember(target, out var value, out _, names) ? value : null;
@@ -254,7 +256,7 @@ namespace UnitySkills
             return false;
         }
 
-        /// <summary>按名调用无参或简单参数的实例方法，方法不存在时不报错。</summary>
+        /// <summary>Calls a parameterless or simple-parameter instance method by name; no error if the method doesn't exist.</summary>
         public static bool TryInvoke(object target, string methodName, object[] args, out object result, out string error)
         {
             result = null;
@@ -313,12 +315,13 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 资源查找
+        // Asset lookup
         // ==================================================================================
 
         /// <summary>
-        /// 定位 behavior graph 资源。主过滤器用 authoring 资源类型（"Behavior Graph" .asset
-        /// 文件的主资源）；再以运行时类型兜底，应对类型索引只认烘焙出的子资源的情况。
+        /// Locates behavior graph assets. The primary filter uses the authoring asset type (the main asset
+        /// of a "Behavior Graph" .asset file); falls back to the runtime type for cases where the type
+        /// index only recognizes the baked sub-asset.
         /// </summary>
         public static string[] FindGraphAssetPaths(string folder)
         {
@@ -342,7 +345,7 @@ namespace UnitySkills
                     paths.Add(path);
                 }
 
-                // authoring 过滤器一旦有命中就以它为准。
+                // Once the authoring filter has a hit, it takes priority.
                 if (paths.Count > 0) break;
             }
 
@@ -350,7 +353,7 @@ namespace UnitySkills
             return paths.ToArray();
         }
 
-        /// <summary>加载指定路径上的 authoring 图（主资源）；不是的话说明原因。</summary>
+        /// <summary>Loads the authoring graph (main asset) at the given path; explains why if it isn't one.</summary>
         public static bool TryLoadAuthoringGraph(string assetPath, out UnityEngine.Object graph, out object error)
         {
             graph = null;
@@ -393,8 +396,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 取 behavior graph 文件中作为子资源存放的、已烘焙的运行时 BehaviorGraph。
-        /// BehaviorGraphAgent.Graph 要的是这个类型，不是 authoring 资源。
+        /// Gets the baked runtime BehaviorGraph stored as a sub-asset inside the behavior graph file.
+        /// BehaviorGraphAgent.Graph needs this type, not the authoring asset.
         /// </summary>
         public static bool TryLoadRuntimeGraph(string assetPath, out UnityEngine.Object runtimeGraph, out object error)
         {
@@ -431,21 +434,21 @@ namespace UnitySkills
             return true;
         }
 
-        /// <summary>取存放设计期变量列表的 authoring blackboard 资源。</summary>
+        /// <summary>Gets the authoring blackboard asset holding the design-time variable list.</summary>
         public static bool TryGetAuthoringBlackboard(UnityEngine.Object authoringGraph, out object blackboard, out object error)
         {
             blackboard = null;
             error = null;
 
-            // GraphAsset.Blackboard 是 public 字段（Tools/Graph/Asset/GraphAsset.cs）；
-            // MainBlackboardAuthoringAsset 是 BehaviorAuthoringGraph 层的访问器。
+            // GraphAsset.Blackboard is a public field (Tools/Graph/Asset/GraphAsset.cs);
+            // MainBlackboardAuthoringAsset is the accessor at the BehaviorAuthoringGraph layer.
             if (!TryGetMember(authoringGraph, out var value, out var memberError, "Blackboard", "MainBlackboardAuthoringAsset"))
             {
                 error = ApiMismatch(memberError);
                 return false;
             }
 
-            // Unity 重载的 == 还能识别已销毁 / 引用丢失的资源。
+            // Unity's overloaded == also recognizes destroyed / reference-lost assets.
             var isMissing = value == null || (value is UnityEngine.Object unityObject && unityObject == null);
             if (isMissing)
             {
@@ -461,13 +464,13 @@ namespace UnitySkills
             return true;
         }
 
-        /// <summary>枚举 BlackboardAsset 中的 authoring VariableModel 条目。</summary>
+        /// <summary>Enumerates the authoring VariableModel entries in a BlackboardAsset.</summary>
         public static bool TryGetAuthoringVariables(object blackboardAsset, out IList variables, out object error)
         {
             variables = null;
             error = null;
 
-            // BlackboardAsset.Variables 的类型是 List<VariableModel>（Tools/Graph/Asset/BlackboardAsset.cs）。
+            // BlackboardAsset.Variables is typed List<VariableModel> (Tools/Graph/Asset/BlackboardAsset.cs).
             if (!TryGetMember(blackboardAsset, out var value, out var memberError, "Variables"))
             {
                 error = ApiMismatch(memberError);
@@ -484,7 +487,7 @@ namespace UnitySkills
             return true;
         }
 
-        /// <summary>枚举从 BehaviorGraph 可达的运行时 BlackboardVariable 条目。</summary>
+        /// <summary>Enumerates the runtime BlackboardVariable entries reachable from a BehaviorGraph.</summary>
         public static IList GetRuntimeVariables(object behaviorGraph)
         {
             if (behaviorGraph == null) return null;
@@ -499,10 +502,10 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 描述辅助
+        // Description helpers
         // ==================================================================================
 
-        /// <summary>描述一个 authoring VariableModel（名称 / 类型 / 默认值 / 标记）。</summary>
+        /// <summary>Describes an authoring VariableModel (name / type / default value / flags).</summary>
         public static object DescribeAuthoringVariable(object variableModel)
         {
             if (variableModel == null) return null;
@@ -521,7 +524,7 @@ namespace UnitySkills
             };
         }
 
-        /// <summary>描述一个运行时 BlackboardVariable（名称 / 类型 / 当前值）。</summary>
+        /// <summary>Describes a runtime BlackboardVariable (name / type / current value).</summary>
         public static object DescribeRuntimeVariable(object blackboardVariable, string source)
         {
             if (blackboardVariable == null) return null;
@@ -538,7 +541,7 @@ namespace UnitySkills
             };
         }
 
-        /// <summary>解析指定变量名声明的 CLR 类型：先查 override，再查图的 blackboard。</summary>
+        /// <summary>Resolves the CLR type declared for a given variable name: checks the override first, then the graph's blackboard.</summary>
         public static Type FindVariableType(IEnumerable candidates, string variableName)
         {
             if (candidates == null || string.IsNullOrEmpty(variableName)) return null;
@@ -568,7 +571,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 值转换 —— 覆盖 agent 实际会驱动的那些 blackboard 类型
+        // Value conversion — covers the blackboard types an agent actually drives at runtime
         // ==================================================================================
 
         public static bool TryConvertValue(object raw, Type targetType, out object converted, out string error)
@@ -688,7 +691,7 @@ namespace UnitySkills
             return false;
         }
 
-        /// <summary>接受 [1,2,3]、{"x":1,"y":2}、{"r":1,"g":0}、"1,2,3" 或裸数字。</summary>
+        /// <summary>Accepts [1,2,3], {"x":1,"y":2}, {"r":1,"g":0}, "1,2,3", or a bare number.</summary>
         private static bool TryReadComponents(object raw, out float[] parts, out string error)
         {
             parts = Array.Empty<float>();
@@ -764,7 +767,7 @@ namespace UnitySkills
             return true;
         }
 
-        /// <summary>按资源路径、Hierarchy 路径或场景对象名解析 UnityEngine.Object 类型的变量。</summary>
+        /// <summary>Resolves a UnityEngine.Object-typed variable by asset path, Hierarchy path, or scene object name.</summary>
         private static bool TryConvertUnityObject(object raw, Type targetType, out object converted, out string error)
         {
             converted = null;
@@ -834,20 +837,22 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// Unity Behavior（com.unity.behavior）技能：behavior graph 资源的发现与检视、
-    /// BehaviorGraphAgent 挂接、blackboard 变量读写。
+    /// Unity Behavior (com.unity.behavior) skills: discovering and inspecting behavior graph assets,
+    /// attaching BehaviorGraphAgent, reading and writing blackboard variables.
     ///
-    /// 该包是可选的，全程通过反射访问（见 <see cref="BehaviorReflectionHelper"/>）；
-    /// 缺包时每个技能都返回同一份结构化安装提示，既不会编译失败也不会抛异常。
+    /// This package is optional, and is accessed entirely through reflection (see
+    /// <see cref="BehaviorReflectionHelper"/>); when the package is missing, every skill returns the same
+    /// structured installation hint, without a compile failure or a thrown exception.
     ///
-    /// 节点级的图拓扑编辑刻意不在范围内，详见模块 SKILL.md 的 Limitations 一节。
+    /// Node-level graph topology editing is deliberately out of scope; see the Limitations section of the
+    /// module's SKILL.md.
     /// </summary>
     public static class BehaviorSkills
     {
         private const string PackageId = BehaviorReflectionHelper.PackageId;
 
         // ==================================================================================
-        // 状态（1 个技能）
+        // Status (1 skill)
         // ==================================================================================
 
         [UnitySkill("behavior_status", "Report Unity Behavior (com.unity.behavior) availability: whether the package is installed, its version, which core types resolved, and how many behavior graph assets and scene agents exist",
@@ -905,7 +910,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 图资源（3 个技能）
+        // Graph assets (3 skills)
         // ==================================================================================
 
         [UnitySkill("behavior_graph_list", "List behavior graph assets in the project with node count, blackboard variable count, and whether the runtime graph has been baked",
@@ -980,7 +985,7 @@ namespace UnitySkills
             if (!BehaviorReflectionHelper.TryLoadAuthoringGraph(assetPath, out var authoring, out var loadError))
                 return loadError;
 
-            // GraphAsset.Nodes 的类型是 List<NodeModel>（Tools/Graph/Asset/GraphAsset.cs）。
+            // GraphAsset.Nodes is typed List<NodeModel> (Tools/Graph/Asset/GraphAsset.cs).
             if (!BehaviorReflectionHelper.TryGetMember(authoring, out var nodesValue, out var nodesError, "Nodes"))
                 return BehaviorReflectionHelper.ApiMismatch(nodesError);
 
@@ -1107,9 +1112,9 @@ namespace UnitySkills
                 return new { error = $"Failed to create asset at {resolvedPath}: {ex.Message}" };
             }
 
-            // Behavior 的资源后处理器会在导入时调用 BehaviorAuthoringGraph.ValidateAsset()，
-            // 由它创建 blackboard、烘焙出的 BehaviorGraph 子资源、debug info 子资源
-            // 以及必需的 Start 根节点。
+            // Behavior's asset postprocessor calls BehaviorAuthoringGraph.ValidateAsset() on import,
+            // which is what creates the blackboard, the baked BehaviorGraph sub-asset, the debug info
+            // sub-asset, and the required Start root node.
             AssetDatabase.ImportAsset(resolvedPath, ImportAssetOptions.ForceUpdate);
 
             var created = AssetDatabase.LoadMainAssetAtPath(resolvedPath);
@@ -1119,8 +1124,8 @@ namespace UnitySkills
             string bakeWarning = null;
             if (!BehaviorReflectionHelper.TryLoadRuntimeGraph(resolvedPath, out _, out _))
             {
-                // 兜底：某些导入顺序下后处理器还没完成烘焙。
-                // 这两个成员在 BehaviorAuthoringGraph 上都是 public
+                // Fallback: in some import orderings the postprocessor hasn't finished baking yet.
+                // Both of these members are public on BehaviorAuthoringGraph
                 // （Authoring/Asset/BehaviorAuthoringGraph.cs）。
                 BehaviorReflectionHelper.TryInvoke(created, "EnsureAuthoringDataIsUpToDate", null, out _, out _);
                 BehaviorReflectionHelper.TryInvoke(created, "BuildRuntimeGraph", new object[] { true }, out _, out _);
@@ -1152,7 +1157,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Agent（4 个技能）
+        // Agent (4 skills)
         // ==================================================================================
 
         [UnitySkill("behavior_agent_add", "Add a BehaviorGraphAgent component to a GameObject, optionally binding a behavior graph asset in the same call",
@@ -1175,7 +1180,7 @@ namespace UnitySkills
             var (go, findError) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (findError != null) return findError;
 
-            // 先解析图再动场景，避免路径有误时留下一个配置到一半的 agent。
+            // Resolve the graph before touching the scene, so a bad path doesn't leave behind a half-configured agent.
             UnityEngine.Object runtimeGraph = null;
             if (!string.IsNullOrWhiteSpace(graphAssetPath))
             {
@@ -1362,18 +1367,19 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // Blackboard（2 个技能）
+        // Blackboard (2 skills)
         // ==================================================================================
 
         [UnitySkill("behavior_blackboard_list", "List blackboard variables with name, type, and current value. Pass graphAssetPath to read the graph asset's authoring defaults, or a GameObject to read the agent's graph variables plus its agent-level overrides",
             Category = SkillCategory.Behavior, Operation = SkillOperation.Query,
             Tags = new[] { "behavior", "blackboard", "variable", "list", "ai", "behavior-tree" },
             Outputs = new[] { "source", "count", "variables" },
-            // 真正的二选一：给图资源路径读 authoring 默认值，给 GameObject 定位符读某个 agent
-            // 的运行时变量。只声明 "gameObject" 会误拒合法的 {graphAssetPath: …} 请求体，
-            // 所以这个 token 同时点出两侧，由 SkillPlanningService._requiredInputGroups 映射为
-            // {name, path, instanceId, graphAssetPath}——空请求体在入口就被拒，
-            // 而不是执行到手写的 "Provide either …" 错误。
+            // This is a genuine either/or: a graph asset path reads authoring defaults, a GameObject locator
+            // reads a specific agent's runtime variables. Declaring only "gameObject" would wrongly reject
+            // a valid {graphAssetPath: …} request body, so this token names both sides, which
+            // SkillPlanningService._requiredInputGroups maps to {name, path, instanceId, graphAssetPath} —
+            // an empty request body gets rejected right at the entry point, rather than running all the way
+            // to the hand-written "Provide either …" error.
             RequiresInput = new[] { "gameObject|graphAssetPath" },
             ReadOnly = true,
             RequiresPackages = new[] { PackageId },
@@ -1496,7 +1502,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 内部实现
+        // Internal implementation
         // ==================================================================================
 
         private static object SetAgentBlackboardVariable(string variableName, object value, string name,
@@ -1542,8 +1548,9 @@ namespace UnitySkills
                 };
             }
 
-            // BehaviorGraphAgent.SetVariableValue<TValue>(string, TValue) 在 agent 尚未初始化时
-            // （编辑模式下始终如此）写的是 agent 级 override，播放模式下则写到运行中的图实例。
+            // BehaviorGraphAgent.SetVariableValue<TValue>(string, TValue) writes an agent-level override
+            // when the agent isn't yet initialized (always true in edit mode), and writes to the running
+            // graph instance in play mode.
             var setter = BehaviorReflectionHelper.AgentType
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance)
                 .FirstOrDefault(candidate =>
@@ -1658,8 +1665,8 @@ namespace UnitySkills
             if (!BehaviorReflectionHelper.TrySetMember(target, converted, out var setError, "ObjectValue"))
                 return BehaviorReflectionHelper.ApiMismatch(setError);
 
-            // 复刻 BehaviorAuthoringGraph.RebuildGraphAndBlackboardRuntimeData() 的顺序：
-            // 先标脏并重烘 blackboard，再重烘并保存图，使运行时子资源与之一致。
+            // Mirrors the order of BehaviorAuthoringGraph.RebuildGraphAndBlackboardRuntimeData():
+            // mark the blackboard dirty and rebake it first, then rebake and save the graph, so the runtime sub-assets stay in sync with it.
             BehaviorReflectionHelper.TryInvoke(blackboard, "SetAssetDirty", null, out _, out _);
             BehaviorReflectionHelper.TryInvoke(blackboard, "BuildRuntimeBlackboard", null, out _, out _);
             BehaviorReflectionHelper.TryInvoke(authoring, "SetAssetDirty", new object[] { true }, out _, out _);
@@ -1683,7 +1690,7 @@ namespace UnitySkills
             };
         }
 
-        /// <summary>定位 GameObject，并要求其上挂有 BehaviorGraphAgent。</summary>
+        /// <summary>Locates the GameObject and requires that it has a BehaviorGraphAgent attached.</summary>
         private static (Component agent, object error) FindAgentOrError(string name, int instanceId, string path)
         {
             var agentType = BehaviorReflectionHelper.AgentType;
@@ -1707,8 +1714,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把调用方给的 authoring 资源路径解析为已烘焙的运行时 BehaviorGraph。
-        /// 成功返回 null，失败返回结构化错误对象。
+        /// Resolves the caller-supplied authoring asset path to the baked runtime BehaviorGraph.
+        /// Returns null on success, a structured error object on failure.
         /// </summary>
         private static object ResolveRuntimeGraph(string graphAssetPath, out UnityEngine.Object runtimeGraph)
         {
@@ -1720,9 +1727,10 @@ namespace UnitySkills
             if (!BehaviorReflectionHelper.TryLoadRuntimeGraph(graphAssetPath, out runtimeGraph, out var runtimeError))
                 return runtimeError;
 
-            // BehaviorGraphAgent.Graph 的 setter 会遍历 RootGraph.BlackboardGroupReferences，
-            // 未编译的图会在包内部抛异常，所以提前拒绝。注意：RootGraph 成员本身缺失说明是
-            // 布局变更而非未编译，那种情况放过，让它以 set 错误的形式暴露。
+            // BehaviorGraphAgent.Graph's setter iterates RootGraph.BlackboardGroupReferences,
+            // and an uncompiled graph throws inside the package, so it's rejected up front. Note: RootGraph
+            // being missing as a member itself indicates a layout change rather than an uncompiled graph;
+            // that case is let through, so it surfaces as a set error instead.
             if (BehaviorReflectionHelper.TryGetMember(runtimeGraph, out var rootGraph, out _, "RootGraph") &&
                 rootGraph == null)
             {
@@ -1742,7 +1750,7 @@ namespace UnitySkills
             return null;
         }
 
-        /// <summary>把已解析好的运行时图写到 agent 上。成功返回 null。</summary>
+        /// <summary>Writes an already-resolved runtime graph onto the agent. Returns null on success.</summary>
         private static object AssignResolvedGraph(Component agent, UnityEngine.Object runtimeGraph)
         {
             Undo.RegisterCompleteObjectUndo(agent, "Set Behavior Graph");
@@ -1754,7 +1762,7 @@ namespace UnitySkills
             return null;
         }
 
-        /// <summary>为图信息输出描述一个 authoring NodeModel；成员缺失时降级为 null。</summary>
+        /// <summary>Describes an authoring NodeModel for graph-info output; falls back to null if a member is missing.</summary>
         private static object DescribeNodeModel(object node)
         {
             var position = BehaviorReflectionHelper.GetMemberOrNull(node, "Position");

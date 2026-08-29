@@ -9,30 +9,31 @@ using UnityEngine;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 2026-08-22 复审修复批次的回归覆盖：
+    /// Regression coverage for the 2026-08-22 review-fix batch:
     /// <list type="bullet">
-    /// <item>#7 —— SkillErrorClassifier.PropertyNotOnTarget 里裸的 "material"/"shader" 锚点</item>
-    /// <item>#12 —— 五个批量技能的 Outputs 声明里漏了 failCount</item>
-    /// <item>#13 —— SmartReferenceBind 里硬编码的 "SEMANTIC_INVALID" 字面量</item>
-    /// <item>#14 —— PrimeTweenSkills.Stringify 没有展平 struct 类型的配置值</item>
+    /// <item>#7 — the bare "material"/"shader" anchors in SkillErrorClassifier.PropertyNotOnTarget</item>
+    /// <item>#12 — five batch skills' Outputs declarations missing failCount</item>
+    /// <item>#13 — the hardcoded "SEMANTIC_INVALID" literal in SmartReferenceBind</item>
+    /// <item>#14 — PrimeTweenSkills.Stringify not flattening struct-typed configuration values</item>
     /// </list>
-    /// #11（ModelSkills 可写检查的顺序）与 #17（UnitySkillsWindow 的 EditorUiScheduler 路由）在这里
-    /// 没有覆盖，原因见修复报告：#11 需要一个真实的 .fbx 资源（本仓库没有）外加一个 VCS provider
-    /// mock，才能观察到它调整顺序所围绕的 MakeEditable 副作用；#17 需要一个活的 UI Toolkit panel
-    /// （已 attach 的 VisualElement.panel），EditorUiScheduler.RepeatSafe 的守卫才会真的执行回调，
-    /// 而那意味着要在测试里立起一个真正的 EditorWindow。
+    /// #11 (the ordering of ModelSkills' writability check) and #17 (UnitySkillsWindow's EditorUiScheduler
+    /// routing) are not covered here — see the fix report for why: #11 needs a real .fbx asset (this repo has
+    /// none) plus a VCS provider mock, to observe the MakeEditable side effect the reordering revolves around;
+    /// #17 needs a live UI Toolkit panel (an already-attached VisualElement.panel) before
+    /// EditorUiScheduler.RepeatSafe's guard will actually run the callback, which means standing up a real
+    /// EditorWindow inside the test.
     ///
-    /// <para>另加 2026-08-23 的 8090 真机批次：
+    /// <para>Also the 2026-08-23 live-8090 batch:
     /// <list type="bullet">
-    /// <item>L3 —— Addressables 的 group/profile 查找失败被错误路由到 gameobject_find / asset_find</item>
-    /// <item>L4 —— YooAsset 运行时校验作业被路由到根本看不见它们的 job_list</item>
-    /// <item>L5 —— prefab_set_property 没有 Quaternion 分支（所有 localRotation 写入都失败）</item>
-    /// <item>L7 —— 冒烟探针的夹具处理：会抛异常的 lightmap getter + 放宽后的白名单</item>
+    /// <item>L3 — Addressables group/profile lookup failures were misrouted to gameobject_find / asset_find</item>
+    /// <item>L4 — YooAsset runtime validation jobs were routed to job_list, which can't see them at all</item>
+    /// <item>L5 — prefab_set_property had no Quaternion branch (every localRotation write failed)</item>
+    /// <item>L7 — smoke-probe fixture handling: a lightmap getter that throws + a relaxed whitelist</item>
     /// </list>
-    /// L1/L2（Addressables 组改名回显、group_create 的必填 groupName）放在它们所属的端点旁：
-    /// AddressablesSkillsTests 需要装了包才能观察到改名，而 schema 必填断言并入了
-    /// WorkflowPersistenceTests 里已有的那份清单。L6（十二个技能缺 RequiresInput）是全注册表扫描，
-    /// 因此归 SkillMetadataGuardTests。</para>
+    /// L1/L2 (Addressables group-rename echo, group_create's required groupName) live next to the endpoints
+    /// they belong to: AddressablesSkillsTests needs the package installed to observe the rename, and the
+    /// schema-required assertion was folded into the existing list in WorkflowPersistenceTests. L6 (twelve
+    /// skills missing RequiresInput) is a registry-wide scan, so it belongs to SkillMetadataGuardTests.</para>
     /// </summary>
     [TestFixture]
     public class ReviewFixModuleTests
@@ -58,14 +59,15 @@ namespace UnitySkills.Tests.Core
             GameObjectFinder.InvalidateCache();
         }
 
-        // ---------- #7：收紧 SkillErrorClassifier.PropertyNotOnTarget 的锚点 ----------
+        // ---------- #7: tightening the anchors in SkillErrorClassifier.PropertyNotOnTarget ----------
 
         /// <summary>
-        /// 这三条字面量过去会命中 material_get_properties（前两条，经裸的 "shader"/"material" 子串检查）
-        /// 或 component_get_serialized_properties（第三条，经裸的 "serialized" 检查），尽管它们指的都不是
-        /// 任何 material/shader/component 实例上真实存在的属性——它们是 GraphicsSettings/ShaderGraph
-        /// 的内部查找失败。现在三条都会落到通用的"属性未找到"兜底分支，其唯一 SuggestedFix 以
-        /// component_get_properties 打头。
+        /// These three literals used to hit material_get_properties (the first two, via a bare "shader"/"material"
+        /// substring check) or component_get_serialized_properties (the third, via a bare "serialized" check),
+        /// even though none of them refer to a property that actually exists on any material/shader/component
+        /// instance — they are internal GraphicsSettings/ShaderGraph lookup failures. Now all three fall
+        /// through to the generic "property not found" fallback branch, whose only SuggestedFix leads with
+        /// component_get_properties.
         /// </summary>
         [TestCase("Always Included Shaders property not found in GraphicsSettings")]
         [TestCase("Shader Graph property type not found: Vector4")]
@@ -84,8 +86,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// #7 的修复不得回退的部分：真正的 material/shader 属性查找失败，依旧照原样路由到
-        /// material_get_properties。
+        /// The part #7's fix must not regress: a genuine material/shader property lookup failure still routes
+        /// to material_get_properties, unchanged.
         /// </summary>
         [TestCase("Material does not have a color property. Tried: _Color, _BaseColor")]
         [TestCase("No color property found on material")]
@@ -99,7 +101,7 @@ namespace UnitySkills.Tests.Core
                 $"'{message}' should still route to material_get_properties.");
         }
 
-        /// <summary>真正的组件序列化属性查找失败，必须保留它修复前的那条路由。</summary>
+        /// <summary>A genuine component serialized-property lookup failure must keep the routing it had before the fix.</summary>
         [Test]
         public void Classify_ComponentSerializedPropertyMiss_StillRoutesToSerializedPropertiesReader()
         {
@@ -116,11 +118,11 @@ namespace UnitySkills.Tests.Core
                 .Select(fix => fix.skill)
                 .ToArray();
 
-        // ---------- #12：批量技能必须声明 failCount，因为 BatchExecutor 一定会返回它 ----------
+        // ---------- #12: batch skills must declare failCount, since BatchExecutor always returns it ----------
 
         /// <summary>
-        /// 这五个都走 BatchExecutor.Execute，其信封无条件携带 totalItems/successCount/failCount/results
-        /// （见 BatchExecutor.cs）——Outputs 就该照实声明。
+        /// All five of these go through BatchExecutor.Execute, whose envelope unconditionally carries
+        /// totalItems/successCount/failCount/results (see BatchExecutor.cs) — Outputs should declare that faithfully.
         /// </summary>
         [TestCase("material_create_batch")]
         [TestCase("material_assign_batch")]
@@ -134,16 +136,17 @@ namespace UnitySkills.Tests.Core
                 $"{skillName}'s Outputs omits failCount even though its BatchExecutor envelope carries it.");
         }
 
-        // ---------- #13：SmartReferenceBind 的 SEMANTIC_INVALID 现在取自 SkillParamUtil ----------
+        // ---------- #13: SmartReferenceBind's SEMANTIC_INVALID now comes from SkillParamUtil ----------
 
         private const string BindTargetName = "__review_fix_bind_target__";
         private const string BindSourceName = "__review_fix_bind_source__";
 
         /// <summary>
-        /// sharedMaterials 是 Material[]，而 sourceTag/sourceName 只可能解析到 GameObject，
-        /// 所以这个元素类型永远填不满，应当一开始就以 SEMANTIC_INVALID 拒掉，而不是静默清空该字段。
-        /// 这条测试经 SkillRouter 端到端地检验 SmartSkills.cs 现在从
-        /// SkillParamUtil.SemanticInvalidCode 取用的那个字面量，而不是孤立地再断言一遍字符串常量。
+        /// sharedMaterials is Material[], and sourceTag/sourceName can only ever resolve to a GameObject, so
+        /// this element type can never be satisfied — it should be rejected up front with SEMANTIC_INVALID,
+        /// not have the field silently cleared. This test checks end-to-end through SkillRouter that
+        /// SmartSkills.cs now pulls that literal from SkillParamUtil.SemanticInvalidCode, rather than asserting
+        /// the string constant a second time in isolation.
         /// </summary>
         [Test]
         public void SmartReferenceBind_UnsupportedElementType_StillReportsSemanticInvalid()
@@ -169,7 +172,7 @@ namespace UnitySkills.Tests.Core
             }
         }
 
-        // ---------- #14：PrimeTweenSkills.Stringify 必须展平 struct 值，而不只是枚举 ----------
+        // ---------- #14: PrimeTweenSkills.Stringify must flatten struct values, not just enums ----------
 
         private enum ProbeEnum { First, Second }
 
@@ -180,8 +183,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// PrimeTween.UpdateType 的形状:enum-like struct,状态在私有枚举字段里,不覆写
-        /// ToString()——默认 ValueType.ToString() 只给类型名,值不可见。
+        /// PrimeTween.UpdateType's shape: an enum-like struct whose state lives in a private enum field, without
+        /// overriding ToString() — the default ValueType.ToString() only gives the type name, the value stays invisible.
         /// </summary>
         private struct ProbeEnumLikeStruct
         {
@@ -201,8 +204,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 真正的 bug：PrimeTween 较新版本的 UpdateType 是 struct 而不是 enum，于是它从原先只处理枚举的
-        /// 分支漏了下去，配置的匿名对象序列化器为它输出了 "{}"。
+        /// The real bug: in newer PrimeTween versions, UpdateType is a struct rather than an enum, so it fell
+        /// through the branch that originally only handled enums, and the configured anonymous-object
+        /// serializer output "{}" for it.
         /// </summary>
         [Test]
         public void Stringify_NonPrimitiveValueType_FlattensToItsToString()
@@ -219,8 +223,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 字面上"非空字符串"不够:8090 实测曾输出常量 "PrimeTween.UpdateType"(类型全名),
-        /// 调用方拿不到真实配置值。enum-like struct 必须解包到枚举字段的名字。
+        /// Literally "non-empty string" isn't enough: a live-8090 run once output the constant
+        /// "PrimeTween.UpdateType" (the full type name), giving the caller no access to the real configured
+        /// value. An enum-like struct must be unwrapped to its enum field's name.
         /// </summary>
         [Test]
         public void Stringify_EnumLikeStruct_UnwrapsToTheEnumFieldName()
@@ -245,19 +250,21 @@ namespace UnitySkills.Tests.Core
         }
 
         // ================================================================================
-        // 2026-08-23 8090 真机批次
+        // 2026-08-23 live-8090 batch
         // ================================================================================
 
-        // ---------- L3：Addressables 的 group/profile 查找失败指向了错误的读取端 ----------
+        // ---------- L3: Addressables group/profile lookup failures pointed at the wrong reader ----------
 
         /// <summary>
-        /// 一个在 AddressableAssetSettings 资源里并不存在的 group/profile 名，当时由分类器的通用分支作答：
-        /// "Group not found: X" 里没有任何资源类名词，于是落到 gameobject_find / scene_get_hierarchy；
-        /// 而 "Profile not found: X" 之所以命中"资源标记"那条分支，纯粹因为 "profile" 里含子串 "file"，
-        /// 于是落到 asset_find。这两个都解析不了一个只存在于 settings 资源里的名字。
+        /// A group/profile name that doesn't exist in the AddressableAssetSettings asset used to be answered
+        /// by the classifier's generic branch: "Group not found: X" has no asset-class noun in it, so it fell
+        /// through to gameobject_find / scene_get_hierarchy; and "Profile not found: X" hit the "asset marker"
+        /// branch purely because "profile" contains the substring "file", so it fell through to asset_find.
+        /// Neither can resolve a name that only exists inside the settings asset.
         ///
-        /// <para>第三条断言才是让这个测试保持诚实的那条：它重新推导"仅凭分类器"对同一条消息还会怎么说，
-        /// 从而使本测试不会因为错误路由出于某个无关原因悄悄消失而通过——真正该起作用的是声明。</para>
+        /// <para>The third assertion is what keeps this test honest: it re-derives what the classifier alone
+        /// would still say about the same message, so this test can't silently pass just because the
+        /// misrouting disappeared for some unrelated reason — what should be doing the work here is the declaration.</para>
         /// </summary>
         [TestCase("GroupNotFound", "MissingGroup", "addressables_group_list", "gameobject_find")]
         [TestCase("ProfileNotFound", "MissingProfile", "addressables_profile_get", "asset_find")]
@@ -284,13 +291,14 @@ namespace UnitySkills.Tests.Core
                 "nothing — re-derive what it does say before deleting the declaration.");
         }
 
-        // ---------- L4：YooAsset 运行时校验作业不是 AsyncJobService 的作业 ----------
+        // ---------- L4: YooAsset runtime validation jobs are not AsyncJobService jobs ----------
 
         /// <summary>
-        /// 未知 jobId 的回答过去只是一句干巴巴的 "…not found"，分类器的作业分支把它变成了 job_list
-        /// 外加一句"id 撑不过一次 domain reload"。两者都错了：这些作业活在 YooAssetSkills 自己的字典里，
-        /// job_list/job_status 根本看不见；而它们会被持久化到 EditorPrefs 并在 reload 之后恢复——
-        /// 于是调用方被指向了一张永远不可能装着这个 id 的表，理由还是一条并不适用的生命周期规则。
+        /// The answer for an unknown jobId used to be a flat "…not found", which the classifier's job branch
+        /// turned into job_list plus a line about "the id can't survive a domain reload". Both were wrong:
+        /// these jobs live in YooAssetSkills' own dictionary, invisible to job_list/job_status entirely; and
+        /// they're persisted to EditorPrefs and restored after a reload — so the caller was pointed at a table
+        /// that could never hold this id, for a reason that doesn't even apply to it.
         /// </summary>
         [Test]
         public void YooAssetUnknownRuntimeJob_DoesNotSendTheCallerToTheGenericJobTable()
@@ -312,9 +320,11 @@ namespace UnitySkills.Tests.Core
             Assert.That(context.Extra != null && context.Extra.ContainsKey("knownJobIds"), Is.True,
                 "The live ids must travel with the error; there is no listing endpoint for this store.");
 
-            // Canary:裸分类器必须仍然给不出正确指引(具体错到哪个技能会随分类器演进漂移,
-            // 不钉死——曾钉 job_list,分类器基线一变就误报)。一旦这条失败,说明分类器自己
-            // 学会了正确路由,层-1 覆盖可能已冗余,应重新评估而不是直接删。
+            // Canary: the bare classifier must still fail to give correct guidance (which exact skill it gets
+            // wrong drifts as the classifier evolves, so it's not pinned down — it used to be pinned to
+            // job_list, and a classifier baseline change caused a false failure). If this ever fails, it means
+            // the classifier has learned to route correctly on its own, and the layer-1 override may be
+            // redundant — re-evaluate instead of just deleting it.
             var classifierOnly = SkillErrorClassifier.Classify(context.Message)
                 .SuggestedFixes?.Select(fix => fix.skill).ToArray() ?? new string[0];
             Assert.That(classifierOnly, Has.None.EqualTo("yooasset_runtime_validate_package"),
@@ -328,17 +338,17 @@ namespace UnitySkills.Tests.Core
                 .Where(name => !string.IsNullOrEmpty(name))
                 .ToArray();
 
-        // ---------- L5：prefab_set_property 写不了 Quaternion ----------
+        // ---------- L5: prefab_set_property couldn't write a Quaternion ----------
 
         private const string PrefabProbeFolder = "Assets/Temp";
         private const string PrefabProbeName = "__review_fix_prefab_probe__";
         private const string PrefabProbePath = PrefabProbeFolder + "/" + PrefabProbeName + ".prefab";
 
         /// <summary>
-        /// m_LocalRotation 是 Quaternion，而 SetSerializedPropertyValue 当时没有 Quaternion 分支——
-        /// 于是最常见的那种 prefab 写入落到了 default 分支，回来一句
-        /// "Failed to set value … (type: Quaternion)"。这里通过重新加载资源来断言而不看响应，
-        /// 因为缺的从来不是那个成功信封。
+        /// m_LocalRotation is a Quaternion, and SetSerializedPropertyValue had no Quaternion branch at the
+        /// time — so the most common kind of prefab write fell into the default branch and came back with
+        /// "Failed to set value … (type: Quaternion)". This asserts by reloading the asset rather than looking
+        /// at the response, because what was missing was never the success envelope.
         /// </summary>
         [Test]
         public void PrefabSetProperty_Quaternion_LandsOnTheAsset()
@@ -362,8 +372,9 @@ namespace UnitySkills.Tests.Core
                     Is.LessThan(0.5f),
                     $"localRotation reads back as {reloaded.transform.localRotation.eulerAngles}, not (0, 90, 0).");
 
-                // 而且是真的落到了磁盘上，不只是在已加载的资源里：绕 Y 轴 90° 会序列化成
-                // (0, 0.707…, 0, 0.707…)，所以这里对数字的断言留了足够余量，以容忍 Unity 的浮点取舍。
+                // And that it actually landed on disk, not just in the loaded asset: rotating 90 degrees around
+                // Y serializes to (0, 0.707…, 0, 0.707…), so the numeric assertion here leaves enough margin to
+                // tolerate Unity's floating-point rounding.
                 var rotationLine = System.IO.File.ReadAllText(PrefabProbePath)
                     .Split('\n')
                     .FirstOrDefault(line => line.Contains("m_LocalRotation"));
@@ -379,9 +390,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 同一个修复的另一半：本技能确实无法从文本写入的属性类型，必须把这件事说清楚。
-        /// "Failed to set value 'x'" 把责任推给了值，换来一个未分类的 SKILL_ERROR + 中止，
-        /// 于是 agent 无从区分"把你的值改个格式"和"这个字段得改用 assetReferencePath"。
+        /// The other half of the same fix: for a property type this skill genuinely cannot write from text, it
+        /// must say so clearly. "Failed to set value 'x'" blames the value, leaving an uncategorized
+        /// SKILL_ERROR + abort, so the agent has no way to tell "reformat your value" apart from "this field
+        /// needs assetReferencePath instead".
         /// </summary>
         [Test]
         public void PrefabSetProperty_UnsupportedSerializedType_BlamesTheTypeNotTheValue()
@@ -416,13 +428,14 @@ namespace UnitySkills.Tests.Core
                 UnityEditor.AssetDatabase.CreateFolder("Assets", "Temp");
         }
 
-        // ---------- L7：冒烟探针的夹具处理 ----------
+        // ---------- L7: smoke-probe fixture handling ----------
 
         /// <summary>
-        /// 场景没有 Lighting Settings 资源时，Lightmapping.lightingSettings 是抛异常而不是返回 null，
-        /// 于是那个本该用 Unity 内置默认值作答的判空分支根本没跑到，这条只读查询在任何默认工程上都算
-        /// 一次冒烟失败。两种情况下本测试都通过——挂了资源就走另一条分支——因为钉住的是
-        /// "永远不报错"，而不是由哪条分支作答。
+        /// When the scene has no Lighting Settings asset, Lightmapping.lightingSettings throws instead of
+        /// returning null, so the null-check branch meant to answer with Unity's built-in defaults never runs
+        /// at all — this read-only query would count as a smoke failure on any default project. This test
+        /// passes in both cases — if the asset happens to exist, a different branch runs — because what's
+        /// pinned down is "never errors", not which branch answers.
         /// </summary>
         [Test]
         public void LightGetLightmapSettings_AnswersWithoutALightingSettingsAsset()
@@ -436,10 +449,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 冒烟探针的夹具白名单。必须命中的那几行，是干净工程会产生的那些确切拒绝
-        /// （没有 NetworkManager、处于 EditMode 而非 PlayMode）；必须不命中的那几行，
-        /// 则是防止白名单退化成"一律跳过"的关键——即在册技能出现的另一种失败，
-        /// 以及不在册技能报出的在册措辞。
+        /// The smoke probe's fixture whitelist. The lines that must match are the exact rejections a clean
+        /// project produces (no NetworkManager, in EditMode rather than PlayMode); the lines that must not
+        /// match are what keeps the whitelist from degenerating into "skip everything" — namely a different
+        /// failure from a listed skill, and listed wording coming from an unlisted skill.
         /// </summary>
         [TestCase("netcode_get_manager_info", "NetworkManager not found (name=<any>).", true)]
         [TestCase("netcode_get_status", "NetworkManager not found.", true)]
@@ -466,28 +479,31 @@ namespace UnitySkills.Tests.Core
         }
 
         // ================================================================================
-        // 2026-08-23 DOTween Pro 1.0.381 真机批次（B1–B7）
+        // 2026-08-23 DOTween Pro 1.0.381 live-machine batch (B1-B7)
         //
-        // 这里没有任何用例需要装 DOTween。真正需要它的那两样东西（一个真实的 DOTweenAnimation，
-        // 以及那些错误引用的 Ease/LoopType 枚举），改为针对技能实际经过的那些接缝、
-        // 用形状相同的替身类型来断言——每条测试都注明了它替代的是哪个真机症状。
+        // None of the test cases here need DOTween installed. The two things that would genuinely require it
+        // (a real DOTweenAnimation, and the Ease/LoopType enums that were wrongly referenced) are instead
+        // asserted against the actual seams the skill goes through, using shape-matched stand-in types — each
+        // test notes which live-machine symptom it replaces.
         // ================================================================================
 
-        // ---------- B1：全场景列举给出的索引，其消费方并不按它取用 ----------
+        // ---------- B1: the index full-scene listing hands out isn't the one consumers use to look things up ----------
 
         private const string IndexProbeA = "__dotween_index_probe_a__";
         private const string IndexProbeB = "__dotween_index_probe_b__";
 
         /// <summary>
-        /// <c>dotween_pro_list_animations</c> 的全场景分支把 <c>FindHelper.FindAll</c> 的结果
-        /// （文档明确说无序）分组后给出一个递增计数，而所有 setter 都是按
-        /// <c>gameObject.GetComponents(type)</c> 索引的。当一个 GameObject 上挂了多个 DOTweenAnimation 时，
-        /// 两者就不一致了——真实工程里某个 GameObject 被列举成 [Fade 0.3, Scale 0.6, Fade 0.4]，
-        /// 而它的 GetComponents 顺序是 [Scale 0.6, Fade 0.3, Fade 0.4]——于是"先列举再设置"的 agent
-        /// 改到的是另一个组件，而不是它读到的那个，且两次调用都报成功。
+        /// <c>dotween_pro_list_animations</c>'s full-scene branch groups <c>FindHelper.FindAll</c>'s results
+        /// (explicitly documented as unordered) and hands out an incrementing counter, while every setter
+        /// indexes by <c>gameObject.GetComponents(type)</c>. When a GameObject carries multiple
+        /// DOTweenAnimation components, the two disagree — in a real project, one GameObject was listed as
+        /// [Fade 0.3, Scale 0.6, Fade 0.4] while its GetComponents order was [Scale 0.6, Fade 0.3, Fade 0.4] —
+        /// so an agent that lists then sets ends up modifying a different component than the one it read, with
+        /// both calls reporting success.
         ///
-        /// <para>这里拿 BoxCollider 而不是 DOTweenAnimation 来断言：被测性质是"索引等于该组件在
-        /// GetComponents 中的位置"，与类型无关；输入还故意做了反序，好让残留的递增计数无法通过。</para>
+        /// <para>This asserts using BoxCollider rather than DOTweenAnimation: the property under test is
+        /// "index equals the component's position in GetComponents", which has nothing to do with type; and the
+        /// input is deliberately reversed, so a leftover running counter can't pass.</para>
         /// </summary>
         [Test]
         public void AuthoritativeIndices_FollowGetComponentsOrder_WhateverTheInputOrder()
@@ -520,8 +536,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 全场景形态：来自多个 GameObject 的组件交错到达。索引必须按 GameObject 重新从头计数，
-        /// 因为那才是 setter 里那个索引的含义。
+        /// Full-scene shape: components from multiple GameObjects arrive interleaved. Indices must restart
+        /// from zero per GameObject, because that's exactly what the setter's index means.
         /// </summary>
         [Test]
         public void AuthoritativeIndices_RestartPerGameObject_ForInterleavedInput()
@@ -560,15 +576,16 @@ namespace UnitySkills.Tests.Core
             }
         }
 
-        // ---------- B2：数值类 setter 什么都收，且什么都不回显 ----------
+        // ---------- B2: numeric setters accept anything and echo back nothing ----------
 
         private const string DOTweenTargetProbe = "__dotween_setter_probe__";
 
         /// <summary>
-        /// duration 传 -1 会被原样写入并回 <c>{"success":true}</c>。这里经路由（而非直接调方法）断言拒绝，
-        /// 以便钉住调用方真正收到的 errorCode/retryStrategy；而且故意不给一个可解析的目标：
-        /// 本技能永远不可能接受的值，应当在查场景之前就被拒掉——这也正是它在没装 DOTween Pro 的
-        /// 工程上依然可观测的原因。
+        /// duration=-1 used to be written as-is with <c>{"success":true}</c> as the response. This asserts the
+        /// rejection through the router (rather than calling the method directly), so it pins down the actual
+        /// errorCode/retryStrategy the caller gets; and deliberately gives no resolvable target — a value this
+        /// skill could never accept should be rejected before the scene is even queried, which is also why
+        /// this is observable even on a project without DOTween Pro installed.
         /// </summary>
         [TestCase("dotween_pro_set_duration", "{\"target\":\"" + DOTweenTargetProbe + "\",\"duration\":-1}")]
         [TestCase("dotween_pro_set_duration", "{\"target\":\"" + DOTweenTargetProbe + "\",\"duration\":0}")]
@@ -587,10 +604,11 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// loops 传 0 会比其它情况早一层被拒：RequiresInput 分组 "loops|loopType" 把数值 0 读作"根本没给值"，
-        /// 于是校验层在技能执行前就回 "Provide one of: loops, loopType"。它依然是一次拒绝、错误码与
-        /// 重试策略都相同——只是措辞来自分组而非循环取值域，这也是它要与上面那些用例分开断言的原因
-        /// （那些用例钉的是 validValues）。
+        /// loops=0 gets rejected one layer earlier than the other cases: the RequiresInput group
+        /// "loops|loopType" reads the numeric value 0 as "no value given at all", so the validation layer
+        /// replies "Provide one of: loops, loopType" before the skill even executes. It's still a rejection
+        /// with the same error code and retry strategy — just worded by the group rather than the loops value
+        /// domain, which is why it's asserted separately from the cases above (which pin down validValues).
         /// </summary>
         [Test]
         public void DOTweenProSetLoops_Zero_IsRefusedBeforeExecuting()
@@ -604,8 +622,8 @@ namespace UnitySkills.Tests.Core
                 response.ToString(Formatting.None));
         }
 
-        /// <summary>-1 是 DOTween 的"无限循环"标记，必须继续被接受；守卫把它拒掉，
-        /// 就是同一个缺陷换了个符号。</summary>
+        /// <summary>-1 is DOTween's "infinite loop" marker and must keep being accepted; a guard that rejects
+        /// it is the same defect wearing a different sign.</summary>
         [TestCase("{\"target\":\"" + DOTweenTargetProbe + "\",\"loops\":-1}")]
         [TestCase("{\"target\":\"" + DOTweenTargetProbe + "\",\"loops\":3}")]
         [TestCase("{\"target\":\"" + DOTweenTargetProbe + "\",\"loopType\":\"Yoyo\"}")]
@@ -613,23 +631,24 @@ namespace UnitySkills.Tests.Core
         {
             var response = JObject.Parse(SkillRouter.Execute("dotween_pro_set_loops", body));
 
-            // 没装 DOTween Pro 时这会落到 MISSING_PACKAGE；装了则落到组件缺失 / GameObject 缺失。
-            // 无论哪种，被归咎的都不能是那个*值*。
+            // Without DOTween Pro installed this falls into MISSING_PACKAGE; with it installed, it falls into
+            // component-missing / GameObject-missing. Either way, the *value* must never be the one blamed.
             Assert.That(response["errorCode"]?.ToString(), Is.Not.EqualTo("SEMANTIC_INVALID"),
                 response.ToString(Formatting.None));
         }
 
         /// <summary>
-        /// "缺省"陷阱。<c>float duration = 1f</c> 分不清"传了 1"和"什么都没传"，于是一次只想指向某个动画的
-        /// 调用会静默把它重置成 1 秒；<c>fieldValue = null</c> 会清掉被点名的字段；
-        /// <c>int loops = 1</c> 把一次只设 loopType 的调用变成了"顺便别再循环了"。这三者现在都会拒绝——
-        /// 而且在 dryRun/schema 层就拒，好让调用方在任何东西被执行之前就知道。
+        /// The "default value" trap. <c>float duration = 1f</c> can't tell "1 was passed" apart from "nothing
+        /// was passed", so a call meaning only to target some animation would silently reset it to 1 second;
+        /// <c>fieldValue = null</c> would clear the named field; <c>int loops = 1</c> turned a call that only
+        /// meant to set loopType into "and also stop looping". All three now reject — and reject at the
+        /// dryRun/schema layer, so the caller knows before anything gets executed.
         /// </summary>
         [TestCase("dotween_pro_set_duration", "{\"target\":\"" + DOTweenTargetProbe + "\"}", "MISSING_PARAM")]
         [TestCase("dotween_pro_set_animation_field",
             "{\"target\":\"" + DOTweenTargetProbe + "\",\"fieldName\":\"id\"}", "MISSING_PARAM")]
-        // set_loops 的两半各自单看都是可选的，所以"两个都没给"是校验层给出的分组判定
-        // （SEMANTIC_INVALID），而不是逐参数的 MISSING_PARAM。
+        // set_loops's two halves are each individually optional, so "neither given" is the group judgment
+        // validation returns (SEMANTIC_INVALID), not a per-parameter MISSING_PARAM.
         [TestCase("dotween_pro_set_loops", "{\"target\":\"" + DOTweenTargetProbe + "\"}", "SEMANTIC_INVALID")]
         public void DOTweenProSetter_OmittedPayload_IsRefusedInsteadOfDefaulted(
             string skillName, string body, string expectedCode)
@@ -645,9 +664,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// stagger 的守卫，在辅助函数层面验：<c>dotween_pro_stagger_animations</c> 先查包再查参数
-        /// （没有 Pro 它反正什么都加不了），所以端到端的拒绝在这里观察不到——这里钉的是技能所调用的
-        /// 那道守卫本身。
+        /// The stagger guard, checked at the helper-function level: <c>dotween_pro_stagger_animations</c>
+        /// checks the package before the parameters (with no Pro installed it can't add anything anyway), so
+        /// the end-to-end rejection can't be observed here — what's pinned down is the guard function the
+        /// skill itself calls.
         /// </summary>
         [TestCase("InvalidNonNegativeError", -0.1f, false)]
         [TestCase("InvalidNonNegativeError", 0f, true)]
@@ -673,7 +693,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 完整的循环取值域，含 0——上面那个端到端用例观察不到 0，因为分组校验会先把数值 0 截走。
+        /// The full loops value domain, including 0 — the end-to-end case above can't observe 0, since group
+        /// validation intercepts the numeric value first.
         /// </summary>
         [TestCase(-1, true)]
         [TestCase(1, true)]
@@ -698,14 +719,14 @@ namespace UnitySkills.Tests.Core
             Assert.That(context.Code, Is.EqualTo(SkillErrorCode.SemanticInvalid), context.Message);
         }
 
-        // ---------- B3：对外宣称的 capacity 参数，在已安装的 DOTween 上并没有对应字段 ----------
+        // ---------- B3: capacity parameters advertised externally have no corresponding field on installed DOTween ----------
 
         private enum ProbeEaseEnum { Linear, OutQuad, Unset, INTERNAL_Custom }
         private enum ProbeLoopEnum { Restart, Yoyo, Incremental }
         private enum ProbeLogEnum { Default, Verbose, ErrorsOnly }
 
-        /// <summary>DOTween Pro 1.0.381 的 DOTweenSettings 实际具备的形状：没有 capacity 字段。</summary>
-        // 这里每个字段都是靠反射写入的，编译器看不见（CS0649）。
+        /// <summary>The actual shape of DOTween Pro 1.0.381's DOTweenSettings: no capacity fields.</summary>
+        // Every field here is written via reflection, invisible to the compiler (CS0649).
 #pragma warning disable 0649
         private class SettingsProbeWithoutCapacities
         {
@@ -724,10 +745,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// <c>dotween_settings_configure</c> 对外宣称支持 tweenersCapacity / sequencesCapacity，
-        /// 而在 DOTween Pro 1.0.381 上那个资源两个都没有。两处写入都只被一个裸的
-        /// <c>if (SetFieldByName(...))</c> 包着，false 分支什么都不做，于是调用回的是
-        /// <c>success:true, modified:[]</c>——与"已接受、本来就是对的"完全无法区分。
+        /// <c>dotween_settings_configure</c> advertises support for tweenersCapacity / sequencesCapacity, and
+        /// on DOTween Pro 1.0.381 that asset has neither. Both writes were only guarded by a bare
+        /// <c>if (SetFieldByName(...))</c> that does nothing on the false branch, so the call came back with
+        /// <c>success:true, modified:[]</c> — indistinguishable from "accepted, and it was already correct".
         /// </summary>
         [Test]
         public void SettingsConfigure_AbsentCapacityField_IsReportedUnsupportedNotSwallowed()
@@ -746,7 +767,7 @@ namespace UnitySkills.Tests.Core
                 "An unsupported entry without a reason is as unactionable as the silent no-op was.");
         }
 
-        /// <summary>另一半：在确实声明了这些字段的版本上，它们依然会被写入。</summary>
+        /// <summary>The other half: on a version that does declare these fields, they still get written.</summary>
         [Test]
         public void SettingsConfigure_PresentCapacityField_IsStillWritten()
         {
@@ -769,7 +790,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(probe.useSafeMode, Is.False);
         }
 
-        /// <summary>非法枚举值必须列出可接受的取值，且必须什么都没写进去。</summary>
+        /// <summary>An invalid enum value must list the accepted values, and must write nothing at all.</summary>
         [Test]
         public void SettingsConfigure_InvalidEnumValue_IsRejectedWithTheRealVocabulary()
         {
@@ -785,8 +806,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// dotween_settings_validate 本来就把 capacity &lt;= 0 当作一个问题上报，
-        /// 所以真写进去会让本包在下次读取时把自己刚做的修改判为非法。
+        /// dotween_settings_validate already reports capacity &lt;= 0 as an issue, so actually writing it in
+        /// would make this package judge its own just-made change as invalid the next time it reads it.
         /// </summary>
         [TestCase(0)]
         [TestCase(-5)]
@@ -799,9 +820,9 @@ namespace UnitySkills.Tests.Core
             Assert.That(probe.defaultTweensCapacity, Is.EqualTo(200), "The value was written before rejecting.");
         }
 
-        // ---------- B4：枚举拒绝没带词表，而词表必须是真的 ----------
+        // ---------- B4: enum rejections came without a vocabulary, and the vocabulary must be the real one ----------
 
-        // 只被反射读取——词表/可设置名辅助函数从不写它们（CS0649）。
+        // Only ever read via reflection — the vocabulary/settable-name helpers never write these (CS0649).
 #pragma warning disable 0649
         private class AnimationFieldProbe
         {
@@ -815,10 +836,11 @@ namespace UnitySkills.Tests.Core
 #pragma warning restore 0649
 
         /// <summary>
-        /// ease/loopType 拒绝响应里的 <c>validValues</c> 列表，是从已安装 DOTween 所声明的枚举上反射来的，
-        /// 因此不会随资源版本漂移。其中有两个成员被故意扣下：<c>Unset</c> 的含义是"继承工程默认值"，
-        /// 而这个 setter 表达不了；<c>INTERNAL_Custom</c> 则是 easeCurveJson 那条路径植入的标记——
-        /// 不带曲线地点名它，只会得到一个背后没有曲线的自定义 ease。
+        /// The <c>validValues</c> list in the ease/loopType rejection response is reflected off the enum the
+        /// installed DOTween version actually declares, so it never drifts with the asset version. Two members
+        /// are deliberately withheld: <c>Unset</c> means "inherit the project default", which this setter can't
+        /// express; and <c>INTERNAL_Custom</c> is the marker the easeCurveJson path plants — naming it without
+        /// a curve just produces a custom ease with no curve behind it.
         /// </summary>
         [Test]
         public void EnumVocabulary_ListsRealMembersAndWithholdsTheInternalOnes()
@@ -849,8 +871,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 未知 fieldName 的拒绝响应会列出哪些字段可设，其中必须排除那些由专用技能负责的字段——
-        /// 在这里提供 `duration` 只会把调用方引向一次拒绝。
+        /// The rejection response for an unknown fieldName lists which fields are settable, and it must
+        /// exclude fields owned by dedicated skills — offering `duration` here would only lead the caller into
+        /// a rejection.
         /// </summary>
         [Test]
         public void SettableFieldNames_OmitTheDedicatedSkillFields()
@@ -864,13 +887,13 @@ namespace UnitySkills.Tests.Core
             Assert.That(names, Has.None.EqualTo("loopType"));
         }
 
-        // ---------- B5 / B6：生成出来的脚本 ----------
+        // ---------- B5 / B6: generated scripts ----------
 
         /// <summary>
-        /// 每份生成的 Sequence 都声明了 <c>[SerializeField] private float duration</c>，随后又把每一步的
-        /// duration 以字面量烘死进去，于是这个字段无人引用——本包刚写出来的文件上就报 CS0414。
-        /// 现在与顶层值不同的步骤仍然用自己的字面量，而与之相同的步骤读该字段，
-        /// 这样默认配方下 Inspector 上那个旋钮仍然有效。
+        /// Every generated Sequence declared <c>[SerializeField] private float duration</c>, then baked each
+        /// step's duration into a literal anyway, so the field went unreferenced — the file this package had
+        /// just written reported CS0414. Now a step whose duration differs from the top-level value still uses
+        /// its own literal, while a matching step reads the field, so the Inspector knob still works under the default recipe.
         /// </summary>
         [Test]
         public void SequenceSteps_PerStepDurations_BakeLiteralsAndDropTheDeadField()
@@ -913,9 +936,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// CanvasGroup 属于 <c>UnityEngine.CanvasGroup</c>（UIModule，始终存在）——它当时和 Graphic/Image
-        /// 共用了那句硬编码的 <c>using UnityEngine.UI;</c>，于是在没装 com.unity.ugui 的工程里，
-        /// 本包生成的文件会因为一个它自己根本没引用的命名空间而编译失败于 CS0246。
+        /// CanvasGroup belongs to <c>UnityEngine.CanvasGroup</c> (UIModule, always present) — it used to share
+        /// the hardcoded <c>using UnityEngine.UI;</c> line with Graphic/Image, so in a project without
+        /// com.unity.ugui installed, this package's generated file would fail to compile with CS0246 over a
+        /// namespace it never actually referenced.
         /// </summary>
         [TestCase("CanvasGroup", "DOFade", null)]
         [TestCase("Transform", "DOMove", null)]
@@ -934,18 +958,20 @@ namespace UnitySkills.Tests.Core
                 "thing that may decide this.");
         }
 
-        // ---------- B7：HasProperty 不是颜色守卫 ----------
+        // ---------- B7: HasProperty is not a color guard ----------
 
         /// <summary>
-        /// <c>optimize_find_duplicate_materials</c> 用 <c>HasProperty</c> 来守它的 <c>GetColor</c>，
-        /// 而前者对*任意*类型的属性都返回 true——于是在 URP 工程里满地都是的 hidden/decal 着色器上，
-        /// 读取照样执行，引擎为每个材质打出一条原生的 "doesn't have a color property" 错误。
-        /// 那是原生日志而非抛出的异常，所以外面的 try/catch 什么都没捕到，一次只读分析把控制台刷红了。
+        /// <c>optimize_find_duplicate_materials</c> uses <c>HasProperty</c> to guard its <c>GetColor</c>, and
+        /// the former returns true for a property of *any* type — so on the hidden/decal shaders that litter a
+        /// URP project, the read still executed, and the engine logged a native "doesn't have a color
+        /// property" error for every material. That's a native log rather than a thrown exception, so the
+        /// try/catch around it caught nothing, and a single read-only analysis pass flooded the console red.
         ///
-        /// <para>这里钉的是新守卫的判别性质，在内置着色器上验：float 类型的属性它答 false，
-        /// 而 <c>HasProperty</c> 答 true；真正的颜色它仍然答 true。控制台本身不做断言——
-        /// 要复现旧错误需要一个专门制作的着色器资源，而本程序集没有引用 UnityEngine.TestRunner 的
-        /// LogAssert 来限定预期。</para>
+        /// <para>What's pinned down here is the new guard's discriminating behavior, verified against a
+        /// built-in shader: it answers false for a float-typed property, where <c>HasProperty</c> answers true;
+        /// it still answers true for a genuine color. The console itself isn't asserted on — reproducing the
+        /// old error would need a purpose-built shader asset, and this assembly doesn't reference
+        /// UnityEngine.TestRunner's LogAssert to constrain expectations.</para>
         /// </summary>
         [Test]
         public void MaterialColorGuard_DiscriminatesByPropertyTypeNotJustName()

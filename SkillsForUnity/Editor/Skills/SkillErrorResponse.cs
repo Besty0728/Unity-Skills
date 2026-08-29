@@ -6,25 +6,26 @@ using Newtonsoft.Json.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// 随错误响应一并给出的具体恢复建议，使 AI agent 无需回头询问人类即可自行恢复。
+    /// A concrete recovery suggestion delivered alongside an error response, so an AI agent can recover
+    /// on its own without going back to ask a human.
     /// </summary>
     public sealed class SuggestedFix
     {
-        /// <summary>动作动词："retry"、"fix_param"、"find_target"、"install_package"、"wait"、"confirm"。</summary>
+        /// <summary>The action verb: "retry", "fix_param", "find_target", "install_package", "wait", "confirm".</summary>
         public string action;
 
-        /// <summary>可选：建议调用方考虑的替代 skill。</summary>
+        /// <summary>Optional: an alternative skill suggested for the caller to consider.</summary>
         public string skill;
 
-        /// <summary>可选：建议调用方据此形状重试的参数。</summary>
+        /// <summary>Optional: parameters suggested for the caller to retry with, in this shape.</summary>
         public object args;
 
-        /// <summary>一句话说明该建议的理由。</summary>
+        /// <summary>A one-sentence explanation of why this suggestion applies.</summary>
         public string reason;
     }
 
     /// <summary>
-    /// REST 错误载荷的统一构造器。所有路由/校验/运行时失败都返回同一形状：
+    /// Unified constructor for REST error payloads. Every routing/validation/runtime failure returns the same shape:
     /// <code>
     /// {
     ///   "status": "error",
@@ -41,7 +42,7 @@ namespace UnitySkills
     /// </summary>
     public static class SkillErrorResponse
     {
-        // retryStrategy 的稳定线上取值。
+        // Stable, publicly-relied-upon values for retryStrategy.
         public const string RetryFixAndRetry     = "fix_and_retry";
         public const string RetryWaitAndRetry    = "wait_and_retry";
         public const string RetryFindAndRetry    = "find_target_and_retry";
@@ -104,7 +105,7 @@ namespace UnitySkills
             return JsonConvert.SerializeObject(payload, _jsonSettings);
         }
 
-        /// <summary>skill 名查找未命中，可附带模糊匹配给出的候选建议。</summary>
+        /// <summary>Skill name lookup missed; may attach candidate suggestions from a fuzzy match.</summary>
         public static string SkillNotFound(string skillName, IList<string> nearestSkills = null)
         {
             var fixes = new List<SuggestedFix>();
@@ -137,10 +138,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 调用方把 Python 客户端的辅助函数名（如 <c>get_skill_schema</c>）当成 REST skill 发了过来。
-        /// 与其他未命中一样报 SKILL_NOT_FOUND，但给的是对应的具体 REST 用法而非模糊名候选：
-        /// 这些辅助函数与任何已注册 skill 都没有共同 token，<see cref="SkillNotFound"/> 的
-        /// 最近名搜索会返回空，调用方将无从自我纠正。
+        /// The caller sent the name of a Python client helper function (e.g. <c>get_skill_schema</c>) as if it were a REST skill.
+        /// Reports SKILL_NOT_FOUND like any other miss, but gives the specific corresponding REST usage
+        /// instead of fuzzy name candidates: these helper functions share no token with any registered
+        /// skill, so <see cref="SkillNotFound"/>'s nearest-name search would come back empty, leaving the
+        /// caller with no way to self-correct.
         /// </summary>
         public static string ClientHelperNotASkill(string helperName, string restEquivalent)
         {
@@ -161,13 +163,14 @@ namespace UnitySkills
                 retryStrategy: RetryFixAndRetry);
         }
 
-        /// <summary>通用内部错误包装，便于调用方处理。</summary>
+        /// <summary>Generic internal error wrapper, for easy handling by the caller.</summary>
         public static string Internal(string message, string skill = null) =>
             Build(SkillErrorCode.Internal, message, skill: skill, retryStrategy: Abort);
     }
 
     /// <summary>
-    /// 对一个业务错误得出的分类结论：报哪个错误码、调用方该如何反应、下一步试什么。
+    /// The classification verdict reached for a business error: which error code to report, how the
+    /// caller should react, and what to try next.
     /// </summary>
     public sealed class SkillErrorClassification
     {
@@ -178,47 +181,51 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// skill 业务错误的消息模式分类器——router 错误契约的第二层。
+    /// A message-pattern classifier for skill business errors — the second tier of the router's error contract.
     ///
-    /// <para>第一层是可选的直通：skill 若在自己的错误对象上声明了 <c>errorCode</c> /
-    /// <c>suggestedFixes</c> / <c>retryStrategy</c> / <c>relatedSkills</c>，则原样沿用。
-    /// 第二层之所以存在，是因为绝大多数 skill 只返回 <c>new { error = "..." }</c>；
-    /// 没有它，这些错误会一律塌缩为 <c>SKILL_ERROR</c> + <c>abort</c>，
-    /// 而这对 agent 判断"这次调用值不值得重试"毫无帮助。</para>
+    /// <para>The first tier is an optional pass-through: if a skill declares <c>errorCode</c> /
+    /// <c>suggestedFixes</c> / <c>retryStrategy</c> / <c>relatedSkills</c> on its own error object, that is
+    /// used as-is. The second tier exists because the vast majority of skills just return
+    /// <c>new { error = "..." }</c>; without it, these errors would all collapse into
+    /// <c>SKILL_ERROR</c> + <c>abort</c>, which gives the agent no help at all in deciding whether
+    /// this call is worth retrying.</para>
     ///
-    /// <para>下面的规则是把 <c>*Skills.cs</c> 中实际存在的约 950 条错误字面量分桶归纳出来的，
-    /// 不是凭第一性原理推的，覆盖其中约 82%。顺序有意义——第一条命中的规则胜出，
-    /// 兜底桶保持既有的 <c>SKILL_ERROR</c> + <c>abort</c> 行为。任何规则都不得产出
-    /// <c>wait_and_retry</c>：Python 客户端遇到该策略会自动重试，而需要调用方修正的业务错误
-    /// 会因此空转。</para>
+    /// <para>The rules below were induced by bucketing the roughly 950 error literals that actually
+    /// exist in <c>*Skills.cs</c> — not derived from first principles — and cover about 82% of them.
+    /// Order matters — the first rule that matches wins, and the fallback bucket keeps the
+    /// <c>SKILL_ERROR</c> + <c>abort</c> behavior that existed before. No rule may ever produce
+    /// <c>wait_and_retry</c>: the Python client auto-retries on that strategy, and a business error that
+    /// needs the caller to fix something would just spin in place.</para>
     /// </summary>
     public static class SkillErrorClassifier
     {
-        // 规则 1 —— 缺少可选的包 / Asset Store 依赖。
+        // Rule 1 — Missing an optional package / Asset Store dependency.
         private static readonly string[] DependencyMarkers =
         {
             "not installed", "not imported", "requires com.", "requires the",
             "package manager", "install via", "from the asset store", "未安装",
         };
 
-        // 规则 1b —— "Package not found: com.x" / "Package 'x' does not exist" 指明缺失的正是*包*本身。
-        // package 这个词必须紧贴 not-found 短语（两者之间最多允许一个带引号、带括号或带点的包 id）：
-        // 错误消息会内插调用方给的标识符，若只用 Contains("package")，任何 jobId
-        //（"DefaultPackage_validation_1"）或 "Packages/..." 资产路径都能把一次普通的查找未命中
-        // 改判为 MISSING_PACKAGE，把 agent 引去 package_install 而不是去改那个 id 或路径。
-        // \bpackage\b 这两者都匹配不上；后顾断言则把 "Group 'g' not found in package 'p'"
-        //（在一个已存在的包内部查找）排除在外。
+        // Rule 1b — "Package not found: com.x" / "Package 'x' does not exist" identifies the missing
+        // thing as the *package* itself.
+        // The word "package" must sit right next to the not-found phrase (at most one quoted, parenthesized,
+        // or dotted package id may sit between them): error messages interpolate an identifier supplied by
+        // the caller, and if we only matched Contains("package"), any jobId
+        // ("DefaultPackage_validation_1") or "Packages/..." asset path could get an ordinary lookup miss
+        // misjudged as MISSING_PACKAGE, sending the agent to package_install instead of fixing that id or path.
+        // \bpackage\b doesn't match either of those; the lookbehind assertion also excludes
+        // "Group 'g' not found in package 'p'" (a lookup inside an already-existing package).
         private static readonly Regex PackageAbsentPattern = new Regex(
             @"(?<!\bin )\bpackage\b(?:\s+(?:'[^']*'|""[^""]*""|\([\w.@/~-]+\)|[\w-]+(?:\.[\w-]+)+))?\s*:?\s*(?:is |was )?(?:not found|does not exist)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        // 规则 2 —— 调用方想创建的东西已经存在。
+        // Rule 2 — What the caller wants to create already exists.
         private static readonly string[] ConflictMarkers =
         {
             "already exists", "already has", "already in use", "already registered", "已存在",
         };
 
-        // 规则 3 —— 目标定位不到。
+        // Rule 3 — The target can't be located.
         private static readonly string[] NotFoundMarkers =
         {
             "not found", "was not found", "no gameobject", "could not find", "could not locate",
@@ -226,23 +233,26 @@ namespace UnitySkills
             "找不到", "不存在",
         };
 
-        // 规则 3a —— 目标*已经*定位到了，缺的是调用方指名的属性或字段。必须排在规则 3 之前，
-        // 因为后者占据了裸的 "not found" 文本："Property not found: _Cull" 会在那里命中并返回
-        // TARGET_NOT_FOUND，于是建议修复把 agent 引去 gameobject_find 找一个从来不是问题所在的对象，
-        // 也从未指出它真正需要的属性读取 skill。同样必须排在规则 5 之前——后者的 ^no [a-z] 分支
-        // 会认领 "No color property found on material"。
+        // Rule 3a — The target *is already* located; what's missing is the property or field the caller
+        // named. Must come before Rule 3, because that rule claims the bare "not found" text: "Property
+        // not found: _Cull" would match there and return TARGET_NOT_FOUND, sending the suggested fix to
+        // gameobject_find to hunt for an object that was never the problem, and never pointing at the
+        // property-reading skill it actually needs. It must likewise come before Rule 5 — that rule's
+        // ^no [a-z] branch would claim "No color property found on material".
         //
-        // 每个分支都锚定在 property/field/enum-value 这类名词上，因此真正的
-        // "GameObject not found" / "Material asset not found: <path>" 不受影响——它们都不带这类名词。
-        // 这五种形状取自实际存在的错误字面量："<名词> ... not found"（"Property not found: X"、
-        // "Property '_x' not found on Rigidbody"、"Property/field not found: X"、
-        // "Shader Graph property 'x' was not found"）、只读拒绝、倒装的
-        // "No color property found on material"、"<thing> does not have a color property"，
-        // 以及下面的枚举值形式。
+        // Each branch anchors on nouns like property/field/enum-value, so genuine cases like
+        // "GameObject not found" / "Material asset not found: <path>" are unaffected — neither carries
+        // that kind of noun. These five shapes are taken from error literals that actually exist:
+        // "<noun> ... not found" ("Property not found: X",
+        // "Property '_x' not found on Rigidbody", "Property/field not found: X",
+        // "Shader Graph property 'x' was not found"), a read-only rejection, the inverted
+        // "No color property found on material", "<thing> does not have a color property",
+        // and the enum-value form below.
         //
-        // "Enum value 'x' not found for 'm_Foo'" 是同一类缺陷换了说法——对象和属性都已解析成功，
-        // 不存在的是那个*值*——但它需要单独一个分支，因为此处 "not found" 位于名词之前而非之后，
-        // 第一个分支覆盖不到。
+        // "Enum value 'x' not found for 'm_Foo'" is the same class of defect phrased differently — both
+        // the object and the property already resolved; what doesn't exist is the *value* — but it needs
+        // its own branch, because here "not found" sits before the noun rather than after it, which the
+        // first branch doesn't cover.
         private static readonly Regex PropertyNotOnTargetPattern = new Regex(
             @"\b(?:propert(?:y|ies)|field)\b[^.;]{0,40}?\b(?:not found|is read-?only)\b" +
             @"|\bno\b[^.;]{0,30}?\bpropert(?:y|ies)\b[^.;]{0,20}?\bfound\b" +
@@ -250,24 +260,25 @@ namespace UnitySkills
             @"|\benum value\b[^.;]{0,60}?\bnot found\b",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        // 裸的 "shader" 还会匹配 "shaders"（GraphicsSettings 的复数 Always Included Shaders 列表）
-        // 和 "shader graph property type not found"（内部类型名查找失败，并非某个材质/shader 实例上
-        // 真实存在的属性）——这两者都不该被引向 material_get_properties。因此锚定单数词让复数落空，
-        // 并排除 "property type" 让类型查找失败也落空；而 "Shader Graph property 'x' was not found"
-        //（真正的具名属性未命中）仍然命中并保持既有路由。
+        // A bare "shader" would also match "shaders" (GraphicsSettings' plural Always Included Shaders list)
+        // and "shader graph property type not found" (an internal type-name lookup failure, not a
+        // property that genuinely exists on some material/shader instance) — neither should be routed to
+        // material_get_properties. So we anchor on the singular word to make the plural miss, and exclude
+        // "property type" to make type-lookup failures miss too; while "Shader Graph property 'x' was not
+        // found" (a genuine named-property miss) still matches and keeps its existing routing.
         private static readonly Regex ShaderPropertyPhrase = new Regex(
             @"\bshader\b[^.;]{0,30}?\bpropert(?:y|ies)\b(?!\s+type\b)",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        // 规则 6 —— 调用方本该给的参数缺失了。"provide " 带一个尾随空格，以免匹配到 "provided"；
-        // "no X provided" 那类形式已由规则 4 认领。
+        // Rule 6 — A parameter the caller was supposed to supply is missing. "provide " has a trailing
+        // space, so it doesn't match "provided"; the "no X provided" shape is already claimed by Rule 4.
         private static readonly string[] MissingParamMarkers =
         {
             "is required", "are required", "required when", "must be provided", "must be specified",
             "provide ", "missing", "必填", "必须提供",
         };
 
-        // 规则 7 —— 参数给了，但不可用。
+        // Rule 7 — A parameter was supplied, but it isn't usable.
         private static readonly string[] SemanticMarkers =
         {
             "invalid", "must be", "must not", "must start", "unknown ", "unsupported",
@@ -275,34 +286,36 @@ namespace UnitySkills
             "非法", "无效",
         };
 
-        // 规则 4 —— "No faces selected" / "No items provided"：调用方压根什么都没传。
+        // Rule 4 — "No faces selected" / "No items provided": the caller passed nothing at all.
         private static readonly Regex NotSuppliedPattern = new Regex(
             @"\bno \S+ (provided|selected|specified|supplied|given)\b|\bno objects selected\b",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        // 规则 5 —— "GameObject has no RectTransform" / "No Light component on X" / "No mesh found"：
-        // 对象定位到了，但它身上没有该 skill 需要的东西。
+        // Rule 5 — "GameObject has no RectTransform" / "No Light component on X" / "No mesh found":
+        // the object was located, but it doesn't have what this skill needs.
         private static readonly Regex MissingOnTargetPattern = new Regex(
             @"\bhas no \b|\bno \S+ (component|found)\b|\bno \S+ on |^no [a-z]",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        // 规则 7b —— "Not a texture: X" / "Child is not a Cinemachine Virtual Camera"。
-        // 按词锚定，使 "cannot allocate" 和 "not allowed" 无法命中。
+        // Rule 7b — "Not a texture: X" / "Child is not a Cinemachine Virtual Camera".
+        // Anchored on the word, so "cannot allocate" and "not allowed" can't match.
         private static readonly Regex WrongKindPattern = new Regex(
             @"\bnot an?\b", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-        // 规则 2b —— 消息*开头*就点明了失败种类（"Invalid bindingMode 'X': ..."、
-        // "Unknown step 'y'."）。这类消息往往在后半段引用内层异常，而 .NET 自身的枚举解析失败写作
-        // "Requested value 'X' was not found"——若不这样处理，它会先命中 not-found 标记，
-        // 把一个非法枚举值报成场景对象缺失，把调用方引去 gameobject_find。
-        // 锚定在开头，只让消息自己的判定词生效，绝不采信被引用内层文本里埋着的短语。
+        // Rule 2b — The message *starts* by naming the kind of failure ("Invalid bindingMode 'X': ...",
+        // "Unknown step 'y'."). Messages like this often quote an inner exception in their second half, and
+        // .NET's own enum-parsing failure reads as "Requested value 'X' was not found" — without this
+        // handling, that would match the not-found marker first, reporting an invalid enum value as a
+        // missing scene object and sending the caller to gameobject_find.
+        // Anchored at the start, so only the message's own leading verdict word takes effect, never a
+        // phrase buried in a quoted inner-exception text.
         private static readonly Regex LeadingSemanticPattern = new Regex(
             @"^\s*(invalid|unknown|unsupported|malformed)\b",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
-        /// 把原始 skill 错误消息映射为错误码、重试策略与具体的下一步动作。
-        /// 大小写不敏感；绝不返回 null，也绝不抛异常。
+        /// Maps a raw skill error message to an error code, retry strategy, and specific next action.
+        /// Case-insensitive; never returns null, never throws.
         /// </summary>
         public static SkillErrorClassification Classify(string message)
         {
@@ -342,12 +355,14 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 为 skill 自己在错误对象上声明的错误码给出配套建议。这让*部分*声明也保持自洽：
-        /// 只写了 <c>errorCode</c> 而没写 <c>retryStrategy</c>/<c>suggestedFixes</c> 的 skill，
-        /// 拿到的是属于该错误码的建议，而不是碰巧由其消息文本推出来的东西。
-        /// 不在本分类器词表内的错误码回退到消息分类——这是故意的：
-        /// 声明一个瞬时性错误码（COMPILING、RATE_LIMIT 等）绝不能让 router 推断出
-        /// <c>wait_and_retry</c>；需要它的 skill 必须显式声明。
+        /// <summary>
+        /// Gives a matching suggestion for the error code a skill declares on its own error object. This
+        /// keeps *partial* declarations self-consistent too: a skill that only writes <c>errorCode</c>
+        /// without <c>retryStrategy</c>/<c>suggestedFixes</c> gets the suggestion that belongs to that
+        /// error code, rather than something incidentally inferred from its message text.
+        /// An error code outside this classifier's vocabulary falls back to message classification — this
+        /// is deliberate: declaring a transient error code (COMPILING, RATE_LIMIT, etc.) must never let the
+        /// router infer <c>wait_and_retry</c> on its own; a skill that needs that must declare it explicitly.
         /// </summary>
         public static SkillErrorClassification ForCode(SkillErrorCode code, string message)
         {
@@ -450,8 +465,8 @@ namespace UnitySkills
                 return classification;
             }
 
-            // job id 不是场景对象：此处若把调用方引向 gameobject_find，
-            // 它会在层级里翻找一个只存在于 job 表中的东西。
+            // A job id is not a scene object: if we sent the caller to gameobject_find here, it would go
+            // hunting through the hierarchy for something that only ever exists in the job table.
             if (text.Contains("job"))
             {
                 classification.RelatedSkills = new List<string> { "job_list", "job_status" };
@@ -487,13 +502,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 对象在，属性不在。给 SEMANTIC_INVALID + fix_and_retry：调用方给的名字目标身上没有——
-        /// 不需要找什么，只需要改一个参数。
+        /// <summary>
+        /// The object exists, the property doesn't. Reports SEMANTIC_INVALID + fix_and_retry: the target
+        /// the caller named just doesn't have it — there's nothing to find, just a parameter to change.
         ///
-        /// <para>推荐哪个读取 skill 取决于属性的种类，这正是该建议的全部价值所在：
-        /// 对 shader 属性推荐 component_get_properties，和本规则所取代的 gameobject_find 一样没用。
-        /// 消息给不出线索时——"Property not found: _Cull" 分不出是材质还是组件——
-        /// 两个读取 skill 都给出，而不是猜一个。</para>
+        /// <para>Which read skill gets recommended depends on the kind of property, and that's the entire
+        /// value of this suggestion: recommending component_get_properties for a shader property would be
+        /// just as useless as the gameobject_find this rule replaces.
+        /// When the message gives no clue — "Property not found: _Cull" doesn't tell you whether it's a
+        /// material or a component — both read skills are given, rather than guessing one.</para>
         /// </summary>
         private static SkillErrorClassification PropertyNotOnTarget(string text)
         {
@@ -503,9 +520,9 @@ namespace UnitySkills
                 RetryStrategy = SkillErrorResponse.RetryFixAndRetry,
             };
 
-            // 必须排在下面各项检查之前：它引用的 propertyPath 本身可能含有 "shader"/"material"
-            //（如 "Enum value 'x' not found for 'm_Shader'"），否则一次序列化枚举失败会被
-            // 路由到材质属性读取 skill。
+            // Must come before the checks below: the propertyPath it references may itself contain
+            // "shader"/"material" (e.g. "Enum value 'x' not found for 'm_Shader'"), otherwise a serialized
+            // enum parse failure would get routed to the material-property read skill.
             if (text.Contains("enum value"))
             {
                 classification.RelatedSkills = new List<string> { "component_get_serialized_properties" };
@@ -526,9 +543,9 @@ namespace UnitySkills
                 return classification;
             }
 
-            // 排除 "GraphicsSettings serialized property not found"——那个 SerializedObject 属于
-            // 工程设置资产而非组件，推荐 component_get_serialized_properties 会让调用方
-            // 去检视一个从未涉及的对象。
+            // Excludes "GraphicsSettings serialized property not found" — that SerializedObject belongs
+            // to a project settings asset, not a component, and recommending
+            // component_get_serialized_properties would send the caller to inspect an object that was never involved.
             if (text.Contains("serialized") && !text.Contains("graphicssettings"))
             {
                 classification.RelatedSkills = new List<string> { "component_get_serialized_properties" };
@@ -607,8 +624,8 @@ namespace UnitySkills
             },
         };
 
-        // 兜底桶：真正的运行时失败（"Failed to ..."、编辑器卡死状态）。
-        // 错误码与策略与本分类器出现之前保持一致。
+        // Fallback bucket: genuine runtime failures ("Failed to ...", editor-stuck states).
+        // Error code and strategy match what this classifier had before it existed.
         private static SkillErrorClassification Unclassified() => new SkillErrorClassification
         {
             Code = SkillErrorCode.SkillError,

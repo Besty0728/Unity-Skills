@@ -7,7 +7,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// 灯光管理技能：创建、配置、查询灯光。
+    /// Light management skills: create, configure, and query lights.
     /// </summary>
     public static class LightSkills
     {
@@ -26,8 +26,9 @@ namespace UnitySkills
             float spotAngle = 30,
             string shadows = "Soft")
         {
-            // 两个枚举都在 GameObject 创建之前校验，非法取值就不会留下一盏配置到一半的灯
-            // （若用 switch 兜底，非法 shadows 会静默落到 None）。
+            // Both enums are validated before the GameObject is created, so an invalid value never
+            // leaves behind a half-configured light (a switch fallback would let an invalid shadows
+            // value silently fall through to None).
             if (!SkillParamUtil.TryParseRequiredEnum<LightType>(lightType, "lightType", out var lt, out var typeError))
                 return typeError;
             if (!SkillParamUtil.TryParseRequiredEnum<LightShadows>(shadows, "shadows", out var shadowMode, out var shadowsError))
@@ -88,9 +89,10 @@ namespace UnitySkills
             if (light == null)
                 return new { error = $"No Light component on {go.name}" };
 
-            // 所有校验都必须在第一次写入之前完成。先写颜色 / 强度 / 范围再判 shadows 的话，
-            // 非法取值会返回一个 { warning } 对象——路由既不当成功也不当失败，
-            // 调用方什么载荷都拿不到，而前面那些字段却已经写进去了。
+            // All validation must complete before the first write. Writing color/intensity/range
+            // and then checking shadows would mean an invalid value returns a { warning } object —
+            // the router treats that as neither success nor failure, so the caller gets no payload
+            // at all even though those earlier fields have already been written.
             if (!SkillParamUtil.TryParseOptionalEnum<LightShadows>(shadows, "shadows", out var shadowMode, out var shadowsError))
                 return shadowsError;
 
@@ -109,8 +111,8 @@ namespace UnitySkills
                     b ?? currentColor.b,
                     a ?? currentColor.a
                 );
-                // applied 的契约是"生效了的参数名"，所以要逐通道列出。
-                // "color" 并不是本技能的参数，回报它会让核对发送内容的调用方对不上。
+                // applied's contract is "the parameter names that actually took effect", so list per-channel.
+                // "color" is not a parameter of this skill; reporting it would mismatch what the caller sent.
                 if (r.HasValue) applied.Add("r");
                 if (g.HasValue) applied.Add("g");
                 if (b.HasValue) applied.Add("b");
@@ -173,8 +175,8 @@ namespace UnitySkills
         [UnitySkill("light_get_info", "Get information about a light (supports name/instanceId/path)",
             Category = SkillCategory.Light, Operation = SkillOperation.Query,
             Tags = new[] { "light", "info", "inspect" },
-            // 必须列全 ReadLight 实际返回的每个键：Outputs 少写一个，
-            // 调用方就要为一个本来已在响应里的值多跑一趟。
+            // Must list every key ReadLight actually returns: omitting one from Outputs means
+            // the caller makes an extra round trip for a value that's already in the response.
             Outputs = new[] { "name", "entityId", "instanceId", "path", "lightType", "color", "intensity",
                 "range", "spotAngle", "shadows", "enabled", "cullingMask", "bounceIntensity" },
             RequiresInput = new[] { "gameObject" },
@@ -188,8 +190,8 @@ namespace UnitySkills
         [UnitySkill("light_get_properties", "Alias of light_get_info — get information about a light (supports name/instanceId/path). Same parameters, same response; exists because the setter is light_set_properties and callers reach for the matching getter name.",
             Category = SkillCategory.Light, Operation = SkillOperation.Query,
             Tags = new[] { "light", "info", "inspect" },
-            // 必须列全 ReadLight 实际返回的每个键：Outputs 少写一个，
-            // 调用方就要为一个本来已在响应里的值多跑一趟。
+            // Must list every key ReadLight actually returns: omitting one from Outputs means
+            // the caller makes an extra round trip for a value that's already in the response.
             Outputs = new[] { "name", "entityId", "instanceId", "path", "lightType", "color", "intensity",
                 "range", "spotAngle", "shadows", "enabled", "cullingMask", "bounceIntensity" },
             RequiresInput = new[] { "gameObject" },
@@ -235,8 +237,8 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object LightFindAll(string lightType = null, int limit = 50)
         {
-            // 过滤词拼错时必须报错：放过去会返回场景里所有灯光，
-            // 调用方会理解成"它们全是 Directional"。
+            // A misspelled filter value must be an error: letting it through would return every
+            // light in the scene, and the caller would interpret that as "they're all Directional."
             if (!SkillParamUtil.TryParseOptionalEnum<LightType>(lightType, "lightType", out var lt, out var typeError))
                 return typeError;
 
@@ -328,7 +330,7 @@ namespace UnitySkills
                 var light = go.GetComponent<Light>();
                 if (light == null) return new { error = "No Light component", target = go.name };
 
-                // 与单对象 setter 同样的"先解析后写入"规则，作用域限于当前这一项。
+                // Same "parse first, then write" rule as the single-object setter, scoped to this item.
                 if (!SkillParamUtil.TryParseOptionalEnum<LightShadows>(item.shadows, "shadows", out var shadowMode, out _))
                     return SkillParamUtil.InvalidEnumError<LightShadows>(item.shadows, "shadows", go.name);
 
@@ -428,14 +430,16 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object LightGetLightmapSettings()
         {
-            // 默认工程（或从未创建 / 指派过 Lighting Settings 资源的场景）没有活动的
-            // LightingSettings。bakedGI/realtimeGI 底层就是该资源上的属性，未指派时访问它们
-            // 会抛 "Lightmapping.lightingSettings is null..." 而不是返回可用响应。
+            // A default project (or a scene that has never created/assigned a Lighting Settings asset)
+            // has no active LightingSettings. bakedGI/realtimeGI are underneath just properties on that
+            // asset, so accessing them when none is assigned throws
+            // "Lightmapping.lightingSettings is null..." instead of returning a usable response.
             //
-            // 关键在于抛异常的正是 getter 本身，而不是先返回 null 让调用方判断——
-            // 所以单写 settings == null 的检查根本没机会执行，这个只读查询在任何没有
-            // Lighting Settings 资源的工程上都会算作冒烟测试失败。两种结局（null 或抛异常）
-            // 一视同仁：都按"未指派资源"处理，回报 Unity 内置默认值。
+            // The key thing is that the getter itself throws, rather than returning null and letting
+            // the caller check — so a plain settings == null check never gets a chance to run, and this
+            // read-only query would count as a smoke-test failure on any project without a Lighting
+            // Settings asset. Both outcomes (null or throw) are treated identically: both are handled
+            // as "no asset assigned" and report Unity's built-in defaults.
             try
             {
                 var settings = Lightmapping.lightingSettings;
@@ -456,8 +460,9 @@ namespace UnitySkills
             }
             catch (System.Exception)
             {
-                // 落到下面的"无设置"分支，刻意不报错："本场景没有 Lighting Settings 资源"
-                // 是正常的工程状态，而下面回报的默认值正是 Unity 自己烘焙时用的那套。
+                // Falls through to the "no settings" branch below; deliberately not an error: "this
+                // scene has no Lighting Settings asset" is a normal project state, and the defaults
+                // reported below are exactly what Unity itself uses when baking.
             }
 
             return new

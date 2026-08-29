@@ -7,21 +7,21 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// 材质技能：创建、修改、赋予。支持按名称、instanceId 或路径查找，
-    /// 自动检测渲染管线以选择正确的 shader，并覆盖 HDR、keyword 与 GI flag 操作。
+    /// Material skills: create, modify, assign. Supports lookup by name, instanceId, or path,
+    /// auto-detects the render pipeline to pick the correct shader, and covers HDR, keyword, and GI flag operations.
     /// </summary>
     public static class MaterialSkills
     {
         #region Helper Methods
         
         /// <summary>
-        /// 按资产路径或 GameObject 的 name/instanceId/path 查找材质。
+        /// Finds a material by asset path, or by a GameObject's name/instanceId/path.
         ///
-        /// <para>两个分支返回的都是磁盘上的材质：直接加载的 .mat，或 <c>renderer.sharedMaterial</c>——
-        /// 后者就是同一个 .mat，不是每个 renderer 的副本。因此经由此处的所有 setter 无论调用方怎么寻址
-        /// 都在写资产，必须声明 <c>MutatesAssets = true</c>：surface profile 靠该 flag 撤下资产写操作，
-        /// 漏标的 setter 会在明令禁止此类操作的 profile 下仍然可调用。用 GameObject 名寻址并不会让写入
-        /// 变成场景局部的——它改的是所有使用该材质的对象共享的材质。</para>
+        /// <para>Both branches return the material on disk: either a directly loaded .mat, or <c>renderer.sharedMaterial</c> --
+        /// the latter IS that same .mat, not a per-renderer copy. So every setter that goes through here, regardless of how the caller addresses it,
+        /// is writing to the asset, and must declare <c>MutatesAssets = true</c>: the surface profile relies on that flag to withdraw asset-write operations,
+        /// and a setter missing this tag remains callable even under a profile that explicitly forbids such operations. Addressing by GameObject name doesn't make the write
+        /// scene-local -- it modifies the material shared by every object that uses it.</para>
         /// </summary>
         private static (Material material, GameObject go, object error) FindMaterial(string name = null, int instanceId = 0, string path = null)
         {
@@ -48,19 +48,19 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 返回调用方可以作为 <c>materialPath</c> 回传、并确实能取回<em>本</em>材质的路径；
-        /// 不存在这样的路径时返回 ""。
+        /// Returns a path the caller can feed back as <c>materialPath</c> that actually resolves back to <em>this</em> material;
+        /// returns "" when no such path exists.
         ///
-        /// <para>陷阱：AssetDatabase.GetAssetPath 给的是<em>容器</em>文件，模型内嵌材质会得到
-        /// "Assets/Models/Robot.fbx"。而 LoadAssetAtPath&lt;Material&gt; 会解析子资产（6000.3 上验证），
-        /// 并且永远返回该路径下的<em>第一个</em>材质。于是多材质模型的每个材质都回显同一个路径，
-        /// 回传后一律解析到 1 号材质——agent 拿 2 号材质的 materialPath 去调 material_set_color，
-        /// 改的是 1 号却被告知成功。悄悄写错目标比没有目标更糟。</para>
+        /// <para>Trap: AssetDatabase.GetAssetPath gives the <em>container</em> file -- a model's embedded material gets
+        /// "Assets/Models/Robot.fbx". But LoadAssetAtPath&lt;Material&gt; resolves sub-assets (verified on 6000.3),
+        /// and always returns the <em>first</em> material at that path. So every material of a multi-material model echoes back the same path,
+        /// and feeding that path back always resolves to material #1 -- an agent that takes material #2's materialPath and calls material_set_color
+        /// ends up modifying #1 while being told it succeeded. Silently writing to the wrong target is worse than having no target.</para>
         ///
-        /// <para>因此直接检验主张本身而非其代理：只有把路径载回来恰好得到本材质时才回显它。
-        /// .mat 通过（它是自己的主资产），容器里的第一个材质通过（往返确实忠实），其余返回 ""；
-        /// 内置材质也返回 ""——GetAssetPath 给它们的是 "Resources/unity_builtin_extra"，
-        /// 该路径根本加载不出 Material。</para>
+        /// <para>So this verifies the claim directly rather than trusting a proxy for it: it only echoes the path back when loading that path
+        /// actually yields this exact material. A .mat passes (it's its own main asset), the first material in a container passes (the round trip is genuinely faithful), everything else returns "";
+        /// built-in materials also return "" -- GetAssetPath gives them "Resources/unity_builtin_extra",
+        /// a path that can't load a Material at all.</para>
         /// </summary>
         private static string ResolveFeedableMaterialPath(Material material)
         {
@@ -81,7 +81,7 @@ namespace UnitySkills
                 savePath = "Assets/" + savePath;
             }
             
-            // 看起来像文件夹（无扩展名，或目录已存在）时补上文件名
+            // Append a filename when it looks like a folder (no extension, or the directory already exists)
             if (Directory.Exists(savePath) || !Path.HasExtension(savePath))
             {
                 string fileName = string.IsNullOrEmpty(materialName) ? "NewMaterial" : materialName;
@@ -121,9 +121,9 @@ namespace UnitySkills
         [UnitySkill("material_create", "Create a new material (auto-detects render pipeline if shader not specified). savePath can be a folder or full path.",
             Category = SkillCategory.Material, Operation = SkillOperation.Create,
             Tags = new[] { "material", "shader", "pipeline", "asset" },
-            // 此处只声明两种成功形态都带的键：agent 在不知道会走哪个分支之前就要据此规划，
-            // 这是对 Outputs 唯一诚实的读法。带 savePath 时材质落盘；不带时只存在于内存，
-            // 响应额外附带 instanceId + warning——instanceId 恰恰是落盘分支不带的键，不能声明。
+            // Only the keys present in both success shapes are declared here: the agent has to plan against this before knowing which branch it will hit,
+            // which is the only honest reading of Outputs. With savePath, the material is written to disk; without it, it only exists in memory,
+            // and the response additionally carries instanceId + warning -- instanceId is precisely the key the on-disk branch doesn't carry, so it can't be declared.
             Outputs = new[] { "name", "shader", "path", "entityId", "renderPipeline", "colorProperty", "textureProperty" },
             TracksWorkflow = true,
             MutatesAssets = true)]
@@ -181,7 +181,7 @@ namespace UnitySkills
             }
             else
             {
-                // 未落盘：额外返回 instanceId，供调用方后续引用或销毁
+                // Not written to disk: additionally return instanceId, for the caller to reference or destroy later
                 var pipelineType2 = ProjectSkills.DetectRenderPipeline();
                 return new {
                     success = true,
@@ -280,7 +280,7 @@ namespace UnitySkills
             Tags = new[] { "material", "duplicate", "copy", "asset" },
             Outputs = new[] { "name", "path", "sourcePath", "shader" },
             RequiresInput = new[] { "materialPath" },
-            // CreateAsset + SaveAssets：与 material_create 一样在磁盘上新建 .mat
+            // CreateAsset + SaveAssets: creates a new .mat on disk, same as material_create
             MutatesAssets = true)]
         public static object MaterialDuplicate(string sourcePath, string newName, string savePath = null)
         {
@@ -342,7 +342,7 @@ namespace UnitySkills
                 propertyName = ProjectSkills.GetColorPropertyName();
             }
 
-            // HDR 强度：自发光场景下大于 1 才会产生 bloom
+            // HDR intensity: for emission, only values greater than 1 produce bloom
             var color = new Color(r, g, b, a);
             if (intensity != 1.0f)
             {
@@ -363,7 +363,7 @@ namespace UnitySkills
                     propertyName = prop;
                     colorSet = true;
                     
-                    // 设置自发光颜色时自动打开 emission，否则改了颜色也不发光
+                    // Automatically enable emission when setting the emission color, otherwise the color change won't actually glow
                     if (prop == "_EmissionColor" && intensity > 0)
                     {
                         material.EnableKeyword("_EMISSION");
@@ -452,8 +452,8 @@ namespace UnitySkills
             Tags = new[] { "emission", "hdr", "glow", "lighting" },
             Outputs = new[] { "emissionColor", "intensity", "hdrColor", "emissionEnabled" },
             RequiresInput = new[] { "gameObject|path" },
-            // FindMaterial 解析到 renderer.sharedMaterial，即磁盘上的 .mat，
-            // 与 material_set_color 已声明的是同一种写入
+            // FindMaterial resolves to renderer.sharedMaterial, i.e. the .mat on disk,
+            // the same kind of write already declared by material_set_color
             TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetEmission(string name = null, int instanceId = 0, string path = null,
             float r = 1, float g = 1, float b = 1, float intensity = 1.0f, bool enableEmission = true)
@@ -736,10 +736,10 @@ namespace UnitySkills
             else
                 material.DisableKeyword(keyword);
 
-            // 与普通属性值不同，keyword 的启用不会被 Unity 自身的脏标记可靠地识别为"已变更"，
-            // 没有显式 SetDirty + SaveAssets 就写不进磁盘 .mat 的 m_ValidKeywords——
-            // 与 PrefabSetProperty 写入时依赖的是同一套约定。此处不按 go == null 分支：
-            // 经由 GameObject 的 renderer 寻址到的仍是同一个共享 .mat 资产，不是场景局部副本。
+            // Unlike ordinary property values, enabling a keyword isn't reliably recognized by Unity's own dirty flag as "changed" --
+            // without an explicit SetDirty + SaveAssets it never gets written into the on-disk .mat's m_ValidKeywords --
+            // this relies on the same convention that PrefabSetProperty's writes depend on. This doesn't branch on go == null:
+            // addressing via the GameObject's renderer still resolves to that same shared .mat asset, not a scene-local copy.
             EditorUtility.SetDirty(material);
             AssetDatabase.SaveAssets();
 
@@ -767,9 +767,9 @@ namespace UnitySkills
             Undo.RecordObject(material, "Set Render Queue");
             material.renderQueue = renderQueue;
 
-            // 与 material_set_keyword 同样的不落盘问题：缺少显式 SetDirty + SaveAssets，
-            // 磁盘上的 m_CustomRenderQueue 会保持 -1，内存值也可能在下次重导入时被算回 shader 默认值。
-            // 同样不分支：无论调用方怎么寻址，renderer.sharedMaterial 都是磁盘资产而非逐对象副本。
+            // Same not-written-to-disk problem as material_set_keyword: without an explicit SetDirty + SaveAssets,
+            // the on-disk m_CustomRenderQueue stays at -1, and the in-memory value can also get recalculated back to the shader default on the next reimport.
+            // Likewise no branching: no matter how the caller addresses it, renderer.sharedMaterial is always the disk asset, never a per-object copy.
             EditorUtility.SetDirty(material);
             AssetDatabase.SaveAssets();
 

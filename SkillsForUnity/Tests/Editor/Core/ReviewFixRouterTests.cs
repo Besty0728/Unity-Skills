@@ -9,23 +9,29 @@ using NUnit.Framework;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 发现类 / 预览类接口上那些"答案是错的、而调用方看不出来"的场景。四类故障，全都是静默的：
+    /// Scenarios on the discovery / preview interfaces where "the answer is wrong, and the caller
+    /// can't tell" — four categories of failure, all silent:
     ///
-    /// <para><b>静默空操作。</b>被解析器丢掉的查询键（<c>?full</c> 不带值地写）、或者被守卫放过却
-    /// 一个都匹配不上的值。调用方读到一个格式良好的 200，就此对工程下了一个只对它自己的拼写错误
-    /// 成立的结论。</para>
+    /// <para><b>Silent no-op.</b> A query key dropped by the parser (<c>?full</c> written without
+    /// a value), or a value that gets past the guard but matches nothing. The caller reads a
+    /// well-formed 200 and draws a conclusion about the project that only holds because of its
+    /// own typo.</para>
     ///
-    /// <para><b>静默覆盖。</b>两个请求键被同一个标志位解析，于是输的那个消失了：请求体
-    /// <c>{"dryRun":true}</c> 与 <c>?mode=transactional</c> 同时出现时，那批调用方本想预览的操作被真的
-    /// 执行了，而响应里没有任何地方说明是哪个模式胜出。</para>
+    /// <para><b>Silent override.</b> Two request keys are parsed by the same flag, so the loser
+    /// disappears: when the request body <c>{"dryRun":true}</c> and <c>?mode=transactional</c>
+    /// both show up, the operation the caller wanted to preview actually gets executed, and
+    /// nothing in the response says which mode won.</para>
     ///
-    /// <para><b>静默泄漏。</b>载荷是拿原始注册表而不是可见技能集合构建的，于是用户经档位撤下的名字
-    /// 照样发了出去——在 <c>/skills/meta</c> 里、在 v1 信封里、以及在拼写纠正候选里。</para>
+    /// <para><b>Silent leak.</b> A payload is built from the raw registry instead of the visible
+    /// skill set, so a name the user withdrew via a profile still gets sent out anyway — in
+    /// <c>/skills/meta</c>, in the v1 envelope, and among the spelling-correction candidates.</para>
     ///
-    /// <para><b>静默乐观。</b>对那些"是否拒绝由载荷决定、而预览从未拿到该载荷"的入口
-    /// （batch_execute 与 workflow 撤销/重做一族），预览仅凭元数据就回了 <c>allowed:true</c>。</para>
+    /// <para><b>Silent optimism.</b> For entry points where "whether it's rejected is decided by
+    /// the payload, and the preview never got that payload" (batch_execute and the workflow
+    /// undo/redo family), the preview answered <c>allowed:true</c> based on metadata alone.</para>
     ///
-    /// 不硬编码任何技能数量：注册表随已安装的可选包变动。探针与预期都从实时注册表推导。
+    /// No skill count is hardcoded: the registry shifts with whichever optional packages are
+    /// installed. Both the probes and the expectations are derived from the live registry.
     /// </summary>
     [TestFixture]
     public class ReviewFixRouterTests
@@ -34,9 +40,10 @@ namespace UnitySkills.Tests.Core
         private SkillsOperatingMode _savedMode;
 
         /// <summary>
-        /// UnitySkills_SurfaceProfile 是 EditorPrefs 键，也就是"按 Unity 版本全机器共享"而非按工程独立：
-        /// 在这里留下一个档位，会静默改变本轮其它所有夹具（以及开发者下一次编辑器会话）的可见范围。
-        /// 故此处备份并还原。
+        /// UnitySkills_SurfaceProfile is an EditorPrefs key, meaning it's "shared machine-wide
+        /// per Unity version" rather than per-project: leaving a profile set here would silently
+        /// change the visible scope for every other fixture in this run (and the developer's next
+        /// editor session). Hence it's backed up and restored here.
         /// </summary>
         [SetUp]
         public void SetUp()
@@ -54,13 +61,15 @@ namespace UnitySkills.Tests.Core
             SkillsSurfaceProfile.Current = _savedProfile;
         }
 
-        // ---------- ?operation=：守卫不得比过滤器更窄 ----------
+        // ---------- ?operation=: the guard must not be narrower than the filter ----------
 
         /// <summary>
-        /// SkillOperation 是 [Flags] 枚举，过滤器用 <c>Enum.TryParse(value, ignoreCase: true)</c> 解析它，
-        /// 因此接受逗号列表。而挡在它前面的守卫却是拿 Enum.GetNames 比对，于是
-        /// <c>?operation=Query,Modify</c>——一个过滤器本会认的值——回了 400。
-        /// 一道会拒绝合法输入的守卫比没有守卫更糟：它把一个本来能用的查询变成了永久错误。
+        /// SkillOperation is a [Flags] enum, and the filter parses it with
+        /// <c>Enum.TryParse(value, ignoreCase: true)</c>, so it accepts a comma list. But the
+        /// guard standing in front of it instead compares against Enum.GetNames, so
+        /// <c>?operation=Query,Modify</c> — a value the filter would happily recognize — got a
+        /// 400. A guard that rejects legal input is worse than no guard at all: it turns a query
+        /// that would otherwise work into a permanent error.
         /// </summary>
         [Test]
         public void OperationFilter_AcceptsAFlagsCommaList()
@@ -86,8 +95,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void OperationFilter_AcceptsANumericLiteral()
         {
-            // Enum.TryParse 同样接受底层数值，所以过滤器认 "?operation=4"。守卫必须与之一致——
-            // 参见 OperationFilter_AcceptsAFlagsCommaList。
+            // Enum.TryParse also accepts the underlying numeric value, so the filter recognizes
+            // "?operation=4". The guard must be consistent with that — see OperationFilter_AcceptsAFlagsCommaList.
             var probe = SkillRouter.GetAllSkillsSnapshot()
                 .Where(s => OperationFlagsOf(s).Length == 1)
                 .OrderBy(s => s.Name, StringComparer.Ordinal)
@@ -105,8 +114,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void OperationFilter_StillRejectsAValueTheFilterCannotUse()
         {
-            // 上面的放宽不得等于把守卫关掉：真正的拼写错误仍必须是带词表的 400，
-            // 而不是一个 skills 数组为空的 200。
+            // The relaxation above must not amount to turning the guard off: a genuine typo must
+            // still be a 400 with a vocabulary, not a 200 with an empty skills array.
             var response = JObject.Parse(SkillRouter.GetFilteredManifest("?operation=Modifyy,Query"));
 
             Assert.That(response["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"),
@@ -118,8 +127,8 @@ namespace UnitySkills.Tests.Core
         [TestCase("/skills/schema")]
         public void OperationCommaList_IsAcceptedOnBothManifestPaths(string path)
         {
-            // 两个端点走同一道守卫，HTTP 线程上的快路径问的也是同一个问题——所以在一个端点合法的值，
-            // 在另一个端点、以及在两条路径上都必须合法。
+            // Both endpoints go through the same guard, and the fast path on the HTTP thread asks
+            // the same question — so a value legal on one endpoint must be legal on the other, and on both paths.
             var probe = SkillRouter.GetAllSkillsSnapshot()
                 .Where(s => OperationFlagsOf(s).Length >= 2)
                 .OrderBy(s => s.Name, StringComparer.Ordinal)
@@ -135,12 +144,14 @@ namespace UnitySkills.Tests.Core
             Assert.That(JObject.Parse(body)["errorCode"], Is.Null);
         }
 
-        // ---------- 裸标志位与空值 ----------
+        // ---------- Bare flags and blank values ----------
 
         /// <summary>
-        /// 不带 <c>=1</c> 的 <c>?full</c> 是"标志位已置起"在 URL 里的惯用写法，而它恰恰是唯一一个
-        /// 专门用来推翻"默认给简表"行为的标志。被解析器丢掉之后，它回的是约 19KB 的目录，
-        /// 而调用方还在等完整 manifest——又因为目录本身是完全合法的载荷，看起来一点问题都没有。
+        /// <c>?full</c> without <c>=1</c> is the conventional URL idiom for "this flag is set",
+        /// and it happens to be the one flag whose whole job is to override the "give the brief
+        /// by default" behavior. Once dropped by the parser, it returns a ~19KB directory while
+        /// the caller is still waiting for the full manifest — and because the directory itself
+        /// is a perfectly legal payload, nothing looks wrong.
         /// </summary>
         [Test]
         public void BareFullFlag_ServesTheSameFullManifestAsFullEqualsOne()
@@ -176,8 +187,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 一个完全没写值的键。把它丢掉就等于"不过滤"，于是一个只打了一半的范围限定回了整份目录，
-        /// 看起来还像是被采纳了。拒绝时必须带上词表，与拼错值时完全一致。
+        /// A key written with no value at all. Dropping it is equivalent to "no filtering", so a
+        /// scope restriction that only got half-written returns the entire directory, and it
+        /// still looks like it was honored. A rejection must carry the vocabulary, exactly like a
+        /// mistyped value would.
         /// </summary>
         [TestCase("category", "validCategories")]
         [TestCase("operation", "validOperations")]
@@ -202,9 +215,10 @@ namespace UnitySkills.Tests.Core
         [TestCase("full")]
         public void BlankValueOnAnyRecognizedKey_IsRejected(string key)
         {
-            // 这里每一个都存在一种"默认解读"，而那正是问题所在：按默认作答会让调用方相信这个键生效了。
-            // ?tags= 会一个都匹配不上，?readonly= 会悄悄当成 readonly=false，
-            // ?full= 会把调用方本想摆脱的那份目录再递回来。
+            // Each of these has a "default interpretation", and that is exactly the problem:
+            // answering based on the default would make the caller believe this key took effect.
+            // ?tags= would match nothing at all, ?readonly= would quietly be treated as
+            // readonly=false, and ?full= would hand back the very directory the caller was trying to escape.
             var response = JObject.Parse(SkillRouter.GetFilteredManifest($"?{key}="));
 
             Assert.That(response["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"),
@@ -215,8 +229,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void BlankValueRejection_MintsNoCacheEntry()
         {
-            // 与拼错值同一套道理：被拒的查询不得换来一条 manifest 大小的缓存条目，
-            // 也不得换来一个会把错误变成 304 的 ETag。
+            // Same reasoning as a mistyped value: a rejected query must not earn a manifest-sized
+            // cache entry, nor an ETag that would turn the error into a 304.
             const string query = "?category=";
             SkillRouter.GetFilteredManifest(query);
 
@@ -230,8 +244,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void LegalQueriesAreUnaffectedByTheParserChange()
         {
-            // 解析器现在多保留了两种它过去会丢掉的写法。它原本就保留的那些写法不得有任何变化：
-            // 这些才是真实调用方在发的查询。
+            // The parser now additionally preserves two forms it used to drop. The forms it
+            // already preserved must not change at all: those are the queries real callers are actually sending.
             var category = FirstPopulatedCategory();
 
             Assert.That(JObject.Parse(SkillRouter.GetFilteredManifest($"?category={category}"))["errorCode"], Is.Null);
@@ -243,12 +257,14 @@ namespace UnitySkills.Tests.Core
             Assert.That(SkillRouter.GetFilteredManifest("?"), Is.EqualTo(SkillRouter.GetBrief()));
         }
 
-        // ---------- POST /skills/batch：mode 与 dryRun 是两个独立的键 ----------
+        // ---------- POST /skills/batch: mode and dryRun are two independent keys ----------
 
         /// <summary>
-        /// 本组测试针对的故障：URL 里带 <c>?mode=transactional</c>，同时请求体里带 <c>{"dryRun":true}</c>。
-        /// 当时用同一个"查询是否已决定"的标志位管着这两个键，于是请求体里的 dryRun 被丢弃，
-        /// 那批操作被真的执行了——调用方要的是预览，得到的是真实改动，而响应从未提及它选了哪个模式。
+        /// The failure this test group targets: the URL carries <c>?mode=transactional</c> while
+        /// the request body carries <c>{"dryRun":true}</c>. Both keys used to be gated by the
+        /// same "has the query already been decided" flag, so the body's dryRun got discarded and
+        /// the batch of operations was actually executed — the caller wanted a preview and got a
+        /// real change, and the response never mentioned which mode had won.
         /// </summary>
         [Test]
         public void Batch_QueryMode_DoesNotSwallowBodyDryRun()
@@ -282,8 +298,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Batch_QueryDryRun_StillWinsOverTheBodyForItsOwnKey()
         {
-            // 同一个键出现在两处时以 URL 为准。没有这条，上面那个修复就会变成"请求体永远胜出"，
-            // 那是同一个 bug 换了个方向。
+            // When the same key appears in both places, the URL wins. Without this, the fix above
+            // would just become "the request body always wins" — the same bug, pointed the other way.
             string probe = ParameterlessReadOnlySkill();
             string body = JsonConvert.SerializeObject(new
             {
@@ -302,7 +318,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Batch_TransactionalWithoutADryRunKey_IsStillTransactional()
         {
-            // 上面那个强制 transactional=false 的反向对照：它只能在真的有人要求预览时才触发。
+            // The reverse counterpart of the transactional=false forcing above: it must only trigger when someone genuinely asked for a preview.
             string probe = ParameterlessReadOnlySkill();
             string body = JsonConvert.SerializeObject(new
             {
@@ -337,7 +353,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Batch_UnknownQueryKey_IsStillRejected()
         {
-            // 这次按键拆分的改造动到了模式解析器，而它紧邻未知参数闸门。那道闸门的行为必须保持不变。
+            // This per-key split touched the mode parser, which sits right next to the unknown-parameter gate. That gate's behavior must stay unchanged.
             string body = JsonConvert.SerializeObject(new
             {
                 steps = new[] { new { skill = ParameterlessReadOnlySkill(), args = new { } } },
@@ -349,12 +365,13 @@ namespace UnitySkills.Tests.Core
             Assert.That(JObject.Parse(responseJson)["errorCode"]?.ToString(), Is.EqualTo("UNKNOWN_PARAM"));
         }
 
-        // ---------- 档位：任何载荷都不得点名已被撤下的技能 ----------
+        // ---------- Profiles: no payload may name a skill that's already been withdrawn ----------
 
         /// <summary>
-        /// 档位是用户对"可以给 AI 提供什么"的表态。任何会枚举技能名的载荷都必须从可见集合作答——
-        /// 而 <c>workflowTrackedSkills</c> 是最不能忘掉这一点的地方，因为"被跟踪"的技能按定义就是写类技能，
-        /// 恰恰就是档位要撤掉的那一半。
+        /// A profile is the user's statement of "what can be offered to the AI". Any payload that
+        /// enumerates skill names must answer from the visible set — and
+        /// <c>workflowTrackedSkills</c> is the place least able to afford forgetting this, because
+        /// a "tracked" skill is by definition a write-type skill, exactly the half a profile is meant to withdraw.
         /// </summary>
         [Test]
         public void MetaAndV1Envelope_NeverNameASkillTheProfileWithdrew()
@@ -384,8 +401,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void FullProfile_WorkflowTrackedSkills_IsTheWholeRegistrySet()
         {
-            // 另一半：过滤不得过度。在默认档位下这个块恰好等于注册表的 TracksWorkflow 集合，
-            // 正是这一点保证了所有 2.7 之前的 v1 载荷逐字节不变。
+            // The other half: filtering must not overreach. Under the default profile, this block
+            // is exactly equal to the registry's TracksWorkflow set, and that's precisely what
+            // guarantees every pre-2.7 v1 payload stays byte-for-byte unchanged.
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
 
             var expected = SkillRouter.GetAllSkillsSnapshotUnfiltered()
@@ -401,8 +419,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 拼写纠正会读注册表来找相近名字，这就让它变成了一条枚举通道：拿一个被隐藏技能的
-        /// 轻微错拼去问，错误响应会把真名递回来，还包在一句 agent 天生就会照做的"你是不是想找"里。
+        /// Spelling correction reads the registry to find similar-looking names, and that turns
+        /// it into an enumeration channel: asking with a slight typo of a hidden skill gets the
+        /// real name handed back in the error response, wrapped in a "did you mean" that an agent
+        /// naturally follows.
         /// </summary>
         [Test]
         public void SkillNotFound_NeverSuggestsAHiddenSkill()
@@ -412,7 +432,7 @@ namespace UnitySkills.Tests.Core
             var hidden = FirstHiddenSkill();
             Assume.That(hidden, Is.Not.Null, "The guide profile hides nothing in this project.");
 
-            // 只差一个字符，所以只要 Levenshtein 搜索能看见真名，就会把它排在第一位。
+            // Off by only one character, so as long as the Levenshtein search can see the real name, it will rank it first.
             string typo = hidden.Name + "x";
             var response = JObject.Parse(SkillRouter.Execute(typo, "{}"));
 
@@ -434,8 +454,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void SkillNotFound_StillSuggestsAVisibleSkill()
         {
-            // 没有这条，上面那个断言会被一个"干脆不再给任何建议"的版本满足，
-            // 而那会剥掉 agent 唯一的自我纠正途径。
+            // Without this, the assertion above would also be satisfied by a version that simply
+            // stops offering any suggestion at all — which would strip the agent's only path to self-correction.
             var visible = SkillRouter.GetAllSkillsSnapshot()
                 .OrderBy(s => s.Name, StringComparer.Ordinal)
                 .First();
@@ -449,12 +469,13 @@ namespace UnitySkills.Tests.Core
                 "assertion above is satisfied by a build that suggests nothing at all.");
         }
 
-        // ---------- ?mode=plan：排除信号 ----------
+        // ---------- ?mode=plan: exclusion signal ----------
 
         /// <summary>
-        /// <c>?mode=dryRun</c> 会汇报 SURFACE_EXCLUDED，而 <c>?mode=plan</c> 当时不会。于是一个先做规划的
-        /// agent——恰恰是该端点存在所要鼓励的行为——会为一个根本跑不了的技能拿到一份完整而自信的计划，
-        /// 直到第一次执行才撞上墙。
+        /// <c>?mode=dryRun</c> reported SURFACE_EXCLUDED, while <c>?mode=plan</c> didn't, at the
+        /// time. So an agent that plans ahead first — exactly the behavior this endpoint exists
+        /// to encourage — would get a complete, confident plan for a skill that can't actually
+        /// run at all, and only hit the wall on the first execution attempt.
         /// </summary>
         [Test]
         public void Plan_OnHiddenSkill_CarriesTheSurfaceExcludedAuthorizationBlock()
@@ -481,8 +502,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Plan_OnAVisibleSkill_IsUnchanged()
         {
-            // 只有在这个块确实说明了什么时才附上它：plan 本就是三种预览载荷里最大的一个，
-            // 给每份计划都挂一个"永远允许"的授权块纯属额外开销。
+            // Only attach it when this block actually says something: plan is already the
+            // largest of the three preview payload types, and hanging an "always allowed"
+            // authorization block on every single plan is pure overhead.
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
 
             var probe = SkillRouter.GetAllSkillsSnapshot()
@@ -497,12 +519,13 @@ namespace UnitySkills.Tests.Core
                 "A visible skill's plan must keep its pre-fix bytes.");
         }
 
-        // ---------- dryRun：longRunning 要出现在默认响应面上 ----------
+        // ---------- dryRun: longRunning must appear on the default response surface ----------
 
         /// <summary>
-        /// LongRunning 当时只存在于 <c>?wire=v2</c> 那个稀疏 flags 数组里，于是 agent 在调用前真正会读的
-        /// 那个面——dry-run 预览——从不提醒它：即将发出的这次调用会把主线程、连同整个 HTTP 队列，
-        /// 阻塞数秒。
+        /// LongRunning used to live only in the sparse flags array under <c>?wire=v2</c>, so the
+        /// one surface an agent actually reads before calling — the dry-run preview — never
+        /// warned it that the call it was about to send would block the main thread, and the
+        /// entire HTTP queue with it, for several seconds.
         /// </summary>
         [Test]
         public void DryRun_ReportsLongRunning_ForBothValues()
@@ -532,8 +555,10 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void DryRun_LongRunningSet_IsSourcedFromTheRegistry()
         {
-            // 防的是这个字段被接到了另一个恰好在单个探针上取值相同的东西上（比如 mayTriggerReload）。
-            // 凡是 dry run 根本没回成预览的技能都跳过——那是另一种缺陷，若不跳过会被误报成本条。
+            // Guards against this field being wired to something else that just happens to have
+            // the same value on a single probe (e.g. mayTriggerReload). Any skill whose dry run
+            // simply didn't come back as a preview is skipped — that's a different kind of
+            // defect, and not skipping it would misreport as this one.
             var mismatches = new List<string>();
             int previewed = 0;
 
@@ -557,12 +582,14 @@ namespace UnitySkills.Tests.Core
                 "dryRun's longRunning disagrees with the registry for: " + string.Join(", ", mismatches));
         }
 
-        // ---------- dryRun / plan：载荷携带写操作的那些入口 ----------
+        // ---------- dryRun / plan: entry points where the write operation is carried by the payload ----------
 
         /// <summary>
-        /// 有六个入口，它们施加的是自己载荷里携带的东西——某个 confirmToken 对应的批处理类型、
-        /// 某个已记录任务的快照——而不是自身元数据声明的东西。它们的 SURFACE_EXCLUDED 拒绝是在执行时
-        /// 才决定的，所以一个只凭元数据作答的预览，会对闸门实际会拒的调用回 <c>allowed:true</c>。
+        /// There are six entry points that apply what their own payload carries — the batch type
+        /// a given confirmToken corresponds to, the snapshot of an already-recorded task —
+        /// rather than what their own metadata declares. Their SURFACE_EXCLUDED rejection is only
+        /// decided at execute time, so a preview that answers based on metadata alone would say
+        /// <c>allowed:true</c> for a call the gate will actually reject.
         /// </summary>
         private static readonly string[] CarriedWriteSkills =
         {
@@ -574,8 +601,9 @@ namespace UnitySkills.Tests.Core
             "workflow_session_undo",
         };
 
-        // 这里逐个写出来而不是从 CarriedWriteSkills 驱动：两份清单一旦不一致，本身就值得让测试变红，
-        // 因为"普通技能"那个用例正是靠这个数组来做排除的。
+        // Written out one by one here rather than driven from CarriedWriteSkills: if the two
+        // lists ever diverge, that in itself deserves to turn this test red, because the
+        // "ordinary skill" test case relies on this exact array for its exclusion.
         [TestCase("batch_execute")]
         [TestCase("batch_retry_failed")]
         [TestCase("workflow_undo_task")]
@@ -626,7 +654,8 @@ namespace UnitySkills.Tests.Core
 
             var auth = DryRunAuthorizationBlock(skillName);
 
-            // 是"不存在"而不是"为 false"：full 档位什么都不撤，所以它的预览字节必须与修复前完全一致。
+            // "Absent" rather than "false": the full profile withdraws nothing, so its preview
+            // bytes must be exactly identical to before the fix.
             foreach (var field in new[] { "payloadGated", "payloadGatedCategories", "payloadGateHint" })
                 Assert.That(auth.Property(field), Is.Null,
                     $"The full profile grew a '{field}' field on {skillName}'s authorization block.");
@@ -649,8 +678,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 在 noSceneAuthoring 档位下这六个被直接隐藏（它们都声明了 MutatesScene），预览本就会回
-        /// SURFACE_EXCLUDED。此时再追加那条"载荷相关"的告知，等于把一道墙说成两道。
+        /// Under the noSceneAuthoring profile, these six are directly hidden (they all declare
+        /// MutatesScene), and the preview would already answer SURFACE_EXCLUDED on its own.
+        /// Appending the "payload-related" notice on top of that here would just be describing one wall as two.
         /// </summary>
         [Test]
         public void DryRun_CarriedWriteSkill_UnderNoSceneAuthoring_ReportsTheSkillLevelExclusionAlone()
@@ -724,7 +754,7 @@ namespace UnitySkills.Tests.Core
             return block;
         }
 
-        /// <summary>技能 Operation 声明中包含的各个标志名，按枚举顺序。</summary>
+        /// <summary>Each flag name included in a skill's Operation declaration, in enum order.</summary>
         private static string[] OperationFlagsOf(SkillRouter.SkillInfo skill)
         {
             return Enum.GetValues(typeof(SkillOperation))
@@ -735,9 +765,11 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 一个所有参数都可选的只读技能，好让某个批处理步骤能"真的执行"（用于 transactional 对照用例）
-        /// 而不动工程。优先取 editor_get_layers——无参数、不依赖可选包、只读 LayerMask——若它被改名，
-        /// 则退回注册表里任何符合条件的技能，使夹具仍然可用。
+        /// A read-only skill with every parameter optional, so a given batch step can "really
+        /// execute" (for the transactional control case) without touching the project. Prefers
+        /// editor_get_layers — parameterless, no dependency on optional packages, a read-only
+        /// LayerMask — and if it ever gets renamed, falls back to any qualifying skill in the
+        /// registry, so the fixture keeps working.
         /// </summary>
         private static string ParameterlessReadOnlySkill()
         {
@@ -756,7 +788,7 @@ namespace UnitySkills.Tests.Core
             return name;
         }
 
-        /// <summary>当前生效档位所隐藏的第一个技能——调用前必须先设好档位。</summary>
+        /// <summary>The first skill hidden by the currently active profile — the profile must be set before calling this.</summary>
         private static SkillRouter.SkillInfo FirstHiddenSkill()
         {
             return SkillRouter.GetAllSkillsSnapshotUnfiltered()
@@ -779,8 +811,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 让一次请求走真正的主线程处理器（<c>SkillsHttpServer.ProcessJob</c>）。只能靠反射进去——
-        /// job 类型与方法都是 private——而在这里复述一遍处理器的路由逻辑，就等于没在测处理器。
+        /// Routes a request through the actual main-thread handler (<c>SkillsHttpServer.ProcessJob</c>).
+        /// The only way in is reflection — the job type and method are both private — and
+        /// re-describing the handler's routing logic here instead would mean this isn't testing the handler at all.
         /// </summary>
         private static (int StatusCode, string ResponseJson) ProcessRequest(
             string httpMethod, string path, string query, string body)

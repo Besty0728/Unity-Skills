@@ -8,7 +8,7 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// Animator 管理技能：创建控制器、管理参数、控制播放。
+    /// Animator management skills: create controllers, manage parameters, control playback.
     /// </summary>
     public static class AnimatorSkills
     {
@@ -76,8 +76,8 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(controller);
             controller.AddParameter(paramName, type);
 
-            // AnimatorControllerParameter 是值类型，必须按下标就地改写数组元素后整体回写，
-            // 直接改遍历出来的副本不会生效。
+            // AnimatorControllerParameter is a value type, so the array element must be mutated in
+            // place by index and written back wholesale; mutating a copy pulled out of the enumeration has no effect.
             var parameters = controller.parameters;
             int idx = System.Array.FindIndex(parameters, p => p.name == paramName);
             if (idx >= 0)
@@ -154,9 +154,9 @@ namespace UnitySkills
                     errorCode = SkillErrorCode.TargetNotFound.ToWireString()
                 };
 
-            // Animator.SetFloat/SetInteger/SetBool/SetTrigger 遇到不存在的参数名会静默失败
-            // （不抛异常也不打日志），因此必须先比对运行时参数表，否则拼错的 paramName
-            // 会被当成成功返回。
+            // Animator.SetFloat/SetInteger/SetBool/SetTrigger fail silently on a parameter name
+            // that doesn't exist (no exception, no log), so the runtime parameter table must be
+            // checked first, otherwise a misspelled paramName would be reported as a success.
             var parameters = animator.parameters;
             var matchedParam = parameters.FirstOrDefault(p => p.name == paramName);
             bool paramExists = parameters.Any(p => p.name == paramName);
@@ -222,8 +222,8 @@ namespace UnitySkills
             var (animator, error) = GameObjectFinder.FindComponentOrError<Animator>(name, instanceId, path);
             if (error != null) return error;
 
-            // Animator.Play 遇到不存在的状态名同样静默失败，因此先递归遍历状态机
-            // （含子状态机）校验，避免拼错的 stateName 被当成播放成功。
+            // Animator.Play likewise fails silently on a state name that doesn't exist, so the state
+            // machine (including sub-state machines) is walked recursively to validate first, so a misspelled stateName isn't reported as a successful play.
             var controller = animator.runtimeAnimatorController as AnimatorController;
             if (controller == null && animator.runtimeAnimatorController != null)
             {
@@ -263,9 +263,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把 <paramref name="stateMachine"/> 中所有可达状态名（带子状态机的点分路径）收集到
-        /// <paramref name="names"/>，并返回 <paramref name="target"/> 是否命中某个状态的
-        /// 简单名或完整点分路径。
+        /// Collects the names of all reachable states in <paramref name="stateMachine"/> (dotted
+        /// paths for sub-state machines) into <paramref name="names"/>, and returns whether
+        /// <paramref name="target"/> matches a state's simple name or its full dotted path.
         /// </summary>
         private static bool SearchStateMachineForState(AnimatorStateMachine stateMachine, string prefix, string target, List<string> names)
         {

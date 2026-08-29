@@ -12,9 +12,9 @@ using UnityEngine.SceneManagement;
 namespace UnitySkills
 {
     /// <summary>
-    /// editor_get_changes 背后的持久化、有界编辑器改动日志。它持续观察场景结构、
-    /// 序列化属性与导入文件，不需要开启录制会话。条目存放在 Library 下：
-    /// 既能跨域重载存活，又不会进入版本控制或用户的 Assets 目录。
+    /// The persisted, bounded editor-change log behind editor_get_changes. It continuously observes scene structure,
+    /// serialized properties, and imported files, with no need to start a recording session. Entries are stored under Library:
+    /// that lets them survive domain reloads while staying out of version control and the user's Assets folder.
     /// </summary>
     [InitializeOnLoad]
     public static class EditorChangeTrackerService
@@ -77,7 +77,7 @@ namespace UnitySkills
             }
         }
 
-        /// <summary>标记由 REST 技能引发的改动，便于调用方把它们与手工编辑区分开。</summary>
+        /// <summary>Marks changes triggered by a REST skill, so callers can distinguish them from manual edits.</summary>
         public static void BeginRestExecution() => _restDepth++;
 
         public static void EndRestExecution()

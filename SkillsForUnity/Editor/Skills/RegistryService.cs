@@ -11,7 +11,7 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// 把本 Unity 实例注册到一个全局文件，供客户端发现当前活跃的 Unity 实例及其端口。
+    /// Registers this Unity instance in a global file so clients can discover active Unity instances and their ports.
     /// </summary>
     [InitializeOnLoad]
     public static class RegistryService
@@ -38,7 +38,7 @@ namespace UnitySkills
                     Directory.CreateDirectory(GlobalConfigDir);
 
                 EditorApplication.quitting += Unregister;
-                // 程序集重载时的清理由 SkillsHttpServer 调用 Stop() 负责，此处不重复挂钩
+                // Cleanup on assembly reload is handled by SkillsHttpServer calling Stop(); no duplicate hook is registered here
             }
             catch (Exception ex)
             {
@@ -71,7 +71,7 @@ namespace UnitySkills
 
                     registry[ProjectPath] = info;
 
-                    // 清理陈旧条目：心跳超过 120 秒，或进程已死
+                    // Clean up stale entries: heartbeat older than 120 seconds, or the process is dead
                     var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     var keysToRemove = registry
                         .Where(k => k.Value.pid != info.pid &&
@@ -89,8 +89,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Unity CLI 绑定变化时同步注册表条目（面板 Bind/Unbind 调用）。
-        /// 条目尚不存在（服务器未启动过）时不落任何数据 —— Register 时会带上最新绑定状态。
+        /// Syncs the registry entry when the Unity CLI binding changes (called by the panel's Bind/Unbind).
+        /// If the entry doesn't exist yet (server never started), no data is written -- Register will carry the latest binding state.
         /// </summary>
         public static void UpdateCliBinding(bool bound, string cliPath)
         {
@@ -146,7 +146,7 @@ namespace UnitySkills
                     }
                     else
                     {
-                        // 心跳早于 Register 到达，此时需要写入完整条目
+                        // The heartbeat arrived before Register, so a full entry needs to be written here
                         UnityCliService.GetRegistryBinding(out var cliBound, out var cliPath);
                         registry[ProjectPath] = new InstanceInfo
                         {
@@ -182,15 +182,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 带跨进程文件锁的原子读-改-写：以 FileStream(FileShare.None) 互斥，
-        /// 并借助 .tmp 文件保证写入的原子性。
+        /// Atomic read-modify-write with a cross-process file lock: mutual exclusion via FileStream(FileShare.None),
+        /// with atomicity of the write itself guaranteed by a .tmp file.
         /// </summary>
         private static void AtomicReadModifyWrite(Action<Dictionary<string, InstanceInfo>> modifier)
         {
             const int maxRetries = 5;
             const int retryDelayMs = 100;
 
-            // 从中断的写入中恢复：.tmp 存在而主文件缺失或为空时，用 .tmp 还原
+            // Recovers from an interrupted write: if .tmp exists while the main file is missing or empty, restore from .tmp
             var tmpFile = RegistryFile + ".tmp";
             if (File.Exists(tmpFile) && (!File.Exists(RegistryFile) || new FileInfo(RegistryFile).Length == 0))
             {
@@ -221,7 +221,7 @@ namespace UnitySkills
 
                     modifier(registry);
 
-                    // 先写 .tmp，再整体替换，保证原子性
+                    // Write .tmp first, then swap it in wholesale, to guarantee atomicity
                     var newJson = JsonConvert.SerializeObject(registry, Formatting.Indented);
                     File.WriteAllText(tmpFile, newJson, Encoding.UTF8);
 
@@ -237,7 +237,7 @@ namespace UnitySkills
                 }
                 catch (IOException) when (attempt < maxRetries - 1)
                 {
-                    // 文件被其他进程占用，退避重试
+                    // File is held by another process; back off and retry
                     System.Threading.Thread.Sleep(retryDelayMs * (attempt + 1));
                 }
                 finally
@@ -250,8 +250,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 用 SHA256 的前 4 字节算出稳定哈希字符串。
-        /// 与 GetHashCode() 不同，它跨进程、跨运行时都是确定的。
+        /// Computes a stable hash string from the first 4 bytes of SHA256.
+        /// Unlike GetHashCode(), it is deterministic across processes and across runtimes.
         /// </summary>
         private static string ComputeStableHash(string input)
         {
@@ -282,8 +282,8 @@ namespace UnitySkills
             public int pid;
             public long last_active;
             public string unityVersion;
-            // Unity CLI 绑定：AI 客户端跨项目发现"可冷启动"的实例用。
-            // 详情契约在 <project>/Library/UnitySkills/cli_config.json。
+            // Unity CLI binding: used by AI clients to discover "cold-startable" instances across projects.
+            // The detailed contract lives in <project>/Library/UnitySkills/cli_config.json.
             public bool cliBound;
             public string cliPath;
         }

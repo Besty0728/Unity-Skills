@@ -43,7 +43,7 @@ After you upgrade the package, tools you already installed are refreshed to the 
 
 ### Advisory modules
 
-27 advisory design modules (architecture, performance, design patterns, testability, package-specific source rules, etc.) are available in all modes and loaded on demand.
+28 advisory design modules (architecture, performance, design patterns, testability, package-specific source rules, etc.) are available in all modes and loaded on demand.
 
 ## 🛡️ Governance at four points in the call lifecycle
 

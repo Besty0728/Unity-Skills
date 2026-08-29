@@ -8,44 +8,44 @@ using System.Text;
 namespace UnitySkills
 {
     /// <summary>
-    /// 面向主流 AI IDE 的一键 skill 安装器：Claude Code、Antigravity、Codex、Cursor、OpenCode、Kimi Code。
+    /// One-click skill installer for mainstream AI IDEs: Claude Code, Antigravity, Codex, Cursor, OpenCode, Kimi Code.
     /// </summary>
     public static class SkillInstaller
     {
-        // Claude Code 路径：Claude 接受任意文件夹名
+        // Claude Code path: Claude accepts any folder name
         public static string ClaudeProjectPath => Path.Combine(Application.dataPath, "..", ".claude", "skills", "unity-skills");
         public static string ClaudeGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "skills", "unity-skills");
 
-        // Antigravity 路径 - https://antigravity.google/docs/skills
-        // 工作区路径经 .agents/skills 与 Codex 共用（开放的 Agent Skills 标准）
+        // Antigravity path - https://antigravity.google/docs/skills
+        // The workspace path is shared with Codex via .agents/skills (the open Agent Skills standard)
         public static string AntigravityProjectPath => Path.Combine(Application.dataPath, "..", ".agents", "skills", "unity-skills");
         public static string AntigravityGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".gemini", "antigravity", "skills", "unity-skills");
 
-        // Codex 路径 - https://developers.openai.com/codex/skills
-        // 工作区路径经 .agents/skills 与 Antigravity 共用（开放的 Agent Skills 标准）
+        // Codex path - https://developers.openai.com/codex/skills
+        // The workspace path is shared with Antigravity via .agents/skills (the open Agent Skills standard)
         public static string CodexProjectPath => Path.Combine(Application.dataPath, "..", ".agents", "skills", "unity-skills");
         public static string CodexGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".agents", "skills", "unity-skills");
 
-        // Cursor 路径 - https://cursor.com/docs/context/skills
+        // Cursor path - https://cursor.com/docs/context/skills
         public static string CursorProjectPath => Path.Combine(Application.dataPath, "..", ".cursor", "skills", "unity-skills");
         public static string CursorGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "skills", "unity-skills");
 
-        // OpenCode 路径 - https://opencode.ai/docs/skills
-        // 工作区路径经 .agents/skills 共用（开放的 Agent Skills 标准）
+        // OpenCode path - https://opencode.ai/docs/skills
+        // The workspace path is shared via .agents/skills (the open Agent Skills standard)
         public static string OpenCodeProjectPath => Path.Combine(Application.dataPath, "..", ".opencode", "skills", "unity-skills");
         public static string OpenCodeGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "opencode", "skills", "unity-skills");
 
-        // Kimi Code 路径 - https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html
-        // Kimi Code CLI 会扫描四个作用域；这里只指向它的专属目录（不用 Codex/Antigravity 共享的
-        // .agents/skills），以保证各工具的安装状态与卸载互不干扰。装在 ~/.agents/skills 下的全局
-        // Codex 副本仍会被 Kimi Code 顺带发现。
-        // 用户级根目录在 Editor 继承到 KIMI_CODE_HOME 时取该值，否则取 ~/.kimi-code。
+        // Kimi Code path - https://www.kimi.com/code/docs/kimi-code-cli/customization/skills.html
+        // Kimi Code CLI scans four scopes; this points only at its own dedicated directory (not the
+        // .agents/skills shared with Codex/Antigravity), so each tool's install state and uninstall
+        // stay independent of each other. A global Codex copy installed under ~/.agents/skills will still be picked up incidentally by Kimi Code.
+        // The user-level root takes this value if the Editor inherits KIMI_CODE_HOME, otherwise ~/.kimi-code.
         public static string KimiCodeProjectPath => Path.Combine(Application.dataPath, "..", ".kimi-code", "skills", "unity-skills");
         public static string KimiCodeGlobalPath => Path.Combine(KimiCodeHome, "skills", "unity-skills");
 
         /// <summary>
-        /// 解析 $KIMI_CODE_HOME（默认 ~/.kimi-code）。只有当 Unity 由导出过该变量的 shell 启动时
-        /// 才看得到它，否则采用文档中的默认值。
+        /// Resolves $KIMI_CODE_HOME (default ~/.kimi-code). Only visible when Unity was launched
+        /// from a shell that exported this variable; otherwise falls back to the documented default.
         /// </summary>
         private static string KimiCodeHome
         {
@@ -57,8 +57,8 @@ namespace UnitySkills
                     return Path.Combine(home, ".kimi-code");
 
                 configured = configured.Trim();
-                // shell 不会展开被引号包住的开头 "~"，因此在此自行处理，
-                // 否则会在工程旁边建出一个名为 "~" 的目录。
+                // A shell doesn't expand a leading "~" when it's inside quotes, so it's handled here manually,
+                // otherwise a directory literally named "~" would get created next to the project.
                 if (configured == "~")
                     return home;
                 if (configured.StartsWith("~/", StringComparison.Ordinal) || configured.StartsWith("~\\", StringComparison.Ordinal))
@@ -238,8 +238,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 一个安装目标（工具 × 作用域）的运行时描述。面板与自动同步共用同一份检测/安装入口，
-        /// 避免两处各写一套复制逻辑而彼此漂移。
+        /// Runtime description of an install target (tool x scope). The panel and the auto-sync
+        /// share this single detect/install entry point, avoiding two separate copies of the copy logic drifting apart.
         /// </summary>
         public sealed class InstallTarget
         {
@@ -250,9 +250,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 枚举全部内置安装目标（6 个工具 × 项目/全局两个作用域）。
-        /// 注意 Codex 与 Antigravity 的项目级路径同为 .agents/skills（开放标准共用目录），
-        /// 需要按路径去重的调用方请自行处理。
+        /// Enumerates all built-in install targets (6 tools x project/global scope).
+        /// Note that Codex and Antigravity's project-level paths are both .agents/skills (a shared directory per the open standard); callers that need to de-duplicate by path
+        /// must handle that themselves.
         /// </summary>
         public static IEnumerable<InstallTarget> EnumerateTargets()
         {
@@ -311,11 +311,11 @@ namespace UnitySkills
             if (!Directory.Exists(targetPath))
                 Directory.CreateDirectory(targetPath);
 
-            // 必须用不带 BOM 的 UTF-8：若 BOM（EF BB BF）出现在开头的 `---` 之前，部分 agent 会拒绝解析 YAML frontmatter。
+            // Must use UTF-8 without BOM: if a BOM (EF BB BF) appears before the leading `---`, some agents refuse to parse the YAML frontmatter.
             var utf8NoBom = SkillsCommon.Utf8NoBom;
             CopyTemplateDirectory(GetSkillTemplateRoot(), targetPath, utf8NoBom);
 
-            // 写入 agent 配置，供自动识别 agent 身份
+            // Write agent config for automatic agent identity detection
             var scriptsPath = Path.Combine(targetPath, "scripts");
             if (!Directory.Exists(scriptsPath))
                 Directory.CreateDirectory(scriptsPath);
@@ -330,12 +330,12 @@ namespace UnitySkills
         {
             string templateRoot;
 
-            // 1. 工程根目录（开发 / 本地克隆）
+            // 1. Project root (development / local clone)
             templateRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "unity-skills"));
             if (Directory.Exists(templateRoot))
                 return templateRoot;
 
-            // 2. UPM 包内部（unity-skills~ 是随包分发的波浪号隐藏目录）
+            // 2. Inside the UPM package (unity-skills~ is the tilde hidden directory shipped with the package)
             string resolvedPath = null;
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(SkillInstaller).Assembly);
             if (packageInfo != null)
@@ -350,17 +350,17 @@ namespace UnitySkills
 
             if (!string.IsNullOrEmpty(resolvedPath))
             {
-                // 包内的波浪号隐藏目录
+                // Tilde hidden directory inside the package
                 templateRoot = Path.GetFullPath(Path.Combine(resolvedPath, "unity-skills~"));
                 if (Directory.Exists(templateRoot))
                     return templateRoot;
 
-                // 与包根同级（git ?path= 全仓库克隆的情形）
+                // Sibling of the package root (the case of a full-repo clone via git ?path=)
                 templateRoot = Path.GetFullPath(Path.Combine(resolvedPath, "..", "unity-skills"));
                 if (Directory.Exists(templateRoot))
                     return templateRoot;
 
-                // 包根的子目录
+                // Subdirectory of the package root
                 templateRoot = Path.GetFullPath(Path.Combine(resolvedPath, "unity-skills"));
                 if (Directory.Exists(templateRoot))
                     return templateRoot;

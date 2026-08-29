@@ -10,29 +10,31 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// 写操作可选语义 diff（POST /skill/{name}?diff=1）的纯旁路观察者。
+    /// A pure side-channel observer for the optional semantic diff on write operations (POST /skill/{name}?diff=1).
     ///
-    /// 在 skill 执行前后对"从 args 定位到的目标对象"做 <see cref="EditorJsonUtility"/> 快照对比，
-    /// 报告本次操作实际改动的叶子字段（changed）、新建对象（added）、被销毁对象（removed），
-    /// 免去 AI 二次查询确认。
+    /// Takes an <see cref="EditorJsonUtility"/> snapshot before and after a skill runs, of "the target object(s)
+    /// located from args", and reports the leaf fields actually changed by this operation (changed), newly
+    /// created objects (added), and destroyed objects (removed) — sparing the AI a follow-up query to confirm.
     ///
-    /// 硬约束：本类全程异常隔离——前捕获 / 对比 / added 扫描的任何失败都**不得**影响 skill 执行，
-    /// 只让 sceneDiff 降级为 {error:...}。它是观察者，不参与 undo / workflow / 错误分支。
+    /// Hard constraint: this class is fully exception-isolated throughout — any failure in before-capture /
+    /// comparison / added-scan **must not** affect skill execution; it only degrades sceneDiff to {error:...}.
+    /// It's an observer, and takes no part in undo / workflow / error branching.
     /// </summary>
     internal static class SkillSceneDiff
     {
-        // 前捕获对象数上限：超出只捕获前 N 个并置 captureLimited。
+        // Cap on the number of before-captured objects: beyond this, only the first N are captured and captureLimited is set.
         private const int MaxCaptureObjects = 20;
-        // 单对象 changed 叶子上限：超出置 truncated。
+        // Cap on changed leaves per object: beyond this, truncated is set.
         private const int MaxChangesPerObject = 50;
         private const int MaxBatchCaptureObjects = 100;
 
         /// <summary>
-        /// 前捕获单对象记录。对象销毁后 Unity 假 null 会让 obj.name / GetType() 抛异常，
-        /// 故 name / typeName / entityId 必须在前捕获时就固化，供 removed 报告使用。
-        /// EntityId 走 <see cref="UnityObjectIdUtility.GetEntityId"/> 兼容层（6000.4+ 用 entityId，
-        /// 旧版回退 instanceId 字符串），既是进程内去重键也是 JSON 输出句柄；LegacyInstanceId
-        /// 仅在旧版非零，用于兼容既有 instanceId 输出字段。
+        /// A single before-captured object record. Once an object is destroyed, Unity's fake-null makes
+        /// obj.name / GetType() throw, so name / typeName / entityId must be pinned down at before-capture time
+        /// for the removed report to use. EntityId goes through the <see cref="UnityObjectIdUtility.GetEntityId"/>
+        /// compatibility layer (entityId on 6000.4+, falling back to an instanceId string on older versions);
+        /// it serves as both the in-process dedup key and the JSON output handle. LegacyInstanceId is only
+        /// non-zero on older versions, kept for compatibility with existing instanceId output fields.
         /// </summary>
         internal sealed class ObjectSnapshot
         {
@@ -48,7 +50,7 @@ namespace UnitySkills
         internal sealed class DiffCapture
         {
             public readonly List<ObjectSnapshot> Snapshots = new List<ObjectSnapshot>();
-            // 前捕获对象的 entityId 集，用于 added 阶段排除"本就存在的目标"。
+            // The entityId set of before-captured objects, used at the added stage to exclude "targets that already existed".
             public readonly HashSet<string> CapturedEntityIds = new HashSet<string>();
             public bool Limited;
             public bool HadTargets;
@@ -204,17 +206,18 @@ namespace UnitySkills
             if (removedGameObjectIds.Count == 0 || componentSnapshot == null)
                 return false;
 
-            // 已销毁的 Unity 组件不再能访问 gameObject，故归属关系在前捕获快照里就已固化，
-            // 在 Unity 转为假 null 之后仍然可用。
+            // Destroyed Unity components can no longer access gameObject, so ownership was already pinned down
+            // in the before-capture snapshot, and remains usable even after Unity turns it into a fake null.
             return !string.IsNullOrEmpty(componentSnapshot.OwnerEntityId) &&
                 removedGameObjectIds.Contains(componentSnapshot.OwnerEntityId);
         }
 
         /// <summary>
-        /// invoke 前捕获：复用 SkillRouter 的共享目标定位（<see cref="SkillRouter.CollectTargetsFromArgs"/>），
-        /// 额外把 componentType 指向的组件实例纳入捕获集（component_set_property 类 skill 改的正是组件，
-        /// 是 diff 最高频价值点）。对每个对象固化 (instanceId, name, typeName, EditorJsonUtility.ToJson)。
-        /// 上限 <see cref="MaxCaptureObjects"/>，超出置 Limited。任何异常降级为 Error。
+        /// Before-invoke capture: reuses SkillRouter's shared target location (<see cref="SkillRouter.CollectTargetsFromArgs"/>),
+        /// additionally folding the component instance pointed to by componentType into the capture set (a
+        /// component_set_property-style skill modifies exactly this component, which is diff's highest-value
+        /// point). For each object, pins down (instanceId, name, typeName, EditorJsonUtility.ToJson).
+        /// Capped at <see cref="MaxCaptureObjects"/>; beyond that, Limited is set. Any exception degrades to Error.
         /// </summary>
         public static DiffCapture CaptureBefore(JObject args)
         {
@@ -232,7 +235,7 @@ namespace UnitySkills
                     if (id == null)
                         continue;
                     if (capture.CapturedEntityIds.Contains(id))
-                        continue; // 同一对象被多个定位规则命中时去重
+                        continue; // Dedupe when the same object is matched by multiple location rules
                     if (capture.Snapshots.Count >= MaxCaptureObjects)
                     {
                         capture.Limited = true;
@@ -263,8 +266,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// invoke 成功后对比：同集合对象重新 ToJson，销毁的计入 removed，其余逐叶子对比得 changed；
-        /// 再从成功 result 里扫描新建对象得 added。任何异常降级为 {error:...}。
+        /// Post-invoke comparison on success: re-ToJson the same set of objects, count destroyed ones as
+        /// removed, and diff the rest leaf-by-leaf for changed; then scan the successful result for newly
+        /// created objects to get added. Any exception degrades to {error:...}.
         /// </summary>
         public static JObject Build(DiffCapture capture, object result)
         {
@@ -280,7 +284,8 @@ namespace UnitySkills
 
                 foreach (var snap in capture.Snapshots)
                 {
-                    // Unity 假 null：对象在执行期间被销毁。用前捕获固化的展示字段报告。
+                    // Unity fake-null: the object was destroyed during execution. Report using the display
+                    // fields pinned down at before-capture.
                     if (snap.Obj == null)
                     {
                         removed.Add(BuildIdentity(snap.Name, snap.TypeName, snap.EntityId, snap.LegacyInstanceId));
@@ -322,8 +327,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 若 args 含 componentType 且捕获集里已定位到目标 GameObject，把该类型的组件实例也纳入。
-        /// 类型解析复用 <see cref="ComponentSkills.FindComponentType"/>（不新写类型搜索）。
+        /// If args contains componentType and the target GameObject is already in the capture set, also folds
+        /// in that type's component instance. Type resolution reuses <see cref="ComponentSkills.FindComponentType"/> (no new type search is written).
         /// </summary>
         private static void AppendComponentTarget(JObject args, List<UnityEngine.Object> targets)
         {
@@ -341,9 +346,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 从成功 result 的 JToken 里深度收集 entityId / instanceId，解回对象，排除前捕获集已有者。
-        /// entityId 优先（Unity 6000.4+ result 里 instanceId 恒为 0，entityId 才是真标识），
-        /// 解回统一走 <see cref="UnityObjectIdUtility"/> 兼容层规避 obsolete API。
+        /// Deep-collects entityId / instanceId from the successful result's JToken, resolves them back to
+        /// objects, and excludes anything already in the before-capture set. entityId takes priority (on Unity
+        /// 6000.4+, instanceId in a result is always 0, so entityId is the real identifier); resolution
+        /// consistently goes through the <see cref="UnityObjectIdUtility"/> compatibility layer to avoid obsolete APIs.
         /// </summary>
         private static JArray BuildAdded(object result, HashSet<string> capturedEntityIds)
         {
@@ -379,9 +385,9 @@ namespace UnitySkills
             if (id == null)
                 return;
             if (capturedEntityIds.Contains(id))
-                return; // 前捕获集已有 → 不是本次新建
+                return; // Already in the before-capture set → not newly created this time
             if (!seen.Add(id))
-                return; // 同一新对象被多个 id 字段指向，只报一次
+                return; // The same new object is pointed to by multiple id fields; report it only once
 
             string path = null;
             if (obj is GameObject go)
@@ -399,9 +405,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 统一对象身份字段。始终输出 entityId（6000.4+ 唯一可靠句柄，旧版为 instanceId 字符串），
-        /// 旧版另附非零 instanceId 兼容既有消费方；6000.4+ 的 instanceId 恒为 0 故略去
-        /// （见 SKILL.md「Object location (Unity 6000.4+)」契约）。
+        /// Unified object identity fields. Always outputs entityId (the only reliable handle on 6000.4+; an
+        /// instanceId string on older versions); older versions additionally attach a non-zero instanceId for
+        /// compatibility with existing consumers; on 6000.4+, instanceId is always 0 so it's omitted (see the
+        /// "Object location (Unity 6000.4+)" contract in SKILL.md).
         /// </summary>
         private static JObject BuildIdentity(string name, string type, string entityId, int legacyInstanceId)
         {
@@ -447,8 +454,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 深度对比前后两份 EditorJsonUtility JSON，输出改变的叶子路径。
-        /// 数组长度不同时整个数组路径记一条 note，不做逐元素对齐。上限 <see cref="MaxChangesPerObject"/>。
+        /// Deep-compares two EditorJsonUtility JSON blobs (before and after), outputting the leaf paths that
+        /// changed. When array lengths differ, records a single note for the whole array path instead of
+        /// aligning element-by-element. Capped at <see cref="MaxChangesPerObject"/>.
         /// </summary>
         private static List<JObject> CompareJson(string beforeJson, string afterJson, out bool truncated)
         {
@@ -464,7 +472,8 @@ namespace UnitySkills
             return changes;
         }
 
-        // JObject.Parse 会把看似日期的字符串强转成本地化 DateTime,破坏对比；DateParseHandling.None 保持原样。
+        // JObject.Parse would coerce a date-looking string into a localized DateTime, corrupting the
+        // comparison; DateParseHandling.None keeps it as-is.
         private static JObject ParseNoDate(string json)
         {
             if (string.IsNullOrEmpty(json))

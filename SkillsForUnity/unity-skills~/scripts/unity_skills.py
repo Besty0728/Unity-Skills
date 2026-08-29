@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
-__version__ = "2.7.0"
+__version__ = "2.7.1"
 
 UNITY_URL = "http://localhost:8090"
 DEFAULT_PORT = 8090
@@ -1394,7 +1394,7 @@ def get_server_status() -> Dict[str, Any]:
 # ============================================================
 
 def _permission_get(path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """内部辅助：向 /permission/* GET 端点发起请求并返回 JSON。"""
+    """Internal helper: sends a GET request to a /permission/* endpoint and returns the JSON."""
     client = _get_default_client()
     qs = f"?{urlencode(params)}" if params else ""
     response = client._session.get(f"{client.url}{path}{qs}", timeout=client.timeout)
@@ -1403,7 +1403,7 @@ def _permission_get(path: str, params: Optional[Dict[str, Any]] = None) -> Dict[
 
 
 def _permission_post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """内部辅助：向 /permission/* POST 端点发送 JSON body 并返回响应 JSON。"""
+    """Internal helper: POSTs a JSON body to a /permission/* endpoint and returns the response JSON."""
     client = _get_default_client()
     json_data = json.dumps(payload, ensure_ascii=False)
     response = client._session.post(
@@ -1417,15 +1417,15 @@ def _permission_post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def get_permission_status(token: str = None) -> Dict[str, Any]:
-    """获取权限系统状态（当前模式、已授权、待批列表等）。
+    """Get the permission system status (current mode, granted list, pending list, etc.).
 
-    返回内容含 ``mode``、``panelApprovalRequired``、``granted``、``forbidden``、
-    ``pending``、``counts``。若传入 ``token``，响应会额外包含 ``focus`` 字段
-    （含 ``approvedByPanel``、``skill`` 等），用于查询特定 grant 请求的状态——
-    Panel 渠道下轮询审批结果时常用。
+    The response includes ``mode``, ``panelApprovalRequired``, ``granted``, ``forbidden``,
+    ``pending``, ``counts``. If ``token`` is passed, the response additionally includes a
+    ``focus`` field (containing ``approvedByPanel``, ``skill``, etc.) for querying the status of
+    a specific grant request — commonly used to poll approval results under the Panel channel.
 
     Args:
-        token: 可选，传入查询特定 grant 请求状态。
+        token: Optional; pass to query the status of a specific grant request.
     """
     try:
         params = {'token': token} if token else None
@@ -1435,32 +1435,32 @@ def get_permission_status(token: str = None) -> Dict[str, Any]:
 
 
 def grant_permission(skill: str, token: str, args: Dict[str, Any]) -> Dict[str, Any]:
-    """单次一步执行 grant：AI 用此把 ``MODE_RESTRICTED`` 的请求换成执行结果。
+    """Single-step grant: AI uses this to turn a ``MODE_RESTRICTED`` request into an executed result.
 
-    ``args`` 必须与原 skill 调用一致（不含 ``_confirm``），服务端会用其重算
-    hash 校验 token-args 绑定，防止 AI 拿一个 token 套到其它 skill 调用上。
+    ``args`` must match the original skill call exactly (without ``_confirm``); the server recomputes
+    a hash from it to verify the token-args binding, preventing the AI from reusing one token against a different skill call.
 
-    **响应结构（v1.9 重构后）**：成功时返回
-    ``{ok: True, executed: True, skill, result: <原 skill 的 Execute 输出>}``。
-    服务端在 grant 通过的同一次请求里直接执行了该 skill，**AI 不需要再调一次
-    原 skill 端点** —— 直接消费 ``result`` 即可。grant 不再写入永久白名单，
-    同一 skill 第二次调用仍会触发 ``MODE_RESTRICTED``，需要重新走 grant。
+    **Response shape (post v1.9 refactor)**: on success returns
+    ``{ok: True, executed: True, skill, result: <the original skill's Execute output>}``.
+    The server executes the skill directly within the same request that the grant passes, **so the
+    AI does not need to call the original skill endpoint again** — just consume ``result`` directly.
+    A grant no longer writes to a permanent allowlist, so a second call to the same skill still triggers ``MODE_RESTRICTED`` and needs to go through grant again.
 
-    Panel 渠道下若 AI 在用户点 Approve 之前调用，会返回
-    ``{ok: False, reason: "GRANT_PENDING_APPROVAL"}``，应提示用户去 Unity
-    面板点 Approve，再用 ``get_permission_status(token=...)`` 轮询审批结果，
-    确认后再调一次 ``grant_permission`` 拿 ``result``。
+    Under the Panel channel, if the AI calls this before the user clicks Approve, it returns
+    ``{ok: False, reason: "GRANT_PENDING_APPROVAL"}``; prompt the user to go to the Unity panel
+    and click Approve, then poll the approval result with ``get_permission_status(token=...)``,
+    and call ``grant_permission`` once more after confirmation to get ``result``.
 
     Example::
 
         resp = grant_permission(skill="scene_save", token=tk, args={"path": "..."})
         if resp.get("ok") and resp.get("executed"):
-            return resp["result"]  # 直接拿 skill 执行结果，不需要再调 scene_save
+            return resp["result"]  # take the skill execution result directly, no need to call scene_save again
 
     Args:
-        skill: 待授权并执行的 skill 名。
-        token: 服务端在 ``MODE_RESTRICTED`` 错误响应里发的 ``grantRequestToken``。
-        args: 原 skill 调用参数（dict），不含 ``_confirm``。
+        skill: Name of the skill to authorize and execute.
+        token: The ``grantRequestToken`` the server issued in the ``MODE_RESTRICTED`` error response.
+        args: The original skill call parameters (dict), without ``_confirm``.
     """
     try:
         return _permission_post('/permission/grant',
@@ -1470,9 +1470,9 @@ def grant_permission(skill: str, token: str, args: Dict[str, Any]) -> Dict[str, 
 
 
 def approve_grant(token: str) -> Dict[str, Any]:
-    """Panel 渠道用：面板按钮触发，仅标记本次 grant 已批准（单次有效，不写永久白名单）。
+    """Panel channel use: triggered by a panel button, only marks this grant as approved (single-use, not written to a permanent allowlist).
 
-    主要给测试用；生产流程下应由 Unity 面板用户点 [Approve] 触发。
+    Mainly for testing; in production this should be triggered by the user clicking [Approve] in the Unity panel.
     """
     try:
         return _permission_post('/permission/approve', {'token': token})
@@ -1481,7 +1481,7 @@ def approve_grant(token: str) -> Dict[str, Any]:
 
 
 def deny_grant(token: str) -> Dict[str, Any]:
-    """Panel 渠道用：拒绝 grant 请求并清除 token。"""
+    """Panel channel use: rejects the grant request and clears the token."""
     try:
         return _permission_post('/permission/deny', {'token': token})
     except Exception as e:
@@ -1489,15 +1489,15 @@ def deny_grant(token: str) -> Dict[str, Any]:
 
 
 def revoke_permission(skill: str = None, all: bool = False) -> Dict[str, Any]:
-    """[Deprecated] 请改用 ``remove_from_allowlist``。
+    """[Deprecated] Use ``remove_from_allowlist`` instead.
 
-    撤销单个 skill 或全部白名单条目。``skill`` 与 ``all`` 二选一。
-    v1.9 起 ``/permission/revoke`` 仅作为 ``/permission/allowlist/remove`` 的
-    转发别名，下一个 minor 版本会移除。
+    Revokes a single skill or all allowlist entries. ``skill`` and ``all`` are mutually exclusive.
+    As of v1.9, ``/permission/revoke`` is only a forwarding alias for
+    ``/permission/allowlist/remove`` and will be removed in the next minor version.
 
     Args:
-        skill: 待撤销的 skill 名，与 ``all`` 互斥。
-        all: 设为 True 时撤销所有白名单条目（忽略 ``skill`` 参数）。
+        skill: Name of the skill to revoke, mutually exclusive with ``all``.
+        all: When True, revokes all allowlist entries (ignores the ``skill`` argument).
     """
     try:
         payload: Dict[str, Any] = {'all': True} if all else {'skill': skill}
@@ -1507,12 +1507,12 @@ def revoke_permission(skill: str = None, all: bool = False) -> Dict[str, Any]:
 
 
 def list_allowlist() -> Dict[str, Any]:
-    """GET /permission/allowlist —— 列出当前用户白名单 skill。
+    """GET /permission/allowlist — lists the current user's allowlisted skills.
 
-    返回 ``{allowlist: [...], count: N}``。白名单 skill 跳过 Approval/MODE_RESTRICTED
-    门禁直接放行，可覆盖 Delete / PlayMode / Reload / RiskLevel=high 等 ModeGate 高危拦截；
-    但**不绕过** ConfirmationToken 二次确认（若 RequireConfirmation 开启，仍需 _confirm 重放）。
-    白名单由用户在 Unity 面板手动管理；AI 一般不应调用 add/remove。
+    Returns ``{allowlist: [...], count: N}``. An allowlisted skill bypasses the Approval/MODE_RESTRICTED gate
+    directly, overriding high-risk ModeGate blocks such as Delete / PlayMode / Reload / RiskLevel=high; but it
+    does **not bypass** the ConfirmationToken second confirmation (``_confirm`` replay still required if RequireConfirmation is on).
+    The allowlist is managed manually by the user in the Unity panel; the AI generally should not call add/remove.
     """
     try:
         return _permission_get('/permission/allowlist')
@@ -1521,16 +1521,16 @@ def list_allowlist() -> Dict[str, Any]:
 
 
 def add_to_allowlist(skill: str) -> Dict[str, Any]:
-    """POST /permission/allowlist/add —— 把 skill 加入白名单。
+    """POST /permission/allowlist/add — adds a skill to the allowlist.
 
-    注意：白名单命中后该 skill 在所有模式下绕过 Approval/MODE_RESTRICTED 门禁，
-    **包括 Delete / PlayMode / Reload / RiskLevel=high 等 ModeGate 高危拦截**；但**不绕过**
-    ConfirmationToken 二次确认（高危 skill 在 RequireConfirmation 开启时仍走 _confirm 握手）。
-    建议仅在用户明确授权的会话场景使用
-    （例如批量任务前用户同意把若干 skill 加白名单方便后续直接调）。
+    Note: once allowlisted, this skill bypasses the Approval/MODE_RESTRICTED gate in every mode, **including
+    high-risk ModeGate blocks such as Delete / PlayMode / Reload / RiskLevel=high**; but it does **not bypass**
+    the ConfirmationToken second confirmation (a high-risk skill still goes through the ``_confirm`` handshake
+    when RequireConfirmation is on). Recommended only for session scenarios explicitly authorized by the user
+    (e.g. the user agrees to allowlist several skills before a batch task for convenience).
 
     Args:
-        skill: 待加入白名单的 skill 名。
+        skill: Name of the skill to add to the allowlist.
     """
     try:
         return _permission_post('/permission/allowlist/add', {'skill': skill})
@@ -1539,13 +1539,13 @@ def add_to_allowlist(skill: str) -> Dict[str, Any]:
 
 
 def remove_from_allowlist(skill: str = None, all: bool = False) -> Dict[str, Any]:
-    """POST /permission/allowlist/remove —— 从白名单移除一项或全部。
+    """POST /permission/allowlist/remove — removes one or all entries from the allowlist.
 
-    传 ``skill="..."`` 移除单项；传 ``all=True`` 清空全部。
+    Pass ``skill="..."`` to remove a single entry; pass ``all=True`` to clear all entries.
 
     Args:
-        skill: 待移除的 skill 名，与 ``all`` 互斥。
-        all: 设为 True 时清空全部白名单（忽略 ``skill`` 参数）。
+        skill: Name of the skill to remove, mutually exclusive with ``all``.
+        all: When True, clears the entire allowlist (ignores the ``skill`` argument).
     """
     try:
         payload: Dict[str, Any] = {'all': True} if all else {'skill': skill}
@@ -1555,13 +1555,13 @@ def remove_from_allowlist(skill: str = None, all: bool = False) -> Dict[str, Any
 
 
 def get_audit_log(limit: int = 100) -> List[Dict[str, Any]]:
-    """读取审计日志最近 N 条。
+    """Read the most recent N entries of the audit log.
 
-    每条是 dict（来自 jsonl），含 ``ts``、``type``、``skill``、``token`` 等字段。
-    审计日志在所有模式下都会写入，可用于反查 AI 行为合规性。
+    Each entry is a dict (from jsonl) with fields such as ``ts``, ``type``, ``skill``, ``token``.
+    The audit log is written in every mode and can be used to check AI behavior for compliance.
 
-    请求失败时返回单元素列表 ``[{"status": "error", "error": "..."}]``，
-    便于调用方在不引入额外判空逻辑的前提下感知错误。
+    On request failure, returns a single-element list ``[{"status": "error", "error": "..."}]``,
+    so callers can detect the error without adding extra null-check logic.
     """
     try:
         data = _permission_get('/permission/audit', {'limit': str(limit)})

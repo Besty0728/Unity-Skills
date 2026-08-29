@@ -5,7 +5,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// 示例/便捷技能：常用操作的简化 API。完整功能见 GameObjectSkills 与 SceneSkills。
+    /// Sample/convenience skills: simplified APIs for common operations. See GameObjectSkills and SceneSkills for full functionality.
     /// </summary>
     public static class SampleSkills
     {
@@ -117,10 +117,10 @@ namespace UnitySkills
             Category = SkillCategory.Sample, Operation = SkillOperation.Query,
             Tags = new[] { "find", "search", "name", "quick" },
             Outputs = new[] { "query", "count", "objects" },
-            // 这里写的是 "A 或 B" 记号而非单个参数名：`name` 是 `nameContains` 的合法别名
-            // （见下方的合并逻辑），硬性要求其中任一个都会拒掉本 skill 完全能处理的请求体。
-            // SkillPlanningService._requiredInputGroups 把该记号映射为 {nameContains, name}，
-            // 于是空请求体会以 "Provide one of: nameContains, name" 被拒，而不是执行到 Validate.Required。
+            // This is written as an "A or B" token rather than a single parameter name: `name` is a valid alias of `nameContains`
+            // (see the merge logic below); requiring either one rigidly would reject request bodies this skill can fully handle.
+            // SkillPlanningService._requiredInputGroups maps this token to {nameContains, name}, so an empty request body
+            // gets rejected with "Provide one of: nameContains, name" instead of falling through to Validate.Required.
             RequiresInput = new[] { "nameContains|name" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]

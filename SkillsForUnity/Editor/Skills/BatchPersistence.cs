@@ -86,7 +86,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 状态被修改过时把待写更改刷盘。应在关键状态转换点调用（作业完成、取消、失败）。
+        /// Flush pending writes to disk when state has been modified. Should be called at key state transitions (job completed, cancelled, failed).
         /// </summary>
         internal static void FlushIfDirty()
         {

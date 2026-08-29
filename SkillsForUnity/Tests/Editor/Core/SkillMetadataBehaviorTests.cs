@@ -13,22 +13,22 @@ using UnityEngine.SceneManagement;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// <see cref="SkillMetadataGuardTests"/> 的行为侧另一半。
+    /// The behavioral half of <see cref="SkillMetadataGuardTests"/>.
     ///
-    /// <para>那个文件里的断言全是拿一个特性比另一个特性——ReadOnly 比 MutatesScene、批量版声明比
-    /// 它的单体孪生版。这只能抓出"自相矛盾"，别的一概抓不到：声明与*代码*矛盾时它全盲。
-    /// <c>Outputs</c> 可以写着响应从不携带的键，<c>ReadOnly</c> 可以扣在一个会写的技能头上，
-    /// 而两个文件照样全绿。补上这个缺口，必须真的执行技能并读回答。</para>
+    /// <para>Every assertion in that file compares one attribute against another -- ReadOnly against MutatesScene, a batch variant's declaration against its singular twin. That can
+    /// only catch "self-contradiction," and nothing else: it's completely blind when a declaration contradicts the *code*. <c>Outputs</c> can list keys the response never carries,
+    /// <c>ReadOnly</c> can sit on a skill that writes, and both files stay green regardless. Closing
+    /// that gap requires actually executing the skill and reading the answer.</para>
     ///
-    /// <para>取代表性样本而非全量扫描：每个在运行期真正起闸门作用的声明各挑一个技能
-    /// （ReadOnly、MutatesScene、MutatesAssets）、一个信封形态的批量技能，以及本轮重新规定了
-    /// <c>applied</c> 回显的枚举 setter 之一。全注册表版本需要为几百个技能各自准备夹具数据，
-    /// 最后只会被禁用而不是被维护，那比一个真的在跑的小样本更糟。</para>
+    /// <para>Uses a representative sample rather than a full sweep: one skill is picked for each declaration that actually acts as a gate at runtime (ReadOnly, MutatesScene, MutatesAssets),
+    /// one envelope-shaped batch skill, and one of the enum setters this round re-specified for <c>applied</c> echo-back. A full-registry version would need fixture data prepared for
+    /// hundreds of skills individually, and would eventually just get disabled rather than maintained,
+    /// which is worse than a small sample that's actually run.</para>
     ///
-    /// <para>这里主张两件事。<c>Outputs</c> 必须是响应实际携带键的子集，因为 agent 是照 Outputs
-    /// 做计划的——声明了却从不到达的键，会让调用方为一个被承诺过的值多跑一次往返。以及 ReadOnly
-    /// 技能必须什么都不留下，这正是档位机制赖以成立的前提：没有任何档位会撤下只读技能，
-    /// 所以一个挂着该标记的写操作，在所有档位下都藏不住。</para>
+    /// <para>Two things are asserted here. <c>Outputs</c> must be a subset of the keys the response actually carries, because an agent plans against Outputs -- a key that's declared
+    /// but never arrives forces the caller into an extra round trip for a value it was promised. And a ReadOnly skill must leave nothing behind, which is exactly the premise the surface-
+    /// tier mechanism depends on: no tier ever withdraws a read-only skill, so a write hiding
+    /// under that label can't stay hidden under any tier.</para>
     /// </summary>
     [TestFixture]
     public class SkillMetadataBehaviorTests
@@ -38,7 +38,7 @@ namespace UnitySkills.Tests.Core
         private const string ProbeFolder = "Assets/__UnitySkillsBehaviorProbe__";
         private const string ProbeMaterialPath = ProbeFolder + "/probe.mat";
 
-        /// <summary>只读样本，请求体里点名夹具建好的那几个探针对象。</summary>
+        /// <summary>Read-only samples; the request body names the specific probe objects the fixture built.</summary>
         private static readonly (string Skill, string Body)[] ReadOnlyProbes =
         {
             ("gameobject_get_info", "{\"name\":\"" + ProbeChild + "\"}"),
@@ -55,8 +55,8 @@ namespace UnitySkills.Tests.Core
         {
             _savedMode = SkillsModeManager.CurrentMode;
             _savedProfile = SkillsSurfaceProfile.Current;
-            // 非 Bypass 模式下写操作会被拒，非 full 档位又会撤掉写类目。两者都存在全局 EditorPrefs 里，
-            // 所以都显式钉住再恢复，绝不假设。
+            // Writes are rejected outside Bypass mode, and non-full tiers withdraw the write category too. Both live in global EditorPrefs, so both are explicitly pinned and
+            // restored, never assumed.
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -78,11 +78,11 @@ namespace UnitySkills.Tests.Core
             GameObjectFinder.InvalidateCache();
         }
 
-        // ---------- Outputs 必须只写响应真的携带的键 ----------
+        // ---------- Outputs must only list keys the response actually carries ----------
 
         /// <summary>
-        /// ReadOnly 的代表，也是 <c>SkillMetadataGuardTests.GameObjectGetInfo_DeclaresAllFifteenOutputs</c>
-        /// 逐个点名断言 Outputs 的那个技能。那条测试钉住"特性怎么说"，这条钉住"响应与之一致"。
+        /// The ReadOnly representative, and also the skill that <c>SkillMetadataGuardTests.GameObjectGetInfo_DeclaresAllFifteenOutputs</c> asserts
+        /// Outputs against name by name. That test pins "what the attribute says"; this one pins "the response matches it."
         /// </summary>
         [Test]
         public void GameObjectGetInfo_ResponseCarriesEveryDeclaredOutput()
@@ -100,7 +100,7 @@ namespace UnitySkills.Tests.Core
             AssertResponseCoversDeclaredOutputs("component_list", "{\"name\":\"" + ProbeChild + "\"}");
         }
 
-        /// <summary>MutatesScene 的代表。</summary>
+        /// <summary>The MutatesScene representative.</summary>
         [Test]
         public void GameObjectCreate_ResponseCarriesEveryDeclaredOutput()
         {
@@ -115,7 +115,7 @@ namespace UnitySkills.Tests.Core
                 "gameobject_create answered success without putting anything in the scene.");
         }
 
-        /// <summary>MutatesAssets 的代表。</summary>
+        /// <summary>The MutatesAssets representative.</summary>
         [Test]
         public void MaterialCreate_ResponseCarriesEveryDeclaredOutput()
         {
@@ -127,8 +127,8 @@ namespace UnitySkills.Tests.Core
             var payload = AssertResponseCoversDeclaredOutputs("material_create",
                 "{\"name\":\"behavior_probe_mat\",\"savePath\":\"" + ProbeFolder + "\"}");
 
-            // `path` 是调用方拿到刚创建资源的唯一把手，所以它必须是一个真能加载的路径——
-            // 一个解析不到东西的回显，会让调用方连自己的新材质都寻址不到。
+            // `path` is the caller's only handle on the asset it just created, so it must be a path that actually loads -- an echo that resolves to nothing would leave the caller
+            // unable to address its own new material.
             var createdPath = payload["path"]?.ToString();
             Assert.That(createdPath, Is.Not.Null.And.Not.Empty);
             _createdAssetPaths.Add(createdPath);
@@ -137,9 +137,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 本轮重新规定过的枚举 setter 之一：<c>shadows</c> 现在是被拒而不是静默丢弃，
-        /// <c>applied</c>/<c>skipped</c> 按参数逐项汇报。这两个都是声明过的 Outputs，
-        /// 本测试抓的就是响应哪天不再携带它们。
+        /// One of the enum setters re-specified this round: <c>shadows</c> is now rejected rather
+        /// than silently dropped, with <c>applied</c>/<c>skipped</c> reporting per-parameter. Both of those are declared Outputs; this test is exactly what catches the day the
+        /// response stops carrying them.
         /// </summary>
         [Test]
         public void LightSetProperties_ResponseCarriesEveryDeclaredOutput()
@@ -166,9 +166,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 信封形态的批量技能。逐项结果放在 <c>results</c> 下，所以这里要紧的是信封自己的那四个键——
-        /// 批量响应一旦丢了 <c>failCount</c>，调用方除了遍历每一项，就没别的办法区分"部分失败"和
-        /// "全部成功"。
+        /// An envelope-shaped batch skill. Per-item results live under <c>results</c>, so what
+        /// matters here is the envelope's own four keys -- if a batch response loses <c>failCount</c>, the caller has no way to distinguish "partial failure" from "total
+        /// success" short of walking every item.
         /// </summary>
         [Test]
         public void LightSetEnabledBatch_ResponseCarriesTheEnvelopeKeys()
@@ -200,13 +200,13 @@ namespace UnitySkills.Tests.Core
             }
         }
 
-        // ---------- ReadOnly 必须名副其实 ----------
+        // ---------- ReadOnly must mean what it says ----------
 
         /// <summary>
-        /// <c>ReadOnly</c> 是唯一没有档位能覆盖的声明，所以一个挂着它却动了工程的技能，
-        /// 按设计就是藏不住的。这里拿工程本身来核，而不是拿另一个特性来核：场景里的对象、
-        /// 磁盘上的资源路径，以及经 <c>SaveAssets</c> 落盘后探针材质的字节——最后这项专门抓
-        /// "只改了内存、还没落盘"的修改，因为任何人下一次保存都会把它提交。
+        /// <c>ReadOnly</c> is the one declaration no tier can override, so a skill carrying it while still touching the project can't be hidden by design. This checks against the
+        /// project itself rather than another attribute: objects in the scene, asset paths on disk, and the probe material's bytes after landing on disk via <c>SaveAssets</c> --
+        /// that last one specifically catches a modification that only dirtied memory and never
+        /// hit disk, since anyone's next save would commit it.
         /// </summary>
         [Test]
         public void EveryReadOnlyProbe_LeavesTheSceneAndAssetDatabaseAsItFoundThem()
@@ -221,8 +221,8 @@ namespace UnitySkills.Tests.Core
                     $"{skill} is in the read-only sample but no longer declares ReadOnly.");
 
                 var objectsBefore = SceneObjectNames();
-                // 用 HashSet 而非 NUnit 的 EquivalentTo：算上本包，工程里有几千条资源路径，
-                // 而 EquivalentTo 是两两比对。
+                // Uses a HashSet rather than NUnit's EquivalentTo: counting this package, the
+                // project has thousands of asset paths, and EquivalentTo compares pairwise.
                 var assetsBefore = new HashSet<string>(AssetDatabase.GetAllAssetPaths(), StringComparer.Ordinal);
                 var materialBefore = ReadProbeMaterialBytes();
 
@@ -249,8 +249,8 @@ namespace UnitySkills.Tests.Core
         // ---------- helpers ----------
 
         /// <summary>
-        /// 执行 <paramref name="skill"/> 并断言每个声明的 output 都对应载荷里真实存在的键，
-        /// 同时把载荷交回给调用方做技能专属的后续检查。
+        /// Executes <paramref name="skill"/> and asserts that every declared output corresponds to a key actually present in the payload, while also handing the payload back to the
+        /// caller for skill-specific follow-up checks.
         /// </summary>
         private static JObject AssertResponseCoversDeclaredOutputs(string skill, string body)
         {
@@ -279,8 +279,8 @@ namespace UnitySkills.Tests.Core
         private static void CreateProbeHierarchy()
         {
             var parent = new GameObject(ProbeParent);
-            // 故意挂了父节点：`parent` 与 `parentPath` 都是声明过的 output，而在根对象上两者都返回
-            // null——一旦调用方开始判空，这与"载荷根本没带这两个键"就无法区分了。
+            // Deliberately gives it a parent: `parent` and `parentPath` are both declared outputs, and both return null on a root object -- once the caller starts checking
+            // for null, that becomes indistinguishable from "the payload doesn't carry these two keys at all."
             var child = new GameObject(ProbeChild, typeof(BoxCollider));
             child.transform.SetParent(parent.transform, false);
             GameObjectFinder.InvalidateCache();
@@ -302,9 +302,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 先把待写内容刷盘，再读探针材质的磁盘字节。走 <c>SaveAssets</c> 正是关键：只把内存对象
-        /// 标脏的修改也会在这里显形，而那恰恰是"只读"技能本可以一直隐形、直到别处一次保存
-        /// 才暴露的那种写。
+        /// Flushes pending writes to disk first, then reads the probe material's bytes on disk.
+        /// Going through <c>SaveAssets</c> is exactly the point: a modification that only dirtied an in-memory object shows up here too, and that's precisely the kind of write a
+        /// "read-only" skill could otherwise keep hidden until some unrelated save exposed it.
         /// </summary>
         private static byte[] ReadProbeMaterialBytes()
         {
@@ -322,8 +322,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 活动场景里所有对象的名字，含嵌套与未激活的。走场景根节点遍历而不调 <c>FindObjectsOfType</c>：
-        /// 后者在本套件同样要编译通过的新版编辑器上已是 error 级 obsolete。
+        /// The names of every object in the active scene, including nested and inactive ones. Walks the scene's root nodes rather than calling <c>FindObjectsOfType</c>: the latter
+        /// is already error-level obsolete on the newer editor this suite must also compile against.
         /// </summary>
         private static string[] SceneObjectNames() =>
             SceneManager.GetActiveScene().GetRootGameObjects()

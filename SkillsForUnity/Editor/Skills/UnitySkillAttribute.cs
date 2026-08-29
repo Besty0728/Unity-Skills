@@ -3,7 +3,7 @@
 namespace UnitySkills
 {
     /// <summary>
-    /// 技能模块分类，每个值对应一个 *Skills.cs 文件。
+    /// Skill module categories; each value corresponds to one *Skills.cs file.
     /// </summary>
     public enum SkillCategory
     {
@@ -60,11 +60,12 @@ namespace UnitySkills
         ShaderGraph,
         Behavior,
         HybridCLR,
-        Addressables
+        Addressables,
+        QFramework
     }
 
     /// <summary>
-    /// CRUD + Execute + Analyze 操作类型，Flags 可组合。
+    /// CRUD + Execute + Analyze operation types; combinable via Flags.
     /// </summary>
     [Flags]
     public enum SkillOperation
@@ -78,77 +79,85 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 标记一个静态方法为 Unity Skill，标记后会被自动发现并通过 REST API 暴露。
+    /// Marks a static method as a Unity Skill; once marked, it is auto-discovered and exposed via the REST API.
     /// </summary>
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
     public class UnitySkillAttribute : Attribute
     {
-        // === 基础字段 ===
+        // === Basic fields ===
         public string Name { get; set; }
         public string Description { get; set; }
         public bool TracksWorkflow { get; set; }
 
         /// <summary>
-        /// 该技能自行管理工作流快照、应跳过 router 的通用执行前快照（<c>TrySnapshotTargetsFromArgs</c>）时为 true。
-        /// 用于 asset_move/asset_delete/asset_duplicate/create_folder 这类自己拍专用快照的技能，避免通用
-        /// 前置快照产生冗余备份。默认 false——普通技能仍自动拍前置快照。
+        /// True when this skill manages its own workflow snapshots and the router's generic
+        /// pre-execution snapshot (<c>TrySnapshotTargetsFromArgs</c>) should be skipped. Used by
+        /// skills like asset_move/asset_delete/asset_duplicate/create_folder that take their own
+        /// dedicated snapshot, to avoid a redundant backup from the generic pre-snapshot. Defaults
+        /// to false — ordinary skills still get an automatic pre-snapshot.
         /// </summary>
         public bool SkipAutoPresnapshot { get; set; }
 
-        // === 意图层元数据 ===
+        // === Intent-layer metadata ===
 
-        /// <summary>模块分类，对应该技能所属的 *Skills.cs 文件。</summary>
+        /// <summary>Module category, corresponding to the *Skills.cs file this skill belongs to.</summary>
         public SkillCategory Category { get; set; }
 
-        /// <summary>该技能执行的 CRUD 操作类型。</summary>
+        /// <summary>The CRUD operation type this skill performs.</summary>
         public SkillOperation Operation { get; set; }
 
-        /// <summary>供 AI 检索与过滤的语义标签。</summary>
+        /// <summary>Semantic tags for AI retrieval and filtering.</summary>
         public string[] Tags { get; set; }
 
-        /// <summary>结果对象中产出的关键字段（如 "gameObject"、"instanceId"）。</summary>
+        /// <summary>The key fields produced in the result object (e.g. "gameObject", "instanceId").</summary>
         public string[] Outputs { get; set; }
 
-        /// <summary>该技能需要的既有对象/资源（如 "gameObject"、"materialPath"）。</summary>
+        /// <summary>The existing objects/resources this skill requires (e.g. "gameObject", "materialPath").</summary>
         public string[] RequiresInput { get; set; }
 
-        /// <summary>无副作用（纯查询/只读）时为 true。</summary>
+        /// <summary>True when the skill has no side effects (pure query/read-only).</summary>
         public bool ReadOnly { get; set; }
 
-        // === 风险与影响元数据 ===
+        // === Risk and impact metadata ===
 
-        /// <summary>会修改场景层级（GameObject、Component、Transform）时为 true。</summary>
+        /// <summary>True when it modifies the scene hierarchy (GameObject, Component, Transform).</summary>
         public bool MutatesScene { get; set; }
 
-        /// <summary>会创建、修改或删除磁盘资产时为 true。</summary>
+        /// <summary>True when it creates, modifies, or deletes on-disk assets.</summary>
         public bool MutatesAssets { get; set; }
 
-        /// <summary>可能触发脚本编译或域重载时为 true。</summary>
+        /// <summary>True when it may trigger script compilation or a domain reload.</summary>
         public bool MayTriggerReload { get; set; }
 
-        /// <summary>可能进入或退出 Play Mode 时为 true。</summary>
+        /// <summary>True when it may enter or exit Play Mode.</summary>
         public bool MayEnterPlayMode { get; set; }
 
-        /// <summary>无法提供有意义的 dry-run 预览（如异步作业、外部进程）时为 false。</summary>
+        /// <summary>False when a meaningful dry-run preview can't be provided (e.g. an async job, an external process).</summary>
         public bool SupportsDryRun { get; set; } = true;
 
         /// <summary>
-        /// 该技能同步执行且可能阻塞编辑器主线程数秒以上（完整 NavMesh 烘焙、player 脚本编译、HybridCLR 预构建）时为 true。
-        /// 其运行期间主线程上一切都不推进——包括 HTTP 请求队列——所以 agent 应把这次调用视为有意的停顿：
-        /// 有异步作业路径时优先走异步，返回前不要期待任何响应，看似超时也不要重试。默认 false。
+        /// True when this skill executes synchronously and may block the editor's main thread
+        /// for several seconds or more (a full NavMesh bake, player script compilation, HybridCLR
+        /// pre-build). While it runs, nothing on the main thread advances — including the HTTP
+        /// request queue — so an agent should treat this call as a deliberate pause: prefer the
+        /// async job path when one exists, expect no response before it returns, and don't retry
+        /// just because it looks like a timeout. Defaults to false.
         /// </summary>
         public bool LongRunning { get; set; } = false;
 
-        /// <summary>风险等级："low"（默认）、"medium" 或 "high"。</summary>
+        /// <summary>Risk level: "low" (default), "medium", or "high".</summary>
         public string RiskLevel { get; set; } = "low";
 
-        /// <summary>该技能依赖的可选包（如 "com.unity.probuilder"）。</summary>
+        /// <summary>The optional packages this skill depends on (e.g. "com.unity.probuilder").</summary>
         public string[] RequiresPackages { get; set; }
 
         /// <summary>
-        /// 权限风险档位。
-        /// SemiAuto = 三档模式下均直接执行；FullAuto = Approval 模式下需用户授权。
-        /// 默认 FullAuto，使未标注的 skill 在 Approval 模式下走授权流程（这是 Mode 字段的默认值，与出厂操作模式默认无关）。
+        /// The permission risk tier.
+        /// SemiAuto = executes directly under all three operating modes; FullAuto = requires user
+        /// authorization under Approval mode.
+        /// Defaults to FullAuto, so an unannotated skill goes through the authorization flow
+        /// under Approval mode (this is the default of the Mode field, unrelated to the
+        /// factory-default operating mode).
         /// </summary>
         public SkillMode Mode { get; set; } = SkillMode.FullAuto;
 

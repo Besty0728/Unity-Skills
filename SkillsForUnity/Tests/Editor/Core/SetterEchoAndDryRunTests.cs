@@ -12,15 +12,17 @@ using UnityEngine.UI;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// camera / light / selectable 这几个 setter：真的写了什么、声称写了什么，以及在这一切发生之前
-    /// dryRun 层怎么说。
+    /// The camera / light / selectable setters: what they actually write, what they claim to have written, and
+    /// what the dryRun layer says before any of that happens.
     ///
-    /// <para>覆盖两类相反的故障。setter 可能写得比它声称的少——被静默丢弃的 alpha、从 switch 漏下去的
-    /// 枚举值；也可能声称得比它写的少，这正是 <c>applied</c>/<c>skipped</c> 汇报存在的意义：调用方对
-    /// Directional 灯设了 <c>range</c>，而这种灯没有 range，若响应里没有 <c>skipped</c> 条目，
-    /// 它就和"设成功了"的响应完全无法区分。</para>
+    /// <para>Covers two opposite failure modes. A setter can write less than it claims — a silently dropped
+    /// alpha, an enum value that fell through a switch; or it can claim less than it writes, which is exactly
+    /// why the <c>applied</c>/<c>skipped</c> report exists: a caller sets <c>range</c> on a Directional light,
+    /// and that light type has no range — without a <c>skipped</c> entry in the response, it's completely
+    /// indistinguishable from a response saying "set successfully".</para>
     ///
-    /// <para>每一次写入都拿活对象来核，绝不从响应反推。响应本身就是被测对象，信它会让断言变成循环论证。</para>
+    /// <para>Every write is verified against the live object, never inferred back from the response. The
+    /// response is the thing under test, so trusting it would turn the assertion into circular reasoning.</para>
     /// </summary>
     [TestFixture]
     public class SetterEchoAndDryRunTests
@@ -33,8 +35,9 @@ namespace UnitySkills.Tests.Core
         {
             _savedMode = SkillsModeManager.CurrentMode;
             _savedProfile = SkillsSurfaceProfile.Current;
-            // Camera/Light/UI 的写操作会被非 full 档位撤掉，也会在非 Bypass 模式下被拦。两者都是
-            // 跨工程共享的全局 EditorPrefs 状态，所以在这里显式钉住、teardown 里还原，绝不假设。
+            // Camera/Light/UI writes get retracted by a non-full profile, and blocked in any mode other than
+            // Bypass. Both are global EditorPrefs state shared across projects, so pin them explicitly here and
+            // restore in teardown — never assume.
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -49,7 +52,7 @@ namespace UnitySkills.Tests.Core
             GameObjectFinder.InvalidateCache();
         }
 
-        /// <summary>成功信封里技能载荷在 <c>result</c> 之下，不在顶层。</summary>
+        /// <summary>In the success envelope, the skill payload lives under <c>result</c>, not at the top level.</summary>
         private static JObject Payload(string skill, string body)
         {
             var response = JObject.Parse(SkillRouter.Execute(skill, body));
@@ -69,8 +72,9 @@ namespace UnitySkills.Tests.Core
         // ---------- camera_set_properties ----------
 
         /// <summary>
-        /// alpha 通道当初根本没有对应参数，于是背景透明度经这个技能完全无法设置——而又因为另外三个
-        /// 通道可写，调用方设 bgR/bgG/bgB 时拿到的颜色，其 alpha 会静默沿用原先的值。
+        /// The alpha channel originally had no corresponding parameter at all, so background transparency was
+        /// completely unsettable through this skill — and because the other three channels are writable, a
+        /// caller setting bgR/bgG/bgB would get back a color whose alpha silently kept its previous value.
         /// </summary>
         [Test]
         public void CameraSetProperties_BgA_WritesTheAlphaChannel()
@@ -92,8 +96,9 @@ namespace UnitySkills.Tests.Core
                 Assert.That(cam.backgroundColor.g, Is.EqualTo(0.2f).Within(0.001f));
                 Assert.That(cam.backgroundColor.b, Is.EqualTo(0.3f).Within(0.001f));
 
-                // `applied` 列的是参数名而非属性名："backgroundColor" 是 Camera 的属性、从来不是合法
-                // 入参，回显它对调用方毫无可操作价值。必须出现的是它实际发出的那个参数。
+                // `applied` names the parameter, not the property: "backgroundColor" is a Camera property and
+                // was never a valid input parameter, so echoing it back gives the caller nothing actionable.
+                // What must appear is the actual parameter name that was sent.
                 Assert.That(StringArray(payload["applied"]), Does.Contain("bgA"),
                     "An alpha-only call still writes the colour, so it must be reported as applied.");
             }
@@ -115,8 +120,9 @@ namespace UnitySkills.Tests.Core
                 var payload = Payload("camera_set_properties",
                     "{\"name\":\"__cam_echo__\",\"fieldOfView\":42,\"clearFlags\":\"Depth\"}");
 
-                // 声明的 Outputs 就是 agent 据以做计划的契约；响应缺了其中任何一个，
-                // 都会把调用方推去调第二个技能，只为拿一个它本该已经拿到的值。
+                // The declared Outputs are the contract an agent plans against; if the response is missing any
+                // of them, the caller gets pushed into calling a second skill just to get a value it should
+                // have already had.
                 Assert.That(SkillRouter.TryGetSkill("camera_set_properties", out var info), Is.True);
                 var missing = info.Outputs.Where(key => payload[key] == null).ToArray();
                 Assert.That(missing, Is.Empty,
@@ -126,8 +132,8 @@ namespace UnitySkills.Tests.Core
                 Assert.That(applied, Is.EquivalentTo(new[] { "fieldOfView", "clearFlags" }),
                     "'applied' must name exactly the parameters written — listing an untouched " +
                     "property is how a caller comes to believe a write happened.");
-                // 改用本次调用没发的某个颜色参数来验："backgroundColor" 已不再是 `applied` 可能出现的
-                // 名字，断言它不存在证明不了任何事。
+                // Verify using a color parameter this call didn't send: "backgroundColor" is no longer a name
+                // that could appear in `applied`, so asserting its absence wouldn't prove anything.
                 Assert.That(applied, Does.Not.Contain("bgA"));
             }
             finally
@@ -179,8 +185,8 @@ namespace UnitySkills.Tests.Core
                 Assert.That(light.color.r, Is.EqualTo(1f).Within(0.001f),
                     "Each channel defaults to the light's current value, so an alpha-only call " +
                     "must not reset r/g/b to zero.");
-                // 与 camera_set_properties 同一套参数名契约：调用方发的是 `a`，回来的就得是 `a`——
-                // "color" 是 Light 的属性，不是它能再发一次的入参。
+                // Same parameter-name contract as camera_set_properties: the caller sends `a`, so what comes
+                // back must be `a` — "color" is a Light property, not an input parameter it can send again.
                 Assert.That(StringArray(payload["applied"]), Does.Contain("a"));
             }
             finally
@@ -191,8 +197,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// <c>skipped</c> 的那一半。Directional 灯没有 range，调用方发来的值就无处可去——而一个不说明
-        /// 这件事的响应，与"写成功了"的响应完全一样，调用方于是会去调一盏"无视了设置"的灯。
+        /// The <c>skipped</c> half of the story. A Directional light has no range, so a value the caller sent
+        /// has nowhere to go — and a response that doesn't say so is indistinguishable from a "write succeeded"
+        /// response, so the caller ends up calling a light that ignored its own setting.
         /// </summary>
         [Test]
         public void LightSetProperties_RangeOnDirectionalLight_IsReportedSkipped_NotSilentlyDropped()
@@ -227,7 +234,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void LightSetProperties_RangeOnPointLight_IsApplied_NotSkipped()
         {
-            // 只有当同一个参数在"确实有该属性"的灯型上被真正应用，上面那条 skipped 汇报才有意义。
+            // The above skipped report is only meaningful if the same parameter is actually applied on a light
+            // type that genuinely has that property.
             var go = new GameObject("__light_point__", typeof(Light));
             try
             {
@@ -274,9 +282,10 @@ namespace UnitySkills.Tests.Core
         // ---------- light_get_properties alias ----------
 
         /// <summary>
-        /// setter 叫 <c>light_set_properties</c>，调用方自然会去找 <c>light_get_properties</c> 当读取端。
-        /// 这个别名必须是真别名：元数据一致、载荷一致。一个跑偏的别名比没有别名更糟，
-        /// 因为两个名字都会出现在 manifest 里，而没有任何东西说明哪个才权威。
+        /// The setter is called <c>light_set_properties</c>, so a caller would naturally reach for
+        /// <c>light_get_properties</c> as the read side. This alias must be a true alias — matching metadata,
+        /// matching payload. A drifted alias is worse than no alias, because both names show up in the
+        /// manifest with nothing indicating which one is authoritative.
         /// </summary>
         [Test]
         public void LightGetProperties_IsATrueAliasOfLightGetInfo()
@@ -317,9 +326,11 @@ namespace UnitySkills.Tests.Core
         // ---------- dryRun: target group ----------
 
         /// <summary>
-        /// 一个声明了 RequiresInput "gameObject"、但接受多个不同名定位参数（name / path / instanceId /
-        /// entityId）的技能，没有任何"单参数必填"可以强制——每个定位参数单看都是可选的，于是空请求体
-        /// 通过了校验，agent 被告知这次调用已就绪。分组校验的意义就在于让"你没指定目标"这句话说得出口。
+        /// A skill that declares RequiresInput "gameObject" but accepts several differently-named locator
+        /// parameters (name / path / instanceId / entityId) has no single "this one parameter is required" rule
+        /// that can enforce it — each locator parameter is individually optional, so an empty request body
+        /// passes validation and the agent is told this call is ready to go. The whole point of group
+        /// validation is to make "you didn't name a target" sayable.
         /// </summary>
         [Test]
         public void DryRun_EmptyBodyOnGameObjectTargetSkill_ReportsSemanticErrorOnTarget()
@@ -344,7 +355,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void DryRun_BodyNamingATarget_IsValid()
         {
-            // 没有这条，上面那个断言可以被一个"拒绝一切请求体"的实现轻易满足。
+            // Without this, the assertion above could easily be satisfied by an implementation that just rejects every request body.
             var dry = JObject.Parse(SkillRouter.DryRun("camera_set_properties",
                 "{\"name\":\"__anything__\",\"fieldOfView\":42}"));
 
@@ -358,8 +369,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void DryRun_InstanceIdZero_CountsAsNoTarget()
         {
-            // agent 经常照模板原样发 {"instanceId": 0}。定位层把 0 当作"未提供"，分组校验也必须如此，
-            // 否则这道防线会被最常见的那个占位值直接绕过。
+            // Agents often send {"instanceId": 0} verbatim from a template. The locator layer treats 0 as "not
+            // supplied", and group validation must do the same, or this defense gets bypassed by exactly the
+            // most common placeholder value.
             var dry = JObject.Parse(SkillRouter.DryRun("camera_set_properties", "{\"instanceId\":0}"));
 
             var semantic = dry["validation"]?["semanticErrors"] as JArray;
@@ -378,9 +390,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 所有声明了 gameObject 形态目标 token 的技能，对空请求体都必须给出同样的回答。候选集从注册表
-        /// 推导而非手写清单，这样以后新增的技能不必改本测试就已被覆盖——而某个技能的定位参数一旦不再与
-        /// token 词表相交，会在这里暴露出来，而不是悄悄失去防护。
+        /// Every skill that declares a gameObject-shaped target token must give the same answer for an empty
+        /// request body. The candidate set is derived from the registry rather than a hand-written list, so a
+        /// skill added later is already covered without touching this test — and if a given skill's locator
+        /// parameters ever stop intersecting the token word list, that surfaces here instead of silently losing coverage.
         /// </summary>
         [Test]
         public void DryRun_EveryGameObjectTargetSkill_RejectsAnEmptyBodyUnderSomeField()
@@ -389,15 +402,18 @@ namespace UnitySkills.Tests.Core
                 .Where(s => s.RequiresInput != null &&
                             s.RequiresInput.Any(t => string.Equals(t, "gameObject", StringComparison.OrdinalIgnoreCase)))
                 .Where(s => s.SupportsDryRun)
-                // 只收 `items` 的技能（所有 *_batch）或用自定义定位参数名的技能满足不了这套分组词表；
-                // 规划器有意跳过它们而不是让它们变得不可调用，所以这里同样不在范围内。
+                // Only include skills accepting `items` (all *_batch) or skills that use a custom locator
+                // parameter name that this group word list can't satisfy; the planner deliberately skips those
+                // rather than making them uncallable, so they're likewise out of scope here.
                 .Where(s => s.AllowedParameterSet != null &&
                             new[] { "name", "path", "instanceId", "entityId" }.Any(p => s.AllowedParameterSet.Contains(p)))
                 .ToArray();
 
-            // 用下界而非精确条数：注册表会随已安装的可选包变动，在这里断言相等只会以错误的理由变红。
-            // 下界的作用是抓住"扫描范围悄悄缩到几个"的情况——一旦定位参数词表不再与这些技能的参数相交，
-            // 它们会全部从 `candidates` 里掉出去，下面那条断言就会在一个近乎空集上轻松通过。
+            // A lower bound rather than an exact count: the registry shifts with installed optional packages,
+            // and asserting equality here would go red for the wrong reason. The lower bound catches the case
+            // where the sweep's scope has quietly shrunk to a handful of skills — once the locator-parameter
+            // word list stops intersecting these skills' parameters, they'd all fall out of `candidates`, and
+            // the assertion below would sail through on a near-empty set.
             Assume.That(candidates, Is.Not.Empty, "No gameObject-target skills found; the sweep would be empty.");
             Assert.That(candidates.Length, Is.GreaterThanOrEqualTo(20),
                 $"Only {candidates.Length} skills qualified for the sweep. Around 90 declare " +
@@ -452,9 +468,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 对本来就正确的请求体，这个分析器必须完全隐形。它有意不去改动 plan：给这些技能的每次 dryRun
-        /// 都挂上 steps/changes，会改变那些什么都没做错的调用方拿到的回答——一个只该管校验的检查却动了
-        /// 合法响应，那是披着 bugfix 外衣的破坏性变更。
+        /// For a request body that was already correct, this analyzer must be completely invisible. It's
+        /// deliberately not supposed to alter the plan: attaching steps/changes to every dryRun for these
+        /// skills would change the answer callers get for calls that did nothing wrong — a check that's only
+        /// meant to validate ends up altering a legal response, which is a breaking change wearing a bugfix's clothes.
         /// </summary>
         [Test]
         public void DryRun_AddingALegalEnum_LeavesValidationAndPlanBlocksUnchanged()
@@ -487,14 +504,15 @@ namespace UnitySkills.Tests.Core
 
         // ---------- ui_configure_selectable ----------
         //
-        // Selectable/Button 来自 com.unity.ugui，不是本包的硬依赖。缺包时这些用例整段编译掉，
-        // 而不是因为类型解析不到就把整个程序集——连同上面所有 camera/light/dryRun 用例——一起拖垮。
-        // 与 Cinemachine 用例采用同一套 versionDefines + #if 形态。
+        // Selectable/Button comes from com.unity.ugui, not a hard dependency of this package. When the package
+        // is missing, this whole block of test cases compiles out, instead of dragging down the entire test
+        // assembly — including every camera/light/dryRun case above — just because a type can't be resolved.
+        // Uses the same versionDefines + #if pattern as the Cinemachine test cases.
 #if UGUI
 
         /// <summary>
-        /// 早先的写入守卫只检查四个 R 通道，于是只传 <c>normalG</c> 的调用会把整个颜色块丢掉，
-        /// 却仍然回成功。
+        /// The earlier write guard only checked the four R channels, so a call passing only <c>normalG</c>
+        /// would drop the entire color block, yet still report success.
         /// </summary>
         [TestCase("normalG")]
         [TestCase("normalB")]
@@ -619,8 +637,8 @@ namespace UnitySkills.Tests.Core
         {
             Assume.That(SkillRouter.HasSkill("ui_configure_selectable"), Is.True);
 
-            // Selectable 需要 RectTransform，而 Button 本身就提供 Selectable。这里不渲染任何东西，
-            // 所以不需要 Canvas 父节点。
+            // Selectable needs a RectTransform, and Button itself provides Selectable. Nothing is rendered
+            // here, so no Canvas parent is needed.
             var go = new GameObject(name, typeof(RectTransform), typeof(Button));
             GameObjectFinder.InvalidateCache();
             return go;

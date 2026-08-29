@@ -10,12 +10,12 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// UI 管理技能——创建与配置 UI 元素。
-    /// 项目中有 TextMeshPro 时动态使用之，否则回退到 Legacy UI Text。
+    /// UI management skills — create and configure UI elements.
+    /// Uses TextMeshPro dynamically when present in the project, otherwise falls back to Legacy UI Text.
     /// </summary>
     public static class UISkills
     {
-        // 缓存 TMP 类型以避免反复反射
+        // Cache TMP types to avoid repeated reflection
         private static Type _tmpTextType;
         private static Type _tmpInputFieldType;
         private static Type _tmpDropdownType;
@@ -23,7 +23,7 @@ namespace UnitySkills
         private static bool _tmpAvailable = false;
 
         /// <summary>
-        /// 判断项目中是否可用 TextMeshPro
+        /// Checks whether TextMeshPro is available in the project
         /// </summary>
         private static bool IsTMPAvailable()
         {
@@ -39,19 +39,19 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 添加文本组件——有 TMP 用 TMP，否则用 Legacy Text
+        /// Adds a text component — TMP if available, otherwise Legacy Text
         /// </summary>
         private static Component AddTextComponent(GameObject go, string text, int fontSize, Color color, TextAnchor alignment = TextAnchor.MiddleLeft)
         {
             if (IsTMPAvailable())
             {
                 var tmp = go.AddComponent(_tmpTextType);
-                // 通过反射设置属性
+                // Set properties via reflection
                 _tmpTextType.GetProperty("text")?.SetValue(tmp, text);
                 _tmpTextType.GetProperty("fontSize")?.SetValue(tmp, (float)fontSize);
                 _tmpTextType.GetProperty("color")?.SetValue(tmp, color);
-                
-                // 把 TextAnchor 转成 TMP 的对齐枚举
+
+                // Convert TextAnchor to TMP's alignment enum
                 var alignmentOptionsType = Type.GetType("TMPro.TextAlignmentOptions, Unity.TextMeshPro");
                 if (alignmentOptionsType != null)
                 {
@@ -87,7 +87,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 给组件设置文本（TMP 或 Legacy 均可）
+        /// Sets text on a component (works for TMP or Legacy)
         /// </summary>
         private static bool SetTextOnComponent(Component comp, string text)
         {
@@ -108,8 +108,8 @@ namespace UnitySkills
             TracksWorkflow = true)]
         public static object UICreateCanvas(string name = "Canvas", string renderMode = "ScreenSpaceOverlay")
         {
-            // 必须在 Canvas 创建之前解析。旧的 default 分支对任何无法识别的值都静默产出
-            // ScreenSpaceOverlay 画布，于是 "Overlay" 或 "Camera" 看起来像是生效了。
+            // Must be resolved before the Canvas is created. The old default branch silently produced a
+            // ScreenSpaceOverlay canvas for any unrecognized value, so "Overlay" or "Camera" looked like it had taken effect.
             if (!SkillParamUtil.TryParseRequiredEnum<RenderMode>(renderMode, "renderMode", out var mode, out var renderModeError))
                 return renderModeError;
 
@@ -311,14 +311,14 @@ namespace UnitySkills
 
         private class BatchUIItem
         {
-            public string type { get; set; } // Button、Text、Image 等
+            public string type { get; set; } // Button, Text, Image, etc.
             public string name { get; set; } = "UI Element";
             public string parent { get; set; }
             public string text { get; set; }
             public float width { get; set; } = 100;
             public float height { get; set; } = 30;
             public float fontSize { get; set; } = 14;
-            public float r { get; set; } = 1; // 默认白色不透明
+            public float r { get; set; } = 1; // Defaults to opaque white
             public float g { get; set; } = 1;
             public float b { get; set; } = 1;
             public float a { get; set; } = 1;
@@ -359,7 +359,7 @@ namespace UnitySkills
 
             if (IsTMPAvailable())
             {
-                // 使用 TMP 版 InputField
+                // Use the TMP version of InputField
                 var inputField = go.AddComponent(_tmpInputFieldType);
 
                 var textAreaGo = new GameObject("Text Area");
@@ -378,7 +378,7 @@ namespace UnitySkills
                 placeholderRect.anchorMax = Vector2.one;
                 placeholderRect.sizeDelta = Vector2.zero;
                 var placeholderComp = AddTextComponent(placeholderGo, placeholder, 14, new Color(0.5f, 0.5f, 0.5f));
-                // 设置斜体
+                // Set italic style
                 var fontStyleType = Type.GetType("TMPro.FontStyles, Unity.TextMeshPro");
                 if (fontStyleType != null)
                     _tmpTextType.GetProperty("fontStyle")?.SetValue(placeholderComp, Enum.Parse(fontStyleType, "Italic"));
@@ -391,14 +391,14 @@ namespace UnitySkills
                 textRect.sizeDelta = Vector2.zero;
                 var textComp = AddTextComponent(textGo, "", 14, Color.black);
 
-                // 设置 TMP_InputField 的属性
+                // Set TMP_InputField's properties
                 _tmpInputFieldType.GetProperty("textViewport")?.SetValue(inputField, textAreaRect);
                 _tmpInputFieldType.GetProperty("textComponent")?.SetValue(inputField, textComp);
                 _tmpInputFieldType.GetProperty("placeholder")?.SetValue(inputField, placeholderComp);
             }
             else
             {
-                // 使用 Legacy InputField
+                // Use Legacy InputField
                 var inputField = go.AddComponent<InputField>();
 
                 var placeholderGo = new GameObject("Placeholder");
@@ -487,7 +487,7 @@ namespace UnitySkills
 
             slider.fillRect = fillRect;
 
-            // 滑块把手
+            // Slider handle
             var handleAreaGo = new GameObject("Handle Slide Area");
             handleAreaGo.transform.SetParent(go.transform, false);
             var handleAreaRect = handleAreaGo.AddComponent<RectTransform>();
@@ -579,7 +579,7 @@ namespace UnitySkills
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
 
-            // 有 TMP 就先试 TMP
+            // Try TMP first if available
             if (IsTMPAvailable())
             {
                 var tmpComp = go.GetComponent(_tmpTextType);
@@ -592,7 +592,7 @@ namespace UnitySkills
                 }
             }
 
-            // 回退到 Legacy Text
+            // Fall back to Legacy Text
             var textComp = go.GetComponent<Text>();
             if (textComp != null)
             {
@@ -650,11 +650,11 @@ namespace UnitySkills
                 if (parent != null) return parent;
             }
 
-            // 先找现成的 Canvas
+            // First look for an existing Canvas
             var canvas = UnityEngine.Object.FindAnyObjectByType<Canvas>();
             if (canvas != null) return canvas.gameObject;
 
-            // 没有则新建 Canvas
+            // Otherwise create a new Canvas
             var go = new GameObject("Canvas");
             var canvasComp = go.AddComponent<Canvas>();
             canvasComp.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -674,7 +674,7 @@ namespace UnitySkills
             if (go.GetComponent<Slider>()) return "Slider";
             if (go.GetComponent<Toggle>()) return "Toggle";
             
-            // 有 TMP 时先查 TMP 类型
+            // If TMP is available, check TMP types first
             if (IsTMPAvailable())
             {
                 if (_tmpInputFieldType != null && go.GetComponent(_tmpInputFieldType) != null) return "InputField";
@@ -690,7 +690,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 进阶 UI 布局技能
+        // Advanced UI layout skills
         // ==================================================================================
 
         [UnitySkill("ui_set_anchor", "Set anchor preset for a UI element (TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight, StretchHorizontal, StretchVertical, StretchAll)",
@@ -783,7 +783,7 @@ namespace UnitySkills
                 rect.anchoredPosition = pos;
             }
 
-            // 偏移（拉伸元素的内边距）
+            // Offsets (padding for stretched elements)
             if (left.HasValue || bottom.HasValue)
             {
                 var min = rect.offsetMin;
@@ -898,7 +898,7 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" })]
         public static object UILayoutChildren(
             string name = null, int instanceId = 0, string path = null,
-            string layoutType = "Vertical",  // 取值：Vertical、Horizontal、Grid
+            string layoutType = "Vertical",  // values: Vertical, Horizontal, Grid
             float spacing = 10f,
             float paddingLeft = 0, float paddingRight = 0, float paddingTop = 0, float paddingBottom = 0,
             int gridColumns = 3,
@@ -912,7 +912,7 @@ namespace UnitySkills
 
             Undo.RecordObject(parentGo, "Add Layout");
 
-            // 移除已有的 layout group
+            // Remove any existing layout group
             var existingV = parentGo.GetComponent<UnityEngine.UI.VerticalLayoutGroup>();
             var existingH = parentGo.GetComponent<UnityEngine.UI.HorizontalLayoutGroup>();
             var existingG = parentGo.GetComponent<UnityEngine.UI.GridLayoutGroup>();
@@ -944,7 +944,7 @@ namespace UnitySkills
                     gLayout.padding = padding;
                     gLayout.constraint = UnityEngine.UI.GridLayoutGroup.Constraint.FixedColumnCount;
                     gLayout.constraintCount = gridColumns;
-                    // 按第一个子对象自动推算 cell 尺寸
+                    // Auto-derive cell size from the first child
                     if (rect.childCount > 0)
                     {
                         var firstChild = rect.GetChild(0).GetComponent<RectTransform>();
@@ -956,7 +956,7 @@ namespace UnitySkills
                     return new { error = $"Unknown layout type: {layoutType}" };
             }
 
-            // 没有 ContentSizeFitter 时补上
+            // Add a ContentSizeFitter if one isn't already present
             if (parentGo.GetComponent<UnityEngine.UI.ContentSizeFitter>() == null)
             {
                 var fitter = Undo.AddComponent<UnityEngine.UI.ContentSizeFitter>(parentGo);
@@ -978,8 +978,9 @@ namespace UnitySkills
             RequiresInput = new[] { "selectedGameObjects" })]
         public static object UIAlignSelected(string alignment = "Center")
         {
-            // 在碰选择集之前先校验：下面的 switch 对识别不了的值只会落到一条没有 errorCode/validValues 的
-            // 纯文本错误上，且那条路径上 Undo.RecordObjects 也没记录——现在改为前置检查。
+            // Validate before touching the selection: the switch below only produces a plain-text error with no
+            // errorCode/validValues for an unrecognized value, and that path also doesn't record
+            // Undo.RecordObjects — now moved to an upfront check instead.
             var validAlignments = new[] { "Left", "Right", "Center", "Top", "Bottom", "Middle" };
             if (!validAlignments.Any(v => string.Equals(v, alignment, StringComparison.OrdinalIgnoreCase)))
                 return SkillParamUtil.InvalidValueError(alignment, "alignment", validAlignments);
@@ -1037,8 +1038,9 @@ namespace UnitySkills
             RequiresInput = new[] { "selectedGameObjects" })]
         public static object UIDistributeSelected(string direction = "Horizontal")
         {
-            // 前置校验：direction 过去只被 == "horizontal" 比过一次，任何别的值（拼写错误、"Diagonal" 等）
-            // 都会静默落到纵向分布上，还带着那个无效值回显并报成功。
+            // Validated up front: direction used to only ever be compared against == "horizontal", so any other
+            // value (a typo, "Diagonal", etc.) silently fell through to vertical distribution, echoing back that
+            // invalid value while still reporting success.
             var validDirections = new[] { "Horizontal", "Vertical" };
             if (!validDirections.Any(v => string.Equals(v, direction, StringComparison.OrdinalIgnoreCase)))
                 return SkillParamUtil.InvalidValueError(direction, "direction", validDirections);
@@ -1079,7 +1081,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // UI 元素创建技能
+        // UI element creation skills
         // ==================================================================================
 
         [UnitySkill("ui_create_dropdown", "Create a Dropdown UI element with options",
@@ -1110,7 +1112,7 @@ namespace UnitySkills
             else
                 dropdownComp = go.AddComponent<Dropdown>();
 
-            // 标题文本
+            // Caption text
             var captionGo = new GameObject("Label");
             captionGo.transform.SetParent(go.transform, false);
             var captionRect = captionGo.AddComponent<RectTransform>();
@@ -1130,7 +1132,7 @@ namespace UnitySkills
             var arrowImage = arrowGo.AddComponent<Image>();
             arrowImage.color = new Color(0.2f, 0.2f, 0.2f);
 
-            // 模板（下拉列表本体）
+            // Template (the actual dropdown list body)
             var templateGo = new GameObject("Template");
             templateGo.transform.SetParent(go.transform, false);
             var templateRect = templateGo.AddComponent<RectTransform>();
@@ -1205,7 +1207,7 @@ namespace UnitySkills
             itemLabelRect.offsetMax = Vector2.zero;
             var itemLabelText = AddTextComponent(itemLabelGo, "Option", 14, Color.black);
 
-            // 设置 dropdown 引用：TMP 走反射，Legacy 直接赋值
+            // Set dropdown references: TMP goes through reflection, Legacy assigns directly
             if (usingTmpDropdown)
             {
                 _tmpDropdownType.GetProperty("captionText")?.SetValue(dropdownComp, captionText);
@@ -1222,7 +1224,7 @@ namespace UnitySkills
 
             templateGo.SetActive(false);
 
-            // 填入选项
+            // Populate options
             var optionList = new List<string>();
             if (!string.IsNullOrEmpty(options))
             {
@@ -1352,8 +1354,8 @@ namespace UnitySkills
             string name = "Scrollbar", string parent = null,
             string direction = "BottomToTop", float value = 0, float size = 0.2f, int numberOfSteps = 0)
         {
-            // 先解析：direction 还决定下面 sizeDelta 的取值，解析失败会造出一个
-            // 按某一轴定尺寸、却沿另一轴摆放的滚动条。
+            // Resolve first: direction also determines the sizeDelta axis below, so a parse failure would
+            // produce a scrollbar sized on one axis but laid out along the other.
             if (!SkillParamUtil.TryParseRequiredEnum<Scrollbar.Direction>(direction, "direction", out var dir, out var directionError))
                 return directionError;
 
@@ -1402,7 +1404,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // UI 属性配置技能
+        // UI property configuration skills
         // ==================================================================================
 
         [UnitySkill("ui_set_image", "Set Image properties (type, fillMethod, fillAmount, preserveAspect, sprite)",
@@ -1423,8 +1425,8 @@ namespace UnitySkills
             var image = go.GetComponent<Image>();
             if (image == null) return new { error = "No Image component found" };
 
-            // 两者都在第一次写入前解析：非法 type 过去被丢弃，而同一次调用里的
-            // fillAmount / preserveAspect / spritePath 却照样生效。
+            // Both are resolved before the first write: an invalid type used to be discarded while
+            // fillAmount / preserveAspect / spritePath in the same call still took effect.
             if (!SkillParamUtil.TryParseOptionalEnum<Image.Type>(type, "type", out var imgType, out var typeError))
                 return typeError;
             if (!SkillParamUtil.TryParseOptionalEnum<Image.FillMethod>(fillMethod, "fillMethod", out var fm, out var fillMethodError))
@@ -1552,8 +1554,8 @@ namespace UnitySkills
             string name = null, int instanceId = 0, string path = null,
             string maskType = "RectMask2D", bool showMaskGraphic = true)
         {
-            // 在碰 GameObject 之前先校验：旧的 else 分支把除 "Mask" 以外的任何值都当作 RectMask2D，
-            // 于是像 "BogusMask" 这样的拼写错误会静默加上一个 RectMask2D，还把那个无效字符串照样回显。
+            // Validate before touching the GameObject: the old else branch treated any value other than "Mask"
+            // as RectMask2D, so a typo like "BogusMask" would silently add a RectMask2D while echoing that invalid string back.
             var validMaskTypes = new[] { "Mask", "RectMask2D" };
             if (!validMaskTypes.Any(v => string.Equals(v, maskType, StringComparison.OrdinalIgnoreCase)))
                 return SkillParamUtil.InvalidValueError(maskType, "maskType", validMaskTypes);
@@ -1567,7 +1569,7 @@ namespace UnitySkills
             string applied;
             if (maskType.Equals("Mask", StringComparison.OrdinalIgnoreCase))
             {
-                // Mask 依赖 Image 组件
+                // Mask depends on an Image component
                 if (go.GetComponent<Image>() == null)
                     Undo.AddComponent<Image>(go);
                 var mask = go.GetComponent<Mask>() ?? Undo.AddComponent<Mask>(go);
@@ -1637,7 +1639,7 @@ namespace UnitySkills
             string transition = null,
             bool? interactable = null,
             string navigationMode = null,
-            // ColorBlock 属性。每个通道（含 alpha）默认沿用该 block 的当前值——见下方 TryMergeColor 的调用处。
+            // ColorBlock properties. Each channel (including alpha) defaults to the block's current value — see the TryMergeColor calls below.
             float? normalR = null, float? normalG = null, float? normalB = null, float? normalA = null,
             float? highlightedR = null, float? highlightedG = null, float? highlightedB = null, float? highlightedA = null,
             float? pressedR = null, float? pressedG = null, float? pressedB = null, float? pressedA = null,
@@ -1650,7 +1652,8 @@ namespace UnitySkills
             var selectable = go.GetComponent<Selectable>();
             if (selectable == null) return new { error = "No Selectable component found (Button, Toggle, Slider, etc.)" };
 
-            // 在任何写入前解析：这两个过去会被静默丢弃，而同一次调用里的颜色块与 interactable 标志却已提交。
+            // In any writes before this: these two used to be silently dropped, while the color block and
+            // interactable flag in the same call were still committed.
             if (!SkillParamUtil.TryParseOptionalEnum<Selectable.Transition>(transition, "transition", out var trans, out var transitionError))
                 return transitionError;
             if (!SkillParamUtil.TryParseOptionalEnum<Navigation.Mode>(navigationMode, "navigationMode", out var navMode, out var navigationModeError))
@@ -1672,8 +1675,8 @@ namespace UnitySkills
                 selectable.navigation = nav;
             }
 
-            // 只要传了任一颜色参数就更新颜色。旧的判断只检查四个 R 通道，
-            // 于是只传 normalG 的调用会把整个颜色块静默丢掉。
+            // Update colors as soon as any color parameter is passed. The old check only looked at the four R
+            // channels, so a call passing only normalG would silently drop the whole color block.
             var colors = selectable.colors;
             bool wroteColors = false;
 
@@ -1796,9 +1799,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把传入的通道（含 alpha）合并到 <paramref name="current"/> 之上。alpha 必须显式带上：
-        /// <c>new Color(r, g, b)</c> 会把 a 置为 1，而 ColorBlock.disabledColor 出厂 alpha 是 0.5，
-        /// 所以过去给 disabled 状态改色会附带把它变成全不透明，这是谁都没要求的副作用。
+        /// Merges the given channels (including alpha) onto <paramref name="current"/>. Alpha must be passed
+        /// explicitly: <c>new Color(r, g, b)</c> sets a to 1, and ColorBlock.disabledColor ships with alpha 0.5,
+        /// so recoloring the disabled state used to also make it fully opaque as a side effect nobody asked for.
         /// </summary>
         private static bool TryMergeColor(float? r, float? g, float? b, float? a, Color current, out Color result)
         {

@@ -7,20 +7,20 @@ using NUnit.Framework;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// <see cref="BatchJobService.Wait"/> 的超时钳制。Wait 在 Unity 主线程上自旋 sleep，所以一个
-    /// 不设上限的 timeout 会把编辑器（连同 HTTP 主线程队列）冻住调用方要求的那么久。
+    /// The timeout clamp on <see cref="BatchJobService.Wait"/>. Wait spin-sleeps on Unity's main thread, so an unbounded timeout would freeze the editor (and the HTTP main-thread queue)
+    /// for however long the caller asked for.
     ///
-    /// 这里不真等 30 秒：钳制表达式是 <c>Min(MaxWaitTimeoutMs, Max(100, t))</c>，测试钉住的是
-    /// 常量本身、下界 100 的可观测生效、以及中段的透传。上界与下界共用同一个表达式，所以钉住
-    /// 常量 + 下界 + 透传，等于钉住整条表达式而不必付 30 秒的墙钟。
+    /// This doesn't actually wait 30 seconds: the clamp expression is <c>Min(MaxWaitTimeoutMs, Max(100, t))</c>, and what the tests pin down is the constant itself, the observable effect of the 100 lower
+    /// bound, and pass-through in the middle range. The upper and lower bounds share the same expression, so pinning the constant + lower bound + pass-through amounts to pinning the
+    /// whole expression without paying a 30-second wall clock.
     /// </summary>
     [TestFixture]
     public class BatchJobWaitTimeoutTests
     {
         /// <summary>
-        /// 造一条永不推进的 job：只写进持久层，不建运行时上下文，所以 Pump 对它无事可做，
-        /// 状态一直是 running，Wait 只能等到 deadline。这是唯一能在不真跑作业的前提下
-        /// 观察到 deadline 计算的办法。
+        /// Builds a job that never advances: it's only written to the persistence layer without building a runtime context, so Pump has nothing to do with it, its status stays
+        /// running forever, and Wait can only run out the deadline. This is the only way to
+        /// observe the deadline computation without actually running a job.
         /// </summary>
         private static string CreateStalledJob()
         {
@@ -59,7 +59,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void MaxWaitTimeoutMs_IsThirtySeconds()
         {
-            // 直接引用常量：编译得过就证明它还在，还是 internal，值也没变。
+            // Directly reference the constant: compiling successfully proves it still exists, is still internal, and its value hasn't changed.
             Assert.That(BatchJobService.MaxWaitTimeoutMs, Is.EqualTo(30000),
                 "上限改了就得同步改 batch_retry_failed 的同步路径与文档里承诺的 30s。");
         }
@@ -107,7 +107,7 @@ namespace UnitySkills.Tests.Core
                 BatchJobService.Wait(jobId, 1);
                 sw.Stop();
 
-                // Max(100, 1) == 100：下界生效，所以哪怕要求 1ms 也会走完一轮 100ms 的循环。
+                // Max(100, 1) == 100: the lower bound kicks in, so even a 1ms request still runs a full 100ms cycle.
                 Assert.That(sw.ElapsedMilliseconds, Is.GreaterThanOrEqualTo(90),
                     $"下界 100ms 没有生效（实测 {sw.ElapsedMilliseconds}ms）—— 过小的超时会让 Wait" +
                     $"变成一次都不 Pump 的空转。");
@@ -131,7 +131,7 @@ namespace UnitySkills.Tests.Core
                 BatchJobService.Wait(jobId, requested);
                 sw.Stop();
 
-                // 100 < 600 < 30000：钳制在这一段是恒等的，所以 deadline 必须真的用调用方给的值。
+                // 100 < 600 < 30000: the clamp is the identity in this range, so the deadline must actually use the value the caller supplied.
                 Assert.That(sw.ElapsedMilliseconds, Is.GreaterThanOrEqualTo(requested - 60),
                     $"中段的超时被意外缩短了，实测 {sw.ElapsedMilliseconds}ms（要求 {requested}ms）。");
                 Assert.That(sw.ElapsedMilliseconds, Is.LessThan(BatchJobService.MaxWaitTimeoutMs),
@@ -144,27 +144,27 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 已知的同步阻塞技能必须都带 LongRunning。
+        /// Every known synchronously-blocking skill must be tagged LongRunning.
         ///
-        /// 原先只断言集合非空，那是烟雾断言：六个里丢掉五个它照样通过。这里逐个点名 —— 但断言的是
-        /// 「已知集合 ⊆ LongRunning 集合」而不是相等，所以将来新增标注不会让这条测试变成阻碍。
+        /// The original version only asserted the collection was non-empty, which was a smoke assertion: it would still pass if five out of six were dropped. Here each one is named
+        /// individually -- but what's asserted is "the known set is a subset of the LongRunning set," not equality, so a future new annotation won't turn this test into an obstacle.
         ///
-        /// 每个名字都先查注册：hybridclr_* / addressables_build / yooasset_build_bundles 都来自
-        /// 可选包，干净 CI 工程上根本不在注册表里，硬断言会在那里假红。
+        /// Each name is checked against the registry first: hybridclr_* / addressables_build / yooasset_build_bundles all come from optional packages, and simply aren't in the
+        /// registry on a clean CI project, where a hard assertion would falsely fail.
         /// </summary>
         [Test]
         public void KnownBlockingSkills_AreAllMarkedLongRunning()
         {
-            // 超时钳制与 LongRunning 是同一个问题的两半：一半限制调用方能要求主线程停多久，
-            // 一半告诉调用方哪些技能本来就会把主线程停住。
+            // The timeout clamp and LongRunning are two halves of the same problem: one limits how long a caller can ask the main thread to stop for, the other tells the caller which
+            // skills will stop the main thread in the first place.
             var knownBlocking = new[]
             {
-                "navmesh_bake",              // 全量 NavMesh 烘焙
-                "hybridclr_compile_dlls",    // 热更 DLL 编译
+                "navmesh_bake",              // Full NavMesh bake
+                "hybridclr_compile_dlls",    // Hot-update DLL compilation
                 "hybridclr_generate_all",
                 "hybridclr_generate_step",
-                "addressables_build",        // Addressables 打包
-                "yooasset_build_bundles",    // YooAsset 打包
+                "addressables_build",        // Addressables build
+                "yooasset_build_bundles",    // YooAsset build
             };
 
             var longRunning = new HashSet<string>(

@@ -8,18 +8,18 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// Addressables（com.unity.addressables）编辑器技能：资源分组、构建管线与 Profile 管理。
+    /// Addressables (com.unity.addressables) editor skills: asset groups, build pipeline, and Profile management.
     ///
-    /// 该包是可选的，本模块对它保持零直接引用：所有调用都通过反射访问
-    /// Unity.Addressables.Editor 程序集，因此无论项目是否安装 Addressables，
-    /// UnitySkills 编辑器程序集都能同样编译通过。<c>addressables_check_installed</c>
-    /// 两种情况下都可用；其余技能在缺包时一律返回 <see cref="NoAddressables"/>。
+    /// This package is optional, and this module keeps zero direct references to it: every call goes
+    /// through reflection against the Unity.Addressables.Editor assembly, so the UnitySkills editor
+    /// assembly compiles the same whether or not Addressables is installed. <c>addressables_check_installed</c>
+    /// works in both cases; every other skill returns <see cref="NoAddressables"/> when the package is missing.
     ///
-    /// 反射用到的 API 以 com.unity.addressables 2.x 编辑器源码为准
+    /// The reflected APIs follow the com.unity.addressables 2.x editor source
     /// (UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject,
     ///  UnityEditor.AddressableAssets.Settings.AddressableAssetSettings,
     ///  UnityEditor.AddressableAssets.Settings.AddressableAssetGroup,
-    ///  UnityEditor.AddressableAssets.Build.AddressableAssetSettingsDefaultObject)。
+    ///  UnityEditor.AddressableAssets.Build.AddressableAssetSettingsDefaultObject).
     /// </summary>
     public static class AddressablesSkills
     {
@@ -28,7 +28,7 @@ namespace UnitySkills
         private const string DocsUrl             = "https://docs.unity3d.com/Packages/com.unity.addressables@latest";
 
         // ==================================================================================
-        // 反射层 —— 惰性解析 Unity.Addressables.Editor，绝不与之静态链接。
+        // Reflection layer -- lazily resolves Unity.Addressables.Editor, never statically links to it.
         // ==================================================================================
 
         private static Assembly _editorAssembly;
@@ -66,7 +66,7 @@ namespace UnitySkills
         private static Type DefaultObjectType =>
             AddrType("UnityEditor.AddressableAssets.AddressableAssetSettingsDefaultObject");
 
-        /// <summary>取 AddressableAssetSettings 单例；尚未配置时返回 null。</summary>
+        /// <summary>Gets the AddressableAssetSettings singleton; returns null if not yet configured.</summary>
         private static object GetSettings()
         {
             var t = DefaultObjectType;
@@ -100,9 +100,9 @@ namespace UnitySkills
                     "Create one via Window > Asset Management > Addressables > Groups, then click 'Create Addressables Settings'.",
             errorCode = "TARGET_NOT_FOUND",
             hint = "After creating settings, retry your original command.",
-            // 必须显式声明：交给分类器自动推断时，这段文案会命中 TARGET_NOT_FOUND 的
-            // 资源标记分支而给出 asset_find —— 但这里没有资源可找，settings 单例尚不存在，
-            // 只能由人（或 Groups 窗口）创建。
+            // Must be declared explicitly: left to the classifier's auto-inference, this message would
+            // hit the TARGET_NOT_FOUND asset-marker branch and suggest asset_find -- but there is no
+            // asset to find here; the settings singleton doesn't exist yet and only a human (or the Groups window) can create it.
             relatedSkills = new[] { "addressables_check_installed" },
             suggestedFixes = new[]
             {
@@ -116,12 +116,12 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 组名未命中，按路由层 1 的错误契约（<c>SkillResultHelper.TryGetErrorContext</c>）封装。
-        /// "Group not found: X" 查的是 AddressableAssetSettings 资源内部，不是场景对象；
-        /// 而分类器通用的 TARGET_NOT_FOUND 分支会回以 gameobject_find / scene_get_hierarchy，
-        /// 把调用方引去 Hierarchy 里找一个只存在于设置资源中的东西。
-        /// 这里只声明 relatedSkills/suggestedFixes：推断出的错误码（TARGET_NOT_FOUND）
-        /// 与策略（find_target_and_retry）对这条消息本身是正确的。
+        /// Group name not found, wrapped per the router layer's error contract
+        /// (<c>SkillResultHelper.TryGetErrorContext</c>). "Group not found: X" is a lookup inside the
+        /// AddressableAssetSettings asset, not a scene object; but the classifier's generic TARGET_NOT_FOUND
+        /// branch would respond with gameobject_find / scene_get_hierarchy, sending the caller off to the
+        /// Hierarchy to look for something that only exists in the settings asset. This only declares
+        /// relatedSkills/suggestedFixes: the inferred error code (TARGET_NOT_FOUND) and strategy (find_target_and_retry) are already correct for this message.
         /// </summary>
         private static object GroupNotFound(string groupName) => new
         {
@@ -139,9 +139,9 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// <see cref="GroupNotFound"/> 的 Profile 版本。这里比组名的情况更糟：
-        /// "Profile not found: …" 含子串 "file"，会命中分类器的资源标记分支而导向 asset_find，
-        /// 让调用方全工程搜索一个其实只是 AddressableAssetProfileSettings 里字符串字段的名字。
+        /// The Profile counterpart of <see cref="GroupNotFound"/>. This case is worse than the group name
+        /// case: "Profile not found: ..." contains the substring "file", which hits the classifier's
+        /// asset-marker branch and routes to asset_find, sending the caller to search the whole project for what is actually just a string field name inside AddressableAssetProfileSettings.
         /// </summary>
         private static object ProfileNotFound(string profileName) => new
         {
@@ -181,7 +181,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 技能
+        // Skills
         // ==================================================================================
 
         [UnitySkill("addressables_check_installed",
@@ -297,9 +297,9 @@ namespace UnitySkills
             Operation = SkillOperation.Create,
             Tags = new[] { "addressables", "group", "create" },
             Outputs = new[] { "groupName", "requestedName", "renamed", "guid" },
-            // groupName 没有 CLR 默认值，但对 IsParameterRequired 而言无默认值的引用类型算可选，
-            // 于是 schema 会声明 required:false，而下面的方法体对缺省和空串都会拒绝。
-            // 这里显式声明，让 schema、dryRun 判定与运行时行为三者一致。
+            // groupName has no CLR default value, but IsParameterRequired treats a reference-type
+            // parameter with no default as optional, so the schema would declare required:false, while
+            // the method body below rejects both a missing value and an empty string. Declared explicitly here so the schema, dryRun evaluation, and runtime behavior all agree.
             RequiresInput = new[] { "groupName" },
             TracksWorkflow = false)]
         public static object AddressablesGroupCreate(string groupName)
@@ -339,9 +339,9 @@ namespace UnitySkills
                 if (newGroup == null)
                     return new { error = $"Failed to create group '{groupName}'" };
 
-                // CreateGroup 撞名时不会失败，而是追加计数器去重（"TestGroup" -> "TestGroup1"），
-                // 所以请求的名字未必就是落盘的名字。必须从返回的 group 对象上读回真实名字，
-                // 否则回显的名字 addressables_group_add_entry / _delete 都解析不到。
+                // CreateGroup does not fail on a name collision -- it appends a counter to dedupe
+                // ("TestGroup" -> "TestGroup1"), so the requested name may not be the name that lands
+                // on disk. The real name must be read back from the returned group object, otherwise addressables_group_add_entry / _delete can't resolve the echoed name.
                 var actualName = PropT<string>(newGroup, "Name") ?? PropT<string>(newGroup, "name") ?? groupName;
                 bool renamed = !string.Equals(actualName, groupName, StringComparison.Ordinal);
                 var groupGuid = PropT<string>(newGroup, "Guid");
@@ -608,8 +608,8 @@ namespace UnitySkills
 
                 var startTime = DateTime.UtcNow;
 
-                // 签名为 static void BuildPlayerContent(out AddressablesPlayerBuildResult result)，
-                // 反射调用时 out 参数先占位为 null，回填后再从 parameters[0] 读取结果。
+                // Signature is static void BuildPlayerContent(out AddressablesPlayerBuildResult result);
+                // via reflection the out parameter is placeholder-null first, then read back from parameters[0] once filled in.
                 var parameters = new object[] { null };
                 buildMethod.Invoke(null, parameters);
 

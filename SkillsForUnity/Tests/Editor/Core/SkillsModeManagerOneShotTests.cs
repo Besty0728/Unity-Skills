@@ -6,12 +6,12 @@ using UnityEditor;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 专项覆盖一次性授权放行 token 的加固。SkillRouter.Execute 有四处参数校验提前返回，位置正好夹在
-    /// TryGrantAndReturnArgs（写入 ThreadStatic token）与 CheckAccess（消费它）之间，任何一处提前退出
-    /// 若漏了 ClearOneShotBypass，token 就会泄漏到同一线程上的另一个无关请求里。
-    /// 硬性 30 秒 deadline 是针对这点的第二道防线。
+    /// Dedicated coverage for the hardening of the one-shot grant-bypass token. SkillRouter.Execute has
+    /// four early-return parameter validation points, positioned right between TryGrantAndReturnArgs
+    /// (which writes the ThreadStatic token) and CheckAccess (which consumes it); if any one of those early exits misses ClearOneShotBypass, the token leaks into another unrelated request on the same thread.
+    /// The hard 30-second deadline is the second line of defense against exactly this.
     ///
-    /// 本夹具与 SkillsModeManagerTests.cs 互补，不重复它已有的授权/白名单/迁移覆盖。
+    /// This fixture complements SkillsModeManagerTests.cs and doesn't duplicate the grant/allowlist/migration coverage it already has.
     /// </summary>
     [TestFixture]
     public class SkillsModeManagerOneShotTests
@@ -60,7 +60,7 @@ namespace UnitySkills.Tests.Core
             SkillsAuditLog.ResetForTests();
         }
 
-        /// <summary>最小 SkillInfo：只填 CheckAccess / IsForbiddenInSemi 会读的字段。</summary>
+        /// <summary>A minimal SkillInfo: only fills the fields CheckAccess / IsForbiddenInSemi read.</summary>
         private static SkillRouter.SkillInfo MakeSkill(string name, SkillMode mode = SkillMode.FullAuto)
         {
             return new SkillRouter.SkillInfo
@@ -85,8 +85,8 @@ namespace UnitySkills.Tests.Core
             var (outcome, _, _) = SkillsModeManager.TryGrantAndReturnArgs(skillName, token, "{}");
             Assert.AreEqual(GrantOutcome.Granted, outcome);
 
-            // 模拟调用方在授权与 CheckAccess 之间无条件清掉待用的一次性 token
-            // （例如 SkillRouter.Execute 撞上参数校验提前返回）。
+            // Simulates a caller unconditionally clearing the pending one-shot token between the
+            // grant and CheckAccess (e.g. SkillRouter.Execute hitting an early-return parameter validation).
             SkillsModeManager.ClearOneShotBypass();
 
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,
@@ -105,8 +105,8 @@ namespace UnitySkills.Tests.Core
             var (outcome, _, _) = SkillsModeManager.TryGrantAndReturnArgs(skillName, token, "{}");
             Assert.AreEqual(GrantOutcome.Granted, outcome);
 
-            // SkillsModeManager 没有可注入的时钟，而 deadline 是 ThreadStatic 字段——在同一线程上
-            // 用反射把它推到过去，而不是在单测里真睡 30 多秒。
+            // SkillsModeManager has no injectable clock, and the deadline is a ThreadStatic field -- push it into the past via reflection on the same thread, rather than actually
+            // sleeping 30-odd seconds in a unit test.
             var deadlineField = typeof(SkillsModeManager).GetField("_oneShotDeadlineUtc",
                 BindingFlags.NonPublic | BindingFlags.Static);
             Assert.IsNotNull(deadlineField, "_oneShotDeadlineUtc field must exist for expiry simulation");
@@ -130,11 +130,11 @@ namespace UnitySkills.Tests.Core
             var (outcome, _, _) = SkillsModeManager.TryGrantAndReturnArgs(skillName, token, "{}");
             Assert.AreEqual(GrantOutcome.Granted, outcome);
 
-            // 换个 skill 名字来查权限，不得消费掉待用的一次性 token。
+            // Checking permission under a different skill name must not consume the pending one-shot token.
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,
                 SkillsModeManager.CheckAccess(MakeSkill("unrelated_skill")));
 
-            // 原 skill 的一次性授权仍然有效，且这一次之后即被消费掉。
+            // The original skill's one-shot grant is still valid, and gets consumed right after this call.
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill(skillName)));
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,

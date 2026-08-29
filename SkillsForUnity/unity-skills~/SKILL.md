@@ -87,6 +87,6 @@ Every skill is named `module_verb`, so the prefix is the routing key. `GET /skil
 
 Compilation status, events, analytics → [observability](references/protocol-observability.md). Unity CLI cold start (opt-in, v2.3+) → [unity-cli](references/protocol-unity-cli.md).
 
-Current snapshot: `785` REST skills, `55` source files, `53` categories, `80` module documentation directories (`53` REST/module docs + `27` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `805` REST skills, `56` source files, `54` categories, `82` module documentation directories (`54` REST/module docs + `28` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`

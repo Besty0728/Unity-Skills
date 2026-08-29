@@ -7,11 +7,12 @@ using UnityEditor.ShortcutManagement;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 快捷键冲突比对纯逻辑单测（<see cref="ShortcutConflictUtil"/>）。
+    /// Pure-logic unit tests for shortcut conflict comparison (<see cref="ShortcutConflictUtil"/>).
     ///
-    /// 覆盖任务要求的三类判定：相同组合冲突 / 不同修饰键不冲突 / 空绑定不冲突，
-    /// 外加 keyCode 不同、null 序列、CombinationsEqual 直测。全部只依赖 KeyCombination
-    /// 结构体，无需真实 ShortcutManager，可稳定在 EditMode 下跑。
+    /// Covers the three judgment categories the task calls for: identical combination conflicts / different
+    /// modifiers don't conflict / empty bindings don't conflict, plus a differing keyCode, a null sequence, and
+    /// a direct test of CombinationsEqual. All of it only depends on the KeyCombination struct, with no need
+    /// for a real ShortcutManager, so it runs reliably under EditMode.
     /// </summary>
     [TestFixture]
     public class ShortcutConflictTests

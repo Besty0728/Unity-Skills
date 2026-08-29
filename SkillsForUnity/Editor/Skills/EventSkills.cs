@@ -9,7 +9,7 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// 事件管理技能：检视与修改 UnityEvent（如 Button.onClick）。
+    /// Event management skills: inspect and modify UnityEvents (e.g. Button.onClick).
     /// </summary>
     public static class EventSkills
     {
@@ -86,9 +86,9 @@ namespace UnitySkills
             string argType = "void", // void, int, float, string, bool, object
             float floatArg = 0, int intArg = 0, string stringArg = null, bool boolArg = false)
         {
-            // mode 必须在最前面严格解析：若只用两次 string.Equals 比较，识别不了的取值会在
-            // 监听器已经添加完之后落到 RuntimeOnly 上，"EditorOnly" 就会静默变成运行时监听
-            // 却报成功。
+            // mode must be strictly parsed up front: comparing it with two string.Equals calls would
+            // let an unrecognized value fall through to RuntimeOnly after the listener is already
+            // added, so "EditorOnly" would silently become a runtime listener while reporting success.
             if (!SkillParamUtil.TryParseRequiredEnum<UnityEventCallState>(mode, "mode", out var callState, out var modeError))
                 return modeError;
 
@@ -101,7 +101,7 @@ namespace UnitySkills
             var (targetGo, tgtErr) = GameObjectFinder.FindOrError(name: targetObjectName);
             if (tgtErr != null) return tgtErr;
 
-            // "GameObject" 不是组件，这种情况下直接拿 GameObject 本身当目标对象。
+            // "GameObject" is not a component; in that case just use the GameObject itself as the target object.
             Object targetObj = null;
             System.Type targetType = null;
             if (targetComponentName == "GameObject" || targetComponentName == "UnityEngine.GameObject")
@@ -137,7 +137,7 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(component);
             Undo.RecordObject(component, "Add Event Listener");
 
-            // 方法解析，同时兼顾属性 setter（set_XXX）。
+            // Method resolution, also covering property setters (set_XXX).
             MethodInfo methodInfo = null;
 
             MethodInfo FindMethodOnTarget(System.Type[] paramTypes)
@@ -198,7 +198,7 @@ namespace UnitySkills
                     return new { error = $"Unsupported argType: {argType}" };
             }
 
-            // 刚添加的监听器一定在列表末尾。
+            // The listener just added is guaranteed to be at the end of the list.
             int index = unityEvent.GetPersistentEventCount() - 1;
             unityEvent.SetPersistentListenerState(index, callState);
 
@@ -250,8 +250,9 @@ namespace UnitySkills
             Tags = new[] { "event", "invoke", "trigger", "runtime" },
             Outputs = new[] { "message" },
             RequiresInput = new[] { "gameObject", "componentName", "eventName" },
-            // 触发本身不写任何东西，但会执行持久监听器对场景做的一切，且没有快照、无法撤销。
-            // 只有把它声明为场景改动，surface profile 的"不做场景编辑"承诺才站得住。
+            // Firing itself writes nothing, but it executes whatever the persistent listeners do to
+            // the scene, with no snapshot and no way to undo it.
+            // Only by declaring this a scene mutation does the surface profile's "no scene edits" guarantee hold up.
             MutatesScene = true)]
         public static object EventInvoke(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
         {
@@ -435,10 +436,12 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 反射进 UnityEventBase 的内部类 PersistentCallGroup/PersistentCall/ArgumentCache，
-        /// 读出某条持久调用的参数类型与取值。用的字段名与 UnityEventDrawer 自己依赖的一致，
-        /// 跨 Unity 版本稳定。这里全部按字符串查找，所以版本不匹配绝不会编译失败：
-        /// 最坏也只是返回 "unknown"，调用方降级为只按无参重载查找，而不是抛异常。
+        /// Reflects into UnityEventBase's internal PersistentCallGroup/PersistentCall/ArgumentCache classes
+        /// to read a given persistent call's argument type and value. Uses the same field names that
+        /// UnityEventDrawer itself relies on, which stay stable across Unity versions. Every lookup here
+        /// goes by string name, so a version mismatch can never cause a compile failure: the worst case
+        /// is just returning "unknown", and the caller falls back to looking up the parameterless overload
+        /// instead of throwing.
         /// </summary>
         private static (string argType, Object objectArg, int intArg, float floatArg, string stringArg, bool boolArg) ReadPersistentCallArguments(UnityEventBase evt, int index)
         {
@@ -471,7 +474,7 @@ namespace UnitySkills
                     case "Float": return ("float", null, 0, (float)(ReadRaw("m_FloatArgument") ?? 0f), null, false);
                     case "String": return ("string", null, 0, 0f, ReadRaw("m_StringArgument") as string, false);
                     case "Bool": return ("bool", null, 0, 0f, null, (bool)(ReadRaw("m_BoolArgument") ?? false));
-                    default: return ("unknown", null, 0, 0f, null, false); // EventDefined 或无法识别的模式
+                    default: return ("unknown", null, 0, 0f, null, false); // EventDefined or an unrecognized mode
                 }
             }
             catch
@@ -481,12 +484,12 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 追加一条 Object 类型的持久监听器。优先用 UnityEventTools.AddObjectPersistentListener&lt;T&gt;；
-        /// 没有时退回 Inspector 上 "+" 按钮的同款两步走：先用
-        /// AddPersistentListener(UnityEventBase) 追加一条空的持久调用，再在该下标上用
-        /// RegisterObjectPersistentListener&lt;T&gt; 填内容（由
-        /// <see cref="TryRegisterObjectPersistentListener"/> 实现）。两处查找都走反射，
-        /// 因此某些 Unity 版本缺少重载时只会报错，不会编译失败。
+        /// Appends a persistent listener of Object type. Prefers UnityEventTools.AddObjectPersistentListener&lt;T&gt;;
+        /// when that's unavailable, falls back to the same two-step approach as the Inspector's "+" button: first use
+        /// AddPersistentListener(UnityEventBase) to append an empty persistent call, then fill it in at that
+        /// index with RegisterObjectPersistentListener&lt;T&gt; (implemented by
+        /// <see cref="TryRegisterObjectPersistentListener"/>). Both lookups go through reflection,
+        /// so on Unity versions missing the overload this only reports an error rather than failing to compile.
         /// </summary>
         private static bool TryAddObjectPersistentListener(UnityEventBase evt, Object targetObj, MethodInfo method, Object argument, out string error)
         {
@@ -717,10 +720,11 @@ namespace UnitySkills
             var results = new List<object>();
             foreach (var item in list)
             {
-                // 每一项都要走完整签名的单项重载：只转发
-                // targetObjectName/targetComponentName/methodName 的话，argType 不是 "void"
-                // 的情形（如 GameObject.SetActive(bool)）会去匹配一个并不存在的无参重载，
-                // 失败后在下面被静默丢弃——added 不增加，失败原因也没了，批处理还报 success:true。
+                // Each item must go through the single-item overload with its full signature: forwarding
+                // only targetObjectName/targetComponentName/methodName would, whenever argType isn't "void"
+                // (e.g. GameObject.SetActive(bool)), match against a parameterless overload that doesn't
+                // exist, then silently drop the failure below — added doesn't increment, the failure reason
+                // is lost, and the batch still reports success:true.
                 var result = EventAddListener(
                     name, instanceId, path, componentName, eventName,
                     item.targetObjectName, item.targetComponentName, item.methodName,
@@ -783,9 +787,10 @@ namespace UnitySkills
                     continue;
                 }
 
-                // 必须按实际参数类型查重载：只查无参重载（Type.EmptyTypes）的话，
-                // 带存储参数的监听器（常见情形，如 GameObject.SetActive(bool)）会解析成 null
-                // 而被静默跳过，copied 不增加也不说明原因。
+                // Must look up the overload by the actual argument type: looking up only the parameterless
+                // overload (Type.EmptyTypes) would resolve a listener with a stored argument (a common case,
+                // e.g. GameObject.SetActive(bool)) to null and silently skip it, with copied not incrementing
+                // and no explanation given.
                 var (argType, objectArg, intArg, floatArg, stringArg, boolArg) = ReadPersistentCallArguments(srcEvt, i);
                 var targetType = target.GetType();
                 string failReason = null;
@@ -795,7 +800,7 @@ namespace UnitySkills
                     switch (argType)
                     {
                         case "void":
-                        case "unknown": // 内部结构读不出来，降级为只按无参处理
+                        case "unknown": // Internal structure couldn't be read; fall back to treating it as parameterless
                         {
                             var mi = FindTargetMethod(targetType, method, System.Type.EmptyTypes);
                             if (mi == null) { failReason = $"Method '{method}()' not found on {targetType.Name}"; break; }

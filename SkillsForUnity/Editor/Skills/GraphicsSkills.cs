@@ -9,11 +9,11 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// 面向 SRP 工程的图形与质量设置技能。
+    /// Graphics and quality settings skills targeting SRP-based projects.
     /// </summary>
     public static class GraphicsSkills
     {
-        // --- 工作流设置还原器（提供真正可回滚的 undo/redo） ---
+        // --- Workflow setting restorer (enables true, rollback-capable undo/redo) ---
 
         private sealed class ShaderStrippingValue
         {
@@ -23,9 +23,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 注册图形设置的读写器，使相关技能的改动能真正通过工作流 undo/redo 回滚。
-        /// 无状态的键在域加载时统一注册；按质量等级区分的渲染管线键因为 getter 需要等级参数，
-        /// 改为在 <see cref="GraphicsSetQualityRenderPipeline"/> 里按需注册。
+        /// Registers readers/writers for graphics settings, so changes made by the related skills can actually
+        /// be rolled back through workflow undo/redo. Stateless keys are all registered once at domain load;
+        /// the per-quality-level render pipeline keys need a level parameter for their getter, so they're
+        /// registered on demand inside <see cref="GraphicsSetQualityRenderPipeline"/>.
         /// </summary>
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
@@ -59,8 +60,8 @@ namespace UnitySkills
                 CaptureShaderStripping,
                 ApplyShaderStripping);
 
-            // 为每个已存在的质量等级都注册一份渲染管线还原器，
-            // 这样域重载清空内存注册表之后 undo/redo 依然可用。
+            // Register a render pipeline restorer for every quality level that already exists, so undo/redo
+            // still works after a domain reload clears the in-memory registry.
             for (var level = 0; level < QualitySettings.names.Length; level++)
                 EnsureQualityRenderPipelineRestorer(level);
         }
@@ -68,8 +69,8 @@ namespace UnitySkills
         private static string QualityRenderPipelineKey(int level) => "graphics.qualityRenderPipeline:" + level;
 
         /// <summary>
-        /// 幂等地为指定质量等级的渲染管线注册读写器。
-        /// 等级由闭包捕获，因为注册表不会把键传给处理函数。
+        /// Idempotently registers a render pipeline reader/writer for the given quality level.
+        /// The level is captured by the closure, since the registry doesn't pass the key back to the handler.
         /// </summary>
         private static void EnsureQualityRenderPipelineRestorer(int level)
         {

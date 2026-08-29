@@ -13,16 +13,16 @@ using UnityEngine;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 为了让"被截断/不完整的回答"变得*可察觉*而新增的那些响应字段。
+    /// The response fields added to make a "truncated / incomplete answer" *detectable*.
     ///
-    /// <para>它们防的是同一类故障：一份看起来完整、实则不完整的载荷。某个节点因为遍历触到深度上限而
-    /// 没有 <c>children</c> 数组，读起来和叶子节点一模一样。被 <c>limit</c> 截断的 <c>tests</c> 数组，
-    /// 读起来和完整集合一模一样。因体积过大而省略了 result 的轮询作业，读起来和"什么都没产出"的作业
-    /// 一模一样。这三种情况下调用方的下一步动作都是错的，而响应里没有任何东西提示它——所以这里每个
-    /// 字段都与它所消歧的那个值一起断言，绝不单独断言。</para>
+    /// <para>They guard against the same class of failure: a payload that looks complete but isn't.
+    /// A node with no <c>children</c> array because the walk hit the depth cap reads identically to
+    /// a true leaf. A <c>tests</c> array cut short by <c>limit</c> reads identically to the full set.
+    /// A polling job whose result was omitted for size reasons reads identically to one that produced
+    /// nothing. In all three the caller's next move is wrong and nothing hints at it — so here every field is asserted together with the value it disambiguates, never alone.</para>
     ///
-    /// <para>数量一律不硬编码：注册表规模随已安装的可选包变动，发现到的测试数随工程变动。
-    /// 所有数字都在运行期推导，或由测试自己合成。</para>
+    /// <para>Counts are never hardcoded: registry size varies with installed optional packages, and
+    /// discovered test counts vary with the project — every number is derived at run time, or synthesized by the test itself.</para>
     /// </summary>
     [TestFixture]
     public class PayloadShapeAdditionsTests
@@ -74,12 +74,12 @@ namespace UnitySkills.Tests.Core
             return result;
         }
 
-        // ---------- job_status / job_wait：默认省略 result ----------
+        // ---------- job_status / job_wait: omit result by default ----------
 
         /// <summary>
-        /// 这两个端点是给反复轮询用的，而一个已完成的测试或编译作业，其 result 载荷远大于包裹它的
-        /// 状态信封。每次轮询都内联它是昂贵的默认行为，但直接丢掉更糟：调用方无法区分"没有 result"
-        /// 与"result 被扣下了"。<c>resultAvailable</c> 负责区分这两者，<c>resultHint</c> 负责让回答可执行。
+        /// These two endpoints are for repeated polling, and a completed test or compile job's result
+        /// payload is far larger than the status envelope wrapping it. Inlining it every poll is an
+        /// expensive default, but dropping it outright is worse: the caller can't distinguish "there is no result" from "the result was withheld." <c>resultAvailable</c> distinguishes the two, <c>resultHint</c> makes the answer actionable.
         /// </summary>
         [Test]
         public void JobStatus_ByDefault_OmitsTheResultButSaysItExists()
@@ -93,8 +93,8 @@ namespace UnitySkills.Tests.Core
             Assert.That(payload["resultHint"]?.ToString(), Is.Not.Null.And.Not.Empty,
                 "Knowing a result exists is only useful alongside how to fetch it.");
 
-            // 键保留、值为 null。整个键消失就与"旧版本从来没有这个键"无法区分，
-            // 客户端于是分不清"被扣下"和"不支持"。
+            // Key stays present, value is null. If the key vanished entirely it would be indistinguishable
+            // from "this key never existed in an old version," and the client couldn't tell "withheld" from "unsupported."
             Assert.That(payload.Property("details"), Is.Not.Null,
                 "'details' must remain present as an explicit null, not vanish from the payload.");
             Assert.That(payload["details"].Type, Is.EqualTo(JTokenType.Null),
@@ -120,7 +120,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void JobStatus_JobWithNoResult_ReportsResultUnavailable()
         {
-            // 反例才让 resultAvailable 有意义——一个恒为 true 的实现也能满足上面那条断言。
+            // The negative case is what makes resultAvailable meaningful -- an always-true impl would also pass the assertion above.
             var jobId = CreateJob("running", withResult: false);
 
             var payload = Payload("job_status", "{\"jobId\":\"" + jobId + "\"}");
@@ -132,8 +132,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void JobWait_FollowsTheSameOmissionContract()
         {
-            // 同样两个字段、同样的默认值。这两者曾经跑偏过一次；用 job_wait 轮询后又切到 job_status 的
-            // 调用方，不该被迫重新学一遍响应形状。
+            // Same two fields, same defaults. This one drifted once before; a caller that polls with
+            // job_wait then switches to job_status shouldn't be forced to relearn the response shape.
             var jobId = CreateCompletedJobWithResult();
 
             var withheld = Payload("job_wait", "{\"jobId\":\"" + jobId + "\",\"timeoutMs\":100}");
@@ -148,9 +148,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 测试类作业的 hint 必须点名 <c>test_get_result</c>。通用兜底提示（"带 includeDetails=true
-        /// 再调一次"）虽然没错但浪费，而且对测试运行来说是错的建议：专用技能返回的是解析好的总数与
-        /// 失败详情，而不是原始大块数据。
+        /// A test job's hint must name <c>test_get_result</c> specifically. The generic fallback hint
+        /// ("call again with includeDetails=true") isn't wrong, just wasteful, and actively bad advice
+        /// for test runs: the dedicated skill returns parsed totals and failure detail, not a raw blob.
         /// </summary>
         [Test]
         public void JobStatus_ResultHint_NamesTheDedicatedResultSkillForTestJobs()
@@ -163,13 +163,13 @@ namespace UnitySkills.Tests.Core
                 $"A test job should be pointed at its own result skill: {payload["resultHint"]}");
         }
 
-        // ---------- 测试发现：count / returned / truncated ----------
+        // ---------- test discovery: count / returned / truncated ----------
 
         /// <summary>
-        /// 两个技能把同样三个数字拆分得不一样，而两种拆法都是承重的，因为每个字段都保持了它 2.7 之前的
-        /// 含义：<c>test_discover_get_result.count</c> 一直是"发现到的总数"，<c>test_list.count</c> 一直是
-        /// "本次返回的条数"。把它们统一固然更整洁，但也会悄无声息地改变每一个既有调用方读到的东西，
-        /// 所以做法是在缺字段的那一侧补上新字段。
+        /// The two skills split the same three numbers differently, and both splits are load-bearing
+        /// because each field keeps its pre-2.7 meaning: <c>test_discover_get_result.count</c> has always
+        /// meant "the discovered total," and <c>test_list.count</c> has always meant "the number returned
+        /// this call." Unifying them would be tidier but would silently change what every existing caller reads, so the fix is to add the missing field on whichever side lacks it.
         /// </summary>
         [Test]
         public void TestDiscoverGetResult_UnderLimit_ReportsCountAsTotalAndReturnedAsThisPage()
@@ -206,7 +206,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void TestDiscoverGetResult_CountIsInvariantToLimit()
         {
-            // 让 `count` 能当"总数"用的那条性质：调用方改变索取的数量时，它不得跟着变。
+            // The property that lets `count` serve as a "total": it must not move when the caller changes how much it asks for.
             var jobId = CreateDiscoveryJob(testCount: 6, testMode: "PlayMode");
 
             var narrow = Payload("test_discover_get_result", "{\"jobId\":\"" + jobId + "\",\"limit\":1}");
@@ -225,8 +225,8 @@ namespace UnitySkills.Tests.Core
 
             var payload = Payload("test_list", "{\"testMode\":\"PlayMode\",\"limit\":2}");
 
-            // 若存在时间戳更新的、别处产生的已完成 PlayMode 发现作业，它会在查找中胜出，
-            // 让本测试读到别人的数据。这种情况选择跳过，而不是对它做断言。
+            // If a completed PlayMode discovery job produced elsewhere with a newer timestamp exists,
+            // it would win the lookup and this test would read someone else's data. Skip in that case rather than asserting on it.
             Assume.That(payload["total"]?.Value<int>(), Is.EqualTo(5),
                 $"A different PlayMode discovery job won the lookup (job {jobId} not selected).");
 
@@ -249,12 +249,12 @@ namespace UnitySkills.Tests.Core
             Assert.That(payload["truncated"]?.Value<bool>(), Is.False);
         }
 
-        // ---------- scene_get_hierarchy：childCount ----------
+        // ---------- scene_get_hierarchy: childCount ----------
 
         /// <summary>
-        /// 没有 <c>childCount</c> 时，被 <c>maxDepth</c> 剪掉的节点与真正的叶子节点产出同样的 JSON：
-        /// 都没有 <c>children</c>。agent 读到就会断定子树为空并停止遍历，一棵很深的层级于是被
-        /// 无声无息地汇报成扁平的。
+        /// Without <c>childCount</c>, a node clipped by <c>maxDepth</c> produces the same JSON as a true
+        /// leaf node: neither has <c>children</c>. An agent reading it concludes the subtree is empty
+        /// and stops walking, silently reporting a deep hierarchy as flat.
         /// </summary>
         [Test]
         public void SceneGetHierarchy_ClippedNode_IsDistinguishableFromALeaf()
@@ -268,7 +268,7 @@ namespace UnitySkills.Tests.Core
                 grandchild.transform.SetParent(child.transform);
                 GameObjectFinder.InvalidateCache();
 
-                // maxDepth 1：根的子节点会被遍历，而子节点的子节点不会。
+                // maxDepth 1: the root's children are walked, but the children's children are not.
                 var payload = Payload("scene_get_hierarchy", "{\"maxDepth\":1}");
                 var rootNode = FindNode(payload["hierarchy"] as JArray, "__hier_root__");
                 Assert.That(rootNode, Is.Not.Null, "Probe root missing from the hierarchy.");
@@ -291,8 +291,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void SceneGetHierarchy_TrueLeaf_ReportsZeroChildCount()
         {
-            // 判定"被剪断"的信号是 `children==null && childCount>0`，所以真叶子必须报 0——
-            // 否则两种情况依然无法区分，只是反了个方向。
+            // The signal for "clipped" is `children==null && childCount>0`, so a true leaf must report 0 --
+            // otherwise the two cases are still indistinguishable, just with the direction flipped.
             var leaf = new GameObject("__hier_leaf__");
             try
             {
@@ -353,12 +353,12 @@ namespace UnitySkills.Tests.Core
             return null;
         }
 
-        // ---------- material 读取类技能：materialPath ----------
+        // ---------- material read skills: materialPath ----------
 
         /// <summary>
-        /// 按 GameObject 名查找，会经渲染器解析到它身上实际挂着的那个材质——那未必是调用方心里想的
-        /// 那一个，而若是共享材质，则是多个对象共同指向的同一份资源。把解析出的路径回显出来，
-        /// 才能让调用方在动手改之前确认这个回答描述的是哪个 <c>.mat</c>。
+        /// A lookup by GameObject name resolves, via the renderer, to whichever material is actually
+        /// attached to it -- not necessarily what the caller had in mind, and if shared, the same
+        /// asset multiple objects point to. Echo the resolved path so the caller can confirm which <c>.mat</c> this describes before acting on it.
         /// </summary>
         [TestCase("material_get_properties")]
         [TestCase("material_get_keywords")]
@@ -404,17 +404,17 @@ namespace UnitySkills.Tests.Core
         [TestCase("material_get_keywords")]
         public void MaterialGetters_DeclareMaterialPathAmongTheirOutputs(string skill)
         {
-            // agent 是照 Outputs 做计划的；一个只存在于载荷、却没在声明里出现的字段，没人会去找它。
+            // agent plans off of Outputs; a field that only exists in the payload but isn't declared won't be looked for by anyone.
             Assume.That(SkillRouter.TryGetSkill(skill, out var info), Is.True);
             Assert.That(info.Outputs, Does.Contain("materialPath"));
         }
 
-        // ---------- ?category= / ?operation= 传入未知值 ----------
+        // ---------- unknown values passed to ?category= / ?operation= ----------
 
         /// <summary>
-        /// 未知的过滤值过去会返回一个"空但成功"的 manifest，而这与"当前档位下该类目确实一个技能都没有"
-        /// 读起来完全一样。于是打错成 <c>?category=GameObjects</c> 的 agent 会断定这个模块在本工程里
-        /// 不存在，就不再找了。
+        /// An unknown filter value used to come back as an "empty but successful" manifest, reading
+        /// identically to "this category truly has zero skills at the current profile." So an agent
+        /// that typos <c>?category=GameObjects</c> would conclude this module doesn't exist and stop looking.
         /// </summary>
         [TestCase("category", "validCategories")]
         [TestCase("operation", "validOperations")]
@@ -446,9 +446,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// category/operation 属于收窄类查询键，因此一个未经校验的乱值会一路到达带键缓存层，
-        /// 按这个拼写错误铸出——并从此长期占住——一条 manifest 级大小的缓存条目。
-        /// 一个 agent 反复重试同一个错拼，就等于一处内存泄漏。
+        /// category/operation are narrowing query keys, so an unvalidated garbage value reaches the
+        /// keyed cache layer and mints -- and then permanently occupies -- a manifest-sized cache
+        /// entry keyed on the typo. An agent that keeps retrying the same misspelling is effectively a memory leak.
         /// </summary>
         [TestCase("?category=NoSuchCategoryForTests")]
         [TestCase("?operation=NoSuchOperationForTests")]
@@ -463,8 +463,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void LegalFilterValues_AreStillAccepted_AndStillCached()
         {
-            // 这道拒绝逻辑不得把"什么算合法"收窄了。大小写仍不敏感，且仍然可缓存——守卫跑在缓存之前，
-            // 那里一旦写错，就会让所有带范围的请求全部失去缓存。
+            // This rejection logic must not narrow what counts as legal. Still case-insensitive, and
+            // still cacheable -- the guard runs before the cache, so a mistake there would strip caching from every scoped request.
             var category = SkillRouter.GetAllSkillsSnapshot()
                 .Where(s => s.Category != SkillCategory.Uncategorized)
                 .GroupBy(s => s.Category)
@@ -485,17 +485,17 @@ namespace UnitySkills.Tests.Core
                 Is.True, "A legal scoped request must still be cached.");
         }
 
-        // ---------- 拒绝响应不得带 ETag ----------
+        // ---------- rejection responses must not carry an ETag ----------
 
         /// <summary>
-        /// 把 <see cref="RejectedFilterValue_MintsNoCacheEntry"/> 往外推一层。SkillRouter 把错拼挡在自己的
-        /// 输出缓存之外还不够：拒绝响应的 body 是 HTTP 处理器自己拼的，一旦它把这个 body 交给 ETag 辅助
-        /// 函数，这条拒绝就获得了内容哈希。客户端存下它，下次发同样请求时带上 <c>If-None-Match</c>，
-        /// 拿回一个无 body 的 304——此时错误文本已经消失，那个乱值查询看起来像是被接受了。
-        /// 而且这个错拼还会长期占住 ETag 缓存，反复重试错拼的客户端会把真正有用的条目挤掉。
+        /// Pushes <see cref="RejectedFilterValue_MintsNoCacheEntry"/> out one more layer. It's not enough
+        /// for SkillRouter to keep a typo out of its own output cache: the rejection body is assembled by
+        /// the HTTP handler itself, and once handed to the ETag helper, the rejection gets a content hash.
+        /// The client stores it, sends <c>If-None-Match</c> next time, and gets a bodyless 304 back -- the
+        /// error text is gone, the typo'd query looks accepted, and the typo squats the ETag cache permanently, so a client that keeps retrying the same misspelling crowds out entries that actually matter.
         ///
-        /// <para>这里用反射驱动真实处理器，而不是在测试里复述它的判断分支——因为那个分支正是被测对象，
-        /// 条件的副本在处理器把它删掉之后依然会是绿的。</para>
+        /// <para>Drives the real handler via reflection rather than restating its decision branch in the
+        /// test -- that branch is the thing under test, and a copy would still be green after it's deleted.</para>
         /// </summary>
         [TestCase("/skills", "?category=NoSuchCategoryForEtagTests")]
         [TestCase("/skills", "?operation=NoSuchOperationForEtagTests")]
@@ -524,8 +524,8 @@ namespace UnitySkills.Tests.Core
         [TestCase("/skills/schema")]
         public void ServerHandler_AcceptedRequest_IsStillETagged(string path)
         {
-            // 没有这条，上面那个断言会被一个"干脆什么都不再打 ETag"的处理器满足，
-            // 而那会把每一次条件 GET 都变成一次全量传输。
+            // Without this, the assertion above would be satisfied by a handler that simply stopped
+            // ETagging altogether -- which would turn every conditional GET into a full transfer.
             var (statusCode, etag, body) = ProcessGetOnMainThread(path, "");
 
             Assert.That(statusCode, Is.EqualTo(200), body);
@@ -533,19 +533,19 @@ namespace UnitySkills.Tests.Core
                 $"GET {path} carries no ETag, so no client can ever get a 304 for it.");
         }
 
-        // ---------- 同一个 URL，冷热都只能有一个答案 ----------
+        // ---------- the same URL can only have one answer, warm or cold ----------
 
         /// <summary>
-        /// <c>?brief=1</c> 选中的是一条从不查带键缓存的路径——它直接交回预先构建好的简表——所以除非
-        /// HTTP 线程上的快路径自己也重跑一遍收窄过滤校验，<c>?brief=1&amp;category=Bogus</c> 在缓存热时
-        /// 会回 200 简表、缓存冷时才回拒绝。一个 URL 两个答案比其中任何一个单独存在都更糟：
-        /// 反复重试错拼的 agent 迟早会撞上"被接受"，而它拿到哪个答案取决于它观察不到的东西。
+        /// <c>?brief=1</c> selects a path that never consults the keyed cache -- it hands back a
+        /// pre-built brief directly -- so unless the HTTP-thread fast path also reruns the narrowing
+        /// filter check, <c>?brief=1&amp;category=Bogus</c> returns a 200 brief when the cache is warm
+        /// and a rejection only when cold. One URL with two answers is worse than either alone: an agent retrying the same typo eventually hits "accepted," and which answer it gets depends on something it can't observe.
         /// </summary>
         [Test]
         public void BriefSurface_WithABogusNarrowingFilter_IsRejectedWarmAndCold()
         {
-            // 先预热，否则快路径只是因为"还什么都没构建"这种平庸理由而放弃，
-            // 下面的断言就证明不了任何与过滤校验有关的事。
+            // Warm it up first, or the fast path bails for the mundane reason that "nothing has been
+            // built yet," and the assertion below would prove nothing about filter validation.
             SkillRouter.GetFilteredManifest("?brief=1");
             Assume.That(SkillRouter.TryGetCachedGetResponse("/skills", "?brief=1", out _, out _), Is.True,
                 "The brief cache did not warm, so the fast path is not being exercised.");
@@ -566,8 +566,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void BriefSurface_AnswersTheSameBytesWarmAndCold()
         {
-            // 另一半：两条路径在"被接受"的情形下也必须一致，否则恰好撞上冷编辑器的客户端，
-            // 会为一个它已缓存的 URL 拿到不同的字节——以及不同的 ETag。
+            // The other half: both paths must also agree in the "accepted" case, or a client that
+            // happens to hit a cold editor gets different bytes -- and a different ETag -- for a URL it already has cached.
             var slowPath = SkillRouter.GetFilteredManifest("?brief=1");
 
             Assume.That(SkillRouter.TryGetCachedGetResponse("/skills", "?brief=1", out var fastPath, out _), Is.True);
@@ -579,9 +579,9 @@ namespace UnitySkills.Tests.Core
         // ---------- helpers ----------
 
         /// <summary>
-        /// 让一次 GET 走真正的主线程处理器 <c>SkillsHttpServer.ProcessJob</c>，并返回它的判定结果。
-        /// 只能靠反射进去：job 类型与方法都是 private，而另一条路（对着处理器分支的复刻实现做断言）
-        /// 根本没在测处理器。
+        /// Drives a GET through the real main-thread handler <c>SkillsHttpServer.ProcessJob</c> and
+        /// returns its verdict. Reflection is the only way in: both the job type and the method are
+        /// private, and the alternative -- asserting against a reimplementation of the handler's branch -- would not actually be testing the handler.
         /// </summary>
         private static (int StatusCode, string ETag, string ResponseJson) ProcessGetOnMainThread(
             string path, string query)
@@ -621,7 +621,7 @@ namespace UnitySkills.Tests.Core
             return field.GetValue(job);
         }
 
-        /// <summary>当前驻留在 SkillRouter ETag 缓存里的键。</summary>
+        /// <summary>Keys currently resident in SkillRouter's ETag cache.</summary>
         private static string[] EtagCacheKeys()
         {
             var field = typeof(SkillRouter).GetField("_etagCache", BindingFlags.NonPublic | BindingFlags.Static);
@@ -671,8 +671,8 @@ namespace UnitySkills.Tests.Core
         private string CreateCompletedJobWithResult() => CreateJob("completed", withResult: true);
 
         /// <summary>
-        /// 造一个已完成的发现作业，内含 <paramref name="testCount"/> 个合成用例。直接写进持久层，
-        /// 免得触发真正的 Unity Test Runner 发现——那是异步的，会让这些断言依赖宿主工程。
+        /// Builds a completed discovery job holding <paramref name="testCount"/> synthetic test cases,
+        /// written straight to the persistence layer to skip triggering real (asynchronous) Unity Test Runner discovery, which would make these assertions depend on the host project.
         /// </summary>
         private string CreateDiscoveryJob(int testCount, string testMode)
         {
@@ -710,7 +710,7 @@ namespace UnitySkills.Tests.Core
 
         private string CreateMaterialAsset(string name)
         {
-            // CI 夹具工程里有 Assets/Temp；若是全新工程则现建一个。
+            // The CI fixture project has Assets/Temp; a fresh project doesn't, so create it.
             if (!AssetDatabase.IsValidFolder("Assets/Temp"))
                 AssetDatabase.CreateFolder("Assets", "Temp");
 

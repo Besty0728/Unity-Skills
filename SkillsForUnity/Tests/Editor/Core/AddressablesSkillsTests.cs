@@ -41,8 +41,8 @@ namespace UnitySkills.Tests.Core
                 installed["result"]?["configured"]?.Value<bool>() != true)
                 Assert.Ignore("Addressables 3.1.0 and configured settings are required.");
 
-            // 下面的端点预期钉死在 CI 安装的 Addressables 版本上。真实项目若装了更新版本，
-            // 那是环境不匹配而非产品缺陷——照上面 configured 守卫的做法跳过即可。
+            // The endpoint expectations below are pinned to the Addressables version installed on CI. If a real project
+            // has a newer version installed, that's an environment mismatch, not a product defect — just skip it the way the configured guard above does.
             var version = installed["result"]?["version"]?.ToString();
             if (version != "3.1.0")
                 Assert.Ignore($"Addressables endpoint expectations are pinned to 3.1.0 (installed: {version}).");
@@ -90,10 +90,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// CreateGroup 遇重名不报错，而是追加计数器去重，所以同名请求两次会得到 "X" 和 "X1"。
-        /// 而 skill 两次都把请求名原样回显，等于给了调用方一个后续调用解析不到的名字：
-        /// group_add_entry 和 group_delete 都按名字查组，会对一个刚被报告"创建成功"的组
-        /// 回 TARGET_NOT_FOUND。
+        /// CreateGroup doesn't error on a name collision — it appends a counter to de-duplicate, so requesting the same name twice yields "X" and "X1".
+        /// But the skill echoes back the requested name both times, which hands the caller a name it can never resolve again on a later call:
+        /// both group_add_entry and group_delete look up the group by name, so they return TARGET_NOT_FOUND against a group that was just reported
+        /// as "created successfully".
         /// </summary>
         [Test]
         public void GroupCreate_OnNameCollision_ReportsTheNameThatWasActuallyCreated()
@@ -117,7 +117,7 @@ namespace UnitySkills.Tests.Core
                     "Addressables renames on collision; echoing the request back is the bug under test.");
                 Assert.That(second["renamed"]?.Value<bool>(), Is.True);
 
-                // 回报真实名字的意义就在于：只有它查得到。
+                // The whole point of reporting the real name is that only that name can actually be looked up.
                 var groups = Success(Execute("addressables_group_list"))["groups"]?.Children<JObject>()
                     .Where(group => group["name"]?.ToString() == actualName)
                     .ToArray();

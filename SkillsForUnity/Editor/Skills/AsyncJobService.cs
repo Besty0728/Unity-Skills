@@ -43,17 +43,18 @@ namespace UnitySkills
             new Dictionary<string, SmokeRuntimeContext>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// 进度由 Unity 自身主线程事件循环驱动的作业类型（编译守护 + 域重载、
-        /// PackageManager 异步 Request 轮询、TestRunner 回调、PlayMode 状态机、BuildPipeline）。
-        /// <see cref="Wait"/> 跑在同一条主线程上，对这些类型自旋等待只会阻塞它们赖以推进的
-        /// 那个循环，永远等不到进度。
+        /// Job kinds whose progress is driven by Unity's own main-thread event loop
+        /// (compile guard + domain reload, PackageManager async Request polling, TestRunner
+        /// callbacks, PlayMode state machine, BuildPipeline). <see cref="Wait"/> runs on that
+        /// same main thread, so busy-waiting for these kinds only blocks the very loop they
+        /// depend on to advance, and progress will never arrive.
         /// </summary>
         private static readonly HashSet<string> EngineDrivenJobKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "compile", "package", "test", "playmode", "play_capture", "build_player", "playmode_step"
         };
 
-        /// <summary><see cref="Wait"/> 阻塞循环的硬上限；需要等更久的调用方必须改用轮询。</summary>
+        /// <summary>Hard cap on the <see cref="Wait"/> blocking loop; callers needing to wait longer must switch to polling.</summary>
         internal const int MaxWaitTimeoutMs = 2000;
 
         static AsyncJobService()
@@ -391,9 +392,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 构造 HTTP <c>GET /jobs/{id}/progress</c> 与 <c>job_progress</c> 技能共用的
-        /// 标准进度快照。<paramref name="record"/> 为 null 时返回 null，否则返回含
-        /// <c>jobId/status/totalCount/offset/events/terminal</c> 的匿名对象。
+        /// Builds the standard progress snapshot shared by HTTP <c>GET /jobs/{id}/progress</c>
+        /// and the <c>job_progress</c> skill. Returns null when <paramref name="record"/> is null,
+        /// otherwise an anonymous object with <c>jobId/status/totalCount/offset/events/terminal</c>.
         /// </summary>
         internal static object BuildProgressSnapshot(BatchJobRecord record, int offset)
         {
@@ -504,11 +505,12 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 阻塞调用方（主）线程泵送 <paramref name="jobId"/>，直到作业进入终态或
-        /// <paramref name="timeoutMs"/>（会被夹到 <see cref="MaxWaitTimeoutMs"/>）耗尽。
-        /// 对 <see cref="EngineDrivenJobKinds"/> 中的类型，阻塞无助于作业推进（只会把编辑器
-        /// 冻住整个超时时长），因此只泵一次就立即返回当前快照并置位
-        /// <paramref name="waitNotSupported"/>。
+        /// Blocks the calling (main) thread, pumping <paramref name="jobId"/> until the job
+        /// reaches a terminal state or <paramref name="timeoutMs"/> (clamped to
+        /// <see cref="MaxWaitTimeoutMs"/>) elapses. For kinds in <see cref="EngineDrivenJobKinds"/>,
+        /// blocking does not help the job advance (it would only freeze the editor for the
+        /// full timeout), so this pumps exactly once and returns the current snapshot
+        /// immediately, setting <paramref name="waitNotSupported"/>.
         /// </summary>
         internal static BatchJobRecord Wait(string jobId, int timeoutMs, out bool waitNotSupported)
         {
@@ -623,9 +625,10 @@ namespace UnitySkills
 
         private static void SweepStaleRuntimes()
         {
-            // 清掉那些作业已进入终态、或已从持久化中消失的运行时上下文。
-            // 正常结束路径会调 CleanupTestRuntime/CleanupSmokeRuntime；这里兜的是
-            // 测试运行器中断、或编辑器被强杀时泄漏下来的条目。
+            // Clears runtime context for jobs that have reached a terminal state, or that have
+            // disappeared from persistence. The normal completion path calls
+            // CleanupTestRuntime/CleanupSmokeRuntime; this catches entries leaked by an
+            // interrupted test runner or a force-killed editor.
             if (TestRuntimeJobs.Count > 0)
             {
                 List<string> stale = null;
@@ -798,12 +801,15 @@ namespace UnitySkills
                         return;
                     }
 
-                    // Client.Remove 只删 manifest.json 里的直接依赖项；若还有别的已装包依赖
-                    // packageId，Unity 解析器会继续保留它，而 Remove 请求本身仍报
-                    // StatusCode.Success（见 PackageManagerHelper.OnRemoveProgress），那一层
-                    // 没有失败信号。所以 installed 仍为 true 不等于删除失败：要用
-                    // isDirectDependency 区分"manifest 条目压根没删掉"（真失败）与
-                    // "已从 manifest 删除、但作为传递依赖被保留"（符合预期，只需告知调用方原因）。
+                    // Client.Remove only removes the direct dependency entry in manifest.json;
+                    // if some other installed package still depends on packageId, Unity's
+                    // resolver keeps it around, while the Remove request itself still reports
+                    // StatusCode.Success (see PackageManagerHelper.OnRemoveProgress) — that layer
+                    // carries no failure signal. So installed still being true does not mean the
+                    // removal failed: isDirectDependency is needed to tell apart "the manifest
+                    // entry was never removed at all" (a real failure) from "it was removed from
+                    // the manifest but retained as a transitive dependency" (expected; just tell
+                    // the caller why).
                     if (PackageManagerHelper.InstalledPackages != null &&
                         PackageManagerHelper.InstalledPackages.TryGetValue(packageId, out var retainedInfo) &&
                         !retainedInfo.isDirectDependency)
@@ -915,8 +921,9 @@ namespace UnitySkills
                 {
                     RegisterTestCallbacks(job);
 
-                    // Test Framework 会自行恢复持久化的 TestJobData，但它的全局回调撑不过域重载，
-                    // 所以要给同一个仍在运行的 runner 重新绑一份回调。
+                    // The Test Framework restores its persisted TestJobData on its own, but its
+                    // global callbacks do not survive a domain reload, so we must rebind a fresh
+                    // set of callbacks to the same still-running runner.
                     Transition(job, "running", "reconnected", 10,
                         $"Reconnected to {testMode} tests after domain reload.", "test_recovery");
                     BatchPersistence.FlushIfDirty();

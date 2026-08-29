@@ -7,7 +7,7 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Shader Graph 资产的创建、检视与受约束编辑技能。
+    /// Creation, inspection, and constrained editing skills for Shader Graph assets.
     /// </summary>
     public static class ShaderGraphSkills
     {
@@ -711,18 +711,19 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把 <c>ShaderGraphReflectionHelper</c> 的失败包装成 router 的第一层错误契约
-        /// （<c>SkillResultHelper.TryGetErrorContext</c>）。此处所有 node/slot/edge/property/keyword
-        /// 失败讲的都是图自身的内部状态——本资产内不存在的 nodeId、slotId、propertyName 或 keyword，
-        /// 与场景 GameObject 或材质暴露的 shader 属性无关。若交给 router 的消息模式分类器
-        /// （<see cref="SkillErrorClassifier"/>）处理，"Node 'x' was not found" 和
-        /// "Keyword not found: x" 会被读成泛化的 not-found，配上 relatedSkills =
-        /// gameobject_find/scene_get_hierarchy；"Property not found: x" 会被读成 PropertyNotOnTarget，
-        /// 配上 material_get_properties——两者都把调用方引去场景/材质系统里翻找一个只存在于本图资产
-        /// 内部的东西。在此显式声明 relatedSkills/suggestedFixes 会无条件覆盖那份猜测
-        /// （<c>errorContext.RelatedSkills ?? classified.RelatedSkills</c>）；errorCode 仍交由分类器
-        /// 从消息文本推断，因为对这些消息它推得本就正确
-        /// （TARGET_NOT_FOUND / SEMANTIC_INVALID / MISSING_PACKAGE）。
+        /// Wraps a <c>ShaderGraphReflectionHelper</c> failure into the router's first-tier error contract
+        /// (<c>SkillResultHelper.TryGetErrorContext</c>). Every node/slot/edge/property/keyword failure here is
+        /// about the graph's own internal state — a nodeId, slotId, propertyName, or keyword that doesn't exist
+        /// in this asset, unrelated to a scene GameObject or a material's exposed shader properties. If left to
+        /// the router's message-pattern classifier (<see cref="SkillErrorClassifier"/>), "Node 'x' was not
+        /// found" and "Keyword not found: x" would be read as a generic not-found and paired with relatedSkills
+        /// = gameobject_find/scene_get_hierarchy; "Property not found: x" would be read as PropertyNotOnTarget
+        /// and paired with material_get_properties — both would send the caller off digging through the
+        /// scene/material system for something that only exists inside this graph asset. Explicitly declaring
+        /// relatedSkills/suggestedFixes here unconditionally overrides that guess
+        /// (<c>errorContext.RelatedSkills ?? classified.RelatedSkills</c>); errorCode is still left to the
+        /// classifier to infer from the message text, since for these messages it already infers correctly
+        /// (TARGET_NOT_FOUND / SEMANTIC_INVALID / MISSING_PACKAGE).
         /// </summary>
         private static object GraphError(string error) => new
         {
@@ -740,16 +741,17 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// <c>shadergraph_set_node_defaults</c> 把 <paramref name="value"/> 交给
-        /// <c>ShaderGraphReflectionHelper.TrySetNodeDefaults</c>，后者按 slot 的 CLR 类型用
-        /// <c>Convert.ToSingle</c> 等做转换。形状不匹配时——给只要裸数字的 Vector1 slot 传了对象
-        /// （<c>{"x":3.14}</c>），或反过来给 DynamicVector slot 传了裸数字——转换内部抛
-        /// <c>InvalidCastException</c>，helper 捕获后原样透出为 <c>ex.Message</c>：
-        /// "Specified cast is not valid."，既不说哪个参数、哪个 slot，也不说期望什么形状。
-        /// 该文本还匹配不上 <see cref="SkillErrorClassifier"/> 的任何规则，于是落到
-        /// SKILL_ERROR + abort——等于告诉调用方放弃，而不是换个形状重试。
-        /// 这里按子串识别，因为确切措辞是运行时消息而非契约；helper 的其他错误仍走
-        /// <see cref="GraphError"/>。
+        /// <c>shadergraph_set_node_defaults</c> hands <paramref name="value"/> to
+        /// <c>ShaderGraphReflectionHelper.TrySetNodeDefaults</c>, which converts it via <c>Convert.ToSingle</c>
+        /// and similar based on the slot's CLR type. When the shape doesn't match — passing an object
+        /// (<c>{"x":3.14}</c>) to a Vector1 slot that just wants a bare number, or conversely a bare number to a
+        /// DynamicVector slot — the conversion throws <c>InvalidCastException</c> internally, and the helper
+        /// catches it and passes <c>ex.Message</c> straight through as-is: "Specified cast is not valid.",
+        /// which names neither the parameter, nor the slot, nor the expected shape. That text also doesn't
+        /// match any rule in <see cref="SkillErrorClassifier"/>, so it falls through to SKILL_ERROR + abort —
+        /// effectively telling the caller to give up instead of retrying with a different shape. Matching here
+        /// is done by substring, since the exact wording is a runtime message rather than a contract; every
+        /// other helper error still goes through <see cref="GraphError"/>.
         /// </summary>
         private static object SetNodeDefaultsError(string error)
         {

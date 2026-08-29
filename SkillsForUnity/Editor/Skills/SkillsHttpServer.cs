@@ -14,18 +14,18 @@ using Newtonsoft.Json.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// UnitySkills REST API 的生产级 HTTP 服务器。
+    /// Production-grade HTTP server for the UnitySkills REST API.
     ///
-    /// 架构：严格的生产者-消费者模型
-    /// - HTTP 线程（生产者）：只负责接收请求并入队，绝不调用任何 Unity API。
-    /// - 主线程（消费者）：处理全部逻辑，包括路由、限流与技能执行。
+    /// Architecture: strict producer-consumer model
+    /// - HTTP thread (producer): only responsible for receiving requests and enqueuing them, never calls any Unity API.
+    /// - Main thread (consumer): handles all logic, including routing, rate limiting, and skill execution.
     ///
-    /// 韧性能力：
-    /// - 域重载（脚本编译）后自动重启
-    /// - 通过 EditorPrefs 持久化状态
-    /// - 优雅停机与恢复
+    /// Resilience capabilities:
+    /// - Automatically restarts after a domain reload (script compilation)
+    /// - Persists state via EditorPrefs
+    /// - Graceful shutdown and recovery
     ///
-    /// 这样才能与 Unity 的单线程架构做到 100% 线程安全。
+    /// This is what achieves 100% thread safety with Unity's single-threaded architecture.
     /// </summary>
     [InitializeOnLoad]
     public static class SkillsHttpServer
@@ -34,35 +34,35 @@ namespace UnitySkills
         private static Thread _listenerThread;
         private static Thread _keepAliveThread;
         private static volatile bool _isRunning;
-        // volatile：会被 /health 快路径在 HTTP 线程上读取。
+        // volatile: read by the /health fast path on the HTTP thread.
         private static volatile int _port = 8090;
         private static readonly string _prefixBase = "http://localhost:";
         private static string _prefix = $"{_prefixBase}{_port}/";
 
-        // 作业队列——HTTP 线程入队，主线程出队并处理。
+        // Job queue — HTTP thread enqueues, main thread dequeues and processes.
         //
-        // 两条通道，各自内部严格 FIFO：
-        // - light：只读、毫秒级的端点（存活探测 / 进度轮询）。每帧全部排空，且不受帧时间预算约束，
-        //   使 /health 或 /jobs/{id} 轮询永不排在某个耗时数秒的技能后面。
-        // - heavy：执行技能、构建反射缓存或写状态的一切请求。同时受每帧条数上限与毫秒预算约束。
+        // Two lanes, each strictly FIFO internally:
+        // - light: read-only, millisecond-scale endpoints (liveness probe / progress polling), drained fully each
+        //   frame regardless of the frame budget, so /health or /jobs/{id} polling never queues behind a slow skill.
+        // - heavy: everything that executes a skill, builds the reflection cache, or writes state; bound by a per-frame count cap and a millisecond budget.
         //
-        // 刻意不保证跨通道的顺序（这正是拆分的目的）；需要顺序的调用方必须等到响应再发下一个请求，
-        // Python 客户端本来就是这么做的。
+        // Ordering across lanes is deliberately not guaranteed (the whole point of the split); callers needing order
+        // must wait for the response before sending the next request — exactly what the Python client already does.
         //
-        // 用 ConcurrentQueue 而不是 Queue+lock：唯一靠锁保证原子性的地方是 Stop() 的排空，
-        // 而那发生在监听线程 join 之后，那时不可能还有并发生产者。
+        // ConcurrentQueue instead of Queue+lock: the only place relying on a lock for atomicity is Stop()'s drain,
+        // which runs after the listener thread is joined, when there can no longer be concurrent producers.
         private static readonly ConcurrentQueue<RequestJob> _lightQueue = new ConcurrentQueue<RequestJob>();
         private static readonly ConcurrentQueue<RequestJob> _heavyQueue = new ConcurrentQueue<RequestJob>();
-        // 用 Interlocked 计数器镜像队列深度：ConcurrentQueue.Count 需要遍历分段，
-        // 而准入控制与 /health 每来一个请求都要读一次深度。
+        // Mirror queue depth with Interlocked counters: ConcurrentQueue.Count requires walking segments,
+        // and admission control plus /health need to read the depth on every incoming request.
         private static int _lightQueued = 0;
         private static int _heavyQueued = 0;
         private static bool _updateHooked = false;
         private static int _pendingRequests = 0;
 
-        // heavy 通道的两道闸门，每启动一个作业前都会评估。条数上限约束突发量，毫秒预算约束单帧耗时。
-        // 单个技能自己就可能超出预算——预算无法打断正在跑的技能，只能拒绝再启动下一个，
-        // 而这正是长队列下编辑器仍能重绘的原因。
+        // Two gates on the heavy lane, checked before starting each job: a count cap bounds burstiness, a millisecond
+        // budget bounds per-frame duration. A single skill can exceed the budget — it can't interrupt a running skill,
+        // only refuse to start the next one — which is why the editor can still repaint under a long queue.
         private const int MaxHeavyJobsPerFrame = 20;
         private const double HeavyFrameBudgetSeconds = 0.012;
 
@@ -72,22 +72,22 @@ namespace UnitySkills
         private static readonly ConcurrentBag<RequestJob> _requestJobPool = new ConcurrentBag<RequestJob>();
         private static int _poolSize;
 
-        // 在监听线程上做准入限流，避免队列与线程爆掉。
+        // Admission-rate-limit on the listener thread, to keep the queue and threads from blowing up.
         private static int _admittedThisSecond = 0;
         private static long _lastAdmissionResetTicks = 0;
         
-        // 检查待处理作业的 keep-alive 轮询间隔（毫秒）。
+        // Keep-alive polling interval (ms) for checking pending jobs.
         private const int KeepAlivePollingMs = 50;
 
-        // 无条件唤醒主线程的间隔，可配置。
+        // Interval for unconditionally waking the main thread; configurable.
         private const string PrefKeyKeepAliveInterval = "UnitySkills_KeepAliveIntervalSeconds";
 
-        // KeepAliveIntervalSeconds 的线程安全缓存副本（EditorPrefs 只能在主线程读）
+        // Thread-safe cached copy of KeepAliveIntervalSeconds (EditorPrefs can only be read on the main thread)
         private static long _cachedKeepAliveIntervalTicks = 10L * TimeSpan.TicksPerSecond;
 
         /// <summary>
-        /// keep-alive 线程强制唤醒主线程的间隔（秒），即使没有待处理作业也照样唤醒。
-        /// 使 Unity 失焦时看门狗与心跳仍能运转。默认 10 秒，最小 1 秒。
+        /// Interval (seconds) at which the keep-alive thread forcibly wakes the main thread, even when there are no
+        /// pending jobs. Keeps the watchdog and heartbeat running while Unity is unfocused. Defaults to 10 seconds, minimum 1 second.
         /// </summary>
         public static int KeepAliveIntervalSeconds
         {
@@ -98,44 +98,44 @@ namespace UnitySkills
                 _cachedKeepAliveIntervalTicks = (long)Mathf.Max(1, value) * TimeSpan.TicksPerSecond;
             }
         }
-        // 请求处理超时——为线程安全而缓存（EditorPrefs 只能在主线程读）
+        // Request processing timeout — cached for thread safety (EditorPrefs can only be read on the main thread)
         private static int _cachedTimeoutMs = 15 * 60 * 1000;
         private static int RequestTimeoutMs => _cachedTimeoutMs;
         internal static void RefreshTimeoutCache() => _cachedTimeoutMs = RequestTimeoutMinutes * 60 * 1000;
         private const int MaxBodySizeBytes = 10 * 1024 * 1024; // 10MB
-        // 注册表心跳间隔（秒）
+        // Registry heartbeat interval (seconds)
         private const double HeartbeatInterval = 30.0;
         private static double _lastHeartbeatTime = 0;
 
-        // 看门狗：定期确认监听线程存活，否则重启
+        // Watchdog: periodically confirms the listener thread is alive, restarts it if not
         private const double WatchdogInterval = 15.0;
         private static double _lastWatchdogCheck = 0;
 
-        // 兜底：delayCall 没触发时，域重载后仍能恢复服务器
+        // Fallback: recovers the server after a domain reload if delayCall never fires
         private const double SafetyNetInterval = 5.0;
         private static double _lastSafetyNetCheck = 0;
 
-        // KeepAlive：无条件唤醒间隔（ticks；5 秒 = 50_000_000 ticks）
+        // KeepAlive: unconditional wake interval (ticks; 5 seconds = 50_000_000 ticks)
         private static long _lastForceWakeTicks = 0;
 
-        // 统计量
+        // Statistics
         private static long _totalRequestsProcessed = 0;
         private static long _totalRequestsReceived = 0;
 
-        // 启动诊断：统计 Start() 之后 ProcessJobQueue 的 tick 次数，供自检使用
+        // Startup diagnostics: counts ProcessJobQueue ticks since Start() for self-check use
         private static volatile int _pjqTicksSinceStart = -1;
 
-        // ===== 主线程存活镜像 + /health 快照 =====
+        // ===== Main-thread liveness mirror + /health snapshot =====
         //
-        // 本块中的一切只在主线程写入，由 SendHealthFastPath 在 HTTP 监听线程上读取。
-        // 它的存在使 GET /health 不必进作业队列即可作答：过去探测会卡在正在跑的长技能后面，
-        // 于是"服务器死了"和"Unity 正忙"在客户端看来完全一样。
+        // Everything in this block is only ever written on the main thread, read by SendHealthFastPath on the HTTP
+        // listener thread. It exists so GET /health can answer without going through the job queue: previously probes
+        // got stuck behind a long-running skill, making "server is dead" and "Unity is busy" look identical to clients.
 
-        // 最近一次 ProcessJobQueue 帧的 DateTime.UtcNow.Ticks。C# 不允许 `volatile long`，
-        // 故经 Interlocked 访问——在 32 位构建上同样是原子的。
+        // DateTime.UtcNow.Ticks from the most recent ProcessJobQueue frame. C# doesn't allow `volatile long`,
+        // so it's accessed via Interlocked — which is likewise atomic on 32-bit builds.
         private static long _mainThreadTickUtc = 0;
 
-        // 需要读 Unity API / EditorPrefs 的值，镜像进普通静态字段。
+        // Values that need to read Unity API / EditorPrefs, mirrored into plain static fields.
         private static volatile string _snapUnityVersion;
         private static volatile string _snapInstanceId;
         private static volatile string _snapProjectName;
@@ -148,26 +148,26 @@ namespace UnitySkills
         private static volatile int _snapRequestTimeoutMinutes = 15;
         private static volatile bool _snapIsCompiling;
         private static volatile bool _snapIsUpdating;
-        // 首次完整刷新落地之前，快路径一律放弃，/health 回落到主线程队列，
-        // 而不是上报占位值。
+        // Before the first full refresh has landed, the fast path always bails out and /health falls back to the
+        // main-thread queue instead of reporting placeholder values.
         private static volatile bool _snapReady;
-        // 由 SkillsModeManager.OnChanged / SkillsSurfaceProfile.OnChanged 钩子在任意线程置位，
-        // 在下一个主线程帧被消费。用标志位而不是就地刷新，是为了让 RefreshHealthSnapshot 里
-        // 所有 Unity API 读取都留在主线程，不管事件是谁抛的。
+        // Set from any thread by the SkillsModeManager.OnChanged / SkillsSurfaceProfile.OnChanged hooks, consumed on
+        // the next main-thread frame. A flag rather than an in-place refresh is used so that every Unity API read
+        // inside RefreshHealthSnapshot stays on the main thread, regardless of which thread raised the event.
         private static volatile bool _healthSnapshotDirty = true;
         private static bool _modeHookInstalled = false;
 
-        // 没有任何 OnChanged 时，快照"昂贵那一半"的刷新下限。用来捕捉事件看不到的漂移：
-        // grant TTL 过期、绕过 manager 直接改的 prefs。
+        // Floor on refreshing the "expensive half" of the snapshot when there's no OnChanged event at all. Catches
+        // drift that events can't see: an expired grant TTL, or prefs changed directly, bypassing the manager.
         private const double HealthSnapshotInterval = 1.0;
         private static double _lastHealthSnapshot = 0;
 
-        // ===== gzip 响应体缓存（HTTP 线程） =====
+        // ===== gzip response body cache (HTTP thread) =====
         //
-        // 仅用于 GET /skills 与 GET /skills/schema——只有这两个响应体大到值得压缩
-        // （summary 约 143KB，完整 schema 约 618KB）。以 ETag 为键，而 ETag 是内容哈希，
-        // 因此条目自失效：内容变了键就变，旧键再也不会被请求。压缩是纯 CPU、不碰 Unity API，
-        // 所以放在 HTTP 线程上是合法的；618KB 那一趟耗时数十毫秒，且只在缓存未命中时才跑。
+        // Only used for GET /skills and GET /skills/schema — the only two response bodies large enough to be worth
+        // compressing (summary ~143KB, full schema ~618KB). Keyed by ETag, a content hash, so entries self-invalidate:
+        // content changes the key, and the old key is never requested again. Compression is pure CPU, never touches
+        // the Unity API, so it's legitimate on the HTTP thread; the 618KB pass takes tens of ms, only on a cache miss.
         private const int GzipMinBytes = 4096;
         private const int MaxGzipCacheEntries = 32;
         private const long MaxGzipCacheBytes = 8L * 1024 * 1024;
@@ -176,10 +176,10 @@ namespace UnitySkills
         private static readonly object _gzipCacheLock = new object();
         private static long _gzipCacheBytes = 0;
 
-        // 复用 SkillsCommon 的 JSON 设置（单一定义，不重复）
+        // Reuse SkillsCommon's JSON settings (single definition, no duplication)
         private static readonly JsonSerializerSettings _jsonSettings = SkillsCommon.JsonSettings;
         
-        // 域重载恢复用的持久化键（项目级作用域）——惰性缓存
+        // Persistence key for domain-reload recovery (project-level scope) — lazily cached
         private static string PrefKey(string key) => $"UnitySkills_{RegistryService.InstanceId}_{key}";
 
         private static string _prefServerShouldRun;
@@ -196,9 +196,9 @@ namespace UnitySkills
         private static string PREF_CONSECUTIVE_FAILURES => _prefConsecutiveFailures ??= PrefKey("ConsecutiveRestartFailures");
         private const int MaxConsecutiveFailures = 10;
 
-        // 域重载跟踪
-        // volatile：会被 HTTP 线程（/health 快路径）与 ThreadPool 应答器（超时诊断）读取，
-        // 只在主线程写入。
+        // Domain reload tracking
+        // volatile: read by the HTTP thread (/health fast path) and by ThreadPool responders (timeout diagnostics),
+        // only ever written on the main thread.
         private static volatile bool _domainReloadPending = false;
 
         public static bool IsRunning => _isRunning;
@@ -214,7 +214,7 @@ namespace UnitySkills
         }
         
         /// <summary>
-        /// 服务器是否自动启动。为 true 时，域重载后会自动重启。
+        /// Whether the server auto-starts. When true, it automatically restarts after a domain reload.
         /// </summary>
         public static bool AutoStart
         {
@@ -231,7 +231,7 @@ namespace UnitySkills
         private const string PrefKeyPreferredPort = "UnitySkills_PreferredPort";
 
         /// <summary>
-        /// 服务器首选端口。0 = 自动（扫描 8090-8100），否则使用指定端口。
+        /// Preferred server port. 0 = automatic (scans 8090-8100), otherwise uses the specified port.
         /// </summary>
         public static int PreferredPort
         {
@@ -242,7 +242,7 @@ namespace UnitySkills
         private const string PrefKeyRequestTimeout = "UnitySkills_RequestTimeoutMinutes";
 
         /// <summary>
-        /// 请求超时（分钟）。默认 15 分钟，最小 1 分钟。
+        /// Request timeout (minutes). Defaults to 15 minutes, minimum 1 minute.
         /// </summary>
         public static int RequestTimeoutMinutes
         {
@@ -255,11 +255,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 一个待处理的 HTTP 请求作业。由 HTTP 线程创建，主线程处理。
+        /// A pending HTTP request job. Created by the HTTP thread, processed by the main thread.
         /// </summary>
         private class RequestJob
         {
-            // 原始 HTTP 数据（由 HTTP 线程写入）
+            // Raw HTTP data (written by the HTTP thread)
             public HttpListenerContext Context;
             public string HttpMethod;
             public string Path;
@@ -268,17 +268,17 @@ namespace UnitySkills
             public string RequestId;
             public string AgentId;
             public string QueryString;
-            // 条件 GET / 内容协商相关请求头。读请求头是纯字符串操作，故由 HTTP 线程在入队时抓取。
+            // Headers for conditional GET / content negotiation. A pure string read, so grabbed by the HTTP thread at enqueue time.
             public string IfNoneMatch;
             public string AcceptEncoding;
 
-            // 处理结果（由主线程写入）
+            // Processing result (written by the main thread)
             public string ResponseJson;
             public int StatusCode;
             public bool IsProcessed;
             public int PoolReturned;
-            // 两个可缓存 GET 端点的 ResponseJson 内容哈希，其余端点为 null。
-            // 它同时决定 ETag 头与 gzip 缓存键。
+            // Content hash of ResponseJson for the two cacheable GET endpoints, null for every other endpoint.
+            // It also doubles as both the ETag header and the gzip cache key.
             public string ETag;
             public ManualResetEventSlim CompletionSignal = new ManualResetEventSlim(false);
 
@@ -318,7 +318,7 @@ namespace UnitySkills
                 StatusCode = 200;
                 IsProcessed = false;
                 ETag = null;
-                // 注意：PoolReturned 由 ReturnRequestJob/Prepare 维护，不在 Reset 里管
+                // Note: PoolReturned is maintained by ReturnRequestJob/Prepare, not managed by Reset
                 CompletionSignal.Reset();
             }
         }
@@ -342,8 +342,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 对未被 accept 循环交给应答器的 context 做尽力关闭。
-        /// 关闭一个已关闭的 response 是空操作；而不关则会把该 socket 泄漏到编辑器进程结束。
+        /// Best-effort close for a context that the accept loop never handed off to a responder.
+        /// Closing an already-closed response is a no-op; not closing it leaks the socket until the editor process exits.
         /// </summary>
         private static void CloseContextSafely(HttpListenerContext context)
         {
@@ -395,27 +395,27 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 双通道作业队列的通道判定。light 表示"只读且耗时在毫秒级"——即 agent 在长技能运行期间
-        /// 循环发出的存活/进度轮询。其余一律为 heavy：执行技能、写状态、构建反射缓存或做无界磁盘操作的请求。
+        /// Lane classification for the two-lane queue. "light" = "read-only and millisecond-scale" — the liveness/progress
+        /// polling an agent loops on during a long skill. Everything else is "heavy": execute, write state, build the reflection cache, or unbounded disk I/O.
         ///
-        /// 每个处理器都逐一核实过；未重读某端点的处理器之前，不要把它加进来。
-        /// - OPTIONS——直接 204，压根没有处理器。
-        /// - GET /health、GET /——只有 ?live=1 的探测会进队列（其余在 HTTP 线程上作答）；
-        ///   该处理器读 EditorPrefs 与两个编译标志。
-        /// - GET /compile/status——两个 EditorApplication 标志加一个缓存的 SessionState 字符串。
-        /// - GET /jobs、/jobs/{id}[/logs|/progress]——BatchPersistence.ListJobs / GetJob 只是投影
-        ///   已加载的内存列表；从 GET 处理器走不到任何写路径。
-        /// - GET /permission/status——读模式、白名单与待处理授权。PendingGrantRequests 的 getter
-        ///   会惰性清扫过期 grant，这是本通道里唯一的写：受 MaxLiveGrants 约束、不碰 Unity，
-        ///   且只回收调用方自己的过期令牌。
+        /// Every handler here has been individually verified; don't add an endpoint before re-reading its handler.
+        /// - OPTIONS — straight to 204, has no handler at all.
+        /// - GET /health, GET / — only the ?live=1 probe goes through the queue (everything else is answered on the
+        ///   HTTP thread); that handler reads EditorPrefs and two compile flags.
+        /// - GET /compile/status — two EditorApplication flags plus a cached SessionState string.
+        /// - GET /jobs, /jobs/{id}[/logs|/progress] — BatchPersistence.ListJobs / GetJob just projects an
+        ///   already-loaded in-memory list; the GET handler never reaches any write path.
+        /// - GET /permission/status — reads mode, allowlist, and pending grants. The PendingGrantRequests getter
+        ///   lazily sweeps expired grants, which is the only write in this lane: bounded by MaxLiveGrants, never
+        ///   touches Unity, and only reclaims the caller's own expired tokens.
         ///
-        /// 以下虽为只读但刻意归为 heavy：
-        /// - GET /analytics——要从磁盘聚合遥测 JSONL。每个 window 缓存 30 秒，但某 window 的首次调用
-        ///   是无界 I/O，过不了"毫秒级"这一半条件。
-        /// - GET /skills/recommend——会调 SkillRouter.Initialize()（冷域下的一次全量反射扫描），
-        ///   然后给每个技能打分。
-        /// - GET /skills、/skills/schema——能排到队列里的，按定义就是缓存未命中，
-        ///   即那个要构建几百 KB 清单的请求。
+        /// The following are read-only but deliberately classified as heavy:
+        /// - GET /analytics — has to aggregate telemetry JSONL from disk. Each window is cached for 30 seconds, but
+        ///   the first call for a given window is unbounded I/O, which fails the "millisecond-scale" half of the test.
+        /// - GET /skills/recommend — calls SkillRouter.Initialize() (a full reflection scan on a cold domain), then
+        ///   scores every skill.
+        /// - GET /skills, /skills/schema — anything that actually reaches the queue is, by definition, a cache
+        ///   miss — i.e. exactly the request that has to build a several-hundred-KB manifest.
         /// </summary>
         private static bool IsLightRequest(string httpMethod, string path)
         {
@@ -435,8 +435,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 出队一个作业，并同步维护镜像深度计数器。只有取成功时才自减，
-        /// 因此与"已自增但尚未入队"的并发生产者擦肩而过时，计数保持不变。
+        /// Dequeues a job and keeps the mirrored depth counter in sync. Only decrements on a successful take, so a
+        /// race with a concurrent producer that has already incremented but not yet enqueued leaves the count unchanged.
         /// </summary>
         private static bool TryDequeueJob(ConcurrentQueue<RequestJob> queue, ref int counter, out RequestJob job)
         {
@@ -448,8 +448,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把某条通道里仍在排队的作业全部以 503 SERVER_STOPPED 失败掉，并释放其等待中的应答器。
-        /// 之所以可以不加同步地调用，仅因为 Stop() 是在监听线程 join 之后才执行它的，此时不可能还有生产者在入队。
+        /// Fails every job still queued on a lane with 503 SERVER_STOPPED, releasing its waiting responder. Safe to call
+        /// without extra synchronization only because Stop() runs it after the listener thread is joined, when no producer can still be enqueuing.
         /// </summary>
         private static void FailQueuedJobs(ConcurrentQueue<RequestJob> queue, ref int counter)
         {
@@ -467,8 +467,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把已序列化的错误 JSON 字符串解析回 JObject，使其能经 SendImmediateJsonResponse
-        /// 输出而不被二次编码。
+        /// Parses an already-serialized error JSON string back into a JObject, so it can be emitted through
+        /// SendImmediateJsonResponse without being double-encoded.
         /// </summary>
         private static JObject BuildErrorPayload(string rawJson)
         {
@@ -511,9 +511,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 已缓存的 GET /skills 与 /skills/schema 的快路径应答器。运行在 HTTP 监听线程上——
-        /// 绝不能触碰 Unity API 或 SkillsLogger（只做请求头、哈希、压缩与 socket 写）。
-        /// 会附加 ETag 头，对 If-None-Match 以空体 304 应答，并在客户端要求时提供缓存的 gzip 响应体。
+        /// Fast-path responder for cached GET /skills and /skills/schema. Runs on the HTTP listener thread — must
+        /// never touch the Unity API or SkillsLogger (only headers, hashing, compression, socket writes). Attaches an
+        /// ETag header, answers If-None-Match with an empty-body 304, and serves the cached gzip body when asked.
         /// </summary>
         private static void SendCachedGetResponse(HttpListenerContext context, HttpListenerRequest request, string json, string etag)
         {
@@ -528,14 +528,14 @@ namespace UnitySkills
                 response.Headers.Add("X-Agent-Id", DetectAgent(request));
                 response.Headers.Add("X-Fast-Path", "true");
                 response.Headers.Add("ETag", $"\"{etag}\"");
-                // 同一 URL 现在有两种可能的响应体（identity / gzip）；没有 Vary，
-                // 中间代理可能把 gzip 体交给一个从未要求压缩的客户端。
+                // The same URL now has two possible response bodies (identity / gzip); without Vary,
+                // an intermediate proxy might hand the gzip body to a client that never asked for compression.
                 response.Headers.Add("Vary", "Accept-Encoding");
 
-                // 304 在压缩之前判定：内容没变就该零字节、零 CPU，而不是白跑一趟 gzip。
+                // 304 is decided before compression: unchanged content should cost zero bytes and zero CPU, not a wasted gzip pass.
                 if (IfNoneMatchSatisfied(request.Headers["If-None-Match"], etag))
                 {
-                    response.StatusCode = 304; // Not Modified——不得携带响应体
+                    response.StatusCode = 304; // Not Modified — must not carry a response body
                     return;
                 }
 
@@ -554,9 +554,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 客户端声明支持且压缩体可用时以 gzip 写出响应体，否则写纯 UTF-8。
-        /// HTTP 线程快路径与主线程慢路径共用此方法，使两者的内容协商完全一致。
-        /// 调用方必须已设好状态码与 content type。
+        /// Writes the body as gzip when the client supports it and a compressed body is available, else plain UTF-8.
+        /// Shared by the HTTP-thread fast path and main-thread slow path, so content negotiation is identical between
+        /// them. The caller must have already set the status code and content type.
         /// </summary>
         private static void WriteNegotiatedBody(HttpListenerResponse response, string json, string etag, string acceptEncoding)
         {
@@ -578,9 +578,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 客户端在 Accept-Encoding 中列出了 gzip（或 "*"）且未用 q=0 禁用时返回 true。
-        /// 刻意做得极简——它只把关两个端点，而真实客户端（requests、curl、浏览器）
-        /// 发的都是朴素的 "gzip, deflate"。
+        /// Returns true if the client lists gzip (or "*") in Accept-Encoding and hasn't disabled it with q=0.
+        /// Deliberately kept minimal — it only gates two endpoints, and real clients (requests, curl, browsers)
+        /// all just send plain "gzip, deflate".
         /// </summary>
         private static bool AcceptsGzip(string acceptEncoding)
         {
@@ -605,7 +605,7 @@ namespace UnitySkills
                             System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture,
                             out double q) && q <= 0)
-                        continue; // 被显式拒绝——继续扫描下一个 token
+                        continue; // explicitly rejected — keep scanning the next token
                 }
                 return true;
             }
@@ -613,11 +613,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 返回 <paramref name="json"/> 的 gzip 体，首次使用时压缩并缓存。
-        /// 以下情况返回 null（含义是"原样不压缩发送"）：体积小于 <see cref="GzipMinBytes"/>、
-        /// gzip 压不小的内容、以及任何失败——压缩绝不能把一个请求搞失败。
+        /// Returns the gzip body of <paramref name="json"/>, compressing and caching it on first use.
+        /// Returns null (meaning "send as-is, uncompressed") when: the size is below <see cref="GzipMinBytes"/>,
+        /// gzip fails to shrink the content, or on any failure — compression must never make a request fail.
         ///
-        /// 纯 CPU 与字符串操作，在 HTTP 线程上安全。键与淘汰策略的理由见缓存声明处。
+        /// Pure CPU and string operations, safe on the HTTP thread. See the cache declaration for key/eviction rationale.
         /// </summary>
         private static byte[] GetOrBuildGzip(string etag, string json)
         {
@@ -632,7 +632,7 @@ namespace UnitySkills
             {
                 byte[] raw = Encoding.UTF8.GetBytes(json);
                 if (raw.Length < GzipMinBytes)
-                    return null; // 帧头加一个额外响应头的开销会大于压缩省下的量
+                    return null; // the overhead of one extra response header would exceed what compression saves
 
                 using (var ms = new System.IO.MemoryStream(raw.Length / 4 + 256))
                 {
@@ -641,7 +641,7 @@ namespace UnitySkills
                     {
                         gz.Write(raw, 0, raw.Length);
                     }
-                    // 必须等内层 using 把 gzip 尾部刷出后再读长度。
+                    // Must wait for the inner using to flush the gzip trailer before reading the length.
                     if (ms.Length < raw.Length)
                         compressed = ms.ToArray();
                 }
@@ -669,7 +669,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 宽松的 If-None-Match 比较：容忍带引号的值、W/ 弱前缀、逗号分隔列表以及 '*' 通配。
+        /// Lenient If-None-Match comparison: tolerates quoted values, the W/ weak prefix, comma lists, and '*' wildcard.
         /// </summary>
         private static bool IfNoneMatchSatisfied(string ifNoneMatch, string etag)
         {
@@ -692,10 +692,10 @@ namespace UnitySkills
         // ===== GET /health =====
 
         /// <summary>
-        /// /health 载荷中来自 Unity API 或 EditorPrefs 的那部分。
-        /// 两个生产者、同一形状：<see cref="FromSnapshot"/>（HTTP 线程，读镜像静态字段）与
-        /// <see cref="FromLive"/>（主线程，真读）。把它们收进同一个结构体、由同一个构建器消费，
-        /// 正是防止快路径与 <c>?live=1</c> 漂成两种不同响应形状的手段。
+        /// The part of the /health payload that comes from the Unity API or EditorPrefs.
+        /// Two producers, one shape: <see cref="FromSnapshot"/> (HTTP thread, reads mirrored static fields) and
+        /// <see cref="FromLive"/> (main thread, reads live). Sharing one struct and one builder is what keeps the
+        /// fast path and <c>?live=1</c> from drifting into two different response shapes.
         /// </summary>
         private struct HealthVitals
         {
@@ -704,9 +704,9 @@ namespace UnitySkills
             public string ProjectName;
             public string CurrentMode;
             public bool PanelApprovalRequired;
-            // 用户暴露面档位的 wire 值（"full" / "guide" / "noSceneAuthoring"）。
-            // 已弃用的 guideMode 布尔量在 BuildHealthJson 里由它派生，而不是单独镜像一份，
-            // 这样两者永远不可能不一致。
+            // Wire value of the user-exposed surface tier ("full" / "guide" / "noSceneAuthoring").
+            // The deprecated guideMode boolean is derived from this in BuildHealthJson rather than mirrored
+            // separately, so the two can never disagree.
             public string SurfaceProfile;
             public int PendingCount;
             public int AllowlistCount;
@@ -715,7 +715,7 @@ namespace UnitySkills
             public bool IsCompiling;
             public bool IsUpdating;
 
-            /// <summary>HTTP 线程安全：只读普通静态字段，零 Unity API。</summary>
+            /// <summary>HTTP-thread safe: reads only plain static fields, zero Unity API.</summary>
             public static HealthVitals FromSnapshot() => new HealthVitals
             {
                 UnityVersion = _snapUnityVersion,
@@ -732,7 +732,7 @@ namespace UnitySkills
                 IsUpdating = _snapIsUpdating,
             };
 
-            /// <summary>仅主线程——会读 Unity API、EditorPrefs 与权限集合。</summary>
+            /// <summary>Main thread only — reads the Unity API, EditorPrefs, and permission sets.</summary>
             public static HealthVitals FromLive()
             {
                 return new HealthVitals
@@ -745,7 +745,7 @@ namespace UnitySkills
                     SurfaceProfile = SkillsSurfaceProfile.CurrentWire,
                     PendingCount = SkillsModeManager.PendingGrantRequests.Count,
                     AllowlistCount = SkillsModeManager.AllowlistSkills.Count,
-                    // 加限定名：在此嵌套类型内，下面的字段名会遮蔽外层类的同名成员。
+                    // Fully qualified: inside this nested type, the fields below would shadow the outer class's same-named members.
                     AutoRestart = SkillsHttpServer.AutoStart,
                     RequestTimeoutMinutes = SkillsHttpServer.RequestTimeoutMinutes,
                     IsCompiling = EditorApplication.isCompiling,
@@ -755,11 +755,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 仅主线程。把 <see cref="HealthVitals"/> 镜像进 HTTP 线程 /health 路径所读的静态字段。
+        /// Main thread only. Mirrors <see cref="HealthVitals"/> into the static fields read by the HTTP thread's /health path.
         ///
-        /// full=false 是每帧路径，只碰两个编译标志——都是廉价属性读取，也是唯一真会逐帧变化的指标。
-        /// full=true 还会重读 EditorPrefs 与权限集合（AllowlistSkills 要排序并复制，
-        /// PendingGrantRequests 要清扫过期项），按编辑器帧率跑这些实在太浪费。
+        /// full=false is the per-frame path, touching only two compilation flags — cheap reads, and the only metrics
+        /// that genuinely change frame to frame. full=true also re-reads EditorPrefs and the permission sets
+        /// (AllowlistSkills sorts/copies, PendingGrantRequests sweeps expired entries) — too wasteful at frame rate.
         /// </summary>
         private static void RefreshHealthSnapshot(bool full)
         {
@@ -788,31 +788,31 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                // 快照过期也严格优于把编辑器 update 循环搞坏；下一帧会重试。
-                // 无论如何 mainThreadIdleMs 上报的都是真实值。
+                // A stale snapshot is strictly better than breaking the editor's update loop; the next frame retries.
+                // Either way, mainThreadIdleMs still reports a truthful value.
                 SkillsLogger.LogVerbose($"Health snapshot refresh failed: {ex.GetType().Name}: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// 把健康快照"昂贵那一半"标记为需在下一个主线程帧刷新。挂在
-        /// <see cref="SkillsModeManager.OnChanged"/> 与 <see cref="SkillsSurfaceProfile.OnChanged"/> 上，
-        /// 使模式 / 授权 / 白名单 / 暴露面档位的变化立刻反映到 /health，
-        /// 而不用干等 <see cref="HealthSnapshotInterval"/>。
-        /// 置一个 volatile 标志（而非就地刷新），可保证无论事件由哪个线程抛出，
-        /// 所有 Unity API 读取都留在主线程。
+        /// Marks the "expensive half" of the health snapshot as needing a refresh on the next main-thread frame.
+        /// Hooked onto <see cref="SkillsModeManager.OnChanged"/> and <see cref="SkillsSurfaceProfile.OnChanged"/>,
+        /// so changes to mode / grants / allowlist / surface profile are reflected in /health immediately, instead
+        /// of waiting out <see cref="HealthSnapshotInterval"/>.
+        /// Setting a volatile flag (rather than refreshing in place) guarantees that no matter which thread raised
+        /// the event, every Unity API read stays on the main thread.
         /// </summary>
         private static void OnPermissionStateChanged() => _healthSnapshotDirty = true;
 
         /// <summary>
-        /// 序列化 /health 载荷。调用方提供 vitals；此处其余内容都是任意线程都安全的普通静态读取，
-        /// 因此这一个方法同时支撑 HTTP 线程快路径与主线程的 <c>?live=1</c> 路径。
+        /// Serializes the /health payload. The caller supplies vitals; everything else is a plain static read safe on
+        /// any thread, which is why this one method backs both the HTTP-thread fast path and the main thread's <c>?live=1</c> path.
         /// </summary>
         private static string BuildHealthJson(HealthVitals v, bool live)
         {
             long tick = Interlocked.Read(ref _mainThreadTickUtc);
             long idleMs = tick == 0
-                ? -1L // update 循环还没 tick 过——此时年龄未知，不是零
+                ? -1L // the update loop hasn't ticked yet — age is unknown here, not zero
                 : Math.Max(0L, (DateTime.UtcNow.Ticks - tick) / TimeSpan.TicksPerMillisecond);
 
             int lightQueued = Volatile.Read(ref _lightQueued);
@@ -846,20 +846,20 @@ namespace UnitySkills
                 panelApprovalRequired = v.PanelApprovalRequired,
                 pendingCount = v.PendingCount,
                 allowlistCount,
-                // allowlistCount 的已弃用别名，为向后兼容保留
-                // （与 /permission/status 上的 `granted` / `counts.granted` 别名对应）。
-                // 待外部消费方迁移完毕后，可在未来某个大版本移除。
+                // Deprecated alias for allowlistCount, kept for backward compatibility
+                // (mirrors the `granted` / `counts.granted` aliases on /permission/status).
+                // Can be removed in some future major version once external consumers have migrated.
                 grantedCount = allowlistCount,
-                // 用户当前暴露的技能面切片。具有权威性：agent 无法改动它，
-                // 被它隐藏的技能在执行时一律以 SURFACE_EXCLUDED 作答。
+                // The slice of the skill surface currently exposed to the user. Authoritative: the agent cannot
+                // change it, and any skill it hides answers SURFACE_EXCLUDED at execution time.
                 surfaceProfile = v.SurfaceProfile,
-                // surfaceProfile == "guide" 的已弃用别名，为只认识布尔开关的 2.7 之前客户端保留。
-                // 这类客户端会把 noSceneAuthoring 读成 false，即"什么都没隐藏"——
-                // 这正是下面那条 hint 要把档位写清楚的原因。
+                // Deprecated alias for surfaceProfile == "guide", kept for pre-2.7 clients that only understand a
+                // boolean switch. Such clients would read noSceneAuthoring as false, i.e. "nothing is hidden" —
+                // which is exactly why the hint field below needs to spell out the tier explicitly.
                 guideMode = isGuide,
-                // 仅在档位不是 full 时才带文本：full 档下无话可说，
-                // 而一条无条件的"优先手工步骤"提示（这个字段过去就是那样）
-                // 会把 agent 推离用户实际已经开启的自动化。
+                // Only carries text when the tier isn't full: there's nothing to say in the full tier, and an
+                // unconditional "prefer manual steps" hint (which is what this field used to always say) would
+                // push the agent away from automation the user has actually already enabled.
                 surfaceProfileHint = surfaceProfileHint,
                 threads = new
                 {
@@ -878,36 +878,36 @@ namespace UnitySkills
                     totalReceived = Interlocked.Read(ref _totalRequestsReceived),
                 },
 
-                // ---- 2.3 新增（纯增量，未改动任何既有字段的语义） ----
+                // ---- 2.3 additions (purely incremental, doesn't change the semantics of any existing field) ----
                 port = _port,
-                // 距上一次 EditorApplication.update tick 抵达我们的毫秒数。正是这个字段让快路径
-                // /health 变得有价值：服务器既能即时作答，又能告诉你主线程卡住了。
-                // 个位数值代表编辑器空闲健康；数秒则意味着"活着但 Unity 正忙"
-                // （长技能、模态对话框、导入），而不是"服务器死了"。
+                // Milliseconds since the last EditorApplication.update tick reached us. This is exactly what makes the
+                // fast-path /health worthwhile: the server answers instantly while still telling you if the main thread is stuck.
+                // A single-digit value means the editor is idle and healthy; several seconds means "alive but Unity is busy"
+                // (a long skill, a modal dialog, importing) rather than "the server is dead".
                 mainThreadIdleMs = idleMs,
-                // 已准入但尚未应答的请求数（队列深度加在途应答器），对应 MaxPendingRequests 准入上限。
+                // Requests admitted but not yet answered (queue depth plus in-flight responders); the MaxPendingRequests admission cap.
                 pendingRequests = Volatile.Read(ref _pendingRequests),
-                // 双通道作业队列各自的深度；light 每帧排空。
+                // Depth of each of the two job-queue lanes; light is drained every frame.
                 lightQueued,
                 heavyQueued,
                 domainReloadPending = _domainReloadPending,
-                // 本次会话工作流历史加载失败时为 true：回滚数据已降级，
-                // 且文件库清理会一直暂停，直到历史被清空。
+                // True when this session's workflow history failed to load: rollback data is degraded, and
+                // library cleanup stays paused until the history is cleared.
                 workflowRecoveryMode = WorkflowManager.IsHistoryRecoveryMode,
-                // false = 在 HTTP 线程上用最多约 1 秒前的快照作答。
-                // true  = 在主线程上实时读取后作答（GET /health?live=1）。
+                // false = answered on the HTTP thread from a snapshot up to ~1 second old.
+                // true  = answered after a live read on the main thread (GET /health?live=1).
                 live,
                 note = "If you get 'Connection Refused', Unity may be reloading scripts. Wait 2-3 seconds and retry."
             }, _jsonSettings);
         }
 
         /// <summary>
-        /// GET /health 与 GET / 的 HTTP 线程应答器。所有取值都来自普通静态字段或主线程快照，
-        /// 因此零 Unity API、零 EditorPrefs、零 SkillsLogger——契约与 SendCachedGetResponse 相同。
+        /// HTTP-thread responder for GET /health and GET /. Every value comes from a plain static field or the
+        /// main-thread snapshot — zero Unity API, zero EditorPrefs, zero SkillsLogger — same contract as SendCachedGetResponse.
         ///
-        /// 目的是让高负载下仍可诊断：在旧的"只走主线程"路径上，单个长技能就能让存活探测本身挂住，
-        /// 调用方分不清"服务器死了"和"Unity 正忙"。现在它立即作答，由 mainThreadIdleMs 说明是哪种。
-        /// 需要严格实时值的调用方请用 GET /health?live=1。
+        /// The point is staying diagnosable under load: on the old "everything through the main thread" path, one
+        /// long-running skill could hang the liveness probe itself, so callers couldn't tell "server is dead" from
+        /// "Unity is busy". Now it answers instantly and mainThreadIdleMs says which; use GET /health?live=1 for a strictly live value.
         /// </summary>
         private static void SendHealthFastPath(HttpListenerContext context, HttpListenerRequest request)
         {
@@ -939,8 +939,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// GET /health?live=1（或 live=true）时返回 true——这是主动选择回到主线程队列，
-        /// 所有字段都实时读取，而不是取用最多约 1 秒前的快照。
+        /// Returns true for GET /health?live=1 (or live=true) — an explicit opt-in to fall back to the main-thread
+        /// queue, where every field is read live rather than pulled from a snapshot up to ~1 second old.
         /// </summary>
         private static bool WantsLiveHealth(string query)
         {
@@ -953,7 +953,7 @@ namespace UnitySkills
                     value.Equals("true", StringComparison.OrdinalIgnoreCase));
         }
 
-        // Agent 识别表：关键词 -> agent ID 映射
+        // Agent recognition table: keyword -> agent ID mapping
         private static readonly (string keyword, string agentId)[] _agentKeywords = new[]
         {
             ("claude", "ClaudeCode"), ("anthropic", "ClaudeCode"),
@@ -971,16 +971,16 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 从 User-Agent 或 X-Agent-Id 请求头识别 AI Agent
+        /// Recognizes the AI agent from the User-Agent or X-Agent-Id header.
         /// </summary>
         private static string DetectAgent(HttpListenerRequest request)
         {
-            // 优先级 1：显式的 X-Agent-Id 请求头
+            // Priority 1: explicit X-Agent-Id header
             var explicitId = request.Headers["X-Agent-Id"];
             if (!string.IsNullOrEmpty(explicitId))
                 return explicitId;
 
-            // 优先级 2：查表从 User-Agent 识别（用 OrdinalIgnoreCase 避免 ToLowerInvariant 的分配）
+            // Priority 2: table lookup against User-Agent (using OrdinalIgnoreCase to avoid ToLowerInvariant's allocation)
             var ua = request.UserAgent ?? "";
 
             foreach (var (keyword, agentId) in _agentKeywords)
@@ -989,18 +989,18 @@ namespace UnitySkills
                     return agentId;
             }
 
-            // 无法识别
+            // Unrecognized
             return string.IsNullOrEmpty(ua) ? "Unknown" : $"Unknown({ua.Substring(0, Math.Min(20, ua.Length))})";
         }
 
         /// <summary>
-        /// 静态构造器——每次域重载后都会被调用。这是脚本编译后自动恢复的关键。
+        /// Static constructor — invoked after every domain reload. This is the key to auto-recovery after script compilation.
         /// </summary>
         static SkillsHttpServer()
         {
             try
             {
-                // 注册编辑器生命周期事件
+                // Register editor lifecycle events
                 EditorApplication.quitting += OnEditorQuitting;
                 AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
                 AssemblyReloadEvents.afterAssemblyReload += OnAfterAssemblyReload;
@@ -1008,11 +1008,11 @@ namespace UnitySkills
 
                 HookUpdateLoop();
 
-                // 判断域重载后是否应自动重启；用延迟调用以确保 Unity 已完全初始化
+                // Decide whether to auto-restart after a domain reload; deferred so Unity is fully initialized by then
                 EditorApplication.delayCall += () => ScheduleDelayedCall(1.0, CheckAndRestoreServer);
 
-                // 必须在挂好 delayCall 之后再读：PrefKey() 会牵连 RegistryService 的静态初始化，
-                // 此处若抛异常会被外层 catch 吞掉，连带把上面那套域重载恢复挂钩一起静默搞没。
+                // Must be read only after the delayCall is hooked: PrefKey() drags in RegistryService's static init, and an
+                // exception here would be swallowed by the outer catch, silently taking the recovery hooks above down with it.
                 _editorLaunchPending = !SessionState.GetBool(PrefKey("EditorLaunchHandled"), false);
             }
             catch (Exception ex)
@@ -1020,57 +1020,57 @@ namespace UnitySkills
                 Debug.LogError("[UnitySkills] SkillsHttpServer init failed: " + ex);
             }
         }
-        
+
         /// <summary>
-        /// 脚本编译前调用——保存状态。
+        /// Called before script compilation — saves state.
         /// </summary>
         private static void OnBeforeAssemblyReload()
         {
             _domainReloadPending = true;
 
-            // 关键修复：仅在服务器正在运行时写入 true
-            // 当 _isRunning=false（前次重启失败），不覆写——保留已有的 true 意图
+            // Critical fix: only write true while the server is actually running.
+            // When _isRunning=false (a previous restart failed), don't overwrite — preserve the existing true intent.
             if (_isRunning)
             {
                 EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, true);
             }
 
-            // 持久化统计量
+            // Persist statistics
             EditorPrefs.SetString(PREF_TOTAL_PROCESSED, _totalRequestsProcessed.ToString());
 
             if (_isRunning)
             {
                 SkillsLogger.LogVerbose($"Domain Reload detected - server state saved (port {_port}), will auto-restart");
                 EditorPrefs.SetInt(PREF_LAST_PORT, _port);
-                RegistryService.Unregister(); // 临时注销
-                // 主动关闭 HttpListener 以立即释放端口
+                RegistryService.Unregister(); // temporary unregister
+                // Actively close the HttpListener to release the port immediately
                 _isRunning = false;
                 try { _listener?.Stop(); } catch { }
                 try { _listener?.Close(); } catch { }
-                // 等线程退出，确保端口彻底释放
+                // Wait for the threads to exit, to ensure the port is fully released
                 try { _listenerThread?.Join(2000); } catch { }
                 try { _keepAliveThread?.Join(100); } catch { }
             }
         }
-        
+
         /// <summary>
-        /// 脚本编译后调用——恢复状态。
+        /// Called after script compilation — restores state.
         /// </summary>
         private static void OnAfterAssemblyReload()
         {
             _domainReloadPending = false;
-            
-            // 恢复重载前的统计量
+
+            // Restore the statistics that were in place before the reload
             var savedTotal = EditorPrefs.GetString(PREF_TOTAL_PROCESSED, "0");
             if (long.TryParse(savedTotal, out long parsed))
             {
                 _totalRequestsProcessed = parsed;
             }
-            // CheckAndRestoreServer 会经 delayCall 调用
+            // CheckAndRestoreServer is invoked via delayCall
         }
-        
+
         /// <summary>
-        /// 编译开始时调用。
+        /// Called when compilation starts.
         /// </summary>
         private static void OnCompilationStarted(object context)
         {
@@ -1079,24 +1079,24 @@ namespace UnitySkills
                 SkillsLogger.LogVerbose($"Compilation started - preparing for Domain Reload...");
             }
         }
-        
+
         /// <summary>
-        /// 编辑器退出时调用——干净停机。
+        /// Called when the editor quits — clean shutdown.
         /// </summary>
         private static void OnEditorQuitting()
         {
-            // 退出时一律清除——不希望下次 Unity 会话自动启动
+            // Always clear on quit — don't want the next Unity session to auto-start
             EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, false);
             EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, 0);
             Stop();
         }
-        
-        // CheckAndRestoreServer 的重试计数
+
+        // Retry counter for CheckAndRestoreServer
         private static int _restoreRetryCount = 0;
         private static bool _editorLaunchPending;
         private static bool _cliColdStartPending;
         private const int MaxRestoreRetries = 3;
-        private static readonly double[] RestoreRetryDelays = { 1.0, 2.0, 4.0 }; // 单位：秒
+        private static readonly double[] RestoreRetryDelays = { 1.0, 2.0, 4.0 }; // unit: seconds
 
         internal enum AutoStartReason
         {
@@ -1107,18 +1107,18 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 判断域重载后是否应恢复服务器。经 EditorApplication.delayCall 调用以确保 Unity 已就绪。
-        /// Start() 失败时按递增延迟（1s、2s、4s）最多重试 3 次。
+        /// Decides whether the server should be restored after a domain reload. Invoked via EditorApplication.delayCall
+        /// to ensure Unity is ready by then. Retries up to 3 times with increasing delays (1s, 2s, 4s) if Start() fails.
         /// </summary>
         private static void CheckAndRestoreServer()
         {
             bool shouldRun = EditorPrefs.GetBool(PREF_SERVER_SHOULD_RUN, false);
-            // batchmode 排除：`unity test` / `run` / `build` 等无头流程同样跑 [InitializeOnLoad]，
-            // 在那里抢占 8090-8100 并向全局注册表广告一个转瞬即逝的实例，会把客户端的多实例
-            // 发现引到一个即将退出的进程上。CLI 冷启动走的是 GUI 启动，不受这条限制。
+            // batchmode is excluded: headless pipelines like `unity test` / `run` / `build` also run [InitializeOnLoad],
+            // and if they grabbed 8090-8100 and advertised a short-lived instance to the global registry, it would steer
+            // clients' multi-instance discovery to a process about to exit. CLI cold start uses the GUI path, so this doesn't apply.
             bool editorLaunchRequested = _editorLaunchPending && StartOnEditorLaunch && !Application.isBatchMode;
-            // Unity CLI 冷启动（--args -unityskills-coldstart + 已绑定）：本会话强制拉起一次，
-            // 无视 AutoStart/shouldRun 偏好；后续 Domain Reload 走常规恢复路径。
+            // Unity CLI cold start (--args -unityskills-coldstart + already bound): force one launch this session,
+            // ignoring the AutoStart/shouldRun preference; subsequent Domain Reloads go through the normal recovery path.
             _cliColdStartPending |= UnityCliService.ConsumeColdStartRequest();
             if (_cliColdStartPending && _restoreRetryCount == 0)
                 SkillsLogger.Log("Unity CLI cold start detected — auto-starting server.");
@@ -1129,7 +1129,7 @@ namespace UnitySkills
                 bool domainReload = reason == AutoStartReason.DomainReload;
                 int failures = domainReload ? EditorPrefs.GetInt(PREF_CONSECUTIVE_FAILURES, 0) : 0;
 
-                // 衰减：上次失败距今超过 5 分钟则重置计数
+                // Decay: reset the counter if the last failure was more than 5 minutes ago
                 if (failures > 0)
                 {
                     string lastFailTimeKey = PrefKey("LastFailTime");
@@ -1150,8 +1150,8 @@ namespace UnitySkills
                         "Please restart manually: Window > UnitySkills > Start Server");
                     EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, false);
                     _restoreRetryCount = 0;
-                    // 这里也要清：否则一个待处理的"编辑器启动"意图会越过这次提前返回活下来，
-                    // 在后续某次重载时触发——绕过我们刚刚跳闸的熔断器。
+                    // Must also be cleared here: otherwise a pending "editor launch" intent would survive this
+                    // early return and fire on some later reload — bypassing the circuit breaker we just tripped.
                     CompletePendingAutoStart(reason);
                     return;
                 }
@@ -1163,7 +1163,7 @@ namespace UnitySkills
 
                 if (_isRunning)
                 {
-                    // 启动成功（failures 已在 Start() 中清零）
+                    // Start succeeded (failures was already reset to zero inside Start())
                     _restoreRetryCount = 0;
                     CompletePendingAutoStart(reason);
                 }
@@ -1175,22 +1175,22 @@ namespace UnitySkills
                 }
                 else
                 {
-                    // 本轮所有重试耗尽
+                    // All retries exhausted for this round
                     _restoreRetryCount = 0;
                     CompletePendingAutoStart(reason);
                     if (domainReload)
                     {
                         EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, failures + 1);
                         EditorPrefs.SetString(PrefKey("LastFailTime"), EditorApplication.timeSinceStartup.ToString());
-                        // 域重载路径保留失败计数：用户需要知道离 MaxConsecutiveFailures 上限
-                        // 还有多远，否则排查时看不出熔断即将触发。
+                        // The domain-reload path keeps the failure count: the user needs to know how close they are to the
+                        // MaxConsecutiveFailures cap, otherwise there's no way to see the circuit breaker approaching while debugging.
                         SkillsLogger.LogError(
                             $"[UnitySkills] Server failed to restart (consecutive failures: {failures + 1}/{MaxConsecutiveFailures}). " +
                             "Will retry on next Domain Reload. Manual start: Window > UnitySkills > Start Server");
                     }
                     else
                     {
-                        // EditorLaunch / CliColdStart 每会话只尝试一次，没有跨会话计数可报。
+                        // EditorLaunch / CliColdStart only attempts once per session, so there's no cross-session count to report.
                         SkillsLogger.LogError(
                             $"[UnitySkills] Server auto-start failed ({reason}). Manual start: Window > UnitySkills > Start Server");
                     }
@@ -1229,7 +1229,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 借 EditorApplication.update 轮询，实现延迟若干秒后回调。
+        /// Uses EditorApplication.update polling to implement a callback delayed by a given number of seconds.
         /// </summary>
         private static void ScheduleDelayedCall(double delaySeconds, Action callback)
         {
@@ -1271,15 +1271,15 @@ namespace UnitySkills
             {
                 HookUpdateLoop();
                 RefreshTimeoutCache();
-                // 缓存 keep-alive 间隔，供 KeepAliveLoop 线程安全读取
+                // Cache the keep-alive interval, for thread-safe reads by the KeepAliveLoop thread
                 _cachedKeepAliveIntervalTicks = (long)KeepAliveIntervalSeconds * TimeSpan.TicksPerSecond;
 
-                // 端口探测：8090 -> 8100
+                // Port probing: 8090 -> 8100
                 int startPort = 8090;
                 int endPort = 8100;
                 bool started = false;
 
-                // 指定了合法的首选端口时先试它
+                // Try the preferred port first if a valid one was given
                 if (preferredPort >= startPort && preferredPort <= endPort)
                 {
                     try
@@ -1307,7 +1307,7 @@ namespace UnitySkills
 
                 if (!started)
                 {
-                    // 自动模式：逐个扫描端口
+                    // Auto mode: scan ports one by one
                     for (int p = startPort; p <= endPort; p++)
                     {
                         try
@@ -1324,7 +1324,7 @@ namespace UnitySkills
                         }
                         catch
                         {
-                            // 端口被占，试下一个
+                            // Port is taken, try the next one
                             try { _listener?.Close(); } catch { }
                         }
                     }
@@ -1338,15 +1338,15 @@ namespace UnitySkills
 
                 _isRunning = true;
 
-                // 持久化状态，供域重载恢复使用
+                // Persist state, for use in domain-reload recovery
                 EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, true);
-                EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, 0); // 成功启动，清除失败计数
+                EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, 0); // Started successfully, clear the failure count
 
-                // 注册到全局注册表
+                // Register with the global registry
                 RegistryService.Register(_port);
 
-                // 在监听器开始 accept 之前先填好 /health 快照，使第一次探测就走快路径而不回落到队列。
-                // 上面的 Register() 必须先执行——instanceId/projectName 来自它。
+                // Populate the /health snapshot before the listener starts accepting, so the first probe takes the fast path
+                // instead of falling back to the queue. The Register() call above must run first — instanceId/projectName come from it.
                 RefreshHealthSnapshot(full: true);
                 if (!_modeHookInstalled)
                 {
@@ -1355,42 +1355,42 @@ namespace UnitySkills
                     _modeHookInstalled = true;
                 }
 
-                // 启动监听线程（生产者——只入队，不碰 Unity API）
+                // Start the listener thread (producer — only enqueues, never touches the Unity API)
                 _listenerThread = new Thread(ListenLoop) { IsBackground = true, Name = "UnitySkills-Listener" };
                 _listenerThread.Start();
 
-                // 启动 keep-alive 线程（失焦时强制 Unity 继续 update）
+                // Start the keep-alive thread (forces Unity to keep updating while unfocused)
                 _keepAliveThread = new Thread(KeepAliveLoop) { IsBackground = true, Name = "UnitySkills-KeepAlive" };
                 _keepAliveThread.Start();
 
-                // 这些调用在此安全，因为 Start() 是从主线程调用的
+                // These calls are safe here because Start() is called from the main thread
                 var skillCount = SkillRouter.SkillCount;
                 SkillsLogger.Log($"REST Server started at {_prefix}");
                 SkillsLogger.Log($"{skillCount} skills loaded | Instance: {RegistryService.InstanceId}");
                 SkillsLogger.LogVerbose($"Domain Reload Recovery: ENABLED (AutoStart={AutoStart})");
 
-                // 初始化心跳计时器，避免启动过程中立刻发出第一次心跳
+                // Initialize the heartbeat timer, so it doesn't fire immediately during startup
                 _lastHeartbeatTime = EditorApplication.timeSinceStartup;
                 _lastWatchdogCheck = EditorApplication.timeSinceStartup;
 
-                // 启动自检用的诊断计数器
+                // Start the diagnostic counter used for self-test
                 _pjqTicksSinceStart = 0;
 
-                // 强制立即 update 一次，让 ProcessJobQueue 尽快开始处理
+                // Force an immediate update so ProcessJobQueue starts processing as soon as possible
                 EditorApplication.QueuePlayerLoopUpdate();
 
-                // 自检：稍等一会儿让 update 循环稳定后再验证可达性
+                // Self-test: wait a bit for the update loop to settle before verifying reachability
                 ScheduleDelayedCall(1.5, RunSelfTest);
 
-                // /events 客户端的重连锚点：携带上一次编译摘要，
-                // 因为 compilation_finished（成功那条）会随旧域一起消失。
+                // Reconnection anchor for /events clients: carries the previous compilation summary,
+                // since compilation_finished (the success one) disappears along with the old domain.
                 EventChannelService.PublishServerRestored(_port);
             }
             catch (Exception ex)
             {
                 SkillsLogger.LogError($"Failed to start: {ex.Message}");
                 _isRunning = false;
-                // 不清除 PREF_SERVER_SHOULD_RUN — 保留重启意图，下次 Reload 继续尝试
+                // Don't clear PREF_SERVER_SHOULD_RUN — preserve the restart intent so the next Reload tries again
             }
         }
 
@@ -1399,32 +1399,32 @@ namespace UnitySkills
             if (!_isRunning) return;
             _isRunning = false;
 
-            // 永久停止时清掉自动重启标志
+            // Clear the auto-restart flag on a permanent stop
             if (permanent)
             {
                 EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, false);
                 EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, 0);
             }
 
-            // 从全局注册表注销
+            // Unregister from the global registry
             RegistryService.Unregister();
 
             try { _listener?.Stop(); } catch { /* Best-effort cleanup on shutdown */ }
             try { _listener?.Close(); } catch { /* Best-effort cleanup on shutdown */ }
 
-            // 等线程结束
+            // Wait for the threads to finish
             try { _listenerThread?.Join(2000); } catch { }
             try { _keepAliveThread?.Join(2000); } catch { }
             _listenerThread = null;
             _keepAliveThread = null;
 
-            // 准入计数器不能跨越一次停止/重启：仍在途的应答器可能永远跑不到自己的释放逻辑，
-            // 残留计数会吃掉下一个服务器实例的配额。ReleasePendingSlot() 会在 0 处夹住，
-            // 所以迟到的释放仍然安全。
+            // The admission counter can't carry over a stop/restart: an in-flight responder might never reach its
+            // own release logic, and a leftover count would eat into the next server instance's quota.
+            // ReleasePendingSlot() clamps at 0, so a late release is still safe.
             Interlocked.Exchange(ref _pendingRequests, 0);
 
-            // 通知所有待处理作业以错误收场。此处在上面 join 监听线程之后执行，
-            // 两条通道都已静默，无需加锁。
+            // Notify every pending job that it ended in an error. This runs after joining the listener thread
+            // above, so both lanes are already quiescent and no locking is needed.
             FailQueuedJobs(_lightQueue, ref _lightQueued);
             FailQueuedJobs(_heavyQueue, ref _heavyQueued);
 
@@ -1435,16 +1435,16 @@ namespace UnitySkills
         }
         
         /// <summary>
-        /// 永久停止服务器，不再自动重启。
+        /// Permanently stops the server; it will no longer auto-restart.
         /// </summary>
         public static void StopPermanent()
         {
             Stop(permanent: true);
         }
-        
+
         /// <summary>
-        /// keep-alive 循环——Unity 失焦时强制其继续 update。
-        /// 不直接调用任何 Unity API（走线程安全的 QueuePlayerLoopUpdate）。
+        /// The keep-alive loop — forces Unity to keep updating while it's unfocused.
+        /// Never calls any Unity API directly (goes through the thread-safe QueuePlayerLoopUpdate).
         /// </summary>
         private static void KeepAliveLoop()
         {
@@ -1458,12 +1458,12 @@ namespace UnitySkills
 
                     if (hasPendingJobs)
                     {
-                        // 线程安全地唤醒 Unity 主线程
+                        // Wake the Unity main thread in a thread-safe way
                         EditorApplication.QueuePlayerLoopUpdate();
                     }
                     else
                     {
-                        // 没有待处理作业时也定期唤醒，好让看门狗与心跳能跑起来
+                        // Also wake periodically when there are no pending jobs, so the watchdog and heartbeat can run
                         long nowTicks = DateTime.UtcNow.Ticks;
                         long intervalTicks = _cachedKeepAliveIntervalTicks;
                         if (nowTicks - _lastForceWakeTicks > intervalTicks)
@@ -1476,10 +1476,10 @@ namespace UnitySkills
                 catch (ThreadAbortException) { break; }
                 catch (Exception ex)
                 {
-                    // Unity 6000.3+ 的 QueuePlayerLoopUpdate 有时会冒出一句无害的
-                    // "SetSceneRepaintDirty can only be called from the main thread"，
-                    // 而唤醒本身其实成功了。此处压掉噪音；
-                    // 队列是否被排空由主线程的 ProcessJobQueue 验证。
+                    // On Unity 6000.3+, QueuePlayerLoopUpdate sometimes throws a harmless
+                    // "SetSceneRepaintDirty can only be called from the main thread",
+                    // even though the wake-up itself actually succeeded. Suppress the noise here;
+                    // whether the queue actually got drained is verified by the main thread's ProcessJobQueue.
                     if (ex is UnityException && ex.Message != null && ex.Message.Contains("main thread"))
                         SkillsLogger.LogVerbose($"KeepAlive wake-up benign: {ex.Message.Split('\n')[0]}");
                     else
@@ -1489,17 +1489,17 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// HTTP 监听循环（生产者）。
-        /// 关键约束：本方法跑在后台线程上，不允许任何 Unity API 调用，
-        /// 只把原始请求数据入队交给主线程处理。
+        /// The HTTP listener loop (producer).
+        /// Critical constraint: this method runs on a background thread, so no Unity API calls are allowed —
+        /// it only enqueues raw request data for the main thread to process.
         ///
-        /// 配额与 socket 的生命周期：<see cref="TryReservePendingSlot"/> 之后的一切都包在同一个
-        /// try/finally 里，使每条退出路径——包括读取请求体时客户端中途中止上传——
-        /// 都恰好释放一次准入配额并关闭 context。配额泄漏是永久性的：
-        /// 泄漏 MaxPendingRequests 次之后，后续每个请求都会变成 503 QUEUE_FULL，直到下次域重载。
+        /// Quota and socket lifecycle: everything after <see cref="TryReservePendingSlot"/> is wrapped in the same
+        /// try/finally, so every exit path — including a client aborting an upload mid-read — releases the
+        /// admission quota exactly once and closes the context. A quota leak is permanent: after leaking
+        /// MaxPendingRequests times, every subsequent request turns into a 503 QUEUE_FULL until the next domain reload.
         ///
-        /// 错误退避分两级：accept（GetContext）失败属于监听器级别，保留长退避交给看门狗；
-        /// 而单个请求的失败绝不能为一个坏客户端拖住这唯一的 accept 线程。
+        /// Error backoff has two tiers: an accept (GetContext) failure is listener-level, given a long backoff left to
+        /// the watchdog; a single request's failure must never tie up this one accept thread over one bad client.
         /// </summary>
         private static void ListenLoop()
         {
@@ -1513,14 +1513,14 @@ namespace UnitySkills
                 catch (HttpListenerException)
                 {
                     if (!_isRunning) break;
-                    Thread.Sleep(500); // 避免异常紧循环；必要时由看门狗重启
+                    Thread.Sleep(500); // Avoid a tight exception loop; the watchdog restarts if needed
                     continue;
                 }
-                catch (ObjectDisposedException) { break; } // 监听器已销毁；由看门狗重启
+                catch (ObjectDisposedException) { break; } // Listener already disposed; the watchdog restarts it
                 catch (Exception)
                 {
                     if (!_isRunning) break;
-                    Thread.Sleep(1000); // 未知监听器错误时退避；由看门狗介入
+                    Thread.Sleep(1000); // Back off on an unknown listener error; the watchdog steps in
                     continue;
                 }
 
@@ -1531,7 +1531,7 @@ namespace UnitySkills
 
                 try
                 {
-                    // 立即抓取原始数据（不碰 Unity API）
+                    // Grab the raw data immediately (never touch the Unity API)
                     var request = context.Request;
 
                     if (!CheckAdmissionRateLimit())
@@ -1557,8 +1557,8 @@ namespace UnitySkills
                         continue;
                     }
 
-                    // 请求行畸形时 Mono 的 HttpListener 会给出 null 的 Url，
-                    // 而下面每条路径都会解引用它，所以提前用一个真实响应拒掉。
+                    // On a malformed request line, Mono's HttpListener gives a null Url, and every path below
+                    // dereferences it, so reject it early with an actual response.
                     var url = request.Url;
                     if (url == null)
                     {
@@ -1569,17 +1569,17 @@ namespace UnitySkills
                         continue;
                     }
 
-                    // 快路径：GET /skills、GET /skills/schema 与 GET /health 直接在本 HTTP 线程上
-                    // 用主线程构建好的缓存/快照作答（零 Unity API——见
-                    // SkillRouter.TryGetCachedGetResponse 与 SendHealthFastPath）。
-                    // 未命中则落到常规主线程队列，由它为下次填好缓存/快照。
+                    // Fast path: GET /skills, GET /skills/schema, and GET /health are answered directly on this
+                    // HTTP thread using the cache/snapshot the main thread already built (zero Unity API — see
+                    // SkillRouter.TryGetCachedGetResponse and SendHealthFastPath).
+                    // A miss falls through to the regular main-thread queue, which populates the cache/snapshot for next time.
                     if (request.HttpMethod == "GET")
                     {
                         string fastPath = url.AbsolutePath;
 
-                        // 长轮询：GET /events 从不进主线程队列。accept 循环只把 context 交给
-                        // 一个 ThreadPool 等待者——它绝不能在此阻塞（这是唯一的 accept 线程）。
-                        // 应答器会在每条退出路径上释放准入配额并关闭 response。
+                        // Long-polling: GET /events never goes through the main-thread queue. The accept loop only hands the context
+                        // off to a ThreadPool waiter — it must never block here (this is the only accept thread). The responder
+                        // releases the admission quota and closes the response on every exit path.
                         if (string.Equals(fastPath, "/events", StringComparison.OrdinalIgnoreCase))
                         {
                             var pollState = new EventsPollState
@@ -1594,8 +1594,8 @@ namespace UnitySkills
                             continue;
                         }
 
-                        // 存活探测：用主线程快照作答，使繁忙或阻塞的主线程再也不能让 /health 本身挂住。
-                        // 首个快照尚未生成时，以及调用方用 ?live=1 要求实时值时，一律放弃快路径（落回队列）。
+                        // Liveness probe: answered from the main-thread snapshot, so a busy/blocked main thread can no longer hang
+                        // /health itself. Falls back to the queue before the first snapshot exists, or when the caller asks for ?live=1.
                         if ((fastPath == "/" || string.Equals(fastPath, "/health", StringComparison.OrdinalIgnoreCase)) &&
                             _snapReady && !WantsLiveHealth(url.Query))
                         {
@@ -1625,7 +1625,7 @@ namespace UnitySkills
                             continue;
                         }
 
-                        // 上传被中止会在此抛 IOException——靠下面的 finally 才不会泄漏配额与 socket。
+                        // An aborted upload throws IOException here — the finally block below prevents leaking the quota and socket.
                         using (var reader = new System.IO.StreamReader(request.InputStream, Encoding.UTF8))
                         {
                             body = reader.ReadToEnd();
@@ -1646,8 +1646,8 @@ namespace UnitySkills
 
                     Interlocked.Increment(ref _totalRequestsReceived);
 
-                    // 入队交主线程处理，按两条优先级通道分流。
-                    // MaxQueuedRequests 仍是两条通道共享的单一配额，准入上限不变，只是服务顺序不同。
+                    // Enqueue for the main thread to process, sorted into one of two priority lanes. MaxQueuedRequests is still a
+                    // single quota shared by both lanes — the admission cap is unchanged, only the service order differs.
                     if (QueuedRequests >= MaxQueuedRequests)
                     {
                         job.StatusCode = 503;
@@ -1662,7 +1662,7 @@ namespace UnitySkills
                     }
                     else if (IsLightRequest(job.HttpMethod, job.Path))
                     {
-                        // 先自增再入队：计数可能短暂偏高，但绝不会因消费者排走一个我们还没计数的项而变负。
+                        // Increment before enqueuing: the count may briefly run high, but never goes negative from a consumer draining an uncounted item.
                         Interlocked.Increment(ref _lightQueued);
                         _lightQueue.Enqueue(job);
                     }
@@ -1672,16 +1672,16 @@ namespace UnitySkills
                         _heavyQueue.Enqueue(job);
                     }
 
-                    // 用显式 state 对象排入应答器，避免闭包捕获竞态。
+                    // Use an explicit state object to enqueue the responder, avoiding a closure-capture race.
                     var handoffJob = job;
-                    job = null; // 所有权已交给队列；即便 QueueUserWorkItem 抛异常也不得归还对象池
+                    job = null; // Ownership has passed to the queue; must not return the object to the pool even if QueueUserWorkItem throws
                     ThreadPool.QueueUserWorkItem(WaitAndRespondCallback, handoffJob);
                     handedOffToResponder = true;
                 }
                 catch (Exception ex)
                 {
-                    // 单个请求的失败（上传中止、请求体畸形……）。下面的 finally 会归还配额与 socket，
-                    // 所以这里只需短暂让出——在此长睡会为一个坏客户端停住唯一的 accept 线程。
+                    // A single request's failure (aborted upload, malformed body, ...). The finally block below returns the quota
+                    // and socket, so this just needs to briefly yield — sleeping long here would stall the one accept thread over one bad client.
                     if (!_isRunning) break;
                     SkillsLogger.LogVerbose($"Request dropped: {ex.GetType().Name}: {ex.Message}");
                     Thread.Sleep(50);
@@ -1699,7 +1699,7 @@ namespace UnitySkills
         }
         
         /// <summary>
-        /// 等待作业完成并发送 HTTP 响应。跑在 ThreadPool 线程上——不允许任何 Unity API 调用。
+        /// Waits for a job to finish and sends the HTTP response. Runs on a ThreadPool thread — no Unity API calls allowed.
         /// </summary>
         private static void WaitAndRespondCallback(object state)
         {
@@ -1723,7 +1723,7 @@ namespace UnitySkills
             bool completed = false;
             try
             {
-                // 等主线程处理（带超时）
+                // Wait for main-thread processing (with a timeout)
                 completed = job.CompletionSignal.Wait(RequestTimeoutMs);
                 
                 if (!completed)
@@ -1746,12 +1746,12 @@ namespace UnitySkills
                         retryAfterSeconds: _domainReloadPending ? 5 : 10);
                 }
                 
-                // 发送 HTTP 响应（线程安全）
+                // Send the HTTP response (thread-safe)
                 SendResponse(job);
             }
             catch (Exception ex)
             {
-                // 尽力而为——尝试发送错误响应
+                // Best effort — try to send an error response
                 try
                 {
                     job.StatusCode = 500;
@@ -1774,11 +1774,11 @@ namespace UnitySkills
         }
         
         /// <summary>
-        /// 发送 HTTP 响应。线程安全（不碰 Unity API）。
+        /// Sends the HTTP response. Thread-safe (never touches the Unity API).
         ///
-        /// 只有两个可缓存 GET 端点会被设上 job.ETag（由 <see cref="ApplyCacheableGetHeaders"/> 设置）；
-        /// 它是否存在决定此处是否启用 ETag/Vary 头与 gzip 协商，
-        /// 因此其余所有端点的行为与此前完全一致。
+        /// Only the two cacheable GET endpoints get job.ETag set (by <see cref="ApplyCacheableGetHeaders"/>);
+        /// whether it's present decides whether the ETag/Vary headers and gzip negotiation are enabled here,
+        /// so every other endpoint's behavior is unchanged from before.
         /// </summary>
         private static void SendResponse(RequestJob job)
         {
@@ -1787,7 +1787,7 @@ namespace UnitySkills
             {
                 response = job.Context.Response;
 
-                // CORS 响应头
+                // CORS headers
                 response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
                 response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Agent-Id");
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
@@ -1802,8 +1802,8 @@ namespace UnitySkills
 
                 response.StatusCode = job.StatusCode;
 
-                // 304 到达此处时 ResponseJson 已被清空，因此永不会走到响应体分支，
-                // 也永不会带上 Content-Encoding。
+                // By the time a 304 reaches here, ResponseJson has already been cleared, so this never falls into
+                // the response-body branch and never carries a Content-Encoding.
                 if (!string.IsNullOrEmpty(job.ResponseJson))
                 {
                     response.ContentType = "application/json; charset=utf-8";
@@ -1817,14 +1817,14 @@ namespace UnitySkills
             }
         }
 
-        // ===== GET /events 长轮询 =====
+        // ===== GET /events long polling =====
 
         private const int EventsDefaultTimeoutSeconds = 25;
         private const int EventsMinTimeoutSeconds = 1;
         private const int EventsMaxTimeoutSeconds = 55;
         private const int EventsPollIntervalMs = 250;
 
-        /// <summary>由 accept 循环交给长轮询应答器的原始请求数据。</summary>
+        /// <summary>Raw request data the accept loop hands off to the long-poll responder.</summary>
         private sealed class EventsPollState
         {
             public HttpListenerContext Context;
@@ -1844,9 +1844,9 @@ namespace UnitySkills
             }
             catch
             {
-                // 客户端断开或监听器在轮询中途死掉——重连本就是既定协议；
-                // 绝不能让它把 ThreadPool 线程吵闹地搞死。
-                // 在 WriteEventsResponse 之前抛出，意味着此时还没人关闭 response。
+                // Client disconnected, or the listener died mid-poll — reconnection is already the intended
+                // protocol; this must never be allowed to noisily kill the ThreadPool thread.
+                // Throwing here means it happened before WriteEventsResponse, so no one has closed the response yet.
                 CloseContextSafely(poll.Context);
             }
             finally
@@ -1856,12 +1856,12 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// GET /events 的长轮询应答器。完全跑在 ThreadPool 线程上——零 Unity API、零 SessionState、
-        /// 不用 SkillsLogger（约束与 SendCachedGetResponse 相同）。循环"扫描缓冲 → 等待"，
-        /// 直到出现比 'since' 更新的事件、超时、或服务器停止（域重载）——然后直接写出响应。
-        /// 正确性依赖那 250ms 的轮询；发布信号只是降低延迟。
-        /// 查询参数：since（默认取当前最大 seq，即只等新事件；传 0 则回放缓冲）、
-        /// timeout（秒，默认 25，夹在 1-55）、types（逗号分隔的过滤器）。
+        /// Long-poll responder for GET /events. Runs entirely on a ThreadPool thread — zero Unity API, zero
+        /// SessionState, no SkillsLogger (same constraints as SendCachedGetResponse). Loops "scan buffer → wait"
+        /// until an event newer than 'since' shows up, it times out, or the server stops (reload) — writes the response directly.
+        /// Correctness relies on the 250ms poll interval; the publish signal only reduces latency.
+        /// Query params: since (default: current max seq, i.e. wait for new events only; 0 replays the buffer),
+        /// timeout (seconds, default 25, clamped to 1-55), types (comma-separated filter).
         /// </summary>
         private static void RespondEventsLongPoll(EventsPollState poll)
         {
@@ -1926,16 +1926,16 @@ namespace UnitySkills
 
             while (true)
             {
-                // 必须在扫描之前 Reset：扫描之后落地的发布会重新置起信号。
-                // 另一个等待者的 Reset 仍可能吞掉它，但代价只是多等一个 250ms 轮询间隔，
-                // 绝不影响正确性。
+                // Must Reset before scanning: a publish that lands after the scan will re-signal.
+                // Another waiter's Reset could still swallow it, but the cost is only one extra 250ms poll
+                // interval of waiting — it never affects correctness.
                 EventChannelService.ResetSignal();
 
                 if (EventChannelService.TryReadEventsAfter(since, typeFilter, out events, out cursor, out oldestSeq))
                     break;
 
-                // 服务器正在停止（域重载在即）：立刻用手上的内容（即空）作答，
-                // 让客户端去重连而不是干挂着。
+                // The server is stopping (a domain reload is imminent): answer immediately with whatever's on
+                // hand (i.e. empty), so the client reconnects instead of hanging.
                 if (!_isRunning)
                 {
                     timedOut = true;
@@ -1953,8 +1953,8 @@ namespace UnitySkills
                 EventChannelService.WaitSignal(waitMs);
             }
 
-            // since+1 是客户端缺失的第一个 seq；低于 oldestSeq 的都已被淘汰（环形缓冲溢出）
-            // 或随域重载丢失。
+            // since+1 is the first seq the client is missing; anything below oldestSeq has already been evicted
+            // (ring buffer overflow) or lost to a domain reload.
             bool dropped = since + 1 < oldestSeq;
 
             var sb = new StringBuilder(128 + events.Count * 256);
@@ -1974,8 +1974,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 写出 /events 的 HTTP 响应。ThreadPool 线程——只做请求头、编码与 socket 写
-        /// （SendCachedGetResponse/SendResponse 的纯字符串同类方法）。
+        /// Writes the /events HTTP response. ThreadPool thread — only headers, encoding, and socket writes
+        /// (the pure-string counterpart of SendCachedGetResponse/SendResponse).
         /// </summary>
         private static void WriteEventsResponse(EventsPollState poll, int statusCode, string json)
         {
@@ -2005,24 +2005,24 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 主线程作业处理器（消费者）。
-        /// 经 EditorApplication.update 驱动——此处调用任何 Unity API 都是安全的。
+        /// Main-thread job processor (consumer).
+        /// Driven by EditorApplication.update — any Unity API call here is safe.
         /// </summary>
         private static void ProcessJobQueue()
         {
-            // 主线程存活镜像，在本帧其他任何事情之前写入。HTTP 线程用"现在"减去它来上报
-            // /health.mainThreadIdleMs，这正是调用方区分"服务器死了"与"Unity 正忙"的依据。
-            // 提前写入意味着本次 tick 内的长作业会被下一个探测者计入空闲时长——这才是诚实的读数。
+            // Main-thread liveness mirror, written before anything else this frame. The HTTP thread reports
+            // /health.mainThreadIdleMs by subtracting "now" from it — exactly how a caller tells "server is dead" from
+            // "Unity is busy". Writing it early means the next probe counts a long job in this tick as idle — the honest reading.
             Interlocked.Exchange(ref _mainThreadTickUtc, DateTime.UtcNow.Ticks);
 
-            // 启动诊断计数器（轻量 volatile 自增，到 10000 停止）
+            // Startup diagnostic counter (a cheap volatile increment, stops at 10000)
             var diagTick = _pjqTicksSinceStart;
             if (diagTick >= 0 && diagTick < 10000)
                 _pjqTicksSinceStart = diagTick + 1;
 
             double frameStart = EditorApplication.timeSinceStartup;
 
-            // /health 快照：便宜那一半每帧刷，昂贵那一半只在权限状态变化或 1 秒下限到期时刷。
+            // /health snapshot: the cheap half refreshes every frame, the expensive half only on permission changes or when the 1-second floor expires.
             bool fullSnapshot = _healthSnapshotDirty || !_snapReady ||
                                 frameStart - _lastHealthSnapshot >= HealthSnapshotInterval;
             if (fullSnapshot)
@@ -2032,19 +2032,19 @@ namespace UnitySkills
             }
             RefreshHealthSnapshot(fullSnapshot);
 
-            // 通道 1——light：全部排空，且不受帧预算约束。它们是只读的毫秒级处理器（见 IsLightRequest）；
-            // 让它们饿死在慢技能后面正是这次拆分要防的故障，而给它们设上限等于把同一问题缩小规模后重新引入。
+            // Lane 1 — light: drained entirely, not bound by the frame budget. These are the read-only, millisecond-scale
+            // handlers (see IsLightRequest); starving them behind a slow skill is the failure this split prevents.
             while (TryDequeueJob(_lightQueue, ref _lightQueued, out var lightJob))
                 RunJob(lightJob);
 
-            // 通道 2——heavy：两道闸门，条数上限与墙上时钟预算，二者都在启动每个作业之前检查。
-            // 单个技能合理地跑上数秒是允许的；预算无法打断它，只能拒绝再启动下一个，
-            // 而这正是突发之间编辑器仍能重绘的原因。
+            // Lane 2 — heavy: two gates, a count cap and a wall-clock budget, both checked before starting each job.
+            // A single skill legitimately running for several seconds is allowed; the budget can't interrupt it,
+            // it can only refuse to start the next one — which is exactly why the editor can still repaint between bursts.
             int processed = 0;
             while (processed < MaxHeavyJobsPerFrame)
             {
-                // 预算绝不阻挡一帧中的第一个 heavy 作业。繁忙的 light 通道完全可能合理地吃掉整个 12ms，
-                // 若让这种情况把 heavy 通道清零，优先级拆分就变成了技能执行被饿死。
+                // The budget must never block the first heavy job of a frame. A busy light lane could legitimately eat the
+                // whole 12ms, and letting that zero out the heavy lane would turn the priority split into starved skill execution.
                 if (processed > 0 && EditorApplication.timeSinceStartup - frameStart >= HeavyFrameBudgetSeconds)
                     break;
 
@@ -2055,13 +2055,13 @@ namespace UnitySkills
                 processed++;
             }
 
-            // 还有剩余工作：立刻请求下一个 tick，而不是等最多 KeepAlivePollingMs 让 keep-alive 线程发现。
+            // Work remains: request the next tick immediately, instead of waiting up to KeepAlivePollingMs for keep-alive to notice.
             if (Volatile.Read(ref _heavyQueued) > 0)
                 EditorApplication.QueuePlayerLoopUpdate();
 
             double now = EditorApplication.timeSinceStartup;
 
-            // 注册表心跳
+            // Registry heartbeat
             if (_isRunning)
             {
                 if (now - _lastHeartbeatTime > HeartbeatInterval)
@@ -2070,7 +2070,7 @@ namespace UnitySkills
                     RegistryService.Heartbeat(_port);
                 }
 
-                // 看门狗：监听线程已死则重启服务器
+                // Watchdog: restart the server if the listener thread has died
                 if (now - _lastWatchdogCheck > WatchdogInterval)
                 {
                     _lastWatchdogCheck = now;
@@ -2097,15 +2097,15 @@ namespace UnitySkills
                 }
             }
 
-            // 兜底：delayCall 没触发时，域重载后仍能恢复服务器
+            // Fallback: recovers the server after a domain reload if delayCall never fires
             if (!_isRunning && !_domainReloadPending)
             {
                 if (now - _lastSafetyNetCheck > SafetyNetInterval)
                 {
                     _lastSafetyNetCheck = now;
                     bool shouldRun = EditorPrefs.GetBool(PREF_SERVER_SHOULD_RUN, false);
-                    // 也兜住 editor-launch：首次启动时 shouldRun 恰好是 false（退出时被清），
-                    // 否则新路径会是唯一一条 delayCall 不触发就彻底失效的自启路径。
+                    // Also covers editor-launch: on first startup shouldRun happens to be false (cleared on quit), and without
+                    // this the new path would be the only auto-start path completely broken whenever delayCall doesn't fire.
                     bool editorLaunchRequested = _editorLaunchPending && StartOnEditorLaunch && !Application.isBatchMode;
                     if ((shouldRun && AutoStart) || editorLaunchRequested)
                     {
@@ -2123,9 +2123,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把一个已出队的作业跑到完成，并释放其等待中的应答器。
-        /// 从 <see cref="ProcessJobQueue"/> 中抽出，使两条通道共享完全相同的错误处理与账目维护。
-        /// 仅主线程。
+        /// Runs a dequeued job to completion, and releases its waiting responder.
+        /// Factored out of <see cref="ProcessJobQueue"/> so both lanes share exactly the same error handling and
+        /// bookkeeping. Main thread only.
         /// </summary>
         private static void RunJob(RequestJob job)
         {
@@ -2148,19 +2148,19 @@ namespace UnitySkills
                 job.IsProcessed = true;
                 job.CompletionSignal?.Set();
                 Interlocked.Increment(ref _totalRequestsProcessed);
-                // 只在请求可能改动过状态时失效场景缓存（POST = 技能执行）
+                // Only invalidate scene caches for requests that could have changed state (POST = skill execution)
                 if (job.HttpMethod == "POST")
                     GameObjectFinder.InvalidateCache();
             }
         }
 
         /// <summary>
-        /// GET /skills 与 GET /skills/schema 在主线程侧的对应实现，与 HTTP 线程快路径配对：
-        /// 给刚构建好的响应体打上 ETag——<see cref="SkillRouter.GetEtagForCachedGet"/> 是从快路径
-        /// 所用的同一个缓存键派生出它的——随后在调用方的 If-None-Match 已匹配时把响应压成空体 304。
+        /// Main-thread counterpart to GET /skills and GET /skills/schema, paired with the HTTP-thread fast path:
+        /// stamps the freshly built body with an ETag — <see cref="SkillRouter.GetEtagForCachedGet"/> derives it from
+        /// the same cache key the fast path uses — then collapses it to an empty-body 304 if If-None-Match matches.
         ///
-        /// 只给 200 的响应体打标签。绝不能把错误响应体挂在一个内容哈希下交给客户端，
-        /// 否则客户端会把它缓存起来。
+        /// Only 200 responses get tagged. An error response body must never be handed to the client under a
+        /// content hash, or the client will cache it.
         /// </summary>
         private static void ApplyCacheableGetHeaders(RequestJob job, string path)
         {
@@ -2170,14 +2170,14 @@ namespace UnitySkills
             job.ETag = SkillRouter.GetEtagForCachedGet(path, job.QueryString, job.ResponseJson);
             if (job.ETag != null && IfNoneMatchSatisfied(job.IfNoneMatch, job.ETag))
             {
-                job.StatusCode = 304; // Not Modified——不得携带响应体
+                job.StatusCode = 304; // Not Modified — must not carry a response body
                 job.ResponseJson = null;
             }
         }
 
         private static void ProcessJob(RequestJob job)
         {
-            // 处理 OPTIONS（CORS 预检）
+            // Handle OPTIONS (CORS preflight)
             if (job.HttpMethod == "OPTIONS")
             {
                 job.StatusCode = 204;
@@ -2187,20 +2187,20 @@ namespace UnitySkills
             
             string path = job.Path;
 
-            // 健康检查。只有 HTTP 线程快路径放弃时才会走到这里：要么调用方要求了 ?live=1，
-            // 要么首个快照尚未拍下。两种情况载荷形状相同——BuildHealthJson 是该形状的唯一来源。
+            // Health check. Only reached when the HTTP-thread fast path bails out: either the caller asked for ?live=1,
+            // or the first snapshot hasn't been taken yet. Both share the same shape — BuildHealthJson is its sole source.
             if (path == "/" || string.Equals(path, "/health", StringComparison.OrdinalIgnoreCase))
             {
-                // 实时读取同时也刷新了镜像，使下一次快路径探测拿到的是最新值。
+                // The live read also refreshes the mirror, so the next fast-path probe picks up the latest values.
                 RefreshHealthSnapshot(full: true);
                 job.StatusCode = 200;
                 job.ResponseJson = BuildHealthJson(HealthVitals.FromLive(), live: true);
                 return;
             }
 
-            // 编译反馈闭环——权威地回答"我上次改的脚本编译过了吗"。
-            // 走主线程路径（与 /health 相同），以便读取实时编辑器状态与上次结果，
-            // 后者能撑过一次成功编译所触发的域重载。
+            // Compile-feedback loop closure — authoritatively answers "did the script I just changed compile?".
+            // Goes through the main-thread path (same as /health) so it can read live editor state as well as the
+            // last result, the latter of which survives the domain reload a successful compile triggers.
             if (string.Equals(path, "/compile/status", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "GET")
             {
                 string lastCompilation = CompilationResultService.GetLastCompilationJson();
@@ -2215,9 +2215,9 @@ namespace UnitySkills
                 return;
             }
 
-            // 执行遥测聚合——回答"哪些技能被调用 / 在失败 / 很慢"。
-            // 走主线程路径（与 /health 相同）：读遥测 EditorPref 与 JSONL 文件。
-            // 结果在 SkillTelemetryService 内按 window 缓存 30 秒，以限制磁盘读取量。
+            // Execution telemetry aggregation — answers "which skills are being called / failing / slow".
+            // Goes through the main-thread path (same as /health): reads the telemetry EditorPref and JSONL files.
+            // Results are cached per window for 30 seconds inside SkillTelemetryService, to cap disk reads.
             if (string.Equals(path, "/analytics", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "GET")
             {
                 var analyticsQs = SkillRouter.ParseQueryString(job.QueryString);
@@ -2227,17 +2227,17 @@ namespace UnitySkills
                 return;
             }
 
-            // 取技能清单（可带过滤）。
-            // 请求只有在 HTTP 线程快路径未命中时才会到主线程，也就是说，这一次调用负责构建缓存。
-            // ApplyCacheableGetHeaders 给它打上快路径此后要用的同一个 ETag，
-            // 于是持续发 If-None-Match 的客户端从下一个请求起就能拿到 304。
-            // 空查询的特例已下沉到 SkillRouter：裸请求该选哪个面（/skills 选 brief，
-            // /skills/schema 选 full）如今是与 HTTP 线程快路径共享的同一个决策，
-            // 两者不可能对同一 URL 给出不同答案。
-            // 被拒的 ?category= / ?operation= 值会以错误响应体返回，绝不能当作清单处理：
-            // 用 200 会误报，而给它打 ETag 比不美观严重得多——客户端下一次 If-None-Match 会命中并拿到
-            // 无响应体的 304，等于拒绝消失、查询看起来被接受了。把这些错误拼写挡在 _etagCache 之外，
-            // 同时也避免一串拼写错误把真正的条目挤出缓存。
+            // Fetches the skill manifest (optionally filtered).
+            // A request only reaches the main thread when the HTTP-thread fast path missed, so this call is responsible
+            // for building the cache. ApplyCacheableGetHeaders stamps it with the same ETag the fast path will use from
+            // here on, so a client that keeps sending If-None-Match starts getting 304s from the next request onward.
+            // The empty-query special case has been pushed down into SkillRouter: which tier a bare request should get
+            // (/skills picks brief, /skills/schema picks full) is now the same decision shared with the HTTP-thread fast
+            // path, so the two can never give different answers for the same URL.
+            // A rejected ?category= / ?operation= value comes back as an error response body, and must never be treated
+            // as a manifest: returning 200 would misreport it, and tagging it with an ETag would be far worse than ugly —
+            // the client's next If-None-Match would hit and get a bodiless 304, i.e. the rejection vanishes and the query
+            // looks accepted. Keeping bad spellings out of _etagCache also stops a run of typos evicting genuine entries.
             if (string.Equals(path, "/skills", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "GET")
             {
                 job.ResponseJson = SkillRouter.GetFilteredManifest(job.QueryString, out bool manifestRejected);
@@ -2256,8 +2256,8 @@ namespace UnitySkills
                 return;
             }
 
-            // 会话常量（category/operation 枚举、保留参数名、被跟踪技能列表）
-            // 以及 ?wire=v2 会省略的字段默认值。与上面两个端点一样有缓存与 ETag。
+            // Session constants (category/operation enums, reserved parameter names, the tracked-skills list)
+            // plus the field defaults that ?wire=v2 omits. Cached and ETagged the same as the two endpoints above.
             if (string.Equals(path, "/skills/meta", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "GET")
             {
                 job.StatusCode = 200;
@@ -2266,7 +2266,7 @@ namespace UnitySkills
                 return;
             }
 
-            // 按意图推荐技能
+            // Recommend skills by intent
             if (string.Equals(path, "/skills/recommend", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "GET")
             {
                 job.StatusCode = 200;
@@ -2274,7 +2274,7 @@ namespace UnitySkills
                 return;
             }
 
-            // 技能依赖链
+            // Skill dependency chain
             if (string.Equals(path, "/skills/chain", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "GET")
             {
                 job.StatusCode = 200;
@@ -2282,14 +2282,14 @@ namespace UnitySkills
                 return;
             }
 
-            // 跨技能聚合执行（每步都跑完整的 Execute 流水线）
+            // Cross-skill aggregate execution (each step runs the full Execute pipeline)
             if (string.Equals(path, "/skills/batch", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "POST")
             {
                 HandleSkillsBatchRequest(job);
                 return;
             }
 
-            // 作业查询（轻量 GET，为高频进度轮询绕过 skill router）
+            // Job queries (a light GET, bypasses the skill router for high-frequency progress polling)
             if (job.HttpMethod == "GET" &&
                 (string.Equals(path, "/jobs", StringComparison.OrdinalIgnoreCase) ||
                  path.StartsWith("/jobs/", StringComparison.OrdinalIgnoreCase)))
@@ -2298,13 +2298,13 @@ namespace UnitySkills
                 return;
             }
             
-            // 执行 / DryRun / Plan 技能
+            // Execute / DryRun / Plan a skill
             if (path.StartsWith("/skill/", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "POST")
             {
                 if (RejectIfCompiling(job))
                     return;
 
-                // 取出技能名（保留原始大小写）并校验
+                // Extract the skill name (preserving original casing) and validate it
                 string skillName = job.Path.Substring(7);
                 if (skillName.Contains("/") || skillName.Contains("\\") || skillName.Contains(".."))
                 {
@@ -2359,7 +2359,7 @@ namespace UnitySkills
             }
 
 
-            // 权限系统：模式 + 授权令牌 + 审计日志。
+            // Permission system: mode + grant tokens + audit log.
             if (path.StartsWith("/permission/", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(path, "/permission", StringComparison.OrdinalIgnoreCase))
             {
@@ -2368,7 +2368,7 @@ namespace UnitySkills
             }
 
 
-            // 未匹配任何路由
+            // No route matched
             job.StatusCode = 404;
             job.ResponseJson = SkillErrorResponse.Build(
                 SkillErrorCode.NotFound,
@@ -2411,10 +2411,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 从已解析的查询串中解析 ?mode= / ?dryRun=。任一参数出现但取值无法识别时返回 false
-        /// （并向该作业写入 INVALID_MODE 错误响应）——此种情况下绝不能执行该请求。
-        /// 没有这道守卫，把模式拼错的 agent（如 ?mode=dry_run、?dryRun=1）会以为自己在预览，
-        /// 而服务器已经悄悄真执行了。
+        /// Parses ?mode= / ?dryRun= from the already-parsed query string. Returns false when either parameter is
+        /// present but its value can't be recognized (writes an INVALID_MODE error to the job) — the request must
+        /// never execute in that case. Without this guard, an agent that misspells the mode (e.g. ?mode=dry_run,
+        /// ?dryRun=1) would think it was previewing, while the server had already silently executed for real.
         /// </summary>
         private static bool TryResolveRequestMode(RequestJob job, Dictionary<string, string> qs, string skillName, out SkillRouter.RequestMode mode)
         {
@@ -2456,7 +2456,7 @@ namespace UnitySkills
                     return true;
                 }
                 if (dryRunVal.Equals("false", StringComparison.OrdinalIgnoreCase))
-                    return true; // 显式 false = 真正执行
+                    return true; // Explicit false = execute for real
 
                 job.StatusCode = 400;
                 job.ResponseJson = SkillErrorResponse.Build(
@@ -2477,11 +2477,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 为 POST /skill/{name} 解析 ?diff=。语义化的 sceneDiff 只对真执行有意义，
-        /// 因此在 ?mode=dryRun / ?mode=plan 下被静默忽略（什么都没执行，也就无从对比）。
-        /// 无法识别的取值以 400 拒绝（与 TryResolveRequestMode 一致）而非静默忽略，
-        /// 使把 ?diff 拼错的 agent 不会以为自己要到了 diff 而服务器悄悄省略了它。
-        /// 仅在取值非法时返回 false（并写出 400）；其余情况会设好 captureDiff。
+        /// Parses ?diff= for POST /skill/{name}. A semantic sceneDiff is only meaningful for a real execution, so
+        /// it's silently ignored under ?mode=dryRun / ?mode=plan (nothing executed, so there's nothing to diff).
+        /// An unrecognized value is rejected with 400 (consistent with TryResolveRequestMode) rather than silently
+        /// ignored, so an agent that misspells ?diff doesn't think it got a diff while the server quietly dropped it.
+        /// Only returns false when the value is invalid (and writes a 400); every other case leaves captureDiff set.
         /// </summary>
         private static bool TryResolveDiff(RequestJob job, Dictionary<string, string> qs, string skillName, SkillRouter.RequestMode mode, out bool captureDiff)
         {
@@ -2512,14 +2512,14 @@ namespace UnitySkills
                 return false;
             }
 
-            // diff 只适用于真执行；dryRun/plan 预览没有可对比的对象。
+            // diff only applies to a real execution; dryRun/plan previews have nothing to compare against.
             captureDiff = requested && mode == SkillRouter.RequestMode.Execute;
             return true;
         }
 
         /// <summary>
-        /// Unity 正在编译或有域重载待处理时写出 503 COMPILING 响应，请求被拒则返回 true。
-        /// 由 POST /skill/{name} 与 POST /skills/batch 共用（后者匹配不上 "/skill/" 前缀检查）。
+        /// Writes a 503 COMPILING response when Unity is compiling or a domain reload is pending; returns true if the
+        /// request was rejected. Shared by POST /skill/{name} and POST /skills/batch (which misses the "/skill/" prefix check).
         /// </summary>
         private static bool RejectIfCompiling(RequestJob job)
         {
@@ -2542,12 +2542,12 @@ namespace UnitySkills
             return true;
         }
 
-        // ===== 执行遥测 =====
+        // ===== Execution telemetry =====
 
         /// <summary>
-        /// 把一次 POST /skill/{name} 的结果记入 <see cref="SkillTelemetryService"/>。
-        /// 用轻量字符串探测（不用 JObject.Parse——这里是单技能热路径）判定 ok 并提取 errorCode。
-        /// 完全隔离：遥测失败绝不会改动调用方已算好的业务响应。
+        /// Records the result of a POST /skill/{name} call into <see cref="SkillTelemetryService"/>. Determines ok
+        /// and extracts errorCode with a lightweight string probe (not JObject.Parse — this is the single-skill hot path).
+        /// Fully isolated: a telemetry failure must never alter the business response already computed by the caller.
         /// </summary>
         private static void RecordSkillTelemetry(SkillRouter.RequestMode mode, string skillName, string agentId, string responseJson, long durationMs)
         {
@@ -2563,9 +2563,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 记录 /skills/batch 中一步的结果。批处理循环已持有每步解析好的载荷，
-        /// 故 ok/errorCode 直接传入（无需字符串探测）。技能名为 null 或空白（畸形步骤）时记为 "(malformed)"。
-        /// mode 按 dryRun 标志取 batch_step 或 batch_step_dryRun。
+        /// Records the result of one step in /skills/batch. The batch loop already holds each step's parsed payload,
+        /// so ok/errorCode are passed directly (no string probe needed). A null/blank skill name (malformed step) is
+        /// recorded as "(malformed)". mode is batch_step or batch_step_dryRun, depending on the dryRun flag.
         /// </summary>
         private static void RecordBatchStep(string skillName, string agentId, bool dryRun, bool ok, string errorCode, long durationMs)
         {
@@ -2581,10 +2581,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 通过扫描原始 JSON 字符串来判定技能响应——足够便宜可用于热路径，且能容忍嵌套内容。
-        /// 错误信封（<c>"status":"error"</c>）判为失败，并从中提取 <c>"errorCode"</c>。
-        /// 对 dryRun 预览而言，<c>"valid":false</c> 的结论判为失败并上报 DRYRUN_INVALID
-        /// （未知技能的 dryRun 会返回错误信封，被第一道检查捕获）。
+        /// Determines the skill outcome by scanning the raw JSON string — cheap enough for the hot path and tolerant
+        /// of nested content. An error envelope (<c>"status":"error"</c>) counts as a failure, its <c>"errorCode"</c> is extracted.
+        /// For a dryRun preview, a <c>"valid":false</c> verdict counts as a failure and reports DRYRUN_INVALID
+        /// (a dryRun against an unknown skill returns an error envelope, caught by the first check).
         /// </summary>
         private static void ProbeOutcome(string json, bool isDryRun, out bool ok, out string errorCode)
         {
@@ -2608,9 +2608,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 提取第一个 <c>"errorCode":"..."</c> 字段的值。字段缺失或为 JSON null 时返回 null
-        /// （<c>"errorCode":null</c> 匹配不上带引号的探测模式），
-        /// 于是遥测行记下的是 null errorCode，而不是一个错的值。
+        /// Extracts the value of the first <c>"errorCode":"..."</c> field. Returns null when the field is missing
+        /// or is JSON null (<c>"errorCode":null</c> doesn't match the quoted probe pattern), so the telemetry row
+        /// records a null errorCode rather than a wrong value.
         /// </summary>
         private static string ExtractErrorCode(string json)
         {
@@ -2622,52 +2622,52 @@ namespace UnitySkills
             return end > start ? json.Substring(start, end - start) : null;
         }
 
-        // ===== 跨技能批量执行 =====
+        // ===== Cross-skill batch execution =====
 
         private const int MaxBatchSteps = 50;
 
         /// <summary>
-        /// POST /skills/batch——在同一个主线程作业内顺序执行多个技能，
-        /// 每一步省下一次 HTTP 往返与一次主线程唤醒。
+        /// POST /skills/batch — executes multiple skills sequentially within a single main-thread job,
+        /// saving one HTTP round trip and one main-thread wake-up per step.
         ///
-        /// 请求体：{"steps":[{"skill":"gameobject_create","args":{...}}, ...], "continueOnError":false}
-        /// - 每一步都跑完整的 SkillRouter.Execute 流水线（权限闸门、语义校验、undo、审计），
-        ///   与单独调用 POST /skill/{name} 完全一致；每一步各有自己的 undo 组，不合并。
-        /// - 默认快速失败：第一个失败的步骤即终止批处理，其余步骤上报为 "skipped"。
-        ///   continueOnError=true 时失败步骤被记录、批处理继续。授权类响应
-        ///   （MODE_RESTRICTED / CONFIRMATION_REQUIRED）无论 continueOnError 如何一律中断——
-        ///   它们不可被跳过；该步骤的完整响应（含授权令牌）会被返回，使调用方能走完授权流程
-        ///   并重新提交剩余步骤。
-        /// - 静态 $param 槽位：请求体层级的 "params":{"name":value,...} 对象用于填充某步结构化 args
-        ///   中的占位节点。任意深度上，唯一键为 "$param" 的对象（如 {"$param":"height"}），
-        ///   或恰好形如 {"$param":"name","default":X} 的对象，会被替换为 params[name]（存在时），
-        ///   否则取其 "default"，再否则该步以 SEMANTIC_INVALID 失败（details.param 指出缺失的槽位）。
-        ///   $param 是纯静态替换、不依赖步骤顺序，故在 $ref 之前解析，且 dryRun 与 execute 下行为一致
-        ///   （真实值总是存在——槽位缺失在 dry-run 里同样失败，能在回放前暴露缺口）。
-        ///   $param 与 $ref 相互正交：一个步骤可以同时用两者，但单个节点只能是其中之一，绝不可两者兼有
-        ///   （{"$param":..,"$ref":..} 会被判 SEMANTIC_INVALID）。替换后仍剩下的 $ref 交由下面的 $ref 阶段处理。
-        /// - 跨步骤引用：某步结构化 args 内任意深度上，唯一键为 "$ref" 的对象
-        ///   （如 {"$ref":"$0.instanceId"}）会在该步执行前被替换。"$N" 是某个更早且成功步骤的 0 基下标；
-        ///   点号之后的部分是指向该步已解包结果的 Newtonsoft SelectToken 路径
-        ///   （单独的 "$0" 表示整个结果，"$1.items[0].path" 可深入数组）。
-        ///   无法解析的引用（格式错误 / 下标越界 / 前向引用 / 被引步骤未成功 / 路径无匹配）
-        ///   会让该步以 SEMANTIC_INVALID 失败，随后按常规的快速失败 / continueOnError 规则处理。
-        ///   字符串类型 args 内部的引用不会被解析——只扫描结构化 JSON args。
-        /// - ?mode=dryRun 校验每一步但不执行任何东西，且永不中断，使 agent 能一次调用预览整个序列。
-        ///   dry-run 中 $ref 参数不携带真实值：它们会被从校验体中剥除，只做结构性检查
-        ///   （下标范围、顺序、被引技能声明的 Outputs）；此类步骤在 validation.warnings 中
-        ///   带上 refsValidated 与 findings。不支持 ?mode=plan。
-        /// - ?mode=transactional 让整批要么全成要么全无：未知技能，以及所属技能声明了 MayTriggerReload
-        ///   的步骤，都会被前置以 400 拒绝（域重载会清空编辑器撤销栈，回滚承诺将无法兑现），
-        ///   continueOnError=true 也因自相矛盾被拒。任一步骤失败时——包括授权中断，其授权令牌仍会返回——
-        ///   所有已执行步骤都经 Undo.RevertAllDownToGroup 回退，并被重新标记为 status:"rolled_back"
-        ///   （MutatesAssets 技能的步骤会带上 rollbackReliability:"partial"：
-        ///   AssetDatabase 的磁盘写入并未被撤销栈完全覆盖）。响应随后报 status:"rolled_back" 与 rolledBack:true。
-        ///   transactional 模式可与 $ref 引用自由组合。
-        /// - 两种模式同样可以在请求体中指定（"mode":"dryRun"/"transactional"、"dryRun":true）。
-        ///   这两个键各自独立解析且查询串优先——见 TryApplyBatchBodyMode——
-        ///   响应会回显实际生效的模式（"mode":"dryRun"|"transactional"|"execute"，
-        ///   以及历史遗留的 "dryRun" 布尔量），这是调用方确认四种写法里哪个胜出的唯一途径。
+        /// Request body: {"steps":[{"skill":"gameobject_create","args":{...}}, ...], "continueOnError":false}
+        /// - Each step runs the full SkillRouter.Execute pipeline (permission gate, semantic validation, undo, audit),
+        ///   identical to calling POST /skill/{name} individually; each step gets its own undo group, never merged.
+        /// - Fails fast by default: the first failing step terminates the batch, remaining steps reported "skipped".
+        ///   With continueOnError=true, a failing step is recorded and the batch continues. A grant-related response
+        ///   (MODE_RESTRICTED / CONFIRMATION_REQUIRED) always interrupts regardless of continueOnError — these can't
+        ///   be skipped; the full response (with the grant token) is returned so the caller can resume after granting.
+        /// - Static $param slots: a request-body-level "params":{"name":value,...} object fills placeholder nodes in
+        ///   a step's structured args. At any depth, an object whose only key is "$param" (e.g. {"$param":"height"}),
+        ///   or shaped exactly {"$param":"name","default":X}, is replaced by params[name] when present, else its
+        ///   "default", else that step fails SEMANTIC_INVALID (details.param names the missing slot).
+        ///   $param is purely static and order-independent, resolved before $ref, and behaves the same under dryRun
+        ///   and execute (a missing slot fails in dry-run too, exposing gaps before replay).
+        ///   $param and $ref are mutually orthogonal: a step may use both, but a single node may only be one or the
+        ///   other, never both ({"$param":..,"$ref":..} is SEMANTIC_INVALID). Any $ref left after substitution is
+        ///   handled by the $ref stage below.
+        /// - Cross-step references: at any depth within a step's structured args, an object whose only key is "$ref"
+        ///   (e.g. {"$ref":"$0.instanceId"}) is substituted before that step executes. "$N" is the 0-based index of
+        ///   an earlier, successful step; after the dot is a Newtonsoft SelectToken path into that step's unwrapped
+        ///   result (bare "$0" = whole result, "$1.items[0].path" reaches into arrays).
+        ///   An unresolvable reference (malformed / out-of-range / forward reference / referenced step didn't
+        ///   succeed / path matches nothing) fails that step with SEMANTIC_INVALID, then falls through to the normal
+        ///   fail-fast / continueOnError rules. References inside string-typed args are not resolved — only structured JSON args are scanned.
+        /// - ?mode=dryRun validates every step but executes nothing, and never halts, so an agent can preview the
+        ///   whole sequence in one call. $ref parameters carry no real value during a dry run: they're stripped from
+        ///   the validation body and only get a structural check (index range, ordering, the referenced skill's
+        ///   declared Outputs); such steps carry refsValidated and findings in validation.warnings. ?mode=plan isn't supported.
+        /// - ?mode=transactional makes the whole batch all-or-nothing: an unknown skill, or a step whose skill
+        ///   declares MayTriggerReload, is rejected up front with 400 (a reload clears the undo stack, breaking the
+        ///   rollback promise), and continueOnError=true is rejected as self-contradictory. If any step fails —
+        ///   including a grant interruption, whose token is still returned — every executed step is rolled back via
+        ///   Undo.RevertAllDownToGroup and re-marked status:"rolled_back" (a MutatesAssets step gets
+        ///   rollbackReliability:"partial": AssetDatabase disk writes aren't fully covered by the undo stack). The
+        ///   response then reports status:"rolled_back" and rolledBack:true. transactional composes freely with $ref.
+        /// - Both modes can equally be specified in the body ("mode":"dryRun"/"transactional", "dryRun":true). These
+        ///   two keys are parsed independently, query string wins on conflict — see TryApplyBatchBodyMode — the
+        ///   response echoes the mode that actually took effect ("mode":"dryRun"|"transactional"|"execute", plus the
+        ///   legacy "dryRun" boolean), the only way for the caller to confirm which of the four spellings won.
         /// </summary>
         private static void HandleSkillsBatchRequest(RequestJob job)
         {
@@ -2691,13 +2691,13 @@ namespace UnitySkills
                 return;
             if (dryRun)
             {
-                // 请求体可能到此刻才把它变成预览——上面解析 ?diff= 时依据的还只是查询串里的模式，
-                // 而预览没有可对比的对象。
+                // The request body might only turn this into a preview at this point — the ?diff= parsed above
+                // was based only on the mode in the query string, and a preview has nothing to compare against.
                 captureDiff = false;
-                // 也没有需要围栏或回滚的东西。只有两个键来自不同位置时才会走到这里
-                // （?mode=transactional 加请求体 {"dryRun":true}），因为单个 'mode' 值不可能同时要求两者；
-                // 若继续开着 transactional，ExecuteBatchCore 会开一道 undo 围栏，
-                // 然后在第一个非法步骤处回退到它——为一个什么都没执行的请求去动用户的撤销栈。
+                // Nor is there anything to fence or roll back. This only happens when the two keys come from different
+                // places (?mode=transactional plus body {"dryRun":true}), since one 'mode' value can't request both; if
+                // transactional stayed on, ExecuteBatchCore would open an undo fence and roll back to it on the first
+                // invalid step — touching the user's undo stack for a request that executed nothing.
                 transactional = false;
             }
 
@@ -2740,7 +2740,7 @@ namespace UnitySkills
                 return;
             }
 
-            // 请求体层级的 "params" 用于填充步骤 args 里的 $param 槽位（静态，与模式无关）。
+            // The request-body-level "params" fills $param slots in step args (static, independent of mode).
             JObject batchParams = null;
             if (body.TryGetValue("params", StringComparison.OrdinalIgnoreCase, out var paramsToken) && paramsToken is JObject paramsObj)
                 batchParams = paramsObj;
@@ -2754,11 +2754,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// POST /skills/batch 背后的顺序执行核心：$param 替换、跨步 $ref 解析，
-        /// 然后逐步跑完整的单技能流水线（SkillRouter.Execute——权限闸门、undo、审计），
-        /// 并带上快速失败 / continueOnError / 授权中断语义以及可选的事务回滚。
-        /// 调用方必须传入已校验的非空 steps 数组（transactional 模式还须先跑 RejectTransactionalPrecheck）。
-        /// 以 JObject 返回响应体（{status, executed, failed, results, ...}）。
+        /// The sequential execution core behind POST /skills/batch: $param substitution, cross-step $ref resolution,
+        /// then step-by-step runs of the full single-skill pipeline (SkillRouter.Execute — permission gate, undo,
+        /// audit), with fail-fast / continueOnError / grant-interruption semantics and optional transactional rollback.
+        /// The caller must pass an already-validated, non-empty steps array (transactional mode must also have run
+        /// RejectTransactionalPrecheck). Returns the response body as a JObject ({status, executed, failed, results, ...}).
         /// </summary>
         internal static JObject ExecuteBatchCore(JArray steps, JObject batchParams, bool continueOnError,
             bool dryRun, bool transactional, string agentId, bool captureDiff = false)
@@ -2766,14 +2766,14 @@ namespace UnitySkills
             int txStartGroup = -1;
             if (transactional)
             {
-                // 在撤销时间线上为整批立一道围栏。每一步在 Execute 内部仍会开启（并折叠）自己的 undo 组；
-                // 失败时把这道围栏之上的一切一次性回退。
+                // Plants a fence on the undo timeline for the whole batch. Each step still opens (and collapses)
+                // its own undo group inside Execute; on failure, everything above this fence is rolled back at once.
                 Undo.IncrementCurrentGroup();
                 txStartGroup = Undo.GetCurrentGroup();
             }
 
             var results = new List<JObject>(steps.Count);
-            // 每个成功步骤的已解包结果，供后续步骤通过 $ref 引用。
+            // Each successful step's already-unwrapped result, for later steps to reference via $ref.
             var stepResults = new JToken[steps.Count];
             int executedCount = 0;
             int failedCount = 0;
@@ -2821,9 +2821,9 @@ namespace UnitySkills
                         : rawArgs.ToString(Formatting.None);
                 }
 
-                // ---- 静态 $param 替换（在 $ref 之前解析） ----
-                // 纯静态替换，取自请求体层级的 "params" 对象，因此 dryRun 与 execute 的解析结果一致
-                // （两种情况下真实值都存在）。替换后 args 里仍剩的 $ref 交由下面的 $ref 阶段处理。
+                // ---- Static $param substitution (resolved before $ref) ----
+                // Purely static substitution, drawn from the request-body-level "params" object, so the result is identical
+                // between dryRun and execute (the real value is present in both). Any $ref left after substitution is handled by the $ref stage below.
                 if (argsToken is JContainer)
                 {
                     var paramNodes = FindBatchParamNodes(argsToken, out var paramRefConflict);
@@ -2841,7 +2841,7 @@ namespace UnitySkills
                         }
                         else
                         {
-                            // 在深拷贝上替换；原始请求体永不被改动。
+                            // Substitute on a deep copy; the original request body is never mutated.
                             var paramClone = argsToken.DeepClone();
                             foreach (var paramNode in FindBatchParamNodes(paramClone, out _))
                             {
@@ -2861,7 +2861,7 @@ namespace UnitySkills
                             }
                             if (paramErrorJson == null)
                             {
-                                // 把替换后的 args 送入下面的 $ref 阶段。
+                                // Feed the substituted args into the $ref stage below.
                                 argsToken = paramClone;
                                 argsJson = paramClone.ToString(Formatting.None);
                             }
@@ -2884,11 +2884,11 @@ namespace UnitySkills
                     }
                 }
 
-                // ---- 跨步骤 $ref 引用 ----
-                List<BatchRefNode> refNodes = null;          // dryRun 记账用
-                HashSet<string> strippedRefParams = null;    // dryRun：已从校验体中剥除的参数
-                bool wholeArgsFromRef = false;               // dryRun：args 根节点本身就是一个 $ref
-                List<string> refWarnings = null;             // dryRun：结构性检查发现
+                // ---- Cross-step $ref references ----
+                List<BatchRefNode> refNodes = null;          // for dryRun bookkeeping
+                HashSet<string> strippedRefParams = null;    // dryRun: params already stripped from the validation body
+                bool wholeArgsFromRef = false;               // dryRun: the args root node is itself a $ref
+                List<string> refWarnings = null;             // dryRun: structural-check findings
                 if (argsToken is JContainer)
                 {
                     if (dryRun)
@@ -2900,10 +2900,10 @@ namespace UnitySkills
                             foreach (var refNode in refNodes)
                                 ValidateBatchRefStructural(refNode.RefString, i, steps, refWarnings);
 
-                            // dry-run 期间引用不携带真实值。持有 $ref 的参数会被从校验体中移除——
-                            // 把占位对象留在里面只会产生 TYPE_MISMATCH 噪音。由此带来的
-                            // MISSING_PARAM 与语义缺口在 DryRun 返回后统一校正
-                            // （见 AdjustDryRunPayloadForRefs）。
+                            // References carry no real value during a dry run. A parameter holding a $ref is
+                            // removed from the validation body — leaving the placeholder object in would just
+                            // produce TYPE_MISMATCH noise. The resulting MISSING_PARAM and semantic gaps are
+                            // corrected uniformly after DryRun returns (see AdjustDryRunPayloadForRefs).
                             strippedRefParams = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                             foreach (var refNode in refNodes)
                             {
@@ -2928,7 +2928,7 @@ namespace UnitySkills
                     }
                     else
                     {
-                        // 在深拷贝上依据先前步骤的结果解析；原始请求体永不被改动。
+                        // Resolve on a deep copy using earlier steps' results; the original request body is never mutated.
                         var argsClone = argsToken.DeepClone();
                         var cloneRefs = FindBatchRefNodes(argsClone);
                         if (cloneRefs.Count > 0)
@@ -2985,10 +2985,10 @@ namespace UnitySkills
                             catch { batchDiff.HadWritableSteps = true; }
                         }
                         stepJson = SkillRouter.Execute(stepSkillName, argsJson);
-                        // 所有步骤共用同一个 POST 作业，因此 ProcessJobQueue 里的逐请求缓存失效
-                        // 不会在步骤之间执行——没有这句，某一步就找不到同批中更早步骤创建的对象。
-                        // ReadOnly 步骤按契约无副作用，不可能让缓存过期，故跳过；
-                        // 其余每一步——包括名字解析不到已知技能的那种——仍会触发失效。
+                        // Every step shares the same POST job, so the per-request cache invalidation in ProcessJobQueue doesn't run
+                        // between steps — without this line, a step couldn't find an object created earlier in the same batch.
+                        // A ReadOnly step is side-effect-free by contract and can't stale the cache, so it's skipped; every other
+                        // step — including one whose name doesn't resolve to a known skill — still triggers invalidation.
                         if (!SkillRouter.TryGetSkill(stepSkillName, out var stepSkill) || !stepSkill.ReadOnly)
                             GameObjectFinder.InvalidateCache();
                         SkillsLogger.LogAgent(agentId, $"{stepSkillName} (batch {i + 1}/{steps.Count})");
@@ -3013,13 +3013,13 @@ namespace UnitySkills
 
                 if (dryRun)
                 {
-                    // $ref 参数已从校验体中剥除——必须在读取其 'valid' 结论之前先校正载荷
-                    // （过滤 missingParams、降级语义错误、附上 refsValidated）。
+                    // $ref parameters have already been stripped from the validation body — the payload must be corrected before
+                    // reading its 'valid' verdict (filter missingParams, downgrade semantic errors, attach refsValidated).
                     if (refNodes != null && refNodes.Count > 0)
                         AdjustDryRunPayloadForRefs(stepPayload, refNodes, strippedRefParams, wholeArgsFromRef, refWarnings);
 
-                    // DryRun 响应带 status:"dryRun" 与 valid:bool；未知技能返回 status:"error"。
-                    // 校验失败绝不会中止 dry-run 批处理。
+                    // A DryRun response carries status:"dryRun" and valid:bool; an unknown skill returns status:"error".
+                    // A validation failure never halts a dry-run batch.
                     bool stepValid = string.Equals(stepStatus, "dryRun", StringComparison.OrdinalIgnoreCase) &&
                         stepPayload["valid"]?.Type == JTokenType.Boolean && stepPayload["valid"].ToObject<bool>();
                     if (stepValid)
@@ -3041,8 +3041,8 @@ namespace UnitySkills
                     failedCount++;
                     results.Add(new JObject { ["index"] = i, ["skill"] = stepSkillName, ["status"] = "error", ["error"] = stepPayload });
 
-                    // 授权类响应绝不可跳过：调用方必须走完授权/确认流程，
-                    // 所以即便 continueOnError=true，批处理也在此停下。上面的完整载荷携带授权令牌。
+                    // A grant-related response must never be skipped: the caller has to complete the grant/confirmation flow,
+                    // so the batch stops here even if continueOnError=true. The full payload above carries the grant token.
                     string errorCode = stepPayload["errorCode"]?.ToString();
                     bool authorizationRequired =
                         string.Equals(errorCode, "MODE_RESTRICTED", StringComparison.OrdinalIgnoreCase) ||
@@ -3054,8 +3054,8 @@ namespace UnitySkills
                     continue;
                 }
 
-                // status:"success"（或任何非错误形状）——解包内层结果；
-                // 条目层级的 status 字段已表达了成功。
+                // status:"success" (or any non-error shape) — unwrap the inner result;
+                // the entry-level status field has already expressed success.
                 executedCount++;
                 var unwrappedResult = stepPayload.TryGetValue("result", out var innerResult) ? innerResult : stepPayload;
                 stepResults[i] = unwrappedResult;
@@ -3074,8 +3074,8 @@ namespace UnitySkills
             bool rolledBack = false;
             if (transactional && failedCount > 0)
             {
-                // 全成或全无：任何失败（含授权中断——上面失败步骤的条目仍原样携带授权令牌）
-                // 都会回退自批处理围栏以来执行的每一步，且不留下重做条目。
+                // All-or-nothing: any failure (including a grant interruption — the failed step's entry still carries the
+                // grant token as-is) rolls back every step executed since the batch fence, leaving no redo entries.
                 Undo.RevertAllDownToGroup(txStartGroup);
                 GameObjectFinder.InvalidateCache();
                 rolledBack = true;
@@ -3087,8 +3087,8 @@ namespace UnitySkills
                         continue;
                     entry["status"] = "rolled_back";
                     revertedSteps++;
-                    // AssetDatabase 的磁盘写入并未被撤销栈完全覆盖——
-                    // 把这类回滚标为 partial，而不是过度承诺。
+                    // AssetDatabase's disk writes aren't fully covered by the undo stack —
+                    // mark this kind of rollback as partial rather than over-promising.
                     string entrySkill = entry["skill"]?.ToString();
                     if (!string.IsNullOrEmpty(entrySkill) &&
                         SkillRouter.TryGetSkill(entrySkill, out var entryInfo) && entryInfo.MutatesAssets)
@@ -3102,10 +3102,10 @@ namespace UnitySkills
             var response = new JObject
             {
                 ["status"] = failedCount == 0 ? "completed" : (transactional ? "rolled_back" : "partial"),
-                // 回显的是实际生效的模式，而不是某一个键要求的模式。?mode= 与 ?dryRun=/请求体 "dryRun"
-                // 各自独立解析，且都可能来自 URL 或载荷（见 TryApplyBatchBodyMode），
-                // 所以"我这四种写法里到底哪个胜出"是调用方光看自己的请求推不出来的——
-                // 而一个以为自己发了预览的调用方，必须能看见它确实拿到了预览。
+                // Echoes back the mode that actually took effect, not whichever single key requested it. ?mode= and
+                // ?dryRun=/body "dryRun" are each parsed independently, either can come from the URL or payload (see
+                // TryApplyBatchBodyMode), so "which of my four spellings won" can't be derived from the request alone —
+                // a caller who thinks it sent a preview must be able to see that it actually got one.
                 ["mode"] = dryRun ? "dryRun" : (transactional ? "transactional" : "execute"),
                 ["dryRun"] = dryRun,
             };
@@ -3122,20 +3122,20 @@ namespace UnitySkills
             return response;
         }
 
-        /// <summary>跨整个步骤序列聚合出的一个 $param 名（供宏库自省用）。</summary>
+        /// <summary>A $param name aggregated across the whole step sequence (for macro-library introspection).</summary>
         internal sealed class BatchParamDeclaration
         {
             public string Name;
-            public bool HasDefault;      // 引用该名字的每个节点都带内联 default
-            public JToken DefaultValue;  // 见到的第一个内联 default（仅用于展示）
+            public bool HasDefault;      // every node referencing this name carries an inline default
+            public JToken DefaultValue;  // the first inline default seen (for display only)
         }
 
         /// <summary>
-        /// 聚合整个步骤序列中声明的 $param 槽位，按名字为键、以首次出现顺序排列。
-        /// 只有引用某名字的每一个节点都带内联 "default" 时，该名字才算有默认值——
-        /// 哪怕只有一个裸的 {"$param":"x"} 槽位，该值就是必填的。
-        /// 畸形槽位（$param 名不是字符串）在此跳过，由执行阶段逐步骤上报。
-        /// 与执行阶段一致，不扫描字符串类型的 args。
+        /// Aggregates the $param slots declared across the whole step sequence, keyed by name, in first-seen order.
+        /// A name only counts as having a default if every node that references it carries an inline "default" —
+        /// even a single bare {"$param":"x"} slot makes that value required.
+        /// A malformed slot ($param name isn't a string) is skipped here, and reported per-step at execution time.
+        /// Consistent with the execution stage, doesn't scan string-typed args.
         /// </summary>
         internal static List<BatchParamDeclaration> CollectBatchParamDeclarations(JArray steps)
         {
@@ -3191,10 +3191,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 为 /skills/batch 解析 ?mode= / ?dryRun=。批处理接受 dryRun/transactional
-        /// （单技能请求接受的是 dryRun/plan——见 TryResolveRequestMode，它继续拒绝 'transactional'，
-        /// 以保证其 INVALID_MODE 的 validValues 准确）。
-        /// 任何无法识别的取值都返回 false（并写出错误响应）。
+        /// Parses ?mode= / ?dryRun= for /skills/batch. Batch accepts dryRun/transactional
+        /// (a single-skill request accepts dryRun/plan — see TryResolveRequestMode, which keeps rejecting
+        /// 'transactional' so its INVALID_MODE validValues stays accurate).
+        /// Any unrecognized value returns false (and writes an error response).
         /// </summary>
         private static bool TryResolveBatchRequestMode(RequestJob job, Dictionary<string, string> qs, out bool dryRun, out bool transactional)
         {
@@ -3240,7 +3240,7 @@ namespace UnitySkills
                     return true;
                 }
                 if (dryRunVal.Equals("false", StringComparison.OrdinalIgnoreCase))
-                    return true; // 显式 false = 真正执行
+                    return true; // Explicit false = execute for real
 
                 job.StatusCode = 400;
                 job.ResponseJson = SkillErrorResponse.Build(
@@ -3261,10 +3261,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// POST /skills/batch 认识的顶层请求体键的完整集合，以及它会读取的查询键的完整集合
-        /// （见 TryResolveBatchRequestMode 与 TryResolveDiff）。
-        /// 其余一律拒绝而非忽略：被静默丢掉的键，正是 agent 以为自己要了预览、或要了异步执行，
-        /// 结果两样都没拿到的成因。
+        /// The full set of top-level request-body keys POST /skills/batch recognizes, and the full set of query
+        /// keys it reads (see TryResolveBatchRequestMode and TryResolveDiff).
+        /// Anything else is rejected rather than ignored: a silently-dropped key is exactly what causes an agent
+        /// to believe it requested a preview, or requested async execution, and got neither.
         /// </summary>
         private static readonly string[] BatchBodyParams = { "steps", "params", "continueOnError", "dryRun", "mode" };
         private static readonly string[] BatchQueryParams = { "mode", "dryRun", "diff" };
@@ -3280,7 +3280,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 拒绝 /skills/batch 上无法识别的查询参数（400 UNKNOWN_PARAM）。请求被拒则返回 true。
+        /// Rejects an unrecognized query parameter on /skills/batch (400 UNKNOWN_PARAM). Returns true if rejected.
         /// </summary>
         private static bool RejectUnknownBatchQueryParams(RequestJob job, Dictionary<string, string> qs)
         {
@@ -3316,10 +3316,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 拒绝 /skills/batch 上无法识别的顶层请求体键（400 UNKNOWN_PARAM），
-        /// 与 CollectUnknownParameters 对单技能 args 的做法一致。
-        /// 它在 'steps' 检查之前执行，使像 "step" 这样的拼写错误被报成"未知键"本身，
-        /// 而不是报成缺少 'steps'。请求被拒则返回 true。
+        /// Rejects an unrecognized top-level request-body key on /skills/batch (400 UNKNOWN_PARAM), consistent
+        /// with what CollectUnknownParameters does for single-skill args.
+        /// This runs before the 'steps' check, so a typo like "step" is reported as an "unknown key" itself,
+        /// rather than as a missing 'steps'. Returns true if the request was rejected.
         /// </summary>
         private static bool RejectUnknownBatchBodyKeys(RequestJob job, JObject body)
         {
@@ -3356,10 +3356,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 针对 agent 实践中真正会写错的那几个 /skills/batch 键给出定向提示：
-        /// 单数形式的 "step"、把单个步骤自己的字段提到顶层、把 transactional 当布尔量，
-        /// 以及 runAsync——本端点从来没有这个参数，因为它把每一步都放在同一个主线程作业里跑。
-        /// 没有具体可说的内容时返回 null。
+        /// Gives targeted hints for the handful of /skills/batch keys agents actually get wrong: the singular "step",
+        /// promoting a step's own fields to the top level, treating transactional as a boolean, and runAsync — this
+        /// endpoint never had that parameter, since it runs every step in the same main-thread job.
+        /// Returns null when there's nothing specific to say.
         /// </summary>
         private static string BatchParamHint(string name)
         {
@@ -3386,9 +3386,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 读取一个客户端可能加了引号的布尔量。JSON 的 true/false 原样接受，
-        /// 字符串 "true"/"false" 也会解析；其余一律失败，使调用方能上报 TYPE_MISMATCH
-        /// 而不是静默取默认值。
+        /// Reads a boolean that the client may have quoted. JSON true/false is accepted as-is, and the strings
+        /// "true"/"false" are also parsed; anything else fails, so the caller can report TYPE_MISMATCH instead of
+        /// silently falling back to a default.
         /// </summary>
         private static bool TryReadBatchBool(JToken token, out bool value)
         {
@@ -3425,22 +3425,22 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 在查询串已解析出的结果之上，应用请求体层级的 "mode"/"dryRun"。
+        /// Applies the request-body-level "mode"/"dryRun" on top of what the query string already resolved.
         ///
-        /// <para>"mode" 与 "dryRun" 是两个独立的键，各自独立解析、各自查询串优先。
-        /// 过去用同一个"查询串是否已作决定"的标志同时把关两者，结果 URL 里的
-        /// <c>?mode=transactional</c> 会一声不响地丢掉请求体中的 <c>{"dryRun":true}</c>，
-        /// 把调用方要求预览的那批真执行了——对预览而言这是最糟的失败，且在响应里完全看不出来。</para>
+        /// <para>"mode" and "dryRun" are two independent keys, each parsed independently, query string wins on
+        /// conflict. In the past one "has the query already decided" flag gated both, so a URL's
+        /// <c>?mode=transactional</c> would silently drop a body <c>{"dryRun":true}</c>, actually executing a batch
+        /// the caller meant to preview — the worst possible failure for a preview, invisible in the response.</para>
         ///
-        /// <para>优先级依次为：同一个键上，URL 胜过载荷；同一位置内，"mode" 胜过 "dryRun"
-        /// （查询串一侧就是靠 TryResolveBatchRequestMode 的提前返回实现这一点的）。
-        /// 跨两个键时，dryRun 是单调的——任何存活下来的显式 <c>dryRun:true</c> 都使该请求成为预览，
-        /// 而 <c>dryRun:false</c> 永远不会取消 <c>mode:"dryRun"</c>，
-        /// 因为"别从这个键判定为预览"和"真执行"不是同一句话。
-        /// 偏向预览是唯一一个最坏情况仅为浪费一次调用的方向。</para>
+        /// <para>Priority order: for the same key, the URL wins over the payload; within the same slot, "mode"
+        /// wins over "dryRun" (on the query-string side, this is what TryResolveBatchRequestMode's early return
+        /// already implements). Across the two keys, dryRun is monotonic — any surviving explicit <c>dryRun:true</c>
+        /// makes the request a preview, and <c>dryRun:false</c> never cancels <c>mode:"dryRun"</c>, because "don't
+        /// decide preview from this key" and "execute for real" aren't the same statement.
+        /// Biasing toward preview is the only direction where the worst case is just a wasted call.</para>
         ///
-        /// <para>即便在优先级竞争中落败，取值仍然照样校验，所以拼写错误绝不会被吞掉。
-        /// 取值或类型非法时返回 false（并写出 400）。</para>
+        /// <para>Even a value that loses the priority contest is still validated, so a typo is never swallowed.
+        /// Returns false (and writes a 400) on an invalid value or type.</para>
         /// </summary>
         private static bool TryApplyBatchBodyMode(RequestJob job, JObject body, Dictionary<string, string> qs,
             ref bool dryRun, ref bool transactional)
@@ -3495,7 +3495,7 @@ namespace UnitySkills
                     return false;
                 }
 
-                // 只有 URL 没写 'mode' 时，这个键才归请求体所有。
+                // This key only belongs to the request body when the URL didn't write 'mode'.
                 if (!queryOwnsMode)
                 {
                     bodyModeApplied = true;
@@ -3514,8 +3514,8 @@ namespace UnitySkills
                     return false;
                 }
 
-                // 请求体层级已有 'mode' 为该位置发过声时跳过；那属于同一位置内的优先级，
-                // 不构成忽略 URL 自身 dryRun 键的理由。
+                // Skip if a request-body-level 'mode' already spoke for this slot; that's priority within the
+                // same slot, not a reason to ignore the URL's own dryRun key.
                 if (!queryOwnsDryRun && !bodyModeApplied)
                     dryRun = dryRun || bodyDryRun;
             }
@@ -3524,17 +3524,17 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 查询串是否为该键携带了可用取值——与 ?mode= / ?dryRun= 解析器所用的
-        /// "存在且非空白"判定相同，因此 "?dryRun=" 在两处都算作"调用方没作决定"。
+        /// Whether the query string carries a usable value for this key — the same "present and non-blank" test
+        /// the ?mode= / ?dryRun= parsers use, so "?dryRun=" counts as "the caller didn't decide" in both places.
         /// </summary>
         private static bool HasQueryValue(Dictionary<string, string> qs, string key) =>
             qs.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value);
 
         /// <summary>
-        /// 事务批处理靠编辑器撤销栈承诺"全成或全无"，因此任何会破坏该承诺的东西都被前置拒绝
-        /// （400 SEMANTIC_INVALID），而不是等到执行途中才失败：未知/畸形步骤、
-        /// 可能触发域重载的技能（重载会清空撤销栈），以及 continueOnError=true
-        /// （事务按定义就是快速失败）。整批被拒则返回 true。
+        /// A transactional batch relies on the editor's undo stack to promise "all or nothing", so anything that
+        /// would break that promise is rejected up front (400 SEMANTIC_INVALID) rather than failing mid-execution:
+        /// unknown/malformed steps, a skill that might trigger a domain reload (wipes the undo stack), and
+        /// continueOnError=true (a transaction is fail-fast by definition). Returns true if the batch was rejected.
         /// </summary>
         private static bool RejectTransactionalPrecheck(RequestJob job, JArray steps, bool continueOnError)
         {
@@ -3585,13 +3585,13 @@ namespace UnitySkills
             return true;
         }
 
-        // ===== 静态 $param 替换（批处理） =====
+        // ===== Static $param substitution (batch) =====
 
         /// <summary>
-        /// 在某步 args 内找到的 {"$param":"name"} / {"$param":"name","default":X} 槽位。
-        /// 当 $param 的值不是 JSON 字符串时 ParamName 为 null（在解析阶段报为畸形）。
-        /// 与 BatchRefNode 不同，这里没有 TopLevelParam：$param 在任何模式下都携带真实值，
-        /// 因此不会从 dry-run 校验体中剥除任何东西。
+        /// A {"$param":"name"} / {"$param":"name","default":X} slot found within a step's args.
+        /// ParamName is null when $param's value isn't a JSON string (reported as malformed at execution time).
+        /// Unlike BatchRefNode, there's no TopLevelParam here: $param carries a real value under every mode, so
+        /// nothing needs to be stripped from the dry-run validation body.
         /// </summary>
         private sealed class BatchParamNode
         {
@@ -3602,10 +3602,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 一个对象节点是参数节点，当且仅当 "$param" 是它唯一的属性（裸槽位），
-        /// 或它恰好只有 "$param" + "default" 两个属性（带兜底的槽位）。
-        /// 仅仅在众多键中含有 "$param" 的对象属于载荷数据，保持不动——与 IsBatchRefNode 一致。
-        /// 当 $param 的值不是 JSON 字符串时 paramName 为 null。
+        /// An object node is a param node if and only if "$param" is its sole property (a bare slot), or it has
+        /// exactly two properties, "$param" + "default" (a slot with a fallback). An object merely containing
+        /// "$param" among other keys is payload data and is left alone — consistent with IsBatchRefNode.
+        /// paramName is null when $param's value isn't a JSON string.
         /// </summary>
         private static bool IsBatchParamNode(JObject obj, out string paramName, out bool hasDefault, out JToken defaultValue)
         {
@@ -3642,9 +3642,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 收集某步 args 中任意深度上的每一个 $param 槽位。
-        /// 若遇到同时带 "$param" 与 "$ref" 的节点（一个节点只能是其中之一，绝不可两者兼有），
-        /// 把它记入 paramRefConflict 供调用方以 SEMANTIC_INVALID 拒绝，并在该节点处停止搜索。
+        /// Collects every $param slot at any depth within a step's args.
+        /// When a node carries both "$param" and "$ref" (a node can only be one or the other, never both), it's
+        /// recorded in paramRefConflict for the caller to reject with SEMANTIC_INVALID, and the search stops there.
         /// </summary>
         private static List<BatchParamNode> FindBatchParamNodes(JToken argsRoot, out JObject paramRefConflict)
         {
@@ -3694,9 +3694,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 解析单个槽位的值：批处理的 "params" 对象持有该名字时以它为准（区分大小写），
-        /// 否则取节点的内联 "default"，再否则该步以 SEMANTIC_INVALID 失败（"未提供且无默认值"）。
-        /// $param 名不是字符串则判为畸形。
+        /// Resolves a single slot's value: if the batch's "params" object holds that name, it wins (case-sensitive),
+        /// otherwise the node's inline "default" is used, otherwise that step fails with SEMANTIC_INVALID
+        /// ("not provided and no default"). A $param name that isn't a string is judged malformed.
         /// </summary>
         private static bool TryResolveBatchParam(BatchParamNode node, JObject batchParams, out JToken value, out string reason)
         {
@@ -3722,12 +3722,12 @@ namespace UnitySkills
             return false;
         }
 
-        // ===== 跨步骤 $ref 引用（批处理） =====
+        // ===== Cross-step $ref references (batch) =====
 
         /// <summary>
-        /// 在某步 args 内找到的 {"$ref":"$N.path"} 节点。当 $ref 的值不是 JSON 字符串时
-        /// RefString 为 null（在解析阶段报为畸形）。
-        /// TopLevelParam 是子树中包含该节点的那个 args 属性；节点本身就是 args 根时为 null。
+        /// A {"$ref":"$N.path"} node found within a step's args. RefString is null when $ref's value isn't a JSON
+        /// string (reported as malformed at execution time).
+        /// TopLevelParam is the args property whose subtree contains this node; null when the node is itself the args root.
         /// </summary>
         private sealed class BatchRefNode
         {
@@ -3737,8 +3737,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 一个对象节点是引用，当且仅当 "$ref" 是它唯一的属性；
-        /// 仅仅在众多键中含有 "$ref" 的对象属于载荷数据，保持不动。
+        /// An object node is a reference if and only if "$ref" is its sole property;
+        /// an object that merely contains "$ref" among many other keys is payload data and is left alone.
         /// </summary>
         private static bool IsBatchRefNode(JObject obj, out string refString)
         {
@@ -3792,8 +3792,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 解析 "$N"、"$N.path" 或 "$N[…]"——N 是 0 基的步骤下标，
-        /// 其余部分是指向该步已解包结果的 Newtonsoft SelectToken 路径。
+        /// Parses "$N", "$N.path", or "$N[…]" — N is the 0-based step index, and the rest is a Newtonsoft
+        /// SelectToken path into that step's already-unwrapped result.
         /// </summary>
         private static bool TryParseBatchRef(string refString, out int stepIndex, out string selectPath, out string parseError)
         {
@@ -3818,7 +3818,7 @@ namespace UnitySkills
             }
 
             if (i == refString.Length)
-                return true; // "$N"——整个已解包结果
+                return true; // "$N" — the whole unwrapped result
 
             char next = refString[i];
             if (next == '.')
@@ -3840,9 +3840,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 依据已执行步骤的已解包结果解析单个引用。
-        /// 以下情况失败（并给出结构化原因）：引用格式错误、下标超出本批范围、
-        /// 前向引用（N >= 当前步）、被引步骤未成功完成，或 SelectToken 路径无匹配。
+        /// Resolves a single reference against the already-executed steps' unwrapped results.
+        /// Fails (with a structured reason) when: the reference is malformed, the index is out of range for this
+        /// batch, it's a forward reference (N >= current step), the referenced step didn't succeed, or the SelectToken path matches nothing.
         /// </summary>
         private static bool TryResolveBatchRef(string refString, JToken[] stepResults, int currentIndex, int stepCount,
             out JToken resolved, out string reason, out int referencedStep)
@@ -3896,9 +3896,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 对单个引用做 dry-run 结构性校验（此时没有真实值可解析）：
-        /// 下标在范围内且指向更早的步骤、被引技能已知、路径首段出现在被引技能声明的 Outputs 中。
-        /// 所有发现都只是警告——Outputs 元数据可能不完整，而 dry-run 批处理从不中止。
+        /// Does a dry-run structural validation of a single reference (no real value to resolve yet): the index is
+        /// in range and points to an earlier step, the referenced skill is known, and the path's first segment
+        /// appears among the referenced skill's declared Outputs. Findings are only warnings — Outputs metadata may be incomplete, and a dry-run batch never halts.
         /// </summary>
         private static void ValidateBatchRefStructural(string refString, int currentIndex, JArray steps, List<string> warnings)
         {
@@ -3930,10 +3930,10 @@ namespace UnitySkills
                 return;
             var outputs = SkillRouter.GetEffectiveOutputs(refSkill);
             if (outputs == null || outputs.Length == 0)
-                return; // 没有声明 Outputs 可供比对
+                return; // No declared Outputs to compare against
             string firstSegment = FirstSelectTokenSegment(selectPath);
             if (firstSegment == null)
-                return; // "[0]…" 是对结果根做下标访问，没有名字可校验
+                return; // "[0]…" indexes into the result root — there's no name to validate
 
             foreach (var output in outputs)
             {
@@ -3952,10 +3952,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 在某步的 $ref 参数被从校验体剥除之后，对其 DryRun 载荷做后处理：
-        /// 丢掉因剥除而产生的 MISSING_PARAM 条目、把该步的 semanticErrors 降级为警告
-        /// （语义检查是在没有引用值的情况下跑的，无论判过还是判不过都只是猜测）、
-        /// 按剩下的内容重算 'valid'，并附上 refsValidated 让调用方看清哪些参数只受了结构性检查。
+        /// Post-processes a step's DryRun payload after its $ref parameters are stripped from the validation body:
+        /// drops the MISSING_PARAM entries stripping produced, downgrades that step's semanticErrors to warnings
+        /// (the check ran without a reference value, so pass/fail is only a guess), recomputes 'valid' from what's
+        /// left, and attaches refsValidated so the caller can see which parameters only got a structural check.
         /// </summary>
         private static void AdjustDryRunPayloadForRefs(JObject stepPayload, List<BatchRefNode> refNodes,
             HashSet<string> strippedParams, bool wholeArgsFromRef, List<string> refWarnings)
@@ -3973,7 +3973,7 @@ namespace UnitySkills
             stepPayload["refsValidated"] = refsValidated;
 
             if (!(stepPayload["validation"] is JObject validation))
-                return; // 错误载荷（未知技能等）——已附上 refsValidated，无需再校正
+                return; // An error payload (unknown skill, etc.) — refsValidated is already attached, nothing more to correct
 
             var addedWarnings = new List<string>(refWarnings);
 
@@ -4017,15 +4017,15 @@ namespace UnitySkills
         private static bool IsNullOrEmptyJArray(JToken token) => !(token is JArray arr) || arr.Count == 0;
 
         /// <summary>
-        /// 把 GET /jobs 与 GET /jobs/{id}[/logs] 直接路由到 BatchPersistence，不经过 skill router。
-        /// 专为高频进度轮询设计：调用方每 200-500 毫秒 ping 一次 GET /jobs/{id} 即可拿到最新快照。
+        /// Routes GET /jobs and GET /jobs/{id}[/logs] directly to BatchPersistence, bypassing the skill router.
+        /// Designed for high-frequency progress polling: a caller pings GET /jobs/{id} every 200-500ms to get the latest snapshot.
         /// </summary>
         private static void HandleJobsRequest(RequestJob job)
         {
             string path = job.Path ?? string.Empty;
             var qs = SkillRouter.ParseQueryString(job.QueryString);
 
-            // GET /jobs  → 列表
+            // GET /jobs  → list
             if (string.Equals(path, "/jobs", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(path, "/jobs/", StringComparison.OrdinalIgnoreCase))
             {
@@ -4142,7 +4142,7 @@ namespace UnitySkills
                 return;
             }
 
-            // GET /jobs/{id}（默认——完整状态快照）
+            // GET /jobs/{id} (default — full status snapshot)
             int recentCount = 10;
             if (qs.TryGetValue("recentCount", out var rc) && int.TryParse(rc, out var rcp))
                 recentCount = Mathf.Clamp(rcp, 1, 200);
@@ -4182,7 +4182,7 @@ namespace UnitySkills
             }, _jsonSettings);
         }
 
-        // ===== 权限系统 =====
+        // ===== Permission system =====
 
         private static void HandlePermissionRequest(RequestJob job)
         {
@@ -4235,7 +4235,7 @@ namespace UnitySkills
                 }
                 if (string.Equals(path, "/permission/revoke", StringComparison.OrdinalIgnoreCase))
                 {
-                    // 已弃用别名：转发到 allowlist/remove 逻辑，响应中带 deprecated=true。
+                    // Deprecated alias: forwards to the allowlist/remove logic, response carries deprecated=true.
                     HandlePermissionRevoke(job);
                     return;
                 }
@@ -4291,14 +4291,14 @@ namespace UnitySkills
             }
 
             job.StatusCode = 200;
-            // 字段重命名：`granted` → `allowlist`。`granted` 字段作为兼容别名保留一个版本，
-            // 下个 minor 版本会移除——客户端应迁移到 `allowlist` 字段。
+            // Field rename: `granted` → `allowlist`. The `granted` field is kept as a compatibility alias for one
+            // version, and will be removed in the next minor version — clients should migrate to the `allowlist` field.
             job.ResponseJson = JsonConvert.SerializeObject(new
             {
                 mode = SkillsModeManager.ModeToWire(SkillsModeManager.CurrentMode),
                 panelApprovalRequired = SkillsModeManager.PanelApprovalRequired,
                 allowlist = allowlist,
-                granted = allowlist, // 已弃用别名——下个小版本移除
+                granted = allowlist, // deprecated alias — removed in the next minor version
                 pending = pending.Select(p => new
                 {
                     token = p.Token,
@@ -4313,7 +4313,7 @@ namespace UnitySkills
                 counts = new
                 {
                     allowlist = allowlist.Count,
-                    granted = allowlist.Count, // 已弃用别名
+                    granted = allowlist.Count, // deprecated alias
                     pending = pending.Count,
                 },
                 deprecated = new
@@ -4339,8 +4339,8 @@ namespace UnitySkills
                 return;
             }
 
-            // args 字段可选——方案 B 优先用 entry 缓存的原 argsJson。
-            // body 携带 args 时按现有规则参与哈希校验；未携带时直接读 entry 缓存（TryPeekArgsJson）。
+            // The args field is optional — Approach B prefers the entry's cached original argsJson. When the body
+            // carries args, it participates in hash validation under the existing rules; else the entry cache is read directly (TryPeekArgsJson).
             bool argsProvided = body.TryGetValue("args", StringComparison.OrdinalIgnoreCase, out var argsToken)
                                 && argsToken != null && argsToken.Type != JTokenType.Null;
             string argsJson;
@@ -4350,27 +4350,27 @@ namespace UnitySkills
             }
             else
             {
-                // 直接从 entry 取缓存的原 argsJson —— 既对零参 skill 工作，也对带参 skill 工作，
-                // 让 AI 调 grant 时只需提供 token，符合"一步执行"语义。
-                // entry 不存在/过期时回退 "{}"，让下方 TryGrantAndReturnArgs 返回 Invalid 给出明确错误。
+                // Read the cached original argsJson directly from the entry — works for both zero-arg and parameterized
+                // skills, so an AI calling grant only needs the token, matching "one-step execution" semantics. Falls back
+                // to "{}" when the entry doesn't exist/has expired, so TryGrantAndReturnArgs below returns Invalid with a clear error.
                 argsJson = SkillsModeManager.TryPeekArgsJson(token) ?? "{}";
             }
 
-            // 注意：HandlePermissionGrant 由 ProcessJobQueue 在主线程 (EditorApplication.update) 调用，
-            // 所以 TryGrantAndReturnArgs 设置的 ThreadStatic one-shot 令牌、以及后续的 SkillRouter.Execute
-            // 都在同一个主线程内执行——线程安全前提成立，无需额外 dispatch。
+            // Note: HandlePermissionGrant is called by ProcessJobQueue on the main thread (EditorApplication.update), so
+            // the ThreadStatic one-shot token set by TryGrantAndReturnArgs, and the subsequent SkillRouter.Execute, both
+            // run on that same main thread — the thread-safety precondition holds, no extra dispatch needed.
             var (outcome, cachedSkill, cachedArgs) = SkillsModeManager.TryGrantAndReturnArgs(skill, token, argsJson);
             switch (outcome)
             {
                 case GrantOutcome.Granted:
                 {
-                    // 方案 B 一步执行：one-shot 令牌已由 TryGrantAndReturnArgs 设置在当前线程，
-                    // SkillRouter.Execute → CheckAccess 会立刻消费该令牌、单次放行。
+                    // Approach B one-step execution: the one-shot token was already set on the current thread by
+                    // TryGrantAndReturnArgs, and SkillRouter.Execute → CheckAccess consumes it immediately for a single pass.
                     //
-                    // 但消费点不是必经之路：Execute 的四道参数校验（UnknownParam / MissingParam /
-                    // TypeMismatch / SemanticInvalid）都在权限门之前早退，任何一道早退——以及这里
-                    // catch 到的异常——都会让令牌留在主线程上，被后续同名 skill 的请求带着别的参数
-                    // 命中。finally 无条件清除是唯一能覆盖全部路径的位置。
+                    // But the consumption point isn't guaranteed to be reached: Execute's four parameter-validation checks
+                    // (UnknownParam / MissingParam / TypeMismatch / SemanticInvalid) all early-return before the permission
+                    // gate, and any of those — or an exception caught here — would leave the token on the main thread, to be
+                    // picked up by a later request for the same-named skill with different args. finally's unconditional clear covers every path.
                     string execJson;
                     try
                     {
@@ -4393,7 +4393,7 @@ namespace UnitySkills
 
                     SkillsAuditLog.Append("grant_executed", new { skill = cachedSkill, token });
 
-                    // 尝试把 execJson 内联为 JSON 对象，方便上层直接读字段；失败兜底为字符串。
+                    // Try to inline execJson as a JSON object so callers upstream can read fields directly; falls back to a string on failure.
                     object resultPayload;
                     try { resultPayload = JObject.Parse(execJson); }
                     catch
@@ -4469,8 +4469,8 @@ namespace UnitySkills
             bool all = body.TryGetValue("all", StringComparison.OrdinalIgnoreCase, out var allToken)
                 && allToken.Type == JTokenType.Boolean && allToken.ToObject<bool>();
 
-            // 已弃用别名：转发到 AllowlistRemove / ClearAllowlist。响应带 `deprecated: true`，
-            // 便于客户端迁移到 /permission/allowlist/remove。
+            // Deprecated alias: forwards to AllowlistRemove / ClearAllowlist. The response carries `deprecated: true`,
+            // to help clients migrate to /permission/allowlist/remove.
             if (all)
             {
                 int before = SkillsModeManager.AllowlistSkills.Count;
@@ -4509,7 +4509,7 @@ namespace UnitySkills
             }, _jsonSettings);
         }
 
-        // ===== 白名单端点 =====
+        // ===== Allowlist endpoints =====
 
         private static void HandlePermissionAllowlistList(RequestJob job)
         {
@@ -4636,7 +4636,7 @@ namespace UnitySkills
                 return string.Empty;
             if (argsToken == null || argsToken.Type == JTokenType.Null) return string.Empty;
             if (argsToken.Type == JTokenType.String) return argsToken.ToString();
-            // 去掉 _confirm 后重新序列化，使哈希与 SkillRouter 侧的归一化一致。
+            // Strip _confirm and re-serialize, so the hash matches SkillRouter-side normalization.
             if (argsToken is JObject obj)
             {
                 var clone = (JObject)obj.DeepClone();
@@ -4671,7 +4671,7 @@ namespace UnitySkills
 
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                // 1. 用裸 TCP 做带重试的可达性测试（完全绕开 .NET HTTP 客户端栈）
+                // 1. Reachability test with raw TCP and retries (completely bypasses the .NET HTTP client stack)
                 var hosts = new[] { "localhost", "127.0.0.1" };
                 foreach (var host in hosts)
                 {
@@ -4684,7 +4684,7 @@ namespace UnitySkills
 
                     for (int attempt = 1; attempt <= 3 && !success && _isRunning; attempt++)
                     {
-                        if (attempt > 1) Thread.Sleep(attempt * 1500); // 退避 3 秒、4.5 秒
+                        if (attempt > 1) Thread.Sleep(attempt * 1500); // Back off 3s, 4.5s
 
                         foreach (var address in connectAddresses)
                         {
@@ -4708,7 +4708,7 @@ namespace UnitySkills
                                 else if (response.Length > 0)
                                 {
                                     var firstLine = response.Split('\n')[0].Trim();
-                                    // 打警告之前，先在其他回环地址上重试 localhost。
+                                    // Before warning, retry localhost against other loopback addresses first.
                                     if (string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) &&
                                         firstLine.IndexOf("400", StringComparison.OrdinalIgnoreCase) >= 0)
                                     {
@@ -4739,7 +4739,7 @@ namespace UnitySkills
                     }
                 }
 
-                // 2. 端口扫描：报告 8090-8100 中被占用的端口
+                // 2. Port scan: report which ports in 8090-8100 are occupied
                 var occupied = new List<string>();
                 for (int p = 8090; p <= 8100; p++)
                 {
@@ -4779,7 +4779,7 @@ namespace UnitySkills
                 }
                 catch
                 {
-                    // 退回到下面这些已知的回环地址。
+                    // Fall back to the known loopback addresses below.
                 }
 
                 addresses.Sort((left, right) =>

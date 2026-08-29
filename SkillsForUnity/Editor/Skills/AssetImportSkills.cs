@@ -7,7 +7,7 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// 资源导入技能：重新导入与导入器配置。
+    /// Asset import skills: reimporting and importer configuration.
     /// </summary>
     public static class AssetImportSkills
     {
@@ -128,10 +128,11 @@ namespace UnitySkills
             if (importer == null)
                 return new { success = false, error = $"Not a texture or not found: {assetPath}" };
 
-            // 两个枚举都必须在第一次写入前解析完：任一解析失败若被放过，会置 changed=true
-            // 并触发一次什么都没改的 SaveAndReimport。别名表用的是共享表，保证本技能与
-            // texture_set_settings、texture_set_settings_batch 接受完全相同的词汇
-            // （Inspector 显示名与 CLR 枚举名都收）。
+            // Both enums must be fully parsed before the first write: letting either parse failure
+            // slip through would set changed=true and trigger a SaveAndReimport that changes nothing.
+            // The alias table is shared, so this skill accepts exactly the same vocabulary as
+            // texture_set_settings / texture_set_settings_batch (both Inspector display names and
+            // CLR enum names are accepted).
             if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterCompression>(
                     compression, "compression", SkillParamUtil.TextureCompressionAliases,
                     out var parsedCompression, out var compressionError))
@@ -335,17 +336,18 @@ namespace UnitySkills
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null) return new { error = $"Not a texture: {assetPath}" };
 
-            // 必须在下面强制 textureType=Sprite 之前校验：否则非法 spriteMode 会让资源
-            // 已被转成 Sprite，而请求的模式被静默丢弃。
+            // Must be validated before forcing textureType=Sprite below: otherwise an invalid spriteMode
+            // would leave the asset already converted to Sprite while the requested mode is silently dropped.
             if (!SkillParamUtil.TryParseOptionalEnum<SpriteImportMode>(spriteMode, "spriteMode", out var parsedSpriteMode, out var spriteModeError))
                 return spriteModeError;
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
-            // spriteMode=None 意为"这张贴图没有 sprite"，此时不能强制 textureType=Sprite：
-            // 那会产出一个 Sprite 类型却没有 Sprite 子对象的资源，谁都引用不了，
-            // Inspector 里也退不回去。其余模式仍隐含 Sprite 类型，这是调用方依赖的便利行为。
+            // spriteMode=None means "this texture has no sprite", so textureType=Sprite must not be forced
+            // in that case: doing so would produce an asset typed Sprite with no Sprite sub-object, which
+            // nothing can reference and which can't be reverted from the Inspector either. Every other mode
+            // still implies the Sprite type, which is a convenience callers rely on.
             if (parsedSpriteMode != SpriteImportMode.None)
                 importer.textureType = TextureImporterType.Sprite;
             if (parsedSpriteMode.HasValue)

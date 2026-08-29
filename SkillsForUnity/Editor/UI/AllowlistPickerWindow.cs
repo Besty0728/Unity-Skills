@@ -9,8 +9,8 @@ using UnityEngine.UIElements;
 namespace UnitySkills
 {
     /// <summary>
-    /// 多选弹窗：批量把 skill 加入白名单。UXML 模板驱动，i18n 文案。
-    /// 支持搜索过滤、按 Category 折叠分组、整组一键勾选；提交时若含高危项合并一次确认。
+    /// Multi-select popup: bulk-add skills to the allowlist. UXML template driven, i18n copy.
+    /// Supports search filtering, foldout grouping by Category, one-click select-all per group; merges into a single confirmation when the submission includes high-risk items.
     /// </summary>
     public class AllowlistPickerWindow : EditorWindow
     {
@@ -20,7 +20,7 @@ namespace UnitySkills
         private string _search = string.Empty;
         private readonly HashSet<string> _selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // 按 category 分组的候选；CreateGUI 时计算，搜索/勾选变更按需局部刷新。
+        // Candidates grouped by category; computed in CreateGUI, refreshed locally on demand when search/selection changes.
         private List<IGrouping<string, SkillRouter.SkillInfo>> _grouped;
 
         private ToolbarSearchField _searchField;
@@ -39,7 +39,7 @@ namespace UnitySkills
 
         private void CreateGUI()
         {
-            // 先加载候选 —— GetWindow 触发 CreateGUI 时 _grouped 必须就绪，避免首次显示 "All in allowlist" 假象。
+            // Load candidates first — _grouped must be ready by the time GetWindow triggers CreateGUI, to avoid a false "All in allowlist" flash on first show.
             LoadCandidates();
 
             var uss = AssetDatabase.LoadAssetAtPath<StyleSheet>(UssPath);
@@ -86,7 +86,7 @@ namespace UnitySkills
             UpdateFooter();
         }
 
-        // 点击预填勾选预置项，用户可继续叠加自选，再走统一的 OnConfirmAdd 提交。
+        // Clicking pre-checks the preset items; the user can still add more on top, then submits through the unified OnConfirmAdd.
         private void BuildPresetBar()
         {
             var root = rootVisualElement.Q<VisualElement>("picker-root");
@@ -114,7 +114,7 @@ namespace UnitySkills
             root.Insert(root.IndexOf(searchBar) + 1, bar);
         }
 
-        // 把「辅助代码编写包」中"当前可选"的 skill 预填到勾选集；已在白名单的跳过。
+        // Pre-fill the selection set with the "currently available" skills from the "Coding Assist" preset bundle; skip ones already in the allowlist.
         private void SelectCodingAssistPreset()
         {
             var candidateNames = new HashSet<string>(
@@ -133,7 +133,7 @@ namespace UnitySkills
             RebuildList();
             UpdateFooter();
 
-            // UpdateFooter 已设"已选 N 个"；若有已在白名单/缺失项，补充说明。
+            // UpdateFooter already set "N selected"; append extra notes if there are already-allowlisted or missing items.
             if ((already > 0 || missing > 0) && _summaryLabel != null)
             {
                 var extra = new List<string>();
@@ -191,7 +191,7 @@ namespace UnitySkills
                 var foldout = new Foldout
                 {
                     text = $"{group.Key}  ({visible.Count}){headerSuffix}",
-                    value = hasFilter, // 搜索时默认展开，方便看结果
+                    value = hasFilter, // Expanded by default while searching, to make results easy to see
                 };
                 foldout.AddToClassList("picker-group");
 

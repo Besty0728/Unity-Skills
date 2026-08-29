@@ -8,17 +8,19 @@ using NUnit.Framework;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 载荷契约与体积红线。所有断言直接调 <see cref="SkillRouter"/> 在进程内构建串，
-    /// 所以量到的字节数就是 HTTP 层真正发出去的字节数（两条路径共用同一份缓存串）。
+    /// Payload contract and size red lines. Every assertion calls <see cref="SkillRouter"/> directly to
+    /// build the string in-process, so the byte count measured is exactly what the HTTP layer actually
+    /// sends out (both paths share the same cached string).
     ///
-    /// 这里刻意不写任何技能条数字面量：注册数随安装的可选包（Cinemachine / Addressables /
-    /// HybridCLR …）变化，干净 CI 工程上和本地开发工程上永远不是同一个数。凡涉及计数的断言
-    /// 一律从运行时同源推导。
+    /// This file deliberately never writes a skill-count literal: the registered count varies with which
+    /// optional packages are installed (Cinemachine / Addressables / HybridCLR ...), and is never the same
+    /// number on a clean CI project versus a local dev project. Any assertion involving a count is always
+    /// derived from the same runtime source.
     /// </summary>
     [TestFixture]
     public class SkillsPayloadContractTests
     {
-        // v2 条目省略的四个会话常量块 —— scoped v2 载荷里一个都不该出现。
+        // The four session-constant blocks a v2 entry omits — none of these should appear in a scoped v2 payload.
         private static readonly string[] SessionConstantKeys =
         {
             "categories", "operationTypes", "reservedBodyParameters", "workflowTrackedSkills"
@@ -27,9 +29,10 @@ namespace UnitySkills.Tests.Core
         private SurfaceProfileKind _savedProfile;
 
         /// <summary>
-        /// 档位按 Unity 版本全局共享（EditorPrefs，不分工程），所以这套测试对体积/形状的断言
-        /// 必须先把档位钉在 full 上，否则本机残留的 guide 档会让「v2 全量 &lt; v1 全量」之类的
-        /// 比较建立在两个不同的技能集合上。teardown 还原原值。
+        /// The profile is shared globally per Unity version (EditorPrefs, not per project), so this suite's
+        /// size/shape assertions must first pin the profile to full — otherwise a leftover guide profile on
+        /// this machine would build a comparison like "v2 full &lt; v1 full" on top of two different skill
+        /// sets. Teardown restores the original value.
         /// </summary>
         [SetUp]
         public void SetUp()
@@ -48,7 +51,7 @@ namespace UnitySkills.Tests.Core
 
         private static JObject Manifest(string query) => JObject.Parse(SkillRouter.GetFilteredManifest(query));
 
-        // ---------- 裸 surface 判定 ----------
+        // ---------- Bare surface verdict ----------
 
         [Test]
         public void BareSkillsRequest_ServesBriefDirectory()
@@ -78,8 +81,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void UnrecognizedQueryKeyAlone_StillServesBrief()
         {
-            // 缓存破坏用的 nonce、客户端埋点参数等都不该把请求推离 brief，也不该各自铸一个
-            // 永久的全量缓存条目。
+            // A cache-busting nonce, client-side tracking parameters, and the like must not push the
+            // request away from brief, nor mint their own permanent full-manifest cache entry.
             Assert.That(SkillRouter.GetFilteredManifest("?nonce=abc"),
                 Is.EqualTo(SkillRouter.GetBrief()),
                 "只带未识别参数的请求必须仍落在 brief 缓存串上。");
@@ -88,9 +91,10 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void WireV2Alone_StillServesBrief_NotASlimFullManifest()
         {
-            // 陷阱位：?wire=v2 是形状选择器，不缩小技能集，所以它单独出现时裸 /skills 仍然落在
-            // brief 上（brief 没有 per-skill flags 可瘦身，两个 wire 共用一份缓存与 ETag）。
-            // 想要瘦身版全量必须是 ?full=1&wire=v2 —— 这也是 briefHint 里写的那一句。
+            // The trap here: ?wire=v2 is a shape selector, it doesn't narrow the skill set, so on its own a
+            // bare /skills request still lands on brief (brief has no per-skill flags to slim down, so both
+            // wires share one cache entry and ETag).
+            // Getting the slimmed-down full manifest requires ?full=1&wire=v2 — which is exactly what briefHint says.
             Assert.That(SkillRouter.GetFilteredManifest("?wire=v2"), Is.EqualTo(SkillRouter.GetBrief()),
                 "?wire=v2 单独出现不该把裸 /skills 变回全量。");
             Assert.That(JObject.Parse(SkillRouter.GetFilteredManifest("?wire=v2"))["manifestType"]?.ToString(),
@@ -147,7 +151,7 @@ namespace UnitySkills.Tests.Core
             }
         }
 
-        // ---------- ?wire=v2 契约 ----------
+        // ---------- ?wire=v2 contract ----------
 
         [Test]
         public void ScopedV2_DropsSessionConstants_AndPointsAtMeta()
@@ -171,7 +175,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void V1Scoped_StillCarriesSessionConstants()
         {
-            // v2 的收益必须来自 v2 自己；v1 的形状一个字节都不能动。
+            // v2's gains must come from v2 itself; v1's shape must not change by a single byte.
             var category = FirstPopulatedCategory();
             var v1 = Manifest($"?category={category}");
 
@@ -194,9 +198,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// <c>?full=1</c> 是形状选择器，不缩小技能集，所以它挂在一个已经 scoped 的查询后面
-        /// 不该改变任何东西：同样的字节，同样的 ETag。客户端拿着 If-None-Match 在这两个 URL
-        /// 之间来回时必须都能命中 304。
+        /// <c>?full=1</c> is a shape selector, it doesn't narrow the skill set, so attaching it after an
+        /// already-scoped query should change nothing: same bytes, same ETag. A client swapping between
+        /// these two URLs with If-None-Match must get a 304 either way.
         /// </summary>
         [Test]
         public void RedundantFullFlagOnScopedQuery_ChangesNothingObservable()
@@ -214,12 +218,13 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// summary 的 v2 条目必须与同技能的 full v2 条目报同一套 flags / supportsDryRun。
+        /// <summary>
+        /// A v2 summary entry must report the same flags / supportsDryRun as the full v2 entry for the same skill.
         ///
-        /// 这是 v2 独有的约束：v1 的 summary 两个字段都不带，而 v2 每份载荷都带 defaults，
-        /// defaults 说「flags 里没有就是 false」。所以一个不带 flags 的 v2 summary 条目不读作
-        /// 「影响未知」，而读作「这个技能什么都不改、dryRun 也没问题」—— 对一个写技能而言，
-        /// 那是恰好相反的结论。
+        /// This is a v2-only constraint: v1's summary carries neither field, while every v2 payload carries
+        /// defaults, and defaults says "absent from flags means false." So a v2 summary entry with no flags
+        /// doesn't read as "effects unknown" — it reads as "this skill changes nothing, dryRun is safe too" —
+        /// which for a write skill is exactly the opposite conclusion.
         /// </summary>
         [Test]
         public void SummaryV2Entries_AgreeWithFullV2Entries_OnFlagsAndDryRun()
@@ -311,8 +316,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void V2Flags_AgreeWithV1Booleans_AcrossWholeRegistry()
         {
-            // 上面那条按 category 抽查，这条覆盖全量：flags 是 v2 唯一的有损嫌疑点，
-            // 进程内跑一遍很便宜，没有理由只抽样。
+            // The test above spot-checks by category; this one covers everything: flags are v2's only
+            // suspect for data loss, running it in-process is cheap, and there's no reason to only sample.
             var v1Skills = ((JArray)Manifest("?full=1")["skills"]).Cast<JObject>()
                 .ToDictionary(s => s["name"].ToString(), s => s, StringComparer.Ordinal);
             var v2Skills = ((JArray)Manifest("?full=1&wire=v2")["skills"]).Cast<JObject>();
@@ -352,8 +357,9 @@ namespace UnitySkills.Tests.Core
                 .Select(s => s["name"].ToString())
                 .ToArray();
 
-            // 数量不写死（可选包会变），但至少得有一个 —— 这个 flag 存在的理由就是标注那些
-            // 会把主线程连同 HTTP 队列一起冻住几秒的同步技能。
+            // The count isn't hardcoded (it varies with optional packages), but there has to be at least
+            // one — the whole reason this flag exists is to flag synchronous skills that freeze the main
+            // thread, and the HTTP queue along with it, for seconds at a time.
             Assert.That(longRunning, Is.Not.Empty,
                 "没有任何技能带 longRunning，标注很可能整批丢了。");
 
@@ -396,18 +402,23 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// meta 的稳定性契约。原先断言的是「三个档位逐字节相同」，那条不能再要求了 ——
-        /// workflowTrackedSkills 必须按档位过滤（tracked 技能按定义都是写技能，正是档位收走的那一半，
-        /// 不过滤就等于把用户明确撤下的名字照发），所以整份载荷不可能跨档相同。
+        /// meta's stability contract. This used to assert "byte-identical across all three profiles", and
+        /// that can no longer be required — workflowTrackedSkills must be filtered per profile (tracked
+        /// skills are by definition write skills, exactly the half a profile revokes, so not filtering them
+        /// would mean handing out names the user explicitly revoked), so the whole payload can never be
+        /// identical across profiles.
         ///
-        /// 剩下的性质才是 agent 真正依赖的，这里逐条钉住：
+        /// What's left is what an agent actually depends on, pinned down here point by point:
         /// <list type="number">
-        /// <item><b>同档字节稳定</b>：清缓存重建后仍是同一份字节，否则 ETag 会无缘无故漂移。</item>
-        /// <item><b>workflowTrackedSkills ⊆ 当前档位可见技能集</b>：泄名是这次过滤存在的唯一理由。</item>
-        /// <item><b>除 workflowTrackedSkills 外，所有块跨档逐值相同</b>：这是原断言防漂移的部分 ——
-        /// 挡住有人把 surfaceProfile（或任何别的活值）塞回 meta。</item>
+        /// <item><b>Byte-stable within a profile</b>: rebuilding after a cache clear yields the same bytes,
+        /// otherwise the ETag would drift for no reason.</item>
+        /// <item><b>workflowTrackedSkills is a subset of the current profile's visible skill set</b>:
+        /// leaking a name is the only reason this filtering exists.</item>
+        /// <item><b>Every block other than workflowTrackedSkills is value-identical across profiles</b>:
+        /// this is the part of the original assertion that still guards against drift —
+        /// blocking anyone from smuggling surfaceProfile (or any other live value) back into meta.</item>
         /// </list>
-        /// 档位本身的唯一权威仍是 <c>/health</c>；meta 里不放这个字段。
+        /// The profile itself remains solely authoritative via <c>/health</c>; this field is not placed in meta.
         /// </summary>
         [Test]
         public void MetaEndpoint_IsStablePerProfile_AndCarriesNoOtherLiveValue()
@@ -456,7 +467,7 @@ namespace UnitySkills.Tests.Core
                 "把它放进一份「取一次、整个会话复用」的文档里，就是让 agent 缓存一个会过期的值。");
         }
 
-        // ---------- 体积红线 ----------
+        // ---------- Size red lines ----------
 
         [Test]
         public void V2FullManifest_IsSmallerThanV1()
@@ -479,7 +490,7 @@ namespace UnitySkills.Tests.Core
                 $"({100.0 * brief / v1:F1}%)。");
         }
 
-        // ---------- dryRun 授权预览形状 ----------
+        // ---------- dryRun authorization preview shape ----------
 
         [Test]
         public void DryRun_CarriesAuthorizationBlockWithFullShape()
@@ -521,8 +532,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void DryRun_DoesNotConsumeOneShotGrantToken()
         {
-            // 预览必须是纯读：CheckAccess 会吃掉线程的 one-shot 令牌，所以
-            // BuildAuthorizationPreview 刻意绕开它。这条测试守住那个「刻意」。
+            // A preview must be pure read: CheckAccess consumes the thread's one-shot grant token, so
+            // BuildAuthorizationPreview deliberately routes around it. This test guards that "deliberately".
             var savedMode = SkillsModeManager.CurrentMode;
             try
             {
@@ -545,7 +556,8 @@ namespace UnitySkills.Tests.Core
         // ---------- helpers ----------
 
         /// <summary>
-        /// 任取一个当前档位下有技能的分类 —— 名字从注册表现取，所以可选包装没装都成立。
+        /// Picks any category that has skills under the current profile — the name is read live from the
+        /// registry, so this holds whether or not any optional package is installed.
         /// </summary>
         private static string FirstPopulatedCategory()
         {
@@ -573,9 +585,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 按 v2 自己声明的省略规则把一个 v2 条目还原成 v1 条目形状：flags 反推六个布尔、
-        /// riskLevel 缺省补 "low"、supportsDryRun 缺省补 true、被 NullValueHandling 吃掉的
-        /// 成员补回显式 null。longRunning 不参与 —— v1 从来不带这个字段，v2 是净增。
+        /// Reconstructs a v2 entry into v1-entry shape following v2's own declared omission rules: flags is
+        /// expanded back into six booleans, riskLevel defaults to "low" when absent, supportsDryRun defaults
+        /// to true when absent, and members swallowed by NullValueHandling are restored as explicit null.
+        /// longRunning doesn't participate — v1 never carries this field, it's a pure v2 addition.
         /// </summary>
         private static JObject ReconstructV1Entry(JObject v2)
         {
@@ -598,7 +611,7 @@ namespace UnitySkills.Tests.Core
                 ["mutatesAssets"] = flags.Contains("mutatesAssets"),
                 ["mayTriggerReload"] = flags.Contains("mayTriggerReload"),
                 ["mayEnterPlayMode"] = flags.Contains("mayEnterPlayMode"),
-                // 缺席即默认：supportsDryRun 只在 false 时出现，riskLevel 只在非 low 时出现。
+                // Absence means default: supportsDryRun only appears when false, riskLevel only appears when it isn't low.
                 ["supportsDryRun"] = v2["supportsDryRun"]?.Value<bool>() ?? true,
                 ["riskLevel"] = v2["riskLevel"]?.ToString() ?? "low",
                 ["requiresPackages"] = v2["requiresPackages"] ?? JValue.CreateNull(),
@@ -622,8 +635,8 @@ namespace UnitySkills.Tests.Core
                     ["name"] = parameter["name"],
                     ["type"] = parameter["type"],
                     ["required"] = parameter["required"],
-                    // v2 用 NullValueHandling.Ignore 序列化，所以 defaultValue 为 null 的参数
-                    // 整个键都不在；v1 写显式 null。
+                    // v2 serializes with NullValueHandling.Ignore, so a parameter whose defaultValue is null
+                    // has the whole key missing; v1 writes an explicit null.
                     ["defaultValue"] = parameter["defaultValue"] ?? JValue.CreateNull(),
                 });
             }

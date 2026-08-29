@@ -2,6 +2,29 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.7.1] - 2026-08-29
+
+> **QFramework 支持 + 全仓注释英化** —— 本版两件事：(1) 新增对 [QFramework](https://github.com/liangxiegame/QFramework)（凉鞋的 Unity 框架，MIT）的双轨支持——20 个 REST 技能（`qframework` 模块）与一套源码锚定的架构设计指导（`qframework-design` advisory 模块，8 份中文文档）。QFramework 没有 UPM 包，只能以 unitypackage 或单文件形式装进 `Assets/`，因此检测完全走反射锚类型：未安装时零编译期影响、不报错，除 `qframework_get_status` 外统一返回 `MISSING_PACKAGE`；技能总数 785 → **805**，分类 53 → 54，模块文档 80 → 82（54 REST + 28 advisory）。(2) 把仓库源码注释的语言从中文切换为英文（144 个文件、约 5,420 行），并同步 `CONTRIBUTING.md` 与 `agent.md` 的注释语言规范。全部改动经无头编译（0 error / 41 既有 warning）与 641 项 EditMode 测试（0 失败）验证。
+
+### Added
+
+- **QFramework REST 模块（20 个技能）** — 架构层代码生成（Architecture / System / Model / Command / Utility / Query，含 batch 变体，同名文件拒绝覆盖）、ViewController 绑定代码生成、UIKit 面板代码生成、UIKit 项目设置读写、ResKit 的 AssetBundle 标记（幂等封装，含 batch）与标记列表、ResKit 构建选项（SimulationMode / append-hash / auto-generate-class）、AssetBundle 构建与清理、架构实现类扫描（`IArchitecture` / `ISystem` / `IModel` / `ICommand` / `IQuery` / `IController`）、QFramework 内置 API 文档特性查询、LocaleKit 编辑器语言与语言定义配置。
+- **`qframework-design` advisory 模块（8 份中文文档）** — 四层架构职责与通用规则、CQRS 与 BindableProperty、事件工具三选一与两套 IOC 容器辨析、CodeGenKit + UIKit 工作流、ResKit 资源方案、ActionKit + SingletonKit + AudioKit、数据结构类 Kit。每条规则锚定 QFramework 源码或官方 Doc.md 行号，并标注了官方教程尚未同步的破坏性变更（`RegisterSystem` / `RegisterModel` / `RegisterUtility` 自 2026-08-12 起返回注册实例而非 void）。
+- **`SkillCategory.QFramework` 与 60 条三语技能描述词条** — 新分类登记后 `GET /skills/schema?category=QFramework` 自动生效。
+
+### Changed
+
+- **源码注释语言切换为英文** — 144 个文件约 5,420 行中文注释译为英文，仅保留 7 行确有必要的中文（逐字引用中文界面文案、上游第三方中文提示串、中文关键词映射表键名）。字符串字面量中的中文属产品输出，未改动；受字体图集扫描的 `Editor/UI/**` 与 `Localization.cs` 非 ASCII 字符净减 1392、新增 0，满足"只减不增"约束。
+- **注释语言规范入册** — `.github/CONTRIBUTING.md` 的 C# 与 Python 两条 Code Style 条款改为英文注释并写明例外；`agent.md` 新增「注释语言」一节，说明该规范只约束注释、不涉及字符串字面量，并记录字体图集扫描的例外。
+- **13 处硬编码中文 API 响应文案改为英文** — 覆盖 Cinemachine 缺包与 Splines 版本提示、包安装/移除的瞬时不可用提示、Timeline 路径语义校验提示、测试脚本创建提示；与同一响应对象里既有的英文字段保持一致。三语 `L(en, zh, ru)` 本地化变体、中文意图映射字典与错误分类器关键词属功能数据，未改动。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `2.7.1`。
+
+### Fixed
+
+- **`MODE_RESTRICTED` 的 Dialog 通道 hint 中英混杂并泄露内部代号** — 发给 AI 调用方的提示原文夹带中文与内部设计代号「v1.9 方案 B」，已改写为与相邻 Panel 通道一致的纯英文表述。
+- **`.github/CONTRIBUTING.md` 功能模块计数漂移** — 该处长期写作 55，与其余全部锚点的 54 不一致，已修正。
+- **`skills/cinemachine/SKILL.md` 引用的错误文案失准** — 文档举例引用的缺包提示仍是旧的中文原文，已同步为现行英文文案。
+
 ## [2.7.0] - 2026-08-23
 
 > **载荷 v2 与三档 Surface Profile + 全 785 技能真机彻查修复** —— 本版分三部分：(1) 交互载荷体系升级（裸 `/skills` 默认精简目录、`?wire=v2` 紧凑格式、新增会话常量端点 `/skills/meta`、三档 Surface Profile 场景免打扰）；(2) 对抗复审修复轮（枚举静默、面板部分写入、档位绕行等 3 个 P0 + 8 个 P1）；(3) 对全部 785 个技能（含 Cinemachine/YooAsset/Netcode/XR/HybridCLR/ProBuilder/ShaderGraph 等可选包）逐一真机实测后统一修复约 40 个"声称成功但无效果 / 静默无操作 / 误导性错误"类缺陷。新增技能 `light_get_properties`，技能总数 784 → **785**。发布前最后一轮把此前只能验证"缺包/未配置时优雅报错"的两组可选包技能升级为真装真测：DOTween Pro 1.0.381（21 技能）与已初始化的 Addressables 4.0.1（8 技能）在活编辑器逐技能实测并修复所有新发现缺陷；785 技能全量冒烟 0 失败，双版本（6000.3 / 2022.3）EditMode 全量回归 0 失败。

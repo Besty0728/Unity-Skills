@@ -5,10 +5,12 @@ namespace UnitySkills.Tests.Core
     [TestFixture]
     public class ServerAutoStartTests
     {
-        // expected 传字符串而不是 AutoStartReason：该枚举是 internal，即便有
-        // InternalsVisibleTo，把它放进 public 方法的签名也会触发 CS0051
-        // （参数类型可访问性低于方法），让整个测试程序集编译失败。
-        // 枚举是纯内部状态机，不值得为测试改成 public，故在方法体内比对名字。
+        // expected is passed as a string rather than AutoStartReason: that enum is internal, and
+        // even with InternalsVisibleTo, putting it in a public method's signature would trigger
+        // CS0051 (a parameter type's accessibility is lower than the method's), failing the whole
+        // test assembly to compile.
+        // The enum is a purely internal state machine, not worth making public just for testing,
+        // so this compares names by string inside the method body instead.
         [TestCase(true, false, false, nameof(SkillsHttpServer.AutoStartReason.DomainReload))]
         [TestCase(false, true, false, nameof(SkillsHttpServer.AutoStartReason.EditorLaunch))]
         [TestCase(false, false, true, nameof(SkillsHttpServer.AutoStartReason.CliColdStart))]

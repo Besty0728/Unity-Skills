@@ -52,7 +52,7 @@ namespace UnitySkills.Tests.Core
 
             var firstError = (JObject)semanticErrors[0];
             Assert.That(firstError["field"]?.ToString(), Is.EqualTo("path"));
-            StringAssert.Contains("不是 Assets 资源路径", firstError["error"]?.ToString());
+            StringAssert.Contains("not an Assets resource path", firstError["error"]?.ToString());
         }
 
         private static void AssertSuggestion(JArray unknownParams, string parameterName, string expectedSuggestion)

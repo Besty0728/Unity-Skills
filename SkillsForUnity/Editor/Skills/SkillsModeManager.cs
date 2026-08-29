@@ -11,8 +11,8 @@ using UnityEditor;
 namespace UnitySkills
 {
     /// <summary>
-    /// <see cref="SkillsModeManager.TryGrantDetailed"/> 的结果。
-    /// 让 HTTP 处理器能区分"等待面板批准"（Panel 通道的正常状态）与"令牌无效/过期"（错误）。
+    /// Result of <see cref="SkillsModeManager.TryGrantDetailed"/>.
+    /// Lets the HTTP handler distinguish "waiting for panel approval" (a normal state for the Panel channel) from "token invalid/expired" (an error).
     /// </summary>
     public enum GrantOutcome
     {
@@ -22,9 +22,9 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 待处理授权请求的对外（UI 可见）视图。
-    /// 由 <see cref="SkillsModeManager.PendingGrantRequests"/> 返回；
-    /// UI 面板把它们渲染成带"批准/拒绝"按钮的卡片。
+    /// External (UI-visible) view of a pending grant request.
+    /// Returned by <see cref="SkillsModeManager.PendingGrantRequests"/>;
+    /// the UI panel renders these as cards with "Approve/Deny" buttons.
     /// </summary>
     public sealed class GrantRequest
     {
@@ -32,39 +32,39 @@ namespace UnitySkills
         public string SkillName;
         public string ArgsSummary;
         public DateTime ExpiresAtUtc;
-        /// <summary>用户在面板上点过"批准"后为 true（仅 Panel 通道）。</summary>
+        /// <summary>True once the user has clicked "Approve" on the panel (Panel channel only).</summary>
         public bool ApprovedByPanel;
-        /// <summary>"dialog" 或 "panel"——REST 响应用的 wire 字符串。</summary>
+        /// <summary>"dialog" or "panel" — the wire string used in REST responses.</summary>
         public string Channel;
     }
 
     /// <summary>
-    /// Skill 模式权限系统的核心。三档运行模式（Approval / Auto / Bypass）
-    /// + 双通道授权（Dialog / Panel）
-    /// + **Allowlist（用户手动管理的常驻白名单，可覆盖 IsForbiddenInSemi）**
-    /// + **单次有效的 Approval**（grant/approve 只放行当次调用）。
+    /// Core of the Skill mode permission system. Three operating modes (Approval / Auto / Bypass)
+    /// + dual-channel approval (Dialog / Panel)
+    /// + **Allowlist (a user-managed, persistent allowlist that can override IsForbiddenInSemi)**
+    /// + **one-shot Approval** (grant/approve only clears the current invocation).
     ///
-    /// 与最初 Approval 设计相比的语义拆分：
-    /// - **Allowlist 通道**：用户在面板手动管理；命中直接放行，**优先级高于 IsForbiddenInSemi**，
-    ///   允许用户手动放行原本的高危拦截 skill。
-    /// - **Approval 单次有效**：grant/approve 仅放行本次调用，不再永久写入白名单。
-    ///   Granted 分支通过 ThreadStatic 的 <c>_currentOneShotSkill</c> 让随后的 CheckAccess
-    ///   一次性命中放行，然后立即被消费清空。
-    /// - **Grant 方案 B（一步执行）**：<see cref="TryGrantAndReturnArgs"/> 在 Granted 时
-    ///   同时返回缓存的原 argsJson 并标记 one-shot，HTTP 端点据此直接调 SkillRouter.Execute。
-    /// - **EditorPrefs 迁移**：老 key <c>UnitySkills_GrantedSkills</c> 首次启动自动迁移到
-    ///   新 key <c>UnitySkills_AllowlistSkills</c>，迁移幂等。
+    /// Semantic split relative to the original Approval design:
+    /// - **Allowlist channel**: managed manually by the user on the panel; a hit is allowed straight through,
+    ///   **taking priority over IsForbiddenInSemi**, letting the user manually clear an otherwise high-risk-blocked skill.
+    /// - **One-shot Approval**: grant/approve only clears the current invocation, no longer writes permanently to the allowlist.
+    ///   The Granted branch uses the ThreadStatic <c>_currentOneShotSkill</c> so the subsequent CheckAccess
+    ///   is let through exactly once, then immediately consumed and cleared.
+    /// - **Grant Plan B (single-step execution)**: on Granted, <see cref="TryGrantAndReturnArgs"/> also returns
+    ///   the cached original argsJson and marks it one-shot, so the HTTP endpoint can call SkillRouter.Execute directly.
+    /// - **EditorPrefs migration**: the old key <c>UnitySkills_GrantedSkills</c> is auto-migrated on first launch to
+    ///   the new key <c>UnitySkills_AllowlistSkills</c>; the migration is idempotent.
     ///
-    /// 状态存储：
-    /// - <c>CurrentMode</c> / <c>PanelApprovalRequired</c> / <c>AllowlistSkills</c>：EditorPrefs（按机器）
-    /// - 待处理的 grant 令牌：仅内存（TTL 5 分钟，最多 256 个存活）
-    /// - 单次放行标记：仅内存的 ThreadStatic
+    /// State storage:
+    /// - <c>CurrentMode</c> / <c>PanelApprovalRequired</c> / <c>AllowlistSkills</c>: EditorPrefs (per machine)
+    /// - Pending grant tokens: in-memory only (TTL 5 minutes, at most 256 live)
+    /// - One-shot bypass marker: in-memory ThreadStatic only
     ///
-    /// 升级兼容：安装环境中若已存在任何 v1.9 之前的 <c>UnitySkills_*</c> pref
-    /// （如 <c>UnitySkills_PreferredPort</c>），默认落到 <see cref="SkillsOperatingMode.Bypass"/>，
-    /// 使老用户行为零变化；全新安装默认 <see cref="SkillsOperatingMode.Auto"/>——
-    /// 所有未被自动判为 NeverInSemi 的技能（含 FullAuto 写技能）直接执行，只有 NeverInSemi
-    /// （Delete / MayEnterPlayMode / MayTriggerReload / RiskLevel=high）返回 MODE_FORBIDDEN。
+    /// Upgrade compatibility: if the install already has any pre-v1.9 <c>UnitySkills_*</c> pref
+    /// (e.g. <c>UnitySkills_PreferredPort</c>), it defaults to <see cref="SkillsOperatingMode.Bypass"/>,
+    /// so existing users see zero behavior change; a fresh install defaults to <see cref="SkillsOperatingMode.Auto"/> —
+    /// every skill not auto-classified as NeverInSemi (including FullAuto write skills) executes directly, and only
+    /// NeverInSemi skills (Delete / MayEnterPlayMode / MayTriggerReload / RiskLevel=high) return MODE_FORBIDDEN.
     /// </summary>
     [InitializeOnLoad]
     public static class SkillsModeManager
@@ -75,15 +75,15 @@ namespace UnitySkills
         private const string PrefKeyMode = "UnitySkills_OperatingMode";
         private const string PrefKeyPanelApproval = "UnitySkills_PanelApprovalRequired";
 
-        /// <summary>Allowlist 持久化 key（用户手动管理）。</summary>
+        /// <summary>Allowlist persistence key (user-managed).</summary>
         private const string PrefKeyAllowlist = "UnitySkills_AllowlistSkills";
-        /// <summary>首次迁移完成标记，避免重复执行。</summary>
+        /// <summary>Marks that the first-run migration has completed, to avoid re-running it.</summary>
         private const string PrefKeyMigrationDone = "UnitySkills_AllowlistMigratedFromGranted";
-        /// <summary>旧 GrantedSkills key（仅用于一次性迁移读取，迁移后不删除以便回滚）。</summary>
+        /// <summary>The old GrantedSkills key (read only for the one-time migration; kept after migration to allow rollback).</summary>
         private const string PrefKeyLegacyGranted = "UnitySkills_GrantedSkills";
 
-        // ResetForTests 会临时清空这些机器级偏好。SessionState 能撑过域重载，
-        // 使测试运行被中断时仍可恢复用户原本的设置。
+        // ResetForTests temporarily clears these machine-level preferences. SessionState survives domain reloads,
+        // so the user's original settings can still be restored if a test run gets interrupted.
         private const string TestRecoveryActiveKey = "UnitySkills.Tests.PreferenceRecovery.Active";
         private const string TestRecoveryModeExistsKey = "UnitySkills.Tests.PreferenceRecovery.Mode.Exists";
         private const string TestRecoveryModeValueKey = "UnitySkills.Tests.PreferenceRecovery.Mode.Value";
@@ -100,10 +100,10 @@ namespace UnitySkills
         private const int MaxLiveGrants = 256;
         private const int MaxArgsSummaryChars = 120;
 
-        // NeverInSemi 判定完全由元数据标志驱动（Operation=Delete / MayEnterPlayMode /
-        // MayTriggerReload / RiskLevel=high），在 IsForbiddenInSemi 中检查，不存在硬编码名单。
-        // 将来若有高危技能需要非元数据的例外，优先给技能本身加标注（RiskLevel="high" 或显式操作标志），
-        // 不要重新引入名单。
+        // NeverInSemi classification is driven entirely by metadata flags (Operation=Delete / MayEnterPlayMode /
+        // MayTriggerReload / RiskLevel=high), checked in IsForbiddenInSemi — there is no hardcoded list.
+        // If a future high-risk skill needs an exception outside of metadata, prefer annotating the skill itself
+        // (RiskLevel="high" or an explicit operation flag); do not reintroduce a list.
 
         private sealed class GrantEntry
         {
@@ -111,13 +111,13 @@ namespace UnitySkills
             public string SkillName;
             public string ArgsHash;
             public string ArgsSummary;
-            /// <summary>原 args 完整原文，方案 B 一步执行时由 HTTP 端点回放给 SkillRouter。</summary>
+            /// <summary>The full original args text, replayed to SkillRouter by the HTTP endpoint during Plan B single-step execution.</summary>
             public string ArgsJson;
             public DateTime IssuedAtUtc;
             public DateTime ExpiresAtUtc;
             public ApprovalChannel Channel;
             public bool ApprovedByPanel;
-            /// <summary>方案 B 防双消费标记（当前未触发；预留给未来 grant 路径分叉）。</summary>
+            /// <summary>Plan B double-consumption guard flag (not currently triggered; reserved for a future grant-path branch).</summary>
             public bool OneShotConsumed;
         }
 
@@ -129,17 +129,17 @@ namespace UnitySkills
         internal static bool? ExistingInstallOverrideForTests;
 
         /// <summary>
-        /// 单次有效 grant 的"放行令牌"。由 <see cref="TryGrantAndReturnArgs"/> 设置，
-        /// 由 <see cref="ConsumeOneShotBypass"/> 消费。ThreadStatic 保证不同请求线程互不干扰。
+        /// The "bypass token" for a one-shot grant. Set by <see cref="TryGrantAndReturnArgs"/>,
+        /// consumed by <see cref="ConsumeOneShotBypass"/>. ThreadStatic ensures different request threads don't interfere.
         ///
-        /// 设置方**必须**在 finally 里调用 <see cref="ClearOneShotBypass"/>——消费点不是必经之路，
-        /// 详见该方法的注释。<see cref="_oneShotDeadlineUtc"/> 是第二道保险。
+        /// The setter **must** call <see cref="ClearOneShotBypass"/> in a finally block — the consumption point is not
+        /// guaranteed to be reached; see that method's comment. <see cref="_oneShotDeadlineUtc"/> is the second safety net.
         /// </summary>
         [ThreadStatic] private static string _currentOneShotSkill;
 
         /// <summary>
-        /// 令牌失效时刻。设置到消费之间只隔一次 SkillRouter.Execute 的参数校验（毫秒级），
-        /// 所以任何超出 <see cref="OneShotLifetime"/> 的令牌都是残留物，一律作废而非放行。
+        /// The moment the token expires. Only one SkillRouter.Execute parameter check (millisecond-scale) separates
+        /// setting from consumption, so any token outliving <see cref="OneShotLifetime"/> is a leftover, discarded not honored.
         /// </summary>
         [ThreadStatic] private static DateTime _oneShotDeadlineUtc;
 
@@ -152,13 +152,13 @@ namespace UnitySkills
             RestorePreferencesAfterTestDomainReload();
         }
 
-        // ===== 属性 =====
+        // ===== Properties =====
 
         /// <summary>
-        /// 当前运行模式。setter 持久化到 EditorPrefs 并触发 <see cref="OnChanged"/>。
-        /// 没有显式 pref 时，getter 套用出厂默认规则：老安装（存在任何其他 UnitySkills_* 键）
-        /// → <see cref="SkillsOperatingMode.Bypass"/>；全新安装 → <see cref="SkillsOperatingMode.Auto"/>。
-        /// 绝不会默认落到 Approval。
+        /// The current operating mode. The setter persists to EditorPrefs and raises <see cref="OnChanged"/>.
+        /// With no explicit pref set, the getter applies the factory-default rule: an existing install (any other
+        /// UnitySkills_* key present) → <see cref="SkillsOperatingMode.Bypass"/>; a fresh install → <see cref="SkillsOperatingMode.Auto"/>.
+        /// Never defaults to Approval.
         /// </summary>
         public static SkillsOperatingMode CurrentMode
         {
@@ -181,9 +181,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 为 true 时（仅 Approval 模式），AI 发起的授权请求必须先在 Unity 面板上获批，
-        /// <see cref="TryGrant"/> 才会成功。默认 false，即走 Dialog 通道
-        /// （AI 在对话中取得用户同意后直接调 grant）。
+        /// When true (Approval mode only), an AI-initiated authorization request must first be approved on the
+        /// Unity panel before <see cref="TryGrant"/> can succeed. Defaults to false, i.e. the Dialog channel
+        /// (the AI calls grant directly after obtaining the user's consent in conversation).
         /// </summary>
         public static bool PanelApprovalRequired
         {
@@ -196,8 +196,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 用户手动管理的白名单。名单内的技能无论何种模式、也不管 <see cref="IsForbiddenInSemi"/>，
-        /// 都能通过 <see cref="CheckAccess"/>。取代 v1.9 的 "GrantedSkills" 常驻授权名单。
+        /// A user-managed allowlist. Skills on this list pass <see cref="CheckAccess"/> regardless of the current
+        /// mode and regardless of <see cref="IsForbiddenInSemi"/>. Replaces v1.9's persistent "GrantedSkills" list.
         /// </summary>
         public static IReadOnlyCollection<string> AllowlistSkills
         {
@@ -223,9 +223,9 @@ namespace UnitySkills
             }
         }
 
-        // ===== 公共 API：Allowlist =====
+        // ===== Public API: Allowlist =====
 
-        /// <summary><paramref name="skillName"/> 在用户白名单中时返回 true。</summary>
+        /// <summary>Returns true when <paramref name="skillName"/> is in the user's allowlist.</summary>
         public static bool IsInAllowlist(string skillName)
         {
             if (string.IsNullOrWhiteSpace(skillName)) return false;
@@ -237,8 +237,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把技能加入用户白名单。新增成功返回 true，已存在返回 false。
-        /// 新增时记审计事件 "allowlist_add"。
+        /// Adds a skill to the user's allowlist. Returns true if newly added, false if it already existed.
+        /// Logs the "allowlist_add" audit event on a successful add.
         /// </summary>
         public static bool AddToAllowlist(string skillName)
         {
@@ -259,8 +259,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 从用户白名单移除技能。原本存在返回 true，否则 false。
-        /// 成功时记审计事件 "allowlist_remove"。
+        /// Removes a skill from the user's allowlist. Returns true if it previously existed, false otherwise.
+        /// Logs the "allowlist_remove" audit event on success.
         /// </summary>
         public static bool RemoveFromAllowlist(string skillName)
         {
@@ -280,7 +280,7 @@ namespace UnitySkills
             return removed;
         }
 
-        /// <summary>清空整个白名单。仅在原本非空时记审计事件 "allowlist_clear"。</summary>
+        /// <summary>Clears the entire allowlist. Logs the "allowlist_clear" audit event only if it was non-empty.</summary>
         public static void ClearAllowlist()
         {
             EnsureAllowlistLoaded();
@@ -298,14 +298,14 @@ namespace UnitySkills
             }
         }
 
-        // ===== 公共 API：授权生命周期 =====
+        // ===== Public API: Authorization Lifecycle =====
 
         /// <summary>
-        /// 签发一个新的授权请求令牌，绑定 (skillName, argsHash, channel, TTL)。
-        /// AI 随后通过 <see cref="TryGrant"/> 回放该令牌。Panel 通道下该令牌还会出现在
-        /// <see cref="PendingGrantRequests"/> 中，供面板侧批准/拒绝。
+        /// Issues a new authorization request token, bound to (skillName, argsHash, channel, TTL).
+        /// The AI later replays this token via <see cref="TryGrant"/>. On the Panel channel, this token also
+        /// appears in <see cref="PendingGrantRequests"/> for the panel side to approve/deny.
         ///
-        /// 完整 argsJson 也缓存到 entry 中，供方案 B 一步执行回放。
+        /// The full argsJson is also cached on the entry for Plan B single-step execution replay.
         /// </summary>
         public static (string token, int ttlSeconds, ApprovalChannel channel)
             IssueGrantRequest(string skillName, string argsJson)
@@ -342,18 +342,18 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 消费一个授权令牌。仅在结果为完全 Granted 时返回 true。
-        /// 需要区分 PendingApproval 与 Invalid 的 HTTP 处理器请改用 <see cref="TryGrantDetailed"/>。
+        /// Consumes an authorization token. Returns true only when the outcome is fully Granted.
+        /// HTTP handlers that need to distinguish PendingApproval from Invalid should use <see cref="TryGrantDetailed"/> instead.
         /// </summary>
         public static bool TryGrant(string skillName, string token, string argsJson)
             => TryGrantDetailed(skillName, token, argsJson) == GrantOutcome.Granted;
 
         /// <summary>
-        /// 与 <see cref="TryGrant"/> 相同，但返回细分结果，使调用方能把
-        /// PendingApproval 映射为 GRANT_PENDING_APPROVAL、Invalid 映射为 INVALID_TOKEN。
+        /// Same as <see cref="TryGrant"/>, but returns a finer-grained result so the caller can map
+        /// PendingApproval to GRANT_PENDING_APPROVAL and Invalid to INVALID_TOKEN.
         ///
-        /// Granted 分支**不再** AddGranted/AddToAllowlist；grant 只对本次有效，
-        /// 永久白名单由用户在面板手动管理。entry 在 Granted 时被消费移除。
+        /// The Granted branch **no longer** calls AddGranted/AddToAllowlist; a grant only clears the current call,
+        /// the permanent allowlist is managed manually by the user on the panel. The entry is consumed and removed on Granted.
         /// </summary>
         public static GrantOutcome TryGrantDetailed(string skillName, string token, string argsJson)
         {
@@ -374,7 +374,7 @@ namespace UnitySkills
             if (entry.Channel == ApprovalChannel.Panel && !entry.ApprovedByPanel)
                 return GrantOutcome.PendingApproval;
 
-            // Granted — free the token slot and audit. 单次有效语义：不再写入永久白名单。
+            // Granted — free the token slot and audit. One-shot semantics: no longer written to the permanent allowlist.
             _grants.TryRemove(token, out _);
             int tokenAgeSec = (int)Math.Max(0, (DateTime.UtcNow - entry.IssuedAtUtc).TotalSeconds);
             SkillsAuditLog.Append("grant", new
@@ -389,9 +389,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Panel-side approve. **不再** 将 skill 永久写入白名单，而是只把
-        /// <c>entry.ApprovedByPanel = true</c>，保留 entry 让 AI 后续 <see cref="TryGrant"/>
-        /// （或方案 B 的 <see cref="TryGrantAndReturnArgs"/>）走 Granted 分支并触发一次性执行。
+        /// Panel-side approve. **No longer** writes the skill permanently to the allowlist; instead it just sets
+        /// <c>entry.ApprovedByPanel = true</c>, keeping the entry so the AI's subsequent <see cref="TryGrant"/>
+        /// (or Plan B's <see cref="TryGrantAndReturnArgs"/>) can take the Granted branch and trigger one-shot execution.
         /// </summary>
         public static bool Approve(string token)
         {
@@ -403,14 +403,14 @@ namespace UnitySkills
                 RaiseChanged();
                 return false;
             }
-            // 单次有效：仅标记，不写白名单，也不删除 entry——entry 在后续 TryGrant 成功后才移除。
+            // One-shot: only mark it, don't write the allowlist, and don't remove the entry — the entry is only removed after a subsequent TryGrant succeeds.
             entry.ApprovedByPanel = true;
             SkillsAuditLog.Append("approve", new { skill = entry.SkillName, token, source = "panel" });
             RaiseChanged();
             return true;
         }
 
-        /// <summary>面板侧拒绝：移除待处理条目且不放行。</summary>
+        /// <summary>Panel-side deny: removes the pending entry and does not grant access.</summary>
         public static bool Deny(string token)
         {
             if (string.IsNullOrWhiteSpace(token)) return false;
@@ -420,41 +420,41 @@ namespace UnitySkills
             return true;
         }
 
-        // ===== Obsolete forwarders（保留一个版本，等 HTTP/UI 同步切换） =====
+        // ===== Obsolete forwarders (kept for one version until HTTP/UI switch over) =====
 
         /// <summary>
-        /// 已废弃：请用 <see cref="AllowlistSkills"/>。为 v1.9 → v1.9.x 拆分过渡期的 HTTP/UI 兼容保留的转发器。
+        /// Obsolete: use <see cref="AllowlistSkills"/>. Kept as an HTTP/UI compatibility forwarder for the v1.9 → v1.9.x split transition period.
         /// </summary>
         [Obsolete("Use AllowlistSkills. v1.9 'Granted' was renamed to 'Allowlist' with new semantics.")]
         public static IReadOnlyCollection<string> GrantedSkills => AllowlistSkills;
 
         /// <summary>
-        /// 已废弃：请用 <see cref="RemoveFromAllowlist"/>。为 v1.9 → v1.9.x 拆分过渡期的 HTTP/UI 兼容保留的转发器。
+        /// Obsolete: use <see cref="RemoveFromAllowlist"/>. Kept as an HTTP/UI compatibility forwarder for the v1.9 → v1.9.x split transition period.
         /// </summary>
         [Obsolete("Use RemoveFromAllowlist. v1.9 'Revoke' was renamed to clarify the new Allowlist semantics.")]
         public static void Revoke(string skillName) => RemoveFromAllowlist(skillName);
 
         /// <summary>
-        /// 已废弃：请用 <see cref="ClearAllowlist"/>。为 v1.9 → v1.9.x 拆分过渡期的 HTTP/UI 兼容保留的转发器。
+        /// Obsolete: use <see cref="ClearAllowlist"/>. Kept as an HTTP/UI compatibility forwarder for the v1.9 → v1.9.x split transition period.
         /// </summary>
         [Obsolete("Use ClearAllowlist. v1.9 'RevokeAll' was renamed to clarify the new Allowlist semantics.")]
         public static void RevokeAll() => ClearAllowlist();
 
-        // ===== 内部（由 SkillRouter / SkillsHttpServer 调用） =====
+        // ===== Internal (called by SkillRouter / SkillsHttpServer) =====
 
         /// <summary>
-        /// 在当前运行模式 + 白名单状态下判定某技能是否可执行。
-        /// 调用方（SkillRouter）据结果转成错误响应或继续执行。
+        /// Determines whether a given skill may execute under the current operating mode + allowlist state.
+        /// The caller (SkillRouter) turns the result into an error response or proceeds with execution.
         ///
-        /// 优先级（依次判断）：
-        /// 1. Bypass 模式 → Allowed
-        /// 2. one-shot bypass 命中（grant 方案 B 重入）→ Allowed
-        /// 3. Allowlist 命中 → Allowed（**优先于** <see cref="IsForbiddenInSemi"/>，
-        ///    实现"用户手动放行高危拦截"）
-        /// 4. 命中 IsForbiddenInSemi → Forbidden
-        /// 5. Auto 模式 → Allowed
-        /// 6. Approval 模式 + SemiAuto → Allowed
-        /// 7. 其它 → NeedsGrant
+        /// Priority (checked in order):
+        /// 1. Bypass mode → Allowed
+        /// 2. One-shot bypass hit (grant Plan B re-entry) → Allowed
+        /// 3. Allowlist hit → Allowed (**takes priority over** <see cref="IsForbiddenInSemi"/>,
+        ///    implementing "user manually clears a high-risk block")
+        /// 4. IsForbiddenInSemi hit → Forbidden
+        /// 5. Auto mode → Allowed
+        /// 6. Approval mode + SemiAuto → Allowed
+        /// 7. Otherwise → NeedsGrant
         /// </summary>
         internal static AccessResult CheckAccess(SkillRouter.SkillInfo skill)
         {
@@ -464,11 +464,11 @@ namespace UnitySkills
             if (mode == SkillsOperatingMode.Bypass)
                 return AccessResult.Allowed;
 
-            // 2. one-shot 必须先于 IsForbiddenInSemi —— 否则 grant 方案 B 重入会被禁列表拦截。
+            // 2. One-shot bypass must precede IsForbiddenInSemi — otherwise grant Plan B re-entry would be blocked by the forbidden list.
             if (ConsumeOneShotBypass(skill.Name))
                 return AccessResult.Allowed;
 
-            // 3. Allowlist 必须先于 IsForbiddenInSemi —— 用户白名单优先级最高。
+            // 3. Allowlist must precede IsForbiddenInSemi — the user's allowlist has the highest priority.
             if (IsInAllowlist(skill.Name))
                 return AccessResult.Allowed;
 
@@ -483,14 +483,14 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 方案 B 一步执行入口（HTTP 端点专用）：尝试消费 grant token；成功时返回缓存的
-        /// 原 argsJson 并设置 ThreadStatic one-shot 放行令牌，让随后的 SkillRouter.Execute
-        /// 在同一线程内通过 <see cref="CheckAccess"/> 时被 <see cref="ConsumeOneShotBypass"/>
-        /// 命中、单次放行。entry 被消费移除（与 <see cref="TryGrantDetailed"/> Granted 分支一致）。
+        /// Plan B single-step execution entry point (HTTP endpoint only): attempts to consume the grant token; on
+        /// success it returns the cached original argsJson and sets the ThreadStatic one-shot bypass token, so the
+        /// subsequent SkillRouter.Execute is hit by <see cref="ConsumeOneShotBypass"/> in <see cref="CheckAccess"/>
+        /// and let through once. Entry consumed and removed (as in <see cref="TryGrantDetailed"/>'s Granted branch).
         /// </summary>
         /// <returns>
-        /// <c>outcome</c> = Granted 时：<c>skillName</c> 为 entry 中的规范名、<c>cachedArgsJson</c>
-        /// 为 IssueGrantRequest 时缓存的原文。其它 outcome 时这两个字段为 null/empty。
+        /// When <c>outcome</c> = Granted: <c>skillName</c> is the entry's canonical name, <c>cachedArgsJson</c> is
+        /// the original text cached at IssueGrantRequest time. For any other outcome both fields are null/empty.
         /// </returns>
         internal static (GrantOutcome outcome, string skillName, string cachedArgsJson)
             TryGrantAndReturnArgs(string skillName, string token, string argsJson)
@@ -512,7 +512,7 @@ namespace UnitySkills
             if (entry.Channel == ApprovalChannel.Panel && !entry.ApprovedByPanel)
                 return (GrantOutcome.PendingApproval, null, null);
 
-            // Granted — 消费 entry、设置 one-shot、审计。语义上等价于 TryGrantDetailed Granted 分支。
+            // Granted — consume the entry, set one-shot, audit. Semantically equivalent to TryGrantDetailed's Granted branch.
             _grants.TryRemove(token, out _);
             entry.OneShotConsumed = true;
             SetOneShotBypass(entry.SkillName);
@@ -530,10 +530,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 消费当前线程的 one-shot 放行令牌。命中（即 <c>_currentOneShotSkill</c> 等于
-        /// <paramref name="skillName"/>，忽略大小写，且未超出存活窗口）则清空并返回 true；
-        /// 否则返回 false。过期令牌被直接丢弃并告警——它只可能来自漏掉
-        /// <see cref="ClearOneShotBypass"/> 的路径，放行它等于静默绕过 Approval 门。
+        /// Consumes the current thread's one-shot bypass token. On a hit (<c>_currentOneShotSkill</c> equals
+        /// <paramref name="skillName"/>, case-insensitive, within its lifetime window), clears it and returns true;
+        /// otherwise returns false. An expired token is discarded outright with a warning — it can only come from
+        /// a path that missed <see cref="ClearOneShotBypass"/>, and honoring it would silently bypass the Approval gate.
         /// </summary>
         internal static bool ConsumeOneShotBypass(string skillName)
         {
@@ -562,17 +562,17 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 无条件清除当前线程的 one-shot 放行令牌。**设置令牌的一方必须在 finally 里调用它**：
-        /// 消费点 <see cref="CheckAccess"/> 位于 SkillRouter.Execute 的四道参数校验
-        /// （UnknownParam / MissingParam / TypeMismatch / SemanticInvalid）之后，任何一道早退
-        /// 都走不到消费点。令牌是 ThreadStatic，而 grant 与普通请求跑在同一条 Unity 主线程上，
-        /// 残留令牌会让下一个同名 skill 请求带着完全不同的参数被静默放行（审计里还只记成
-        /// grantSource="auto"，无法追溯）。
+        /// Unconditionally clears the current thread's one-shot bypass token. **The setter must call this in a
+        /// finally block**: the consumption point <see cref="CheckAccess"/> sits after SkillRouter.Execute's four
+        /// parameter checks (UnknownParam / MissingParam / TypeMismatch / SemanticInvalid); an early return from any
+        /// of them skips it. The token is ThreadStatic, and grant/ordinary requests share the Unity main thread, so
+        /// a leftover token lets the next same-named skill request — with different arguments — pass silently
+        /// (audit only records grantSource="auto", untraceable).
         ///
-        /// 更强的绑定是把令牌升级为 (skillName, argsHash) 并在消费点比对本次请求的 args；
-        /// 但消费点只拿得到 SkillInfo，args 需要改 SkillRouter.ApplyModeGate → CheckAccess 的
-        /// 调用签名才能传进来（不在本次改动范围）。当前用"设置方无条件清除 +
-        /// <see cref="OneShotLifetime"/> 存活窗口"把泄漏窗口封死。
+        /// A stronger binding would upgrade the token to (skillName, argsHash) and compare it against this
+        /// request's args at the consumption point; but the consumption point only has SkillInfo — args would need
+        /// a change to SkillRouter.ApplyModeGate → CheckAccess's call signature (out of scope here). For now, "the
+        /// setter unconditionally clears + the <see cref="OneShotLifetime"/> lifetime window" seals the leak.
         /// </summary>
         public static void ClearOneShotBypass()
         {
@@ -581,13 +581,13 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 该技能在非 Bypass 模式下必须被拦截时返回 true。判定纯由元数据驱动。
+        /// Returns true when this skill must be blocked in any non-Bypass mode. The decision is driven purely by metadata.
         ///
-        /// 移除 _explicitNeverList 兜底（已无命中）— metadata 已完全覆盖当前 75 个
-        /// NeverInSemi skill（全部由下面 4 条规则触发，0 个依赖名单兜底）。
+        /// The _explicitNeverList fallback was removed (no longer hit) — metadata now fully covers the current 75
+        /// NeverInSemi skills (all triggered by the 4 rules below, 0 relying on a list fallback).
         ///
-        /// 注意：<see cref="CheckAccess"/> 在 IsInAllowlist 命中时**会跳过本判定**，
-        /// 让用户能手动放行原本被拦截的高危 skill。
+        /// Note: <see cref="CheckAccess"/> **skips this check** on an IsInAllowlist hit, letting the user manually
+        /// clear an otherwise blocked high-risk skill.
         /// </summary>
         internal static bool IsForbiddenInSemi(SkillRouter.SkillInfo s)
         {
@@ -598,26 +598,26 @@ namespace UnitySkills
                 || string.Equals(s.RiskLevel, "high", StringComparison.OrdinalIgnoreCase);
         }
 
-        /// <summary>运行模式的 wire 字符串（"approval"|"auto"|"bypass"）。</summary>
+        /// <summary>The wire string for the operating mode ("approval"|"auto"|"bypass").</summary>
         internal static string ModeToWire(SkillsOperatingMode mode) => mode.ToString().ToLowerInvariant();
 
-        /// <summary>授权通道的 wire 字符串（"dialog"|"panel"）。</summary>
+        /// <summary>The wire string for the approval channel ("dialog"|"panel").</summary>
         internal static string ChannelToWire(ApprovalChannel channel) => channel.ToString().ToLowerInvariant();
 
-        /// <summary>SkillMode 的 wire 字符串（"semi"|"full"），供 /skills 清单使用。</summary>
+        /// <summary>The wire string for SkillMode ("semi"|"full"), used by the /skills listing.</summary>
         internal static string SkillModeToWire(SkillMode mode) =>
             mode == SkillMode.SemiAuto ? "semi" : "full";
 
         /// <summary>
-        /// 技能在 <see cref="SkillsOperatingMode.Approval"/> 模式下的默认行为的 wire 字符串，
-        /// 不考虑用户白名单与单次放行状态。供 /skills 清单使用，使调用方无需从 <c>mode</c> 反推规则
-        /// 即可判断授权要求。
+        /// The wire string for a skill's default behavior under <see cref="SkillsOperatingMode.Approval"/> mode,
+        /// ignoring the user allowlist and one-shot bypass state. Used by the /skills listing so callers can
+        /// determine the authorization requirement without re-deriving the rules from <c>mode</c>.
         ///
-        /// 映射关系（与 <see cref="CheckAccess"/> 的 Approval 分支一致）：
+        /// Mapping (consistent with the Approval branch of <see cref="CheckAccess"/>):
         /// <list type="bullet">
-        /// <item><c>"forbid"</c>——<see cref="IsForbiddenInSemi"/> 为 true；仅 Bypass 模式（或经白名单覆盖）可调。</item>
-        /// <item><c>"grant"</c>——FullAuto 技能且未被禁；执行前需要 <c>/permission/grant</c>。</item>
-        /// <item><c>"allow"</c>——SemiAuto 技能且未被禁；Approval 模式下直接执行。</item>
+        /// <item><c>"forbid"</c> — <see cref="IsForbiddenInSemi"/> is true; callable only in Bypass mode (or via an allowlist override).</item>
+        /// <item><c>"grant"</c> — a FullAuto skill that isn't blocked; requires <c>/permission/grant</c> before execution.</item>
+        /// <item><c>"allow"</c> — a SemiAuto skill that isn't blocked; executes directly in Approval mode.</item>
         /// </list>
         /// </summary>
         internal static string ApprovalBehaviorForSkill(SkillRouter.SkillInfo skill)
@@ -627,7 +627,7 @@ namespace UnitySkills
             return skill.Mode == SkillMode.SemiAuto ? "allow" : "grant";
         }
 
-        /// <summary>仅测试用：把全部状态（白名单、待处理项、prefs、迁移标记）清成干净初始态。</summary>
+        /// <summary>Test-only: resets all state (allowlist, pending items, prefs, migration marker) to a clean initial state.</summary>
         internal static void ResetForTests()
         {
             CapturePreferencesForTestRecovery();
@@ -646,13 +646,13 @@ namespace UnitySkills
             RaiseChanged();
         }
 
-        /// <summary>仅测试用：夹具恢复原偏好后清除恢复数据。</summary>
+        /// <summary>Test-only: clears the recovery data after the fixture has restored the original preferences.</summary>
         internal static void CompleteTestPreferenceRecovery()
         {
             ClearTestPreferenceRecovery();
         }
 
-        /// <summary>仅测试用：模拟静态构造器在域重载后执行的恢复过程。</summary>
+        /// <summary>Test-only: simulates the recovery process the static constructor runs after a domain reload.</summary>
         internal static void RestorePreferencesAfterTestDomainReload()
         {
             if (!SessionState.GetBool(TestRecoveryActiveKey, false)) return;
@@ -669,7 +669,7 @@ namespace UnitySkills
             ClearTestPreferenceRecovery();
         }
 
-        /// <summary>按令牌查找待处理授权条目（内部使用——SkillRouter 借此暴露 argsSummary）。</summary>
+        /// <summary>Looks up a pending authorization entry by token (internal use — SkillRouter uses this to expose argsSummary).</summary>
         internal static GrantRequest PeekPending(string token)
         {
             if (string.IsNullOrEmpty(token)) return null;
@@ -677,8 +677,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 返回 token 对应 entry 缓存的原 argsJson，供方案 B 一步执行端点在客户端未传 args 时回填使用。
-        /// token 不存在或已过期返回 null。不消费 entry。
+        /// Returns the entry's cached original argsJson for this token, so the Plan B single-step execution endpoint
+        /// can backfill it when the client doesn't pass args. Returns null if the token is missing/expired. Does not consume the entry.
         /// </summary>
         internal static string TryPeekArgsJson(string token)
         {
@@ -688,10 +688,10 @@ namespace UnitySkills
             return entry.ArgsJson;
         }
 
-        /// <summary>仅测试用：按令牌查看待处理条目。</summary>
+        /// <summary>Test-only: peeks at a pending entry by token.</summary>
         internal static GrantRequest PeekPendingForTests(string token) => PeekPending(token);
 
-        // ===== 辅助方法 =====
+        // ===== Helper methods =====
 
         private static GrantRequest ToPublic(GrantEntry e) => new GrantRequest
         {
@@ -730,21 +730,21 @@ namespace UnitySkills
                     }
                     catch
                     {
-                        // 畸形 JSON 视为空——绝不因一条损坏的 pref 拖垮编辑器。
+                        // Malformed JSON is treated as empty — a corrupted pref must never take down the editor.
                     }
                 }
                 _allowlist = set;
-                // 首次初始化后立即尝试迁移；幂等通过 PrefKeyMigrationDone 标记。
+                // Attempt migration immediately after first initialization; idempotency is enforced via the PrefKeyMigrationDone marker.
                 MigrateLegacyGrantedToAllowlist();
             }
         }
 
         /// <summary>
-        /// 一次性把旧的 <c>UnitySkills_GrantedSkills</c> 数据迁移到新的
-        /// <c>UnitySkills_AllowlistSkills</c>。通过 <see cref="PrefKeyMigrationDone"/> 保证幂等。
-        /// 旧 key 故意不删除，留作回滚标记。
+        /// One-time migration of old <c>UnitySkills_GrantedSkills</c> data to the new
+        /// <c>UnitySkills_AllowlistSkills</c>. Idempotency is guaranteed via <see cref="PrefKeyMigrationDone"/>.
+        /// The old key is intentionally not deleted, kept as a rollback marker.
         ///
-        /// 必须在持有 <see cref="_allowlistLock"/> 时调用（由 <see cref="EnsureAllowlistLoaded"/> 保证）。
+        /// Must be called while holding <see cref="_allowlistLock"/> (guaranteed by <see cref="EnsureAllowlistLoaded"/>).
         /// </summary>
         private static void MigrateLegacyGrantedToAllowlist()
         {
@@ -766,7 +766,7 @@ namespace UnitySkills
                 }
                 catch
                 {
-                    // 旧数据损坏不应阻塞迁移；标记完成即可，等价于"无东西可迁"。
+                    // Corrupt legacy data should not block the migration; just mark it complete, equivalent to "nothing to migrate".
                 }
             }
             if (migrated > 0) SaveAllowlistUnlocked();
@@ -889,8 +889,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 为面板与审计日志生成一段简短可读的参数摘要。
-        /// 保留顶层标量的 key=value，嵌套对象一律替换成 "{...}"。
+        /// Generates a short, readable args summary for the panel and audit log.
+        /// Keeps top-level scalar key=value pairs; nested objects are always replaced with "{...}".
         /// </summary>
         private static string SummarizeArgs(string argsJson)
         {
@@ -926,8 +926,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// v1.9 之前安装的判据。存在其中任何一个全局 UnitySkills_* pref，就说明用户在模式系统出现之前
-        /// 就在用本包 → 默认落到 Bypass，使升级对行为无影响。
+        /// The criterion for a pre-v1.9 install. If any of these global UnitySkills_* prefs exist, the user was
+        /// already using this package before the mode system existed → default to Bypass so the upgrade is behavior-neutral.
         /// </summary>
         private static bool IsExistingInstall()
         {

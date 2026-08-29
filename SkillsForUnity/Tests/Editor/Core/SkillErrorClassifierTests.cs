@@ -3,11 +3,11 @@
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 钉住 SkillErrorClassifier 的"缺包"判定：缺失的必须是包本身。
-    /// 错误消息里会插值调用方传入的标识符，早先按子串匹配 "package"，会让 jobId
-    /// （"DefaultPackage_validation_1"）或 Packages/ 资源路径把一次普通的查找失败误判成
-    /// MISSING_PACKAGE，把 AI 引向 package_install，而真正该改的是路径或 id。
-    /// 分类器是纯静态方法（不碰 EditorPrefs、文件、场景状态），故本夹具无需 SetUp/TearDown。
+    /// Pins down SkillErrorClassifier's "missing package" verdict: what's missing must be the package itself.
+    /// Error messages interpolate identifiers passed in by the caller; the old substring match on "package" let a jobId
+    /// ("DefaultPackage_validation_1") or a Packages/ asset path cause an ordinary lookup failure to be misjudged as
+    /// MISSING_PACKAGE, steering the AI toward package_install when the real fix is the path or id.
+    /// The classifier is a pure static method (touches no EditorPrefs, files, or scene state), so this fixture needs no SetUp/TearDown.
     /// </summary>
     [TestFixture]
     public class SkillErrorClassifierTests

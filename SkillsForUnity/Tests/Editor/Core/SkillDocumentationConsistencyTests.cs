@@ -18,32 +18,32 @@ namespace UnitySkills.Tests.Core
             new Regex(@"^###\s+`?(?<name>[a-z0-9]+(?:_[a-z0-9]+)+)`?\s*$", RegexOptions.Compiled);
 
         /// <summary>
-        /// 顶层 SKILL.md 中形如 skill 名的完整 code-span。要求前后都是反引号，所以
-        /// `workflow_session_*` 这类通配写法整体不匹配，无需额外豁免。
+        /// A complete code-span in the top-level SKILL.md that looks like a skill name. Requires backticks on both
+        /// sides, so a wildcard pattern like `workflow_session_*` doesn't match as a whole and needs no extra exemption.
         /// </summary>
         private static readonly Regex RootDocSkillTokenRegex =
             new Regex(@"`(?<name>[a-z0-9]+(?:_[a-z0-9]+)+)`", RegexOptions.Compiled);
 
-        /// <summary>unity_skills.py 的模块级公开函数（缩进为 0 且不以 _ 开头）。</summary>
+        /// <summary>Module-level public functions in unity_skills.py (zero indentation, not starting with _).</summary>
         private static readonly Regex PythonModuleDefRegex =
             new Regex(@"^def (?<name>[a-z][a-z0-9_]*)\(", RegexOptions.Compiled | RegexOptions.Multiline);
 
-        /// <summary>skills/SKILL.md 里指向同级模块文档的相对链接 `(./&lt;module&gt;/SKILL.md)`。</summary>
+        /// <summary>Relative links in skills/SKILL.md pointing to sibling module docs: `(./&lt;module&gt;/SKILL.md)`.</summary>
         private static readonly Regex ModuleLinkRegex =
             new Regex(@"\(\./(?<module>[A-Za-z0-9._-]+)/SKILL\.md\)", RegexOptions.Compiled);
 
         /// <summary>
-        /// 顶层 SKILL.md 里允许出现、但本就不是 skill 名的下划线 token。新增例外必须显式登记 ——
-        /// 这份显式清单正是幽灵 skill 名再也漏不出去的机制。
+        /// Underscore tokens allowed in the top-level SKILL.md that were never skill names to begin with. New
+        /// exceptions must be explicitly registered - this list is exactly what stops ghost skill names from leaking.
         /// </summary>
         private static readonly HashSet<string> RootDocNonSkillTokens = new HashSet<string>(StringComparer.Ordinal)
         {
-            // errorCode / retryStrategy 取值
+            // errorCode / retryStrategy values
             "fix_and_retry", "find_target_and_retry", "install_and_retry",
-            // GET /events 的事件类型
+            // GET /events event types
             "compilation_started", "compilation_finished", "before_domain_reload", "after_domain_reload",
             "server_restored", "playmode_changed", "console_error", "job_completed", "job_failed",
-            // 响应字段 / 正文用语
+            // Response field / body wording
             "rolled_back", "module_verb",
         };
 
@@ -63,8 +63,8 @@ namespace UnitySkills.Tests.Core
             "scriptdesign",
             "testability",
             "shadergraph-design",
-            // 以下 *-design 均为纯设计指南（0 个 ### skill 端点定义），与 shadergraph-design 同质，
-            // 统一豁免 schema-first（Exact Signatures）校验，避免误报。
+            // The following *-design entries are all pure design guides (0 ### skill endpoint definitions), same
+            // as shadergraph-design - uniformly exempt from schema-first (Exact Signatures) validation to avoid false positives.
             "addressables-design",
             "dotween-design",
             "primetween-design",
@@ -72,15 +72,16 @@ namespace UnitySkills.Tests.Core
             "unitask-design",
             "yooasset-design",
             "pico-design",
+            "qframework-design",
             "yaml-editing",
-            // v2.6.0 新增：manual-* 为纯手动操作指引（0 个 REST skill 端点），与 adr 同质，同样豁免。
+            // Added in v2.6.0: manual-* are pure manual-operation guides (0 REST skill endpoints), same as adr, likewise exempted.
             "manual-gameobject",
             "manual-component",
             "manual-material",
             "manual-scene",
-            // skills/SKILL.md 的索引里已写明 unity-cli 与 manual-* / *-design 同属「不定义任何 REST
-            // skill 的纯文档模块」。它此前不在册却没红，只是因为那份文档恰好留着一段 Exact
-            // Signatures + /skills/schema 的样板话；删掉那段（对一个零端点模块完全合理）就会红。
+            // skills/SKILL.md's index already states unity-cli belongs to the same category as manual-* /
+            // *-design: "pure doc modules defining no REST skills." It stayed green while unlisted only because
+            // that doc kept a leftover Exact Signatures + /skills/schema paragraph; removing it (valid for a zero-endpoint module) would turn it red.
             "unity-cli"
         };
 
@@ -182,11 +183,11 @@ namespace UnitySkills.Tests.Core
         }
 
         // ============================================================
-        // 顶层 unity-skills~/SKILL.md 的引用一致性（issue #52）
+        // Reference consistency for the top-level unity-skills~/SKILL.md (issue #52)
         //
-        // 其余测试经 GetDocsRoot() 只遍历 skills/*/SKILL.md，顶层 SKILL.md 零覆盖 —— 25 个
-        // 幽灵 skill 名和一处裸 helper 名因此长期潜伏，最终导致 agent 反复调用不存在的
-        // `get_skill_schema` / `health_check`。以下三个测试把这块盲区补上。
+        // The other tests only traverse skills/*/SKILL.md via GetDocsRoot(), giving zero coverage of the
+        // top-level SKILL.md - 25 ghost skill names and one bare helper name lurked undetected, eventually
+        // causing the agent to repeatedly call the nonexistent `get_skill_schema` / `health_check`. The following three tests close this blind spot.
         // ============================================================
 
         [Test]
@@ -217,8 +218,8 @@ namespace UnitySkills.Tests.Core
             var helpers = LoadPythonHelperNames();
             var doc = ReadRootSkillDoc(out var docPath);
 
-            // 只匹配调用形态 `name(`：文档里 `GET /health` 中的 health 与同名 helper 无关，
-            // 不该被当成未限定调用。
+            // Only matches the call form `name(`: the "health" in `GET /health` in the doc is unrelated to the
+            // helper of the same name and shouldn't be treated as an unqualified call.
             var pattern = new Regex(
                 @"(?<!unity_skills\.)\b(?<name>" +
                 string.Join("|", helpers.OrderByDescending(h => h.Length).Select(Regex.Escape)) +
@@ -276,15 +277,15 @@ namespace UnitySkills.Tests.Core
         }
 
         // ============================================================
-        // 文档树的可达性与预算（v2.7）
+        // Doc-tree reachability and budget (v2.7)
         // ============================================================
 
         /// <summary>
-        /// 模块目录 ↔ skills/SKILL.md 索引链接双向齐平，无豁免。
+        /// Module directories and skills/SKILL.md index links must be bidirectionally flush, no exemptions.
         ///
-        /// 索引是 agent 找模块文档的唯一入口：目录建了而索引没登记，那份文档就等于不存在；
-        /// 索引指向一个不存在的目录，agent 会去读一个 404。两个方向都必须为空差集 ——
-        /// AdvisoryModules 那类豁免在这里没有意义，因为纯设计指南同样要能被找到。
+        /// The index is the agent's only entry point for finding module docs: a directory that exists but isn't
+        /// registered is effectively invisible, and an index entry pointing at a nonexistent directory sends the
+        /// agent to read a 404. Both directions must have an empty set difference - the AdvisoryModules exemption doesn't apply here, since pure design guides must be findable too.
         /// </summary>
         [Test]
         public void SkillsIndexDoc_ShouldLinkEveryModuleDirectory_BothWays()
@@ -320,11 +321,11 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// SURFACE_EXCLUDED 载荷里指出的 manual-* 文档必须真的存在。
+        /// The manual-* docs referenced in the SURFACE_EXCLUDED payload must genuinely exist.
         ///
-        /// 那条路径是拒绝可执行性的全部依托：agent 被告知「读这份文档，然后手动带用户做」，
-        /// 路径失效就把一个可操作的拒绝变成死胡同。<see cref="SkillsSurfaceProfile.ManualDocFor"/>
-        /// 返回的是相对包根的路径，这里逐个落到磁盘上核。
+        /// That path is the entire basis for making the rejection actionable: the agent is told "read this doc,
+        /// then walk the user through it manually" - a broken path turns an actionable rejection into a dead end.
+        /// <see cref="SkillsSurfaceProfile.ManualDocFor"/> returns a path relative to the package root, checked against disk one by one here.
         /// </summary>
         [Test]
         public void ManualDocsReferencedBySurfaceProfile_ShouldExistOnDisk()
@@ -352,8 +353,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 顶层 SKILL.md 的字节预算。这份文档每次会话都被完整读入上下文，所以它的体积是所有
-        /// 用户共同支付的固定成本 —— 上限存在的意义就是逼新内容下沉到 references/ 里按需加载。
+        /// The byte budget for the top-level SKILL.md. This doc is read into context in full every session, so its
+        /// size is a fixed cost every user pays together - the cap exists to force new content down into references/.
         /// </summary>
         [Test]
         public void RootSkillDoc_ShouldStayWithinByteBudget()
@@ -828,7 +829,7 @@ namespace UnitySkills.Tests.Core
             return projectDocsRoot;
         }
 
-        /// <summary>unity-skills~ 包根目录（GetDocsRoot() 的父级）。</summary>
+        /// <summary>The unity-skills~ package root (the parent of GetDocsRoot()).</summary>
         private static string GetPackageRoot()
         {
             return Directory.GetParent(GetDocsRoot())?.FullName

@@ -210,13 +210,16 @@ namespace UnitySkills
             Tags = new[] { "batch", "execute", "job", "report" },
             Outputs = new[] { "jobId", "reportId", "workflowId", "status" },
             RequiresInput = new[] { "confirmToken" },
-            // 真正执行什么由 confirmToken 决定，所以这一个入口覆盖了 ExecutePreviewItem
-            // 分发到的全部执行器——包括 WorkflowManager.DeleteSceneObject 和资源删除。
-            // 少声明不只是标错，而是留洞：铸造 token 的 preview 技能都是 ReadOnly，
-            // 于是撤下场景/资源写权限的 profile 仍会把 token 交给 agent，再在这里执行掉。
-            // 这条声明关掉的是隐藏一切 MutatesScene 写操作的 profile（noSceneAuthoring）；
-            // 它关不掉按类别撤下的 profile——Workflow 不在任何一个隐藏集合里——所以 token
-            // 自身的操作还要在 SurfaceRejectionForKind 里按当前 profile 再分类一次。
+            // What actually executes is decided by confirmToken, so this single entry point covers every
+            // executor that ExecutePreviewItem dispatches to — including WorkflowManager.DeleteSceneObject
+            // and asset deletion.
+            // Under-declaring here isn't just a mislabel, it's a hole: the preview skills that mint tokens
+            // are all ReadOnly, so a profile that revokes scene/asset write permission would still hand the
+            // token to the agent, who then executes it here.
+            // This declaration shuts off the profile that hides every MutatesScene write (noSceneAuthoring);
+            // it does NOT shut off profiles that revoke by category — Workflow isn't in any hidden-category
+            // set — so the token's own operation still has to be reclassified against the current profile
+            // in SurfaceRejectionForKind.
             MutatesScene = true,
             MutatesAssets = true,
             SupportsDryRun = false)]
@@ -231,10 +234,11 @@ namespace UnitySkills
             if (preview == null)
                 return new { success = false, error = "Invalid or expired confirmToken. Call preview again to get a new token." };
 
-            // 要问 surface profile 的是 token 而不是本技能的元数据：被撤下的从来不是本技能，
-            // 而铸造 token 的 preview 是 ReadOnly、任何 profile 下都提供。
-            // 这一步放在 RemovePreview 之前，拒绝时 token 保持有效——用户把 profile 切回来
-            // 即可继续执行，不必再走一轮 preview。
+            // What we need to ask the surface profile about is the token, not this skill's own metadata:
+            // what's ever revoked is never this skill — it's the preview that mints the token, which is
+            // ReadOnly and available under every profile.
+            // This check runs before RemovePreview, so on rejection the token stays valid — the user can
+            // switch the profile back and continue executing without going through preview again.
             var withdrawn = SurfaceRejectionForKind(preview.kind, "batch_execute",
                 "the operation this confirmToken was minted for");
             if (withdrawn != null)
@@ -261,8 +265,8 @@ namespace UnitySkills
                 };
             }
 
-            // 每项 50ms 预算、下限 5s，再夹到共享的主线程等待上限，
-            // 免得超大的内联预览让 Wait 把编辑器冻住超过允许的时长。
+            // 50ms budget per item, floor of 5s, then clamped to the shared main-thread wait ceiling,
+            // so an oversized inline preview can't let Wait freeze the editor past the allowed duration.
             var inlineTimeoutMs = Math.Min(BatchJobService.MaxWaitTimeoutMs,
                 Math.Max(5000, preview.executableCount * 50));
             var completed = BatchJobService.Wait(job.jobId, inlineTimeoutMs);
@@ -463,8 +467,9 @@ namespace UnitySkills
             Tags = new[] { "job", "wait", "async" },
             Outputs = new[] { "jobId", "status", "reportId", "waitNotSupported", "terminal", "resultAvailable", "resultHint" },
             RequiresInput = new[] { "jobId" })]
-        // 默认值必须等于夹取上限而不能高于它：写 10000 会让 manifest（进而让 agent）以为
-        // 省略该参数能等 10s，而 AsyncJobService.Wait 一直是砍到 2000 的。
+        // The default value must equal the clamp ceiling, never exceed it: writing 10000 would make the
+        // manifest (and in turn the agent) believe omitting this parameter waits up to 10s, while
+        // AsyncJobService.Wait always clamps to 2000.
         public static object JobWait(string jobId, int timeoutMs = 2000, bool includeDetails = false)
         {
             if (Validate.Required(jobId, "jobId") is object err)
@@ -550,8 +555,8 @@ namespace UnitySkills
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "layer", "rendering", "gameobject" },
             Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
-            // layer 为空时 BuildSetLayerPreview 会抛 "layer is required"，不声明就变成先执行后失败。
-            // queryJson 仍是可选的（缺省 = 全场景对象）。
+            // If layer is empty, BuildSetLayerPreview throws "layer is required"; without this declaration
+            // that would become execute-then-fail. queryJson still stays optional (default = all scene objects).
             RequiresInput = new[] { "layer" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
@@ -572,9 +577,9 @@ namespace UnitySkills
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "material", "replace", "renderer" },
             Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
-            // 与 batch_preview_replace_material 走同一个 builder，两者的声明必须保持一致：
-            // 缺了这行，空 materialPath 会一路走到 BuildReplaceMaterialPreview 才失败，
-            // 而不是在入口直接拒绝。
+            // Shares the same builder as batch_preview_replace_material, so the two declarations must stay
+            // in sync: without this line, an empty materialPath would run all the way to
+            // BuildReplaceMaterialPreview before failing, instead of being rejected right at the entry point.
             RequiresInput = new[] { "materialPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
@@ -626,8 +631,8 @@ namespace UnitySkills
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "batch", "retry", "failed", "recovery" },
             Outputs = new[] { "jobId", "retryCount", "originalReportId" },
-            // 把记录下来的条目交给与 batch_execute 相同的执行器重跑，
-            // 因此必须带上与它相同的声明（原因同上）。
+            // Hands the recorded entries to the same executor as batch_execute to rerun them,
+            // so it must carry the same declarations as that one (same reasoning as above).
             MutatesScene = true,
             MutatesAssets = true)]
         public static object BatchRetryFailed(string reportId, bool runAsync = true, int chunkSize = 100)
@@ -640,8 +645,8 @@ namespace UnitySkills
             if (report == null)
                 return new { error = $"Report not found: {reportId}" };
 
-            // 执行器与 batch_execute 相同，只是入口从 token 换成 reportId，
-            // 所以同样要拿记录下来的 kind 去问 surface profile。
+            // The executor is the same as batch_execute, just entering by reportId instead of token,
+            // so it likewise has to look up the recorded kind against the surface profile.
             var withdrawn = SurfaceRejectionForKind(report.kind, "batch_retry_failed",
                 "re-running this report's failed items");
             if (withdrawn != null)
@@ -758,14 +763,16 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 某个 preview kind 属于哪个写类别，供执行路径上的 surface profile 检查使用。
-        /// 与 <see cref="ExecutePreviewItem"/> 的分发保持一致；类别的选取既为判定，
-        /// 也为随拒绝一起交给 agent 的手册文档——Guide 撤下的那三类都各自配有手册，
-        /// 拒绝时才能说"读这篇、照着教"。
+        /// Which write category a given preview kind belongs to, used by the surface profile check on
+        /// the execution path. Kept in sync with <see cref="ExecutePreviewItem"/>'s dispatch; the category
+        /// chosen serves both the verdict and the manual documentation handed to the agent alongside a
+        /// rejection — each of the three categories Guide revokes has its own manual, so a rejection can
+        /// say "read this, follow it."
         ///
-        /// default 分支故意 fail closed：未映射的 kind 本来就执行不了
-        /// （ExecutePreviewItem 自己的 default 会让它的每一项都失败），当成场景写没有代价，
-        /// 还能防止新加的 kind 在映射未补齐前成为绕过 profile 的新缺口。
+        /// The default branch deliberately fails closed: an unmapped kind can't execute anyway
+        /// (ExecutePreviewItem's own default fails every item of that kind), so treating it as a scene
+        /// write costs nothing, and it also prevents a newly added kind from becoming a new way to bypass
+        /// the profile before its mapping is filled in.
         /// </summary>
         private static SkillCategory SurfaceCategoryForKind(string kind)
         {
@@ -776,12 +783,12 @@ namespace UnitySkills
                 case "set_render_layer":
                 case "cleanup_temp_objects":
                     return SkillCategory.GameObject;
-                // 移除脚本丢失的 MonoBehaviour 属于对象上的组件手术，对应 manual-component。
+                // Removing a MonoBehaviour with a missing script is component surgery on an object, mapping to manual-component.
                 case "set_property":
                 case "fix_missing_scripts":
                     return SkillCategory.Component;
-                // 写的是 Renderer.sharedMaterial：材质资源本身不动，变的是对象用哪个材质，
-                // 对应 manual-material 教的拖拽操作。
+                // Writes Renderer.sharedMaterial: the material asset itself is untouched, what changes is
+                // which material the object uses, mapping to the drag-and-drop operation manual-material teaches.
                 case "replace_material":
                     return SkillCategory.Material;
                 default:
@@ -790,8 +797,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 当前 profile 撤下该 kind 的写权限时返回 SURFACE_EXCLUDED 载荷，允许时返回 null；
-        /// full profile 下恒为 null。
+        /// Returns a SURFACE_EXCLUDED payload when the current profile revokes write permission for this
+        /// kind, or null when it's allowed; always null under the full profile.
         /// </summary>
         private static object SurfaceRejectionForKind(string kind, string skillName, string subject)
         {
@@ -1309,9 +1316,12 @@ namespace UnitySkills
                 skipReasons
             };
 
-            // 预览照旧成功、照旧铸 token、照旧返回 diff——在教学 profile 下这份 diff 本身就是目的。
-            // 只是提前告知 batch_execute 会拒绝该 token，让 agent 把这道墙读成用户的设置而非 bug。
-            // 这里是"新增字段"而不是置空，所以在允许该操作的 profile 下载荷与以前逐字节一致。
+            // The preview still succeeds as before, still mints a token as before, still returns a diff as
+            // before — under a teaching profile, that diff is itself the point.
+            // The only difference is telling the caller ahead of time that batch_execute will reject this
+            // token, so the agent reads this wall as the user's configuration rather than a bug.
+            // This is "adding a field", not nulling one out, so under a profile that allows the operation
+            // the payload stays byte-identical to before.
             var category = SurfaceCategoryForKind(preview.kind);
             if (!SkillsSurfaceProfile.WithdrawsWriteIn(category))
                 return payload;
@@ -1473,11 +1483,12 @@ namespace UnitySkills
             return Equals(currentValue, nextValue);
         }
 
-        // 报告里的 currentValue/nextValue 会被 agent 读回并原样回填，因此每个数字都必须能
-        // 无损往返。SkillParamUtil 的格式化器是统一答案：文化不变（本地化编辑器否则会输出
-        // "0,5"，这里没有解析器认它），并通过重新解析校验 "R"，在 "R" 仍是旧有损实现的
-        // 运行时上退回到按位数安全的格式。只有 SkillParamUtil 无从知晓的情形留在本地处理：
-        // Unity 的结构体（自带 ToString 会四舍五入到一位小数）与资源引用（回显为路径）。
+        // currentValue/nextValue in the report get read back by the agent and written back as-is, so every
+        // number must round-trip losslessly. SkillParamUtil's formatter is the single answer: culture-invariant
+        // (a localized editor would otherwise emit "0,5", which no parser here recognizes), and validated by
+        // re-parsing "R", falling back to a digit-safe format on runtimes where "R" is still the old lossy
+        // implementation. Only cases SkillParamUtil has no way of knowing about are handled locally:
+        // Unity's structs (whose own ToString rounds to one decimal place) and asset references (echoed back as a path).
         private static string FormatValue(object value)
         {
             if (value is Vector2 v2) return SkillParamUtil.FormatVector2(v2);
@@ -1664,11 +1675,13 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 告诉调用方去哪里取作业的完整载荷：job_status/job_wait 现在只报 resultAvailable
-        /// 而不再内联 resultData（一个完成的 test/compile 作业可达几十 KB，轮询会每次重发）。
-        /// 有专用结果技能的 kind 指向该技能；产出了批处理报告的作业指向 batch_report_get；
-        /// 其余告知带 includeDetails=true 重问——那是取到载荷的唯一途径。
-        /// 没有载荷可取时返回 null。
+        /// Tells the caller where to fetch a job's full payload: job_status/job_wait now only report
+        /// resultAvailable and no longer inline resultData (a completed test/compile job can reach tens of
+        /// KB, and polling would resend it every time).
+        /// A kind with a dedicated result skill points to that skill; a job that produced a batch report
+        /// points to batch_report_get; everything else is told to re-query with includeDetails=true —
+        /// that's the only way to fetch the payload.
+        /// Returns null when there's no payload to fetch.
         /// </summary>
         private static string BuildJobResultHint(BatchJobRecord job, string selfSkill, bool resultAvailable)
         {

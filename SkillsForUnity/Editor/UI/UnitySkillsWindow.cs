@@ -20,8 +20,8 @@ namespace UnitySkills
         private const string UxmlPath = "Packages/com.besty.unity-skills/Editor/UI/UnitySkillsWindow.uxml";
         private const string UssPath  = "Packages/com.besty.unity-skills/Editor/UI/UnitySkillsWindow.uss";
 
-        // 一次性 first-run toast 标记。
-        // 仅在 "新安装 + 未设过 OperatingMode" 时弹出，避免老用户/已配置用户被打扰。
+        // One-time first-run toast flag.
+        // Only shown for "fresh install + OperatingMode never set", to avoid disturbing existing/configured users.
         private const string PrefKeyFirstRunToast = "UnitySkills_FirstRunToastShown";
 
         [SerializeField] private int _selectedTab = 0;
@@ -75,7 +75,7 @@ namespace UnitySkills
         private void OnEnable()
         {
             RefreshSkillsList();
-            // 模式/授权变化时联动 topbar/footer 的下次重绘，避免分别在每个子 Controller 里订阅。
+            // Links a mode/authorization change to the topbar/footer's next repaint, avoiding subscribing separately in every sub-controller.
             SkillsModeManager.OnChanged += Repaint;
             // A profile switch changes the visible skill set, so the catalog needs rebuilding
             // rather than repainting — see OnSurfaceProfileChanged.
@@ -340,12 +340,12 @@ namespace UnitySkills
         private void MaybeShowFirstRunToast()
         {
             if (EditorPrefs.HasKey(PrefKeyFirstRunToast)) return;
-            // 已显式选过模式 → 不是新安装的首启，无需提示。
+            // A mode has already been explicitly chosen -> this isn't a fresh install's first launch, no need to prompt.
             if (EditorPrefs.HasKey("UnitySkills_OperatingMode")) return;
             if (PermissionUiHelpers.IsExistingInstall()) return;
 
-            // 先落标记再弹窗：弹窗在 delayCall 里执行，期间用户可能关闭窗口；
-            // 立即写 pref 保证"无论是否真弹出"都不会重复触发。
+            // Set the flag before showing the dialog: the dialog runs inside delayCall, and the user might close the window in the meantime; writing the pref immediately guarantees
+            // this won't re-trigger "regardless of whether the dialog actually appeared."
             EditorPrefs.SetBool(PrefKeyFirstRunToast, true);
 
             EditorApplication.delayCall += () =>
@@ -357,8 +357,8 @@ namespace UnitySkills
 
                 if (EditorUtility.DisplayDialog(title, msg, openBtn, okBtn))
                 {
-                    // 主窗口 + Settings 抽屉作为权限 UI 唯一入口。
-                    // delayCall 让 CreateGUI 先完成，OpenSettings 才能拿到 drawer 引用。
+                    // The main window + Settings drawer is the single entry point for permission UI.
+                    // delayCall lets CreateGUI finish first, so OpenSettings can obtain the drawer reference.
                     var window = GetWindow<UnitySkillsWindow>(SkillsLocalization.Get("window_title"));
                     window.minSize = new Vector2(420, 480);
                     EditorApplication.delayCall += () => window.OpenSettings();
@@ -368,14 +368,14 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 权限/审计面板共享小工具。
-    /// 集中处理 Localization fallback 与"老安装"判定，让 EditorWindow 实现保持薄。
+    /// Shared helpers for the permission/audit panels.
+    /// Centralizes Localization fallback and "existing install" detection, keeping the EditorWindow implementations thin.
     /// </summary>
     internal static class PermissionUiHelpers
     {
         /// <summary>
-        /// 与 <c>SkillsModeManager</c> 内部 IsExistingInstall 同步的 UI 侧判定，
-        /// 用于决定是否对老用户隐藏首启 toast；保持两侧 key 列表一致即可。
+        /// UI-side determination kept in sync with <c>SkillsModeManager</c>'s internal IsExistingInstall, used to decide whether to hide the first-run toast for existing
+        /// users; just keep the two key lists consistent.
         /// </summary>
         public static bool IsExistingInstall()
         {
@@ -405,21 +405,21 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 审计日志查看器 — UI Toolkit / UXML 实现的控制台风格列表。
-    /// Toolbar(路径 + Reveal + Refresh) → Filter(搜索 + 类型下拉 + 计数) → ListView(图标+时间+徽章+摘要) → Detail(原始 JSON)。
-    /// 入口：主窗口 → 齿轮 → Settings Drawer → Permissions 组 → [View Audit Log]。
-    /// 未单独挂菜单，避免 Window/UnitySkills 子菜单泛滥。
+    /// Audit log viewer -- a console-style list implemented with UI Toolkit / UXML.
+    /// Toolbar (path + Reveal + Refresh) -> Filter (search + type dropdown + count) -> ListView (icon+time+badge+summary) -> Detail (raw JSON).
+    /// Entry point: main window -> gear -> Settings Drawer -> Permissions group -> [View Audit Log].
+    /// Not mounted as its own menu item, to avoid Window/UnitySkills submenu sprawl.
     /// </summary>
     public sealed class UnitySkillsAuditWindow : EditorWindow
     {
         private const string UxmlPath = "Packages/com.besty.unity-skills/Editor/UI/AuditLogWindow.uxml";
         private const string UssPath  = "Packages/com.besty.unity-skills/Editor/UI/AuditLogWindow.uss";
-        // 主题变量（--color-*）唯一源：主窗口 USS 先于本窗口 USS 加载（同 UnityCliWindow 范式）。
+        // Single source of theme variables (--color-*): the main window's USS loads before this window's USS (same pattern as UnityCliWindow).
         private const string ThemeUssPath = "Packages/com.besty.unity-skills/Editor/UI/UnitySkillsWindow.uss";
         private const int MaxEntries = 500;
 
-        // 类型筛选下拉选项；"All" 表示不过滤。新事件类型在 AuditLog 添加后同步追加。
-        // revoke / revoke_all 保留以兼容旧日志。
+        // Type-filter dropdown options; "All" means no filtering. New event types get appended here after being added to AuditLog.
+        // revoke / revoke_all are kept for compatibility with old logs.
         private static readonly string[] _typeOptions = new[]
         {
             "All",
@@ -450,7 +450,7 @@ namespace UnitySkills
             w.Focus();
         }
 
-        // ----- 语言跟随：主面板切换语言时整树重建（含窗口标题） -----
+        // ----- Language follow: the whole tree rebuilds (including the window title) when the main panel switches language -----
 
         private void OnEnable() => SkillsLocalization.LanguageChanged += RebuildForLanguage;
         private void OnDisable() => SkillsLocalization.LanguageChanged -= RebuildForLanguage;
@@ -549,7 +549,7 @@ namespace UnitySkills
                 _list.makeItem = MakeRow;
                 _list.bindItem = BindRow;
                 _list.selectionType = SelectionType.Single;
-                // Unity 6 / 2022.2+ 用 selectedIndicesChanged；老 API 仍兼容但已 obsolete。
+                // Unity 6 / 2022.2+ uses selectedIndicesChanged; the old API still works but is obsolete.
                 _list.selectedIndicesChanged += _ => RefreshDetail();
             }
 
@@ -574,7 +574,7 @@ namespace UnitySkills
                         if (entry != null) _all.Add(entry);
                     }
                 }
-                // 最新在上
+                // Newest on top
                 _all.Reverse();
             }
             catch (Exception ex)
@@ -657,7 +657,7 @@ namespace UnitySkills
             catch { return raw; }
         }
 
-        // ===== ListView row 渲染 =====
+        // ===== ListView row rendering =====
 
         private VisualElement MakeRow()
         {
@@ -737,7 +737,7 @@ namespace UnitySkills
 
         // ===== Entry parsing =====
 
-        /// <summary>每条审计事件的强类型投影；只挑出 UI 展示用到的字段，原始 JSON 仍保留在 RawJson 里。</summary>
+        /// <summary>A strongly-typed projection of each audit event; only the fields the UI displays are picked out, the raw JSON is still kept in RawJson.</summary>
         private sealed class AuditEntry
         {
             public string Ts;
@@ -798,7 +798,7 @@ namespace UnitySkills
             {
                 return dt.ToLocalTime().ToString("HH:mm:ss");
             }
-            // 解析失败兜底：ISO 字符串里 "T" 后 8 个字符通常就是 HH:mm:ss。
+            // Fallback for a parse failure: the 8 characters after "T" in an ISO string are usually HH:mm:ss.
             return isoTs.Length >= 19 ? isoTs.Substring(11, 8) : isoTs;
         }
 

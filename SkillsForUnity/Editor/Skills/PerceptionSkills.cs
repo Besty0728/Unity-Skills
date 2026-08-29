@@ -18,7 +18,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// 场景理解技能：帮助 AI 快速感知工程状态。
+    /// Scene understanding skills: help AI quickly perceive project state.
     /// </summary>
     public static class PerceptionSkills
     {
@@ -389,7 +389,7 @@ namespace UnitySkills
             }
             catch
             {
-                // manifest 格式异常时忽略，退化为一个包也没检出。
+                // Ignore malformed manifest; degrade to detecting zero packages.
             }
 
             return packageIds;
@@ -410,7 +410,7 @@ namespace UnitySkills
                 }
                 catch
                 {
-                    // 反射失败时忽略，退回按已安装包推断。
+                    // Ignore reflection failure; fall back to inferring from installed packages.
                 }
             }
 
@@ -1023,7 +1023,7 @@ namespace UnitySkills
             {
                 if (go.activeInHierarchy) activeObjects++;
 
-                // 深度取自请求级层级缓存。
+                // Depth comes from the per-request hierarchy-level cache.
                 int depth = GameObjectFinder.GetDepth(go);
                 if (depth > maxDepth) maxDepth = depth;
 
@@ -1269,7 +1269,7 @@ namespace UnitySkills
                 })
                 .ToList();
 
-            // 只有 MonoBehaviour 才有 Unity 回调
+            // Only MonoBehaviour has Unity callbacks
             List<string> unityEvents = null;
             if (typeof(MonoBehaviour).IsAssignableFrom(type))
             {
@@ -1497,7 +1497,7 @@ namespace UnitySkills
                 }
             }
 
-            // 可选：代码层依赖
+            // Optional: code-level dependencies
             List<object> codeDeps = null;
             if (includeCodeDeps)
             {
@@ -1561,14 +1561,14 @@ namespace UnitySkills
             var type = comp.GetType();
             var typeName = type.Name;
 
-            // MonoBehaviour 走序列化字段
+            // MonoBehaviour goes through serialized fields
             if (comp is MonoBehaviour)
             {
                 var fields = ExtractSerializedFields(comp, objPath, includeValues, includeReferences, refs);
                 return new { type = typeName, kind = "MonoBehaviour", fields };
             }
 
-            // 内置组件：仅当 includeValues 为 true 时才输出 props
+            // Built-in component: only emit props when includeValues is true
             if (includeValues)
             {
                 var props = GetBuiltinComponentProps(comp);
@@ -1598,7 +1598,7 @@ namespace UnitySkills
 
                 var fieldType = prop.propertyType.ToString();
 
-                // ObjectReference 引用始终提取，与 includeValues 无关
+                // ObjectReference references are always extracted, regardless of includeValues
                 if (prop.propertyType == SerializedPropertyType.ObjectReference && prop.objectReferenceValue != null)
                 {
                     var refObj = prop.objectReferenceValue;
@@ -1621,7 +1621,7 @@ namespace UnitySkills
                     continue;
                 }
 
-                // includeValues=true：提取实际值
+                // includeValues=true: extract the actual value
                 object value;
                 switch (prop.propertyType)
                 {
@@ -1637,7 +1637,7 @@ namespace UnitySkills
                     case SerializedPropertyType.Vector3: value = FormatVec(prop.vector3Value); break;
                     case SerializedPropertyType.Vector4: value = FormatVec(prop.vector4Value); break;
                     case SerializedPropertyType.Color: var c = prop.colorValue; value = $"({c.r:F2}, {c.g:F2}, {c.b:F2}, {c.a:F2})"; break;
-                    case SerializedPropertyType.ObjectReference: value = "null"; break; // 引用为 null（非 null 已在上面处理）
+                    case SerializedPropertyType.ObjectReference: value = "null"; break; // Reference is null (non-null already handled above)
                     default:
                         value = prop.isArray ? $"{prop.arrayElementType}[{prop.arraySize}]" : fieldType;
                         break;
@@ -1806,7 +1806,7 @@ namespace UnitySkills
             sb.AppendLine($"> Generated: {DateTime.Now:yyyy-MM-dd HH:mm} | Objects: {objList.Count} | User Scripts: {userScriptCount} | References: {allEdges.Count}");
             sb.AppendLine();
 
-            // 内置组件只输出名字，用户脚本输出 name*
+            // Built-in components emit only the name; user scripts emit name*
             sb.AppendLine("## Hierarchy");
             sb.AppendLine();
             foreach (var (go, depth) in objList)
@@ -1836,7 +1836,7 @@ namespace UnitySkills
             }
             sb.AppendLine();
 
-            // 仅列用户脚本，带字段值
+            // List only user scripts, with field values
             if (userMonos.Count > 0)
             {
                 sb.AppendLine("## Script Fields");
@@ -1887,7 +1887,7 @@ namespace UnitySkills
                 }
             }
 
-            // 依赖图：序列化引用与代码依赖已合并
+            // Dependency graph: serialized references and code dependencies merged
             if (allEdges.Count > 0)
             {
                 sb.AppendLine("## Dependency Graph");
@@ -1923,7 +1923,7 @@ namespace UnitySkills
         {
             if (type == null) return false;
             var ns = type.Namespace;
-            if (string.IsNullOrEmpty(ns)) return true; // 无命名空间即视为用户脚本
+            if (string.IsNullOrEmpty(ns)) return true; // No namespace is treated as a user script
             return !ns.StartsWith("UnityEngine") && !ns.StartsWith("Unity.") &&
                    !ns.StartsWith("TMPro") && !ns.StartsWith("UnityEditor");
         }
@@ -1976,7 +1976,7 @@ namespace UnitySkills
             return count;
         }
 
-        // C# 代码层依赖检测所用的正则
+        // Regexes used for C# code-level dependency detection
         private static readonly System.Text.RegularExpressions.Regex RxGetComponent =
             new System.Text.RegularExpressions.Regex(@"(?:Get|Add)Component(?:InChildren|InParent|s)?<(\w+)>", System.Text.RegularExpressions.RegexOptions.Compiled);
         private static readonly System.Text.RegularExpressions.Regex RxFindObject =
@@ -1997,7 +1997,7 @@ namespace UnitySkills
             new System.Text.RegularExpressions.Regex(@"class\s+(\w+)\s*:\s*([\w\s,]+?)\s*\{", System.Text.RegularExpressions.RegexOptions.Compiled);
         private static readonly System.Text.RegularExpressions.Regex RxTypeCheck =
             new System.Text.RegularExpressions.Regex(@"(?:typeof|is|as)\s*[\(<]\s*(\w+)\s*[\)>]?", System.Text.RegularExpressions.RegexOptions.Compiled);
-        // 匹配字符串（组 1）或注释（组 2/3）：字符串保留，注释被替换掉。
+        // Matches strings (group 1) or comments (groups 2/3): strings are kept, comments are stripped.
         private static readonly System.Text.RegularExpressions.Regex RxComment =
             new System.Text.RegularExpressions.Regex(@"(""(?:[^""\\]|\\.)*"")|(/\*[\s\S]*?\*/)|(//.*?$)",
                 System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.Multiline);
@@ -2009,7 +2009,7 @@ namespace UnitySkills
             var edges = new List<DependencyEdge>();
             var scriptGuids = AssetDatabase.FindAssets("t:MonoScript", new[] { "Assets" });
 
-            // 先收齐所有用户类名（MonoBehaviour、ScriptableObject、普通类等）
+            // First collect all user class names (MonoBehaviour, ScriptableObject, plain classes, etc.)
             var userClassNames = new HashSet<string>();
             var userScriptPaths = new List<(string path, string className)>();
             foreach (var guid in scriptGuids)
@@ -2031,10 +2031,10 @@ namespace UnitySkills
                 string rawSource;
                 try { rawSource = File.ReadAllText(path, System.Text.Encoding.UTF8); } catch { continue; }
 
-                // 剥掉注释以免误判（保留字符串字面量，且字符偏移不变）
+                // Strip comments to avoid false positives (string literals kept, character offsets unchanged)
                 var source = RxComment.Replace(rawSource, m => m.Groups[1].Success ? m.Value : new string(' ', m.Length));
 
-                // 建立 行号→方法 索引，以获得方法级粒度
+                // Build a line->method index for method-level granularity
                 var methodAtLine = BuildMethodIndex(source);
 
                 void AddEdge(string target, string pattern, string edgeType, int charIndex)
@@ -2059,15 +2059,15 @@ namespace UnitySkills
                 foreach (System.Text.RegularExpressions.Match m in RxSendMessage.Matches(source))
                     AddEdge(m.Groups[1].Value, m.Value, "Message", m.Index);
 
-                // 引用其他用户类的字段
+                // References a field of another user class
                 foreach (System.Text.RegularExpressions.Match m in RxFieldRef.Matches(source))
                     AddEdge(m.Groups[1].Value, $"field:{m.Groups[1].Value}", "FieldReference", m.Index);
 
-                // 单例访问：ClassName.Instance（仅 PascalCase）
+                // Singleton access: ClassName.Instance (PascalCase only)
                 foreach (System.Text.RegularExpressions.Match m in RxSingleton.Matches(source))
                     AddEdge(m.Groups[1].Value, $"{m.Groups[1].Value}.Instance", "Singleton", m.Index);
 
-                // 静态成员访问：PascalCase.PascalCase（两侧都必须首字母大写）
+                // Static member access: PascalCase.PascalCase (both sides must start uppercase)
                 foreach (System.Text.RegularExpressions.Match m in RxStaticAccess.Matches(source))
                     AddEdge(m.Groups[1].Value, m.Value.TrimEnd('(', ';', ',', ')').Trim(), "StaticAccess", m.Index);
 
@@ -2075,11 +2075,11 @@ namespace UnitySkills
                 foreach (System.Text.RegularExpressions.Match m in RxNewInstance.Matches(source))
                     AddEdge(m.Groups[1].Value, $"new {m.Groups[1].Value}()", "Instantiation", m.Index);
 
-                // 泛型类型实参：SomeMethod<ClassName>()
+                // Generic type argument: SomeMethod<ClassName>()
                 foreach (System.Text.RegularExpressions.Match m in RxGenericArg.Matches(source))
                     AddEdge(m.Groups[1].Value, m.Value.TrimEnd('('), "GenericArg", m.Index);
 
-                // 继承：class X : BaseClass, IInterface（多类文件用 Matches 全量匹配）
+                // Inheritance: class X : BaseClass, IInterface (use Matches for full matching in multi-class files)
                 foreach (System.Text.RegularExpressions.Match inhMatch in RxInheritance.Matches(source))
                 {
                     var declaredClass = inhMatch.Groups[1].Value;
@@ -2331,10 +2331,10 @@ namespace UnitySkills
             Category = SkillCategory.Perception, Operation = SkillOperation.Analyze,
             Tags = new[] { "dependency", "impact", "reference", "analysis", "graph" },
             Outputs = new[] { "sceneName", "target", "totalReferences", "objectsAnalyzed", "analysis", "savedTo", "markdown" },
-            // 不能标 ReadOnly：传了 savePath 本 skill 就会 Directory.CreateDirectory +
-            // File.WriteAllText + AssetDatabase.ImportAsset 出一个新的工程资产。
-            // ReadOnly 永远不会被 surface profile 隐藏，还会跳过 router 的 diff 捕获，
-            // 于是一个可选参数就能越过这两道闸门往工程里写。
+            // Cannot mark ReadOnly: passing savePath makes this skill run Directory.CreateDirectory +
+            // File.WriteAllText + AssetDatabase.ImportAsset, producing a new project asset.
+            // ReadOnly is never hidden by the surface profile and also skips the router's diff
+            // capture, so a single optional parameter could bypass both gates to write into the project.
             MutatesAssets = true,
             Mode = SkillMode.SemiAuto)]
         public static object SceneDependencyAnalyze(
@@ -2348,11 +2348,11 @@ namespace UnitySkills
 
             var edges = CollectDependencyEdges(allObjects);
 
-            // 反向索引：每个对象被谁依赖
+            // Reverse index: who depends on each object
             var reverseIndex = edges.GroupBy(e => e.toObject)
                 .ToDictionary(g => g.Key, g => g.ToList());
 
-            // 指定了 targetPath 时只分析该子树
+            // When targetPath is given, only analyze that subtree
             List<object> analysis;
             if (!string.IsNullOrEmpty(targetPath))
             {
@@ -2433,7 +2433,7 @@ namespace UnitySkills
 
             var codeEdges = CollectCodeDependencies();
 
-            // 双向邻接表：outgoing 表示 A 依赖 B，incoming 表示 B 被 A 依赖
+            // Bidirectional adjacency list: outgoing means A depends on B, incoming means B is depended on by A
             var outgoing = new Dictionary<string, HashSet<string>>();
             var incoming = new Dictionary<string, HashSet<string>>();
 
@@ -2446,8 +2446,8 @@ namespace UnitySkills
                 incoming[e.toObject].Add(e.fromObject);
             }
 
-            // 从入口双向 BFS 扩散，最多 maxHops 跳
-            var visited = new Dictionary<string, int>(); // 脚本名 → 跳数
+            // Bidirectional BFS spreading out from the entry, up to maxHops hops
+            var visited = new Dictionary<string, int>(); // script name -> hop count
             var queue = new Queue<(string name, int hop)>();
             visited[entryName] = 0;
             queue.Enqueue((entryName, 0));
@@ -2482,7 +2482,7 @@ namespace UnitySkills
                 }
             }
 
-            // 经 MonoScript 资产建立文件路径查找表
+            // Build a file-path lookup table via MonoScript assets
             var filePathMap = new Dictionary<string, string>();
             var scriptGuids = AssetDatabase.FindAssets("t:MonoScript", new[] { "Assets" });
             foreach (var guid in scriptGuids)
@@ -2566,7 +2566,7 @@ namespace UnitySkills
                 .Select(e => (object)new { from = e.fromObject, to = e.toObject, type = e.fieldType, detail = e.fieldName })
                 .ToList();
 
-            // suggestedReadOrder 的拓扑排序（Kahn 算法）
+            // Topological sort for suggestedReadOrder (Kahn's algorithm)
             var readOrder = TopologicalSort(visited.Keys.ToList(), codeEdges.Where(e => visited.ContainsKey(e.fromObject) && visited.ContainsKey(e.toObject)).ToList(), entryName);
 
             return new
@@ -2582,8 +2582,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 对依赖子图做 Kahn 拓扑排序：无出边的叶子在前，入口脚本置于最后，
-        /// 处于环中的节点按字母序追加。
+        /// Kahn's topological sort over the dependency subgraph: leaves with no outgoing edges come
+        /// first, the entry script is placed last, and nodes stuck in a cycle are appended alphabetically.
         /// </summary>
         private static List<string> TopologicalSort(List<string> nodes, List<DependencyEdge> edges, string entryScript)
         {
@@ -2593,7 +2593,7 @@ namespace UnitySkills
             foreach (var e in edges)
             {
                 if (!adj.ContainsKey(e.toObject) || !inDegree.ContainsKey(e.fromObject)) continue;
-                adj[e.toObject].Add(e.fromObject); // 依赖方向：A 依赖 B 则应先读 B，故建边 B→A
+                adj[e.toObject].Add(e.fromObject); // Dependency direction: A depends on B means B should be read first, so build the edge B->A
                 inDegree[e.fromObject] = inDegree.TryGetValue(e.fromObject, out var d) ? d + 1 : 1;
             }
 
@@ -2611,11 +2611,11 @@ namespace UnitySkills
                 }
             }
 
-            // 剩余节点处于环中，按字母序追加
+            // Remaining nodes are stuck in a cycle; append them alphabetically
             var remaining = nodes.Where(n => !result.Contains(n)).OrderBy(n => n).ToList();
             result.AddRange(remaining);
 
-            // 入口脚本移到末尾：先读依赖，最后读入口
+            // Move the entry script to the end: read dependencies first, entry last
             if (result.Remove(entryScript))
                 result.Add(entryScript);
 
@@ -2745,7 +2745,7 @@ namespace UnitySkills
                 usedLayers.Add(go.layer);
             }
 
-            // 找出参与物理交互但没有任何对象的层
+            // Find layers involved in physics interaction that have no objects
             var emptyLayers = new List<string>();
             for (int i = 0; i < 32; i++)
             {
@@ -2770,21 +2770,21 @@ namespace UnitySkills
         {
             var hints = new List<object>();
 
-            // 1. 实时阴影灯光
+            // 1. Real-time shadow lights
             var lights = FindHelper.FindAll<Light>();
             var shadowLights = lights.Where(l => l.shadows != LightShadows.None).ToArray();
             if (shadowLights.Length > 4)
                 hints.Add(new { priority = 1, category = "Lighting", issue = $"{shadowLights.Length} shadow-casting lights",
                     suggestion = "Reduce to ≤4 or use baked lighting", fixSkill = "light_set_properties" });
 
-            // 2. 非静态 renderer
+            // 2. Non-static renderers
             var renderers = FindHelper.FindAll<Renderer>();
             int nonStaticCount = renderers.Count(r => !r.gameObject.isStatic);
             if (nonStaticCount > 100)
                 hints.Add(new { priority = 2, category = "Batching", issue = $"{nonStaticCount} non-static renderers",
                     suggestion = "Mark static objects with optimize_set_static_flags", fixSkill = "optimize_set_static_flags" });
 
-            // 3. 无 LOD 的高面数网格
+            // 3. High-poly meshes without LOD
             var meshFilters = FindHelper.FindAll<MeshFilter>();
             var highPoly = meshFilters.Where(mf => mf.sharedMesh != null && SkillsCommon.GetTriangleCount(mf.sharedMesh) > 10000
                 && mf.GetComponent<LODGroup>() == null).ToArray();
@@ -2792,7 +2792,7 @@ namespace UnitySkills
                 hints.Add(new { priority = 2, category = "Geometry", issue = $"{highPoly.Length} high-poly meshes (>10k tris) without LOD",
                     suggestion = "Add LOD groups", fixSkill = "optimize_set_lod_group" });
 
-            // 4. 重复材质
+            // 4. Duplicate materials
             var mats = renderers.SelectMany(r => r.sharedMaterials).Where(m => m != null).ToArray();
             var uniqueShaders = mats.Select(m => m.shader?.name).Distinct().Count();
             var duplicateCount = mats.Length - mats.Select(UnityObjectIdUtility.GetEntityId).Distinct().Count();
@@ -2800,7 +2800,7 @@ namespace UnitySkills
                 hints.Add(new { priority = 3, category = "Materials", issue = $"{duplicateCount} duplicate material references",
                     suggestion = "Consolidate materials", fixSkill = "optimize_find_duplicate_materials" });
 
-            // 5. 粒子系统
+            // 5. Particle systems
             var particles = FindHelper.FindAll<ParticleSystem>();
             if (particles.Length > 20)
                 hints.Add(new { priority = 3, category = "Particles", issue = $"{particles.Length} particle systems",
@@ -2814,7 +2814,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 场景 Diff
+        // Scene diff
         // ==================================================================================
 
         [UnitySkill("scene_diff", "Compare current scene against a previous snapshot to see what changed. Call without snapshotJson to capture a snapshot; call with snapshotJson to compare.",
@@ -2827,7 +2827,7 @@ namespace UnitySkills
         {
             if (string.IsNullOrWhiteSpace(snapshotJson))
             {
-                // 捕获模式：返回当前场景快照
+                // Capture mode: return the current scene snapshot
                 var snapshot = CaptureSceneSnapshot();
                 return new
                 {
@@ -2839,7 +2839,7 @@ namespace UnitySkills
                 };
             }
 
-            // 对比模式：解析先前快照并做 diff
+            // Compare mode: parse the previous snapshot and diff
             JArray previousSnapshot;
             try { previousSnapshot = JArray.Parse(snapshotJson); }
             catch (Exception ex) { return new { error = $"Invalid snapshotJson: {ex.Message}" }; }
@@ -2865,7 +2865,7 @@ namespace UnitySkills
             var removed = new List<object>();
             var modified = new List<object>();
 
-            // added：在当前而不在先前快照中
+            // added: present in current but not in the previous snapshot
             foreach (var kvp in currentMap)
             {
                 if (!previousMap.ContainsKey(kvp.Key))
@@ -2880,7 +2880,7 @@ namespace UnitySkills
                 }
             }
 
-            // removed：在先前快照而不在当前
+            // removed: present in the previous snapshot but not in current
             foreach (var kvp in previousMap)
             {
                 if (!currentMap.ContainsKey(kvp.Key))
@@ -2895,7 +2895,7 @@ namespace UnitySkills
                 }
             }
 
-            // modified：instanceId 相同但属性有别
+            // modified: same instanceId but differing properties
             foreach (var kvp in currentMap)
             {
                 if (previousMap.TryGetValue(kvp.Key, out var prev))

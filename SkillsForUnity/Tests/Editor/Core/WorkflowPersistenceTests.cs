@@ -50,8 +50,8 @@ namespace UnitySkills.Tests.Core
             WorkflowManager.ResetStateForTests();
             WorkflowManager.OverrideHistoryFilePathForTests = null;
             WorkflowFileStore.OverrideStoreRootForTests = null;
-            // Unity Test Framework 正在收尾 Undo 状态时，不能删掉当前活动场景所在的资源目录；
-            // 整个 teardown 期间必须始终有一个有效的目标场景。
+            // While Unity Test Framework is winding down Undo state, the asset folder holding the currently
+            // active scene can't be deleted; there must always be a valid target scene throughout teardown.
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             if (AssetDatabase.IsValidFolder(AssetRoot)) AssetDatabase.DeleteAsset(AssetRoot);
             AssetDatabase.Refresh();
@@ -404,8 +404,8 @@ namespace UnitySkills.Tests.Core
             AssertSchemaParameterRequired(schema, "batch_preview_set_property", "propertyName");
             AssertSchemaParameterRequired(schema, "batch_preview_replace_material", "materialPath");
             AssertSchemaParameterRequired(schema, "workflow_plan", "skillsJson");
-            // 曾以 required:false 发布，而方法体对"缺省"和"空串"都拒——schema 与实际行为
-            // 在这个 skill 唯一的参数上互相矛盾。
+            // Was previously published as required:false, while the method body rejects both "omitted" and
+            // "empty string" — the schema and actual behavior contradict each other on this skill's only parameter.
             AssertSchemaParameterRequired(schema, "addressables_group_create", "groupName");
 
             var dryRun = JObject.Parse(SkillRouter.DryRun("batch_preview_set_property", "{}"));

@@ -13,10 +13,10 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// DOTween Pro 的 DOTweenAnimation 编辑期配置技能。
-    /// 对 DOTween / DOTweenAnimation 的访问一律走反射，未安装 DOTween 时程序集照样编译。
-    /// DOTWEEN / DOTWEEN_PRO 两个 scripting define 由 DOTweenPresenceDetector 自动维护，
-    /// 它们只是快速判定信号（省去探测的短路），不是编译开关。
+    /// DOTween Pro's DOTweenAnimation editor-time configuration skills.
+    /// All access to DOTween / DOTweenAnimation goes through reflection, so the assembly still compiles when DOTween isn't installed.
+    /// The two scripting defines DOTWEEN / DOTWEEN_PRO are maintained automatically by DOTweenPresenceDetector;
+    /// they're just a fast-path detection signal (skipping detection), not a compile switch.
     /// </summary>
     public static class DOTweenSkills
     {
@@ -24,7 +24,7 @@ namespace UnitySkills
         private static object NoDOTweenPro() => DOTweenReflectionHelper.NoDOTweenPro();
 
         // ==================================================================================
-        // 免费版运行时 / 工程诊断
+        // Free version runtime / project diagnostics
         // ==================================================================================
 
         [UnitySkill("dotween_get_status",
@@ -293,7 +293,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // A. 生成
+        // A. Generation
         // ==================================================================================
 
         [UnitySkill("dotween_pro_add_animation",
@@ -375,8 +375,9 @@ namespace UnitySkills
             var targets = ParseTargetList(targetsJson);
             if (targets == null) return new { error = "targetsJson must be a JSON array of strings" };
 
-            // 在入口一次性拒绝，而不是逐项报错：这些参数为所有目标共用，逐项失败只会把
-            // 同一个调用方错误复读 N 遍，而且等调用方看到时前面的目标早就加上去了。
+            // Reject once up front rather than per-item: these parameters are shared by every target, so a
+            // per-item failure would just echo the same caller error N times, and by the time the caller sees it
+            // the earlier targets have already been added.
             if (ValidateAnimationSpec(animationType, ease, loopType, duration, loops, delay) is object specErr)
                 return specErr;
 
@@ -427,8 +428,8 @@ namespace UnitySkills
             var targets = ParseTargetList(targetsJson);
             if (targets == null) return new { error = "targetsJson must be a JSON array of strings" };
 
-            // baseDelay / staggerDelay 为负必须拒绝：DOTween 会一声不吭地把负延迟夹掉，
-            // 于是回报给调用方的错峰效果（以及逐项回显的 delay）根本不存在。
+            // A negative baseDelay / staggerDelay must be rejected: DOTween silently clamps a negative delay
+            // away, so the staggered cascade effect reported back to the caller (and the per-item echoed delay) wouldn't actually exist.
             if (InvalidNonNegativeError(baseDelay, "baseDelay") is object baseErr) return baseErr;
             if (InvalidNonNegativeError(staggerDelay, "staggerDelay") is object staggerErr) return staggerErr;
             if (ValidateAnimationSpec(animationType, ease, loopType, duration, loops, baseDelay) is object specErr)
@@ -451,7 +452,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // B. 调参 —— 3 个专用 + 2 个通用
+        // B. Tuning — 3 dedicated setters + 2 generic ones
         // ==================================================================================
 
         [UnitySkill("dotween_pro_set_duration",
@@ -467,10 +468,11 @@ namespace UnitySkills
             string target = null, int targetInstanceId = 0, string targetPath = null,
             int animationIndex = 0, float? duration = null)
         {
-            // 先校参数域，再解析目标：值非法与是否装了 Pro 无关，放在这里校验才能在没有
-            // Asset Store 包的环境下也观察到这条拒绝。duration 既是可空的又列进了
-            // RequiresInput：若写成 float duration = 1f，省略它就会把动画静默重置为 1s
-            // 并报成功——CLR 默认值与显式传 1 无法区分。
+            // Validate the parameter domain before resolving the target: an invalid value is unrelated to
+            // whether Pro is installed, so checking here lets this rejection be observed even without the
+            // Asset Store package. duration is both nullable and listed in RequiresInput: if it were declared as
+            // float duration = 1f, omitting it would silently reset the animation to 1s and still report
+            // success — the CLR default value is indistinguishable from an explicit 1.
             if (Validate.Required(duration, "duration") is object missing) return missing;
             if (InvalidPositiveError(duration.Value, "duration") is object invalid) return invalid;
 
@@ -504,8 +506,9 @@ namespace UnitySkills
             string target = null, int targetInstanceId = 0, string targetPath = null,
             int animationIndex = 0, string ease = "OutQuad", string easeCurveJson = null)
         {
-            // 传了但解析不了的 easeCurveJson 必须在动组件之前就拒绝：否则会掉进按名设缓动的
-            // 分支，装上 OutQuad 还报 success:true——那是静默的错误缓动，而不是拒绝。
+            // An easeCurveJson that is sent but fails to parse must be rejected before touching the component:
+            // otherwise it would fall into the branch that sets ease by name, install OutQuad, and still report
+            // success:true — that's a silently wrong ease, not a rejection.
             AnimationCurve curve = null;
             if (!string.IsNullOrEmpty(easeCurveJson) &&
                 !DOTweenReflectionHelper.TryParseEaseCurve(easeCurveJson, out curve))
@@ -520,8 +523,8 @@ namespace UnitySkills
             var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
             if (err != null) return err;
 
-            // 缓动名要对着当前 DOTween 版本真正声明的 Ease 枚举校验，且在第一次写入之前完成，
-            // 这样被拒的名字不会在组件上留下任何改动。
+            // The ease name must be validated against the enum this DOTween version actually declares, and this
+            // must complete before the first write — so a rejected name leaves no changes on the component.
             if (curve == null &&
                 !DOTweenReflectionHelper.EnumFieldAccepts(comp.GetType(), DOTweenReflectionHelper.EaseFieldCandidates, ease))
             {
@@ -563,9 +566,9 @@ namespace UnitySkills
             string target = null, int targetInstanceId = 0, string targetPath = null,
             int animationIndex = 0, int? loops = null, string loopType = null)
         {
-            // 两个参数都必须可空可选：本 setter 是两个互不相干的半边，写成 int loops = 1 时，
-            // 只传 loopType 的调用会把无限循环静默改成播一次。两个都不传属于调用方错误，
-            // 不是空操作。
+            // Both parameters must be nullable/optional: this setter covers two unrelated halves — if it were
+            // declared as int loops = 1, a call sending only loopType would silently turn infinite looping into
+            // playing once. Sending neither is a caller error, not a no-op.
             if (!loops.HasValue && string.IsNullOrEmpty(loopType))
                 return MissingEitherError("loops", "loopType");
             if (loops.HasValue && InvalidLoopsError(loops.Value) is object invalidLoops) return invalidLoops;
@@ -573,8 +576,8 @@ namespace UnitySkills
             var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
             if (err != null) return err;
 
-            // 必须在第一次写入前校验：先写 loops 再拒绝 loopType，
-            // 会在一个错误响应下留下半边已经生效的改动。
+            // Must validate before the first write: writing loops first and then rejecting loopType would leave
+            // half the change applied under a single error response.
             if (!string.IsNullOrEmpty(loopType) &&
                 !DOTweenReflectionHelper.EnumFieldAccepts(comp.GetType(), DOTweenReflectionHelper.LoopTypeFieldCandidates, loopType))
             {
@@ -634,17 +637,18 @@ namespace UnitySkills
                     errorCode = SkillParamUtil.SemanticInvalidCode,
                     parameter = "fieldName",
                 };
-            // 省略 fieldValue 时不能放行：它会以 null 走到反射层把字段清空，响应却报成功。
-            // 只有显式传空串 "" 才表示清空——路由把两者分得很清（显式空串原样绑定，
-            // 缺键才绑 CLR 默认值），所以这里不去猜意图。
+            // Omitting fieldValue must not be allowed through: it would flow through as null down to the
+            // reflection layer, clearing the field while the response still reports success.
+            // Only an explicit empty string "" means "clear it" — the router keeps the two clearly separate
+            // (an explicit empty string binds as-is, a missing key binds the CLR default), so intent isn't guessed here.
             if (fieldValue == null)
                 return MissingFieldValueError(fieldName);
 
             var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
             if (err != null) return err;
 
-            // "字段不存在"与"值转换不了"要分开报：合成一个 bool 会让后者也去怪 fieldName，
-            // 而它其实是 fieldValue 的问题。
+            // "field doesn't exist" and "value doesn't convert" must be reported separately: merging them into
+            // one bool would make the latter case also blame fieldName, when the real problem is fieldValue.
             var field = DOTweenReflectionHelper.ResolveField(comp.GetType(), fieldName);
             if (field == null)
                 return SkillParamUtil.InvalidValueError(fieldName, "fieldName",
@@ -686,7 +690,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // C. 辅助 —— 列举 / 复制 / 移除
+        // C. Helpers — list / copy / remove
         // ==================================================================================
 
         [UnitySkill("dotween_pro_list_animations",
@@ -794,7 +798,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // D. 设置
+        // D. Settings
         // ==================================================================================
 
         [UnitySkill("dotween_settings_configure",
@@ -853,13 +857,14 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 内部核心
+        // Internal core
         // ==================================================================================
 
         /// <summary>
-        /// 一份生成脚本的配方。定为 internal 而非 private，是为了能直接对生成契约下断言
-        /// （某类目标需要哪个 <c>using</c>、某一步是否把 duration 烘成字面量）——
-        /// 生成器本身在未装 DOTween 时会拒绝运行，所以在干净工程上无法端到端测试产出的文本。
+        /// A recipe for a generated script. Declared internal rather than private so assertions can be made
+        /// directly against the generation contract (which <c>using</c> a given target kind needs, whether a
+        /// given step bakes duration into a literal) — the generator itself refuses to run when DOTween isn't
+        /// installed, so the produced text can't be tested end-to-end on a clean project.
         /// </summary>
         internal class RuntimeTweenSpec
         {
@@ -893,24 +898,25 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 数值域与必填性守卫
+        // Numeric domain and required-ness guards
         //
-        // dotween_pro_* 的数字若原样透传，duration=-1、loops=-7 都会落到组件上并报
-        // success:true，调用方毫无察觉。DOTween 自身的取值域足够窄，可以精确声明。
+        // If the dotween_pro_* numbers were passed through as-is, duration=-1 or loops=-7 would land on the
+        // component and report success:true with the caller none the wiser. DOTween's own value domains are
+        // narrow enough to declare precisely.
         // ==================================================================================
 
-        /// <summary>duration 非正就不是补间：DOTween 会当成瞬移，并在播放时才打日志，
-        /// 那时距离技能声称"已配置好动画"早就过去了。</summary>
+        /// <summary>duration <= 0 isn't a tween: DOTween treats it as an instant jump and only logs it at play
+        /// time, long after the skill has already claimed "the animation is configured".</summary>
         private static object InvalidPositiveError(float value, string paramName) =>
             value > 0f ? null : SkillParamUtil.InvalidValueError(SkillParamUtil.FormatFloatR(value), paramName, new[] { "> 0" });
 
-        /// <summary>负的 delay / 错峰步长等于让级联倒着走时间；DOTween 会静默夹掉，
-        /// 于是回报给调用方的那个动画根本不存在。</summary>
+        /// <summary>A negative delay / stagger step is equivalent to running the cascade backward in time;
+        /// DOTween silently clamps it, so the animation reported back to the caller doesn't actually exist.</summary>
         private static object InvalidNonNegativeError(float value, string paramName) =>
             value >= 0f ? null : SkillParamUtil.InvalidValueError(SkillParamUtil.FormatFloatR(value), paramName, new[] { ">= 0" });
 
-        /// <summary>-1 是 DOTween 唯一的无限循环标记。0 以及小于 -1 的值都没有意义，
-        /// DOTween 自己既不夹取也不报错。</summary>
+        /// <summary>-1 is DOTween's only marker for infinite looping. 0 and anything below -1 are meaningless,
+        /// and DOTween neither clamps them nor errors on its own.</summary>
         private static object InvalidLoopsError(int value) =>
             value == -1 || value >= 1
                 ? null
@@ -918,9 +924,9 @@ namespace UnitySkills
                     new[] { "-1 (infinite)", ">= 1" });
 
         /// <summary>
-        /// 表达"这两个至少给一个"。载荷形状与 <see cref="Validate"/> 的缺参响应一致
-        /// （errorCode 会被路由层 1 原样透传），因为两半单看都不是必填，
-        /// 逐参数检查说不出这个约束。
+        /// Expresses "at least one of these two must be given". The payload shape matches <see cref="Validate"/>'s
+        /// missing-param response (errorCode is passed through as-is by routing layer 1), because neither half is
+        /// individually required — a per-parameter check can't express this constraint.
         /// </summary>
         private static object MissingEitherError(string first, string second) => new
         {
@@ -942,9 +948,9 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 给定字段类型下 <c>fieldValue</c> 可以长成什么样，用于拒绝响应里的 <c>validValues</c>。
-        /// 内容与 <c>DOTweenReflectionHelper.ConvertValue</c> 接受的字符串形式保持一致——
-        /// 列出转换器解析不了的形式，比不列还糟。
+        /// What <c>fieldValue</c> can look like for a given field type, for the <c>validValues</c> in a rejection
+        /// response. Content is kept consistent with the string forms <c>DOTweenReflectionHelper.ConvertValue</c>
+        /// accepts — listing forms the converter can't parse would be worse than not listing anything.
         /// </summary>
         private static string[] AcceptedFieldValues(Type fieldType)
         {
@@ -962,25 +968,25 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // 组件下标的权威来源
+        // Authoritative source for component indices
         // ==================================================================================
 
         /// <summary>
-        /// 为每个组件配上使用方真正会用来寻址的下标，也就是它在
-        /// <c>gameObject.GetComponents(type)</c> 中的位置——所有
-        /// <c>ResolveAnimationComponent</c> 调用索引的都是这个数组。
+        /// Assigns each component the index that callers will actually use to address it — namely its position
+        /// in <c>gameObject.GetComponents(type)</c>. Every <c>ResolveAnimationComponent</c> call indexes into this array.
         ///
-        /// <para>之所以需要它，是因为全场景列举路径原本不按这个顺序：它把
-        /// <c>FindHelper.FindAll</c>（文档明确说无序）的结果按 GameObject 分组后发一个自增计数，
-        /// 于是同一个 GameObject 上挂多个 DOTweenAnimation 时，列举报出的 animationIndex
-        /// 与 setter 使用的下标对不上。实际工程中出现过：列举报
-        /// [Fade 0.3, Scale 0.6, Fade 0.4]，而该对象的 GetComponents 顺序是
-        /// [Scale 0.6, Fade 0.3, Fade 0.4]——agent 先列举再设置，改的其实是另一个组件，
-        /// 而且两次调用都成功，完全无感。</para>
+        /// <para>This exists because the whole-scene listing path doesn't originally follow that order: it groups
+        /// <c>FindHelper.FindAll</c>'s results (explicitly documented as unordered) by GameObject and hands out a
+        /// running counter, so when the same GameObject carries multiple DOTweenAnimation components, the
+        /// animationIndex reported by listing doesn't line up with the index the setter uses. This has happened in
+        /// a real project: listing reported [Fade 0.3, Scale 0.6, Fade 0.4], while that object's GetComponents order
+        /// was [Scale 0.6, Fade 0.3, Fade 0.4] — an agent listed then set, and ended up modifying a different
+        /// component than intended, with both calls succeeding and no indication anything was wrong.</para>
         ///
-        /// <para>输出按每个 GameObject 的权威顺序。类型匹配的查询理论上不会出现权威数组里
-        /// 没有的组件，但真出现时保留并置下标为 -1 而非丢弃：列表悄悄少一行是更糟的失败，
-        /// 而负下标会被 ResolveAnimationComponent 拒绝，不会误指到别的组件上。</para>
+        /// <para>Output follows each GameObject's authoritative order. A type-matched query in theory should never
+        /// produce a component absent from the authoritative array, but if it ever does, it's kept with index -1
+        /// rather than dropped: a list silently missing a row is a worse failure, and a negative index is rejected
+        /// by ResolveAnimationComponent rather than mistakenly pointing at a different component.</para>
         /// </summary>
         internal static List<KeyValuePair<Component, int>> ResolveAuthoritativeIndices(
             IEnumerable<Component> comps, Type componentType)
@@ -1000,10 +1006,10 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // DOTweenSettings 写入
+        // DOTweenSettings write
         // ==================================================================================
 
-        /// <summary>因对应字段不存在而无法应用的单个参数。</summary>
+        /// <summary>A single parameter that couldn't be applied because the corresponding field doesn't exist.</summary>
         internal sealed class UnsupportedSettingsField
         {
             public string parameter;
@@ -1019,15 +1025,16 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把配置参数应用到传入的对象上，并逐参数汇报结果。之所以从技能里拆出来，
-        /// 是为了能拿替身设置对象来测——它修的缺陷只在缺字段的 DOTweenSettings 上才显形。
+        /// Applies configuration parameters to the given object and reports the outcome per parameter. Pulled out
+        /// of the skill so a stand-in settings object can be used for testing — the bug it fixes only shows up on
+        /// a DOTweenSettings missing fields.
         ///
-        /// <para>DOTween Pro 1.0.381 的设置资源根本没有 <c>defaultTweensCapacity</c> /
-        /// <c>defaultSequencesCapacity</c>。若两次写入只用裸的 <c>if (SetFieldByName(...))</c>
-        /// 守卫、false 分支什么都不做，响应就会是 <c>success:true, modified:[]</c>，
-        /// 读起来像"已接受，没什么要改"，而不是"这个 DOTween 版本没地方放你的值"。
-        /// 那四个 enum/bool 参数的 <c>f != null &amp;&amp; f.FieldType.IsEnum</c> 守卫同样会静默。
-        /// 因此每个参数都必须恰好落到 modified / unsupported / Error 三者之一。</para>
+        /// <para>DOTween Pro 1.0.381's settings asset has no <c>defaultTweensCapacity</c> /
+        /// <c>defaultSequencesCapacity</c> at all. If both writes only used a bare <c>if (SetFieldByName(...))</c>
+        /// guard that does nothing on the false branch, the response would be <c>success:true, modified:[]</c>,
+        /// which reads as "accepted, nothing to change" rather than "this DOTween version has nowhere to put your
+        /// value." The <c>f != null &amp;&amp; f.FieldType.IsEnum</c> guard on those four enum/bool parameters would
+        /// go silent the same way. So every parameter must land in exactly one of modified / unsupported / Error.</para>
         /// </summary>
         internal static SettingsWriteResult ApplySettingsFields(
             object settings,
@@ -1059,7 +1066,7 @@ namespace UnitySkills
             return result;
         }
 
-        /// <summary>返回 false 表示整个调用都该被拒（给的值该字段根本表达不了）。</summary>
+        /// <summary>Returns false to mean the whole call should be rejected (the field can't express the given value at all).</summary>
         private static bool ApplyEnumSetting(object settings, string fieldName, string value, SettingsWriteResult result)
         {
             if (string.IsNullOrEmpty(value)) return true;
@@ -1105,14 +1112,14 @@ namespace UnitySkills
             result.Modified.Add(fieldName);
         }
 
-        /// <summary>返回 false 表示整个调用都该被拒。</summary>
+        /// <summary>Returns false to mean the whole call should be rejected.</summary>
         private static bool ApplyCapacitySetting(object settings, string fieldName, string parameterName,
             int? value, SettingsWriteResult result)
         {
             if (!value.HasValue) return true;
 
-            // dotween_settings_validate 已经把 capacity <= 0 当成问题上报，
-            // 真写进去会让本插件下次读取时把自己刚做的改动判为非法。
+            // dotween_settings_validate already reports capacity <= 0 as an issue; actually writing it in would
+            // make this plugin's next read flag its own just-made change as invalid.
             if (value.Value <= 0)
             {
                 result.Error = SkillParamUtil.InvalidValueError(
@@ -1139,9 +1146,10 @@ namespace UnitySkills
             new UnsupportedSettingsField { parameter = parameter, field = field, reason = reason };
 
         /// <summary>
-        /// add / batch / stagger 三个技能共用的数值与枚举契约，在往场景里添加任何东西之前检查。
-        /// 枚举名对着当前 DOTween 版本真正声明的枚举比对，因此拒绝响应里的 validValues
-        /// 是真实词表，而不是会随资源包版本漂移的硬编码列表。
+        /// The numeric and enum contract shared by the add / batch / stagger skills, checked before anything is
+        /// added to the scene. Enum names are compared against what the current DOTween version actually
+        /// declares, so the validValues in a rejection response are the real word list rather than a hardcoded
+        /// one that can drift with the asset package version.
         /// </summary>
         private static object ValidateAnimationSpec(
             string animationType, string ease, string loopType, float duration, int loops, float delay)
@@ -1331,14 +1339,14 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 生成脚本为其目标类型额外需要的 <c>using</c>——只有当该类型确实位于那个命名空间时才输出。
+        /// The extra <c>using</c> a generated script needs for its target type — only emitted when that type actually lives in that namespace.
         ///
-        /// <para>几个"看起来像 UI"的目标不能共用一句硬编码的 <c>using UnityEngine.UI;</c>：
-        /// <c>CanvasGroup</c> 属于 <c>UnityEngine</c>（UIModule，永远存在），而
-        /// <c>Graphic</c> / <c>Image</c> 属于 <c>UnityEngine.UI</c>，随 com.unity.ugui 提供。
-        /// 在没装该包的工程里，生成的 CanvasGroup 文件会因为一个自身根本没引用的命名空间
-        /// 报 CS0246 编译失败。生成过程是纯字符串拼接，唯一能决定这件事的只有目标类型
-        /// 自己所在的命名空间。</para>
+        /// <para>A few "looks like UI" targets can't share one hardcoded <c>using UnityEngine.UI;</c>:
+        /// <c>CanvasGroup</c> belongs to <c>UnityEngine</c> (UIModule, always present), while
+        /// <c>Graphic</c> / <c>Image</c> belong to <c>UnityEngine.UI</c>, shipped with com.unity.ugui.
+        /// In a project without that package installed, a generated CanvasGroup file would fail to compile with
+        /// CS0246 over a namespace it never actually references. Generation is pure string concatenation, so the
+        /// only thing that can decide this is the namespace the target type itself lives in.</para>
         /// </summary>
         private static string ExtraUsingForTargetKind(string targetKind)
         {
@@ -1349,7 +1357,7 @@ namespace UnitySkills
                 case "Text":
                     return "using UnityEngine.UI;";
                 default:
-                    // Transform / RectTransform / CanvasGroup / Generic 都在 UnityEngine 命名空间下。
+                    // Transform / RectTransform / CanvasGroup / Generic are all in the UnityEngine namespace.
                     return null;
             }
         }
@@ -1418,11 +1426,11 @@ namespace UnitySkills
             var fieldSpecs = specs.Where(i => i.spec != null && !i.spec.genericDOTweenTo).Select(i => i.spec).GroupBy(s => s.fieldName).Select(g => g.First()).ToList();
             var valueSpecs = specs.Where(i => i.spec != null).Select(i => i.spec).GroupBy(s => s.valueField).Select(g => g.First()).ToList();
 
-            // 必须先构造 Play() 方法体，因为它决定 duration 字段到底声不声明。
-            // 若每一步都把自己的时长烘成字面量（methodCall.Replace("duration", …)），
-            // [SerializeField] float duration 就没人引用，每个生成的序列脚本都报 CS0414。
-            // 现在时长等于顶层值的步骤改为读该字段：常见情形下 Inspector 上的旋钮仍然可用，
-            // 没人会用到时该字段才消失。
+            // Must build the Play() method body first, since it determines whether the duration field gets
+            // declared at all. If every step baked its own duration into a literal (methodCall.Replace("duration", …)),
+            // [SerializeField] float duration would go unreferenced and every generated sequence script would
+            // report CS0414. Steps whose duration equals the top-level value now read that field instead: the
+            // Inspector knob remains usable in the common case, and the field only disappears when nothing uses it.
             var playLines = BuildSequenceSteps(specs, duration, out bool usesDurationField);
 
             var sb = new StringBuilder();
@@ -1463,8 +1471,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 生成 Sequence 的 Play() 方法体，并回报其中是否有任何一行读了 <c>duration</c> 字段。
-        /// 时长与顶层值一致的步骤按字段生成，只有确实不同的步骤才烘成字面量。
+        /// Generates the Play() method body for a Sequence, and reports back whether any line reads the
+        /// <c>duration</c> field. Steps whose duration matches the top-level value are generated referencing the
+        /// field; only steps that actually differ get baked into a literal.
         /// </summary>
         internal static List<string> BuildSequenceSteps(
             List<(string op, RuntimeTweenSpec spec, float duration)> specs, float duration, out bool usesDurationField)
@@ -1608,9 +1617,10 @@ namespace UnitySkills
             DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.DurationFieldCandidates, duration);
             DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.DelayFieldCandidates, delay);
             DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.LoopsFieldCandidates, loops);
-            // ease / loopType 的写入结果必须检查：写飞了会让组件停在默认值上，
-            // 技能却报 success:true 且不回显任何请求值。拼写错误已由 ValidateAnimationSpec
-            // 在添加组件之前拦下，所以走到这里说明是当前版本上字段缺失或类型不同。
+            // The result of writing ease / loopType must be checked: a failed write leaves the component on its
+            // default value while the skill still reports success:true without echoing any requested value.
+            // Typos are already caught by ValidateAnimationSpec before the component was added, so reaching here
+            // means the field is missing or a different type on this version.
             if (!string.IsNullOrEmpty(loopType) && !DOTweenReflectionHelper.TrySetLoopType(comp, loopType))
             {
                 Undo.DestroyObjectImmediate(comp);

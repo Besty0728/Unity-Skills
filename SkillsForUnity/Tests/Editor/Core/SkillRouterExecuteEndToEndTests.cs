@@ -8,13 +8,13 @@ using UnityEngine;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 直调 SkillRouter.Execute 的端到端覆盖（不经 HTTP 层，仅 EditMode）：
-    /// 真正只读的 skill 在任何操作模式下都照常执行；未知参数在模式闸门之前就被拒；
-    /// Approval 模式的 MODE_RESTRICTED 路径必须真的挡住 FullAuto skill 的副作用，
-    /// 而不是一边返回错误一边照样改了场景。
+    /// End-to-end coverage calling SkillRouter.Execute directly (not through the HTTP layer, EditMode only):
+    /// a genuinely read-only skill executes normally in any operating mode; unknown parameters are rejected before
+    /// the mode gate is even reached; Approval mode's MODE_RESTRICTED path must actually block a FullAuto skill's
+    /// side effects, rather than returning an error while still mutating the scene anyway.
     ///
-    /// 绝不假设当前是 Bypass 模式、也不假设存在任何既有场景/资源——每个用例都显式设置
-    /// SkillsModeManager.CurrentMode，并在全新空场景上跑。
+    /// Never assumes the current mode is Bypass, nor that any pre-existing scene/asset exists - every test case
+    /// explicitly sets SkillsModeManager.CurrentMode and runs on a brand-new empty scene.
     /// </summary>
     [TestFixture]
     public class SkillRouterExecuteEndToEndTests

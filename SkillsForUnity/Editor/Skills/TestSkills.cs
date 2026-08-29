@@ -9,7 +9,7 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Test Runner 相关技能。
+    /// Test Runner related skills.
     /// </summary>
     public static class TestSkills
     {
@@ -125,7 +125,7 @@ namespace UnitySkills
             {
                 success = true,
                 testMode,
-                // count 仍是返回条数（v1 契约）；截断情况由 total/truncated 体现。
+                // count is still the returned item count (v1 contract); truncation is reflected via total/truncated.
                 count = tests.Length,
                 total = discoveredTests.Count,
                 truncated = discoveredTests.Count > tests.Length,
@@ -188,7 +188,7 @@ namespace UnitySkills
                 status = job.status,
                 testMode = GetMetadataString(job, "testMode"),
                 discoveryMode = TestDiscoveryMode,
-                // count 仍是截断前的总数（v1 契约）；截断情况由 returned/truncated 体现。
+                // count is still the pre-truncation total (v1 contract); truncation is reflected via returned/truncated.
                 count = discoveredTests.Count,
                 returned = tests.Length,
                 truncated = discoveredTests.Count > tests.Length,
@@ -542,7 +542,7 @@ public class {testName}
                 testName,
                 jobId = job.jobId,
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
-                    $"已创建测试脚本: {path}。Unity 可能短暂重载脚本域。",
+                    $"Test script created: {path}. Unity may briefly reload the script domain.",
                     alwaysInclude: true)
             };
         }
@@ -587,7 +587,7 @@ public class {testName}
                 testName,
                 jobId = job.jobId,
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
-                    $"已创建测试脚本: {path}。Unity 可能短暂重载脚本域。",
+                    $"Test script created: {path}. Unity may briefly reload the script domain.",
                     alwaysInclude: true)
             };
         }
@@ -704,30 +704,34 @@ public class {testName}
         }
 
         /// <summary>
-        /// 这些错误的含义是"该只读技能要报告的东西在本项目/场景/模式下不存在"，而不是"该技能坏了"。
-        /// 干净项目里没有 CinemachineBrain、没有 NetworkManager，也不在 PlayMode，这类技能只能拒答——
-        /// 把它算作冒烟失败会淹没真正要紧的失败。
+        /// What these errors mean is "the thing this read-only skill is supposed to report doesn't exist in
+        /// this project/scene/mode", not "the skill is broken". A clean project has no CinemachineBrain, no
+        /// NetworkManager, and isn't in PlayMode — a skill like that can only decline to answer; counting that
+        /// as a smoke-test failure would drown out the failures that actually matter.
         ///
-        /// <para>按技能 + 具体错误短语双重匹配，绝不只按技能名：只按名字的条目会吞掉该技能未来所有回归。
-        /// 技能说的其他任何话——NullReferenceException、变了的错误文案、走了别的分支——仍判为失败。
-        /// 这也是白名单只在"返回了错误对象"时才查、而不在上面的异常处理器里查的原因：抛异常从来不是
-        /// 预期的环境性回答，而是技能没能给出回答。</para>
+        /// <para>Matched on skill + a specific error phrase together, never on skill name alone: an entry keyed
+        /// only by name would swallow every future regression in that skill. Anything else the skill says —
+        /// NullReferenceException, a changed error message, a different code path — still counts as a failure.
+        /// This is also why the whitelist is only consulted when "an error object was returned", not inside the
+        /// exception handler above: throwing an exception is never an expected environmental answer, it's the
+        /// skill failing to produce an answer at all.</para>
         /// </summary>
         private static readonly Dictionary<string, string[]> _expectedMissingFixtureMarkers =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
         {
-            // 场景里没有 Cinemachine 装配。
+            // No Cinemachine rig in the scene.
             ["cinemachine_get_brain_info"] = new[] { "No Main Camera", "No CinemachineBrain" },
             ["cinemachine_inspect_vcam"]   = new[] { "GameObject not found" },
-            // 场景里没有 NetworkManager（装了 NGO 但还没搭起来）。netcode_get_status 与
-            // netcode_get_transport_info 也会优先报缺 manager；transport_info 的第二道闸
-            // （"NetworkTransport not assigned"）是同一类"缺失"，只是下沉了一层。
+            // No NetworkManager in the scene (NGO is installed but not set up yet). netcode_get_status and
+            // netcode_get_transport_info also report a missing manager first; transport_info's second gate
+            // ("NetworkTransport not assigned") is the same kind of "missing", just one level down.
             ["netcode_get_manager_info"]   = new[] { "NetworkManager not found" },
             ["netcode_get_status"]         = new[] { "NetworkManager not found" },
             ["netcode_get_transport_info"] = new[] { "NetworkManager not found", "NetworkTransport not assigned" },
-            // 仅 PlayMode 可用的读取类技能：EditMode 不是坏环境，只是模式不对，而冒烟探针刻意永不进 PlayMode。
-            // manager/started 两道闸也列在这里，因为在"确有 NetworkManager 但尚未启动"的项目上，
-            // 它们给的是同一种"暂时没东西可读"的回答。
+            // Read-only skills that only work in PlayMode: EditMode isn't a broken environment, just the wrong
+            // mode, and the smoke probe deliberately never enters PlayMode. The manager/started gates are also
+            // listed here, because on a project that does have a NetworkManager but hasn't started it, they
+            // give the same kind of "nothing to read yet" answer.
             ["netcode_get_spawn_manager_info"] = new[]
             {
                 "SpawnManager only accessible in PlayMode", "NetworkManager not found",
@@ -765,9 +769,10 @@ public class {testName}
 
             var excludedNames = ParseCsv(excludeNamesCsv);
             var metadataIssues = SkillRouter.ValidateMetadata().ToArray();
-            // 必须用过滤后的快照：探针直接调 skill.Method（见 ExecuteSmokeProbe 里的 Method.Invoke），
-            // 既不经过 Execute，也不会撞上暴露面闸门。换成 Unfiltered 就变成一条绕过通道，
-            // 会批量执行恰好是该档位要收掉的那些写技能。
+            // Must use the filtered snapshot: the probe calls skill.Method directly (see Method.Invoke in
+            // ExecuteSmokeProbe), so it goes through neither Execute nor the exposure-surface gate. Switching
+            // to Unfiltered would turn this into a bypass channel that batch-executes exactly the write skills
+            // this tier is supposed to hold back.
             IEnumerable<SkillRouter.SkillInfo> skills = SkillRouter.GetAllSkillsSnapshot();
 
             if (!string.IsNullOrWhiteSpace(category) &&

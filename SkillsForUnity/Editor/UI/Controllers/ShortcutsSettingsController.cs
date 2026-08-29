@@ -8,30 +8,30 @@ using UnityEngine.UIElements;
 namespace UnitySkills
 {
     /// <summary>
-    /// Settings Drawer 的 "Shortcuts" 节控制器。
+    /// Controller for the "Shortcuts" section of the Settings Drawer.
     ///
-    /// 每个 UnitySkills 面板命令一行：展示名 + 当前绑定文字 + [修改] / [清除]。
-    /// 点 [修改] 进入捕获态：在抽屉根上以 TrickleDown 捕获 <see cref="KeyDownEvent"/>，读
-    /// keyCode + 修饰键，实时冲突检测；无冲突可 [应用]（<c>RebindShortcut</c>），有冲突红字提示并
-    /// 禁用应用；Esc / [取消] / 点击行外均退出。绑定持久化交给 ShortcutManager 的 profile
-    /// （不写 EditorPrefs）。样式全走 USS class。
+    /// One row per UnitySkills panel command: display name + current binding text + [Edit] / [Clear].
+    /// Clicking [Edit] enters capture mode: captures <see cref="KeyDownEvent"/> via TrickleDown on the
+    /// drawer root, reads keyCode + modifiers, with live conflict detection; with no conflict, [Apply]
+    /// (<c>RebindShortcut</c>) is enabled, with a conflict it shows red text and disables Apply; Esc /
+    /// [Cancel] / clicking outside the row all exit. Binding persistence goes to ShortcutManager's profile (no EditorPrefs writes); styling is all USS classes.
     ///
-    /// 与主窗口 issue #44 的关系：本节只在用户事件（点击 / 按键）与显式 Rebuild 时 mutate 视觉树，
-    /// 不挂周期性 tick，因此无需 EditorUiScheduler 兜底。
+    /// Relation to main-window issue #44: this section only mutates the visual tree on user events
+    /// (click / keypress) and explicit Rebuild, and has no periodic tick, so it needs no EditorUiScheduler fallback.
     /// </summary>
     public class ShortcutsSettingsController
     {
-        private readonly VisualElement _root;   // drawer container：capture 注册与命中判定的边界
+        private readonly VisualElement _root;   // drawer container: boundary for capture registration and hit testing
         private readonly Label _title;
         private readonly Label _hint;
         private readonly VisualElement _list;
 
-        // 捕获态：_capturingId==null 表示未捕获。
+        // Capture mode: _capturingId==null means not capturing.
         private string _capturingId;
         private KeyCombination _captured;
-        private bool _hasCaptured;              // 是否已按下有效组合（决定行显示 prompt 还是 preview）
-        private string _conflictName;           // 非 null = 与该命令冲突，拒绝保存
-        private VisualElement _capturingRow;    // 命中判定：pointer down 落在此行之外即取消
+        private bool _hasCaptured;              // Whether a valid combination has already been pressed (decides whether the row shows prompt or preview)
+        private string _conflictName;           // Non-null = conflicts with this command, refuse to save
+        private VisualElement _capturingRow;    // Hit testing: a pointer down outside this row cancels capture
 
         public ShortcutsSettingsController(VisualElement drawerContainer)
         {
@@ -40,15 +40,15 @@ namespace UnitySkills
             _hint  = drawerContainer.Q<Label>("shortcuts-hint");
             _list  = drawerContainer.Q<VisualElement>("shortcuts-list");
 
-            // 捕获态按键：抽屉根 TrickleDown，先于焦点子节点拿到 KeyDown。
+            // Capture-mode key handling: TrickleDown on the drawer root, gets KeyDown before focused child nodes.
             _root.RegisterCallback<KeyDownEvent>(OnCaptureKeyDown, TrickleDown.TrickleDown);
-            // 捕获态点击行外 = 取消（含点到别的设置项 / 遮罩）。
+            // Clicking outside the row in capture mode = cancel (includes clicking another setting item / the mask).
             _root.RegisterCallback<PointerDownEvent>(OnRootPointerDown, TrickleDown.TrickleDown);
 
             RefreshLocalization();
         }
 
-        /// <summary>语言切换 / 首次组装时刷新静态文案并重建行。</summary>
+        /// <summary>Refreshes static copy and rebuilds rows on language switch / first assembly.</summary>
         public void RefreshLocalization()
         {
             if (_title != null) _title.text = SkillsLocalization.Get("shortcut_section_title");
@@ -56,10 +56,10 @@ namespace UnitySkills
             Rebuild();
         }
 
-        /// <summary>抽屉每次打开时调用：拉取最新绑定重建，覆盖 Edit ▸ Shortcuts 里的外部改动。</summary>
+        /// <summary>Called every time the drawer opens: pulls the latest bindings and rebuilds, overriding external changes made in Edit ▸ Shortcuts.</summary>
         public void Refresh() => Rebuild();
 
-        // ── 渲染 ────────────────────────────────────────────────────
+        // ── Rendering ────────────────────────────────────────────────────
 
         private void Rebuild()
         {
@@ -69,7 +69,7 @@ namespace UnitySkills
             foreach (var cmd in ShortcutActions.Commands)
                 _list.Add(BuildRow(cmd));
 
-            // 捕获行需焦点才能收到 KeyDown；延后一帧 Focus 规避 attach 时机问题（对齐 drawer-mask 的做法）。
+            // The capturing row needs focus to receive KeyDown; defer Focus by one frame to dodge an attach-timing issue (mirrors what drawer-mask does).
             if (_capturingId != null && _capturingRow != null)
             {
                 var row = _capturingRow;
@@ -108,7 +108,7 @@ namespace UnitySkills
 
         private VisualElement BuildCaptureRow(ShortcutCommand cmd)
         {
-            // 纵向容器：顶部横行 + 可选冲突红字。容器自身 focusable，作为 KeyDown 焦点宿主与命中边界。
+            // Vertical container: top row + optional red conflict text. The container itself is focusable, serving as the KeyDown focus host and hit-test boundary.
             var container = new VisualElement { style = { flexDirection = FlexDirection.Column, marginBottom = 6 } };
             container.focusable = true;
             _capturingRow = container;
@@ -155,7 +155,7 @@ namespace UnitySkills
             return container;
         }
 
-        // ── 捕获态机 ────────────────────────────────────────────────
+        // ── Capture state machine ────────────────────────────────────────
 
         private void BeginCapture(ShortcutCommand cmd)
         {
@@ -176,7 +176,7 @@ namespace UnitySkills
                 CancelCapture();
                 return;
             }
-            // 纯修饰键 / 无键：不算一次组合，吞掉事件等待真正的键。
+            // Pure modifier / no key: doesn't count as a combination, swallow the event and wait for a real key.
             if (IsModifierOrNone(kc))
             {
                 ConsumeKeyEvent(evt);
@@ -217,7 +217,7 @@ namespace UnitySkills
             }
             catch (InvalidOperationException)
             {
-                ShowProfileReadonlyDialog(); // 活动 profile 只读
+                ShowProfileReadonlyDialog(); // Active profile is read-only
             }
             catch (Exception ex)
             {
@@ -252,9 +252,9 @@ namespace UnitySkills
             Rebuild();
         }
 
-        // ── 辅助 ────────────────────────────────────────────────────
+        // ── Helpers ────────────────────────────────────────────────────
 
-        /// <summary>当前绑定文字；无绑定时 <paramref name="unset"/>=true 并返回本地化"未设置"。</summary>
+        /// <summary>Current binding text; when there is no binding, <paramref name="unset"/>=true and the localized "not set" is returned.</summary>
         private static string CurrentBindingText(string id, out bool unset)
         {
             unset = true;
@@ -268,11 +268,11 @@ namespace UnitySkills
                     return binding.ToString();
                 }
             }
-            catch { /* 取绑定异常 → 视作未设置 */ }
+            catch { /* binding lookup exception -> treat as unset */ }
             return SkillsLocalization.Get("shortcut_not_set");
         }
 
-        /// <summary>是否为纯修饰键或无键——这些不构成一次可绑定组合。</summary>
+        /// <summary>Whether this is a pure modifier or no key — these don't form a bindable combination.</summary>
         private static bool IsModifierOrNone(KeyCode k)
         {
             switch (k)

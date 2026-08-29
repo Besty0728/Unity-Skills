@@ -12,8 +12,8 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// PrimeTween Free 的诊断、API 探测与运行时脚本生成。
-    /// 所有对 PrimeTween 的访问都走反射，以保证该可选包未安装时 UnitySkills 仍能编译。
+    /// PrimeTween Free diagnostics, API discovery, and runtime script generation.
+    /// All access to PrimeTween goes through reflection, so UnitySkills still compiles when this optional package isn't installed.
     /// </summary>
     public static class PrimeTweenSkills
     {
@@ -376,10 +376,10 @@ namespace UnitySkills
                 return enumValue.ToString();
             }
 
-            // 较新的 PrimeTween 把 UpdateType 改成了 struct，上面的 enum 分支不再命中——
-            // 匿名对象序列化器在没有公开属性的 struct 上无字段可遍历，会静默输出 "{}"。
-            // 因此值类型一律降级为 ToString()；引用类型仍原样透传，因为它的 ToString()
-            // 不保证是有意义的表示。
+            // Newer PrimeTween versions changed UpdateType to a struct, so the enum branch above no
+            // longer matches -- the anonymous-object serializer has no public property to walk on a
+            // struct with none, and would silently emit "{}". So value types fall back to ToString();
+            // reference types still pass through as-is, since ToString() isn't guaranteed meaningful.
             if (value is ValueType && !(value is string) && !value.GetType().IsPrimitive)
             {
                 var type = value.GetType();
@@ -389,9 +389,9 @@ namespace UnitySkills
                     return text;
                 }
 
-                // ValueType.ToString() 的默认实现只给出类型名，状态不可见。
-                // PrimeTween 的 UpdateType 把真实值存在内部 enum 字段（enumValue）里，
-                // 因此对这类"伪枚举" struct 拆到该字段的名字。
+                // ValueType.ToString()'s default implementation only gives the type name, with no
+                // visible state. PrimeTween's UpdateType stores the real value in an internal enum
+                // field (enumValue), so for this kind of "fake enum" struct, dig down to that field's name.
                 var enumField = type
                     .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
                     .FirstOrDefault(field => field.FieldType.IsEnum);

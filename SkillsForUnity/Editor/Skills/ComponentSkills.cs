@@ -10,23 +10,23 @@ using Newtonsoft.Json.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// 组件管理技能：增删组件、读写属性。
-    /// 支持按 name / instanceId / path 定位目标，并带有较完善的类型转换与引用解析。
+    /// Component management skills: add/remove components, read/write properties.
+    /// Supports locating targets by name / instanceId / path, with fairly thorough type conversion and reference resolution.
     /// </summary>
     public static class ComponentSkills
     {
         private static readonly Dictionary<string, System.Type> _typeCache = new Dictionary<string, System.Type>();
 
-        // 属性 / 字段查找缓存，避免重复反射。
-        // 注意：非线程安全——只允许在 Unity 主线程访问
-        // （由 SkillsHttpServer 的生产者-消费者模型保证）。
+        // Property / field lookup cache, avoids repeated reflection.
+        // Note: not thread-safe — only ever accessed on the Unity main thread
+        // (guaranteed by SkillsHttpServer's producer-consumer model).
         private static readonly Dictionary<string, (PropertyInfo prop, FieldInfo field)> _memberCache =
             new Dictionary<string, (PropertyInfo, FieldInfo)>();
-        
-        // 按简单类名查找组件类型时额外搜索的命名空间（含常见第三方插件）。
+
+        // Extra namespaces searched when looking up a component type by simple class name (covers common third-party plugins).
         private static readonly string[] ExtendedNamespaces = new[]
         {
-            // Unity 内置
+            // Unity built-in
             "UnityEngine.",
             "UnityEngine.UI.",
             "UnityEngine.Rendering.",
@@ -40,7 +40,7 @@ namespace UnitySkills
             "UnityEngine.VFX.",
             "UnityEngine.Tilemaps.",
             "UnityEngine.U2D.",
-            // Cinemachine（两个大版本命名空间不同）
+            // Cinemachine (namespace differs between its two major versions)
             "Cinemachine.",
             "Unity.Cinemachine.",
             // TextMeshPro
@@ -50,7 +50,7 @@ namespace UnitySkills
             // XR
             "UnityEngine.XR.",
             "UnityEngine.XR.Interaction.Toolkit.",
-            // 常见第三方
+            // Common third-party
             "DG.Tweening.",
             "Rewired.",
         };
@@ -77,7 +77,7 @@ namespace UnitySkills
                     availableTypes = GetSimilarTypes(componentType)
                 };
 
-            // 不允许多实例的组件，已存在就不再添加。
+            // Component doesn't allow multiple instances — skip adding if it already exists.
             if (go.GetComponent(type) != null && !AllowMultiple(type))
                 return new { 
                     warning = $"Component {type.Name} already exists on {go.name}",
@@ -108,9 +108,9 @@ namespace UnitySkills
         [UnitySkill("component_add_batch", "Add components to multiple GameObjects. items: JSON array of {name, componentType, path}",
             Category = SkillCategory.Component, Operation = SkillOperation.Create,
             Tags = new[] { "add", "attach", "behaviour", "batch" },
-            // 这里声明的是批处理外层信封的键，不是 results[] 里逐项的键。写成内层键会让
-            // /skills/chain 以为本技能产出顶层 `component`，从而把它当作后续步骤的输入，
-            // 而那一步根本读不到。
+            // The keys declared here are for the outer batch envelope, not the per-item keys inside results[].
+            // Declaring an inner-item key here would make /skills/chain think this skill produces a top-level
+            // `component`, so it would be fed as input to a later step — which would never actually see it.
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
@@ -128,7 +128,7 @@ namespace UnitySkills
                 if (type == null)
                     return new { error = $"Component type not found: {item.componentType}" };
 
-                // 不允许多实例的组件，已存在就不再添加。
+                // Component doesn't allow multiple instances — skip adding if it already exists.
                 if (go.GetComponent(type) != null && !AllowMultiple(type))
                     return new { target = go.name, success = true, warning = "Component already exists", component = type.Name };
 
@@ -169,7 +169,7 @@ namespace UnitySkills
             if (type == null)
                 return new { error = $"Component type not found: {componentType}" };
 
-            // 同类型可能挂了多份，用 componentIndex 指定要删哪一份。
+            // Multiple instances of the same type may be attached; use componentIndex to specify which one to remove.
             var components = go.GetComponents(type);
             if (components.Length == 0)
                 return new { error = $"Component not found on {go.name}: {componentType}" };
@@ -260,11 +260,11 @@ namespace UnitySkills
                         { "fullType", c.GetType().FullName },
                     };
 
-                    // Behaviour、Renderer、Collider/Collider2D 各自声明了自己的 enabled
-                    // （后三者都不继承 Behaviour），所以必须逐类型判断：只按 Behaviour 转型
-                    // 会漏掉它们并退回默认 true，把已被 component_set_enabled 禁用的
-                    // Renderer/Collider 报成 enabled:true。没有 enabled 概念的类型
-                    // （如 Transform）则干脆不输出该字段，不去猜。
+                    // Behaviour, Renderer, and Collider/Collider2D each declare their own `enabled`
+                    // (the latter two don't inherit from Behaviour), so each type must be checked individually:
+                    // casting only to Behaviour would miss them and fall back to a default of true, reporting a
+                    // Renderer/Collider that was disabled via component_set_enabled as enabled:true. Types with
+                    // no concept of `enabled` (e.g. Transform) simply omit the field rather than guessing.
                     if (c is Behaviour behaviour)
                         info["enabled"] = behaviour.enabled;
                     else if (c is Renderer renderer)
@@ -337,14 +337,14 @@ namespace UnitySkills
                 var targetType = prop?.PropertyType ?? field.FieldType;
                 object converted;
 
-                // 工程资源引用（ScriptableObject、Prefab、Material、Texture 等）。
+                // Project asset reference (ScriptableObject, Prefab, Material, Texture, etc.).
                 if (!string.IsNullOrEmpty(assetPath))
                 {
                     converted = ResolveAssetReference(targetType, assetPath);
                     if (converted == null)
                         return new { error = $"Asset not found or type mismatch: '{assetPath}' (expected {targetType.Name})" };
                 }
-                // 场景内引用（Transform / GameObject / Component）。
+                // In-scene reference (Transform / GameObject / Component).
                 else if (!string.IsNullOrEmpty(referencePath) || !string.IsNullOrEmpty(referenceName))
                 {
                     converted = ResolveReference(targetType, referencePath, referenceName);
@@ -376,8 +376,8 @@ namespace UnitySkills
             }
             catch (PropertyValueException ex)
             {
-                // 这是"值被拒绝"而不是"技能坏了"：显式声明错误码，路由才会回
-                // "改值后重试"，而不是 SKILL_ERROR + abort。
+                // This is "the value was rejected", not "the skill is broken": declare an explicit error code
+                // so the router sends back "fix the value and retry" instead of SKILL_ERROR + abort.
                 return new
                 {
                     error = ex.Message,
@@ -442,10 +442,10 @@ namespace UnitySkills
                 }
                 else
                 {
-                    // Newtonsoft 把 JSON 数字还原成 double/long，直接 ToString() 会跟随编辑器
-                    // 区域设置：小数点为逗号的机器上 1.5 会变成 "1,5"，而 ConvertValue 按
-                    // 文化不变格式解析不了。嵌套的对象 / 数组重新序列化，
-                    // 让 {"x":..,"y":..} 这种形式原样送到 ConvertValue。
+                    // Newtonsoft parses JSON numbers back into double/long; calling ToString() directly would
+                    // follow the editor's locale — on a machine using a comma as decimal separator, 1.5 becomes
+                    // "1,5", which ConvertValue (parsing with invariant culture) can't read back. Nested objects
+                    // / arrays are re-serialized so a form like {"x":..,"y":..} reaches ConvertValue unchanged.
                     string valStr;
                     if (item.value == null)
                         valStr = null;
@@ -707,18 +707,18 @@ namespace UnitySkills
         #region Type Finding (Enhanced for Third-Party)
         
         /// <summary>
-        /// 跨命名空间广泛搜索组件类型，可命中 Cinemachine、TextMeshPro 等常见插件。
+        /// Searches broadly across namespaces for a component type, so it can hit common plugins like Cinemachine and TextMeshPro.
         /// </summary>
         public static System.Type FindComponentType(string name)
         {
             if (string.IsNullOrEmpty(name)) return null;
-            
+
             if (_typeCache.TryGetValue(name, out var cached))
                 return cached;
 
             System.Type result = null;
-            
-            // 1. 先按原样当全限定名试。
+
+            // 1. First try it as-is as a fully-qualified name.
             result = System.Type.GetType(name);
             if (result != null && typeof(Component).IsAssignableFrom(result))
             {
@@ -726,10 +726,10 @@ namespace UnitySkills
                 return result;
             }
 
-            // 2. 取出简单类名。
+            // 2. Extract the simple class name.
             var simpleName = name.Contains(".") ? name.Substring(name.LastIndexOf('.') + 1) : name;
 
-            // 3. 拼常见命名空间再试。
+            // 3. Try prefixing common namespaces.
             foreach (var ns in ExtendedNamespaces)
             {
                 result = TryGetTypeFromAssemblies(ns + simpleName);
@@ -740,7 +740,7 @@ namespace UnitySkills
                 }
             }
 
-            // 4. 兜底：按简单名遍历全部已加载程序集（最慢，但覆盖最全）。
+            // 4. Fallback: scan all loaded assemblies by simple name (slowest, but broadest coverage).
             result = SkillsCommon.GetAllLoadedTypes()
                 .FirstOrDefault(t =>
                     (t.Name.Equals(simpleName, System.StringComparison.OrdinalIgnoreCase) ||
@@ -763,7 +763,7 @@ namespace UnitySkills
 
         private static System.Type TryGetTypeFromAssemblies(string fullName)
         {
-            // 只在这几个常见程序集里找，避免全量扫描。
+            // Only search these common assemblies, to avoid a full scan.
             var assemblyNames = new[] {
                 "UnityEngine",
                 "UnityEngine.UI",
@@ -826,7 +826,7 @@ namespace UnitySkills
         #region Value Conversion (Enhanced)
 
         /// <summary>
-        /// 把字符串值转换为目标类型，覆盖基元类型、Unity 常用结构体、枚举与 AnimationCurve。
+        /// Converts a string value to the target type, covering primitive types, common Unity structs, enums, and AnimationCurve.
         /// </summary>
         internal static object ConvertValue(string value, System.Type targetType)
         {
@@ -915,8 +915,8 @@ namespace UnitySkills
 
         private static Quaternion ParseQuaternion(string value)
         {
-            // 同时接受欧拉角（3 个值）和四元数（4 个值）。
-            var parts = ParseFloatArray(value, -1); // -1 表示长度可变
+            // Accepts both Euler angles (3 values) and a quaternion (4 values).
+            var parts = ParseFloatArray(value, -1); // -1 means variable length
             if (parts.Length == 3)
                 return Quaternion.Euler(parts[0], parts[1], parts[2]);
             if (parts.Length == 4)
@@ -926,26 +926,26 @@ namespace UnitySkills
 
         private static Color ParseColor(string value)
         {
-            // 模块文档一直标注支持的 JSON 对象形式。
+            // JSON object form, as consistently documented in the module docs.
             if (SkillParamUtil.LooksLikeJsonObject(value))
             {
                 var json = ParseJsonObjectFloats(value, new[] { "r", "g", "b", "a" }, new float[] { 0, 0, 0, 1 }, requiredKeyCount: 3);
                 return new Color(json[0], json[1], json[2], json[3]);
             }
 
-            // 十六进制形式。
+            // Hex form.
             if (value.StartsWith("#"))
             {
                 if (ColorUtility.TryParseHtmlString(value, out var color))
                     return color;
             }
-            
-            // 颜色名形式。
+
+            // Named color form.
             var namedColor = GetNamedColor(value);
             if (namedColor.HasValue)
                 return namedColor.Value;
 
-            // 逗号分隔的浮点数形式。
+            // Comma-separated float form.
             var parts = ParseFloatArray(value, -1);
             if (parts.Length == 3)
                 return new Color(parts[0], parts[1], parts[2], 1);
@@ -994,7 +994,7 @@ namespace UnitySkills
 
         private static LayerMask ParseLayerMask(string value)
         {
-            // 先当层名解析，失败再当整数掩码。
+            // First try parsing as a layer name; fall back to an integer mask.
             int layer = LayerMask.NameToLayer(value);
             if (layer != -1)
                 return 1 << layer;
@@ -1018,11 +1018,12 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 表示"调用方给的值目标属性接受不了"。有了它，catch 处才能回一个点名出错参数的
-        /// 结构化 SEMANTIC_INVALID 错误：转换器内部裸抛的 FormatException 会被归为未分类的
-        /// SKILL_ERROR，而路由对它的配套动作是 abort 而非"改值后重试"。
-        /// 所有消息一律以 "Invalid" 开头，这样本文件之外只看得到文本的调用方，
-        /// 也能通过分类器的首词判定规则得到同一结论。
+        /// Represents "the caller-supplied value is not something the target property can accept". With this,
+        /// the catch block can return a structured SEMANTIC_INVALID error naming the offending parameter: a bare
+        /// FormatException thrown inside a converter would otherwise be classified as an uncategorized
+        /// SKILL_ERROR, whose matching routing action is abort rather than "fix the value and retry".
+        /// All messages start with "Invalid" so callers outside this file, who only see the text, can still
+        /// reach the same conclusion via the classifier's first-word rule.
         /// </summary>
         private sealed class PropertyValueException : System.Exception
         {
@@ -1030,14 +1031,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把 JSON 对象读成有序的 float 数组：向量用 <c>{"x":1,"y":2,"z":3}</c>，
-        /// 颜色用 <c>{"r":1,"g":0,"b":0,"a":1}</c>。这是模块文档一直标注的形式。
+        /// Reads a JSON object into an ordered float array: vectors use <c>{"x":1,"y":2,"z":3}</c>,
+        /// colors use <c>{"r":1,"g":0,"b":0,"a":1}</c>. This is the form consistently documented in the module docs.
         ///
-        /// <para>键名大小写不敏感、顺序任意，但前 <paramref name="requiredKeyCount"/> 个必须齐全：
-        /// 向量不允许只给一部分——<c>{"y":2}</c> 若被当成 <c>(0, 2, 0)</c> 并报成功，
-        /// 就会在调用方从未提及的两个轴上移动对象，看起来像瞬移。超出该数量的键可以省略并沿用
-        /// 默认值，颜色不给 "a" 仍保持不透明就是靠这一条。无法识别的键按错误处理而不是静默跳过：
-        /// 否则 {"x":1,"why":2} 会让 y 留在 0 却报成功。</para>
+        /// <para>Key names are case-insensitive and order-independent, but the first <paramref name="requiredKeyCount"/>
+        /// must all be present: vectors are not allowed to give only part of themselves — if <c>{"y":2}</c> were
+        /// treated as <c>(0, 2, 0)</c> and reported success, it would move the object along two axes the caller
+        /// never mentioned, which looks like teleportation. Keys beyond that count can be omitted and fall back to
+        /// their defaults — that's how omitting "a" on a color keeps it opaque. Unrecognized keys are treated as
+        /// errors rather than silently skipped: otherwise {"x":1,"why":2} would leave y at 0 and still report success.</para>
         /// </summary>
         private static float[] ParseJsonObjectFloats(string value, string[] keys, float[] defaults, int requiredKeyCount)
         {
@@ -1118,8 +1120,8 @@ namespace UnitySkills
             if (expectedCount > 0 && parts.Length != expectedCount)
                 throw new System.ArgumentException($"Expected {expectedCount} values, got {parts.Length}");
             
-            // 与上面浮点路径一样必须用 InvariantCulture：小数点为逗号的编辑器区域设置下，
-            // "1.000" 里的点会被当成千分位分隔符，值就变了。
+            // Must use InvariantCulture here too, same as the float path above: under an editor locale that uses
+            // a comma as the decimal separator, the dot in "1.000" would be read as a thousands separator, changing the value.
             return parts.Select(p => int.Parse(p.Trim(), CultureInfo.InvariantCulture)).ToArray();
         }
 
@@ -1128,11 +1130,11 @@ namespace UnitySkills
         #region Reference Resolution
 
         /// <summary>
-        /// 按 path 或 name 解析场景内的 Unity 对象引用，支持 Transform、GameObject 与组件。
+        /// Resolves an in-scene Unity object reference by path or name, supporting Transform, GameObject, and components.
         /// </summary>
         private static object ResolveReference(System.Type targetType, string referencePath, string referenceName)
         {
-            // 统一走 GameObjectFinder，其内部优先 path 后 name。
+            // Goes through GameObjectFinder uniformly, which internally prefers path over name.
             GameObject targetGo = GameObjectFinder.Find(name: referenceName, path: referencePath);
 
             if (targetGo == null)
@@ -1149,16 +1151,16 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 按资源路径解析工程资源引用，支持任意 UnityEngine.Object：
-        /// ScriptableObject、Prefab（GameObject）、Material、Texture、AudioClip 等。
+        /// Resolves a project asset reference by asset path, supporting any UnityEngine.Object:
+        /// ScriptableObject, Prefab (GameObject), Material, Texture, AudioClip, etc.
         /// </summary>
         private static object ResolveAssetReference(System.Type targetType, string assetPath)
         {
-            // 先按目标类型精确加载。
+            // First try loading exactly as the target type.
             var asset = AssetDatabase.LoadAssetAtPath(assetPath, targetType);
             if (asset != null) return asset;
 
-            // 兜底：按通用 Object 加载后再判断是否可赋值。
+            // Fallback: load as a generic Object, then check assignability.
             asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null && targetType.IsAssignableFrom(asset.GetType()))
                 return asset;
@@ -1171,10 +1173,10 @@ namespace UnitySkills
         #region Helpers
 
         /// <summary>
-        /// 属性值对外报告的形式。所有数字都过一遍可无损往返的文化不变格式化器：
-        /// 直接字符串插值会截断（0.192156866 报成 0.1921569，写回去就是另一个颜色），
-        /// 且会跟随编辑器区域设置——小数点为逗号时输出 "(0,5, 1, 1)"，
-        /// 这种串没有调用方能解析回向量。
+        /// How a property value is reported externally. Every number is run through a lossless, round-trippable,
+        /// culture-invariant formatter: naive string interpolation truncates (0.192156866 reports as 0.1921569,
+        /// and writing it back is a different color), and follows the editor's locale — with a comma decimal
+        /// separator it would output "(0,5, 1, 1)", a string no caller can parse back into a vector.
         /// </summary>
         private static string FormatValue(object val)
         {
@@ -1189,7 +1191,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 按名查找属性或字段（带缓存）：先精确匹配，再退回大小写不敏感匹配。
+        /// Looks up a property or field by name (with caching): exact match first, then falls back to a case-insensitive match.
         /// </summary>
         private static (PropertyInfo prop, FieldInfo field) FindMember(System.Type type, string memberName)
         {
@@ -1232,7 +1234,7 @@ namespace UnitySkills
             var result = new Dictionary<string, object>();
             var type = c.GetType();
             
-            // 按组件类型只挑关键属性输出，避免把整个 Inspector 都倒出来。
+            // Only pick key properties per component type to output, rather than dumping the whole Inspector.
             if (c is Transform t)
             {
                 result["position"] = FormatValue(t.position);

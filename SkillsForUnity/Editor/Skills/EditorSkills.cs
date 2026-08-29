@@ -8,7 +8,7 @@ using System.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// 编辑器控制技能：播放模式、选中对象、工具。
+    /// Editor control skills: play mode, selection, tools.
     /// </summary>
     [InitializeOnLoad]
     public static class EditorSkills
@@ -124,10 +124,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 每个编辑器 tick 推进一个 <see cref="PlaymodeStepJobKind"/> 作业。每次
-        /// <see cref="EditorApplication.Step"/> 都要先观察到 <see cref="Time.frameCount"/>
-        /// 越过发起时记录的值，确认这一步落实后才发下一步——同一 tick 内连续调用 Step()
-        /// 并不保证都生效。
+        /// Advances one <see cref="PlaymodeStepJobKind"/> job per editor tick. Each call to
+        /// <see cref="EditorApplication.Step"/> must first observe <see cref="Time.frameCount"/>
+        /// pass the value recorded when it was issued, confirming the step actually landed, before
+        /// issuing the next one — calling Step() repeatedly within the same tick is not guaranteed
+        /// to take effect every time.
         /// </summary>
         private static void ProcessPlaymodeStepJob(string jobId, EditorApplication.CallbackFunction handler)
         {
@@ -171,7 +172,7 @@ namespace UnitySkills
                 return;
             }
 
-            // 帧号已越过发起时记录的值，说明上一次 Step() 生效了。
+            // The frame count has passed the value recorded when issued, meaning the last Step() call took effect.
             if (framesIssued >= framesRequested)
             {
                 job.resultData["framesCompleted"] = framesIssued;
@@ -208,9 +209,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 步进作业由动态订阅的 <see cref="EditorApplication.update"/> 处理器推进
-        /// （见 <see cref="EditorPlaymodeStep"/>），而该订阅撑不过域重载。因此把重载前
-        /// 遗留为 running 的作业统统判失败，让轮询 job_status 的调用方拿到终态而不是一直挂着。
+        /// <summary>
+        /// Step jobs are advanced by a dynamically subscribed <see cref="EditorApplication.update"/> handler
+        /// (see <see cref="EditorPlaymodeStep"/>), and that subscription doesn't survive a domain reload. So any
+        /// job left running before the reload is unconditionally marked as failed, giving callers polling
+        /// job_status a terminal state instead of an indefinite hang.
         /// </summary>
         private static void RecoverStalePlaymodeStepJobs()
         {
@@ -368,11 +371,11 @@ namespace UnitySkills
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "menu", "command", "action" },
             Outputs = new[] { "executed" },
-            // 这个技能能执行任意菜单项——包括 GameObject/Create 和 Edit/Delete——
-            // 所以即便它自己不碰任何 GameObject，也必须声明会改动 Hierarchy。
-            // reload 标志同理："Assets/Reimport All" 和 "Assets/Refresh" 都是菜单项，
-            // 而事务性批处理的预检要靠这个标志拒绝那些会因域重载抹掉 undo 栈、
-            // 从而无法兑现回滚承诺的调用。
+            // This skill can execute any menu item — including GameObject/Create and Edit/Delete —
+            // so even though it never touches a GameObject itself, it must declare that it can mutate
+            // the Hierarchy. Same reasoning for the reload flag: "Assets/Reimport All" and "Assets/Refresh"
+            // are both menu items, and the transactional batch preflight relies on this flag to reject
+            // calls that would wipe the undo stack via a domain reload, breaking the rollback guarantee.
             MutatesScene = true,
             MayTriggerReload = true)]
         public static object EditorExecuteMenu(string menuPath)
@@ -419,7 +422,7 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object EditorGetContext(bool includeComponents = false, bool includeChildren = false)
         {
-            // 1. Hierarchy 选中的 GameObjects
+            // 1. GameObjects selected in the Hierarchy
             var selectedGameObjects = Selection.gameObjects.Select(go =>
             {
                 var info = new System.Collections.Generic.Dictionary<string, object>
@@ -454,7 +457,7 @@ namespace UnitySkills
                 return info;
             }).ToArray();
 
-            // 2. Project 窗口选中的资源 (通过 GUID)
+            // 2. Assets selected in the Project window (via GUID)
             var selectedAssets = Selection.assetGUIDs.Select(guid =>
             {
                 var path = AssetDatabase.GUIDToAssetPath(guid);
@@ -468,10 +471,10 @@ namespace UnitySkills
                 };
             }).ToArray();
 
-            // 3. 当前活动场景
+            // 3. The current active scene
             var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
 
-            // 4. 焦点窗口
+            // 4. The focused window
             var focusedWindow = EditorWindow.focusedWindow;
 
             return new

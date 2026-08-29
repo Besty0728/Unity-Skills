@@ -17,7 +17,7 @@ Before the first skill call in a session:
 The schema is the canonical source for exact skill names, parameters, defaults, and returns — **but you rarely need the expensive layers**. Route by task shape (all layers are server-cached with ETag/304 and served off the main thread; send `Accept-Encoding: gzip` and the server returns a cached gzip body, which shrinks the large layers by roughly 10x on the wire):
 
 - **Intent is specific** ("create a cube", "set this SO field") → `GET /skills/recommend?intent=<words>&topN=10&includeSchema=true` (4–14 KB; a typical `topN=10&includeSchema=true` answer measures ≈11–12 KB) returns scored candidates **with parameter schemas** — often the only lookup you need. `topN` caps how many candidates come back (default `10`, clamped to `1`–`50`) and is the knob for the size: `topN=3` is the cheap version, and `wire=v2` roughly halves whatever `topN` you asked for. If you already know the skill name, skip lookups entirely and go straight to the dryRun gate below.
-- **Task touches one or two areas** → directory first: `GET /skills` (~19 KB ≈ 3.4K tokens — all 785 skill names grouped by module, names are self-describing `module_verb`) to lock the module(s), then `GET /skills/schema?category=<Category>` (~13–44 KB) for exact signatures. Typical session cost ≈ 10K tokens instead of 35K. The brief directory is what bare `GET /skills` returns; the full per-skill listing is `GET /skills?full=1`.
+- **Task touches one or two areas** → directory first: `GET /skills` (~19 KB ≈ 3.4K tokens — all 805 skill names grouped by module, names are self-describing `module_verb`) to lock the module(s), then `GET /skills/schema?category=<Category>` (~13–44 KB) for exact signatures. Typical session cost ≈ 10K tokens instead of 35K. The brief directory is what bare `GET /skills` returns; the full per-skill listing is `GET /skills?full=1`.
 - **Exploratory / cross-module / unsure what exists** → full awareness: `GET /skills?summary=1` (~143 KB ≈ 35K tokens — every skill's full description). The only layer with all descriptions at once; reach for it when the cheaper layers left you unsure, **not by default**.
 - **Full detail (rare)**: `GET /skills/schema` — full schema with exact parameter schemas (~`618 KB` ≈ 150K tokens, client-cached 300s + disk-cached under `~/.unity_skills/cache/` with ETag/304 revalidation, so short-lived CLI processes reuse it too). Only when you need many modules' exact signatures at once.
 
@@ -36,7 +36,7 @@ Python helper shortcuts — **these are `unity_skills.py` functions, not skill n
 
 Use module `SKILL.md` files for routing guidance, guardrails, and minimal examples, not as the canonical source of exact signatures.
 
-Current snapshot: `785` REST skills, `55` `*Skills.cs` source files grouped into `53` `SkillCategory` categories (the two differ by design: `BatchSkills.cs` holds no category of its own and registers into Workflow and Validation, `DiagnoseSkills.cs` folds into Debug), `80` module documentation directories (`53` REST/module docs + `27` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `805` REST skills, `56` `*Skills.cs` source files grouped into `54` `SkillCategory` categories (the two differ by design: `BatchSkills.cs` holds no category of its own and registers into Workflow and Validation, `DiagnoseSkills.cs` folds into Debug), `82` module documentation directories (`54` REST/module docs + `28` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`
 
@@ -128,7 +128,7 @@ Mode authorization (persistent, per-skill) and `ConfirmationToken` (single-shot,
 
 ### Skill Mode Annotation
 
-The REST surface (`785` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
+The REST surface (`805` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
 
 | Annotation | Count | Source |
 |---|---|---|
@@ -139,7 +139,7 @@ The REST surface (`785` skills) is partitioned by `[UnitySkill]` `Mode` and runt
 SemiAuto (read/query/analyze) skills are directly callable in every mode and span the modules below; use `GET /skills/schema?category=<Category>` for the exact list (write skills in the same modules stay FullAuto):
 
 - **script** (`script_read` / `script_list` / `script_get_info` / `script_find_in_file` / `script_get_compile_feedback`) · **perception** (`scene_analyze` / `scene_context` / `scene_health_check` / `scene_find_hotspots` / `project_stack_detect` — the module is named perception but its skills carry the `scene_*` prefix) · **scene** (`scene_get_info` / `scene_get_hierarchy` / `scene_get_loaded` / `scene_find_objects`) · **editor** (`editor_get_context` / `editor_get_state` / `editor_get_selection` / `editor_get_tags` / `editor_get_layers`) · **asset** (`asset_find` / `asset_get_info`) · **workflow** (`workflow_list` / `workflow_session_*` / `workflow_plan` — prefer workflow & batch helpers for planning/preview/jobs/rollback) · **debug + console** (`debug_check_compilation` / `debug_get_errors` / `debug_get_system_info` / `debug_get_memory_info` / `debug_get_logs` / `console_get_logs`)
-- plus most modules' own info / list / get / find skills. **Advisory**: `27` documentation-only modules (no REST skills) — see Coding Reference Index below.
+- plus most modules' own info / list / get / find skills. **Advisory**: `28` documentation-only modules (no REST skills) — see Coding Reference Index below.
 
 ## Compilation Feedback, Events & Telemetry
 
@@ -189,7 +189,7 @@ Every error response carries a top-level `errorCode` (plus `retryStrategy` / `re
 
 ## Coding Reference Index
 
-Before writing or refactoring Unity code, **load the relevant advisory module first**. These are the `27` `Documentation only` design modules (no REST skills — loadable under any mode) that pin rules to engine source and prevent hallucinated / removed APIs. Load on demand by topic, not all at once.
+Before writing or refactoring Unity code, **load the relevant advisory module first**. These are the `28` `Documentation only` design modules (no REST skills — loadable under any mode) that pin rules to engine source and prevent hallucinated / removed APIs. Load on demand by topic, not all at once.
 
 **General coding & architecture** — before writing gameplay code or making structural decisions:
 
@@ -216,6 +216,7 @@ Before writing or refactoring Unity code, **load the relevant advisory module fi
 | `addressables-design` | `InitializeAsync` / `LoadAssetAsync` / `LoadSceneAsync` / `UpdateCatalogs` / `AssetReference` |
 | `dotween-design` | `DOTween.Init` / `DOMove` / `Sequence` / `SetLoops` / `SetLink` / `ToUniTask` |
 | `primetween-design` | `Tween.Position` / `Sequence.Chain` / handle lifecycle / `PrimeTweenConfig` |
+| `qframework-design` | QFramework v1.0.257 — `Architecture<T>` / `RegisterSystem`-`RegisterModel`-`RegisterUtility` (now return the instance) / `ICommand`-`IQuery<T>` layering rules / `BindableProperty` / `TypeEventSystem` / CodeGenKit + UIKit + ResKit workflows |
 | `netcode-design` | `NetworkBehaviour` / RPC / `NetworkVariable` / Spawn |
 | `pico-design` | PICO Unity Integration SDK v3.4.0 — `PXR_Manager` / `PXR_Input` / MR (seethrough, anchors, mesh) / SecureMR / `Pico.Platform` services / 2.x-3.4 version diffs & deprecated-API blacklist |
 | `shadergraph-design` | Graph structure, node chains, SubGraph boundaries, keyword / blackboard layout |

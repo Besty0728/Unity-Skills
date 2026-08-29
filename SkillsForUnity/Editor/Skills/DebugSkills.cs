@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// 调试技能：自愈、主动错误检查、编译控制。
+    /// Debug skills: self-healing, proactive error checks, compile control.
     /// </summary>
     public static class DebugSkills
     {
@@ -22,8 +22,9 @@ namespace UnitySkills
             public int line;
         }
 
-        // Scripting Define Symbols 的快照值。必须连 build target group 一起记录，
-        // 这样即便期间切换了活动构建目标，undo/redo 也能作用到正确的 group 上。
+        // Snapshot value of the Scripting Define Symbols. The build target group must be recorded
+        // alongside it, so that undo/redo still applies to the correct group even if the active
+        // build target was switched in the meantime.
         private sealed class DefinesSettingValue
         {
             public string group;
@@ -31,8 +32,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 注册 Scripting Define 的还原器，使 debug_set_defines 的改动可通过
-        /// 工作流 undo/redo 回滚。在域加载时执行。
+        /// Registers the Scripting Define restorer, so debug_set_defines changes can be rolled
+        /// back through workflow undo/redo. Runs on domain load.
         /// </summary>
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
@@ -86,7 +87,7 @@ namespace UnitySkills
             }
         }
 
-        // Unity LogEntry 的 mode 位，取值来自 UnityCsReference。
+        // Unity LogEntry mode bits, values taken from UnityCsReference.
         private const int ModeError = 1;
         private const int ModeAssert = 2;
         private const int ModeLog = 4;
@@ -104,7 +105,7 @@ namespace UnitySkills
         internal const int WarningModeMask = ModeAssetImportWarning | ModeScriptingWarning | ModeScriptCompileWarning;
         internal const int LogModeMask = ModeLog | ModeScriptingLog;
 
-        // 反射成员缓存：首次使用时初始化，失败时清空以便下次重试。
+        // Reflection member cache: initialized on first use, cleared on failure so the next attempt can retry.
         private static System.Type _logEntriesType;
         private static System.Type _logEntryType;
         private static MethodInfo _getCountMethod;

@@ -10,7 +10,7 @@ using UnityEngine.Rendering.Universal;
 namespace UnitySkills
 {
     /// <summary>
-    /// URP 专属的资产与 Renderer Feature 技能。
+    /// URP-specific asset and Renderer Feature skills.
     /// </summary>
     public static class URPSkills
     {
@@ -110,12 +110,15 @@ namespace UnitySkills
             var asset = LoadAssetOrError(assetPath, out var error);
             if (error != null) return error;
 
-            // 所有数值都在动 SerializedObject 之前校验。下面三个属性虽有会 clamp/拒绝的公共 C# setter
-            // （UniversalRenderPipelineAsset.msaaSampleCount 直接转成 MsaaQuality 枚举、完全不做范围检查；
-            // .renderScale 与 .shadowDistance 分别 clamp 到 [minRenderScale, maxRenderScale] 与 [0, +inf)），
-            // 但本技能是通过 SerializedObject 直写背后的序列化字段（m_MSAA/m_RenderScale/m_ShadowDistance），
-            // 绕过了全部 setter：msaaSampleCount=3 会被原样接受并回显（URP 只支持 1/2/4/8 采样），
-            // 负的 renderScale 或 shadowDistance 同样会被原样写入。
+            // All values are validated before touching the SerializedObject. The three properties
+            // below do have public C# setters that clamp/reject
+            // (UniversalRenderPipelineAsset.msaaSampleCount just casts straight to the
+            // MsaaQuality enum with no range check at all; .renderScale and .shadowDistance clamp
+            // to [minRenderScale, maxRenderScale] and [0, +inf) respectively), but this skill
+            // writes the underlying serialized fields directly through SerializedObject
+            // (m_MSAA/m_RenderScale/m_ShadowDistance), bypassing every setter: msaaSampleCount=3
+            // would be accepted and echoed back as-is (URP only supports 1/2/4/8 samples), and a
+            // negative renderScale or shadowDistance would likewise be written as-is.
             if (msaaSampleCount.HasValue)
             {
                 var msaa = msaaSampleCount.Value;

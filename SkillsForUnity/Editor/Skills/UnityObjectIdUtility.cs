@@ -34,9 +34,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把 ObjectChangeEvents 回调给出的原生 id 归一成与 <see cref="GetEntityId"/> 一致的稳定字符串键。
-        /// 6000.4+ 事件字段是 <c>EntityId</c>，旧版是 <c>int instanceId</c>——两条分支各自与
-        /// <see cref="GetEntityId"/> 对同一对象的输出相等，故可跨来源（对象/事件）互查 catalog。
+        /// Normalizes the raw id given by an ObjectChangeEvents callback into a stable string key consistent
+        /// with <see cref="GetEntityId"/>. On 6000.4+ the event field is <c>EntityId</c>, on older versions it's
+        /// <c>int instanceId</c> — each branch produces output equal to what <see cref="GetEntityId"/> gives for
+        /// the same object, so a catalog can be cross-looked-up across sources (object/event).
         /// </summary>
 #if UNITY_6000_4_OR_NEWER
         public static string EntityKey(EntityId entityId)
@@ -86,7 +87,8 @@ namespace UnitySkills
             if (!int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out var instanceId))
                 return null;
 
-            // CS0618 豁免：6000.4 以下的兼容分支，旧 API 刻意保留（新 API 走上方 #if 分支）。
+            // CS0618 exemption: this is the compatibility branch for below 6000.4; the legacy API is kept
+            // deliberately (the new API runs in the #if branch above).
 #pragma warning disable 0618
             return EditorUtility.InstanceIDToObject(instanceId);
 #pragma warning restore 0618
@@ -101,7 +103,7 @@ namespace UnitySkills
 #if UNITY_6000_4_OR_NEWER
             return null;
 #else
-            // CS0618 豁免：6000.4 以下的兼容分支，旧 API 刻意保留。
+            // CS0618 exemption: this is the compatibility branch for below 6000.4; the legacy API is kept deliberately.
 #pragma warning disable 0618
             return EditorUtility.InstanceIDToObject(objectId);
 #pragma warning restore 0618
@@ -127,7 +129,7 @@ namespace UnitySkills
 #if UNITY_6000_4_OR_NEWER
             return Array.Empty<int>();
 #else
-            // CS0618 豁免：6000.4 以下的兼容分支，旧 API 刻意保留。
+            // CS0618 exemption: this is the compatibility branch for below 6000.4; the legacy API is kept deliberately.
 #pragma warning disable 0618
             return Selection.instanceIDs ?? Array.Empty<int>();
 #pragma warning restore 0618
@@ -157,7 +159,7 @@ namespace UnitySkills
                 .Where(obj => obj != null)
                 .ToArray();
 #else
-            // CS0618 豁免：6000.4 以下的兼容分支，旧 API 刻意保留。
+            // CS0618 exemption: this is the compatibility branch for below 6000.4; the legacy API is kept deliberately.
 #pragma warning disable 0618
             Selection.instanceIDs = ids;
 #pragma warning restore 0618

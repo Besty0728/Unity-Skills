@@ -7,16 +7,16 @@ using UnityEditor;
 namespace UnitySkills
 {
     /// <summary>
-    /// 为高危技能（RiskLevel="high" 或 Operation 含 Delete）签发并消耗一次性确认令牌。
+    /// Issues and consumes one-time confirmation tokens for high-risk skills (RiskLevel="high" or Operation includes Delete).
     ///
-    /// 流程：
-    ///   1. 调用方不带 "_confirm" 参数调用高危技能
-    ///   2. 服务端返回 CONFIRMATION_REQUIRED + 新令牌 + dry-run 预览
-    ///   3. 调用方用相同参数加上 "_confirm": &lt;token&gt; 重新调用
-    ///   4. 服务端消耗该令牌并真正执行
+    /// Flow:
+    ///   1. Caller invokes a high-risk skill without a "_confirm" argument
+    ///   2. The server returns CONFIRMATION_REQUIRED + a new token + a dry-run preview
+    ///   3. Caller re-invokes with the same arguments plus "_confirm": &lt;token&gt;
+    ///   4. The server consumes the token and actually executes
     ///
-    /// 令牌绑定到 (skillName, argsHash)，因此签发出的令牌无法配着改动过的载荷重放。
-    /// TTL 默认 5 分钟。默认关闭，可在 UnitySkillsWindow 的 Server 页开启。
+    /// A token is bound to (skillName, argsHash), so an issued token cannot be replayed against a
+    /// modified payload. TTL defaults to 5 minutes. Off by default; can be enabled from the Server tab of UnitySkillsWindow.
     /// </summary>
     public static class ConfirmationTokenService
     {
@@ -36,8 +36,8 @@ namespace UnitySkills
             new ConcurrentDictionary<string, Entry>(StringComparer.Ordinal);
 
         /// <summary>
-        /// 全局开关。默认 false——多数用户要的是无人值守自动化。
-        /// 为 false 时本服务完全空转，技能无需确认即可执行。
+        /// Global switch. Defaults to false -- most users want unattended automation.
+        /// When false, this service is entirely a no-op and skills execute without confirmation.
         /// </summary>
         public static bool RequireConfirmation
         {
@@ -48,8 +48,8 @@ namespace UnitySkills
         public static int Ttl => DefaultTtlSeconds;
 
         /// <summary>
-        /// RiskLevel="high" 或 Operation 含 Delete 即视为高危技能。
-        /// 声明为 internal 是因为 <see cref="SkillRouter.SkillInfo"/> 本身是 internal。
+        /// A skill counts as high-risk when RiskLevel="high" or its Operation includes Delete.
+        /// Declared internal because <see cref="SkillRouter.SkillInfo"/> is itself internal.
         /// </summary>
         internal static bool IsHighRisk(SkillRouter.SkillInfo skill)
         {
@@ -62,7 +62,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 签发一个绑定到 (skillName, argsHash) 的新令牌，一次性有效。
+        /// Issues a new token bound to (skillName, argsHash), valid for a single use.
         /// </summary>
         public static (string token, int ttlSeconds) IssueToken(string skillName, string argsJson)
         {
@@ -82,8 +82,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 尝试消耗令牌。不存在、已过期，或绑定的 (skillName, args) 不匹配时返回 false。
-        /// 成功消耗的令牌会被移除。
+        /// Attempts to consume a token. Returns false if it doesn't exist, has expired, or its
+        /// bound (skillName, args) doesn't match. A successfully consumed token is removed.
         /// </summary>
         public static bool TryConsume(string token, string skillName, string argsJson)
         {
@@ -93,9 +93,9 @@ namespace UnitySkills
             if (!_entries.TryGetValue(token, out var entry))
                 return false;
 
-            // 必须先校验再删除。一个仍然有效、只是 (skillName, args) 不匹配的令牌
-            // （例如客户端 JSON 略有差异，或重放到了别的技能上）不能被销毁：
-            // 调用方还要拿它完整地重试确认流程。先删后判会让任何一次不匹配烧掉好令牌。
+            // Must validate before deleting. A token that's still valid but simply doesn't match on
+            // (skillName, args) -- e.g. the client's JSON differs slightly, or it was replayed against a different skill -- must not be destroyed: the caller still needs it to
+            // retry the confirmation flow properly. Deleting first and checking after would let any single mismatch burn a good token.
             if (DateTime.UtcNow > entry.ExpiresAtUtc)
                 return false;
 
@@ -105,8 +105,8 @@ namespace UnitySkills
             if (!string.Equals(entry.ArgsHash, HashArgs(argsJson), StringComparison.Ordinal))
                 return false;
 
-            // 全部校验通过，原子消耗。若在 TryGetValue 到此刻之间已被别的线程消耗，
-            // TryRemove 会返回 false，正好处理这个竞态。
+            // All checks passed; consume atomically. If another thread already consumed it between
+            // the TryGetValue above and here, TryRemove returns false, which handles that race correctly.
             return _entries.TryRemove(token, out _);
         }
 
@@ -124,9 +124,9 @@ namespace UnitySkills
 
         private static void EnforceCapacity()
         {
-            // 客户端只签不用时防止内存无限增长的廉价兜底。
+            // Cheap safeguard against unbounded memory growth when clients issue tokens without consuming them.
             if (_entries.Count < MaxLiveTokens) return;
-            // 任意剔除直到回到上限以下：顺序不确定，但次数有界。
+            // Evict arbitrarily until back under the cap: order is unspecified, but bounded in count.
             foreach (var key in _entries.Keys)
             {
                 if (_entries.Count < MaxLiveTokens) break;
@@ -136,7 +136,7 @@ namespace UnitySkills
 
         private static string GenerateToken()
         {
-            // 16 字节 -> 22 字符 base64url，对 5 分钟窗口而言唯一性足够。
+            // 16 bytes -> 22-char base64url, plenty unique for a 5-minute window.
             var bytes = new byte[16];
             using (var rng = RandomNumberGenerator.Create())
                 rng.GetBytes(bytes);
@@ -148,8 +148,8 @@ namespace UnitySkills
 
         private static string HashArgs(string argsJson)
         {
-            // 只规整首尾空白，避免无关的格式差异使令牌失效。
-            // 不对键重排序——约定客户端两次发送的结构应当一致。
+            // Only trim leading/trailing whitespace to avoid unrelated formatting differences invalidating
+            // the token. Keys are not reordered -- the client is expected to send the same structure both times.
             var normalized = argsJson ?? string.Empty;
             using (var sha = SHA256.Create())
             {

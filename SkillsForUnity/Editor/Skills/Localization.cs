@@ -19,8 +19,8 @@ namespace UnitySkills
         private static Language _current = Language.English;
 
         /// <summary>
-        /// 语言切换通知。独立子窗口（审计 / Unity CLI）订阅后整树重建以跟随主面板切换；
-        /// 主窗口自身仍走 RefreshLocalization 直调，不依赖此事件。
+        /// Language-change notification. Standalone sub-windows (audit / Unity CLI) subscribe to this
+        /// and rebuild their whole tree to follow the main panel; the main window itself still calls RefreshLocalization directly and does not depend on this event.
         /// </summary>
         public static event Action LanguageChanged;
 
@@ -602,6 +602,29 @@ namespace UnitySkills
             {"primetween_list_factories", "List PrimeTween public factory methods"},
             {"primetween_generate_tween_script", "Generate a PrimeTween Transform tween MonoBehaviour script"},
             {"primetween_generate_sequence_script", "Generate a PrimeTween Sequence MonoBehaviour script"},
+
+            // QFramework Skills
+            {"qframework_get_status", "Report QFramework installation status, install kind, detected assemblies, version, editor locale, and ResKit simulation mode"},
+            {"qframework_list_architecture_code_types", "List QFramework ArchitectureCodeType values with interface-generation support and register method names"},
+            {"qframework_preview_architecture_code", "Preview generated QFramework architecture-layer code without writing a file"},
+            {"qframework_generate_architecture_code", "Generate QFramework architecture-layer code (Architecture/System/Model/Command/Utility/Query) to disk"},
+            {"qframework_generate_architecture_code_batch", "Generate multiple QFramework architecture-layer code files in one request"},
+            {"qframework_generate_view_controller_code", "Generate bound-view code for a GameObject's QFramework ViewController component"},
+            {"qframework_generate_ui_panel_code", "Generate QFramework UIKit panel and Designer code for a UI prefab"},
+            {"qframework_get_uikit_settings", "Read QFramework UIKit project settings - namespace, script/prefab directories, and searched assemblies"},
+            {"qframework_set_uikit_settings", "Write QFramework UIKit project settings (namespace, script/prefab directories, searched assemblies)"},
+            {"qframework_mark_asset_bundle", "Mark or unmark a project folder as a QFramework ResKit AssetBundle"},
+            {"qframework_mark_asset_bundle_batch", "Mark or unmark multiple project folders as QFramework ResKit AssetBundles in one request"},
+            {"qframework_list_asset_bundle_marks", "List all AssetBundle names and their assigned asset paths"},
+            {"qframework_get_reskit_build_options", "Read QFramework ResKit build options - simulation mode, append hash, and auto-generate class"},
+            {"qframework_set_reskit_build_options", "Set QFramework ResKit build options - simulation mode, append hash, and auto-generate class"},
+            {"qframework_build_asset_bundles", "Build AssetBundles for a build target via QFramework ResKit BuildScript"},
+            {"qframework_clear_asset_bundles", "Delete all built QFramework ResKit AssetBundle output - not reversible"},
+            {"qframework_scan_architecture", "Scan loaded assemblies for QFramework architecture roles - IArchitecture, ISystem, IModel, ICommand, IQuery, IController"},
+            {"qframework_query_api_docs", "Search QFramework's built-in API documentation attributes across loaded assemblies"},
+            {"qframework_set_editor_locale", "Set QFramework's editor UI locale (LocaleKitEditor.IsCN)"},
+            {"qframework_set_language_defines", "Replace the QFramework LocaleKit LanguageDefineConfig language list"},
+
             {"dotween_get_status", "Get DOTween installation status, Pro availability, settings, and visible modules"},
             {"dotween_settings_get", "Read common fields from Resources/DOTweenSettings.asset"},
             {"dotween_settings_find", "Find DOTweenSettings assets in the project"},
@@ -2069,6 +2092,28 @@ namespace UnitySkills
             {"primetween_generate_tween_script", "生成 PrimeTween Transform 补间 MonoBehaviour 脚本"},
             {"primetween_generate_sequence_script", "生成 PrimeTween Sequence MonoBehaviour 脚本"},
 
+            // QFramework Skills
+            {"qframework_get_status", "获取 QFramework 安装状态、安装类型、检测到的程序集、版本、编辑器语言与 ResKit 模拟模式"},
+            {"qframework_list_architecture_code_types", "列出 QFramework ArchitectureCodeType 取值及其接口生成支持与注册方法名"},
+            {"qframework_preview_architecture_code", "预览将要生成的 QFramework 架构层代码，不写入文件"},
+            {"qframework_generate_architecture_code", "生成 QFramework 架构层代码（Architecture/System/Model/Command/Utility/Query）到磁盘"},
+            {"qframework_generate_architecture_code_batch", "批量生成多个 QFramework 架构层代码文件"},
+            {"qframework_generate_view_controller_code", "为 GameObject 上的 QFramework ViewController 组件生成绑定视图代码"},
+            {"qframework_generate_ui_panel_code", "为 UI 预制体生成 QFramework UIKit 面板与 Designer 代码"},
+            {"qframework_get_uikit_settings", "读取 QFramework UIKit 项目设置——命名空间、脚本/预制体目录与搜索程序集"},
+            {"qframework_set_uikit_settings", "写入 QFramework UIKit 项目设置（命名空间、脚本/预制体目录、搜索程序集）"},
+            {"qframework_mark_asset_bundle", "标记或取消标记项目文件夹为 QFramework ResKit AssetBundle"},
+            {"qframework_mark_asset_bundle_batch", "批量标记或取消标记多个项目文件夹为 QFramework ResKit AssetBundle"},
+            {"qframework_list_asset_bundle_marks", "列出所有 AssetBundle 名称及其分配到的资源路径"},
+            {"qframework_get_reskit_build_options", "读取 QFramework ResKit 构建选项——模拟模式、追加哈希与自动生成类"},
+            {"qframework_set_reskit_build_options", "设置 QFramework ResKit 构建选项——模拟模式、追加哈希与自动生成类"},
+            {"qframework_build_asset_bundles", "通过 QFramework ResKit BuildScript 为指定构建目标打包 AssetBundle"},
+            {"qframework_clear_asset_bundles", "删除所有已构建的 QFramework ResKit AssetBundle 产物——不可恢复"},
+            {"qframework_scan_architecture", "扫描已加载程序集中的 QFramework 架构角色——IArchitecture、ISystem、IModel、ICommand、IQuery、IController"},
+            {"qframework_query_api_docs", "在已加载程序集中搜索 QFramework 内置的 API 文档特性"},
+            {"qframework_set_editor_locale", "设置 QFramework 编辑器界面语言（LocaleKitEditor.IsCN）"},
+            {"qframework_set_language_defines", "替换 QFramework LocaleKit LanguageDefineConfig 的语言列表"},
+
             // DOTween Skills
             {"dotween_get_status", "获取 DOTween 安装状态、Pro 可用性、设置与已加载模块"},
             {"dotween_settings_get", "读取 Resources/DOTweenSettings.asset 的常用字段"},
@@ -3011,6 +3056,29 @@ namespace UnitySkills
             {"primetween_list_factories", "Перечислить публичные фабричные методы PrimeTween"},
             {"primetween_generate_tween_script", "Сгенерировать MonoBehaviour-скрипт для Transform-твина PrimeTween"},
             {"primetween_generate_sequence_script", "Сгенерировать MonoBehaviour-скрипт Sequence для PrimeTween"},
+
+            // QFramework Skills
+            {"qframework_get_status", "Получить статус установки QFramework, тип установки, обнаруженные сборки, версию, языковой режим редактора и режим симуляции ResKit"},
+            {"qframework_list_architecture_code_types", "Перечислить значения QFramework ArchitectureCodeType с поддержкой генерации интерфейса и именами методов регистрации"},
+            {"qframework_preview_architecture_code", "Просмотреть генерируемый код архитектурного слоя QFramework без записи файла"},
+            {"qframework_generate_architecture_code", "Сгенерировать код архитектурного слоя QFramework (Architecture/System/Model/Command/Utility/Query) на диск"},
+            {"qframework_generate_architecture_code_batch", "Сгенерировать несколько файлов кода архитектурного слоя QFramework за один запрос"},
+            {"qframework_generate_view_controller_code", "Сгенерировать код привязки представления для компонента QFramework ViewController на GameObject"},
+            {"qframework_generate_ui_panel_code", "Сгенерировать код панели и Designer для UI-префаба QFramework UIKit"},
+            {"qframework_get_uikit_settings", "Прочитать настройки проекта QFramework UIKit, пространство имен, каталоги скриптов/префабов и искомые сборки"},
+            {"qframework_set_uikit_settings", "Записать настройки проекта QFramework UIKit (пространство имен, каталоги скриптов/префабов, искомые сборки)"},
+            {"qframework_mark_asset_bundle", "Пометить или снять пометку папки проекта как QFramework ResKit AssetBundle"},
+            {"qframework_mark_asset_bundle_batch", "Пометить или снять пометку с нескольких папок проекта как QFramework ResKit AssetBundle за один запрос"},
+            {"qframework_list_asset_bundle_marks", "Перечислить все имена AssetBundle и назначенные им пути ассетов"},
+            {"qframework_get_reskit_build_options", "Прочитать параметры сборки QFramework ResKit, режим симуляции, добавление хеша и автогенерацию класса"},
+            {"qframework_set_reskit_build_options", "Установить параметры сборки QFramework ResKit, режим симуляции, добавление хеша и автогенерацию класса"},
+            {"qframework_build_asset_bundles", "Собрать AssetBundle для целевой платформы через QFramework ResKit BuildScript"},
+            {"qframework_clear_asset_bundles", "Удалить все собранные выходные данные AssetBundle QFramework ResKit, необратимо"},
+            {"qframework_scan_architecture", "Просканировать загруженные сборки на предмет ролей архитектуры QFramework: IArchitecture, ISystem, IModel, ICommand, IQuery, IController"},
+            {"qframework_query_api_docs", "Найти встроенные атрибуты документации API QFramework в загруженных сборках"},
+            {"qframework_set_editor_locale", "Установить язык интерфейса редактора QFramework (LocaleKitEditor.IsCN)"},
+            {"qframework_set_language_defines", "Заменить список языков QFramework LocaleKit LanguageDefineConfig"},
+
             {"dotween_get_status", "Получить статус установки DOTween, доступность Pro, настройки и видимые модули"},
             {"dotween_settings_get", "Прочитать общие поля из Resources/DOTweenSettings.asset"},
             {"dotween_settings_find", "Найти ассеты DOTweenSettings в проекте"},

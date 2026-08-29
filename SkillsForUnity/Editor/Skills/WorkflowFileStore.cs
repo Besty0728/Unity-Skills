@@ -10,34 +10,34 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// 工作流快照用的内容寻址文件库。
-    /// 每个文件 blob 以自身 SHA1 哈希为名存放，内容相同者自动去重。
+    /// Content-addressed file store for workflow snapshots.
+    /// Each file blob is stored under its own SHA1 hash as the name; identical content is automatically deduplicated.
     /// </summary>
     internal static class WorkflowFileStore
     {
         /// <summary>
-        /// 所有工作流文件 blob 的根目录。
+        /// Root directory for all workflow file blobs.
         /// </summary>
         internal static string OverrideStoreRootForTests;
         public static string StoreRoot => OverrideStoreRootForTests ??
             Path.GetFullPath(Path.Combine(Application.dataPath, "../Library/UnitySkills/workflow_files"));
 
         /// <summary>
-        /// 在此时间窗内入库的 blob 绝不会被当作"无引用"回收：
-        /// 调用方可能仍在拼装那条将要引用它们的快照。
+        /// Blobs stored within this time window are never reclaimed as "unreferenced":
+        /// the caller may still be assembling the snapshot that will reference them.
         /// </summary>
         private static readonly TimeSpan RecentWriteGrace = TimeSpan.FromMinutes(10);
 
-        /// <summary>内容与自身哈希不再吻合的 blob 所用的扩展名。</summary>
+        /// <summary>Extension used for blobs whose content no longer matches their own hash.</summary>
         private const string CorruptSuffix = ".corrupt";
 
         /// <summary>
-        /// 把资产文件存入内容寻址库，可选地删除源文件。
-        /// 配套的 .meta 文件按自身内容独立寻址。
+        /// Stores an asset file in the content-addressed store, optionally deleting the source file.
+        /// The companion .meta file is addressed independently by its own content.
         /// </summary>
-        /// <param name="assetPath">项目相对资产路径（如 "Assets/Materials/Red.mat"）。</param>
-        /// <param name="move">为 true 时，入库后删除源文件（及其 meta）。</param>
-        /// <returns>文件内容的 SHA1 哈希；源文件不存在时返回 null。</returns>
+        /// <param name="assetPath">Project-relative asset path (e.g. "Assets/Materials/Red.mat").</param>
+        /// <param name="move">If true, deletes the source file (and its meta) after storing.</param>
+        /// <returns>SHA1 hash of the file content; returns null if the source file does not exist.</returns>
         public static string StoreFile(string assetPath, bool move)
         {
             return StoreFile(assetPath, move, out _);
@@ -73,7 +73,7 @@ namespace UnitySkills
                         return null;
                 }
 
-                // 只有在所有必需的 blob 都已落盘之后才删除源文件。
+                // Only delete the source file after all required blobs have been persisted.
                 if (move)
                 {
                     SafeDelete(fullPath);
@@ -91,12 +91,12 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 还原一个已入库的文件（及其独立寻址的 .meta 配套文件）。
+        /// Restores a stored file (and its independently addressed companion .meta file).
         /// </summary>
-        /// <param name="hash">入库内容的 SHA1 哈希。</param>
-        /// <param name="assetPath">要还原到的项目相对资产路径。</param>
-        /// <param name="removeFromStore">为 true 时还原后删除库中条目（用于"重做创建"路径）。</param>
-        /// <returns>还原成功返回 true。</returns>
+        /// <param name="hash">SHA1 hash of the stored content.</param>
+        /// <param name="assetPath">Project-relative asset path to restore to.</param>
+        /// <param name="removeFromStore">If true, deletes the store entry after restoring (used by the "redo create" path).</param>
+        /// <returns>True if the restore succeeded.</returns>
         public static bool RestoreFile(string hash, string assetPath, bool removeFromStore)
         {
             return RestoreFile(hash, null, assetPath, removeFromStore);
@@ -115,7 +115,7 @@ namespace UnitySkills
             if (!File.Exists(hashPath))
                 return false;
 
-            // 在写入任何东西之前先校验，使损坏的 blob 不会碰到项目。
+            // Verify before writing anything, so a corrupted blob never touches the project.
             if (!VerifyBlobIntegrity(hash))
                 return false;
             if (!string.IsNullOrEmpty(metaHash) && File.Exists(metaHashPath) && !VerifyBlobIntegrity(metaHash))
@@ -133,7 +133,7 @@ namespace UnitySkills
                 else
                     File.Copy(hashPath, fullPath);
 
-                // 存在配套 .meta 时一并还原
+                // Restore the companion .meta file too, if present
                 if (File.Exists(metaHashPath))
                 {
                     string metaDestPath = fullPath + ".meta";
@@ -157,13 +157,13 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 删除哈希已不被任何残留快照引用的库条目。
+        /// Deletes store entries whose hash is no longer referenced by any surviving snapshot.
         /// </summary>
-        /// <param name="removedCount">被删除的主哈希条目数。</param>
-        /// <param name="removedBytes">回收的总字节数（含 .meta 附属文件）。</param>
+        /// <param name="removedCount">Number of primary hash entries removed.</param>
+        /// <param name="removedBytes">Total bytes reclaimed (including .meta companion files).</param>
         /// <param name="includeRecentWrites">
-        /// 仅当调用方能确信引用集天然完整时才置位（例如清空全部历史）；
-        /// 否则刚写入的 blob 会被保留，见 <see cref="RecentWriteGrace"/>。
+        /// Only set this when the caller can be sure the reference set is inherently complete (e.g. clearing all history);
+        /// otherwise recently written blobs are preserved, see <see cref="RecentWriteGrace"/>.
         /// </param>
         public static void CollectGarbage(HashSet<string> referencedHashes, out int removedCount, out long removedBytes,
             Action<string> log = null, bool includeRecentWrites = false)
@@ -216,7 +216,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 返回文件库总大小（字节）。
+        /// Returns the total size of the store, in bytes.
         /// </summary>
         public static long GetStoreSizeBytes()
         {
@@ -227,13 +227,13 @@ namespace UnitySkills
             foreach (var file in Directory.EnumerateFiles(StoreRoot, "*", SearchOption.TopDirectoryOnly))
             {
                 try { total += new FileInfo(file).Length; }
-                catch { /* 忽略被占用的文件 */ }
+                catch { /* Ignore files that are locked by another process */ }
             }
             return total;
         }
 
         /// <summary>
-        /// 列出所有已入库的文件条目（只含主 blob，不含 .meta 附属文件）。
+        /// Lists all stored file entries (primary blobs only, excluding .meta companion files).
         /// </summary>
         public static List<(string hash, long bytes, DateTime lastWrite)> ListEntries()
         {
@@ -246,7 +246,7 @@ namespace UnitySkills
                 string fileName = Path.GetFileName(file);
                 if (fileName.EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
                     continue;
-                // 被隔离的 blob 是损坏证据，清理时不得回收。
+                // A quarantined blob is evidence of corruption and must not be reclaimed during cleanup.
                 if (fileName.EndsWith(CorruptSuffix, StringComparison.OrdinalIgnoreCase))
                     continue;
 
@@ -255,18 +255,18 @@ namespace UnitySkills
                     var info = new FileInfo(file);
                     result.Add((fileName.ToUpperInvariant(), info.Length, info.LastWriteTimeUtc));
                 }
-                catch { /* 忽略被占用的文件 */ }
+                catch { /* Ignore files that are locked by another process */ }
             }
 
             return result;
         }
 
         /// <summary>
-        /// 先清除早于 <paramref name="olderThan"/> 的库条目，必要时再从最旧的开始删，
-        /// 直到总大小低于 <paramref name="maxTotalBytes"/>。
-        /// 仍被保留历史引用的 blob 绝不删除。
+        /// First removes store entries older than <paramref name="olderThan"/>, then, if needed, deletes from
+        /// oldest to newest until the total size is below <paramref name="maxTotalBytes"/>.
+        /// Blobs still referenced by preserved history are never deleted.
         /// </summary>
-        /// <returns>被删除的主哈希条目数。</returns>
+        /// <returns>Number of primary hash entries removed.</returns>
         public static int PruneByAgeAndSize(DateTime? olderThan, long maxTotalBytes,
             HashSet<string> protectedHashes)
         {
@@ -283,7 +283,7 @@ namespace UnitySkills
                 if (protectedHashes.Contains(entry.hash))
                     continue;
 
-                // 与 CollectGarbage 相同的在途保护：刚写入的 blob 可能属于尚未并入历史引用集的任务。
+                // Same in-flight protection as CollectGarbage: a recently written blob may belong to a task not yet folded into the history reference set.
                 bool recentWrite = entry.lastWrite >= DateTime.UtcNow - RecentWriteGrace;
                 bool tooOld = olderThan.HasValue && entry.lastWrite < olderThan.Value;
                 bool tooBig = maxTotalBytes > 0 && totalBytes > maxTotalBytes;
@@ -322,7 +322,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 计算文件内容的 SHA1 哈希。
+        /// Computes the SHA1 hash of a file's content.
         /// </summary>
         public static string ComputeFileHash(string fullPath)
         {
@@ -427,7 +427,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把项目相对资产路径解析为绝对路径，并做安全性校验。
+        /// Resolves a project-relative asset path to an absolute path, with safety validation.
         /// </summary>
         public static bool TryGetSafeAssetFullPath(string assetPath, out string fullPath)
         {
@@ -465,8 +465,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 给 blob 打上"入库时刻"的时间戳。File.Copy 会把源资产的时间戳带过来，
-        /// 但清理逻辑衡量的是条目入库多久，而不是备份时那个资产本身有多旧。
+        /// Stamps the blob with the "stored at" timestamp. File.Copy carries over the source asset's timestamp,
+        /// but cleanup measures how long an entry has sat in the store, not how old the asset was at backup time.
         /// </summary>
         private static void TouchBlob(string hashPath)
         {
@@ -482,18 +482,18 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 最近一次还原被拒执行的原因；上次干净完成时为 null。
-        /// 撤销路径按快照逐条上报失败，而完整性中止在其他情况下与任何失败都无法区分（都是 "Unknown failure"）——
-        /// 可偏偏这正是调用方最需要知道"问题在备份本身、不在目标"的那一种情形。
+        /// Reason the most recent restore was refused; null after a clean completion. The undo path reports
+        /// failures per-snapshot, while an integrity abort is otherwise indistinguishable from any other failure
+        /// (both surface as "Unknown failure") — yet that's exactly when the caller most needs to know "the problem is in the backup, not the target".
         /// </summary>
         internal static string LastIntegrityError { get; private set; }
 
         internal static void ClearLastIntegrityError() => LastIntegrityError = null;
 
         /// <summary>
-        /// 确认入库 blob 的内容仍散列成它所归档的那个名字，不符则隔离为 "&lt;hash&gt;.corrupt"。
-        /// 遗留的 "&lt;hash&gt;.meta" 附属文件以主文件的哈希命名而非自身哈希，
-        /// 故此处永不校验它们。
+        /// Confirms a stored blob's content still hashes to the name it was filed under; quarantines it as
+        /// "&lt;hash&gt;.corrupt" if not. Legacy "&lt;hash&gt;.meta" companion files are named after the primary
+        /// file's hash rather than their own, so they are never verified here.
         /// </summary>
         private static bool VerifyBlobIntegrity(string hash)
         {
@@ -577,23 +577,23 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 用于还原那些走不了常规资产/场景路径的设置类快照的注册表。
-    /// 设置以 key 标识，从 JSON 编码的旧值还原。
+    /// Registry for restoring setting-type snapshots that can't go through the regular asset/scene path.
+    /// Settings are identified by key and restored from JSON-encoded prior values.
     /// </summary>
     internal static class WorkflowSettingRestorerRegistry
     {
         private sealed class Handlers
         {
-            public Func<string> Getter;          // 以 JSON 字符串读取当前值（未提供时为 null）。
-            public Func<string, bool> Restorer;  // 应用 JSON 编码的值，成功返回 true。
+            public Func<string> Getter;          // Reads the current value as a JSON string (null if not provided).
+            public Func<string, bool> Restorer;  // Applies a JSON-encoded value; returns true on success.
         }
 
         private static readonly Dictionary<string, Handlers> _handlers =
             new Dictionary<string, Handlers>(StringComparer.Ordinal);
 
         /// <summary>
-        /// 为某个设置 key 注册还原器（setter）。这是没有 getter 的遗留重载；
-        /// 用此方式注册的 key 无法捕获重做侧的值。
+        /// Registers a restorer (setter) for a setting key. This is the legacy overload with no getter;
+        /// keys registered this way cannot capture the redo-side value.
         /// </summary>
         public static void Register(string key, Func<string, bool> restorer)
         {
@@ -604,8 +604,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 为某个设置 key 注册 getter/setter 对。getter 以 JSON 字符串返回当前值
-        /// （撤销时用它捕获重做值）；setter 应用 JSON 编码的值，成功返回 true。
+        /// Registers a getter/setter pair for a setting key. The getter returns the current value as a JSON string
+        /// (used to capture the redo value on undo); the setter applies a JSON-encoded value and returns true on success.
         /// </summary>
         public static void Register(string key, Func<string> getter, Func<string, bool> setter)
         {
@@ -616,7 +616,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 注销某个设置处理器。
+        /// Unregisters a setting handler.
         /// </summary>
         public static void Unregister(string key)
         {
@@ -627,7 +627,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 该 key 已注册处理器时返回 true。
+        /// Returns true if a handler is registered for this key.
         /// </summary>
         public static bool IsRegistered(string key)
         {
@@ -635,8 +635,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 用已注册的 getter 以 JSON 字符串读取某设置的当前值。
-        /// 该 key 未注册 getter 或 getter 抛异常时返回 null。
+        /// Reads a setting's current value as a JSON string using its registered getter.
+        /// Returns null if no getter is registered for the key, or if the getter throws.
         /// </summary>
         public static string TryGetCurrentValue(string key)
         {
@@ -658,7 +658,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 尝试从 JSON 编码的值还原某项设置。
+        /// Attempts to restore a setting from a JSON-encoded value.
         /// </summary>
         public static bool TryRestore(string key, string valueJson)
         {
@@ -680,7 +680,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 清空所有已注册的处理器，主要供测试使用。
+        /// Clears all registered handlers; primarily for test use.
         /// </summary>
         public static void Clear()
         {

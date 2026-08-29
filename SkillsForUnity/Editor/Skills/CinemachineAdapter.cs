@@ -15,12 +15,12 @@ namespace UnitySkills
 {
 #if CINEMACHINE_2 || CINEMACHINE_3
     /// <summary>
-    /// 屏蔽 Cinemachine 2.x 与 3.x API 差异的适配层。
-    /// 所有版本相关的 #if 分支都集中在这里，使 CinemachineSkills 的方法无需条件编译。
+    /// Adapter layer that shields the API differences between Cinemachine 2.x and 3.x.
+    /// All version-related #if branches are concentrated here, so CinemachineSkills methods need no conditional compilation.
     /// </summary>
     internal static class CinemachineAdapter
     {
-        // ===================== VCam 类型 =====================
+        // ===================== VCam type =====================
 
 #if CINEMACHINE_3
         public const string VCamTypeName = "CinemachineCamera";
@@ -37,13 +37,13 @@ namespace UnitySkills
 #endif
         }
 
-        /// <summary>找到 vcam 时返回 null，否则返回错误对象。</summary>
+        /// <summary>Returns null when the vcam is found, otherwise returns an error object.</summary>
         public static object VCamOrError(MonoBehaviour vcam)
         {
             return vcam != null ? null : new { error = $"Not a {VCamTypeName}" };
         }
 
-        // ===================== Follow / LookAt 目标 =====================
+        // ===================== Follow / LookAt targets =====================
 
         public static Transform GetFollow(MonoBehaviour vcam)
         {
@@ -81,7 +81,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== 优先级 =====================
+        // ===================== Priority =====================
 
         public static int GetPriority(MonoBehaviour vcam)
         {
@@ -101,7 +101,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== 镜头参数 =====================
+        // ===================== Lens settings =====================
 
         public static LensSettings GetLens(MonoBehaviour vcam)
         {
@@ -121,7 +121,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== 噪声 / 抖动 =====================
+        // ===================== Noise / shake =====================
 
         public static void SetNoiseGains(CinemachineBasicMultiChannelPerlin perlin, float amplitude, float frequency)
         {
@@ -134,7 +134,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== Brain 读取 =====================
+        // ===================== Brain reads =====================
 
         public static string GetBrainUpdateMethod(CinemachineBrain brain)
         {
@@ -145,7 +145,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== 程序集 / 类型查找 =====================
+        // ===================== Assembly / type lookup =====================
 
         public static System.Reflection.Assembly CmAssembly =>
 #if CINEMACHINE_3
@@ -251,7 +251,7 @@ namespace UnitySkills
             return type;
         }
 
-        // ===================== 查找全部 VCam =====================
+        // ===================== Find all VCams =====================
 
         public static MonoBehaviour[] FindAllVCams()
         {
@@ -270,7 +270,7 @@ namespace UnitySkills
             return max;
         }
 
-        // ===================== Brain 写入 =====================
+        // ===================== Brain writes =====================
 
         public static CinemachineBrain FindBrain()
         {
@@ -353,7 +353,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== 混合定义 =====================
+        // ===================== Blend definitions =====================
 
         public static CinemachineBlendDefinition GetBrainDefaultBlend(CinemachineBrain brain)
         {
@@ -406,7 +406,7 @@ namespace UnitySkills
             return blend;
         }
 
-        // ===================== StateDriven 指令 =====================
+        // ===================== StateDriven instructions =====================
 
         public static void AddStateDrivenInstruction(
             CinemachineStateDrivenCamera stateCam,
@@ -439,7 +439,7 @@ namespace UnitySkills
 #endif
         }
 
-        // ===================== 序列器 =====================
+        // ===================== Sequencer =====================
 
 #if CINEMACHINE_3
         public const string SequencerTypeName = "CinemachineSequencerCamera";
@@ -531,7 +531,7 @@ namespace UnitySkills
             return go;
         }
 
-        // ===================== 管线组件 =====================
+        // ===================== Pipeline components =====================
 
         public static bool TryParsePipelineStage(string stageName, out CinemachineCore.Stage stage)
         {
@@ -565,8 +565,8 @@ namespace UnitySkills
             stage = attribute.Stage;
             return stage >= CinemachineCore.Stage.Body && stage <= CinemachineCore.Stage.Noise;
 #else
-            // CM2 没有管线阶段特性，只能沿用其编辑器包的同一套探测手法：
-            // 临时实例化该组件，读它的 Stage 属性。
+            // CM2 has no pipeline-stage attribute, so fall back to the same detection trick its
+            // editor package uses: temporarily instantiate the component and read its Stage property.
             var probe = new GameObject("UnitySkills Cinemachine Stage Probe")
             {
                 hideFlags = HideFlags.HideAndDontSave

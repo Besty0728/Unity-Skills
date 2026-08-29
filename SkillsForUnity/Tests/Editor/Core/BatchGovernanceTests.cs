@@ -24,8 +24,8 @@ namespace UnitySkills.Tests.Core
         {
             _savedMode = SkillsModeManager.CurrentMode;
             _savedProfile = SkillsSurfaceProfile.Current;
-            // 直调 BatchExecute/BatchRetryFailed 也受档位执行期强制,开发机 EditorPrefs
-            // 若存着 guide/nsa 会把这批用例拒成 SURFACE_EXCLUDED,必须钉 full。
+            // Direct calls to BatchExecute/BatchRetryFailed are also subject to profile execution-time enforcement; if
+            // the dev machine's EditorPrefs has guide/nsa stored it rejects this batch as SURFACE_EXCLUDED, so pin full.
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
 
@@ -163,7 +163,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void BatchRetryFailed_WithNoFailedItems_ReturnsZeroCount()
         {
-            // 先跑一批全成功的批处理，借此拿到一份没有失败项的报告。
+            // First run a batch that fully succeeds, to obtain a report with no failed items.
             new GameObject("RetryTestObj");
             GameObjectFinder.InvalidateCache();
 

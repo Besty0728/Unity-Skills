@@ -6,8 +6,8 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// 一次调用即可拿到的诊断快照，让 AI agent 无需串联 4~5 个技能
-    /// （console、compile、workflow、server、jobs）就能定位编辑器状态。
+    /// A single-call diagnostic snapshot, so an AI agent can pinpoint editor state without chaining
+    /// 4-5 skills together (console, compile, workflow, server, jobs).
     /// </summary>
     public static class DiagnoseSkills
     {
@@ -101,7 +101,7 @@ namespace UnitySkills
                 }
                 catch
                 {
-                    // 尽力而为：持久化层出问题就留 null，不让诊断本身失败。
+                    // Best-effort: if the persistence layer has a problem, just leave it null rather than failing diagnosis itself.
                 }
             }
 
@@ -141,7 +141,7 @@ namespace UnitySkills
             };
         }
 
-        /// <summary>从匿名类型对象上读取 int 属性 / 字段，读不到也不抛异常。</summary>
+        /// <summary>Reads an int property/field off an anonymous-type object; never throws if it can't be found.</summary>
         private static int ReadIntMember(object source, string memberName)
         {
             if (source == null || string.IsNullOrEmpty(memberName)) return 0;
@@ -155,7 +155,7 @@ namespace UnitySkills
             }
             catch
             {
-                // 诊断辅助方法在尽力读取时绝不能抛异常，直接吞掉。
+                // A best-effort diagnostic helper must never throw; swallow it.
             }
             return 0;
         }

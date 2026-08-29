@@ -10,8 +10,8 @@ using UnityEngine;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// UnityCliService 配置与 CLI 探测行为测试。
-    /// 不依赖本机是否安装 Unity CLI，失败路径通过临时脚本覆盖。
+    /// Tests for UnityCliService's configuration and CLI detection behavior.
+    /// Doesn't depend on whether Unity CLI is actually installed locally; failure paths are covered via temporary scripts.
     /// </summary>
     [TestFixture]
     public class UnityCliServiceTests
@@ -27,7 +27,7 @@ namespace UnitySkills.Tests.Core
             _configDir = Path.Combine(Application.dataPath, "../Library/UnitySkills");
             _configFile = Path.Combine(_configDir, "cli_config.json");
 
-            // 备份真实绑定配置，避免测试破坏用户数据。
+            // Back up the real binding config, to avoid the test corrupting user data.
             _configExisted = File.Exists(_configFile);
             _originalConfigBytes = _configExisted ? File.ReadAllBytes(_configFile) : null;
 
@@ -41,7 +41,7 @@ namespace UnitySkills.Tests.Core
             {
                 if (_configExisted)
                 {
-                    // 恢复原始配置。
+                    // Restore the original config.
                     Directory.CreateDirectory(_configDir);
                     File.WriteAllBytes(_configFile, _originalConfigBytes);
                 }

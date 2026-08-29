@@ -7,18 +7,18 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// UnitySkills 面板快捷键命令注册 + 供设置 UI 取用的命令清单。
+    /// UnitySkills panel shortcut command registration + the command list consumed by the settings UI.
     ///
-    /// 每个命令用 Unity 官方 <see cref="ShortcutAttribute"/> 注册，但不提供出厂默认键。
-    /// 用户在设置抽屉 Shortcuts 节自行绑定；持久化由 ShortcutManager 的 profile
-    /// 自管（不写 EditorPrefs）。
+    /// Each command is registered with Unity's official <see cref="ShortcutAttribute"/>, but ships no
+    /// default key. The user binds it in the settings drawer's Shortcuts section; persistence is
+    /// self-managed by ShortcutManager's profile (no EditorPrefs writes).
     ///
-    /// 新增一个可绑定面板 = 加一个 [Shortcut] 静态方法 + 在 <see cref="Commands"/> 追加一条。
+    /// To add a new bindable panel = add one [Shortcut] static method + append one entry in <see cref="Commands"/>.
     /// </summary>
     internal static class ShortcutActions
     {
-        // Shortcut ID —— 用 "UnitySkills/..." 前缀在 Edit ▸ Shortcuts 里归组显示。
-        // const 以便直接用作 [Shortcut] 特性实参。
+        // Shortcut ID — grouped for display in Edit ▸ Shortcuts under the "UnitySkills/..." prefix.
+        // const so it can be used directly as a [Shortcut] attribute argument.
         public const string OpenMainPanelId = "UnitySkills/Open Main Panel";
         public const string OpenAuditLogId  = "UnitySkills/Open Audit Log";
         public const string OpenUnityCliId  = "UnitySkills/Open Unity CLI Setup";
@@ -33,8 +33,8 @@ namespace UnitySkills
         private static void OpenUnityCli() => UnityCliWindow.ShowWindow();
 
         /// <summary>
-        /// 设置 UI 逐行渲染的命令清单，顺序即 UI 顺序。
-        /// LocKey 走 <see cref="SkillsLocalization"/> 双表；新面板命令按同样格式追加。
+        /// The command list rendered row by row by the settings UI, in UI order.
+        /// LocKey goes through the <see cref="SkillsLocalization"/> pair of tables; append new panel commands in the same format.
         /// </summary>
         public static readonly IReadOnlyList<ShortcutCommand> Commands = new List<ShortcutCommand>
         {
@@ -44,12 +44,12 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 遍历 ShortcutManager 全部已注册 shortcut，找出与候选组合冲突的那一个并返回其展示名；
-        /// 无冲突返回 null。比对用纯静态 <see cref="ShortcutConflictUtil"/>，本方法只负责枚举取值
-        /// （不可纯化的运行时部分）。UnitySkills 自家命令之间同样参与检测。
+        /// Walks every shortcut registered with ShortcutManager, finds the one that conflicts with the candidate
+        /// combination, and returns its display name (null if none). Comparison uses the pure-static
+        /// <see cref="ShortcutConflictUtil"/>; this method only enumerates values — UnitySkills's own commands participate too.
         /// </summary>
-        /// <param name="excludeId">排除的 shortcut id（正在改绑的命令自身，避免自我冲突）。</param>
-        /// <param name="candidate">候选单键组合。</param>
+        /// <param name="excludeId">The shortcut id to exclude (the command currently being rebound itself, to avoid self-conflict).</param>
+        /// <param name="candidate">The candidate single-key combination.</param>
         public static string FindConflictDisplayName(string excludeId, KeyCombination candidate)
         {
             var candidateSeq = new[] { candidate };
@@ -62,7 +62,7 @@ namespace UnitySkills
 
                 List<KeyCombination> existing;
                 try { existing = mgr.GetShortcutBinding(id).keyCombinationSequence?.ToList(); }
-                catch { continue; } // 个别 id 取绑定异常时跳过，不阻断整体检测
+                catch { continue; } // Skip individual ids whose binding lookup throws, without blocking the overall check
 
                 if (ShortcutConflictUtil.SequencesConflict(candidateSeq, existing))
                     return DisplayNameForId(id);
@@ -70,7 +70,7 @@ namespace UnitySkills
             return null;
         }
 
-        /// <summary>UnitySkills 自家命令 → 本地化展示名；其它（Unity 内建 / 第三方）→ 原始 id。</summary>
+        /// <summary>UnitySkills's own commands -> localized display name; anything else (Unity built-in / third-party) -> the raw id.</summary>
         public static string DisplayNameForId(string id)
         {
             foreach (var cmd in Commands)
@@ -80,7 +80,7 @@ namespace UnitySkills
         }
     }
 
-    /// <summary>设置 UI 用的命令元数据：shortcut id + 展示名本地化 key。</summary>
+    /// <summary>Command metadata for the settings UI: shortcut id + localization key for the display name.</summary>
     internal sealed class ShortcutCommand
     {
         public readonly string Id;
@@ -94,10 +94,10 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 快捷键组合比对纯逻辑（不触碰 ShortcutManager 运行时，可 EditMode 单测）。
+    /// Pure logic for comparing key combinations (never touches the ShortcutManager runtime, unit-testable in EditMode).
     ///
-    /// "冲突" = 两个绑定的 KeyCombination 序列逐项相等。空绑定（长度 0）永不与任何绑定冲突，
-    /// 保证"未设置"的命令彼此不误报，也不会与出厂未绑定的内建命令冲突。
+    /// "Conflict" = two bound KeyCombination sequences are equal item by item. An empty binding (length 0)
+    /// never conflicts with any binding, so "unset" commands never false-positive against each other or a factory-unbound built-in command.
     /// </summary>
     public static class ShortcutConflictUtil
     {
@@ -105,7 +105,7 @@ namespace UnitySkills
             => a.keyCode == b.keyCode && a.modifiers == b.modifiers;
 
         /// <summary>
-        /// 两个组合序列是否冲突。任一为 null/空 → 不冲突；长度不同 → 不冲突；逐项相等 → 冲突。
+        /// Whether two combination sequences conflict. Either being null/empty -> no conflict; different lengths -> no conflict; equal item by item -> conflict.
         /// </summary>
         public static bool SequencesConflict(
             IReadOnlyList<KeyCombination> a, IReadOnlyList<KeyCombination> b)

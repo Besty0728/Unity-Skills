@@ -7,7 +7,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// 优化技能：贴图压缩设置等批量优化操作。
+    /// Optimization skills: batch operations like texture compression settings.
     /// </summary>
     public static class OptimizationSkills
     {
@@ -39,7 +39,7 @@ namespace UnitySkills
 
                 if (importer.textureCompression != TextureImporterCompression.Compressed)
                 {
-                    // 只压 Default 类型，避免破坏 UI 等有特殊导入要求的贴图
+                    // Only compress the Default type, to avoid breaking textures like UI ones that have special import requirements
                     if (importer.textureType == TextureImporterType.Default) 
                     {
                          importer.textureCompression = TextureImporterCompression.Compressed;
@@ -80,8 +80,9 @@ namespace UnitySkills
             MutatesAssets = true)]
         public static object OptimizeMeshCompression(string compressionLevel = "Medium", string filter = "")
         {
-            // 不能对非法值回退到 Medium：那样一个拼写错误就会把全工程模型按谁也没要求的压缩等级
-            // 静默重导入一遍，是枚举解析失败所能造成的最昂贵后果。直接拒绝。
+            // Must not fall back to Medium on an invalid value: that would silently reimport
+            // every model in the project at a compression level nobody asked for, which is the
+            // most expensive possible outcome of an enum parse failure. Reject outright instead.
             if (!SkillParamUtil.TryParseRequiredEnum<ModelImporterMeshCompression>(compressionLevel, "compressionLevel", out var comp, out var compError))
                 return compError;
 
@@ -180,9 +181,10 @@ namespace UnitySkills
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
 
-            // StaticEditorFlags 没有声明 Everything 和 Nothing 成员，普通枚举解析会拒掉本 skill
-            // 自己文档里的默认值 "Everything"。TryParseFlagsParam 补上这两个别名，接受真实成员的
-            // 逗号分隔列表，并拒绝携带未声明位的数值。
+            // StaticEditorFlags doesn't declare Everything or Nothing members, so a plain enum
+            // parse would reject this skill's own documented default value, "Everything".
+            // TryParseFlagsParam adds these two aliases, accepts a comma-separated list of the
+            // real members, and rejects values carrying undeclared bits.
             if (!SkillParamUtil.TryParseFlagsParam<StaticEditorFlags>(flags, "flags", out var staticFlags, out var flagsError))
                 return flagsError;
 
@@ -280,18 +282,22 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 重复材质判定键中的颜色部分。
+        /// The color component of the duplicate-material identification key.
         ///
-        /// <para>不能用 <c>HasProperty</c> 做守卫：它对<em>任意类型</em>的同名属性都返回 true。
-        /// URP 工程里大量存在的 hidden/Decal shader（"Hidden/…"，以及 <c>_Color</c> 并非颜色类型的
-        /// decal shader）会让 <c>GetColor</c> 抛出原生错误 "Material doesn't have a color property"。
-        /// 该错误由引擎 log 而非 throw，外层 <c>try/catch</c> 一个也接不住，于是一次纯只读分析就把
-        /// 控制台刷红——扫描遍历全工程材质，每个材质刷一条。</para>
+        /// <para>Cannot use <c>HasProperty</c> as the guard: it returns true for a same-named
+        /// property of <em>any</em> type. The many hidden/Decal shaders in URP projects
+        /// ("Hidden/…", plus decal shaders where <c>_Color</c> isn't a color type) make
+        /// <c>GetColor</c> throw the native error "Material doesn't have a color property".
+        /// That error is engine-logged rather than thrown, so no outer <c>try/catch</c> can
+        /// catch it — a purely read-only analysis would flood the console red, one line per
+        /// material scanned across the whole project.</para>
         ///
-        /// <para><c>Material.HasColor</c> 问的才是真正要问的问题（"该名字下是否存在 Color 类型属性"），
-        /// 也是官方为此场景提供的守卫。本包支持的所有 Unity 版本均有该 API——不只查文档，
-        /// 已对 2022.3 与 6000.3 随附的 UnityEngine.CoreModule 实地核验。catch 保留作为
-        /// shader 正在重导入时的兜底。</para>
+        /// <para><c>Material.HasColor</c> asks the question that actually needs asking
+        /// ("does a property of type Color exist under this name"), and is the official guard
+        /// provided for this scenario. Every Unity version this package supports has this API —
+        /// not just checked against docs, but verified in practice against the
+        /// UnityEngine.CoreModule shipped with 2022.3 and 6000.3. The catch is kept as a
+        /// fallback for when a shader is mid-reimport.</para>
         /// </summary>
         private static string TryGetMaterialColorString(Material mat)
         {
@@ -299,14 +305,16 @@ namespace UnitySkills
             {
                 if (!HasReadableColor(mat, prop)) continue;
                 try { return mat.GetColor(prop).ToString(); }
-                catch { /* 扫描途中 shader 被换掉 */ }
+                catch { /* shader was swapped out mid-scan */ }
             }
             return "none";
         }
 
         /// <summary>
-        /// 单独抽出守卫本身作为可测接缝：必须成立的性质是——同名但类型不符的属性在此返回 false，
-        /// 而 <c>HasProperty</c> 返回 true；这一点在任何内置 shader 上都可断言，且不会触发上述控制台错误。
+        /// The guard itself is pulled out separately as a testable seam: the property that must
+        /// hold is that a same-named property of the wrong type returns false here, while
+        /// <c>HasProperty</c> returns true — this can be asserted against any built-in shader
+        /// without triggering the console error described above.
         /// </summary>
         internal static bool HasReadableColor(Material mat, string propertyName) =>
             mat != null && !string.IsNullOrEmpty(propertyName) && mat.HasColor(propertyName);

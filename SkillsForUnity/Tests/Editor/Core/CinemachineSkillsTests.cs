@@ -57,7 +57,7 @@ namespace UnitySkills.Tests.Core
             }
             catch
             {
-                // 仅测试用文件，清理失败不影响结果，尽力而为即可。
+                // Test-only files; a cleanup failure doesn't affect results — best-effort is enough.
             }
 #endif
         }
@@ -116,7 +116,7 @@ namespace UnitySkills.Tests.Core
             StringAssert.Contains("Invalid value 'ortho2' for parameter 'mode'", GetError(result));
             Assert.That(GetErrorCode(result), Is.EqualTo("SEMANTIC_INVALID"));
             Assert.That(GetValidValues(result), Contains.Item("Orthographic"));
-            // 拒绝必须发生在任何写入之前，同一次调用里的 fov 也不能落地。
+            // The rejection must happen before any write; fov in the same call must not land either.
             Assert.That(GetLens().ModeOverride, Is.EqualTo(LensSettings.OverrideModes.Perspective));
             Assert.That(GetLens().FieldOfView, Is.EqualTo(55f).Within(0.001f));
         }

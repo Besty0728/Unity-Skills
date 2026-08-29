@@ -55,7 +55,7 @@ namespace UnitySkills.Tests.Core
             var json = ToJObject(result);
 
             Assert.IsTrue(json["success"]?.Value<bool>() ?? false);
-            // 默认场景自带 Camera + Light，本用例又加了 2 个，故下限是 4。
+            // The default scene comes with a Camera + Light already, and this test adds 2 more, so the floor is 4.
             Assert.IsTrue(json["stats"]?["totalObjects"]?.Value<int>() >= 4);
         }
 
@@ -165,7 +165,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void BuildSuggestedNextSkills_FiltersInvalidSkillReferences()
         {
-            // BuildSuggestedNextSkills 无法直接调用，经 scene_analyze 间接覆盖。
+            // BuildSuggestedNextSkills can't be called directly; covered indirectly via scene_analyze.
             var result = PerceptionSkills.SceneAnalyze();
             var json = ToJObject(result);
 

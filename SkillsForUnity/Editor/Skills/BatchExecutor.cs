@@ -6,13 +6,13 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// UnitySkills 通用批处理执行框架：统一处理 JSON 反序列化、逐项错误捕获与结果汇总，
-    /// 免去各批量技能的样板代码。
+    /// UnitySkills' generic batch execution framework: unifies JSON deserialization, per-item error
+    /// capture, and result aggregation, saving every batch skill from repeating that boilerplate.
     /// </summary>
     public static class BatchExecutor
     {
-        // 同一结果类型的反射结论不会变化，缓存"是否有 error 成员"，
-        // 避免大批量时对每一项重复 GetProperty/GetField。
+        // The reflection verdict for a given result type never changes, so cache "does it have an error member"
+        // to avoid repeating GetProperty/GetField per item on large batches.
         private static readonly ConcurrentDictionary<Type, bool> _hasErrorMemberCache = new ConcurrentDictionary<Type, bool>();
 
         private static bool HasErrorMember(Type type)
@@ -22,16 +22,17 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 对一个 JSON 数组逐项执行批量操作，负责反序列化、逐项 try/catch 与结果汇总。
+        /// Executes a batch operation over a JSON array item by item, handling deserialization,
+        /// per-item try/catch, and result aggregation.
         /// </summary>
-        /// <typeparam name="TItem">从 JSON 反序列化出的条目类型</typeparam>
-        /// <param name="itemsJson">JSON 数组字符串</param>
-        /// <param name="processor">逐项处理函数：成功返回带所需字段的匿名对象，
-        /// 失败可抛异常或返回带 "error" 字段的对象。</param>
-        /// <param name="itemIdentifier">可选，从条目提取用于报错的显示名</param>
-        /// <param name="setup">可选，处理前执行（如 AssetDatabase.StartAssetEditing）</param>
-        /// <param name="teardown">可选，处理后必定执行，出错也会执行（如 AssetDatabase.StopAssetEditing）</param>
-        /// <returns>标准批量结果：success、totalItems、successCount、failCount、results</returns>
+        /// <typeparam name="TItem">The item type deserialized from JSON</typeparam>
+        /// <param name="itemsJson">The JSON array string</param>
+        /// <param name="processor">Per-item processing function: return an anonymous object with the
+        /// needed fields on success; on failure, either throw or return an object with an "error" field.</param>
+        /// <param name="itemIdentifier">Optional; extracts a display name from an item for error reporting</param>
+        /// <param name="setup">Optional; runs before processing (e.g. AssetDatabase.StartAssetEditing)</param>
+        /// <param name="teardown">Optional; always runs after processing, even on error (e.g. AssetDatabase.StopAssetEditing)</param>
+        /// <returns>Standard batch result: success, totalItems, successCount, failCount, results</returns>
         public static object Execute<TItem>(
             string itemsJson,
             Func<TItem, object> processor,
@@ -66,7 +67,7 @@ namespace UnitySkills
                     try
                     {
                         var result = processor(item);
-                        // processor 也可能不抛异常而返回带 error 字段的对象，这里同样计入失败。
+                        // processor may also return an object with an "error" field instead of throwing; count that as a failure too.
                         bool isError = result != null && HasErrorMember(result.GetType());
                         results.Add(result);
                         if (isError)

@@ -6,7 +6,7 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// 地形技能——创建、修改与查询 TerrainData。
+    /// Terrain skills — create, modify, and query TerrainData.
     /// </summary>
     public static class TerrainSkills
     {
@@ -164,8 +164,8 @@ namespace UnitySkills
             Tags = new[] { "terrain", "height", "batch", "heightmap", "region" },
             Outputs = new[] { "success", "startX", "startZ", "modifiedWidth", "modifiedLength", "totalPointsModified" },
             RequiresInput = new[] { "terrain" },
-            // SetHeights 写的是 TerrainData 资产（terrain_create 用 AssetDatabase.CreateAsset 建的），
-            // 场景里的 Terrain 组件不受影响。
+            // SetHeights writes to the TerrainData asset (created by terrain_create via AssetDatabase.CreateAsset);
+            // the scene's Terrain component is unaffected.
             MutatesAssets = true)]
         public static object TerrainSetHeightsBatch(
             int startX, int startZ,
@@ -251,7 +251,7 @@ namespace UnitySkills
 
             float[,] heights = data.GetHeights(startX, startZ, width, length);
 
-            // 叠加带平滑衰减的山丘
+            // Add a hill with a smooth falloff
             for (int z = 0; z < length; z++)
             {
                 for (int x = 0; x < width; x++)
@@ -265,7 +265,7 @@ namespace UnitySkills
 
                     if (distance <= 1f)
                     {
-                        // 用余弦插值做平滑衰减
+                        // Smooth falloff via cosine interpolation
                         float falloff = Mathf.Pow(Mathf.Cos(distance * Mathf.PI * 0.5f), smoothness);
                         float addHeight = height * falloff;
                         heights[z, x] = Mathf.Clamp01(heights[z, x] + addHeight);
@@ -311,7 +311,7 @@ namespace UnitySkills
             int resolution = data.heightmapResolution;
             float[,] heights = new float[resolution, resolution];
 
-            // 用 seed 保证结果可复现
+            // Seed keeps the result reproducible
             System.Random random = seed != 0 ? new System.Random(seed) : new System.Random();
             float offsetX = random.Next(-10000, 10000);
             float offsetZ = random.Next(-10000, 10000);
@@ -324,7 +324,7 @@ namespace UnitySkills
                     float frequency = 1f;
                     float noiseHeight = 0f;
 
-                    // 叠加多个倍频的 Perlin 噪声
+                    // Stack multiple octaves of Perlin noise
                     for (int i = 0; i < octaves; i++)
                     {
                         float sampleX = (x / (float)resolution * scale + offsetX) * frequency;
@@ -397,7 +397,7 @@ namespace UnitySkills
                 {
                     for (int x = 0; x < width; x++)
                     {
-                        // 与周围 8 邻域取平均
+                        // Average with the surrounding 8-neighborhood
                         float sum = 0f;
                         for (int dz = 0; dz <= 2; dz++)
                         {
@@ -534,12 +534,12 @@ namespace UnitySkills
             {
                 for (int x = 0; x < width; x++)
                 {
-                    // 按衰减应用笔刷
+                    // Apply the brush with falloff
                     float dist = Vector2.Distance(new Vector2(x, z), new Vector2(width / 2f, height / 2f));
                     float falloff = Mathf.Clamp01(1f - dist / halfBrush);
                     float paintStrength = strength * falloff;
 
-                    // 削减其他层权重、提升目标层
+                    // Reduce other layers' weight, raise the target layer's
                     for (int l = 0; l < layerCount; l++)
                     {
                         if (l == layerIndex)
@@ -548,7 +548,7 @@ namespace UnitySkills
                             alphamaps[z, x, l] = Mathf.Lerp(alphamaps[z, x, l], 0f, paintStrength);
                     }
 
-                    // alphamap 要求同一像素各层权重和为 1，改完必须重新归一化
+                    // Alphamap requires each pixel's per-layer weights to sum to 1; must renormalize after editing
                     float sum = 0;
                     for (int l = 0; l < layerCount; l++) sum += alphamaps[z, x, l];
                     if (sum > 0)

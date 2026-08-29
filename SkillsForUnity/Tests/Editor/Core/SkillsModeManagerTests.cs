@@ -7,22 +7,22 @@ using UnityEditor;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 技能权限模式系统的单元测试。
+    /// Unit tests for the skill permission mode system.
     ///
-    /// 覆盖三种操作模式（Approval / Auto / Bypass）、两条审批通道（Dialog / Panel）、
-    /// NeverInSemi 自动判定、grant token 生命周期、EditorPrefs 持久化，
-    /// 以及升级兼容规则（老安装 → Bypass）。
+    /// Covers the three operating modes (Approval / Auto / Bypass), the two approval channels
+    /// (Dialog / Panel), automatic NeverInSemi determination, the grant token lifecycle,
+    /// EditorPrefs persistence, and the upgrade compatibility rule (old install → Bypass).
     ///
-    /// 另外覆盖：
-    /// - Allowlist 通道 (AddToAllowlist / RemoveFromAllowlist / ClearAllowlist / IsInAllowlist)
-    /// - Allowlist 优先于 IsForbiddenInSemi
-    /// - 单次有效 grant：TryGrant 不再永久写白名单
-    /// - TryGrantAndReturnArgs (方案 B 一步执行) + ConsumeOneShotBypass
-    /// - 老 GrantedSkills EditorPrefs → 新 AllowlistSkills 迁移幂等
+    /// Also covers:
+    /// - The Allowlist channel (AddToAllowlist / RemoveFromAllowlist / ClearAllowlist / IsInAllowlist)
+    /// - Allowlist taking priority over IsForbiddenInSemi
+    /// - Single-use grants: TryGrant no longer writes the allowlist permanently
+    /// - TryGrantAndReturnArgs (Plan B: one-step execution) + ConsumeOneShotBypass
+    /// - Idempotent migration from the old GrantedSkills EditorPrefs key to the new AllowlistSkills key
     ///
-    /// 权限相关的 EditorPrefs 在夹具开始时备份、结束时还原。
-    /// "老安装"行为用测试专用 override 模拟，从而绝不改动无关的 UnitySkills EditorPrefs
-    /// （语言、端口、日志等）。
+    /// Permission-related EditorPrefs are backed up at the start of the fixture and restored at
+    /// the end. "Old install" behavior is simulated with a test-only override, so it never
+    /// touches unrelated UnitySkills EditorPrefs (language, port, logging, etc.).
     /// </summary>
     [TestFixture]
     public class SkillsModeManagerTests
@@ -101,8 +101,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 只填 CheckAccess / IsForbiddenInSemi 会读的字段来构造 SkillInfo。
-        /// 其余字段（Method、Parameters 等）故意留 null——模式管理器从不碰它们。
+        /// Constructs a SkillInfo populating only the fields CheckAccess / IsForbiddenInSemi
+        /// read. The remaining fields (Method, Parameters, etc.) are deliberately left null — the
+        /// mode manager never touches them.
         /// </summary>
         private static SkillRouter.SkillInfo MakeSkill(
             string name,
@@ -128,13 +129,13 @@ namespace UnitySkills.Tests.Core
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
 
-            // 普通 SemiAuto / FullAuto，理应直接放行。
+            // Ordinary SemiAuto / FullAuto should be allowed straight through.
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("safe", SkillMode.SemiAuto)));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("normal")));
 
-            // 平时会被 IsForbiddenInSemi 拦下的各种元数据组合——Bypass 模式完全跳过该检查。
+            // Various metadata combinations that would normally be blocked by IsForbiddenInSemi — Bypass mode skips that check entirely.
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("del", op: SkillOperation.Delete)));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
@@ -143,8 +144,8 @@ namespace UnitySkills.Tests.Core
                 SkillsModeManager.CheckAccess(MakeSkill("reload", mayTriggerReload: true)));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("high_risk", risk: "high")));
-            // 曾在 never-list 里的名字（scene_clear）：_explicitNeverList 移除后已不再被自动禁止，
-            // 而 Bypass 下它和别的技能一样放行。
+            // A name that used to be on the never-list (scene_clear): after _explicitNeverList was
+            // removed, it's no longer auto-forbidden, and under Bypass it's allowed just like any other skill.
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("scene_clear")));
         }
@@ -191,7 +192,7 @@ namespace UnitySkills.Tests.Core
         public void Approval_DialogChannel_GrantIsOneShot_NotWrittenToAllowlist()
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
-            SkillsModeManager.PanelApprovalRequired = false; // 与默认值相同，显式写出以示意图
+            SkillsModeManager.PanelApprovalRequired = false; // Same as the default value; written explicitly to show intent
 
             const string skillName = "smart_layout";
             const string args = "{\"target\":\"Cube\"}";
@@ -203,7 +204,7 @@ namespace UnitySkills.Tests.Core
 
             Assert.IsTrue(SkillsModeManager.TryGrant(skillName, token, args));
 
-            // grant 不再永久写白名单。重新 CheckAccess（无 one-shot 重入）应再次 NeedsGrant。
+            // A grant no longer permanently writes the allowlist. Re-checking access (with no one-shot re-entry) should return NeedsGrant again.
             CollectionAssert.DoesNotContain(SkillsModeManager.AllowlistSkills, skillName);
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,
                 SkillsModeManager.CheckAccess(MakeSkill(skillName)));
@@ -221,12 +222,12 @@ namespace UnitySkills.Tests.Core
             var (token, _, channel) = SkillsModeManager.IssueGrantRequest(skillName, args);
             Assert.AreEqual(SkillsModeManager.ApprovalChannel.Panel, channel);
 
-            // 用户还没在面板上点 Approve，AI 就先把 token 回放了一次。
+            // The user hasn't clicked Approve on the panel yet, but the AI already replayed the token once.
             Assert.AreEqual(GrantOutcome.PendingApproval,
                 SkillsModeManager.TryGrantDetailed(skillName, token, args));
             CollectionAssert.DoesNotContain(SkillsModeManager.AllowlistSkills, skillName);
 
-            // 该条目仍然活在面板的待批列表里。
+            // The entry is still alive in the panel's pending list.
             var pending = SkillsModeManager.PeekPendingForTests(token);
             Assert.IsNotNull(pending);
             Assert.AreEqual(skillName, pending.SkillName);
@@ -245,13 +246,13 @@ namespace UnitySkills.Tests.Core
             var (token, _, _) = SkillsModeManager.IssueGrantRequest(skillName, args);
 
             Assert.IsTrue(SkillsModeManager.Approve(token));
-            // Approve 不再永久写白名单，entry 保留等待后续 grant 触发一次性执行。
+            // Approve no longer permanently writes the allowlist; the entry is kept, waiting for a subsequent grant to trigger the one-shot execution.
             CollectionAssert.DoesNotContain(SkillsModeManager.AllowlistSkills, skillName);
             var pendingAfterApprove = SkillsModeManager.PeekPendingForTests(token);
             Assert.IsNotNull(pendingAfterApprove, "Entry must be kept after Approve for AI re-grant.");
             Assert.IsTrue(pendingAfterApprove.ApprovedByPanel);
 
-            // AI 后续 grant 走 Granted 分支并消费 entry；不写白名单。
+            // The AI's subsequent grant takes the Granted branch and consumes the entry; it doesn't write the allowlist.
             Assert.AreEqual(GrantOutcome.Granted,
                 SkillsModeManager.TryGrantDetailed(skillName, token, args));
             CollectionAssert.DoesNotContain(SkillsModeManager.AllowlistSkills, skillName);
@@ -295,18 +296,18 @@ namespace UnitySkills.Tests.Core
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
 
-            // 从未签发过的 token。
+            // A token that was never issued.
             Assert.IsFalse(SkillsModeManager.TryGrant("any_skill", "bogus_token_xxx", "{}"));
             Assert.AreEqual(GrantOutcome.Invalid,
                 SkillsModeManager.TryGrantDetailed("any_skill", "bogus_token_xxx", "{}"));
 
-            // 空串 / 纯空白 token。
+            // An empty string / whitespace-only token.
             Assert.AreEqual(GrantOutcome.Invalid,
                 SkillsModeManager.TryGrantDetailed("any_skill", "", "{}"));
             Assert.AreEqual(GrantOutcome.Invalid,
                 SkillsModeManager.TryGrantDetailed("any_skill", "   ", "{}"));
 
-            // token 有效但 args 不匹配 → Invalid。
+            // A valid token but mismatched args → Invalid.
             const string skill = "smart_layout";
             var (token, _, _) = SkillsModeManager.IssueGrantRequest(skill, "{\"a\":1}");
             Assert.AreEqual(GrantOutcome.Invalid,
@@ -335,12 +336,12 @@ namespace UnitySkills.Tests.Core
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Auto;
 
-            // 直接查 EditorPrefs：确认 setter 真的写进了 PrefKeyMode。
+            // Directly checks EditorPrefs: confirms the setter really wrote to PrefKeyMode.
             Assert.IsTrue(EditorPrefs.HasKey(PrefKeyMode));
             Assert.AreEqual("Auto", EditorPrefs.GetString(PrefKeyMode));
             Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
 
-            // 切换模式是覆盖写新值，而非追加。
+            // Switching modes overwrites the value rather than appending.
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
             Assert.AreEqual("Approval", EditorPrefs.GetString(PrefKeyMode));
             Assert.AreEqual(SkillsOperatingMode.Approval, SkillsModeManager.CurrentMode);
@@ -349,7 +350,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void IsForbiddenInSemi_CoversAllAutoJudgementBranches()
         {
-            // 在 Approval / Auto 下必须被禁止的四种组合（纯由元数据判定）。
+            // The four combinations that must be forbidden under Approval / Auto (judged purely by metadata).
             Assert.IsTrue(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("del", op: SkillOperation.Delete)),
                 "SkillOperation.Delete must be forbidden");
@@ -363,13 +364,13 @@ namespace UnitySkills.Tests.Core
                 MakeSkill("hot", risk: "high")),
                 "RiskLevel=\"high\" must be forbidden");
 
-            // 不带任何高危标记的普通 SemiAuto / FullAuto 不得被禁止。
+            // Ordinary SemiAuto / FullAuto with no high-risk markers must not be forbidden.
             Assert.IsFalse(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("plain_semi", SkillMode.SemiAuto)));
             Assert.IsFalse(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("plain_full", SkillMode.FullAuto)));
 
-            // 组合标记的 Operation（Query|Modify）只要不含 Delete 就仍然放行。
+            // A combined-flag Operation (Query|Modify) is still allowed as long as it doesn't include Delete.
             Assert.IsFalse(SkillsModeManager.IsForbiddenInSemi(
                 MakeSkill("query_modify", op: SkillOperation.Query | SkillOperation.Modify)));
         }
@@ -384,7 +385,7 @@ namespace UnitySkills.Tests.Core
             var (token, _, _) = SkillsModeManager.IssueGrantRequest(skillName, args);
             Assert.IsTrue(SkillsModeManager.TryGrant(skillName, token, args));
 
-            // 写入是异步的，必须强制 flush，ReadRecent 才看得到这一行。
+            // Writing is asynchronous, so a flush must be forced before ReadRecent can see this line.
             SkillsAuditLog.FlushSync();
             var recent = SkillsAuditLog.ReadRecent(50);
 
@@ -406,14 +407,14 @@ namespace UnitySkills.Tests.Core
             SkillsModeManager.ExistingInstallOverrideForTests = true;
 
             Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode);
-            // getter 绝不能顺手把 PrefKeyMode 写进去——一旦写了，下次升级就没法重新判定默认值。
+            // The getter must never write PrefKeyMode as a side effect — once it's written, the next upgrade can no longer re-determine the default value.
             Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
         }
 
         [Test]
         public void CurrentMode_FreshInstall_NoKeys_DefaultsToAuto()
         {
-            // SetUp 之后不应残留任何 UnitySkills_* 键。
+            // No UnitySkills_* keys should remain after SetUp.
             Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
             Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
         }
@@ -452,7 +453,7 @@ namespace UnitySkills.Tests.Core
             SkillsModeManager.ClearAllowlist();
             CollectionAssert.IsEmpty(SkillsModeManager.AllowlistSkills);
 
-            // 空白 / null 入参一律无操作。
+            // Blank / null inputs are always no-ops.
             Assert.IsFalse(SkillsModeManager.AddToAllowlist(""));
             Assert.IsFalse(SkillsModeManager.AddToAllowlist("   "));
             Assert.IsFalse(SkillsModeManager.AddToAllowlist(null));
@@ -465,16 +466,16 @@ namespace UnitySkills.Tests.Core
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
 
-            // 默认拦截：RiskLevel="high" 由 metadata 判定为 NeverInSemi
+            // Blocked by default: RiskLevel="high" is judged as NeverInSemi by metadata
             Assert.AreEqual(SkillsModeManager.AccessResult.Forbidden,
                 SkillsModeManager.CheckAccess(MakeSkill("hot_skill", risk: "high")));
 
-            // 加入 Allowlist 后被放行（Allowlist 优先于 IsForbiddenInSemi）
+            // Allowed after being added to the Allowlist (Allowlist takes priority over IsForbiddenInSemi)
             Assert.IsTrue(SkillsModeManager.AddToAllowlist("hot_skill"));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("hot_skill", risk: "high")));
 
-            // 同样适用于 Delete 操作判定的高危 skill
+            // Also applies to a high-risk skill judged via the Delete operation
             Assert.IsTrue(SkillsModeManager.AddToAllowlist("delete_thing"));
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill("delete_thing", op: SkillOperation.Delete)));
@@ -497,10 +498,10 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(skillName, returnedName);
             Assert.AreEqual(args, returnedArgs, "Should return original cached argsJson verbatim");
 
-            // entry 被消费
+            // The entry is consumed
             Assert.IsNull(SkillsModeManager.PeekPendingForTests(token));
 
-            // 二次调用同 token 必须 Invalid
+            // A second call with the same token must be Invalid
             var (secondOutcome, _, _) =
                 SkillsModeManager.TryGrantAndReturnArgs(skillName, token, args);
             Assert.AreEqual(GrantOutcome.Invalid, secondOutcome);
@@ -522,7 +523,7 @@ namespace UnitySkills.Tests.Core
             Assert.IsNull(returnedName);
             Assert.IsNull(returnedArgs);
 
-            // entry 必须保留以便后续 Approve
+            // The entry must be kept so it can be Approved later
             Assert.IsNotNull(SkillsModeManager.PeekPendingForTests(token));
         }
 
@@ -537,11 +538,11 @@ namespace UnitySkills.Tests.Core
             var (outcome, _, _) = SkillsModeManager.TryGrantAndReturnArgs(skillName, token, args);
             Assert.AreEqual(GrantOutcome.Granted, outcome);
 
-            // 第一次 CheckAccess 命中 one-shot，被放行
+            // The first CheckAccess hits the one-shot and is allowed
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(MakeSkill(skillName)));
 
-            // 再次 CheckAccess 已经消费完，回到 NeedsGrant
+            // The next CheckAccess has already consumed it, back to NeedsGrant
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,
                 SkillsModeManager.CheckAccess(MakeSkill(skillName)));
         }
@@ -549,10 +550,10 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void ConsumeOneShotBypass_NameMismatchOrEmpty_ReturnsFalse()
         {
-            // 直接构造空状态
+            // Constructs empty state directly
             Assert.IsFalse(SkillsModeManager.ConsumeOneShotBypass("anything"));
 
-            // 设置 one-shot 后名字不匹配也不消费
+            // A name mismatch after a one-shot is set also doesn't consume it
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
             var (token, _, _) = SkillsModeManager.IssueGrantRequest("alpha", "{}");
             SkillsModeManager.TryGrantAndReturnArgs("alpha", token, "{}");
@@ -561,16 +562,16 @@ namespace UnitySkills.Tests.Core
             Assert.IsFalse(SkillsModeManager.ConsumeOneShotBypass(""));
             Assert.IsFalse(SkillsModeManager.ConsumeOneShotBypass(null));
 
-            // 名字匹配（大小写无关）才消费
+            // A name match (case-insensitive) is what consumes it
             Assert.IsTrue(SkillsModeManager.ConsumeOneShotBypass("ALPHA"));
-            // 消费后下一次必失败
+            // The next call must fail after being consumed
             Assert.IsFalse(SkillsModeManager.ConsumeOneShotBypass("alpha"));
         }
 
         /// <summary>
-        /// 把内存里的白名单缓存字段强制置 null，使下一次公开访问重新走
-        /// <c>EnsureAllowlistLoaded</c> → <c>MigrateLegacyGrantedToAllowlist</c>。
-        /// 等价于模拟一次编辑器冷启动。
+        /// Force-nulls the in-memory allowlist cache field, so the next public access goes
+        /// through <c>EnsureAllowlistLoaded</c> → <c>MigrateLegacyGrantedToAllowlist</c> again.
+        /// Equivalent to simulating an editor cold start.
         /// </summary>
         private static void ForceAllowlistReload()
         {
@@ -583,29 +584,29 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Migration_LegacyGrantedToAllowlist_MigratesEntriesAndSetsDoneFlag()
         {
-            // 1) 模拟老 install：写 legacy granted、清掉迁移标记和新 allowlist。
+            // 1) Simulate an old install: write legacy granted, clear the migration marker and the new allowlist.
             EditorPrefs.SetString(PrefKeyLegacyGranted, "[\"alpha\",\"beta\",\"gamma\"]");
             EditorPrefs.DeleteKey(PrefKeyMigrationDone);
             EditorPrefs.DeleteKey(PrefKeyAllowlist);
             ForceAllowlistReload();
 
-            // 2) 首次访问触发迁移
+            // 2) The first access triggers the migration
             var snapshot = SkillsModeManager.AllowlistSkills;
             CollectionAssert.AreEquivalent(new[] { "alpha", "beta", "gamma" }, snapshot);
 
-            // 3) 迁移完成标记已写入
+            // 3) The migration-done marker has been written
             Assert.IsTrue(EditorPrefs.GetBool(PrefKeyMigrationDone, false),
                 "Migration must set the done flag after running");
 
-            // 4) Legacy key 故意保留（回滚标记）
+            // 4) The legacy key is deliberately kept (as a rollback marker)
             Assert.IsTrue(EditorPrefs.HasKey(PrefKeyLegacyGranted),
                 "Legacy granted key must be preserved as rollback marker");
 
-            // 5) 新 allowlist 已持久化
+            // 5) The new allowlist has been persisted
             Assert.IsTrue(EditorPrefs.HasKey(PrefKeyAllowlist),
                 "Allowlist pref must be persisted after migration");
 
-            // 6) 审计事件已写入
+            // 6) An audit event has been written
             SkillsAuditLog.FlushSync();
             var recent = SkillsAuditLog.ReadRecent(100);
             bool sawMigration = recent
@@ -617,7 +618,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Migration_RepeatLoad_IsIdempotent_NoDuplicateAuditEvent()
         {
-            // 第一次：跑迁移
+            // First: run the migration
             EditorPrefs.SetString(PrefKeyLegacyGranted, "[\"alpha\"]");
             EditorPrefs.DeleteKey(PrefKeyMigrationDone);
             EditorPrefs.DeleteKey(PrefKeyAllowlist);
@@ -625,15 +626,15 @@ namespace UnitySkills.Tests.Core
             var _first = SkillsModeManager.AllowlistSkills;
             Assert.IsTrue(EditorPrefs.GetBool(PrefKeyMigrationDone, false));
 
-            // 清审计后，再"重启"一次（done flag 仍在）
+            // Clear the audit log, then "restart" once more (the done flag is still set)
             SkillsAuditLog.ResetForTests();
             ForceAllowlistReload();
             var snapshotAfterReload = SkillsModeManager.AllowlistSkills;
 
-            // 内容仍来自持久化的 PrefKeyAllowlist，不重复加 legacy 的数据
+            // The content still comes from the persisted PrefKeyAllowlist; the legacy data isn't re-added
             CollectionAssert.AreEquivalent(new[] { "alpha" }, snapshotAfterReload);
 
-            // 也不重复发 allowlist_migrated 审计事件
+            // Nor is the allowlist_migrated audit event fired again
             SkillsAuditLog.FlushSync();
             var recent = SkillsAuditLog.ReadRecent(100);
             bool sawMigration = recent
@@ -646,7 +647,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Migration_NoLegacyData_StillSetsDoneFlag_FreshInstall()
         {
-            // Fresh install：没有任何 legacy 数据
+            // Fresh install: no legacy data of any kind
             EditorPrefs.DeleteKey(PrefKeyLegacyGranted);
             EditorPrefs.DeleteKey(PrefKeyMigrationDone);
             EditorPrefs.DeleteKey(PrefKeyAllowlist);
@@ -666,11 +667,11 @@ namespace UnitySkills.Tests.Core
             Assert.Greater(pack.Length, 0, "Coding Assist pack must not be empty");
             CollectionAssert.AllItemsAreNotNull(pack);
 
-            // 无重复（忽略大小写）
+            // No duplicates (case-insensitive)
             var distinct = pack.Distinct(System.StringComparer.OrdinalIgnoreCase).ToArray();
             Assert.AreEqual(pack.Length, distinct.Length, "Coding Assist pack must have no duplicates");
 
-            // CodingAssist == 组A + 组B
+            // CodingAssist == group A + group B
             CollectionAssert.AreEquivalent(
                 AllowlistPresets.ScriptWrite.Concat(AllowlistPresets.InspectorSet).ToArray(),
                 pack);
@@ -681,25 +682,25 @@ namespace UnitySkills.Tests.Core
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
 
-            // 组A（脚本写）模拟为 NeverInSemi：导入前 Forbidden
+            // Group A (script writes) simulated as NeverInSemi: Forbidden before import
             var scriptWriteSample = MakeSkill(AllowlistPresets.ScriptWrite[0],
                 mayTriggerReload: true, risk: "high");
             Assert.AreEqual(SkillsModeManager.AccessResult.Forbidden,
                 SkillsModeManager.CheckAccess(scriptWriteSample),
                 "Script-write skill must be forbidden before import");
 
-            // 组B（Inspector 赋值）模拟为 FullAuto 非 forbidden：导入前 NeedsGrant
+            // Group B (Inspector assignment) simulated as FullAuto and not forbidden: NeedsGrant before import
             var inspectorSample = MakeSkill(AllowlistPresets.InspectorSet[0],
                 op: SkillOperation.Create);
             Assert.AreEqual(SkillsModeManager.AccessResult.NeedsGrant,
                 SkillsModeManager.CheckAccess(inspectorSample),
                 "Inspector-set skill must need grant before import");
 
-            // 模拟"导入辅助代码编写包"：逐个加入 Allowlist
+            // Simulate "importing the coding-assist pack": add each one to the Allowlist
             foreach (var name in AllowlistPresets.CodingAssist)
                 SkillsModeManager.AddToAllowlist(name);
 
-            // 导入后：组A + 组B 全部放行（Allowlist 命中优先于 forbidden / grant）
+            // After import: both group A and group B are allowed (an Allowlist hit takes priority over forbidden / grant)
             Assert.AreEqual(SkillsModeManager.AccessResult.Allowed,
                 SkillsModeManager.CheckAccess(scriptWriteSample),
                 "Script-write skill must be allowed after import");
@@ -707,7 +708,7 @@ namespace UnitySkills.Tests.Core
                 SkillsModeManager.CheckAccess(inspectorSample),
                 "Inspector-set skill must be allowed after import");
 
-            // 包内每一项都已在白名单
+            // Every item in the pack is now in the allowlist
             foreach (var name in AllowlistPresets.CodingAssist)
                 Assert.IsTrue(SkillsModeManager.IsInAllowlist(name),
                     "Pack member must be in allowlist after import: " + name);

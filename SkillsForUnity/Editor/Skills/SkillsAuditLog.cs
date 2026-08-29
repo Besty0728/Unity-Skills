@@ -11,39 +11,43 @@ using UnityEngine;
 namespace UnitySkills
 {
     /// <summary>
-    /// Skill 模式权限系统的追加式 JSONL 审计日志。
+    /// An append-only JSONL audit log for the skill permission-mode system.
     ///
-    /// 事件写入 <c>Library/UnitySkillsAudit.jsonl</c>（按项目存放，不入 Git）。写入在调用线程排队、
-    /// 异步落盘，使 REST 处理器不会阻塞在磁盘 I/O 上。文件到 1MB 轮转，最多保留 3 份历史
-    /// （<c>UnitySkillsAudit.1.jsonl</c> / <c>.2.jsonl</c> / <c>.3.jsonl</c>）。
+    /// Events are written to <c>Library/UnitySkillsAudit.jsonl</c> (stored per-project, not committed to
+    /// Git). Writes queue on the calling thread and flush to disk asynchronously, so REST handlers never
+    /// block on disk I/O. The file rotates at 1MB, keeping up to 3 historical copies
+    /// (<c>UnitySkillsAudit.1.jsonl</c> / <c>.2.jsonl</c> / <c>.3.jsonl</c>).
     ///
-    /// 三种运行模式（Approval / Auto / Bypass）都写同一份日志；这是用户回溯"AI 做 X 之前问过没有"的主要手段。
+    /// All three run modes (Approval / Auto / Bypass) write to the same log; this is the user's primary
+    /// means of retracing "did the AI ask before doing X?"
     /// </summary>
     public static class SkillsAuditLog
     {
         private const string LogFileName = "UnitySkillsAudit.jsonl";
         private const long MaxFileBytes = 1024L * 1024L; // 1MB
         private const int MaxRotatedFiles = 3;
-        private const int ReadTailMaxBytes = 256 * 1024; // /audit 端点只读尾部
+        private const int ReadTailMaxBytes = 256 * 1024; // The /audit endpoint reads only the tail
 
         private static readonly ConcurrentQueue<string> _queue = new ConcurrentQueue<string>();
         private static readonly object _writeLock = new object();
-        private static int _flushScheduled; // Interlocked 守卫
+        private static int _flushScheduled; // Interlocked guard
         private static string _cachedDir;
         private static string _cachedPath;
 
         /// <summary>
-        /// 追加一条事件。非阻塞：JSON 行入队后由线程池 worker 落盘。任意线程调用均安全。
+        /// Appends an event. Non-blocking: the JSON line is enqueued and flushed to disk by a thread-pool
+        /// worker. Safe to call from any thread.
         /// </summary>
         public static void Append(string eventType, object data)
         {
             if (string.IsNullOrEmpty(eventType)) return;
             try
             {
-                // 在此解析并缓存路径（当前所有调用点都在主线程——见 SkillsHttpServer.cs 的
-                // HandlePermissionGrant 注释），好让 ThreadPool 落盘 worker 复用缓存值，而不是在非主线程
-                // 读 Application.dataPath——那样会静默回退到 Path.GetTempPath()（见 ResolveLibraryDir），
-                // 把本次会话的审计轨迹劈成两个文件。
+                // Resolve and cache the path here (every current call site is on the main thread — see the
+                // HandlePermissionGrant comment in SkillsHttpServer.cs), so the ThreadPool flush worker can
+                // reuse the cached value instead of reading Application.dataPath off the main thread —
+                // which would silently fall back to Path.GetTempPath() (see ResolveLibraryDir),
+                // splitting this session's audit trail across two files.
                 GetLogPath();
                 var line = BuildLine(eventType, data);
                 _queue.Enqueue(line);
@@ -51,20 +55,20 @@ namespace UnitySkills
             }
             catch (Exception ex)
             {
-                // 审计日志绝不能拖垮调用方，尽力而为并吞掉异常。
+                // The audit log must never bring down the caller; best-effort, and swallow the exception.
                 SkillsLogger.LogWarning($"AuditLog enqueue failed: {ex.Message}");
             }
         }
 
         /// <summary>
-        /// 读取最近至多 <paramref name="limit"/> 条记录（最新在前）。
-        /// 只读尾部（末尾约 256KB），使耗时不随文件大小增长。
-        /// 返回已解析的 JObject，序列化由调用方自行处理。
+        /// Reads up to the most recent <paramref name="limit"/> records (newest first).
+        /// Reads only the tail (roughly the last 256KB), so the time cost doesn't grow with file size.
+        /// Returns parsed JObjects; serialization is left to the caller.
         /// </summary>
         public static IList<object> ReadRecent(int limit)
         {
             if (limit <= 0) limit = 100;
-            // 先落盘待写项，保证读到的内容包含所有已 Append 的记录。
+            // Flush pending items to disk first, so the read includes every record that's already been Appended.
             FlushSync();
 
             var path = GetLogPath();
@@ -81,7 +85,7 @@ namespace UnitySkills
                     fs.Seek(start, SeekOrigin.Begin);
                     using (var reader = new StreamReader(fs, new UTF8Encoding(false)))
                     {
-                        // 从行中间开始时丢弃残缺的首行。
+                        // Discard the possibly-truncated first line when starting mid-line.
                         if (start > 0) reader.ReadLine();
                         tail = reader.ReadToEnd();
                     }
@@ -99,7 +103,7 @@ namespace UnitySkills
                     }
                     catch
                     {
-                        // 跳过畸形行，不因单行失败而整次读取失败。
+                        // Skip malformed lines; a single bad line shouldn't fail the whole read.
                     }
                 }
             }
@@ -110,7 +114,7 @@ namespace UnitySkills
             return results;
         }
 
-        /// <summary>解析审计日志绝对路径（首次调用后缓存）。</summary>
+        /// <summary>Resolves the audit log's absolute path (cached after the first call).</summary>
         public static string GetLogPath()
         {
             if (_cachedPath != null) return _cachedPath;
@@ -120,10 +124,13 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 按 (ts, type) 二元组从主日志中删除单条记录（两者合起来实际唯一——ts 为毫秒精度 UTC）。
-        /// 刻意不动轮转历史文件，只重写主文件，以免放大 I/O 或损坏旧日志。
-        /// 返回实际删除的行数（未找到为 0，通常为 1）。
-        /// 删除后写入 <c>audit_deleted</c> 示踪事件，让"删除"这一动作本身也被审计——这是日志作为信任锚点的关键。
+        /// Deletes a single record from the primary log by the (ts, type) pair (the combination is
+        /// effectively unique — ts is millisecond-precision UTC).
+        /// Deliberately leaves rotated history files untouched and only rewrites the primary file, to
+        /// avoid amplifying I/O or corrupting old logs.
+        /// Returns the number of lines actually deleted (0 if not found, usually 1).
+        /// Writes an <c>audit_deleted</c> tracer event after deleting, so the deletion itself is also
+        /// audited — this is the key to the log serving as a trust anchor.
         /// </summary>
         public static int DeleteEntry(string ts, string type)
         {
@@ -133,7 +140,7 @@ namespace UnitySkills
             {
                 Newtonsoft.Json.Linq.JObject obj;
                 try { obj = Newtonsoft.Json.Linq.JObject.Parse(line); }
-                catch { return true; } // 无法解析的行原样保留
+                catch { return true; } // Keep unparseable lines as-is
                 var lineTs = obj["ts"]?.ToString();
                 var lineType = obj["type"]?.ToString();
                 bool match = string.Equals(lineTs, ts, StringComparison.Ordinal)
@@ -146,8 +153,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 清空主日志及全部轮转副本。返回删除的总字节数（近似值，供 toast 显示）。
-        /// 随后在已清空的日志里写入 <c>audit_cleared</c> 示踪事件，使清空动作本身留痕。
+        /// Clears the primary log and every rotated copy. Returns the total bytes deleted (an
+        /// approximation, for toast display).
+        /// Afterward writes an <c>audit_cleared</c> tracer event into the now-empty log, so the clear
+        /// action itself leaves a trace.
         /// </summary>
         public static long ClearAll()
         {
@@ -185,15 +194,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 内部：在调用线程上同步排空队列。
-        /// 由 <see cref="ReadRecent"/> 和测试使用，以保证写入可见。
+        /// Internal: synchronously drains the queue on the calling thread.
+        /// Used by <see cref="ReadRecent"/> and by tests, to guarantee writes are visible.
         /// </summary>
         internal static void FlushSync()
         {
             FlushPending();
         }
 
-        /// <summary>内部：清除磁盘日志及轮转副本，仅供测试使用。</summary>
+        /// <summary>Internal: clears the on-disk log and rotated copies; test-only use.</summary>
         internal static void ResetForTests()
         {
             FlushPending();
@@ -202,13 +211,13 @@ namespace UnitySkills
                 var dir = ResolveLibraryDir();
                 foreach (var f in Directory.EnumerateFiles(dir, "UnitySkillsAudit*.jsonl"))
                 {
-                    try { File.Delete(f); } catch { /* 忽略 */ }
+                    try { File.Delete(f); } catch { /* ignore */ }
                 }
             }
-            catch { /* 忽略 */ }
+            catch { /* ignore */ }
         }
 
-        // ===== 内部实现 =====
+        // ===== Internal implementation =====
 
         private static string BuildLine(string eventType, object data)
         {
@@ -219,7 +228,7 @@ namespace UnitySkills
             };
             if (data != null)
             {
-                // 把 data 对象摊平成顶层字段，保持日志对 grep 友好。
+                // Flatten the data object into top-level fields, keeping the log grep-friendly.
                 var token = Newtonsoft.Json.Linq.JToken.FromObject(data, JsonSerializer.Create(SkillsCommon.JsonSettings));
                 if (token is Newtonsoft.Json.Linq.JObject obj)
                 {
@@ -239,7 +248,7 @@ namespace UnitySkills
 
         private static void ScheduleFlush()
         {
-            // 把多次追加合并成一次落盘任务。
+            // Coalesce multiple appends into a single flush task.
             if (Interlocked.CompareExchange(ref _flushScheduled, 1, 0) != 0) return;
             Task.Run(() =>
             {
@@ -255,9 +264,10 @@ namespace UnitySkills
             {
                 try
                 {
-                    // ??= 会把解析结果写回 _cachedDir（而非仅存局部变量），这样即使 Append 的主线程预热
-                    // 被绕过、此处在 worker 线程解析，后续调用也能复用同一结果，而不是每次静默重解析
-                    // （并可能回退到不同的临时目录）。
+                    // ??= writes the resolved result back into _cachedDir (not just a local variable), so
+                    // that even if Append's main-thread warmup gets bypassed and resolution happens here on
+                    // a worker thread, later calls can reuse the same result instead of silently
+                    // re-resolving every time (and possibly falling back to a different temp directory).
                     var dir = _cachedDir ??= ResolveLibraryDir();
                     if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
                     var path = _cachedPath ?? Path.Combine(dir, LogFileName);
@@ -281,8 +291,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 逐行读取主日志，只保留 <paramref name="keep"/> 返回 true 的行，并原子重写文件（临时文件 + 替换）。
-        /// 返回被删除的行数。通过 <c>_writeLock</c> 与并发落盘互斥。
+        /// Reads the primary log line by line, keeping only lines for which <paramref name="keep"/>
+        /// returns true, and atomically rewrites the file (temp file + replace).
+        /// Returns the number of lines deleted. Mutually exclusive with concurrent flushes via <c>_writeLock</c>.
         /// </summary>
         private static int RewritePrimary(Func<string, bool> keep)
         {
@@ -309,12 +320,15 @@ namespace UnitySkills
                         }
                     }
 
-                    // File.Replace(tmp, path, null) 才是真正的原子交换（不留备份文件，因为 path 是已有
-                    // 轮转副本的 JSONL 日志）：不存在 `path` 缺失的时间窗，不像 Delete 再 Move 那样，
-                    // 两次调用之间崩溃会彻底丢掉主日志。
-                    // File.Replace 要求目标已存在；RewritePrimary 上面已在不存在时提前返回，故此前提成立，
-                    // 除非 `path` 在那次检查与此处之间被外部移除（两处都在 _writeLock 内，不会是本代码所为）
-                    // ——这种极罕见情形下退回普通 move，而不是丢弃已重写的内容。
+                    // File.Replace(tmp, path, null) is the true atomic swap (leaves no backup file, since
+                    // path is an existing JSONL log with its own rotated copies): there's no window where
+                    // `path` is missing, unlike a Delete-then-Move, where a crash between the two calls
+                    // would wipe out the primary log entirely.
+                    // File.Replace requires the destination to already exist; RewritePrimary already returns
+                    // early above when it doesn't, so this precondition holds, unless `path` was removed
+                    // externally between that check and here (both are inside _writeLock, so it wouldn't be
+                    // this code doing it) — in that extremely rare case, fall back to a plain move rather
+                    // than discarding the already-rewritten content.
                     try
                     {
                         File.Replace(tmp, path, null);
@@ -327,7 +341,7 @@ namespace UnitySkills
                 catch (Exception ex)
                 {
                     SkillsLogger.LogWarning($"AuditLog RewritePrimary failed: {ex.Message}");
-                    try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* 忽略 */ }
+                    try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* ignore */ }
                     return 0;
                 }
             }
@@ -341,18 +355,18 @@ namespace UnitySkills
                 var fi = new FileInfo(path);
                 if (!fi.Exists || fi.Length < MaxFileBytes) return;
 
-                // 依次搬移：.2 -> .3，.1 -> .2，主文件 -> .1
+                // Move in order: .2 -> .3, .1 -> .2, primary file -> .1
                 for (int i = MaxRotatedFiles; i >= 1; i--)
                 {
                     var src = i == 1 ? path : RotatedPath(i - 1);
                     var dst = RotatedPath(i);
                     if (File.Exists(dst))
                     {
-                        try { File.Delete(dst); } catch { /* 忽略 */ }
+                        try { File.Delete(dst); } catch { /* ignore */ }
                     }
                     if (File.Exists(src))
                     {
-                        try { File.Move(src, dst); } catch { /* 忽略 */ }
+                        try { File.Move(src, dst); } catch { /* ignore */ }
                     }
                 }
             }
@@ -369,8 +383,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 返回 <c>&lt;project&gt;/Library</c>。在 Unity 编辑器尚未就绪时访问（如 worker 线程上的早期静态初始化）
-        /// 则回退到 <c>Application.persistentDataPath</c>。
+        /// Returns <c>&lt;project&gt;/Library</c>. Falls back to <c>Application.persistentDataPath</c> when
+        /// accessed before the Unity editor is ready (e.g. early static init on a worker thread).
         /// </summary>
         private static string ResolveLibraryDir()
         {
@@ -383,7 +397,7 @@ namespace UnitySkills
                     return Path.Combine(projectRoot, "Library");
                 }
             }
-            catch { /* 本线程上 Unity API 未就绪，继续往下走 */ }
+            catch { /* Unity API not ready on this thread; fall through */ }
 
             try { return Application.persistentDataPath; }
             catch { return Path.GetTempPath(); }

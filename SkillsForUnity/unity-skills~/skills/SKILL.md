@@ -81,6 +81,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 | [primetween](./primetween/SKILL.md) | Mixed* | PrimeTween Free inspection, factory discovery, and runtime tween/sequence script generation | No |
 | [behavior](./behavior/SKILL.md) | Mixed | Unity Behavior graph assets, agents, blackboard variables (com.unity.behavior, reflection-based) | Yes |
 | [hybridclr](./hybridclr/SKILL.md) | Mixed* | HybridCLR hot-update settings, codegen, DLL compile/copy pipeline (com.code-philosophy.hybridclr, reflection-based) | Yes |
+| [qframework](./qframework/SKILL.md) | Mixed* | QFramework editor automation: architecture-layer codegen, ViewController/UIKit panel codegen, ResKit AssetBundle mark/build, architecture scan, API doc query (no UPM package, reflection-based) | Yes |
 
 ## Advisory Design Modules
 
@@ -109,6 +110,7 @@ Documentation only — these modules define no REST skills.
 | [primetween-design](./primetween-design/SKILL.md) | PrimeTween 1.4.6 source-anchored rules (factories/handles/sequences/cycles/callbacks/lifetime/integration) |
 | [shadergraph-design](./shadergraph-design/SKILL.md) | ShaderGraph dual-version source-anchored rules (versions/node subset/recipes/pitfalls/review) |
 | [pico-design](./pico-design/SKILL.md) | PICO Unity Integration SDK v3.4.0 doc-anchored rules (setup/rendering/interaction/MR/SecureMR/platform/API signatures/version diffs 2.x-3.4/pitfalls) |
+| [qframework-design](./qframework-design/SKILL.md) | QFramework v1.0.257 source-anchored rules (layers/CQRS/BindableProperty/event tools/CodeGenKit+UIKit/ResKit/ActionKit+SingletonKit/data kits/pitfalls) |
 | [yaml-editing](./yaml-editing/SKILL.md) | Safe hand-edit rules for serialized YAML (.unity/.prefab/.asset/.meta/ProjectSettings) when REST cannot reach — reference/fileID repair, .meta/GUID safety, ProjectSettings patch, merge conflict |
 | [unity-cli](./unity-cli/SKILL.md) | Experimental Unity CLI on the bound project (opt-in via `Library/UnitySkills/cli_config.json`) — cold start with the Editor closed, headless test/run/build, exit codes, JSON/NDJSON contract, hard DO-NOT list |
 | [manual-gameobject](./manual-gameobject/SKILL.md) | Manually create GameObjects, organize the Hierarchy, and adjust Transforms using Unity Editor UI |

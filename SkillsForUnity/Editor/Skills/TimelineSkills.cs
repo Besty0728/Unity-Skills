@@ -7,7 +7,7 @@ using System.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// Timeline 技能——创建资产、轨道与片段。
+    /// Timeline skills — creates assets, tracks, and clips.
     /// </summary>
     public static class TimelineSkills
     {
@@ -203,10 +203,10 @@ namespace UnitySkills
             var track = timeline.GetOutputTracks().FirstOrDefault(t => t.name == trackName);
             if (track == null) return new { error = $"Track not found: {trackName}" };
 
-            // TrackAsset.CreateDefaultClip() 只在轨道自身的 [TrackClipType] 特性指定了 PlayableAsset 类型时
-            // 才创建片段；没有该特性的轨道（SignalTrack 用 SignalEmitter 标记而非片段，压根没有此特性）
-            // 会让它打一条警告并返回 null。此处显式检查，好让调用方知道是哪种轨道类型拒绝了、以及为什么，
-            // 而不是收到一个没有任何解释的 NullReferenceException。
+            // TrackAsset.CreateDefaultClip() only creates a clip when the track's own [TrackClipType] attribute
+            // specifies a PlayableAsset type; a track without that attribute (SignalTrack marks itself with SignalEmitter
+            // rather than clips, and has no such attribute at all) makes it log a warning and return null. We check this explicitly
+            // so the caller knows which track type rejected the call and why, instead of an unexplained NullReferenceException.
             var clip = track.CreateDefaultClip();
             if (clip == null)
             {
@@ -238,8 +238,8 @@ namespace UnitySkills
             var (timeline, director, err) = GetTimeline(name, instanceId, path);
             if (err != null) return err;
 
-            // 必须在写 duration 之前解析：否则非法的 wrapMode 被丢弃的同时，
-            // timeline 仍会按请求的时长切到 FixedLength。
+            // Must be parsed before writing duration: otherwise an invalid wrapMode gets discarded while
+            // the timeline still gets clipped to FixedLength at the requested duration.
             if (!SkillParamUtil.TryParseOptionalEnum<DirectorWrapMode>(wrapMode, "wrapMode", out var wm, out var wrapModeError))
                 return wrapModeError;
 

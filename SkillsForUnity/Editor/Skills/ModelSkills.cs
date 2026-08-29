@@ -6,18 +6,20 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// 模型导入设置技能：读写 ModelImporter 属性（FBX、OBJ 等）。
+    /// Model import settings skills: read/write ModelImporter properties (FBX, OBJ, etc.).
     /// </summary>
     public static class ModelSkills
     {
         /// <summary>
-        /// 在写入之前拒绝那些根本落不了盘的模型导入写操作：Packages/ 下的路径（registry 包或其他
-        /// 不可变包），以及 AssetDatabase.MakeEditable 拒绝解锁的路径（磁盘只读，或被版本控制拒绝签出）。
+        /// Rejects model-import writes that could never actually land on disk before attempting them: paths
+        /// under Packages/ (registry or otherwise immutable packages), and paths where
+        /// AssetDatabase.MakeEditable refuses to unlock them (read-only on disk, or checkout rejected by version control).
         ///
-        /// <para>没有这道闸门时，后面的 ModelImporter.SaveAndReimport() 不会抛异常就跑完，
-        /// importer 的内存属性 getter 会原样回显新值，skill 于是返回 success + changesApplied 和完整
-        /// 变更列表——但资产的 .meta 从头到尾就不可写，Unity 紧接着执行的重导入会把这些全部抹掉。
-        /// 调用方被告知一个从未发生的变更生效了。</para>
+        /// <para>Without this gate, the following ModelImporter.SaveAndReimport() would run to completion
+        /// without throwing, the importer's in-memory property getters would echo back the new values as-is, and
+        /// the skill would return success + changesApplied with a full change list — but the asset's .meta was
+        /// never writable to begin with, and Unity's immediately following reimport would wipe all of it out.
+        /// The caller is told a change took effect that never actually happened.</para>
         /// </summary>
         private static object CheckModelAssetWritable(string assetPath, string target = null)
         {
@@ -61,29 +63,29 @@ namespace UnitySkills
             {
                 success = true,
                 path = assetPath,
-                // 场景
+                // Scene
                 globalScale = importer.globalScale,
                 useFileScale = importer.useFileScale,
                 importBlendShapes = importer.importBlendShapes,
                 importVisibility = importer.importVisibility,
                 importCameras = importer.importCameras,
                 importLights = importer.importLights,
-                // 网格
+                // Mesh
                 meshCompression = importer.meshCompression.ToString(),
                 isReadable = importer.isReadable,
                 optimizeMeshPolygons = importer.optimizeMeshPolygons,
                 optimizeMeshVertices = importer.optimizeMeshVertices,
                 generateSecondaryUV = importer.generateSecondaryUV,
-                // 几何
+                // Geometry
                 keepQuads = importer.keepQuads,
                 weldVertices = importer.weldVertices,
-                // 法线与切线
+                // Normals and tangents
                 importNormals = importer.importNormals.ToString(),
                 importTangents = importer.importTangents.ToString(),
-                // 动画
+                // Animation
                 animationType = importer.animationType.ToString(),
                 importAnimation = importer.importAnimation,
-                // 材质
+                // Material
                 materialImportMode = importer.materialImportMode.ToString()
             };
         }
@@ -121,8 +123,9 @@ namespace UnitySkills
             if (importer == null)
                 return new { error = $"Not a model file or asset not found: {assetPath}" };
 
-            // 五个枚举全部先解析再落盘：importNormals/importTangents/materialImportMode 原先解析失败
-            // 静默跳过，其余字段照写，响应仍报 success + changesApplied>0。
+            // All five enums are parsed before anything is written: previously, a parse failure on
+            // importNormals/importTangents/materialImportMode would be silently skipped while the rest of the
+            // fields were written anyway, and the response would still report success + changesApplied>0.
             if (!SkillParamUtil.TryParseOptionalEnum<ModelImporterMeshCompression>(meshCompression, "meshCompression", out var mc, out var mcError))
                 return mcError;
             if (!SkillParamUtil.TryParseOptionalEnum<ModelImporterNormals>(importNormals, "importNormals", out var normals, out var normalsError))
@@ -135,17 +138,18 @@ namespace UnitySkills
             if (!SkillParamUtil.TryParseOptionalEnum<ModelImporterMaterialImportMode>(materialImportMode, "materialImportMode", out var mim, out var mimError))
                 return mimError;
 
-            // 枚举校验必须先于可写性检查（与 ModelSetRig 一致）：否则一个非法枚举值就会触发
-            // AssetDatabase.MakeEditable 真实的版本控制签出副作用。
+            // Enum validation must happen before the writability check (consistent with ModelSetRig):
+            // otherwise an invalid enum value would still trigger AssetDatabase.MakeEditable's real
+            // version-control checkout side effect.
             if (CheckModelAssetWritable(assetPath) is object writableErr) return writableErr;
 
-            // 修改前记录资产状态
+            // Record asset state before modifying it
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
             if (asset != null) WorkflowManager.SnapshotObject(asset);
 
             var changes = new List<string>();
 
-            // 场景
+            // Scene
             if (globalScale.HasValue)
             {
                 importer.globalScale = globalScale.Value;
@@ -182,7 +186,7 @@ namespace UnitySkills
                 changes.Add($"importLights={importLights.Value}");
             }
 
-            // 网格
+            // Mesh
             if (mc.HasValue)
             {
                 importer.meshCompression = mc.Value;
@@ -213,7 +217,7 @@ namespace UnitySkills
                 changes.Add($"generateSecondaryUV={generateSecondaryUV.Value}");
             }
 
-            // 几何
+            // Geometry
             if (keepQuads.HasValue)
             {
                 importer.keepQuads = keepQuads.Value;
@@ -226,7 +230,7 @@ namespace UnitySkills
                 changes.Add($"weldVertices={weldVertices.Value}");
             }
 
-            // 法线与切线
+            // Normals and tangents
             if (normals.HasValue)
             {
                 importer.importNormals = normals.Value;
@@ -239,7 +243,7 @@ namespace UnitySkills
                 changes.Add($"importTangents={tangents.Value}");
             }
 
-            // 动画
+            // Animation
             if (at.HasValue)
             {
                 importer.animationType = at.Value;
@@ -252,7 +256,7 @@ namespace UnitySkills
                 changes.Add($"importAnimation={importAnimation.Value}");
             }
 
-            // 材质
+            // Material
             if (mim.HasValue)
             {
                 importer.materialImportMode = mim.Value;
@@ -283,7 +287,7 @@ namespace UnitySkills
                 if (importer == null)
                     throw new System.Exception("Not a model file");
 
-                // 与单体 setter 同一条规则，错误定位到本 item 的 assetPath。
+                // Same rule as the single-item setter; the error is pinned to this item's assetPath.
                 if (!SkillParamUtil.TryParseOptionalEnum<ModelImporterMeshCompression>(item.meshCompression, "meshCompression", out var mc, out _))
                     return SkillParamUtil.InvalidEnumError<ModelImporterMeshCompression>(item.meshCompression, "meshCompression", item.assetPath);
                 if (!SkillParamUtil.TryParseOptionalEnum<ModelImporterAnimationType>(
@@ -293,8 +297,9 @@ namespace UnitySkills
                 if (!SkillParamUtil.TryParseOptionalEnum<ModelImporterMaterialImportMode>(item.materialImportMode, "materialImportMode", out var mim, out _))
                     return SkillParamUtil.InvalidEnumError<ModelImporterMaterialImportMode>(item.materialImportMode, "materialImportMode", item.assetPath);
 
-                // 枚举校验必须先于可写性检查（与 ModelSetRig 一致）：否则一个非法枚举值就会触发
-                // AssetDatabase.MakeEditable 真实的版本控制签出副作用。
+                // Enum validation must happen before the writability check (consistent with ModelSetRig):
+                // otherwise an invalid enum value would still trigger AssetDatabase.MakeEditable's real
+                // version-control checkout side effect.
                 if (CheckModelAssetWritable(item.assetPath, item.assetPath) is object writableErr) return writableErr;
 
                 var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(item.assetPath);
@@ -501,12 +506,13 @@ namespace UnitySkills
             var importer = AssetImporter.GetAtPath(assetPath) as ModelImporter;
             if (importer == null) return new { error = $"Not a model: {assetPath}" };
 
-            // Rig 下拉框（以及本 skill 自己的描述）写的是 "Humanoid"，而枚举成员叫 Human，
-            // 因此必须走别名表，否则文档里给出的词会被直接拒绝。
+            // The Rig dropdown (and this skill's own description) writes "Humanoid", while the enum member is
+            // called Human, so it must go through the alias table — otherwise the word given in the docs would be rejected outright.
             if (!SkillParamUtil.TryParseRequiredEnum<ModelImporterAnimationType>(
                     animationType, "animationType", SkillParamUtil.ModelAnimationTypeAliases, out var at, out var atError))
                 return atError;
-            // 必须在 animationType 落盘前校验：否则非法 avatarSetup 被丢弃，而 rig 类型照样改写并重导入。
+            // Must validate before animationType is written: otherwise an invalid avatarSetup would be
+            // discarded while the rig type still got rewritten and reimported.
             if (!SkillParamUtil.TryParseOptionalEnum<ModelImporterAvatarSetup>(avatarSetup, "avatarSetup", out var avs, out var avsError))
                 return avsError;
 

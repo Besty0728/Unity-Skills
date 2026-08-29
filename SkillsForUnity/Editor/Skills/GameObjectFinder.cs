@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 namespace UnitySkills.Internal
 {
     /// <summary>
-    /// 兼容层：Unity 6+ 用 FindObjectsByType，旧版本回落到 FindObjectsOfType。
+    /// Compatibility layer: Unity 6+ uses FindObjectsByType, older versions fall back to FindObjectsOfType.
     /// </summary>
     internal static class FindHelper
     {
@@ -56,13 +56,14 @@ namespace UnitySkills.Internal
 namespace UnitySkills
 {
     /// <summary>
-    /// 参数校验助手：出错返回错误对象，合法返回 null。
+    /// Parameter validation helpers: return an error object on failure, null when valid.
     /// </summary>
     public static class Validate
     {
-        // 全包所有技能的参数错误都汇聚到这几个辅助方法，因此这里补的结构化字段
-        // 就是几百个技能不用改自身代码也能拥有精确 errorCode 与可用 retryStrategy 的原因。
-        // SkillRouter 的 TryGetErrorContext 原样读取它们；SkillErrorClassifier 只补缺失项。
+        // Parameter errors from every skill across the whole package funnel through these few helper methods,
+        // which is why the structured fields added here give hundreds of skills a precise errorCode and a
+        // usable retryStrategy without touching their own code.
+        // SkillRouter's TryGetErrorContext reads them as-is; SkillErrorClassifier only fills in what's missing.
 
         private static object MissingParam(string message, string paramName) => new
         {
@@ -92,26 +93,27 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 检查字符串参数是否提供。为空返回错误对象，合法返回 null。
-        /// 用法：if (Validate.Required(x, "x") is object err) return err;
+        /// Checks whether a string parameter was provided. Returns an error object if empty, null if valid.
+        /// Usage: if (Validate.Required(x, "x") is object err) return err;
         /// </summary>
         public static object Required(string value, string paramName) =>
             string.IsNullOrEmpty(value) ? MissingParam($"{paramName} is required", paramName) : null;
 
         /// <summary>
-        /// <see cref="Required(string,string)"/> 的可空值类型版本，供载荷是数字的 setter 使用。
+        /// The nullable-value-type version of <see cref="Required(string,string)"/>, for setters whose payload is a number.
         ///
-        /// <para>声明成 <c>float x = 1f</c> 的参数无法区分"调用方传了 1"和"调用方什么都没传"，
-        /// 于是省略时会用 CLR 默认值静默覆盖对象，响应还报成功。改成 <c>float? x = null</c>
-        /// 并配上一条 <c>RequiresInput</c>，schema 才会标为必填、dryRun 才会拒绝空请求体，
-        /// 而这个守卫负责拦住进程内直接调用的那一类。</para>
+        /// <para>A parameter declared as <c>float x = 1f</c> can't tell "the caller passed 1" apart from "the
+        /// caller passed nothing", so omitting it silently overwrites the object with the CLR default value while
+        /// the response still reports success. Changing it to <c>float? x = null</c> paired with a
+        /// <c>RequiresInput</c> entry makes the schema mark it required and dryRun reject an empty request body,
+        /// and this guard is what catches the class of calls made directly in-process.</para>
         /// </summary>
         public static object Required<T>(T? value, string paramName) where T : struct =>
             value.HasValue ? null : MissingParam($"{paramName} is required", paramName);
 
         /// <summary>
-        /// 检查 JSON 数组参数已提供且非空。
-        /// 用法：if (Validate.RequiredJsonArray(items, "items") is object err) return err;
+        /// Checks that a JSON array parameter was provided and is non-empty.
+        /// Usage: if (Validate.RequiredJsonArray(items, "items") is object err) return err;
         /// </summary>
         public static object RequiredJsonArray(string jsonArray, string paramName)
         {
@@ -125,8 +127,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 校验数值落在闭区间内。
-        /// 用法：if (Validate.InRange(count, 1, 100, "count") is object err) return err;
+        /// Validates that a numeric value falls within a closed interval.
+        /// Usage: if (Validate.InRange(count, 1, 100, "count") is object err) return err;
         /// </summary>
         public static object InRange(float value, float min, float max, string paramName)
         {
@@ -137,7 +139,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 校验整数落在闭区间内。
+        /// Validates that an integer falls within a closed interval.
         /// </summary>
         public static object InRange(int value, int min, int max, string paramName)
         {
@@ -148,8 +150,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 校验资源路径安全性：阻止路径穿越，并限制在 Assets/ 或 Packages/ 之下。
-        /// 用法：if (Validate.SafePath(path, "path") is object err) return err;
+        /// Validates asset path safety: blocks path traversal, and restricts to under Assets/ or Packages/.
+        /// Usage: if (Validate.SafePath(path, "path") is object err) return err;
         /// </summary>
         public static object SafePath(string path, string paramName, bool isDelete = false)
         {
@@ -160,18 +162,18 @@ namespace UnitySkills
             while (normalized.Contains("//")) normalized = normalized.Replace("//", "/");
             if (normalized.StartsWith("./")) normalized = normalized.Substring(2);
 
-            // 阻止路径穿越。
+            // Block path traversal.
             if (normalized.Contains(".."))
                 return InvalidParam($"Path traversal not allowed: {path}",
                     "Send a normalized project-relative path with no '..' segments.");
 
-            // 限制在 Assets/ 或 Packages/ 之下。
+            // Restrict to under Assets/ or Packages/.
             if (!normalized.StartsWith("Assets/") && !normalized.StartsWith("Packages/") &&
                 normalized != "Assets" && normalized != "Packages")
                 return InvalidParam($"Path must start with Assets/ or Packages/: {path}",
                     "Paths are project-relative: prefix with 'Assets/' (or 'Packages/'), not an absolute disk path.");
 
-            // 禁止删除根目录。
+            // Forbid deleting the root folder.
             if (isDelete && (normalized == "Assets" || normalized == "Assets/" ||
                             normalized == "Packages" || normalized == "Packages/"))
                 return InvalidParam("Cannot delete root Assets or Packages folder",
@@ -181,8 +183,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 同时校验资源路径的安全性与存在性。
-        /// 用法：if (Validate.SafePathExists(path, "path") is object err) return err;
+        /// Validates both the safety and existence of an asset path.
+        /// Usage: if (Validate.SafePathExists(path, "path") is object err) return err;
         /// </summary>
         public static object SafePathExists(string path, string paramName)
         {
@@ -209,7 +211,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 确保文件路径的父目录存在。
+        /// Ensures the parent directory of a file path exists.
         /// </summary>
         public static void EnsureDirectoryExists(string filePath)
         {
@@ -220,8 +222,8 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 统一的 GameObject 查找工具，支持按 name、entityId、旧版 instanceId、
-    /// Hierarchy 路径、tag、组件类型定位，并带有逐级回退的查找策略。
+    /// Unified GameObject lookup utility, supporting lookup by name, entityId, legacy instanceId,
+    /// Hierarchy path, tag, or component type, with a step-by-step fallback search strategy.
     /// </summary>
     public static class GameObjectFinder
     {
@@ -236,12 +238,12 @@ namespace UnitySkills
                 new Dictionary<string, GameObject>(System.StringComparer.OrdinalIgnoreCase);
         }
 
-        // 场景遍历元数据的请求级缓存，每个请求结束后由 InvalidateCache() 失效。
+        // Request-level cache of scene traversal metadata, invalidated by InvalidateCache() at the end of each request.
         private static SceneObjectCache _cachedSceneData;
         private static bool _cacheValid = false;
 
         /// <summary>
-        /// 使场景对象缓存失效，应在每个请求周期结束后调用。
+        /// Invalidates the scene object cache; should be called at the end of every request cycle.
         /// </summary>
         public static void InvalidateCache()
         {
@@ -250,15 +252,16 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 每个请求构建并缓存一次场景遍历元数据。
+        /// Builds and caches scene traversal metadata once per request.
         /// </summary>
         private static SceneObjectCache GetOrBuildSceneCache()
         {
             if (_cachedSceneData != null && _cacheValid)
             {
-                // DestroyImmediate 之后 Unity 的托管包装对象仍留在列表里，但与 null 判等成立。
-                // 检测到就重建缓存，让后续查找看到替换后的对象，而不是解引用已销毁的包装
-                // （undo/redo 与测试夹具拆解时很常见）。
+                // The managed wrapper object Unity leaves behind after DestroyImmediate still sits in the list,
+                // but compares equal to null. If detected, rebuild the cache so subsequent lookups see the
+                // replacement object instead of dereferencing a destroyed wrapper (common during undo/redo and
+                // test fixture teardown).
                 if (_cachedSceneData.Objects.All(gameObject => gameObject != null))
                     return _cachedSceneData;
 
@@ -298,8 +301,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 从根节点遍历高效枚举场景中所有 GameObject（比 FindObjectsOfType 快）。
-        /// 结果按请求缓存，避免同一次技能执行内重复遍历。
+        /// Efficiently enumerates all GameObjects in the scene via root-node traversal (faster than FindObjectsOfType).
+        /// Results are cached per request to avoid repeated traversal within the same skill execution.
         /// </summary>
         private static IEnumerable<GameObject> GetAllSceneObjects()
         {
@@ -307,7 +310,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 取当前请求已缓存的场景对象列表。
+        /// Gets the cached list of scene objects for the current request.
         /// </summary>
         public static IReadOnlyList<GameObject> GetSceneObjects()
         {
@@ -315,7 +318,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 取场景对象在层级中的深度（走缓存）。非场景对象回落到逐级向上遍历父节点。
+        /// Gets a scene object's depth in the hierarchy (via cache). For non-scene objects, falls back to walking up parents one by one.
         /// </summary>
         public static int GetDepth(GameObject go)
         {
@@ -377,19 +380,19 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 用一组灵活参数查找 GameObject，逐级回退。
-        /// 优先级：entityId &gt; instanceId &gt; path &gt; name（精确）&gt; name（包含）&gt; tag &gt; 组件类型
+        /// Finds a GameObject using a flexible set of parameters, falling back step by step.
+        /// Priority order: entityId &gt; instanceId &gt; path &gt; name (exact) &gt; name (contains) &gt; tag &gt; component type
         /// </summary>
-        /// <param name="name">简单名（先精确匹配，再回退到包含匹配）</param>
-        /// <param name="instanceId">旧版 Unity instance ID</param>
-        /// <param name="path">Hierarchy 路径，如 "Parent/Child/Target"</param>
-        /// <param name="tag">按标签查找，如 "MainCamera"、"Player"</param>
-        /// <param name="componentType">查找挂有该组件的第一个对象，如 "Camera"</param>
-        /// <param name="entityId">Unity EntityId，以十进制 ulong 字符串表示</param>
-        /// <returns>找到的 GameObject，未找到返回 null</returns>
+        /// <param name="name">Simple name (exact match first, falls back to contains match)</param>
+        /// <param name="instanceId">Legacy Unity instance ID</param>
+        /// <param name="path">Hierarchy path, e.g. "Parent/Child/Target"</param>
+        /// <param name="tag">Look up by tag, e.g. "MainCamera", "Player"</param>
+        /// <param name="componentType">Find the first object carrying this component, e.g. "Camera"</param>
+        /// <param name="entityId">Unity EntityId, represented as a decimal ulong string</param>
+        /// <returns>The found GameObject, or null if not found</returns>
         public static GameObject Find(string name = null, int instanceId = 0, string path = null, string tag = null, string componentType = null, string entityId = null)
         {
-            // 优先级 1：EntityId（最精确，且兼容 Unity 6000.5）。
+            // Priority 1: EntityId (most precise, and compatible with Unity 6000.5).
             if (!string.IsNullOrWhiteSpace(entityId))
             {
                 var obj = UnityObjectIdUtility.EntityIdToObject(entityId);
@@ -399,7 +402,7 @@ namespace UnitySkills
                     return component.gameObject;
             }
 
-            // 优先级 2：旧版 instance ID。
+            // Priority 2: legacy instance ID.
             if (instanceId != 0)
             {
                 var obj = UnityObjectIdUtility.ObjectIdToObject(instanceId);
@@ -409,7 +412,7 @@ namespace UnitySkills
                     return component.gameObject;
             }
 
-            // 优先级 3：Hierarchy 路径（可定位嵌套对象）。
+            // Priority 3: Hierarchy path (can locate nested objects).
             if (!string.IsNullOrEmpty(path))
             {
                 var go = FindByPath(path);
@@ -417,20 +420,20 @@ namespace UnitySkills
                     return go;
             }
 
-            // 优先级 4：按简单名查找，先精确匹配。
+            // Priority 4: look up by simple name, exact match first.
             if (!string.IsNullOrEmpty(name))
             {
                 var go = FindByNameCaseInsensitive(name);
                 if (go != null)
                     return go;
 
-                // 精确匹配不中再退到包含匹配。
+                // If exact match misses, fall back to contains match.
                 go = FindByNameContains(name);
                 if (go != null)
                     return go;
             }
 
-            // 优先级 5：按标签查找。
+            // Priority 5: look up by tag.
             if (!string.IsNullOrEmpty(tag))
             {
                 var go = GetAllSceneObjects().FirstOrDefault(candidate =>
@@ -442,7 +445,7 @@ namespace UnitySkills
                     return go;
             }
 
-            // 优先级 6：按组件类型查找。
+            // Priority 6: look up by component type.
             if (!string.IsNullOrEmpty(componentType))
             {
                 var go = FindByComponent(componentType);
@@ -454,7 +457,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 按 Hierarchy 路径查找 GameObject，如 "Canvas/Panel/Button"。
+        /// Finds a GameObject by Hierarchy path, e.g. "Canvas/Panel/Button".
         /// </summary>
         public static GameObject FindByPath(string path)
         {
@@ -521,7 +524,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 按名查找 GameObject，大小写不敏感。
+        /// Finds a GameObject by name, case-insensitive.
         /// </summary>
         public static GameObject FindByNameCaseInsensitive(string name)
         {
@@ -530,24 +533,24 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 按名字包含指定子串查找 GameObject。
+        /// Finds a GameObject whose name contains the given substring.
         /// </summary>
         public static GameObject FindByNameContains(string name)
         {
-            // 优先整词匹配。
+            // Prefer a whole-word match first.
             var exactWord = GetAllSceneObjects()
                 .FirstOrDefault(go => go.name.Split(' ', '_', '-').Any(
                     word => word.Equals(name, System.StringComparison.OrdinalIgnoreCase)));
             if (exactWord != null)
                 return exactWord;
 
-            // 整词不中再退到子串包含。
+            // If no whole-word match, fall back to substring containment.
             return GetAllSceneObjects()
                 .FirstOrDefault(go => go.name.IndexOf(name, System.StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         /// <summary>
-        /// 查找挂有指定组件类型的第一个 GameObject。
+        /// Finds the first GameObject carrying the given component type.
         /// </summary>
         public static GameObject FindByComponent(string componentType)
         {
@@ -558,7 +561,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 查找符合条件的全部 GameObject。
+        /// Finds all GameObjects matching the given criteria.
         /// </summary>
         public static List<GameObject> FindAll(string name = null, string tag = null, string componentType = null, bool includeInactive = false)
         {
@@ -595,7 +598,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 取 GameObject 的完整 Hierarchy 路径。
+        /// Gets a GameObject's full Hierarchy path.
         /// </summary>
         public static string GetPath(GameObject go)
         {
@@ -614,7 +617,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 走请求级缓存取完整 Hierarchy 路径。大批量只读遍历应优先用这个。
+        /// Gets the full Hierarchy path via the request-level cache. Prefer this for large-scale read-only traversal.
         /// </summary>
         public static string GetCachedPath(GameObject go)
         {
@@ -634,7 +637,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 查找对象，找不到时返回带近似候选建议的错误。
+        /// Finds an object, returning an error with close-match suggestions when it can't be found.
         /// </summary>
         public static (GameObject go, object error) FindOrError(string name = null, int instanceId = 0, string path = null, string tag = null, string componentType = null, string entityId = null)
         {
@@ -663,8 +666,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把近似候选转成 suggestedFixes。不这么做的话候选算出来也会被路由丢弃——
-        /// 路由只会读错误字符串。
+        /// Converts close-match candidates into suggestedFixes. Without this, computed candidates would still get
+        /// dropped by the router — it only reads the error string.
         /// </summary>
         private static object[] BuildNotFoundFixes(string identifier, string[] suggestions)
         {
@@ -691,7 +694,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 查找 GameObject 并取其上必需的组件，任一步失败都返回错误。
+        /// Finds a GameObject and its required component, returning an error if either step fails.
         /// </summary>
         public static (T component, object error) FindComponentOrError<T>(string name = null, int instanceId = 0, string path = null, string entityId = null) where T : Component
         {
@@ -703,7 +706,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 查找失败时给出相近对象的候选建议。
+        /// Provides close-match candidate suggestions when a lookup fails.
         /// </summary>
         private static string[] GetSuggestions(string name, string tag, string componentType)
         {
@@ -711,7 +714,7 @@ namespace UnitySkills
 
             if (!string.IsNullOrEmpty(name))
             {
-                // 用名字前 3 个字符做模糊匹配。
+                // Fuzzy-match using the first 3 characters of the name.
                 var similar = GetAllSceneObjects()
                     .Where(go => go.name.IndexOf(name.Substring(0, System.Math.Min(3, name.Length)),
                         System.StringComparison.OrdinalIgnoreCase) >= 0)
@@ -722,7 +725,7 @@ namespace UnitySkills
 
             if (!string.IsNullOrEmpty(componentType))
             {
-                // 再补上确实挂有该组件的对象。
+                // Also add objects that actually carry this component.
                 var type = ComponentSkills.FindComponentType(componentType);
                 if (type != null)
                 {
@@ -738,74 +741,74 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 依次尝试多种策略的智能查找，供不确定精确名字的 AI 调用方使用。
+        /// Smart lookup that tries several strategies in sequence, for AI callers unsure of the exact name.
         /// </summary>
         public static GameObject SmartFind(string query)
         {
             if (string.IsNullOrEmpty(query)) return null;
 
-            // 当作精确名。
+            // Try as an exact name.
             var go = FindByNameCaseInsensitive(query);
             if (go != null) return go;
 
-            // 当作路径。
+            // Try as a path.
             go = FindByPath(query);
             if (go != null) return go;
 
-            // 当作标签。
+            // Try as a tag.
             go = Find(tag: query);
             if (go != null) return go;
 
-            // "Main Camera" 的各种叫法。
+            // Various ways of referring to "Main Camera".
             if (query.Equals("camera", System.StringComparison.OrdinalIgnoreCase) ||
                 query.Equals("main camera", System.StringComparison.OrdinalIgnoreCase) ||
                 query.Equals("maincamera", System.StringComparison.OrdinalIgnoreCase))
             {
                 go = Camera.main?.gameObject;
                 if (go != null) return go;
-                
-                // 没有 Camera.main 就退而取场景里任意一个相机。
+
+                // If there's no Camera.main, fall back to any camera in the scene.
                 var cam = GetAllSceneObjects()
                     .Select(candidate => candidate.GetComponent<Camera>())
                     .FirstOrDefault(component => component != null);
                 if (cam != null) return cam.gameObject;
             }
 
-            // "Player" 的各种叫法。
+            // Various ways of referring to "Player".
             if (query.IndexOf("player", System.StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 go = Find(tag: "Player");
                 if (go != null) return go;
             }
 
-            // 大小写不敏感的子串包含。
+            // Case-insensitive substring containment.
             go = FindByNameContains(query);
             if (go != null) return go;
 
-            // 最后当作组件类型名。
+            // Last resort: try as a component type name.
             go = FindByComponent(query);
             return go;
         }
     }
 
     /// <summary>
-    /// 各技能模块共用的工具方法。
+    /// Utility methods shared across skill modules.
     /// </summary>
     public static class SkillsCommon
     {
-        /// <summary>不带 BOM 的 UTF-8 编码。</summary>
+        /// <summary>UTF-8 encoding without a BOM.</summary>
         public static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
 
-        /// <summary>共享 JSON 设置：Unicode 直出可读，不做转义。</summary>
+        /// <summary>Shared JSON settings: Unicode is emitted directly and readably, without escaping.</summary>
         public static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
             StringEscapeHandling = Newtonsoft.Json.StringEscapeHandling.Default
         };
 
         /// <summary>
-        /// 与 <see cref="JsonSettings"/> 相同，但 null 成员会被丢弃而不是写成 <c>null</c>。
-        /// 专供 <c>?wire=v2</c> 的 manifest 载荷使用——那里"字段缺席"意为"默认 / 不适用"。
-        /// 其余响应必须继续输出显式 null，切勿把已有路径改走这个实例。
+        /// Same as <see cref="JsonSettings"/>, but null members are dropped rather than written as <c>null</c>.
+        /// Reserved for <c>?wire=v2</c> manifest payloads, where "field absent" means "default / not applicable".
+        /// All other responses must keep emitting explicit nulls — never redirect an existing path to this instance.
         /// </summary>
         public static readonly JsonSerializerSettings JsonSettingsOmitNull = new JsonSerializerSettings
         {
@@ -814,7 +817,7 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 取所有非动态程序集中已加载的全部类型。
+        /// Gets all loaded types across every non-dynamic assembly.
         /// </summary>
         public static System.Collections.Generic.IEnumerable<System.Type> GetAllLoadedTypes()
         {
@@ -824,7 +827,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 统计网格三角面数，不分配完整的 triangles 数组。
+        /// Counts a mesh's triangles without allocating the full triangles array.
         /// </summary>
         public static int GetTriangleCount(UnityEngine.Mesh mesh)
         {
@@ -834,20 +837,20 @@ namespace UnitySkills
             return count / 3;
         }
 
-        /// <summary>路径存在（文件或目录皆可）时返回 true。</summary>
+        /// <summary>Returns true if the path exists (file or directory).</summary>
         public static bool PathExists(string path) =>
             !string.IsNullOrEmpty(path) && (File.Exists(path) || Directory.Exists(path));
 
         // -----------------------------------------------------------------
-        // 统一类型查找（带缓存，各 ReflectionHelper 共用）
+        // Unified type lookup (cached, shared by every ReflectionHelper)
         // -----------------------------------------------------------------
 
         private static readonly Dictionary<string, System.Type> _findTypeCache =
             new Dictionary<string, System.Type>();
 
         /// <summary>
-        /// 在所有已加载程序集中按全限定名查找类型。
-        /// 结果会缓存（未命中的 null 也缓存），后续查找为 O(1)。
+        /// Looks up a type by fully-qualified name across all loaded assemblies.
+        /// The result is cached (including a null miss), so subsequent lookups are O(1).
         /// </summary>
         public static System.Type FindTypeByName(string fullName)
         {

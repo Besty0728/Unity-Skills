@@ -10,11 +10,11 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// 性能分析技能：帧率、内存、统计数据。
+    /// Performance profiling skills: frame rate, memory, stats.
     /// </summary>
     public static class ProfilerSkills
     {
-        // 使用反射访问 UnityStats，因为它是内部 API，不同 Unity 版本属性可能不同
+        // Access UnityStats via reflection since it's an internal API whose properties may vary across Unity versions
         private static readonly Type s_UnityStatsType =
             typeof(Editor).Assembly.GetType("UnityEditor.UnityStats");
 

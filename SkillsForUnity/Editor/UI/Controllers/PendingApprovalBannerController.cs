@@ -52,8 +52,8 @@ namespace UnitySkills
             SkillsModeManager.OnChanged += OnModeChanged;
             _root.RegisterCallback<DetachFromPanelEvent>(OnRootDetached);
 
-            // 经 EditorUiScheduler.RepeatSafe 把实际 mutation 推迟到 delayCall，避免落在
-            // repaint/generateVisualContent 期间触发 InvalidOperationException（issue #44）。
+            // Defers the actual mutation to delayCall via EditorUiScheduler.RepeatSafe, to avoid triggering an
+            // InvalidOperationException during repaint/generateVisualContent (issue #44).
             EditorUiScheduler.RepeatSafe(_root, PollIntervalMs, Tick);
 
             RefreshLocalization();
@@ -71,13 +71,14 @@ namespace UnitySkills
         {
             if (_settingsBtn != null)
                 _settingsBtn.text = SkillsLocalization.Get("pending_banner_open_settings");
-            // Title 在 Tick 内随计数动态刷新，无需在这里设。
+            // Title is refreshed dynamically with the count inside Tick, no need to set it here.
         }
 
         private void Tick()
         {
             var pending = SkillsModeManager.PendingGrantRequests;
-            // 仅 Approval 模式才显示 banner — 其他模式不会有 pending，但理论上多保险一次判断。
+            // The banner only shows in Approval mode — other modes never have pending requests, but this is
+            // one extra belt-and-suspenders check just in case.
             bool show = pending.Count > 0
                         && SkillsModeManager.CurrentMode == SkillsOperatingMode.Approval;
 
@@ -144,7 +145,7 @@ namespace UnitySkills
 
             var expires = new Label(PermissionUiHelpers.FormatCountdown(req.ExpiresAtUtc));
             expires.AddToClassList("pending-banner__expires");
-            expires.userData = req.ExpiresAtUtc; // 用于每秒倒计时刷新
+            expires.userData = req.ExpiresAtUtc; // used to refresh the countdown every second
             head.Add(expires);
 
             card.Add(head);
@@ -158,7 +159,7 @@ namespace UnitySkills
 
             bool isPanel = req.Channel == "panel";
 
-            // 渠道区分反馈：Panel 渠道走面板 Approve；Dialog 渠道的批准走 AI 对话
+            // Channel-specific feedback: the panel channel goes through the panel's Approve; the dialog channel's approval goes through the AI chat
             if (isPanel && req.ApprovedByPanel)
             {
                 var status = new Label(SkillsLocalization.Get("perm_approved_waiting"));
@@ -197,7 +198,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Snapshot 仅做 DOM 重建判定；同 token 集合就保留 DOM、只更新倒计时文字。
+        /// The snapshot is only used to decide whether to rebuild the DOM; with the same token set, the DOM is kept and only the countdown text is updated.
         /// </summary>
         private static string ComputeSnapshot(IReadOnlyList<GrantRequest> pending)
         {

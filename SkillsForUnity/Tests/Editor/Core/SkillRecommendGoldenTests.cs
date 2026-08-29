@@ -7,13 +7,13 @@ using NUnit.Framework;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// /skills/recommend 的 golden 断言：几个固定意图必须把对应的核心技能排进前三。
+    /// Golden assertions for /skills/recommend: a handful of fixed intents must rank their corresponding core skill in the top three.
     ///
-    /// 刻意不断言完整的 top-N 名单 —— 名单会随注册表增删和同义词表调整而变，钉死它只会制造
-    /// 无关失败。钉住的是「这个意图必须找到这个技能」，那才是排序真正的用途。
+    /// Deliberately does not assert the full top-N list -- the list shifts as the registry gains/loses entries and the synonym table is tuned, pinning it down would only create
+    /// unrelated failures. What's pinned down is "this intent must find this skill" -- that's what ranking is actually for.
     ///
-    /// 遥测在测试期间关闭：<c>GetRecommendationHealth</c> 会按 7 天窗口内的错误率给技能扣分，
-    /// 本机残留的遥测数据会让同一个意图在不同机器上排出不同结果。
+    /// Telemetry is disabled during the test: <c>GetRecommendationHealth</c> docks a skill's score based on its error rate within a 7-day window,
+    /// and leftover local telemetry data would make the same intent rank differently on different machines.
     /// </summary>
     [TestFixture]
     public class SkillRecommendGoldenTests
@@ -26,7 +26,7 @@ namespace UnitySkills.Tests.Core
         {
             _savedProfile = SkillsSurfaceProfile.Current;
             _savedTelemetry = SkillTelemetryService.Enabled;
-            // recommend 走 VisibleSkills，非 full 档会把期望技能整个藏掉。
+            // recommend goes through VisibleSkills; a non-full profile would hide the expected skill entirely.
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
             SkillTelemetryService.Enabled = false;
         }
@@ -54,13 +54,13 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 读/写对齐的 golden。当初正是这个意图促成了打分调整：<c>camera_set_properties</c> 完全压过
-        /// <c>camera_get_properties</c>，因为 setter 的描述必然会提到 reader 返回的那些属性，而这个
-        /// setter 恰好提得更多。一个明确是"读"形态的意图，首位不能是写类技能。
+        /// A golden case for read/write alignment. This exact intent originally drove the scoring adjustment: <c>camera_set_properties</c> completely dominated
+        /// <c>camera_get_properties</c>, because a setter's description inevitably mentions the properties the reader returns, and this
+        /// setter happens to mention more of them. An intent that is unambiguously "read"-shaped must not lead with a write skill.
         ///
-        /// <para>断言的是首位结果的属性而非它的名字。点名赢家会连并列时的字典序 tie-break 一起钉死
-        /// ——两个技能分数打平，最终靠 <c>get</c> &lt; <c>set</c> 分出胜负。那是真实行为但不是本测试
-        /// 要管的事，将来一次改名会让它以错误的理由变红。</para>
+        /// <para>Asserts a property of the top result rather than its name. Naming the winner would also pin down the dictionary-order tie-break for ties
+        /// -- two skills tie on score and it's ultimately <c>get</c> &lt; <c>set</c> that decides the winner. That's real behavior but not what this test
+        /// is meant to cover; a future rename would turn it red for the wrong reason.</para>
         /// </summary>
         [Test]
         public void Recommend_UnambiguouslyReadIntent_LeadsWithAReadOnlySkill()
@@ -75,8 +75,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 这项调整必须在 <c>matchedOn</c> 里看得见，不能只体现在排序上。名次变了而响应又解释不出
-        /// 原因，就没人能调试它——而打分改动恰恰是静默回归最爱藏身的地方，因为输出看起来依然合理。
+        /// This adjustment must be visible in <c>matchedOn</c>, not only reflected in the ranking. If the rank changes but the response can't explain
+        /// why, nobody can debug it -- and scoring changes are exactly where silent regressions love to hide, because the output still looks plausible.
         /// </summary>
         [Test]
         public void Recommend_ReadIntentBonus_IsAuditableFromTheResponse()
@@ -94,8 +94,8 @@ namespace UnitySkills.Tests.Core
                 var markers = (entry["matchedOn"] as JArray)?.Select(m => m.ToString()).ToArray()
                               ?? Array.Empty<string>();
 
-                // 只读技能拿加分，写类技能不得被打上这个标记。写惩罚在这里不会出现——它只作用于
-                // "写形态意图下的只读技能"，而本意图不是写形态。
+                // Read-only skills get the bonus; write skills must not be tagged with this marker. The write penalty won't appear here -- it only applies to
+                // "read-only skills under a write-shaped intent", and this intent isn't write-shaped.
                 Assert.That(markers.Contains("intent:read+3"), Is.EqualTo(info.ReadOnly),
                     $"{name} (readOnly={info.ReadOnly}) carries matchedOn=[{string.Join(" ", markers)}]. " +
                     "The read bonus must be recorded on exactly the skills that received it.");
@@ -105,8 +105,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 镜像用例：明确是"写"形态的意图仍然必须找到写类技能。读加分的目的是纠正错排，
-        /// 不是把写类技能推远——只读技能上那 -1 的微调正因如此才刻意压得很小。
+        /// Mirror case: an intent that is unambiguously "write"-shaped must still find the write skill. The read bonus exists to correct mis-ranking,
+        /// not to push write skills away -- that's exactly why the -1 tweak on read-only skills is deliberately kept small.
         /// </summary>
         [Test]
         public void Recommend_WriteIntent_StillRanksTheWriteSkillFirst()
@@ -122,7 +122,7 @@ namespace UnitySkills.Tests.Core
         [TestCase("add+Rigidbody+component+to+GameObject", "component_add")]
         public void Recommend_NaturalLanguageIntent_RanksExpectedSkillInTopThree(string intent, string expected)
         {
-            // 多词、句子形态的意图——这才是 agent 真正会发的形式，区别于上面那些双关键词探针。
+            // Multi-word, sentence-shaped intents -- this is the form agents actually send, as opposed to the two-keyword probes above.
             Assume.That(SkillRouter.HasSkill(expected), Is.True,
                 $"{expected} is not registered (missing optional package?).");
 
@@ -133,8 +133,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// Sample 类技能是真实 gameobject_* / camera_* 技能的教学副本，名字短，会把名称子串加分
-        /// 全部拿走。它们仍然可达，但只在意图里真的出现 sample/demo/example 时才该上榜。
+        /// Sample-category skills are teaching copies of the real gameobject_* / camera_* skills; their short names would grab all the name-substring
+        /// bonus. They should still be reachable, but should only surface when the intent actually contains sample/demo/example.
         /// </summary>
         [Test]
         public void Recommend_IntentWithoutSampleWords_DoesNotLeadWithASampleSkill()
@@ -150,7 +150,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Recommend_IntentNamingSamples_StillReachesThem()
         {
-            // 降权必须是有条件的，不能等于封禁——用户主动找演示技能时必须能找到。
+            // The downweighting must be conditional, not a ban -- a user deliberately looking for demo skills must still be able to find them.
             var sampleSkills = new HashSet<string>(
                 SkillRouter.GetAllSkillsSnapshot()
                     .Where(s => s.Category == SkillCategory.Sample)
@@ -165,8 +165,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 打分调整不得动摇排序键：score 降序，再 semanticScore，再 name——在足够宽的结果集上断言，
-        /// 免得比较器回归藏在短名单里看不出来。
+        /// Scoring adjustments must not disturb the sort key: score descending, then semanticScore, then name -- asserted over a wide enough result set,
+        /// so a comparator regression can't hide in a short list.
         /// </summary>
         [Test]
         public void Recommend_ResultsAreSortedByScoreThenSemanticThenName()
@@ -198,9 +198,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Recommend_TiedScores_AreOrderedByNameOrdinal()
         {
-            // 并列项的稳定键（#4 加的 ThenBy(Name, Ordinal)）。没有它，同分技能按反射发现顺序
-            // 出场 —— 那个顺序在不同工程、不同 domain reload 之间都不一样，同一个意图会无理由
-            // 给出不同排名。
+            // The stable key for ties (the ThenBy(Name, Ordinal) added in #4). Without it, same-score skills appear in reflection
+            // discovery order -- an order that differs across projects and across domain reloads -- so the same intent would
+            // produce different rankings for no reason.
             var response = JObject.Parse(SkillRouter.GetRecommendations("?intent=create&topN=50"));
             var entries = ((JArray)response["results"])
                 .Select(r => (name: r["name"].ToString(),

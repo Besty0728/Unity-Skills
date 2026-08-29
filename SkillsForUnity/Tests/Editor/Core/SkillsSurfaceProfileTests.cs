@@ -8,40 +8,40 @@ using UnityEditor.SceneManagement;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// SurfaceProfile 三档的可见性与拦截语义。
+    /// Visibility and interception semantics for the three SurfaceProfile tiers.
     ///
-    /// 两条纪律贯穿全文件：
-    /// 1. 一切计数在运行时推导，绝不写死数字 —— 注册数随安装的可选包变化，干净 CI 工程上
-    ///    guide/noSceneAuthoring 的隐藏条数和本地开发机上不是同一个值。推导走
-    ///    <see cref="IsExpectedHidden"/>，那是对四条排除规则的测试侧独立重述，故意不调
-    ///    <see cref="SkillsSurfaceProfile.IsExcluded(SkillRouter.SkillInfo)"/>：与被测实现同源
-    ///    会变成同义反复，某条规则消失时期望与实际一起变小，断言照样通过。
-    /// 2. 只断言结构字段（errorCode / details.manualDoc / details.surfaceProfile / retryStrategy /
-    ///    authorization.blockedBy）和文档路径这类关键子串。hint 是给 agent 读的自然语言，措辞会调。
+    /// Two disciplines run through this file:
+    /// 1. Every count is derived at run time, never hardcoded -- registration counts vary with
+    ///    installed optional packages, so guide/noSceneAuthoring hidden counts differ between a clean
+    ///    CI project and a local dev machine. Derivation goes through <see cref="IsExpectedHidden"/>,
+    ///    a test-side independent restatement of the four exclusion rules, deliberately not calling
+    ///    <see cref="SkillsSurfaceProfile.IsExcluded(SkillRouter.SkillInfo)"/>: sharing the implementation under test would make it tautological -- a rule disappearing would shrink expected and actual together and the assertion would still pass.
+    /// 2. Only structural fields are asserted (errorCode / details.manualDoc / details.surfaceProfile /
+    ///    retryStrategy / authorization.blockedBy) and key substrings of doc paths. The hint is natural-language prose meant for an agent to read; its wording is free to change.
     ///
-    /// EditorPrefs 卫生：<c>UnitySkills_SurfaceProfile</c> 按 Unity 版本全局共享、不分工程，所以
-    /// setup 保存原值、teardown 还原，每个测试自己显式设置所需档位与模式。
+    /// EditorPrefs hygiene: <c>UnitySkills_SurfaceProfile</c> is shared globally per Unity version, not
+    /// per project, so setup saves the original value and teardown restores it; each test explicitly sets the profile and mode it needs.
     /// </summary>
     [TestFixture]
     public class SkillsSurfaceProfileTests
     {
         /// <summary>
-        /// 拦截探针用的定位符：注册表里保证不存在这个名字的对象/场景/资源。选它是为了在
-        /// 「档位没拦住」这个失败分支里，技能顶多回一个 NOT_FOUND，而不是真的改了工程。
+        /// The locator used for interception probes: guaranteed not to exist as an object/scene/asset
+        /// in the registry, so in the "profile failed to block" failure branch the skill answers at worst NOT_FOUND rather than actually mutating the project.
         /// </summary>
         private const string AbsentTarget = "__unity_skills_surface_probe_absent__";
 
         /// <summary>
-        /// 逃生口名单的测试侧独立副本 —— 刻意不引用实现里的 <c>_alwaysHiddenSkillNames</c>。
-        /// 引用它就等于让期望值跟着实现走，名单被清空时两边一起变空。
+        /// A test-side independent copy of the escape-hatch list -- deliberately does not reference the
+        /// implementation's <c>_alwaysHiddenSkillNames</c>, since referencing it would let the expected value go empty right along with the list if it were ever cleared.
         /// </summary>
         private static readonly string[] AlwaysHiddenSkillNames = { "editor_execute_menu" };
 
         /// <summary>
-        /// 五个 guide 档隐藏分类各一个写技能探针。每个都刻意选了
-        /// <c>SkillPlanningService</c> 里没有语义 planner 的技能 —— 有 planner 的（gameobject_create、
-        /// component_add、material_create、scene_save…）会在语义校验阶段就因目标不存在返回
-        /// SEMANTIC_INVALID，那比档位闸门更早，测出来的就不是档位了。
+        /// One write-skill probe per hidden category across the five guide tiers. Each was chosen among
+        /// skills with no semantic planner in <c>SkillPlanningService</c> -- ones with a planner
+        /// (gameobject_create, component_add, material_create, scene_save…) would already return
+        /// SEMANTIC_INVALID during semantic validation for a missing target, firing earlier than the profile gate and thus not actually testing the profile.
         /// </summary>
         private static readonly (SkillCategory category, string skill, string args)[] WriteProbes =
         {
@@ -57,7 +57,7 @@ namespace UnitySkills.Tests.Core
                 "{\"objectName\":\"" + AbsentTarget + "\",\"x\":0,\"y\":0,\"z\":0}"),
         };
 
-        /// <summary>同五个分类里的只读技能 —— 档位拿掉的是动手能力，不是看的能力。</summary>
+        /// <summary>The read-only skills in the same five categories -- the profile withdraws the ability to act, not the ability to see.</summary>
         private static readonly (SkillCategory category, string skill, string args)[] ReadProbes =
         {
             (SkillCategory.GameObject, "gameobject_find", "{\"name\":\"" + AbsentTarget + "\"}"),
@@ -77,7 +77,7 @@ namespace UnitySkills.Tests.Core
             _savedProfile = SkillsSurfaceProfile.Current;
             _savedMode = SkillsModeManager.CurrentMode;
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
-            // 不假设当前是 Bypass：干净 CI 工程上默认是 Auto。需要放行的测试自己设。
+            // Don't assume the current mode is Bypass: a clean CI project defaults to Auto. Tests that need it unblocked set it themselves.
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             GameObjectFinder.InvalidateCache();
         }
@@ -90,7 +90,7 @@ namespace UnitySkills.Tests.Core
             GameObjectFinder.InvalidateCache();
         }
 
-        // ---------- 可见集推导 ----------
+        // ---------- visible-set derivation ----------
 
         [TestCase(SurfaceProfileKind.Full)]
         [TestCase(SurfaceProfileKind.Guide)]
@@ -99,8 +99,8 @@ namespace UnitySkills.Tests.Core
         {
             var registry = SkillRouter.GetAllSkillsSnapshotUnfiltered();
 
-            // 期望值走测试侧独立推述的四条规则（见 IsExpectedHidden）。不调权威重载，
-            // 否则规则被删时期望与实际一起变小，等式照样成立。
+            // Expected values go through the test-side independent restatement of the four rules (see
+            // IsExpectedHidden). Not calling the authoritative overload -- otherwise a deleted rule would shrink expected and actual together, and the equality would still hold.
             var hiddenSkills = registry.Where(s => IsExpectedHidden(s, profile)).ToArray();
             int expectedVisible = registry.Length - hiddenSkills.Length;
 
@@ -125,12 +125,12 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 规则 2（逃生口按名字隐藏）的具体后果守卫。计数等式只说「总数对得上」，这条盯的是
-        /// <c>editor_execute_menu</c> 这一个名字确实从目录里消失、且硬调会被拦。
+        /// Guards the concrete consequence of Rule 2 (escape hatches hidden by name). The count equality
+        /// only says "the totals add up"; this one watches that <c>editor_execute_menu</c> specifically disappears from the catalogue, and that calling it directly is blocked.
         ///
-        /// 它是"万能钥匙"：菜单项能触达档位想收回的一切写操作，而它的分类（Editor）不在也不该在
-        /// 任何隐藏集里。所以没有这条规则，其余每一条排除都只是装饰 —— 被 gameobject_create 拦住的
-        /// agent 可以转头执行 "GameObject/Create Empty"。
+        /// It's the "master key": the menu-item skill can reach every write operation a profile wants
+        /// to withdraw, and its category (Editor) isn't and shouldn't be in any hidden set. So without
+        /// this rule every other exclusion is decorative -- an agent blocked from gameobject_create could just turn around and execute "GameObject/Create Empty" instead.
         /// </summary>
         [TestCase(SurfaceProfileKind.Guide)]
         [TestCase(SurfaceProfileKind.NoSceneAuthoring)]
@@ -150,16 +150,16 @@ namespace UnitySkills.Tests.Core
             Assert.That(BriefSkillNames(), Does.Not.Contain(escapeHatch),
                 $"{profile} 档的目录仍列出了 {escapeHatch} —— 逃生口没被堵上。");
 
-            // 菜单路径刻意指向不存在的项：闸门若失效，最坏也只是 ExecuteMenuItem 找不到目标，
-            // 而不是真的替用户点了一个菜单。
+            // The menu path deliberately points at a nonexistent item: if the gate fails, the worst
+            // case is ExecuteMenuItem not finding its target, not actually clicking a menu on the user's behalf.
             var response = JObject.Parse(SkillRouter.Execute(escapeHatch,
                 "{\"menuPath\":\"__UnitySkills/NoSuchMenuItemForTests\"}"));
             Assert.That(response["errorCode"]?.ToString(), Is.EqualTo("SURFACE_EXCLUDED"),
                 $"{profile} 档下 {escapeHatch} 应被拦住，实收: {response.ToString(Newtonsoft.Json.Formatting.None)}");
 
-            // 逃生口的分类是 Editor，没有也不该有 manual-* 文档：手册教的是「怎么手动建 GameObject」，
-            // 而这里被收回的是「执行任意菜单项」，没有一份文档能对应。所以 manualDoc 必须是 null
-            // 而不是硬塞一个不相干的路径 —— 指错文档比不给文档更糟。
+            // The escape hatch's category is Editor, which has no manual-* doc and shouldn't -- the manual
+            // teaches "how to manually create a GameObject," while what's withdrawn here is "execute an
+            // arbitrary menu item," which no doc matches. So manualDoc must be null, not a misleading path stuffed in -- pointing at the wrong doc is worse than no doc.
             var details = response["details"];
             Assert.That(details?["manualDoc"]?.Type ?? JTokenType.Null, Is.EqualTo(JTokenType.Null),
                 $"{escapeHatch} 的拒绝载荷不该给出 manual 文档（分类 Editor 没有对应手册）。");
@@ -168,10 +168,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// smoke 探测的档位保护。<c>test_smoke_skills</c> 直接 <c>Method.Invoke</c> 被探测的技能，
-        /// 完全绕开 Execute，所以也绕开档位闸门 —— 它取的是过滤后快照这件事本身就是承重的安全边界。
-        /// 若有人把它改回 Unfiltered，这个只读探测就会变成一次批量执行，跑的正好是用户设档位要
-        /// 收回的那批写技能。这条断言守住那个边界。
+        /// Profile protection for smoke probing. <c>test_smoke_skills</c> calls <c>Method.Invoke</c>
+        /// directly on the probed skill, bypassing Execute entirely and thus the profile gate too --
+        /// drawing from the filtered snapshot is itself the load-bearing safety boundary here. If
+        /// switched back to Unfiltered, this read-only probe would become a batch execution of exactly the write skills the user's profile withdraws. This assertion guards that boundary.
         /// </summary>
         [TestCase(SurfaceProfileKind.Guide)]
         [TestCase(SurfaceProfileKind.NoSceneAuthoring)]
@@ -179,8 +179,8 @@ namespace UnitySkills.Tests.Core
         {
             Assume.That(SkillRouter.HasSkill("test_smoke_skills"), Is.True, "test_smoke_skills 未注册。");
 
-            // gameobject_ 前缀刻意选在一个两档都会隐藏的分类上，且把探测面缩到十几个技能：
-            // runAsync=false 会对每个入选技能跑一次 dryRun，全量跑没必要也更慢。
+            // The gameobject_ prefix is deliberately chosen in a category both profiles hide, and the
+            // probe surface is narrowed to a dozen-odd skills: runAsync=false runs a dryRun per selected skill, and running the full set isn't needed and would be slower.
             const string prefix = "gameobject_";
             var registry = SkillRouter.GetAllSkillsSnapshotUnfiltered()
                 .Where(s => s.Name.StartsWith(prefix, StringComparison.Ordinal))
@@ -198,9 +198,9 @@ namespace UnitySkills.Tests.Core
 
             SkillsSurfaceProfile.Current = profile;
 
-            // executeReadOnly=false → 全部走 dryRun，不真的调用任何技能。
-            // runAsync=false → 同步返回带 results 的名单；默认的 runAsync=true 只返回 jobId，
-            // 那样什么名字都读不到（第一版就是这么写的，被自己的非空守卫拦下了）。
+            // executeReadOnly=false -> everything runs as dryRun, no skill is actually invoked.
+            // runAsync=false -> a synchronous response with a results list; the default runAsync=true
+            // only returns a jobId, from which no names could be read (that's how v1 was written, caught by its own non-empty guard).
             var response = JObject.Parse(SkillRouter.Execute("test_smoke_skills",
                 "{\"nameContains\":\"" + prefix + "\",\"executeReadOnly\":false," +
                 "\"includeMutating\":true,\"runAsync\":false}"));
@@ -208,7 +208,7 @@ namespace UnitySkills.Tests.Core
             Assume.That(response["errorCode"], Is.Null,
                 "test_smoke_skills 在此宿主上不可用: " + response["errorCode"]);
 
-            // 成功响应把技能自己的载荷包在 result 下（BuildSuccessEnvelope），不是平铺在顶层。
+            // A successful response wraps the skill's own payload under result (BuildSuccessEnvelope), not flat at the top level.
             var resultArray = response["result"]?["results"] as JArray;
             Assert.That(resultArray, Is.Not.Null,
                 "取不到 result.results 数组 —— 成功信封的形状变了。顶层键: " +
@@ -229,15 +229,15 @@ namespace UnitySkills.Tests.Core
                 "BuildSmokeRequest 必须用 GetAllSkillsSnapshot（已过滤）—— 它直接 Method.Invoke，" +
                 "绕开档位闸门，改成 Unfiltered 就会把只读探测变成对这些写技能的批量执行。");
 
-            // 正面钉住：可见的那批必须一个不少地出现，否则「没泄漏」也可能只是探测整体返回空。
+            // Pinned positively: the visible set must all show up without exception, or "no leak" could just mean the probe returned nothing at all.
             Assert.That(reported, Is.EqualTo(expectedVisible),
                 $"{profile} 档下 {prefix}* 的探测名单应与推导的可见集完全一致。");
         }
 
         /// <summary>
-        /// 规则 4 的独立守卫：一个自称 MutatesScene 的写技能就是场景创作，无论它住在哪个模块。
-        /// 这条规则才是关掉 Netcode / Behavior 这些不在分类清单里的模块的东西，而分类清单本身
-        /// 永远列不全 —— 所以这里从元数据推导，不看清单。
+        /// Independent guard for Rule 4: a write skill that declares itself MutatesScene is scene
+        /// authoring, no matter which module it lives in. This rule is what turns off modules like
+        /// Netcode / Behavior that aren't in the category list -- which can never be exhaustive -- so this is derived from metadata, not read off the list.
         /// </summary>
         [Test]
         public void NoSceneAuthoring_HidesEveryWriteDeclaringMutatesScene()
@@ -273,10 +273,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 量级下限。上面那条「可见数 == 全集 − 推导隐藏数」两边同源，所以它对一类回归是瞎的：
-        /// 若 _guideHidden 被清空，或者一批写技能被误标成 ReadOnly，等式照样成立而档位实际什么
-        /// 都不再隐藏。这里用下限而不是等值 —— 等值（59/326）会在有人只是新增了一个模块时
-        /// 报「档位坏了」，那是为错误的理由失败。
+        /// A magnitude floor. The assertion above ("visible == full minus derived-hidden") is blind to
+        /// one class of regression because both sides share a source: if _guideHidden were cleared, or
+        /// a batch of write skills got mistagged ReadOnly, the equality would still hold while the profile
+        /// actually hides nothing anymore. A floor rather than an exact value is used here -- an exact value (59/326) would report "profile broken" the moment someone merely adds a module, failing for the wrong reason.
         /// </summary>
         [TestCase(SurfaceProfileKind.Guide, 40)]
         [TestCase(SurfaceProfileKind.NoSceneAuthoring, 200)]
@@ -294,9 +294,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// guide 档每个隐藏分类都必须有 manual-* 文档。这是「拒绝要可执行」的结构前提：
-        /// 没文档的拒绝只能让 agent 干等用户改设置，而 guide 档的全部价值是让它转做讲解。
-        /// 从隐藏集推导，所以有人给 guide 加第六个分类却没配文档时会立刻响铃。
+        /// Every hidden category in the guide tier must ship a manual-* doc. This is the structural
+        /// precondition for "a rejection must be actionable": a rejection with no doc just leaves the agent
+        /// waiting on the user, and the guide tier's entire value is letting it pivot to explaining instead. Derived from the hidden set, so it rings the moment someone adds a sixth category without configuring its doc.
         /// </summary>
         [Test]
         public void EveryGuideHiddenCategory_ShipsAManualDoc()
@@ -367,8 +367,8 @@ namespace UnitySkills.Tests.Core
                 { SkillCategory.Component, "skills/manual-component/SKILL.md" },
                 { SkillCategory.Material, "skills/manual-material/SKILL.md" },
                 { SkillCategory.Scene, "skills/manual-scene/SKILL.md" },
-                // Sample 的写就是换了名字的 GameObject authoring，所以复用 gameobject 的手册，
-                // 而不是留 agent 无文档可读。
+                // Sample's write is just GameObject authoring under a different name, so it reuses
+                // the gameobject manual rather than leaving the agent with no doc to read.
                 { SkillCategory.Sample, "skills/manual-gameobject/SKILL.md" },
             };
 
@@ -441,7 +441,7 @@ namespace UnitySkills.Tests.Core
 
                 var response = JObject.Parse(SkillRouter.Execute(skill, args));
 
-                // 目标不存在时回 NOT_FOUND 是正常的；这里只要求它不是被档位拦下的。
+                // NOT_FOUND is normal when the target doesn't exist; this only requires that it wasn't blocked by the profile.
                 Assert.That(response["errorCode"]?.ToString(), Is.Not.EqualTo("SURFACE_EXCLUDED"),
                     $"{skill}（{category} 只读）被档位拦了 —— 看不了场景的 AI 也教不了手动步骤。");
                 checked_++;
@@ -456,7 +456,7 @@ namespace UnitySkills.Tests.Core
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Guide;
             var hiddenNames = ExpectedHiddenSkillNames(SurfaceProfileKind.Guide);
 
-            // 用被隐藏分类自己的名字做意图，最大化「如果没过滤就一定会命中」的概率。
+            // Use the hidden category's own name as the intent, to maximize the odds it would hit if not filtered.
             var recommend = JObject.Parse(SkillRouter.GetRecommendations("?intent=material+color&topN=50"));
             var recommended = ((JArray)recommend["results"]).Select(r => r["name"].ToString()).ToArray();
 
@@ -476,13 +476,13 @@ namespace UnitySkills.Tests.Core
 
             Assert.That(guideProducers.Intersect(hiddenWrites, StringComparer.Ordinal), Is.Empty,
                 "被隐藏的 producer 会让 agent 走一条第一步就 SURFACE_EXCLUDED 的链。");
-            // 这条链在 full 档下本来就含被隐藏的写技能（gameobject_create 等产出 instanceId），
-            // 否则上面那句是空断言。
+            // This chain, under full, already includes hidden write skills (gameobject_create etc.
+            // produce instanceId); otherwise the assertion above would be vacuous.
             Assert.That(fullProducers.Intersect(hiddenWrites, StringComparer.Ordinal), Is.Not.Empty,
                 "前置条件：instanceId 链在 full 档下应当含至少一个 guide 档会隐藏的 producer。");
         }
 
-        // ---------- 缓存重建 ----------
+        // ---------- cache rebuild ----------
 
         [Test]
         public void ProfileSwitch_RebuildsBriefCache_AndChangesEtag()
@@ -507,9 +507,9 @@ namespace UnitySkills.Tests.Core
                 "ETag 必须跟着变 —— 否则客户端的 If-None-Match 会拿到一份已经不成立的 304。");
         }
 
-        // SkillsGuideMode 是 2.7 保留的兼容 shim，类级带 [Obsolete]，而本测试是它唯一的调用点。
-        // 这里显式压掉 CS0618 而不是删掉断言：shim 存在的全部理由就是让只认布尔开关的老客户端
-        // 继续读到正确的值，那条映射没人守就会在下次重构里悄悄失真。
+        // SkillsGuideMode is a compatibility shim kept for 2.7, marked [Obsolete] at the class level,
+        // and this test is its only caller. CS0618 is explicitly suppressed here instead of deleting
+        // the assertion: the shim's entire reason to exist is letting old clients that only understand a boolean toggle keep reading the correct value -- that mapping would silently drift if nothing watched it.
 #pragma warning disable 618
         [Test]
         public void DeprecatedGuideModeBoolean_MapsOnlyToGuideProfile()
@@ -527,8 +527,8 @@ namespace UnitySkills.Tests.Core
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
             Assert.That(SkillsGuideMode.Enabled, Is.False);
 
-            // 写方向：赋 true 选中 guide；赋 false 只清 guide，绝不把 noSceneAuthoring 降级成 full
-            // —— 布尔表达不了那个状态，静默放宽用户特意收窄的范围是这个 shim 最危险的失效方式。
+            // Write direction: assigning true selects guide; assigning false only clears guide, and
+            // never downgrades noSceneAuthoring to full -- a boolean can't express that state, and silently loosening a scope the user deliberately narrowed is this shim's most dangerous failure mode.
             SkillsSurfaceProfile.Current = SurfaceProfileKind.NoSceneAuthoring;
             SkillsGuideMode.Enabled = false;
             Assert.That(SkillsSurfaceProfile.Current, Is.EqualTo(SurfaceProfileKind.NoSceneAuthoring),
@@ -555,7 +555,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(padded, Is.EqualTo(SurfaceProfileKind.NoSceneAuthoring));
         }
 
-        // ---------- dryRun 授权预览 ----------
+        // ---------- dryRun authorization preview ----------
 
         [Test]
         public void DryRun_OnHiddenSkill_ReportsSurfaceExcluded_ButIsItselfNotBlocked()
@@ -566,7 +566,7 @@ namespace UnitySkills.Tests.Core
             var (category, skill, args) = FirstRegisteredWriteProbe();
             var dry = JObject.Parse(SkillRouter.DryRun(skill, args));
 
-            // dryRun 本身从不被档位拦：预览被隐藏的技能，正是 agent 得知「用户要改什么设置」的途径。
+            // dryRun itself is never blocked by the profile: previewing a hidden skill is exactly how an agent learns what setting the user would need to change.
             Assert.That(dry["status"]?.ToString(), Is.EqualTo("dryRun"),
                 "dryRun 不该被档位拦下，它是只读预览。");
             Assert.That(dry["errorCode"], Is.Null);
@@ -594,7 +594,7 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 当前档位下 brief 目录列出的全部技能名。
+        /// All skill names listed in the brief catalogue at the current profile.
         /// </summary>
         private static string[] BriefSkillNames()
         {
@@ -605,35 +605,35 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 测试侧对排除规则的**独立重述**，刻意不调
-        /// <see cref="SkillsSurfaceProfile.IsExcluded(SkillRouter.SkillInfo)"/>。
+        /// A test-side **independent restatement** of the exclusion rules, deliberately not calling
+        /// <see cref="SkillsSurfaceProfile.IsExcluded(SkillRouter.SkillInfo)"/>.
         ///
-        /// 调那个权威重载会让断言与被测实现同源，变成同义反复：某条规则从 IsExcludedCore 里消失时，
-        /// 期望值和实际值一起变小，等式照样成立。这份副本的代价是产品新增第五条规则时它必须同步
-        /// 更新 —— 那声响铃正是我们要的。
+        /// Calling that authoritative overload would make the assertion share a source with the
+        /// implementation under test, turning it tautological: if a rule vanished from IsExcludedCore,
+        /// expected and actual would shrink together and the equality would still hold. This copy costs upkeep -- it must be updated when the product adds a fifth rule -- but that ringing bell is exactly what we want.
         ///
-        /// 独立到规则结构一层为止：类别成员仍取
-        /// <see cref="SkillsSurfaceProfile.HiddenCategories"/>，因为把三十多个类别名抄进测试只会
-        /// 制造无意义的维护摩擦，而类别集合本身的增删是有意为之、不需要测试拦。
+        /// Independence stops at the level of rule structure: category membership still comes from
+        /// <see cref="SkillsSurfaceProfile.HiddenCategories"/>, because copying thirty-odd category names
+        /// into the test would only create pointless maintenance friction, and additions/removals to the category set itself are intentional and don't need a test to catch them.
         ///
-        /// 显式接收 profile 而不读 <c>Current</c>，所以它没有「必须先切档」的时序陷阱。
+        /// Takes profile explicitly instead of reading <c>Current</c>, so it has no "must switch profile first" ordering trap.
         /// </summary>
         private static bool IsExpectedHidden(SkillRouter.SkillInfo skill, SurfaceProfileKind profile)
         {
-            // 规则 0：full 档不隐藏任何东西。
+            // Rule 0: the full tier hides nothing.
             if (profile == SurfaceProfileKind.Full) return false;
-            // 规则 1：只读永不隐藏 —— 档位收回的是动手能力，不是看的能力。
+            // Rule 1: read-only is never hidden -- the profile withdraws the ability to act, not the ability to see.
             if (skill.ReadOnly) return false;
-            // 规则 2：逃生口按名字隐藏（万能钥匙类技能，类别规则表达不了）。
+            // Rule 2: escape hatches are hidden by name (master-key skills that category rules can't express).
             if (AlwaysHiddenSkillNames.Contains(skill.Name, StringComparer.Ordinal)) return true;
-            // 规则 3：类别落在本档的隐藏集里。
+            // Rule 3: the category falls in this tier's hidden set.
             var hidden = SkillsSurfaceProfile.HiddenCategories(profile);
             if (hidden != null && hidden.Contains(skill.Category)) return true;
-            // 规则 4：noSceneAuthoring 额外隐藏任何自称 MutatesScene 的写技能，不论模块。
+            // Rule 4: noSceneAuthoring additionally hides any write skill that declares itself MutatesScene, regardless of module.
             return profile == SurfaceProfileKind.NoSceneAuthoring && skill.MutatesScene;
         }
 
-        /// <summary>给定档位下应被隐藏的技能名，走上面那份独立推述。</summary>
+        /// <summary>Skill names expected to be hidden at the given profile, following the independent restatement above.</summary>
         private static HashSet<string> ExpectedHiddenSkillNames(SurfaceProfileKind profile)
         {
             return new HashSet<string>(

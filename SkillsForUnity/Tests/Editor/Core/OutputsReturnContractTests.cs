@@ -12,32 +12,39 @@ using UnityEngine;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// Outputs 元数据 ↔ 方法体返回形状的红线。
+    /// The red line between Outputs metadata and a method body's actual return shape.
     ///
-    /// <see cref="SkillDocumentationConsistencyTests.UnitySkillMetadata_ShouldBeComplete"/> 对 Outputs
-    /// 只查「非空」，抓不到幽灵键：gameobject_find 曾声明 `list` 而实际返回 `objects`，batch 的
-    /// $ref 据此引用会在真实执行时炸，dryRun 还拦不住（$ref 只做结构性校验，不核对上游真返回了什么）。
+    /// <see cref="SkillDocumentationConsistencyTests.UnitySkillMetadata_ShouldBeComplete"/> only
+    /// checks Outputs for "non-empty" and can't catch ghost keys: gameobject_find once declared
+    /// `list` while actually returning `objects`, and a batch's $ref referencing it based on that
+    /// would blow up at real execution time — dryRun couldn't catch it either ($ref only does
+    /// structural validation, it never checks what the upstream call actually returns).
     ///
-    /// 断言方向是单向的 —— 每个声明的输出键必须出现在返回形状里，反向不要求完备。多返回了未声明
-    /// 的字段不算错（响应本来就带 success/error 之类的公共字段），只有「声明了却根本不返回」才算。
+    /// The assertion direction is one-way — every declared output key must appear in the return
+    /// shape, but the reverse completeness isn't required. Returning extra undeclared fields
+    /// isn't an error (a response naturally carries common fields like success/error); only
+    /// "declared but never actually returned" counts as a failure.
     ///
-    /// 「出现在返回形状里」按任意层级算：嵌在数组元素或子对象里的键同样算数（例如 count/objects
-    /// 里每个 object 的 instanceId）。这条放宽是刻意的 —— 严格只认顶层会把大量按嵌套形状写的
-    /// Outputs 判红，而幽灵键（声明的名字在整棵响应树里根本不存在）照样跑不掉。
+    /// "Appears in the return shape" counts at any nesting level: a key nested inside an array
+    /// element or a sub-object counts too (e.g. the instanceId of each object inside count/objects).
+    /// This relaxation is deliberate — strictly counting only top-level keys would flag a large
+    /// number of Outputs that are legitimately written in a nested shape, while ghost keys
+    /// (a declared name that doesn't exist anywhere in the whole response tree) still get caught.
     /// </summary>
     [TestFixture]
     public class OutputsReturnContractTests
     {
         /// <summary>
-        /// SkillRouter 在 manifest 层自动注入的键（见 SkillRouter.EntityIdParameterName 一族），
-        /// 与方法体返回什么无关，声明与否都不算漂移，直接从比对里剔除。
+        /// Keys SkillRouter auto-injects at the manifest layer (see the SkillRouter.EntityIdParameterName
+        /// family), unrelated to what the method body returns; whether they're declared or not
+        /// never counts as drift, so they're excluded from the comparison outright.
         /// </summary>
         private static readonly HashSet<string> RouterInjectedOutputs = new HashSet<string>(StringComparer.Ordinal)
         {
             "entityId", "parentEntityId", "childEntityId"
         };
 
-        /// <summary>BatchExecutor.Execute 的信封字段，须与 BatchExecutor.cs 的返回保持一致。</summary>
+        /// <summary>The envelope fields of BatchExecutor.Execute; must stay consistent with BatchExecutor.cs's return.</summary>
         private static readonly HashSet<string> BatchEnvelopeKeys = new HashSet<string>(StringComparer.Ordinal)
         {
             "success", "error", "errorCode", "retryStrategy", "suggestedFixes",
@@ -45,11 +52,13 @@ namespace UnitySkills.Tests.Core
         };
 
         /// <summary>
-        /// 静态解析不了的技能豁免表 —— 当前为空，785 个技能全部能解析出返回键。
+        /// The exemption table for skills static parsing can't resolve — currently empty; all
+        /// 785 skills resolve their return keys successfully.
         ///
-        /// 往这里加一条之前先确认它真的是「解析不出来」（测试会单独报「解析不出任何返回键」，
-        /// 与「声明的键不存在」是两条不同的消息），而不是 Outputs 写错了就往这里躲：
-        /// 写错就该改 Outputs。键为 skill 名，值为中文豁免理由。
+        /// Before adding an entry here, confirm it's genuinely "unparseable" (the test reports
+        /// "no return keys could be parsed" as a separate message from "the declared key doesn't
+        /// exist"), rather than hiding a mistaken Outputs entry here: a mistake should be fixed in
+        /// Outputs instead. Keys are skill names; values are the exemption reason, in Chinese.
         /// </summary>
         private static readonly Dictionary<string, string> UnparsableSkills =
             new Dictionary<string, string>(StringComparer.Ordinal)
@@ -84,7 +93,7 @@ namespace UnitySkills.Tests.Core
                     continue;
                 }
 
-                // #if / #else 下的同名双分支（stub 与实现）都会命中，键集合取并集。
+                // Both branches of a same-named #if / #else pair (stub and real implementation) get matched; the key sets are unioned.
                 var actual = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var implementation in implementations)
                 {
@@ -123,27 +132,29 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 解析器自检。上面那条测试「全绿」既可能是真的没漂移，也可能是解析器坏了什么都没解析出来；
-        /// 这里用几个形态各异的已知技能把解析结果钉死，坏掉时先在这里红。
+        /// A self-check for the parser. The above test being "all green" could mean there's
+        /// genuinely no drift, or it could mean the parser is broken and resolved nothing at all;
+        /// this pins the parsed results down against a handful of known skills in varied shapes,
+        /// so a break shows up red here first.
         /// </summary>
         [Test]
         public void ReturnKeyParser_ShouldResolveKnownShapes()
         {
             var index = new MethodIndex(LoadSkillSources());
 
-            // 直接 return new { ... }
+            // A direct return new { ... }
             AssertParsedKeys(index, "GameObjectSkills", "GameObjectCreate",
                 "name", "instanceId", "path", "parent", "position");
 
-            // return BatchExecutor.Execute(...)：信封 + 逐项对象
+            // return BatchExecutor.Execute(...): envelope + per-item object
             AssertParsedKeys(index, "GameObjectSkills", "GameObjectCreateBatch",
                 "totalItems", "successCount", "failCount", "results");
 
-            // Dictionary<string, object> 逐键赋值 + helper 内赋值
+            // Dictionary<string, object> per-key assignment + assignment inside a helper
             AssertParsedKeys(index, "ScriptSkills", "ScriptCreate",
                 "status", "path", "jobId", "className", "namespaceName");
 
-            // 跨文件 helper 里的嵌套键（RenderPipelineSkillsCommon.DescribeVolumeComponent）
+            // Nested keys inside a cross-file helper (RenderPipelineSkillsCommon.DescribeVolumeComponent)
             AssertParsedKeys(index, "PostProcessSkills", "PostProcessGetEffect",
                 "effectType", "parameters");
         }
@@ -168,7 +179,7 @@ namespace UnitySkills.Tests.Core
         }
 
         // ============================================================
-        // 反射侧：Outputs 的权威来源
+        // Reflection side: the authoritative source of Outputs
         // ============================================================
 
         private sealed class CodeSkill
@@ -202,7 +213,7 @@ namespace UnitySkills.Tests.Core
         }
 
         // ============================================================
-        // 源码侧：定位与加载
+        // Source side: locating and loading
         // ============================================================
 
         private static List<SourceFile> LoadSkillSources()
@@ -219,7 +230,7 @@ namespace UnitySkills.Tests.Core
             return files;
         }
 
-        /// <summary>与 SkillDocumentationConsistencyTests.GetDocsRoot 同样的双路径解析：先项目内，后包缓存。</summary>
+        /// <summary>The same dual-path resolution as SkillDocumentationConsistencyTests.GetDocsRoot: in-project first, then the package cache.</summary>
         private static string GetSkillsSourceRoot()
         {
             var projectRoot = Directory.GetParent(Application.dataPath);
@@ -249,11 +260,13 @@ namespace UnitySkills.Tests.Core
         }
 
         // ============================================================
-        // 源码侧：解析器
+        // Source side: the parser
         //
-        // 只做「返回了哪些键」这一件事，因此可以停在词法层：先把注释抹白、把字符串字面量内部
-        // 填成占位符（花括号、逗号、分号都不会再从字符串里漏出来干扰括号配对），然后按括号配对
-        // 找方法体、找 return 表达式、找对象初始化器的成员名。
+        // It does exactly one thing — "which keys got returned" — so it can stop at the lexical
+        // level: first blank out comments, fill string literal interiors with placeholders (so
+        // braces, commas, and semicolons never leak out of a string to confuse bracket matching),
+        // then locate method bodies, return expressions, and object-initializer member names by
+        // matching brackets.
         // ============================================================
 
         private sealed class SourceMethod
@@ -367,7 +380,7 @@ namespace UnitySkills.Tests.Core
                 FindMethods();
             }
 
-            // ---- 词法遮罩 --------------------------------------------------
+            // ---- Lexical masking --------------------------------------------------
 
             private string Mask(string src)
             {
@@ -439,7 +452,7 @@ namespace UnitySkills.Tests.Core
                             }
                         }
 
-                        // 两端引号留着，后面的扫描才能看出字面量边界。
+                        // The quotes on both ends are kept, so later scanning can still see the literal's boundary.
                         buffer[quote] = '"';
                         buffer[j - 1] = '"';
                         i = j;
@@ -511,7 +524,7 @@ namespace UnitySkills.Tests.Core
                     i++;
                 }
 
-                i++; // 开引号
+                i++; // Opening quote
                 while (i < n)
                 {
                     var c = src[i];
@@ -561,7 +574,7 @@ namespace UnitySkills.Tests.Core
                 return i;
             }
 
-            /// <summary>插值洞 `{expr}`：里面还能再嵌字符串，所以要递归着走完。</summary>
+            /// <summary>An interpolation hole `{expr}`: it can nest another string inside, so it must be walked recursively.</summary>
             private static int ParseHole(string src, int i)
             {
                 var n = src.Length;
@@ -627,7 +640,7 @@ namespace UnitySkills.Tests.Core
                 });
             }
 
-            // ---- 结构表 ----------------------------------------------------
+            // ---- Structure table ----------------------------------------------------
 
             private void FindTypes()
             {
@@ -642,7 +655,7 @@ namespace UnitySkills.Tests.Core
                     var semicolon = Masked.IndexOf(';', match.Index + match.Length);
                     if (semicolon >= 0 && semicolon < brace)
                     {
-                        continue; // 前置声明 / 泛型约束里的 class，没有体
+                        continue; // A class in a forward declaration / generic constraint, with no body
                     }
 
                     var end = MatchBracket(Masked, brace, '{', '}');
@@ -709,8 +722,8 @@ namespace UnitySkills.Tests.Core
                         continue;
                     }
 
-                    // 必须长得像声明：本行前面得有访问修饰符，才不会把 `= new Foo() {`
-                    // 或表达式里的调用当成方法。
+                    // Must look like a declaration: this line needs an access modifier before it,
+                    // or `= new Foo() {` or a call inside an expression would get mistaken for a method.
                     var prefixStart = Math.Max(0, match.Index - 200);
                     var prefix = Masked.Substring(prefixStart, match.Index - prefixStart + 1);
                     var newline = prefix.LastIndexOf('\n');
@@ -750,7 +763,7 @@ namespace UnitySkills.Tests.Core
                 }
             }
 
-            // ---- 返回键 ----------------------------------------------------
+            // ---- Return keys ----------------------------------------------------
 
             public HashSet<string> ReturnKeys(SourceMethod method)
             {
@@ -783,7 +796,7 @@ namespace UnitySkills.Tests.Core
                         var position = lo + match.Index;
                         if (InRanges(position, lambdas))
                         {
-                            continue; // lambda 里的 return 不是本方法的返回
+                            continue; // A return inside a lambda isn't this method's own return
                         }
 
                         var start = SkipWhitespace(Masked, lo + match.Index + match.Length, hi);
@@ -809,13 +822,13 @@ namespace UnitySkills.Tests.Core
                         keys.UnionWith(BatchEnvelopeKeys);
                     }
 
-                    // 返回形状里引用到的局部变量自带键（`var r = ...; r["k"] = v; return r;`）
+                    // Keys carried by a local variable referenced in the return shape (`var r = ...; r["k"] = v; return r;`)
                     foreach (Match identifier in IdentifierRegex.Matches(expression))
                     {
                         keys.UnionWith(LocalVariableKeys(method, identifier.Groups[1].Value, depth, seen));
                     }
 
-                    // 委托返回 / 三目分支里的被调方
+                    // The callee of a delegated return / a ternary branch
                     foreach (Match call in CallRegex.Matches(expression))
                     {
                         var callee = call.Groups[1].Value;
@@ -833,7 +846,8 @@ namespace UnitySkills.Tests.Core
 
                 if (spans.Count == 0 && ignoreLambdas && lambdas.Count > 0)
                 {
-                    // 整个方法只在 lambda 里 return（表达式体的 LINQ 之类），退回去收 lambda 的返回。
+                    // The whole method only returns inside a lambda (expression-bodied LINQ and
+                    // the like); fall back to collecting the lambda's return instead.
                     return ReturnKeys(method, depth, Shrink(seen, token), false);
                 }
 
@@ -841,8 +855,9 @@ namespace UnitySkills.Tests.Core
             }
 
             /// <summary>
-            /// [lo, hi) 里所有对象初始化器发出的键。线性扫描天然覆盖嵌套初始化器，
-            /// 所以埋在数组元素里的键也算「响应形状里有」。
+            /// All keys emitted by object initializers within [lo, hi). A linear scan naturally
+            /// covers nested initializers, so a key buried inside an array element still counts
+            /// as "present in the response shape".
             /// </summary>
             private HashSet<string> KeysInSpan(int lo, int hi)
             {
@@ -922,7 +937,7 @@ namespace UnitySkills.Tests.Core
                 return keys;
             }
 
-            /// <summary>`new Dictionary&lt;string, object&gt; { ["k"] = v }` 与 `{ { "k", v } }` 两种写法。</summary>
+            /// <summary>The two forms `new Dictionary&lt;string, object&gt; { ["k"] = v }` and `{ { "k", v } }`.</summary>
             private HashSet<string> DictionaryInitializerKeys(int braceStart)
             {
                 var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -960,7 +975,7 @@ namespace UnitySkills.Tests.Core
                 }
             }
 
-            /// <summary>匿名对象一个成员发出的键：`key = value` 取等号左侧，简写成员取表达式末段标识符。</summary>
+            /// <summary>The key emitted by one anonymous-object member: `key = value` takes the left side of the equals sign; a shorthand member takes the trailing identifier of the expression.</summary>
             private static string MemberKey(string member)
             {
                 var depth = 0;
@@ -1005,14 +1020,14 @@ namespace UnitySkills.Tests.Core
                 if (expression.EndsWith(")", StringComparison.Ordinal) ||
                     expression.EndsWith("]", StringComparison.Ordinal))
                 {
-                    return null; // 调用/索引结果没有成员名，C# 也不允许这么写简写成员
+                    return null; // A call/index result has no member name, and C# doesn't allow writing a shorthand member like this anyway
                 }
 
                 var shorthand = IdentifierTailRegex.Match(expression);
                 return shorthand.Success ? shorthand.Groups[1].Value : null;
             }
 
-            /// <summary>`var x = ...` 这类局部变量携带的键，含 helper 产出的字典与 foreach 合并。</summary>
+            /// <summary>Keys carried by a local variable of the `var x = ...` kind, including dictionaries produced by a helper and foreach merges.</summary>
             private HashSet<string> LocalVariableKeys(SourceMethod method, string variable, int depth, HashSet<string> seen)
             {
                 var keys = new HashSet<string>(StringComparer.Ordinal);
@@ -1034,7 +1049,7 @@ namespace UnitySkills.Tests.Core
                     AddLiteralAt(keys, lo + match.Index + match.Length);
                 }
 
-                // foreach (var kv in SRC) x[kv.Key] = ... —— SRC 的键会并进 x
+                // foreach (var kv in SRC) x[kv.Key] = ... — SRC's keys get merged into x
                 foreach (Match match in ForeachHeadRegex.Matches(body))
                 {
                     var loopVariable = match.Groups[1].Value;
@@ -1073,7 +1088,7 @@ namespace UnitySkills.Tests.Core
                     }
                 }
 
-                // var x = <初始化表达式>;
+                // var x = <initializer expression>;
                 var declaration = new Regex(
                     @"(?<![.\w])(?:var|[A-Za-z_][A-Za-z0-9_.]*(?:\s*<[^<>;{}]*>)?(?:\s*\[\s*\])?)\s+"
                     + escaped + @"\s*=(?!=)");
@@ -1102,7 +1117,7 @@ namespace UnitySkills.Tests.Core
                 return keys;
             }
 
-            /// <summary>按类作用域解析被调方：`Type.M` 只认 Type 的 M，裸 `M` 只认同文件同类的 M。</summary>
+            /// <summary>Resolves a callee scoped to a class: `Type.M` only recognizes Type's M; a bare `M` only recognizes an M in the same class in the same file.</summary>
             private List<SourceMethod> ResolveCall(string callee, string callerOwner)
             {
                 if (Index == null)
@@ -1129,7 +1144,7 @@ namespace UnitySkills.Tests.Core
                     .ToList();
             }
 
-            // ---- 通用扫描工具 ----------------------------------------------
+            // ---- General scanning utilities ----------------------------------------------
 
             private List<KeyValuePair<int, int>> FindLambdaRanges(int lo, int hi)
             {

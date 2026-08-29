@@ -15,11 +15,14 @@ using YooAsset.Editor;
 namespace UnitySkills
 {
     /// <summary>
-    /// YooAsset 编辑器侧技能——构建流水线编排、Collector 配置与构建报告分析。
-    /// 需要 com.tuyoogame.yooasset（2.3.15+）。
+    /// YooAsset editor-side skills — build pipeline orchestration, Collector configuration, and
+    /// build report analysis.
+    /// Requires com.tuyoogame.yooasset (2.3.15+).
     ///
-    /// `yooasset_check_installed` 走反射，未装包也能用；其余技能在缺包时统一返回 NoYooAsset() 提示。
-    /// 所有 API 调用以 YooAsset 2.3.18 的 Editor 源码为准——设计契约见 yooasset-design 指导模块。
+    /// `yooasset_check_installed` uses reflection, so it works even without the package
+    /// installed; every other skill uniformly returns the NoYooAsset() notice when the package is missing.
+    /// Every API call is written against the YooAsset 2.3.18 Editor source — see the
+    /// yooasset-design guidance module for the design contract.
     /// </summary>
     public static class YooAssetSkills
     {
@@ -175,7 +178,7 @@ namespace UnitySkills
 #endif
 
         // ==================================================================================
-        // A. 环境探测（1 个技能）——不依赖 YOO_ASSET 宏，纯反射实现
+        // A. Environment detection (1 skill) — doesn't depend on the YOO_ASSET macro, implemented purely via reflection
         // ==================================================================================
 
         [UnitySkill("yooasset_check_installed",
@@ -232,7 +235,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // B. 构建流水线（5 个技能）
+        // B. Build pipeline (5 skills)
         // ==================================================================================
 
         [UnitySkill("yooasset_build_bundles",
@@ -364,10 +367,12 @@ namespace UnitySkills
 
             if (!result.Success)
             {
-                // router 只有在结果带着字面上非 null 的 "error" 字段时才认它是错误
-                // （见 SkillResultHelper.TryGetError）——光有 success:false 它看不见。
-                // 缺了 "error"/"errorCode" 时这里会被当成普通（非错误）响应放过去，调用方只能在 errorInfo
-                // 里看到裸的 C# 堆栈、没有可分支的 errorCode，与其他所有技能的失败契约都不一致。
+                // The router only recognizes a result as an error when it carries a literal
+                // non-null "error" field (see SkillResultHelper.TryGetError) — success:false alone
+                // is invisible to it. Without "error"/"errorCode" here, this would be let through
+                // as an ordinary (non-error) response, leaving the caller with nothing but a raw
+                // C# stack trace inside errorInfo and no branchable errorCode, inconsistent with
+                // every other skill's failure contract.
                 return new
                 {
                     success = false,
@@ -462,8 +467,9 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Query,
             Tags = new[] { "yooasset", "build", "settings", "query" },
             Outputs = new[] { "packageName", "pipeline", "compression", "fileNameStyle" },
-            // 下面会拒绝（"packageName is required."），但在 schema 生成器眼里，
-            // 没有 CLR 默认值的引用类型参数一律算可选。
+            // This gets rejected below ("packageName is required."), but to the schema
+            // generator's eyes, a reference-type parameter with no CLR default value always
+            // counts as optional.
             RequiresInput = new[] { "packageName" },
             ReadOnly = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
@@ -787,12 +793,14 @@ namespace UnitySkills
 #else
             if (string.IsNullOrEmpty(packageName)) return new { error = "packageName is required." };
 
-            // 当 package 没有任何 group/collector 时，EditorSimulateModeHelper.SimulateBuild
-            // （本作业推进到 ProcessRuntimeValidationJob 里的 InitializeYooAssets 时被调用）
-            // 会在 YooAsset 自己的 collector 构建代码深处崩掉，对外只表现为 stage:failed、progress:15
-            // 上一个不透明的 TargetInvocationException；又因为它是在 RuntimeValidationJobs 而非通用作业库里
-            // 失败的（见 yooasset_runtime_get_validation_result），job_status/job_list 约 1 秒内都看不到。
-            // 在创建任何作业之前就拦住"空 package"这种情形，可把该崩溃变成一条前置的、可据以行动的错误。
+            // When a package has no group/collector at all, EditorSimulateModeHelper.SimulateBuild
+            // (called when this job advances to InitializeYooAssets inside
+            // ProcessRuntimeValidationJob) crashes deep inside YooAsset's own collector-build
+            // code, surfacing externally only as stage:failed, progress:15, and an opaque
+            // TargetInvocationException; and because it fails inside RuntimeValidationJobs
+            // rather than the generic job library (see yooasset_runtime_get_validation_result),
+            // job_status/job_list won't show anything for about a second. Blocking an "empty
+            // package" before any job is created turns this crash into an upfront, actionable error.
             var collectorSetting = AssetBundleCollectorSettingData.Setting;
             var collectorPkg = collectorSetting?.Packages?.FirstOrDefault(p => p.PackageName == packageName);
             if (collectorPkg == null)
@@ -848,7 +856,7 @@ namespace UnitySkills
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Query,
             Tags = new[] { "yooasset", "runtime", "playmode", "validation", "result" },
             Outputs = new[] { "jobId", "status", "stage", "result" },
-            // 下面会拒绝（"jobId is required."）；签名本身无法让 schema 标出这一点。
+            // This gets rejected below ("jobId is required."); the signature alone gives the schema no way to flag this.
             RequiresInput = new[] { "jobId" },
             ReadOnly = true,
             RequiresPackages = new[] { "com.tuyoogame.yooasset" },
@@ -875,18 +883,24 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// <c>yooasset_runtime_get_validation_result</c> 遇到未知 jobId 时的回答，
-        /// 已按 router 第一层错误契约（<c>SkillResultHelper.TryGetErrorContext</c>）封装。
+        /// The response for <c>yooasset_runtime_get_validation_result</c> when it hits an unknown
+        /// jobId, already wrapped per the router's first-layer error contract
+        /// (<c>SkillResultHelper.TryGetErrorContext</c>).
         ///
-        /// <para>若交给 <see cref="SkillErrorClassifier"/> 处理，裸的 "…job 'x' not found" 文本会命中
-        /// TARGET_NOT_FOUND 的 job 分支，回答里给出 <c>job_list</c> 并称"id 撑不过域重载"——这两点在此处都是错的。
-        /// 运行时校验作业存在本模块自己的 <c>RuntimeValidationJobs</c> 字典里，<c>job_list</c>/<c>job_status</c>
-        /// （AsyncJobService 的库）永远看不到它们；而它们确实能撑过域重载：每次变更都会持久化到 EditorPrefs
-        /// （<c>UnitySkills_YooAsset_RuntimeValidationJobs_v1</c>）并在重载后恢复。
-        /// 于是调用方被引去查一张不可能装有该 id 的表，理由还是一条根本不适用的生命周期规则。</para>
+        /// <para>If left to <see cref="SkillErrorClassifier"/>, a bare "…job 'x' not found" text
+        /// would hit the TARGET_NOT_FOUND job branch, giving back <c>job_list</c> and claiming
+        /// "the id doesn't survive a domain reload" — both wrong here. Runtime validation jobs
+        /// live in this module's own <c>RuntimeValidationJobs</c> dictionary; <c>job_list</c>/
+        /// <c>job_status</c> (AsyncJobService's store) can never see them; and they really do
+        /// survive a domain reload — every change is persisted to EditorPrefs
+        /// (<c>UnitySkills_YooAsset_RuntimeValidationJobs_v1</c>) and restored after a reload.
+        /// So the caller would be pointed at a table that could never hold this id, for a
+        /// lifecycle rule that doesn't even apply here.</para>
         ///
-        /// <para>存活的 id 直接列在响应里，而不是另开一个技能：这个私有库没有列举端点，
-        /// 而枚举调用方本就在问的那个字典，比把它指向一个给不出答案的地方更省事。</para>
+        /// <para>Surviving ids are listed directly in the response rather than through a separate
+        /// skill: this private store has no listing endpoint, and enumerating the exact
+        /// dictionary the caller was already asking about is cheaper than pointing them somewhere
+        /// that can't give an answer.</para>
         /// </summary>
         private static object UnknownRuntimeValidationJob(string jobId)
         {
@@ -954,7 +968,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // C. Collector 配置（6 个技能）
+        // C. Collector configuration (6 skills)
         // ==================================================================================
 
         [UnitySkill("yooasset_list_collector_packages",
@@ -1239,9 +1253,11 @@ namespace UnitySkills
             return new
             {
                 saved = true,
-                // "fixed" 是 C# 保留字，字段只能声明成 "fixed_"，转义用的下划线于是直接漏进 JSON 线格式。
-                // 上面的 Outputs 数组本来就（错误地）按不带下划线的 "fixed" 对外宣告，
-                // 所以这次改名不只是修个怪名字，也修掉了文档与实际输出的不一致。
+                // "fixed" is a C# reserved word, so the field could only be declared as "fixed_",
+                // and the escaping underscore leaked straight into the JSON wire format.
+                // The Outputs array above already (incorrectly) advertised it externally without
+                // the underscore, as "fixed", so this rename doesn't just fix a weird name — it
+                // also fixes the inconsistency between the docs and the actual output.
                 fixesApplied = fixedApplied,
                 isDirty = AssetBundleCollectorSettingData.IsDirty
             };
@@ -1480,7 +1496,7 @@ namespace UnitySkills
         }
 
         // ==================================================================================
-        // D. 构建报告分析（4 个技能）
+        // D. Build report analysis (4 skills)
         // ==================================================================================
 
         [UnitySkill("yooasset_load_build_report",
@@ -2096,11 +2112,13 @@ namespace UnitySkills
                 }
                 catch (Exception ex)
                 {
-                    // YooAsset 自己的构建/collector 代码在反射调用中失败时，到这里表现为
-                    // System.Reflection.TargetInvocationException，其 Message 只是那句泛泛的
-                    // "Exception has been thrown by the target of an invocation."，真正的原因在 InnerException。
-                    // 这里剥开一层，好让 FailRuntimeValidationJob 的错误文本（作业失败原因的唯一可见处，
-                    // job_status/job_list 压根看不到这些作业）说出调用方能据以行动的内容。
+                    // When YooAsset's own build/collector code fails inside a reflection call,
+                    // this surfaces as a System.Reflection.TargetInvocationException, whose
+                    // Message is just the generic "Exception has been thrown by the target of an
+                    // invocation." — the real reason is in InnerException.
+                    // Unwrapping one layer here lets FailRuntimeValidationJob's error text (the
+                    // only place a job's failure reason is visible, since job_status/job_list
+                    // can't see these jobs at all) say something the caller can act on.
                     var innermost = ex;
                     while (innermost.InnerException != null)
                         innermost = innermost.InnerException;
@@ -2123,7 +2141,8 @@ namespace UnitySkills
                 job.Progress = 5;
                 if (!EditorApplication.isPlaying)
                 {
-                    // 若上一次域重载中已尝试进入 Play Mode 且明显没进去，就直接失败，不要无限循环。
+                    // If a previous domain reload already attempted to enter Play Mode and
+                    // evidently didn't, fail outright rather than looping forever.
                     if (job.StartedPlayMode)
                     {
                         FailRuntimeValidationJob(job, "Play Mode did not start after restore; aborting validation.", "PlayModeStartFailed");

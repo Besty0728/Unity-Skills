@@ -33,13 +33,13 @@ namespace UnitySkills
                 return new { error = $"Build target '{buildTarget}' is not supported by this Unity installation. Install its platform module first." };
 
             if (!TryResolveScenes(scenes, out var resolvedScenes, out var scenesError))
-                // TryResolveScenes 只在"没有场景可构建"这一种情况下返回空的 resolvedScenes；
-                // 一旦解析出场景（非空），后续逐场景校验失败仍保留这个非空列表。靠这一点就能
-                // 区分两条失败分支，不必去解析 scenesError 的文本。
-                // 空列表那条的消息（"...has no enabled scenes"）在 SkillErrorClassifier 的
-                // MissingOnTargetPattern 看来像 "GameObject has no Rigidbody"，会被误判成
-                // TARGET_NOT_FOUND 并把调用方指向 gameobject_find/scene_get_hierarchy——
-                // 对构建设置问题毫无意义。显式声明 errorCode/suggestedFixes 即可跳过该启发式。
+                // TryResolveScenes only returns an empty resolvedScenes for the single case of
+                // "no scenes to build"; once scenes are resolved (non-empty), a subsequent per-scene
+                // validation failure still leaves that non-empty list intact. That's enough to distinguish
+                // the two failure branches without parsing scenesError's text.
+                // The empty-list message ("...has no enabled scenes") looks, to SkillErrorClassifier's
+                // MissingOnTargetPattern, like "GameObject has no Rigidbody", and would be misclassified as
+                // TARGET_NOT_FOUND, pointing the caller at gameobject_find/scene_get_hierarchy -- meaningless for a build-settings problem. Declaring errorCode/suggestedFixes explicitly skips that heuristic.
                 return resolvedScenes.Length == 0 ? (object)NoScenesConfigured() : new { error = scenesError };
             if (!TryResolveOutputPath(outputPath, buildTarget, overwrite, out var resolvedOutput, out var outputError))
                 return new { error = outputError };

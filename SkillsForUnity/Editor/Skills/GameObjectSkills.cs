@@ -7,8 +7,8 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// GameObject 管理技能：创建、修改、删除、查找。
-    /// 支持按 name、entityId、旧版 instanceId 或 path 定位。
+    /// GameObject management skills: create, modify, delete, find.
+    /// Supports locating by name, entityId, legacy instanceId, or path.
     /// </summary>
     public static class GameObjectSkills
     {
@@ -25,13 +25,13 @@ namespace UnitySkills
                 GameObject go;
                 string primitiveType = item.primitiveType;
 
-                // "Empty"、"" 或 null 都表示创建空 GameObject。
+                // "Empty", "", or null all mean create an empty GameObject.
                 if (string.IsNullOrEmpty(primitiveType) ||
                     primitiveType.Equals("Empty", System.StringComparison.OrdinalIgnoreCase) ||
                     primitiveType.Equals("None", System.StringComparison.OrdinalIgnoreCase))
                 {
                     go = new GameObject(item.name);
-                    primitiveType = null; // 归一为 null，供下游元数据与工作流追踪使用。
+                    primitiveType = null; // Normalized to null, for downstream metadata and workflow tracking.
                 }
                 else if (System.Enum.TryParse<PrimitiveType>(primitiveType, true, out var pt))
                 {
@@ -93,17 +93,18 @@ namespace UnitySkills
         [UnitySkill("gameobject_create", "Create a new GameObject. primitiveType: Cube, Sphere, Capsule, Cylinder, Plane, Quad, or Empty/null for empty object",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Create,
             Tags = new[] { "primitive", "empty", "hierarchy" },
-            // 这里列的必须是响应真正带的键。写 "gameObject" 是错的——那是 RequiresInput 的
-            // token 名，不是本技能返回的键，会让按 Outputs 做规划的 agent 等到一个永不出现的字段。
-            // 两种写法都不影响链式调用：规划器是从响应里的 name/path/instanceId/entityId
-            // 满足 "gameObject" token 的，从不读 Outputs 里的字面量。
+            // What's listed here must be keys the response actually carries. Writing "gameObject" is wrong —
+            // that's the RequiresInput token name, not a key this skill returns, and it would leave an agent
+            // planning off Outputs waiting on a field that never shows up.
+            // Neither spelling affects chaining: the planner satisfies the "gameObject" token from
+            // name/path/instanceId/entityId in the response, and never reads the literal from Outputs.
             Outputs = new[] { "name", "entityId", "instanceId", "path", "parent", "position" },
             TracksWorkflow = true,
             MutatesScene = true, RiskLevel = "medium")]
         public static object GameObjectCreate(string name, string primitiveType = null, float x = 0, float y = 0, float z = 0,
             string parentName = null, int parentInstanceId = 0, string parentPath = null, string parentEntityId = null)
         {
-            // 先解析父对象，父路径有误时在创建对象之前就失败。
+            // Resolve the parent object first, so a bad parent path fails before the object is created.
             GameObject parentGo = null;
             if (!string.IsNullOrEmpty(parentEntityId) || !string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
             {
@@ -114,13 +115,13 @@ namespace UnitySkills
 
             GameObject go;
 
-            // "Empty"、"" 或 null 都表示创建空 GameObject。
+            // "Empty", "", or null all mean create an empty GameObject.
             if (string.IsNullOrEmpty(primitiveType) ||
                 primitiveType.Equals("Empty", System.StringComparison.OrdinalIgnoreCase) ||
                 primitiveType.Equals("None", System.StringComparison.OrdinalIgnoreCase))
             {
                 go = new GameObject(name);
-                primitiveType = null; // 归一为 null，供下游元数据与工作流追踪使用。
+                primitiveType = null; // Normalized to null, for downstream metadata and workflow tracking.
             }
             else if (System.Enum.TryParse<PrimitiveType>(primitiveType, true, out var pt))
             {
@@ -294,19 +295,20 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object GameObjectFind(string name = null, bool useRegex = false, string tag = null, string layer = null, string component = null, int limit = 50)
         {
-            // TagManager 里没注册的标签会让 GameObject.FindGameObjectsWithTag 抛
-            // UnityException，因此必须在入口拒掉，不能让它走到那次调用变成未处理异常。
+            // A tag that isn't registered in TagManager makes GameObject.FindGameObjectsWithTag throw
+            // UnityException, so this must be rejected at the entry point rather than letting that call
+            // become an unhandled exception.
             if (!string.IsNullOrEmpty(tag) && !IsTagDefined(tag))
                 return SkillParamUtil.InvalidValueError(tag, "tag", InternalEditorUtility.tags);
 
-            // 给了 tag 就先用 FindGameObjectsWithTag 缩小范围（更快），后面仍要继续过滤。
+            // If a tag is given, narrow the scope first with FindGameObjectsWithTag (faster); filtering continues below regardless.
             IEnumerable<GameObject> results;
             if (!string.IsNullOrEmpty(tag))
                 results = GameObject.FindGameObjectsWithTag(tag);
             else
                 results = GameObjectFinder.GetSceneObjects();
 
-            // 按名过滤（正则或包含）。
+            // Filter by name (regex or contains).
             if (!string.IsNullOrEmpty(name))
             {
                 if (useRegex)
@@ -320,7 +322,7 @@ namespace UnitySkills
                 }
             }
             
-            // 再按标签复核一遍，防止前面走的是回退路径。
+            // Re-check the tag again, in case the earlier path took the fallback branch.
             if (!string.IsNullOrEmpty(tag))
                 results = results.Where(go => go.CompareTag(tag));
                 
@@ -331,7 +333,7 @@ namespace UnitySkills
                     results = results.Where(go => go.layer == layerId);
             }
 
-            // 按组件类型过滤。
+            // Filter by component type.
             if (!string.IsNullOrEmpty(component))
             {
                 var compType = ComponentSkills.FindComponentType(component);
@@ -362,13 +364,13 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object GameObjectSetTransform(
             string name = null, int instanceId = 0, string path = null,
-            // 世界变换（3D 对象）
+            // World transform (3D objects)
             float? posX = null, float? posY = null, float? posZ = null,
             float? rotX = null, float? rotY = null, float? rotZ = null,
             float? scaleX = null, float? scaleY = null, float? scaleZ = null,
-            // 本地变换（3D 与 UI 通用）
+            // Local transform (shared by 3D and UI)
             float? localPosX = null, float? localPosY = null, float? localPosZ = null,
-            // RectTransform 专有（UI）
+            // RectTransform-specific (UI)
             float? anchoredPosX = null, float? anchoredPosY = null,
             float? anchorMinX = null, float? anchorMinY = null,
             float? anchorMaxX = null, float? anchorMaxY = null,
@@ -395,7 +397,7 @@ namespace UnitySkills
             if (TryMergeVector3(scaleX, scaleY, scaleZ, go.transform.localScale, out var newScale))
                 go.transform.localScale = newScale;
 
-            // RectTransform 专有属性。
+            // RectTransform-specific properties.
             if (isUI)
             {
                 if (TryMergeVector2(anchoredPosX, anchoredPosY, rt.anchoredPosition, out var newAnchoredPos))
@@ -409,7 +411,7 @@ namespace UnitySkills
                 if (TryMergeVector2(sizeDeltaX, sizeDeltaY, rt.sizeDelta, out var newSizeDelta))
                     rt.sizeDelta = newSizeDelta;
 
-                // width/height 是 sizeDelta 的便捷写法。
+                // width/height are convenience shorthand for sizeDelta.
                 if (width.HasValue || height.HasValue)
                 {
                     rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width ?? rt.rect.width);
@@ -452,8 +454,8 @@ namespace UnitySkills
         [UnitySkill("gameobject_set_transform_batch", "Set transform properties for multiple objects (Efficient). items: JSON array of {name, instanceId, path, entityId, posX/Y/Z, rotX/Y/Z, scaleX/Y/Z, localPosX/Y/Z, anchoredPosX/Y, anchorMinX/Y, anchorMaxX/Y, pivotX/Y, sizeDeltaX/Y, width, height}",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "transform", "position", "rotation", "scale", "batch" },
-            // 只列外层信封的键，逐项回显在 results[] 里面。在这里声明 entityId
-            // 会让链式规划器误以为本技能能产出顶层 entityId。
+            // Only list the outer envelope's keys, echoed per item inside results[]. Declaring entityId
+            // here would mislead a chaining planner into thinking this skill produces a top-level entityId.
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
@@ -498,8 +500,8 @@ namespace UnitySkills
 
                     EditorUtility.SetDirty(rt);
 
-                    // 回显本次调用能写的全部字段，与 gameobject_set_transform 的两种响应形状对齐。
-                    // pos 是历史遗留字段名，保持不变。
+                    // Echo back every field this call can write, matching gameobject_set_transform's two response shapes.
+                    // pos is a legacy field name, kept as-is.
                     return new
                     {
                         success = true,
@@ -540,7 +542,7 @@ namespace UnitySkills
             public int instanceId { get; set; }
             public string path { get; set; }
 
-            // 世界变换
+            // World transform
             public float? posX { get; set; }
             public float? posY { get; set; }
             public float? posZ { get; set; }
@@ -551,7 +553,7 @@ namespace UnitySkills
             public float? scaleY { get; set; }
             public float? scaleZ { get; set; }
 
-            // 本地变换
+            // Local transform
             public float? localPosX { get; set; }
             public float? localPosY { get; set; }
             public float? localPosZ { get; set; }
@@ -872,9 +874,9 @@ namespace UnitySkills
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                 if (error != null) return new { error = "Object not found", target = item.name ?? item.path ?? item.entityId };
 
-                // 给 go.tag 赋一个未注册的标签在编辑器里会静默失败（赋值等于空操作，
-                // 对象保持原标签），也不抛异常，所以标签拼错的条目必须显式拒绝，
-                // 不能报 success:true。
+                // Assigning an unregistered tag to go.tag fails silently in the editor (the assignment
+                // is a no-op, the object keeps its original tag) without throwing, so an entry with a
+                // misspelled tag must be explicitly rejected rather than reported as success:true.
                 string target = item.name ?? item.path ?? item.entityId;
                 if (!IsTagDefined(item.tag))
                     return SkillParamUtil.InvalidValueError(item.tag, "tag", InternalEditorUtility.tags, target);
@@ -887,10 +889,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 判断 <paramref name="tag"/> 是否已在 TagManager 中注册。未注册的标签会让
-        /// GameObject.tag 的 setter 与 GameObject.FindGameObjectsWithTag 双双失败——
-        /// 前者静默（不抛异常也不生效），后者抛 UnityException——所以任何标签写入
-        /// 或按标签过滤的读取都必须先过这一关，而不是撞上去才发现。
+        /// Determines whether <paramref name="tag"/> is already registered in TagManager. An unregistered
+        /// tag makes both GameObject.tag's setter and GameObject.FindGameObjectsWithTag fail — the former
+        /// silently (no throw, no effect), the latter by throwing UnityException — so any tag write
+        /// or tag-filtered read must pass this check first, rather than discovering the problem on impact.
         /// </summary>
         private static bool IsTagDefined(string tag)
         {

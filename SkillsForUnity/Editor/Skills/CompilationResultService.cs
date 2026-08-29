@@ -8,31 +8,31 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// 记录最近一次脚本编译的结果，使 AI 客户端在 REST 服务从编译成功引发的域重载中恢复后，
-    /// 仍能追问"我上次改的脚本编译过了吗"。
+    /// Records the outcome of the most recent script compilation, so an AI client can still ask
+    /// "did my last script edit compile" after the REST service recovers from the domain reload triggered by a successful compilation.
     ///
-    /// 线程模型：CompilationPipeline 的所有事件都派发在主线程，唯一的读取方
-    /// （SkillsHttpServer.ProcessJob）也在主线程，因此无需加锁。
+    /// Threading model: every CompilationPipeline event is dispatched on the main thread, and the
+    /// only reader (SkillsHttpServer.ProcessJob) also runs on the main thread, so no locking is needed.
     ///
-    /// 持久化：完成的结果存进 SessionState——它能跨域重载存活、编辑器关闭时清空，
-    /// 正是我们要的生命周期。另有静态字段作镜像；重载后该字段为空，读取时惰性恢复。
+    /// Persistence: the completed result is stored in SessionState -- it survives domain reloads
+    /// and is cleared on editor shutdown, which is exactly the lifetime we want. A static field mirrors it; after a reload that field is empty and gets lazily restored on read.
     /// </summary>
     [InitializeOnLoad]
     public static class CompilationResultService
     {
         private const string SessionKey = "UnitySkills_LastCompilationResult";
 
-        // 载荷上限：异常大量报错时保证响应体有界。计数字段仍是真实总数，
-        // 数组真被截断时由 truncated 标记。
+        // Payload cap: bounds the response body when an unusually large number of errors occurs.
+        // The count fields still reflect the true total; the `truncated` flag signals when the arrays were actually cut.
         private const int MaxErrors = 200;
         private const int MaxWarnings = 50;
 
-        // 当前编译周期的累积中间态（仅主线程访问）。
+        // Accumulated intermediate state for the current compilation cycle (main-thread access only).
         private static DateTime _startedUtc;
         private static readonly List<CompileMessageEntry> _errors = new List<CompileMessageEntry>();
         private static readonly List<CompileMessageEntry> _warnings = new List<CompileMessageEntry>();
 
-        // 上次完成结果的 JSON 缓存；null / 空表示尚未加载或本会话没有编译过。
+        // JSON cache of the last completed result; null/empty means not yet loaded or no compilation has finished this session.
         private static string _cachedResultJson;
 
         static CompilationResultService()
@@ -43,8 +43,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 上次编译完成结果的 JSON；本编辑器会话内没有编译完成过则返回 null。
-        /// 域重载后会从 SessionState 惰性恢复。其他端点（如后续的事件通道）也可复用。
+        /// JSON of the last completed compilation result; returns null if no compilation has finished during this editor session. Restored lazily from SessionState after a
+        /// domain reload. Other endpoints (e.g. a future event channel) may reuse it too.
         /// </summary>
         public static string GetLastCompilationJson()
         {
@@ -81,7 +81,7 @@ namespace UnitySkills
                     _errors.Add(new CompileMessageEntry(m, assembly));
                 else if (m.type == CompilerMessageType.Warning)
                     _warnings.Add(new CompileMessageEntry(m, assembly));
-                // CompilerMessageType.Info 刻意忽略。
+                // CompilerMessageType.Info is deliberately ignored.
             }
         }
 
@@ -91,8 +91,8 @@ namespace UnitySkills
                 ? 0L
                 : Math.Max(0L, (long)(DateTime.UtcNow - _startedUtc).TotalMilliseconds);
 
-            // 下面的序列化是同步读取，早于下一个编译周期清空这两个列表，
-            // 所以直接交出活列表（或其截断视图）是安全的。
+            // The serialization below is a synchronous read that happens before these two lists are cleared
+            // for the next compilation cycle, so handing out the live lists (or a truncated view of them) is safe.
             var errors = _errors.Count > MaxErrors ? _errors.GetRange(0, MaxErrors) : _errors;
             var warnings = _warnings.Count > MaxWarnings ? _warnings.GetRange(0, MaxWarnings) : _warnings;
 
@@ -115,8 +115,8 @@ namespace UnitySkills
                 $"Compilation finished - success={result.success}, errors={result.errorCount}, " +
                 $"warnings={result.warningCount}, {durationMs}ms");
 
-            // 精简的事件载荷：头几条错误足以让 agent 拿到 file:line，
-            // 完整列表留给 GET /compile/status。
+            // Trimmed event payload: the first few errors are enough for the agent to get
+            // file:line; the full list is left to GET /compile/status.
             var firstErrors = new List<object>(Math.Min(5, _errors.Count));
             for (int i = 0; i < _errors.Count && i < 5; i++)
                 firstErrors.Add(new { _errors[i].file, _errors[i].line, _errors[i].message });
@@ -131,7 +131,7 @@ namespace UnitySkills
             });
         }
 
-        /// <summary>一条编译器诊断信息，已拍平为便于传输的形状。</summary>
+        /// <summary>A single compiler diagnostic, flattened into a transport-friendly shape.</summary>
         private sealed class CompileMessageEntry
         {
             public string file;

@@ -6,8 +6,8 @@ using NUnit.Framework;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 覆盖 BatchExecutor 的逐项错误隔离与入参校验契约。
-    /// BatchExecutor 是无状态泛型辅助类（不碰 EditorPrefs、文件、场景状态），故本夹具无需 SetUp/TearDown。
+    /// Covers BatchExecutor's per-item error isolation and parameter validation contract.
+    /// BatchExecutor is a stateless generic helper (touches no EditorPrefs, files, or scene state), so this fixture needs no SetUp/TearDown.
     /// </summary>
     [TestFixture]
     public class BatchExecutorTests

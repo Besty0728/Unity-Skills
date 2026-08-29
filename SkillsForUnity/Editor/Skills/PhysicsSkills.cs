@@ -6,15 +6,16 @@ using Newtonsoft.Json;
 namespace UnitySkills
 {
     /// <summary>
-    /// 物理技能：射线检测、重叠检测、重力设置。
+    /// Physics skills: raycasting, overlap detection, gravity settings.
     /// </summary>
     public static class PhysicsSkills
     {
         private sealed class GravityValue { public float x; public float y; public float z; }
 
         /// <summary>
-        /// 注册 getter/setter，使物理设置的修改可经 workflow undo/redo 回滚。
-        /// 层碰撞键按需注册（其处理器闭包捕获具体的层对）。在域加载时运行。
+        /// Registers getters/setters so physics setting changes can be rolled back through
+        /// workflow undo/redo. Layer collision keys are registered as needed (their handler
+        /// closures capture the specific layer pair). Runs on domain load.
         /// </summary>
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
@@ -29,20 +30,22 @@ namespace UnitySkills
                     return true;
                 });
 
-            // 为每个层对都注册 restorer：域重载会清空内存注册表，
-            // 不预注册则重载后碰撞矩阵改动的 undo/redo 会失效。
+            // Register a restorer for every layer pair: a domain reload clears the in-memory
+            // registry, so without pre-registration, undo/redo of collision matrix changes made
+            // after a reload would stop working.
             for (int a = 0; a < 32; a++)
                 for (int b = a; b < 32; b++)
                     EnsureLayerCollisionRestorer(a, b);
         }
 
-        /// <summary>0-31 之外的层索引不是真实的 Unity 层；Physics.GetIgnoreLayerCollision 与
-        /// IgnoreLayerCollision 接受任意 int，不报错，而是静默地对一个无意义的层对进行操作或汇报。</summary>
+        /// <summary>A layer index outside 0-31 is not a real Unity layer; Physics.GetIgnoreLayerCollision
+        /// and IgnoreLayerCollision accept any int without erroring — they silently operate on or
+        /// report a meaningless layer pair.</summary>
         private static object InvalidLayerIndexError(int value, string paramName) =>
             SkillParamUtil.InvalidValueError(value.ToString(), paramName, new[] { "0-31" });
 
-        /// <summary>负的半径/半长不是合法的投射或重叠形状；Physics.OverlapSphere、SphereCast、
-        /// OverlapBox、BoxCast 都会照单全收而不报错，只是返回"没有命中"。</summary>
+        /// <summary>A negative radius/half-extent is not a valid cast or overlap shape; Physics.OverlapSphere,
+        /// SphereCast, OverlapBox, and BoxCast all accept it without erroring — they just return "no hit".</summary>
         private static object InvalidNonNegativeError(float value, string paramName) =>
             SkillParamUtil.InvalidValueError(SkillParamUtil.FormatFloatR(value), paramName, new[] { ">= 0" });
 
@@ -77,7 +80,7 @@ namespace UnitySkills
             float originX, float originY, float originZ,
             float dirX, float dirY, float dirZ,
             float maxDistance = 1000f,
-            int layerMask = -1 // 默认所有层
+            int layerMask = -1 // Default: all layers
         )
         {
             var origin = new Vector3(originX, originY, originZ);
@@ -161,7 +164,7 @@ namespace UnitySkills
                     JsonConvert.SerializeObject(new GravityValue { x = Physics.gravity.x, y = Physics.gravity.y, z = Physics.gravity.z }),
                     "Physics: Gravity");
 
-            // 经 DynamicsManager 资产记录，才能支持 Undo
+            // Recorded via the DynamicsManager asset, so Undo can support it
             var assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/DynamicsManager.asset");
             if (assets != null && assets.Length > 0)
             {
@@ -327,11 +330,13 @@ namespace UnitySkills
             };
             var path = System.IO.Path.Combine(savePath, name + ".physicMaterial");
             path = AssetDatabase.GenerateUniqueAssetPath(path);
-            // 不能用 System.IO.Directory.CreateDirectory：它只动文件系统，AssetDatabase 在 Refresh
-            // 之前不知道新文件夹的存在，于是父目录尚未成为*已知*资产文件夹的 savePath 会让
-            // AssetDatabase.CreateAsset 抛出原始 ArgumentException（"Invalid path"）。
-            // EnsureAssetFolderExists 改用 AssetDatabase.CreateFolder 逐级创建，创建即登记——
-            // 与 material_create 出于同样原因采用的是同一套做法。
+            // Cannot use System.IO.Directory.CreateDirectory: it only touches the filesystem, and
+            // AssetDatabase doesn't know the new folder exists until a Refresh, so with the
+            // parent directory not yet a *known* asset folder, savePath would make
+            // AssetDatabase.CreateAsset throw a raw ArgumentException ("Invalid path").
+            // EnsureAssetFolderExists instead creates folders level by level with
+            // AssetDatabase.CreateFolder, registering each as it's created — the same approach
+            // material_create uses, for the same reason.
             RenderPipelineSkillsCommon.EnsureAssetFolderExists(path);
             AssetDatabase.CreateAsset(mat, path);
             AssetDatabase.SaveAssets();

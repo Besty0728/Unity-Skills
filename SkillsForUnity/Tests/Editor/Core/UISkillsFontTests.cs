@@ -42,14 +42,14 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 图集里每个字符都必须独占一个 glyph。
+        /// Every character in the atlas must exclusively own one glyph.
         ///
-        /// 这类故障 HasCharacter 是看不见的：增量补字如果追加了字符记录却复用了 glyph 索引，
-        /// 所有 HasCharacter 检查照样全过，而面板会把一个字符的字形画到另一个字符的位置上——
-        /// 受影响文本被彻底画错却无声无息，现有断言一个都抓不到。两个字符共用一个 glyph 索引
-        /// 就是这个故障的数值形态。
+        /// HasCharacter can't see this class of failure: if incremental glyph top-up appends a character record but reuses a glyph index,
+        /// every HasCharacter check still passes, yet the panel will render one character's glyph shape at another character's position —
+        /// affected text renders completely wrong with no error raised, and none of the existing assertions catch it. Two characters sharing one glyph index
+        /// is the numeric signature of this failure.
         ///
-        /// 用计数而非枚举字符：图集会随每条新 UI 文案增长，所以断言的对象是"双射本身"而不是某个尺寸。
+        /// Assert by count, not by enumerating characters: the atlas grows with every new piece of UI copy, so what we assert is "the bijection itself", not some particular size.
         /// </summary>
         [Test]
         public void FontAsset_MapsEveryCharacterToItsOwnGlyph()

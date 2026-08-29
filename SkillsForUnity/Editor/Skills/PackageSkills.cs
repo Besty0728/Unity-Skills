@@ -5,7 +5,7 @@ using System.Linq;
 namespace UnitySkills
 {
     /// <summary>
-    /// 包管理技能 - AI 可调用的 Package Manager 操作
+    /// Package management skills - AI-callable Package Manager operations
     /// </summary>
     public static class PackageSkills
     {
@@ -40,9 +40,9 @@ namespace UnitySkills
 
             var installed = PackageManagerHelper.IsPackageInstalled(packageId);
             var version = PackageManagerHelper.GetInstalledVersion(packageId);
-            // 仅凭 "installed:true" 无法区分真正的 manifest 依赖与"因其他已安装包仍需要它
-            // 而残留"的包（后者 package_remove 现在报告为 "retained transitively"，
-            // 而不是笼统的失败）。
+            // "installed:true" alone can't distinguish a genuine manifest dependency from a package
+            // that only remains because another installed package still needs it (the latter case
+            // is now reported by package_remove as "retained transitively" rather than a bare failure).
             bool? isDirectDependency = installed && PackageManagerHelper.InstalledPackages.TryGetValue(packageId, out var info)
                 ? info.isDirectDependency
                 : (bool?)null;
@@ -89,7 +89,7 @@ namespace UnitySkills
                 jobId = job.jobId,
                 message = $"Installing {packageId}" + (version != null ? $"@{version}" : "") + "... Use job_status/job_wait for progress.",
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
-                    $"正在安装包 {packageId}。包导入和程序集刷新期间，REST 服务可能短暂不可用。",
+                    $"Installing package {packageId}. The REST service may be briefly unavailable while the package imports and assemblies reload.",
                     alwaysInclude: true,
                     retryAfterSeconds: 8)
             };
@@ -138,7 +138,7 @@ namespace UnitySkills
                 jobId = job.jobId,
                 message = $"Removing {packageId}... Use job_status/job_wait for progress.",
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
-                    $"正在移除包 {packageId}。包导入和程序集刷新期间，REST 服务可能短暂不可用。",
+                    $"Removing package {packageId}. The REST service may be briefly unavailable while the package imports and assemblies reload.",
                     alwaysInclude: true,
                     retryAfterSeconds: 8)
             };
@@ -230,7 +230,7 @@ namespace UnitySkills
                 jobId = job.jobId,
                 message = $"Installing Cinemachine {targetVersion}{depMsg}... Use job_status/job_wait for progress.",
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
-                    $"正在安装 Cinemachine {targetVersion}{depMsg}。包导入和程序集刷新期间，REST 服务可能短暂不可用。",
+                    $"Installing Cinemachine {targetVersion}{depMsg}. The REST service may be briefly unavailable while the package imports and assemblies reload.",
                     alwaysInclude: true,
                     retryAfterSeconds: 8)
             };
@@ -279,7 +279,7 @@ namespace UnitySkills
                 jobId = job.jobId,
                 message = $"Installing Splines {targetVersion}" + (currentVersion != null ? $" (upgrading from {currentVersion})" : "") + "... Use job_status/job_wait for progress.",
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
-                    $"正在安装 Splines {targetVersion}。包导入和程序集刷新期间，REST 服务可能短暂不可用。",
+                    $"Installing Splines {targetVersion}. The REST service may be briefly unavailable while the package imports and assemblies reload.",
                     alwaysInclude: true,
                     retryAfterSeconds: 8)
             };

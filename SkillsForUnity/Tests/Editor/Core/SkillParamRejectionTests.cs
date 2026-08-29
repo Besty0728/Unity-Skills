@@ -13,20 +13,23 @@ using UnityEngine;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// <see cref="SkillParamUtil"/>：枚举拒绝契约与可往返的格式化函数。
+    /// <see cref="SkillParamUtil"/>: the enum rejection contract and its round-trippable formatters.
     ///
-    /// <para>本文件要拦的回归是"静默成功"。历史写法是 <c>if (Enum.TryParse(v, true, out var e)) target = e;</c>
-    /// ——没有 else 分支——于是拼错的值被直接丢弃，而 skill 依然回 <c>success:true</c>，同一次调用里的
-    /// *其它*参数还已经写进去了。调用方无从察觉：响应说调用成功了，而它悄悄没设的那个属性，
-    /// 恰恰是调用方真正在意的那个。</para>
+    /// <para>The regression this file guards against is "silent success". The old code pattern was
+    /// <c>if (Enum.TryParse(v, true, out var e)) target = e;</c> — with no else branch — so a misspelled
+    /// value was simply dropped while the skill still returned <c>success:true</c>, and the call's *other*
+    /// parameters had already been written. The caller has no way to notice: the response says the call
+    /// succeeded, and the one property it quietly failed to set is exactly the one the caller actually cared about.</para>
     ///
-    /// <para>所以三条互相独立的性质各有自己的断言，因为它们会各自单独失效：调用确实被拒
-    /// （返回 <c>false</c> + 一个 error 对象）、错误被归类为 <c>SEMANTIC_INVALID</c> 而不是某种会把 agent
-    /// 引去找"不存在的对象"的类型、以及什么都没写进去。只有最后一条能抓住当初那个 bug——
-    /// 一个拒绝了却仍然把同伴参数写进去的实现，只是换了更好的错误文案的同一种数据丢失。</para>
+    /// <para>So the three independent properties each get their own assertion, because each can fail on
+    /// its own: the call is genuinely rejected (returns <c>false</c> + an error object), the error is
+    /// classified as <c>SEMANTIC_INVALID</c> rather than some type that would send the agent off hunting
+    /// for a "nonexistent object", and nothing at all gets written. Only the last one catches the original
+    /// bug — an implementation that rejects the call but still writes sibling parameters is the same data
+    /// loss with a nicer error message.</para>
     ///
-    /// <para>断言落在结构上（<c>errorCode</c>、<c>parameter</c>、<c>validValues</c>），外加路由分类器真正
-    /// 依赖的那一个子串（"Invalid value" 必须打头）。完整措辞不做断言。</para>
+    /// <para>Assertions land on structure (<c>errorCode</c>, <c>parameter</c>, <c>validValues</c>), plus the
+    /// one substring the routing classifier actually depends on ("Invalid value" must lead). The exact wording is not asserted.</para>
     /// </summary>
     [TestFixture]
     public class SkillParamRejectionTests
@@ -39,8 +42,9 @@ namespace UnitySkills.Tests.Core
         {
             _savedMode = SkillsModeManager.CurrentMode;
             _savedProfile = SkillsSurfaceProfile.Current;
-            // 端到端探针会调写类 skill。干净 CI 工程默认是 Auto 模式，而 Optimization/Light 类目
-            // 又会被非 full 档位撤掉，所以两者都显式钉住而非假设。
+            // End-to-end probes call write-category skills. A clean CI project defaults to Auto mode, and
+            // the Optimization/Light categories get revoked under a non-full profile, so both are pinned
+            // explicitly rather than assumed.
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -58,16 +62,18 @@ namespace UnitySkills.Tests.Core
         private static JObject ToJObject(object result) => JObject.Parse(JsonConvert.SerializeObject(result));
 
         /// <summary>
-        /// 普通枚举被拒时应当告知的名字集合：声明的成员减去带 <c>[Obsolete]</c> 的，保持声明顺序。
+        /// The set of names a rejected plain enum should advertise: declared members minus those marked
+        /// <c>[Obsolete]</c>, in declaration order.
         ///
-        /// <para>一律推导、绝不硬编码，因为 Unity 会在版本之间弃用枚举成员——<c>LightType.Area</c> 在
-        /// 6000.x 上是 <c>Rectangle</c> 的过时写法——所以直接用 <see cref="Enum.GetNames"/> 当预期，
-        /// 会变成一条"产品行为正确、却在新版编辑器上变红"的测试。这里排除过时成员的理由与解析器
-        /// 拒绝它们的理由相同：它们是无法表示的值，把其中一个告知出去，等于把 agent 引向一个重试时
-        /// 照样会被拒的名字。</para>
+        /// <para>Always derived, never hardcoded, because Unity deprecates enum members across versions —
+        /// <c>LightType.Area</c> is an obsolete spelling of <c>Rectangle</c> on 6000.x — so using
+        /// <see cref="Enum.GetNames"/> directly as the expectation would turn this into a test that's
+        /// "correct in behavior, yet turns red on a newer editor." The reason obsolete members are excluded
+        /// here is the same reason the parser rejects them: they are unrepresentable values, and
+        /// advertising one would just send the agent toward a name that gets rejected again on retry.</para>
         ///
-        /// <para>仅限普通枚举。<c>[Flags]</c> 枚举的过时名字仍留在词表里，因为它们作为位仍能解析——
-        /// 见下面的 StaticEditorFlags 用例。</para>
+        /// <para>Plain enums only. A <c>[Flags]</c> enum's obsolete names stay in the vocabulary, because
+        /// they still parse as bits — see the StaticEditorFlags case below.</para>
         /// </summary>
         private static string[] LiveEnumNames(Type enumType) =>
             enumType.GetFields(BindingFlags.Public | BindingFlags.Static)
@@ -117,10 +123,11 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// "结论必须打头"规则。.NET 自带的枚举失败文案是 "Requested value 'X' was not found."，
-        /// 而路由对未声明错误是按消息模式分类的，于是这句话里的 not-found 特征词会先抢到判定，
-        /// 把调用方引去调 gameobject_find 找一个从来不是问题所在的对象。消息必须以 "Invalid value"
-        /// 开头，语义类判定才能胜出。
+        /// The "verdict must lead" rule. .NET's own enum-parse failure text is "Requested value 'X' was
+        /// not found.", and the router classifies undeclared errors by message pattern, so the not-found
+        /// signature in that phrase would grab the classification first, sending the caller off to call
+        /// gameobject_find for an object that was never the problem. The message must start with "Invalid
+        /// value" for the semantic-category verdict to win instead.
         /// </summary>
         [Test]
         public void RejectionMessage_LeadsWithInvalidValue_SoItIsNotClassifiedAsNotFound()
@@ -135,9 +142,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// <c>Enum.TryParse</c>还会接受任意整数字面量，包括背后没有成员的那些："99" 传给一个只有
-        /// 3 个成员的枚举会得到 <c>(TEnum)99</c>，随后被写进 Unity 属性，成为任何 inspector 都显示
-        /// 不出来的垃圾值。普通枚举必须拒掉这类输入。
+        /// <c>Enum.TryParse</c> will also accept any integer literal, including ones with no member behind
+        /// them: "99" passed to an enum with only 3 members yields <c>(TEnum)99</c>, which then gets written
+        /// to a Unity property and becomes a garbage value no inspector can display. A plain enum must
+        /// reject input like this.
         /// </summary>
         [Test]
         public void TryParseEnumParam_IntegerLiteralWithNoMember_IsRejected()
@@ -150,8 +158,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void TryParseEnumParam_IntegerLiteralNamingARealMember_IsStillAccepted()
         {
-            // 上面那条拒绝管的是"可表示性"，不是"有没有数字"。落在已声明成员上的整数仍然合法，
-            // 所以用数字形式传真实值的调用方不会被这道守卫打断。
+            // The rejection above is about "representability", not "whether it's a number". An integer that
+            // lands on a declared member is still valid, so a caller sending a real value in numeric form
+            // is not stopped by this guard.
             Assert.That(SkillParamUtil.TryParseEnumParam<LightShadows>(
                     ((int)LightShadows.Hard).ToString(CultureInfo.InvariantCulture), "shadows", out var parsed, out var error),
                 Is.True);
@@ -162,8 +171,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void TryParseEnumParam_FlagsEnum_AcceptsUndeclaredCombination()
         {
-            // [Flags] 枚举天然可以持有并非已声明成员的组合值，所以可表示性守卫不能作用于它们——
-            // 否则一个完全正当的 BatchingStatic|OccluderStatic 会被当成"不是成员"而拒掉。
+            // A [Flags] enum can naturally hold combination values that aren't declared members, so the
+            // representability guard must not apply to them — otherwise a perfectly legitimate
+            // BatchingStatic|OccluderStatic would get rejected as "not a member".
             int combo = (int)(StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccluderStatic);
             Assert.That(SkillParamUtil.TryParseEnumParam<StaticEditorFlags>(
                     combo.ToString(CultureInfo.InvariantCulture), "flags", out var parsed, out var error),
@@ -177,8 +187,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void TryParseOptionalEnum_BlankValue_YieldsNull_NotDefaultMember()
         {
-            // default(LightShadows) 就是 LightShadows.None——一个真实成员、一次真实写入。想表达
-            // "保持当前值"的 setter 必须能区分这两者，这正是本重载返回可空类型的全部理由。
+            // default(LightShadows) is LightShadows.None — a real member, a real write. A setter meant to
+            // express "leave the current value alone" needs to distinguish these two cases, which is the
+            // entire reason this overload returns a nullable type.
             Assert.That(SkillParamUtil.TryParseOptionalEnum<LightShadows>(null, "shadows", out var result, out var error),
                 Is.True);
             Assert.That(error, Is.Null);
@@ -197,8 +208,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void TryParseRequiredEnum_BlankValue_IsMissingParam_NotSemanticInvalid()
         {
-            // 两种不同的调用方错误对应两种不同的修法："你漏了" 与 "你拼错了"。把它们混为一谈，
-            // 就要多花 agent 一次重试。
+            // Two distinct caller mistakes call for two distinct fixes: "you left it out" versus "you
+            // misspelled it". Conflating them costs the agent one extra retry.
             Assert.That(SkillParamUtil.TryParseRequiredEnum<LightType>(null, "lightType", out _, out var error),
                 Is.False, "A create-style skill's blank enum is a caller mistake, not 'leave it alone'.");
 
@@ -221,19 +232,20 @@ namespace UnitySkills.Tests.Core
         // ---------- TryParseFlagsParam ----------
 
         /// <summary>
-        /// "Everything" 指的是调用方仍被允许设置的全部成员——即所有非 <c>[Obsolete]</c> 成员按位或，
-        /// 而不是所有已声明成员的或。
+        /// "Everything" means every member the caller is still allowed to set — i.e. the bitwise OR of
+        /// every non-<c>[Obsolete]</c> member, not the OR of every declared member.
         ///
-        /// <para>这个区分正是该别名存在的意义。一个被弃用的成员可能携带某个现存成员都不占的位，
-        /// 把它折进去，就会让 skill 自己文档化的默认值写入一个调用方无法命名、无法请求、
-        /// 事后也无法按名清除的标记。这里的预期值用反射取而不是写死，因为 Unity 弃用了哪些成员
-        /// 随编辑器版本而异。</para>
+        /// <para>This distinction is the entire reason the alias exists. A deprecated member might carry a
+        /// bit that no live member occupies, and folding it in would make the skill's own documented
+        /// default write a flag the caller can't name, can't request, and can't clear by name afterward.
+        /// The expected value here is taken via reflection rather than hardcoded, because which members
+        /// Unity has deprecated varies by editor version.</para>
         /// </summary>
         [Test]
         public void TryParseFlagsParam_EverythingAlias_IsOrOfEveryLiveMember()
         {
-            // StaticEditorFlags 既没声明 Everything 也没声明 Nothing，于是普通枚举解析会拒掉
-            // optimize_set_static_flags 自己文档化的默认值。
+            // StaticEditorFlags declares neither Everything nor Nothing, so plain enum parsing would reject
+            // optimize_set_static_flags's own documented default.
             Assert.That(SkillParamUtil.TryParseFlagsParam<StaticEditorFlags>("Everything", "flags", out var all, out var error),
                 Is.True, "'Everything' is the skill's documented default — it has to parse.");
             Assert.That(error, Is.Null);
@@ -274,7 +286,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void TryParseFlagsParam_OneBadNameInList_FailsTheWholeValue()
         {
-            // 静默缩小集合就是同一个 bug 的 flags 版本：调用方要三个标记，拿到两个，却被告知成功。
+            // Silently shrinking the set is the flags-shaped version of the same bug: the caller asked for
+            // three flags, got two, and was still told it succeeded.
             Assert.That(SkillParamUtil.TryParseFlagsParam<StaticEditorFlags>(
                     "BatchingStatic,NoSuchFlag", "flags", out _, out var error),
                 Is.False, "One unresolvable part must fail the call, not quietly drop that part.");
@@ -293,11 +306,12 @@ namespace UnitySkills.Tests.Core
                 "The advertised aliases must appear in the vocabulary the error hands back.");
         }
 
-        // ---------- 端到端：整次调用被拒，且什么都没写 ----------
+        // ---------- End-to-end: the whole call is rejected, and nothing gets written ----------
 
         /// <summary>
-        /// 唯一能抓住当初那个 bug 的断言。一个拒绝了却仍然把同伴参数写进去的实现，只是换了更好错误
-        /// 文案的同一种静默数据丢失，所以这里拿活对象来核写入结果，而不是相信响应的说法。
+        /// The only assertion that catches the original bug. An implementation that rejects the call but
+        /// still writes sibling parameters is the same silent partial data loss with a nicer error message,
+        /// so this checks the live object for the actual write result rather than trusting what the response claims.
         /// </summary>
         [Test]
         public void CameraSetProperties_BadEnum_AppliesNothing_IncludingSiblingParameters()
@@ -331,7 +345,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void CameraSetProperties_ValidEnum_IsApplied()
         {
-            // 只有正面用例真的写入了，上面那条反面用例才有意义。
+            // The positive-path case above only matters because this positive counterpart actually writes.
             var go = new GameObject("__acc_cam__", typeof(Camera));
             try
             {
@@ -354,8 +368,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 创建类 skill：拒绝必须发生在 GameObject 被创建之前，否则一个坏值会留下一个半配置好的
-        /// 对象等着调用方去清理。
+        /// Create-category skills: rejection must happen before the GameObject is created, otherwise a bad
+        /// value leaves behind a half-configured object for the caller to clean up.
         /// </summary>
         [Test]
         public void LightCreate_BadEnum_CreatesNoObject()
@@ -398,8 +412,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// [Flags] 场景的端到端用例，用的正是过去会被直接拒掉的那个值：本 skill 文档化的默认值
-        /// "Everything"。
+        /// An end-to-end case for the [Flags] scenario, using exactly the value that used to be outright
+        /// rejected: this skill's own documented default, "Everything".
         /// </summary>
         [Test]
         public void OptimizeSetStaticFlags_EverythingDefault_IsAcceptedAndWritten()
@@ -452,8 +466,9 @@ namespace UnitySkills.Tests.Core
         // ---------- round-trip formatting ----------
 
         /// <summary>
-        /// float 上的 <c>ToString()</c> 既会截断（0.192156866 → "0.1921569"），又会跟随编辑器的区域设置。
-        /// 两者都会产出调用方喂不回来的回显：前者丢精度，后者在调用方解析器要 "0.5" 的地方吐出 "0,5"。
+        /// <c>ToString()</c> on a float both truncates (0.192156866 → "0.1921569") and follows the editor's
+        /// locale. Both produce an echo the caller can't feed back: the former loses precision, the latter
+        /// emits "0,5" where the caller's parser expects "0.5".
         /// </summary>
         [Test]
         public void FormatFloatR_RoundTripsExactly()
@@ -487,9 +502,10 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 区域设置那一半。用逗号作小数点的编辑器区域并不罕见——欧洲大部分地区都是默认如此——
-        /// 在那种设置下不受控的 ToString() 会吐出 "0,5"，而对端任何 JSON 消费者读到它，
-        /// 要么解析失败，要么当成两个元素的列表。
+        /// The locale half of the story. An editor locale that uses a comma as the decimal separator isn't
+        /// rare — most of Europe defaults to it — and under that setting, an uncontrolled ToString() would
+        /// emit "0,5", which any JSON consumer on the other end would either fail to parse or read as a
+        /// two-element list.
         /// </summary>
         [Test]
         public void Formatters_AreCultureInvariant_UnderACommaDecimalLocale()
@@ -516,8 +532,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void FormatColor_AlwaysCarriesFourComponents()
         {
-            // 不带 alpha 的回显正是"alpha 被丢掉"的藏身之处：响应看起来没问题，
-            // 因为调用方本该去核对的那个字段压根不在里面。
+            // An echo without alpha is exactly where "alpha got dropped" hides: the response looks fine,
+            // because the field the caller should have checked simply isn't in it.
             var text = SkillParamUtil.FormatColor(new Color(1f, 0f, 0f, 0.25f));
 
             Assert.That(text.Split(',').Length, Is.EqualTo(4),
@@ -528,8 +544,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void FormatScalarR_BooleansAreLowercaseJsonLiterals()
         {
-            // .NET 的 Boolean.ToString() 给的是 "True"/"False"，既不是合法 JSON，
-            // 也不是调用方回喂这段回显时能解析的东西。
+            // .NET's Boolean.ToString() gives "True"/"False", which is neither valid JSON
+            // nor something the caller's parser can read back when it's fed this echo.
             Assert.That(SkillParamUtil.FormatScalarR(true), Is.EqualTo("true"));
             Assert.That(SkillParamUtil.FormatScalarR(false), Is.EqualTo("false"));
             Assert.That(SkillParamUtil.FormatScalarR(null), Is.EqualTo("null"));
@@ -548,7 +564,7 @@ namespace UnitySkills.Tests.Core
                 "No colon means no members — let it fail as a comma form rather than an empty object.");
         }
 
-        // ---------- component_set_property：JSON 对象形式的 value ----------
+        // ---------- component_set_property: value as a JSON object form ----------
 
         [Test]
         public void ComponentSetProperty_AcceptsVectorJsonObjectForm()
@@ -576,7 +592,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void ComponentSetProperty_AcceptsCommaFormToo()
         {
-            // 对象形式是新增而非替代——逗号形式才是所有既有调用方在发的东西。
+            // The object form is additive, not a replacement — the comma form is what every existing caller is sending.
             var go = new GameObject("__prop_csv__");
             try
             {
@@ -597,8 +613,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 颜色的对象形式，专门盯 alpha。不带 alpha 的 <c>{r,g,b}</c> 默认是不透明而非全透明——
-        /// 若默认取 0，每一个三通道对象形式的颜色都会变成看不见的。
+        /// The object form of a color, specifically targeting alpha. A <c>{r,g,b}</c> without alpha
+        /// defaults to opaque, not fully transparent — if the default were 0, every three-channel object-form
+        /// color would turn invisible.
         /// </summary>
         [Test]
         public void ComponentSetProperty_AcceptsColorJsonObjectForm_AlphaDefaultsToOpaque()
@@ -629,8 +646,9 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 回显必须能被喂回去。这条测试按构造方式断言该性质：取上一次调用的 <c>valueSet</c>，
-        /// 作为下一次调用的 <c>value</c> 发出，并要求存下来的值保持不变。
+        /// An echo must be feedable back in. This test asserts that property by construction: it takes the
+        /// previous call's <c>valueSet</c>, sends it as the <c>value</c> of the next call, and requires the
+        /// stored value to stay unchanged.
         /// </summary>
         [Test]
         public void ComponentSetProperty_ValueSetEcho_IsItselfAcceptedAsInput()
@@ -652,7 +670,8 @@ namespace UnitySkills.Tests.Core
                 var stored = go.transform.localPosition;
                 go.transform.localPosition = Vector3.zero;
 
-                // 回显带括号——那是文档化的展示形式，而解析器接受它回传，这正是往返保证的全部意义。
+                // The echo carries parentheses — that's the documented display form, and the parser
+                // accepting it fed back in is the entire point of the round-trip guarantee.
                 var replay = JObject.Parse(SkillRouter.Execute("component_set_property",
                     "{\"name\":\"__prop_round__\",\"componentType\":\"Transform\"," +
                     "\"propertyName\":\"localPosition\",\"value\":" + JsonConvert.ToString(echo) + "}"));

@@ -6,19 +6,19 @@ using UnityEngine.UIElements;
 namespace UnitySkills
 {
     /// <summary>
-    /// Unity CLI 配置面板 —— 独立二级窗口（同 UnitySkillsAuditWindow 范式）。
-    /// 入口：主窗口设置抽屉 Unity CLI 组按钮（权限组之下、服务器组之上）
-    /// + ShortcutActions 可绑定快捷键。
-    /// 未挂 Window 菜单（Window/UnitySkills 单入口约束）。
+    /// Unity CLI configuration panel -- a standalone secondary window (same pattern as UnitySkillsAuditWindow).
+    /// Entry point: the Unity CLI group button in the main window's settings drawer (below the
+    /// permissions group, above the server group) + a bindable shortcut via ShortcutActions.
+    /// Not hung off the Window menu (single-entry-point constraint for Window/UnitySkills).
     ///
-    /// 三区：CLI 检测（后台线程探测，schedule 轮询收结果）→ 项目绑定
-    /// （Library/UnitySkills/cli_config.json）→ Feature 开关。
+    /// Three sections: CLI detection (background-thread probe, results collected via schedule
+    /// polling) -> project binding (Library/UnitySkills/cli_config.json) -> feature toggles.
     /// </summary>
     public sealed class UnityCliWindow : EditorWindow
     {
         private const string UxmlPath = "Packages/com.besty.unity-skills/Editor/UI/UnityCliWindow.uxml";
         private const string UssPath  = "Packages/com.besty.unity-skills/Editor/UI/UnityCliWindow.uss";
-        // 主题变量（--color-*）唯一源：主窗口 USS 先于本窗口 USS 加载。
+        // Single source of truth for theme variables (--color-*): the main window's USS loads before this window's USS.
         private const string ThemeUssPath = "Packages/com.besty.unity-skills/Editor/UI/UnitySkillsWindow.uss";
         private const string InstallCmdUnix = "curl -fsSL https://cli.unity.com/install.sh | UNITY_CLI_CHANNEL=beta bash";
         private const string DocsUrl = "https://docs.unity.com/unity-cli";
@@ -45,7 +45,7 @@ namespace UnitySkills
         private Label     _helpBox;
 
         private bool _detectionPending;
-        // 轮询句柄：语言切换整树重建时先 Pause 旧项，避免在 root 上累积重复调度。
+        // Poll handle: on a language switch that rebuilds the whole tree, Pause the old one first to avoid stacking duplicate schedules on root.
         private UnityEngine.UIElements.IVisualElementScheduledItem _pollSchedule;
 
         public static void ShowWindow()
@@ -56,7 +56,7 @@ namespace UnitySkills
             w.Focus();
         }
 
-        // ----- 语言跟随：主面板切换语言时整树重建（含窗口标题） -----
+        // ----- Language follow: rebuild the whole tree (including window title) when the main panel switches language -----
 
         private void OnEnable() => SkillsLocalization.LanguageChanged += RebuildForLanguage;
         private void OnDisable() => SkillsLocalization.LanguageChanged -= RebuildForLanguage;
@@ -108,7 +108,7 @@ namespace UnitySkills
             WireActions();
             RefreshBindingUi();
 
-            // 打开面板即触发一次检测；后台线程完成后由轮询收结果。
+            // Opening the panel triggers a detection pass; results are collected by polling once the background thread finishes.
             StartDetection();
             _pollSchedule?.Pause();
             _pollSchedule = rootVisualElement.schedule.Execute(PollDetection).Every(300);
@@ -218,7 +218,7 @@ namespace UnitySkills
                     e => UnityCliService.SetFeature(f => f.cliBuild = e.newValue));
         }
 
-        // ===== 检测（后台线程 → 轮询收结果，遵守零跨线程约束）=====
+        // ===== Detection (background thread -> poll for results, honoring the zero-cross-thread constraint) =====
 
         private void StartDetection()
         {
@@ -252,7 +252,7 @@ namespace UnitySkills
             RefreshBindingUi();
         }
 
-        // ===== 绑定 =====
+        // ===== Binding =====
 
         private void OnBindClicked()
         {

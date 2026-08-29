@@ -202,7 +202,7 @@ namespace UnitySkills
             };
         }
 
-        // 两份缓存注册表，分别对应 postProcessOnly=true 与 false
+        // Two cached registries, one each for postProcessOnly=true and false
         private static IReadOnlyList<VolumeComponentDescriptor> _registryAll;
         private static IReadOnlyList<VolumeComponentDescriptor> _registryPostProcess;
 

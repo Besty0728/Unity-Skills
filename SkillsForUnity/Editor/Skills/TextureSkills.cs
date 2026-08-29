@@ -6,17 +6,18 @@ using System.Collections.Generic;
 namespace UnitySkills
 {
     /// <summary>
-    /// 纹理导入设置技能——读写 TextureImporter 属性。
+    /// Texture import settings skills — read/write TextureImporter properties.
     /// </summary>
     public static class TextureSkills
     {
         /// <summary>
-        /// <c>TextureImporter.Get/SetPlatformTextureSettings</c> 真正认得的平台 ID 字符串。
-        /// 它们不是 <c>BuildTarget</c>/<c>BuildTargetGroup</c> 的枚举名——importer 保留着自己的历史词表，
-        /// 最典型的是 "iPhone"（不是 "iOS"）和 "Windows Store Apps"（不是 "WSA"）。
-        /// getter 与 setter 都做精确字符串匹配，匹配不上时静默空转而非报错：get 返回 <c>overridden=false</c>
-        /// 并附上无关的默认设置，set 则写入一个任何构建都不会读的 override 组。
-        /// "DefaultTexturePlatform" 是 Unity 自己表示共享/默认组的哨兵值，是合法取值而非拼写错误。
+        /// The platform ID strings <c>TextureImporter.Get/SetPlatformTextureSettings</c> actually recognizes.
+        /// They are not <c>BuildTarget</c>/<c>BuildTargetGroup</c> enum names — the importer keeps its own
+        /// historical word list, most notably "iPhone" (not "iOS") and "Windows Store Apps" (not "WSA").
+        /// Both the getter and setter do exact string matching, and silently no-op rather than error on a
+        /// mismatch: get returns <c>overridden=false</c> with unrelated default settings attached, and set
+        /// writes to an override group no build will ever read. "DefaultTexturePlatform" is Unity's own
+        /// sentinel value for the shared/default group — a legitimate value, not a typo.
         /// </summary>
         private static readonly string[] ValidTexturePlatforms =
         {
@@ -93,10 +94,12 @@ namespace UnitySkills
             if (importer == null)
                 return new { error = $"Not a texture or asset not found: {assetPath}" };
 
-            // 所有枚举都在第一次赋值之前解析——也在 undo 快照之前，否则会为一次什么都没改的调用留下还原点。
-            // 其中 filterMode/wrapMode/npotScale/compression 四个若解析失败会被静默丢弃：拼错时其余参数
-            // 仍报 changesApplied>0，而丢值这件事毫无提示。textureType 与 compression 另带别名表——
-            // 文档教的是 Inspector 里的写法（"Editor GUI"、"Low Quality"），二者都不是 CLR 名称。
+            // Every enum is parsed before the first assignment — and before the undo snapshot too, otherwise a
+            // call that changes nothing would still leave a restore point. Of these, filterMode/wrapMode/
+            // npotScale/compression are silently dropped if parsing fails: on a typo, the other parameters
+            // still report changesApplied>0, with zero indication the value was dropped. textureType and
+            // compression additionally carry an alias table — the docs teach the Inspector's own wording
+            // ("Editor GUI", "Low Quality"), and neither is the CLR name.
             if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterType>(
                     textureType, "textureType", SkillParamUtil.TextureTypeAliases,
                     out var tt, out var ttError)) return ttError;
@@ -139,7 +142,7 @@ namespace UnitySkills
                 changes.Add($"npotScale={ns.Value}");
             }
 
-            // 布尔类设置
+            // Boolean settings
             if (mipmapEnabled.HasValue)
             {
                 importer.mipmapEnabled = mipmapEnabled.Value;
@@ -164,14 +167,14 @@ namespace UnitySkills
                 changes.Add($"alphaIsTransparency={alphaIsTransparency.Value}");
             }
 
-            // Sprite 相关设置
+            // Sprite-related settings
             if (spritePixelsPerUnit.HasValue)
             {
                 importer.spritePixelsPerUnit = spritePixelsPerUnit.Value;
                 changes.Add($"spritePixelsPerUnit={SkillParamUtil.FormatFloatR(spritePixelsPerUnit.Value)}");
             }
 
-            // 平台专属设置（maxSize、compression）
+            // Platform-specific settings (maxSize, compression)
             if (maxSize.HasValue || tc.HasValue)
             {
                 var platformSettings = importer.GetDefaultPlatformTextureSettings();
@@ -215,9 +218,10 @@ namespace UnitySkills
                 if (importer == null)
                     throw new System.Exception("Not a texture");
 
-                // 提前解析并挂在该条目的 assetPath 上报错，使坏值能被精确定位，而不是悄悄消失、
-                // 该条目却仍报成功。别名表与单对象 setter 完全相同——只在两者之一生效的词表，
-                // 比两边都不认还糟。
+                // Parse up front and pin the error to this item's assetPath, so a bad value can be pinpointed
+                // instead of silently vanishing while the item still reports success. The alias table is
+                // identical to the single-object setter — a word list that only works on one of the two would be
+                // worse than neither recognizing it.
                 if (!SkillParamUtil.TryParseOptionalEnum<TextureImporterType>(
                         item.textureType, "textureType", SkillParamUtil.TextureTypeAliases, out var tt, out _))
                     return SkillParamUtil.InvalidEnumError<TextureImporterType>(

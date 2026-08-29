@@ -8,9 +8,9 @@ using UnityEditor;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 覆盖包升级后自动同步已安装 AI 工具的三处关键行为：版本门、"仅已安装目标"过滤、
-    /// 记录写回。全部在临时目录里伪造安装目标，绝不触碰用户真实的 ~/.claude 等副本，
-    /// 也不写工程真实的 Library/UnitySkills/install_sync.json。
+    /// Covers three key behaviors of auto-syncing already-installed AI tools after a package upgrade: the version
+    /// gate, "installed targets only" filtering, and record writeback. Everything fakes install targets in a temp
+    /// directory, never touching the user's real ~/.claude copies or the project's real Library/UnitySkills/install_sync.json.
     /// </summary>
     [TestFixture]
     public class SkillInstallSyncTests
@@ -38,11 +38,11 @@ namespace UnitySkills.Tests.Core
             }
             catch (IOException)
             {
-                // 临时目录清理失败不该让测试变红。
+                // A failure to clean up the temp directory shouldn't turn the test red.
             }
         }
 
-        // ===== 版本门 =====
+        // ===== Version gate =====
 
         [Test]
         public void NeedsSync_SameVersion_IsFalse()
@@ -79,7 +79,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(SkillInstallSyncService.ReadRecordedVersion(), Is.Null);
         }
 
-        // ===== 域重载即时门 =====
+        // ===== Domain-reload immediacy gate =====
 
         [Test]
         public void ShouldSyncNow_WhenRecordedVersionMatches_IsFalse()
@@ -153,7 +153,7 @@ namespace UnitySkills.Tests.Core
             }
         }
 
-        // ===== 记录写回 =====
+        // ===== Record writeback =====
 
         [Test]
         public void WriteState_ThenRead_RoundTripsVersionAndTargets()
@@ -178,7 +178,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(SkillInstallSyncService.NeedsSync(SkillInstallSyncService.ReadRecordedVersion(), "3.0.0"), Is.False);
         }
 
-        // ===== 仅已安装目标 =====
+        // ===== Installed targets only =====
 
         [Test]
         public void SyncTargets_SkipsTargetThatIsNotInstalled()
@@ -211,7 +211,7 @@ namespace UnitySkills.Tests.Core
             var seed = SkillInstaller.InstallCustom(installed, "TestAgent");
             Assert.That(seed.success, Is.True, "Test fixture could not seed an install: " + seed.message);
 
-            // 模拟旧版本副本：把 SKILL.md 替换成过时内容。
+            // Simulate an older-version copy: replace SKILL.md with stale content.
             var skillMd = Path.Combine(installed, "SKILL.md");
             Assert.That(File.Exists(skillMd), Is.True);
             File.WriteAllText(skillMd, "stale copy from an older package version");
@@ -286,7 +286,7 @@ namespace UnitySkills.Tests.Core
             StringAssert.Contains("disk on fire", report.Failed[0]);
         }
 
-        // ===== 目标表 =====
+        // ===== Target table =====
 
         [Test]
         public void EnumerateTargets_CoversEveryToolAndScope()

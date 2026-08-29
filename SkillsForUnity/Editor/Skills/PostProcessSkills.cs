@@ -10,7 +10,7 @@ using UnityEngine.Rendering;
 namespace UnitySkills
 {
     /// <summary>
-    /// 基于 Volume 框架的现代 SRP 后处理技能。
+    /// Modern SRP post-processing skills built on the Volume framework.
     /// </summary>
     public static class PostProcessSkills
     {
@@ -330,15 +330,18 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 在 <see cref="SetParameter"/> 调入 RenderPipelineSkillsCommon 之前，先校验枚举形态的
-        /// "mode" 类参数。没有这一步，非法字符串（mode="NotARealMode"）会在该 helper 深处的
-        /// Enum.Parse 失败，而 SetParameter 的别名循环把每次尝试的错误丢弃（<c>out _</c>），
-        /// 调用方最终只看到 "None of the parameters matched: mode, focusMode"（SKILL_ERROR/abort）——
-        /// 值非法与组件压根没这个参数，两种情况读起来一模一样。此处反射组件自身的字段拿到真实枚举
-        /// 类型（正是 RenderPipelineSkillsCommon.TrySetVolumeParameter 将要写入的那个字段），
-        /// 非法值于是能拿到模块统一的 SEMANTIC_INVALID + validValues 形态。
-        /// <paramref name="parameterNames"/> 是按顺序尝试的别名（URP/HDRP 字段名不同），
-        /// 该组件上第一个存在的字段决定取值词表。
+        /// Validates enum-shaped "mode" parameters before <see cref="SetParameter"/> hands them
+        /// to RenderPipelineSkillsCommon. Without this step, an invalid string
+        /// (mode="NotARealMode") would fail deep inside that helper's Enum.Parse, and
+        /// SetParameter's alias loop discards each attempt's error (<c>out _</c>) — the caller
+        /// would ultimately only see "None of the parameters matched: mode, focusMode"
+        /// (SKILL_ERROR/abort), making an invalid value and the component simply not having this
+        /// parameter read identically. Here we reflect into the component's own field to get the
+        /// real enum type (the very field RenderPipelineSkillsCommon.TrySetVolumeParameter is
+        /// about to write), so an invalid value gets the module's standard
+        /// SEMANTIC_INVALID + validValues shape. <paramref name="parameterNames"/> is the list of
+        /// aliases tried in order (URP/HDRP field names differ); the first field that exists on
+        /// this component decides the value vocabulary used.
         /// </summary>
         private static object ValidateModeParameter(VolumeComponent component, string value, params string[] parameterNames)
         {

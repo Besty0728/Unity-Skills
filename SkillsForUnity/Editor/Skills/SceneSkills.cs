@@ -10,7 +10,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// 场景管理技能：加载、保存、新建、查询信息。
+    /// Scene management skills: load, save, create, query info.
     /// </summary>
     public static class SceneSkills
     {
@@ -33,8 +33,8 @@ namespace UnitySkills
             EditorSceneManager.SaveScene(scene, scenePath);
             AssetDatabase.Refresh();
 
-            // SaveScene 已把新的 .unity 写到磁盘；记为 Created，undo 时将其移入存储区即等于删除
-            // （可 redo）。开销很小——无需备份文件字节。
+            // SaveScene has already written the new .unity to disk; record it as Created, so on undo moving it into the storage area is equivalent to deleting it
+            // (redo-able). Cheap -- no need to back up the file bytes.
             var sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath);
             if (sceneAsset != null) WorkflowManager.SnapshotCreatedAsset(sceneAsset);
 
@@ -74,10 +74,10 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(path))
                 return new { error = "Scene has no path. Provide scenePath parameter." };
 
-            // 让保存可回滚。覆盖已有 .unity 属 Modified：必须在 SaveScene 覆盖文件*之前*把旧字节
-            // 备份进内容寻址存储区（undo 时写回磁盘）。存到全新路径属 Created：必须在文件存在*之后*
-            // 记录（undo 把新文件移入存储区，redo 再还原）。
-            // undo/redo 作用于磁盘文件；当前已打开的场景需要重新加载才能反映变化。
+            // Makes the save reversible. Overwriting an existing .unity counts as Modified: the old bytes must be backed up into the
+            // content-addressed store *before* SaveScene overwrites the file (written back to disk on undo). Saving to a brand-new path counts as Created: it must be
+            // recorded *after* the file exists (undo moves the new file into the store, redo restores it).
+            // Undo/redo operates on the on-disk file; the currently open scene needs to be reloaded to reflect the change.
             bool existedBefore = File.Exists(path);
             if (existedBefore)
             {
@@ -158,8 +158,8 @@ namespace UnitySkills
                     children[i] = GetHierarchyNode(go.transform.GetChild(i).gameObject, depth + 1, maxDepth, componentBuffer);
             }
 
-            // childCount 始终是真实子节点数，因此 children==null && childCount>0 表示该节点被
-            // maxDepth 截断——可与真正的叶子节点（childCount 为 0）区分开。
+            // childCount is always the real child count, so children==null && childCount>0 means this node was
+            // truncated by maxDepth -- distinguishable from a true leaf node (childCount of 0).
             var node = new
             {
                 name = go.name,
@@ -193,7 +193,7 @@ namespace UnitySkills
             Outputs = new[] { "path", "width", "height", "isPlaying", "note", "imageBase64", "imageWidth", "imageHeight", "imageBytes" })]
         public static object SceneScreenshot(string filename = "screenshot.png", int width = 1920, int height = 1080, bool returnImage = false, int maxDimension = 1280)
         {
-            // 剥掉所有路径成分，防止写到 Screenshots/ 之外
+            // Strip all path components, to prevent writing outside Screenshots/
             filename = Path.GetFileName(filename);
             if (string.IsNullOrEmpty(filename)) filename = "screenshot";
             if (!Path.HasExtension(filename)) filename += ".png";
@@ -202,9 +202,9 @@ namespace UnitySkills
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
             int superSize = Mathf.Max(1, width / Screen.width);
-            // ScreenCapture.CaptureScreenshot 抓的是 Game View 最终合成帧，并在*下一帧*才写出 PNG
-            // （非同步）。此刻文件还不在磁盘上，立即 Refresh 等于空操作，因此把资产导入推迟到
-            // 下一个编辑器 tick。
+            // ScreenCapture.CaptureScreenshot captures the final composited Game View frame, and writes the PNG only on the *next frame*
+            // (not synchronous). At this point the file isn't on disk yet, so an immediate Refresh would be a no-op; hence the asset import is deferred to
+            // the next editor tick.
             ScreenCapture.CaptureScreenshot(path, superSize);
             EditorApplication.delayCall += () => AssetDatabase.Refresh();
 
@@ -216,8 +216,8 @@ namespace UnitySkills
             var result = new Dictionary<string, object> { ["success"] = true, ["path"] = path, ["width"] = width, ["height"] = height, ["isPlaying"] = isPlaying, ["note"] = note };
             if (returnImage)
             {
-                // 磁盘上的 PNG 此时还读不到（约一帧后才写出，见上），因此 returnImage 走另一条路：
-                // 同步在内存中抓取 Game View 当前后台缓冲，而不是回读 `path`。
+                // The PNG on disk can't be read yet at this point (written about a frame later, see above), so returnImage takes a different path:
+                // synchronously capturing the Game View's current backbuffer in memory, rather than reading back `path`.
                 Texture2D liveTex = null;
                 try
                 {

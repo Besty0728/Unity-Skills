@@ -9,50 +9,50 @@ namespace UnitySkills.Internal
     [Serializable]
     public class ObjectSnapshot
     {
-        public string globalObjectId; // Unity GlobalObjectId 的字符串表示
-        public int objectInstanceId;  // 从未保存过的场景中的对象，同会话内的回退标识
-        public string originalJson;   // 由 EditorJsonUtility 捕获的 JSON 状态
+        public string globalObjectId; // String representation of the Unity GlobalObjectId
+        public int objectInstanceId;  // Fallback identifier within the same session, for objects in a scene that was never saved
+        public string originalJson;   // JSON state captured by EditorJsonUtility
         public bool objectReferencesCaptured;
         public List<ObjectReferenceData> objectReferences = new List<ObjectReferenceData>();
-        public string objectName;     // 缓存的显示名
-        public string typeName;       // 如 "GameObject"、"Transform"
+        public string objectName;     // Cached display name
+        public string typeName;       // e.g. "GameObject", "Transform"
         public SnapshotType type = SnapshotType.Modified;
-        public string assetPath;      // 资产用：项目内路径（如 "Assets/Materials/Red.mat"）
-        public string assetBytesBase64; // Base64 编码的资产文件备份（遗留字段，为兼容旧历史保留）
+        public string assetPath;      // For assets: the in-project path (e.g. "Assets/Materials/Red.mat")
+        public string assetBytesBase64; // Base64-encoded asset file backup (legacy field, kept for backward compatibility with old history)
 
-        // 内容寻址文件库的哈希，用于 Modified/Deleted 资产快照。
+        // Hash into the content-addressed file store, used by Modified/Deleted asset snapshots.
         public string fileHash;
         public string metaFileHash;
 
-        // 被删除的文件夹由一条根快照加若干内容寻址条目表示。
+        // A deleted folder is represented by one root snapshot plus several content-addressed entries.
         public bool isDirectory;
         public bool deleteRecursively;
         public List<WorkflowStoredPath> directoryEntries = new List<WorkflowStoredPath>();
 
-        // Moved 类型用：移动前的原始资产路径。
+        // For the Moved type: the original asset path before the move.
         public string previousAssetPath;
 
-        // 预留给后续的设置类快照。
+        // Reserved for future setting-type snapshots.
         public string settingKey;
         public string settingOldValueJson;
 
-        // Created 类型的组件撤销用：存放可靠删除所需的额外信息
-        public string componentTypeName;   // 组件的完整类型名（如 "UnityEngine.Rigidbody"）
-        public string parentGameObjectId;  // 父 GameObject 的 GlobalObjectId
+        // For undoing a Created-type component: extra info needed for reliable deletion
+        public string componentTypeName;   // The component's fully qualified type name (e.g. "UnityEngine.Rigidbody")
+        public string parentGameObjectId;  // The parent GameObject's GlobalObjectId
         public int parentGameObjectInstanceId;
 
-        // Created 类型的 GameObject 重做用：存放重建所需信息
-        public string primitiveType;       // PrimitiveType 名称（Cube、Sphere 等），空 GameObject 则为空串
+        // For redoing a Created-type GameObject: info needed to recreate it
+        public string primitiveType;       // The PrimitiveType name (Cube, Sphere, etc.), or an empty string for an empty GameObject
 
-        // 重建 GameObject 用的 Transform 数据
+        // Transform data used to recreate the GameObject
         public float posX, posY, posZ;
         public float rotX, rotY, rotZ, rotW;
         public float scaleX = 1, scaleY = 1, scaleZ = 1;
 
-        // 完整还原 GameObject 用的全部组件数据
+        // Full component data used to fully restore the GameObject
         public List<ComponentData> components = new List<ComponentData>();
 
-        // 被删除/重建的场景 GameObject 的扁平层级数据。
+        // Flattened hierarchy data for a deleted/recreated scene GameObject.
         public List<GameObjectSnapshotData> gameObjectHierarchy = new List<GameObjectSnapshotData>();
     }
 
@@ -95,7 +95,7 @@ namespace UnitySkills
         public const int CurrentSchemaVersion = 5;
         public int schemaVersion = CurrentSchemaVersion;
         public List<WorkflowTask> tasks = new List<WorkflowTask>();
-        public List<WorkflowTask> undoneStack = new List<WorkflowTask>(); // 已撤销任务栈，供重做使用
+        public List<WorkflowTask> undoneStack = new List<WorkflowTask>(); // Stack of undone tasks, for redo
 
         public void EnsureDefaults()
         {
@@ -119,7 +119,7 @@ namespace UnitySkills
         public string tag;
         public string description;
         public long timestamp;
-        public string sessionId;  // 把同一次对话/会话的任务归为一组
+        public string sessionId;  // Groups tasks from the same conversation/session together
         public List<ObjectSnapshot> snapshots = new List<ObjectSnapshot>();
         [NonSerialized] private HashSet<string> _snapshotKeys;
 
@@ -187,18 +187,18 @@ namespace UnitySkills
 
     public enum SnapshotType
     {
-        Modified = 0, // 对象状态被修改
-        Created = 1,  // 对象在本任务中新建
-        Deleted = 2,  // 对象在本任务中被删除
-        Moved = 3,    // 资产在本任务中被移动
-        Setting = 4   // 编辑器/项目设置被修改（经 WorkflowSettingRestorerRegistry 还原）
+        Modified = 0, // Object state was modified
+        Created = 1,  // Object was newly created in this task
+        Deleted = 2,  // Object was deleted in this task
+        Moved = 3,    // Asset was moved in this task
+        Setting = 4   // Editor/project setting was modified (restored via WorkflowSettingRestorerRegistry)
     }
 
     [Serializable]
     public class ComponentData
     {
-        public string typeName;      // 完整类型名
-        public string json;          // 序列化后的组件数据
+        public string typeName;      // Fully qualified type name
+        public string json;          // Serialized component data
         public string globalObjectId;
         public int objectInstanceId;
         public bool objectReferencesCaptured;
@@ -214,7 +214,7 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 单条快照撤销/重做的结果。
+    /// The result of undoing/redoing a single snapshot.
     /// </summary>
     [Serializable]
     public class SnapshotUndoResult
@@ -226,7 +226,7 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 撤销/重做一个工作流任务或会话的汇总结果。
+    /// The aggregate result of undoing/redoing a workflow task or session.
     /// </summary>
     [Serializable]
     public class TaskUndoResult
@@ -240,7 +240,7 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 修剪工作流历史与内容寻址文件库后产生的报告。
+    /// The report produced after trimming workflow history and the content-addressed file store.
     /// </summary>
     [Serializable]
     public class WorkflowTrimReport
@@ -251,8 +251,8 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 工作流历史与文件库的持久化自动清理配置。
-    /// 存于 EditorPrefs 的 "UnitySkills.Workflow.*" 键下。
+    /// Persistent auto-cleanup configuration for workflow history and the file store.
+    /// Stored under the "UnitySkills.Workflow.*" EditorPrefs keys.
     /// </summary>
     public static class WorkflowAutoCleanConfig
     {
@@ -302,7 +302,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 把所有清理设置恢复为默认值。
+        /// Resets all cleanup settings to their default values.
         /// </summary>
         public static void ResetToDefaults()
         {
@@ -316,7 +316,7 @@ namespace UnitySkills
     }
 
     /// <summary>
-    /// 会话信息（把任务按对话层级分组）。
+    /// Session info (groups tasks by conversation level).
     /// </summary>
     public class SessionInfo
     {

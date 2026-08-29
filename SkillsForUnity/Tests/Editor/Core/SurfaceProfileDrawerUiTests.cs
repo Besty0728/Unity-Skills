@@ -8,17 +8,17 @@ using UnityEngine.UIElements;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// 设置抽屉里档位下拉框的绑定，以及三语本地化键的完整性（#5 留下的缺口）。
+    /// Binding for the profile dropdown in the settings drawer, and completeness of the three-language localization keys (a gap left by #5).
     ///
-    /// 抽屉控制器只需要一个含名为 "drawer" 的子元素的根，window 参数只被存下来、构造期不解引用，
-    /// 所以能在不开 EditorWindow 的前提下装起来。断言全部落在「选项位置 ↔ 枚举」这层映射上 ——
-    /// 显示文本是本地化的，按文本反查会在切语言时碎掉，这也正是生产代码用 <c>_profileOrder</c>
-    /// 按 index 反查的原因。
+    /// The drawer controller only requires a root containing a child element named "drawer"; the window parameter is only stored and never dereferenced at construction time,
+    /// so it can be built without opening an EditorWindow. All assertions land on the "option position <-> enum" mapping layer --
+    /// the displayed text is localized, and looking it up by text would break when switching languages, which is exactly why the production code uses <c>_profileOrder</c>
+    /// to look up by index.
     /// </summary>
     [TestFixture]
     public class SurfaceProfileDrawerUiTests
     {
-        /// <summary>档位这一节新增的 9 个键。三语字典各自都必须解析出非空文本。</summary>
+        /// <summary>The 9 keys newly added for the profile section. Each of the three-language dictionaries must resolve non-empty text for all of them.</summary>
         private static readonly string[] SurfaceProfileKeys =
         {
             "surface_profile",
@@ -60,7 +60,7 @@ namespace UnitySkills.Tests.Core
             SkillsLocalization.Current = _savedLanguage;
         }
 
-        // ---------- 本地化 ----------
+        // ---------- localization ----------
 
         [TestCase("_english")]
         [TestCase("_chinese")]
@@ -79,8 +79,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void FormattedHints_KeepTheirPlaceholders()
         {
-            // 这两条文案是 string.Format 的模板；哪个语言掉了 {0} 就会在面板上少掉模块名/条数，
-            // 而不是报错，所以必须显式盯住。
+            // These two strings are string.Format templates; if any language drops {0}, the panel will silently lose the
+            // module name/count instead of throwing an error, so this must be watched explicitly.
             foreach (var dictionaryFieldName in new[] { "_english", "_chinese", "_russian" })
             {
                 var dictionary = GetLocalizationDictionary(dictionaryFieldName);
@@ -94,7 +94,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void RetiredGuideModeKeys_AreGone()
         {
-            // 旧的布尔开关键留在字典里只会让下一个人以为面板上还有那个开关。
+            // Leaving the old boolean toggle keys in the dictionary would only make the next person think that toggle still exists on the panel.
             foreach (var dictionaryFieldName in new[] { "_english", "_chinese", "_russian" })
             {
                 var dictionary = GetLocalizationDictionary(dictionaryFieldName);
@@ -108,8 +108,8 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void ProfileOptionLabels_AreDistinctWithinEachLanguage()
         {
-            // 控制器按 choices.IndexOf(displayText) 反查 —— 同语言内两个档位显示同一串文本会让
-            // 其中一个永远选不中。
+            // The controller looks up via choices.IndexOf(displayText) -- if two profiles show the same text within one
+            // language, one of them can never be selected.
             foreach (var language in new[] { SkillsLocalization.Language.English,
                                              SkillsLocalization.Language.Chinese,
                                              SkillsLocalization.Language.Russian })
@@ -127,7 +127,7 @@ namespace UnitySkills.Tests.Core
             }
         }
 
-        // ---------- 下拉框绑定 ----------
+        // ---------- dropdown binding ----------
 
         [Test]
         public void ProfileOrder_MapsChoiceIndexToEnum()
@@ -174,8 +174,8 @@ namespace UnitySkills.Tests.Core
             var dropdown = BuildDrawerAndFindProfileDropdown(out _);
             Assert.That(dropdown.value, Is.EqualTo(dropdown.choices[0]));
 
-            // 面板之外改档（EditorPrefs 迁移、测试夹具、未来的 CLI）必须让抽屉跟上，
-            // 否则用户看到的档位和实际生效的不是一回事。
+            // A profile change made outside the panel (EditorPrefs migration, test fixtures, a future CLI) must be picked
+            // up by the drawer, otherwise what the user sees does not match what is actually in effect.
             SkillsSurfaceProfile.Current = SurfaceProfileKind.NoSceneAuthoring;
 
             Assert.That(dropdown.value, Is.EqualTo(dropdown.choices[2]),
@@ -183,18 +183,18 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 「选中第 i 项 ⇒ 写入 _profileOrder[i]」这条因果链在这里合上最后一环。
+        /// This is where the last link closes in the causal chain "select item i => write _profileOrder[i]".
         ///
-        /// 回调体是 <c>choices.IndexOf(evt.newValue)</c> 反查 <c>_profileOrder</c>，所以整条链
-        /// 拆成三段：choices[i] 是 _profileOrder[i] 的本地化文本
-        /// （<see cref="Dropdown_ChoiceOrder_MatchesLocalizedLabelsInProfileOrder"/>）、
-        /// _profileOrder[i] 就是第 i 个档位（<see cref="ProfileOrder_MapsChoiceIndexToEnum"/>）、
-        /// 以及这里的 IndexOf(choices[i]) == i（没有重复项把反查引到别的档位）。
+        /// The callback body looks up <c>_profileOrder</c> via <c>choices.IndexOf(evt.newValue)</c>, so the whole
+        /// chain splits into three parts: choices[i] is the localized text of _profileOrder[i]
+        /// (<see cref="Dropdown_ChoiceOrder_MatchesLocalizedLabelsInProfileOrder"/>),
+        /// _profileOrder[i] is exactly the i-th profile (<see cref="ProfileOrder_MapsChoiceIndexToEnum"/>),
+        /// and here, IndexOf(choices[i]) == i (no duplicate entries route the lookup to a different profile).
         ///
-        /// 三段之外只剩「ChangeEvent 真的派发到了回调」那一跳，而它需要一个 UI Toolkit panel：
-        /// 离屏元素树没有 panel，SendEvent 直接 no-op；批处理 -nographics 下也开不出窗口
-        /// （EditorWindow.GetWindow 会记一条 no-graphic-device 的 Error）。那一跳只能靠交互式
-        /// 编辑器里手点，这里不留一条在 CI 上永远跳过的空壳测试。
+        /// Beyond those three parts, only one hop remains -- "the ChangeEvent actually gets dispatched to the
+        /// callback" -- and that needs a UI Toolkit panel: an off-screen element tree has no panel, so SendEvent is
+        /// a flat no-op; batch mode with -nographics also can't open a window (EditorWindow.GetWindow logs a
+        /// no-graphic-device Error). That hop can only be exercised by clicking through it interactively in the editor; this file leaves no empty-shell test that would always be skipped on CI.
         /// </summary>
         [Test]
         public void ChoiceLookup_ResolvesEachLabelBackToItsProfile()
@@ -223,8 +223,8 @@ namespace UnitySkills.Tests.Core
             var texts = new List<string>();
             foreach (var profile in ExpectedProfileOrder)
             {
-                // 从外部改档，走 OnChanged → RefreshSurfaceProfileUi → 重算说明文字。
-                // 这条路不依赖事件派发，所以离屏元素树上照样成立。
+                // Changing the profile from outside goes through OnChanged -> RefreshSurfaceProfileUi -> recompute the hint text.
+                // This path does not depend on event dispatch, so it still holds on an off-screen element tree.
                 SkillsSurfaceProfile.Current = profile;
                 Assert.That(hint.text, Is.Not.Null.And.Not.Empty, $"{profile} 档的说明文字为空。");
                 texts.Add(hint.text);
@@ -233,7 +233,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(texts.Distinct(StringComparer.Ordinal).Count(), Is.EqualTo(texts.Count),
                 "三个档位的说明文字应各不相同。");
 
-            // HiddenCategories 交出的是内部 HashSet 的引用；面板只读遍历，绝不能原地改。
+            // HiddenCategories hands out a reference to the internal HashSet; the panel must only read-iterate it and never mutate it in place.
             Assert.That(SkillsSurfaceProfile.HiddenCategories(SurfaceProfileKind.Guide).ToArray(),
                 Is.EquivalentTo(guideBefore), "guide 档的隐藏集被面板改动了。");
             Assert.That(SkillsSurfaceProfile.HiddenCategories(SurfaceProfileKind.NoSceneAuthoring).ToArray(),
@@ -250,14 +250,14 @@ namespace UnitySkills.Tests.Core
             return (SurfaceProfileKind[])field.GetValue(null);
         }
 
-        // 每个测试造的抽屉都订阅了 SkillsSurfaceProfile.OnChanged。真实场景靠
-        // DetachFromPanelEvent 退订，而离屏的元素树没有 panel，SendEvent 不会派发，所以这里
-        // 记下控制器，TearDown 时直接调它的退订处理器。不退订会让订阅数随测试数累积，
-        // 后续每次改档都要多跑一遍打在废弃 UI 树上的刷新。
+        // Every drawer built by a test subscribes to SkillsSurfaceProfile.OnChanged. In real usage, unsubscribing
+        // happens via DetachFromPanelEvent, but an off-screen element tree has no panel, so SendEvent never dispatches;
+        // so here we record the controller and call its detach handler directly in TearDown. Failing to unsubscribe
+        // would let the subscription count accumulate across tests, running one extra refresh against a discarded UI tree on every subsequent profile change.
         private readonly List<SettingsDrawerController> _builtControllers = new List<SettingsDrawerController>();
 
         /// <summary>
-        /// 装一个最小抽屉：控制器只要求根下有名为 "drawer" 的容器，window 只被存下来不解引用。
+        /// Builds a minimal drawer: the controller only requires a container named "drawer" under the root; window is only stored, never dereferenced.
         /// </summary>
         private DropdownField BuildDrawerAndFindProfileDropdown(out VisualElement root)
         {
@@ -265,7 +265,7 @@ namespace UnitySkills.Tests.Core
             root.Add(new VisualElement { name = "drawer" });
             root.Add(new VisualElement { name = "drawer-mask" });
 
-            // 构造即完成 CloneTree + 缓存引用 + 绑定事件 + 回填当前值。
+            // Construction alone completes CloneTree + caching references + binding events + backfilling the current value.
             var controller = new SettingsDrawerController(root, null);
             _builtControllers.Add(controller);
 
@@ -276,8 +276,8 @@ namespace UnitySkills.Tests.Core
         }
 
         /// <summary>
-        /// 调控制器自己的 DetachFromPanelEvent 处理器完成退订。该处理器完全忽略事件参数，
-        /// 所以传 null 是安全的 —— 这里要的就是它退订的那两行。
+        /// Calls the controller's own DetachFromPanelEvent handler to complete unsubscription. The handler completely
+        /// ignores the event argument, so passing null is safe -- what we want here is just those two lines it unsubscribes.
         /// </summary>
         private static void DetachDrawer(SettingsDrawerController controller)
         {

@@ -20,7 +20,7 @@ namespace UnitySkills
         // No USS rule needed; only consumed by Query() in RefreshPendingExpiry.
         private const string PendingExpiresClass = "perm-pending-expires";
 
-        // dropdown choices 与 SkillsOperatingMode 的位置一对一对应，避免依赖本地化文本做反查。
+        // The dropdown choices correspond position-for-position to SkillsOperatingMode, to avoid depending on localized text for reverse lookup.
         private static readonly SkillsOperatingMode[] _modeOrder = new[]
         {
             SkillsOperatingMode.Approval,
@@ -152,7 +152,8 @@ namespace UnitySkills
             InitializeValues();
             RefreshPermissionsUi();
 
-            // Shortcuts 节：独立控制器接管捕获态机与冲突检测，抽屉仅做组装与生命周期转发。
+            // Shortcuts section: a separate controller owns the capture state machine and
+            // conflict detection; the drawer only assembles it and forwards lifecycle events.
             _shortcutsController = new ShortcutsSettingsController(_drawerContainer);
 
             if (_drawerMask != null)
@@ -160,19 +161,22 @@ namespace UnitySkills
                 _drawerMask.RegisterCallback<ClickEvent>(_ => Close());
             }
 
-            // 权限状态由 SkillsModeManager 全局广播；订阅以同步抽屉 UI。
-            // 用 DetachFromPanelEvent 解绑，避免 EditorWindow 关闭后泄漏。
+            // Permission state is broadcast globally by SkillsModeManager; subscribe to keep the drawer UI in sync.
+            // Unsubscribe via DetachFromPanelEvent, to avoid a leak after the EditorWindow closes.
             SkillsModeManager.OnChanged += RefreshPermissionsUi;
             // The profile can also change outside the panel (EditorPrefs migration, test fixtures),
             // so subscribe to keep the drawer showing the profile that is actually in force.
             SkillsSurfaceProfile.OnChanged += RefreshSurfaceProfileUi;
             _root.RegisterCallback<DetachFromPanelEvent>(OnRootDetached);
 
-            // 倒计时每秒推进一次；ScheduleItem 跟随 _root 生命周期自动停止。
-            // 同时做权限状态快照对比 — OnChanged 信号若因后台窗口/事件循环延迟丢失，
-            // 这条 polling 兜底保证 Drawer 总能在 1s 内同步到最新 pending/granted。
-            // 经 EditorUiScheduler.RepeatSafe 把实际 mutation 推迟到 delayCall，避免落在
-            // repaint/generateVisualContent 期间触发 InvalidOperationException（issue #44）。
+            // The countdown advances once per second; ScheduleItem stops automatically following
+            // the _root lifecycle.
+            // This also does a snapshot comparison of permission state — if the OnChanged signal
+            // is lost due to a background window or event-loop delay, this polling is the
+            // fallback that guarantees the Drawer always syncs to the latest pending/granted
+            // state within 1s.
+            // The actual mutation is deferred to delayCall via EditorUiScheduler.RepeatSafe, to
+            // avoid triggering an InvalidOperationException during repaint/generateVisualContent (issue #44).
             EditorUiScheduler.RepeatSafe(_root, 1000, TickPermissions);
         }
 
@@ -185,8 +189,8 @@ namespace UnitySkills
         private void ApplyCloseIcon()
         {
             if (_closeBtn == null) return;
-            // Unity 内置 winbtn_win_close 在不同版本/平台命名不一致，
-            // 直接用 Unicode × 更稳定，避免 "Unable to load the icon" 警告。
+            // Unity's built-in winbtn_win_close is named inconsistently across versions/platforms;
+            // using the Unicode × directly is more reliable, avoiding the "Unable to load the icon" warning.
             _closeBtn.text = "✕";
         }
 
@@ -267,7 +271,7 @@ namespace UnitySkills
         {
             if (_closeBtn != null) _closeBtn.clicked += Close;
 
-            // index 由 _modeOrder 反查为枚举，避免依赖本地化文本。
+            // The index is looked up back into the enum via _modeOrder, to avoid depending on localized text.
             if (_modeDropdown != null)
                 _modeDropdown.RegisterValueChangedCallback(evt =>
                 {
@@ -275,7 +279,7 @@ namespace UnitySkills
                     if (idx < 0 || idx >= _modeOrder.Length) return;
                     var target = _modeOrder[idx];
                     if (SkillsModeManager.CurrentMode != target)
-                        SkillsModeManager.CurrentMode = target; // setter 触发 OnChanged → RefreshPermissionsUi
+                        SkillsModeManager.CurrentMode = target; // The setter triggers OnChanged → RefreshPermissionsUi
                 });
 
             if (_panelApprovalToggle != null)
@@ -407,8 +411,8 @@ namespace UnitySkills
 
         private void InitializeValues()
         {
-            // dropdown 的 choices 用模式术语英文短名；不本地化（与 Claude Code 文档一致）。
-            // RefreshPermissionsUi 负责按当前模式 SetValue。
+            // The dropdown's choices use the short English mode terms; not localized (matching Claude Code's docs).
+            // RefreshPermissionsUi is responsible for the SetValue based on the current mode.
             if (_modeDropdown != null)
             {
                 _modeDropdown.choices = new List<string> { "Approval", "Auto", "Bypass" };
@@ -455,9 +459,10 @@ namespace UnitySkills
 
         public void Open()
         {
-            // 每次打开重建 Shortcuts 行，拉取最新绑定（覆盖 Edit ▸ Shortcuts 外部改动）。
+            // Rebuild the Shortcuts row on every open, pulling the latest bindings (to reflect
+            // changes made outside via Edit ▸ Shortcuts).
             _shortcutsController?.Refresh();
-            // 绑定状态可能在 UnityCliWindow 里刚变过，开抽屉时取最新。
+            // The binding state may have just changed in UnityCliWindow, so fetch the latest when opening the drawer.
             RefreshCliGroup();
 
             if (_drawerContainer != null) _drawerContainer.AddToClassList("open");
@@ -766,8 +771,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Unity CLI 组：标题/按钮文案 + 绑定状态提示。绑定发生在 UnityCliWindow，
-        /// 抽屉每次本地化刷新（含 Open）时顺带取一次最新状态即可，无需轮询。
+        /// Unity CLI group: title/button text + binding-status hint. Binding happens in
+        /// UnityCliWindow; the drawer only needs to fetch the latest state once per localization
+        /// refresh (including Open) — no polling needed.
         /// </summary>
         private void RefreshCliGroup()
         {
@@ -787,24 +793,25 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 同步三类权限 UI：模式 toggles、Approval 设置 row、Pending/Granted 列表。
-        /// 由 OnChanged 事件、本类初始化、Localization 切换调用。
+        /// Syncs the three categories of permission UI: mode toggles, the Approval settings row,
+        /// and the Pending/Granted lists.
+        /// Called by the OnChanged event, this class's initialization, and localization switches.
         /// </summary>
         private void RefreshPermissionsUi()
         {
             if (_drawerContainer == null) return;
             var mode = SkillsModeManager.CurrentMode;
 
-            // 1) dropdown 同步到当前模式 + 刷新 hint
+            // 1) Sync the dropdown to the current mode + refresh the hint
             SyncModeDropdownValue(mode);
             ApplyModeHintText(mode);
 
-            // 2) Panel Approval row 仅 Approval 模式可见
+            // 2) The Panel Approval row is only visible in Approval mode
             SetDisplay(_panelApprovalRow, mode == SkillsOperatingMode.Approval);
             if (_panelApprovalToggle != null)
                 _panelApprovalToggle.SetValueWithoutNotify(SkillsModeManager.PanelApprovalRequired);
 
-            // 3) Pending 列表 — 仅 Approval 模式 + 有待批时显示
+            // 3) The Pending list — shown only in Approval mode + when there are pending items
             var pending = SkillsModeManager.PendingGrantRequests;
             bool showPending = mode == SkillsOperatingMode.Approval && pending.Count > 0;
             SetDisplay(_pendingSection, showPending);
@@ -821,7 +828,7 @@ namespace UnitySkills
                 _pendingList.Clear();
             }
 
-            // 4) Allowlist 列表 — Approval/Auto 显示（Bypass 隐藏）
+            // 4) The Allowlist list — shown in Approval/Auto (hidden in Bypass)
             var allowlist = SkillsModeManager.AllowlistSkills;
             bool showAllowlist = mode != SkillsOperatingMode.Bypass;
             SetDisplay(_allowlistSection, showAllowlist);
@@ -886,7 +893,9 @@ namespace UnitySkills
 
             bool isPanel = req.Channel == "panel";
 
-            // 渠道区分反馈：Panel 渠道走面板 Approve；Dialog 渠道的批准走 AI 对话，面板按钮无效，给出明确指引
+            // Channel-specific feedback: the panel channel goes through the panel's Approve; the
+            // dialog channel's approval happens in the AI chat, the panel button doesn't apply
+            // there, so give a clear pointer instead
             if (isPanel && req.ApprovedByPanel)
             {
                 var status = new Label(SkillsLocalization.Get("perm_approved_waiting"));
@@ -909,7 +918,7 @@ namespace UnitySkills
             };
             approveBtn.AddToClassList("mini-btn");
             approveBtn.style.marginRight = 4;
-            approveBtn.SetEnabled(isPanel && !req.ApprovedByPanel); // 仅 Panel 渠道未批准时可点
+            approveBtn.SetEnabled(isPanel && !req.ApprovedByPanel); // Clickable only when the panel channel hasn't approved yet
             actions.Add(approveBtn);
 
             var denyBtn = new Button(() => SkillsModeManager.Deny(req.Token))
@@ -925,8 +934,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 打开 AllowlistPickerWindow —— 支持搜索、按 Category 分组勾选、整组一键选中、
-        /// 提交时合并高危确认。窗口自负责调 AddToAllowlist；本控制器在 OnChanged 链路上自动刷新列表。
+        /// Opens AllowlistPickerWindow — supports search, checkbox selection grouped by
+        /// Category, select-all-in-group, and merges the high-risk confirmation on submit. The
+        /// window handles calling AddToAllowlist itself; this controller auto-refreshes the list
+        /// on the OnChanged chain.
         /// </summary>
         private void OnAddAllowlistClicked()
         {
@@ -946,8 +957,9 @@ namespace UnitySkills
                 return;
             }
 
-            // 用 SkillRouter snapshot 解析 name → Category；未注册 skill（注册表 refresh 间隔等）
-            // 归入特殊分组 "(Unknown)" 而不是丢弃，让用户至少能看到并 Remove。
+            // Resolve name → Category using the SkillRouter snapshot; an unregistered skill (e.g.
+            // during the registry's refresh interval) is grouped into the special "(Unknown)"
+            // bucket rather than dropped, so the user can at least see it and Remove it.
             // The unfiltered snapshot is required here: an allowlist can hold skill names the
             // current profile hides (switching profile does not clear the allowlist), and the
             // filtered snapshot would drop every one of them into "(Unknown)", leaving the user
@@ -961,7 +973,7 @@ namespace UnitySkills
                         nameToCategory[s.Name] = s.Category.ToString();
                 }
             }
-            catch { /* snapshot 失败时全部归入 Unknown 分组 */ }
+            catch { /* If the snapshot fails, group everything into Unknown */ }
 
             var grouped = allowlist
                 .GroupBy(n => nameToCategory.TryGetValue(n, out var c) ? c : "(Unknown)")
@@ -973,7 +985,7 @@ namespace UnitySkills
                 var foldout = new Foldout
                 {
                     text = $"{group.Key}  ({items.Count})",
-                    value = false, // 默认折叠，省空间；用户点开展看
+                    value = false, // Collapsed by default to save space; the user expands it to view
                 };
                 foldout.style.marginTop = 2;
 
@@ -1003,8 +1015,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 每秒一次：先比对 pending+granted 快照决定是否需要重建 list，否则只刷新倒计时。
-        /// OnChanged 事件链路如果丢失（后台窗口、跨域调用等场景），这条 polling 就是兜底。
+        /// Runs once per second: first compares a pending+granted snapshot to decide whether the
+        /// list needs rebuilding, otherwise just refreshes the countdown.
+        /// If the OnChanged event chain is ever lost (background window, cross-domain calls,
+        /// etc.), this polling is the fallback.
         /// </summary>
         private void TickPermissions()
         {
@@ -1039,13 +1053,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// 每秒扫一遍 pending 列表中的 expires Label，按 userData 中的 UTC 过期时间重算文字。
-        /// 不重建条目，避免破坏潜在的 hover/focus；过期到 0 后下次 OnChanged 会清掉条目。
+        /// Scans the pending list's expires Labels once per second, recomputing the text from
+        /// the UTC expiry time stored in userData.
+        /// Doesn't rebuild the entries, to avoid disrupting any hover/focus in progress; once
+        /// expiry reaches 0, the next OnChanged clears the entry.
         /// </summary>
         private void RefreshPendingExpiry()
         {
             if (_pendingList == null) return;
-            // 没有待批就跳过 — 避免每秒都遍历空列表。
+            // Skip when there's nothing pending — avoids iterating an empty list every second.
             if (SkillsModeManager.CurrentMode != SkillsOperatingMode.Approval) return;
             if (SkillsModeManager.PendingGrantRequests.Count == 0) return;
 

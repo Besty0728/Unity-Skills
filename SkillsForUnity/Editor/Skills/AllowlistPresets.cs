@@ -3,19 +3,19 @@
 namespace UnitySkills
 {
     /// <summary>
-    /// 预置 Allowlist 包：一组常用的「辅助代码编写」REST skill，供
-    /// <see cref="AllowlistPickerWindow"/> 一键勾选导入。
+    /// Preset Allowlist packages: a set of commonly-used "辅助代码编写" (coding-assist) REST skills, for
+    /// <see cref="AllowlistPickerWindow"/> to check and import with one click.
     ///
-    /// 收录原则——只收"加入 Allowlist 才有增量价值"的写操作：
-    /// 纯读 / 查询 skill（SemiAuto，任何模式本就放行）与删除类（forbid，留给用户
-    /// 显式追加）一律不收。具体生效模式见各组注释。
+    /// Inclusion principle — only include write operations where "adding them to the Allowlist has incremental value":
+    /// pure read/query skills (SemiAuto, already permitted in every mode) and delete-type skills (forbid, left for the user
+    /// to add explicitly) are never included. See each group's comment for the exact mode this applies to.
     /// </summary>
     public static class AllowlistPresets
     {
         /// <summary>
-        /// 组 A · 脚本写。这些 skill 标了 <c>MayTriggerReload + RiskLevel="high"</c>，
-        /// 被 <see cref="SkillsModeManager.IsForbiddenInSemi"/> 判为 NeverInSemi——在
-        /// Auto / Approval 下都返回 <c>MODE_FORBIDDEN</c>，是唯一"非 Allowlist 不可"的编码刚需。
+        /// Group A · script writes. These skills are marked <c>MayTriggerReload + RiskLevel="high"</c> and are
+        /// judged NeverInSemi by <see cref="SkillsModeManager.IsForbiddenInSemi"/> — under
+        /// both Auto and Approval they return <c>MODE_FORBIDDEN</c>, making this the one genuine "must be in the Allowlist" hard requirement for coding.
         /// </summary>
         public static readonly string[] ScriptWrite =
         {
@@ -27,8 +27,8 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 组 B · Inspector 赋值。这些是 FullAuto（approvalBehavior=grant，非 forbidden）：
-        /// 在 Auto 模式本就直接执行，加入 Allowlist 主要让 Approval 模式免去逐次 grant。
+        /// Group B · Inspector assignment. These are FullAuto (approvalBehavior=grant, not forbidden):
+        /// they already execute directly under Auto mode; adding them to the Allowlist mainly lets Approval mode skip granting them one by one.
         /// </summary>
         public static readonly string[] InspectorSet =
         {
@@ -39,8 +39,8 @@ namespace UnitySkills
         };
 
         /// <summary>
-        /// 「辅助代码编写」预置包：组 A + 组 B 的合并列表（保持声明顺序，组内无重复）。
-        /// AllowlistPickerWindow 的"勾选辅助代码编写包"按钮即导入此列表。
+        /// The "辅助代码编写" (coding-assist) preset package: the merged list of Group A + Group B (declaration order preserved, no duplicates within a group).
+        /// AllowlistPickerWindow's "勾选辅助代码编写包" button imports exactly this list.
         /// </summary>
         public static readonly string[] CodingAssist =
             ScriptWrite.Concat(InspectorSet).ToArray();

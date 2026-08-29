@@ -9,15 +9,17 @@ namespace UnitySkills
     [InitializeOnLoad]
     internal static class BatchJobService
     {
-        /// <summary>单帧处理 chunk 条目的时间预算（毫秒），避免一次
-        /// EditorApplication.update tick（或 job_wait 的 Pump 循环）卡在超大 chunk 上。</summary>
+        /// <summary>Time budget (ms) for processing chunk entries in a single frame, to avoid one
+        /// EditorApplication.update tick (or job_wait's Pump loop) getting stuck on an oversized chunk.</summary>
         private const double ChunkTimeBudgetMs = 12.0;
 
-        /// <summary><see cref="Wait"/> 阻塞循环的硬上限（毫秒）。Wait 是在 Unity 主线程上自旋 sleep
-        /// （见循环里的 Thread.Sleep），不设上限就会按调用方要求的时长冻住编辑器——连带 HTTP
-        /// 主线程队列一起冻。30s 是现有调用方需要的最长等待（BatchSkills 中 batch_retry_failed
-        /// 的同步路径）；批处理 chunk 合理地会比 AsyncJobService 限到 2s 的引擎驱动作业跑得久得多，
-        /// 但需要超过这个值的调用方必须改用 job_status / GET /jobs/{id} 轮询。</summary>
+        /// <summary>Hard cap (ms) on the <see cref="Wait"/> blocking loop. Wait busy-sleeps on the
+        /// Unity main thread (see the Thread.Sleep in the loop); without a cap it would freeze the
+        /// editor — and the HTTP main-thread queue along with it — for whatever duration the caller
+        /// requested. 30s is the longest wait any existing caller needs (the synchronous path of
+        /// batch_retry_failed in BatchSkills); batch chunks can reasonably run much longer than the
+        /// 2s cap AsyncJobService applies to engine-driven jobs, but callers needing more than this
+        /// must switch to job_status / GET /jobs/{id} polling.</summary>
         internal const int MaxWaitTimeoutMs = 30000;
 
         private sealed class RuntimeJobContext
@@ -106,7 +108,7 @@ namespace UnitySkills
             return job;
         }
 
-        /// <summary>移除已取消作业的运行时上下文，令 chunk 执行停止。</summary>
+        /// <summary>Removes the runtime context of a cancelled job, stopping chunk execution.</summary>
         internal static void NotifyCancelled(string jobId)
         {
             if (!string.IsNullOrEmpty(jobId) && RuntimeJobs.TryGetValue(jobId, out var context))
@@ -252,9 +254,10 @@ namespace UnitySkills
                         });
                     }
 
-                    // 双重闸门：条目数（chunkSize，由上面的 .Take 控制）与时间预算。检查发生在
-                    // 至少处理完一项之后，所以慢条目不会导致进度彻底卡死——只是把 chunk 剩下的
-                    // 部分让给下一帧，而不是冻住当前帧。
+                    // Double gate: item count (chunkSize, controlled by .Take above) and time
+                    // budget. The check happens after at least one item has been processed, so
+                    // a slow item can't stall progress entirely — it just hands the rest of the
+                    // chunk to the next frame instead of freezing the current one.
                     if (IsChunkBudgetExpired(budgetDeadline))
                         break;
                 }

@@ -2172,7 +2172,7 @@ namespace UnitySkills
             }
             catch
             {
-                // 部分节点在不同版本间并不以同样方式暴露该调用路径。
+                // Some nodes don't expose this call path the same way across versions.
             }
         }
 
@@ -2363,7 +2363,7 @@ namespace UnitySkills
                 }
                 catch
                 {
-                    // 换下一个重载再试。
+                    // Try the next overload.
                 }
             }
 
@@ -2515,7 +2515,7 @@ namespace UnitySkills
             }
             catch
             {
-                // 落到启发式路径解析。
+                // Fall through to heuristic path resolution.
             }
 
             try
@@ -2543,7 +2543,7 @@ namespace UnitySkills
             }
             catch
             {
-                // 文件系统探测失败可忽略。
+                // Filesystem probing failure can be ignored.
             }
 
             return false;

@@ -9,7 +9,7 @@ using UnitySkills.Internal;
 namespace UnitySkills
 {
     /// <summary>
-    /// 校验与清理技能——发现问题、优化资产、清理项目。
+    /// Validation and cleanup skills — find issues, optimize assets, clean up the project.
     /// </summary>
     public static class ValidationSkills
     {
@@ -97,7 +97,7 @@ namespace UnitySkills
                 foreach (var go in allObjects)
                 {
                     var components = go.GetComponents<Component>();
-                    if (components.Length == 1 && go.transform.childCount == 0) // 只有 Transform
+                    if (components.Length == 1 && go.transform.childCount == 0) // Transform only
                     {
                         issues.Add(new ValidationIssue
                         {
@@ -199,7 +199,7 @@ namespace UnitySkills
 
             if (!dryRun && emptyFolders.Count > 0)
             {
-                // 倒序删除（最深的先删）以处理嵌套的空文件夹
+                // Delete in reverse order (deepest first) to handle nested empty folders
                 var sorted = emptyFolders.OrderByDescending(f => f.Length).ToList();
                 foreach (var folder in sorted)
                 {
@@ -233,7 +233,7 @@ namespace UnitySkills
             var files = Directory.GetFiles(path);
             var directories = Directory.GetDirectories(path);
 
-            // 判断文件夹是否为空（只有 .meta 文件的不算有内容）
+            // Determine whether the folder is empty (a folder with only .meta files doesn't count as having content)
             var hasRealFiles = files.Any(f => !f.EndsWith(".meta"));
             var hasSubDirs = directories.Length > 0;
 
@@ -257,7 +257,7 @@ namespace UnitySkills
                 guids.Select(AssetDatabase.GUIDToAssetPath).Where(p => !string.IsNullOrEmpty(p)),
                 System.StringComparer.OrdinalIgnoreCase);
 
-            // 预建依赖索引：收集被任意资产依赖到的全部路径
+            // Pre-build a dependency index: collect every path that's depended on by any asset
             var allGuids = AssetDatabase.FindAssets("t:Object", new[] { "Assets" });
             var referencedPaths = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
             foreach (var g in allGuids)
@@ -271,7 +271,7 @@ namespace UnitySkills
                 }
             }
 
-            // 挑出不在被引用集合中的候选项
+            // Pick out candidates that aren't in the referenced set
             var potentiallyUnused = new List<object>();
             foreach (var path in candidatePaths)
             {
