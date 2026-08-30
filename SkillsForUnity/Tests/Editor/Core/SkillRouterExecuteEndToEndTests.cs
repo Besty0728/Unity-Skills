@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using System.IO;
 using UnityEditor;
@@ -124,9 +124,11 @@ namespace UnitySkills.Tests.Core
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             bool saved = SkillRouter.SummaryAutoTruncate;
+            int savedPage = SkillRouter.SummaryPageSize;
             try
             {
                 SkillRouter.SummaryAutoTruncate = true;
+                SkillRouter.SummaryPageSize = 5;
 
                 var response = JObject.Parse(SkillRouter.Execute("asset_find",
                     "{\"searchFilter\":\"\",\"limit\":15,\"verbose\":false}"));
@@ -141,6 +143,7 @@ namespace UnitySkills.Tests.Core
             finally
             {
                 SkillRouter.SummaryAutoTruncate = saved;
+                SkillRouter.SummaryPageSize = savedPage;
             }
         }
 

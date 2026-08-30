@@ -56,6 +56,7 @@ namespace UnitySkills.Tests.Core
         {
             EditorPrefs.DeleteKey(TruncateKey);
             EditorPrefs.DeleteKey(PageSizeKey);
+            SkillsSurfaceProfile.Current = SurfaceProfileKind.Guide;
             SkillRouter.ResetSummaryPreferencesForTests();
 
             Assert.That(SkillRouter.SummaryAutoTruncate, Is.True);
