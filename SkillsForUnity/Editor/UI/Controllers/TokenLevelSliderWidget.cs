@@ -598,7 +598,7 @@ namespace UnitySkills
 
                             if (p.shapeType == 1)
                             {
-                                // Crisp Rhombus / Diamond (菱形)
+                                // Crisp Rhombus / Diamond
                                 float dw = size * 0.95f;
                                 float dh = size * 1.45f;
                                 painter.BeginPath();
@@ -611,7 +611,7 @@ namespace UnitySkills
                             }
                             else if (p.shapeType == 2)
                             {
-                                // 4-Pointed Sparkle Star (四角棱星)
+                                // 4-Pointed Sparkle Star
                                 float arm = size * 1.45f;
                                 float inner = size * 0.38f;
                                 painter.BeginPath();
@@ -628,7 +628,7 @@ namespace UnitySkills
                             }
                             else
                             {
-                                // Circular Stardust (圆点星尘)
+                                // Circular Stardust
                                 painter.BeginPath();
                                 painter.Arc(new Vector2(pX, pY), size, 0f, 360f);
                                 painter.Fill();
@@ -770,7 +770,7 @@ namespace UnitySkills
                 baseCol = Color.Lerp(new Color(0.72f, 0.26f, 0.98f, 1f), new Color(0.98f, 0.38f, 0.76f, 1f), f);
             }
 
-            // Curved steep-slope ocean wave surge (海浪陡坡型渐进: steep front, luminous smooth body)
+            // Curved steep-slope ocean wave surge: steep front, luminous smooth body
             float shimmerCycle = Mathf.Repeat(time * 0.40f, 1.8f) - 0.4f;
             float shimmerDist = uCurved - shimmerCycle; // Directional distance from wave front
 
@@ -779,12 +779,12 @@ namespace UnitySkills
                 float waveFactor;
                 if (shimmerDist >= 0f)
                 {
-                    // Steep wave front (陡峭前沿波浪)
+                    // Steep wave front
                     waveFactor = 1f - (shimmerDist / 0.05f);
                 }
                 else
                 {
-                    // Smooth trailing wave slope (平缓后掠坡度)
+                    // Smooth trailing wave slope
                     waveFactor = 1f - (-shimmerDist / 0.18f);
                 }
 

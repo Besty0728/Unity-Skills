@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -139,7 +139,7 @@ namespace UnitySkills
 
         private const string PrefKeySummaryAutoTruncate = "UnitySkills_SummaryAutoTruncate";
         private const string PrefKeySummaryPageSize = "UnitySkills_SummaryPageSize";
-        public const int DefaultSummaryPageSize = 5;
+        public const int DefaultSummaryPageSize = 10;
         private static bool? _summaryAutoTruncate;
         private static int? _summaryPageSize;
 
