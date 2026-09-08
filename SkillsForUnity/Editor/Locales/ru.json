@@ -96,6 +96,7 @@
   "update_check_beta_target": "последняя beta",
   "update_check_reason_network": "сетевая ошибка",
   "update_check_reason_unknown": "неизвестная ошибка",
+  "update_check_reason_busy": "выполняется другая операция с пакетом",
   "drawer_confirm_label": "Подтверждать высокорисковые skills",
   "drawer_telemetry_label": "Записывать телеметрию выполнения",
   "drawer_telemetry_hint": "Записывает каждый вызов skill (имя, агент, режим, успех, длительность — без аргументов и значений полей) в Library/UnitySkillsTelemetry.jsonl, питая вкладку Analytics и GET /analytics. Только локально; никогда не покидает ваш компьютер. Выключите, чтобы прекратить запись.",

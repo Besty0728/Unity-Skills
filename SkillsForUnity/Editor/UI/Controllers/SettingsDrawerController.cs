@@ -594,12 +594,10 @@ namespace UnitySkills
 
             if (_updateCheckLabel != null)
                 _updateCheckLabel.text = SkillsLocalization.Get("drawer_update_check_label");
-            // Only re-apply button text in states whose text is static; Checking/Updating keep
-            // their transient status, and a language switch mid-update must not clobber it.
-            if (_updateCheckState == UpdateCheckState.Idle && _updateCheckBtn != null)
-                _updateCheckBtn.text = SkillsLocalization.Get("update_check_btn");
-            else if (_updateCheckState == UpdateCheckState.Ready && _updateCheckBtn != null)
-                _updateCheckBtn.text = SkillsLocalization.Get("update_check_update_now_fmt", _updateCheckTarget);
+            // Status and button text are stored as localization keys, not resolved strings, so both
+            // re-resolve here in every state -- including a check or update that is still in flight.
+            ApplyUpdateCheckButtonText();
+            ApplyUpdateCheckStatus();
 
             if (_telemetryLabel != null)
                 _telemetryLabel.text = SkillsLocalization.Get("drawer_telemetry_label");
@@ -643,7 +641,20 @@ namespace UnitySkills
         private UpdateCheckState _updateCheckState = UpdateCheckState.Idle;
         private PackageManagerHelper.SelfInstallKind _updateCheckKind;
         private string _updateCheckVersion; // raw latest stable version, null for beta targets
-        private string _updateCheckTarget = string.Empty; // display text for the update button
+
+        // Update target and status are held as localization keys (plus, where needed, a verbatim
+        // argument) instead of resolved text, so a language switch can re-resolve both. Storing the
+        // resolved string here is what used to freeze this row in whichever language was active when
+        // the check ran.
+        private string _updateCheckTargetKey;     // key for a localized target, e.g. the beta head
+        private string _updateCheckTargetLiteral; // verbatim target, e.g. "v2.8.2"
+        private string _updateCheckStatusKey;     // null while no status line is shown
+        private string _updateCheckStatusArgKey;  // {0} resolved from another key
+        private string _updateCheckStatusArgText; // {0} taken verbatim (upstream Package Manager text)
+
+        private string UpdateCheckTargetText => _updateCheckTargetKey != null
+            ? SkillsLocalization.Get(_updateCheckTargetKey)
+            : _updateCheckTargetLiteral ?? string.Empty;
 
         private void OnUpdateCheckClicked()
         {
@@ -664,13 +675,13 @@ namespace UnitySkills
             _updateCheckKind = PackageManagerHelper.DetectSelfInstallKind();
             if (_updateCheckKind == PackageManagerHelper.SelfInstallKind.Unsupported)
             {
-                SetUpdateCheckStatus(SkillsLocalization.Get("update_check_unsupported"));
+                SetUpdateCheckStatus("update_check_unsupported");
                 return;
             }
 
             _updateCheckState = UpdateCheckState.Checking;
             _updateCheckBtn?.SetEnabled(false);
-            SetUpdateCheckStatus(SkillsLocalization.Get("update_check_checking"));
+            SetUpdateCheckStatus("update_check_checking");
 
             if (_updateCheckKind == PackageManagerHelper.SelfInstallKind.Beta)
             {
@@ -695,11 +706,11 @@ namespace UnitySkills
             {
                 // Manual checks ignore the dismissed banner version on purpose.
                 _updateCheckVersion = release.Version;
-                EnterReadyState("v" + release.Version);
+                EnterReadyState(null, "v" + release.Version);
             }
             else
             {
-                EnterIdleState(SkillsLocalization.Get("update_check_latest"));
+                EnterIdleState("update_check_latest");
             }
         }
 
@@ -709,8 +720,7 @@ namespace UnitySkills
 
             if (sha == null)
             {
-                EnterIdleState(SkillsLocalization.Get("update_check_failed_fmt",
-                    SkillsLocalization.Get("update_check_reason_network")));
+                EnterIdleState("update_check_failed_fmt", argKey: "update_check_reason_network");
                 return;
             }
 
@@ -721,11 +731,11 @@ namespace UnitySkills
             if (hasUpdate)
             {
                 _updateCheckVersion = null;
-                EnterReadyState(SkillsLocalization.Get("update_check_beta_target"));
+                EnterReadyState("update_check_beta_target", null);
             }
             else
             {
-                EnterIdleState(SkillsLocalization.Get("update_check_latest"));
+                EnterIdleState("update_check_latest");
             }
         }
 
@@ -733,7 +743,7 @@ namespace UnitySkills
         {
             _updateCheckState = UpdateCheckState.Updating;
             _updateCheckBtn?.SetEnabled(false);
-            SetUpdateCheckStatus(SkillsLocalization.Get("update_check_updating"));
+            SetUpdateCheckStatus("update_check_updating");
 
             PackageManagerHelper.UpdateSelf(_updateCheckKind, _updateCheckVersion, (success, message) =>
             {
@@ -741,46 +751,91 @@ namespace UnitySkills
                 if (success)
                 {
                     // The package swap triggers a domain reload that tears this UI down anyway.
-                    SetUpdateCheckStatus(SkillsLocalization.Get("update_check_done"));
+                    SetUpdateCheckStatus("update_check_done");
                 }
                 else
                 {
-                    EnterIdleState(SkillsLocalization.Get("update_check_failed_fmt",
-                        string.IsNullOrEmpty(message)
-                            ? SkillsLocalization.Get("update_check_reason_unknown")
-                            : message));
+                    EnterIdleState("update_check_failed_fmt",
+                        argKey: ResolveFailureReasonKey(message),
+                        argText: message);
                 }
             });
         }
 
-        private void EnterReadyState(string targetDisplay)
+        /// <summary>
+        /// Maps the failure text from <see cref="PackageManagerHelper"/> to a localization key when it
+        /// is one of our own sentinels; returns null when the text is an upstream Package Manager
+        /// diagnostic, which is shown verbatim.
+        /// </summary>
+        private static string ResolveFailureReasonKey(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return "update_check_reason_unknown";
+            if (message == PackageManagerHelper.BusyMessage) return "update_check_reason_busy";
+            if (message == PackageManagerHelper.UnknownErrorMessage) return "update_check_reason_unknown";
+            return null;
+        }
+
+        private void EnterReadyState(string targetKey, string targetLiteral)
         {
             _updateCheckState = UpdateCheckState.Ready;
-            _updateCheckTarget = targetDisplay;
-            SetUpdateCheckStatus(SkillsLocalization.Get("update_check_new_version_fmt", targetDisplay));
-            if (_updateCheckBtn != null)
-            {
-                _updateCheckBtn.text = SkillsLocalization.Get("update_check_update_now_fmt", targetDisplay);
-                _updateCheckBtn.SetEnabled(true);
-            }
+            _updateCheckTargetKey = targetKey;
+            _updateCheckTargetLiteral = targetLiteral;
+            SetUpdateCheckStatus("update_check_new_version_fmt");
+            ApplyUpdateCheckButtonText();
+            _updateCheckBtn?.SetEnabled(true);
         }
 
-        private void EnterIdleState(string statusText)
+        private void EnterIdleState(string statusKey, string argKey = null, string argText = null)
         {
             _updateCheckState = UpdateCheckState.Idle;
-            _updateCheckTarget = string.Empty;
-            SetUpdateCheckStatus(statusText);
-            if (_updateCheckBtn != null)
-            {
-                _updateCheckBtn.text = SkillsLocalization.Get("update_check_btn");
-                _updateCheckBtn.SetEnabled(true);
-            }
+            _updateCheckTargetKey = null;
+            _updateCheckTargetLiteral = null;
+            SetUpdateCheckStatus(statusKey, argKey, argText);
+            ApplyUpdateCheckButtonText();
+            _updateCheckBtn?.SetEnabled(true);
         }
 
-        private void SetUpdateCheckStatus(string text)
+        private void SetUpdateCheckStatus(string key, string argKey = null, string argText = null)
         {
-            if (_updateCheckStatus != null)
-                _updateCheckStatus.text = text;
+            _updateCheckStatusKey = key;
+            _updateCheckStatusArgKey = argKey;
+            _updateCheckStatusArgText = argText;
+            ApplyUpdateCheckStatus();
+        }
+
+        private void ApplyUpdateCheckStatus()
+        {
+            if (_updateCheckStatus == null) return;
+
+            if (string.IsNullOrEmpty(_updateCheckStatusKey))
+            {
+                _updateCheckStatus.text = string.Empty;
+                return;
+            }
+
+            // The "new version" status carries the update target as its argument, and that target may
+            // itself be a localized string, so re-read it here instead of trusting the value captured
+            // when the check ran.
+            var arg = _updateCheckStatusKey == "update_check_new_version_fmt"
+                ? UpdateCheckTargetText
+                : (_updateCheckStatusArgKey != null
+                    ? SkillsLocalization.Get(_updateCheckStatusArgKey)
+                    : _updateCheckStatusArgText);
+
+            _updateCheckStatus.text = arg == null
+                ? SkillsLocalization.Get(_updateCheckStatusKey)
+                : SkillsLocalization.Get(_updateCheckStatusKey, arg);
+        }
+
+        private void ApplyUpdateCheckButtonText()
+        {
+            if (_updateCheckBtn == null) return;
+
+            // Updating keeps the Ready label (the button is disabled meanwhile).
+            _updateCheckBtn.text =
+                _updateCheckState == UpdateCheckState.Ready || _updateCheckState == UpdateCheckState.Updating
+                    ? SkillsLocalization.Get("update_check_update_now_fmt", UpdateCheckTargetText)
+                    : SkillsLocalization.Get("update_check_btn");
         }
 
         private static SkillsLocalization.Language ParseLanguage(string value) =>

@@ -82,6 +82,7 @@ namespace UnitySkills
         {
             if (_disposed) return;
             WireStaticTexts();
+            ApplyDetectionStatus();
             RefreshBindingUi();
         }
 
@@ -205,7 +206,7 @@ namespace UnitySkills
             string userPath = _pathField?.value?.Trim();
             UnityCliService.DetectAsync(string.IsNullOrEmpty(userPath) ? null : userPath);
             _detectionPending = true;
-            SetBadge(_statusBadge, "unknown", SkillsLocalization.Get("cli_detecting"));
+            ApplyDetectionStatus();
         }
 
         private void PollDetection()
@@ -214,13 +215,32 @@ namespace UnitySkills
             _detectionPending = false;
 
             var result = UnityCliService.LastResult;
+            if (result != null && result.found && _pathField != null && string.IsNullOrEmpty(_pathField.value))
+                _pathField.SetValueWithoutNotify(result.cliPath);
+
+            ApplyDetectionStatus();
+            RefreshBindingUi();
+        }
+
+        /// <summary>
+        /// Renders the badge/version text for whichever detection state is current (in flight, found,
+        /// or missing). Split out of <see cref="PollDetection"/> so <see cref="RefreshLocalization"/>
+        /// can re-resolve it after a language switch without re-running detection.
+        /// </summary>
+        private void ApplyDetectionStatus()
+        {
+            if (_detectionPending)
+            {
+                SetBadge(_statusBadge, "unknown", SkillsLocalization.Get("cli_detecting"));
+                return;
+            }
+
+            var result = UnityCliService.LastResult;
             bool found = result != null && result.found;
             if (found)
             {
                 SetBadge(_statusBadge, "installed", SkillsLocalization.Get("cli_status_found"));
                 if (_versionLabel != null) _versionLabel.text = $"{result.version}  ·  {result.cliPath}";
-                if (_pathField != null && string.IsNullOrEmpty(_pathField.value))
-                    _pathField.SetValueWithoutNotify(result.cliPath);
             }
             else
             {
@@ -229,7 +249,6 @@ namespace UnitySkills
             }
 
             _installGuide.SetVisible(!found);
-            RefreshBindingUi();
         }
 
         private void OnBindClicked()

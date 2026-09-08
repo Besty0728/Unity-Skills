@@ -1,3 +1,4 @@
+using System;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -22,6 +23,12 @@ namespace UnitySkills
         private double _nextCheckAtEditorTime;
         private VersionCheckService.ReleaseInfo _displayedRelease;
         private bool _updating;
+        // Transient status shown in place of the release message while a self-update runs. Held as a
+        // localization key (plus an optional verbatim argument) so a language switch re-resolves it
+        // instead of freezing the row in whichever language was active when the update started.
+        private string _statusKey;
+        private string _statusArgKey;
+        private string _statusArgText;
         // Manifest reads are cheap but the install source cannot change mid-session, so detect lazily once.
         private PackageManagerHelper.SelfInstallKind? _installKind;
 
@@ -61,9 +68,16 @@ namespace UnitySkills
             if (!shouldShow || release == null)
             {
                 _displayedRelease = null;
+                _statusKey = null;
                 _banner?.EnableInClassList("is-hidden", true);
                 return;
             }
+
+            // A status left over from an attempt against an older release is stale once a different
+            // release takes over the banner.
+            if (!_updating && _displayedRelease != null &&
+                !string.Equals(_displayedRelease.Version, release.Version, StringComparison.Ordinal))
+                _statusKey = null;
 
             _displayedRelease = release;
             RefreshMessage(release);
@@ -87,6 +101,8 @@ namespace UnitySkills
 
             _lastSnapshot = null;
             UpdateLiveData();
+            // UpdateLiveData leaves a transient status untouched, so re-resolve it here.
+            ApplyStatus();
         }
 
         private void PollForReleaseCheck()
@@ -102,10 +118,31 @@ namespace UnitySkills
         {
             if (_message == null) return;
 
+            // A self-update in flight owns the message line; don't overwrite its status.
+            if (_statusKey != null) return;
+
             _message.text = string.Format(
                 SkillsLocalization.Get("version_update_message_fmt"),
                 SkillsLogger.Version,
                 release.Version);
+        }
+
+        private void SetStatus(string key, string argKey = null, string argText = null)
+        {
+            _statusKey = key;
+            _statusArgKey = argKey;
+            _statusArgText = argText;
+            ApplyStatus();
+        }
+
+        private void ApplyStatus()
+        {
+            if (_message == null || _statusKey == null) return;
+
+            var arg = _statusArgKey != null ? SkillsLocalization.Get(_statusArgKey) : _statusArgText;
+            _message.text = arg == null
+                ? SkillsLocalization.Get(_statusKey)
+                : SkillsLocalization.Get(_statusKey, arg);
         }
 
         private void OpenRelease()
@@ -132,8 +169,7 @@ namespace UnitySkills
             _updating = true;
             _updateNowButton?.SetEnabled(false);
             _viewReleaseButton?.SetEnabled(false);
-            if (_message != null)
-                _message.text = SkillsLocalization.Get("update_check_updating");
+            SetStatus("update_check_updating");
 
             PackageManagerHelper.UpdateSelf(
                 PackageManagerHelper.SelfInstallKind.Stable, release.Version, (success, error) =>
@@ -141,22 +177,29 @@ namespace UnitySkills
                     if (success)
                     {
                         // The package swap triggers a domain reload that tears this banner down.
-                        if (_message != null)
-                            _message.text = SkillsLocalization.Get("update_check_done");
+                        SetStatus("update_check_done");
                         return;
                     }
 
                     _updating = false;
                     _updateNowButton?.SetEnabled(true);
                     _viewReleaseButton?.SetEnabled(true);
-                    if (_message != null)
-                    {
-                        _message.text = SkillsLocalization.Get("update_check_failed_fmt",
-                            string.IsNullOrEmpty(error)
-                                ? SkillsLocalization.Get("update_check_reason_unknown")
-                                : error);
-                    }
+                    SetStatus("update_check_failed_fmt",
+                        argKey: ResolveFailureReasonKey(error),
+                        argText: error);
                 });
+        }
+
+        /// <summary>
+        /// Maps a failure text produced by <see cref="PackageManagerHelper"/> itself to a localization
+        /// key; returns null for an upstream Package Manager diagnostic, which is shown verbatim.
+        /// </summary>
+        private static string ResolveFailureReasonKey(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return "update_check_reason_unknown";
+            if (message == PackageManagerHelper.BusyMessage) return "update_check_reason_busy";
+            if (message == PackageManagerHelper.UnknownErrorMessage) return "update_check_reason_unknown";
+            return null;
         }
 
         private void Dismiss()

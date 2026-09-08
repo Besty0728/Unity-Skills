@@ -192,6 +192,14 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// Failure texts produced by this helper itself, as opposed to a message forwarded from
+        /// Unity's Package Manager. They stay English on the wire (REST callers depend on the exact
+        /// text); the editor UI matches these constants to show a localized reason instead.
+        /// </summary>
+        internal const string BusyMessage = "Another install operation is in progress";
+        internal const string UnknownErrorMessage = "Unknown error";
+
+        /// <summary>
         /// Installs a package (async)
         /// </summary>
         public static void InstallPackage(string packageId, string version, Action<bool, string> callback)
@@ -199,7 +207,7 @@ namespace UnitySkills
             if ((_addRequest != null && !_addRequest.IsCompleted) ||
                 (_removeRequest != null && !_removeRequest.IsCompleted))
             {
-                callback?.Invoke(false, "Another install operation is in progress");
+                callback?.Invoke(false, BusyMessage);
                 return;
             }
 
@@ -229,7 +237,7 @@ namespace UnitySkills
             }
             else
             {
-                cb?.Invoke(false, _addRequest.Error?.message ?? "Unknown error");
+                cb?.Invoke(false, _addRequest.Error?.message ?? UnknownErrorMessage);
             }
         }
 

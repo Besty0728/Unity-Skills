@@ -310,7 +310,26 @@ namespace UnitySkills
             _detailContent.SetVisible(true);
 
             if (_skillTitle != null) _skillTitle.text = skill.Name;
+            RelocalizeDetail(skill);
 
+            if (_paramsField != null) _paramsField.value = defaultParams ?? "{}";
+            if (_resultField != null) _resultField.value = "";
+            ClearResultError();
+
+            if (_dryRunBtn != null)
+            {
+                var attr = skill.Method?.GetCustomAttribute<UnitySkillAttribute>();
+                _dryRunBtn.SetEnabled(attr == null || attr.SupportsDryRun);
+            }
+        }
+
+        /// <summary>
+        /// Re-resolves the description and tags for the currently displayed skill. Split out of
+        /// <see cref="PopulateDetail"/> so a language switch can refresh this text without touching
+        /// the params field or a result the user has not cleared yet.
+        /// </summary>
+        private void RelocalizeDetail(UnitySkillsWindow.SkillInfo skill)
+        {
             // Description: prefer localized description by skill name key
             string desc = SkillsLocalization.Get(skill.Name);
             if (desc == skill.Name) desc = skill.Description;
@@ -334,16 +353,6 @@ namespace UnitySkills
                         _skillMeta.Add(risk);
                     }
                 }
-            }
-
-            if (_paramsField != null) _paramsField.value = defaultParams ?? "{}";
-            if (_resultField != null) _resultField.value = "";
-            ClearResultError();
-
-            if (_dryRunBtn != null)
-            {
-                var attr = skill.Method?.GetCustomAttribute<UnitySkillAttribute>();
-                _dryRunBtn.SetEnabled(attr == null || attr.SupportsDryRun);
             }
         }
 
@@ -412,6 +421,15 @@ namespace UnitySkills
 
             // Rebuild list to refresh badge texts in active language
             RebuildList();
+
+            // The selected skill's description/tags were resolved once at selection time; re-resolve
+            // them here rather than leaving them frozen in whichever language was active back then.
+            // Params/result fields are left untouched -- the user may be mid-edit.
+            if (!string.IsNullOrEmpty(_selectedSkillName))
+            {
+                var skill = FindSkill(_selectedSkillName);
+                if (skill != null) RelocalizeDetail(skill);
+            }
         }
 
         public void Dispose()
