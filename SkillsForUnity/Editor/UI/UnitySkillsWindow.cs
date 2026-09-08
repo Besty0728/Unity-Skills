@@ -1076,6 +1076,7 @@ namespace UnitySkills
             public string ShortTime;
             public string Type;
             public string Skill;
+            public string Agent;
             public string Mode;
             public string SkillMode;
             public string Result;
@@ -1103,6 +1104,7 @@ namespace UnitySkills
                 Ts          = obj["ts"]?.ToString(),
                 Type        = obj["type"]?.ToString(),
                 Skill       = obj["skill"]?.ToString(),
+                Agent       = obj["agent"]?.ToString(),
                 Mode        = obj["mode"]?.ToString(),
                 SkillMode   = obj["skillMode"]?.ToString(),
                 Result      = obj["result"]?.ToString(),
@@ -1185,6 +1187,8 @@ namespace UnitySkills
             var parts = new List<string>();
             if (e.Type == "call" && !string.IsNullOrEmpty(e.Mode))
                 parts.Add($"{e.Mode}/{e.SkillMode ?? "?"}");
+            if (!string.IsNullOrEmpty(e.Agent))
+                parts.Add(e.Agent);
             if (!string.IsNullOrEmpty(e.GrantToken))
                 parts.Add($"#{ShortTokenLocal(e.GrantToken)}");
             if (!string.IsNullOrEmpty(e.Token))

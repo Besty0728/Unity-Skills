@@ -37,11 +37,35 @@ namespace UnitySkills
         private const int MaxRotatedFiles = 3;
         private const string PrefEnabled = "UnitySkills_TelemetryEnabled";
 
-        private static readonly ConcurrentQueue<string> _queue = new ConcurrentQueue<string>();
+        // Delaying the flush by this much lets ClientProcessResolver's background worker (8ms coalesce + a
+        // ~30-60ms lsof/proc/syscall round) land its result before the agent field is finally decided at
+        // flush time -- see PendingRecord/BuildLine below. Most skills finish in single-digit ms, so binding
+        // the agent at *enqueue* time (the old behavior) almost always raced the resolver and lost.
+        private const int FlushDelayMs = 200;
+
+        private static readonly ConcurrentQueue<PendingRecord> _queue = new ConcurrentQueue<PendingRecord>();
         private static readonly object _writeLock = new object();
         private static int _flushScheduled; // Interlocked guard
         private static string _cachedDir;
         private static string _cachedPath;
+
+        /// <summary>
+        /// Everything needed to build a JSONL line, minus the final agent identity -- that's resolved from
+        /// <see cref="ClientProcessResolver"/> at flush time (see <see cref="BuildLine"/>), not at enqueue
+        /// time, since flush happens well after the resolver has had a chance to finish.
+        /// </summary>
+        private sealed class PendingRecord
+        {
+            public string Ts;
+            public string Skill;
+            public string FallbackAgentId;
+            public int RemotePort;
+            public bool AgentIdIsExplicit;
+            public string Mode;
+            public bool Ok;
+            public string ErrorCode;
+            public long DurationMs;
+        }
 
         // Aggregation cache: caches the serialized /analytics JSON per window for 30 seconds, so
         // continuous polling doesn't reread up to 4MB from disk on every request.
@@ -97,11 +121,18 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Appends one execution result. Non-blocking: the JSON line is enqueued and flushed to
-        /// disk by a thread-pool worker. Must be called on the main thread (this is where the
-        /// Enabled EditorPref is read and the log path resolved, so the flush worker never touches Unity APIs).
+        /// Appends one execution result. Non-blocking: the record is enqueued and flushed to disk (after a
+        /// short delay -- see <see cref="FlushDelayMs"/>) by a thread-pool worker. Must be called on the main
+        /// thread (this is where the Enabled EditorPref is read and the log path resolved, so the flush
+        /// worker never touches Unity APIs).
+        ///
+        /// <paramref name="remotePort"/>/<paramref name="agentIdIsExplicit"/> mirror SkillsHttpServer's
+        /// RequestJob fields: when the caller has an explicit X-Agent-Id header, <paramref name="agentId"/> is
+        /// used as-is and no late resolution is attempted. Otherwise <paramref name="agentId"/> is only the
+        /// *fallback* (whatever header/User-Agent guess was available at call time) -- BuildLine re-checks
+        /// ClientProcessResolver's cache at flush time and prefers that if it has since resolved.
         /// </summary>
-        public static void Record(string skill, string agentId, string mode, bool ok, string errorCode, long durationMs)
+        public static void Record(string skill, string agentId, string mode, bool ok, string errorCode, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false)
         {
             try
             {
@@ -109,7 +140,18 @@ namespace UnitySkills
                 // Resolve and cache the path on the main thread, so FlushPending (a worker
                 // thread) can reuse the cached value instead of reading Application.dataPath off the main thread.
                 GetLogPath();
-                _queue.Enqueue(BuildLine(skill, agentId, mode, ok, errorCode, durationMs));
+                _queue.Enqueue(new PendingRecord
+                {
+                    Ts = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                    Skill = skill,
+                    FallbackAgentId = agentId,
+                    RemotePort = remotePort,
+                    AgentIdIsExplicit = agentIdIsExplicit,
+                    Mode = mode,
+                    Ok = ok,
+                    ErrorCode = errorCode,
+                    DurationMs = durationMs,
+                });
                 ScheduleFlush();
             }
             catch (Exception ex)
@@ -371,30 +413,47 @@ namespace UnitySkills
 
         // ===== Write path =====
 
-        private static string BuildLine(string skill, string agentId, string mode, bool ok, string errorCode, long durationMs)
+        private static string BuildLine(PendingRecord record)
         {
+            // Late-bound agent identity: resolved right now (at flush time), not when Record() was called.
+            // ClientProcessResolver.TryGetAgentId is a pure, thread-safe dictionary lookup -- safe to call from
+            // this worker thread, and it never touches any Unity API.
+            string agentId = record.FallbackAgentId;
+            if (!record.AgentIdIsExplicit && record.RemotePort > 0 &&
+                ClientProcessResolver.TryGetAgentId(record.RemotePort, out var resolved))
+            {
+                agentId = resolved;
+            }
+
             var payload = new Dictionary<string, object>(StringComparer.Ordinal)
             {
-                ["ts"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
-                ["skill"] = skill,
+                ["ts"] = record.Ts,
+                ["skill"] = record.Skill,
                 ["agent"] = agentId,
-                ["mode"] = mode,
-                ["ok"] = ok,
+                ["mode"] = record.Mode,
+                ["ok"] = record.Ok,
             };
             // Convention: errorCode is omitted entirely when ok=true; kept (even if the value is null) when ok=false.
-            if (!ok)
-                payload["errorCode"] = errorCode;
-            payload["ms"] = durationMs;
+            if (!record.Ok)
+                payload["errorCode"] = record.ErrorCode;
+            payload["ms"] = record.DurationMs;
             return JsonConvert.SerializeObject(payload, Formatting.None, SkillsCommon.JsonSettings);
         }
 
         private static void ScheduleFlush()
         {
-            // Coalesce multiple appends into a single flush task.
+            // Coalesce multiple appends into a single flush task, and delay it (see FlushDelayMs) so the
+            // agent field gets a fair chance to resolve before BuildLine runs. FlushSync (used by
+            // ReadAll/DeleteWindow -- anything that needs read-your-writes *now*) bypasses this delay
+            // entirely and just uses whatever's resolved (or not) at that instant; it must never wait.
             if (Interlocked.CompareExchange(ref _flushScheduled, 1, 0) != 0) return;
-            Task.Run(() =>
+            Task.Run(async () =>
             {
-                try { FlushPending(); }
+                try
+                {
+                    await Task.Delay(FlushDelayMs).ConfigureAwait(false);
+                    FlushPending();
+                }
                 finally { Interlocked.Exchange(ref _flushScheduled, 0); }
             });
         }
@@ -425,8 +484,8 @@ namespace UnitySkills
                 using (var fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
                 using (var writer = new StreamWriter(fs, SkillsCommon.Utf8NoBom))
                 {
-                    while (_queue.TryDequeue(out var line))
-                        writer.WriteLine(line);
+                    while (_queue.TryDequeue(out var record))
+                        writer.WriteLine(BuildLine(record));
                 }
 
                 RotateIfNeeded(path);

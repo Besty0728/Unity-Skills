@@ -273,6 +273,11 @@ namespace UnitySkills
             public long EnqueueTimeTicks;
             public string RequestId;
             public string AgentId;
+            // True when the caller sent an explicit X-Agent-Id header -- that always wins, so RefineAgentId
+            // never overwrites it with a process-chain guess.
+            public bool AgentIdIsExplicit;
+            // The client's TCP port at accept time, used to look up ClientProcessResolver's cache later. -1 when unavailable.
+            public int RemotePort;
             public string QueryString;
             // Headers for conditional GET / content negotiation. A pure string read, so grabbed by the HTTP thread at enqueue time.
             public string IfNoneMatch;
@@ -288,7 +293,7 @@ namespace UnitySkills
             public string ETag;
             public ManualResetEventSlim CompletionSignal = new ManualResetEventSlim(false);
 
-            public void Prepare(HttpListenerContext context, string httpMethod, string path, string body, string requestId, string agentId, string queryString = null, string ifNoneMatch = null, string acceptEncoding = null)
+            public void Prepare(HttpListenerContext context, string httpMethod, string path, string body, string requestId, string agentId, string queryString = null, string ifNoneMatch = null, string acceptEncoding = null, bool agentIdIsExplicit = false, int remotePort = -1)
             {
                 Context = context;
                 HttpMethod = httpMethod;
@@ -297,6 +302,8 @@ namespace UnitySkills
                 EnqueueTimeTicks = DateTime.UtcNow.Ticks;
                 RequestId = requestId;
                 AgentId = agentId;
+                AgentIdIsExplicit = agentIdIsExplicit;
+                RemotePort = remotePort;
                 QueryString = queryString;
                 IfNoneMatch = ifNoneMatch;
                 AcceptEncoding = acceptEncoding;
@@ -317,6 +324,8 @@ namespace UnitySkills
                 EnqueueTimeTicks = 0;
                 RequestId = null;
                 AgentId = null;
+                AgentIdIsExplicit = false;
+                RemotePort = -1;
                 QueryString = null;
                 IfNoneMatch = null;
                 AcceptEncoding = null;
@@ -1055,6 +1064,10 @@ namespace UnitySkills
         {
             _domainReloadPending = true;
 
+            // Stop the process-chain resolver's background worker before the domain unloads. Its cache is lost,
+            // which is fine (cheap to rebuild) -- what matters is not leaving a dangling background thread.
+            ClientProcessResolver.Shutdown();
+
             // Critical fix: only write true while the server is actually running.
             // When _isRunning=false (a previous restart failed), don't overwrite — preserve the existing true intent.
             if (_isRunning)
@@ -1660,6 +1673,16 @@ namespace UnitySkills
                         }
                     }
 
+                    // Process-chain agent attribution (see ClientProcessResolver): a request with an explicit
+                    // X-Agent-Id header short-circuits entirely -- no point resolving what the caller already
+                    // told us. Otherwise, kick off a non-blocking background resolve keyed by the client's TCP
+                    // port; the accept thread never waits on it. RemoteEndPoint is already known from the
+                    // accepted socket, so reading its Port here is instant.
+                    bool agentIdIsExplicit = !string.IsNullOrEmpty(request.Headers["X-Agent-Id"]);
+                    int remotePort = request.RemoteEndPoint?.Port ?? -1;
+                    if (!agentIdIsExplicit && remotePort > 0)
+                        ClientProcessResolver.BeginResolve(remotePort, _port);
+
                     job = RentRequestJob();
                     job.Prepare(
                         context,
@@ -1670,7 +1693,9 @@ namespace UnitySkills
                         DetectAgent(request),
                         url.Query,
                         request.Headers["If-None-Match"],
-                        request.Headers["Accept-Encoding"]);
+                        request.Headers["Accept-Encoding"],
+                        agentIdIsExplicit,
+                        remotePort);
 
                     Interlocked.Increment(ref _totalRequestsReceived);
 
@@ -2352,6 +2377,15 @@ namespace UnitySkills
                     return;
 
                 var skillSw = System.Diagnostics.Stopwatch.StartNew();
+                // Early check: BeginResolve fired back at accept time, but if the main thread dequeued this job
+                // almost instantly the background worker's ~8ms coalescing window + syscall round may not have
+                // finished yet. A second, guaranteed-fresh check happens right before RecordSkillTelemetry below.
+                RefineAgentId(job);
+                // Marks this thread as executing inside a REST request for the duration of Execute (which is
+                // where the permission gate writes its "call" audit entry): SkillsAuditLog.Append picks up the
+                // ambient remotePort/fallback and late-binds the "agent" field at flush time, same rationale
+                // as RecordSkillTelemetry below. DryRun/Plan don't run the gate, so no audit entry to tag either way.
+                using (SkillsAuditLog.BeginRequestContext(job.RemotePort, job.AgentId, job.AgentIdIsExplicit))
                 try
                 {
                     job.StatusCode = 200;
@@ -2382,7 +2416,11 @@ namespace UnitySkills
                     SkillsLogger.LogWarning($"Skill '{skillName}' error: {ex.Message}");
                 }
                 skillSw.Stop();
-                RecordSkillTelemetry(mode, skillName, job.AgentId, job.ResponseJson, skillSw.ElapsedMilliseconds);
+                // Guaranteed-fresh recheck: the skill has now run (tens to hundreds of ms since accept), giving
+                // the background resolver ample time to land its result. RefineAgentId is an idempotent, pure
+                // cache lookup -- calling it twice costs nothing when the first call already resolved it.
+                RefineAgentId(job);
+                RecordSkillTelemetry(mode, skillName, job.AgentId, job.ResponseJson, skillSw.ElapsedMilliseconds, job.RemotePort, job.AgentIdIsExplicit);
                 return;
             }
 
@@ -2573,11 +2611,24 @@ namespace UnitySkills
         // ===== Execution telemetry =====
 
         /// <summary>
+        /// Re-checks ClientProcessResolver's cache and, on a hit, replaces job.AgentId with the resolved
+        /// process-chain identity -- a pure, idempotent dictionary lookup, safe to call repeatedly right before
+        /// every audit/telemetry write. Never overwrites an explicit X-Agent-Id header.
+        /// </summary>
+        private static void RefineAgentId(RequestJob job)
+        {
+            if (job.AgentIdIsExplicit || job.RemotePort <= 0)
+                return;
+            if (ClientProcessResolver.TryGetAgentId(job.RemotePort, out var resolved))
+                job.AgentId = resolved;
+        }
+
+        /// <summary>
         /// Records the result of a POST /skill/{name} call into <see cref="SkillTelemetryService"/>. Determines ok
         /// and extracts errorCode with a lightweight string probe (not JObject.Parse — this is the single-skill hot path).
         /// Fully isolated: a telemetry failure must never alter the business response already computed by the caller.
         /// </summary>
-        private static void RecordSkillTelemetry(SkillRouter.RequestMode mode, string skillName, string agentId, string responseJson, long durationMs)
+        private static void RecordSkillTelemetry(SkillRouter.RequestMode mode, string skillName, string agentId, string responseJson, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false)
         {
             try
             {
@@ -2585,7 +2636,10 @@ namespace UnitySkills
                                : mode == SkillRouter.RequestMode.Plan ? "plan"
                                : "execute";
                 ProbeOutcome(responseJson, mode == SkillRouter.RequestMode.DryRun, out bool ok, out string errorCode);
-                SkillTelemetryService.Record(skillName, agentId, modeStr, ok, errorCode, durationMs);
+                // agentId here is only the fallback (whatever RefineAgentId's early, possibly-too-soon check
+                // produced) -- SkillTelemetryService re-checks ClientProcessResolver again at flush time,
+                // ~200ms later, which is what actually catches most single-digit-ms skill calls.
+                SkillTelemetryService.Record(skillName, agentId, modeStr, ok, errorCode, durationMs, remotePort, agentIdIsExplicit);
             }
             catch { /* telemetry is best-effort — never surface to the caller */ }
         }
@@ -2594,8 +2648,10 @@ namespace UnitySkills
         /// Records the result of one step in /skills/batch. The batch loop already holds each step's parsed payload,
         /// so ok/errorCode are passed directly (no string probe needed). A null/blank skill name (malformed step) is
         /// recorded as "(malformed)". mode is batch_step or batch_step_dryRun, depending on the dryRun flag.
+        /// remotePort/agentIdIsExplicit are forwarded to SkillTelemetryService.Record for the same flush-time
+        /// late-binding as the single-skill path (see RecordSkillTelemetry).
         /// </summary>
-        private static void RecordBatchStep(string skillName, string agentId, bool dryRun, bool ok, string errorCode, long durationMs)
+        private static void RecordBatchStep(string skillName, string agentId, bool dryRun, bool ok, string errorCode, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false)
         {
             try
             {
@@ -2603,7 +2659,7 @@ namespace UnitySkills
                     string.IsNullOrWhiteSpace(skillName) ? "(malformed)" : skillName,
                     agentId,
                     dryRun ? "batch_step_dryRun" : "batch_step",
-                    ok, errorCode, durationMs);
+                    ok, errorCode, durationMs, remotePort, agentIdIsExplicit);
             }
             catch { /* telemetry is best-effort */ }
         }
@@ -2776,7 +2832,16 @@ namespace UnitySkills
             if (transactional && RejectTransactionalPrecheck(job, steps, continueOnError))
                 return;
 
-            var response = ExecuteBatchCore(steps, batchParams, continueOnError, dryRun, transactional, job.AgentId, captureDiff);
+            // agentIdRefiner re-checks ClientProcessResolver's cache before every step's telemetry write (see
+            // RefineAgentId) -- a whole batch shares one accepted connection, so the same idempotent recheck
+            // that /skill/{name} does once is worth repeating per step here: an early step may run before the
+            // background resolver has landed a result, while a later one in the same batch won't. remotePort/
+            // agentIdIsExplicit are also forwarded so SkillTelemetryService can do its own flush-time
+            // late-binding (the real fix -- see SkillTelemetryService.Record) regardless of how this recheck lands.
+            var response = ExecuteBatchCore(steps, batchParams, continueOnError, dryRun, transactional, job.AgentId, captureDiff,
+                agentIdRefiner: () => { RefineAgentId(job); return job.AgentId; },
+                remotePort: job.RemotePort,
+                agentIdIsExplicit: job.AgentIdIsExplicit);
             job.StatusCode = 200;
             job.ResponseJson = JsonConvert.SerializeObject(response, _jsonSettings);
         }
@@ -2787,9 +2852,17 @@ namespace UnitySkills
         /// audit), with fail-fast / continueOnError / grant-interruption semantics and optional transactional rollback.
         /// The caller must pass an already-validated, non-empty steps array (transactional mode must also have run
         /// RejectTransactionalPrecheck). Returns the response body as a JObject ({status, executed, failed, results, ...}).
+        ///
+        /// agentIdRefiner is an optional per-step re-check (see SkillsHttpServer's call site / RefineAgentId): when
+        /// provided, its return value is used instead of the fixed agentId for each step's telemetry. Left null by
+        /// every existing test call site, which keeps their agentId argument exactly as passed. remotePort/
+        /// agentIdIsExplicit are forwarded to every RecordBatchStep call, so SkillTelemetryService.Record can do
+        /// its own flush-time late-binding for each step -- the mechanism that actually fixes attribution for
+        /// single-digit-ms skills, independent of whether agentIdRefiner's early recheck already landed.
         /// </summary>
         internal static JObject ExecuteBatchCore(JArray steps, JObject batchParams, bool continueOnError,
-            bool dryRun, bool transactional, string agentId, bool captureDiff = false)
+            bool dryRun, bool transactional, string agentId, bool captureDiff = false, Func<string> agentIdRefiner = null,
+            int remotePort = -1, bool agentIdIsExplicit = false)
         {
             int txStartGroup = -1;
             if (transactional)
@@ -2808,6 +2881,10 @@ namespace UnitySkills
             bool halted = false;
             var batchDiff = captureDiff && !dryRun ? SkillSceneDiff.CreateBatchCapture() : null;
 
+            // One scope for the whole batch (not per-step): remotePort/agentIdIsExplicit don't change between
+            // steps -- they describe the single accepted connection this batch arrived on. Every SkillRouter.Execute
+            // call inside the loop below (and the "call" audit entry its permission gate writes) picks this up.
+            using (SkillsAuditLog.BeginRequestContext(remotePort, agentId, agentIdIsExplicit))
             for (int i = 0; i < steps.Count; i++)
             {
                 string stepSkillName = GetBatchStepSkillName(steps[i]);
@@ -2819,6 +2896,9 @@ namespace UnitySkills
                 }
 
                 var stepSw = System.Diagnostics.Stopwatch.StartNew();
+                // Re-checked per step (see ExecuteBatchCore's doc comment): a pure, idempotent cache lookup when
+                // agentIdRefiner is supplied, otherwise just the fixed agentId every existing test call site passes.
+                string effectiveAgentId = agentIdRefiner != null ? (agentIdRefiner() ?? agentId) : agentId;
 
                 if (!(steps[i] is JObject step) || string.IsNullOrWhiteSpace(stepSkillName))
                 {
@@ -2834,7 +2914,7 @@ namespace UnitySkills
                             retryStrategy: SkillErrorResponse.RetryFixAndRetry)),
                     });
                     if (!continueOnError && !dryRun) halted = true;
-                    RecordBatchStep(stepSkillName, agentId, dryRun, false, "MISSING_PARAM", stepSw.ElapsedMilliseconds);
+                    RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, "MISSING_PARAM", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
                     continue;
                 }
 
@@ -2906,7 +2986,7 @@ namespace UnitySkills
                                 ["error"] = BuildErrorPayload(paramErrorJson),
                             });
                             if (!continueOnError && !dryRun) halted = true;
-                            RecordBatchStep(stepSkillName, agentId, dryRun, false, "SEMANTIC_INVALID", stepSw.ElapsedMilliseconds);
+                            RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, "SEMANTIC_INVALID", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
                             continue;
                         }
                     }
@@ -2990,7 +3070,7 @@ namespace UnitySkills
                                     ["error"] = BuildErrorPayload(refErrorJson),
                                 });
                                 if (!continueOnError) halted = true;
-                                RecordBatchStep(stepSkillName, agentId, dryRun, false, "SEMANTIC_INVALID", stepSw.ElapsedMilliseconds);
+                                RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, "SEMANTIC_INVALID", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
                                 continue;
                             }
                             argsJson = argsClone.ToString(Formatting.None);
@@ -3019,7 +3099,7 @@ namespace UnitySkills
                         // step — including one whose name doesn't resolve to a known skill — still triggers invalidation.
                         if (!SkillRouter.TryGetSkill(stepSkillName, out var stepSkill) || !stepSkill.ReadOnly)
                             GameObjectFinder.InvalidateCache();
-                        SkillsLogger.LogAgent(agentId, $"{stepSkillName} (batch {i + 1}/{steps.Count})");
+                        SkillsLogger.LogAgent(effectiveAgentId, $"{stepSkillName} (batch {i + 1}/{steps.Count})");
                     }
                 }
                 catch (Exception ex)
@@ -3060,7 +3140,7 @@ namespace UnitySkills
                         failedCount++;
                         results.Add(new JObject { ["index"] = i, ["skill"] = stepSkillName, ["status"] = "error", ["error"] = stepPayload });
                     }
-                    RecordBatchStep(stepSkillName, agentId, dryRun, stepValid, stepValid ? null : "DRYRUN_INVALID", stepSw.ElapsedMilliseconds);
+                    RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, stepValid, stepValid ? null : "DRYRUN_INVALID", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
                     continue;
                 }
 
@@ -3078,7 +3158,7 @@ namespace UnitySkills
 
                     if (authorizationRequired || !continueOnError)
                         halted = true;
-                    RecordBatchStep(stepSkillName, agentId, dryRun, false, errorCode, stepSw.ElapsedMilliseconds);
+                    RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, errorCode, stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
                     continue;
                 }
 
@@ -3096,7 +3176,7 @@ namespace UnitySkills
                     ["status"] = "success",
                     ["result"] = unwrappedResult,
                 });
-                RecordBatchStep(stepSkillName, agentId, dryRun, true, null, stepSw.ElapsedMilliseconds);
+                RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, true, null, stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
             }
 
             bool rolledBack = false;
@@ -4388,6 +4468,10 @@ namespace UnitySkills
             // the ThreadStatic one-shot token set by TryGrantAndReturnArgs, and the subsequent SkillRouter.Execute, both
             // run on that same main thread — the thread-safety precondition holds, no extra dispatch needed.
             var (outcome, cachedSkill, cachedArgs) = SkillsModeManager.TryGrantAndReturnArgs(skill, token, argsJson);
+            RefineAgentId(job);
+            // Covers every audit entry this handler can write: the "call" event from Execute's permission gate
+            // (Granted branch) and grant_executed below both get a late-bound "agent" field.
+            using (SkillsAuditLog.BeginRequestContext(job.RemotePort, job.AgentId, job.AgentIdIsExplicit))
             switch (outcome)
             {
                 case GrantOutcome.Granted:
@@ -4472,7 +4556,10 @@ namespace UnitySkills
                 WritePermissionError(job, 400, SkillErrorCode.MissingParam, "'token' is required.", retry: SkillErrorResponse.RetryFixAndRetry);
                 return;
             }
-            bool ok = SkillsModeManager.Approve(token);
+            RefineAgentId(job);
+            bool ok;
+            using (SkillsAuditLog.BeginRequestContext(job.RemotePort, job.AgentId, job.AgentIdIsExplicit))
+                ok = SkillsModeManager.Approve(token);
             job.StatusCode = ok ? 200 : 404;
             job.ResponseJson = JsonConvert.SerializeObject(new { ok, token }, _jsonSettings);
         }
@@ -4486,7 +4573,10 @@ namespace UnitySkills
                 WritePermissionError(job, 400, SkillErrorCode.MissingParam, "'token' is required.", retry: SkillErrorResponse.RetryFixAndRetry);
                 return;
             }
-            bool ok = SkillsModeManager.Deny(token);
+            RefineAgentId(job);
+            bool ok;
+            using (SkillsAuditLog.BeginRequestContext(job.RemotePort, job.AgentId, job.AgentIdIsExplicit))
+                ok = SkillsModeManager.Deny(token);
             job.StatusCode = ok ? 200 : 404;
             job.ResponseJson = JsonConvert.SerializeObject(new { ok, token }, _jsonSettings);
         }
