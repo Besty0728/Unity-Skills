@@ -157,8 +157,17 @@ namespace UnitySkills.Tests.Core
         [TestCase("claude-code", "ClaudeCode")]
         [TestCase("CLAUDE", "ClaudeCode")] // case-insensitive
         [TestCase("augment", "Augment")]
+        [TestCase("auggie", "Augment")] // Augment CLI's actual binary name
+        [TestCase("agy", "Antigravity")] // Antigravity CLI's actual binary name (confirmed live against a real agy process)
+        [TestCase("antigravity", "Antigravity")]
         [TestCase("q", "AmazonQ")]
         [TestCase("code", "VSCode")]
+        [TestCase("gemini", "GeminiCLI")]
+        [TestCase("aider", "Aider")]
+        [TestCase("amp", "Amp")]
+        [TestCase("goose", "Goose")]
+        [TestCase("droid", "Droid")]
+        [TestCase("qwen", "QwenCode")]
         public void NormalizeDisplayName_KnownTokens_MapToTheAgentKeywordsValue(string token, string expected)
         {
             Assert.That(ClientProcessResolver.NormalizeDisplayName(token), Is.EqualTo(expected));

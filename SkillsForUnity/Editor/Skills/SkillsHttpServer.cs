@@ -1675,9 +1675,11 @@ namespace UnitySkills
 
                     // Process-chain agent attribution (see ClientProcessResolver): a request with an explicit
                     // X-Agent-Id header short-circuits entirely -- no point resolving what the caller already
-                    // told us. Otherwise, kick off a non-blocking background resolve keyed by the client's TCP
-                    // port; the accept thread never waits on it. RemoteEndPoint is already known from the
-                    // accepted socket, so reading its Port here is instant.
+                    // told us. Otherwise, BeginResolve synchronously resolves the client pid + its immediate
+                    // parent (a few ms, no-fork syscalls only -- see BeginResolve's doc comment for why this
+                    // step can't be deferred to a background thread) before handing the rest of the ancestor
+                    // chain off asynchronously. RemoteEndPoint is already known from the accepted socket, so
+                    // reading its Port here is instant.
                     bool agentIdIsExplicit = !string.IsNullOrEmpty(request.Headers["X-Agent-Id"]);
                     int remotePort = request.RemoteEndPoint?.Port ?? -1;
                     if (!agentIdIsExplicit && remotePort > 0)
@@ -2399,7 +2401,6 @@ namespace UnitySkills
                             break;
                         default:
                             job.ResponseJson = SkillRouter.Execute(skillName, job.Body, captureDiff);
-                            SkillsLogger.LogAgent(job.AgentId, skillName);
                             break;
                     }
                 }
@@ -2420,6 +2421,13 @@ namespace UnitySkills
                 // the background resolver ample time to land its result. RefineAgentId is an idempotent, pure
                 // cache lookup -- calling it twice costs nothing when the first call already resolved it.
                 RefineAgentId(job);
+                // Console line moved here (was inside the switch, right after Execute): that used job.AgentId
+                // as of the *early* RefineAgentId at :2383, which for a fast (single-digit-ms) skill almost
+                // always printed the header/UA guess (e.g. "curl") -- the resolver hadn't landed yet. This is
+                // the one place a human actually watches in real time, so it must show the resolved value, not
+                // a known-stale one; DryRun/Plan never ran the skill, so nothing to log here for them.
+                if (mode == SkillRouter.RequestMode.Execute)
+                    SkillsLogger.LogAgent(job.AgentId, skillName);
                 RecordSkillTelemetry(mode, skillName, job.AgentId, job.ResponseJson, skillSw.ElapsedMilliseconds, job.RemotePort, job.AgentIdIsExplicit);
                 return;
             }
@@ -2847,6 +2855,18 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// Runs the refiner and returns its value only when it actually produced one, otherwise the
+        /// caller's fallback. A plain "??" is not enough here: an empty refinement would satisfy it and
+        /// print a blank agent name.
+        /// </summary>
+        private static string RefinedOr(Func<string> refiner, string fallback)
+        {
+            if (refiner == null) return fallback;
+            var refined = refiner();
+            return string.IsNullOrEmpty(refined) ? fallback : refined;
+        }
+
+        /// <summary>
         /// The sequential execution core behind POST /skills/batch: $param substitution, cross-step $ref resolution,
         /// then step-by-step runs of the full single-skill pipeline (SkillRouter.Execute — permission gate, undo,
         /// audit), with fail-fast / continueOnError / grant-interruption semantics and optional transactional rollback.
@@ -2898,7 +2918,8 @@ namespace UnitySkills
                 var stepSw = System.Diagnostics.Stopwatch.StartNew();
                 // Re-checked per step (see ExecuteBatchCore's doc comment): a pure, idempotent cache lookup when
                 // agentIdRefiner is supplied, otherwise just the fixed agentId every existing test call site passes.
-                string effectiveAgentId = agentIdRefiner != null ? (agentIdRefiner() ?? agentId) : agentId;
+                // Falls back on an empty refinement as well as a null one, so a blank never reaches the log line.
+                string effectiveAgentId = RefinedOr(agentIdRefiner, agentId);
 
                 if (!(steps[i] is JObject step) || string.IsNullOrWhiteSpace(stepSkillName))
                 {
@@ -3099,7 +3120,13 @@ namespace UnitySkills
                         // step — including one whose name doesn't resolve to a known skill — still triggers invalidation.
                         if (!SkillRouter.TryGetSkill(stepSkillName, out var stepSkill) || !stepSkill.ReadOnly)
                             GameObjectFinder.InvalidateCache();
-                        SkillsLogger.LogAgent(effectiveAgentId, $"{stepSkillName} (batch {i + 1}/{steps.Count})");
+                        // Re-invoked right after Execute rather than reusing effectiveAgentId (computed before the
+                        // step ran): same rationale as the single-skill console line -- this is a direct,
+                        // un-late-bound Debug.Log, so it needs the resolver's best value at print time.
+                        var logAgentValue = agentIdRefiner != null
+                            ? RefinedOr(agentIdRefiner, effectiveAgentId)
+                            : effectiveAgentId;
+                        SkillsLogger.LogAgent(logAgentValue, $"{stepSkillName} (batch {i + 1}/{steps.Count})");
                     }
                 }
                 catch (Exception ex)

@@ -8,7 +8,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Added
 
-- **AI Agent 进程链身份识别** — 新增 `ClientProcessResolver`：以 TCP 源端口反查客户端 PID，再沿父进程链归因到真正的 AI 工具。采用**排除表**而非"已知 Agent 名单"——排除 shell、终端宿主、系统进程、`curl`/`wget`、`npm`/`npx`/`git`/`make`/`ssh` 等中间进程后，第一个未被排除的祖先即视为 Agent，因此 Augment 等新工具无需改代码即可被识别；显示名映射表仅用于规范化（`claude` → `ClaudeCode`），未命中时回落为进程名首字母大写而非 `Unknown`。Node/Python 等解释器托管的 CLI 会转而解析命令行，能从 `node_modules/@anthropic-ai/claude-code/cli.js` 这类路径提取 scoped 包名。三平台实现：macOS 直接调用 libproc/`sysctl`（零 fork），Linux 纯 `/proc` 解析，Windows 走 `GetExtendedTcpTable` + Toolhelp32 + PEB 命令行读取；任一环节失败即静默降级回 User-Agent 判定。`X-Agent-Id` 显式请求头仍然优先并直接短路，Unity 自检探针单独记为 `UnitySelfTest`。开关经 `EditorPrefs` 按工程隔离，默认开启。
+- **AI Agent 进程链身份识别** — 新增 `ClientProcessResolver`：以 TCP 源端口反查客户端 PID，再沿父进程链归因到真正的 AI 工具。采用**排除表**而非"已知 Agent 名单"——排除 shell、终端宿主、系统进程、`curl`/`wget`、`npm`/`npx`/`git`/`make`/`ssh` 等中间进程后，第一个未被排除的祖先即视为 Agent，因此 Augment 等新工具无需改代码即可被识别；显示名映射表仅用于规范化（`claude` → `ClaudeCode`、`agy` → `Antigravity`、`auggie` → `Augment` 等，同时覆盖 Gemini CLI / Aider / Amp / Goose / Droid / Qwen Code 的真实二进制名），未命中时回落为进程名首字母大写而非 `Unknown`。Node/Python 等解释器托管的 CLI 会转而解析命令行，能从 `node_modules/@anthropic-ai/claude-code/cli.js` 这类路径提取 scoped 包名。**端口→PID 及该 PID 的父 PID 在 accept 线程上同步完成**（实测 1–4 毫秒，仅零 fork 系统调用）——一次性的 `curl` 进程可能在毫秒级内就退出并被回收，此后其父链再也无从查起，因此这一步必须趁连接尚存时完成；余下的祖先链（shell、解释器、Agent 本体均为长命进程）仍交由后台线程遍历。三平台实现：macOS 直接调用 libproc/`sysctl`，Linux 纯 `/proc` 解析，Windows 走 `GetExtendedTcpTable` + Toolhelp32 + PEB 命令行读取；任一环节失败即静默降级回 User-Agent 判定。`X-Agent-Id` 显式请求头仍然优先并直接短路，Unity 自检探针单独记为 `UnitySelfTest`。开关经 `EditorPrefs` 按工程隔离，默认开启。已用真实的 Claude Code、Codex CLI 与 Antigravity CLI 三方实测验证归因正确。
 - **审计日志与遥测记录 agent 字段** — `SkillsAuditLog` 的 `call` 事件（allowed / forbidden / restricted / surfaceExcluded 四种结果）新增 `agent` 字段，字段名与遥测逐字一致以便对照；审计日志窗口的记录行同步展示。身份经 ThreadStatic 请求上下文送达 `SkillRouter`，公开 API 签名不变；无法确定来源的事件（`mode_changed`、`allowlist_*`、`audit_cleared` 等）保持原样，不写入占位值。
 - **字体图集增量补字工具** — 新增 `UISkillsFontIncrementalUpdater.AddMissingGlyphs`，在既有 FontAsset 上原地追加字形而不重建，避免全量重烤丢失历史字形；任一失败路径均还原 Static 模式且不落盘。
 
@@ -23,6 +23,12 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 - **遥测与审计改为落盘时绑定 agent** — 两者此前在入队时就将整行 JSON 拼定并近乎立即落盘，而技能执行通常只需 1–9 毫秒，远快于任何进程解析，导致 agent 字段被过早写死。现改为入队时仅记录源端口与兜底身份，行内容在延迟约 200 毫秒的落盘阶段构建并在此刻完成身份绑定；`FlushSync` 等需要立即落盘的读取路径不受延迟影响，也绝不等待解析结果。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `2.8.3`。
+
+### 已知限制
+
+- **Windows 平台的进程链识别尚未经真机验证** — `GetExtendedTcpTable` + Toolhelp32 + PEB 命令行读取一路仅通过编译与设计审查。读取失败会静默降级回 User-Agent 判定，即退回本版之前的行为，因此不存在比旧版更差的风险。
+- **脚本重编译后的首个请求，控制台日志行可能仍显示未解析的身份** — 域重载会清空解析缓存，此刻控制台那行是同步打印的，可能赶不上后台的祖先链遍历。审计日志与遥测因为采用延迟落盘绑定，不受此影响。仅出现在重编译后的瞬间，稳态下不会发生。
+- **审计日志的 `agent` 字段仅对新记录生效** — 本版之前写入的历史 `call` 记录没有该字段，也不会被回填占位值。
 
 ## [2.8.2] - 2026-09-08
 

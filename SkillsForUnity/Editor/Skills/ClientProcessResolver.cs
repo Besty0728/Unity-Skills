@@ -7,7 +7,6 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 using UnityEditor;
 
 namespace UnitySkills
@@ -18,15 +17,16 @@ namespace UnitySkills
     /// unity_skills.py -- the request then carries no X-Agent-Id header and a generic User-Agent, so
     /// SkillsHttpServer.DetectAgent alone always reports "curl"/"Unknown".
     ///
-    /// Threading model (hard constraint, see agent.md): the HTTP accept thread must never block. It only reads
-    /// the client's TCP port and calls <see cref="BeginResolve"/>, which enqueues the port and returns immediately.
-    /// A single dedicated background thread does the actual work (shelling out to lsof/ps, reading /proc, or
-    /// P/Invoking Windows APIs), batching everything queued within a short coalescing window into one
-    /// connection-table read + one process-table read, then walking each pending port's client pid up its
-    /// parent chain. Results land in a short-TTL cache that any thread can read back via
+    /// Threading model (relaxed from the usual "accept thread never blocks" rule -- see agent.md and the
+    /// project-lead decision recorded in <see cref="BeginResolve"/>'s doc comment): the HTTP accept thread
+    /// calls <see cref="BeginResolve"/>, which *synchronously* resolves the client's TCP port to its pid and
+    /// that pid's own parent pid (a few ms, no-fork syscalls only), then hands the *rest* of the parent chain
+    /// (long-lived ancestors -- shells, interpreters, the agent CLI) to a single dedicated background thread.
+    /// The synchronous part exists because a short-lived, one-shot client process (bare `curl`, no keep-alive)
+    /// can fully exit and be reaped before any purely-async worker gets a chance to look it up -- once it's
+    /// gone, its ppid is unrecoverable. Results land in a short-TTL cache that any thread can read back via
     /// <see cref="TryGetAgentId"/> -- in particular, the main thread re-checks it right before writing
-    /// audit/telemetry (well after the skill has executed), by which point the background resolution has
-    /// almost always finished.
+    /// audit/telemetry (well after the skill has executed), as a second safety net on top of the synchronous capture.
     ///
     /// Approach: a denylist, not an allowlist. Walking up from the client pid, any ancestor whose name is a
     /// shell/terminal-host/system-process/curl-like tool is skipped; the first ancestor NOT on that list is
@@ -36,10 +36,10 @@ namespace UnitySkills
     /// own process name (e.g. "node") is useless, so its command line is inspected instead to find the actual
     /// script/package.
     ///
-    /// Every step degrades silently: an unsupported OS, a failed shell-out, a permission error, or exhausting
-    /// the parent chain without leaving the denylist all just mean "no answer this round" -- the caller keeps
-    /// whatever DetectAgent (header/User-Agent) already produced. This is a best-effort analytics enrichment,
-    /// never a correctness dependency.
+    /// Every step degrades silently: an unsupported OS, a failed syscall, a permission error, or exhausting
+    /// the parent chain without leaving the denylist all just mean "no answer" -- the caller keeps whatever
+    /// DetectAgent (header/User-Agent) already produced. This is a best-effort analytics enrichment, never a
+    /// correctness dependency.
     /// </summary>
     public static class ClientProcessResolver
     {
@@ -154,38 +154,110 @@ namespace UnitySkills
 
         // ===== Background worker =====
 
-        // A short window to batch near-simultaneous BeginResolve calls into one round (matters most for the
-        // lsof/ps fallback path, where each round costs a real fork; the primary libproc path is fast enough
-        // that this barely matters either way). Kept small: the whole point of firing at accept time is to
-        // race a short-lived one-shot client process before it exits, so this shouldn't grow without a reason.
+        // A short window to batch near-simultaneous BeginResolve async-continuation calls into one round --
+        // matters most for the ps fallback (a real fork per round); the primary libproc ancestor-table read
+        // is fast enough that this barely matters either way. Only affects the *async* remainder of the walk
+        // (ancestors, which are long-lived) -- the time-critical leaf capture is synchronous, see BeginResolve.
         private const int CoalesceDelayMs = 3;
         private const int IdleSweepMs = 1000;    // periodic wake even without new work, so Shutdown is noticed promptly
         internal const int MaxWalkDepth = 8;
 
-        private static readonly ConcurrentDictionary<int, byte> _pendingPorts = new ConcurrentDictionary<int, byte>();
+        /// <summary>An async continuation queued by BeginResolve after it has already (synchronously) captured the leaf pid and its immediate parent.</summary>
+        private readonly struct PendingWalk
+        {
+            public readonly int LeafPid;
+            public readonly int LeafPpid;
+            public PendingWalk(int leafPid, int leafPpid) { LeafPid = leafPid; LeafPpid = leafPpid; }
+        }
+
+        private static readonly ConcurrentDictionary<int, PendingWalk> _pendingWalks = new ConcurrentDictionary<int, PendingWalk>();
         private static readonly AutoResetEvent _wake = new AutoResetEvent(false);
         private static Thread _worker;
         private static readonly object _workerLock = new object();
         private static volatile bool _shutdown;
-        private static volatile int _lastServerPort;
 
         /// <summary>
-        /// Accept-thread entry point: records that <paramref name="remotePort"/> needs attribution and returns
-        /// immediately. Never touches the network/filesystem itself. A no-op when disabled, when the port is
-        /// already cached, or when it's already queued.
+        /// Accept-thread entry point. Synchronously resolves remotePort -> client pid -> that pid's own
+        /// ppid+name, and -- if that's not already enough to classify the agent -- queues the *rest* of the
+        /// ancestor chain (long-lived: shells, interpreters, the actual agent CLI) to be walked asynchronously.
+        ///
+        /// The synchronous part is not optional: a short-lived, one-shot client process (bare `curl`, no
+        /// keep-alive) can fully exit and be reaped within single-digit ms, well before an async background
+        /// worker (even one with zero coalescing delay) would get to read the connection/process tables. Once
+        /// the process is gone, its ppid is unrecoverable -- there's no "try again later." So remotePort -> pid
+        /// -> ppid has to happen right here, before returning to the caller.
+        ///
+        /// Bounded to the no-fork platform readers only (empirically ~4-5ms worst case for the connection scan
+        /// on the dev machine, plus one or two syscalls for the leaf's own info) -- IConnectionTableReader/
+        /// IProcessTableReader's sync methods never fall back to spawning lsof/ps (that would cost 50-90ms of
+        /// fork overhead from Unity Editor's own large address space, blowing the accept thread's budget many
+        /// times over). Any failure or unavailability degrades immediately and silently to the header/UA guess.
         /// </summary>
         public static void BeginResolve(int remotePort, int serverPort)
         {
             if (!_enabledCache || remotePort <= 0 || serverPort <= 0)
                 return;
             if (_portCache.TryGet(remotePort, out _))
-                return;
-            if (!_pendingPorts.TryAdd(remotePort, 0))
-                return; // already queued
+                return; // keep-alive reuse (e.g. a Python client's requests.Session) -- already known
 
-            _lastServerPort = serverPort;
-            EnsureWorkerStarted();
-            _wake.Set();
+            try
+            {
+                // Timed at Verbose level only -- silent by default, but the number that matters if this ever
+                // needs re-diagnosing: empirically 1-4ms end to end on the dev machine (mac, libproc), well
+                // under the accept thread's relaxed-but-still-real budget (see class doc).
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                if (!ConnectionReader.TryFindClientPid(remotePort, serverPort, out int leafPid))
+                {
+                    SkillsLogger.LogVerbose($"ClientProcessResolver: sync connection lookup miss after {sw.ElapsedMilliseconds}ms");
+                    return; // connection already closed, or platform unsupported -- no retry, keep the header/UA guess
+                }
+                if (leafPid == CurrentProcessId)
+                {
+                    _portCache.Put(remotePort, SelfTestAgentId);
+                    return;
+                }
+                if (_pidCache.TryGet(leafPid, out var cachedLeaf))
+                {
+                    _portCache.Put(remotePort, cachedLeaf);
+                    return;
+                }
+
+                if (!ProcessReader.TryGetSingle(leafPid, out var leafInfo))
+                {
+                    SkillsLogger.LogVerbose($"ClientProcessResolver: sync single-pid lookup miss after {sw.ElapsedMilliseconds}ms");
+                    return; // pid exited between the two syscalls, or platform unsupported
+                }
+
+                // A one-entry table makes WalkChain evaluate exactly the leaf (self-pid/pid-cache/interpreter/
+                // denylist checks, all already-tested logic) and naturally return null the moment it needs an
+                // ancestor this table doesn't have -- no separate leaf-classification logic to duplicate or drift.
+                var leafOnlyTable = new Dictionary<int, ProcessInfo> { [leafPid] = leafInfo };
+                var immediate = WalkChain(leafPid, leafOnlyTable, ProcessReader.TryGetCommandLine, out var visited, _pidCache.TryGet);
+                if (immediate != null)
+                {
+                    _portCache.Put(remotePort, immediate);
+                    foreach (var vp in visited) _pidCache.Put(vp, immediate);
+                    SkillsLogger.LogVerbose($"ClientProcessResolver: sync capture resolved '{immediate}' in {sw.ElapsedMilliseconds}ms");
+                    return;
+                }
+
+                // Leaf alone didn't resolve (denylisted, or an interpreter whose args didn't extract) -- the
+                // rest of the chain is long-lived and safe to walk asynchronously without racing an exit.
+                if (leafInfo.Ppid <= 0 || leafInfo.Ppid == leafPid)
+                    return; // no parent to continue to -- dead end
+
+                SkillsLogger.LogVerbose($"ClientProcessResolver: sync capture done in {sw.ElapsedMilliseconds}ms, queuing async continuation from ppid={leafInfo.Ppid}");
+                if (_pendingWalks.TryAdd(remotePort, new PendingWalk(leafPid, leafInfo.Ppid)))
+                {
+                    EnsureWorkerStarted();
+                    _wake.Set();
+                }
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogVerbose("ClientProcessResolver: synchronous leaf capture failed: " + ex.Message);
+                // degrade silently -- caller keeps the header/UA fallback
+            }
         }
 
         private static void EnsureWorkerStarted()
@@ -208,7 +280,7 @@ namespace UnitySkills
             {
                 _wake.WaitOne(IdleSweepMs);
                 if (_shutdown) break;
-                if (_pendingPorts.IsEmpty) continue;
+                if (_pendingWalks.IsEmpty) continue;
 
                 Thread.Sleep(CoalesceDelayMs);
                 if (_shutdown) break;
@@ -218,50 +290,37 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// Walks the *remainder* of each pending chain, from the leaf's already-captured ppid upward. No
+        /// connection-table read here at all -- BeginResolve already did the only time-critical lookup
+        /// synchronously; every pid this round touches is a long-lived ancestor, so the ps/Toolhelp32 fork
+        /// fallback inside ProcessReader.ReadAll() is an acceptable cost here (unlike on the accept thread).
+        /// </summary>
         private static void ResolveRound()
         {
-            var ports = new List<int>(_pendingPorts.Keys);
-            if (ports.Count == 0) return;
-            int serverPort = _lastServerPort;
+            var pending = new List<KeyValuePair<int, PendingWalk>>(_pendingWalks);
+            if (pending.Count == 0) return;
 
-            // Run the connection-table read and the process-table read concurrently rather than sequentially:
-            // even now that both are no-fork (libproc-based on mac, pure /proc reads on Linux), running them in
-            // parallel bounds total latency to the slower of the two instead of their sum -- and the fallback
-            // paths (shelling out to lsof/ps when libproc fails) still benefit from that the way they always did.
-            var connectionTask = Task.Run(() =>
+            IReadOnlyDictionary<int, ProcessInfo> processTable;
+            try { processTable = ProcessReader.ReadAll(); }
+            catch (Exception ex)
             {
-                try { return ConnectionReader.ReadClientPidsByPort(serverPort); }
-                catch (Exception ex)
-                {
-                    SkillsLogger.LogVerbose("ClientProcessResolver: connection table read failed: " + ex.Message);
-                    return null;
-                }
-            });
-            var processTask = Task.Run(() =>
-            {
-                try { return ProcessReader.ReadAll(); }
-                catch (Exception ex)
-                {
-                    SkillsLogger.LogVerbose("ClientProcessResolver: process table read failed: " + ex.Message);
-                    return null;
-                }
-            });
-            Task.WaitAll(connectionTask, processTask);
-            var portToPid = connectionTask.Result;
-            var processTable = processTask.Result;
+                SkillsLogger.LogVerbose("ClientProcessResolver: process table read failed: " + ex.Message);
+                processTable = null;
+            }
 
-            foreach (var port in ports)
+            foreach (var kv in pending)
             {
-                _pendingPorts.TryRemove(port, out _);
-                if (portToPid == null || processTable == null)
-                    continue; // both reads failed this round -- caller keeps the header/UA fallback
-                if (!portToPid.TryGetValue(port, out var pid))
-                    continue; // connection already closed by the time the read ran
+                int remotePort = kv.Key;
+                var walk = kv.Value;
+                _pendingWalks.TryRemove(remotePort, out _);
+                if (processTable == null) continue; // degrade -- caller keeps the header/UA fallback
 
-                var agentId = WalkChain(pid, processTable, ProcessReader.TryGetCommandLine, out var visitedPids, _pidCache.TryGet);
+                var agentId = WalkChain(walk.LeafPpid, processTable, ProcessReader.TryGetCommandLine, out var visitedPids, _pidCache.TryGet);
                 if (agentId == null) continue;
 
-                _portCache.Put(port, agentId);
+                _portCache.Put(remotePort, agentId);
+                _pidCache.Put(walk.LeafPid, agentId); // backfill the original leaf too, in case it recurs
                 foreach (var vp in visitedPids)
                     _pidCache.Put(vp, agentId);
             }
@@ -475,15 +534,21 @@ namespace UnitySkills
             ("claude", "ClaudeCode"), ("claude-code", "ClaudeCode"),
             ("codex", "Codex"),
             ("cursor", "Cursor"),
-            ("antigravity", "Antigravity"),
+            ("antigravity", "Antigravity"), ("agy", "Antigravity"), // agy = Antigravity CLI's actual binary name (Go/Mach-O, confirmed live)
             ("opencode", "OpenCode"),
             ("kimi", "KimiCode"), ("kimi-code", "KimiCode"),
             ("windsurf", "Windsurf"),
             ("trae", "Trae"),
             ("cline", "Cline"),
-            ("augment", "Augment"),
+            ("augment", "Augment"), ("auggie", "Augment"), // auggie = Augment CLI's actual binary name
             ("q", "AmazonQ"), ("amazon-q", "AmazonQ"),
             ("code", "VSCode"),
+            ("gemini", "GeminiCLI"),
+            ("aider", "Aider"),
+            ("amp", "Amp"),
+            ("goose", "Goose"),
+            ("droid", "Droid"),
+            ("qwen", "QwenCode"),
         };
 
         internal static string NormalizeDisplayName(string rawToken)
@@ -534,17 +599,34 @@ namespace UnitySkills
 
         internal interface IConnectionTableReader
         {
-            /// <summary>Maps client (remote, from the server's point of view) port -> owning pid, for every established loopback connection whose foreign port is <paramref name="serverPort"/>. Null on failure.</summary>
-            IReadOnlyDictionary<int, int> ReadClientPidsByPort(int serverPort);
+            /// <summary>
+            /// Synchronous, targeted lookup for exactly one client (remote) port -- called from the accept
+            /// thread, so it must stay in the low single-digit ms. No-fork implementations only: never falls
+            /// back to spawning lsof/ps (that would blow the accept-thread's budget). Returns false when
+            /// unavailable (platform unsupported, syscall failure) or the port isn't found (connection
+            /// already closed) -- either way the caller degrades straight to the header/UA guess, no retry.
+            /// </summary>
+            bool TryFindClientPid(int remotePort, int serverPort, out int pid);
         }
 
         internal interface IProcessTableReader
         {
-            /// <summary>Snapshot of every process's parent pid + name (+ args, where cheaply available). Null on failure.</summary>
+            /// <summary>
+            /// Snapshot of every process's parent pid + name (+ args, where cheaply available). Null on
+            /// failure. Async-worker-only: a fork fallback (ps) is acceptable here, since by the time this
+            /// runs the pids being looked up are long-lived ancestors, not the short-lived leaf.
+            /// </summary>
             IReadOnlyDictionary<int, ProcessInfo> ReadAll();
 
             /// <summary>Lazy per-pid command-line fetch, for platforms where ReadAll() can't cheaply include it. Null on failure.</summary>
             string TryGetCommandLine(int pid);
+
+            /// <summary>
+            /// Synchronous, single-pid ppid+name lookup -- called from the accept thread for the leaf client
+            /// pid only, so it must stay in the low single-digit ms. No-fork implementations only (same
+            /// constraint as <see cref="IConnectionTableReader.TryFindClientPid"/>). Returns false when unavailable.
+            /// </summary>
+            bool TryGetSingle(int pid, out ProcessInfo info);
         }
 
         internal static IConnectionTableReader ConnectionReader = CreateDefaultConnectionReader();
@@ -555,7 +637,7 @@ namespace UnitySkills
             try
             {
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return new WindowsConnectionTableReader();
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return new MacConnectionTableReader();
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return new MacLibProcConnectionTableReader();
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return new LinuxConnectionTableReader();
             }
             catch { /* fall through to the inert reader */ }
@@ -576,14 +658,16 @@ namespace UnitySkills
 
         private sealed class NullConnectionTableReader : IConnectionTableReader
         {
-            public IReadOnlyDictionary<int, int> ReadClientPidsByPort(int serverPort) => null;
+            public bool TryFindClientPid(int remotePort, int serverPort, out int pid) { pid = 0; return false; }
         }
 
         private sealed class NullProcessTableReader : IProcessTableReader
         {
             public IReadOnlyDictionary<int, ProcessInfo> ReadAll() => null;
             public string TryGetCommandLine(int pid) => null;
+            public bool TryGetSingle(int pid, out ProcessInfo info) { info = default; return false; }
         }
+
 
         // ===== macOS =====
 
@@ -596,37 +680,23 @@ namespace UnitySkills
         /// before lsof ever gets to read its socket, even started immediately at accept time. libproc reads the
         /// kernel's per-process fd/socket info directly via syscalls, with no fork at all.
         /// </summary>
-        private sealed class MacConnectionTableReader : IConnectionTableReader
-        {
-            private readonly MacLibProcConnectionTableReader _libproc = new MacLibProcConnectionTableReader();
-            private readonly MacLsofConnectionTableReader _lsofFallback = new MacLsofConnectionTableReader();
-
-            public IReadOnlyDictionary<int, int> ReadClientPidsByPort(int serverPort)
-            {
-                try
-                {
-                    var result = _libproc.ReadClientPidsByPort(serverPort);
-                    if (result != null) return result;
-                }
-                catch (Exception ex)
-                {
-                    SkillsLogger.LogVerbose("ClientProcessResolver: libproc connection read failed, falling back to lsof: " + ex.Message);
-                }
-                return _lsofFallback.ReadClientPidsByPort(serverPort);
-            }
-        }
-
         /// <summary>
         /// Reads TCP socket ownership directly via libproc (proc_listpids + proc_pidinfo/PROC_PIDLISTFDS +
-        /// proc_pidfdinfo/PROC_PIDFDSOCKETINFO) -- no subprocess, no fork. Field offsets below were computed
-        /// by hand from &lt;sys/proc_info.h&gt; (struct socket_fdinfo = proc_fileinfo[24 bytes] + socket_info;
-        /// socket_info.soi_kind at +232, soi_proto union at +240; tcp_sockinfo starts with in_sockinfo, whose
-        /// first two int fields are insi_fport/insi_lport) -- giving absolute offsets 256/264/268 within
-        /// socket_fdinfo. This is undocumented-ish kernel ABI, so every buffer is allocated far larger than the
-        /// struct actually needs and every read is guarded by the byte count the kernel actually wrote: a wrong
-        /// offset can only ever produce a wrong (harmless, fails to match) number, never an out-of-bounds read.
+        /// proc_pidfdinfo/PROC_PIDFDSOCKETINFO) -- no subprocess, no fork, safe to call from the accept
+        /// thread. Field offsets below were computed by hand from &lt;sys/proc_info.h&gt; (struct socket_fdinfo
+        /// = proc_fileinfo[24 bytes] + socket_info; socket_info.soi_kind at +232, soi_proto union at +240;
+        /// tcp_sockinfo starts with in_sockinfo, whose first two int fields are insi_fport/insi_lport) --
+        /// giving absolute offsets 256/264/268 within socket_fdinfo. This is undocumented-ish kernel ABI, so
+        /// every buffer is allocated far larger than the struct actually needs and every read is guarded by
+        /// the byte count the kernel actually wrote: a wrong offset can only ever produce a wrong (harmless,
+        /// fails to match) number, never an out-of-bounds read.
+        ///
+        /// Deliberately no lsof fallback: this is called synchronously from the accept thread (see
+        /// ClientProcessResolver.BeginResolve), and forking Unity Editor's own multi-GB address space to spawn
+        /// lsof measured 50-90ms in this same process -- far too slow to run on that thread. A libproc failure
+        /// here just means "no answer, degrade to the header/UA guess," same as any other failure mode.
         /// </summary>
-        private sealed class MacLibProcConnectionTableReader
+        private sealed class MacLibProcConnectionTableReader : IConnectionTableReader
         {
             private const uint ProcAllPids = 1;
             private const int ProcPidListFds = 1;
@@ -652,27 +722,33 @@ namespace UnitySkills
             [DllImport("libproc.dylib", SetLastError = true)]
             private static extern int proc_pidfdinfo(int pid, int fd, int flavor, IntPtr buffer, int buffersize);
 
-            public IReadOnlyDictionary<int, int> ReadClientPidsByPort(int serverPort)
+            /// <summary>
+            /// Targeted, early-exit lookup for exactly one client port. Scans pids in descending order (a
+            /// just-created client process is very likely among the highest currently running), returning as
+            /// soon as a match is found. Worst case (not found -- connection already closed) still has to walk
+            /// every pid, same cost as a full scan; that was empirically ~4-5ms for ~740 processes on the dev
+            /// machine, which is the actual bound on this method's accept-thread blocking time.
+            /// </summary>
+            public bool TryFindClientPid(int remotePort, int serverPort, out int pid)
             {
+                pid = 0;
                 int[] pids = ListAllPids();
-                if (pids == null) return null;
+                if (pids == null) return false;
 
-                var result = new Dictionary<int, int>();
-                // Highest pids first: the client process we're trying to attribute was just spawned, so it's
-                // very likely among the most recently created ones -- irrelevant to correctness (every pid is
-                // still checked either way, since more than one pending port may need resolving in this round),
-                // but means a lone pending port typically resolves after only a handful of syscalls.
                 Array.Sort(pids);
                 for (int i = pids.Length - 1; i >= 0; i--)
                 {
                     try
                     {
-                        if (TryFindMatchingSocket(pids[i], serverPort, out int clientPort))
-                            result[clientPort] = pids[i];
+                        if (SocketMatches(pids[i], remotePort, serverPort))
+                        {
+                            pid = pids[i];
+                            return true;
+                        }
                     }
-                    catch { /* one pid's fd table failing (permission, exited mid-scan) must not abort the whole pass */ }
+                    catch { /* one pid's fd table failing (permission, exited mid-scan) must not abort the whole scan */ }
                 }
-                return result;
+                return false;
             }
 
             private static int[] ListAllPids()
@@ -693,10 +769,9 @@ namespace UnitySkills
                 finally { Marshal.FreeHGlobal(buffer); }
             }
 
-            /// <summary>Checks one pid's open fds for a TCP socket whose foreign port is serverPort; on a match, returns its local (client) port.</summary>
-            private static bool TryFindMatchingSocket(int pid, int serverPort, out int clientPort)
+            /// <summary>True if this pid owns a TCP socket local:remotePort -> foreign:serverPort (i.e. the client side of our connection).</summary>
+            private static bool SocketMatches(int pid, int remotePort, int serverPort)
             {
-                clientPort = 0;
                 int fdBytesNeeded = proc_pidinfo(pid, ProcPidListFds, 0, IntPtr.Zero, 0);
                 if (fdBytesNeeded <= 0) return false;
 
@@ -728,11 +803,8 @@ namespace UnitySkills
                             // MIB_TCPROW_OWNER_PID port fields (see WindowsConnectionTableReader.SwapPort).
                             int fport = SwapPort(Marshal.ReadInt32(socketBuffer, TcpFportOffset));
                             int lport = SwapPort(Marshal.ReadInt32(socketBuffer, TcpLportOffset));
-                            if (fport == serverPort)
-                            {
-                                clientPort = lport;
+                            if (fport == serverPort && lport == remotePort)
                                 return true;
-                            }
                         }
                     }
                     finally { Marshal.FreeHGlobal(socketBuffer); }
@@ -745,57 +817,26 @@ namespace UnitySkills
             private static int SwapPort(int raw) => ((raw & 0xFF) << 8) | ((raw >> 8) & 0xFF);
         }
 
-        /// <summary>Fallback only (see MacConnectionTableReader): shells out to lsof, scoped to no address/port filter (dual-stack, so it also catches ::1) and post-filtered in managed code.</summary>
-        private sealed class MacLsofConnectionTableReader : IConnectionTableReader
-        {
-            private static readonly Regex EndpointPattern = new Regex(@"(\S+):(\d+)->(\S+):(\d+)", RegexOptions.Compiled);
-
-            public IReadOnlyDictionary<int, int> ReadClientPidsByPort(int serverPort)
-            {
-                var output = RunProcessCapturingStdout(ResolveTool("/usr/sbin/lsof", "lsof"), "-nP -iTCP -sTCP:ESTABLISHED", 3000);
-                if (output == null) return null;
-
-                var result = new Dictionary<int, int>();
-                foreach (var line in output.Split('\n'))
-                {
-                    var tokens = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-                    if (tokens.Length < 2 || !int.TryParse(tokens[1], out int pid)) continue;
-
-                    var m = EndpointPattern.Match(line);
-                    if (!m.Success) continue;
-                    if (!int.TryParse(m.Groups[2].Value, out int localPort)) continue;
-                    if (!int.TryParse(m.Groups[4].Value, out int foreignPort)) continue;
-
-                    // This row's local port is the ephemeral port opened by the CLIENT only when its foreign
-                    // (remote, from this row's point of view) endpoint is our server port.
-                    if (foreignPort == serverPort)
-                        result[localPort] = pid;
-                }
-                return result;
-            }
-        }
-
         // ===== Linux =====
 
         /// <summary>Pure /proc/net/tcp(+tcp6) parsing + fd inode reverse-lookup -- no forking, per agent.md's zero-Unity-API/zero-blocking-syscall preference for the accept-thread-adjacent worker.</summary>
         private sealed class LinuxConnectionTableReader : IConnectionTableReader
         {
-            public IReadOnlyDictionary<int, int> ReadClientPidsByPort(int serverPort)
+            public bool TryFindClientPid(int remotePort, int serverPort, out int pid)
             {
-                var inodeToClientPort = new Dictionary<long, int>();
-                CollectClientInodes("/proc/net/tcp", serverPort, inodeToClientPort);
-                CollectClientInodes("/proc/net/tcp6", serverPort, inodeToClientPort);
-                if (inodeToClientPort.Count == 0) return new Dictionary<int, int>();
+                pid = 0;
+                long inode = FindClientInode("/proc/net/tcp", remotePort, serverPort);
+                if (inode < 0) inode = FindClientInode("/proc/net/tcp6", remotePort, serverPort);
+                if (inode < 0) return false; // connection already closed, or never existed
 
-                var result = new Dictionary<int, int>();
                 string[] procDirs;
                 try { procDirs = Directory.GetDirectories("/proc"); }
-                catch { return null; }
+                catch { return false; }
 
                 foreach (var dir in procDirs)
                 {
                     var pidStr = Path.GetFileName(dir);
-                    if (!int.TryParse(pidStr, out int pid)) continue;
+                    if (!int.TryParse(pidStr, out int candidatePid)) continue;
 
                     string[] fds;
                     try { fds = Directory.GetFiles(Path.Combine(dir, "fd")); }
@@ -809,19 +850,22 @@ namespace UnitySkills
                         if (target == null || !target.StartsWith("socket:[", StringComparison.Ordinal)) continue;
 
                         var inodeStr = target.Substring(8, target.Length - 9);
-                        if (long.TryParse(inodeStr, out long inode) && inodeToClientPort.TryGetValue(inode, out int clientPort))
-                            result[clientPort] = pid;
+                        if (long.TryParse(inodeStr, out long fdInode) && fdInode == inode)
+                        {
+                            pid = candidatePid;
+                            return true;
+                        }
                     }
                 }
-                return result;
+                return false;
             }
 
-            /// <summary>Rows where the remote port is our server: this row's own local port is the client's ephemeral port, and its inode identifies the client's socket.</summary>
-            private static void CollectClientInodes(string path, int serverPort, Dictionary<long, int> inodeToClientPort)
+            /// <summary>Finds the inode of the row whose local port is remotePort and remote port is serverPort -- the client's own socket. -1 if not found.</summary>
+            private static long FindClientInode(string path, int remotePort, int serverPort)
             {
                 string[] lines;
                 try { lines = File.ReadAllLines(path); }
-                catch { return; }
+                catch { return -1; }
 
                 for (int i = 1; i < lines.Length; i++) // line 0 is the header
                 {
@@ -833,13 +877,15 @@ namespace UnitySkills
                     if (localParts.Length != 2 || remParts.Length != 2) continue;
                     if (fields[3] != "01") continue; // TCP_ESTABLISHED
 
+                    if (!int.TryParse(localParts[1], System.Globalization.NumberStyles.HexNumber, null, out int localPort)) continue;
+                    if (localPort != remotePort) continue;
                     if (!int.TryParse(remParts[1], System.Globalization.NumberStyles.HexNumber, null, out int remPort)) continue;
                     if (remPort != serverPort) continue;
-                    if (!int.TryParse(localParts[1], System.Globalization.NumberStyles.HexNumber, null, out int localPort)) continue;
                     if (!long.TryParse(fields[9], out long inode)) continue;
 
-                    inodeToClientPort[inode] = localPort;
+                    return inode;
                 }
+                return -1;
             }
 
             [DllImport("libc", SetLastError = true)]
@@ -898,6 +944,21 @@ namespace UnitySkills
                     return text.Length == 0 ? null : text;
                 }
                 catch { return null; }
+            }
+
+            /// <summary>Single-pid read (a few small file opens, no fork) -- safe to call synchronously from the accept thread for the leaf client pid.</summary>
+            public bool TryGetSingle(int pid, out ProcessInfo info)
+            {
+                info = default;
+                int ppid = ReadPpid(pid);
+                if (ppid < 0) return false;
+
+                string args = TryGetCommandLine(pid);
+                string name = !string.IsNullOrEmpty(args) ? FirstToken(args) : ReadComm(pid);
+                if (name == null) return false;
+
+                info = new ProcessInfo { Ppid = ppid, Name = name, Args = args };
+                return true;
             }
 
             private static int ReadPpid(int pid)
@@ -963,15 +1024,14 @@ namespace UnitySkills
                 public uint owningPid;
             }
 
-            public IReadOnlyDictionary<int, int> ReadClientPidsByPort(int serverPort)
+            public bool TryFindClientPid(int remotePort, int serverPort, out int pid)
             {
-                var result = new Dictionary<int, int>();
-                bool any = ReadTable(AF_INET, serverPort, result) | ReadTable(AF_INET6, serverPort, result);
-                return any ? result : null;
+                return ReadTable(AF_INET, remotePort, serverPort, out pid) || ReadTable(AF_INET6, remotePort, serverPort, out pid);
             }
 
-            private static bool ReadTable(int ipVersion, int serverPort, Dictionary<int, int> result)
+            private static bool ReadTable(int ipVersion, int remotePort, int serverPort, out int pid)
             {
+                pid = 0;
                 int bufSize = 0;
                 GetExtendedTcpTable(IntPtr.Zero, ref bufSize, false, ipVersion, TCP_TABLE_OWNER_PID_ALL, 0);
                 if (bufSize <= 0) return false;
@@ -991,8 +1051,11 @@ namespace UnitySkills
                         for (int i = 0; i < numEntries; i++)
                         {
                             var row = Marshal.PtrToStructure<MIB_TCPROW_OWNER_PID>(IntPtr.Add(rowPtr, i * rowSize));
-                            if (SwapPort(row.remotePort) == serverPort)
-                                result[SwapPort(row.localPort)] = (int)row.owningPid;
+                            if (SwapPort(row.remotePort) == serverPort && SwapPort(row.localPort) == remotePort)
+                            {
+                                pid = (int)row.owningPid;
+                                return true;
+                            }
                         }
                     }
                     else
@@ -1001,11 +1064,14 @@ namespace UnitySkills
                         for (int i = 0; i < numEntries; i++)
                         {
                             var row = Marshal.PtrToStructure<MIB_TCP6ROW_OWNER_PID>(IntPtr.Add(rowPtr, i * rowSize));
-                            if (SwapPort(row.remotePort) == serverPort)
-                                result[SwapPort(row.localPort)] = (int)row.owningPid;
+                            if (SwapPort(row.remotePort) == serverPort && SwapPort(row.localPort) == remotePort)
+                            {
+                                pid = (int)row.owningPid;
+                                return true;
+                            }
                         }
                     }
-                    return true;
+                    return false;
                 }
                 finally { Marshal.FreeHGlobal(buffer); }
             }
@@ -1064,6 +1130,34 @@ namespace UnitySkills
                     } while (Process32Next(snapshot, ref entry));
 
                     return result;
+                }
+                finally { CloseHandle(snapshot); }
+            }
+
+            /// <summary>
+            /// Toolhelp32 has no single-pid query, only a full-snapshot enumeration -- same underlying cost as
+            /// ReadAll(), just stopping as soon as our pid turns up. Still no-fork/native, so acceptable to
+            /// call synchronously from the accept thread for the leaf client pid.
+            /// </summary>
+            public bool TryGetSingle(int pid, out ProcessInfo info)
+            {
+                info = default;
+                IntPtr snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+                if (snapshot == IntPtr.Zero || snapshot == new IntPtr(-1)) return false;
+
+                try
+                {
+                    var entry = new PROCESSENTRY32 { dwSize = (uint)Marshal.SizeOf<PROCESSENTRY32>() };
+                    if (!Process32First(snapshot, ref entry)) return false;
+
+                    do
+                    {
+                        if ((int)entry.th32ProcessID != pid) continue;
+                        info = new ProcessInfo { Ppid = (int)entry.th32ParentProcessID, Name = entry.szExeFile, Args = null };
+                        return true;
+                    } while (Process32Next(snapshot, ref entry));
+
+                    return false;
                 }
                 finally { CloseHandle(snapshot); }
             }
@@ -1211,6 +1305,22 @@ namespace UnitySkills
                 }
                 return _psFallback.TryGetCommandLine(pid);
             }
+
+            /// <summary>
+            /// Sync-only, no ps fallback: this runs on the accept thread (see ClientProcessResolver.BeginResolve),
+            /// where forking to shell out to ps is never acceptable. A libproc failure just means "no answer,
+            /// degrade to the header/UA guess" -- exactly like every other synchronous failure mode.
+            /// </summary>
+            public bool TryGetSingle(int pid, out ProcessInfo info)
+            {
+                try { return _libproc.TryGetSingle(pid, out info); }
+                catch (Exception ex)
+                {
+                    SkillsLogger.LogVerbose("ClientProcessResolver: libproc single-pid read failed (accept-thread sync path, no ps fallback): " + ex.Message);
+                    info = default;
+                    return false;
+                }
+            }
         }
 
         /// <summary>
@@ -1253,27 +1363,46 @@ namespace UnitySkills
                     {
                         try
                         {
-                            int written = proc_pidinfo(pid, ProcPidTBsdInfo, 0, buffer, BsdInfoBufferSize);
-                            if (written < PpidOffset + 4) continue; // exited mid-scan / permission denied
-                            int ppid = Marshal.ReadInt32(buffer, PpidOffset);
-
-                            // argv[0] (via sysctl, see MacSysctlArgs) is the name source, not pbi_comm: the
-                            // kernel's "comm" accounting name is independently settable at runtime (e.g. via
-                            // pthread_setname_np) and can legitimately diverge from the executable identity --
-                            // confirmed empirically for Node-hosted CLIs, whose pbi_comm showed an internal
-                            // embedder version string instead of the process's actual name. Falls back to
-                            // pbi_comm only when args aren't available at all (permission-denied, kernel threads).
-                            string args = MacSysctlArgs.TryGetCommandLine(pid);
-                            string name = !string.IsNullOrEmpty(args) ? FirstToken(args) : ReadFixedString(buffer, CommOffset, CommMaxLen);
-                            if (string.IsNullOrEmpty(name)) continue;
-
-                            result[pid] = new ProcessInfo { Ppid = ppid, Name = name, Args = args };
+                            if (TryReadOne(pid, buffer, out var info))
+                                result[pid] = info;
                         }
                         catch { /* one pid failing must not abort the whole scan */ }
                     }
                 }
                 finally { Marshal.FreeHGlobal(buffer); }
                 return result;
+            }
+
+            /// <summary>Single-pid ppid+name lookup: one proc_pidinfo call + one sysctl call, no fork -- safe to call synchronously from the accept thread for the leaf client pid.</summary>
+            public bool TryGetSingle(int pid, out ProcessInfo info)
+            {
+                info = default;
+                IntPtr buffer = Marshal.AllocHGlobal(BsdInfoBufferSize);
+                try { return TryReadOne(pid, buffer, out info); }
+                catch { info = default; return false; }
+                finally { Marshal.FreeHGlobal(buffer); }
+            }
+
+            /// <summary>Shared by ReadAll (buffer reused across every pid) and TryGetSingle (its own throwaway buffer).</summary>
+            private static bool TryReadOne(int pid, IntPtr buffer, out ProcessInfo info)
+            {
+                info = default;
+                int written = proc_pidinfo(pid, ProcPidTBsdInfo, 0, buffer, BsdInfoBufferSize);
+                if (written < PpidOffset + 4) return false; // exited mid-scan / permission denied
+                int ppid = Marshal.ReadInt32(buffer, PpidOffset);
+
+                // argv[0] (via sysctl, see MacSysctlArgs) is the name source, not pbi_comm: the kernel's
+                // "comm" accounting name is independently settable at runtime (e.g. via pthread_setname_np)
+                // and can legitimately diverge from the executable identity -- confirmed empirically for
+                // Node-hosted CLIs, whose pbi_comm showed an internal embedder version string instead of the
+                // process's actual name. Falls back to pbi_comm only when args aren't available at all
+                // (permission-denied, kernel threads).
+                string args = MacSysctlArgs.TryGetCommandLine(pid);
+                string name = !string.IsNullOrEmpty(args) ? FirstToken(args) : ReadFixedString(buffer, CommOffset, CommMaxLen);
+                if (string.IsNullOrEmpty(name)) return false;
+
+                info = new ProcessInfo { Ppid = ppid, Name = name, Args = args };
+                return true;
             }
 
             private static string FirstToken(string args)
@@ -1418,6 +1547,13 @@ namespace UnitySkills
                 int space = args.IndexOf(' ');
                 return space >= 0 ? args.Substring(0, space) : args;
             }
+
+            /// <summary>
+            /// Never implemented here: this reader only exists as the async ReadAll/TryGetCommandLine fork
+            /// fallback. A sync, no-fork caller (the accept thread) must never reach this -- MacProcessTableReader
+            /// routes TryGetSingle to libproc only and fails closed rather than falling back to this class.
+            /// </summary>
+            public bool TryGetSingle(int pid, out ProcessInfo info) { info = default; return false; }
         }
     }
 }
