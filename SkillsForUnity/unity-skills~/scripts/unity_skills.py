@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
-__version__ = "2.8.2"
+__version__ = "2.8.3"
 
 UNITY_URL = "http://localhost:8090"
 DEFAULT_PORT = 8090
@@ -1729,7 +1729,7 @@ def remove_from_allowlist(skill: str = None, all: bool = False) -> Dict[str, Any
 def get_audit_log(limit: int = 100) -> List[Dict[str, Any]]:
     """Read the most recent N entries of the audit log.
 
-    Each entry is a dict (from jsonl) with fields such as ``ts``, ``type``, ``skill``, ``token``.
+    Each entry is a dict (from jsonl) with fields such as ``ts``, ``type``, ``skill``, ``agent``, ``token``.
     The audit log is written in every mode and can be used to check AI behavior for compliance.
 
     On request failure, returns a single-element list ``[{"status": "error", "error": "..."}]``,

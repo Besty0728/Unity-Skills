@@ -2,6 +2,28 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.8.3] - 2026-09-08
+
+> **Agent 身份可信归因 + 更新页本地化修复** —— 本版两大主题：(1) 服务端不再依赖 AI 工具是否"自报身份"，改由 TCP 源端口反查客户端进程并沿父进程链归因，裸 `curl` 调用现在也能正确记成 `ClaudeCode` / `Codex` / `Antigravity` 等，且审计日志与遥测首次带上 `agent` 字段；(2) 修复更新页与多处面板在切换语言后文案停留在旧语言的缺陷，并补齐字体图集缺失的 3 个汉字。
+
+### Added
+
+- **AI Agent 进程链身份识别** — 新增 `ClientProcessResolver`：以 TCP 源端口反查客户端 PID，再沿父进程链归因到真正的 AI 工具。采用**排除表**而非"已知 Agent 名单"——排除 shell、终端宿主、系统进程、`curl`/`wget`、`npm`/`npx`/`git`/`make`/`ssh` 等中间进程后，第一个未被排除的祖先即视为 Agent，因此 Augment 等新工具无需改代码即可被识别；显示名映射表仅用于规范化（`claude` → `ClaudeCode`），未命中时回落为进程名首字母大写而非 `Unknown`。Node/Python 等解释器托管的 CLI 会转而解析命令行，能从 `node_modules/@anthropic-ai/claude-code/cli.js` 这类路径提取 scoped 包名。三平台实现：macOS 直接调用 libproc/`sysctl`（零 fork），Linux 纯 `/proc` 解析，Windows 走 `GetExtendedTcpTable` + Toolhelp32 + PEB 命令行读取；任一环节失败即静默降级回 User-Agent 判定。`X-Agent-Id` 显式请求头仍然优先并直接短路，Unity 自检探针单独记为 `UnitySelfTest`。开关经 `EditorPrefs` 按工程隔离，默认开启。
+- **审计日志与遥测记录 agent 字段** — `SkillsAuditLog` 的 `call` 事件（allowed / forbidden / restricted / surfaceExcluded 四种结果）新增 `agent` 字段，字段名与遥测逐字一致以便对照；审计日志窗口的记录行同步展示。身份经 ThreadStatic 请求上下文送达 `SkillRouter`，公开 API 签名不变；无法确定来源的事件（`mode_changed`、`allowlist_*`、`audit_cleared` 等）保持原样，不写入占位值。
+- **字体图集增量补字工具** — 新增 `UISkillsFontIncrementalUpdater.AddMissingGlyphs`，在既有 FontAsset 上原地追加字形而不重建，避免全量重烤丢失历史字形；任一失败路径均还原 Static 模式且不落盘。
+
+### Fixed
+
+- **更新页切换语言后文案不刷新** — 设置抽屉"包更新"行与顶部版本横幅此前把**已解析的**本地化文本当状态缓存，切换语言时不重新解析，导致状态行永久停留在执行检查时所用的语言（`RefreshLocalization` 甚至显式跳过了状态标签）。现改为存储本地化键与参数，四种状态（空闲 / 检查中 / 待更新 / 更新中）在任意时刻切换语言都会重新解析。同时修复：beta 更新目标因缓存已本地化字符串而拼出"更新到 latest beta"的混排；横幅在更新进行中切换语言会被版本提示覆盖掉进度文案；`PackageManagerHelper` 自产的两条英文提示（安装冲突、未知错误）直接透传到界面。
+- **技能详情与 CLI 检测徽标切换语言后不刷新** — 技能详情面板的描述与风险标签仅在选中技能的那一刻解析，语言切换只重建了左侧列表；Unity CLI 页的检测徽标（检测中 / 已找到 / 未找到）仅在检测完成的一次性窗口内赋值，此后轮询提前返回导致语言切换永远刷不到，除非重新触发检测。两处均已拆出可重复调用的刷新方法，且不会清空用户正在编辑的参数框或已有结果。
+- **字体图集缺失 3 个汉字** — 图集缺少 `佳` / `得` / `耗`，导致 Unity 2022（静态图集）下"Token 消耗等级"与窄面板提示缺字，Unity 6（动态字体）无此现象。图集已由 1013 字形增量补至 1016 字形，新增部分为严格超集，既有西里尔字形完好，三语文案现已零缺字。
+- **字体烘焙器的字符收集范围与安全护栏** — `UISkillsFontAssetBaker.CollectUiCharacters()` 只扫描 `Editor/Skills/Localization.cs` 与 `Editor/UI/**`，而界面文案早已迁移至 `Editor/Locales/*.json`，等于完全漏掉真实文案来源；同时硬编码排除了 `耗`。现已修正扫描范围并移除该排除项，且 `Bake()` 在执行前会比对既有图集字符集，若本次收集结果不是其超集则直接抛出异常并列出将要丢失的字符，避免误调造成不可逆的字形损毁。
+
+### Changed
+
+- **遥测与审计改为落盘时绑定 agent** — 两者此前在入队时就将整行 JSON 拼定并近乎立即落盘，而技能执行通常只需 1–9 毫秒，远快于任何进程解析，导致 agent 字段被过早写死。现改为入队时仅记录源端口与兜底身份，行内容在延迟约 200 毫秒的落盘阶段构建并在此刻完成身份绑定；`FlushSync` 等需要立即落盘的读取路径不受延迟影响，也绝不等待解析结果。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `2.8.3`。
+
 ## [2.8.2] - 2026-09-08
 
 > **面板一键更新 + DontDestroyOnLoad 层级全链路可见** —— 本版两大升级：(1) 设置抽屉新增"检查更新"按钮，两步交互（先查再更），确认后在编辑器内直接完成包更新，无需打开 Package Manager；(2) `DontDestroyOnLoad` 伪场景（Play 模式）的对象此前对所有层级/查找类技能不可见，现统一接入查找器枚举，层级树、文本树、场景上下文导出与组件读写全链路覆盖；(3) 修复设置开关白色圆点垂直偏下的样式问题。
