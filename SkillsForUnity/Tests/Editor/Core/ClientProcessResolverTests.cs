@@ -49,9 +49,22 @@ namespace UnitySkills.Tests.Core
         [TestCase("augment")]
         [TestCase("some-brand-new-cli")]
         [TestCase("node")] // interpreters are handled separately, not via the plain denylist
+        [TestCase("code")] // deliberately NOT denylisted -- it maps to "VSCode" in DisplayNameMap; an agent running inside VS Code should report as VSCode, not fall through
         public void IsDenylisted_AgentAndInterpreterNames_AreNotExcluded(string name)
         {
             Assert.That(ClientProcessResolver.IsDenylisted(name), Is.False, $"'{name}' must not be treated as a denylisted shell/system process.");
+        }
+
+        [TestCase("warp")]
+        [TestCase("ghostty")]
+        [TestCase("tabby")]
+        [TestCase("rio")]
+        [TestCase("zellij")]
+        [TestCase("konsole")]
+        [TestCase("xterm")]
+        public void IsDenylisted_ModernTerminalHosts_AreExcluded(string name)
+        {
+            Assert.That(ClientProcessResolver.IsDenylisted(name), Is.True, $"'{name}' is a terminal host -- normally above the agent in the chain (never reached), but excluding it means a hand-typed curl with no agent in the chain falls back to the header/UA guess instead of misreporting the terminal as the agent.");
         }
 
         [TestCase("make")]
@@ -89,6 +102,36 @@ namespace UnitySkills.Tests.Core
             Assert.That(ClientProcessResolver.NormalizeProcessName(raw), Is.EqualTo(expected));
         }
 
+        // ===== Electron helper-suffix stripping =====
+
+        [TestCase("Code Helper (Plugin)", "Code")]
+        [TestCase("Code Helper (Renderer)", "Code")]
+        [TestCase("Code Helper (GPU)", "Code")]
+        [TestCase("Cursor Helper (Renderer)", "Cursor")]
+        [TestCase("Google Chrome Helper", "Google Chrome")]   // no parenthetical role -- still a valid Electron/Chromium helper name
+        [TestCase("My Space Helper (Plugin)", "My Space")]    // unmapped app name -- sanitized later by NormalizeDisplayName, not here
+        public void StripElectronHelperSuffix_RemovesTheExactTrailingHelperPattern(string raw, string expected)
+        {
+            Assert.That(ClientProcessResolver.StripElectronHelperSuffix(raw), Is.EqualTo(expected));
+        }
+
+        [TestCase("My Agent")]           // no " Helper" suffix at all -- must stay whole, not cut at the first space
+        [TestCase("Helper")]             // no leading space before "Helper" to anchor on -- nothing to strip
+        [TestCase("MyHelperApp")]        // "Helper" mid-word, no preceding whitespace -- must not match
+        [TestCase("Code Helper Utility")] // "Helper" not at the very end -- must not match
+        public void StripElectronHelperSuffix_LeavesNonMatchingNamesUntouched(string raw)
+        {
+            Assert.That(ClientProcessResolver.StripElectronHelperSuffix(raw), Is.EqualTo(raw));
+        }
+
+        [Test]
+        public void NormalizeProcessName_FullBundlePathWithHelperSuffix_StripsPathAndSuffixTogether()
+        {
+            // The realistic end-to-end input: argv[0] from a macOS app bundle, suffix and all.
+            string raw = "/Applications/Visual Studio Code.app/Contents/MacOS/Code Helper (Plugin)";
+            Assert.That(ClientProcessResolver.NormalizeProcessName(raw), Is.EqualTo("Code"));
+        }
+
         // ===== Interpreter recognition =====
 
         [TestCase("node", true)]
@@ -100,6 +143,38 @@ namespace UnitySkills.Tests.Core
         public void IsInterpreter_RecognizesKnownRuntimesOnly(string name, bool expected)
         {
             Assert.That(ClientProcessResolver.IsInterpreter(name), Is.EqualTo(expected));
+        }
+
+        // ===== TokenizeCommandLine =====
+
+        [Test]
+        public void TokenizeCommandLine_PlainWhitespaceSeparatedArgs_SplitsOnSpaces()
+        {
+            var tokens = ClientProcessResolver.TokenizeCommandLine("node /path/to/cli.js --flag value");
+            Assert.That(tokens, Is.EqualTo(new List<string> { "node", "/path/to/cli.js", "--flag", "value" }));
+        }
+
+        [Test]
+        public void TokenizeCommandLine_QuotedTokenWithEmbeddedSpace_StaysOneTokenWithQuotesStripped()
+        {
+            // Windows PEB CommandLine convention: CreateProcess quotes any space-containing argument, most
+            // commonly argv[0] itself (e.g. a "Program Files" install path). A naive whitespace split would
+            // cut this at "Program" / "Files\nodejs\node.exe".
+            var tokens = ClientProcessResolver.TokenizeCommandLine(@"""C:\Program Files\nodejs\node.exe"" C:\scripts\app.js");
+            Assert.That(tokens, Is.EqualTo(new List<string> { @"C:\Program Files\nodejs\node.exe", @"C:\scripts\app.js" }));
+        }
+
+        [Test]
+        public void TokenizeCommandLine_UnterminatedQuote_TakesTheRestOfTheStringAsOneToken()
+        {
+            var tokens = ClientProcessResolver.TokenizeCommandLine(@"""C:\Program Files\broken");
+            Assert.That(tokens, Is.EqualTo(new List<string> { @"C:\Program Files\broken" }));
+        }
+
+        [Test]
+        public void TokenizeCommandLine_EmptyString_ReturnsEmptyList()
+        {
+            Assert.That(ClientProcessResolver.TokenizeCommandLine(""), Is.Empty);
         }
 
         // ===== Interpreter command-line extraction =====
@@ -151,6 +226,16 @@ namespace UnitySkills.Tests.Core
             Assert.That(ClientProcessResolver.TryExtractFromArgs("  "), Is.Null);
         }
 
+        [Test]
+        public void TryExtractFromArgs_WindowsQuotedInterpreterPath_StillFindsTheScriptArgument()
+        {
+            // argv[0] itself is a Windows-quoted, space-containing path (PEB CommandLine convention). Before
+            // TokenizeCommandLine existed, a naive whitespace split would have shredded this before the scan
+            // ever got to the real script argument.
+            string args = @"""C:\Program Files\nodejs\node.exe"" C:\tools\node_modules\opencode\dist\cli.js";
+            Assert.That(ClientProcessResolver.TryExtractFromArgs(args), Is.EqualTo("opencode"));
+        }
+
         // ===== Display-name normalization =====
 
         [TestCase("claude", "ClaudeCode")]
@@ -160,7 +245,7 @@ namespace UnitySkills.Tests.Core
         [TestCase("auggie", "Augment")] // Augment CLI's actual binary name
         [TestCase("agy", "Antigravity")] // Antigravity CLI's actual binary name (confirmed live against a real agy process)
         [TestCase("antigravity", "Antigravity")]
-        [TestCase("q", "AmazonQ")]
+        [TestCase("amazon-q", "AmazonQ")]
         [TestCase("code", "VSCode")]
         [TestCase("gemini", "GeminiCLI")]
         [TestCase("aider", "Aider")]
@@ -168,9 +253,49 @@ namespace UnitySkills.Tests.Core
         [TestCase("goose", "Goose")]
         [TestCase("droid", "Droid")]
         [TestCase("qwen", "QwenCode")]
+        [TestCase("crush", "Crush")] // charmbracelet/crush, confirmed via GitHub releases
+        [TestCase("plandex", "Plandex")]
+        [TestCase("pdx", "Plandex")] // Plandex's other real binary name
+        [TestCase("cn", "Continue")] // npm @continuedev/cli bin=["cn"] -- not "continue"
+        [TestCase("copilot", "CopilotCLI")] // npm @github/copilot bin=["copilot"] -- not "gh copilot"
+        [TestCase("cb", "Codebuff")]
+        [TestCase("codebuff", "Codebuff")]
         public void NormalizeDisplayName_KnownTokens_MapToTheAgentKeywordsValue(string token, string expected)
         {
             Assert.That(ClientProcessResolver.NormalizeDisplayName(token), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void NormalizeDisplayName_BareQ_IsNotMappedToAmazonQAndFallsBackToCapitalizedQ()
+        {
+            // "q" is deliberately unmapped: a single-letter token is the highest-risk entry a denylist-driven
+            // walk can have (any unrelated process named "q" would get mislabeled as an agent), and the actual
+            // amazon-q-developer-cli binary name couldn't be confirmed against a definitive source. Falls back
+            // to the plain capitalize-first-letter path instead of risking a wrong match; "amazon-q" (the
+            // unambiguous full name) is still mapped separately.
+            Assert.That(ClientProcessResolver.NormalizeDisplayName("q"), Is.EqualTo("Q"));
+            Assert.That(ClientProcessResolver.NormalizeDisplayName("q"), Is.Not.EqualTo("AmazonQ"));
+        }
+
+        [Test]
+        public void NormalizeProcessName_ElectronHelper_FeedsTheHostApplicationsDisplayName()
+        {
+            // End-to-end of the two steps an IDE-hosted agent depends on: Cline, Roo Code and the Copilot /
+            // Continue extensions have no CLI binary and only ever surface as a VS Code helper process, so the
+            // suffix strip has to survive all the way into the display-name lookup. Without it these would come
+            // back as CodeHelperPlugin / CodeHelperRenderer / CodeHelperGPU -- three "agents" for one editor.
+            foreach (var role in new[] { "Code Helper (Plugin)", "Code Helper (Renderer)", "Code Helper (GPU)" })
+            {
+                var normalized = ClientProcessResolver.NormalizeProcessName(role);
+                Assert.That(ClientProcessResolver.NormalizeDisplayName(normalized), Is.EqualTo("VSCode"), role);
+            }
+
+            var cursor = ClientProcessResolver.NormalizeProcessName("Cursor Helper (Renderer)");
+            Assert.That(ClientProcessResolver.NormalizeDisplayName(cursor), Is.EqualTo("Cursor"));
+
+            // Unmapped host: still collapses to one identity, sanitized for the JSONL.
+            var unmapped = ClientProcessResolver.NormalizeProcessName("My Space Helper (Plugin)");
+            Assert.That(ClientProcessResolver.NormalizeDisplayName(unmapped), Is.EqualTo("MySpace"));
         }
 
         [Test]
@@ -262,6 +387,58 @@ namespace UnitySkills.Tests.Core
             var agentId = ClientProcessResolver.WalkChain(100, table, commandLineFetcher: null, out _, selfPid: 4242);
 
             Assert.That(agentId, Is.EqualTo("ClaudeCode"));
+        }
+
+        [Test]
+        public void WalkChain_ProcessNameWithEmbeddedSpaceFromArgv0_ResolvesWithoutTruncation()
+        {
+            // Regression guard for the argv[0]-with-spaces bug: platform readers now derive Name straight from
+            // argv[0] (never by re-splitting a joined command-line string), so a VS Code-hosted agent helper's
+            // real name -- e.g. "Code Helper (Plugin)" for the default macOS install path
+            // "/Applications/Visual Studio Code.app/Contents/MacOS/Code Helper (Plugin)" -- arrives intact here.
+            // The old bug (naive first-space split on the joined args string) reported this as "Visual". With
+            // the Electron helper-suffix strip now folded into NormalizeProcessName, it goes one step further
+            // than merely-not-wrong: it collapses all the way to the host app's own mapped identity.
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "Code Helper (Plugin)" },
+            };
+
+            var agentId = ClientProcessResolver.WalkChain(100, table, commandLineFetcher: null, out _);
+
+            Assert.That(agentId, Is.Not.EqualTo("Visual"), "must not be truncated to the first space-delimited fragment of the joined command line.");
+            Assert.That(agentId, Is.EqualTo("VSCode"), "the Electron helper-suffix strip collapses the helper role into the host app, which DisplayNameMap then maps to the canonical name.");
+        }
+
+        [Test]
+        public void WalkChain_UnmappedElectronHelperProcess_CollapsesToTheSanitizedHostAppName()
+        {
+            // An unmapped Electron-hosted app's helper process still collapses to one identity (not fragmented
+            // per role like " (Renderer)"/" (GPU)"/" (Plugin)", not truncated to the first space-delimited
+            // word), sanitized for telemetry the same as any other unmapped capitalize fallback.
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "My Space Helper (Plugin)" },
+            };
+
+            var agentId = ClientProcessResolver.WalkChain(100, table, commandLineFetcher: null, out _);
+
+            Assert.That(agentId, Is.EqualTo("MySpace"));
+        }
+
+        [Test]
+        public void WalkChain_UnmappedAppNameWithoutSpaces_StillResolvesCorrectly()
+        {
+            // /tmp/MyAgentApp -- an unmapped standalone app with no embedded space in argv[0], confirming the
+            // argv[0] fix didn't regress the simple (no-space) case.
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "/tmp/MyAgentApp" },
+            };
+
+            var agentId = ClientProcessResolver.WalkChain(100, table, commandLineFetcher: null, out _);
+
+            Assert.That(agentId, Is.EqualTo("MyAgentApp"));
         }
 
         [Test]

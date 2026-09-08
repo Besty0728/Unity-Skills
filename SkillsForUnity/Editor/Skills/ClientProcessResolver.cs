@@ -422,8 +422,12 @@ namespace UnitySkills
             "sh", "bash", "zsh", "fish", "dash", "csh", "tcsh", "ksh", "cmd", "powershell", "pwsh", "conhost", "windowsterminal", "openconsole",
             // HTTP / process-launching tools
             "curl", "wget", "httpie", "http", "xargs", "env", "sudo", "timeout", "script",
-            // terminal hosts
+            // terminal hosts -- these sit *above* the agent in the chain in the normal case, so the walk stops
+            // at the agent and never reaches them; they only matter when a user runs curl by hand with no
+            // agent in the chain at all, where excluding them lets the walk run out and fall back to the
+            // header/UA guess instead of misreporting the terminal itself as an "agent" in /analytics.
             "terminal", "iterm2", "alacritty", "kitty", "wezterm", "hyper", "login", "screen",
+            "warp", "ghostty", "tabby", "rio", "zellij", "konsole", "xterm",
             // system
             "launchd", "init", "systemd", "explorer", "services", "svchost", "winlogon", "userinit",
             // build tools / package managers / process-launching middlemen -- npm/npx/yarn/pnpm in particular
@@ -453,7 +457,35 @@ namespace UnitySkills
 
         internal static bool IsInterpreter(string name) => !string.IsNullOrEmpty(name) && _interpreters.Contains(name);
 
-        /// <summary>Strips a leading "-" (login shells), any directory path, and any extension, leaving a bare comparable name.</summary>
+        // Matches a trailing Electron/Chromium helper-process suffix: "<AppName> Helper", optionally followed
+        // by a parenthesized role such as " (Renderer)"/" (GPU)"/" (Plugin)". Every Electron app (VS Code,
+        // Cursor, Hyper, ...) ships 3-4 of these as separate binaries sharing the app's own name -- without
+        // stripping the suffix, the same app fragments into that many different rows in /analytics depending
+        // on which helper process happened to make the request. This matters beyond cosmetics: Cline, Roo
+        // Code, the Copilot extension, and the Continue extension have no CLI binary of their own at all --
+        // they only ever run inside VS Code's extension host, so this suffix strip is the only thing that can
+        // give that entire class of IDE-hosted agent a stable name.
+        //
+        // Deliberately an EXACT anchored suffix match (requires a preceding space before "Helper", anchored
+        // to the end of the string), never a generic "cut at the first space" -- that was the argv[0] bug this
+        // class was just fixed for. An app plainly named "My Agent" (no " Helper" suffix) must stay "My Agent"
+        // whole; only "<Name> Helper[ (Role)]" gets shortened, and only its own trailing occurrence.
+        private static readonly Regex ElectronHelperSuffixPattern =
+            new Regex(@"\s+Helper(\s*\([^)]*\))?$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        internal static string StripElectronHelperSuffix(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return name;
+            var stripped = ElectronHelperSuffixPattern.Replace(name, "");
+            return stripped.Length > 0 ? stripped : name; // never strip down to nothing
+        }
+
+        /// <summary>
+        /// Strips a leading "-" (login shells), any directory path, any extension, and a trailing Electron
+        /// helper-process suffix (see <see cref="StripElectronHelperSuffix"/>), leaving a bare comparable name
+        /// -- used for both the denylist/interpreter checks and the display-name lookup, so e.g. "Hyper Helper
+        /// (Renderer)" correctly matches the "hyper" denylist entry the same as plain "Hyper" would.
+        /// </summary>
         internal static string NormalizeProcessName(string rawName)
         {
             if (string.IsNullOrEmpty(rawName)) return rawName;
@@ -463,7 +495,8 @@ namespace UnitySkills
             int slash = name.LastIndexOf('/');
             if (slash >= 0) name = name.Substring(slash + 1);
             var withoutExt = Path.GetFileNameWithoutExtension(name);
-            return string.IsNullOrEmpty(withoutExt) ? name : withoutExt;
+            var result = string.IsNullOrEmpty(withoutExt) ? name : withoutExt;
+            return StripElectronHelperSuffix(result);
         }
 
         // ===== Interpreter command-line extraction =====
@@ -474,6 +507,45 @@ namespace UnitySkills
         private const string NodeModulesMarker = "node_modules/";
 
         /// <summary>
+        /// Whitespace tokenizer that treats a `"..."` run as a single token (quotes stripped), instead of
+        /// naively splitting on every space -- Windows' PEB CommandLine is one string, not a pre-split argv
+        /// array, and CreateProcess's own convention quotes any argument containing a space (most commonly
+        /// argv[0] itself, e.g. `"C:\Program Files\nodejs\node.exe" C:\scripts\app.js`); a plain whitespace
+        /// split would cut that at "Program" / "Files\nodejs\node.exe". mac/Linux argv is already split by the
+        /// kernel before this ever runs, so there are no real quote characters to worry about there -- this
+        /// tokenizer is a no-op for those platforms' inputs. Doesn't handle escaped quotes inside a quoted
+        /// section (not needed here -- worst case a token with a literal embedded quote just fails the
+        /// downstream "looks like a path" check and gets skipped, same as any other non-matching argument).
+        /// </summary>
+        internal static List<string> TokenizeCommandLine(string args)
+        {
+            var tokens = new List<string>();
+            int i = 0;
+            int n = args.Length;
+            while (i < n)
+            {
+                while (i < n && char.IsWhiteSpace(args[i])) i++;
+                if (i >= n) break;
+
+                if (args[i] == '"')
+                {
+                    int start = i + 1;
+                    int end = args.IndexOf('"', start);
+                    if (end < 0) end = n; // unterminated quote -- take the rest of the string
+                    tokens.Add(args.Substring(start, end - start));
+                    i = end + 1;
+                }
+                else
+                {
+                    int start = i;
+                    while (i < n && !char.IsWhiteSpace(args[i])) i++;
+                    tokens.Add(args.Substring(start, i - start));
+                }
+            }
+            return tokens;
+        }
+
+        /// <summary>
         /// Finds the first non-flag, path-like argument in an interpreter's command line and extracts a raw
         /// tool/package token from it (handling scoped npm packages under node_modules), or null if no such
         /// argument exists -- e.g. `node -e "..."` or a bare REPL invocation.
@@ -481,10 +553,10 @@ namespace UnitySkills
         internal static string TryExtractFromArgs(string args)
         {
             if (string.IsNullOrWhiteSpace(args)) return null;
-            var tokens = args.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            var tokens = TokenizeCommandLine(args);
 
             // tokens[0] is the interpreter binary itself (already identified via comm); start from the first argument.
-            for (int i = 1; i < tokens.Length; i++)
+            for (int i = 1; i < tokens.Count; i++)
             {
                 var tok = tokens[i];
                 if (tok.Length == 0 || tok[0] == '-') continue; // flag
@@ -541,7 +613,12 @@ namespace UnitySkills
             ("trae", "Trae"),
             ("cline", "Cline"),
             ("augment", "Augment"), ("auggie", "Augment"), // auggie = Augment CLI's actual binary name
-            ("q", "AmazonQ"), ("amazon-q", "AmazonQ"),
+            // "q" deliberately NOT mapped: a single-letter token is the highest-risk entry a denylist-driven
+            // walk can have -- any unrelated process happening to be named "q" would get labeled AmazonQ. The
+            // actual amazon-q-developer-cli binary name (q vs qchat) couldn't be confirmed against a
+            // definitive source, so this drops to the safe (if unglamorous) "Q" capitalize fallback instead of
+            // risking a wrong match. "amazon-q" (the unambiguous full name) stays mapped.
+            ("amazon-q", "AmazonQ"),
             ("code", "VSCode"),
             ("gemini", "GeminiCLI"),
             ("aider", "Aider"),
@@ -549,20 +626,31 @@ namespace UnitySkills
             ("goose", "Goose"),
             ("droid", "Droid"),
             ("qwen", "QwenCode"),
+            ("crush", "Crush"), // charmbracelet/crush -- confirmed via GitHub releases
+            ("plandex", "Plandex"), ("pdx", "Plandex"), // confirmed via repo README + releases (both names in real use)
+            ("cn", "Continue"), // npm @continuedev/cli bin=["cn"] -- not "continue"
+            ("copilot", "CopilotCLI"), // npm @github/copilot bin=["copilot"] -- not "gh copilot"
+            ("cb", "Codebuff"), ("codebuff", "Codebuff"), // npm codebuff bin=["cb","codebuff"]
         };
 
         internal static string NormalizeDisplayName(string rawToken)
         {
             if (string.IsNullOrEmpty(rawToken)) return null;
-            foreach (var (token, agentId) in DisplayNameMap)
+            // Strip an Electron helper-process suffix here too (WalkChain's caller already goes through
+            // NormalizeProcessName, which strips it -- but NormalizeDisplayName is also called directly with
+            // extracted interpreter-arg tokens and in tests, and must give the same collapsed-to-the-host-app
+            // answer either way; StripElectronHelperSuffix is a no-op on anything that doesn't end in the
+            // exact "<Name> Helper[ (Role)]" pattern, so this never changes an already-bare token.
+            var stripped = StripElectronHelperSuffix(rawToken);
+            foreach (var (mapped, agentId) in DisplayNameMap)
             {
-                if (string.Equals(token, rawToken, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(mapped, stripped, StringComparison.OrdinalIgnoreCase))
                     return agentId; // hardcoded constants -- already telemetry-safe, no need to run through Sanitize
             }
             // Unmapped but real -- capitalize rather than ever reporting "Unknown".
-            var capitalized = rawToken.Length == 1
-                ? rawToken.ToUpperInvariant()
-                : char.ToUpperInvariant(rawToken[0]) + rawToken.Substring(1);
+            var capitalized = stripped.Length == 1
+                ? stripped.ToUpperInvariant()
+                : char.ToUpperInvariant(stripped[0]) + stripped.Substring(1);
             return SanitizeForTelemetry(capitalized);
         }
 
@@ -922,13 +1010,7 @@ namespace UnitySkills
                     int ppid = ReadPpid(pid);
                     if (ppid < 0) continue; // process already gone
 
-                    string args = TryGetCommandLine(pid);
-                    // argv[0] from cmdline (unbounded) is always preferred over comm/status Name: (both
-                    // truncated to TASK_COMM_LEN=15 chars); ReadComm is only reached when cmdline is empty
-                    // (e.g. a kernel thread), where there's no argv[0] to prefer over it anyway.
-                    string name = !string.IsNullOrEmpty(args) ? FirstToken(args) : ReadComm(pid);
-                    if (name == null) continue;
-
+                    if (!TryReadNameAndArgs(pid, out var name, out var args)) continue;
                     result[pid] = new ProcessInfo { Ppid = ppid, Name = name, Args = args };
                 }
                 return result;
@@ -936,14 +1018,8 @@ namespace UnitySkills
 
             public string TryGetCommandLine(int pid)
             {
-                try
-                {
-                    var bytes = File.ReadAllBytes($"/proc/{pid}/cmdline");
-                    if (bytes.Length == 0) return null;
-                    var text = Encoding.UTF8.GetString(bytes).Replace('\0', ' ').Trim();
-                    return text.Length == 0 ? null : text;
-                }
-                catch { return null; }
+                var argv = ReadArgv(pid);
+                return argv == null ? null : string.Join(" ", argv);
             }
 
             /// <summary>Single-pid read (a few small file opens, no fork) -- safe to call synchronously from the accept thread for the leaf client pid.</summary>
@@ -952,13 +1028,45 @@ namespace UnitySkills
                 info = default;
                 int ppid = ReadPpid(pid);
                 if (ppid < 0) return false;
-
-                string args = TryGetCommandLine(pid);
-                string name = !string.IsNullOrEmpty(args) ? FirstToken(args) : ReadComm(pid);
-                if (name == null) return false;
+                if (!TryReadNameAndArgs(pid, out var name, out var args)) return false;
 
                 info = new ProcessInfo { Ppid = ppid, Name = name, Args = args };
                 return true;
+            }
+
+            /// <summary>
+            /// Name comes from argv[0] straight out of the NUL-split array, never from re-splitting the
+            /// space-joined Args on whitespace: argv[0] can itself contain a literal space (e.g.
+            /// "/opt/Visual Studio Code/code"), which a naive first-space split would cut in the wrong place.
+            /// argv[0] from cmdline (unbounded) is preferred over comm/status Name: (both truncated to
+            /// TASK_COMM_LEN=15 chars); ReadComm is only reached when cmdline is empty (e.g. a kernel thread),
+            /// where there's no argv[0] to prefer over it anyway.
+            /// </summary>
+            private static bool TryReadNameAndArgs(int pid, out string name, out string args)
+            {
+                var argv = ReadArgv(pid);
+                if (argv != null)
+                {
+                    name = argv[0];
+                    args = string.Join(" ", argv);
+                    return true;
+                }
+                name = ReadComm(pid);
+                args = null;
+                return name != null;
+            }
+
+            /// <summary>Raw NUL-separated argv, split before anything joins the pieces back together. Null on failure/empty (e.g. a kernel thread).</summary>
+            private static string[] ReadArgv(int pid)
+            {
+                try
+                {
+                    var bytes = File.ReadAllBytes($"/proc/{pid}/cmdline");
+                    if (bytes.Length == 0) return null;
+                    var argv = Encoding.UTF8.GetString(bytes).Split('\0').Where(s => s.Length > 0).ToArray();
+                    return argv.Length == 0 ? null : argv;
+                }
+                catch { return null; }
             }
 
             private static int ReadPpid(int pid)
@@ -980,12 +1088,6 @@ namespace UnitySkills
             {
                 try { return File.ReadAllText($"/proc/{pid}/comm").Trim(); }
                 catch { return null; }
-            }
-
-            private static string FirstToken(string args)
-            {
-                int space = args.IndexOf(' ');
-                return space >= 0 ? args.Substring(0, space) : args;
             }
         }
 
@@ -1397,18 +1499,20 @@ namespace UnitySkills
                 // Node-hosted CLIs, whose pbi_comm showed an internal embedder version string instead of the
                 // process's actual name. Falls back to pbi_comm only when args aren't available at all
                 // (permission-denied, kernel threads).
+                //
+                // Name comes from TryGetArgv0 (the kernel's own argv[0], never re-split from the joined
+                // command line): argv[0] can itself contain a literal space -- e.g. a VS Code-hosted agent's
+                // helper process at "/Applications/Visual Studio Code.app/.../Code Helper (Plugin)" -- and
+                // splitting the joined string on the first space would cut that in the wrong place (confirmed
+                // live: it named the process "Visual"). Args (for interpreter arg extraction, which scans for
+                // a path-like token rather than caring about argv[0] specifically) still uses the joined form.
+                string name = MacSysctlArgs.TryGetArgv0(pid);
                 string args = MacSysctlArgs.TryGetCommandLine(pid);
-                string name = !string.IsNullOrEmpty(args) ? FirstToken(args) : ReadFixedString(buffer, CommOffset, CommMaxLen);
+                if (string.IsNullOrEmpty(name)) name = ReadFixedString(buffer, CommOffset, CommMaxLen);
                 if (string.IsNullOrEmpty(name)) return false;
 
                 info = new ProcessInfo { Ppid = ppid, Name = name, Args = args };
                 return true;
-            }
-
-            private static string FirstToken(string args)
-            {
-                int space = args.IndexOf(' ');
-                return space >= 0 ? args.Substring(0, space) : args;
             }
 
             public string TryGetCommandLine(int pid) => MacSysctlArgs.TryGetCommandLine(pid);
@@ -1456,7 +1560,27 @@ namespace UnitySkills
             [DllImport("libc", SetLastError = true)]
             private static extern int sysctl(int[] name, uint namelen, IntPtr oldp, ref IntPtr oldlenp, IntPtr newp, IntPtr newlen);
 
+            /// <summary>Full command line, argv joined with spaces -- fine for interpreter arg extraction (which scans for a path-like token, not argv[0] itself), never for deriving a process's name (see TryGetArgv0).</summary>
             public static string TryGetCommandLine(int pid)
+            {
+                var argv = TryGetArgv(pid);
+                return argv == null ? null : string.Join(" ", argv);
+            }
+
+            /// <summary>
+            /// argv[0] alone, exactly as the kernel split it -- not "the first space-delimited token of the
+            /// joined command line". argv[0] can itself contain a literal space (e.g.
+            /// "/Applications/Visual Studio Code.app/Contents/MacOS/Code Helper (Plugin)"), which is exactly
+            /// what re-splitting the joined string on whitespace gets wrong (confirmed live: it named the
+            /// process "Visual"). This is the only correct source for ProcessInfo.Name.
+            /// </summary>
+            public static string TryGetArgv0(int pid)
+            {
+                var argv = TryGetArgv(pid);
+                return argv != null && argv.Count > 0 ? argv[0] : null;
+            }
+
+            private static List<string> TryGetArgv(int pid)
             {
                 try
                 {
@@ -1495,7 +1619,7 @@ namespace UnitySkills
                             }
                             offset++; // skip the NUL terminator
                         }
-                        return argv.Count == 0 ? null : string.Join(" ", argv);
+                        return argv.Count == 0 ? null : argv;
                     }
                     finally { Marshal.FreeHGlobal(buffer); }
                 }
@@ -1506,28 +1630,54 @@ namespace UnitySkills
         /// <summary>Fallback only (see MacProcessTableReader): shells out to `ps`.</summary>
         private sealed class MacPsProcessTableReader : IProcessTableReader
         {
-            private static readonly Regex PsLinePattern = new Regex(@"^\s*(\d+)\s+(\d+)\s+(.*)$", RegexOptions.Compiled);
+            private static readonly Regex PsNameLinePattern = new Regex(@"^\s*(\d+)\s+(\d+)\s+(.*)$", RegexOptions.Compiled);
+            private static readonly Regex PsArgsLinePattern = new Regex(@"^\s*(\d+)\s+(.*)$", RegexOptions.Compiled);
             private readonly string _psPath;
 
             public MacPsProcessTableReader(string psPath) { _psPath = psPath; }
 
+            /// <summary>
+            /// Two separate `ps` invocations, not one: `comm` and `args` can each contain literal spaces, and
+            /// there's no way to tell where a free-form `comm` column ends and a free-form `args` column
+            /// begins if they're printed on the same line. Splitting the *joined* args string on whitespace to
+            /// derive a name (the previous approach) breaks exactly when argv[0] itself has a space -- e.g. a
+            /// VS Code-hosted agent's helper process at ".../Visual Studio Code.app/.../Code Helper (Plugin)"
+            /// got named "Visual" (confirmed live). `ps`'s own `comm` column doesn't have this problem (it's
+            /// its own free-form "rest of line" match) and, unlike libproc's raw pbi_comm, was confirmed
+            /// live to correctly report a process whose pbi_comm had been overridden (e.g. Node's
+            /// pthread_setname_np) -- `ps` resolves comm from the executable path, not the kernel accounting name.
+            /// </summary>
             public IReadOnlyDictionary<int, ProcessInfo> ReadAll()
             {
-                var output = RunProcessCapturingStdout(ResolveTool(_psPath, "ps"), "-axo pid,ppid,args", 3000);
-                if (output == null) return null;
+                var nameOutput = RunProcessCapturingStdout(ResolveTool(_psPath, "ps"), "-axo pid,ppid,comm", 3000);
+                if (nameOutput == null) return null;
+
+                var argsByPid = new Dictionary<int, string>();
+                var argsOutput = RunProcessCapturingStdout(ResolveTool(_psPath, "ps"), "-axo pid,args", 3000);
+                if (argsOutput != null)
+                {
+                    foreach (var line in argsOutput.Split('\n'))
+                    {
+                        var m = PsArgsLinePattern.Match(line);
+                        if (!m.Success) continue;
+                        if (!int.TryParse(m.Groups[1].Value, out int argsPid)) continue;
+                        var args = m.Groups[2].Value.Trim();
+                        if (args.Length > 0) argsByPid[argsPid] = args;
+                    }
+                }
 
                 var result = new Dictionary<int, ProcessInfo>();
-                foreach (var line in output.Split('\n'))
+                foreach (var line in nameOutput.Split('\n'))
                 {
-                    var m = PsLinePattern.Match(line);
+                    var m = PsNameLinePattern.Match(line);
                     if (!m.Success) continue;
                     if (!int.TryParse(m.Groups[1].Value, out int pid)) continue;
                     if (!int.TryParse(m.Groups[2].Value, out int ppid)) continue;
 
-                    var args = m.Groups[3].Value.Trim();
-                    if (args.Length == 0) continue;
-                    var name = FirstToken(args);
+                    var name = m.Groups[3].Value.Trim();
+                    if (name.Length == 0) continue;
 
+                    argsByPid.TryGetValue(pid, out var args);
                     result[pid] = new ProcessInfo { Ppid = ppid, Name = name, Args = args };
                 }
                 return result;
@@ -1540,12 +1690,6 @@ namespace UnitySkills
                 var output = RunProcessCapturingStdout(ResolveTool(_psPath, "ps"), $"-o args= -p {pid}", 2000);
                 var trimmed = output?.Trim();
                 return string.IsNullOrEmpty(trimmed) ? null : trimmed;
-            }
-
-            private static string FirstToken(string args)
-            {
-                int space = args.IndexOf(' ');
-                return space >= 0 ? args.Substring(0, space) : args;
             }
 
             /// <summary>
