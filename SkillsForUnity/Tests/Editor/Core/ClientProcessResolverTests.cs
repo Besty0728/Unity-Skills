@@ -84,6 +84,7 @@ namespace UnitySkills.Tests.Core
         [TestCase("uv")]
         [TestCase("uvx")]
         [TestCase("pipx")]
+        [TestCase("language_server_windows_x64")] // Codeium-derived IDEs' agent host (Windsurf AND Antigravity share this binary name) -- skipped so the walk reaches the IDE's own main process
         public void IsDenylisted_BuildToolsAndPackageManagerMiddlemen_AreExcluded(string name)
         {
             Assert.That(ClientProcessResolver.IsDenylisted(name), Is.True, $"'{name}' should be excluded -- these commonly wrap the real agent CLI (e.g. npx @scope/agent-cli).");
@@ -245,6 +246,10 @@ namespace UnitySkills.Tests.Core
         [TestCase("auggie", "Augment")] // Augment CLI's actual binary name
         [TestCase("agy", "Antigravity")] // Antigravity CLI's actual binary name (confirmed live against a real agy process)
         [TestCase("antigravity", "Antigravity")]
+        [TestCase("antigravity ide", "Antigravity")] // the Windows IDE's main exe is literally "Antigravity IDE.exe"
+        [TestCase("codex", "Codex")]
+        [TestCase("codex-command-runner", "Codex")] // Codex CLI/App run shell commands through this bundled helper
+        [TestCase("codex-code-mode-host", "Codex")]
         [TestCase("amazon-q", "AmazonQ")]
         [TestCase("code", "VSCode")]
         [TestCase("gemini", "GeminiCLI")]
@@ -263,6 +268,17 @@ namespace UnitySkills.Tests.Core
         public void NormalizeDisplayName_KnownTokens_MapToTheAgentKeywordsValue(string token, string expected)
         {
             Assert.That(ClientProcessResolver.NormalizeDisplayName(token), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void NormalizeDisplayName_LanguageServerBinary_IsNotMappedToAnySpecificIDE()
+        {
+            // Windsurf and Antigravity ship an identical "language_server_windows_x64" agent-host binary name,
+            // so it must NOT appear in DisplayNameMap -- hardcoding it to either product would mislabel the
+            // other. It is denylisted instead, letting the chain walk reach the IDE's own main process.
+            var name = ClientProcessResolver.NormalizeDisplayName("language_server_windows_x64");
+            Assert.That(name, Is.Not.EqualTo("Antigravity"));
+            Assert.That(name, Is.Not.EqualTo("Windsurf"));
         }
 
         [Test]

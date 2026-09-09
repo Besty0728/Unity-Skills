@@ -20,8 +20,13 @@ namespace UnitySkills
     /// Threading model (relaxed from the usual "accept thread never blocks" rule -- see agent.md and the
     /// project-lead decision recorded in <see cref="BeginResolve"/>'s doc comment): the HTTP accept thread
     /// calls <see cref="BeginResolve"/>, which *synchronously* resolves the client's TCP port to its pid and
-    /// that pid's own parent pid (a few ms, no-fork syscalls only), then hands the *rest* of the parent chain
-    /// (long-lived ancestors -- shells, interpreters, the agent CLI) to a single dedicated background thread.
+    /// captures its ancestor chain (names + ppids + interpreter command lines, up to MaxWalkDepth; a few ms,
+    /// no-fork syscalls only) -- captured up front because short-lived intermediates (Codex's
+    /// codex-command-runner.exe, `cmd /c` wrappers, MSYS fork shims) routinely exit together with the client
+    /// and would be reaped before any async round -- and then walks the captured chain in-memory *right
+    /// there*, so the resolved identity is usually in the cache before the request even leaves the accept
+    /// thread. A single dedicated background thread remains only as the fallback for walks that run past the
+    /// captured depth.
     /// The synchronous part exists because a short-lived, one-shot client process (bare `curl`, no keep-alive)
     /// can fully exit and be reaped before any purely-async worker gets a chance to look it up -- once it's
     /// gone, its ppid is unrecoverable. Results land in a short-TTL cache that any thread can read back via
@@ -162,12 +167,21 @@ namespace UnitySkills
         private const int IdleSweepMs = 1000;    // periodic wake even without new work, so Shutdown is noticed promptly
         internal const int MaxWalkDepth = 8;
 
-        /// <summary>An async continuation queued by BeginResolve after it has already (synchronously) captured the leaf pid and its immediate parent.</summary>
+        /// <summary>An async continuation queued by BeginResolve after it has already (synchronously) captured the leaf pid and its ancestor chain.</summary>
         private readonly struct PendingWalk
         {
             public readonly int LeafPid;
             public readonly int LeafPpid;
-            public PendingWalk(int leafPid, int leafPpid) { LeafPid = leafPid; LeafPpid = leafPpid; }
+            /// <summary>
+            /// The leaf's ancestor chain (parent, grandparent, ...; pid -> name/ppid[/args]) captured
+            /// synchronously at accept time. Short-lived intermediates (Codex's codex-command-runner.exe,
+            /// `cmd /c` wrappers, MSYS fork shims) routinely exit together with a one-shot curl client, so by
+            /// the async round -- even a few ms later -- they can already be reaped and an un-captured walk
+            /// dead-ends into "no answer". ResolveRound overlays these onto the fresh table before walking.
+            /// Null when the capture was unavailable (platform unsupported, or the leaf had no parent).
+            /// </summary>
+            public readonly List<KeyValuePair<int, ProcessInfo>> CapturedChain;
+            public PendingWalk(int leafPid, int leafPpid, List<KeyValuePair<int, ProcessInfo>> capturedChain) { LeafPid = leafPid; LeafPpid = leafPpid; CapturedChain = capturedChain; }
         }
 
         private static readonly ConcurrentDictionary<int, PendingWalk> _pendingWalks = new ConcurrentDictionary<int, PendingWalk>();
@@ -178,8 +192,9 @@ namespace UnitySkills
 
         /// <summary>
         /// Accept-thread entry point. Synchronously resolves remotePort -> client pid -> that pid's own
-        /// ppid+name, and -- if that's not already enough to classify the agent -- queues the *rest* of the
-        /// ancestor chain (long-lived: shells, interpreters, the actual agent CLI) to be walked asynchronously.
+        /// ppid+name, and -- if the leaf alone can't classify the agent -- captures the ancestor chain
+        /// (bounded, no-fork) and walks it in-memory, still synchronously. Only a walk that runs past the
+        /// captured depth is queued to the background worker.
         ///
         /// The synchronous part is not optional: a short-lived, one-shot client process (bare `curl`, no
         /// keep-alive) can fully exit and be reaped within single-digit ms, well before an async background
@@ -188,10 +203,13 @@ namespace UnitySkills
         /// -> ppid has to happen right here, before returning to the caller.
         ///
         /// Bounded to the no-fork platform readers only (empirically ~4-5ms worst case for the connection scan
-        /// on the dev machine, plus one or two syscalls for the leaf's own info) -- IConnectionTableReader/
-        /// IProcessTableReader's sync methods never fall back to spawning lsof/ps (that would cost 50-90ms of
-        /// fork overhead from Unity Editor's own large address space, blowing the accept thread's budget many
-        /// times over). Any failure or unavailability degrades immediately and silently to the header/UA guess.
+        /// on the dev machine, plus one or two syscalls for the leaf's own info; the unclassified-leaf path
+        /// additionally pays one ancestor-chain capture -- a single Toolhelp32 snapshot on Windows, cheap
+        /// per-pid reads on mac/Linux, plus ~1ms per interpreter ancestor for the eager command-line read) --
+        /// IConnectionTableReader/IProcessTableReader's sync methods never fall back to spawning lsof/ps
+        /// (that would cost 50-90ms of fork overhead from Unity Editor's own large address space, blowing the
+        /// accept thread's budget many times over). Any failure or unavailability degrades immediately and
+        /// silently to the header/UA guess.
         /// </summary>
         public static void BeginResolve(int remotePort, int serverPort)
         {
@@ -244,10 +262,41 @@ namespace UnitySkills
                 // Leaf alone didn't resolve (denylisted, or an interpreter whose args didn't extract) -- the
                 // rest of the chain is long-lived and safe to walk asynchronously without racing an exit.
                 if (leafInfo.Ppid <= 0 || leafInfo.Ppid == leafPid)
+                {
                     return; // no parent to continue to -- dead end
+                }
+
+                // Capture the whole ancestor chain NOW, on the accept thread: intermediates like Codex's
+                // codex-command-runner.exe or a `cmd /c curl` wrapper exit together with the short-lived
+                // client, so by the async round (a few ms later) entire links of the chain can already be
+                // reaped. One bounded read (single snapshot on Windows, cheap per-pid reads on mac/Linux),
+                // only on this unclassified-leaf path -- leaves that classify immediately never pay for it.
+                List<KeyValuePair<int, ProcessInfo>> capturedChain = null;
+                try { ProcessReader.TryCaptureAncestors(leafPid, MaxWalkDepth, out capturedChain); }
+                catch { capturedChain = null; /* best-effort: the async walk simply starts blind, as before */ }
+
+                // The captured chain is fully in-memory, so walk it RIGHT HERE (microseconds, no syscalls):
+                // resolving before returning to the accept loop means the request job's early RefineAgentId,
+                // the console line, and the audit entry all see the real agent instead of racing the
+                // background worker and printing the header/UA guess for single-digit-ms skills. The async
+                // round below remains as the fallback for a walk that ran past the captured depth.
+                if (capturedChain != null && capturedChain.Count > 0)
+                {
+                    var syncTable = new Dictionary<int, ProcessInfo>(capturedChain.Count + 1) { [leafPid] = leafInfo };
+                    foreach (var c in capturedChain)
+                        syncTable[c.Key] = c.Value;
+                    var resolvedSync = WalkChain(leafPid, syncTable, ProcessReader.TryGetCommandLine, out var visitedSync, _pidCache.TryGet);
+                    if (resolvedSync != null)
+                    {
+                        _portCache.Put(remotePort, resolvedSync);
+                        foreach (var vp in visitedSync) _pidCache.Put(vp, resolvedSync);
+                        SkillsLogger.LogVerbose($"ClientProcessResolver: chain-walk resolved '{resolvedSync}' synchronously in {sw.ElapsedMilliseconds}ms");
+                        return;
+                    }
+                }
 
                 SkillsLogger.LogVerbose($"ClientProcessResolver: sync capture done in {sw.ElapsedMilliseconds}ms, queuing async continuation from ppid={leafInfo.Ppid}");
-                if (_pendingWalks.TryAdd(remotePort, new PendingWalk(leafPid, leafInfo.Ppid)))
+                if (_pendingWalks.TryAdd(remotePort, new PendingWalk(leafPid, leafInfo.Ppid, capturedChain)))
                 {
                     EnsureWorkerStarted();
                     _wake.Set();
@@ -309,6 +358,7 @@ namespace UnitySkills
                 processTable = null;
             }
 
+
             foreach (var kv in pending)
             {
                 int remotePort = kv.Key;
@@ -316,7 +366,24 @@ namespace UnitySkills
                 _pendingWalks.TryRemove(remotePort, out _);
                 if (processTable == null) continue; // degrade -- caller keeps the header/UA fallback
 
-                var agentId = WalkChain(walk.LeafPpid, processTable, ProcessReader.TryGetCommandLine, out var visitedPids, _pidCache.TryGet);
+                // Overlay the accept-time ancestor capture onto the fresh table: any link that has since
+                // exited (short-lived intermediates die with the client) still resolves from its captured
+                // name/ppid, while live entries (fresher, and the only source the lazy command-line fetcher
+                // can work with) cover everything else. Captured entries win on ancestry -- ppid/name are
+                // immutable post-accept, and the capture predates any PID reuse.
+                IReadOnlyDictionary<int, ProcessInfo> tableForWalk = processTable;
+                if (walk.CapturedChain != null && walk.CapturedChain.Count > 0)
+                {
+                    var merged = new Dictionary<int, ProcessInfo>(processTable.Count + walk.CapturedChain.Count);
+                    foreach (var captured in walk.CapturedChain)
+                        merged[captured.Key] = captured.Value;
+                    foreach (var live in processTable)
+                        if (!merged.ContainsKey(live.Key))
+                            merged[live.Key] = live.Value;
+                    tableForWalk = merged;
+                }
+
+                var agentId = WalkChain(walk.LeafPpid, tableForWalk, ProcessReader.TryGetCommandLine, out var visitedPids, _pidCache.TryGet);
                 if (agentId == null) continue;
 
                 _portCache.Put(remotePort, agentId);
@@ -410,8 +477,36 @@ namespace UnitySkills
             return null;
         }
 
-        // ===== Denylist / interpreter tables =====
+        /// <summary>
+        /// Shared core for the platform readers' TryCaptureAncestors: walks ppid links upward from
+        /// <paramref name="leafPid"/> via <paramref name="lookup"/> (a snapshot-table lookup on Windows, a
+        /// per-pid read on mac/Linux), collecting up to <paramref name="maxDepth"/> ancestors. Cycle-safe;
+        /// stops at the first unreadable/parent-less link. Returns false only when even the leaf can't be
+        /// read -- an empty-but-valid chain (leaf has no ancestors) still returns true with an empty list.
+        /// </summary>
+        private static bool CaptureAncestorsCore(int leafPid, int maxDepth, Func<int, ProcessInfo?> lookup, out List<KeyValuePair<int, ProcessInfo>> chain)
+        {
+            chain = null;
+            var leaf = lookup(leafPid);
+            if (leaf == null) return false;
 
+            var result = new List<KeyValuePair<int, ProcessInfo>>();
+            var seen = new HashSet<int> { leafPid };
+            int current = leaf.Value.Ppid;
+            while (current > 0 && seen.Add(current) && result.Count < maxDepth)
+            {
+                var info = lookup(current);
+                if (info == null) break;
+                result.Add(new KeyValuePair<int, ProcessInfo>(current, info.Value));
+                if (info.Value.Ppid <= 0 || info.Value.Ppid == current) break;
+                current = info.Value.Ppid;
+            }
+
+            chain = result;
+            return true;
+        }
+
+        // ===== Denylist / interpreter tables =====
         // Small and stable by design -- shells, terminal hosts, system processes, and HTTP-ish launchers. This
         // is deliberately NOT a list of known agents: any CLI not on this list is assumed to be the agent, so a
         // brand-new tool is recognized without touching this file. Case-insensitive, matched after stripping
@@ -434,6 +529,10 @@ namespace UnitySkills
             // routinely wrap the actual agent CLI (`npx @some/agent-cli`), so excluding them and continuing
             // upward/downward the chain is exactly what surfaces the real wrapped tool.
             "make", "cmake", "npm", "npx", "yarn", "pnpm", "git", "ssh", "sshd", "nohup", "direnv", "watchexec", "just", "task", "uv", "uvx", "pipx",
+            // Codeium-derived IDEs (Windsurf, Antigravity) host their agent in a language-server binary with an
+            // identical name across products -- it can't be name-mapped to either one, so skip it and let the
+            // walk reach the IDE's own main process (Windsurf.exe / Antigravity IDE.exe) for attribution.
+            "language_server_windows_x64",
         };
 
         // Prefix-matched denylist entries (versioned/suffixed process names).
@@ -605,8 +704,12 @@ namespace UnitySkills
         {
             ("claude", "ClaudeCode"), ("claude-code", "ClaudeCode"),
             ("codex", "Codex"),
+            // The Codex CLI (npm @openai/codex) and the standalone Codex app both run shell commands through
+            // these bundled helper binaries instead of codex.exe directly -- the walk hits them first.
+            ("codex-command-runner", "Codex"), ("codex-code-mode-host", "Codex"),
             ("cursor", "Cursor"),
             ("antigravity", "Antigravity"), ("agy", "Antigravity"), // agy = Antigravity CLI's actual binary name (Go/Mach-O, confirmed live)
+            ("antigravity ide", "Antigravity"), // the Windows IDE's main exe is literally "Antigravity IDE.exe"
             ("opencode", "OpenCode"),
             ("kimi", "KimiCode"), ("kimi-code", "KimiCode"),
             ("windsurf", "Windsurf"),
@@ -715,6 +818,18 @@ namespace UnitySkills
             /// constraint as <see cref="IConnectionTableReader.TryFindClientPid"/>). Returns false when unavailable.
             /// </summary>
             bool TryGetSingle(int pid, out ProcessInfo info);
+
+            /// <summary>
+            /// Captures the leaf's ancestor chain (parent, grandparent, ... up to <paramref name="maxDepth"/>
+            /// levels, excluding the leaf itself) in one pass, for accept-thread use when the leaf alone can't
+            /// classify the client. This exists because short-lived intermediates (Codex's
+            /// codex-command-runner.exe, `cmd /c` wrappers, MSYS fork shims) routinely exit together with a
+            /// one-shot curl client -- every link captured here stays resolvable even after the process is
+            /// reaped. Cost must stay in the same order as one <see cref="TryGetSingle"/> call: Windows does it
+            /// with a single Toolhelp32 snapshot (its TryGetSingle pays a full enumeration anyway), mac/Linux
+            /// with cheap per-pid no-fork reads. Returns false (chain null) when unavailable.
+            /// </summary>
+            bool TryCaptureAncestors(int leafPid, int maxDepth, out List<KeyValuePair<int, ProcessInfo>> chain);
         }
 
         internal static IConnectionTableReader ConnectionReader = CreateDefaultConnectionReader();
@@ -754,6 +869,7 @@ namespace UnitySkills
             public IReadOnlyDictionary<int, ProcessInfo> ReadAll() => null;
             public string TryGetCommandLine(int pid) => null;
             public bool TryGetSingle(int pid, out ProcessInfo info) { info = default; return false; }
+            public bool TryCaptureAncestors(int leafPid, int maxDepth, out List<KeyValuePair<int, ProcessInfo>> chain) { chain = null; return false; }
         }
 
 
@@ -1034,6 +1150,10 @@ namespace UnitySkills
                 return true;
             }
 
+            /// <summary>Per-pid /proc reads (a few small file opens per link, no fork) -- accept-thread safe.</summary>
+            public bool TryCaptureAncestors(int leafPid, int maxDepth, out List<KeyValuePair<int, ProcessInfo>> chain)
+                => CaptureAncestorsCore(leafPid, maxDepth, pid => TryGetSingle(pid, out var info) ? info : (ProcessInfo?)null, out chain);
+
             /// <summary>
             /// Name comes from argv[0] straight out of the NUL-split array, never from re-splitting the
             /// space-joined Args on whitespace: argv[0] can itself contain a literal space (e.g.
@@ -1203,9 +1323,13 @@ namespace UnitySkills
 
             [DllImport("kernel32.dll", SetLastError = true)]
             private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
-            [DllImport("kernel32.dll")]
+            // Explicit W entry points + CharSet.Unicode: without CharSet the runtime defaults to Ansi,
+            // binds Process32FirstA, and writes single-byte names into the struct's UTF-16 szExeFile
+            // buffer -- every name comes back as byte-pair garbage, which SanitizeForTelemetry then
+            // strips to a stray ASCII character (observed: agent "e" for a claude.exe ancestry).
+            [DllImport("kernel32.dll", SetLastError = true, EntryPoint = "Process32FirstW", CharSet = CharSet.Unicode)]
             private static extern bool Process32First(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
-            [DllImport("kernel32.dll")]
+            [DllImport("kernel32.dll", SetLastError = true, EntryPoint = "Process32NextW", CharSet = CharSet.Unicode)]
             private static extern bool Process32Next(IntPtr hSnapshot, ref PROCESSENTRY32 lppe);
             [DllImport("kernel32.dll", SetLastError = true)]
             private static extern bool CloseHandle(IntPtr hObject);
@@ -1262,6 +1386,34 @@ namespace UnitySkills
                     return false;
                 }
                 finally { CloseHandle(snapshot); }
+            }
+
+            /// <summary>
+            /// One Toolhelp32 snapshot (the same full enumeration TryGetSingle already pays for) plus an
+            /// in-memory ppid-link walk -- the whole ancestor chain for the price of a single-pid lookup.
+            /// Interpreter links additionally get their PEB command line read EAGERLY: Toolhelp32 has no
+            /// command line and a dead process's PEB is gone, so a node/python-hosted CLI whose process exits
+            /// together with its curl child would otherwise become unidentifiable before the async round.
+            /// Only interpreter links pay the ~1ms PEB read; a typical chain has zero or one.
+            /// </summary>
+            public bool TryCaptureAncestors(int leafPid, int maxDepth, out List<KeyValuePair<int, ProcessInfo>> chain)
+            {
+                var table = ReadAll();
+                if (table == null) { chain = null; return false; }
+                bool ok = CaptureAncestorsCore(leafPid, maxDepth, pid => table.TryGetValue(pid, out var info) ? info : (ProcessInfo?)null, out chain);
+                if (ok && chain != null)
+                {
+                    for (int i = 0; i < chain.Count; i++)
+                    {
+                        if (!IsInterpreter(NormalizeProcessName(chain[i].Value.Name))) continue;
+                        var args = TryGetCommandLine(chain[i].Key);
+                        if (args == null) continue;
+                        var enriched = chain[i].Value;
+                        enriched.Args = args;
+                        chain[i] = new KeyValuePair<int, ProcessInfo>(chain[i].Key, enriched);
+                    }
+                }
+                return ok;
             }
 
             // ---- Lazy PEB command-line read (mandatory for correctly naming node/python-hosted agent CLIs on
@@ -1423,6 +1575,18 @@ namespace UnitySkills
                     return false;
                 }
             }
+
+            /// <summary>Same accept-thread rule as TryGetSingle: libproc only, never the ps fork fallback.</summary>
+            public bool TryCaptureAncestors(int leafPid, int maxDepth, out List<KeyValuePair<int, ProcessInfo>> chain)
+            {
+                try { return _libproc.TryCaptureAncestors(leafPid, maxDepth, out chain); }
+                catch (Exception ex)
+                {
+                    SkillsLogger.LogVerbose("ClientProcessResolver: libproc ancestor-chain capture failed (accept-thread sync path, no ps fallback): " + ex.Message);
+                    chain = null;
+                    return false;
+                }
+            }
         }
 
         /// <summary>
@@ -1484,6 +1648,10 @@ namespace UnitySkills
                 catch { info = default; return false; }
                 finally { Marshal.FreeHGlobal(buffer); }
             }
+
+            /// <summary>Per-pid libproc reads (one proc_pidinfo + one sysctl per link, no fork) -- accept-thread safe.</summary>
+            public bool TryCaptureAncestors(int leafPid, int maxDepth, out List<KeyValuePair<int, ProcessInfo>> chain)
+                => CaptureAncestorsCore(leafPid, maxDepth, pid => TryGetSingle(pid, out var info) ? info : (ProcessInfo?)null, out chain);
 
             /// <summary>Shared by ReadAll (buffer reused across every pid) and TryGetSingle (its own throwaway buffer).</summary>
             private static bool TryReadOne(int pid, IntPtr buffer, out ProcessInfo info)
@@ -1698,6 +1866,9 @@ namespace UnitySkills
             /// routes TryGetSingle to libproc only and fails closed rather than falling back to this class.
             /// </summary>
             public bool TryGetSingle(int pid, out ProcessInfo info) { info = default; return false; }
+
+            /// <summary>Same accept-thread constraint as TryGetSingle: never fork from the accept thread, so no chain capture here either.</summary>
+            public bool TryCaptureAncestors(int leafPid, int maxDepth, out List<KeyValuePair<int, ProcessInfo>> chain) { chain = null; return false; }
         }
     }
 }
