@@ -40,6 +40,9 @@ namespace UnitySkills.Tests.Core
         [TestCase("itermserver")]
         [TestCase("tmux")]
         [TestCase("tmux-1.9a")]
+        [TestCase("language_server_windows_x64")] // Codeium agent host -- the platform suffix varies, the stem does not
+        [TestCase("language_server_macos_arm")]
+        [TestCase("language_server_linux_x64")]
         public void IsDenylisted_PrefixEntries_MatchVersionedNames(string name)
         {
             Assert.That(ClientProcessResolver.IsDenylisted(name), Is.True, $"'{name}' should match a denylist prefix.");
@@ -235,6 +238,58 @@ namespace UnitySkills.Tests.Core
             // ever got to the real script argument.
             string args = @"""C:\Program Files\nodejs\node.exe"" C:\tools\node_modules\opencode\dist\cli.js";
             Assert.That(ClientProcessResolver.TryExtractFromArgs(args), Is.EqualTo("opencode"));
+        }
+
+        // Inline code is program text, not a script path: python -c / node -e|-p|--eval|--print. Anything
+        // path-like inside it (a URL, a sys.path entry) must not become the agent's name -- returning null
+        // lets the walk climb to the process that launched the interpreter. Observed live before the guard:
+        // agents named "Debug_get_errors" and "Scripts".
+        [TestCase("python3 -c \"import urllib.request as u; u.urlopen('http://localhost:8090/skill/debug_get_errors')\"")]
+        [TestCase("python3 -c \"import sys; sys.path.insert(0,'/Users/betsy/unity-skills~/scripts'); import unity_skills\"")]
+        [TestCase("python3 -c \"print(1/2)\"")]
+        [TestCase("node -e \"require('/opt/tools/agent.js')\"")]
+        [TestCase("node -p \"require('/opt/tools/agent.js').version\"")]
+        [TestCase("node --eval \"fetch('http://localhost:8090/health')\"")]
+        [TestCase("node --print \"require('/opt/tools/agent.js').version\"")]
+        public void TryExtractFromArgs_InlineCodeFlag_ReturnsNullSoTheWalkClimbs(string args)
+        {
+            Assert.That(ClientProcessResolver.TryExtractFromArgs(args), Is.Null);
+        }
+
+        [Test]
+        public void TryExtractFromArgs_ScriptPathBeforeInlineFlag_StillReturnsTheScript()
+        {
+            // Python stops option parsing at the script path; a later "-c" is the script's own argument.
+            Assert.That(ClientProcessResolver.TryExtractFromArgs("python3 /Users/betsy/tools/kimi.py -c config"), Is.EqualTo("kimi"));
+        }
+
+        [Test]
+        public void TryExtractFromArgs_TokenWithWindowsInvalidPathChars_DoesNotThrow()
+        {
+            // A PEB command line can carry shell redirection text inside a token; Path.GetFileNameWithoutExtension
+            // throws for '<' '>' '|' on Windows/Mono, which used to abort the whole synchronous attribution.
+            string result = null;
+            Assert.DoesNotThrow(() => result = ClientProcessResolver.TryExtractFromArgs(@"python C:\tools\a<b>c|d.py"));
+            Assert.That(result, Is.EqualTo("a<b>c|d"));
+        }
+
+        [Test]
+        public void JoinArgv_ElementWithWhitespace_SurvivesTokenizationAsOneToken()
+        {
+            // mac/Linux hand over a NUL-split argv; a plain space-join used to shred "My Project" into two
+            // tokens and the first fragment ("/Users/betsy/My") won the path scan.
+            var argv = new[] { "/usr/bin/python3", "/Users/betsy/My Project/tool.py", "--port", "8090" };
+            var joined = ClientProcessResolver.JoinArgv(argv);
+
+            Assert.That(ClientProcessResolver.TokenizeCommandLine(joined), Is.EqualTo(argv));
+            Assert.That(ClientProcessResolver.TryExtractFromArgs(joined), Is.EqualTo("tool"));
+        }
+
+        [Test]
+        public void JoinArgv_NullOrPlainElements_MatchesSpaceJoin()
+        {
+            Assert.That(ClientProcessResolver.JoinArgv(null), Is.Null);
+            Assert.That(ClientProcessResolver.JoinArgv(new[] { "node", "/opt/a/cli.js" }), Is.EqualTo("node /opt/a/cli.js"));
         }
 
         // ===== Display-name normalization =====
@@ -556,6 +611,156 @@ namespace UnitySkills.Tests.Core
 
             Assert.That(agentId, Is.EqualTo("ClaudeCode"));
             Assert.That(visited, Is.EqualTo(new List<int> { 10, 20 }));
+        }
+
+        // ===== Script-stem identities are tentative: the tool that launched the interpreter wins =====
+
+        [Test]
+        public void WalkChain_UnrecognizedScriptUnderClaudeCode_ReportsClaudeCodeNotTheScript()
+        {
+            // 100 python3 "spaced tool.py" -> 200 zsh -> 300 node (claude-code) -> 400 launchd.
+            // Observed live before the fix: the walk stopped at the script and reported "Spacedtool".
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 200, Name = "python3", Args = "python3 \"/tmp/My Project/spaced tool.py\"" },
+                [200] = new ClientProcessResolver.ProcessInfo { Ppid = 300, Name = "zsh" },
+                [300] = new ClientProcessResolver.ProcessInfo { Ppid = 400, Name = "node", Args = "node /x/node_modules/@anthropic-ai/claude-code/cli.js" },
+                [400] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "launchd" },
+            };
+
+            var result = ClientProcessResolver.WalkChainCore(100, table, commandLineFetcher: null);
+
+            Assert.That(result.Confident, Is.EqualTo("ClaudeCode"));
+            Assert.That(result.VisitedPids, Is.EqualTo(new List<int> { 100, 200, 300 }));
+        }
+
+        [Test]
+        public void WalkChain_UnrecognizedScriptUnderVsCodeHelper_ReportsVSCode()
+        {
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 200, Name = "python3", Args = "python3 /Users/betsy/tools/my_tool.py" },
+                [200] = new ClientProcessResolver.ProcessInfo { Ppid = 300, Name = "zsh" },
+                [300] = new ClientProcessResolver.ProcessInfo { Ppid = 400, Name = "Code Helper (Plugin)" },
+                [400] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "launchd" },
+            };
+
+            Assert.That(ClientProcessResolver.WalkChain(100, table, commandLineFetcher: null, out _), Is.EqualTo("VSCode"));
+        }
+
+        [Test]
+        public void WalkChain_UnrecognizedScriptWithNoAgentAbove_FallsBackToTheScriptStem()
+        {
+            // Hand-run script in a terminal: nothing above it but denylisted hops, so the stem is all there is.
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 200, Name = "python3", Args = "python3 /Users/betsy/tools/my_tool.py" },
+                [200] = new ClientProcessResolver.ProcessInfo { Ppid = 300, Name = "zsh" },
+                [300] = new ClientProcessResolver.ProcessInfo { Ppid = 400, Name = "Terminal" },
+                [400] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "launchd" },
+            };
+
+            var result = ClientProcessResolver.WalkChainCore(100, table, commandLineFetcher: null);
+
+            Assert.That(result.Confident, Is.Null);
+            Assert.That(result.Tentative, Is.EqualTo("My_tool"));
+            Assert.That(ClientProcessResolver.WalkChain(100, table, commandLineFetcher: null, out _), Is.EqualTo("My_tool"));
+        }
+
+        [Test]
+        public void WalkChain_NestedUnrecognizedScripts_TheOutermostStemIsTheTentativeIdentity()
+        {
+            // helper.py spawned by my_agent.py: the launcher is the better guess.
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 200, Name = "python3", Args = "python3 /opt/x/helper.py" },
+                [200] = new ClientProcessResolver.ProcessInfo { Ppid = 300, Name = "python3", Args = "python3 /opt/x/my_agent.py" },
+                [300] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "launchd" },
+            };
+
+            Assert.That(ClientProcessResolver.WalkChain(100, table, commandLineFetcher: null, out _), Is.EqualTo("My_agent"));
+        }
+
+        [Test]
+        public void WalkChainCore_ChainBreaksAtAStaleAncestor_StillReportsTheTentativeIdentity()
+        {
+            // Windows shape: explorer.exe's ppid is a userinit that exited long ago, so the table never reaches
+            // pid 0. The script stem must survive that, or an unmapped script-based agent degrades to the UA guess.
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 200, Name = "python3", Args = "python3 C:\\tools\\my_tool.py" },
+                [200] = new ClientProcessResolver.ProcessInfo { Ppid = 300, Name = "cmd" },
+                [300] = new ClientProcessResolver.ProcessInfo { Ppid = 9999, Name = "explorer" },
+            };
+
+            var result = ClientProcessResolver.WalkChainCore(100, table, commandLineFetcher: null);
+
+            Assert.That(result.Confident, Is.Null);
+            Assert.That(result.Tentative, Is.EqualTo("My_tool"));
+        }
+
+        [Test]
+        public void WalkChain_InstalledEntryPointUnderBin_IsConfidentEvenInsideAnIde()
+        {
+            // npm -g symlink / pip console script: `[node, /opt/homebrew/bin/foo-agent]` under a VS Code terminal.
+            // An installed CLI is the agent; the IDE above it is only the host.
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 200, Name = "node", Args = "node /opt/homebrew/bin/foo-agent" },
+                [200] = new ClientProcessResolver.ProcessInfo { Ppid = 300, Name = "zsh" },
+                [300] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "Code Helper (Plugin)" },
+            };
+
+            var result = ClientProcessResolver.WalkChainCore(100, table, commandLineFetcher: null);
+
+            Assert.That(result.Confident, Is.EqualTo("Foo-agent"));
+            Assert.That(result.VisitedPids, Is.EqualTo(new List<int> { 100 }));
+        }
+
+        [TestCase("node /opt/homebrew/bin/foo-agent", true)]
+        [TestCase("python3 /Users/betsy/.venv/bin/foo", true)]
+        [TestCase("node /x/node_modules/@anthropic-ai/claude-code/cli.js", true)]
+        [TestCase("python3 /Users/betsy/tools/my_tool.py", false)]
+        [TestCase("python3 /tmp/x.py", false)]
+        public void TryExtractFromArgs_IsPackage_OnlyForInstalledEntryPoints(string args, bool expected)
+        {
+            ClientProcessResolver.TryExtractFromArgs(args, out var isPackage);
+            Assert.That(isPackage, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void TryExtractFromArgs_DashP_IsAPathArgumentForNonJsRuntimes()
+        {
+            Assert.That(ClientProcessResolver.TryExtractFromArgs("java -p /opt/agent/mods -m agent/agent.Main"), Is.EqualTo("mods"));
+            Assert.That(ClientProcessResolver.TryExtractFromArgs("node -p \"require('/opt/tools/agent.js').version\""), Is.Null);
+        }
+
+        [Test]
+        public void WalkChain_ScriptStemInTheDisplayMap_IsConfidentAndStopsTheWalk()
+        {
+            // kimi.py is a known agent -- the walk must not climb past it to a host IDE.
+            var table = new Dictionary<int, ClientProcessResolver.ProcessInfo>
+            {
+                [100] = new ClientProcessResolver.ProcessInfo { Ppid = 200, Name = "python3", Args = "python3 /Users/betsy/tools/kimi.py" },
+                [200] = new ClientProcessResolver.ProcessInfo { Ppid = 300, Name = "zsh" },
+                [300] = new ClientProcessResolver.ProcessInfo { Ppid = 0, Name = "Code Helper (Plugin)" },
+            };
+
+            var result = ClientProcessResolver.WalkChainCore(100, table, commandLineFetcher: null);
+
+            Assert.That(result.Confident, Is.EqualTo("KimiCode"));
+            Assert.That(result.VisitedPids, Is.EqualTo(new List<int> { 100 }));
+        }
+
+        [TestCase("claude-code", "ClaudeCode")]
+        [TestCase("Claude", "ClaudeCode")]
+        [TestCase("agy", "Antigravity")]
+        [TestCase("ClaudeCode", "ClaudeCode")]
+        [TestCase("MyScript", "MyScript")] // custom ids are the caller's own
+        [TestCase("Python", "Python")]
+        public void CanonicalizeExplicitAgentId_FoldsKnownAliasesAndKeepsCustomIds(string header, string expected)
+        {
+            Assert.That(ClientProcessResolver.CanonicalizeExplicitAgentId(header), Is.EqualTo(expected));
         }
 
         [Test]

@@ -1011,10 +1011,11 @@ namespace UnitySkills
         /// </summary>
         private static string DetectAgent(HttpListenerRequest request)
         {
-            // Priority 1: explicit X-Agent-Id header
+            // Priority 1: explicit X-Agent-Id header, folded onto the process walk's spelling ("claude-code" ->
+            // "ClaudeCode") so one agent doesn't split into two analytics rows; unknown ids pass through verbatim.
             var explicitId = request.Headers["X-Agent-Id"];
             if (!string.IsNullOrEmpty(explicitId))
-                return explicitId;
+                return ClientProcessResolver.CanonicalizeExplicitAgentId(explicitId);
 
             // Priority 2: table lookup against User-Agent (using OrdinalIgnoreCase to avoid ToLowerInvariant's allocation)
             var ua = request.UserAgent ?? "";

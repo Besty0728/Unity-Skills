@@ -250,11 +250,11 @@ namespace UnitySkills
                 // denylist checks, all already-tested logic) and naturally return null the moment it needs an
                 // ancestor this table doesn't have -- no separate leaf-classification logic to duplicate or drift.
                 var leafOnlyTable = new Dictionary<int, ProcessInfo> { [leafPid] = leafInfo };
-                var immediate = WalkChain(leafPid, leafOnlyTable, ProcessReader.TryGetCommandLine, out var visited, _pidCache.TryGet);
+                var immediate = WalkChainCore(leafPid, leafOnlyTable, ProcessReader.TryGetCommandLine, _pidCache.TryGet).Confident;
                 if (immediate != null)
                 {
                     _portCache.Put(remotePort, immediate);
-                    foreach (var vp in visited) _pidCache.Put(vp, immediate);
+                    _pidCache.Put(leafPid, immediate);
                     SkillsLogger.LogVerbose($"ClientProcessResolver: sync capture resolved '{immediate}' in {sw.ElapsedMilliseconds}ms");
                     return;
                 }
@@ -285,11 +285,17 @@ namespace UnitySkills
                     var syncTable = new Dictionary<int, ProcessInfo>(capturedChain.Count + 1) { [leafPid] = leafInfo };
                     foreach (var c in capturedChain)
                         syncTable[c.Key] = c.Value;
-                    var resolvedSync = WalkChain(leafPid, syncTable, ProcessReader.TryGetCommandLine, out var visitedSync, _pidCache.TryGet);
+                    var walked = WalkChainCore(leafPid, syncTable, ProcessReader.TryGetCommandLine, _pidCache.TryGet);
+                    var resolvedSync = walked.Confident ?? walked.Tentative;
                     if (resolvedSync != null)
                     {
                         _portCache.Put(remotePort, resolvedSync);
-                        foreach (var vp in visitedSync) _pidCache.Put(vp, resolvedSync);
+                        // A tentative (script-stem) identity is only pinned to the leaf: caching it on the shell
+                        // above would relabel every later request from that shell after the script.
+                        if (walked.Confident != null)
+                            foreach (var vp in walked.VisitedPids) _pidCache.Put(vp, resolvedSync);
+                        else
+                            _pidCache.Put(leafPid, resolvedSync);
                         SkillsLogger.LogVerbose($"ClientProcessResolver: chain-walk resolved '{resolvedSync}' synchronously in {sw.ElapsedMilliseconds}ms");
                         return;
                     }
@@ -383,13 +389,15 @@ namespace UnitySkills
                     tableForWalk = merged;
                 }
 
-                var agentId = WalkChain(walk.LeafPpid, tableForWalk, ProcessReader.TryGetCommandLine, out var visitedPids, _pidCache.TryGet);
+                var walked = WalkChainCore(walk.LeafPpid, tableForWalk, ProcessReader.TryGetCommandLine, _pidCache.TryGet);
+                var agentId = walked.Confident ?? walked.Tentative;
                 if (agentId == null) continue;
 
                 _portCache.Put(remotePort, agentId);
                 _pidCache.Put(walk.LeafPid, agentId); // backfill the original leaf too, in case it recurs
-                foreach (var vp in visitedPids)
-                    _pidCache.Put(vp, agentId);
+                if (walked.Confident != null)
+                    foreach (var vp in walked.VisitedPids)
+                        _pidCache.Put(vp, agentId);
             }
         }
 
@@ -428,15 +436,44 @@ namespace UnitySkills
         /// </summary>
         internal static string WalkChain(int leafPid, IReadOnlyDictionary<int, ProcessInfo> table, Func<int, string> commandLineFetcher, out List<int> visitedPids, PidLookup pidCacheLookup = null, int? selfPid = null)
         {
-            visitedPids = new List<int>();
+            var result = WalkChainCore(leafPid, table, commandLineFetcher, pidCacheLookup, selfPid);
+            visitedPids = result.VisitedPids;
+            return result.Confident ?? result.Tentative;
+        }
+
+        /// <summary>
+        /// Outcome of one chain walk. <see cref="Confident"/> is an identity the walk is sure of: a plain
+        /// non-denylisted process, a node_modules package, or a script whose stem is in the display map.
+        /// <see cref="Tentative"/> is the stem of an unrecognized script an interpreter was running -- kept
+        /// only as a last resort, because the tool that launched the interpreter (Claude Code running
+        /// `python3 my_tool.py`) is the real agent, not the script. It is reported however the walk ended --
+        /// including a chain that breaks at an unreadable/stale ancestor, which on Windows is the normal case
+        /// (explorer.exe's ppid is a long-gone userinit) -- and the leaf-only sync probe in BeginResolve,
+        /// which cannot see the launcher yet, simply ignores it.
+        /// </summary>
+        internal struct WalkResult
+        {
+            public string Confident;
+            public string Tentative;
+            public List<int> VisitedPids;
+        }
+
+        internal static WalkResult WalkChainCore(int leafPid, IReadOnlyDictionary<int, ProcessInfo> table, Func<int, string> commandLineFetcher, PidLookup pidCacheLookup = null, int? selfPid = null)
+        {
+            var result = new WalkResult { VisitedPids = new List<int>() };
+            var visitedPids = result.VisitedPids;
 
             if (leafPid == (selfPid ?? CurrentProcessId))
-                return SelfTestAgentId;
+            {
+                result.Confident = SelfTestAgentId;
+                return result;
+            }
 
-            if (table == null) return null;
+            if (table == null) return result;
 
             var seen = new HashSet<int>();
             int current = leafPid;
+            string tentative = null;
 
             for (int depth = 0; depth < MaxWalkDepth; depth++)
             {
@@ -447,25 +484,40 @@ namespace UnitySkills
                 // A previously-resolved ancestor (or the leaf itself, for a client that reconnects with a new
                 // port each time but is the same long-lived process) short-circuits the rest of the walk.
                 if (pidCacheLookup != null && pidCacheLookup(current, out var cachedAgent))
-                    return cachedAgent;
+                {
+                    result.Confident = cachedAgent;
+                    return result;
+                }
 
                 var name = NormalizeProcessName(info.Name);
                 if (IsInterpreter(name))
                 {
                     var args = info.Args ?? commandLineFetcher?.Invoke(current);
-                    var extracted = TryExtractFromArgs(args);
+                    var extracted = TryExtractFromArgs(args, out var isPackage);
                     // NormalizeDisplayName also sanitizes for telemetry -- a token that survives extraction but
                     // sanitizes down to nothing (garbage/non-ASCII process name) is treated the same as a failed
                     // extraction: keep climbing rather than reporting a hollow identity.
                     var normalized = extracted != null ? NormalizeDisplayName(extracted) : null;
                     if (normalized != null)
-                        return normalized;
+                    {
+                        if (isPackage || IsMappedDisplayName(extracted))
+                        {
+                            result.Confident = normalized;
+                            return result;
+                        }
+                        // An unrecognized script stem: remember the outermost one and keep climbing for the
+                        // tool that launched it.
+                        tentative = normalized;
+                    }
                 }
                 else if (!IsDenylisted(name))
                 {
                     var normalized = NormalizeDisplayName(name);
                     if (normalized != null)
-                        return normalized;
+                    {
+                        result.Confident = normalized;
+                        return result;
+                    }
                     // Sanitize wiped an otherwise-plausible agent name -- inconclusive, not "found nothing at all"; keep climbing.
                 }
 
@@ -474,7 +526,8 @@ namespace UnitySkills
                 current = info.Ppid;
             }
 
-            return null;
+            result.Tentative = tentative;
+            return result;
         }
 
         /// <summary>
@@ -529,14 +582,14 @@ namespace UnitySkills
             // routinely wrap the actual agent CLI (`npx @some/agent-cli`), so excluding them and continuing
             // upward/downward the chain is exactly what surfaces the real wrapped tool.
             "make", "cmake", "npm", "npx", "yarn", "pnpm", "git", "ssh", "sshd", "nohup", "direnv", "watchexec", "just", "task", "uv", "uvx", "pipx",
-            // Codeium-derived IDEs (Windsurf, Antigravity) host their agent in a language-server binary with an
-            // identical name across products -- it can't be name-mapped to either one, so skip it and let the
-            // walk reach the IDE's own main process (Windsurf.exe / Antigravity IDE.exe) for attribution.
-            "language_server_windows_x64",
         };
 
-        // Prefix-matched denylist entries (versioned/suffixed process names).
-        private static readonly string[] _denylistPrefixes = { "itermserver", "tmux" };
+        // Prefix-matched denylist entries (versioned/suffixed process names). "language_server_" covers the
+        // Codeium-derived IDEs (Windsurf, Antigravity): they host their agent in a language-server binary whose
+        // name is identical across products and only varies by platform suffix (language_server_windows_x64,
+        // language_server_macos_arm, language_server_linux_x64, ...) -- it can't be name-mapped to either
+        // product, so skip it and let the walk reach the IDE's own main process for attribution.
+        private static readonly string[] _denylistPrefixes = { "itermserver", "tmux", "language_server_" };
 
         // Interpreters get special handling: their own process name is useless, so their command line is
         // inspected for a script/package path instead of being treated as a plain denylist skip.
@@ -604,6 +657,13 @@ namespace UnitySkills
         private static readonly string[] _scriptExtensions = { ".js", ".mjs", ".cjs", ".py" };
         private static readonly string[] _genericEntryNames = { "index", "main", "cli", "bin", "app", "start" };
         private const string NodeModulesMarker = "node_modules/";
+        // Flags whose next argument is inline source code rather than a script path (python -c, node/ruby/perl
+        // -e, node -p/--eval/--print). Everything after them is program text: any '/' inside it is a URL or a
+        // sys.path entry, not the identity of the tool that launched the interpreter.
+        private static readonly string[] _inlineCodeFlags = { "-c", "-e", "--eval" };
+        // `-p`/`--print` is inline code only for the JS runtimes; for `java -p <modulepath>` / `dotnet run -p` it is a path argument.
+        private static readonly string[] _jsOnlyInlineCodeFlags = { "-p", "--print" };
+        private static readonly HashSet<string> _jsRuntimes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "node", "bun", "deno" };
 
         /// <summary>
         /// Whitespace tokenizer that treats a `"..."` run as a single token (quotes stripped), instead of
@@ -616,6 +676,27 @@ namespace UnitySkills
         /// section (not needed here -- worst case a token with a literal embedded quote just fails the
         /// downstream "looks like a path" check and gets skipped, same as any other non-matching argument).
         /// </summary>
+        /// <summary>
+        /// Joins a kernel-provided argv array into the single string TryExtractFromArgs consumes, quoting any
+        /// element that contains whitespace so TokenizeCommandLine hands it back as one token. A plain
+        /// space-join shreds "/Users/x/My Project/tool.py" into "/Users/x/My" and "Project/tool.py", and the
+        /// first fragment wins the path scan.
+        /// </summary>
+        internal static string JoinArgv(IReadOnlyList<string> argv)
+        {
+            if (argv == null) return null;
+            var sb = new StringBuilder();
+            for (int i = 0; i < argv.Count; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                var element = argv[i] ?? string.Empty;
+                bool needsQuotes = element.Length == 0 || element.Any(char.IsWhiteSpace);
+                if (needsQuotes) sb.Append('"').Append(element).Append('"');
+                else sb.Append(element);
+            }
+            return sb.ToString();
+        }
+
         internal static List<string> TokenizeCommandLine(string args)
         {
             var tokens = new List<string>();
@@ -648,17 +729,35 @@ namespace UnitySkills
         /// Finds the first non-flag, path-like argument in an interpreter's command line and extracts a raw
         /// tool/package token from it (handling scoped npm packages under node_modules), or null if no such
         /// argument exists -- e.g. `node -e "..."` or a bare REPL invocation.
+        /// Inline-code invocations (`python3 -c "..."`, `node -e "..."`) return null outright so the walk
+        /// climbs to the process that spawned the interpreter: the code text routinely contains URLs and
+        /// sys.path entries, and scanning it for a "path-like" token produced agents named after the endpoint
+        /// or the scripts directory it happened to mention (observed live: "Debug_get_errors", "Scripts").
         /// </summary>
-        internal static string TryExtractFromArgs(string args)
+        internal static string TryExtractFromArgs(string args) => TryExtractFromArgs(args, out _);
+
+        /// <param name="isPackage">True when the token came from an installed tool rather than an arbitrary
+        /// user script -- a node_modules package path, or an entry point living in a `bin` directory (npm's
+        /// global symlinks under /opt/homebrew/bin, pip console scripts under venv/bin, ~/.local/bin). WalkChain
+        /// treats those as a confident identity; a plain script elsewhere is only tentative.</param>
+        internal static string TryExtractFromArgs(string args, out bool isPackage)
         {
+            isPackage = false;
             if (string.IsNullOrWhiteSpace(args)) return null;
             var tokens = TokenizeCommandLine(args);
 
             // tokens[0] is the interpreter binary itself (already identified via comm); start from the first argument.
+            bool isJsRuntime = tokens.Count > 0 && _jsRuntimes.Contains(NormalizeProcessName(tokens[0]) ?? string.Empty);
             for (int i = 1; i < tokens.Count; i++)
             {
                 var tok = tokens[i];
-                if (tok.Length == 0 || tok[0] == '-') continue; // flag
+                if (tok.Length == 0) continue;
+                if (tok[0] == '-')
+                {
+                    if (Array.IndexOf(_inlineCodeFlags, tok) >= 0) return null; // inline code, not a script
+                    if (isJsRuntime && Array.IndexOf(_jsOnlyInlineCodeFlags, tok) >= 0) return null;
+                    continue; // flag
+                }
 
                 bool looksLikePath = tok.IndexOfAny(_pathSeparatorChars) >= 0 ||
                     _scriptExtensions.Any(ext => tok.EndsWith(ext, StringComparison.OrdinalIgnoreCase));
@@ -672,13 +771,26 @@ namespace UnitySkills
                     var rest = normalized.Substring(nodeModulesIdx + NodeModulesMarker.Length).TrimStart('/');
                     var segs = rest.Split('/');
                     if (segs.Length > 0 && segs[0].Length > 0)
+                    {
+                        isPackage = true;
                         return segs[0].StartsWith("@") && segs.Length > 1 ? segs[1] : segs[0];
+                    }
                     continue; // malformed node_modules path -- try the next argument
                 }
 
                 int lastSlash = normalized.LastIndexOf('/');
                 var fileName = lastSlash >= 0 ? normalized.Substring(lastSlash + 1) : normalized;
-                var stem = Path.GetFileNameWithoutExtension(fileName);
+                if (lastSlash >= 0)
+                {
+                    var dirPath = normalized.Substring(0, lastSlash);
+                    int dirSlash = dirPath.LastIndexOf('/');
+                    var dirName = dirSlash >= 0 ? dirPath.Substring(dirSlash + 1) : dirPath;
+                    isPackage = string.Equals(dirName, "bin", StringComparison.OrdinalIgnoreCase);
+                }
+                // Not Path.GetFileNameWithoutExtension: on Windows/Mono it throws for '<' '>' '|' '"' in the
+                // token, which a shell redirection inside a PEB command line can legitimately contain.
+                int lastDot = fileName.LastIndexOf('.');
+                var stem = lastDot >= 0 ? fileName.Substring(0, lastDot) : fileName;
 
                 if (!string.IsNullOrEmpty(stem) && _genericEntryNames.Contains(stem, StringComparer.OrdinalIgnoreCase))
                 {
@@ -735,6 +847,29 @@ namespace UnitySkills
             ("copilot", "CopilotCLI"), // npm @github/copilot bin=["copilot"] -- not "gh copilot"
             ("cb", "Codebuff"), ("codebuff", "Codebuff"), // npm codebuff bin=["cb","codebuff"]
         };
+
+        /// <summary>True when the token (after Electron-suffix stripping) has an entry in <see cref="DisplayNameMap"/>.</summary>
+        internal static bool IsMappedDisplayName(string rawToken)
+        {
+            if (string.IsNullOrEmpty(rawToken)) return false;
+            var stripped = StripElectronHelperSuffix(rawToken);
+            foreach (var (mapped, _) in DisplayNameMap)
+                if (string.Equals(mapped, stripped, StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Folds an explicit X-Agent-Id onto the same spelling the process walk produces, so a caller that
+        /// sends "claude-code" and one resolved from the chain as "ClaudeCode" land in one analytics row.
+        /// Anything not in the display map is returned verbatim -- a custom id stays the caller's own.
+        /// </summary>
+        internal static string CanonicalizeExplicitAgentId(string explicitId)
+        {
+            if (string.IsNullOrEmpty(explicitId)) return explicitId;
+            foreach (var (mapped, agentId) in DisplayNameMap)
+                if (string.Equals(mapped, explicitId, StringComparison.OrdinalIgnoreCase)) return agentId;
+            return explicitId;
+        }
 
         internal static string NormalizeDisplayName(string rawToken)
         {
@@ -1135,7 +1270,7 @@ namespace UnitySkills
             public string TryGetCommandLine(int pid)
             {
                 var argv = ReadArgv(pid);
-                return argv == null ? null : string.Join(" ", argv);
+                return argv == null ? null : JoinArgv(argv);
             }
 
             /// <summary>Single-pid read (a few small file opens, no fork) -- safe to call synchronously from the accept thread for the leaf client pid.</summary>
@@ -1168,7 +1303,7 @@ namespace UnitySkills
                 if (argv != null)
                 {
                     name = argv[0];
-                    args = string.Join(" ", argv);
+                    args = JoinArgv(argv);
                     return true;
                 }
                 name = ReadComm(pid);
@@ -1732,7 +1867,7 @@ namespace UnitySkills
             public static string TryGetCommandLine(int pid)
             {
                 var argv = TryGetArgv(pid);
-                return argv == null ? null : string.Join(" ", argv);
+                return argv == null ? null : JoinArgv(argv);
             }
 
             /// <summary>
