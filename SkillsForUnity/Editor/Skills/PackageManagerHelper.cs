@@ -346,14 +346,37 @@ namespace UnitySkills
 
         private const string PackageName = "com.besty.unity-skills";
 
-        internal enum SelfInstallKind { Stable, Beta, Unsupported }
+        internal enum SelfInstallKind { Stable, Beta, Local, Unsupported }
 
         private const string SelfGitUrl = "https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity";
 
         /// <summary>
+        /// Classifies a raw dependency spec from the manifest. Pure function so the mapping is
+        /// testable without touching the file system: null/blank spec (embedded package) and
+        /// non-git specs (file:, local path) => Local; git URL with "#beta" => Beta; any other
+        /// git URL => Stable.
+        /// </summary>
+        internal static SelfInstallKind ClassifySpec(string spec)
+        {
+            if (string.IsNullOrWhiteSpace(spec))
+                return SelfInstallKind.Local;
+
+            if (!spec.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                return SelfInstallKind.Local;
+
+            var hashIndex = spec.IndexOf('#');
+            var fragment = hashIndex >= 0 ? spec.Substring(hashIndex + 1).Trim() : string.Empty;
+            return string.Equals(fragment, "beta", StringComparison.OrdinalIgnoreCase)
+                ? SelfInstallKind.Beta
+                : SelfInstallKind.Stable;
+        }
+
+        /// <summary>
         /// Detects how this package was installed by reading the raw dependency spec from the
         /// project manifest -- PackageInfo does not preserve the original branch fragment.
-        /// Git URL with "#beta" => Beta; any other git URL => Stable; local/embedded => Unsupported.
+        /// Spec classification is delegated to <see cref="ClassifySpec"/>; a missing dependency
+        /// entry means the package is embedded => Local. Unsupported is reserved for paths where
+        /// the manifest is missing or cannot be parsed.
         /// </summary>
         internal static SelfInstallKind DetectSelfInstallKind()
         {
@@ -363,20 +386,52 @@ namespace UnitySkills
                 if (!File.Exists(manifestPath)) return SelfInstallKind.Unsupported;
 
                 var json = JObject.Parse(File.ReadAllText(manifestPath));
-                var spec = (json["dependencies"] as JObject)?[PackageName]?.Value<string>();
-                if (string.IsNullOrWhiteSpace(spec) ||
-                    !spec.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                    return SelfInstallKind.Unsupported;
+                var dependencies = json["dependencies"] as JObject;
+                if (dependencies == null) return SelfInstallKind.Unsupported;
 
-                var hashIndex = spec.IndexOf('#');
-                var fragment = hashIndex >= 0 ? spec.Substring(hashIndex + 1).Trim() : string.Empty;
-                return string.Equals(fragment, "beta", StringComparison.OrdinalIgnoreCase)
-                    ? SelfInstallKind.Beta
-                    : SelfInstallKind.Stable;
+                var token = dependencies[PackageName];
+                if (token == null) return SelfInstallKind.Local;
+
+                return ClassifySpec(token.Value<string>());
             }
             catch
             {
                 return SelfInstallKind.Unsupported;
+            }
+        }
+
+        /// <summary>
+        /// Resolves the on-disk root of this package for in-place self-update. PackageInfo does not
+        /// expose resolvedPath for embedded packages, hence the FindForAssetPath fallback. Paths
+        /// under Library/PackageCache are rejected: they are read-only cache copies that a resolve
+        /// would overwrite, silently losing the update.
+        /// </summary>
+        internal static bool TryGetSelfPackageRoot(out string path)
+        {
+            path = null;
+            try
+            {
+                var resolved = PkgInfo.FindForAssembly(typeof(PackageManagerHelper).Assembly)?.resolvedPath
+                    ?? PkgInfo.FindForAssetPath($"Packages/{PackageName}")?.resolvedPath;
+                if (string.IsNullOrEmpty(resolved)) return false;
+
+                var normalized = Path.GetFullPath(resolved).Replace('\\', '/');
+                if (normalized.Contains("/Library/PackageCache/")) return false;
+
+                var packageJsonPath = Path.Combine(resolved, "package.json");
+                if (!File.Exists(packageJsonPath)) return false;
+
+                var json = JObject.Parse(File.ReadAllText(packageJsonPath));
+                if (!string.Equals(json.Value<string>("name"), PackageName, StringComparison.Ordinal))
+                    return false;
+
+                path = resolved;
+                return true;
+            }
+            catch
+            {
+                path = null;
+                return false;
             }
         }
 

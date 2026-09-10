@@ -11,6 +11,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **AI Agent 进程链身份识别** — 新增 `ClientProcessResolver`：以 TCP 源端口反查客户端 PID，再沿父进程链归因到真正的 AI 工具。采用**排除表**而非"已知 Agent 名单"——排除 shell、终端宿主、系统进程、`curl`/`wget`、`npm`/`npx`/`git`/`make`/`ssh` 等中间进程后，第一个未被排除的祖先即视为 Agent，因此 Augment 等新工具无需改代码即可被识别；显示名映射表仅用于规范化（`claude` → `ClaudeCode`、`agy` → `Antigravity`、`auggie` → `Augment` 等，同时覆盖 Gemini CLI / Aider / Amp / Goose / Droid / Qwen Code 的真实二进制名），未命中时回落为进程名首字母大写而非 `Unknown`。Node/Python 等解释器托管的 CLI 会转而解析命令行，能从 `node_modules/@anthropic-ai/claude-code/cli.js` 这类路径提取 scoped 包名。**端口→PID 及该 PID 的父 PID 在 accept 线程上同步完成**（实测 1–4 毫秒，仅零 fork 系统调用）——一次性的 `curl` 进程可能在毫秒级内就退出并被回收，此后其父链再也无从查起，因此这一步必须趁连接尚存时完成；余下的祖先链（shell、解释器、Agent 本体均为长命进程）仍交由后台线程遍历。三平台实现：macOS 直接调用 libproc/`sysctl`，Linux 纯 `/proc` 解析，Windows 走 `GetExtendedTcpTable` + Toolhelp32 + PEB 命令行读取；任一环节失败即静默降级回 User-Agent 判定。`X-Agent-Id` 显式请求头仍然优先并直接短路，Unity 自检探针单独记为 `UnitySelfTest`。开关经 `EditorPrefs` 按工程隔离，默认开启。已用真实的 Claude Code、Codex CLI 与 Antigravity CLI 三方实测验证归因正确。
 - **审计日志与遥测记录 agent 字段** — `SkillsAuditLog` 的 `call` 事件（allowed / forbidden / restricted / surfaceExcluded 四种结果）新增 `agent` 字段，字段名与遥测逐字一致以便对照；审计日志窗口的记录行同步展示。身份经 ThreadStatic 请求上下文送达 `SkillRouter`，公开 API 签名不变；无法确定来源的事件（`mode_changed`、`allowlist_*`、`audit_cleared` 等）保持原样，不写入占位值。
 - **字体图集增量补字工具** — 新增 `UISkillsFontIncrementalUpdater.AddMissingGlyphs`，在既有 FontAsset 上原地追加字形而不重建，避免全量重烤丢失历史字形；任一失败路径均还原 Static 模式且不落盘。
+- **本地安装（ZIP 解压 / embedded 的 `file:` 引用）一键自更新** — 本地安装此前只能提示"请在 Package Manager 手动更新"，现与 git 安装一样支持编辑器内一键自更新：从 GitHub 归档 zip（`codeload.github.com/…/refs/tags/vX.Y.Z`）下载并解出 `SkillsForUnity` 子树到临时 staging 目录，校验 `package.json` 的 name/version 与 `Editor/`、`unity-skills~/` 目录齐备后，加锁重编译窗口做原子换目录并触发重编译；下载带可取消进度条，失败原因（网络 / 磁盘 / 校验 / 路径 / 取消）均本地化展示。**已验证**（2026-09-10，Unity 6000.3.9f1 / macOS）：以真实 v2.8.2 归档 zip 走完「解包 → 校验 → 换目录」全链路，临时目标目录内容正确替换、旧文件清除、无残留；`LocalSelfUpdateTests` 27/27，全量 EditMode 857/860（3 跳过，0 失败）。
 
 ### Fixed
 
@@ -18,17 +19,22 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **技能详情与 CLI 检测徽标切换语言后不刷新** — 技能详情面板的描述与风险标签仅在选中技能的那一刻解析，语言切换只重建了左侧列表；Unity CLI 页的检测徽标（检测中 / 已找到 / 未找到）仅在检测完成的一次性窗口内赋值，此后轮询提前返回导致语言切换永远刷不到，除非重新触发检测。两处均已拆出可重复调用的刷新方法，且不会清空用户正在编辑的参数框或已有结果。
 - **字体图集缺失 3 个汉字** — 图集缺少 `佳` / `得` / `耗`，导致 Unity 2022（静态图集）下"Token 消耗等级"与窄面板提示缺字，Unity 6（动态字体）无此现象。图集已由 1013 字形增量补至 1016 字形，新增部分为严格超集，既有西里尔字形完好，三语文案现已零缺字。
 - **字体烘焙器的字符收集范围与安全护栏** — `UISkillsFontAssetBaker.CollectUiCharacters()` 只扫描 `Editor/Skills/Localization.cs` 与 `Editor/UI/**`，而界面文案早已迁移至 `Editor/Locales/*.json`，等于完全漏掉真实文案来源；同时硬编码排除了 `耗`。现已修正扫描范围并移除该排除项，且 `Bake()` 在执行前会比对既有图集字符集，若本次收集结果不是其超集则直接抛出异常并列出将要丢失的字符，避免误调造成不可逆的字形损毁。
+- **根 SKILL.md 字节预算测试在 Windows 检出下假红（#59）** — `RootSkillDoc_ShouldStayWithinByteBudget` 此前度量磁盘文件长度，而 Windows 上 Git 默认 `core.autocrlf=true` 会把 `PackageCache` 内的 92 个换行检出为 CRLF，同一份文档从 8185 字节膨胀到 8277 字节、超预算 85 字节，且用户无法自行修复（`PackageCache` 每次解析都会重生成）。现改为按 LF 归一化后的 UTF-8 字节数计量，各平台口径一致且与"上下文 token 成本"的本意相符；同时新增仓库根 `.gitattributes` 为 `.md/.cs/.py/.json/.uxml/.uss/.asmdef/.meta/.asset/.yml/.txt/.sh` 锁定 `eol=lf`，避免其他按字节或哈希度量文件的检查日后染上同样的平台依赖（仓库既有文件全为 LF，`git add --renormalize` 无变化）。**已验证**（2026-09-10，Unity 6000.3.9f1 / macOS）：把工作区 SKILL.md 转成 CRLF 后磁盘为 8277 字节、92 个 CR，与 issue 报告逐字一致，此时 `SkillDocumentationConsistencyTests` 9/9 通过；还原为 LF 后同样通过。
+- **进程链归因把解释器脚本当成 Agent 身份** — 8090 真机复现三类错标：(1) `python3 -c "…"` / `node -e "…"` 的内联代码被当成脚本路径扫描，代码里出现的 URL 或 `sys.path` 目录变成了 agent 名（遥测中出现 `Debug_get_errors`、`Scripts`）；(2) macOS/Linux 把 argv 用空格拼接后再切分，带空格的路径（`/tmp/My Project/tool.py`）碎成两段，首段胜出得到 `My`；(3) 解释器跑的任意脚本名（`spaced tool.py` → `Spacedtool`）被当成最终身份，走到脚本就停，不再向上找真正启动它的 Claude Code。现在内联代码标志直接判为"无身份、继续上爬"；argv 拼接对含空白元素加引号，复用既有的引号感知分词器；脚本名只作为**候选**（`WalkChainCore` 返回 Confident / Tentative 两档），走链继续寻找可信祖先——node_modules 包、`bin/` 目录下的已安装入口（npm 全局链接、pip console script）、显示名映射命中或普通非排除进程——找不到时才回落到脚本名，且候选身份只钉在叶子 pid 上、不回填到 shell 等中间祖先，避免同一 shell 后续的 curl 被贴上脚本名。同时 `Path.GetFileNameWithoutExtension` 换成手写截取（Windows/Mono 下 token 含 `<>|"` 会抛异常并让整次同步归因放弃），`language_server_` 改为前缀排除以覆盖 Codeium 语言服务器的 macOS/Linux 变体。**已验证**（2026-09-10，8090 真机）：四种调用方式（带空格路径脚本、`python3 -c`、裸 `curl`、显式请求头）以 6 秒间隔稀疏单发 8 次，遥测 8/8 归因 `ClaudeCode`（含 ms=0 的瞬时技能）；强制重编译后冷缓存的首个裸 `curl` 请求，遥测与控制台行同为 `ClaudeCode`；`ClientProcessResolverTests` 172/172，全量 EditMode 831/833（2 跳过，0 失败）。
+- **显式 `X-Agent-Id` 与进程链解析的拼写不统一** — 请求头送 `claude-code` 时原样记账，而进程链解析出的是 `ClaudeCode`，同一 agent 在控制台与 `/analytics` 里分成两行。现在显式请求头先经显示名映射折叠（`claude-code` / `claude` → `ClaudeCode`、`agy` → `Antigravity` 等），未命中映射的自定义 id 原样保留。
 
 ### Changed
 
 - **遥测与审计改为落盘时绑定 agent** — 两者此前在入队时就将整行 JSON 拼定并近乎立即落盘，而技能执行通常只需 1–9 毫秒，远快于任何进程解析，导致 agent 字段被过早写死。现改为入队时仅记录源端口与兜底身份，行内容在延迟约 200 毫秒的落盘阶段构建并在此刻完成身份绑定；`FlushSync` 等需要立即落盘的读取路径不受延迟影响，也绝不等待解析结果。
+- **启动日志精简** — 正常启动/域重载从 7 行降到 1 行：`REST Server started at http://localhost:8090/ · 805 skills · <InstanceId>`。`Discovered N skills`、`[Self-Test] Starting`、两条 `[Self-Test] … -> OK`、`Auto-starting server (…)` 降为 Verbose；`[SafetyNet] … attempting recovery` 不再出现——编辑器启动与域重载都会常规经过这条兜底路径，它不是异常恢复，现改为 Verbose 级的 `[SafetyNet] Starting server (…)`。删除自检里的 8090–8100 端口预扫描及其 `Occupied ports` 警告（对本实例无意义，且每次启动串行探测 10 个端口各 500ms）；改为在 `Start()` 首选端口被占、自动回退成功时打一条 Warning `Port 8090 is in use, started on 8091 instead`（此前该情况只有 Verbose）。自检失败的 Warning、固定端口失败的 Error 保持不变，所有降级内容在 Verbose 级别仍可见。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `2.8.3`。
 
-### 已知限制
+### 已验证范围与已知限制
 
-- **Windows 平台的进程链识别尚未经真机验证** — `GetExtendedTcpTable` + Toolhelp32 + PEB 命令行读取一路仅通过编译与设计审查。读取失败会静默降级回 User-Agent 判定，即退回本版之前的行为，因此不存在比旧版更差的风险。
-- **脚本重编译后的首个请求，控制台日志行可能仍显示未解析的身份** — 域重载会清空解析缓存，此刻控制台那行是同步打印的，可能赶不上后台的祖先链遍历。审计日志与遥测因为采用延迟落盘绑定，不受此影响。仅出现在重编译后的瞬间，稳态下不会发生。
+- **三平台进程链识别均已真机验证** — macOS 与 Windows 已分别在真实 Claude Code / Codex / Antigravity 下实测归因正确（Windows 真机暴露并修复了 Toolhelp32 ANSI 入口把进程名读成 `"e"`、Codex 的 `codex-command-runner.exe` 随 curl 一同退出导致父链断裂两处问题）；Linux 走纯 `/proc` 解析，逻辑经审查，读取失败同样静默降级回 User-Agent 判定，不会比旧版更差。
+- **重编译后的首个请求也能正确归因** — 祖先链在 accept 线程同步捕获并就地遍历，域重载清空缓存后的首个请求，控制台行、审计与遥测均已实测为真实 agent。
 - **审计日志的 `agent` 字段仅对新记录生效** — 本版之前写入的历史 `call` 记录没有该字段，也不会被回填占位值。
+- **Windows 上陈旧 ppid 被复用的概率性误归因** — Toolhelp32 不校验 ppid 是否仍指向原进程，父链穿过 explorer.exe 后若其早已退出的父 pid 被无关进程复用，可能把该进程名当成 agent；概率极低，属平台固有限制。
 
 ## [2.8.2] - 2026-09-08
 

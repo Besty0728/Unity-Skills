@@ -171,6 +171,32 @@ namespace UnitySkills
             _viewReleaseButton?.SetEnabled(false);
             SetStatus("update_check_updating");
 
+            if (InstallKind == PackageManagerHelper.SelfInstallKind.Local)
+            {
+                // Local (file:/embedded) installs download the repo archive and swap directories
+                // instead of asking the Package Manager to rewrite the manifest.
+                LocalSelfUpdateService.Start(release.Version, (success, error) =>
+                {
+                    if (success)
+                    {
+                        // The package swap triggers a domain reload that tears this banner down.
+                        SetStatus("update_check_done");
+                        return;
+                    }
+
+                    _updating = false;
+                    _updateNowButton?.SetEnabled(true);
+                    _viewReleaseButton?.SetEnabled(true);
+                    if (error == LocalSelfUpdateService.CancelledMessage)
+                        SetStatus("update_check_cancelled");
+                    else
+                        SetStatus("update_check_failed_fmt",
+                            argKey: ResolveFailureReasonKey(error),
+                            argText: error);
+                });
+                return;
+            }
+
             PackageManagerHelper.UpdateSelf(
                 PackageManagerHelper.SelfInstallKind.Stable, release.Version, (success, error) =>
                 {
@@ -199,6 +225,10 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(message)) return "update_check_reason_unknown";
             if (message == PackageManagerHelper.BusyMessage) return "update_check_reason_busy";
             if (message == PackageManagerHelper.UnknownErrorMessage) return "update_check_reason_unknown";
+            if (message == LocalSelfUpdateService.NetworkErrorMessage) return "update_check_reason_network";
+            if (message == LocalSelfUpdateService.DiskErrorMessage) return "update_check_reason_disk";
+            if (message == LocalSelfUpdateService.InvalidPackageErrorMessage) return "update_check_reason_invalid";
+            if (message == LocalSelfUpdateService.PackageRootNotFoundMessage) return "update_check_reason_path";
             return null;
         }
 
