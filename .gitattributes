@@ -1,0 +1,16 @@
+# Pin LF for text the test-suite and agent tooling measure or hash byte-for-byte.
+# Without this a Windows clone (core.autocrlf=true) checks out CRLF into Library/PackageCache
+# and inflates on-disk sizes (issue #59: SKILL.md 8185 -> 8277 bytes).
+*.md      text eol=lf
+*.cs      text eol=lf
+*.py      text eol=lf
+*.json    text eol=lf
+*.uxml    text eol=lf
+*.uss     text eol=lf
+*.asmdef  text eol=lf
+*.meta    text eol=lf
+*.asset   text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.txt     text eol=lf
+*.sh      text eol=lf

@@ -174,9 +174,13 @@
 3. **YAML frontmatter 结构合法**：文件以 `---` 开头并正确闭合；`name` 与 `description` 两个必填键存在且非空 → 缺失 / 不闭合 → 🔴 严重。
 4. **无 UTF-8 BOM**：文件开头不得有 `EF BB BF` 字节（`SkillInstaller.cs` 明确：BOM 会让部分 agent 拒析 frontmatter）→ 有 BOM → 🟡 中等。
 5. **（信息项 🟢）discovery 总量**：累加所有 `SKILL.md` 的 `description` 字符数，提示总和是否逼近发现器 ~8000 字符软预算（超出时发现器可能截断或省略部分 skill）。
-6. **根 SKILL.md 字节硬红线**：`unity-skills~/SKILL.md` 全文件 ≤ **8,192 字节**（`wc -c` 口径，用户拍板的硬红线；v2.6.0 瘦身后长期在 8,1xx 徘徊）→ 超限 🔴 严重。报告中始终给出当前字节数与剩余余量；新增内容一律下沉 `references/` 或模块文档，不进根文件。
+6. **根 SKILL.md 字节硬红线**：`unity-skills~/SKILL.md` ≤ **8,192 字节**（用户拍板的硬红线；v2.6.0 瘦身后长期在 8,1xx 徘徊）→ 超限 🔴 严重。**口径 = LF 归一化后的 UTF-8 字节数**，与 `RootSkillDoc_ShouldStayWithinByteBudget` 测试一致：`tr -d '\r' < SKILL.md | wc -c`，不要直接 `wc -c`——Windows 检出（`core.autocrlf=true`）会把 92 个换行写成 CRLF，同一份文档裸 `wc -c` 多出 92 字节（issue #59：8185 → 8277 假红）。报告中始终给出当前字节数与剩余余量；新增内容一律下沉 `references/` 或模块文档，不进根文件。
+7. **行尾锁定（issue #59 回归闸）**：
+   - 仓库根 `.gitattributes` 必须存在且含 `*.md text eol=lf`（缺失 → 🔴 严重：Windows UPM git 安装会在 `PackageCache` 检出 CRLF，用户无法自行修复）
+   - `unity-skills~/**/*.md` 内不得含 `\r`（`rg -l $'\r' unity-skills~` 应为空；命中 → 🟡 中等，说明有文件以 CRLF 提交，`git add --renormalize .` 后重新提交）
+   - 任何按字节/哈希度量文件的测试或脚本，必须先做 `\r\n`→`\n` 归一化再计数（新增此类校验时同样适用）
 
-> 正常预期：0 项超限、0 BOM。本项是防止"超 1024 拒载" bug 复发的核心闸门。
+> 正常预期：0 项超限、0 BOM、0 CRLF、`.gitattributes` 在位。本项是防止"超 1024 拒载"与"CRLF 假红"两类 bug 复发的核心闸门。
 
 ## 步骤 4：技能数量统计与文档同步（原 /skillcount，唯一允许写文件的步骤）
 
@@ -231,6 +235,8 @@
 - NeverInSemi 自动判定：{N}（纯元数据规则，无兜底名单）
 - /permission API 校验：{已通过 / 已跳过：服务离线 / N 项失败}
 - Frontmatter 合规：{通过（0 超限）/ N 项超限}（最长 description：{module} {len} 字符；discovery 总量：{sum} / ~8000 软预算）
+- 根 SKILL.md 预算：{N} / 8192 字节（LF 归一化口径，余量 {8192-N}）
+- 行尾锁定：{✅ .gitattributes 在位、0 个 CRLF 文档 / 🔴 .gitattributes 缺失 / 🟡 N 个 CRLF 文件}
 
 📊 数量同步（原 /skillcount）
 - 实际总数：{N}（SkillCategory 口径 {K} 个分类）
@@ -267,6 +273,9 @@
   - {module}/SKILL.md: `name` 长度 {len} 字符 > 64
   - {module}/SKILL.md: frontmatter 缺少必填键 `{name/description}` 或 `---` 未闭合
 
+  行尾锁定缺失：
+  - 仓库根 `.gitattributes` 不存在或未含 `*.md text eol=lf` — Windows 检出会让根 SKILL.md 字节预算测试假红（issue #59）
+
 🟡 中等问题（功能可用但文档不完整）
 
   完全无文档的 Skill（代码有，整个 skills/ 树无任何提及）：
@@ -294,6 +303,7 @@
 
   Frontmatter 编码问题：
   - {module}/SKILL.md: 文件含 UTF-8 BOM（EF BB BF）— 部分 agent 会拒析 frontmatter，应存为 UTF-8 无 BOM
+  - {path}: 文档含 CRLF 行尾 — 以 CRLF 提交，`git add --renormalize .` 后重新提交
 
 🟢 建议（可改进项）
 

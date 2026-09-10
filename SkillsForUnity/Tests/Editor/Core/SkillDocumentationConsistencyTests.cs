@@ -355,14 +355,16 @@ namespace UnitySkills.Tests.Core
         /// <summary>
         /// The byte budget for the top-level SKILL.md. This doc is read into context in full every session, so its
         /// size is a fixed cost every user pays together - the cap exists to force new content down into references/.
+        /// Measured on LF-normalised UTF-8 content, not the on-disk file: a Windows checkout with core.autocrlf=true
+        /// rewrites every line break to CRLF, which inflated the same document past the budget (issue #59).
         /// </summary>
         [Test]
         public void RootSkillDoc_ShouldStayWithinByteBudget()
         {
             const int budgetBytes = 8192;
 
-            ReadRootSkillDoc(out var docPath);
-            var actual = new FileInfo(docPath).Length;
+            var normalised = ReadRootSkillDoc(out _).Replace("\r\n", "\n").Replace("\r", "\n");
+            var actual = Encoding.UTF8.GetByteCount(normalised);
 
             Assert.That(actual, Is.LessThanOrEqualTo(budgetBytes),
                 $"顶层 SKILL.md 为 {actual} 字节，超出 {budgetBytes} 字节预算 {actual - budgetBytes} 字节。" +
