@@ -1199,7 +1199,7 @@ namespace UnitySkills
 
                 int lastPort = EditorPrefs.GetInt(PREF_LAST_PORT, 0);
                 int restorePort = (lastPort >= 8090 && lastPort <= 8100) ? lastPort : PreferredPort;
-                SkillsLogger.Log($"Auto-starting server ({reason}, port={restorePort}, attempt {_restoreRetryCount + 1}/{MaxRestoreRetries + 1})...");
+                SkillsLogger.LogVerbose($"Auto-starting server ({reason}, port={restorePort}, attempt {_restoreRetryCount + 1}/{MaxRestoreRetries + 1})...");
                 Start(restorePort, fallbackToAuto: true);
 
                 if (_isRunning)
@@ -1319,6 +1319,7 @@ namespace UnitySkills
                 int startPort = 8090;
                 int endPort = 8100;
                 bool started = false;
+                bool preferredPortBusy = false;
 
                 // Try the preferred port first if a valid one was given
                 if (preferredPort >= startPort && preferredPort <= endPort)
@@ -1342,7 +1343,7 @@ namespace UnitySkills
                             SkillsLogger.LogError($"Port {preferredPort} is in use. Try another port or use Auto.");
                             return;
                         }
-                        SkillsLogger.LogVerbose($"Port {preferredPort} is in use, falling back to auto-scan...");
+                        preferredPortBusy = true;
                     }
                 }
 
@@ -1407,8 +1408,11 @@ namespace UnitySkills
 
                 // These calls are safe here because Start() is called from the main thread
                 var skillCount = SkillRouter.SkillCount;
-                SkillsLogger.Log($"REST Server started at {_prefix}");
-                SkillsLogger.Log($"{skillCount} skills loaded | Instance: {RegistryService.InstanceId}");
+                // The one line a normal start prints. Port fallback is the only startup condition worth a warning:
+                // the user's preferred port was taken and clients pointed at it will not find this instance.
+                if (preferredPortBusy)
+                    SkillsLogger.LogWarning($"Port {preferredPort} is in use, started on {_port} instead");
+                SkillsLogger.Log($"REST Server started at {_prefix} · {skillCount} skills · {RegistryService.InstanceId}");
                 SkillsLogger.LogVerbose($"Domain Reload Recovery: ENABLED (AutoStart={AutoStart})");
 
                 // Initialize the heartbeat timer, so it doesn't fire immediately during startup
@@ -2168,7 +2172,9 @@ namespace UnitySkills
                         int failures = EditorPrefs.GetInt(PREF_CONSECUTIVE_FAILURES, 0);
                         if (failures < MaxConsecutiveFailures)
                         {
-                            SkillsLogger.Log("[SafetyNet] Server should be running but isn't — attempting recovery...");
+                            // Both editor launch and domain reload routinely land here when delayCall never fired: a normal
+                            // start, not a recovery. Start() prints the outcome; a genuine failure trips the counter and LogError.
+                            SkillsLogger.LogVerbose(shouldRun ? "[SafetyNet] Starting server (delayCall did not fire)" : "[SafetyNet] Starting server (editor launch)");
                             int lastPort = EditorPrefs.GetInt(PREF_LAST_PORT, 0);
                             int restorePort = (lastPort >= 8090 && lastPort <= 8100) ? lastPort : PreferredPort;
                             Start(restorePort, fallbackToAuto: true);
@@ -4813,11 +4819,11 @@ namespace UnitySkills
             if (!_isRunning) return;
             int port = _port;
             int pjqTicks = _pjqTicksSinceStart;
-            SkillsLogger.Log($"[Self-Test] Starting (ProcessJobQueue ticks={pjqTicks}, listener={_listener?.IsListening})");
+            SkillsLogger.LogVerbose($"[Self-Test] Starting (ProcessJobQueue ticks={pjqTicks}, listener={_listener?.IsListening})");
 
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                // 1. Reachability test with raw TCP and retries (completely bypasses the .NET HTTP client stack)
+                // Reachability test with raw TCP and retries (completely bypasses the .NET HTTP client stack)
                 var hosts = new[] { "localhost", "127.0.0.1" };
                 foreach (var host in hosts)
                 {
@@ -4847,7 +4853,7 @@ namespace UnitySkills
 
                                 if (response.Contains("200") && response.Contains("\"status\""))
                                 {
-                                    SkillsLogger.LogSuccess($"[Self-Test] {url} -> OK");
+                                    SkillsLogger.LogVerbose($"[Self-Test] {url} -> OK");
                                     success = true;
                                     break;
                                 }
@@ -4885,27 +4891,6 @@ namespace UnitySkills
                     }
                 }
 
-                // 2. Port scan: report which ports in 8090-8100 are occupied
-                var occupied = new List<string>();
-                for (int p = 8090; p <= 8100; p++)
-                {
-                    if (p == port) continue;
-                    try
-                    {
-                        using (var tcp = new System.Net.Sockets.TcpClient())
-                        {
-                            var ar = tcp.BeginConnect("127.0.0.1", p, null, null);
-                            if (ar.AsyncWaitHandle.WaitOne(500))
-                            {
-                                tcp.EndConnect(ar);
-                                occupied.Add(p.ToString());
-                            }
-                        }
-                    }
-                    catch { /* Connection refused = port is free */ }
-                }
-                if (occupied.Count > 0)
-                    SkillsLogger.LogWarning($"[Self-Test] Occupied ports (8090-8100): {string.Join(", ", occupied)}");
             });
         }
 

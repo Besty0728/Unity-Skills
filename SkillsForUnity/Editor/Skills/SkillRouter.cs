@@ -564,7 +564,7 @@ namespace UnitySkills
                 _outputIndex = outputIdx;
 
                 _initialized = true;
-                SkillsLogger.Log($"Discovered {_skills.Count} skills");
+                SkillsLogger.LogVerbose($"Discovered {_skills.Count} skills"); // Start() reports the count on its own line
             }
         }
 
