@@ -21,6 +21,11 @@ namespace UnitySkills
     /// build a separate hash-check scheme — it just overwrites. Only targets detected as already installed are
     /// refreshed; new targets are never auto-installed. Everything runs on the main thread with no modal
     /// dialogs; a single target's failure only skips that target.
+    ///
+    /// Global-scope targets (~/.claude/skills etc.) are shared by every project on the machine, so the per-project
+    /// record alone can't be trusted: a project still on an older package would otherwise downgrade a copy that a
+    /// newer project already refreshed. Each copy therefore carries its own version stamp
+    /// (<see cref="SkillInstaller.ReadInstalledVersion"/>) and is only rewritten when it is older than this package.
     /// </summary>
     public static class SkillInstallSyncService
     {
@@ -67,6 +72,9 @@ namespace UnitySkills
         {
             public readonly List<string> Updated = new List<string>();
             public readonly List<string> Failed = new List<string>();
+            /// <summary>Copies already carrying a newer version than this package ("DisplayName (x.y.z)"), left untouched.</summary>
+            public readonly List<string> SkippedNewer = new List<string>();
+            public int SkippedUpToDate;
             public int SkippedNotInstalled;
             public int SkippedDuplicatePath;
         }
@@ -144,7 +152,19 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Runs install (= overwrite update) on each already-installed target, one by one. Uninstalled targets are always skipped, never freshly installed.
+        /// A copy is only rewritten when it is strictly older than the current package. An unknown or unparseable
+        /// installed version is treated as an old copy and refreshed, which matches the behavior before version
+        /// stamps existed. The comparison itself lives in <see cref="SkillInstaller.CompareInstalledVersion"/>.
+        /// </summary>
+        internal static bool ShouldRefreshTarget(string installedVersion, string currentVersion)
+        {
+            var state = SkillInstaller.CompareInstalledVersion(installedVersion, currentVersion);
+            return state == SkillInstaller.InstalledVersionState.Unknown || state == SkillInstaller.InstalledVersionState.Older;
+        }
+
+        /// <summary>
+        /// Runs install (= overwrite update) on each already-installed target whose copy is older than the current
+        /// package, one by one. Uninstalled targets are always skipped, never freshly installed.
         /// </summary>
         internal static SyncReport SyncTargets(IEnumerable<SkillInstaller.InstallTarget> targets)
         {
@@ -177,6 +197,17 @@ namespace UnitySkills
                     {
                         report.SkippedNotInstalled++;
                         continue;
+                    }
+
+                    var installedVersion = target.InstalledVersion?.Invoke();
+                    switch (SkillInstaller.CompareInstalledVersion(installedVersion, SkillsLogger.Version))
+                    {
+                        case SkillInstaller.InstalledVersionState.Current:
+                            report.SkippedUpToDate++;
+                            continue;
+                        case SkillInstaller.InstalledVersionState.Newer:
+                            report.SkippedNewer.Add($"{target.DisplayName} ({installedVersion.Trim()})");
+                            continue;
                     }
 
                     var (success, message) = target.Install();
@@ -220,13 +251,30 @@ namespace UnitySkills
                       "Автосинхронизация AI-инструментов: обновлено установленных целей: {0}, версия {1} — {2}"),
                     report.Updated.Count, version, string.Join(", ", report.Updated)));
             }
-            else if (report.Failed.Count == 0)
+            else if (report.Failed.Count == 0 && report.SkippedNewer.Count == 0 && report.SkippedUpToDate == 0)
             {
                 SkillsLogger.LogVerbose(string.Format(
                     L("AI tool auto-sync: no installed AI tool copies found, nothing to update for {0}.",
                       "AI 工具自动同步：未检测到已安装的 AI 工具副本，{0} 无需更新。",
                       "Автосинхронизация AI-инструментов: установленных копий не найдено, для {0} обновлять нечего."),
                     version));
+            }
+            else if (report.Failed.Count == 0 && report.SkippedNewer.Count == 0)
+            {
+                SkillsLogger.LogVerbose(string.Format(
+                    L("AI tool auto-sync: {0} installed target(s) already at {1}, nothing to update.",
+                      "AI 工具自动同步：{0} 个已安装目标已是 {1}，无需更新。",
+                      "Автосинхронизация AI-инструментов: установленных целей уже на версии {1}: {0}, обновлять нечего."),
+                    report.SkippedUpToDate, version));
+            }
+
+            if (report.SkippedNewer.Count > 0)
+            {
+                SkillsLogger.Log(string.Format(
+                    L("AI tool auto-sync: {0} target(s) already carry a newer copy installed by another project — {1}; left untouched by {2}.",
+                      "AI 工具自动同步：{0} 个目标已由其他工程安装了更新的副本 —— {1}；{2} 未覆盖。",
+                      "Автосинхронизация AI-инструментов: у целей ({0}) уже установлена более новая копия из другого проекта — {1}; версия {2} их не трогает."),
+                    report.SkippedNewer.Count, string.Join(", ", report.SkippedNewer), version));
             }
 
             if (report.Failed.Count > 0)

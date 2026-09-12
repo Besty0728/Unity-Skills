@@ -8,8 +8,9 @@ using UnityEditor;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// Covers three key behaviors of auto-syncing already-installed AI tools after a package upgrade: the version
-    /// gate, "installed targets only" filtering, and record writeback. Everything fakes install targets in a temp
+    /// Covers the key behaviors of auto-syncing already-installed AI tools after a package upgrade: the version
+    /// gate, "installed targets only" filtering, the per-copy version stamp that stops a lagging project from
+    /// downgrading a shared copy, and record writeback. Everything fakes install targets in a temp
     /// directory, never touching the user's real ~/.claude copies or the project's real Library/UnitySkills/install_sync.json.
     /// </summary>
     [TestFixture]
@@ -178,6 +179,172 @@ namespace UnitySkills.Tests.Core
             Assert.That(SkillInstallSyncService.NeedsSync(SkillInstallSyncService.ReadRecordedVersion(), "3.0.0"), Is.False);
         }
 
+        // ===== Per-copy version stamp =====
+
+        [Test]
+        public void ShouldRefreshTarget_OlderCopy_IsTrue()
+        {
+            Assert.That(SkillInstallSyncService.ShouldRefreshTarget("2.8.1", "2.8.3"), Is.True);
+        }
+
+        [Test]
+        public void ShouldRefreshTarget_SameVersion_IsFalse()
+        {
+            Assert.That(SkillInstallSyncService.ShouldRefreshTarget("2.8.3", "2.8.3"), Is.False);
+        }
+
+        [Test]
+        public void ShouldRefreshTarget_NewerCopy_IsFalse()
+        {
+            Assert.That(SkillInstallSyncService.ShouldRefreshTarget("2.9.0", "2.8.3"), Is.False,
+                "A copy refreshed by a project on a newer package must never be downgraded.");
+            Assert.That(SkillInstallSyncService.ShouldRefreshTarget("2.8.10", "2.8.3"), Is.False,
+                "Comparison must be numeric, not lexical.");
+        }
+
+        [Test]
+        public void ShouldRefreshTarget_UnknownOrUnparseable_IsTrue()
+        {
+            Assert.That(SkillInstallSyncService.ShouldRefreshTarget(null, "2.8.3"), Is.True);
+            Assert.That(SkillInstallSyncService.ShouldRefreshTarget("", "2.8.3"), Is.True);
+            Assert.That(SkillInstallSyncService.ShouldRefreshTarget("dev", "2.8.3"), Is.True);
+            Assert.That(SkillInstallSyncService.ShouldRefreshTarget("2.8.3", "not-a-version"), Is.True);
+        }
+
+        [Test]
+        public void CompareInstalledVersion_ClassifiesEveryState()
+        {
+            Assert.That(SkillInstaller.CompareInstalledVersion("2.8.1", "2.8.3"), Is.EqualTo(SkillInstaller.InstalledVersionState.Older));
+            Assert.That(SkillInstaller.CompareInstalledVersion("2.8.3", "2.8.3"), Is.EqualTo(SkillInstaller.InstalledVersionState.Current));
+            Assert.That(SkillInstaller.CompareInstalledVersion("2.8.10", "2.8.3"), Is.EqualTo(SkillInstaller.InstalledVersionState.Newer));
+            Assert.That(SkillInstaller.CompareInstalledVersion(" 2.8.3 ", "2.8.3"), Is.EqualTo(SkillInstaller.InstalledVersionState.Current), "Whitespace must not break the parse.");
+            Assert.That(SkillInstaller.CompareInstalledVersion(null, "2.8.3"), Is.EqualTo(SkillInstaller.InstalledVersionState.Unknown));
+            Assert.That(SkillInstaller.CompareInstalledVersion("dev", "2.8.3"), Is.EqualTo(SkillInstaller.InstalledVersionState.Unknown));
+            Assert.That(SkillInstaller.CompareInstalledVersion("2.8.3", "dev"), Is.EqualTo(SkillInstaller.InstalledVersionState.Unknown));
+        }
+
+        [Test]
+        public void ReadInstalledVersion_FreshInstall_ReturnsPackageVersion()
+        {
+            var installed = Path.Combine(_tempRoot, "stamped");
+            var seed = SkillInstaller.InstallCustom(installed, "TestAgent");
+            Assert.That(seed.success, Is.True, "Test fixture could not seed an install: " + seed.message);
+
+            Assert.That(SkillInstaller.ReadInstalledVersion(installed), Is.EqualTo(SkillsLogger.Version));
+            StringAssert.Contains("\"version\": \"" + SkillsLogger.Version + "\"",
+                File.ReadAllText(Path.Combine(installed, "scripts", "agent_config.json")));
+        }
+
+        [Test]
+        public void ReadInstalledVersion_WithoutAgentConfig_FallsBackToPythonClient()
+        {
+            var installed = Path.Combine(_tempRoot, "legacy");
+            var seed = SkillInstaller.InstallCustom(installed, "TestAgent");
+            Assert.That(seed.success, Is.True, "Test fixture could not seed an install: " + seed.message);
+
+            // Copies made by packages before the stamp existed have no "version" in agent_config.json.
+            File.Delete(Path.Combine(installed, "scripts", "agent_config.json"));
+
+            Assert.That(SkillInstaller.ReadInstalledVersion(installed), Is.EqualTo(SkillsLogger.Version));
+        }
+
+        [Test]
+        public void ReadInstalledVersion_AgentConfigWins_OverPythonClient()
+        {
+            var installed = Path.Combine(_tempRoot, "config-wins");
+            var seed = SkillInstaller.InstallCustom(installed, "TestAgent");
+            Assert.That(seed.success, Is.True, "Test fixture could not seed an install: " + seed.message);
+
+            File.WriteAllText(Path.Combine(installed, "scripts", "agent_config.json"),
+                "{\"agentId\": \"TestAgent\", \"version\": \"99.0.0\"}");
+
+            Assert.That(SkillInstaller.ReadInstalledVersion(installed), Is.EqualTo("99.0.0"));
+        }
+
+        [Test]
+        public void ReadInstalledVersion_EmptyOrMissingDirectory_ReturnsNull()
+        {
+            Assert.That(SkillInstaller.ReadInstalledVersion(Path.Combine(_tempRoot, "nope")), Is.Null);
+            Assert.That(SkillInstaller.ReadInstalledVersion(null), Is.Null);
+        }
+
+        [Test]
+        public void SyncTargets_SkipsTargetWithNewerInstalledVersion()
+        {
+            var path = Path.Combine(_tempRoot, "newer");
+            bool installCalled = false;
+
+            var report = SkillInstallSyncService.SyncTargets(new[]
+            {
+                new SkillInstaller.InstallTarget
+                {
+                    DisplayName = "Claude Code (Global)",
+                    Path = path,
+                    IsInstalled = () => true,
+                    InstalledVersion = () => "99.0.0",
+                    Install = () => { installCalled = true; return (true, path); }
+                }
+            });
+
+            Assert.That(installCalled, Is.False, "A lagging project must not overwrite a copy another project already upgraded.");
+            Assert.That(report.Updated, Is.Empty);
+            Assert.That(report.Failed, Is.Empty);
+            Assert.That(report.SkippedUpToDate, Is.EqualTo(0));
+            Assert.That(report.SkippedNewer, Is.EqualTo(new[] { "Claude Code (Global) (99.0.0)" }));
+        }
+
+        [Test]
+        public void SyncTargets_SkipsTargetAlreadyAtCurrentVersion()
+        {
+            var path = Path.Combine(_tempRoot, "current");
+            bool installCalled = false;
+
+            var report = SkillInstallSyncService.SyncTargets(new[]
+            {
+                new SkillInstaller.InstallTarget
+                {
+                    DisplayName = "Cursor (Global)",
+                    Path = path,
+                    IsInstalled = () => true,
+                    InstalledVersion = () => SkillsLogger.Version,
+                    Install = () => { installCalled = true; return (true, path); }
+                }
+            });
+
+            Assert.That(installCalled, Is.False, "Re-copying a copy already at this version is wasted IO.");
+            Assert.That(report.Updated, Is.Empty);
+            Assert.That(report.SkippedUpToDate, Is.EqualTo(1));
+            Assert.That(report.SkippedNewer, Is.Empty);
+        }
+
+        [Test]
+        public void SyncTargets_RefreshesTargetWithOlderOrUnknownVersion()
+        {
+            var olderPath = Path.Combine(_tempRoot, "older");
+            var unknownPath = Path.Combine(_tempRoot, "unknown");
+            var installed = new List<string>();
+
+            SkillInstaller.InstallTarget Make(string name, string path, Func<string> version) => new SkillInstaller.InstallTarget
+            {
+                DisplayName = name,
+                Path = path,
+                IsInstalled = () => true,
+                InstalledVersion = version,
+                Install = () => { installed.Add(name); return (true, path); }
+            };
+
+            var report = SkillInstallSyncService.SyncTargets(new[]
+            {
+                Make("Older", olderPath, () => "0.0.1"),
+                Make("Unknown", unknownPath, () => null)
+            });
+
+            Assert.That(installed, Is.EqualTo(new[] { "Older", "Unknown" }));
+            Assert.That(report.Updated, Is.EqualTo(new[] { "Older", "Unknown" }));
+            Assert.That(report.SkippedNewer, Is.Empty);
+            Assert.That(report.SkippedUpToDate, Is.EqualTo(0));
+        }
+
         // ===== Installed targets only =====
 
         [Test]
@@ -294,7 +461,7 @@ namespace UnitySkills.Tests.Core
             var targets = SkillInstaller.EnumerateTargets().ToList();
 
             Assert.That(targets.Count, Is.EqualTo(12));
-            Assert.That(targets.All(target => target.IsInstalled != null && target.Install != null), Is.True);
+            Assert.That(targets.All(target => target.IsInstalled != null && target.Install != null && target.InstalledVersion != null), Is.True);
             Assert.That(targets.All(target => !string.IsNullOrEmpty(target.Path)), Is.True);
             foreach (var name in new[] { "Claude Code", "Codex", "Antigravity", "Cursor", "OpenCode", "Kimi Code" })
             {

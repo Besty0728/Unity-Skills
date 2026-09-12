@@ -76,7 +76,7 @@ scripts/agent_config.json   # Agent configuration
 references/                 # Unity development references
 ```
 
-> **Auto-Sync on Package Update**: when the package version changes, every tool you already installed is refreshed to the new version on the next Editor load — you don't have to press Install again. Only existing installs are touched; a tool you never installed is never installed for you. Files are overwritten exactly as a manual Install would, so local edits to an installed copy are replaced. Toggle it off under ⚙ Settings ▸ AI Tools.
+> **Auto-Sync on Package Update**: when the package version changes, every tool you already installed is refreshed to the new version on the next Editor load — you don't have to press Install again. Only existing installs are touched; a tool you never installed is never installed for you. Files are overwritten exactly as a manual Install would, so local edits to an installed copy are replaced. Each copy is stamped with the package version that produced it: a copy shared between projects (global scope) that is already at this version or newer — say, refreshed by another project on a newer package — is left untouched, so a project still on an older package never downgrades it. The panel's Update button follows the same rule and tells you when there is nothing to do; to force a reinstall, Uninstall first. Toggle it off under ⚙ Settings ▸ AI Tools.
 
 > **Codex Note**: Antigravity and Codex share `.agents/skills/` in workspace mode — install once for either makes it available to both. Codex auto-discovers skills; no `AGENTS.md` declaration needed.
 

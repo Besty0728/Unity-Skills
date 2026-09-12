@@ -4,6 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 
 namespace UnitySkills
 {
@@ -246,6 +248,8 @@ namespace UnitySkills
             public string DisplayName;
             public string Path;
             public Func<bool> IsInstalled;
+            /// <summary>Version stamped on the installed copy, or null when it can't be determined (see <see cref="ReadInstalledVersion"/>).</summary>
+            public Func<string> InstalledVersion;
             public Func<(bool success, string message)> Install;
         }
 
@@ -277,8 +281,85 @@ namespace UnitySkills
                 DisplayName = displayName,
                 Path = path,
                 IsInstalled = isInstalled,
+                InstalledVersion = () => ReadInstalledVersion(path),
                 Install = install
             };
+        }
+
+        /// <summary>How an installed copy's version relates to the current package.</summary>
+        public enum InstalledVersionState
+        {
+            /// <summary>No readable version stamp; treated like an old copy.</summary>
+            Unknown,
+            Older,
+            Current,
+            Newer
+        }
+
+        /// <summary>
+        /// Compares an installed copy's version stamp with the current package version. Both sides must parse as
+        /// System.Version; otherwise the result is Unknown. Shared by the panel's Install/Update buttons and the
+        /// post-upgrade auto-sync so both apply the same "never downgrade, never re-copy the same version" rule.
+        /// </summary>
+        public static InstalledVersionState CompareInstalledVersion(string installedVersion, string currentVersion)
+        {
+            if (string.IsNullOrWhiteSpace(installedVersion) ||
+                !Version.TryParse(installedVersion.Trim(), out var installed) ||
+                !Version.TryParse(currentVersion?.Trim(), out var current))
+                return InstalledVersionState.Unknown;
+
+            var order = installed.CompareTo(current);
+            return order < 0 ? InstalledVersionState.Older
+                 : order > 0 ? InstalledVersionState.Newer
+                 : InstalledVersionState.Current;
+        }
+
+        private static readonly Regex PyVersionPattern =
+            new Regex("^__version__\\s*=\\s*\"([^\"]+)\"", RegexOptions.Multiline | RegexOptions.Compiled);
+
+        /// <summary>
+        /// Reads the package version an installed copy was produced from. Primary source is the "version" field
+        /// written to scripts/agent_config.json at install time; copies made by older packages lack that field,
+        /// so it falls back to the __version__ constant in scripts/unity_skills.py, which every copy ships.
+        /// Returns null when neither is readable — callers treat unknown as "old copy".
+        /// </summary>
+        public static string ReadInstalledVersion(string targetPath)
+        {
+            if (string.IsNullOrEmpty(targetPath))
+                return null;
+
+            var scriptsPath = Path.Combine(targetPath, "scripts");
+            try
+            {
+                var configPath = Path.Combine(scriptsPath, "agent_config.json");
+                if (File.Exists(configPath))
+                {
+                    var version = JObject.Parse(File.ReadAllText(configPath, Encoding.UTF8))["version"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(version))
+                        return version.Trim();
+                }
+            }
+            catch
+            {
+                // Corrupt or hand-edited config: fall through to the script constant.
+            }
+
+            try
+            {
+                var scriptPath = Path.Combine(scriptsPath, "unity_skills.py");
+                if (File.Exists(scriptPath))
+                {
+                    var match = PyVersionPattern.Match(File.ReadAllText(scriptPath, Encoding.UTF8));
+                    if (match.Success)
+                        return match.Groups[1].Value.Trim();
+                }
+            }
+            catch
+            {
+                // Unreadable script: version unknown.
+            }
+
+            return null;
         }
 
         public static (bool success, string message) InstallCustom(string path, string agentName = "Custom")
@@ -319,7 +400,9 @@ namespace UnitySkills
             var scriptsPath = Path.Combine(targetPath, "scripts");
             if (!Directory.Exists(scriptsPath))
                 Directory.CreateDirectory(scriptsPath);
-            var agentConfig = $"{{\"agentId\": \"{agentId}\", \"installedAt\": \"{DateTime.UtcNow:O}\"}}";
+            // "version" lets SkillInstallSyncService tell whether a copy shared between projects (global scope) is
+            // already newer than this project's package, so a lagging project never downgrades it.
+            var agentConfig = $"{{\"agentId\": \"{agentId}\", \"version\": \"{SkillsLogger.Version}\", \"installedAt\": \"{DateTime.UtcNow:O}\"}}";
             File.WriteAllText(Path.Combine(scriptsPath, "agent_config.json"), agentConfig, utf8NoBom);
 
             SkillsLogger.Log($"Installed skill to: {targetPath} (Agent: {agentId})");

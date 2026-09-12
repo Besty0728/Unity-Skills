@@ -2,6 +2,12 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- **AI 工具自动同步不再让落后工程回写共享副本（`SkillInstallSyncService`）** — 全局作用域的副本（`~/.claude/skills/unity-skills` 等）被本机所有工程共享，此前版本门只看本工程 `Library/UnitySkills/install_sync.json` 的记录，仍在旧版本包上的工程一打开就会把另一工程已刷到新版本的副本覆盖回旧版本。现在安装时向 `scripts/agent_config.json` 写入 `version` 印记（旧副本回退解析 `scripts/unity_skills.py` 的 `__version__`），自动同步逐目标比较：副本 ≥ 本工程包版本即跳过（同版本免重拷、更新则不降级），仅副本更旧或版本不明时才刷新；副本更新而被跳过时 Console 打一行 Info 说明（三语跟随面板语言）。面板的 Update 按钮与自定义路径 Install 走同一规则：副本已是本版本或更新时弹提示并跳过（强制重装先卸载再安装），首次安装不受影响。新增 `SkillInstaller.CompareInstalledVersion` / `ReadInstalledVersion`、`ShouldRefreshTarget` 与 11 条用例，本地化新增 `dialog_info` / `agent_install_already_current` / `agent_install_newer_kept`（三语，字形已核图集）。
+
 ## [2.8.3] - 2026-09-08
 
 > **Agent 身份可信归因 + 更新页本地化修复** —— 本版两大主题：(1) 服务端不再依赖 AI 工具是否"自报身份"，改由 TCP 源端口反查客户端进程并沿父进程链归因，裸 `curl` 调用现在也能正确记成 `ClaudeCode` / `Codex` / `Antigravity` 等，且审计日志与遥测首次带上 `agent` 字段；(2) 修复更新页与多处面板在切换语言后文案停留在旧语言的缺陷，并补齐字体图集缺失的 3 个汉字。

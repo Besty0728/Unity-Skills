@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor;
@@ -31,6 +32,7 @@ namespace UnitySkills
             public string nameDisplay;
             public Func<bool> isProjInstalled;
             public Func<bool> isGlobInstalled;
+            public Func<bool, string> getPath;   // global → install directory, used for the version stamp check
             public Func<bool, (bool success, string message)> installFunc;
             public Func<bool, (bool success, string message)> uninstallFunc;
             public Func<bool, string, string> getInstallSuccessMsg;
@@ -72,6 +74,7 @@ namespace UnitySkills
                     nameDisplay = "Claude Code",
                     isProjInstalled = () => SkillInstaller.IsClaudeProjectInstalled,
                     isGlobInstalled = () => SkillInstaller.IsClaudeGlobalInstalled,
+                    getPath = global => global ? SkillInstaller.ClaudeGlobalPath : SkillInstaller.ClaudeProjectPath,
                     installFunc = SkillInstaller.InstallClaude,
                     uninstallFunc = SkillInstaller.UninstallClaude
                 },
@@ -81,6 +84,7 @@ namespace UnitySkills
                     nameDisplay = "Codex",
                     isProjInstalled = () => SkillInstaller.IsCodexProjectInstalled,
                     isGlobInstalled = () => SkillInstaller.IsCodexGlobalInstalled,
+                    getPath = global => global ? SkillInstaller.CodexGlobalPath : SkillInstaller.CodexProjectPath,
                     installFunc = SkillInstaller.InstallCodex,
                     uninstallFunc = SkillInstaller.UninstallCodex,
                     getInstallSuccessMsg = (global, msg) =>
@@ -93,6 +97,7 @@ namespace UnitySkills
                     nameDisplay = "Antigravity",
                     isProjInstalled = () => SkillInstaller.IsAntigravityProjectInstalled,
                     isGlobInstalled = () => SkillInstaller.IsAntigravityGlobalInstalled,
+                    getPath = global => global ? SkillInstaller.AntigravityGlobalPath : SkillInstaller.AntigravityProjectPath,
                     installFunc = SkillInstaller.InstallAntigravity,
                     uninstallFunc = SkillInstaller.UninstallAntigravity
                 },
@@ -102,6 +107,7 @@ namespace UnitySkills
                     nameDisplay = "Cursor",
                     isProjInstalled = () => SkillInstaller.IsCursorProjectInstalled,
                     isGlobInstalled = () => SkillInstaller.IsCursorGlobalInstalled,
+                    getPath = global => global ? SkillInstaller.CursorGlobalPath : SkillInstaller.CursorProjectPath,
                     installFunc = SkillInstaller.InstallCursor,
                     uninstallFunc = SkillInstaller.UninstallCursor
                 },
@@ -111,6 +117,7 @@ namespace UnitySkills
                     nameDisplay = "OpenCode",
                     isProjInstalled = () => SkillInstaller.IsOpenCodeProjectInstalled,
                     isGlobInstalled = () => SkillInstaller.IsOpenCodeGlobalInstalled,
+                    getPath = global => global ? SkillInstaller.OpenCodeGlobalPath : SkillInstaller.OpenCodeProjectPath,
                     installFunc = SkillInstaller.InstallOpenCode,
                     uninstallFunc = SkillInstaller.UninstallOpenCode
                 },
@@ -120,6 +127,7 @@ namespace UnitySkills
                     nameDisplay = "Kimi Code",
                     isProjInstalled = () => SkillInstaller.IsKimiCodeProjectInstalled,
                     isGlobInstalled = () => SkillInstaller.IsKimiCodeGlobalInstalled,
+                    getPath = global => global ? SkillInstaller.KimiCodeGlobalPath : SkillInstaller.KimiCodeProjectPath,
                     installFunc = SkillInstaller.InstallKimiCode,
                     uninstallFunc = SkillInstaller.UninstallKimiCode
                 }
@@ -328,8 +336,36 @@ namespace UnitySkills
             return card;
         }
 
+        /// <summary>
+        /// Same rule as the post-upgrade auto-sync: a copy already at this package version or newer (e.g. refreshed
+        /// by another project on a newer package) is left alone. Returns true when the install should be skipped;
+        /// forcing a reinstall means Uninstall first. Only consulted when a copy is already present.
+        /// </summary>
+        private static bool ShowSkipIfInstalledCopyIsCurrentOrNewer(string targetPath)
+        {
+            var installedVersion = SkillInstaller.ReadInstalledVersion(targetPath);
+            switch (SkillInstaller.CompareInstalledVersion(installedVersion, SkillsLogger.Version))
+            {
+                case SkillInstaller.InstalledVersionState.Current:
+                    EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_info"),
+                        string.Format(SkillsLocalization.Get("agent_install_already_current"), SkillsLogger.Version),
+                        SkillsLocalization.Get("dialog_ok"));
+                    return true;
+                case SkillInstaller.InstalledVersionState.Newer:
+                    EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_info"),
+                        string.Format(SkillsLocalization.Get("agent_install_newer_kept"), installedVersion.Trim(), SkillsLogger.Version),
+                        SkillsLocalization.Get("dialog_ok"));
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private void OnInstallClick(AgentConfig cfg, bool isGlobal, bool isUpdate)
         {
+            if (isUpdate && cfg.getPath != null && ShowSkipIfInstalledCopyIsCurrentOrNewer(cfg.getPath(isGlobal)))
+                return;
+
             var result = cfg.installFunc(isGlobal);
             if (result.success)
             {
@@ -378,6 +414,9 @@ namespace UnitySkills
                 EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"), msg, SkillsLocalization.Get("dialog_ok"));
                 return;
             }
+            if (File.Exists(Path.Combine(_customPath, "SKILL.md")) && ShowSkipIfInstalledCopyIsCurrentOrNewer(_customPath))
+                return;
+
             var result = SkillInstaller.InstallCustom(_customPath, _customName);
             if (result.success)
                 EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_success"), SkillsLocalization.Get("install_success"), SkillsLocalization.Get("dialog_ok"));
