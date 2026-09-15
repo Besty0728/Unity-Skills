@@ -47,6 +47,14 @@ namespace UnitySkills
         private IVisualElementScheduledItem _maximumEffectAnimation;
         private float _maximumEffectTime;
         private const float ActiveEffectDuration = 3.5f; // Play 60fps dynamic animation for 3.5s then sleep
+        // Maximum-level gradient grid. Drawn as ONE vertex-colored mesh (GPU interpolates between
+        // vertices) plus one flat-shaded tile overlay, instead of cols*rows separate Painter2D fills, so a
+        // window resize costs two allocations while the look keeps both the smooth gradient and the
+        // mosaic tiles of the original (#60).
+        private const int MaximumTrackGradientColumns = 48;
+        private const int MaximumTrackGradientRows = 6;
+        private const float MaximumTrackTileOverlayAlpha = 0.6f;
+        private const float MaximumTrackTileInsetPx = 0.5f;
         private float _effectActiveTimer;
         private TokenLevel _previousLevel = (TokenLevel)(-1);
         private bool _disposed;
@@ -529,37 +537,12 @@ namespace UnitySkills
                     painter.ClosePath();
                     painter.Fill();
 
-                    // Middle slices with curved wave surge when active -> settled static galaxy gradient
+                    // Middle gradient with curved wave surge when active -> settled static galaxy gradient
                     float straightW = thumbX - xCenterLeft;
                     if (straightW > 0f)
                     {
-                        int xSlices = 48;
-                        int ySlices = 6;
-                        float sliceW = straightW / xSlices;
-                        float sliceH = rect.height / ySlices;
-
-                        for (int i = 0; i < xSlices; i++)
-                        {
-                            float u = (float)i / xSlices;
-                            float x0 = xCenterLeft + i * sliceW;
-                            float x1 = x0 + sliceW + 0.5f;
-
-                            for (int j = 0; j < ySlices; j++)
-                            {
-                                float v = (j + 0.5f) / ySlices;
-                                float y0 = rect.yMin + j * sliceH;
-                                float y1 = y0 + sliceH + 0.5f;
-
-                                painter.fillColor = EvaluateMaximumTrackColor(u, v, _maximumEffectTime, dynamicBlend);
-                                painter.BeginPath();
-                                painter.MoveTo(new Vector2(x0, y0));
-                                painter.LineTo(new Vector2(x1, y0));
-                                painter.LineTo(new Vector2(x1, y1));
-                                painter.LineTo(new Vector2(x0, y1));
-                                painter.ClosePath();
-                                painter.Fill();
-                            }
-                        }
+                        DrawMaximumGradientMesh(mgc, xCenterLeft, thumbX, rect, dynamicBlend);
+                        DrawMaximumTileOverlay(mgc, xCenterLeft, thumbX, rect, dynamicBlend);
                     }
 
                     // Right half cap at thumb
@@ -714,6 +697,90 @@ namespace UnitySkills
             painter.BeginPath();
             painter.Arc(thumbCenter, thumbR, 0f, 360f);
             painter.Stroke();
+        }
+
+        // Emits the straight part of the Maximum track as a (cols+1)x(rows+1) vertex grid. Painter2D.Fill
+        // records its output in the same MeshGenerationContext entry list at the call point (a synchronous
+        // Allocate on 2022.3, an ordered mesh-generation node on 6000.x — see UIRPainter2D.cs), so this mesh
+        // keeps its place in the draw order between the caps and the thumb.
+        private void DrawMaximumGradientMesh(MeshGenerationContext mgc, float xStart, float xEnd, Rect rect, float dynamicBlend)
+        {
+            const int cols = MaximumTrackGradientColumns;
+            const int rows = MaximumTrackGradientRows;
+            const int stride = cols + 1;
+            MeshWriteData mesh = mgc.Allocate(stride * (rows + 1), cols * rows * 6);
+
+            float width = xEnd - xStart;
+            for (int j = 0; j <= rows; j++)
+            {
+                float v = (float)j / rows;
+                float y = rect.yMin + rect.height * v;
+                for (int i = 0; i <= cols; i++)
+                {
+                    float u = (float)i / cols;
+                    mesh.SetNextVertex(new Vertex
+                    {
+                        position = new Vector3(xStart + width * u, y, Vertex.nearZ),
+                        tint = EvaluateMaximumTrackColor(u, v, _maximumEffectTime, dynamicBlend)
+                    });
+                }
+            }
+
+            for (int j = 0; j < rows; j++)
+            {
+                for (int i = 0; i < cols; i++)
+                {
+                    ushort topLeft = (ushort)(j * stride + i);
+                    ushort topRight = (ushort)(topLeft + 1);
+                    ushort bottomLeft = (ushort)(topLeft + stride);
+                    ushort bottomRight = (ushort)(bottomLeft + 1);
+                    // Clockwise in UI Toolkit's y-down space, matching the Allocate() sample in the manual.
+                    mesh.SetNextIndex(topLeft);
+                    mesh.SetNextIndex(topRight);
+                    mesh.SetNextIndex(bottomRight);
+                    mesh.SetNextIndex(bottomRight);
+                    mesh.SetNextIndex(bottomLeft);
+                    mesh.SetNextIndex(topLeft);
+                }
+            }
+        }
+
+        // Flat-shaded tiles on top of the smooth gradient: every cell repeats the original per-cell colour
+        // at partial alpha with a hairline inset, so the mosaic look of the old per-slice fills stays visible
+        // while the gradient underneath keeps the transitions smooth. Still a single allocation.
+        private void DrawMaximumTileOverlay(MeshGenerationContext mgc, float xStart, float xEnd, Rect rect, float dynamicBlend)
+        {
+            const int cols = MaximumTrackGradientColumns;
+            const int rows = MaximumTrackGradientRows;
+            MeshWriteData mesh = mgc.Allocate(cols * rows * 4, cols * rows * 6);
+
+            float cellW = (xEnd - xStart) / cols;
+            float cellH = rect.height / rows;
+            float inset = Mathf.Min(MaximumTrackTileInsetPx, cellW * 0.25f);
+            ushort next = 0;
+            for (int j = 0; j < rows; j++)
+            {
+                float y0 = rect.yMin + j * cellH + inset;
+                float y1 = y0 + cellH - 2f * inset;
+                for (int i = 0; i < cols; i++)
+                {
+                    float x0 = xStart + i * cellW + inset;
+                    float x1 = x0 + cellW - 2f * inset;
+                    Color tile = EvaluateMaximumTrackColor((i + 0.5f) / cols, (j + 0.5f) / rows, _maximumEffectTime, dynamicBlend);
+                    tile.a *= MaximumTrackTileOverlayAlpha;
+                    mesh.SetNextVertex(new Vertex { position = new Vector3(x0, y0, Vertex.nearZ), tint = tile });
+                    mesh.SetNextVertex(new Vertex { position = new Vector3(x1, y0, Vertex.nearZ), tint = tile });
+                    mesh.SetNextVertex(new Vertex { position = new Vector3(x1, y1, Vertex.nearZ), tint = tile });
+                    mesh.SetNextVertex(new Vertex { position = new Vector3(x0, y1, Vertex.nearZ), tint = tile });
+                    mesh.SetNextIndex(next);
+                    mesh.SetNextIndex((ushort)(next + 1));
+                    mesh.SetNextIndex((ushort)(next + 2));
+                    mesh.SetNextIndex((ushort)(next + 2));
+                    mesh.SetNextIndex((ushort)(next + 3));
+                    mesh.SetNextIndex(next);
+                    next += 4;
+                }
+            }
         }
 
         private static Color EvaluateMaximumTrackColor(float u, float v, float time, float dynamicBlend)
