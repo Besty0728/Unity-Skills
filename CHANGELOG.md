@@ -2,11 +2,26 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
-## [Unreleased]
+## [2.8.4] - 2026-09-15
+
+> **面板拖窗卡顿收敛 + 设置抽屉开关修复 + Unity CLI 顾问文档对齐 beta.9** —— (1) Token 等级「全量」档的自绘轨道把 288 个独立渐变切片改为"平滑顶点色网格 + 半透明方格叠层"两次网格分配，回应 #60 的 Windows 拖窗卡顿反馈，并把设置抽屉里两个错位的自绘开关换成标准 `Toggle`；(2) `unity-cli` 顾问文档从 `1.0.0-beta.5` 对齐到 `1.0.0-beta.9`，修正 beta6+ 下已经错误的"退出码 6 = 测试失败"表述，并把新出现的 `close` / `vcs` / `plugin` 等命令收进 DO NOT 清单。
 
 ### Fixed
 
+- **设置抽屉两个开关的白色滑块错位** — "接收版本更新提醒"与"记录执行数据"此前不是 `Toggle`，而是从顶栏照搬的自绘 `.server-switch` 容器（两层 `VisualElement` + `ClickEvent` 切换 `.on` 类），放进设置行后滑块跑到轨道右上角、溢出轨道边缘。现改为与"自动同步已安装的 AI 工具"、标签页显示等同类设置项一致的 `ui:Toggle`（`.setting-toggle`），控制器改用 `RegisterValueChangedCallback` 与 `SetValueWithoutNotify` 同步状态，行为不变；已在 6000.3.9f1 实机截图确认滑块居中。
+
+- **Token 等级「全量」档横向拖窗卡顿（#60）** — `TokenLevelSliderWidget` 在 Maximum 档用 Painter2D 逐段填充渐变轨道，此前固定 48×6 = 288 个独立路径，其他档位只画 1 个胶囊；轨道 `flex-grow: 1`，窗口每变宽 1 像素就全量重新细分这 288 段。现改为两次 `MeshGenerationContext.Allocate`：一层 49×7 顶点色网格由 GPU 插值出平滑渐变，一层半透明（alpha 0.6、0.5 px 内缩）的 48×6 平色方格叠在其上保留原有的马赛克质感——拖窗时每帧只有 2 次网格分配，颜色算法与 3.5 秒动画不变。绘制顺序已按 UnityCsReference 核实（2022.3 的 `Painter2D.Fill` 同步走同一 `Allocate`，6000.x 在调用点插入有序 mesh-generation node），网格不会盖住端帽、粒子与拇指；已在 6000.3.9f1 实机截图确认。维护者在 macOS / Windows 均未复现报告的卡顿，此项按代码分析收敛成本。
+
 - **AI 工具自动同步不再让落后工程回写共享副本（`SkillInstallSyncService`）** — 全局作用域的副本（`~/.claude/skills/unity-skills` 等）被本机所有工程共享，此前版本门只看本工程 `Library/UnitySkills/install_sync.json` 的记录，仍在旧版本包上的工程一打开就会把另一工程已刷到新版本的副本覆盖回旧版本。现在安装时向 `scripts/agent_config.json` 写入 `version` 印记（旧副本回退解析 `scripts/unity_skills.py` 的 `__version__`），自动同步逐目标比较：副本 ≥ 本工程包版本即跳过（同版本免重拷、更新则不降级），仅副本更旧或版本不明时才刷新；副本更新而被跳过时 Console 打一行 Info 说明（三语跟随面板语言）。面板的 Update 按钮与自定义路径 Install 走同一规则：副本已是本版本或更新时弹提示并跳过（强制重装先卸载再安装），首次安装不受影响。新增 `SkillInstaller.CompareInstalledVersion` / `ReadInstalledVersion`、`ShouldRefreshTarget` 与 11 条用例，本地化新增 `dialog_info` / `agent_install_already_current` / `agent_install_newer_kept`（三语，字形已核图集）。
+
+### Changed
+
+- **Unity CLI 顾问文档对齐 `1.0.0-beta.9`（`skills/unity-cli/SKILL.md`、`references/protocol-unity-cli.md`）** — 校验基线由 beta.5 提升到 beta.9（beta.7 上线当日撤回、变更并入 beta.8）；§7 能力分支新增 beta6+ / beta8+ / beta9+ 三条，beta3–5 描述全部保留，语义变更处显式写双分支，旧二进制用户仍可对照使用；`--help` 仍是最终权威。新增 flag 与退出码均已用 beta.9 二进制的 `--help` 逐项核实；C# 侧 `UnityCliService` 只保存 `--version` 原文、不比较版本，无需改动。
+- **测试退出码拆分** — beta6+ `unity test` 失败用例退出 `8`（`TESTS_FAILED`），`6` 仅表示"未得出结论"（编译错误 / 许可证 / 崩溃 `TEST_RUN_ERROR`、超时 `TEST_TIMED_OUT`）；§6 退出码表新增 `8` 行并改写 `6` / `7`（覆盖 `doctor --ci` 6/7、`projects verify` 6/0、beta9+ `open` 的 `OPEN_EDITOR_EXITED`），重试策略明确为"6/7 可有限重试、8 绝不重试"。
+- **冷启动前置检查新增两条只读命令** — `doctor --ci --format json`（6 = 确定性阻塞、7 = 可重试）与 `projects verify --format json`（只检测不修复；`META_MISSING` / `GUID_DUPLICATE` 等错误级退出 6，警告退出 0），均无需 feature 开关、不修改工程；beta9+ `open` 在短观察窗内编辑器退出返回 6，观察窗外与旧版一律 0，`wait_for_health` 超时仍是真实信号。
+- **测试与构建段补齐新参数** — `test --retries` / `--rerun-failed`（beta6+）与 `--affected --since`（beta9+，需先 `--affected-compare` 量漏检率）；`build --timeout` / `UNITY_BUILD_TIMEOUT`（超时退出 6，默认关闭、无人值守必设）、json/ndjson 心跳帧、`<output>.provenance.json` 构建溯源清单；新增环境变量 `UNITY_NO_CLI_INVOKED_TELEMETRY=1`。
+- **DO NOT 清单扩充** — 新增 `projects create|new|clone|link|unlink|upgrade`（beta8+ 默认开云项目）、`templates`、`cloud` / `collab`、`unity vcs` 写操作（只读的 `status` / `diff` / `summarize` / `affected` / `conflicts` / `explain` / `providers` 除外）、`unity close` / `projects close`（不保存即退出，仅用户明确要求时可用且永不 `--force`）、`install-modules` / `editors upgrade` / `plugin install|remove|upgrade`；`unity upgrade` 更名 `self-update`；beta9+ 只读的 `unity skill show` 允许作为第二参考读取，`skill install` / `skill refresh` 仍禁止且不构成授权。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `2.8.4`。
 
 ## [2.8.3] - 2026-09-08
 
