@@ -106,13 +106,13 @@ namespace UnitySkills
         private Label         _runtimeGroupTitle;
         private Label         _loglevelLabel;
         private DropdownField _logDropdown;
-        private VisualElement _updateNotificationsSwitch;
+        private Toggle        _updateNotificationsToggle;
         private Label         _updateNotificationsLabel;
         private Label         _updateNotificationsHint;
         private Label         _updateCheckLabel;
         private Button        _updateCheckBtn;
         private Label         _updateCheckStatus;
-        private VisualElement _telemetrySwitch;
+        private Toggle        _telemetryToggle;
         private Label         _telemetryLabel;
         private Label         _telemetryHint;
         // Stats group
@@ -247,13 +247,13 @@ namespace UnitySkills
             _runtimeGroupTitle = _drawerContainer.Q<Label>("group-runtime-title");
             _loglevelLabel     = _drawerContainer.Q<Label>("loglevel-label");
             _logDropdown       = _drawerContainer.Q<DropdownField>("loglevel-dropdown");
-            _updateNotificationsSwitch = _drawerContainer.Q<VisualElement>("update-notifications-switch");
+            _updateNotificationsToggle = _drawerContainer.Q<Toggle>("update-notifications-toggle");
             _updateNotificationsLabel  = _drawerContainer.Q<Label>("update-notifications-label");
             _updateNotificationsHint   = _drawerContainer.Q<Label>("update-notifications-hint");
             _updateCheckLabel  = _drawerContainer.Q<Label>("update-check-label");
             _updateCheckBtn    = _drawerContainer.Q<Button>("update-check-btn");
             _updateCheckStatus = _drawerContainer.Q<Label>("update-check-status");
-            _telemetrySwitch   = _drawerContainer.Q<VisualElement>("telemetry-switch");
+            _telemetryToggle   = _drawerContainer.Q<Toggle>("telemetry-toggle");
             _telemetryLabel    = _drawerContainer.Q<Label>("telemetry-label");
             _telemetryHint     = _drawerContainer.Q<Label>("telemetry-hint");
             _statsGroupTitle = _drawerContainer.Q<Label>("group-stats-title");
@@ -370,21 +370,20 @@ namespace UnitySkills
                         SkillsLogger.Level = (LogLevel)idx;
                 });
 
-            if (_updateNotificationsSwitch != null)
-                _updateNotificationsSwitch.RegisterCallback<ClickEvent>(_ =>
+            if (_updateNotificationsToggle != null)
+                _updateNotificationsToggle.RegisterValueChangedCallback(evt =>
                 {
-                    VersionCheckService.NotificationsEnabled =
-                        !VersionCheckService.NotificationsEnabled;
+                    VersionCheckService.NotificationsEnabled = evt.newValue;
                     SyncSettingSwitches();
                 });
 
             if (_updateCheckBtn != null)
                 _updateCheckBtn.clicked += OnUpdateCheckClicked;
 
-            if (_telemetrySwitch != null)
-                _telemetrySwitch.RegisterCallback<ClickEvent>(_ =>
+            if (_telemetryToggle != null)
+                _telemetryToggle.RegisterValueChangedCallback(evt =>
                 {
-                    SkillTelemetryService.Enabled = !SkillTelemetryService.Enabled;
+                    SkillTelemetryService.Enabled = evt.newValue;
                     SyncSettingSwitches();
                     TabVisibilitySettings.NotifyChanged();
                 });
@@ -629,9 +628,8 @@ namespace UnitySkills
 
         private void SyncSettingSwitches()
         {
-            _updateNotificationsSwitch?.EnableInClassList(
-                "on", VersionCheckService.NotificationsEnabled);
-            _telemetrySwitch?.EnableInClassList("on", SkillTelemetryService.Enabled);
+            _updateNotificationsToggle?.SetValueWithoutNotify(VersionCheckService.NotificationsEnabled);
+            _telemetryToggle?.SetValueWithoutNotify(SkillTelemetryService.Enabled);
         }
 
         // ===== Package update check (two-step: check first, then update on a second click) =====

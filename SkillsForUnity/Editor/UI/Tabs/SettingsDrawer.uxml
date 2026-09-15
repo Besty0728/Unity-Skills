@@ -159,11 +159,9 @@
                         <ui:DropdownField name="loglevel-dropdown" class="setting-row__field" />
                     </ui:VisualElement>
 
-                    <ui:VisualElement name="update-notifications-row" class="setting-row">
+                    <ui:VisualElement name="update-notifications-row" class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
                         <ui:Label name="update-notifications-label" class="setting-row__label" />
-                        <ui:VisualElement name="update-notifications-switch" class="server-switch" style="margin: 0;">
-                            <ui:VisualElement class="server-switch__knob" />
-                        </ui:VisualElement>
+                        <ui:Toggle name="update-notifications-toggle" class="setting-toggle" />
                     </ui:VisualElement>
                     <ui:Label name="update-notifications-hint" class="setting-hint" />
 
@@ -173,11 +171,9 @@
                     </ui:VisualElement>
                     <ui:Label name="update-check-status" class="setting-hint" />
 
-                    <ui:VisualElement name="telemetry-row" class="setting-row">
+                    <ui:VisualElement name="telemetry-row" class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
                         <ui:Label name="telemetry-label" class="setting-row__label" />
-                        <ui:VisualElement name="telemetry-switch" class="server-switch" style="margin: 0;">
-                            <ui:VisualElement class="server-switch__knob" />
-                        </ui:VisualElement>
+                        <ui:Toggle name="telemetry-toggle" class="setting-toggle" />
                     </ui:VisualElement>
                     <ui:Label name="telemetry-hint" class="setting-hint" />
 
