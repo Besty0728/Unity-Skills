@@ -110,6 +110,10 @@
                     <ui:Toggle name="agent-autosync-toggle" class="setting-toggle" />
                     <ui:Label name="agent-autosync-hint" class="setting-hint"
                               style="margin-left: 18px;" />
+                    <ui:Toggle name="agent-instruction-toggle" class="setting-toggle"
+                               style="margin-top: 6px;" />
+                    <ui:Label name="agent-instruction-hint" class="setting-hint"
+                              style="margin-left: 18px;" />
                 </ui:VisualElement>
 
                 <!-- Server group -->

@@ -33,6 +33,8 @@
   "drawer_section_agent_sync": "AI Tools",
   "agent_autosync_label": "Auto-sync installed AI tools",
   "agent_autosync_hint": "After the package updates, refresh the unity-skills files already installed for Claude Code, Codex, Cursor and other tools. Only targets you installed yourself are refreshed; nothing new is ever installed.",
+  "agent_instruction_label": "Write guide line to agent instruction files",
+  "agent_instruction_hint": "On install or auto-sync, append one line to each installed tool's root instruction file (CLAUDE.md, AGENTS.md, GEMINI.md) telling the AI to use Unity Skills. Turning this off removes the line again.",
   "timeout_unit": "min",
   "keepalive_unit": "sec",
   "keepalive_hint": "How often to wake Unity main thread when idle (min 5s)",

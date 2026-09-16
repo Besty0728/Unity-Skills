@@ -33,6 +33,8 @@
   "drawer_section_agent_sync": "AI 工具",
   "agent_autosync_label": "自动同步已安装的 AI 工具",
   "agent_autosync_hint": "包升级后，自动把新版 unity-skills 文件同步到已安装的 Claude Code、Codex、Cursor 等工具。只更新你已经装过的目标，不会自动安装新目标。",
+  "agent_instruction_label": "向 AI 工具的指令文件写入引导语",
+  "agent_instruction_hint": "安装或自动同步时，给已安装工具的根指令文件（CLAUDE.md、AGENTS.md、GEMINI.md）追加一行引导语，提示 AI 使用 Unity Skills。关闭后会自动移除这行。",
   "timeout_unit": "分钟",
   "keepalive_unit": "秒",
   "keepalive_hint": "空闲时唤醒 Unity 主线程的间隔（最小 5 秒）",

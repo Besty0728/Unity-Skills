@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+using NUnit.Framework;
 
 namespace UnitySkills.Tests.Core
 {
@@ -55,6 +55,27 @@ namespace UnitySkills.Tests.Core
         {
             string fallback = SkillsLocalization.Get("some_non_existent_key_xyz");
             Assert.That(fallback, Is.EqualTo("some_non_existent_key_xyz"));
+        }
+
+        [Test]
+        public void Localization_AgentInstructionKeys_ResolveInAllLanguages()
+        {
+            SkillsLocalization.Reload();
+
+            SkillsLocalization.Current = SkillsLocalization.Language.English;
+            Assert.That(SkillsLocalization.Get("agent_instruction_label"),
+                Is.EqualTo("Write guide line to agent instruction files"));
+            Assert.That(SkillsLocalization.Get("agent_instruction_hint"), Does.Contain("CLAUDE.md"));
+
+            SkillsLocalization.Current = SkillsLocalization.Language.Chinese;
+            Assert.That(SkillsLocalization.Get("agent_instruction_label"),
+                Is.EqualTo("向 AI 工具的指令文件写入引导语"));
+            Assert.That(SkillsLocalization.Get("agent_instruction_hint"), Does.Contain("AGENTS.md"));
+
+            SkillsLocalization.Current = SkillsLocalization.Language.Russian;
+            Assert.That(SkillsLocalization.Get("agent_instruction_label"),
+                Is.Not.EqualTo("agent_instruction_label"));
+            Assert.That(SkillsLocalization.Get("agent_instruction_hint"), Does.Contain("GEMINI.md"));
         }
     }
 }

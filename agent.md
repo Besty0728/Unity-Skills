@@ -57,6 +57,7 @@ Unity-Skills/
 │   │   │   ├── GameObjectFinder.cs       # 统一查找器 (name/instanceId/path)
 │   │   │   ├── BatchExecutor.cs          # 批量操作框架
 │   │   │   ├── SkillInstaller.cs         # AI 工具一键安装
+│   │   │   ├── AgentInstructionService.cs # 根指令文件引导注入（CLAUDE.md/AGENTS.md/GEMINI.md，默认关）
 │   │   │   ├── UnityCliService.cs        # Unity CLI 检测 + 项目绑定 (Library/UnitySkills/cli_config.json)
 │   │   │   └── *Skills.cs × 56           # 54 个 SkillCategory 分类 (共 805 Skills)
 │   │   ├── Locales/                      # 独立多语言 JSON 资产 (en.json, zh-CN.json, ru.json)

@@ -83,6 +83,8 @@ namespace UnitySkills
         private Label  _agentSyncGroupTitle;
         private Toggle _agentAutoSyncToggle;
         private Label  _agentAutoSyncHint;
+        private Toggle _agentInstructionToggle;
+        private Label  _agentInstructionHint;
 
 
 
@@ -228,6 +230,8 @@ namespace UnitySkills
             _agentSyncGroupTitle = _drawerContainer.Q<Label>("group-agent-sync-title");
             _agentAutoSyncToggle = _drawerContainer.Q<Toggle>("agent-autosync-toggle");
             _agentAutoSyncHint   = _drawerContainer.Q<Label>("agent-autosync-hint");
+            _agentInstructionToggle = _drawerContainer.Q<Toggle>("agent-instruction-toggle");
+            _agentInstructionHint   = _drawerContainer.Q<Label>("agent-instruction-hint");
 
             _serverGroupTitle = _drawerContainer.Q<Label>("group-server-title");
             _autoStartToggle  = _drawerContainer.Q<Toggle>("autostart-toggle");
@@ -321,6 +325,20 @@ namespace UnitySkills
                 {
                     if (evt.newValue != SkillInstallSyncService.Enabled)
                         SkillInstallSyncService.Enabled = evt.newValue;
+                });
+
+            // Guide-line toggle: enabling writes the line to every installed tool right away,
+            // disabling removes it from every known instruction file again.
+            if (_agentInstructionToggle != null)
+                _agentInstructionToggle.RegisterValueChangedCallback(evt =>
+                {
+                    if (evt.newValue == AgentInstructionService.Enabled)
+                        return;
+                    AgentInstructionService.Enabled = evt.newValue;
+                    if (evt.newValue)
+                        AgentInstructionService.ApplyToAllInstalled();
+                    else
+                        AgentInstructionService.RemoveAll();
                 });
 
 
@@ -443,6 +461,7 @@ namespace UnitySkills
             if (_autoStartToggle != null) _autoStartToggle.value = SkillsHttpServer.AutoStart;
             if (_startOnLaunchToggle != null) _startOnLaunchToggle.value = SkillsHttpServer.StartOnEditorLaunch;
             if (_agentAutoSyncToggle != null) _agentAutoSyncToggle.value = SkillInstallSyncService.Enabled;
+            if (_agentInstructionToggle != null) _agentInstructionToggle.value = AgentInstructionService.Enabled;
             if (_timeoutField   != null) _timeoutField.value     = SkillsHttpServer.RequestTimeoutMinutes;
             if (_keepaliveField != null) _keepaliveField.value   = SkillsHttpServer.KeepAliveIntervalSeconds;
             SyncSettingSwitches();
@@ -563,6 +582,10 @@ namespace UnitySkills
                 _agentAutoSyncToggle.label = SkillsLocalization.Get("agent_autosync_label");
             if (_agentAutoSyncHint != null)
                 _agentAutoSyncHint.text = SkillsLocalization.Get("agent_autosync_hint");
+            if (_agentInstructionToggle != null)
+                _agentInstructionToggle.label = SkillsLocalization.Get("agent_instruction_label");
+            if (_agentInstructionHint != null)
+                _agentInstructionHint.text = SkillsLocalization.Get("agent_instruction_hint");
 
 
 
