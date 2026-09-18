@@ -4,7 +4,12 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ## [2.8.4] - 2026-09-15
 
-> **面板拖窗卡顿收敛 + 设置抽屉开关修复 + Unity CLI 顾问文档对齐 beta.9** —— (1) Token 等级「全量」档的自绘轨道把 288 个独立渐变切片改为"平滑顶点色网格 + 半透明方格叠层"两次网格分配，回应 #60 的 Windows 拖窗卡顿反馈，并把设置抽屉里两个错位的自绘开关换成标准 `Toggle`；(2) `unity-cli` 顾问文档从 `1.0.0-beta.5` 对齐到 `1.0.0-beta.9`，修正 beta6+ 下已经错误的"退出码 6 = 测试失败"表述，并把新出现的 `close` / `vcs` / `plugin` 等命令收进 DO NOT 清单。
+> **面板拖窗卡顿收敛 + 设置抽屉开关修复 + Unity CLI 顾问文档对齐 beta.9 + 多实例连错防护** —— (1) Token 等级「全量」档的自绘轨道把 288 个独立渐变切片改为"平滑顶点色网格 + 半透明方格叠层"两次网格分配，回应 #60 的 Windows 拖窗卡顿反馈，并把设置抽屉里两个错位的自绘开关换成标准 `Toggle`；(2) `unity-cli` 顾问文档从 `1.0.0-beta.5` 对齐到 `1.0.0-beta.9`，修正 beta6+ 下已经错误的"退出码 6 = 测试失败"表述，并把新出现的 `close` / `vcs` / `plugin` 等命令收进 DO NOT 清单。；(3) 多工程同开时的"连错编辑器"防护：每个 HTTP 响应带 `X-Unity-Instance` / `X-Unity-Project` 头，SKILL.md 首次握手要求核对 `projectName`，协议文档新增多实例选端口指引。
+
+### Added
+
+- **多实例身份标识：每个响应带 `X-Unity-Instance` / `X-Unity-Project` 头（`SkillsHttpServer`）** — 多个 Unity 工程同时开启 UnitySkills 时端口按启动先后占用（8090 起），端口号不等于工程身份；Python 客户端会按当前目录优先匹配 registry，但裸 `curl` 或记住的端口绕过 registry 后连错工程没有任何信号，技能响应体也不含工程名。现五条响应路径（即时 JSON、缓存 GET、`/health` 快路径、队列技能结果、`/events`）统一由 `AddInstanceHeaders` 附加两个头：值取自 `/health` 快照字段，HTTP 线程零 Unity API；产品名含非 ASCII 时对 `X-Unity-Project` 做百分号编码以满足头值约束。已在 6000.3.9f1 实机逐路径核对。
+- **多实例引导文档** — 根 `SKILL.md` 首次握手第 1 步新增"确认 `projectName` 是正在编辑的工程，不匹配就固定 `--port`"（为守住 8192 字节红线同步压缩了若干措辞，现 8187 字节）；`references/protocol-operating-mode.md` 与 `SKILL_FULL.md` 的 Boot Handshake 新增 "Which Editor answered? (multi-instance)" 小节，写明客户端自动发现顺序与静默回退条件（cwd 不在任何已注册工程内时才会落到其他工程）、`--list-instances` / `--port` / `--version` 用法、裸 HTTP 应读 `~/.unity_skills/registry.json` 而非假设 8090、不匹配时停下报告而不是操作错误工程。
 
 ### Fixed
 

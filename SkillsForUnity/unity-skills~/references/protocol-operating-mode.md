@@ -15,6 +15,14 @@ On session start (or before the first skill call), call `GET /health` and read:
 - `workflowRecoveryMode` — `true` when workflow history failed to load this session: rollback data is degraded and file-store cleanup is suspended until the history is cleared.
 - `summaryAutoTruncate`, `summaryPageSize`, `tokenLevel` — the current token-saving settings; see "Token Level" below.
 
+### Which Editor answered? (multi-instance)
+
+Several Unity projects can run UnitySkills at once; each server takes the first free port in `8090`–`8100` in **launch order**, so a port number is not a project identity. Before the first skill call, read `projectName` / `instanceId` from `/health` and confirm they name the project the user is working on. Every response also carries `X-Unity-Instance` and `X-Unity-Project` headers, so a bare `curl` can check the same thing without a separate `/health` call.
+
+- **Python client** — auto-discovery prefers the registry entry whose `path` contains the current working directory, then other live entries by freshest heartbeat, then a port scan. It only silently falls back to *another* project when the cwd is not inside any registered project. `python unity_skills.py --list-instances` prints every live entry (`name`, `path`, `port`, `unityVersion`); pin the choice with `--port <n>` (or `--version "6"` / `"2022"`) whenever more than one instance is live or the cwd is outside the project.
+- **Bare HTTP** — read `~/.unity_skills/registry.json` (or call `/health` on each port) to pick the port; never assume `8090`. Re-check after the Editor restarts: the port can change.
+- **Mismatch** — stop, tell the user which project answered, and switch the port. Do not "fix" the wrong project.
+
 ## Token Level
 
 `tokenLevel` on `/health` is a **derived** view, not a separate persisted setting — it is computed from three source values every time it's read: `surfaceProfile` (see the payload contract doc), `summaryAutoTruncate`, and `summaryPageSize`. Changing any of the three source values immediately changes the reported `tokenLevel`; there is no separate "set token level" call.

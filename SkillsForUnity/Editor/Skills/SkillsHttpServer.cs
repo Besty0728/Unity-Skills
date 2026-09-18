@@ -493,6 +493,25 @@ namespace UnitySkills
             catch { return new JObject { ["error"] = rawJson }; }
         }
 
+        /// <summary>
+        /// Stamps the serving project's identity on every response, so a caller that bypassed the registry
+        /// (bare curl, a remembered port) can notice it reached a different Editor than intended.
+        /// HTTP-thread safe: reads only the /health snapshot fields. The instance id is always ASCII; the
+        /// product name may not be, and header values must be, so it is percent-encoded when needed.
+        /// </summary>
+        private static void AddInstanceHeaders(HttpListenerResponse response)
+        {
+            var instanceId = _snapInstanceId;
+            if (!string.IsNullOrEmpty(instanceId))
+                response.Headers.Add("X-Unity-Instance", instanceId);
+
+            var projectName = _snapProjectName;
+            if (string.IsNullOrEmpty(projectName))
+                return;
+            bool ascii = projectName.All(c => c >= ' ' && c < (char)127);
+            response.Headers.Add("X-Unity-Project", ascii ? projectName : Uri.EscapeDataString(projectName));
+        }
+
         private static void SendImmediateJsonResponse(HttpListenerContext context, HttpListenerRequest request, int statusCode, object payload)
         {
             HttpListenerResponse response = null;
@@ -504,6 +523,7 @@ namespace UnitySkills
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
                 response.Headers.Add("X-Agent-Id", DetectAgent(request));
+                AddInstanceHeaders(response);
                 response.StatusCode = statusCode;
 
                 string responseJson = JsonConvert.SerializeObject(payload, _jsonSettings);
@@ -541,6 +561,7 @@ namespace UnitySkills
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
                 response.Headers.Add("X-Agent-Id", DetectAgent(request));
+                AddInstanceHeaders(response);
                 response.Headers.Add("X-Fast-Path", "true");
                 response.Headers.Add("ETag", $"\"{etag}\"");
                 // The same URL now has two possible response bodies (identity / gzip); without Vary,
@@ -956,6 +977,7 @@ namespace UnitySkills
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
                 response.Headers.Add("X-Agent-Id", DetectAgent(request));
+                AddInstanceHeaders(response);
                 response.Headers.Add("X-Fast-Path", "true");
                 response.StatusCode = 200;
                 response.ContentType = "application/json; charset=utf-8";
@@ -1853,6 +1875,7 @@ namespace UnitySkills
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("X-Request-Id", job.RequestId);
                 response.Headers.Add("X-Agent-Id", job.AgentId);
+                AddInstanceHeaders(response);
 
                 if (job.ETag != null)
                 {
@@ -2048,6 +2071,7 @@ namespace UnitySkills
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("X-Request-Id", poll.RequestId);
                 response.Headers.Add("X-Agent-Id", poll.AgentId);
+                AddInstanceHeaders(response);
                 response.StatusCode = statusCode;
                 response.ContentType = "application/json; charset=utf-8";
                 byte[] buffer = Encoding.UTF8.GetBytes(json);
