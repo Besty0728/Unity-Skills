@@ -47,7 +47,7 @@ The repository ships one verification matrix: **Unity Package Compile Matrix** (
 | `Project Version & Release Tag Consistency` | All version anchors agree | 所有版本锚点一致 |
 | `SKILL.md Frontmatter Compliance` | Skill docs frontmatter | Skill 文档 frontmatter |
 | `.meta Pairing & GUID Uniqueness` | `.meta` pairing, duplicate GUIDs | `.meta` 配对与 GUID 重复 |
-| `Unity <version> EditMode` × 6 | Compile + EditMode tests on 2022.3.62f1, 6000.0.76f1, 6000.2.0f1, 6000.3.18f1, 6000.4.12f1, 6000.5.0f1 | 6 个 Unity 版本上的编译与 EditMode 测试 |
+| `Unity <version> EditMode` × 6 | Compile + EditMode tests on 2022.3.62f1, 6000.0.76f1, 6000.2.11f1, 6000.3.18f1, 6000.4.12f1, 6000.5.0f1 | 6 个 Unity 版本上的编译与 EditMode 测试 |
 | `Test Summary & License Check` | Aggregates results; fails if any job did not succeed | 汇总结果；任一任务未成功即失败 |
 
 Dispatch it **from your fork**, on your feature branch: | 在**你自己的 fork** 上、针对你的分支手动触发：

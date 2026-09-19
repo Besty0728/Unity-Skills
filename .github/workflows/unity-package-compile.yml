@@ -94,7 +94,7 @@ jobs:
             uguiVersion: 1.0.0
           - unityVersion: 6000.0.76f1
             uguiVersion: 2.0.0
-          - unityVersion: 6000.2.0f1
+          - unityVersion: 6000.2.11f1
             uguiVersion: 2.0.0
           - unityVersion: 6000.3.18f1
             uguiVersion: 2.0.0
