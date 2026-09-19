@@ -116,7 +116,7 @@ git status --short
 | `SkillsForUnity/Editor/Skills/SkillsLogger.cs` | `public const string Version = "{OLD_VER}";` |
 | `SkillsForUnity/package.json` | 顶层 `"version": "{OLD_VER}"` |
 | `SkillsForUnity/unity-skills~/scripts/unity_skills.py` | `__version__ = "{OLD_VER}"` |
-| `agent.md` | 项目表格行 `| 版本 | {OLD_VER} |` |
+| `AGENTS.md` | 项目表格行 `| Version | {OLD_VER} |` |
 | `CHANGELOG.md` | 在原最新条目前插入 `## [{NEW_VER}] - {TODAY}` 与本次变更内容 |
 
 > README×2 的"当前版本"标记已于 2.7.0 移除（README 不再承载版本锚点），`check_project_version.py` 已同步；不要往 README 回加版本标记。
@@ -124,7 +124,7 @@ git status --short
 CHANGELOG 的 `Changed` 中追加：
 
 ```markdown
-- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `{NEW_VER}`。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `{NEW_VER}`。
 ```
 
 `{BUMP_LEVEL}` 为 `minor` 或 `major` 时，同一条目末尾补一句：`受支持版本表（.github/SECURITY.md）同步到 {NEW_MAJOR}.{NEW_MINOR}.x。`

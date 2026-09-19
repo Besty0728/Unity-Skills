@@ -17,7 +17,7 @@ namespace UnitySkills
     /// unity_skills.py -- the request then carries no X-Agent-Id header and a generic User-Agent, so
     /// SkillsHttpServer.DetectAgent alone always reports "curl"/"Unknown".
     ///
-    /// Threading model (relaxed from the usual "accept thread never blocks" rule -- see agent.md and the
+    /// Threading model (relaxed from the usual "accept thread never blocks" rule -- see AGENTS.md and the
     /// project-lead decision recorded in <see cref="BeginResolve"/>'s doc comment): the HTTP accept thread
     /// calls <see cref="BeginResolve"/>, which *synchronously* resolves the client's TCP port to its pid and
     /// captures its ancestor chain (names + ppids + interpreter command lines, up to MaxWalkDepth; a few ms,
@@ -59,7 +59,7 @@ namespace UnitySkills
 
         // Read by any thread (including the accept thread and the background worker) without ever touching
         // EditorPrefs off the main thread. Warmed from EditorPrefs on domain reload; the setter (main-thread
-        // only -- there's no UI for it yet, see agent.md task notes) keeps it in sync.
+        // only -- there's no UI for it yet, see AGENTS.md task notes) keeps it in sync.
         private static volatile bool _enabledCache = true;
 
         [InitializeOnLoadMethod]
@@ -1158,7 +1158,7 @@ namespace UnitySkills
 
         // ===== Linux =====
 
-        /// <summary>Pure /proc/net/tcp(+tcp6) parsing + fd inode reverse-lookup -- no forking, per agent.md's zero-Unity-API/zero-blocking-syscall preference for the accept-thread-adjacent worker.</summary>
+        /// <summary>Pure /proc/net/tcp(+tcp6) parsing + fd inode reverse-lookup -- no forking, per AGENTS.md's zero-Unity-API/zero-blocking-syscall preference for the accept-thread-adjacent worker.</summary>
         private sealed class LinuxConnectionTableReader : IConnectionTableReader
         {
             public bool TryFindClientPid(int remotePort, int serverPort, out int pid)

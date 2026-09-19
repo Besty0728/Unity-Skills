@@ -326,4 +326,4 @@ unity_skills.list_instances()               # 枚举所有实例
 | [README_CN.md](../README_CN.md) | 项目说明（中文） |
 | [SKILL.md](../SkillsForUnity/unity-skills~/SKILL.md) | 完整 Skill API 参考 |
 | [CHANGELOG.md](../CHANGELOG.md) | 版本更新记录 |
-| [agent.md](../agent.md) | AI Agent 项目概览 |
+| [AGENTS.md](../AGENTS.md) | AI Agent 项目概览 |

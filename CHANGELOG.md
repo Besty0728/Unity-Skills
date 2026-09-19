@@ -26,7 +26,8 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **冷启动前置检查新增两条只读命令** — `doctor --ci --format json`（6 = 确定性阻塞、7 = 可重试）与 `projects verify --format json`（只检测不修复；`META_MISSING` / `GUID_DUPLICATE` 等错误级退出 6，警告退出 0），均无需 feature 开关、不修改工程；beta9+ `open` 在短观察窗内编辑器退出返回 6，观察窗外与旧版一律 0，`wait_for_health` 超时仍是真实信号。
 - **测试与构建段补齐新参数** — `test --retries` / `--rerun-failed`（beta6+）与 `--affected --since`（beta9+，需先 `--affected-compare` 量漏检率）；`build --timeout` / `UNITY_BUILD_TIMEOUT`（超时退出 6，默认关闭、无人值守必设）、json/ndjson 心跳帧、`<output>.provenance.json` 构建溯源清单；新增环境变量 `UNITY_NO_CLI_INVOKED_TELEMETRY=1`。
 - **DO NOT 清单扩充** — 新增 `projects create|new|clone|link|unlink|upgrade`（beta8+ 默认开云项目）、`templates`、`cloud` / `collab`、`unity vcs` 写操作（只读的 `status` / `diff` / `summarize` / `affected` / `conflicts` / `explain` / `providers` 除外）、`unity close` / `projects close`（不保存即退出，仅用户明确要求时可用且永不 `--force`）、`install-modules` / `editors upgrade` / `plugin install|remove|upgrade`；`unity upgrade` 更名 `self-update`；beta9+ 只读的 `unity skill show` 允许作为第二参考读取，`skill install` / `skill refresh` 仍禁止且不构成授权。
-- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `agent.md` 同步提升到 `2.8.4`。
+- **`agent.md` 改名为 `AGENTS.md`，重写为纯英文、面向 AI 的紧凑常驻上下文（约 3.2K token）** — 采用 Claude Code / Codex 通用的根指令文件名，让开发本项目的 Agent 自动加载；开头指向 `unity-skills~/SKILL.md` 作为协议权威来源，结尾登记四个自定义命令的文件路径供无 slash command 的 Agent 直接读取执行；模块计数表移出（README 保留，`/skillcheck` 步骤 4 范围同步收窄）；版本锚点行改为 `| Version | x.y.z |`；并入此前只存在于会话记忆里的硬约束（GET 也走主线程队列、无鉴权/通配 CORS 为有意设计、`EditorUiScheduler.RepeatSafe` 与 USS 主题令牌、图标不用 emoji、顶栏三条设计决定、启动只打一行 Info、字库增量补字入口与校验清单、UTF-8 BOM 与 `Producer:Betsy` 尾注、永不移动已发布 tag）。`check_project_version.py` / `/updateversion` / `/skillcheck` / CONTRIBUTING / SETUP_GUIDE×2 / `ClientProcessResolver` 注释中的引用同步改名。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `2.8.4`。
 
 ## [2.8.3] - 2026-09-08
 

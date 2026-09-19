@@ -334,4 +334,4 @@ unity_skills.wait_for_job(job["jobId"], timeout=90)
 | [README_CN.md](../README_CN.md) | Project overview (Chinese) |
 | [SKILL.md](../SkillsForUnity/unity-skills~/SKILL.md) | Complete skill API reference |
 | [CHANGELOG.md](../CHANGELOG.md) | Version history |
-| [agent.md](../agent.md) | AI agent project overview |
+| [AGENTS.md](../AGENTS.md) | AI agent project overview |

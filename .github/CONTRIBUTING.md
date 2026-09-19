@@ -129,7 +129,7 @@ public static object SkillName(string name, float x = 0f)
 3. Return business errors with `SkillErrorResponse.Build(code, msg, ...)` instead of throwing; write operations register `Undo` and take a `WorkflowManager` snapshot. | 业务错误用 `SkillErrorResponse.Build(code, msg, ...)` 返回而不是抛异常；写操作要注册 `Undo` 并调用 `WorkflowManager` 快照。
 4. Document it in `SkillsForUnity/unity-skills~/skills/<module>/SKILL.md`. Advisory (design-guidance) modules are docs-only — no C# stub. | 在 `SkillsForUnity/unity-skills~/skills/<模块>/SKILL.md` 补文档。Advisory（设计指导）模块只有文档，不加 C# stub。
 5. Keep the bundled root `SKILL.md` lean — it is the always-loaded entry point and is kept within a tight token budget (~8 KB). New depth belongs in `skills/` or `references/`. | 随包根 `SKILL.md` 要保持精简——它是常驻加载的入口文档，有严格的 token 预算（约 8 KB）。新增细节请放到 `skills/` 或 `references/`。
-6. Run `/skillcheck` so the skill count (currently **805** REST skills across 54 functional modules + 28 advisory modules) stays in sync across `README.md`, `README_CN.md`, `agent.md` and the skill docs. | 运行 `/skillcheck`，让技能总数（当前 **805** 个 REST Skills，54 个功能模块 + 28 个 advisory 模块）在 `README.md`、`README_CN.md`、`agent.md` 与技能文档间保持同步。
+6. Run `/skillcheck` so the skill count (currently **805** REST skills across 54 functional modules + 28 advisory modules) stays in sync across `README.md`, `README_CN.md`, `AGENTS.md` and the skill docs. | 运行 `/skillcheck`，让技能总数（当前 **805** 个 REST Skills，54 个功能模块 + 28 个 advisory 模块）在 `README.md`、`README_CN.md`、`AGENTS.md` 与技能文档间保持同步。
 
 ## Version Update | 版本号更新
 
@@ -138,7 +138,7 @@ Maintainer-only. `/updateversion <version>` updates the explicit project-version
 | File | Location |
 |------|----------|
 | `SkillsForUnity/Editor/Skills/SkillsLogger.cs` | `Version` constant (single C# source of truth) |
-| `agent.md` | Version table |
+| `AGENTS.md` | Version table |
 | `SkillsForUnity/package.json` | `"version"` field |
 | `CHANGELOG.md` | Add new entry at top |
 | `SkillsForUnity/unity-skills~/scripts/unity_skills.py` | `__version__` |

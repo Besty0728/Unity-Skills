@@ -8,7 +8,7 @@ namespace UnitySkills.Tests.Core
     /// Covers the pure-logic pieces of ClientProcessResolver: the denylist-driven parent-chain walk, interpreter
     /// command-line extraction (including scoped npm packages), the cosmetic display-name map's capitalize
     /// fallback, and the TtlCache's expiry/eviction behavior. Nothing here shells out to lsof/ps or touches the
-    /// real network/process tables -- every platform-dependent input is a hand-built fake, per agent.md's
+    /// real network/process tables -- every platform-dependent input is a hand-built fake, per AGENTS.md's
     /// requirement that the platform layer be injectable and tested with fake data only.
     ///
     /// TtlCache instances are created fresh per test (never ClientProcessResolver's own shared _portCache/_pidCache),

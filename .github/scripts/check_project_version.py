@@ -82,11 +82,11 @@ def collect_versions(repo_root: Path) -> dict[str, str]:
             rf'^__version__\s*=\s*"({SEMVER_PATTERN})"\s*$',
             "Python helper 版本",
         ),
-        "agent.md current version": extract_single(
+        "AGENTS.md current version": extract_single(
             repo_root,
-            "agent.md",
-            rf"^\|\s*版本\s*\|\s*({SEMVER_PATTERN})\s*\|\s*$",
-            "项目版本表格行",
+            "AGENTS.md",
+            rf"^\|\s*Version\s*\|\s*({SEMVER_PATTERN})\s*\|\s*$",
+            "AGENTS.md version table row",
         ),
         # README 的"当前版本"标记已于 2.7.0 移除（README 不再承载版本锚点），勿回加。
         "CHANGELOG.md latest entry": changelog_match.group(1),
