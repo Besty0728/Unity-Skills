@@ -2,7 +2,7 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
-## [2.8.4] - 2026-09-15
+## [2.8.4] - 2026-09-19
 
 > **面板拖窗卡顿收敛 + 设置抽屉开关修复 + Unity CLI 顾问文档对齐 beta.9 + 多实例连错防护** —— (1) 回应 #60 的 Windows 拖窗卡顿反馈：合并报告人的 PR #61——技能列表改为定高 `ListView` 虚拟化、拖窗期间轨道临时降级为减列切片，并把动画静默窗口与网格恢复解耦（根治 6000.x 双源重绘导致的轨道撕裂）；另把设置抽屉里两个错位的自绘开关换成标准 `Toggle`；(2) `unity-cli` 顾问文档从 `1.0.0-beta.5` 对齐到 `1.0.0-beta.9`，修正 beta6+ 下已经错误的"退出码 6 = 测试失败"表述，并把新出现的 `close` / `vcs` / `plugin` 等命令收进 DO NOT 清单。；(3) 多工程同开时的"连错编辑器"防护：每个 HTTP 响应带 `X-Unity-Instance` / `X-Unity-Project` 头，SKILL.md 首次握手要求核对 `projectName`，协议文档新增多实例选端口指引。
 
@@ -10,6 +10,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 - **多实例身份标识：每个响应带 `X-Unity-Instance` / `X-Unity-Project` 头（`SkillsHttpServer`）** — 多个 Unity 工程同时开启 UnitySkills 时端口按启动先后占用（8090 起），端口号不等于工程身份；Python 客户端会按当前目录优先匹配 registry，但裸 `curl` 或记住的端口绕过 registry 后连错工程没有任何信号，技能响应体也不含工程名。现五条响应路径（即时 JSON、缓存 GET、`/health` 快路径、队列技能结果、`/events`）统一由 `AddInstanceHeaders` 附加两个头：值取自 `/health` 快照字段，HTTP 线程零 Unity API；产品名含非 ASCII 时对 `X-Unity-Project` 做百分号编码以满足头值约束。已在 6000.3.9f1 实机逐路径核对。
 - **多实例引导文档** — 根 `SKILL.md` 首次握手第 1 步新增"确认 `projectName` 是正在编辑的工程，不匹配就固定 `--port`"（为守住 8192 字节红线同步压缩了若干措辞，现 8187 字节）；`references/protocol-operating-mode.md` 与 `SKILL_FULL.md` 的 Boot Handshake 新增 "Which Editor answered? (multi-instance)" 小节，写明客户端自动发现顺序与静默回退条件（cwd 不在任何已注册工程内时才会落到其他工程）、`--list-instances` / `--port` / `--version` 用法、裸 HTTP 应读 `~/.unity_skills/registry.json` 而非假设 8090、不匹配时停下报告而不是操作错误工程。
+- **可选的 Agent 指令文件引导行（`AgentInstructionService`）** — 设置抽屉新增默认关闭的开关，开启后在安装 / 自动同步时向每个已安装 AI 工具的根指令文件追加一行"使用 Unity Skills"引导（Claude Code 的 `CLAUDE.md`，Codex / Antigravity / Cursor / OpenCode / Kimi Code 共用的 `AGENTS.md`，Antigravity 全局的 `GEMINI.md`）；开启立即应用到全部已安装工具，关闭则移除该行（文件无其他内容时整文件删除）。按整句精确匹配、不留标记注释，上下文 token 成本最小；预发布期的标记包裹写法仍可识别并自动迁移清理。新增 `AgentInstructionService`（358 行）与 280 行测试，三语文案齐备。
 
 ### Fixed
 
@@ -26,7 +27,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **冷启动前置检查新增两条只读命令** — `doctor --ci --format json`（6 = 确定性阻塞、7 = 可重试）与 `projects verify --format json`（只检测不修复；`META_MISSING` / `GUID_DUPLICATE` 等错误级退出 6，警告退出 0），均无需 feature 开关、不修改工程；beta9+ `open` 在短观察窗内编辑器退出返回 6，观察窗外与旧版一律 0，`wait_for_health` 超时仍是真实信号。
 - **测试与构建段补齐新参数** — `test --retries` / `--rerun-failed`（beta6+）与 `--affected --since`（beta9+，需先 `--affected-compare` 量漏检率）；`build --timeout` / `UNITY_BUILD_TIMEOUT`（超时退出 6，默认关闭、无人值守必设）、json/ndjson 心跳帧、`<output>.provenance.json` 构建溯源清单；新增环境变量 `UNITY_NO_CLI_INVOKED_TELEMETRY=1`。
 - **DO NOT 清单扩充** — 新增 `projects create|new|clone|link|unlink|upgrade`（beta8+ 默认开云项目）、`templates`、`cloud` / `collab`、`unity vcs` 写操作（只读的 `status` / `diff` / `summarize` / `affected` / `conflicts` / `explain` / `providers` 除外）、`unity close` / `projects close`（不保存即退出，仅用户明确要求时可用且永不 `--force`）、`install-modules` / `editors upgrade` / `plugin install|remove|upgrade`；`unity upgrade` 更名 `self-update`；beta9+ 只读的 `unity skill show` 允许作为第二参考读取，`skill install` / `skill refresh` 仍禁止且不构成授权。
-- **`agent.md` 改名为 `AGENTS.md`，重写为纯英文、面向 AI 的紧凑常驻上下文（约 3.2K token）** — 采用 Claude Code / Codex 通用的根指令文件名，让开发本项目的 Agent 自动加载；开头指向 `unity-skills~/SKILL.md` 作为协议权威来源，结尾登记四个自定义命令的文件路径供无 slash command 的 Agent 直接读取执行；模块计数表移出（README 保留，`/skillcheck` 步骤 4 范围同步收窄）；版本锚点行改为 `| Version | x.y.z |`；并入此前只存在于会话记忆里的硬约束（GET 也走主线程队列、无鉴权/通配 CORS 为有意设计、`EditorUiScheduler.RepeatSafe` 与 USS 主题令牌、图标不用 emoji、顶栏三条设计决定、启动只打一行 Info、字库增量补字入口与校验清单、UTF-8 BOM 与 `Producer:Betsy` 尾注、永不移动已发布 tag）。`check_project_version.py` / `/updateversion` / `/skillcheck` / CONTRIBUTING / SETUP_GUIDE×2 / `ClientProcessResolver` 注释中的引用同步改名。
+- **`agent.md` 改名为 `AGENTS.md`，重写为纯英文、面向 AI 的紧凑常驻上下文（约 3.2K token）** — 采用 Claude Code / Codex 通用的根指令文件名，让开发本项目的 Agent 自动加载；开头指向 `unity-skills~/SKILL.md` 作为协议权威来源，结尾登记四个自定义命令的文件路径供无 slash command 的 Agent 直接读取执行；模块计数表移出（README 保留，`/skillcheck` 步骤 4 范围同步收窄）；版本锚点行改为 `| Version | x.y.z |`；并入此前只存在于会话记忆里的硬约束（GET 也走主线程队列、无鉴权/通配 CORS 为有意设计、`EditorUiScheduler.RepeatSafe` 与 USS 主题令牌、图标不用 emoji、顶栏三条设计决定、启动只打一行 Info、字库增量补字入口与校验清单、UTF-8 BOM 与 `Producer:Betsy` 尾注、永不移动已发布 tag）。`check_project_version.py` / `/updateversion` / `/skillcheck` / CONTRIBUTING / SETUP_GUIDE×2 / `ClientProcessResolver` 注释中的引用同步改名；根目录新增 `CLAUDE.md` 指向 `AGENTS.md`（并将其移出 `.gitignore`）。
 - **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `2.8.4`。
 
 ## [2.8.3] - 2026-09-08
