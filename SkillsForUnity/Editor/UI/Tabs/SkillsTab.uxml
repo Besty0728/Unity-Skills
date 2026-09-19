@@ -74,10 +74,8 @@
 
             <ui:Label name="skills-count-bar" class="skills-count-bar" text="" />
 
-            <ui:ScrollView name="skills-scroll" class="scroll-view"
-                           style="flex-grow: 1; min-height: 0;">
-                <ui:VisualElement name="skills-container" />
-            </ui:ScrollView>
+            <ui:ListView name="skills-list" class="scroll-view skills-list-view"
+                         style="flex-grow: 1; min-height: 0;" />
 
         </ui:VisualElement>
 

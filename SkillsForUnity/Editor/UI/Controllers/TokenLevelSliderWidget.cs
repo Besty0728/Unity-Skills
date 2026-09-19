@@ -45,6 +45,7 @@ namespace UnitySkills
         private bool _isDragging;
         private bool _tokenSettingsWriteInProgress;
         private IVisualElementScheduledItem _maximumEffectAnimation;
+        private IVisualElementScheduledItem _resizeSettleItem;
         private float _maximumEffectTime;
         private const float ActiveEffectDuration = 3.5f; // Play 60fps dynamic animation for 3.5s then sleep
         // Maximum-level gradient grid. Drawn as ONE vertex-colored mesh (GPU interpolates between
@@ -55,8 +56,16 @@ namespace UnitySkills
         private const int MaximumTrackGradientRows = 6;
         private const float MaximumTrackTileOverlayAlpha = 0.6f;
         private const float MaximumTrackTileInsetPx = 0.5f;
+        // During an EditorWindow resize the static mesh switches to a much smaller grid.
+        private const long ResizeSettleDelayMs = 120;
+        private const float MaximumTrackSliceWidth = 12f;
+        private const int MinimumMaximumTrackHorizontalSlices = 4;
+        private const int MaximumMaximumTrackHorizontalSlices = 24;
+        private const int ResizingMaximumTrackVerticalSlices = 1;
         private float _effectActiveTimer;
         private TokenLevel _previousLevel = (TokenLevel)(-1);
+        private bool _isResizing;
+        private bool _maximumEffectPausedForResize;
         private bool _disposed;
 
         private readonly List<Particle> _galaxyParticles = new List<Particle>
@@ -137,7 +146,7 @@ namespace UnitySkills
                 _tokenLevelTrack.RegisterCallback<PointerEnterEvent>(_ => { if (SkillsTokenLevel.Current == TokenLevel.Maximum) TriggerMaximumEffect(); });
                 _tokenLevelTrack.RegisterCallback<ClickEvent>(OnTrackClicked);
                 _tokenLevelTrack.generateVisualContent += DrawTokenSlider;
-                _tokenLevelTrack.RegisterCallback<GeometryChangedEvent>(_ => _tokenLevelTrack.MarkDirtyRepaint());
+                _tokenLevelTrack.RegisterCallback<GeometryChangedEvent>(OnTrackGeometryChanged);
             }
 
             if (_tokenLevelScaleMinimal != null)
@@ -286,6 +295,47 @@ namespace UnitySkills
         private void OnRootDetached(DetachFromPanelEvent _)
         {
             _maximumEffectAnimation?.Pause();
+            _resizeSettleItem?.Pause();
+            _isResizing = false;
+            _maximumEffectPausedForResize = false;
+        }
+
+        private void OnTrackGeometryChanged(GeometryChangedEvent evt)
+        {
+            if (_disposed || _tokenLevelTrack == null ||
+                (Mathf.Approximately(evt.oldRect.width, evt.newRect.width) &&
+                 Mathf.Approximately(evt.oldRect.height, evt.newRect.height)))
+                return;
+
+            if (SkillsTokenLevel.Current != TokenLevel.Maximum)
+            {
+                _isResizing = false;
+                return;
+            }
+
+            // EditorWindow resize sends a burst of geometry changes. During that burst the
+            // track is redrawn for every new width, so use the cheap one-row version of the
+            // maximum gradient. The normal six-row mesh is restored once the user stops
+            // resizing, and the animation remains paused throughout the burst.
+            _isResizing = true;
+            if (!_maximumEffectPausedForResize)
+            {
+                _maximumEffectAnimation?.Pause();
+                _maximumEffectPausedForResize = true;
+            }
+            _resizeSettleItem?.Pause();
+            _resizeSettleItem = _tokenLevelTrack.schedule.Execute(() =>
+            {
+                _resizeSettleItem = null;
+                _isResizing = false;
+                if (_maximumEffectPausedForResize)
+                {
+                    _maximumEffectPausedForResize = false;
+                    if (_effectActiveTimer > 0f && SkillsTokenLevel.Current == TokenLevel.Maximum)
+                        _maximumEffectAnimation?.Resume();
+                }
+                _tokenLevelTrack?.MarkDirtyRepaint();
+            }).StartingIn(ResizeSettleDelayMs);
         }
 
         public void RefreshTokenLevelLocalization()
@@ -435,6 +485,10 @@ namespace UnitySkills
             {
                 _effectActiveTimer = 0f;
                 _maximumEffectAnimation?.Pause();
+                _resizeSettleItem?.Pause();
+                _resizeSettleItem = null;
+                _isResizing = false;
+                _maximumEffectPausedForResize = false;
             }
         }
 
@@ -705,9 +759,11 @@ namespace UnitySkills
         // keeps its place in the draw order between the caps and the thumb.
         private void DrawMaximumGradientMesh(MeshGenerationContext mgc, float xStart, float xEnd, Rect rect, float dynamicBlend)
         {
-            const int cols = MaximumTrackGradientColumns;
-            const int rows = MaximumTrackGradientRows;
-            const int stride = cols + 1;
+            int cols = _isResizing
+                ? GetMaximumTrackHorizontalSliceCount(xEnd - xStart)
+                : MaximumTrackGradientColumns;
+            int rows = GetMaximumTrackVerticalSliceCount(_isResizing);
+            int stride = cols + 1;
             MeshWriteData mesh = mgc.Allocate(stride * (rows + 1), cols * rows * 6);
 
             float width = xEnd - xStart;
@@ -750,8 +806,10 @@ namespace UnitySkills
         // while the gradient underneath keeps the transitions smooth. Still a single allocation.
         private void DrawMaximumTileOverlay(MeshGenerationContext mgc, float xStart, float xEnd, Rect rect, float dynamicBlend)
         {
-            const int cols = MaximumTrackGradientColumns;
-            const int rows = MaximumTrackGradientRows;
+            int cols = _isResizing
+                ? GetMaximumTrackHorizontalSliceCount(xEnd - xStart)
+                : MaximumTrackGradientColumns;
+            int rows = GetMaximumTrackVerticalSliceCount(_isResizing);
             MeshWriteData mesh = mgc.Allocate(cols * rows * 4, cols * rows * 6);
 
             float cellW = (xEnd - xStart) / cols;
@@ -790,6 +848,25 @@ namespace UnitySkills
 
             Color dynamicCol = EvaluateCosmicFlowColor(u, v, time);
             return Color.Lerp(staticCol, dynamicCol, dynamicBlend);
+        }
+
+        /// <summary>
+        /// Keeps the resize-time maximum-level gradient bounded. The normal 48x6 mesh is
+        /// intentionally retained after the resize settles, while this width-scaled cap keeps
+        /// each intermediate mesh proportional to the visible control.
+        /// </summary>
+        internal static int GetMaximumTrackHorizontalSliceCount(float straightWidth)
+        {
+            if (straightWidth <= 0f) return 0;
+            return Mathf.Clamp(
+                Mathf.CeilToInt(straightWidth / MaximumTrackSliceWidth),
+                MinimumMaximumTrackHorizontalSlices,
+                MaximumMaximumTrackHorizontalSlices);
+        }
+
+        internal static int GetMaximumTrackVerticalSliceCount(bool resizing)
+        {
+            return resizing ? ResizingMaximumTrackVerticalSlices : MaximumTrackGradientRows;
         }
 
         private static Color EvaluateGalaxyColor(float u)
@@ -881,9 +958,15 @@ namespace UnitySkills
             _root.UnregisterCallback<AttachToPanelEvent>(OnRootAttached);
             _root.UnregisterCallback<DetachFromPanelEvent>(OnRootDetached);
             if (_tokenLevelTrack != null)
+            {
                 _tokenLevelTrack.generateVisualContent -= DrawTokenSlider;
+                _tokenLevelTrack.UnregisterCallback<GeometryChangedEvent>(OnTrackGeometryChanged);
+            }
             _maximumEffectAnimation?.Pause();
+            _resizeSettleItem?.Pause();
             _maximumEffectAnimation = null;
+            _resizeSettleItem = null;
+            _maximumEffectPausedForResize = false;
         }
     }
 }
