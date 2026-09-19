@@ -3,9 +3,9 @@
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// Regression coverage for issue #60. Resizing an EditorWindow invalidates the custom
-    /// token-track mesh repeatedly; the maximum-level painter must therefore have a bounded,
-    /// resize-specific geometry budget instead of rebuilding the old fixed 48x6 grid.
+    /// Regression coverage for issue #60. Resizing an EditorWindow repaints the custom
+    /// token-track repeatedly; the maximum-level painter must therefore have a bounded,
+    /// resize-specific slice budget instead of redrawing the full fixed 48x6 grid every time.
     /// </summary>
     [TestFixture]
     public class TokenLevelSliderPerformanceTests
