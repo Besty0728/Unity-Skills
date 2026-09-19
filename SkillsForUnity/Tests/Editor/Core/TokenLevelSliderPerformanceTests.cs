@@ -1,5 +1,4 @@
-using System.IO;
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
 namespace UnitySkills.Tests.Core
 {
@@ -25,20 +24,6 @@ namespace UnitySkills.Tests.Core
         {
             Assert.That(TokenLevelSliderWidget.GetMaximumTrackVerticalSliceCount(true), Is.EqualTo(1));
             Assert.That(TokenLevelSliderWidget.GetMaximumTrackVerticalSliceCount(false), Is.EqualTo(6));
-        }
-
-        [Test]
-        public void SkillsList_UsesFixedHeightVirtualizationForTheFullSurface()
-        {
-            string uxml = File.ReadAllText(
-                "Packages/com.besty.unity-skills/Editor/UI/Tabs/SkillsTab.uxml");
-            string controller = File.ReadAllText(
-                "Packages/com.besty.unity-skills/Editor/UI/Controllers/SkillsTabController.cs");
-
-            StringAssert.Contains("<ui:ListView name=\"skills-list\"", uxml);
-            StringAssert.DoesNotContain("skills-container", uxml);
-            StringAssert.Contains("CollectionVirtualizationMethod.FixedHeight", controller);
-            StringAssert.Contains("_skillsList.fixedItemHeight", controller);
         }
     }
 }

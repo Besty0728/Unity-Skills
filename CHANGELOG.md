@@ -4,7 +4,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ## [2.8.4] - 2026-09-15
 
-> **面板拖窗卡顿收敛 + 设置抽屉开关修复 + Unity CLI 顾问文档对齐 beta.9 + 多实例连错防护** —— (1) Token 等级「全量」档的自绘轨道把 288 个独立渐变切片改为"平滑顶点色网格 + 半透明方格叠层"两次网格分配，回应 #60 的 Windows 拖窗卡顿反馈，并把设置抽屉里两个错位的自绘开关换成标准 `Toggle`；(2) `unity-cli` 顾问文档从 `1.0.0-beta.5` 对齐到 `1.0.0-beta.9`，修正 beta6+ 下已经错误的"退出码 6 = 测试失败"表述，并把新出现的 `close` / `vcs` / `plugin` 等命令收进 DO NOT 清单。；(3) 多工程同开时的"连错编辑器"防护：每个 HTTP 响应带 `X-Unity-Instance` / `X-Unity-Project` 头，SKILL.md 首次握手要求核对 `projectName`，协议文档新增多实例选端口指引。
+> **面板拖窗卡顿收敛 + 设置抽屉开关修复 + Unity CLI 顾问文档对齐 beta.9 + 多实例连错防护** —— (1) 回应 #60 的 Windows 拖窗卡顿反馈：自绘轨道把 288 个独立渐变切片改为"平滑顶点色网格 + 半透明方格叠层"两次网格分配，并合并报告人的 PR #61——技能列表改为定高 `ListView` 虚拟化、拖窗期间轨道临时降级；另把设置抽屉里两个错位的自绘开关换成标准 `Toggle`；(2) `unity-cli` 顾问文档从 `1.0.0-beta.5` 对齐到 `1.0.0-beta.9`，修正 beta6+ 下已经错误的"退出码 6 = 测试失败"表述，并把新出现的 `close` / `vcs` / `plugin` 等命令收进 DO NOT 清单。；(3) 多工程同开时的"连错编辑器"防护：每个 HTTP 响应带 `X-Unity-Instance` / `X-Unity-Project` 头，SKILL.md 首次握手要求核对 `projectName`，协议文档新增多实例选端口指引。
 
 ### Added
 
@@ -15,7 +15,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 - **设置抽屉两个开关的白色滑块错位** — "接收版本更新提醒"与"记录执行数据"此前不是 `Toggle`，而是从顶栏照搬的自绘 `.server-switch` 容器（两层 `VisualElement` + `ClickEvent` 切换 `.on` 类），放进设置行后滑块跑到轨道右上角、溢出轨道边缘。现改为与"自动同步已安装的 AI 工具"、标签页显示等同类设置项一致的 `ui:Toggle`（`.setting-toggle`），控制器改用 `RegisterValueChangedCallback` 与 `SetValueWithoutNotify` 同步状态，行为不变；已在 6000.3.9f1 实机截图确认滑块居中。
 
-- **Token 等级「全量」档横向拖窗卡顿（#60）** — `TokenLevelSliderWidget` 在 Maximum 档用 Painter2D 逐段填充渐变轨道，此前固定 48×6 = 288 个独立路径，其他档位只画 1 个胶囊；轨道 `flex-grow: 1`，窗口每变宽 1 像素就全量重新细分这 288 段。现改为两次 `MeshGenerationContext.Allocate`：一层 49×7 顶点色网格由 GPU 插值出平滑渐变，一层半透明（alpha 0.6、0.5 px 内缩）的 48×6 平色方格叠在其上保留原有的马赛克质感——拖窗时每帧只有 2 次网格分配，颜色算法与 3.5 秒动画不变。绘制顺序已按 UnityCsReference 核实（2022.3 的 `Painter2D.Fill` 同步走同一 `Allocate`，6000.x 在调用点插入有序 mesh-generation node），网格不会盖住端帽、粒子与拇指；已在 6000.3.9f1 实机截图确认。维护者在 macOS / Windows 均未复现报告的卡顿，此项按代码分析收敛成本。
+- **Token 等级「全量」档横向拖窗卡顿（#60）** — `TokenLevelSliderWidget` 在 Maximum 档用 Painter2D 逐段填充渐变轨道，此前固定 48×6 = 288 个独立路径，其他档位只画 1 个胶囊；轨道 `flex-grow: 1`，窗口每变宽 1 像素就全量重新细分这 288 段。现改为两次 `MeshGenerationContext.Allocate`：一层 49×7 顶点色网格由 GPU 插值出平滑渐变，一层半透明（alpha 0.6、0.5 px 内缩）的 48×6 平色方格叠在其上保留原有的马赛克质感——拖窗时每帧只有 2 次网格分配，颜色算法与 3.5 秒动画不变。绘制顺序已按 UnityCsReference 核实（2022.3 的 `Painter2D.Fill` 同步走同一 `Allocate`，6000.x 在调用点插入有序 mesh-generation node），网格不会盖住端帽、粒子与拇指；已在 6000.3.9f1 实机截图确认。维护者在 macOS / Windows 均未复现报告的卡顿，此项按代码分析收敛成本。**合并 PR #61 后补充**：报告人在受影响机器上确认，仅有上述网格改法时卡顿依旧，PR #61 的两项改动才真正解决：(a) 技能列表此前在 `ScrollView` 内为 Full / Maximum 档全部 805 个技能建实体行（折叠的行只是 `display: none`），现改为 24 px 定高 `ListView`（`FixedHeight` 虚拟化）只物化视口内的行，分类折叠状态仍记在 `EditorPrefs`，拖窗时不再让数百个文本行重新过布局，搜索输入也不再每次按键重建全部行；(b) 轨道在 `GeometryChangedEvent` 连发期间改用按宽度缩放的 4–24 列 × 1 行网格并暂停 60 fps 动画，120 ms 无新几何变化后恢复 48×6 网格并重绘。感谢 [@Yuyuyuxmy](https://github.com/Yuyuyuxmy)（#61）。
 
 - **AI 工具自动同步不再让落后工程回写共享副本（`SkillInstallSyncService`）** — 全局作用域的副本（`~/.claude/skills/unity-skills` 等）被本机所有工程共享，此前版本门只看本工程 `Library/UnitySkills/install_sync.json` 的记录，仍在旧版本包上的工程一打开就会把另一工程已刷到新版本的副本覆盖回旧版本。现在安装时向 `scripts/agent_config.json` 写入 `version` 印记（旧副本回退解析 `scripts/unity_skills.py` 的 `__version__`），自动同步逐目标比较：副本 ≥ 本工程包版本即跳过（同版本免重拷、更新则不降级），仅副本更旧或版本不明时才刷新；副本更新而被跳过时 Console 打一行 Info 说明（三语跟随面板语言）。面板的 Update 按钮与自定义路径 Install 走同一规则：副本已是本版本或更新时弹提示并跳过（强制重装先卸载再安装），首次安装不受影响。新增 `SkillInstaller.CompareInstalledVersion` / `ReadInstalledVersion`、`ShouldRefreshTarget` 与 11 条用例，本地化新增 `dialog_info` / `agent_install_already_current` / `agent_install_newer_kept`（三语，字形已核图集）。
 
