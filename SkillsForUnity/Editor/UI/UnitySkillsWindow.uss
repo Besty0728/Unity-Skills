@@ -792,6 +792,21 @@
     background-color: var(--color-panel);
 }
 
+/* The full surface can contain hundreds of skills. SkillsTabController uses a fixed-height
+ * ListView so only rows inside the viewport participate in layout while the window is resized. */
+.skills-list-view {
+    min-height: 0;
+    background-color: var(--color-panel);
+}
+
+.skills-list-item {
+    height: 24px;
+    min-height: 24px;
+    max-height: 24px;
+    flex-grow: 1;
+    flex-shrink: 0;
+}
+
 .skills-detail-pane {
     flex-grow: 1;
     background-color: var(--color-panel);
@@ -854,6 +869,9 @@
 }
 
 .category-header {
+    height: 24px;
+    min-height: 24px;
+    max-height: 24px;
     padding: 4px 8px;
     background-color: var(--color-panel);
     border-bottom-width: 1px;
@@ -883,6 +901,9 @@
 }
 
 .skill-row {
+    height: 24px;
+    min-height: 24px;
+    max-height: 24px;
     padding: 5px 8px 5px 26px;
     font-size: 11px;
     color: var(--color-text);
