@@ -95,6 +95,7 @@ namespace UnitySkills
         // above, both are whole-payload singletons rather than query-keyed entries, so the HTTP thread's fast path can return them directly without consulting _filteredOutputCache.
         private static volatile string _cachedBrief;
         private static volatile string _cachedMeta;
+        private static volatile string _cachedMetaV2;   // ?wire=v2: same constants minus workflowTrackedSkills (flags already carry it)
         private static Dictionary<string, List<SkillInfo>> _outputIndex;
 
         // Cache of filtered (scoped) schema/manifest output, keyed by the canonical form of the
@@ -375,6 +376,7 @@ namespace UnitySkills
 
         private static readonly Dictionary<string, SkillOperation> _operationKeywords = new Dictionary<string, SkillOperation>(StringComparer.OrdinalIgnoreCase)
         {
+            {"duplicate", SkillOperation.Create}, {"copy", SkillOperation.Create}, {"clone", SkillOperation.Create},
             {"create", SkillOperation.Create}, {"创建", SkillOperation.Create}, {"新建", SkillOperation.Create},
             {"add", SkillOperation.Create}, {"添加", SkillOperation.Create},
             {"delete", SkillOperation.Delete}, {"删除", SkillOperation.Delete}, {"remove", SkillOperation.Delete}, {"移除", SkillOperation.Delete},
@@ -434,11 +436,109 @@ namespace UnitySkills
                 if (map.TryGetValue(kw, out var val)) results.Add(val);
                 foreach (var entry in map)
                 {
-                    if (entry.Key.Length >= 2 && kw.IndexOf(entry.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (TokenMatchesKey(kw, entry.Key))
                         results.Add(entry.Value);
                 }
             }
             return results;
+        }
+
+        // Words that carry no routing information; they never earn name/tag/description credit. Operation verbs are not
+        // listed here -- they still count as whole-token name matches (gameobject_duplicate for "duplicate") and drive the
+        // operation bonus, but no longer as substrings of unrelated names or descriptions (ui_set_rect used to win "set box
+        // collider center and size" on `name:set`).
+        private static readonly HashSet<string> _intentStopwords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "a", "an", "the", "and", "or", "to", "of", "on", "in", "with", "for", "its", "it", "is", "be", "by", "from", "into",
+            "at", "as", "that", "this", "my", "me", "then", "please", "value", "values", "new", "using", "use", "via", "under",
+            "onto", "all", "one", "some", "any", "existing", "current", "given", "specific",
+            "的", "了", "把", "给", "并", "和", "与", "将", "请", "一个", "一下",
+        };
+
+        // Unity component / concept words -> the modules that own them. A hit adds the category bonus to those modules and, when
+        // the intent has no explicit module word of its own (see GetRecommendations), unlocks the generic component_* rule so that
+        // "set box collider center" finds component_set_property although neither "box" nor "collider" appears in its name.
+        private static readonly Dictionary<string, SkillCategory[]> _componentTypeHints = new Dictionary<string, SkillCategory[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            {"collider", new[]{SkillCategory.Component, SkillCategory.Physics}},
+            {"boxcollider", new[]{SkillCategory.Component, SkillCategory.Physics}},
+            {"spherecollider", new[]{SkillCategory.Component, SkillCategory.Physics}},
+            {"capsulecollider", new[]{SkillCategory.Component, SkillCategory.Physics}},
+            {"meshcollider", new[]{SkillCategory.Component, SkillCategory.Physics}},
+            {"rigidbody", new[]{SkillCategory.Component, SkillCategory.Physics}},
+            {"joint", new[]{SkillCategory.Component, SkillCategory.Physics}},
+            {"renderer", new[]{SkillCategory.Component, SkillCategory.Material}},
+            {"meshrenderer", new[]{SkillCategory.Component, SkillCategory.Material}},
+            {"meshfilter", new[]{SkillCategory.Component}},
+            {"skinnedmeshrenderer", new[]{SkillCategory.Component}},
+            {"audiosource", new[]{SkillCategory.Component, SkillCategory.Audio}},
+            {"light", new[]{SkillCategory.Light, SkillCategory.Component}},
+            {"camera", new[]{SkillCategory.Camera, SkillCategory.Component}},
+            {"animator", new[]{SkillCategory.Animator, SkillCategory.Component}},
+            {"transform", new[]{SkillCategory.GameObject}},
+            {"position", new[]{SkillCategory.GameObject}},
+            {"rotation", new[]{SkillCategory.GameObject}},
+            {"scale", new[]{SkillCategory.GameObject}},
+            {"field", new[]{SkillCategory.Component}},
+            {"property", new[]{SkillCategory.Component}},
+            {"properties", new[]{SkillCategory.Component}},
+        };
+
+        // Categories that name a whole module in _categoryKeywords; when the intent names one of these explicitly, the generic
+        // component_* rule stays off (an intent that says "script" or "light" has already chosen its module).
+        private static readonly HashSet<SkillCategory> _genericRuleSuppressors = new HashSet<SkillCategory>
+        {
+            SkillCategory.Script, SkillCategory.Light, SkillCategory.Camera, SkillCategory.Material, SkillCategory.Animator,
+            SkillCategory.Audio, SkillCategory.Scene, SkillCategory.Prefab, SkillCategory.Asset, SkillCategory.UI,
+            SkillCategory.UIToolkit, SkillCategory.Package, SkillCategory.Test, SkillCategory.Shader, SkillCategory.Texture,
+        };
+
+        private static readonly string[] _genericModifySkills = { "component_set_property", "component_set_property_batch", "component_set_serialized_property" };
+        private static readonly string[] _genericQuerySkills = { "component_get_properties", "component_list", "component_get_serialized_properties" };
+        private static readonly string[] _genericCreateSkills = { "component_add", "component_add_batch" };
+        private static readonly string[] _scriptEditSkills = { "script_append", "script_replace", "script_find_in_file" };
+        private static readonly HashSet<string> _scriptContentWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "field", "fields", "method", "methods", "function", "variable", "line", "lines", "code", "using", "property", "member", "attribute"
+        };
+
+        private static bool IsAscii(string s)
+        {
+            foreach (var c in s)
+                if (c > 127) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Whole-word match for ASCII table keys (plus a prefix/suffix allowance for keys of 4+ letters, so "boxcollider" and
+        /// "colliders" still reach "collider"); substring match for non-ASCII keys, because Chinese intents arrive as one token
+        /// ("设置物体位置" must still hit "设置", "物体", "位置").
+        /// </summary>
+        private static bool TokenMatchesKey(string token, string key)
+        {
+            if (token.Equals(key, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!IsAscii(key))
+                return key.Length >= 2 && token.IndexOf(key, StringComparison.OrdinalIgnoreCase) >= 0;
+            return key.Length >= 4 &&
+                   (token.StartsWith(key, StringComparison.OrdinalIgnoreCase) || token.EndsWith(key, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static HashSet<SkillCategory> ExtractComponentTypeHints(string[] rawKeywords, List<string> hintWords)
+        {
+            var cats = new HashSet<SkillCategory>();
+            foreach (var kw in rawKeywords)
+            {
+                foreach (var entry in _componentTypeHints)
+                {
+                    if (TokenMatchesKey(kw, entry.Key))
+                    {
+                        hintWords.Add(entry.Key);
+                        foreach (var c in entry.Value) cats.Add(c);
+                    }
+                }
+            }
+            return cats;
         }
 
         private static string[] ExpandIntent(string[] keywords)
@@ -620,6 +720,7 @@ namespace UnitySkills
                 _cachedSchema = null;
                 _cachedBrief = null;
                 _cachedMeta = null;
+                _cachedMetaV2 = null;
                 _filteredOutputCache.Clear();
                 _etagCache.Clear();
             }
@@ -688,9 +789,37 @@ namespace UnitySkills
         /// the cache and its ETag are both dropped on a switch, and <c>metaHint</c> says as much.
         /// Removing the filtering to restore literal constancy would mean sending out names the user chose to hide.
         /// </summary>
-        public static string GetMeta()
+        public static string GetMeta() => GetMeta(WireV1);
+
+        /// <summary>
+        /// <c>?wire=v2</c> drops <c>workflowTrackedSkills</c> (roughly 10 KB of names): every v2 skill entry already carries the
+        /// <c>tracksWorkflow</c> flag, so the list is redundant for a v2 caller. The v1 body is byte-for-byte unchanged.
+        /// </summary>
+        public static string GetMeta(int wire)
         {
             Initialize();
+            if (wire == WireV2)
+            {
+                var cachedV2 = _cachedMetaV2;
+                if (cachedV2 != null) return cachedV2;
+                lock (_initLock)
+                {
+                    if (_cachedMetaV2 != null) return _cachedMetaV2;
+                    _cachedMetaV2 = JsonConvert.SerializeObject(new
+                    {
+                        manifestType = "meta",
+                        schemaVersion = SkillSchemaVersion,
+                        wire = "v2",
+                        version = SkillsLogger.Version,
+                        defaults = BuildWireDefaults(),
+                        categories = Enum.GetNames(typeof(SkillCategory)).Where(c => c != "Uncategorized").ToArray(),
+                        operationTypes = Enum.GetNames(typeof(SkillOperation)),
+                        reservedBodyParameters = _reservedBodyParameters.OrderBy(x => x).ToArray(),
+                        metaHint = "SESSION CONSTANTS — fetch once, reuse for the whole session. wire=v2 omits workflowTrackedSkills; read each skill's flags instead."
+                    }, _jsonSettingsV2);
+                    return _cachedMetaV2;
+                }
+            }
             var cached = _cachedMeta;
             if (cached != null) return cached;
 
@@ -1189,7 +1318,14 @@ namespace UnitySkills
             }
         }
 
-        public static string DryRun(string name, string json)
+        public static string DryRun(string name, string json) => DryRun(name, json, WireV1);
+
+        /// <summary>
+        /// <c>?wire=v2</c> keeps every verdict field (valid / validation / impact / authorization / steps / changes) and slims the two echo
+        /// blocks: <c>skill</c> becomes name, category, operation, mode, riskLevel, longRunning and a flags array; <c>parameters</c> lists only
+        /// what the caller sent plus required parameters still missing. The v1 body is byte-for-byte unchanged.
+        /// </summary>
+        public static string DryRun(string name, string json, int wire)
         {
             Initialize();
             if (!_skills.TryGetValue(name, out var skill))
@@ -1199,6 +1335,61 @@ namespace UnitySkills
             {
                 var validation = ValidateParameters(skill, json);
                 var planData = SkillPlanningService.BuildPlanData(skill, validation);
+                if (wire == WireV2)
+                {
+                    var flags = new List<string>();
+                    if (skill.ReadOnly) flags.Add("readOnly");
+                    if (skill.TracksWorkflow) flags.Add("tracksWorkflow");
+                    if (skill.MutatesScene) flags.Add("mutatesScene");
+                    if (skill.MutatesAssets) flags.Add("mutatesAssets");
+                    if (skill.MayTriggerReload) flags.Add("mayTriggerReload");
+                    if (skill.MayEnterPlayMode) flags.Add("mayEnterPlayMode");
+                    if (skill.LongRunning) flags.Add("longRunning");
+                    var compactParameters = validation.ParameterDetails
+                        .Select(p => JObject.FromObject(p))
+                        .Where(p => p.Value<bool?>("provided") == true || (p.Value<bool?>("required") == true && p.Value<bool?>("provided") != true))
+                        .ToArray();
+                    return JsonConvert.SerializeObject(new
+                    {
+                        status = "dryRun",
+                        wire = "v2",
+                        valid = validation.Valid,
+                        skill = new
+                        {
+                            name = skill.Name,
+                            category = skill.Category != SkillCategory.Uncategorized ? skill.Category.ToString() : null,
+                            operation = FormatOperation(skill.Operation),
+                            mode = SkillsModeManager.SkillModeToWire(skill.Mode),
+                            riskLevel = skill.RiskLevel,
+                            longRunning = skill.LongRunning,
+                            flags = flags.ToArray()
+                        },
+                        parameters = compactParameters,
+                        validation = new
+                        {
+                            missingParams = validation.MissingParams.Count > 0 ? validation.MissingParams.ToArray() : null,
+                            unknownParams = validation.UnknownParams.Count > 0 ? validation.UnknownParams.ToArray() : null,
+                            typeErrors = validation.TypeErrors.Count > 0 ? validation.TypeErrors.ToArray() : null,
+                            semanticErrors = validation.SemanticErrors.Count > 0 ? validation.SemanticErrors.ToArray() : null,
+                            warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
+                        },
+                        impact = new
+                        {
+                            readOnly = skill.ReadOnly,
+                            tracksWorkflow = skill.TracksWorkflow,
+                            operation = FormatOperation(skill.Operation),
+                            mutatesScene = skill.MutatesScene,
+                            mutatesAssets = skill.MutatesAssets,
+                            mayTriggerReload = skill.MayTriggerReload,
+                            mayEnterPlayMode = skill.MayEnterPlayMode,
+                            riskLevel = skill.RiskLevel
+                        },
+                        authorization = BuildAuthorizationPreview(skill),
+                        steps = planData?["steps"],
+                        changes = planData?["changes"],
+                        note = "No execution performed"
+                    }, _jsonSettings);
+                }
                 return JsonConvert.SerializeObject(new
                 {
                     status = "dryRun",
@@ -1722,10 +1913,41 @@ namespace UnitySkills
         // Adding a new key here must also add it to _blankRejectingFilterKeys, or "?newKey=" silently becomes a no-op again.
         private static readonly HashSet<string> _recognizedFilterKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "category", "operation", "tags", "readonly", "q", "summary", "includeSchema", "brief",
+            "category", "operation", "tags", "readonly", "q", "names", "summary", "includeSchema", "brief",
             // Surface/wire-format selectors -- listed here so they aren't stripped, but they never narrow the skill set (see _surfaceSelectionKeys).
             "wire", "full"
         };
+
+        // Keys a caller writes when it means "this skill" but guessed the parameter name. Silently stripping these used to hand back the
+        // unfiltered ~700KB schema; they are rejected with UNKNOWN_PARAM instead and pointed at names= / q=. Any other unrecognized key
+        // (cache-busting nonces, client telemetry) is still stripped silently -- see StripUnrecognizedFilterKeys.
+        private static readonly HashSet<string> _skillSelectorLikeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "skill", "skills", "name", "skillname", "skill_name", "id", "ids"
+        };
+
+        private static string FindSkillSelectorLikeKey(Dictionary<string, string> rawFilters)
+        {
+            foreach (var key in rawFilters.Keys)
+                if (_skillSelectorLikeKeys.Contains(key) && !_recognizedFilterKeys.Contains(key))
+                    return key;
+            return null;
+        }
+
+        private static string BuildSkillSelectorKeyError(string key, string value)
+        {
+            return SkillErrorResponse.Build(
+                SkillErrorCode.UnknownParam,
+                $"Unknown query parameter '{key}'. To fetch specific skills use names=<exact_name,...>; to search use q=<fragment>.",
+                details: new
+                {
+                    parameter = key,
+                    value,
+                    validKeys = _recognizedFilterKeys.OrderBy(k => k, StringComparer.Ordinal).ToArray(),
+                    example = $"/skills/schema?names={value}&wire=v2"
+                },
+                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+        }
 
         // These recognized keys select the payload's *shape*, not a subset of skills. They must never be echoed back as "filters,"
         // nor set "filtered" to true: a bare ?wire=v2 is still the complete, unfiltered manifest,
@@ -1779,6 +2001,8 @@ namespace UnitySkills
         private const int WireV1 = 1;
         private const int WireV2 = 2;
 
+        internal static int ResolveWireVersion(string queryString) => ResolveWireVersion(ParseQueryString(queryString ?? string.Empty));
+
         private static int ResolveWireVersion(Dictionary<string, string> filters)
         {
             if (filters.TryGetValue("wire", out var raw) && raw != null)
@@ -1829,7 +2053,7 @@ namespace UnitySkills
             if (manifestType == "meta")
             {
                 surface = GetSurface.Meta;
-                return MetaCacheKey;
+                return ResolveWireVersion(filters) == WireV2 ? MetaCacheKey + "|wire=v2" : MetaCacheKey;
             }
 
             bool hasNarrowingFilter = StripSurfaceSelectionKeys(filters).Count > 0;
@@ -1967,7 +2191,7 @@ namespace UnitySkills
         // the error body, like any other cached response, must be byte-stable for the same query. Keep in sync with _recognizedFilterKeys.
         private static readonly string[] _blankRejectingFilterKeys =
         {
-            "category", "operation", "tags", "readonly", "q", "summary", "includeSchema", "brief",
+            "category", "operation", "tags", "readonly", "q", "names", "summary", "includeSchema", "brief",
             "wire", "full"
         };
 
@@ -1975,7 +2199,14 @@ namespace UnitySkills
         {
             Initialize();
             isError = false;
-            var filters = StripUnrecognizedFilterKeys(ParseQueryString(queryString));
+            var rawFilters = ParseQueryString(queryString);
+            var selectorKey = FindSkillSelectorLikeKey(rawFilters);
+            if (selectorKey != null)
+            {
+                isError = true;
+                return BuildSkillSelectorKeyError(selectorKey, rawFilters[selectorKey]);
+            }
+            var filters = StripUnrecognizedFilterKeys(rawFilters);
 
             // Placed before ResolveGetSurface, so an unknown value can never become a cache key; also placed before the brief/meta branches,
             // otherwise a query that should be rejected would get a perfectly legitimate catalog. The HTTP fast path asks
@@ -1993,7 +2224,7 @@ namespace UnitySkills
             switch (surface)
             {
                 case GetSurface.Meta:
-                    return GetMeta();
+                    return GetMeta(ResolveWireVersion(filters));
                 // ?brief=1 (or ?brief=true), and now bare GET /skills too -> the catalog layer: skill names grouped by
                 // category, without descriptions or parameter schemas (roughly 19KB, versus roughly 139KB for summary / roughly 618KB for full).
                 // Takes priority over summary/category and other filters (which are ignored), to keep the semantics minimal:
@@ -2032,6 +2263,15 @@ namespace UnitySkills
                     s.NameLower.Contains(kw) ||
                     s.DescriptionLower.Contains(kw) ||
                     (s.TagsLower != null && s.TagsLower.Any(t => t.Contains(kw)))));
+            }
+
+            // ?names=a,b -- exact skill names, the cheapest way to fetch a known signature (no sibling entries, unlike q=).
+            if (filters.TryGetValue("names", out var namesValue))
+            {
+                var wanted = new HashSet<string>(
+                    namesValue.Split(',').Select(n => n.Trim()).Where(n => n.Length > 0),
+                    StringComparer.OrdinalIgnoreCase);
+                filtered = filtered.Where(s => wanted.Contains(s.Name));
             }
 
             var results = filtered.ToList();
@@ -2469,14 +2709,27 @@ namespace UnitySkills
                     retryStrategy: SkillErrorResponse.RetryFixAndRetry);
             }
 
-            var rawKeywords = intent.ToLowerInvariant().Split(new[] { ' ', '+', '_' }, StringSplitOptions.RemoveEmptyEntries);
+            var rawKeywords = intent.ToLowerInvariant().Split(new[] { ' ', '+', '_', ',' }, StringSplitOptions.RemoveEmptyEntries);
             var keywords = ExpandIntent(rawKeywords);
+            var rawSet = new HashSet<string>(rawKeywords, StringComparer.OrdinalIgnoreCase);
+            // Text-scoring vocabulary: no stopwords; operation verbs only as whole name tokens (handled inline below).
+            var textKeywords = keywords.Where(k => !_intentStopwords.Contains(k)).ToArray();
             var healthBySkill = SkillTelemetryService.GetRecommendationHealth();
             var scored = new List<(SkillInfo skill, int score, int semanticScore, List<string> matchedOn, SkillTelemetryService.RecommendationHealth health)>();
 
             // Precomputes operation and category matches (supports Chinese substrings)
             var matchedOps = ExtractOperations(rawKeywords);
-            var matchedCats = ExtractCategories(rawKeywords);
+            var explicitCats = ExtractCategories(rawKeywords);
+            var matchedCats = new HashSet<SkillCategory>(explicitCats);
+            var hintWords = new List<string>();
+            var hintedCats = ExtractComponentTypeHints(rawKeywords, hintWords);
+            matchedCats.UnionWith(hintedCats);
+            // Generic component_* rule: the intent talks about a component type but names no other module.
+            bool genericRule = hintedCats.Contains(SkillCategory.Component) && !explicitCats.Any(_genericRuleSuppressors.Contains);
+            // No verb at all ("box collider center size"): the caller wants component property access either way.
+            bool genericAnyOp = genericRule && matchedOps.Count == 0;
+            // "add public field to script": an explicit script intent about something *inside* a file is an edit, not a new file.
+            bool scriptEditRule = explicitCats.Contains(SkillCategory.Script) && rawKeywords.Any(_scriptContentWords.Contains);
 
             // Input for intent alignment (see ApplyIntentAlignment). Drawn from the raw intent words rather than the synonym-expanded set:
             // expansion exists to loosen keyword matching, and letting it decide "does the caller want to observe or to change"
@@ -2497,23 +2750,57 @@ namespace UnitySkills
                 var nameLower = s.NameLower;
                 var descLower = s.DescriptionLower;
 
-                foreach (var kw in keywords)
+                var nameTokens = nameLower.Split('_');
+                foreach (var kw in textKeywords)
                 {
-                    if (nameLower.Contains(kw))
+                    bool raw = rawSet.Contains(kw);          // synonym expansions earn less than the caller's own words
+                    bool opVerb = _operationKeywords.ContainsKey(kw);
+                    bool wholeToken = Array.IndexOf(nameTokens, kw) >= 0;
+                    if (wholeToken)
                     {
-                        score += 3;
+                        score += raw ? 3 : 1;
                         matchedOn.Add($"name:{kw}");
                     }
-                    if (s.TagsLower != null && s.TagsLower.Any(t => t.Contains(kw)))
+                    else if (!opVerb && nameLower.Contains(kw))
                     {
-                        score += 2;
+                        score += 1;
+                        matchedOn.Add($"name~{kw}");
+                    }
+                    if (opVerb)
+                        continue;                            // verbs never earn tag/description credit
+                    if (s.TagsLower != null && s.TagsLower.Any(t => t.Equals(kw, StringComparison.Ordinal)))
+                    {
+                        score += raw ? 2 : 1;
                         matchedOn.Add($"tag:{kw}");
                     }
-                    if (descLower.Contains(kw))
+                    if (kw.Length >= 4 && descLower.Contains(kw))
                     {
                         score += 1;
                         matchedOn.Add($"desc:{kw}");
                     }
+                }
+
+                if (genericRule && s.Category == SkillCategory.Component)
+                {
+                    if ((genericAnyOp || matchedOps.Contains(SkillOperation.Modify)) && Array.IndexOf(_genericModifySkills, s.Name) >= 0 ||
+                        (genericAnyOp || matchedOps.Contains(SkillOperation.Query)) && Array.IndexOf(_genericQuerySkills, s.Name) >= 0 ||
+                        matchedOps.Contains(SkillOperation.Create) && Array.IndexOf(_genericCreateSkills, s.Name) >= 0)
+                    {
+                        score += 4;
+                        matchedOn.Add("generic:component");
+                    }
+                }
+                if (scriptEditRule && Array.IndexOf(_scriptEditSkills, s.Name) >= 0)
+                {
+                    score += 4;
+                    matchedOn.Add("generic:script_edit");
+                }
+                if (hintWords.Count > 0 && hintedCats.Contains(s.Category) && s.Category != SkillCategory.Component &&
+                    s.Operation != 0 && matchedOps.Any(op => s.Operation.HasFlag(op)))
+                {
+                    // A dedicated module for the hinted type (light_*, camera_*, animator_*) with the requested operation.
+                    score += 2;
+                    matchedOn.Add($"hint:{hintWords[0]}");
                 }
 
                 // category bonus
@@ -2700,8 +2987,10 @@ namespace UnitySkills
 
             if (!sampleIntent && skill.Category == SkillCategory.Sample)
             {
-                delta -= 3;
-                matchedOn.Add("demoted:sample-3");
+                // Halve rather than subtract a constant: whole-token name credit (create_cube for "create cube") lifts demo skills
+                // above the real module, and a fixed -3 no longer clears that gap. A sample-word intent still reaches them untouched.
+                delta -= (score + 1) / 2;
+                matchedOn.Add("demoted:sample-half");
             }
 
             if (HasUninstalledPackage(skill, packageCache))
@@ -4066,7 +4355,10 @@ namespace UnitySkills
             if (manifestType == null)
                 return false;
 
-            var filters = StripUnrecognizedFilterKeys(ParseQueryString(query));
+            var rawFilters = ParseQueryString(query);
+            if (FindSkillSelectorLikeKey(rawFilters) != null)
+                return false;
+            var filters = StripUnrecognizedFilterKeys(rawFilters);
 
             // Same determination as the main thread (FindInvalidNarrowingFilterKey, pure string comparison, no Unity API touched):
             // an invalid ?category=/?operation= value always falls back to the slow path to mint the error body. Without this step, the Brief/Meta
@@ -4082,7 +4374,7 @@ namespace UnitySkills
             switch (surface)
             {
                 case GetSurface.Meta:
-                    json = _cachedMeta;
+                    json = ResolveWireVersion(filters) == WireV2 ? _cachedMetaV2 : _cachedMeta;
                     break;
                 case GetSurface.Brief:
                     json = _cachedBrief;

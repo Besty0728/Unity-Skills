@@ -19,36 +19,36 @@ Before the first skill call in a session:
 
 1. **`GET /health`** — discover the server (ports `8090`–`8100`); read `currentMode` (`"approval"` / `"auto"` / `"bypass"`), `panelApprovalRequired`, `pendingCount`, and `surfaceProfile` (`full` / `guide` / `noSceneAuthoring`). `surfaceProfileHint` is text only when the profile is not `full`, else null. **Confirm `projectName` is the project you are editing** — ports are first-come across open Editors; on a mismatch pin `--port` → [operating mode](references/protocol-operating-mode.md).
 2. **Branch on `currentMode`**: under `approval` the first write to any `FullAuto` skill returns `MODE_RESTRICTED` and needs a grant; under `auto`/`bypass` writes execute directly (self-assess risk under `auto`). Grants are single-shot; the permanent form is the user-managed Allowlist. Gates, grant protocol and mode table → [operating mode](references/protocol-operating-mode.md).
-3. **`GET /skills/meta`** — once per session: the constants shared by every skill (`categories`, `operationTypes`, `reservedBodyParameters`, `workflowTrackedSkills`, `schemaVersion`, `defaults`). Read them here, not from each manifest, then start discovery.
+3. **`GET /skills/meta?wire=v2`** — once per session: the constants shared by every skill (`categories`, `operationTypes`, `reservedBodyParameters`, `schemaVersion`, `defaults`). Read them here, not from each manifest, then start discovery.
 
 ## Schema: pick the cheapest layer
 
-Server-cached (ETag/304), off the main thread; send `Accept-Encoding: gzip`.
+Server-cached (ETag/304); send `Accept-Encoding: gzip`.
 
 | Layer | Endpoint | Size | Use when |
 |---|---|---|---|
 | **Default: start here** | `GET /skills/recommend?intent=...&includeSchema=true` | 4–14 KB | One intent; scored candidates + schemas. `topN` caps how many (default 10), `wire=v2` about halves it. |
 | directory + category | `GET /skills` then `GET /skills/schema?category=<Category>` | ~19 KB + 13–44 KB | Touches one or two areas. |
 | summary | `GET /skills?summary=1` | ~143 KB | Exploratory / cross-module, or cheaper layers left you unsure. |
-| full schema | `GET /skills/schema` | ~618 KB | Rare; many modules' signatures at once. |
+| full schema | `GET /skills/schema` | ~618 KB | Rare; many modules at once. |
 
-Bare `GET /skills` is the **brief directory** — names by category only; the full listing needs `?full=1`.
+Bare `GET /skills` = names by category only (`?full=1` = full listing). Name known? `GET /skills/schema?names=a,b&wire=v2` gives just those (1–3 KB).
 
 Schema has exact signatures; the module doc has guardrails, return shapes and traps schema omits. Read both on an unfamiliar module.
 
 ## Wire format v2 (`?wire=v2`)
 
-`?wire=v2` slims per-skill entries on `?full=1`, `/skills/schema` (full or scoped), a filtered `/skills`, and recommend — never bare `GET /skills`. v1 is default:
+`?wire=v2` slims `?full=1`, `/skills/schema` (full or scoped), a filtered `/skills`, recommend, `/skills/meta` and dryRun — never bare `GET /skills`. v1 is default:
 
-- A **`flags`** array replaces v1's six booleans and adds v2-only `longRunning`: `readOnly`, `tracksWorkflow`, `mutatesScene`, `mutatesAssets`, `mayTriggerReload`, `mayEnterPlayMode`, `longRunning`. An absent flag is false.
+- A **`flags`** array replaces v1's six booleans and adds v2-only `longRunning`: `readOnly`, `tracksWorkflow`, `mutatesScene`, `mutatesAssets`, `mayTriggerReload`, `mayEnterPlayMode`, `longRunning`; absent = false.
 - **Omitted means default**: `riskLevel` appears only when not `"low"`, `supportsDryRun` only when `false`, null members are dropped — an absent key is never null.
-- Every v2 response carries a **`defaults`** block — take the rule from the payload, don't memorize it.
+- Every v2 response carries a **`defaults`** block — take the rule from the payload.
 
 ## Execute: batch, dryRun gate, anti-hallucination rules
 
 **`POST /skills/batch`** — up to 50 steps per call (`{"steps":[{"skill","args"}],"continueOnError":false}`; `?mode=dryRun` validates every step): the largest round-trip saving → [batch](skills/batch/SKILL.md).
 
-Before executing any skill whose exact parameters you don't already hold, dryRun it: `POST /skill/<name>?mode=dryRun`. Iterate until `valid: true`, then execute without `?mode=dryRun`. `valid: true` means the four `validation` error buckets are empty — `warnings` never block, and target existence is never checked. The top-level `authorization` (`{allowed, blockedBy, currentMode, allowlisted, hint}`, plus `surfaceProfile` on a `SURFACE_EXCLUDED` block) previews interception: `blockedBy` is `MODE_RESTRICTED`, `MODE_FORBIDDEN`, `SURFACE_EXCLUDED`, or null when the call would run — settle grants and exclusions there.
+Before executing any skill whose exact parameters you don't already hold, dryRun it: `POST /skill/<name>?mode=dryRun&wire=v2`. Iterate until `valid: true`, then execute without `?mode=dryRun`. `valid: true` means the four `validation` error buckets are empty — `warnings` never block, and target existence is never checked. The top-level `authorization` (`{allowed, blockedBy, currentMode, allowlisted, hint}`, plus `surfaceProfile` on a `SURFACE_EXCLUDED` block) previews interception: `blockedBy` is `MODE_RESTRICTED`, `MODE_FORBIDDEN`, `SURFACE_EXCLUDED`, or null when the call would run — settle grants and exclusions there.
 
 After a write, verify in the Editor, not from the echo: `*_get_info` / `*_get_properties` or `find_objects_by_name`.
 

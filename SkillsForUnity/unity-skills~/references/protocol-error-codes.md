@@ -31,6 +31,14 @@ Every error response carries a top-level `errorCode` (plus `retryStrategy` / `re
 
 > **Two response shapes carry this code.** A name-hidden or category-hidden skill's rejection nests `manualDoc`/`hint` under `details`, like any other skill error. A *carried-write* rejection — `batch_execute` / `batch_retry_failed` acting on a `confirmToken`'s payload, or `workflow_undo_task` / `workflow_redo_task` / `workflow_revert_task` / `workflow_session_undo` restoring a snapshot — instead puts `surfaceProfile` / `category` / `operation` / `manualDoc` / `userControlled` / `hint` at the response's **top level**, because the router's skill-error pass-through forwards a skill's unrecognised members verbatim but drops a skill-authored `details` object; nesting them there would silently lose them.
 
+## Request errors (4xx)
+
+The request itself was malformed, so nothing was routed to a skill. The body still carries `errorCode`, `retryStrategy` and a `details` object that names the offending part.
+
+| `errorCode` | HTTP | Meaning | Action |
+|---|---|---|---|
+| `UNKNOWN_PARAM` | 400 | A `GET /skills` or `GET /skills/schema` query used a skill-selector-like key that the filter grammar does not have — `skill`, `skills`, `name`, `skillname`, `skill_name`, `id`, `ids` (`details.parameter` / `details.value`). Any other unrecognised key is still ignored silently, so this is the one case where a typo does not fall back to the unfiltered listing | Use `names=<exact,comma,list>` for specific skills or `q=<fragment>` to search; `details.validKeys` lists every accepted filter key and `details.example` is a ready-to-send URL. `retryStrategy` is `fix_and_retry` |
+
 ## Business errors
 
 A skill ran but refused the request. All of these come back as HTTP `200` with `status:"error"` in the body, and carry `retryStrategy` plus `suggestedFixes`/`relatedSkills` naming the skill to call next. None is auto-retried by the Python client: they need a corrected call, not a wait.

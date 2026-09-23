@@ -2347,7 +2347,7 @@ namespace UnitySkills
             if (string.Equals(path, "/skills/meta", StringComparison.OrdinalIgnoreCase) && job.HttpMethod == "GET")
             {
                 job.StatusCode = 200;
-                job.ResponseJson = SkillRouter.GetMeta();
+                job.ResponseJson = SkillRouter.GetMeta(SkillRouter.ResolveWireVersion(job.QueryString));
                 ApplyCacheableGetHeaders(job, path);
                 return;
             }
@@ -2425,7 +2425,7 @@ namespace UnitySkills
                     switch (mode)
                     {
                         case SkillRouter.RequestMode.DryRun:
-                            job.ResponseJson = SkillRouter.DryRun(skillName, job.Body);
+                            job.ResponseJson = SkillRouter.DryRun(skillName, job.Body, SkillRouter.ResolveWireVersion(job.QueryString));
                             break;
                         case SkillRouter.RequestMode.Plan:
                             job.ResponseJson = SkillRouter.Plan(skillName, job.Body);
