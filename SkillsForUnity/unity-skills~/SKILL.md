@@ -18,48 +18,50 @@ compatibility: Requires Unity Editor 2022.3+/6000.x with the UnitySkills package
 
 Ports `8090`–`8100` go first come, first served: add `?expectProject=<project>` (productName or folder name) or the exact `?expectInstance=<instanceId>` to every write. A different Editor answers 409 `INSTANCE_MISMATCH` and runs nothing.
 
-`GET /health` (exempt from the check) has `currentMode`, `surfaceProfile`, `instanceId`: read it when the mode or profile matters, or after a refused write. `bypass` and `auto` run writes directly, but under `auto` confirm ≥5-object batches, prefab apply, scene-level, asset-overwriting or irreversible changes with the user first; `approval` gates `FullAuto` writes behind single-shot grants (permanent: the user's Allowlist).
+`GET /health` (exempt from the check) has `currentMode`, `surfaceProfile`, `dryRunPolicy`, `instanceId`: probe it once, in the same shell command as your first call, then only after a refused write, 409, 503/refused connection or surprising mode. `bypass` and `auto` run writes directly, but under `auto` confirm ≥5-object batches, prefab apply, scene-level, asset-overwriting or irreversible changes with the user first; `approval` gates `FullAuto` writes behind single-shot grants (permanent: the user's Allowlist).
 
-During a domain reload (script, package or define change) the port answers 503 or refuses for seconds while its `~/.unity_skills/registry.json` entry reads `reloading`: retry the same port, never another instance.
+During a domain reload the port answers 503 or refuses for seconds while its `~/.unity_skills/registry.json` entry reads `reloading`: retry the same port, never another instance.
 
 ## Quick reference
 
 Every skill is `POST /skill/<name>` with JSON args:
 `curl -s -X POST "http://localhost:<port>/skill/gameobject_set_transform?expectProject=<project>" -d '{"name":"Crate","posX":4,"posY":1.5,"posZ":-2}'`
 
-Exact shapes: execute directly; dryRun first only where marked. Target objects by `name` or by the exact `path`/`instanceId` (likewise `parentPath`, `childPath`).
+Target objects by `name` or the exact `path`/`instanceId` (likewise `parentPath`, `childPath`).
 
-| Edit | Call |
-|---|---|
-| Create | `gameobject_create {name, primitiveType, parentName, x,y,z, rotX,rotY,rotZ, scaleX,scaleY,scaleZ, space}` — x/y/z, rot local to the parent unless `space:"world"`; scale local |
-| Transform | `gameobject_set_transform {name, posX,posY,posZ, rotX,rotY,rotZ, scaleX,scaleY,scaleZ, localPosX,localPosY,localPosZ}` — pos, rot world; scale, localPos local; omitted axes kept |
-| Find, inspect | `gameobject_find {name, useRegex, component}` · `gameobject_get_info {name}` |
-| Rename, copy | `gameobject_rename {name, newName}` · `gameobject_duplicate {name}` |
-| Parent, toggle | `gameobject_set_parent {childName, parentName}` · `gameobject_set_active {name, active}` |
-| Delete | `gameobject_delete {name}` (dryRun first) |
-| Add component | `component_add {name, componentType}` |
-| Set field | `component_set_property {name, componentType, propertyName, value}` — vectors, colours `"1,2,3"`; references `referenceName`/`referencePath`/`assetPath` |
-| Read fields | `component_get_properties {name, componentType}` |
-| Material | `material_assign {name, materialPath}` |
-| Light | `light_set_properties {name, r,g,b, intensity, range, spotAngle, shadows}` |
-| Script | `script_create {scriptName, folder, content}` — full source; dryRun first; wait below |
-| Save scene | `scene_save {}` (dryRun first) |
+| Call |
+|---|
+| `gameobject_create {name, primitiveType, parentName, x,y,z, rotX,rotY,rotZ, scaleX,scaleY,scaleZ, space}` — x/y/z, rot local to the parent unless `space:"world"`; scale local |
+| `gameobject_set_transform {name, posX,posY,posZ, rotX,rotY,rotZ, scaleX,scaleY,scaleZ, localPosX,localPosY,localPosZ}` — pos, rot world; scale, localPos local; omitted axes kept |
+| `gameobject_find {name, useRegex, component}` · `gameobject_get_info {name}` |
+| `gameobject_rename {name, newName}` · `gameobject_duplicate {name}` |
+| `gameobject_set_parent {childName, parentName}` · `gameobject_set_active {name, active}` |
+| `gameobject_delete {name}` (dryRun first) |
+| `component_add {name, componentType}` |
+| `component_set_property {name, componentType, propertyName, value}` — vectors, colours `"1,2,3"`; references `referenceName`/`referencePath`/`assetPath` |
+| `component_get_properties {name, componentType}` |
+| `material_assign {name, materialPath}` |
+| `light_set_properties {name, r,g,b, intensity, range, spotAngle, shadows}` |
+| `script_create {scriptName, folder, content}` — full source; dryRun first; wait below |
+| `asset_refresh {}` — after writing a `.cs` yourself; `compileTriggered:true` adds `waitUrl` |
+| `scene_save {}` (dryRun first) |
 
 ## Everything else: one discovery call
 
-`GET /skills/recommend?intent=<words>&includeSchema=true&topN=3&wire=v2` → top 3 skills with exact schemas (~1–4 KB); several needs → one more `&intent=<words>` each, same call. Name known → `GET /skills/schema?names=a,b&wire=v2`. Wider: `GET /skills` names ~21 KB · `/skills/schema?category=GameObject&wire=v2` ~14 KB · `/skills?summary=1` ~180 KB · full `/skills/schema` ~707 KB. v2 fields, layers, constants → [discovery](references/protocol-discovery.md).
+`GET /skills/recommend?intent=<words>&includeSchema=true&topN=3&wire=v2` → top 3 skills with exact schemas (~1–4 KB); several needs → one more `&intent=<words>` each, same call. Name known → `GET /skills/schema?names=a,b&wire=v2`. Wider layers, v2 fields, constants → [discovery](references/protocol-discovery.md).
 
 ## Execute
 
 Several steps, one call: `POST /skills/batch?expectProject=<project>` `{"steps":[{"skill":"gameobject_create","args":{"name":"Rig"}},{"skill":"gameobject_create","args":{"name":"Arm","parentName":"Rig"}}]}` — ≤50 steps; a step may name objects earlier steps created, or use `{"$ref":"$0.instanceId"}`; the first failure skips the rest unless `continueOnError:true`; `?mode=transactional` = all-or-nothing → [batch](skills/batch/SKILL.md).
 
-**dryRun.** If this table, recommend or schema gave you the signature this session, execute directly: a call that fails validation runs nothing and returns the dryRun report (all `validation` buckets, parameter list). DryRun first (`?mode=dryRun&wire=v2`) for deletes, `riskLevel` high, `mayTriggerReload`/`mayEnterPlayMode`, approval mode, non-transactional multi-step batches, or when unsure. `valid:true` = no validation errors (`warnings` never block; the target may still be missing); `authorization` previews the permission gate.
+**dryRun.** If this table, recommend or schema gave you the signature this session, execute directly: a call that fails validation runs nothing and returns the dryRun report (all `validation` buckets, parameter list). DryRun first (`?mode=dryRun&wire=v2`) for deletes, `riskLevel` high, `mayTriggerReload`/`mayEnterPlayMode`, approval mode, non-transactional multi-step batches, or when unsure; under a `dryRunPolicy`, execute with the returned `?dryRunToken=`. `valid:true` = no validation errors (`warnings` never block; the target may still be missing); `authorization` previews the permission gate.
 
 Never invent skill or parameter names; use this table, recommend or schema. On failure read `suggestedFixes`; open a module doc only when a response names one.
 
 ## Verify from the read-back
 
-A successful write returns the state read back from the Editor (e.g. world `position` from `gameobject_set_transform`, `valueSet` from `component_set_property`) — that is the verification; `resolutionNotes` flags a non-exact name match. Use `*_get_info` only for async results or missing fields. Script writes return `waitUrl` (`/jobs/<jobId>?wait=90`); one request waits out compile and reload: `curl -s --retry 20 --retry-connrefused --retry-all-errors --retry-delay 2 "http://localhost:<port>/jobs/<jobId>?wait=90"` → `status:"completed"`, or `failed` with errors in `resultData.compilation`.
+A successful write returns the state read back from the Editor (e.g. world `position` from `gameobject_set_transform`, `valueSet` from `component_set_property`) — that is the verification; `resolutionNotes` flags a non-exact name match. Use `*_get_info` only for async results or missing fields. Script writes return `waitUrl`: one GET waits out compile and reload → `status:"completed"`, or `failed` with errors in `resultData.compilation`. One command:
+`u=http://localhost:<port>; J=$(curl -s "$u/skill/script_create?expectProject=<project>" -d '{"scriptName":"Spin","content":"<source>"}' | tee /dev/stderr | grep -o '/jobs/[^"]*=90') && curl -s --retry 20 --retry-connrefused --retry-all-errors --retry-delay 2 "$u$J" && curl -s "$u/skills/batch?expectProject=<project>" -d '{"steps":[{"skill":"component_add","args":{"name":"Crate","componentType":"Spin"}},{"skill":"component_set_property","args":{"name":"Crate","componentType":"Spin","propertyName":"speed","value":"9"}}]}'`
 
 ## Surface profile and errors
 
