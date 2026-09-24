@@ -4,28 +4,61 @@ Operating mode is a **server-side permission gate**, configured in the Unity pan
 
 ## Boot Handshake
 
-> See the root `SKILL.md` "First Contact Checklist" for the condensed version of this step. Details below.
+> The root `SKILL.md` "Target the right Editor" is the condensed version of this section. Details below.
 
-On session start (or before the first skill call), call `GET /health` and read:
+`GET /health` is answered off the main thread, never checks an expected instance (below) and has no side effects. It is not a ritual before every session: read it when the mode, the grant channel or the surface profile matters (before sensitive writes, or after a refused one), or when you need the identity or liveness. It reports:
 
 - `currentMode` — `"approval"` / `"auto"` / `"bypass"`
 - `panelApprovalRequired` — only meaningful under Approval; selects the grant channel
 - `pendingCount` — outstanding grant requests
+- `surfaceProfile` — `full` / `guide` / `noSceneAuthoring`, see "Surface profile" below; `surfaceProfileHint` carries text only when the profile is not `full`, else null
+- `instanceId`, `projectName`, `port` — who is serving, see "Which Editor answered?" below
 - `mainThreadIdleMs` — milliseconds since Unity's main thread last ran the request loop. `/health` is answered off the main thread, so a fast reply with a **large** `mainThreadIdleMs` means *"the server is alive but Unity is busy"* (a long skill, an import, or a modal dialog) — not *"the server is down"*. Single/double digits is a healthy idle editor; seconds means keep waiting rather than restart. `-1` means the loop has not ticked yet. Add `?live=1` to force the request through the main-thread queue when you need strictly live values instead of a snapshot up to ~1s old.
 - `workflowRecoveryMode` — `true` when workflow history failed to load this session: rollback data is degraded and file-store cleanup is suspended until the history is cleared.
 - `summaryAutoTruncate`, `summaryPageSize`, `tokenLevel` — the current token-saving settings; see "Token Level" below.
 
 ### Which Editor answered? (multi-instance)
 
-Several Unity projects can run UnitySkills at once; each server takes the first free port in `8090`–`8100` in **launch order**, so a port number is not a project identity. Before the first skill call, read `projectName` / `instanceId` from `/health` and confirm they name the project the user is working on. Every response also carries `X-Unity-Instance` and `X-Unity-Project` headers, so a bare `curl` can check the same thing without a separate `/health` call.
+Several Unity projects can run UnitySkills at once; each server takes the first free port in `8090`–`8100` in **launch order**, so a port number is not a project identity. `/health` reports `instanceId` / `projectName`, and every response carries `X-Unity-Instance` and `X-Unity-Project` headers (the project name percent-encoded when it is not ASCII).
 
-- **Python client** — auto-discovery prefers the registry entry whose `path` contains the current working directory, then other live entries by freshest heartbeat, then a port scan. It only silently falls back to *another* project when the cwd is not inside any registered project. `python unity_skills.py --list-instances` prints every live entry (`name`, `path`, `port`, `unityVersion`); pin the choice with `--port <n>` (or `--version "6"` / `"2022"`) whenever more than one instance is live or the cwd is outside the project.
-- **Bare HTTP** — read `~/.unity_skills/registry.json` (or call `/health` on each port) to pick the port; never assume `8090`. Re-check after the Editor restarts: the port can change.
-- **Mismatch** — stop, tell the user which project answered, and switch the port. Do not "fix" the wrong project.
+**Expected instance (precondition).** Name the Editor a request is meant for, and any other Editor refuses it instead of running it:
+
+- `?expectInstance=<instanceId>` — exact; an instanceId is unique per project path (`/health`, or the registry entry's `id`).
+- `?expectProject=<name>` — the productName or the project folder name. Two copies of one project share a productName, so use the folder name or `expectInstance` when that can happen.
+- The same values also work as `X-Expect-Instance` / `X-Expect-Project` headers (percent-encoded values are decoded; a non-blank query value wins over the header of the same kind). Comparison is case-insensitive; when both kinds are given, both must hold.
+- Every endpoint except `/health`, `/` and CORS preflights checks it, on the listener thread before anything is queued. A mismatch answers **409 `INSTANCE_MISMATCH`** and nothing runs: `details.server` (instanceId, projectName, projectPath, port) says who answered, `details.expected` echoes the expectation, `details.instances` lists the other live registered Editors (`instanceId`, `projectName`, `projectPath`, `port`, `status`), and every instance that matches gets a `suggestedFixes` entry whose `args.port` / `args.url` is where to resend. When none matches, the fix says to open that project or to drop the expectation.
+
+**Registry** — `~/.unity_skills/registry.json`, one entry per project path: `id` (instanceId), `name`, `path`, `port`, `pid`, `last_active`, `unityVersion`, `status`, `statusSince`, plus the Unity CLI binding (`cliBound`, `cliPath`; see [unity-cli](protocol-unity-cli.md)).
+
+| `status` | Meaning |
+|---|---|
+| `running` (or absent, written by older servers) | Serving; heartbeat every ~30 s. Stale after 120 s without one, or once its process is gone. |
+| `reloading` | Domain reload in progress: the entry and its port are kept, and the restarted server flips it back to `running`. |
+| `stopped` | The server stopped while the Editor stays open (watchdog restart, failed auto-restart); it may serve again. |
+
+Quitting the Editor removes its entry. A `reloading` or `stopped` entry has no heartbeat, so it is dropped only when its process is gone (or, after 30 minutes, when its pid has been reused by another program).
+
+**During a domain reload** (script, package or define change) the port answers `503` (`COMPILING` / `SERVER_STOPPED`) or refuses connections for a few seconds. Retry the same port — or follow the entry if the Editor comes back on another port — and never switch to a different project's Editor. A `GET /jobs/<id>?wait=` long poll survives the reload as well; see [observability](protocol-observability.md).
+
+- **Python client** — when the cwd lies inside a registered project, or you pass `target=`, the client pins that instance: every request carries `X-Expect-Instance`, and while it reloads or restarts the client waits for it on its own port (following it if the port moves) for up to the server's request timeout (`requestTimeoutMinutes` from the last `/health` it read; 120 s before any), then fails rather than switching projects. Only when the cwd belongs to no registered project, or that project's Editor is gone, does it try the other live entries by freshest heartbeat, then a port scan. `python unity_skills.py --list-instances` prints every registry entry with its `status`; pin a choice with `--port <n>` (or `--version "6"` / `"2022"`) when more than one instance is live or the cwd is outside the project.
+- **Bare HTTP** — take the port from the task, the registry or `/health` on each port; never assume `8090`. Add `expectProject` / `expectInstance` to every write.
+- **Mismatch** — resend to the instance the 409 names; when none matches, tell the user which project answered. Do not "fix" the wrong project.
+
+## Surface profile
+
+`surfaceProfile` (on `/health`, and on recommend or listing envelopes when it is not `full`) says which slice of the skill surface the user exposed. Only the user can switch it, in the UnitySkills panel; `guideMode` is a legacy boolean, `surfaceProfile` is authoritative.
+
+| Profile | Hidden | What to do |
+|---|---|---|
+| `full` | nothing | Normal automation. |
+| `guide` | write skills in GameObject, Component, Material, Scene and Sample | Give manual steps via [SKILL_GUIDE.md](../SKILL_GUIDE.md) and the `manual-*` docs. Read-only skills there still work, as does every other module. |
+| `noSceneAuthoring` | every scene-authoring write, incl. any `mutatesScene` skill | Do the rest of the task normally; if it genuinely needs scene authoring, say so and let the user switch back to `full`. |
+
+Calling a hidden skill returns `SURFACE_EXCLUDED`, and the response names the document to read (`details.manualDoc` under `guide`) or the profile to leave. It is a configuration boundary, not a failure: never retry it or route around it through another module. Response shapes: [error codes](protocol-error-codes.md).
 
 ## Token Level
 
-`tokenLevel` on `/health` is a **derived** view, not a separate persisted setting — it is computed from three source values every time it's read: `surfaceProfile` (see the payload contract doc), `summaryAutoTruncate`, and `summaryPageSize`. Changing any of the three source values immediately changes the reported `tokenLevel`; there is no separate "set token level" call.
+`tokenLevel` on `/health` is a **derived** view, not a separate persisted setting — it is computed from three source values every time it's read: `surfaceProfile` (see "Surface profile" above), `summaryAutoTruncate`, and `summaryPageSize`. Changing any of the three source values immediately changes the reported `tokenLevel`; there is no separate "set token level" call.
 
 | `tokenLevel` | `surfaceProfile` | `summaryAutoTruncate` | `summaryPageSize` |
 |---|---|---|---|
@@ -39,7 +72,7 @@ What `summaryAutoTruncate` / `summaryPageSize` actually do: in brief mode (`verb
 
 ## Three Modes (aligned with Claude Code permission modes)
 
-> **Factory default:** a fresh install starts in **Auto**; an upgraded install (any pre-existing `UnitySkills_*` pref) starts in **Bypass**. It **never** defaults to Approval. The "Claude Code 类比" column below is only a mental model, **not** the factory default — always read `/health.currentMode` before acting.
+> **Factory default:** a fresh install starts in **Auto**; an upgraded install (any pre-existing `UnitySkills_*` pref) starts in **Bypass**. It **never** defaults to Approval. The "Claude Code 类比" column below is only a mental model, **not** the factory default — never assume the mode; read `/health.currentMode` whenever it matters.
 
 | Mode | Claude Code 类比（心智对照，非默认） | FullAuto skill | Auto-detected NeverInSemi skill |
 |---|---|---|---|
@@ -48,6 +81,8 @@ What `summaryAutoTruncate` / `summaryPageSize` actually do: in brief mode (`verb
 | **Bypass** | ≈ `bypassPermissions` | Executes directly | Executes directly (only `ConfirmationToken` still gates high-risk) |
 
 `NeverInSemi` is derived automatically by `IsForbiddenInSemi()` — there is no manual marker. See "Skill Mode Annotation" below.
+
+**Previewing the gate.** A dryRun (`POST /skill/<name>?mode=dryRun`) shows the verdict without consuming a grant or writing an audit entry: its top-level `authorization` is `{allowed, blockedBy, currentMode, allowlisted, hint}` (plus `surfaceProfile` when `blockedBy` is `SURFACE_EXCLUDED`), and `blockedBy` is `MODE_RESTRICTED`, `MODE_FORBIDDEN`, `SURFACE_EXCLUDED`, or null when the call would run. It is a prediction, not a reservation: the mode or the Allowlist can change before the execute call. The root `SKILL.md` asks for a dryRun first in approval mode for this reason.
 
 ## Approval Mode Grant Protocol
 
@@ -105,7 +140,7 @@ Mode authorization (persistent, per-skill) and `ConfirmationToken` (single-shot,
 
 ## Skill Mode Annotation
 
-The REST surface (`785` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
+The REST surface (`805` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
 
 | Annotation | Count | Source |
 |---|---|---|
@@ -116,4 +151,4 @@ The REST surface (`785` skills) is partitioned by `[UnitySkill]` `Mode` and runt
 SemiAuto (read/query/analyze) skills are directly callable in every mode and span the modules below; use `GET /skills?category=<Category>` for the exact list (write skills in the same modules stay FullAuto):
 
 - **script** (`script_read` / `script_list` / `script_get_info` / `script_find_in_file` / `script_get_compile_feedback`) · **perception** (`scene_analyze` / `scene_context` / `scene_health_check` / `scene_find_hotspots` / `project_stack_detect` — the module is named perception but its skills carry the `scene_*` prefix) · **scene** (`scene_get_info` / `scene_get_hierarchy` / `scene_get_loaded` / `scene_find_objects`) · **editor** (`editor_get_context` / `editor_get_state` / `editor_get_selection` / `editor_get_tags` / `editor_get_layers`) · **asset** (`asset_find` / `asset_get_info`) · **workflow** (`workflow_list` / `workflow_session_*` / `workflow_plan` — prefer workflow & batch helpers for planning/preview/jobs/rollback) · **debug + console** (`debug_check_compilation` / `debug_get_errors` / `debug_get_system_info` / `debug_get_memory_info` / `debug_get_logs` / `console_get_logs`)
-- plus most modules' own info / list / get / find skills. **Advisory**: `21` design-only modules (no REST skills) — see the module index in `skills/SKILL.md`.
+- plus most modules' own info / list / get / find skills. **Advisory**: `28` docs-only modules (design guides, `manual-*`, `unity-cli`; no REST skills) — see the module index in `skills/SKILL.md`.

@@ -12,6 +12,9 @@ namespace UnitySkills
     /// </summary>
     public static class GameObjectSkills
     {
+        private const string TargetNameNote = "Exact name first (case-insensitive; with duplicates the pick is reported in resolutionNotes), else a unique whole-word or substring match; an ambiguous match is an error.";
+        private const string TargetPathNote = "Hierarchy path 'Parent/Child' (case-insensitive, scene-name prefix optional). Lookup order entityId > instanceId > path > name; a missed path falls back to name.";
+
         [UnitySkill("gameobject_create_batch", "Create multiple GameObjects in one call (Efficient). items: JSON array of {name, primitiveType, x, y, z, rotX, rotY, rotZ, scaleX, scaleY, scaleZ, space, parentName, parentPath, parentInstanceId, parentEntityId}. space 'local' (default): x/y/z = localPosition, rot = localEulerAngles; 'world': world position/rotation applied after parenting; scale is always local. parentName/parentPath may name an item earlier in the same call (checked before the scene; the latest match wins). All-or-nothing: if any item fails nothing is created (rolledBack:true, the other items report reverted:true). Results read back position (world), localPosition, rotation (world euler), scale, path, parentPath.",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Create,
             Tags = new[] { "primitive", "empty", "hierarchy", "batch" },
@@ -19,7 +22,9 @@ namespace UnitySkills
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true,
             RiskLevel = "medium")]
-        public static object GameObjectCreateBatch(string items)
+        public static object GameObjectCreateBatch(
+            [SkillParam("JSON array of {name, primitiveType?, x/y/z?, rotX/Y/Z?, scaleX/Y/Z? (default 1), space? (local|world), parentName|parentPath|parentInstanceId|parentEntityId?}.")]
+            string items)
         {
             var created = new CreatedInCall();
             return BatchExecutor.Execute<BatchCreateItem>(items, item =>
@@ -75,9 +80,22 @@ namespace UnitySkills
             Outputs = new[] { "name", "entityId", "instanceId", "path", "parent", "parentPath", "position", "localPosition", "rotation", "scale" },
             TracksWorkflow = true,
             MutatesScene = true, RiskLevel = "medium")]
-        public static object GameObjectCreate(string name, string primitiveType = null, float x = 0, float y = 0, float z = 0,
-            string parentName = null, int parentInstanceId = 0, string parentPath = null, string parentEntityId = null,
-            float rotX = 0, float rotY = 0, float rotZ = 0, float scaleX = 1, float scaleY = 1, float scaleZ = 1,
+        public static object GameObjectCreate(string name,
+            [SkillParam("Cube, Sphere, Capsule, Cylinder, Plane or Quad (case-insensitive); omit it, or pass Empty/None, for an empty GameObject.")]
+            string primitiveType = null,
+            [SkillParam("Position X, local to the parent unless space='world' (world when there is no parent).")]
+            float x = 0,
+            [SkillParam("Position Y, local to the parent unless space='world'.")]
+            float y = 0,
+            [SkillParam("Position Z, local to the parent unless space='world'.")]
+            float z = 0,
+            string parentName = null, int parentInstanceId = 0,
+            [SkillParam("Parent hierarchy path, e.g. 'World/Props'. Parent lookup order: parentEntityId > parentInstanceId > parentPath > parentName; omit all for a scene-root object.")]
+            string parentPath = null, string parentEntityId = null,
+            [SkillParam("rotX/rotY/rotZ: Euler angles in degrees, local to the parent unless space='world'.")]
+            float rotX = 0, float rotY = 0, float rotZ = 0,
+            [SkillParam("scaleX/scaleY/scaleZ: localScale; space does not apply to scale.")]
+            float scaleX = 1, float scaleY = 1, float scaleZ = 1,
             [SkillParam("Coordinate space of x/y/z and rotX/rotY/rotZ: 'local' (default) = localPosition/localEulerAngles relative to the parent (same as world when there is no parent); 'world' = world position/rotation, applied after parenting. Scale is always localScale.")]
             string space = "local")
         {
@@ -335,7 +353,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object GameObjectRenameBatch(string items)
+        public static object GameObjectRenameBatch(
+            [SkillParam("JSON array of {name|path|instanceId|entityId, newName}.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchRenameItem>(items, item =>
             {
@@ -370,7 +390,11 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesScene = true, RiskLevel = "medium")]
-        public static object GameObjectDelete(string name = null, int instanceId = 0, string path = null, string entityId = null)
+        public static object GameObjectDelete(
+            [SkillParam(TargetNameNote)] string name = null,
+            int instanceId = 0,
+            [SkillParam(TargetPathNote)] string path = null,
+            string entityId = null)
         {
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
@@ -389,7 +413,9 @@ namespace UnitySkills
             TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesScene = true,
             RiskLevel = "medium")]
-        public static object GameObjectDeleteBatch(string items)
+        public static object GameObjectDeleteBatch(
+            [SkillParam("JSON array of names, or of {name|path|instanceId|entityId} objects; the two forms may be mixed.")]
+            string items)
         {
             if (Validate.RequiredJsonArray(items, "items") is object err) return err;
 
@@ -442,7 +468,13 @@ namespace UnitySkills
             Outputs = new[] { "count", "objects" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object GameObjectFind(string name = null, bool useRegex = false, string tag = null, string layer = null, string component = null, int limit = 50)
+        public static object GameObjectFind(
+            [SkillParam("Case-insensitive substring; with useRegex=true a case-sensitive .NET regex.")]
+            string name = null,
+            bool useRegex = false, string tag = null,
+            [SkillParam("Layer name as in Tags & Layers, not an index.")]
+            string layer = null,
+            string component = null, int limit = 50)
         {
             // A tag that isn't registered in TagManager makes GameObject.FindGameObjectsWithTag throw
             // UnityException, so this must be rejected at the entry point rather than letting that call
@@ -512,19 +544,30 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object GameObjectSetTransform(
-            string name = null, int instanceId = 0, string path = null,
+            [SkillParam(TargetNameNote)] string name = null,
+            int instanceId = 0,
+            [SkillParam(TargetPathNote)] string path = null,
             // World transform (3D objects)
+            [SkillParam("posX/posY/posZ: world position; omitted axes keep their value. localPosX/Y/Z are applied after and win on the same axis.")]
             float? posX = null, float? posY = null, float? posZ = null,
+            [SkillParam("rotX/rotY/rotZ: world Euler angles in degrees (transform.eulerAngles); omitted axes keep their value.")]
             float? rotX = null, float? rotY = null, float? rotZ = null,
+            [SkillParam("scaleX/scaleY/scaleZ: localScale (relative to the parent, not world scale).")]
             float? scaleX = null, float? scaleY = null, float? scaleZ = null,
             // Local transform (shared by 3D and UI)
+            [SkillParam("localPosX/Y/Z: position relative to the parent, applied after posX/Y/Z so it wins on the same axis.")]
             float? localPosX = null, float? localPosY = null, float? localPosZ = null,
             // RectTransform-specific (UI)
+            [SkillParam("RectTransform only (ignored on non-UI objects): anchoredPosition X/Y, the pivot's offset from the anchor reference point.")]
             float? anchoredPosX = null, float? anchoredPosY = null,
+            [SkillParam("RectTransform only: anchorMinX/Y and anchorMaxX/Y are 0-1 fractions of the parent rect.")]
             float? anchorMinX = null, float? anchorMinY = null,
             float? anchorMaxX = null, float? anchorMaxY = null,
+            [SkillParam("RectTransform only: pivotX/Y are 0-1 fractions of the object's own rect (0.5 = centre).")]
             float? pivotX = null, float? pivotY = null,
+            [SkillParam("RectTransform only: sizeDeltaX/Y = size relative to the distance between the anchors (equals the size when the anchors coincide).")]
             float? sizeDeltaX = null, float? sizeDeltaY = null,
+            [SkillParam("RectTransform only: width/height set the rect size for the current anchors, applied after sizeDeltaX/Y.")]
             float? width = null, float? height = null,
             string entityId = null)
         {
@@ -611,7 +654,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object GameObjectSetTransformBatch(string items)
+        public static object GameObjectSetTransformBatch(
+            [SkillParam("JSON array of {name|path|instanceId|entityId, posX/Y/Z?, rotX/Y/Z?, scaleX/Y/Z?, localPosX/Y/Z?, anchoredPosX/Y?, anchorMinX/Y?, anchorMaxX/Y?, pivotX/Y?, sizeDeltaX/Y?, width?, height?}.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchTransformItem>(items, item =>
             {
@@ -784,7 +829,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object GameObjectDuplicateBatch(string items)
+        public static object GameObjectDuplicateBatch(
+            [SkillParam("JSON array of {name|path|instanceId|entityId}.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchDuplicateItem>(items, item =>
             {
@@ -815,8 +862,11 @@ namespace UnitySkills
             Outputs = new[] { "child", "parent", "newPath" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object GameObjectSetParent(string childName = null, int childInstanceId = 0, string childPath = null, 
-            string parentName = null, int parentInstanceId = 0, string parentPath = null, string childEntityId = null, string parentEntityId = null)
+        public static object GameObjectSetParent(string childName = null, int childInstanceId = 0, string childPath = null,
+            string parentName = null, int parentInstanceId = 0,
+            [SkillParam("New parent's hierarchy path; omit every parent* locator to move the child to the scene root. The child keeps its world position and rotation.")]
+            string parentPath = null,
+            string childEntityId = null, string parentEntityId = null)
         {
             var (child, childError) = GameObjectFinder.FindOrError(childName, childInstanceId, childPath, entityId: childEntityId);
             if (childError != null) return childError;
@@ -849,7 +899,11 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object GameObjectGetInfo(string name = null, int instanceId = 0, string path = null, string entityId = null)
+        public static object GameObjectGetInfo(
+            [SkillParam(TargetNameNote)] string name = null,
+            int instanceId = 0,
+            [SkillParam(TargetPathNote)] string path = null,
+            string entityId = null)
         {
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
@@ -952,7 +1006,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object GameObjectSetActiveBatch(string items)
+        public static object GameObjectSetActiveBatch(
+            [SkillParam("JSON array of {name|path|instanceId|entityId, active? (default true)}.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchSetActiveItem>(items, item =>
             {
@@ -981,7 +1037,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object GameObjectSetLayerBatch(string items)
+        public static object GameObjectSetLayerBatch(
+            [SkillParam("JSON array of {name|path|instanceId|entityId, layer (layer name), recursive? (default false)}.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchSetLayerItem>(items, item =>
             {
@@ -1025,7 +1083,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object GameObjectSetTagBatch(string items)
+        public static object GameObjectSetTagBatch(
+            [SkillParam("JSON array of {name|path|instanceId|entityId, tag}; the tag must already exist in the Tag Manager.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchSetTagItem>(items, item =>
             {
@@ -1074,7 +1134,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object GameObjectSetParentBatch(string items)
+        public static object GameObjectSetParentBatch(
+            [SkillParam("JSON array of {childName|childPath|childInstanceId|childEntityId, parentName|parentPath|parentInstanceId|parentEntityId?}; no parent locator = scene root.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchSetParentItem>(items, item =>
             {

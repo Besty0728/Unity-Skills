@@ -1,6 +1,6 @@
 # Skill Check — C# 代码与 SKILL.md 一致性审计 + 技能数量同步
 
-你是 UnitySkills 项目的一致性审计助手。扫描所有 `[UnitySkill]` C# 定义与 `skills/*/SKILL.md` 文档，报告不一致问题；同时统计实际技能数量，与文档中声称的数字对比并修正（原 `/skillcount` 已并入本命令）。
+你是 UnitySkills 项目的一致性审计助手。扫描所有 `[UnitySkill]` C# 定义与 `skills/*/*.md` + `skills/*/reference/*.md` 文档（模块入口 `SKILL.md` + 同目录兄弟文件 + `reference/` 子目录一层），报告不一致问题；同时统计实际技能数量，与文档中声称的数字对比并修正（原 `/skillcount` 已并入本命令）。
 
 ## 目标
 
@@ -37,36 +37,62 @@
 
 ## 步骤 2：收集 SKILL.md 文档定义
 
-扫描 `SkillsForUnity/unity-skills~/skills/*/SKILL.md` 中所有记录的 Skill：
+扫描 `SkillsForUnity/unity-skills~/skills/*/*.md` 与 `skills/*/reference/*.md` 中所有记录的 Skill。**范围是每个模块目录下的所有 `.md` 兄弟文件**（入口 `SKILL.md` + `REFERENCE.md` / `*_REFERENCE.md` 等）**加上 `reference/` 子目录一层**（四个试点模块 `gameobject` / `component` / `batch` / `script` 把逐技能章节拆成 `reference/<skill_name>.md`，每文件恰好一个 `### skill_name` 且文件名 = 技能名），不再往下递归。逐技能细节已经从入口下沉到 reference，只扫 `SKILL.md` 会让这些技能静默脱离比对：
 
-1. 对每个 SKILL.md 提取：
+1. 对每个模块的每个 `.md` 提取：
    - **Skill 名称**（`### skill_name` 标题）
    - **参数表**（`| Parameter | Type | Required | ...` 表格中的参数名和类型）
    - **Batch Item Properties**（`**Item properties**:` 后列出的属性名列表）
    - **Returns 声明**（`**Returns**:` 后花括号内的字段名列表）
-   - **所属模块**（目录名）
+   - **所属模块**（目录名）与**所在文件名**（报告问题时必须给出 `模块/文件名`，否则同名章节在两个文件里无法区分）
 
 2. **额外提取**（按模块级别）：
    - **DO NOT 列表**：从 `## Guardrails` → `**DO NOT**` 区块提取被声称"不存在"的 skill 名。⚠️ 条目格式恒为 `` `幻觉名` does not exist → use `真实名` ``：**只提取箭头 `→`（或 `->`）左侧、紧邻 "does not exist"/"do not exist" 的 skill 名**；箭头右侧 "use `xxx`" 是推荐替代的**真实** skill，**必须排除**，绝不能当作"被声称不存在"。例如 `` `gameobject_move` / `gameobject_rotate` do not exist → use `gameobject_set_transform` ``：只取 `gameobject_move`、`gameobject_rotate`，排除右侧的 `gameobject_set_transform`。
-   - **Skills Overview 表格**：从 `## Skills Overview` 表格中提取所有列出的 skill 名
+   - **Skills Overview**：从入口 `SKILL.md` 的 `## Skills Overview` 节（表格或列表）中提取所有列出的 skill 名
 
-3. 汇总为文档 Skill 清单
+3. 汇总为文档 Skill 清单（**保留每一次出现，不要按名字去重**——"同一技能被定义两次"本身就是要报的问题，按名字收进字典会让重复定义永远看不见）
 
-> **注意**：动态识别 Advisory 模块并跳过。扫描每个 `skills/*/SKILL.md` 时，如果文档中**没有任何 `### skill_name` 格式的 Skill 端点定义**，则视为 Advisory 模块（纯架构/设计指导），自动跳过，不参与后续交叉比对。不要硬编码 Advisory 列表。
+> **注意：Advisory 模块的判定依据是 Category 归属，不是"有没有 `### skill_name`"。**
+> 拆分入口/reference 之后，迁移过的 REST 入口本来就不再有 `###` 标题；而可选包模块在没装包的机器上反射不到任何技能——所以"没扫到技能"永远不能证明"这是 advisory"。正确判定：
+>
+> - 先按 `[UnitySkill]` 的实际归属建立 **模块目录 → SkillCategory** 映射：目录名与 `SkillCategory` 枚举名大小写不敏感相等即算命中；
+> - 再叠加下面这张**例外表**（取自代码，不是猜的）：
+>
+>   | 模块目录 | 映射到的 Category | 声明处 | 原因 |
+>   |---|---|---|---|
+>   | `batch` | `Workflow` + `Validation` | `BatchSkills.cs` | 枚举里没有 `Batch`，该文件同时注册进两个 Category |
+>   | `bookmark` | `Workflow` | `WorkflowSkills.cs` 的 `bookmark_*` | Workflow 类目下拆出的独立文档目录 |
+>   | `history` | `Workflow` | `WorkflowSkills.cs` 的 `history_*` | 同上 |
+>   | `importer` | `AssetImport` + `Audio` + `Texture` + `Model` | `AssetImportSkills.cs` / `AudioSkills.cs` / `TextureSkills.cs` / `ModelSkills.cs` | 四个导入设置类目共用一份文档 |
+>
+>   `Diagnose` **不需要条目**：`DiagnoseSkills.cs` 注册进 `SkillCategory.Debug`，而 `debug/` 目录已按名字命中；不存在 `diagnose/` 目录。
+>
+> - **命中映射 = REST 模块**；**未命中且在已知 advisory 名单内 = advisory，跳过交叉比对**；**未命中且不在名单内 = 🔴 错误**（要么是漏配 Category 的新模块，要么是目录名拼错）。
+> - 反向也要查：某个 `SkillCategory` 没有任何模块目录承载文档 → 🟡 中等（AI 只能靠猜技能名才能碰到它）。
+> - 这套判定与测试 `SkillDocModules_ShouldMapToCategoriesOrBeRegisteredAdvisory` 一致，例外表同步维护。
 
 ## 步骤 3：交叉比对
 
 ### 3a. Skill 名称比对
 
-> **Schema-first 前提**：本项目文档采用 schema-first——精确的 skill 名/参数/返回由 `GET /skills/schema`（见各 SKILL.md 末尾 `## Exact Signatures` 节）提供，**模块 SKILL.md 无需为每个 skill 写 `### skill_name` 定义**。因此"C# 有但文档无 `###` 定义"是**预期正常态，不是缺陷**。这与项目自带测试 `SkillDocumentationConsistencyTests` 一致——它只校验幽灵 skill，从不校验"未文档化"。
+> **Schema-first 前提**：本项目文档采用 schema-first——精确的 skill 名/参数/返回由 `GET /skills/schema`（见各 SKILL.md 末尾 `## Exact Signatures` 节）提供，**模块文档无需为每个 skill 写 `### skill_name` 定义**。因此"C# 有但文档无 `###` 定义"是**预期正常态，不是缺陷**。这与项目自带测试 `SkillDocumentationConsistencyTests` 一致——它只校验幽灵 skill，从不校验"未文档化"。
+>
+> 拆分之后同样成立：`###` 定义在入口、同目录兄弟文件还是 `reference/<skill_name>.md` 都算"已定义"，**不得**因为入口里没有 `###` 就报缺陷，更不得要求"每个技能必须在入口完整定义"。
 
 - 取 C# 清单和文档清单的差集：
-  - `文档有 ∩ C# 无` → **幽灵 Skill** 🔴（唯一硬错误：AI 会尝试调用不存在的 Skill）
+  - `文档有 ∩ C# 无` → **幽灵 Skill** 🔴（唯一硬错误：AI 会尝试调用不存在的 Skill）。报告时给出 `模块/文件名:行号`。
   - `C# 有 ∩ 文档无 ###` → 仅作 🟢 **信息统计**（schema-first 下非问题），**不报 🟡 中等**。仅当某 skill 在整个 `skills/` 树中**完全无任何提及**（连 Route/Overview/参考文档都没有）时，才作为 🟢 建议提示补文档。
+
+**重复定义检查（拆分后新增）**：同一个 skill 名只应被定义一次。
+
+- **模块内重复** → 🔴 严重：同一模块的两个文件（典型是入口和 `reference/<skill>.md` 各留了一份）、或同一文件里出现两次 `### skill_name`。两份参数表会各自漂移且无人比对，这正是拆分最容易引入的缺陷。
+- **跨模块重复** → 🟡 中等：不同模块目录各定义一次。当前已知且属于有意路由冗余的有 9 个，全部是 `workflow/SKILL.md` 重述了 `batch/`、`bookmark/`、`history/` 的技能（`batch_query_assets`、`batch_retry_failed`、`bookmark_set/goto/list/delete`、`history_undo/redo/get_current`）；这 9 个之外的跨模块重复要报出来。
+- **试点模块全覆盖**（`gameobject`、`component`、`batch`、`script`）：这四个模块的文档技能集合应与代码技能集合**完全相等**（当前 19/14/22/12 全等）。任一方向缺项 → 🔴 严重（迁移丢技能）。注意 `batch` 的代码归属是 `BatchSkills.cs` 声明的技能，不是整个 `Workflow`+`Validation` 类目。
+- **试点 reference 一一对应**：试点模块的每个 `reference/*.md` 必须恰好定义一个 `### skill_name` 且与文件名相同，模块的每个技能都要有 `reference/<skill_name>.md`（入口只写共享规则与技能列表，靠"细节在 `reference/<skill>.md`"一句寻址，不逐行放链接）→ 任一不符 🔴 严重。专题内容（示例、常用类型表等）并入相关技能的文件，不单独建 topic 文件。
 
 ### 3b. 参数签名比对
 
-对两边都存在的 Skill，逐个比对参数：
+对两边都存在的 Skill，逐个比对参数。参数表可能位于入口、兄弟文件或 `reference/<skill_name>.md`，**都要扫**；同一技能若有多处出现，逐处比对（不要只比最后读到的那一处）：
 
 - **文档多出的参数**（高风险）：文档声称支持但 C# 方法签名中没有 → AI 传参后被 SkillRouter 静默忽略
 - **C# 多出的参数**（中风险）：C# 支持但文档未记录 → AI 不知道可以使用
@@ -74,7 +100,7 @@
 
 > 参数比对时注意：C# 方法可能有 `= null`、`= 0`、`= false` 等默认值，这些对应文档中 `Required = No` 的参数。
 
-**Batch Skill 特殊处理**：对 `*_batch` Skill，不比对方法签名（固定为 `string items`），而是比对 `BatchXxxItem` 类的属性列表与文档中 `**Item properties**` 列出的属性名。规则同上：文档多出 → 高风险，C# 多出 → 中风险。同时检查 batch item 属性与对应单个 Skill 的参数是否一致（如 `gameobject_create` 有 `x,y,z` 但 `BatchCreateItem` 还有 `rotX,rotY,rotZ,scaleX,scaleY,scaleZ`，这种差异应标注但不算错误）。
+**Batch Skill 特殊处理**：对 `*_batch` Skill，不比对方法签名（固定为 `string items`），而是比对 `BatchXxxItem` 类的属性列表与文档中 `**Item properties**` 列出的属性名。规则同上：文档多出 → 高风险，C# 多出 → 中风险。同时检查 batch item 属性与对应单个 Skill 的参数是否一致（如单体 `component_add` 接受路由合成的 `entityId`，而 `BatchAddComponentItem` 只有 `name/instanceId/path/componentType`，这种差异应标注但不算错误）。
 
 ### 3c. 元数据完整性检查
 
@@ -115,10 +141,11 @@
 
 ### 3g. Skills Overview 表格完整性
 
-每个 SKILL.md 顶部的 `## Skills Overview` 表格应覆盖该模块所有 skill。检查：
+**Overview 留在入口 `SKILL.md`，逐技能 `###` 章节可以在 `REFERENCE.md` 或 `reference/<skill_name>.md`**——两者不在同一个文件是拆分后的正常形态，不要据此报错。Overview（表格或按用途分组的列表）应以完整技能名覆盖该模块所有 skill；试点入口**不逐行放 reference 链接**（round1 评测证明逐行链接会邀请整读），只用一句"细节在 `reference/<skill_name>.md`"寻址。检查：
 
 - **Overview 中列出但模块实际没有的 skill** → 🟡 中等（误导读者）
 - **模块实际有但 Overview 未列出的 skill** → 🟢 建议（不影响 AI 调用，但文档不完整）
+- **寻址规则解析不了**（某技能缺 `reference/<skill_name>.md`）→ 🔴 严重，与 3a 的"试点 reference 一一对应"同口径（测试 `PilotReferenceFiles_ShouldEachDefineTheSkillTheyAreNamedAfter`）；入口里若仍有指向 reference 的链接，其断链归入 3k.8 统一报告
 
 ### 3h. Mode 元数据 ↔ 文档一致性（v1.9.0+）
 
@@ -167,7 +194,7 @@
 
 > **背景**：Codex / Claude 等原生 skill 发现器把**每个含 `SKILL.md` 的子目录当成一个独立 skill** 注册，并在 discovery 阶段读取其 frontmatter `description` 做触发匹配。`description` 超过 **1024 字符**会被直接**拒绝加载**该 skill（典型报错 `Skipped loading N skill(s) due to invalid SKILL.md files`）。本项目真实调用走顶层入口 + `GET /skills/schema`，子 description 应保持精简，避免触发该硬限。
 
-扫描 `unity-skills~/SKILL.md` 及所有 `unity-skills~/skills/**/SKILL.md`（含 REST 与 advisory 模块），逐文件校验 frontmatter：
+扫描 `unity-skills~/SKILL.md` 及所有 `unity-skills~/skills/**/SKILL.md`（含 REST 与 advisory 模块），逐文件校验 frontmatter。**`REFERENCE.md` / `reference/*.md` 等兄弟文件按设计没有 frontmatter，不纳入本项校验**（发现器只把含 `SKILL.md` 的目录注册为 skill），`.github/scripts/check_skill_frontmatter.py` 只 glob `skills/*/SKILL.md` 就是这个原因，不要"顺手"把它改成 `*.md`：
 
 1. **`description` 长度 ≤ 1024 字符** → 超限 🔴 严重（该 skill 被发现器拒载，AI 完全看不到它）。注意按**字符数**（含中文）统计，非字节数。
 2. **`name` 长度 ≤ 64 字符** → 超限 🔴 严重。
@@ -179,8 +206,19 @@
    - 仓库根 `.gitattributes` 必须存在且含 `*.md text eol=lf`（缺失 → 🔴 严重：Windows UPM git 安装会在 `PackageCache` 检出 CRLF，用户无法自行修复）
    - `unity-skills~/**/*.md` 内不得含 `\r`（`rg -l $'\r' unity-skills~` 应为空；命中 → 🟡 中等，说明有文件以 CRLF 提交，`git add --renormalize .` 后重新提交）
    - 任何按字节/哈希度量文件的测试或脚本，必须先做 `\r\n`→`\n` 归一化再计数（新增此类校验时同样适用）
+8. **本地链接可达性**：扫描 `unity-skills~/SKILL.md`、`unity-skills~/references/*.md`、`unity-skills~/skills/SKILL.md` 以及所有 `unity-skills~/skills/*/*.md` 中的**相对** markdown 链接 `[..](路径#锚点)`：
+   - 目标文件必须存在 → 缺失 🔴 严重（AI 跟着链接读到 404）
+   - 带锚点时，锚点必须匹配目标文件里某个标题的 slug。slug 规则：转小写、空格转 `-`、除 `-` 和 `_` 外的标点全部丢弃（于是 `` ### `gameobject_create` `` → `gameobject_create`）；同名 slug 依次加 `-1`、`-2`；标题末尾的显式 `{#custom-id}` 也算有效锚点 → 不匹配 🔴 严重
+   - `http(s)://` 与 `mailto:` 跳过；**不含 `/`、不以 `.md` 结尾、也不以 `#` 开头的目标不是文档链接**，跳过（例如 ASCII 示意图里的 `[Camera](Overlay)` 是 markdown 语法巧合，不是链接）
+   - 本项与测试 `SkillDocLinks_ShouldResolve` 同口径；该测试用 `KnownBrokenDocLinks` 登记了尚未修复的历史断链，审计时应把登记项一并列出并提醒修掉后删除条目
+9. **试点模块入口字节预算**：`gameobject`、`component`、`batch`、`script` 四个模块的**入口** `SKILL.md` 各有独立上限，数值以测试 `SkillDocumentationConsistencyTests.PilotEntryByteBudgets` 为准（不要在本文件里另抄一份数字）：
+   - 口径与根 SKILL.md 一致：**LF 归一化后的 UTF-8 字节数，含 frontmatter**（`tr -d '\r' < SKILL.md | wc -c`），不要裸 `wc -c`
+   - 超限 🔴 严重。报告给出每个试点的当前字节数与余量
+   - 登记值为 `-1` 表示预算尚未拍板，测试会**故意失败**；此时报告如实写"预算待定"，不要把它当成通过，也不要为了让测试变绿去填一个数字
+   - 提高预算必须有回归证据（说明新增了哪些必要语义）；没有证据就把内容下沉到 `reference/`，不删必要内容换绿灯
+   - `REFERENCE.md` / `reference/*.md` 不设预算（按需读取，不是每次调用的固定成本）
 
-> 正常预期：0 项超限、0 BOM、0 CRLF、`.gitattributes` 在位。本项是防止"超 1024 拒载"与"CRLF 假红"两类 bug 复发的核心闸门。
+> 正常预期：0 项超限、0 BOM、0 CRLF、0 断链、`.gitattributes` 在位，试点预算在限内（或如实标注"预算待定"）。本项是防止"超 1024 拒载"与"CRLF 假红"两类 bug 复发的核心闸门。
 
 ## 步骤 4：技能数量统计与文档同步（原 /skillcount，唯一允许写文件的步骤）
 
@@ -227,14 +265,20 @@
 
 📊 统计
 - C# Skills 总数：{N} 唯一（attribute {M} 个，#if/#else 同名 stub 去重 {M-N}）；无条件：{X}，条件编译：{Y}
-- 文档 Skills 总数：{M}
+- 文档 Skills 总数：{M}（`###` 出现 {occ} 次 / 去重 {M}；入口/兄弟文件 {a} + reference/ {b}）
 - 匹配：{X}
-- Advisory 模块（自动跳过）：{列出跳过的模块名}
+- Advisory 模块（未映射到任何 Category，自动跳过）：{列出跳过的模块名}
+- 模块归属：{✅ 全部目录可判定（REST {R} / advisory {A}） / 🔴 N 个目录既无 Category 也未登记}
+- 重复定义：{✅ 0 模块内重复，跨模块 {K} 个均属已知冗余 / 🔴 明细}
+- 试点全覆盖（gameobject/component/batch/script）：{✅ 19/19、14/14、22/22、12/12 / 🔴 明细}
+- 试点 reference 一一对应：{✅ 67 个文件各定义同名技能、无缺失 / 🔴 明细}
 - Mode = SemiAuto 标注：{N}（C# 显式手标）
 - NeverInSemi 自动判定：{N}（纯元数据规则，无兜底名单）
 - /permission API 校验：{已通过 / 已跳过：服务离线 / N 项失败}
 - Frontmatter 合规：{通过（0 超限）/ N 项超限}（最长 description：{module} {len} 字符；discovery 总量：{sum} / ~8000 软预算）
 - 根 SKILL.md 预算：{N} / 8192 字节（LF 归一化口径，余量 {8192-N}）
+- 试点入口预算：gameobject {N}/{budget}、component {N}/{budget}、batch {N}/{budget}、script {N}/{budget}（LF 归一化含 frontmatter；`-1` = 预算待定，测试故意失败）
+- 本地链接：{✅ {L} 条相对链接全部可达 / 🔴 N 条断链}（含 KnownBrokenDocLinks 登记 {K} 条）
 - 行尾锁定：{✅ .gitattributes 在位、0 个 CRLF 文档 / 🔴 .gitattributes 缺失 / 🟡 N 个 CRLF 文件}
 
 📊 数量同步（原 /skillcount）
@@ -245,10 +289,32 @@
 🔴 严重问题（AI 会被误导）
 
   幽灵 Skill（文档有，代码无）：
-  - {module}/SKILL.md: `{skill_name}` — 文档声称存在但 C# 中未实现
+  - {module}/{file}:{line}: `{skill_name}` — 文档声称存在但 C# 中未实现
+
+  模块内重复定义（同一 skill 定义了两次）：
+  - `{skill_name}`: {module}/SKILL.md:{line} 与 {module}/reference/{skill_name}.md:{line} 各定义一次 — 两份参数表会各自漂移
+
+  模块归属未知（既无 Category 也未登记 advisory）：
+  - {module}/ — 补 SkillCategory / 登记例外表映射 / 登记为 advisory，三选一
+
+  静默零比对（REST 模块一个 `###` 都没有且未登记 schema-first）：
+  - {module}/ — 迁移是否丢了逐技能章节？
+
+  试点模块丢技能：
+  - {module}: 代码有 `{skill_name}`，模块所有 *.md 中均无对应 `###` 章节
+
+  试点 reference 不对应：
+  - {module}/reference/{file}: 定义了 {N} 个 `###` 段 / 定义的是 `{other}` 而非同名技能
+  - {module}: `{skill_name}` 缺 reference/{skill_name}.md
+
+  链接断裂（AI 跟着读到 404）：
+  - {file} -> {target} — 目标文件不存在 / 目标中无此锚点
+
+  试点入口超预算：
+  - {module}/SKILL.md: {N} 字节 > {budget} 字节 — 把内容下沉 reference/<skill_name>.md，不要无证据抬预算
 
   参数不一致（文档有，代码无）：
-  - `{skill_name}`: 参数 `{param}` 在文档中声明但 C# 方法签名中不存在
+  - `{skill_name}` ({module}/{file}): 参数 `{param}` 在文档中声明但 C# 方法签名中不存在
 
   Batch Item 不一致（文档有，代码无）：
   - `{skill_name}`: Item 属性 `{prop}` 在文档中声明但 BatchXxxItem 类中不存在
@@ -279,6 +345,12 @@
 
   完全无文档的 Skill（代码有，整个 skills/ 树无任何提及）：
   - {file}:{line}: `{skill_name}` — C# 存在但文档树完全未提及（schema-first 下仅此种才报；"无 ### 定义"不报）
+
+  跨模块重复定义（超出 9 条已知冗余）：
+  - `{skill_name}`: 同时定义在 {moduleA}/{file} 与 {moduleB}/{file}
+
+  Category 无文档承载：
+  - SkillCategory `{Category}` 没有任何模块目录承载文档 — AI 只能靠猜技能名才碰得到
 
   未文档化参数（代码有，文档无）：
   - `{skill_name}`: 参数 `{param}` (C# 类型: {type}) 未在文档中记录
@@ -325,8 +397,9 @@
 - **审计部分（步骤 1–3）是只读的**；唯一允许修改文件的是步骤 4 的数量同步（且仅限 AGENTS.md / README.md / README_CN.md / unity-skills~/SKILL.md 四个文件中的数量引用），不修改 C# 代码，不自动 `git commit`，只提示用户审阅后提交
 - 如果审计通过且数量一致，输出 `✅ 所有 Skill 定义与文档一致，数量已同步（{N} Skills），无问题发现`
 - 对于 batch 类 Skill（如 `gameobject_create_batch`），参数通常是 `string items`（JSON 数组），文档中以 `items` + Item properties 形式描述，这种情况视为一致。**真正的参数比对**应在 `BatchXxxItem` 类属性与文档 Item properties 之间进行
-- `*_batch` 的 Item properties 与对应单个 Skill 的参数应保持一致，可作为额外检查项。但 batch 版本可能比单个版本多出属性（如 `gameobject_create_batch` 的 BatchItem 有 `rotX/scaleX` 而单个 `gameobject_create` 没有），这种"batch 扩展"标注但不算错误
+- `*_batch` 的 Item properties 与对应单个 Skill 的参数应保持一致，可作为额外检查项。但 batch 版本可能与单个版本字段不同（如 `component_*_batch` 的 item 没有单体可用的合成 `entityId`，`script_create_batch` 的 item 多一个别名 `namespace`），这种差异标注但不算错误
 - 大型审计可能需要读取大量文件，优先使用 Grep 批量提取而非逐文件读取
+- **入口/reference 拆分**：试点模块文档是 `SKILL.md`（入口：跨技能共享事实与守则、技能列表、`## Exact Signatures`，不链接相邻模块文档）+ `reference/<skill_name>.md`（每技能一个文件：参数表在前，然后 Item properties、Returns、陷阱与示例）；其他模块仍可用单文件或 `REFERENCE.md`。扫描一律覆盖模块目录下所有 `.md` 与 `reference/` 一层；**不得**要求技能必须定义在入口，也不得因为入口没有 `###` 就判定为 advisory。相关测试：`SkillDocumentationConsistencyTests` 的 `SkillDocModules_ShouldMapToCategoriesOrBeRegisteredAdvisory`、`PilotSkillDocs_ShouldDocumentEverySkillOfTheirModule`、`PilotReferenceFiles_ShouldEachDefineTheSkillTheyAreNamedAfter`、`SkillDocLinks_ShouldResolve`、`PilotSkillDoc_ShouldStayWithinByteBudget`
 - **条件编译 Skill**：位于 `#if` 块内的 Skill 在报告中单独标注其依赖宏（如 `[需要 PROBUILDER]`），与无条件 Skill 区分展示。这些 Skill 在特定环境下可能不可用，但只要 SKILL.md 有对应文档就不算"未文档化"
 - **DO NOT 列表解析**：只提取明确声称"do not exist"/"不存在"的 skill 名，忽略路由建议（如"use `component_add` instead"中的 `component_add` 不是 DO NOT 目标）
 - **Returns 解析精度**：`return new { ... }` 的正则提取不要求覆盖所有代码路径（error 分支可忽略），只需覆盖主成功路径的返回字段

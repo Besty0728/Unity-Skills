@@ -2256,8 +2256,10 @@ namespace UnitySkills
                     AddSemanticError(validation, "scriptName", $"'{scriptName}' is not a valid C# class name.");
 
                 var predictedPath = Path.Combine(folder, scriptName + ".cs").Replace('\\', '/');
+                // script_create refuses an existing file (it never overwrites), so dryRun must not promise an overwrite.
                 if (File.Exists(predictedPath))
-                    AddWarning(validation, $"Script already exists at '{predictedPath}' and will be overwritten.");
+                    AddSemanticError(validation, "scriptName",
+                        $"Script already exists at '{predictedPath}'; script_create never overwrites. Edit it with script_replace/script_append or choose another scriptName/folder.");
             }
 
             if (plan != null)

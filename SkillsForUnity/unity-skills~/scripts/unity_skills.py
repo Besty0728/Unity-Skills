@@ -1644,10 +1644,10 @@ def find_skills(intent: str, top_n: int = 10, include_schema: bool = False,
                  wire: Optional[str] = None) -> Dict[str, Any]:
     """Server-side intent-based skill recommendation (GET /skills/recommend).
 
-    This is the documented default starting point once you already know the specific
-    intent -- root SKILL.md's "Default: start here" row is
-    `GET /skills/recommend?intent=...&includeSchema=true`: one call that both finds and
-    describes the candidate skill, often the only lookup you need before a dryRun.
+    The documented discovery call when the root SKILL.md quick reference does not cover the
+    edit -- its "Everything else: one discovery call" section uses
+    `GET /skills/recommend?intent=...&includeSchema=true&topN=3&wire=v2`: one call that both
+    finds and describes the candidate skills (repeat `intent` for several needs).
 
     Uses keyword scoring: name match (3pts), tag match (2pts), description match (1pt).
     Returns top-N ranked skills with relevance scores.
@@ -1965,16 +1965,25 @@ def get_audit_log(limit: int = 100) -> List[Dict[str, Any]]:
         return [{"status": "error", "error": str(e)}]
 
 
-def create_script(name: str, template: str = 'MonoBehaviour', wait_for_compile: bool = True) -> Dict[str, Any]:
-    """Create a script and optionally wait for recompilation to settle."""
-    result = call_skill('script_create', name=name, template=template)
-    compilation = result.get('compilation', {}) if isinstance(result, dict) else {}
-    if result.get('success') and wait_for_compile and compilation.get('isCompiling'):
-        time.sleep(2)
-        if wait_for_unity(timeout=10):
-            feedback = call_skill('script_get_compile_feedback', scriptPath=result['path'])
-            if feedback.get('success'):
-                result['compilation'] = {k: v for k, v in feedback.items() if k != 'success'}
+def create_script(name: str, template: str = 'MonoBehaviour', wait_for_compile: bool = True,
+                  content: Optional[str] = None, folder: Optional[str] = None,
+                  timeout: float = 120.0) -> Dict[str, Any]:
+    """Create a script (template, or the full source via `content`) and optionally wait for its compile job.
+
+    The server returns a compile `jobId` (plus `waitUrl`); waiting polls GET /jobs/{id} across the domain
+    reload and attaches the job outcome as `compilation`.
+    """
+    args: Dict[str, Any] = {'name': name}
+    if content is not None:
+        args['content'] = content
+    else:
+        args['template'] = template
+    if folder:
+        args['folder'] = folder
+    result = call_skill('script_create', **args)
+    job_id = result.get('jobId') if isinstance(result, dict) else None
+    if wait_for_compile and job_id and result.get('success', True):
+        result['compilation'] = _get_default_client().wait_for_job(job_id, timeout=timeout)
     return result
 
 

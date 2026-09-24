@@ -1,6 +1,6 @@
 ---
 name: unity-skills-guide
-description: Guidance mode for unity-skills. Teach manual Unity Editor steps instead of calling REST skills. Use when /health reports a surfaceProfile other than full (or the legacy guideMode:true), or when the user wants simple one-off Editor actions (create one object, tweak one color, add one component, etc.) that are faster done by hand than through automation. The root SKILL.md routes here for manual work.
+description: Guidance mode for unity-skills. Teach manual Unity Editor steps instead of calling REST skills. Use when /health reports surfaceProfile guide (or the legacy guideMode:true), for the scene-authoring part of a task under noSceneAuthoring, or when the user wants simple one-off Editor actions (create one object, tweak one color, add one component, etc.) that are faster done by hand than through automation. The root SKILL.md routes here for manual work.
 ---
 
 # Unity Skills — Guidance Mode

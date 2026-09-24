@@ -11,6 +11,8 @@ namespace UnitySkills
     /// </summary>
     public static class LightSkills
     {
+        private const string ShadowsNote = "None, Hard or Soft (case-insensitive).";
+
         [UnitySkill("light_create", "Create a new light (Directional, Point, Spot, Area)",
             Category = SkillCategory.Light, Operation = SkillOperation.Create,
             Tags = new[] { "light", "create", "illumination", "scene" },
@@ -18,13 +20,18 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object LightCreate(
             string name = "New Light",
+            [SkillParam("Directional, Point, Spot, Area (= Rectangle) or Disc, case-insensitive.")]
             string lightType = "Point",
+            [SkillParam("x/y/z: world position; the light is created at the scene root.")]
             float x = 0, float y = 3, float z = 0,
+            [SkillParam("r/g/b: colour channels as 0-1 floats (not 0-255).")]
             float r = 1, float g = 1, float b = 1,
             float intensity = 1,
+            [SkillParam("Distance in world units; Point and Spot only, ignored for other types.")]
             float range = 10,
+            [SkillParam("Cone angle in degrees; Spot only, ignored for other types.")]
             float spotAngle = 30,
-            string shadows = "Soft")
+            [SkillParam(ShadowsNote)] string shadows = "Soft")
         {
             // Both enums are validated before the GameObject is created, so an invalid value never
             // leaves behind a half-configured light (a switch fallback would let an invalid shadows
@@ -80,11 +87,15 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object LightSetProperties(
             string name = null, int instanceId = 0, string path = null,
+            [SkillParam("r/g/b/a: 0-1 floats; each omitted channel keeps the light's current value.")]
             float? r = null, float? g = null, float? b = null, float? a = null,
+            [SkillParam("Light.intensity as-is (it multiplies the colour), no unit conversion; omitted = unchanged.")]
             float? intensity = null,
+            [SkillParam("Distance in world units; Point and Spot only, otherwise reported in skipped.")]
             float? range = null,
+            [SkillParam("Cone angle in degrees; Spot only, otherwise reported in skipped.")]
             float? spotAngle = null,
-            string shadows = null)
+            [SkillParam(ShadowsNote)] string shadows = null)
         {
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
@@ -293,7 +304,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object LightSetEnabledBatch(string items)
+        public static object LightSetEnabledBatch(
+            [SkillParam("JSON array of {name|path|instanceId, enabled}; an omitted enabled means false.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchLightEnabledItem>(items, item =>
             {
@@ -324,7 +337,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object LightSetPropertiesBatch(string items)
+        public static object LightSetPropertiesBatch(
+            [SkillParam("JSON array of {name|path|instanceId, r?, g?, b?, a? (0-1; omitted keep current), intensity?, range? (Point/Spot only), shadows? (None|Hard|Soft)}.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchLightPropsItem>(items, item =>
             {
@@ -384,6 +399,7 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object LightAddProbeGroup(string name = null, int instanceId = 0, string path = null,
+            [SkillParam("Probes per axis; a grid is built only when gridX, gridY and gridZ are all > 0, replacing existing probes. Positions are local, centred on X/Z, rising from y=0.")]
             int gridX = 0, int gridY = 0, int gridZ = 0,
             float spacingX = 2f, float spacingY = 1.5f, float spacingZ = 2f)
         {

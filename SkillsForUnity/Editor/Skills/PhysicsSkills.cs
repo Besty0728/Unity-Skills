@@ -10,6 +10,9 @@ namespace UnitySkills
     /// </summary>
     public static class PhysicsSkills
     {
+        private const string LayerMaskNote = "Layer bit mask (bit n = layer n, e.g. 256 = layer 8 only), not a layer index; -1 = all layers.";
+        private const string LayerIndexNote = "Layer index 0-31, not a layer name.";
+
         private sealed class GravityValue { public float x; public float y; public float z; }
 
         /// <summary>
@@ -80,7 +83,7 @@ namespace UnitySkills
             float originX, float originY, float originZ,
             float dirX, float dirY, float dirZ,
             float maxDistance = 1000f,
-            int layerMask = -1 // Default: all layers
+            [SkillParam(LayerMaskNote)] int layerMask = -1 // Default: all layers
         )
         {
             var origin = new Vector3(originX, originY, originZ);
@@ -119,7 +122,7 @@ namespace UnitySkills
         public static object PhysicsCheckOverlap(
             float x, float y, float z,
             float radius,
-            int layerMask = -1
+            [SkillParam(LayerMaskNote)] int layerMask = -1
         )
         {
             if (radius < 0f) return InvalidNonNegativeError(radius, "radius");
@@ -190,7 +193,7 @@ namespace UnitySkills
         public static object PhysicsRaycastAll(
             float originX, float originY, float originZ,
             float dirX, float dirY, float dirZ,
-            float maxDistance = 1000f, int layerMask = -1)
+            float maxDistance = 1000f, [SkillParam(LayerMaskNote)] int layerMask = -1)
         {
             var origin = new Vector3(originX, originY, originZ);
             var direction = new Vector3(dirX, dirY, dirZ);
@@ -220,7 +223,7 @@ namespace UnitySkills
         public static object PhysicsSphereCast(
             float originX, float originY, float originZ,
             float dirX, float dirY, float dirZ,
-            float radius, float maxDistance = 1000f, int layerMask = -1)
+            float radius, float maxDistance = 1000f, [SkillParam(LayerMaskNote)] int layerMask = -1)
         {
             if (radius < 0f) return InvalidNonNegativeError(radius, "radius");
             var origin = new Vector3(originX, originY, originZ);
@@ -253,7 +256,7 @@ namespace UnitySkills
             float originX, float originY, float originZ,
             float dirX, float dirY, float dirZ,
             float halfExtentX = 0.5f, float halfExtentY = 0.5f, float halfExtentZ = 0.5f,
-            float maxDistance = 1000f, int layerMask = -1)
+            float maxDistance = 1000f, [SkillParam(LayerMaskNote)] int layerMask = -1)
         {
             if (halfExtentX < 0f) return InvalidNonNegativeError(halfExtentX, "halfExtentX");
             if (halfExtentY < 0f) return InvalidNonNegativeError(halfExtentY, "halfExtentY");
@@ -288,7 +291,7 @@ namespace UnitySkills
         public static object PhysicsOverlapBox(
             float x, float y, float z,
             float halfExtentX = 0.5f, float halfExtentY = 0.5f, float halfExtentZ = 0.5f,
-            int layerMask = -1)
+            [SkillParam(LayerMaskNote)] int layerMask = -1)
         {
             if (halfExtentX < 0f) return InvalidNonNegativeError(halfExtentX, "halfExtentX");
             if (halfExtentY < 0f) return InvalidNonNegativeError(halfExtentY, "halfExtentY");
@@ -373,7 +376,7 @@ namespace UnitySkills
             Outputs = new[] { "layer1", "layer2", "collisionEnabled" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object PhysicsGetLayerCollision(int layer1, int layer2)
+        public static object PhysicsGetLayerCollision([SkillParam(LayerIndexNote)] int layer1, [SkillParam(LayerIndexNote)] int layer2)
         {
             if (layer1 < 0 || layer1 > 31) return InvalidLayerIndexError(layer1, "layer1");
             if (layer2 < 0 || layer2 > 31) return InvalidLayerIndexError(layer2, "layer2");
@@ -385,7 +388,7 @@ namespace UnitySkills
             Category = SkillCategory.Physics, Operation = SkillOperation.Modify,
             Tags = new[] { "layer", "collision", "matrix" },
             Outputs = new[] { "success", "layer1", "layer2", "collisionEnabled" }, MutatesAssets = true)]
-        public static object PhysicsSetLayerCollision(int layer1, int layer2, bool enableCollision = true)
+        public static object PhysicsSetLayerCollision([SkillParam(LayerIndexNote)] int layer1, [SkillParam(LayerIndexNote)] int layer2, bool enableCollision = true)
         {
             if (layer1 < 0 || layer1 > 31) return InvalidLayerIndexError(layer1, "layer1");
             if (layer2 < 0 || layer2 > 31) return InvalidLayerIndexError(layer2, "layer2");

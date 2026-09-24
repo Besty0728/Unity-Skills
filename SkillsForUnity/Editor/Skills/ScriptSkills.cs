@@ -21,13 +21,19 @@ namespace UnitySkills
             Outputs = new[] { "path", "className", "namespaceName", "jobId", "waitUrl" },
             MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
         public static object ScriptCreate(
+            [SkillParam("File name without .cs and without path separators, written as <folder>/<scriptName>.cs; a template's class gets the same name.")]
             string scriptName = null,
+            [SkillParam("Alias of scriptName, used only when scriptName is omitted.")]
             string name = null,
+            [SkillParam("Must start with Assets/ or Packages/; created if missing. Editor/EditorWindow templates switch the default Assets/Scripts to Assets/Editor.")]
             string folder = "Assets/Scripts",
+            [SkillParam("MonoBehaviour (default), ScriptableObject, Editor or EditorWindow, case-insensitive; ignored when content is given.")]
             string template = null,
+            [SkillParam("Wraps the template class in this namespace; ignored when content is given.")]
             string namespaceName = null,
             bool checkCompile = true,
             int diagnosticLimit = DefaultDiagnosticLimit,
+            [SkillParam("Complete C# source, written verbatim (template and namespaceName are ignored). A MonoBehaviour/ScriptableObject must declare a class named scriptName.")]
             string content = null)
         {
             scriptName = scriptName ?? name;
@@ -128,7 +134,9 @@ namespace UnitySkills
             RequiresInput = new[] { "items" },
             MayTriggerReload = true, MutatesAssets = true,
             RiskLevel = "high")]
-        public static object ScriptCreateBatch(string items)
+        public static object ScriptCreateBatch(
+            [SkillParam("JSON array of {scriptName|name, folder?, template?, namespaceName|namespace?, content?}, each as in script_create.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchScriptItem>(items, item =>
             {
@@ -212,7 +220,10 @@ namespace UnitySkills
             RequiresInput = new[] { "pattern" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object ScriptFindInFile(string pattern, string folder = "Assets", bool isRegex = false, int limit = 50)
+        public static object ScriptFindInFile(
+            [SkillParam("Case-sensitive substring matched per line; with isRegex a .NET regex.")]
+            string pattern,
+            string folder = "Assets", bool isRegex = false, int limit = 50)
         {
             if (!string.IsNullOrEmpty(folder) && Validate.SafePath(folder, "folder") is object folderErr) return folderErr;
             if (Validate.Required(pattern, "pattern") is object err) return err;
@@ -256,7 +267,10 @@ namespace UnitySkills
             Outputs = new[] { "path", "jobId", "waitUrl" },
             RequiresInput = new[] { "scriptPath" },
             MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
-        public static object ScriptAppend(string scriptPath, string content, int atLine = -1, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
+        public static object ScriptAppend(string scriptPath, string content,
+            [SkillParam("0-based line index to insert before. -1 or out of range: before the last line that is only '}' (in a namespaced file, the namespace's), else at the end.")]
+            int atLine = -1,
+            bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (!File.Exists(scriptPath))
@@ -289,7 +303,12 @@ namespace UnitySkills
             RequiresInput = new[] { "scriptPath" },
             RequiredParams = new[] { "find" },
             MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
-        public static object ScriptReplace(string scriptPath, string find, string replace, bool isRegex = false, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
+        public static object ScriptReplace(string scriptPath,
+            [SkillParam("Literal, case-sensitive text, every occurrence replaced; with isRegex a .NET regex.")]
+            string find,
+            [SkillParam("Replacement text; with isRegex, $1 / ${name} substitutions apply.")]
+            string replace,
+            bool isRegex = false, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (Validate.Required(find, "find") is object findErr) return findErr;
@@ -376,7 +395,10 @@ namespace UnitySkills
             RequiresInput = new[] { "scriptPath" },
             RequiredParams = new[] { "newName" },
             MayTriggerReload = true, RiskLevel = "high", MutatesAssets = true)]
-        public static object ScriptRename(string scriptPath, string newName, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
+        public static object ScriptRename(string scriptPath,
+            [SkillParam("New file name without .cs; only the file is renamed, not the class inside it.")]
+            string newName,
+            bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (!File.Exists(scriptPath)) return new { error = $"Script not found: {scriptPath}" };
@@ -403,7 +425,10 @@ namespace UnitySkills
             Outputs = new[] { "oldPath", "newPath", "jobId", "waitUrl" },
             RequiresInput = new[] { "scriptPath", "newFolder" },
             MayTriggerReload = true, RiskLevel = "high", MutatesAssets = true)]
-        public static object ScriptMove(string scriptPath, string newFolder, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
+        public static object ScriptMove(string scriptPath,
+            [SkillParam("Destination folder, must start with Assets/ or Packages/; created if missing.")]
+            string newFolder,
+            bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (!File.Exists(scriptPath)) return new { error = $"Script not found: {scriptPath}" };

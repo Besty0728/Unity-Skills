@@ -188,7 +188,7 @@ Get all available layers.
 ### Pause On Error
 Pause-on-error is provided by the console module, not the editor module.
 
-Use `console_set_pause_on_error` from [console/SKILL.md](/E:/CodeSpace/Unity-Skills/SkillsForUnity/unity-skills~/skills/console/SKILL.md).
+Use `console_set_pause_on_error` from [console/SKILL.md](../console/SKILL.md).
 
 ---
 

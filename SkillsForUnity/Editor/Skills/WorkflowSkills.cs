@@ -618,6 +618,8 @@ namespace UnitySkills
             var mayDisconnect = false;
             var createdNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            // Later steps may target objects an earlier step creates; the planners accept those while this scope is open.
+            using (SkillPlanningService.BeginPendingObjectsScope())
             for (int i = 0; i < skillsArray.Count; i++)
             {
                 var entry = skillsArray[i] as JObject;

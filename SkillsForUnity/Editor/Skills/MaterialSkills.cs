@@ -12,6 +12,10 @@ namespace UnitySkills
     /// </summary>
     public static class MaterialSkills
     {
+        private const string MaterialPathNote = "'Assets/...' or '*.mat' = that material asset; any other value is a hierarchy path, targeting its Renderer's sharedMaterial (the shared asset).";
+        private const string ShaderPropertyNote = "Shader property reference name (e.g. _Metallic, _Cutoff), not the Inspector label; material_get_properties lists them.";
+        private const string MainTextureNote = "Shader texture property; default _BaseMap (URP), _BaseColorMap (HDRP) or _MainTex (Built-in).";
+
         #region Helper Methods
         
         /// <summary>
@@ -127,7 +131,11 @@ namespace UnitySkills
             Outputs = new[] { "name", "shader", "path", "entityId", "renderPipeline", "colorProperty", "textureProperty" },
             TracksWorkflow = true,
             MutatesAssets = true)]
-        public static object MaterialCreate(string name, string shaderName = null, string savePath = null)
+        public static object MaterialCreate(string name,
+            [SkillParam("Full shader name, e.g. 'Universal Render Pipeline/Lit'; omitted = the pipeline's default Lit shader (URP Lit, HDRP/Lit or Standard).")]
+            string shaderName = null,
+            [SkillParam("Must start with Assets/. A folder (existing, or no extension) gets '<name>.mat'; '.mat' is appended if missing. Omit for an unsaved in-memory material.")]
+            string savePath = null)
         {
             if (!string.IsNullOrEmpty(savePath) && Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
 
@@ -216,7 +224,9 @@ namespace UnitySkills
             Outputs = new[] { "gameObject", "material", "materialName" },
             RequiresInput = new[] { "gameObject", "materialPath" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object MaterialAssign(string name = null, int instanceId = 0, string path = null, string materialPath = null)
+        public static object MaterialAssign(string name = null, int instanceId = 0, string path = null,
+            [SkillParam("Project path of a material asset, e.g. Assets/Materials/Red.mat; a model file path yields its first embedded material.")]
+            string materialPath = null)
         {
             if (Validate.Required(materialPath, "materialPath") is object err) return err;
 
@@ -253,7 +263,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesAssets = true)]
-        public static object MaterialCreateBatch(string items)
+        public static object MaterialCreateBatch(
+            [SkillParam("JSON array of {name, shaderName?, savePath?}, each as in material_create (no savePath = unsaved in-memory material).")]
+            string items)
         {
             return BatchExecutor.Execute<BatchMaterialCreateItem>(items, item =>
             {
@@ -272,7 +284,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object MaterialAssignBatch(string items)
+        public static object MaterialAssignBatch(
+            [SkillParam("JSON array of {name|path|instanceId, materialPath}.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchMaterialAssignItem>(items, item =>
             {
@@ -343,9 +357,14 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject|path" },
             TracksWorkflow = true,
             MutatesAssets = true)]
-        public static object MaterialSetColor(string name = null, int instanceId = 0, string path = null, 
-            float r = 1, float g = 1, float b = 1, float a = 1, 
-            string propertyName = null, float intensity = 1.0f)
+        public static object MaterialSetColor(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            [SkillParam("r/g/b/a are 0-1 floats; intensity multiplies r/g/b but not a.")]
+            float r = 1, float g = 1, float b = 1, float a = 1,
+            [SkillParam("Shader colour property; default _BaseColor (URP/HDRP) or _Color (Built-in). The response's propertyUsed names the property written.")]
+            string propertyName = null,
+            [SkillParam("HDR multiplier on r/g/b (alpha unchanged); writing _EmissionColor with intensity > 0 also enables _EMISSION.")]
+            float intensity = 1.0f)
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -414,7 +433,11 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesAssets = true)]
-        public static object MaterialSetColorsBatch(string items = null, string propertyName = null)
+        public static object MaterialSetColorsBatch(
+            [SkillParam("JSON array of {name|path|instanceId, r?, g?, b?, a?}: 0-1 floats, each omitted channel = 1; path may be a material asset path.")]
+            string items = null,
+            [SkillParam("Colour property for every item; default _BaseColor (URP/HDRP) or _Color (Built-in).")]
+            string propertyName = null)
         {
             if (string.IsNullOrEmpty(propertyName))
                 propertyName = ProjectSkills.GetColorPropertyName();
@@ -468,8 +491,12 @@ namespace UnitySkills
             // FindMaterial resolves to renderer.sharedMaterial, i.e. the .mat on disk,
             // the same kind of write already declared by material_set_color
             TracksWorkflow = true, MutatesAssets = true)]
-        public static object MaterialSetEmission(string name = null, int instanceId = 0, string path = null,
-            float r = 1, float g = 1, float b = 1, float intensity = 1.0f, bool enableEmission = true)
+        public static object MaterialSetEmission(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            [SkillParam("r/g/b: base emission colour as 0-1 floats; intensity multiplies them.")]
+            float r = 1, float g = 1, float b = 1,
+            [SkillParam("HDR multiplier on r/g/b; intensity <= 0 or enableEmission=false disables _EMISSION.")]
+            float intensity = 1.0f, bool enableEmission = true)
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -529,7 +556,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesAssets = true)]
-        public static object MaterialSetEmissionBatch(string items)
+        public static object MaterialSetEmissionBatch(
+            [SkillParam("JSON array of {name|path|instanceId, r, g, b (0-1, omitted = 0), intensity? (default 1), enableEmission? (default true)}.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchEmissionItem>(items, item =>
             {
@@ -553,7 +582,10 @@ namespace UnitySkills
             Outputs = new[] { "texture", "propertyUsed" },
             RequiresInput = new[] { "gameObject|path", "texturePath" },
             TracksWorkflow = true, MutatesAssets = true)]
-        public static object MaterialSetTexture(string name = null, int instanceId = 0, string path = null, string texturePath = null, string propertyName = null)
+        public static object MaterialSetTexture(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            string texturePath = null,
+            [SkillParam(MainTextureNote)] string propertyName = null)
         {
             if (Validate.Required(texturePath, "texturePath") is object err) return err;
 
@@ -590,7 +622,10 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject|path" },
             RequiredParams = new[] { "propertyName" },
             TracksWorkflow = true, MutatesAssets = true)]
-        public static object MaterialSetFloat(string name = null, int instanceId = 0, string path = null, string propertyName = null, float value = 0)
+        public static object MaterialSetFloat(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            [SkillParam(ShaderPropertyNote)] string propertyName = null,
+            float value = 0)
         {
             if (Validate.Required(propertyName, "propertyName") is object err) return err;
 
@@ -622,7 +657,10 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject|path" },
             RequiredParams = new[] { "propertyName" },
             MutatesAssets = true)]
-        public static object MaterialSetInt(string name = null, int instanceId = 0, string path = null, string propertyName = null, int value = 0)
+        public static object MaterialSetInt(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            [SkillParam(ShaderPropertyNote)] string propertyName = null,
+            int value = 0)
         {
             if (Validate.Required(propertyName, "propertyName") is object err) return err;
 
@@ -653,8 +691,10 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject|path" },
             RequiredParams = new[] { "propertyName" },
             MutatesAssets = true)]
-        public static object MaterialSetVector(string name = null, int instanceId = 0, string path = null, 
-            string propertyName = null, float x = 0, float y = 0, float z = 0, float w = 0)
+        public static object MaterialSetVector(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            [SkillParam(ShaderPropertyNote)] string propertyName = null,
+            float x = 0, float y = 0, float z = 0, float w = 0)
         {
             if (Validate.Required(propertyName, "propertyName") is object err) return err;
 
@@ -684,8 +724,10 @@ namespace UnitySkills
             Outputs = new[] { "property", "offset" },
             RequiresInput = new[] { "gameObject|path" },
             MutatesAssets = true)]
-        public static object MaterialSetTextureOffset(string name = null, int instanceId = 0, string path = null,
-            string propertyName = null, float x = 0, float y = 0)
+        public static object MaterialSetTextureOffset(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            [SkillParam(MainTextureNote)] string propertyName = null,
+            float x = 0, float y = 0)
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -708,8 +750,10 @@ namespace UnitySkills
             Outputs = new[] { "property", "scale" },
             RequiresInput = new[] { "gameObject|path" },
             MutatesAssets = true)]
-        public static object MaterialSetTextureScale(string name = null, int instanceId = 0, string path = null,
-            string propertyName = null, float x = 1, float y = 1)
+        public static object MaterialSetTextureScale(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            [SkillParam(MainTextureNote)] string propertyName = null,
+            float x = 1, float y = 1)
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -737,7 +781,8 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject|path" },
             RequiredParams = new[] { "keyword" },
             MutatesAssets = true)]
-        public static object MaterialSetKeyword(string name = null, int instanceId = 0, string path = null, 
+        public static object MaterialSetKeyword(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
             string keyword = null, bool enable = true)
         {
             if (Validate.Required(keyword, "keyword") is object err) return err;
@@ -775,7 +820,9 @@ namespace UnitySkills
             Outputs = new[] { "renderQueue", "queueCategory" },
             RequiresInput = new[] { "gameObject|path" },
             MutatesAssets = true)]
-        public static object MaterialSetRenderQueue(string name = null, int instanceId = 0, string path = null, int renderQueue = -1)
+        public static object MaterialSetRenderQueue(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            int renderQueue = -1)
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -816,7 +863,10 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject|path" },
             RequiredParams = new[] { "shaderName" },
             TracksWorkflow = true, MutatesAssets = true)]
-        public static object MaterialSetShader(string name = null, int instanceId = 0, string path = null, string shaderName = null)
+        public static object MaterialSetShader(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            [SkillParam("Full shader name, e.g. 'Universal Render Pipeline/Lit' or 'Standard'.")]
+            string shaderName = null)
         {
             if (Validate.Required(shaderName, "shaderName") is object err) return err;
 
@@ -851,7 +901,9 @@ namespace UnitySkills
             Outputs = new[] { "giFlags" },
             RequiresInput = new[] { "gameObject|path" },
             MutatesAssets = true)]
-        public static object MaterialSetGIFlags(string name = null, int instanceId = 0, string path = null, string flags = "RealtimeEmissive")
+        public static object MaterialSetGIFlags(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null,
+            string flags = "RealtimeEmissive")
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -889,7 +941,8 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject|path" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object MaterialGetProperties(string name = null, int instanceId = 0, string path = null)
+        public static object MaterialGetProperties(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null)
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;
@@ -961,7 +1014,8 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject|path" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object MaterialGetKeywords(string name = null, int instanceId = 0, string path = null)
+        public static object MaterialGetKeywords(string name = null, int instanceId = 0,
+            [SkillParam(MaterialPathNote)] string path = null)
         {
             var (material, go, error) = FindMaterial(name, instanceId, path);
             if (error != null) return error;

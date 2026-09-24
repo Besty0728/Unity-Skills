@@ -17,13 +17,16 @@ namespace UnitySkills
         private static readonly Regex MultiWhitespaceRegex = new Regex(@"\s+", RegexOptions.Compiled);
         private static readonly Regex MultiUnderscoreRegex = new Regex(@"_+", RegexOptions.Compiled);
 
+        private const string QueryJsonNote = "JSON object, filters ANDed: name (substring), namePattern (regex), path/parentPath (exact), entityId, instanceId, tag, layer, componentType, sceneName, active, isStatic, prefabSource, includeInactive (false), limit (500).";
+        private const string MaterialPathNote = "Project path of a material asset, assigned as each Renderer's sharedMaterial.";
+
         [UnitySkill("batch_query_gameobjects", "Query GameObjects with unified batch filters. queryJson supports name/path/entityId/instanceId/tag/layer/active/componentType/sceneName/parentPath/prefabSource/includeInactive/limit.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
             Tags = new[] { "batch", "query", "gameobject", "filter" },
             Outputs = new[] { "count", "objects", "summary" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object BatchQueryGameObjects(string queryJson = null, int sampleLimit = 20)
+        public static object BatchQueryGameObjects([SkillParam(QueryJsonNote)] string queryJson = null, int sampleLimit = 20)
         {
             var query = ParseQuery(queryJson);
             var targets = QueryTargets(query);
@@ -37,7 +40,7 @@ namespace UnitySkills
             Outputs = new[] { "count", "objects", "summary" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object BatchQueryComponents(string queryJson = null, string componentType = null, int sampleLimit = 20)
+        public static object BatchQueryComponents([SkillParam(QueryJsonNote)] string queryJson = null, string componentType = null, int sampleLimit = 20)
         {
             var query = ParseQuery(queryJson);
             if (!string.IsNullOrWhiteSpace(componentType))
@@ -65,7 +68,9 @@ namespace UnitySkills
         public static object BatchQueryAssets(
             string searchFilter = null,
             string folder = "Assets",
+            [SkillParam("Asset type for FindAssets, 't:' prefix optional (Material, Prefab, Texture2D...).")]
             string typeFilter = null,
+            [SkillParam("Case-insensitive regex matched against the file name without extension.")]
             string namePattern = null,
             string labelFilter = null,
             int maxResults = 200)
@@ -133,7 +138,8 @@ namespace UnitySkills
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchPreviewRename(
-            string queryJson = null,
+            [SkillParam(QueryJsonNote)] string queryJson = null,
+            [SkillParam("prefix | suffix | replace (search -> replacement, literal, case-sensitive) | regex_replace (regexPattern -> regexReplacement).")]
             string mode = "prefix",
             string prefix = null,
             string suffix = null,
@@ -163,13 +169,13 @@ namespace UnitySkills
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchPreviewSetProperty(
-            string queryJson = null,
+            [SkillParam(QueryJsonNote)] string queryJson = null,
             string componentType = null,
-            string propertyName = null,
-            string value = null,
+            [SkillParam(ComponentSkills.PropertyNameNote)] string propertyName = null,
+            [SkillParam(ComponentSkills.PropertyValueNote)] string value = null,
             string referencePath = null,
             string referenceName = null,
-            string assetPath = null,
+            [SkillParam(ComponentSkills.AssetReferenceNote)] string assetPath = null,
             int sampleLimit = DefaultSampleLimit)
         {
             try
@@ -191,7 +197,8 @@ namespace UnitySkills
             RequiresInput = new[] { "materialPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object BatchPreviewReplaceMaterial(string queryJson = null, string materialPath = null, int sampleLimit = DefaultSampleLimit)
+        public static object BatchPreviewReplaceMaterial([SkillParam(QueryJsonNote)] string queryJson = null,
+            [SkillParam(MaterialPathNote)] string materialPath = null, int sampleLimit = DefaultSampleLimit)
         {
             try
             {
@@ -223,7 +230,14 @@ namespace UnitySkills
             MutatesScene = true,
             MutatesAssets = true,
             SupportsDryRun = false)]
-        public static object BatchExecute(string confirmToken, bool runAsync = true, int chunkSize = 100, int progressGranularity = 10)
+        public static object BatchExecute(
+            [SkillParam("Token returned by a preview skill; single use, expires after 1 hour.")]
+            string confirmToken,
+            [SkillParam("true returns a jobId at once; false waits inline, but a preview with more items than chunkSize still runs as a job.")]
+            bool runAsync = true,
+            [SkillParam("Items per chunk, clamped to 1-200.")]
+            int chunkSize = 100,
+            int progressGranularity = 10)
         {
             chunkSize = Mathf.Clamp(chunkSize, 1, 200);
 
@@ -533,7 +547,7 @@ namespace UnitySkills
             Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object BatchFixMissingScripts(string queryJson = null, int sampleLimit = DefaultSampleLimit)
+        public static object BatchFixMissingScripts([SkillParam(QueryJsonNote)] string queryJson = null, int sampleLimit = DefaultSampleLimit)
         {
             var preview = BuildMissingScriptsPreview(ParseQuery(queryJson));
             return SavePreview(preview, sampleLimit);
@@ -545,7 +559,10 @@ namespace UnitySkills
             Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object BatchStandardizeNaming(string queryJson = null, string separator = "_", int sampleLimit = DefaultSampleLimit)
+        public static object BatchStandardizeNaming([SkillParam(QueryJsonNote)] string queryJson = null,
+            [SkillParam("Replaces whitespace, '-', '/' and runs of '_' with this, then trims it from both ends.")]
+            string separator = "_",
+            int sampleLimit = DefaultSampleLimit)
         {
             var preview = BuildStandardizeNamingPreview(ParseQuery(queryJson), separator);
             return SavePreview(preview, sampleLimit);
@@ -560,7 +577,10 @@ namespace UnitySkills
             RequiresInput = new[] { "layer" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object BatchSetRenderLayer(string queryJson = null, string layer = null, bool recursive = false, int sampleLimit = DefaultSampleLimit)
+        public static object BatchSetRenderLayer([SkillParam(QueryJsonNote)] string queryJson = null,
+            [SkillParam("Layer name as in Tags & Layers, not an index.")]
+            string layer = null,
+            bool recursive = false, int sampleLimit = DefaultSampleLimit)
         {
             try
             {
@@ -583,7 +603,8 @@ namespace UnitySkills
             RequiresInput = new[] { "materialPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object BatchReplaceMaterial(string queryJson = null, string materialPath = null, int sampleLimit = DefaultSampleLimit)
+        public static object BatchReplaceMaterial([SkillParam(QueryJsonNote)] string queryJson = null,
+            [SkillParam(MaterialPathNote)] string materialPath = null, int sampleLimit = DefaultSampleLimit)
         {
             try
             {
@@ -621,7 +642,10 @@ namespace UnitySkills
             Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object BatchCleanupTempObjects(string queryJson = null, string patternsCsv = null, int sampleLimit = DefaultSampleLimit)
+        public static object BatchCleanupTempObjects([SkillParam(QueryJsonNote)] string queryJson = null,
+            [SkillParam("Comma- or semicolon-separated, case-insensitive name substrings; default temp, tmp, preview, _copy, (clone).")]
+            string patternsCsv = null,
+            int sampleLimit = DefaultSampleLimit)
         {
             var preview = BuildCleanupTempObjectsPreview(ParseQuery(queryJson), patternsCsv);
             return SavePreview(preview, sampleLimit);

@@ -2897,7 +2897,7 @@ namespace UnitySkills
                 // Reports the count actually listed in this payload. Under a non-full surfaceProfile it's smaller than the registry's total --
                 // reporting the registry's total count here would send the agent looking for names that don't exist in the catalog.
                 totalSkills = visibleCount,
-                briefHint = "DIRECTORY ONLY — names + categories, no descriptions or parameters. This is the default answer for GET /skills. Locate the module(s) you need, then fetch exact signatures via GET /skills/schema?category=<Category>, and always dryRun before first execution. If a name is ambiguous, fall back to GET /skills?summary=1 (full descriptions) or GET /skills/recommend?intent=... The complete manifest is still available at GET /skills?full=1 (~618KB — add &wire=v2 to cut it down), and session constants live at GET /skills/meta.",
+                briefHint = "DIRECTORY ONLY — names + categories, no descriptions or parameters. This is the default answer for GET /skills. Locate the module(s) you need, then fetch exact signatures via GET /skills/schema?names=<a,b>&wire=v2 or ?category=<Category>&wire=v2 (dryRun where the root protocol asks: deletes, high risk, reload, approval mode). If a name is ambiguous, use GET /skills/recommend?intent=...&includeSchema=true&topN=3&wire=v2 or GET /skills?summary=1 (full descriptions). The complete manifest is still available at GET /skills?full=1 (~707KB — add &wire=v2 to cut it down), and session constants live at GET /skills/meta.",
                 modules
             };
         }

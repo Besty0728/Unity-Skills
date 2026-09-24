@@ -15,6 +15,11 @@ namespace UnitySkills
     /// </summary>
     public static class ComponentSkills
     {
+        // Also used by BatchSkills' set_property preview, which resolves members and values through the same helpers.
+        internal const string PropertyValueNote = "Parsed per member type: vectors '1,2,3' or {\"x\":1,...}; Color 'r,g,b[,a]' (0-1), #RRGGBB or a name; enums by name; Quaternion 'x,y,z' = Euler degrees. Omitted or 'null' = type default.";
+        internal const string PropertyNameNote = "C# property/field name (e.g. mass, isTrigger, a script field), exact then case-insensitive; for m_* serialized paths use component_set_serialized_property.";
+        internal const string AssetReferenceNote = "Project asset path for an object-reference member (Material, Prefab, ScriptableObject...); takes precedence over referencePath/referenceName and value.";
+
         private static readonly Dictionary<string, System.Type> _typeCache = new Dictionary<string, System.Type>();
 
         // Property / field lookup cache, avoids repeated reflection.
@@ -63,7 +68,9 @@ namespace UnitySkills
             RequiredParams = new[] { "componentType" },
             TracksWorkflow = true,
             MutatesScene = true)]
-        public static object ComponentAdd(string name = null, int instanceId = 0, string path = null, string componentType = null)
+        public static object ComponentAdd(string name = null, int instanceId = 0, string path = null,
+            [SkillParam("Type name, simple or namespace-qualified (Rigidbody, BoxCollider, TMPro.TextMeshProUGUI, your script class); case-insensitive.")]
+            string componentType = null)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
 
@@ -121,7 +128,9 @@ namespace UnitySkills
             // string with a structured error - "items" is the truthful, literal-name declaration.
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object ComponentAddBatch(string items)
+        public static object ComponentAddBatch(
+            [SkillParam("JSON array of {name|path|instanceId, componentType}.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchAddComponentItem>(items, item =>
             {
@@ -209,7 +218,9 @@ namespace UnitySkills
             TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesScene = true,
             RiskLevel = "medium")]
-        public static object ComponentRemoveBatch(string items)
+        public static object ComponentRemoveBatch(
+            [SkillParam("JSON array of {name|path|instanceId, componentType}; removes every component of that type on the target.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchRemoveComponentItem>(items, item =>
             {
@@ -312,9 +323,14 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentSetProperty(
             string name = null, int instanceId = 0, string path = null,
-            string componentType = null, string propertyName = null,
-            string value = null, string referencePath = null, string referenceName = null,
-            string assetPath = null)
+            string componentType = null,
+            [SkillParam(PropertyNameNote)] string propertyName = null,
+            [SkillParam(PropertyValueNote)] string value = null,
+            [SkillParam("Hierarchy path of a scene object for a GameObject/Transform/Component member (its component of the member's type is used); overrides value.")]
+            string referencePath = null,
+            [SkillParam("Scene object name for a reference member; used when referencePath is omitted or misses.")]
+            string referenceName = null,
+            [SkillParam(AssetReferenceNote)] string assetPath = null)
         {
             if (Validate.Required(componentType, "componentType") is object typeErr) return typeErr;
             if (Validate.Required(propertyName, "propertyName") is object propErr) return propErr;
@@ -417,7 +433,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object ComponentSetPropertyBatch(string items)
+        public static object ComponentSetPropertyBatch(
+            [SkillParam("JSON array of {name|path|instanceId, componentType, propertyName, value?, referencePath?, referenceName?, assetPath?}; value may be a string, number, bool or JSON object/array.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchSetPropertyItem>(items, item =>
             {
@@ -547,9 +565,15 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentSetSerializedProperty(
             string name = null, int instanceId = 0, string path = null,
-            string componentType = null, string propertyPath = null, string value = null,
+            string componentType = null,
+            [SkillParam("SerializedProperty path, e.g. m_Mass or m_Materials.Array.data[0]; a bare name also tries m_<Name>, _<name> and m_<name>.")]
+            string propertyPath = null,
+            [SkillParam("Integer (LayerMask = bit mask), bool true/false, enum name or display name ('A,B' for flags), vectors/Color as in component_set_property; omitted/'null' clears an object reference.")]
+            string value = null,
             string referenceName = null, int referenceInstanceId = 0, string referencePath = null,
-            string assetPath = null, string objectType = null)
+            string assetPath = null,
+            [SkillParam("Type bound for object references: a scene reference is the GameObject unless this names a component (Transform, Rigidbody...); for assetPath an asset type (Material...).")]
+            string objectType = null)
         {
             if (Validate.Required(componentType, "componentType") is object reqErr1) return reqErr1;
             if (Validate.Required(propertyPath, "propertyPath") is object reqErr2) return reqErr2;
@@ -607,7 +631,9 @@ namespace UnitySkills
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object ComponentSetSerializedPropertyBatch(string items)
+        public static object ComponentSetSerializedPropertyBatch(
+            [SkillParam("JSON array of {name|path|instanceId, componentType, propertyPath, value?, referenceName?, referenceInstanceId?, referencePath?, assetPath?, objectType?}; value is a string, e.g. \"1,2,3\".")]
+            string items)
         {
             return BatchExecutor.Execute<BatchSetSerializedPropertyItem>(items, item =>
             {

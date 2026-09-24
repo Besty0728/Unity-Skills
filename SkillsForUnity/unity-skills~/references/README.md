@@ -8,12 +8,13 @@ These are the sunk detail of the root `../SKILL.md`, not background reading. Ope
 
 | File | Read it when |
 |---|---|
+| `protocol-discovery.md` | The root doc's one recommend call is not enough: multi-intent response shape, `names=` / category / summary / full schema layers with sizes, reading `wire=v2` payloads (`flags`, omitted defaults), `GET /skills/meta`. |
 | `protocol-error-codes.md` | You got an `errorCode` the root doc's quick table doesn't cover, or you are writing your own client and need the full code / `retryStrategy` list. |
-| `protocol-operating-mode.md` | You hit `MODE_RESTRICTED` / `MODE_FORBIDDEN`, or need the grant protocol, the mode table, or the Allowlist rules. |
-| `protocol-observability.md` | You need to close the loop after a mutation — compilation status, the `GET /events` long-poll, analytics. |
+| `protocol-operating-mode.md` | You hit `MODE_RESTRICTED` / `MODE_FORBIDDEN` / `SURFACE_EXCLUDED` / `INSTANCE_MISMATCH`, or need the grant protocol, the mode table, the Allowlist rules, the surface profiles, or the expected-instance and registry (`reloading`) rules. |
+| `protocol-observability.md` | You need to close the loop after a mutation — the `GET /jobs/{id}?wait=` long poll, compilation status, the `GET /events` long-poll, analytics. |
 | `protocol-unity-cli.md` | The user opted into Unity CLI cold start and you must launch a closed Editor. Per-command detail lives in `../skills/unity-cli/SKILL.md`. |
 
-`../SKILL.md` stays small by living off these four; treat them as its chapters.
+`../SKILL.md` stays small by living off these five; treat them as its chapters.
 
 ## 2. Unity manual URL indexes — everything else
 
@@ -35,4 +36,4 @@ These are the sunk detail of the root `../SKILL.md`, not background reading. Ope
 
 ## Neither kind answers "what are this skill's parameters?"
 
-For exact skill names, parameters, defaults and returns, use the schema endpoints (`GET /skills/schema?category=<Category>`, `POST /skill/<name>?mode=dryRun`) — see "Schema: pick the cheapest layer" in `../SKILL.md`. Nothing in this directory is a substitute for the schema.
+For exact skill names, parameters, defaults and returns, use the root doc's quick reference or the schema endpoints (`GET /skills/recommend?intent=…&includeSchema=true`, `GET /skills/schema?names=…`) — see "Everything else: one discovery call" in `../SKILL.md` and `protocol-discovery.md`. Nothing in this directory is a substitute for the schema.

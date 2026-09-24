@@ -166,8 +166,11 @@ namespace UnitySkills
             Tags = new[] { "scene-view", "position", "rotation", "transform" },
             Outputs = new[] { "message" })]
         public static object CameraSetTransform(
+            [SkillParam("posX/posY/posZ: world point the Scene View frames (its pivot), not the eye position; the view sits back from it along the rotation.")]
             float posX, float posY, float posZ,
+            [SkillParam("rotX/rotY/rotZ: view direction as Euler angles in degrees.")]
             float rotX, float rotY, float rotZ,
+            [SkillParam("Scene View zoom (SceneView.size): larger values frame more around the pivot.")]
             float size = 5f,
             bool instant = true
         )
@@ -247,8 +250,13 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object CameraSetProperties(
             string name = null, int instanceId = 0, string path = null,
-            float? fieldOfView = null, float? nearClipPlane = null, float? farClipPlane = null,
-            float? depth = null, string clearFlags = null,
+            [SkillParam("Vertical field of view in degrees; ignored by orthographic cameras.")]
+            float? fieldOfView = null,
+            float? nearClipPlane = null, float? farClipPlane = null,
+            float? depth = null,
+            [SkillParam("Skybox, SolidColor (or Color), Depth or Nothing (case-insensitive).")]
+            string clearFlags = null,
+            [SkillParam("bgR/bgG/bgB/bgA: background colour as 0-1 floats; omitted channels keep their value.")]
             float? bgR = null, float? bgG = null, float? bgB = null, float? bgA = null)
         {
             var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
