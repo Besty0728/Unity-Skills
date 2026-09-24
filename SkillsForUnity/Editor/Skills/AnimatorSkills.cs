@@ -423,6 +423,7 @@ namespace UnitySkills
             if (controller == null) return new { error = $"Controller not found: {controllerPath}" };
             if (layer < 0 || layer >= controller.layers.Length) return new { error = $"Invalid layer: {layer}" };
 
+            WorkflowManager.SnapshotObject(controller);
             var sm = controller.layers[layer].stateMachine;
             var state = sm.AddState(stateName);
             if (!string.IsNullOrEmpty(clipPath))
@@ -464,6 +465,7 @@ namespace UnitySkills
             if (src == null) return new { error = $"State not found: {fromState}" };
             if (dst == null) return new { error = $"State not found: {toState}" };
 
+            WorkflowManager.SnapshotObject(controller);
             var transition = src.AddTransition(dst);
             transition.hasExitTime = hasExitTime;
             transition.duration = duration;
