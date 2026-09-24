@@ -276,6 +276,19 @@ def _structured_retry_after(data: Dict[str, Any], status_code: Optional[int] = N
     return min(float(retry_after), _MAX_STRUCTURED_RETRY_SECONDS)
 
 
+def _dry_run_required_token(data: Any) -> Optional[str]:
+    """The fresh token a DRYRUN_REQUIRED response carries in details.dryRunToken, else None.
+
+    Under the server's dryRunPolicy a gated write runs only with ?dryRunToken= from a dryRun of
+    the same body; the rejection itself carries that preview (details.dryRun) and a fresh token.
+    """
+    if isinstance(data, dict) and data.get('errorCode') == 'DRYRUN_REQUIRED':
+        details = data.get('details')
+        if isinstance(details, dict) and isinstance(details.get('dryRunToken'), str):
+            return details['dryRunToken']
+    return None
+
+
 class UnitySkills:
     """
     Client for interacting with a specific Unity Editor instance.
@@ -601,10 +614,13 @@ class UnitySkills:
 
         return None
 
-    def _post_skill(self, skill_name: str, payload: Dict[str, Any], mode: str = None, timeout: Optional[int] = None):
+    def _post_skill(self, skill_name: str, payload: Dict[str, Any], mode: str = None, timeout: Optional[int] = None,
+                    dry_run_token: Optional[str] = None):
         params = {}
         if mode:
             params['mode'] = mode
+        if dry_run_token:
+            params['dryRunToken'] = dry_run_token
         qs = f"?{urlencode(params)}" if params else ""
         json_data = json.dumps(payload, ensure_ascii=False)
         response = self._session.post(
@@ -638,7 +654,7 @@ class UnitySkills:
 
     def _post_skill_with_retries(self, skill_name: str, payload: Dict[str, Any], mode: str = None,
                                   timeout: Optional[int] = None, _retries: int = 3,
-                                  _retry_delay: float = 2.0) -> Dict[str, Any]:
+                                  _retry_delay: float = 2.0, dry_run_token: Optional[str] = None) -> Dict[str, Any]:
         """Shared retry loop for POST /skill/{name}, used by call(), dry_run_skill() and plan_skill().
 
         Retries (within the shared `_retries` budget) on two kinds of transient failure:
@@ -669,7 +685,8 @@ class UnitySkills:
         reconnect_used = False
         while True:
             try:
-                response = self._post_skill(skill_name, payload, mode=mode, timeout=timeout)
+                response = self._post_skill(skill_name, payload, mode=mode, timeout=timeout,
+                                            dry_run_token=dry_run_token)
             except requests.exceptions.Timeout:
                 if attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
@@ -721,7 +738,8 @@ class UnitySkills:
 
     def call(self, skill_name: str, verbose: bool = False, wait_for_job: bool = False,
              job_timeout: float = 60.0, _retries: int = 3, _retry_delay: float = 2.0,
-             timeout: Optional[int] = None, **kwargs) -> Dict[str, Any]:
+             timeout: Optional[int] = None, *, dry_run_token: Optional[str] = None,
+             retry_dry_run_required: bool = False, **kwargs) -> Dict[str, Any]:
         """
         Call a skill on this instance with automatic retry on connection errors and on the
         server's structured "wait and retry" responses (COMPILING/RATE_LIMIT/QUEUE_FULL/
@@ -736,6 +754,12 @@ class UnitySkills:
                 the server's own retryAfterSeconds instead (capped at 15s).
             timeout: Per-call request timeout override in seconds. None (default) reuses the
                 instance-level timeout set at construction.
+            dry_run_token: Sent as ``?dryRunToken=`` -- the token a dryRun of the same arguments
+                returned (``dry_run_skill(...)['dryRunToken']``) while the server's dryRunPolicy
+                gates this skill.
+            retry_dry_run_required: Opt-in. On ``DRYRUN_REQUIRED`` resend once with the fresh token
+                the rejection carries, i.e. execute without reviewing its ``details.dryRun``
+                preview. Off by default: the policy exists so the preview gets read first.
 
         Returns a normalized response with 'success' field and flattened result data.
         Error responses additionally carry the server's structured correction fields
@@ -743,7 +767,13 @@ class UnitySkills:
         """
         kwargs['verbose'] = verbose
         outcome = self._post_skill_with_retries(
-            skill_name, kwargs, timeout=timeout, _retries=_retries, _retry_delay=_retry_delay)
+            skill_name, kwargs, timeout=timeout, _retries=_retries, _retry_delay=_retry_delay,
+            dry_run_token=dry_run_token)
+        fresh_token = _dry_run_required_token(outcome.get('data')) if retry_dry_run_required else None
+        if fresh_token:
+            outcome = self._post_skill_with_retries(
+                skill_name, kwargs, timeout=timeout, _retries=_retries, _retry_delay=_retry_delay,
+                dry_run_token=fresh_token)
 
         if not outcome['ok']:
             if 'invalid_json' in outcome:
@@ -787,7 +817,9 @@ class UnitySkills:
 
         Shares call()'s retry logic (see _post_skill_with_retries): retries transport
         errors and the server's structured "wait and retry" responses up to `_retries`
-        times before returning.
+        times before returning. While the server's dryRunPolicy gates the skill, a valid
+        preview carries ``dryRunToken``; pass it to call(..., dry_run_token=...) with the
+        same arguments to execute.
         """
         outcome = self._post_skill_with_retries(
             skill_name, kwargs, mode='dryRun', timeout=timeout,
@@ -916,7 +948,9 @@ class UnitySkills:
     def execute_batch(self, steps: List[Dict[str, Any]], dry_run: bool = False,
                        continue_on_error: Optional[bool] = None, diff: bool = False,
                        mode: Optional[str] = None, timeout: Optional[int] = None,
-                       _retries: int = 3, _retry_delay: float = 2.0) -> Dict[str, Any]:
+                       _retries: int = 3, _retry_delay: float = 2.0, *,
+                       dry_run_token: Optional[str] = None,
+                       retry_dry_run_required: bool = False) -> Dict[str, Any]:
         """POST /skills/batch -- run (or preview) a sequence of skill steps in one HTTP call.
 
         Only the top-level body keys the server accepts are ever sent (``steps``,
@@ -936,6 +970,11 @@ class UnitySkills:
             mode: Explicit query-string override, e.g. ``"transactional"`` for all-or-nothing
                 execution with rollback, or ``"dryRun"``. Takes precedence over `dry_run`.
             timeout: Per-call request timeout override in seconds.
+            dry_run_token: Sent as ``?dryRunToken=`` -- the ``dryRunToken`` a dry run of the same
+                steps returned while the server's dryRunPolicy gates one of them (one token per
+                batch; it serves execute and transactional alike).
+            retry_dry_run_required: Opt-in, as in call(): on ``DRYRUN_REQUIRED`` resend once with
+                the fresh token the rejection carries.
 
         Shares call()'s retry contract (see _post_skill_with_retries): transport errors
         and the server's structured "wait and retry" responses (COMPILING/RATE_LIMIT/
@@ -955,6 +994,8 @@ class UnitySkills:
             params['mode'] = 'dryRun'
         if diff:
             params['diff'] = '1'
+        if dry_run_token:
+            params['dryRunToken'] = dry_run_token
         qs = f"?{urlencode(params)}" if params else ""
 
         body: Dict[str, Any] = {'steps': steps}
@@ -966,6 +1007,7 @@ class UnitySkills:
 
         attempt = 0
         reconnect_used = False
+        dry_run_retry_used = False
         while True:
             try:
                 response = self._session.post(
@@ -1007,6 +1049,12 @@ class UnitySkills:
                 if retry_after is not None and attempt < _retries:
                     time.sleep(retry_after)
                     attempt += 1
+                    continue
+                fresh_token = _dry_run_required_token(data) if retry_dry_run_required else None
+                if fresh_token and not dry_run_retry_used:
+                    dry_run_retry_used = True
+                    params['dryRunToken'] = fresh_token
+                    qs = f"?{urlencode(params)}"
                     continue
 
             return data
@@ -1203,7 +1251,8 @@ def get_meta(force_refresh: bool = False) -> Dict[str, Any]:
 
 def execute_batch(steps: List[Dict[str, Any]], dry_run: bool = False,
                    continue_on_error: Optional[bool] = None, diff: bool = False,
-                   mode: Optional[str] = None) -> Dict[str, Any]:
+                   mode: Optional[str] = None, *, dry_run_token: Optional[str] = None,
+                   retry_dry_run_required: bool = False) -> Dict[str, Any]:
     """Execute (or dry-run) a batch of skill steps via POST /skills/batch.
 
     Example:
@@ -1213,7 +1262,8 @@ def execute_batch(steps: List[Dict[str, Any]], dry_run: bool = False,
         ], dry_run=True)
     """
     return _get_default_client().execute_batch(
-        steps, dry_run=dry_run, continue_on_error=continue_on_error, diff=diff, mode=mode)
+        steps, dry_run=dry_run, continue_on_error=continue_on_error, diff=diff, mode=mode,
+        dry_run_token=dry_run_token, retry_dry_run_required=retry_dry_run_required)
 
 
 def diagnose(error_limit: int = 20, include_warnings: bool = True, include_recent_jobs: bool = True) -> Dict[str, Any]:
@@ -2045,6 +2095,8 @@ def main():
     parser.add_argument('--batch-mode', type=str, default=None, choices=['dryRun', 'transactional'],
                         help='With --batch: query-string mode override (dryRun validates without executing; transactional is all-or-nothing)')
     parser.add_argument('--diff', action='store_true', help='With --batch: request ?diff=1 (net sceneDiff on a successful response)')
+    parser.add_argument('--dry-run-token', type=str, default=None, metavar='TOKEN',
+                        help='Send ?dryRunToken=TOKEN (from a dryRun or a DRYRUN_REQUIRED response of the same arguments) with the skill call or --batch')
     parser.add_argument('--port', type=int, default=None, help='Connect to specific port')
     parser.add_argument('--version', type=str, default=None, dest='unity_version',
                         help='Connect to Unity instance by version (e.g. "6", "2022", "2022.3")')
@@ -2084,7 +2136,8 @@ def main():
             sys.exit(1)
         steps = batch_body.get('steps', [])
         continue_on_error = batch_body.get('continueOnError')
-        result = execute_batch(steps, continue_on_error=continue_on_error, diff=args.diff, mode=args.batch_mode)
+        result = execute_batch(steps, continue_on_error=continue_on_error, diff=args.diff, mode=args.batch_mode,
+                               dry_run_token=args.dry_run_token)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
@@ -2113,7 +2166,7 @@ def main():
             key, value = arg.split('=', 1)
             params[key] = _parse_cli_value(value)
 
-    result = call_skill(args.skill_name, **params)
+    result = call_skill(args.skill_name, dry_run_token=args.dry_run_token, **params)
 
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

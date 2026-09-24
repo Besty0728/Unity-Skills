@@ -80,6 +80,7 @@ namespace UnitySkills
                 version = SkillsLogger.Version,
                 unityVersion = Application.unityVersion,
                 requireConfirmation = ConfirmationTokenService.RequireConfirmation,
+                dryRunPolicy = DryRunPolicyService.CurrentWire,
             };
 
             object recentJobs = null;

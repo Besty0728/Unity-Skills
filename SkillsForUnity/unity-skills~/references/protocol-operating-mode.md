@@ -12,6 +12,7 @@ Operating mode is a **server-side permission gate**, configured in the Unity pan
 - `panelApprovalRequired` — only meaningful under Approval; selects the grant channel
 - `pendingCount` — outstanding grant requests
 - `surfaceProfile` — `full` / `guide` / `noSceneAuthoring`, see "Surface profile" below; `surfaceProfileHint` carries text only when the profile is not `full`, else null
+- `dryRunPolicy` — `off` / `highRisk` / `allWrites`, see "dryRun policy" below
 - `instanceId`, `projectName`, `port` — who is serving, see "Which Editor answered?" below
 - `mainThreadIdleMs` — milliseconds since Unity's main thread last ran the request loop. `/health` is answered off the main thread, so a fast reply with a **large** `mainThreadIdleMs` means *"the server is alive but Unity is busy"* (a long skill, an import, or a modal dialog) — not *"the server is down"*. Single/double digits is a healthy idle editor; seconds means keep waiting rather than restart. `-1` means the loop has not ticked yet. Add `?live=1` to force the request through the main-thread queue when you need strictly live values instead of a snapshot up to ~1s old.
 - `workflowRecoveryMode` — `true` when workflow history failed to load this session: rollback data is degraded and file-store cleanup is suspended until the history is cleared.
@@ -55,6 +56,25 @@ Quitting the Editor removes its entry. A `reloading` or `stopped` entry has no h
 | `noSceneAuthoring` | every scene-authoring write, incl. any `mutatesScene` skill | Do the rest of the task normally; if it genuinely needs scene authoring, say so and let the user switch back to `full`. |
 
 Calling a hidden skill returns `SURFACE_EXCLUDED`, and the response names the document to read (`details.manualDoc` under `guide`) or the profile to leave. It is a configuration boundary, not a failure: never retry it or route around it through another module. Response shapes: [error codes](protocol-error-codes.md).
+
+## dryRun policy
+
+`dryRunPolicy` (on `/health`, `/permission/status` and `unity_diagnose`) says which writes must be previewed first. Only the user sets it, per project, in the UnitySkills panel; no REST call changes it.
+
+| Policy | Gated skills |
+|---|---|
+| `off` (default) | none; every response is unchanged |
+| `highRisk` | the never-in-semi writes: `Operation.Delete`, `mayTriggerReload`, `mayEnterPlayMode`, `riskLevel` high |
+| `allWrites` | every skill that is not `readOnly` |
+
+Never gated: `supportsDryRun:false` skills, skills with their own `confirmToken` step (`batch_execute`, `cleaner_delete_assets`), and, while `RequireConfirmation` is on, the high-risk skills its `CONFIRMATION_REQUIRED` challenge already covers (that challenge carries the preview). The Allowlist, the operating mode and the surface profile do not change the gated set.
+
+- **Token.** A valid `POST /skill/<name>?mode=dryRun` of a gated call carries `dryRunToken` right after `valid`. Execute with the same body plus `?dryRunToken=<token>`: single use, 300 s, bound to the skill and the body. Key order and whitespace do not matter; `verbose`, the paging keys and `_confirm` are ignored unless the skill declares a parameter of that name.
+- **No usable token** → `DRYRUN_REQUIRED` (HTTP 200, nothing ran). `details.dryRun` is the v2 preview, `details.dryRunToken` a fresh token, `details.reason` one of `missingToken` / `tokenUnknownOrUsed` / `tokenExpired` / `argsChanged`, and `suggestedFixes[0]` the exact re-call. "dryRun first" and "execute, then resend" both take two calls. A domain reload clears tokens; the next rejection issues a new one.
+- **Order.** Parameter errors, `SURFACE_EXCLUDED` and `MISSING_PACKAGE` answer first, and a call that can only end in `MODE_FORBIDDEN` gets that answer instead of a token. `MODE_RESTRICTED` comes after the token is consumed; the grant replay does not ask for it again.
+- **`/skills/batch`.** One token per batch, bound to `steps`, `params` and `continueOnError` as sent, not to the mode. When any step is gated, the dryRun envelope carries `dryRunToken` after `dryRun` (even if some steps fail validation), and that token serves the execute or transactional run of the same body. Steps inside the batch are not gated one by one, so `$ref` steps work.
+- **Not `_confirm`.** A dryRun token never satisfies `_confirm`, and a confirmation token is never a dryRun token.
+- **Python.** `call(..., dry_run_token=...)` / `execute_batch(..., dry_run_token=...)`, CLI `--dry-run-token`; `retry_dry_run_required=True` opts into resending once with the token a rejection carries.
 
 ## Token Level
 
@@ -137,6 +157,7 @@ Mode authorization (persistent, per-skill) and `ConfirmationToken` (single-shot,
 - Mode check runs first; if allowed, the existing confirmation gate may still issue `CONFIRMATION_REQUIRED` with a dry-run for `RiskLevel=high` or `Operation.Delete` skills
 - Granted skills still flow through `ConfirmationToken` when triggered — continue using the original dry-run → user consent → retry with `_confirm` loop
 - Neither replaces the other
+- The dryRun policy (above) is a separate gate with its own tokens; neither token satisfies the other
 
 ## Skill Mode Annotation
 

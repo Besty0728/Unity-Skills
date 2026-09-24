@@ -148,6 +148,7 @@ namespace UnitySkills
         private static volatile string _snapProjectPath;
         private static volatile string _snapCurrentMode;
         private static volatile bool _snapPanelApprovalRequired;
+        private static volatile string _snapDryRunPolicy = DryRunPolicyService.WireOff;
         private static volatile string _snapSurfaceProfile = SkillsSurfaceProfile.WireFull;
         private static volatile int _snapPendingCount;
         private static volatile int _snapAllowlistCount;
@@ -760,6 +761,8 @@ namespace UnitySkills
             public string ProjectName;
             public string CurrentMode;
             public bool PanelApprovalRequired;
+            // Wire value of DryRunPolicyService.Current ("off" / "highRisk" / "allWrites").
+            public string DryRunPolicy;
             // Wire value of the user-exposed surface tier ("full" / "guide" / "noSceneAuthoring").
             // The deprecated guideMode boolean is derived from this in BuildHealthJson rather than mirrored
             // separately, so the two can never disagree.
@@ -784,6 +787,7 @@ namespace UnitySkills
                 ProjectName = _snapProjectName,
                 CurrentMode = _snapCurrentMode,
                 PanelApprovalRequired = _snapPanelApprovalRequired,
+                DryRunPolicy = _snapDryRunPolicy,
                 SurfaceProfile = _snapSurfaceProfile,
                 PendingCount = _snapPendingCount,
                 AllowlistCount = _snapAllowlistCount,
@@ -806,6 +810,7 @@ namespace UnitySkills
                     ProjectName = RegistryService.ProjectName,
                     CurrentMode = SkillsModeManager.ModeToWire(SkillsModeManager.CurrentMode),
                     PanelApprovalRequired = SkillsModeManager.PanelApprovalRequired,
+                    DryRunPolicy = DryRunPolicyService.CurrentWire,
                     SurfaceProfile = SkillsSurfaceProfile.CurrentWire,
                     PendingCount = SkillsModeManager.PendingGrantRequests.Count,
                     AllowlistCount = SkillsModeManager.AllowlistSkills.Count,
@@ -846,6 +851,7 @@ namespace UnitySkills
                 _snapProjectPath = RegistryService.ProjectPath;
                 _snapCurrentMode = vitals.CurrentMode;
                 _snapPanelApprovalRequired = vitals.PanelApprovalRequired;
+                _snapDryRunPolicy = vitals.DryRunPolicy;
                 _snapSurfaceProfile = vitals.SurfaceProfile;
                 _snapPendingCount = vitals.PendingCount;
                 _snapAllowlistCount = vitals.AllowlistCount;
@@ -868,9 +874,9 @@ namespace UnitySkills
 
         /// <summary>
         /// Marks the "expensive half" of the health snapshot as needing a refresh on the next main-thread frame.
-        /// Hooked onto <see cref="SkillsModeManager.OnChanged"/>, <see cref="SkillsSurfaceProfile.OnChanged"/>, and
-        /// <see cref="SkillRouter.SummarySettingsChanged"/>, so changes to mode / grants / allowlist / surface profile /
-        /// summary settings are reflected in /health immediately, instead of waiting out <see cref="HealthSnapshotInterval"/>.
+        /// Hooked onto <see cref="SkillsModeManager.OnChanged"/>, <see cref="SkillsSurfaceProfile.OnChanged"/>,
+        /// <see cref="SkillRouter.SummarySettingsChanged"/> and <see cref="DryRunPolicyService.OnChanged"/>, so changes to mode /
+        /// grants / allowlist / surface profile / summary settings / dryRun policy are reflected in /health immediately, instead of waiting out <see cref="HealthSnapshotInterval"/>.
         /// Setting a volatile flag (rather than refreshing in place) guarantees that no matter which thread raised
         /// the event, every Unity API read stays on the main thread.
         /// </summary>
@@ -916,6 +922,8 @@ namespace UnitySkills
                 architecture = "Producer-Consumer (Thread-Safe)",
                 currentMode = v.CurrentMode,
                 panelApprovalRequired = v.PanelApprovalRequired,
+                // Whether gated writes must be previewed first (off / highRisk / allWrites). Only the panel changes it.
+                dryRunPolicy = v.DryRunPolicy,
                 pendingCount = v.PendingCount,
                 allowlistCount,
                 // Deprecated alias for allowlistCount, kept for backward compatibility
@@ -1445,6 +1453,7 @@ namespace UnitySkills
                     SkillsModeManager.OnChanged += OnPermissionStateChanged;
                     SkillsSurfaceProfile.OnChanged += OnPermissionStateChanged;
                     SkillRouter.SummarySettingsChanged += OnPermissionStateChanged;
+                    DryRunPolicyService.OnChanged += OnPermissionStateChanged;
                     _modeHookInstalled = true;
                 }
 
@@ -1936,7 +1945,11 @@ namespace UnitySkills
                 }
                 catch (Exception ex2)
                 {
-                    SkillsLogger.LogError($"Fallback response failed: primary={ex.Message}, fallback={ex2.Message}");
+                    // A domain reload aborts in-flight responder threads: losing the answer then is the normal reload path.
+                    if (ex is ThreadAbortException || ex2 is ThreadAbortException)
+                        SkillsLogger.LogVerbose($"Response abandoned by a domain reload: {ex.Message}");
+                    else
+                        SkillsLogger.LogError($"Fallback response failed: primary={ex.Message}, fallback={ex2.Message}");
                 }
             }
             finally
@@ -2683,23 +2696,52 @@ namespace UnitySkills
 
             try
             {
-                var outcome = RunJobWaitLoop(wait.WaitSeconds, JobWaitPollIntervalMs,
-                    budgetMs => ProbeJobSnapshot(wait, budgetMs),
-                    () => ShouldAbortJobWait(wait.Generation),
-                    () => DateTime.UtcNow.Ticks,
-                    milliseconds => SleepUnlessJobWaitAborted(wait.Generation, milliseconds));
-                var (statusCode, json) = BuildJobWaitResponse(outcome, wait.WaitSeconds, wait.JobId, _domainReloadPending);
-                Interlocked.Increment(ref _totalRequestsProcessed);
-                WriteRawJsonResponse(wait.Context, wait.RequestId, wait.AgentId, statusCode, json);
-            }
-            catch
-            {
-                // Client gone or listener closed mid-wait (domain reload): the caller retries the same URL.
-                CloseContextSafely(wait.Context);
+                RespondJobWait(wait.Context, wait.RequestId, wait.AgentId, () =>
+                {
+                    var outcome = RunJobWaitLoop(wait.WaitSeconds, JobWaitPollIntervalMs,
+                        budgetMs => ProbeJobSnapshot(wait, budgetMs),
+                        () => ShouldAbortJobWait(wait.Generation),
+                        () => DateTime.UtcNow.Ticks,
+                        milliseconds => SleepUnlessJobWaitAborted(wait.Generation, milliseconds));
+                    var answer = BuildJobWaitResponse(outcome, wait.WaitSeconds, wait.JobId, _domainReloadPending);
+                    Interlocked.Increment(ref _totalRequestsProcessed);
+                    return answer;
+                });
             }
             finally
             {
                 ReleasePendingSlot();
+            }
+        }
+
+        private const string InterruptedJobWaitRetryAfterSeconds = "2";
+
+        /// <summary>
+        /// Holds a long-poll open while <paramref name="waitForAnswer"/> runs, then writes its answer. A domain reload can abort
+        /// this thread mid-wait, and whatever closes the connection then (the catch below, or the listener's own shutdown)
+        /// sends the status already on the response. It is preset to 503 with Retry-After, so an interrupted wait reads as
+        /// "retry the same URL" (curl --retry does) instead of an empty 200; the real answer replaces both, byte for byte as before.
+        /// </summary>
+        internal static void RespondJobWait(HttpListenerContext context, string requestId, string agentId,
+            Func<(int StatusCode, string Json)> waitForAnswer)
+        {
+            try
+            {
+                var response = context.Response;
+                response.StatusCode = 503;
+                response.ContentType = "application/json; charset=utf-8";
+                response.Headers.Set("Retry-After", InterruptedJobWaitRetryAfterSeconds);
+
+                var (statusCode, json) = waitForAnswer();
+                // Undo the preset so the real answer's headers come out exactly as before (same set, same order).
+                response.Headers.Remove("Retry-After");
+                response.ContentType = null;
+                WriteRawJsonResponse(context, requestId, agentId, statusCode, json);
+            }
+            catch
+            {
+                // Client gone or listener closed mid-wait (domain reload): the preset 503 tells the caller to retry the same URL.
+                CloseContextSafely(context);
             }
         }
 
@@ -3041,13 +3083,16 @@ namespace UnitySkills
                     switch (mode)
                     {
                         case SkillRouter.RequestMode.DryRun:
-                            job.ResponseJson = SkillRouter.DryRun(skillName, job.Body, SkillRouter.ResolveWireVersion(job.QueryString));
+                            job.ResponseJson = SkillRouter.DryRun(skillName, job.Body, SkillRouter.ResolveWireVersion(job.QueryString), issuePolicyToken: true);
                             break;
                         case SkillRouter.RequestMode.Plan:
                             job.ResponseJson = SkillRouter.Plan(skillName, job.Body);
                             break;
                         default:
-                            job.ResponseJson = SkillRouter.Execute(skillName, job.Body, captureDiff);
+                            var dryRunGate = new DryRunGateContext(
+                                skillQs.TryGetValue(DryRunPolicyService.TokenQueryKey, out var dryRunToken) ? dryRunToken : null,
+                                QueryWithout(job.QueryString, DryRunPolicyService.TokenQueryKey));
+                            job.ResponseJson = SkillRouter.Execute(skillName, job.Body, captureDiff, dryRunGate);
                             break;
                     }
                 }
@@ -3257,7 +3302,7 @@ namespace UnitySkills
 
         /// <summary>Request-level keys of POST /skill/{name}: they stay in the rewritten URL instead of moving into the body.</summary>
         private static readonly string[] SkillRequestQueryKeys =
-            { "mode", "dryRun", "diff", "wire", ExpectInstanceQueryKey, ExpectProjectQueryKey };
+            { "mode", "dryRun", "diff", "wire", DryRunPolicyService.TokenQueryKey, ExpectInstanceQueryKey, ExpectProjectQueryKey };
 
         /// <summary>
         /// The 405 METHOD_NOT_ALLOWED body for GET /skill/{name} on a registered skill. It carries the POST the caller
@@ -3386,6 +3431,19 @@ namespace UnitySkills
             Uri.UnescapeDataString(component.Replace('+', ' '));
 
         private static string EscapeForSingleQuotes(string text) => text.Replace("'", "'\\''");
+
+        /// <summary>The raw query (leading '?' dropped) without any pair whose key is <paramref name="key"/>; other pairs stay encoded, in order.</summary>
+        private static string QueryWithout(string rawQuery, string key)
+        {
+            if (string.IsNullOrEmpty(rawQuery)) return string.Empty;
+            var kept = rawQuery.TrimStart('?').Split('&').Where(pair =>
+            {
+                if (pair.Length == 0) return false;
+                int eq = pair.IndexOf('=');
+                return !string.Equals(DecodeQueryComponent(eq < 0 ? pair : pair.Substring(0, eq)).Trim(), key, StringComparison.OrdinalIgnoreCase);
+            });
+            return string.Join("&", kept);
+        }
 
         /// <summary>
         /// Writes a 503 COMPILING response when Unity is compiling or a domain reload is pending; returns true if the
@@ -3639,6 +3697,14 @@ namespace UnitySkills
             if (transactional && RejectTransactionalPrecheck(job, steps, continueOnError))
                 return;
 
+            // The dryRun policy: one token per batch, bound to the body as submitted ($ref values do not exist during a dryRun,
+            // so per-step tokens could never match). Steps inside the batch are not gated individually.
+            var gatedSteps = DryRunPolicyService.Current == DryRunPolicy.Off ? null : FindDryRunGatedSteps(steps);
+            var batchHash = gatedSteps != null ? DryRunPolicyService.HashBatch(steps, batchParams, continueOnError) : null;
+            if (gatedSteps != null && !dryRun &&
+                RejectWithoutBatchDryRunToken(job, qs, steps, batchParams, continueOnError, gatedSteps, batchHash))
+                return;
+
             // agentIdRefiner re-checks ClientProcessResolver's cache before every step's telemetry write (see
             // RefineAgentId) -- a whole batch shares one accepted connection, so the same idempotent recheck
             // that /skill/{name} does once is worth repeating per step here: an early step may run before the
@@ -3650,8 +3716,69 @@ namespace UnitySkills
                 remotePort: job.RemotePort,
                 agentIdIsExplicit: job.AgentIdIsExplicit,
                 wire: SkillRouter.ResolveWireVersion(job.QueryString));
+            if (gatedSteps != null && dryRun)
+                response.Property("dryRun")?.AddAfterSelf(new JProperty(DryRunPolicyService.TokenQueryKey,
+                    DryRunPolicyService.IssueToken(DryRunPolicyService.BatchScope, batchHash)));
             job.StatusCode = 200;
             job.ResponseJson = JsonConvert.SerializeObject(response, _jsonSettings);
+        }
+
+        /// <summary>Indices of the steps the dryRun policy gates right now (unknown skill names never count); null when none.</summary>
+        private static int[] FindDryRunGatedSteps(JArray steps)
+        {
+            List<int> gated = null;
+            for (int i = 0; i < steps.Count; i++)
+            {
+                var name = GetBatchStepSkillName(steps[i]);
+                if (!string.IsNullOrWhiteSpace(name) && SkillRouter.TryGetSkill(name, out var skill) && SkillRouter.DryRunGateApplies(skill))
+                    (gated ??= new List<int>()).Add(i);
+            }
+            return gated?.ToArray();
+        }
+
+        /// <summary>
+        /// An executing (or transactional) batch with gated steps: consumes a ?dryRunToken= issued for this exact body and returns
+        /// false, or writes DRYRUN_REQUIRED carrying the batch's v2 dryRun envelope plus a fresh token and returns true -- nothing
+        /// executed, no undo fence opened. Failed steps in the preview do not withhold the token: fail-fast / continueOnError then
+        /// behave exactly as without the policy, and the caller has already seen which steps fail.
+        /// </summary>
+        private static bool RejectWithoutBatchDryRunToken(RequestJob job, Dictionary<string, string> qs, JArray steps,
+            JObject batchParams, bool continueOnError, int[] gatedSteps, string batchHash)
+        {
+            qs.TryGetValue(DryRunPolicyService.TokenQueryKey, out var token);
+            var check = DryRunPolicyService.TryConsume(token, DryRunPolicyService.BatchScope, batchHash, out var tokenAgeSec);
+            RefineAgentId(job);
+            string reason;
+            using (SkillsAuditLog.BeginRequestContext(job.RemotePort, job.AgentId, job.AgentIdIsExplicit))
+            {
+                if (check == OneTimeTokenStore.Check.Ok)
+                {
+                    SkillsAuditLog.Append("dryrun_passed", new { skill = "skills_batch", scope = DryRunPolicyService.BatchScope, gatedSteps, tokenAgeSec });
+                    return false;
+                }
+
+                reason = DryRunPolicyService.ReasonFor(check, token);
+                SkillsAuditLog.Append("call", new
+                {
+                    skill = "skills_batch",
+                    result = "dryRunRequired",
+                    policy = DryRunPolicyService.CurrentWire,
+                    reason,
+                    tokenIssued = true,
+                    gatedSteps,
+                });
+            }
+
+            var preview = ExecuteBatchCore(steps, batchParams, continueOnError, dryRun: true, transactional: false, agentId: job.AgentId,
+                agentIdRefiner: () => { RefineAgentId(job); return job.AgentId; },
+                remotePort: job.RemotePort,
+                agentIdIsExplicit: job.AgentIdIsExplicit,
+                wire: WireV2);
+            var freshToken = DryRunPolicyService.IssueToken(DryRunPolicyService.BatchScope, batchHash);
+            job.StatusCode = 200;
+            job.ResponseJson = DryRunPolicyService.BuildBatchRequiredResponse(reason, freshToken, preview,
+                QueryWithout(job.QueryString, DryRunPolicyService.TokenQueryKey), gatedSteps);
+            return true;
         }
 
         /// <summary>
@@ -3988,7 +4115,8 @@ namespace UnitySkills
                     string errorCode = stepPayload["errorCode"]?.ToString();
                     bool authorizationRequired =
                         string.Equals(errorCode, "MODE_RESTRICTED", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(errorCode, "CONFIRMATION_REQUIRED", StringComparison.OrdinalIgnoreCase);
+                        string.Equals(errorCode, "CONFIRMATION_REQUIRED", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(errorCode, "DRYRUN_REQUIRED", StringComparison.OrdinalIgnoreCase);
 
                     if (authorizationRequired || !continueOnError)
                         halted = true;
@@ -4212,7 +4340,7 @@ namespace UnitySkills
         /// to believe it requested a preview, or requested async execution, and got neither.
         /// </summary>
         private static readonly string[] BatchBodyParams = { "steps", "params", "continueOnError", "dryRun", "mode" };
-        private static readonly string[] BatchQueryParams = { "mode", "dryRun", "diff", "wire", ExpectInstanceQueryKey, ExpectProjectQueryKey };
+        private static readonly string[] BatchQueryParams = { "mode", "dryRun", "diff", "wire", DryRunPolicyService.TokenQueryKey, ExpectInstanceQueryKey, ExpectProjectQueryKey };
 
         private static bool IsKnownBatchParam(string[] allowed, string name)
         {
@@ -5260,6 +5388,7 @@ namespace UnitySkills
             {
                 mode = SkillsModeManager.ModeToWire(SkillsModeManager.CurrentMode),
                 panelApprovalRequired = SkillsModeManager.PanelApprovalRequired,
+                dryRunPolicy = DryRunPolicyService.CurrentWire,
                 allowlist = allowlist,
                 granted = allowlist, // deprecated alias — removed in the next minor version
                 pending = pending.Select(p => new

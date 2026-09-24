@@ -38,6 +38,7 @@ namespace UnitySkills
         SurfaceExcluded,
         InstanceMismatch,
         MethodNotAllowed,
+        DryRunRequired,
     }
 
     internal static class SkillErrorCodeExtensions
@@ -73,6 +74,7 @@ namespace UnitySkills
                 case SkillErrorCode.SurfaceExcluded:      return "SURFACE_EXCLUDED";
                 case SkillErrorCode.InstanceMismatch:     return "INSTANCE_MISMATCH";
                 case SkillErrorCode.MethodNotAllowed:     return "METHOD_NOT_ALLOWED";
+                case SkillErrorCode.DryRunRequired:       return "DRYRUN_REQUIRED";
                 default:                                  return "UNKNOWN";
             }
         }

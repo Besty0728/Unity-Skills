@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
@@ -24,16 +23,10 @@ namespace UnitySkills
         private const int DefaultTtlSeconds = 300;
         private const int MaxLiveTokens = 256;
 
-        private sealed class Entry
-        {
-            public string Token;
-            public string SkillName;
-            public string ArgsHash;
-            public DateTime ExpiresAtUtc;
-        }
+        private static readonly OneTimeTokenStore _tokens = new OneTimeTokenStore(DefaultTtlSeconds, MaxLiveTokens);
 
-        private static readonly ConcurrentDictionary<string, Entry> _entries =
-            new ConcurrentDictionary<string, Entry>(StringComparer.Ordinal);
+        /// <summary>Test seam: when set, <see cref="RequireConfirmation"/> reads this instead of the machine-wide pref.</summary>
+        internal static bool? RequireConfirmationOverrideForTests;
 
         /// <summary>
         /// Global switch. Defaults to false -- most users want unattended automation.
@@ -41,7 +34,7 @@ namespace UnitySkills
         /// </summary>
         public static bool RequireConfirmation
         {
-            get => EditorPrefs.GetBool(PrefKeyRequire, false);
+            get => RequireConfirmationOverrideForTests ?? EditorPrefs.GetBool(PrefKeyRequire, false);
             set => EditorPrefs.SetBool(PrefKeyRequire, value);
         }
 
@@ -64,87 +57,17 @@ namespace UnitySkills
         /// <summary>
         /// Issues a new token bound to (skillName, argsHash), valid for a single use.
         /// </summary>
-        public static (string token, int ttlSeconds) IssueToken(string skillName, string argsJson)
-        {
-            CleanupExpired();
-            EnforceCapacity();
-
-            var token = GenerateToken();
-            var entry = new Entry
-            {
-                Token = token,
-                SkillName = skillName ?? string.Empty,
-                ArgsHash = HashArgs(argsJson),
-                ExpiresAtUtc = DateTime.UtcNow.AddSeconds(DefaultTtlSeconds),
-            };
-            _entries[token] = entry;
-            return (token, DefaultTtlSeconds);
-        }
+        public static (string token, int ttlSeconds) IssueToken(string skillName, string argsJson) =>
+            (_tokens.Issue(skillName, HashArgs(argsJson)), DefaultTtlSeconds);
 
         /// <summary>
         /// Attempts to consume a token. Returns false if it doesn't exist, has expired, or its
-        /// bound (skillName, args) doesn't match. A successfully consumed token is removed.
+        /// bound (skillName, args) doesn't match; a mismatch leaves the token usable. A successfully consumed token is removed.
         /// </summary>
-        public static bool TryConsume(string token, string skillName, string argsJson)
-        {
-            if (string.IsNullOrWhiteSpace(token))
-                return false;
+        public static bool TryConsume(string token, string skillName, string argsJson) =>
+            _tokens.TryConsume(token, skillName, HashArgs(argsJson), out _) == OneTimeTokenStore.Check.Ok;
 
-            if (!_entries.TryGetValue(token, out var entry))
-                return false;
-
-            // Must validate before deleting. A token that's still valid but simply doesn't match on
-            // (skillName, args) -- e.g. the client's JSON differs slightly, or it was replayed against a different skill -- must not be destroyed: the caller still needs it to
-            // retry the confirmation flow properly. Deleting first and checking after would let any single mismatch burn a good token.
-            if (DateTime.UtcNow > entry.ExpiresAtUtc)
-                return false;
-
-            if (!string.Equals(entry.SkillName, skillName ?? string.Empty, StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            if (!string.Equals(entry.ArgsHash, HashArgs(argsJson), StringComparison.Ordinal))
-                return false;
-
-            // All checks passed; consume atomically. If another thread already consumed it between
-            // the TryGetValue above and here, TryRemove returns false, which handles that race correctly.
-            return _entries.TryRemove(token, out _);
-        }
-
-        public static int CleanupExpired()
-        {
-            int removed = 0;
-            var nowUtc = DateTime.UtcNow;
-            foreach (var kv in _entries)
-            {
-                if (nowUtc > kv.Value.ExpiresAtUtc && _entries.TryRemove(kv.Key, out _))
-                    removed++;
-            }
-            return removed;
-        }
-
-        private static void EnforceCapacity()
-        {
-            // Cheap safeguard against unbounded memory growth when clients issue tokens without consuming them.
-            if (_entries.Count < MaxLiveTokens) return;
-            // Evict arbitrarily until back under the cap: order is unspecified, but bounded in count.
-            foreach (var key in _entries.Keys)
-            {
-                if (_entries.Count < MaxLiveTokens) break;
-                _entries.TryRemove(key, out _);
-            }
-        }
-
-        private static string GenerateToken()
-        {
-            // 16 bytes -> 22-char base64url, plenty unique for a 5-minute window.
-            var bytes = new byte[16];
-            using (var rng = RandomNumberGenerator.Create())
-                rng.GetBytes(bytes);
-            return Convert.ToBase64String(bytes)
-                .TrimEnd('=')
-                .Replace('+', '-')
-                .Replace('/', '_');
-        }
+        public static int CleanupExpired() => _tokens.CleanupExpired();
 
         private static string HashArgs(string argsJson)
         {

@@ -109,7 +109,7 @@ namespace UnitySkills
         // query string. The full schema/manifest already has a cache (_cachedSchema/_cachedManifest),
         // but the filtered variants (?category=... etc.) used to be rebuilt and re-serialized on
         // every request -- and that's exactly the path an agent uses to save tokens (scoped is
-        // roughly 24KB, full roughly 618KB). As long as the skill set doesn't change, a given query's
+        // roughly 24KB, full roughly 707KB). As long as the skill set doesn't change, a given query's
         // content is byte-for-byte deterministic, so caching is safe; cleared on Refresh() (domain
         // reload / skill add-remove). Only recognized filter keys enter the cache key (see StripUnrecognizedFilterKeys), so an unbounded query parameter (e.g. a cache-busting ?nonce=N) can't manufacture a fresh several-hundred-KB entry per request; entry count is also hard-capped by MaxCacheEntries as a second line of defense.
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _filteredOutputCache =
@@ -142,6 +142,10 @@ namespace UnitySkills
             "pageLimit",
             "_confirm"
         };
+
+        /// <summary>Envelope-level body keys every skill accepts (paging, verbose, _confirm), case-insensitive.</summary>
+        internal static bool IsReservedBodyParameter(string name) =>
+            !string.IsNullOrEmpty(name) && _reservedBodyParameters.Contains(name);
 
         private const string EntityIdParameterName = "entityId";
 
@@ -876,7 +880,13 @@ namespace UnitySkills
         /// and any diff failure only degrades sceneDiff to {error:...}, without affecting the skill's result.
         /// When captureDiff is false, output is byte-for-byte identical to before.
         /// </summary>
-        public static string Execute(string name, string json, bool captureDiff)
+        public static string Execute(string name, string json, bool captureDiff) => Execute(name, json, captureDiff, null);
+
+        /// <summary>
+        /// <paramref name="dryRunGate"/> is non-null only for POST /skill/{name}: that is the one caller the dryRun policy
+        /// gates. The panel, tests, /skills/batch steps and approval replays pass null and are never gated here.
+        /// </summary>
+        internal static string Execute(string name, string json, bool captureDiff, DryRunGateContext dryRunGate)
         {
             Initialize();
             if (!_skills.TryGetValue(name, out var skill))
@@ -994,6 +1004,16 @@ namespace UnitySkills
                 // gate, so the user is never asked to approve a call that can only fail.
                 if (validation.MissingPackages.Count > 0)
                     return BuildMissingPackageResponse(skill, name, validation, resolutionNotes);
+
+                // The dryRun policy gate: after validation and the terminal surface / package verdicts (a token for a call
+                // that can never run is waste), before the permission gate (the user is never asked to approve a call that
+                // then bounces for a missing token, and a consumed token is not asked for again by the grant replay).
+                if (dryRunGate != null)
+                {
+                    var dryRunRequired = ApplyDryRunPolicyGate(skill, name, json, dryRunGate);
+                    if (dryRunRequired != null)
+                        return dryRunRequired;
+                }
 
                 // The permission tier gate. Placed before the high-risk confirmation gate, so a skill that is both FullAuto and high-risk
                 // reports MODE_RESTRICTED first; the ConfirmationToken step only matters once the skill is already allowed to run.
@@ -1384,7 +1404,13 @@ namespace UnitySkills
         /// blocks: <c>skill</c> becomes name, category, operation, mode, riskLevel, longRunning and a flags array; <c>parameters</c> lists only
         /// what the caller sent plus required parameters still missing. The v1 body is byte-for-byte unchanged.
         /// </summary>
-        public static string DryRun(string name, string json, int wire)
+        public static string DryRun(string name, string json, int wire) => DryRun(name, json, wire, issuePolicyToken: false);
+
+        /// <summary>
+        /// <paramref name="issuePolicyToken"/> is true only for POST /skill/{name}?mode=dryRun: a valid preview of a call the
+        /// dryRun policy would gate then carries "dryRunToken" right after "valid". Every other preview keeps its exact bytes.
+        /// </summary>
+        internal static string DryRun(string name, string json, int wire, bool issuePolicyToken)
         {
             Initialize();
             if (!_skills.TryGetValue(name, out var skill))
@@ -1398,6 +1424,9 @@ namespace UnitySkills
                 // Inside a /skills/batch dry run, what this step would create becomes nameable by the steps after it.
                 SkillPlanningService.RegisterPendingCreates(validation, planData);
                 var resolutionNotes = MergeResolutionNotes(null);
+                var dryRunToken = issuePolicyToken && validation.Valid && DryRunGateApplies(skill)
+                    ? DryRunPolicyService.IssueToken(skill.Name, DryRunPolicyService.HashSkillArgs(skill, json))
+                    : null;
                 if (wire == WireV2)
                 {
                     var flags = new List<string>();
@@ -1444,7 +1473,7 @@ namespace UnitySkills
                         steps = planData?["steps"],
                         changes = planData?["changes"],
                         note = "No execution performed"
-                    }, resolutionNotes);
+                    }, resolutionNotes, dryRunToken);
                 }
                 return SerializeWithResolutionNotes(new
                 {
@@ -1493,7 +1522,7 @@ namespace UnitySkills
                     steps = planData?["steps"],
                     changes = planData?["changes"],
                     note = "No execution performed"
-                }, resolutionNotes);
+                }, resolutionNotes, dryRunToken);
             }
             catch (Newtonsoft.Json.JsonException ex)
             {
@@ -1633,16 +1662,21 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Serializes a preview payload, appending top-level <c>resolutionNotes</c> only when there are any -- the common
-        /// path keeps the exact bytes a direct serialization produces.
+        /// Serializes a preview payload, appending top-level <c>resolutionNotes</c> only when there are any, and inserting
+        /// <c>dryRunToken</c> right after <c>valid</c> only when one was issued -- the common path keeps the exact bytes a
+        /// direct serialization produces.
         /// </summary>
-        private static string SerializeWithResolutionNotes(object payload, List<string> notes)
+        private static string SerializeWithResolutionNotes(object payload, List<string> notes, string dryRunToken = null)
         {
-            if (notes == null || notes.Count == 0)
+            bool hasNotes = notes != null && notes.Count > 0;
+            if (!hasNotes && dryRunToken == null)
                 return JsonConvert.SerializeObject(payload, _jsonSettings);
 
             var obj = JObject.FromObject(payload, JsonSerializer.Create(_jsonSettings));
-            obj[ResolutionNotesKey] = JArray.FromObject(notes);
+            if (dryRunToken != null)
+                obj.Property("valid")?.AddAfterSelf(new JProperty(DryRunPolicyService.TokenQueryKey, dryRunToken));
+            if (hasNotes)
+                obj[ResolutionNotesKey] = JArray.FromObject(notes);
             return JsonConvert.SerializeObject(obj, _jsonSettings);
         }
 
@@ -2103,7 +2137,7 @@ namespace UnitySkills
         /// <summary>
         /// Same filter conditions as GetFilteredManifest (category/operation/tags/readOnly/q),
         /// but marks the payload's manifestType as "schema" -- backing GET /skills/schema?category=...
-        /// (a scoped schema, so needing just one category doesn't require pulling the whole roughly 618KB schema).
+        /// (a scoped schema, so needing just one category doesn't require pulling the whole roughly 707KB schema).
         /// </summary>
         public static string GetFilteredSchema(string queryString) => BuildFilteredOutput(queryString, "schema", out _);
 
@@ -2122,7 +2156,7 @@ namespace UnitySkills
 
         // The query keys BuildFilteredOutput actually uses to filter or branch. Everything else (typos, cache-busting
         // nonces, client telemetry parameters...) gets stripped before entering the cache key -- otherwise every distinct unrecognized value would create
-        // a permanent roughly 618KB cache entry (see the MaxCacheEntries comment above _filteredOutputCache).
+        // a permanent roughly 707KB cache entry (see the MaxCacheEntries comment above _filteredOutputCache).
         // Adding a new key here must also add it to _blankRejectingFilterKeys, or "?newKey=" silently becomes a no-op again.
         private static readonly HashSet<string> _recognizedFilterKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -2252,7 +2286,7 @@ namespace UnitySkills
         /// <list type="number">
         /// <item>meta path -> <see cref="GetSurface.Meta"/>.</item>
         /// <item>?brief is true, or a bare /skills request (no narrowing filter and no ?full) ->
-        /// <see cref="GetSurface.Brief"/>. This is the v2.7 default flip: bare GET /skills used to return the roughly 618KB
+        /// <see cref="GetSurface.Brief"/>. This is the v2.7 default flip: bare GET /skills used to return the roughly 707KB
         /// manifest, and now returns the catalog; ?full=1 restores the old behavior.</item>
         /// <item>No narrowing key at all and wire is v1 -> <see cref="GetSurface.FullV1"/>
         /// (bare /skills/schema, and /skills?full=1).</item>
@@ -2439,7 +2473,7 @@ namespace UnitySkills
                 case GetSurface.Meta:
                     return GetMeta(ResolveWireVersion(filters));
                 // ?brief=1 (or ?brief=true), and now bare GET /skills too -> the catalog layer: skill names grouped by
-                // category, without descriptions or parameter schemas (roughly 19KB, versus roughly 139KB for summary / roughly 618KB for full).
+                // category, without descriptions or parameter schemas (roughly 19KB, versus roughly 139KB for summary / roughly 707KB for full).
                 // Takes priority over summary/category and other filters (which are ignored), to keep the semantics minimal:
                 // locate the module first, then pull the exact signature via GET /skills/schema?category=<Category>.
                 case GetSurface.Brief:
@@ -4001,6 +4035,60 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// Whether the dryRun policy demands a token for this call right now. Beyond <see cref="DryRunPolicyService.IsGated(SkillInfo)"/>,
+        /// a call that can only end in SURFACE_EXCLUDED or MODE_FORBIDDEN is left to those gates, so it gets its real answer in
+        /// the same round trip instead of a token it cannot use. Shared by the /skill/ gate, token issuance on ?mode=dryRun and
+        /// the /skills/batch gate.
+        /// </summary>
+        internal static bool DryRunGateApplies(SkillInfo skill) =>
+            DryRunPolicyService.IsGated(skill)
+            && !SkillsSurfaceProfile.IsExcluded(skill)
+            && !PreviewsModeForbidden(skill);
+
+        /// <summary>
+        /// The MODE_FORBIDDEN rung of <see cref="BuildModeAuthorizationPreview"/>'s ladder as a pure check (CheckAccess would
+        /// consume a one-shot grant). A one-shot is only ever set around an approval replay, which is never gated.
+        /// </summary>
+        private static bool PreviewsModeForbidden(SkillInfo skill) =>
+            SkillsModeManager.CurrentMode != SkillsOperatingMode.Bypass
+            && !SkillsModeManager.IsInAllowlist(skill.Name)
+            && SkillsModeManager.IsForbiddenInSemi(skill);
+
+        /// <summary>
+        /// Returns null when the call may proceed: the policy does not gate it, or the presented ?dryRunToken= was issued for
+        /// exactly these arguments and is now consumed. Otherwise DRYRUN_REQUIRED with the v2 preview and a fresh token.
+        /// </summary>
+        private static string ApplyDryRunPolicyGate(SkillInfo skill, string name, string json, DryRunGateContext gate)
+        {
+            if (!DryRunGateApplies(skill))
+                return null;
+
+            var argsHash = DryRunPolicyService.HashSkillArgs(skill, json);
+            var check = DryRunPolicyService.TryConsume(gate.Token, skill.Name, argsHash, out var tokenAgeSec);
+            if (check == OneTimeTokenStore.Check.Ok)
+            {
+                SkillsAuditLog.Append("dryrun_passed", new { skill = name, tokenAgeSec });
+                return null;
+            }
+
+            var reason = DryRunPolicyService.ReasonFor(check, gate.Token);
+            var token = DryRunPolicyService.IssueToken(skill.Name, argsHash);
+            JToken preview = null;
+            try { preview = DryRunPolicyService.ParseJson(DryRun(name, json, WireV2)); }
+            catch { /* best-effort, like the confirmation gate's preview: the token is valid either way */ }
+
+            SkillsAuditLog.Append("call", new
+            {
+                skill = name,
+                result = "dryRunRequired",
+                policy = DryRunPolicyService.CurrentWire,
+                reason,
+                tokenIssued = true,
+            });
+            return DryRunPolicyService.BuildSkillRequiredResponse(skill.Name, reason, token, preview, gate.QueryForFixes);
+        }
+
+        /// <summary>
         /// Returns null when the permission tier allows this skill; otherwise returns a serialized error payload
         /// (MODE_RESTRICTED or MODE_FORBIDDEN), for the caller to present as-is.
         /// Always writes a "call" audit entry when the verdict is Allowed, so silent execution under Auto mode is still traceable.
@@ -4569,7 +4657,7 @@ namespace UnitySkills
         /// <list type="bullet">
         /// <item><b>A bare key</b> (<c>?full</c>, <c>?brief</c>) -- the URL idiom for "present means true."
         /// Dropping it would turn <c>GET /skills?full</c> into a silent no-op, returning the 19KB catalog while the caller
-        /// waits on the 618KB manifest. It's now collected as the value <c>"1"</c>, the same value <c>?full=1</c> gets,
+        /// waits on the 707KB manifest. It's now collected as the value <c>"1"</c>, the same value <c>?full=1</c> gets,
         /// so both spellings share one cache entry and one ETag.</item>
         /// <item><b>A key with an empty value</b> (<c>?category=</c>) -- collected as an empty string rather than dropped,
         /// so the narrowing-filter guard can reject it alongside the valid word list. Dropping it would turn a half-written filter
