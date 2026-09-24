@@ -70,7 +70,7 @@ Several Unity projects can run UnitySkills at once; each server takes the first 
 
 ### Three Modes (aligned with Claude Code permission modes)
 
-> **Factory default:** a fresh install starts in **Auto**; an upgraded install (any pre-existing `UnitySkills_*` pref) starts in **Bypass**. It **never** defaults to Approval. The "Claude Code 类比" column below is only a mental model, **not** the factory default — always read `/health.currentMode` before acting.
+> **Factory default:** a fresh install starts in **Auto**; an upgraded install (any pre-existing `UnitySkills_*` pref) starts in **Bypass**. It **never** defaults to Approval. The "Claude Code 类比" column below is only a mental model, **not** the factory default — never assume the mode: take `currentMode` from the session-start `/health` probe and re-probe after a failure.
 
 | Mode | Claude Code 类比（心智对照，非默认） | FullAuto skill | Auto-detected NeverInSemi skill |
 |---|---|---|---|
