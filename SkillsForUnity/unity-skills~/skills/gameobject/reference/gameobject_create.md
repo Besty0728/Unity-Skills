@@ -3,7 +3,7 @@ Create one GameObject (primitive or empty), optionally parented, placed, rotated
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `name` | string | Yes | - | Object name |
+| `name` | string | No | "" | Object name (an omitted name creates an unnamed object rather than failing) |
 | `primitiveType` | string | No | null | Cube/Sphere/Capsule/Cylinder/Plane/Quad; null, `Empty` or `None` = empty object |
 | `x`, `y`, `z` | float | No | 0 | Position: local to the parent, or world when `space` is `world` |
 | `rotX`, `rotY`, `rotZ` | float | No | 0 | Euler rotation, same space as `x/y/z` |

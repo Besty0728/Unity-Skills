@@ -4,6 +4,8 @@ using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
+using UnityEditor;
+using UnityEngine;
 
 namespace UnitySkills.Tests.Core
 {
@@ -109,15 +111,34 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void MaterialCreate_MissingName_ReportsMissingParam_ValidCallStillSucceeds()
+        public void MaterialCreate_DeclaresNameAsRequired()
+        {
+            // Canary: isolates metadata attachment from the validation-pipeline computation below. If this ever
+            // fails, the attribute itself isn't reaching the registry (reflection/registration bug); if only the
+            // tests below fail while this one passes, the bug is downstream in IsParameterRequired/ValidateParameters.
+            Assert.That(SkillRouter.TryGetSkill("material_create", out var skill), Is.True, "material_create is not registered.");
+            Assert.That(skill.RequiredParams, Is.Not.Null.And.Contains("name"));
+        }
+
+        [Test]
+        public void MaterialCreate_MissingName_ReportsMissingParam()
         {
             // material_create.name has no CLR default and was never declared RequiredParams, so an omitted
             // name used to sail through dryRun as valid and fail deep inside (a null Material.name).
             var dry = JObject.Parse(SkillRouter.DryRun("material_create", "{}"));
-            Assert.That(dry["valid"]?.Value<bool>(), Is.False);
+            Assert.That(dry["valid"]?.Value<bool>(), Is.False, dry.ToString(Formatting.None));
             var missingParams = (JArray)dry["validation"]?["missingParams"];
-            Assert.That(missingParams?.Select(token => token.ToString()), Does.Contain("name"));
+            Assert.That(missingParams?.Select(token => token.ToString()), Does.Contain("name"),
+                dry.ToString(Formatting.None));
 
+            var executed = JObject.Parse(SkillRouter.Execute("material_create", "{}"));
+            Assert.That(executed["status"]?.ToString(), Is.EqualTo("error"), executed.ToString(Formatting.None));
+            Assert.That(executed["errorCode"]?.ToString(), Is.EqualTo("MISSING_PARAM"));
+        }
+
+        [Test]
+        public void MaterialCreate_WithNameProvided_StillSucceeds()
+        {
             // Adding the guard must not touch the behaviour of a call that already provides name: in-memory
             // (no savePath) so the test writes nothing to disk.
             var response = JObject.Parse(SkillRouter.Execute("material_create",
@@ -145,31 +166,37 @@ namespace UnitySkills.Tests.Core
             // Regex.Replace(input, pattern, replacement, ...) throws ArgumentNullException on a null replacement
             // (confirmed against the .NET docs), unlike string.Replace(old, null) which already treats it as a
             // delete - so isRegex=true with replace omitted used to crash instead of deleting every match.
-            // Calls ScriptSkills.ScriptReplace directly (same pattern as ScriptCreateContentTests.WriteNewScriptFile):
-            // a temp path outside Assets/ so AssetDatabase.ImportAsset is a no-op and no domain reload is possible.
-            var tempPath = Path.Combine(Path.GetTempPath(), "UnitySkillsScriptReplaceProbe_" + Guid.NewGuid().ToString("N") + ".cs");
-            File.WriteAllText(tempPath, "aXbXc");
+            // Calls ScriptSkills.ScriptReplace directly (same pattern as ScriptCreateContentTests). Unlike
+            // WriteNewScriptFile, ScriptReplace itself runs Validate.SafePath on scriptPath, which rejects
+            // anything outside Assets/ or Packages/ - so, unlike that sibling test, this one cannot use a plain
+            // OS temp path and must write under Assets/. ".txt" (not ".cs") keeps AssetDatabase.ImportAsset from
+            // ever treating it as a script to compile, so there is still no domain-reload risk.
+            var relativePath = $"Assets/UnitySkillsTests_Temp/ScriptReplaceProbe_{Guid.NewGuid():N}.txt";
+            var absolutePath = Path.Combine(Directory.GetParent(Application.dataPath).FullName, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(absolutePath));
+            File.WriteAllText(absolutePath, "aXbXc");
             string jobId = null;
             try
             {
                 object result = null;
                 Assert.DoesNotThrow(() =>
                 {
-                    result = ScriptSkills.ScriptReplace(tempPath, "X", null, isRegex: true, checkCompile: false);
+                    result = ScriptSkills.ScriptReplace(relativePath, "X", null, isRegex: true, checkCompile: false);
                 });
 
-                Assert.That(File.ReadAllText(tempPath), Is.EqualTo("abc"),
+                Assert.That(File.ReadAllText(absolutePath), Is.EqualTo("abc"),
                     "Omitted replace must delete every match, matching string.Replace's own null-replacement behaviour.");
 
                 var resultObject = JObject.FromObject(result);
-                Assert.That(resultObject["replacements"]?.Value<int>(), Is.EqualTo(2));
+                Assert.That(resultObject["replacements"]?.Value<int>(), Is.EqualTo(2), resultObject.ToString(Formatting.None));
                 jobId = resultObject["jobId"]?.ToString();
             }
             finally
             {
                 if (!string.IsNullOrEmpty(jobId))
                     BatchPersistence.RemoveJob(jobId);
-                try { File.Delete(tempPath); } catch { }
+                AssetDatabase.DeleteAsset(relativePath);
+                try { File.Delete(absolutePath); } catch { }
             }
         }
 

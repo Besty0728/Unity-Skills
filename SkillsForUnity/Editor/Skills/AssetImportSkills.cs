@@ -462,9 +462,11 @@ namespace UnitySkills
             Tags = new[] { "asset", "labels", "tag", "metadata" },
             Outputs = new[] { "assetPath", "labels" },
             RequiresInput = new[] { "assetPath" },
+            RequiredParams = new[] { "labels" },
             TracksWorkflow = true)]
         public static object AssetSetLabels(string assetPath, string labels)
         {
+            if (Validate.Required(labels, "labels") is object labelsErr) return labelsErr;
             var asset = AssetDatabase.LoadMainAssetAtPath(assetPath);
             if (asset == null) return new { error = $"Asset not found: {assetPath}" };
 

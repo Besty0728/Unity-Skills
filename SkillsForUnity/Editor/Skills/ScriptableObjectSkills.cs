@@ -169,9 +169,11 @@ namespace UnitySkills
             Tags = new[] { "scriptableobject", "set", "batch", "fields" },
             Outputs = new[] { "fieldsSet", "failed", "results" },
             RequiresInput = new[] { "assetPath" },
+            RequiredParams = new[] { "fields" },
             TracksWorkflow = true, MutatesAssets = true)]
         public static object ScriptableObjectSetBatch(string assetPath, string fields)
         {
+            if (Validate.Required(fields, "fields") is object fieldsErr) return fieldsErr;
             var asset = AssetDatabase.LoadAssetAtPath<ScriptableObject>(assetPath);
             if (asset == null) return new { error = $"ScriptableObject not found: {assetPath}" };
             System.Collections.Generic.Dictionary<string, string> dict;
@@ -422,13 +424,14 @@ namespace UnitySkills
             Category = SkillCategory.ScriptableObject, Operation = SkillOperation.Modify,
             Tags = new[] { "scriptableobject", "serialized", "property", "batch" },
             Outputs = new[] { "successCount", "failCount", "results" },
-            RequiresInput = new[] { "assetPath" },
+            RequiresInput = new[] { "assetPath", "items" },
             TracksWorkflow = true,
             MutatesAssets = true,
             RiskLevel = "medium")]
         public static object ScriptableObjectSetSerializedPropertyBatch(string assetPath, string items)
         {
             if (Validate.Required(assetPath, "assetPath") is object reqErr) return reqErr;
+            if (Validate.RequiredJsonArray(items, "items") is object itemsErr) return itemsErr;
 
             return BatchExecutor.Execute<BatchSetSerializedPropertyItem>(items, item =>
             {

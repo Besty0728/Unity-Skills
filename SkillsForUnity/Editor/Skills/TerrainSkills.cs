@@ -164,6 +164,7 @@ namespace UnitySkills
             Tags = new[] { "terrain", "height", "batch", "heightmap", "region" },
             Outputs = new[] { "success", "startX", "startZ", "modifiedWidth", "modifiedLength", "totalPointsModified" },
             RequiresInput = new[] { "gameObject" },
+            RequiredParams = new[] { "heights" },
             // SetHeights writes to the TerrainData asset (created by terrain_create via AssetDatabase.CreateAsset);
             // the scene's Terrain component is unaffected.
             MutatesAssets = true)]

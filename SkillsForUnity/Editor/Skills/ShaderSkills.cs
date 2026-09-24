@@ -372,9 +372,11 @@ namespace UnitySkills
             Category = SkillCategory.Shader, Operation = SkillOperation.Modify,
             Tags = new[] { "shader", "keyword", "global", "rendering" },
             Outputs = new[] { "keyword", "enabled" },
+            RequiredParams = new[] { "keyword" },
             TracksWorkflow = true)]
         public static object ShaderSetGlobalKeyword(string keyword, bool enabled)
         {
+            if (Validate.Required(keyword, "keyword") is object keywordErr) return keywordErr;
             if (enabled) Shader.EnableKeyword(keyword);
             else Shader.DisableKeyword(keyword);
             return new { success = true, keyword, enabled };

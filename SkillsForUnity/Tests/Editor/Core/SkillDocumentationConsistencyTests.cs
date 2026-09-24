@@ -1575,6 +1575,17 @@ namespace UnitySkills.Tests.Core
             if (type == typeof(double)) return "double";
             if (type == typeof(long)) return "long";
             if (type == typeof(object)) return "object";
+            // Less common CLR value types a skill parameter can still declare (type.Name would otherwise fall
+            // through to the raw CLR name - "UInt32" for a `uint renderingLayerMask`, never matching a doc that
+            // (correctly) writes the C# keyword alias).
+            if (type == typeof(uint)) return "uint";
+            if (type == typeof(short)) return "short";
+            if (type == typeof(ushort)) return "ushort";
+            if (type == typeof(byte)) return "byte";
+            if (type == typeof(sbyte)) return "sbyte";
+            if (type == typeof(ulong)) return "ulong";
+            if (type == typeof(char)) return "char";
+            if (type == typeof(decimal)) return "decimal";
 
             if (type.IsGenericType)
             {

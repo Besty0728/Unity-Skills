@@ -16,6 +16,7 @@ namespace UnitySkills
             Category = SkillCategory.Asset, Operation = SkillOperation.Create,
             Tags = new[] { "import", "copy", "external" },
             Outputs = new[] { "imported" },
+            RequiredParams = new[] { "sourcePath", "destinationPath" },
             TracksWorkflow = true,
             MutatesAssets = true, RiskLevel = "high")]
         public static object AssetImport(
@@ -23,6 +24,8 @@ namespace UnitySkills
             string sourcePath,
             string destinationPath)
         {
+            if (Validate.Required(sourcePath, "sourcePath") is object sourceErr) return sourceErr;
+            if (Validate.Required(destinationPath, "destinationPath") is object destErr) return destErr;
             bool isDir = Directory.Exists(sourcePath);
             if (!File.Exists(sourcePath) && !isDir)
                 return new { error = $"Source not found: {sourcePath}" };
