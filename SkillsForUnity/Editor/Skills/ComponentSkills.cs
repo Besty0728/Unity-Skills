@@ -340,7 +340,7 @@ namespace UnitySkills
         [UnitySkill("component_set_property", "Set a property/field on a component. Supports Vector2/3/4, Color, scene references by name/path, project assets by assetPath. Vector and Color values accept both the comma form (\"1,2,3\") and the JSON object form ({\"x\":1,\"y\":2,\"z\":3} / {\"r\":1,\"g\":0,\"b\":0,\"a\":1}); Color also accepts #RRGGBB and named colours. In the object form every vector component is required (a partial {\"y\":2} is rejected, not zero-filled); Color's \"a\" may be omitted and defaults to 1. valueSet is read back from the component after the write, in a round-trippable form; valueRequested is added only when the stored value differs (clamped, normalised or wrapped by the setter). component/property report the resolved type and member names.",
             Category = SkillCategory.Component, Operation = SkillOperation.Modify,
             Tags = new[] { "property", "field", "value", "reference" },
-            Outputs = new[] { "gameObject", "component", "property", "valueSet", "valueType" },
+            Outputs = new[] { "gameObject", "component", "property", "valueSet", "valueType", "fullTypeName" },
             RequiresInput = new[] { "gameObject", "component" },
             RequiredParams = new[] { "componentType", "propertyName" },
             TracksWorkflow = true, MutatesScene = true)]

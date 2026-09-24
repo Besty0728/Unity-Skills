@@ -689,7 +689,7 @@ namespace UnitySkills
         [UnitySkill("batch_validate_scene_objects", "Analyze scene objects for missing scripts, missing references, duplicate names, and empty objects.",
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "validate", "scene", "report" },
-            Outputs = new[] { "summary", "issues" },
+            Outputs = new[] { "summary", "scene", "missingReferences" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchValidateSceneObjects(int issueLimit = 100)

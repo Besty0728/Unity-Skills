@@ -452,7 +452,7 @@ namespace UnitySkills
         [UnitySkill("asset_refresh", "Refresh the Asset Database (no parameters) so Unity imports files changed outside the Editor, e.g. a .cs you wrote with your own file tools. When the refresh starts a script compilation it returns compileTriggered:true with jobId and waitUrl: GET the waitUrl (/jobs/<jobId>?wait=90) to get the compile result in one call.",
             Category = SkillCategory.Asset, Operation = SkillOperation.Execute,
             Tags = new[] { "refresh", "reimport", "database" },
-            Outputs = new[] { "message", "compileTriggered" })]
+            Outputs = new[] { "message", "compileTriggered", "jobId", "waitUrl" })]
         public static object AssetRefresh()
         {
             long refreshStartedUtcTicks = DateTime.UtcNow.Ticks;
