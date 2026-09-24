@@ -49,18 +49,22 @@ Get **the editor Scene View viewport camera's** position and rotation — the de
 **Parameters:** None.
 
 ### `camera_set_transform`
-Set Scene View camera position/rotation manually.
+Set the Scene View camera by pivot (the framed world point, not the eye position), rotation and size.
 **Parameters:**
-- `posX`, `posY`, `posZ` (float): Position.
+- `posX`, `posY`, `posZ` (float): Pivot — the world point framed, not the eye position.
 - `rotX`, `rotY`, `rotZ` (float): Rotation (Euler).
-- `size` (float, optional): Orthographic size or pivot distance (default 5).
-- `instant` (bool, optional): Move instantly (default true).
+- `size` (float, optional): Scene View size (zoom) (default 5).
+- `instant` (bool, optional): true: applied immediately and read back; false: animated (default true).
+
+**Returns:** `{ success, message, pivot, rotation, size, orthographic }`, plus `cameraPosition` (the eye position) when `instant=true`, or `animating: true` when `instant=false`.
 
 ### `camera_look_at`
-Focus Scene View camera on a world-space point.
+Focus Scene View camera on a world-space point. Applied immediately.
 **Parameters:**
 - `x`, `y`, `z` (float): Target point.
 - Does not support `targetName` or GameObject lookup. For object focus, use `camera_align_view_to_object`.
+
+**Returns:** `{ success, pivot, rotation, size }`.
 
 ### `camera_create`
 Create a new Game Camera.
@@ -118,7 +122,7 @@ Set Game Camera culling mask by layer names (comma-separated).
 | instanceId | int | No | 0 | Instance ID of the camera GameObject |
 | path | string | No | null | Hierarchy path of the camera GameObject |
 
-**Returns:** `{ success, cullingMask }`
+**Returns:** `{ success, cullingMask, layers }` — `layers` lists the layer names the resulting mask includes.
 
 ### `camera_screenshot`
 Capture a screenshot from a Game Camera to file.

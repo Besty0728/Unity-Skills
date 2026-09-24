@@ -79,8 +79,8 @@ Create a new material (auto-detects render pipeline).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | Yes | - | Material name |
-| `shaderName` | string | No | auto-detect | Shader (auto-detects URP/HDRP/Standard) |
-| `savePath` | string | No | null | Save path (folder or full path) |
+| `shaderName` | string | No | auto-detect | Shader (auto-detects URP/HDRP/Standard); an unresolved name falls back to the pipeline default and the response adds `shaderRequested` + `warnings` |
+| `savePath` | string | No | null | `Assets/...`, or a folder inside an embedded/local package (`Packages/<id>/...`); read-only packages are rejected |
 
 ### material_create_batch
 Create multiple materials.
@@ -138,17 +138,17 @@ Set material color with optional HDR intensity.
 | `propertyName` | string | No | auto-detect | Color property |
 | `intensity` | float | No | 1.0 | HDR intensity (>1 for bloom) |
 
-**Returns**: `{success, target, color, intensity, propertyUsed, hdrEnabled}`. Auto-detection tries the pipeline's property first, then `_BaseColor`, `_Color`, `_TintColor`, `_EmissionColor`, and **`propertyUsed` reports which one it actually wrote** — check it before concluding a colour "didn't apply".
+**Returns**: `{success, target, color, intensity, propertyUsed, hdrEnabled, materialPath}`. Auto-detection tries the pipeline's property first, then `_BaseColor`, `_Color`, `_TintColor`, `_EmissionColor`, and **`propertyUsed` reports which one it actually wrote** — check it before concluding a colour "didn't apply". An explicit `propertyName` that the shader doesn't have (or that names a non-colour property like `_Metallic`) is rejected with `validValues`; one that's missing but is `_BaseColor`/`_Color`/`_MainColor`/`_TintColor` falls back to whichever of that family exists (`propertyRequested` + `warnings` report it). It never falls back to `_EmissionColor` for an explicit request.
 
 ### material_set_colors_batch
-Set colors on multiple objects. Each item accepts: identifier (`name`/`instanceId`/`path`) + `r`, `g`, `b`, `a`, optional per-item `propertyName`.
+Set colors on multiple objects. Each item accepts: identifier (`name`/`instanceId`/`path`) + `r`, `g`, `b`, `a`, optional per-item `propertyName` (same resolution rules as `material_set_color`; overrides the batch-level `propertyName`).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `items` | json string | Yes | - | JSON array of `{name\|instanceId\|path, r, g, b, a}` per-item objects (see example below) |
+| `items` | json string | Yes | - | JSON array of `{name\|instanceId\|path, r, g, b, a, propertyName?}` per-item objects (see example below) |
 | `propertyName` | string | No | auto-detect | Default color property applied to all items unless overridden |
 
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success}]}` — the per-item key is `target` (GameObject name, or the path when you addressed the asset), not `name`; failures come back as `{error, target}`.
+**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, propertyUsed, color}]}` — the per-item key is `target` (GameObject name, or the path when you addressed the asset), not `name`; a rejected item fails the whole batch and rolls back the others (`rolledBack:true`, `results[i].reverted:true`).
 
 ```python
 unity_skills.call_skill("material_set_colors_batch", items=[
@@ -177,7 +177,7 @@ Set emission on multiple objects.
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
 
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, target, emissionColor, intensity, hdrColor, emissionEnabled}]}` — a rejected item fails the whole batch and rolls back the others (`rolledBack:true`).
 
 ```python
 unity_skills.call_skill("material_set_emission_batch", items=[
@@ -265,7 +265,7 @@ Duplicate a material asset.
 |-----------|------|----------|-------------|
 | `sourcePath` | string | Yes | Source material path |
 | `newName` | string | Yes | Name for the duplicated material |
-| `savePath` | string | No | Optional folder/path override for the duplicated material |
+| `savePath` | string | No | Optional folder/path override for the duplicated material; `Assets/...` or an embedded/local package folder, read-only packages rejected. Omitted: saved next to the source material |
 
 ### material_set_shader
 Change the shader of a material.
@@ -393,4 +393,4 @@ Full transport-level codes (COMPILING/RATE_LIMIT etc.) → ../../references/prot
 |---|---|---|
 | `TARGET_NOT_FOUND` | The material asset, GameObject/renderer, shader, texture, or property could not be found (e.g., `Material asset not found`, `No Renderer component found`, `Shader not found`). | Verify the asset path with `asset_find`, the object with `gameobject_find`, or inspect available properties with `material_get_properties`. |
 | `MISSING_PARAM` | A required parameter is missing, such as `materialPath`, `sourcePath`, `texturePath`, `propertyName`, `keyword`, or `shaderName`. | Supply the parameter named in the error and retry; use `mode=dryRun` for the full schema. |
-| `SEMANTIC_INVALID` | An invalid value was supplied, such as an unrecognized GI flag, an invalid asset path, or a property name the shader does not use. | Correct the value using the allowed range/enum/path convention described in the error. |
+| `SEMANTIC_INVALID` | An invalid value was supplied, such as an unrecognized GI flag, an invalid asset path, a property name the shader does not use, or a `propertyName` the shader does not declare as a colour. | Correct the value using the allowed range/enum/path convention described in the error. |

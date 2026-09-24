@@ -349,7 +349,7 @@ namespace UnitySkills
         [UnitySkill("physics_set_material", "Set PhysicMaterial on a collider (supports name/instanceId/path). Automatically uses `PhysicsMaterial` on Unity 6+, `PhysicMaterial` on earlier versions.", TracksWorkflow = true,
             Category = SkillCategory.Physics, Operation = SkillOperation.Modify,
             Tags = new[] { "material", "collider", "friction", "bounciness" },
-            Outputs = new[] { "success", "gameObject", "material" },
+            Outputs = new[] { "success", "gameObject", "material", "collider" },
             RequiresInput = new[] { "gameObject", "materialPath" }, MutatesScene = true)]
         public static object PhysicsSetMaterial(
             string materialPath, string name = null, int instanceId = 0, string path = null)
@@ -367,7 +367,12 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(collider);
             Undo.RecordObject(collider, "Set PhysicMaterial");
             collider.sharedMaterial = mat;
-            return new { success = true, gameObject = go.name, material = materialPath };
+            return new {
+                success = true,
+                gameObject = go.name,
+                material = AssetDatabase.GetAssetPath(collider.sharedMaterial),
+                collider = collider.GetType().Name,
+            };
         }
 
         [UnitySkill("physics_get_layer_collision", "Get whether two layers collide",

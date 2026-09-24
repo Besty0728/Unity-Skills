@@ -11,4 +11,4 @@ Enable or disable a GameObject.
 
 *At least one identifier required
 
-**Returns**: `{success, name, entityId, active}`
+**Returns**: `{success, name, entityId, active, activeInHierarchy}` — `activeInHierarchy` is `false` when the object itself is active but a parent is not, so the object is still not visible/running.

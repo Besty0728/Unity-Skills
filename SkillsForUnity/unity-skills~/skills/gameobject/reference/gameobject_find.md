@@ -12,4 +12,4 @@ Find GameObjects matching criteria (filters combine).
 
 **Returns**: `{count, objects: [{name, entityId, instanceId, path, tag, layer, position}]}` (`position` world).
 
-An unregistered `tag` is rejected (`SEMANTIC_INVALID` listing valid tags); an unknown `layer` or `component` is silently ignored, so it does not filter.
+An unregistered `tag` is rejected (`SEMANTIC_INVALID` listing valid tags); an unknown `layer` or `component`, or an invalid regex, is likewise rejected (`SEMANTIC_INVALID` with `validValues` / `similarTypes`), not silently ignored.

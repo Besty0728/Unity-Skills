@@ -746,7 +746,7 @@ namespace UnitySkills
             rect.anchorMax = anchorMax;
             if (setPivot) rect.pivot = pivot;
 
-            return new { success = true, name = go.name, preset, anchorMin = $"({anchorMin.x}, {anchorMin.y})", anchorMax = $"({anchorMax.x}, {anchorMax.y})" };
+            return new { success = true, name = go.name, preset, anchorMin = SkillParamUtil.FormatVector2(anchorMin), anchorMax = SkillParamUtil.FormatVector2(anchorMax) };
         }
 
         [UnitySkill("ui_set_rect", "Set RectTransform size, position, and padding (offsets)",
@@ -800,7 +800,7 @@ namespace UnitySkills
                 rect.offsetMax = max;
             }
 
-            return new { success = true, name = go.name, sizeDelta = $"({rect.sizeDelta.x}, {rect.sizeDelta.y})", anchoredPosition = $"({rect.anchoredPosition.x}, {rect.anchoredPosition.y})" };
+            return new { success = true, name = go.name, sizeDelta = SkillParamUtil.FormatVector2(rect.sizeDelta), anchoredPosition = SkillParamUtil.FormatVector2(rect.anchoredPosition) };
         }
 
         [UnitySkill("ui_get_rect_transform", "Get full RectTransform data for a UI element",
@@ -1594,6 +1594,7 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object UIAddOutline(
             string name = null, int instanceId = 0, string path = null,
+            [SkillParam("Outline or Shadow (case-insensitive); any other value is rejected.")]
             string effectType = "Outline",
             float r = 0, float g = 0, float b = 0, float a = 0.5f,
             float distanceX = 1, float distanceY = -1,
@@ -1602,19 +1603,27 @@ namespace UnitySkills
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
 
+            bool isShadow = effectType.Equals("Shadow", StringComparison.OrdinalIgnoreCase);
+            bool isOutline = effectType.Equals("Outline", StringComparison.OrdinalIgnoreCase);
+            if (!isShadow && !isOutline)
+                return SkillParamUtil.InvalidValueError(effectType, "effectType", new[] { "Outline", "Shadow" });
+
             WorkflowManager.SnapshotObject(go);
             Undo.RecordObject(go, "Add Effect");
 
             var effectColor = new Color(r, g, b, a);
             var effectDistance = new Vector2(distanceX, distanceY);
 
+            // Outline is a subclass of Shadow, so a single reference reads back whichever was added.
+            Shadow addedEffect;
             string applied;
-            if (effectType.Equals("Shadow", StringComparison.OrdinalIgnoreCase))
+            if (isShadow)
             {
                 var shadow = Undo.AddComponent<Shadow>(go);
                 shadow.effectColor = effectColor;
                 shadow.effectDistance = effectDistance;
                 shadow.useGraphicAlpha = useGraphicAlpha;
+                addedEffect = shadow;
                 applied = "Shadow";
             }
             else
@@ -1623,10 +1632,17 @@ namespace UnitySkills
                 outline.effectColor = effectColor;
                 outline.effectDistance = effectDistance;
                 outline.useGraphicAlpha = useGraphicAlpha;
+                addedEffect = outline;
                 applied = "Outline";
             }
 
-            return new { success = true, name = go.name, effectType = applied, effectColor = $"({r},{g},{b},{a})", effectDistance = $"({distanceX},{distanceY})" };
+            return new {
+                success = true,
+                name = go.name,
+                effectType = applied,
+                effectColor = $"({addedEffect.effectColor.r},{addedEffect.effectColor.g},{addedEffect.effectColor.b},{addedEffect.effectColor.a})",
+                effectDistance = $"({addedEffect.effectDistance.x},{addedEffect.effectDistance.y})"
+            };
         }
 
         [UnitySkill("ui_configure_selectable", "Configure Selectable properties (transition, colors, navigation) on a UI element",

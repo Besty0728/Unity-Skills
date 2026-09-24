@@ -7,7 +7,7 @@ Parent (or unparent) several GameObjects in one call.
 
 **Item properties**: `childEntityId`, `childName`, `childInstanceId`, `childPath`, `parentEntityId`, `parentName`, `parentInstanceId`, `parentPath` (no parent field = unparent that child).
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{target, entityId, success, parent}]}`; `Child object not found` / `Parent not found` fails the item and reverts the call.
+**Returns**: `{success, totalItems, successCount, failCount, results: [{target, entityId, success, parent, parentPath, position, localPosition}]}`; `Child object not found` / `Parent not found` / a nested Prefab-instance child being moved outside its instance fails the item and reverts the call.
 
 ```python
 unity_skills.call_skill("gameobject_set_parent_batch", items=[

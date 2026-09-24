@@ -161,46 +161,87 @@ namespace UnitySkills
             return new { error = "No active Scene View found" };
         }
 
-        [UnitySkill("camera_set_transform", "Set Scene View camera position/rotation manually.",
+        [UnitySkill("camera_set_transform", "Set the Scene View camera by pivot (the framed world point, not the eye position), rotation and size; instant=false animates. Returns the resulting pivot/rotation/size and, when instant, the eye position (cameraPosition).",
             Category = SkillCategory.Camera, Operation = SkillOperation.Modify,
             Tags = new[] { "scene-view", "position", "rotation", "transform" },
-            Outputs = new[] { "message" })]
+            Outputs = new[] { "message", "pivot", "rotation", "size", "orthographic" })]
         public static object CameraSetTransform(
-            [SkillParam("posX/posY/posZ: world point the Scene View frames (its pivot), not the eye position; the view sits back from it along the rotation.")]
+            [SkillParam("Pivot: the world point framed (not the eye position); posX/posY/posZ.")]
             float posX, float posY, float posZ,
             [SkillParam("rotX/rotY/rotZ: view direction as Euler angles in degrees.")]
             float rotX, float rotY, float rotZ,
-            [SkillParam("Scene View zoom (SceneView.size): larger values frame more around the pivot.")]
+            [SkillParam("Scene View size (zoom): larger values frame more around the pivot.")]
             float size = 5f,
+            [SkillParam("true: applied immediately and read back; false: animated (pivot/rotation/size in the response are the requested targets).")]
             bool instant = true
         )
         {
-            if (SceneView.lastActiveSceneView != null)
+            var sv = SceneView.lastActiveSceneView;
+            if (sv == null)
+                return new { error = "No active Scene View found" };
+
+            var pivot = new Vector3(posX, posY, posZ);
+            var rotation = Quaternion.Euler(rotX, rotY, rotZ);
+
+            // 5-arg overload (bugs.md B12): the 3-arg one this used to call is an *animated* move,
+            // so instant=true never actually applied instantly and camera_get_info right after could
+            // read a mid-animation value.
+            sv.LookAt(pivot, rotation, size, sv.orthographic, instant);
+            sv.Repaint();
+
+            if (instant)
             {
-                var sceneView = SceneView.lastActiveSceneView;
-                var position = new Vector3(posX, posY, posZ);
-                var rotation = Quaternion.Euler(rotX, rotY, rotZ);
-                
-                sceneView.LookAt(position, rotation, size);
-                
-                return new { success = true, message = "Scene View camera updated" };
+                // Not camera.transform.position: that's a Camera component render artifact that only
+                // updates on the next repaint, not immediately after LookAt returns.
+                var eye = sv.pivot - sv.rotation * Vector3.forward * sv.cameraDistance;
+                return new
+                {
+                    success = true,
+                    message = "Scene View camera updated",
+                    pivot = new { x = sv.pivot.x, y = sv.pivot.y, z = sv.pivot.z },
+                    rotation = new { x = sv.rotation.eulerAngles.x, y = sv.rotation.eulerAngles.y, z = sv.rotation.eulerAngles.z },
+                    size = sv.size,
+                    orthographic = sv.orthographic,
+                    instant = true,
+                    cameraPosition = new { x = eye.x, y = eye.y, z = eye.z },
+                };
             }
-            return new { error = "No active Scene View found" };
+
+            var requestedRotation = rotation.eulerAngles;
+            return new
+            {
+                success = true,
+                message = "Scene View camera updated",
+                pivot = new { x = pivot.x, y = pivot.y, z = pivot.z },
+                rotation = new { x = requestedRotation.x, y = requestedRotation.y, z = requestedRotation.z },
+                size = Mathf.Abs(size),
+                orthographic = sv.orthographic,
+                instant = false,
+                animating = true,
+            };
         }
-        
-        [UnitySkill("camera_look_at", "Focus Scene View camera on a world-space point (x/y/z only, not object name).",
+
+        [UnitySkill("camera_look_at", "Focus Scene View camera on a world-space point (x/y/z only, not object name). Applied immediately; returns the resulting pivot/rotation/size.",
             Category = SkillCategory.Camera, Operation = SkillOperation.Execute,
             Tags = new[] { "scene-view", "look-at", "focus", "navigate" },
-            Outputs = new[] { "success" })]
+            Outputs = new[] { "success", "pivot", "rotation", "size" })]
         public static object CameraLookAt(float x, float y, float z)
         {
-             if (SceneView.lastActiveSceneView != null)
-            {
-                var sceneView = SceneView.lastActiveSceneView;
-                sceneView.LookAt(new Vector3(x, y, z), sceneView.rotation, sceneView.size);
-                return new { success = true };
-            }
-            return new { error = "No active Scene View found" };
+             var sv = SceneView.lastActiveSceneView;
+             if (sv == null)
+                return new { error = "No active Scene View found" };
+
+             // Same 5-arg fix as camera_set_transform, so an immediately-following read is consistent.
+             sv.LookAt(new Vector3(x, y, z), sv.rotation, sv.size, sv.orthographic, true);
+             sv.Repaint();
+
+             return new
+             {
+                success = true,
+                pivot = new { x = sv.pivot.x, y = sv.pivot.y, z = sv.pivot.z },
+                rotation = new { x = sv.rotation.eulerAngles.x, y = sv.rotation.eulerAngles.y, z = sv.rotation.eulerAngles.z },
+                size = sv.size,
+             };
         }
 
         [UnitySkill("camera_create", "Create a new Game Camera",
@@ -311,7 +352,7 @@ namespace UnitySkills
         [UnitySkill("camera_set_culling_mask", "Set Game Camera culling mask by layer names (comma-separated)",
             Category = SkillCategory.Camera, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "culling-mask", "layer", "visibility" },
-            Outputs = new[] { "cullingMask" },
+            Outputs = new[] { "cullingMask", "layers" },
             RequiredParams = new[] { "layerNames" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
@@ -338,7 +379,9 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(cam);
             Undo.RecordObject(cam, "Set Culling Mask");
             cam.cullingMask = mask;
-            return new { success = true, cullingMask = mask };
+
+            var layers = SkillsCommon.DefinedLayerNames().Where(n => (cam.cullingMask & (1 << LayerMask.NameToLayer(n))) != 0).ToArray();
+            return new { success = true, cullingMask = cam.cullingMask, layers };
         }
 
         [UnitySkill("camera_screenshot", "Capture a screenshot from a Game Camera to file. Set returnImage=true to also get the PNG as base64 in the response, for clients without filesystem access (e.g. remote/MCP).",

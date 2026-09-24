@@ -151,7 +151,7 @@ Set PhysicMaterial on a collider (supports name/instanceId/path).
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 
-**Returns:** `{ success, gameObject, material }`
+**Returns:** `{ success, gameObject, material, collider }` — `material` is the resolved asset path read back from the collider, and `collider` is the collider component's type name (e.g. `BoxCollider`).
 
 ### `physics_get_layer_collision`
 Get whether two layers collide.

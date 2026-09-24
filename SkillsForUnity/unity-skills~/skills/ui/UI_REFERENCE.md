@@ -111,7 +111,7 @@ Useful fields:
 ### `ui_add_outline`
 
 Useful fields:
-- `effectType`: `Shadow` or `Outline`
+- `effectType`: `Shadow` or `Outline` (case-insensitive); any other value is rejected
 - `r/g/b/a`
 - `distanceX`, `distanceY`
 - `useGraphicAlpha`

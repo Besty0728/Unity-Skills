@@ -104,13 +104,13 @@ Configure light properties. Every parameter is optional and omitted ones keep th
 An unrecognised `shadows` value rejects the **whole call** with `SEMANTIC_INVALID` + `validValues` and applies nothing, so a typo can no longer leave a half-configured light behind.
 
 ### light_set_properties_batch
-Configure multiple lights. Each item accepts: `name`/`instanceId`/`path` (identifier) + `r`, `g`, `b`, `a`, `intensity`, `range`, `shadows` (all optional). A bad `shadows` value fails that item with `SEMANTIC_INVALID` + `validValues` and names the object in `target`; the other items still run.
+Configure multiple lights. Each item accepts: `name`/`instanceId`/`path` (identifier) + `r`, `g`, `b`, `a`, `intensity`, `range`, `spotAngle`, `shadows` (all optional). This batch is all-or-nothing: a bad `shadows` value fails that item with `SEMANTIC_INVALID` + `validValues` and names the object in `target`, and rolls back every item the call already applied.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
 
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, lightType, applied, skipped, color, intensity, range, spotAngle, shadows}]}` — `applied`/`skipped` follow the same rules as `light_set_properties` (a `range` on a Directional light, or a `spotAngle` on anything but a Spot, is listed in `skipped`, not an error).
 
 ```python
 unity_skills.call_skill("light_set_properties_batch", items=[
@@ -133,13 +133,13 @@ Enable or disable a light.
 **Returns**: `{success, name, enabled}`
 
 ### light_set_enabled_batch
-Enable or disable multiple lights.
+Enable or disable multiple lights. `enabled` is required on every item (unlike `light_set_enabled`, an omitted value is rejected rather than guessed) — this batch is all-or-nothing.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
 
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, enabled}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, enabled}]}`. An item missing `enabled` fails with `MISSING_PARAM` and rolls back every light the call already toggled.
 
 ```python
 unity_skills.call_skill("light_set_enabled_batch", items=[
