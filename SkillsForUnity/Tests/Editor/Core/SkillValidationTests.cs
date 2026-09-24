@@ -1,4 +1,7 @@
-﻿using System.Linq;
+﻿using System;
+using System.IO;
+using System.Linq;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -103,6 +106,71 @@ namespace UnitySkills.Tests.Core
             var executed = JObject.Parse(SkillRouter.Execute("editor_get_tags", json));
             Assert.That(executed["status"]?.ToString(), Is.EqualTo("error"));
             Assert.That(executed["errorCode"]?.ToString(), Is.EqualTo("TYPE_MISMATCH"));
+        }
+
+        [Test]
+        public void MaterialCreate_MissingName_ReportsMissingParam_ValidCallStillSucceeds()
+        {
+            // material_create.name has no CLR default and was never declared RequiredParams, so an omitted
+            // name used to sail through dryRun as valid and fail deep inside (a null Material.name).
+            var dry = JObject.Parse(SkillRouter.DryRun("material_create", "{}"));
+            Assert.That(dry["valid"]?.Value<bool>(), Is.False);
+            var missingParams = (JArray)dry["validation"]?["missingParams"];
+            Assert.That(missingParams?.Select(token => token.ToString()), Does.Contain("name"));
+
+            // Adding the guard must not touch the behaviour of a call that already provides name: in-memory
+            // (no savePath) so the test writes nothing to disk.
+            var response = JObject.Parse(SkillRouter.Execute("material_create",
+                @"{""name"":""__m7_missing_param_probe__""}"));
+            Assert.That(response["success"]?.Value<bool>(), Is.True, response.ToString(Formatting.None));
+            Assert.That(response["name"]?.ToString(), Is.EqualTo("__m7_missing_param_probe__"));
+        }
+
+        [Test]
+        public void SmartReferenceBind_MissingTargetName_ReportsMissingParam()
+        {
+            // targetName has no CLR default, no alias and no _requiredInputGroups coverage (unlike componentName,
+            // which the "component" group already protects) - it used to reach GameObjectFinder.Find(name: null)
+            // and fail with a generic "not found" instead of a clean MISSING_PARAM.
+            var dry = JObject.Parse(SkillRouter.DryRun("smart_reference_bind",
+                @"{""componentName"":""Transform"",""fieldName"":""spawns""}"));
+            Assert.That(dry["valid"]?.Value<bool>(), Is.False);
+            var missingParams = (JArray)dry["validation"]?["missingParams"];
+            Assert.That(missingParams?.Select(token => token.ToString()), Does.Contain("targetName"));
+        }
+
+        [Test]
+        public void ScriptReplace_OmittedReplace_DeletesMatchesInsteadOfThrowing()
+        {
+            // Regex.Replace(input, pattern, replacement, ...) throws ArgumentNullException on a null replacement
+            // (confirmed against the .NET docs), unlike string.Replace(old, null) which already treats it as a
+            // delete - so isRegex=true with replace omitted used to crash instead of deleting every match.
+            // Calls ScriptSkills.ScriptReplace directly (same pattern as ScriptCreateContentTests.WriteNewScriptFile):
+            // a temp path outside Assets/ so AssetDatabase.ImportAsset is a no-op and no domain reload is possible.
+            var tempPath = Path.Combine(Path.GetTempPath(), "UnitySkillsScriptReplaceProbe_" + Guid.NewGuid().ToString("N") + ".cs");
+            File.WriteAllText(tempPath, "aXbXc");
+            string jobId = null;
+            try
+            {
+                object result = null;
+                Assert.DoesNotThrow(() =>
+                {
+                    result = ScriptSkills.ScriptReplace(tempPath, "X", null, isRegex: true, checkCompile: false);
+                });
+
+                Assert.That(File.ReadAllText(tempPath), Is.EqualTo("abc"),
+                    "Omitted replace must delete every match, matching string.Replace's own null-replacement behaviour.");
+
+                var resultObject = JObject.FromObject(result);
+                Assert.That(resultObject["replacements"]?.Value<int>(), Is.EqualTo(2));
+                jobId = resultObject["jobId"]?.ToString();
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(jobId))
+                    BatchPersistence.RemoveJob(jobId);
+                try { File.Delete(tempPath); } catch { }
+            }
         }
 
         private static void AssertSuggestion(JArray unknownParams, string parameterName, string expectedSuggestion)

@@ -362,6 +362,7 @@ namespace UnitySkills
             // which is the only honest reading of Outputs. With savePath, the material is written to disk; without it, it only exists in memory,
             // and the response additionally carries instanceId + warning -- instanceId is precisely the key the on-disk branch doesn't carry, so it can't be declared.
             Outputs = new[] { "name", "shader", "path", "entityId", "renderPipeline", "colorProperty", "textureProperty" },
+            RequiredParams = new[] { "name" },
             TracksWorkflow = true,
             MutatesAssets = true)]
         public static object MaterialCreate(string name,
@@ -370,6 +371,7 @@ namespace UnitySkills
             [SkillParam("Assets/... or a folder inside an embedded/local package (Packages/<id>/...); read-only packages are rejected. A folder (existing, or no extension) gets '<name>.mat'; '.mat' is appended if missing. Omit for an unsaved in-memory material.")]
             string savePath = null)
         {
+            if (Validate.Required(name, "name") is object nameErr) return nameErr;
             if (!string.IsNullOrEmpty(savePath) && Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
 
             // Resolved before the Material exists (bugs.md B3): a rejected savePath must leave no

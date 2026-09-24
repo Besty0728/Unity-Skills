@@ -76,7 +76,7 @@ Auto-fill a List/Array field with matching objects.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `targetName` | string | No | - | Target GameObject |
+| `targetName` | string | Yes | - | Target GameObject |
 | `componentName` | string | No | - | Component on target |
 | `fieldName` | string | Yes | - | Field to fill |
 | `sourceTag` | string | No | null | Find by tag |

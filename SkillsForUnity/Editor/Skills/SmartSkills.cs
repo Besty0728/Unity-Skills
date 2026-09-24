@@ -192,7 +192,7 @@ namespace UnitySkills
             Category = SkillCategory.Smart, Operation = SkillOperation.Modify,
             Tags = new[] { "bind", "reference", "auto-wire", "list", "field" },
             Outputs = new[] { "boundCount", "field", "appendMode" },
-            RequiredParams = new[] { "fieldName" },
+            RequiredParams = new[] { "fieldName", "targetName" },
             RequiresInput = new[] { "gameObject", "component" }, MutatesScene = true)]
         public static object SmartReferenceBind(
             string targetName,          // name of the target GameObject
@@ -202,6 +202,7 @@ namespace UnitySkills
             string sourceName = null,   // find by name containing this substring
             bool appendMode = false)    // true appends to existing elements, false replaces entirely
         {
+            if (Validate.Required(targetName, "targetName") is object targetErr) return targetErr;
             if (string.IsNullOrEmpty(fieldName)) return new { error = "fieldName is required" };
 
             // 1. Find the target object

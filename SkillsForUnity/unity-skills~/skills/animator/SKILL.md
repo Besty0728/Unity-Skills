@@ -161,7 +161,7 @@ Add a state to an Animator Controller layer.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `controllerPath` | string | Yes | - | Controller asset path |
-| `stateName` | string | No | - | Name for the new state |
+| `stateName` | string | Yes | - | Name for the new state |
 | `clipPath` | string | No | null | Animation clip asset path to assign |
 | `layer` | int | No | 0 | Layer index |
 
@@ -173,8 +173,8 @@ Add a transition between two states in an Animator Controller.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `controllerPath` | string | Yes | - | Controller asset path |
-| `fromState` | string | No | - | Source state name |
-| `toState` | string | No | - | Destination state name |
+| `fromState` | string | Yes | - | Source state name |
+| `toState` | string | Yes | - | Destination state name |
 | `layer` | int | No | 0 | Layer index |
 | `hasExitTime` | bool | No | true | Whether transition waits for exit time |
 | `duration` | float | No | 0.25 | Transition duration in seconds |

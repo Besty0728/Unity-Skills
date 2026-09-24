@@ -594,6 +594,11 @@ namespace UnitySkills
         {
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (Validate.Required(find, "find") is object findErr) return findErr;
+            // Omitted replace deletes every match: string.Replace(old, null) already treats a null
+            // replacement as empty, but Regex.Replace(input, pattern, replacement, ...) throws
+            // ArgumentNullException on a null replacement - normalizing here keeps both paths behaving
+            // like a delete instead of the regex path crashing.
+            replace = replace ?? "";
             if (!File.Exists(scriptPath))
                 return new { error = $"Script not found: {scriptPath}" };
 
