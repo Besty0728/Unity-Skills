@@ -143,8 +143,13 @@ namespace UnitySkills.Tests.Core
             // (no savePath) so the test writes nothing to disk.
             var response = JObject.Parse(SkillRouter.Execute("material_create",
                 @"{""name"":""__m7_missing_param_probe__""}"));
-            Assert.That(response["success"]?.Value<bool>(), Is.True, response.ToString(Formatting.None));
-            Assert.That(response["name"]?.ToString(), Is.EqualTo("__m7_missing_param_probe__"));
+            var result = response["result"];
+            Assert.That(result?["success"]?.Value<bool>(), Is.True, response.ToString(Formatting.None));
+            Assert.That(result?["name"]?.ToString(), Is.EqualTo("__m7_missing_param_probe__"));
+
+            var created = EditorUtility.InstanceIDToObject(result["instanceId"].Value<int>());
+            if (created != null)
+                UnityEngine.Object.DestroyImmediate(created);
         }
 
         [Test]
