@@ -25,7 +25,7 @@ During a domain reload the port answers 503 or refuses for seconds while its `~/
 ## Quick reference
 
 Every skill is `POST /skill/<name>` with JSON args:
-`curl -s -X POST "http://localhost:<port>/skill/gameobject_set_transform?expectProject=<project>" -d '{"name":"Crate","posX":4,"posY":1.5,"posZ":-2}'`
+`curl -s "http://localhost:<port>/skill/gameobject_set_transform?expectProject=<project>" -d '{"name":"Crate","posX":4,"posY":1.5,"posZ":-2}'`
 
 Target objects by `name` or the exact `path`/`instanceId` (likewise `parentPath`, `childPath`).
 
@@ -43,7 +43,6 @@ Target objects by `name` or the exact `path`/`instanceId` (likewise `parentPath`
 | `material_assign {name, materialPath}` |
 | `light_set_properties {name, r,g,b, intensity, range, spotAngle, shadows}` |
 | `script_create {scriptName, folder, content}` — full source; dryRun first; wait below |
-| `asset_refresh {}` — after writing a `.cs` yourself; `compileTriggered:true` adds `waitUrl` |
 | `scene_save {}` (dryRun first) |
 
 ## Everything else: one discovery call
@@ -60,8 +59,8 @@ Never invent skill or parameter names; use this table, recommend or schema. On f
 
 ## Verify from the read-back
 
-A successful write returns the state read back from the Editor (e.g. world `position` from `gameobject_set_transform`, `valueSet` from `component_set_property`) — that is the verification; `resolutionNotes` flags a non-exact name match. Use `*_get_info` only for async results or missing fields. Script writes return `waitUrl`: one GET waits out compile and reload → `status:"completed"`, or `failed` with errors in `resultData.compilation`. One command:
-`u=http://localhost:<port>; J=$(curl -s "$u/skill/script_create?expectProject=<project>" -d '{"scriptName":"Spin","content":"<source>"}' | tee /dev/stderr | grep -o '/jobs/[^"]*=90') && curl -s --retry 20 --retry-connrefused --retry-all-errors --retry-delay 2 "$u$J" && curl -s "$u/skills/batch?expectProject=<project>" -d '{"steps":[{"skill":"component_add","args":{"name":"Crate","componentType":"Spin"}},{"skill":"component_set_property","args":{"name":"Crate","componentType":"Spin","propertyName":"speed","value":"9"}}]}'`
+A successful write returns the state read back from the Editor (e.g. world `position`, `valueSet`) — that is the verification; `resolutionNotes` flags a non-exact name match. Use `*_get_info` only for async results or missing fields. Script writes, and `asset_refresh` after you write a `.cs` yourself (`compileTriggered:true`), return `waitUrl`: one GET waits out compile and reload → `status:"completed"`, or `failed` with errors in `resultData.compilation`. One command:
+`u=http://localhost:<port>; c="$u/skill/script_create?expectProject=<project>"; b='{"scriptName":"Spin","content":"<source>"}'; s='{"steps":[{"skill":"component_add","args":{"name":"Crate","componentType":"Spin"}},{"skill":"component_set_property","args":{"name":"Crate","componentType":"Spin","propertyName":"speed","value":"9"}}]}'; curl -s "$c&mode=dryRun" -d "$b" | grep -q '"valid":true' && J=$(curl -s "$c" -d "$b" | tee /dev/stderr | grep -o '/jobs/[^"]*=90') && curl -s --retry 20 --retry-connrefused --retry-all-errors --retry-delay 2 "$u$J" && curl -s "$u/skills/batch?expectProject=<project>" -d "$s"`
 
 ## Surface profile and errors
 
