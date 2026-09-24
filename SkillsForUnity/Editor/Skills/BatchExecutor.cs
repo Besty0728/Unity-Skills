@@ -266,21 +266,7 @@ namespace UnitySkills
             return contract == null || contract.ExtensionDataSetter != null ? null : contract;
         }
 
-        private static string SuggestField(string field, string[] known)
-        {
-            string best = null;
-            int bestDistance = int.MaxValue;
-            foreach (var candidate in known)
-            {
-                int distance = SkillsCommon.EditDistance(field, candidate);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    best = candidate;
-                }
-            }
-            return best != null && bestDistance <= Math.Max(2, field.Length / 3) ? best : null;
-        }
+        private static string SuggestField(string field, string[] known) => SkillsCommon.ClosestMatch(field, known);
 
         private static string FormatIndexes(List<int> indexes)
         {

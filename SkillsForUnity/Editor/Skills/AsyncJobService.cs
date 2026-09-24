@@ -392,6 +392,13 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// The long-poll URL for a job: GET it and the server answers once the job reaches a
+        /// terminal state, with the job's resultData. A domain reload drops the connection; retry
+        /// the same URL.
+        /// </summary>
+        internal static string BuildWaitUrl(string jobId) => $"/jobs/{jobId}?wait=90";
+
+        /// <summary>
         /// Builds the standard progress snapshot shared by HTTP <c>GET /jobs/{id}/progress</c>
         /// and the <c>job_progress</c> skill. Returns null when <paramref name="record"/> is null,
         /// otherwise an anonymous object with <c>jobId/status/totalCount/offset/events/terminal</c>.

@@ -476,6 +476,45 @@ namespace UnitySkills
 
         #endregion
 
+        #region Boolean parameters
+
+        /// <summary>
+        /// Strict boolean vocabulary for text parameters that used to accept only a loose,
+        /// inconsistent subset (see bugs.md B10): <c>true/false</c>, <c>1/0</c>, <c>yes/no</c>,
+        /// <c>on/off</c>, trimmed and case-insensitive. Returns false -- unparsed, not "false" --
+        /// for anything else, so a typo like "treu" becomes a rejectable error instead of silently
+        /// writing the wrong value while the call still reports success.
+        /// </summary>
+        public static bool TryParseBoolText(string text, out bool value)
+        {
+            value = false;
+            var trimmed = text?.Trim();
+            if (string.IsNullOrEmpty(trimmed))
+                return false;
+
+            if (string.Equals(trimmed, "true", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(trimmed, "1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(trimmed, "yes", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(trimmed, "on", StringComparison.OrdinalIgnoreCase))
+            {
+                value = true;
+                return true;
+            }
+
+            if (string.Equals(trimmed, "false", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(trimmed, "0", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(trimmed, "no", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(trimmed, "off", StringComparison.OrdinalIgnoreCase))
+            {
+                value = false;
+                return true;
+            }
+
+            return false;
+        }
+
+        #endregion
+
         #region Importer vocabulary aliases
 
         /// <summary>

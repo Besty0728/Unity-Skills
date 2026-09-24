@@ -1,8 +1,10 @@
 ﻿using UnityEngine;
 using UnityEditor;
+using UnityEditor.PackageManager;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using PkgInfo = UnityEditor.PackageManager.PackageInfo;
 
 namespace UnitySkills
 {
@@ -75,30 +77,132 @@ namespace UnitySkills
             return AssetDatabase.LoadAssetAtPath<Material>(path) == material ? path : string.Empty;
         }
 
-        private static string ResolveSavePath(string savePath, string materialName)
+        private static string NormalizeSlashes(string path)
+        {
+            var normalized = path.Replace('\\', '/');
+            while (normalized.Contains("//")) normalized = normalized.Replace("//", "/");
+            if (normalized.StartsWith("./")) normalized = normalized.Substring(2);
+            return normalized.TrimEnd('/');
+        }
+
+        /// <summary>
+        /// Pure normalization + filename derivation for a material save path (bugs.md B3).
+        /// <see cref="Validate.SafePath"/> validates the raw string but never returns its
+        /// normalized form, so a malformed-but-valid input like "Assets\Mats" or "Assets//Mats"
+        /// used to reach AssetDatabase unnormalized and land in the wrong folder.
+        /// </summary>
+        private static string NormalizeMaterialSavePath(string savePath, string materialName)
         {
             if (string.IsNullOrEmpty(savePath))
                 return null;
-                
-            if (!savePath.StartsWith("Assets/"))
-            {
-                savePath = "Assets/" + savePath;
-            }
-            
+
+            var normalized = NormalizeSlashes(savePath);
+
             // Append a filename when it looks like a folder (no extension, or the directory already exists)
-            if (Directory.Exists(savePath) || !Path.HasExtension(savePath))
+            if (Directory.Exists(normalized) || !Path.HasExtension(normalized))
             {
                 string fileName = string.IsNullOrEmpty(materialName) ? "NewMaterial" : materialName;
-                savePath = Path.Combine(savePath, fileName + ".mat").Replace("\\", "/");
+                normalized = Path.Combine(normalized, fileName + ".mat").Replace("\\", "/");
             }
-            else if (!savePath.EndsWith(".mat"))
+            else if (!normalized.EndsWith(".mat"))
             {
-                savePath = savePath + ".mat";
+                normalized += ".mat";
             }
-            
-            return savePath;
+
+            return normalized;
         }
-        
+
+        /// <summary>Which package (if any) owns a resolved Packages/ asset path, and whether it's writable.</summary>
+        internal readonly struct PackageWriteCheck
+        {
+            internal readonly bool Found;
+            internal readonly bool Writable;
+            internal readonly string PackageName;
+            internal readonly string PackageSource;
+
+            internal PackageWriteCheck(bool found, bool writable, string packageName, string packageSource)
+            {
+                Found = found;
+                Writable = writable;
+                PackageName = packageName;
+                PackageSource = packageSource;
+            }
+        }
+
+        private static PackageWriteCheck CheckPackageWritability(string assetPath)
+        {
+            var info = PkgInfo.FindForAssetPath(assetPath);
+            if (info == null)
+                return new PackageWriteCheck(found: false, writable: false, packageName: null, packageSource: null);
+
+            bool writable = info.source == PackageSource.Embedded || info.source == PackageSource.Local;
+            return new PackageWriteCheck(found: true, writable, info.name, info.source.ToString());
+        }
+
+        private static object BuildPackagePathError(string savePath, string reason, string packageName, string packageSource)
+        {
+            return new
+            {
+                error = $"Invalid value '{savePath}' for parameter 'savePath': {reason}. Materials can be saved under Assets/ or inside an embedded/local package.",
+                errorCode = SkillParamUtil.SemanticInvalidCode,
+                retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+                parameter = "savePath",
+                packageName,
+                packageSource,
+                suggestedFixes = new object[]
+                {
+                    new { action = "fix_param", args = new { savePath = "Assets/Materials" }, reason = "Save the material under Assets/ instead." }
+                },
+            };
+        }
+
+        /// <summary>
+        /// Resolves a material save path and rejects it before any write happens (bugs.md B3):
+        /// normalizes like <see cref="Validate.SafePath"/> and appends "&lt;materialName&gt;.mat"
+        /// when the path looks like a folder. A Packages/ destination is accepted only inside an
+        /// embedded or local package -- registry/git/built-in packages are read-only on disk, so
+        /// writing there would fail deep inside AssetDatabase instead of with a structured error.
+        /// </summary>
+        internal static bool TryResolveMaterialSavePath(string savePath, string materialName, out string resolved, out object error) =>
+            TryResolveMaterialSavePath(savePath, materialName, CheckPackageWritability, out resolved, out error);
+
+        /// <summary>
+        /// The <paramref name="packageWritabilityCheck"/> seam lets tests stub package ownership
+        /// without depending on which packages happen to be installed in the test project.
+        /// </summary>
+        internal static bool TryResolveMaterialSavePath(string savePath, string materialName,
+            System.Func<string, PackageWriteCheck> packageWritabilityCheck, out string resolved, out object error)
+        {
+            error = null;
+            resolved = null;
+
+            if (string.IsNullOrEmpty(savePath))
+                return true;
+
+            if (string.Equals(NormalizeSlashes(savePath), "Packages", System.StringComparison.Ordinal))
+            {
+                error = BuildPackagePathError(savePath, "the Packages root is not a folder", null, null);
+                return false;
+            }
+
+            var candidate = NormalizeMaterialSavePath(savePath, materialName);
+            if (candidate.StartsWith("Packages/", System.StringComparison.Ordinal))
+            {
+                var check = packageWritabilityCheck(candidate);
+                if (!check.Writable)
+                {
+                    var reason = check.Found
+                        ? $"package '{check.PackageName}' is a {check.PackageSource} package (read-only)"
+                        : $"no installed package owns '{candidate}'";
+                    error = BuildPackagePathError(savePath, reason, check.PackageName, check.PackageSource);
+                    return false;
+                }
+            }
+
+            resolved = candidate;
+            return true;
+        }
+
         private static void EnsureDirectoryExists(string filePath)
         {
             var dir = Path.GetDirectoryName(filePath);
@@ -180,7 +284,8 @@ namespace UnitySkills
 
             if (!string.IsNullOrEmpty(savePath))
             {
-                savePath = ResolveSavePath(savePath, name);
+                if (!TryResolveMaterialSavePath(savePath, name, out savePath, out var saveErr))
+                    return saveErr;
                 EnsureDirectoryExists(savePath);
 
                 AssetDatabase.CreateAsset(material, savePath);
@@ -327,11 +432,10 @@ namespace UnitySkills
                 var sourceDir = Path.GetDirectoryName(sourcePath);
                 savePath = Path.Combine(sourceDir, newName + ".mat").Replace("\\", "/");
             }
-            else
-            {
-                savePath = ResolveSavePath(savePath, newName);
-            }
-            
+
+            if (!TryResolveMaterialSavePath(savePath, newName, out savePath, out var resolveErr))
+                return resolveErr;
+
             EnsureDirectoryExists(savePath);
             AssetDatabase.CreateAsset(newMaterial, savePath);
             WorkflowManager.SnapshotObject(newMaterial, SnapshotType.Created);

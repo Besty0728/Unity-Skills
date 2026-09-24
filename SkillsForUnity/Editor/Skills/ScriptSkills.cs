@@ -202,7 +202,7 @@ namespace UnitySkills
                 ["status"] = "accepted",
                 ["deleted"] = NormalizePath(scriptPath),
                 ["jobId"] = job.jobId,
-                ["waitUrl"] = BuildWaitUrl(job.jobId)
+                ["waitUrl"] = AsyncJobService.BuildWaitUrl(job.jobId)
             };
             ServerAvailabilityHelper.AttachTransientUnavailableNotice(
                 result,
@@ -477,7 +477,7 @@ namespace UnitySkills
                 ["status"] = "accepted",
                 ["path"] = normalizedPath,
                 ["jobId"] = job.jobId,
-                ["waitUrl"] = BuildWaitUrl(job.jobId)
+                ["waitUrl"] = AsyncJobService.BuildWaitUrl(job.jobId)
             };
 
             ServerAvailabilityHelper.AttachTransientUnavailableNotice(
@@ -487,12 +487,6 @@ namespace UnitySkills
 
             return result;
         }
-
-        /// <summary>
-        /// The long-poll URL for a script job: GET it and the server answers once compilation has settled, with the
-        /// compile diagnostics in resultData. A domain reload drops the connection; retry the same URL.
-        /// </summary>
-        private static string BuildWaitUrl(string jobId) => $"/jobs/{jobId}?wait=90";
 
         internal static Dictionary<string, object> GetCompilationFeedbackSnapshot(string scriptPath, int limit)
         {

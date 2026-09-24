@@ -1,7 +1,8 @@
-﻿using System.IO;
-using System.Text;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
+using UnityEditorInternal;
+using System.IO;
+using System.Text;
 using System.Linq;
 using System.Collections.Generic;
 using UnityEngine.SceneManagement;
@@ -1116,6 +1117,53 @@ namespace UnitySkills
             }
 
             return previous[right.Length];
+        }
+
+        /// <summary>All layer names currently defined in the Tags &amp; Layers window (built-in + user-defined).</summary>
+        public static string[] DefinedLayerNames()
+        {
+            var names = new List<string>();
+            for (int i = 0; i < 32; i++)
+            {
+                var n = LayerMask.LayerToName(i);
+                if (!string.IsNullOrEmpty(n)) names.Add(n);
+            }
+            return names.ToArray();
+        }
+
+        /// <summary>
+        /// Determines whether <paramref name="tag"/> is already registered in TagManager. An unregistered
+        /// tag makes both GameObject.tag's setter and GameObject.FindGameObjectsWithTag fail -- the former
+        /// silently (no throw, no effect), the latter by throwing UnityException -- so any tag write
+        /// or tag-filtered read must pass this check first, rather than discovering the problem on impact.
+        /// </summary>
+        public static bool IsTagDefined(string tag)
+        {
+            if (string.IsNullOrEmpty(tag))
+                return false;
+            return InternalEditorUtility.tags.Contains(tag);
+        }
+
+        /// <summary>
+        /// Case-insensitive Levenshtein nearest match, for a "did you mean" suggestion: null when
+        /// nothing is close enough. The threshold scales with the input's length (at least 2, else
+        /// a third of it) -- the same bound <c>BatchExecutor.SuggestField</c> used before this was
+        /// extracted for reuse by other "unknown value, did you mean" error paths.
+        /// </summary>
+        public static string ClosestMatch(string input, IEnumerable<string> candidates)
+        {
+            string best = null;
+            int bestDistance = int.MaxValue;
+            foreach (var candidate in candidates)
+            {
+                int distance = EditDistance(input, candidate);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = candidate;
+                }
+            }
+            return best != null && bestDistance <= System.Math.Max(2, (input?.Length ?? 0) / 3) ? best : null;
         }
 
         // -----------------------------------------------------------------

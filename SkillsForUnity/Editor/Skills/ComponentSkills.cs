@@ -882,7 +882,7 @@ namespace UnitySkills
             return null;
         }
 
-        private static string[] GetSimilarTypes(string searchTerm)
+        internal static string[] GetSimilarTypes(string searchTerm)
         {
             var simpleName = searchTerm.Contains(".") ? searchTerm.Substring(searchTerm.LastIndexOf('.') + 1) : searchTerm;
             

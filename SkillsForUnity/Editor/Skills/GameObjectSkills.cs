@@ -479,7 +479,7 @@ namespace UnitySkills
             // A tag that isn't registered in TagManager makes GameObject.FindGameObjectsWithTag throw
             // UnityException, so this must be rejected at the entry point rather than letting that call
             // become an unhandled exception.
-            if (!string.IsNullOrEmpty(tag) && !IsTagDefined(tag))
+            if (!string.IsNullOrEmpty(tag) && !SkillsCommon.IsTagDefined(tag))
                 return SkillParamUtil.InvalidValueError(tag, "tag", InternalEditorUtility.tags);
 
             // If a tag is given, narrow the scope first with FindGameObjectsWithTag (faster); filtering continues below regardless.
@@ -1096,7 +1096,7 @@ namespace UnitySkills
                 // is a no-op, the object keeps its original tag) without throwing, so an entry with a
                 // misspelled tag must be explicitly rejected rather than reported as success:true.
                 string target = item.name ?? item.path ?? item.entityId;
-                if (!IsTagDefined(item.tag))
+                if (!SkillsCommon.IsTagDefined(item.tag))
                     return SkillParamUtil.InvalidValueError(item.tag, "tag", InternalEditorUtility.tags, target);
 
                 WorkflowManager.SnapshotObject(go);
@@ -1104,19 +1104,6 @@ namespace UnitySkills
                 go.tag = item.tag;
                 return new { target = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), success = true, tag = item.tag };
             }, item => item.name ?? item.path ?? item.entityId, atomic: true);
-        }
-
-        /// <summary>
-        /// Determines whether <paramref name="tag"/> is already registered in TagManager. An unregistered
-        /// tag makes both GameObject.tag's setter and GameObject.FindGameObjectsWithTag fail — the former
-        /// silently (no throw, no effect), the latter by throwing UnityException — so any tag write
-        /// or tag-filtered read must pass this check first, rather than discovering the problem on impact.
-        /// </summary>
-        private static bool IsTagDefined(string tag)
-        {
-            if (string.IsNullOrEmpty(tag))
-                return false;
-            return InternalEditorUtility.tags.Contains(tag);
         }
 
         private class BatchSetTagItem

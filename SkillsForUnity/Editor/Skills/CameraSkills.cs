@@ -331,7 +331,7 @@ namespace UnitySkills
                 var trimmed = ln.Trim();
                 var layer = LayerMask.NameToLayer(trimmed);
                 if (layer < 0)
-                    return SkillParamUtil.InvalidValueError(trimmed, "layerNames", GetDefinedLayerNames());
+                    return SkillParamUtil.InvalidValueError(trimmed, "layerNames", SkillsCommon.DefinedLayerNames());
                 mask |= 1 << layer;
             }
 
@@ -339,18 +339,6 @@ namespace UnitySkills
             Undo.RecordObject(cam, "Set Culling Mask");
             cam.cullingMask = mask;
             return new { success = true, cullingMask = mask };
-        }
-
-        /// <summary>All layer names currently defined in the Tags &amp; Layers window (built-in + user-defined).</summary>
-        private static string[] GetDefinedLayerNames()
-        {
-            var names = new List<string>();
-            for (int i = 0; i < 32; i++)
-            {
-                var n = LayerMask.LayerToName(i);
-                if (!string.IsNullOrEmpty(n)) names.Add(n);
-            }
-            return names.ToArray();
         }
 
         [UnitySkill("camera_screenshot", "Capture a screenshot from a Game Camera to file. Set returnImage=true to also get the PNG as base64 in the response, for clients without filesystem access (e.g. remote/MCP).",
