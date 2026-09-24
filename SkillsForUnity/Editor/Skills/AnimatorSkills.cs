@@ -409,11 +409,16 @@ namespace UnitySkills
             Category = SkillCategory.Animator, Operation = SkillOperation.Create | SkillOperation.Modify,
             Tags = new[] { "animator", "state", "add", "layer" },
             Outputs = new[] { "success", "controller", "stateName", "layer" },
+            RequiredParams = new[] { "stateName" },
             RequiresInput = new[] { "controllerPath" },
             TracksWorkflow = true,
             MutatesAssets = true)]
         public static object AnimatorAddState(string controllerPath, string stateName, string clipPath = null, int layer = 0)
         {
+            var pathErr = Validate.SafePath(controllerPath, "controllerPath");
+            if (pathErr != null) return pathErr;
+            if (Validate.Required(stateName, "stateName") is object nameErr) return nameErr;
+
             var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
             if (controller == null) return new { error = $"Controller not found: {controllerPath}" };
             if (layer < 0 || layer >= controller.layers.Length) return new { error = $"Invalid layer: {layer}" };
@@ -433,11 +438,17 @@ namespace UnitySkills
             Category = SkillCategory.Animator, Operation = SkillOperation.Create | SkillOperation.Modify,
             Tags = new[] { "animator", "transition", "state", "flow" },
             Outputs = new[] { "success", "from", "to", "layer", "hasExitTime", "duration" },
+            RequiredParams = new[] { "fromState", "toState" },
             RequiresInput = new[] { "controllerPath" },
             TracksWorkflow = true,
             MutatesAssets = true)]
         public static object AnimatorAddTransition(string controllerPath, string fromState, string toState, int layer = 0, bool hasExitTime = true, float duration = 0.25f)
         {
+            var pathErr = Validate.SafePath(controllerPath, "controllerPath");
+            if (pathErr != null) return pathErr;
+            if (Validate.Required(fromState, "fromState") is object fromErr) return fromErr;
+            if (Validate.Required(toState, "toState") is object toErr) return toErr;
+
             var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
             if (controller == null) return new { error = $"Controller not found: {controllerPath}" };
             if (layer < 0 || layer >= controller.layers.Length) return new { error = $"Invalid layer: {layer}" };

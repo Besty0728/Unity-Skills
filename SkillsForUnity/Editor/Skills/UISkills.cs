@@ -270,6 +270,7 @@ namespace UnitySkills
             [SkillParam("type: canvas/panel/button/text/image/inputfield/slider/toggle/dropdown/scrollview/rawimage/scrollbar; other fields match that type's ui_create_* parameters.")]
             string items)
         {
+            var validTypes = new[] { "canvas", "panel", "button", "text", "image", "inputfield", "slider", "toggle", "dropdown", "scrollview", "rawimage", "scrollbar" };
             return BatchExecutor.Execute<BatchUIItem>(items, item =>
             {
                 object result;
@@ -312,7 +313,8 @@ namespace UnitySkills
                         result = UICreateScrollbar(item.name, item.parent, item.direction ?? "BottomToTop", item.value, item.size, (int)item.numberOfSteps);
                         break;
                     default:
-                        throw new System.Exception($"Unknown UI type: {item.type}");
+                        result = SkillParamUtil.InvalidValueError(item.type, "type", validTypes, item.type);
+                        break;
                 }
                 return result;
             }, item => item.type);
