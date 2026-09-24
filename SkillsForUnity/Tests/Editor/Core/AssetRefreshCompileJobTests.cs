@@ -124,7 +124,7 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void Outputs_AreReturnedOnBothBranches_AndTheSkillStaysAllowedOutsideBypass()
+        public void Outputs_AreReturnedByTheirBranch_AndTheSkillStaysAllowedOutsideBypass()
         {
             Assert.That(SkillRouter.TryGetSkill("asset_refresh", out var skill), Is.True);
 
@@ -132,8 +132,10 @@ namespace UnitySkills.Tests.Core
             AssetSkills.RefreshOverrideForTests = () => ScriptDomainImportCapture.Record(new[] { "Assets/Scripts/Spin.cs" });
             var compiling = Refresh();
 
-            Assert.That(skill.Outputs, Is.SubsetOf(quiet.Keys));
+            // jobId/waitUrl are advertised but only exist once a refresh starts a compile.
+            Assert.That(skill.Outputs, Is.SubsetOf(quiet.Keys.Union(compiling.Keys)));
             Assert.That(skill.Outputs, Is.SubsetOf(compiling.Keys));
+            Assert.That(quiet.Keys, Does.Not.Contain("jobId").And.Not.Contain("waitUrl"));
             Assert.That(skill.MayTriggerReload, Is.False,
                 "MayTriggerReload would make asset_refresh MODE_FORBIDDEN in auto and approval modes.");
             Assert.That(SkillsModeManager.IsForbiddenInSemi(skill), Is.False);
