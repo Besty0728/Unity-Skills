@@ -69,6 +69,11 @@ namespace UnitySkills
         private const int MaxRequestsPerSecond = 100;
         private const int MaxQueuedRequests = 200;
         private const int MaxPendingRequests = 300;
+
+        // CORS response headers, shared by every responder. The two X-Expect-* request headers carry the caller's
+        // expected instance (see ReadInstanceExpectation), so a browser client must be allowed to send them.
+        private const string CorsAllowMethods = "GET, POST, OPTIONS";
+        private const string CorsAllowHeaders = "Content-Type, X-Agent-Id, X-Expect-Instance, X-Expect-Project";
         private static readonly ConcurrentBag<RequestJob> _requestJobPool = new ConcurrentBag<RequestJob>();
         private static int _poolSize;
 
@@ -139,6 +144,8 @@ namespace UnitySkills
         private static volatile string _snapUnityVersion;
         private static volatile string _snapInstanceId;
         private static volatile string _snapProjectName;
+        // Not on /health; read by the listener's expected-instance check (project folder name) and its mismatch payload.
+        private static volatile string _snapProjectPath;
         private static volatile string _snapCurrentMode;
         private static volatile bool _snapPanelApprovalRequired;
         private static volatile string _snapSurfaceProfile = SkillsSurfaceProfile.WireFull;
@@ -171,9 +178,9 @@ namespace UnitySkills
         // ===== gzip response body cache (HTTP thread) =====
         //
         // Only used for GET /skills and GET /skills/schema — the only two response bodies large enough to be worth
-        // compressing (summary ~143KB, full schema ~618KB). Keyed by ETag, a content hash, so entries self-invalidate:
+        // compressing (summary ~180KB, full schema ~707KB). Keyed by ETag, a content hash, so entries self-invalidate:
         // content changes the key, and the old key is never requested again. Compression is pure CPU, never touches
-        // the Unity API, so it's legitimate on the HTTP thread; the 618KB pass takes tens of ms, only on a cache miss.
+        // the Unity API, so it's legitimate on the HTTP thread; the ~707KB pass takes tens of ms, only on a cache miss.
         private const int GzipMinBytes = 4096;
         private const int MaxGzipCacheEntries = 32;
         private const long MaxGzipCacheBytes = 8L * 1024 * 1024;
@@ -206,6 +213,10 @@ namespace UnitySkills
         // volatile: read by the HTTP thread (/health fast path) and by ThreadPool responders (timeout diagnostics),
         // only ever written on the main thread.
         private static volatile bool _domainReloadPending = false;
+
+        // Bumped by every Stop(). A GET /jobs/{id}?wait= responder remembers the value it was accepted under, so a stop
+        // that is immediately followed by a restart (the watchdog) still ends its wait.
+        private static int _listenerGeneration;
 
         public static bool IsRunning => _isRunning;
         public static string Url => _prefix;
@@ -282,6 +293,9 @@ namespace UnitySkills
             // Headers for conditional GET / content negotiation. A pure string read, so grabbed by the HTTP thread at enqueue time.
             public string IfNoneMatch;
             public string AcceptEncoding;
+            // A status probe queued by a GET /jobs/{id}?wait= responder, not a client request: never counted in
+            // totalProcessed, and its GET /jobs/{id} snapshot also carries the job's resultData once terminal.
+            public bool IsInternalProbe;
 
             // Processing result (written by the main thread)
             public string ResponseJson;
@@ -291,6 +305,8 @@ namespace UnitySkills
             // Content hash of ResponseJson for the two cacheable GET endpoints, null for every other endpoint.
             // It also doubles as both the ETag header and the gzip cache key.
             public string ETag;
+            // Value of the Allow header on a 405 response; null everywhere else.
+            public string AllowHeader;
             public ManualResetEventSlim CompletionSignal = new ManualResetEventSlim(false);
 
             public void Prepare(HttpListenerContext context, string httpMethod, string path, string body, string requestId, string agentId, string queryString = null, string ifNoneMatch = null, string acceptEncoding = null, bool agentIdIsExplicit = false, int remotePort = -1)
@@ -307,11 +323,13 @@ namespace UnitySkills
                 QueryString = queryString;
                 IfNoneMatch = ifNoneMatch;
                 AcceptEncoding = acceptEncoding;
+                IsInternalProbe = false;
                 ResponseJson = null;
                 StatusCode = 200;
                 IsProcessed = false;
                 PoolReturned = 0;
                 ETag = null;
+                AllowHeader = null;
                 CompletionSignal.Reset();
             }
 
@@ -329,10 +347,12 @@ namespace UnitySkills
                 QueryString = null;
                 IfNoneMatch = null;
                 AcceptEncoding = null;
+                IsInternalProbe = false;
                 ResponseJson = null;
                 StatusCode = 200;
                 IsProcessed = false;
                 ETag = null;
+                AllowHeader = null;
                 // Note: PoolReturned is maintained by ReturnRequestJob/Prepare, not managed by Reset
                 CompletionSignal.Reset();
             }
@@ -518,8 +538,8 @@ namespace UnitySkills
             try
             {
                 response = context.Response;
-                response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Agent-Id");
+                response.Headers.Add("Access-Control-Allow-Methods", CorsAllowMethods);
+                response.Headers.Add("Access-Control-Allow-Headers", CorsAllowHeaders);
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
                 response.Headers.Add("X-Agent-Id", DetectAgent(request));
@@ -556,8 +576,8 @@ namespace UnitySkills
             try
             {
                 response = context.Response;
-                response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Agent-Id");
+                response.Headers.Add("Access-Control-Allow-Methods", CorsAllowMethods);
+                response.Headers.Add("Access-Control-Allow-Headers", CorsAllowHeaders);
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
                 response.Headers.Add("X-Agent-Id", DetectAgent(request));
@@ -823,6 +843,7 @@ namespace UnitySkills
                 _snapUnityVersion = vitals.UnityVersion;
                 _snapInstanceId = vitals.InstanceId;
                 _snapProjectName = vitals.ProjectName;
+                _snapProjectPath = RegistryService.ProjectPath;
                 _snapCurrentMode = vitals.CurrentMode;
                 _snapPanelApprovalRequired = vitals.PanelApprovalRequired;
                 _snapSurfaceProfile = vitals.SurfaceProfile;
@@ -972,8 +993,8 @@ namespace UnitySkills
             try
             {
                 response = context.Response;
-                response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Agent-Id");
+                response.Headers.Add("Access-Control-Allow-Methods", CorsAllowMethods);
+                response.Headers.Add("Access-Control-Allow-Headers", CorsAllowHeaders);
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
                 response.Headers.Add("X-Agent-Id", DetectAgent(request));
@@ -1105,7 +1126,9 @@ namespace UnitySkills
             {
                 SkillsLogger.LogVerbose($"Domain Reload detected - server state saved (port {_port}), will auto-restart");
                 EditorPrefs.SetInt(PREF_LAST_PORT, _port);
-                RegistryService.Unregister(); // temporary unregister
+                // Keep the registry entry (port, pid) and mark it reloading: a client in this project waits for the same
+                // port instead of falling back to another Editor. The restart's Register flips it back to running.
+                RegistryService.MarkReloading(_port);
                 // Actively close the HttpListener to release the port immediately
                 _isRunning = false;
                 try { _listener?.Stop(); } catch { }
@@ -1152,6 +1175,9 @@ namespace UnitySkills
             EditorPrefs.SetBool(PREF_SERVER_SHOULD_RUN, false);
             EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, 0);
             Stop();
+            // Stop() only marks the entry stopped; a closing Editor must disappear from the registry. RegistryService
+            // hooks quitting too, but that must not depend on the order the two static constructors subscribed in.
+            RegistryService.Unregister();
         }
 
         // Retry counter for CheckAndRestoreServer
@@ -1243,6 +1269,8 @@ namespace UnitySkills
                     CompletePendingAutoStart(reason);
                     if (domainReload)
                     {
+                        // The entry was left reloading by OnBeforeAssemblyReload; nothing is coming back on that port for now.
+                        RegistryService.MarkStopped(0);
                         EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, failures + 1);
                         EditorPrefs.SetString(PrefKey("LastFailTime"), EditorApplication.timeSinceStartup.ToString());
                         // The domain-reload path keeps the failure count: the user needs to know how close they are to the
@@ -1466,6 +1494,7 @@ namespace UnitySkills
         {
             if (!_isRunning) return;
             _isRunning = false;
+            Interlocked.Increment(ref _listenerGeneration);
 
             // Clear the auto-restart flag on a permanent stop
             if (permanent)
@@ -1474,8 +1503,12 @@ namespace UnitySkills
                 EditorPrefs.SetInt(PREF_CONSECUTIVE_FAILURES, 0);
             }
 
-            // Unregister from the global registry
-            RegistryService.Unregister();
+            // A permanent stop leaves the global registry; any other stop (watchdog restart, editor quit before its own
+            // unregister) keeps the entry and marks it stopped, since this Editor may serve again.
+            if (permanent)
+                RegistryService.Unregister();
+            else
+                RegistryService.MarkStopped(_port);
 
             try { _listener?.Stop(); } catch { /* Best-effort cleanup on shutdown */ }
             try { _listener?.Close(); } catch { /* Best-effort cleanup on shutdown */ }
@@ -1637,6 +1670,36 @@ namespace UnitySkills
                         continue;
                     }
 
+                    // Expected-instance guard: a caller that names the Editor it means (expectInstance / expectProject as a
+                    // query parameter, or an X-Expect-Instance / X-Expect-Project header) is refused with 409
+                    // INSTANCE_MISMATCH when this server is another one, before anything is queued or executed. /health
+                    // stays exempt so discovery can always read the identity. The refusal lists the other registered
+                    // instances, which means reading the registry file, so it is written by a ThreadPool responder.
+                    if (!IsInstanceCheckExempt(request.HttpMethod, url.AbsolutePath))
+                    {
+                        var expectation = ReadInstanceExpectation(
+                            url.Query, request.Headers[ExpectInstanceHeader], request.Headers[ExpectProjectHeader]);
+                        string servingInstanceId = _snapInstanceId;
+                        if (expectation != null && servingInstanceId != null &&
+                            !expectation.Matches(servingInstanceId, _snapProjectName, _snapProjectPath))
+                        {
+                            var mismatch = new InstanceMismatchState
+                            {
+                                Context = context,
+                                Expected = expectation,
+                                InstanceId = servingInstanceId,
+                                ProjectName = _snapProjectName,
+                                ProjectPath = _snapProjectPath,
+                                Port = _port,
+                                RequestId = $"req_{Interlocked.Increment(ref _requestIdCounter):X8}",
+                                AgentId = DetectAgent(request),
+                            };
+                            ThreadPool.QueueUserWorkItem(InstanceMismatchCallback, mismatch);
+                            handedOffToResponder = true;
+                            continue;
+                        }
+                    }
+
                     // Fast path: GET /skills, GET /skills/schema, and GET /health are answered directly on this
                     // HTTP thread using the cache/snapshot the main thread already built (zero Unity API — see
                     // SkillRouter.TryGetCachedGetResponse and SendHealthFastPath).
@@ -1658,6 +1721,34 @@ namespace UnitySkills
                                 AgentId = DetectAgent(request),
                             };
                             ThreadPool.QueueUserWorkItem(EventsLongPollCallback, pollState);
+                            handedOffToResponder = true;
+                            continue;
+                        }
+
+                        // Long-polling GET /jobs/{id}?wait=<seconds>: handed off like /events. The responder queues short
+                        // status probes for the main thread and holds the response until the job is terminal, the wait
+                        // runs out, or the server stops or starts a domain reload.
+                        if (TryParseJobWait(fastPath, url.Query, out var waitJobId, out var waitSeconds, out var waitError))
+                        {
+                            if (waitError != null)
+                            {
+                                SendImmediateJsonResponse(context, request, 400, BuildErrorPayload(waitError));
+                                continue;
+                            }
+
+                            Interlocked.Increment(ref _totalRequestsReceived);
+                            var waitState = new JobWaitState
+                            {
+                                Context = context,
+                                Path = fastPath,
+                                RawQuery = url.Query,
+                                JobId = waitJobId,
+                                WaitSeconds = waitSeconds,
+                                Generation = Volatile.Read(ref _listenerGeneration),
+                                RequestId = $"req_{Interlocked.Increment(ref _requestIdCounter):X8}",
+                                AgentId = DetectAgent(request),
+                            };
+                            ThreadPool.QueueUserWorkItem(JobWaitCallback, waitState);
                             handedOffToResponder = true;
                             continue;
                         }
@@ -1870,8 +1961,8 @@ namespace UnitySkills
                 response = job.Context.Response;
 
                 // CORS headers
-                response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Agent-Id");
+                response.Headers.Add("Access-Control-Allow-Methods", CorsAllowMethods);
+                response.Headers.Add("Access-Control-Allow-Headers", CorsAllowHeaders);
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
                 response.Headers.Add("X-Request-Id", job.RequestId);
                 response.Headers.Add("X-Agent-Id", job.AgentId);
@@ -1882,6 +1973,8 @@ namespace UnitySkills
                     response.Headers.Add("ETag", $"\"{job.ETag}\"");
                     response.Headers.Add("Vary", "Accept-Encoding");
                 }
+                if (job.AllowHeader != null)
+                    response.Headers.Add("Allow", job.AllowHeader);
 
                 response.StatusCode = job.StatusCode;
 
@@ -2060,31 +2153,553 @@ namespace UnitySkills
         /// Writes the /events HTTP response. ThreadPool thread — only headers, encoding, and socket writes
         /// (the pure-string counterpart of SendCachedGetResponse/SendResponse).
         /// </summary>
-        private static void WriteEventsResponse(EventsPollState poll, int statusCode, string json)
+        private static void WriteEventsResponse(EventsPollState poll, int statusCode, string json) =>
+            WriteRawJsonResponse(poll.Context, poll.RequestId, poll.AgentId, statusCode, json);
+
+        /// <summary>
+        /// Writes an already-serialized JSON body from a ThreadPool responder (/events, GET /jobs/{id}?wait=, the
+        /// INSTANCE_MISMATCH refusal) and always closes the response. Only headers, encoding, and socket writes.
+        /// </summary>
+        private static void WriteRawJsonResponse(HttpListenerContext context, string requestId, string agentId, int statusCode, string json)
         {
             HttpListenerResponse response = null;
             try
             {
-                response = poll.Context.Response;
-                response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-                response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Agent-Id");
+                response = context.Response;
+                response.Headers.Add("Access-Control-Allow-Methods", CorsAllowMethods);
+                response.Headers.Add("Access-Control-Allow-Headers", CorsAllowHeaders);
                 response.Headers.Add("Access-Control-Allow-Origin", "*");
-                response.Headers.Add("X-Request-Id", poll.RequestId);
-                response.Headers.Add("X-Agent-Id", poll.AgentId);
+                response.Headers.Add("X-Request-Id", requestId);
+                response.Headers.Add("X-Agent-Id", agentId);
                 AddInstanceHeaders(response);
                 response.StatusCode = statusCode;
                 response.ContentType = "application/json; charset=utf-8";
-                byte[] buffer = Encoding.UTF8.GetBytes(json);
+                byte[] buffer = Encoding.UTF8.GetBytes(json ?? string.Empty);
                 response.ContentLength64 = buffer.Length;
                 response.OutputStream.Write(buffer, 0, buffer.Length);
             }
             catch (HttpListenerException) { /* Client disconnected */ }
             catch (System.IO.IOException) { /* Client disconnected mid-write */ }
             catch (ObjectDisposedException) { /* Response already closed */ }
-            catch { /* Never let long-poll write errors bubble */ }
+            catch { /* Never let responder write errors bubble */ }
             finally
             {
                 try { response?.Close(); } catch { }
+            }
+        }
+
+        // ===== Expected instance (listener thread) =====
+
+        internal const string ExpectInstanceQueryKey = "expectInstance";
+        internal const string ExpectProjectQueryKey = "expectProject";
+        private const string ExpectInstanceHeader = "X-Expect-Instance";
+        private const string ExpectProjectHeader = "X-Expect-Project";
+
+        /// <summary>
+        /// The Editor a request says it is meant for. Instance is an exact instanceId (unique per project path);
+        /// Project is a productName or a project folder name (productName alone can repeat across projects). Both
+        /// compare case-insensitively, and when both are given both must hold.
+        /// </summary>
+        internal sealed class InstanceExpectation
+        {
+            public string Instance;
+            public string Project;
+
+            public bool Matches(string instanceId, string projectName, string projectPath)
+            {
+                if (!string.IsNullOrEmpty(Instance) &&
+                    !string.Equals(Instance, instanceId, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                if (!string.IsNullOrEmpty(Project) &&
+                    !string.Equals(Project, projectName, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(Project, ProjectFolderName(projectPath), StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+                return true;
+            }
+
+            public string Describe()
+            {
+                if (string.IsNullOrEmpty(Project)) return $"instance '{Instance}'";
+                if (string.IsNullOrEmpty(Instance)) return $"project '{Project}'";
+                return $"instance '{Instance}' in project '{Project}'";
+            }
+        }
+
+        private static string ProjectFolderName(string projectPath)
+        {
+            if (string.IsNullOrEmpty(projectPath))
+                return null;
+            try { return System.IO.Path.GetFileName(projectPath.TrimEnd('/', '\\')); }
+            catch (ArgumentException) { return null; }
+        }
+
+        /// <summary>
+        /// /health (and its / alias) never checks an expectation — discovery must always be able to read who is
+        /// serving — and neither does a CORS preflight, which carries no custom headers.
+        /// </summary>
+        private static bool IsInstanceCheckExempt(string httpMethod, string path) =>
+            string.Equals(httpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase) ||
+            path == "/" ||
+            string.Equals(path, "/health", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Reads the caller's expected instance from the query string (expectInstance / expectProject) and the
+        /// X-Expect-Instance / X-Expect-Project headers; a non-blank query value wins over the header of the same kind.
+        /// Header values may be percent-encoded (the server's own X-Unity-Project header is, for non-ASCII names).
+        /// Returns null when the request names no expectation, the common case, which costs one substring search.
+        /// Pure string work, safe on the listener thread.
+        /// </summary>
+        internal static InstanceExpectation ReadInstanceExpectation(string rawQuery, string headerInstance, string headerProject)
+        {
+            string instance = DecodeExpectationHeader(headerInstance);
+            string project = DecodeExpectationHeader(headerProject);
+
+            if (!string.IsNullOrEmpty(rawQuery) && rawQuery.IndexOf("expect", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                var qs = SkillRouter.ParseQueryString(rawQuery);
+                if (qs.TryGetValue(ExpectInstanceQueryKey, out var queryInstance) && !string.IsNullOrWhiteSpace(queryInstance))
+                    instance = queryInstance.Trim();
+                if (qs.TryGetValue(ExpectProjectQueryKey, out var queryProject) && !string.IsNullOrWhiteSpace(queryProject))
+                    project = queryProject.Trim();
+            }
+
+            if (string.IsNullOrEmpty(instance) && string.IsNullOrEmpty(project))
+                return null;
+            return new InstanceExpectation { Instance = instance, Project = project };
+        }
+
+        private static string DecodeExpectationHeader(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+            var trimmed = value.Trim();
+            return trimmed.IndexOf('%') >= 0 ? Uri.UnescapeDataString(trimmed) : trimmed;
+        }
+
+        /// <summary>
+        /// The 409 INSTANCE_MISMATCH body: who is actually serving, what was expected, every other live registered
+        /// instance (with its reloading/stopped status), and one suggested resend per instance that satisfies the
+        /// expectation. Pure; the caller supplies the registry view.
+        /// </summary>
+        internal static string BuildInstanceMismatchResponse(InstanceExpectation expected, string instanceId,
+            string projectName, string projectPath, int port, IList<RegistryService.InstanceInfo> others)
+        {
+            var instances = new List<object>();
+            var fixes = new List<SuggestedFix>();
+            foreach (var other in others ?? Array.Empty<RegistryService.InstanceInfo>())
+            {
+                if (other == null)
+                    continue;
+
+                string status = RegistryService.IsRunningStatus(other.status)
+                    ? RegistryService.StatusRunning
+                    : other.status.ToLowerInvariant();
+                instances.Add(new
+                {
+                    instanceId = other.id,
+                    projectName = other.name,
+                    projectPath = other.path,
+                    port = other.port,
+                    status,
+                });
+
+                if (!expected.Matches(other.id, other.name, other.path))
+                    continue;
+
+                string target = $"port {other.port} (instanceId {other.id}, project {other.name})";
+                fixes.Add(new SuggestedFix
+                {
+                    action = "retry",
+                    args = new { port = other.port, url = $"http://localhost:{other.port}", instanceId = other.id },
+                    reason = status == RegistryService.StatusRunning
+                        ? $"Resend to {target}."
+                        : $"Resend to {target} — it is {status} right now, so wait a few seconds and retry there, not here.",
+                });
+            }
+
+            if (fixes.Count == 0)
+            {
+                fixes.Add(new SuggestedFix
+                {
+                    action = "find_target",
+                    reason = $"No other registered UnitySkills server matches {expected.Describe()}. Open that project in Unity and start its server, or drop the expectation if {projectName} ({instanceId}) is the Editor you want.",
+                });
+            }
+
+            return SkillErrorResponse.Build(
+                SkillErrorCode.InstanceMismatch,
+                $"This server is {projectName} ({instanceId}) at {projectPath}; you expected {expected.Describe()}. Nothing was executed.",
+                details: new
+                {
+                    server = new { instanceId, projectName, projectPath, port },
+                    expected = new { instanceId = expected.Instance, project = expected.Project },
+                    instances,
+                },
+                suggestedFixes: fixes,
+                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+        }
+
+        /// <summary>Identity snapshot and connection the listener hands to the mismatch responder.</summary>
+        private sealed class InstanceMismatchState
+        {
+            public HttpListenerContext Context;
+            public InstanceExpectation Expected;
+            public string InstanceId;
+            public string ProjectName;
+            public string ProjectPath;
+            public int Port;
+            public string RequestId;
+            public string AgentId;
+        }
+
+        /// <summary>ThreadPool responder for a refused expectation: registry read, 409 write, quota release. Zero Unity API.</summary>
+        private static void InstanceMismatchCallback(object state)
+        {
+            if (!(state is InstanceMismatchState mismatch))
+                return;
+
+            try
+            {
+                List<RegistryService.InstanceInfo> others;
+                try { others = RegistryService.GetLiveInstances(); }
+                catch { others = new List<RegistryService.InstanceInfo>(); }
+
+                string json = BuildInstanceMismatchResponse(mismatch.Expected, mismatch.InstanceId,
+                    mismatch.ProjectName, mismatch.ProjectPath, mismatch.Port, others);
+                WriteRawJsonResponse(mismatch.Context, mismatch.RequestId, mismatch.AgentId, 409, json);
+            }
+            catch
+            {
+                CloseContextSafely(mismatch.Context);
+            }
+            finally
+            {
+                ReleasePendingSlot();
+            }
+        }
+
+        // ===== GET /jobs/{id}?wait= long polling =====
+
+        internal const double JobWaitMaxSeconds = 120;
+        private const int JobWaitPollIntervalMs = 500;
+        // How quickly a waiting responder notices a stop or a pending domain reload.
+        private const int JobWaitSliceMs = 100;
+        // A probe waits at least this long for its first answer, even under wait=0: a busy main thread must not turn
+        // "no snapshot yet" into a timeout faster than a plain GET /jobs/{id} would.
+        private const int JobWaitFirstAnswerFloorMs = 10000;
+
+        /// <summary>Raw request data the accept loop hands to the job long-poll responder.</summary>
+        private sealed class JobWaitState
+        {
+            public HttpListenerContext Context;
+            public string Path;
+            public string RawQuery;
+            public string JobId;
+            public double WaitSeconds;
+            public int Generation;
+            public string RequestId;
+            public string AgentId;
+        }
+
+        /// <summary>One status probe's outcome. Answered=false: no answer from the main thread within the probe's budget.</summary>
+        internal struct JobProbeResult
+        {
+            public bool Answered;
+            public int StatusCode;
+            public string Json;
+        }
+
+        internal enum JobWaitVerdict
+        {
+            /// <summary>A snapshot reported terminal:true.</summary>
+            Terminal,
+            /// <summary>The wait ran out while the job was still going; Last is the newest snapshot.</summary>
+            TimedOut,
+            /// <summary>The server started stopping or a domain reload became pending.</summary>
+            Aborted,
+            /// <summary>A non-200 answer (unknown job, a 503 from a stopping queue), returned as-is.</summary>
+            Passthrough,
+            /// <summary>Not even the first probe was answered.</summary>
+            NoAnswer,
+        }
+
+        internal struct JobWaitOutcome
+        {
+            public JobWaitVerdict Verdict;
+            public JobProbeResult Last;
+            public int Probes;
+        }
+
+        /// <summary>
+        /// Recognizes GET /jobs/{id}?wait=&lt;seconds&gt;: exactly one path segment after /jobs/ and a non-blank wait value.
+        /// Anything else returns false and keeps today's single-snapshot path (including /jobs/{id}/progress and /logs).
+        /// A wait that is not a non-negative number sets errorJson (400 TYPE_MISMATCH); larger values are clamped to
+        /// <see cref="JobWaitMaxSeconds"/>. Pure string work, safe on the listener thread.
+        /// </summary>
+        internal static bool TryParseJobWait(string path, string rawQuery, out string jobId, out double waitSeconds, out string errorJson)
+        {
+            jobId = null;
+            waitSeconds = 0;
+            errorJson = null;
+
+            const string prefix = "/jobs/";
+            if (string.IsNullOrEmpty(path) || !path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (string.IsNullOrEmpty(rawQuery) || rawQuery.IndexOf("wait", StringComparison.OrdinalIgnoreCase) < 0)
+                return false;
+
+            string remainder = path.Substring(prefix.Length).TrimEnd('/');
+            if (remainder.Length == 0 || remainder.IndexOf('/') >= 0)
+                return false;
+
+            var qs = SkillRouter.ParseQueryString(rawQuery);
+            if (!qs.TryGetValue("wait", out var raw) || string.IsNullOrWhiteSpace(raw))
+                return false;
+
+            jobId = remainder;
+            if (!double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var parsed) ||
+                double.IsNaN(parsed) || double.IsInfinity(parsed) || parsed < 0)
+            {
+                errorJson = SkillErrorResponse.Build(
+                    SkillErrorCode.TypeMismatch,
+                    $"Invalid 'wait' value '{raw}' — expected seconds as a non-negative number (at most {JobWaitMaxSeconds}).",
+                    details: new
+                    {
+                        parameter = "wait",
+                        received = raw,
+                        validRange = $"0-{JobWaitMaxSeconds}",
+                        hint = "GET /jobs/{id}?wait=90 holds the request until the job is terminal or 90 seconds pass; omit 'wait' for an immediate snapshot.",
+                    },
+                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                return true;
+            }
+
+            waitSeconds = Math.Min(parsed, JobWaitMaxSeconds);
+            return true;
+        }
+
+        /// <summary>
+        /// The long-poll loop behind GET /jobs/{id}?wait=, kept free of sockets and queues so tests can drive it with
+        /// fakes. probe(budgetMs) requests one snapshot and waits at most budgetMs for it; shouldAbort reports a stopping
+        /// server or a pending domain reload; sleep(ms) pauses between probes (the real one returns early on abort).
+        /// Ends on a terminal snapshot, a non-200 answer, an abort, or the deadline, whichever comes first; wait=0 is a
+        /// single probe. Only one probe is ever outstanding: an unanswered probe is waited on, never duplicated.
+        /// </summary>
+        internal static JobWaitOutcome RunJobWaitLoop(double waitSeconds, int pollIntervalMs,
+            Func<int, JobProbeResult> probe, Func<bool> shouldAbort, Func<long> utcNowTicks, Action<int> sleep)
+        {
+            long deadline = utcNowTicks() + (long)(Math.Max(0, waitSeconds) * TimeSpan.TicksPerSecond);
+            var outcome = new JobWaitOutcome();
+
+            while (true)
+            {
+                if (shouldAbort())
+                {
+                    outcome.Verdict = JobWaitVerdict.Aborted;
+                    return outcome;
+                }
+
+                long remainingMs = (deadline - utcNowTicks()) / TimeSpan.TicksPerMillisecond;
+                long budgetMs = outcome.Last.Answered ? remainingMs : Math.Max(remainingMs, JobWaitFirstAnswerFloorMs);
+                if (budgetMs <= 0)
+                {
+                    outcome.Verdict = JobWaitVerdict.TimedOut;
+                    return outcome;
+                }
+
+                var answer = probe((int)Math.Min(budgetMs, int.MaxValue));
+                outcome.Probes++;
+
+                if (!answer.Answered)
+                {
+                    outcome.Verdict = shouldAbort() ? JobWaitVerdict.Aborted
+                        : outcome.Last.Answered ? JobWaitVerdict.TimedOut
+                        : JobWaitVerdict.NoAnswer;
+                    return outcome;
+                }
+
+                if (answer.StatusCode != 200)
+                {
+                    // A stopping server fails queued probes with 503; answer that with the reload hint instead.
+                    outcome.Verdict = shouldAbort() ? JobWaitVerdict.Aborted : JobWaitVerdict.Passthrough;
+                    if (outcome.Verdict == JobWaitVerdict.Passthrough)
+                        outcome.Last = answer;
+                    return outcome;
+                }
+
+                outcome.Last = answer;
+                if (IsTerminalJobSnapshot(answer.Json))
+                {
+                    outcome.Verdict = JobWaitVerdict.Terminal;
+                    return outcome;
+                }
+
+                if (shouldAbort())
+                {
+                    outcome.Verdict = JobWaitVerdict.Aborted;
+                    return outcome;
+                }
+
+                remainingMs = (deadline - utcNowTicks()) / TimeSpan.TicksPerMillisecond;
+                if (remainingMs <= 0)
+                {
+                    outcome.Verdict = JobWaitVerdict.TimedOut;
+                    return outcome;
+                }
+
+                sleep((int)Math.Min(pollIntervalMs, remainingMs));
+            }
+        }
+
+        private static bool IsTerminalJobSnapshot(string json)
+        {
+            if (string.IsNullOrEmpty(json))
+                return false;
+            try
+            {
+                var terminal = JObject.Parse(json)["terminal"];
+                return terminal != null && terminal.Type == JTokenType.Boolean && terminal.Value<bool>();
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Turns a loop outcome into the HTTP answer. Terminal and TimedOut return the GET /jobs/{id} snapshot plus
+        /// waitTimedOut (a terminal snapshot also carries resultData, added by the probe); Passthrough returns the answer
+        /// untouched; Aborted is a 503 wait_and_retry telling the caller to repeat the same URL, since jobs outlive a
+        /// domain reload; NoAnswer is a 504 like any request the main thread never reached.
+        /// </summary>
+        internal static (int StatusCode, string Json) BuildJobWaitResponse(JobWaitOutcome outcome, double waitSeconds,
+            string jobId, bool domainReloadPending)
+        {
+            switch (outcome.Verdict)
+            {
+                case JobWaitVerdict.Terminal:
+                case JobWaitVerdict.TimedOut:
+                {
+                    JObject snapshot;
+                    try { snapshot = JObject.Parse(outcome.Last.Json); }
+                    catch (Exception) { return (200, outcome.Last.Json); }
+
+                    bool timedOut = outcome.Verdict == JobWaitVerdict.TimedOut;
+                    snapshot["waitTimedOut"] = timedOut;
+                    if (timedOut)
+                        snapshot["hint"] = $"Job not finished within wait={FormatSeconds(waitSeconds)}s; GET the same URL again to keep waiting.";
+                    return (200, snapshot.ToString(Formatting.None));
+                }
+                case JobWaitVerdict.Passthrough:
+                    return (outcome.Last.StatusCode, outcome.Last.Json);
+                case JobWaitVerdict.Aborted:
+                    return (503, SkillErrorResponse.Build(
+                        domainReloadPending ? SkillErrorCode.Compiling : SkillErrorCode.ServerStopped,
+                        "Server reloading; retry the same URL — the job survives the domain reload.",
+                        details: new
+                        {
+                            jobId,
+                            domainReloadPending,
+                            hint = "server reloading; retry the same URL",
+                        },
+                        retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                        retryAfterSeconds: domainReloadPending ? 5 : 3));
+                default:
+                    return (504, SkillErrorResponse.Build(
+                        SkillErrorCode.Timeout,
+                        $"Main thread did not answer the status probe for job {jobId} within the {FormatSeconds(waitSeconds)}s wait",
+                        details: new
+                        {
+                            jobId,
+                            domainReloadPending,
+                            suggestion = "Unity Editor may be paused, showing a modal dialog, or processing a long operation. Retry the same URL.",
+                        },
+                        retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                        retryAfterSeconds: 5));
+            }
+        }
+
+        private static string FormatSeconds(double seconds) =>
+            seconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+        /// <summary>True once the listener a long-poll arrived on has stopped (even if a new one started) or a reload is pending.</summary>
+        private static bool ShouldAbortJobWait(int generation) =>
+            !_isRunning || _domainReloadPending || Volatile.Read(ref _listenerGeneration) != generation;
+
+        private static void SleepUnlessJobWaitAborted(int generation, int milliseconds)
+        {
+            long deadline = DateTime.UtcNow.Ticks + milliseconds * TimeSpan.TicksPerMillisecond;
+            while (!ShouldAbortJobWait(generation))
+            {
+                long remainingMs = (deadline - DateTime.UtcNow.Ticks) / TimeSpan.TicksPerMillisecond;
+                if (remainingMs <= 0)
+                    return;
+                Thread.Sleep((int)Math.Min(JobWaitSliceMs, remainingMs));
+            }
+        }
+
+        /// <summary>
+        /// Queues one GET /jobs/{id} probe on the light lane (the same main-thread handler as a plain request) and waits
+        /// at most budgetMs for it, in short slices so a stop or pending reload ends the wait at once. A probe is never
+        /// pooled: one left unanswered may still be processed after this responder has moved on.
+        /// </summary>
+        private static JobProbeResult ProbeJobSnapshot(JobWaitState wait, int budgetMs)
+        {
+            long deadline = DateTime.UtcNow.Ticks + budgetMs * TimeSpan.TicksPerMillisecond;
+
+            // A full queue is waited out rather than failing the long-poll.
+            while (QueuedRequests >= MaxQueuedRequests)
+            {
+                if (ShouldAbortJobWait(wait.Generation) || DateTime.UtcNow.Ticks >= deadline)
+                    return default;
+                Thread.Sleep(JobWaitSliceMs);
+            }
+
+            var probe = new RequestJob();
+            probe.Prepare(null, "GET", wait.Path, string.Empty, wait.RequestId, wait.AgentId, wait.RawQuery);
+            probe.IsInternalProbe = true;
+            Interlocked.Increment(ref _lightQueued);
+            _lightQueue.Enqueue(probe);
+
+            while (true)
+            {
+                long remainingMs = (deadline - DateTime.UtcNow.Ticks) / TimeSpan.TicksPerMillisecond;
+                if (remainingMs <= 0)
+                    return default;
+                if (probe.CompletionSignal.Wait((int)Math.Min(JobWaitSliceMs, remainingMs)))
+                    return new JobProbeResult { Answered = true, StatusCode = probe.StatusCode, Json = probe.ResponseJson };
+                if (ShouldAbortJobWait(wait.Generation))
+                    return default;
+            }
+        }
+
+        private static void JobWaitCallback(object state)
+        {
+            if (!(state is JobWaitState wait))
+                return;
+
+            try
+            {
+                var outcome = RunJobWaitLoop(wait.WaitSeconds, JobWaitPollIntervalMs,
+                    budgetMs => ProbeJobSnapshot(wait, budgetMs),
+                    () => ShouldAbortJobWait(wait.Generation),
+                    () => DateTime.UtcNow.Ticks,
+                    milliseconds => SleepUnlessJobWaitAborted(wait.Generation, milliseconds));
+                var (statusCode, json) = BuildJobWaitResponse(outcome, wait.WaitSeconds, wait.JobId, _domainReloadPending);
+                Interlocked.Increment(ref _totalRequestsProcessed);
+                WriteRawJsonResponse(wait.Context, wait.RequestId, wait.AgentId, statusCode, json);
+            }
+            catch
+            {
+                // Client gone or listener closed mid-wait (domain reload): the caller retries the same URL.
+                CloseContextSafely(wait.Context);
+            }
+            finally
+            {
+                ReleasePendingSlot();
             }
         }
 
@@ -2233,7 +2848,8 @@ namespace UnitySkills
             {
                 job.IsProcessed = true;
                 job.CompletionSignal?.Set();
-                Interlocked.Increment(ref _totalRequestsProcessed);
+                if (!job.IsInternalProbe)
+                    Interlocked.Increment(ref _totalRequestsProcessed);
                 // Only invalidate scene caches for requests that could have changed state (POST = skill execution)
                 if (job.HttpMethod == "POST")
                     GameObjectFinder.InvalidateCache();
@@ -2463,6 +3079,20 @@ namespace UnitySkills
                 return;
             }
 
+            // GET on a skill: skills only run on POST. A registered name gets 405 with the exact POST it most likely
+            // meant; an unknown name falls through to the 404 below, as before. Nothing is executed either way.
+            if (job.HttpMethod == "GET" && path.StartsWith("/skill/", StringComparison.OrdinalIgnoreCase))
+            {
+                string getSkillName = path.Substring(7);
+                if (getSkillName.Length > 0 && getSkillName.IndexOf('/') < 0 &&
+                    SkillRouter.TryGetSkill(getSkillName, out var getSkill))
+                {
+                    job.StatusCode = 405;
+                    job.AllowHeader = "POST";
+                    job.ResponseJson = BuildMethodNotAllowedResponse(getSkill.Name, job.QueryString, getSkill.Parameters, _port);
+                    return;
+                }
+            }
 
             // Permission system: mode + grant tokens + audit log.
             if (path.StartsWith("/permission/", StringComparison.OrdinalIgnoreCase) ||
@@ -2495,6 +3125,7 @@ namespace UnitySkills
                         "POST /skill/{name}?dryRun=true",
                         "GET /jobs",
                         "GET /jobs/{id}",
+                        "GET /jobs/{id}?wait=<seconds>",
                         "GET /jobs/{id}/progress",
                         "GET /jobs/{id}/logs",
                         "GET /health",
@@ -2622,6 +3253,140 @@ namespace UnitySkills
             return true;
         }
 
+        // ===== GET /skill/{name} → 405 with the POST rewrite =====
+
+        /// <summary>Request-level keys of POST /skill/{name}: they stay in the rewritten URL instead of moving into the body.</summary>
+        private static readonly string[] SkillRequestQueryKeys =
+            { "mode", "dryRun", "diff", "wire", ExpectInstanceQueryKey, ExpectProjectQueryKey };
+
+        /// <summary>
+        /// The 405 METHOD_NOT_ALLOWED body for GET /skill/{name} on a registered skill. It carries the POST the caller
+        /// most likely meant, ready to paste: the query's arguments become the JSON body (details.body, also the fix's
+        /// args) and the request-level keys stay in the URL (details.curl). Main thread only (reads the skill's
+        /// declared parameters), otherwise pure.
+        /// </summary>
+        internal static string BuildMethodNotAllowedResponse(string skillName, string rawQuery, System.Reflection.ParameterInfo[] parameters, int port)
+        {
+            var body = ConvertQueryToSkillBody(rawQuery, parameters, out string requestQuery);
+            string url = $"http://localhost:{port}/skill/{skillName}{requestQuery}";
+            string curl = $"curl -s -X POST '{EscapeForSingleQuotes(url)}' -H 'Content-Type: application/json' -d '{EscapeForSingleQuotes(body.ToString(Formatting.None))}'";
+
+            return SkillErrorResponse.Build(
+                SkillErrorCode.MethodNotAllowed,
+                $"Skills are called with POST /skill/{skillName} and a JSON body; this GET was not executed.",
+                skill: skillName,
+                details: new
+                {
+                    method = "GET",
+                    allowed = "POST",
+                    url,
+                    body,
+                    curl,
+                },
+                suggestedFixes: new List<SuggestedFix>
+                {
+                    new SuggestedFix
+                    {
+                        action = "retry",
+                        skill = skillName,
+                        args = body,
+                        reason = $"Resend as POST with the query parameters as the JSON body: {curl}",
+                    },
+                },
+                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+        }
+
+        /// <summary>
+        /// Moves a GET query into a POST body. Pairs are decoded form-style ('+' is a space) in their original order; a
+        /// bare key becomes true. Each value is typed by the skill's declared parameter: string and enum parameters stay
+        /// strings, bool and numeric ones become JSON booleans and numbers when they parse, and array/object parameters
+        /// take JSON text as JSON. A key the skill does not declare becomes a number or boolean when it parses as one,
+        /// otherwise a string (the POST then reports it). Request-level keys are returned in requestQuery, still encoded.
+        /// </summary>
+        internal static JObject ConvertQueryToSkillBody(string rawQuery, System.Reflection.ParameterInfo[] parameters, out string requestQuery)
+        {
+            var body = new JObject();
+            var requestPairs = new List<string>();
+
+            string raw = string.IsNullOrEmpty(rawQuery) ? string.Empty : rawQuery.TrimStart('?');
+            foreach (var pair in raw.Split('&'))
+            {
+                if (pair.Length == 0)
+                    continue;
+                int eq = pair.IndexOf('=');
+                if (eq == 0)
+                    continue;
+
+                string key = DecodeQueryComponent(eq < 0 ? pair : pair.Substring(0, eq)).Trim();
+                if (key.Length == 0)
+                    continue;
+                if (SkillRequestQueryKeys.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    requestPairs.Add(pair);
+                    continue;
+                }
+
+                string value = eq < 0 ? "true" : DecodeQueryComponent(pair.Substring(eq + 1));
+                var parameter = parameters?.FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase));
+                body[parameter?.Name ?? key] = ConvertQueryValue(value, parameter?.ParameterType, key);
+            }
+
+            requestQuery = requestPairs.Count > 0 ? "?" + string.Join("&", requestPairs) : string.Empty;
+            return body;
+        }
+
+        private static JToken ConvertQueryValue(string value, Type declaredType, string key)
+        {
+            var type = declaredType == null ? null : (Nullable.GetUnderlyingType(declaredType) ?? declaredType);
+            var invariant = System.Globalization.CultureInfo.InvariantCulture;
+
+            if (type == typeof(string) || (type != null && type.IsEnum) ||
+                (type == null && string.Equals(key, "entityId", StringComparison.OrdinalIgnoreCase)))
+                return value;
+
+            if (type == typeof(bool))
+            {
+                if (bool.TryParse(value, out var flag)) return flag;
+                if (value == "1") return true;
+                if (value == "0") return false;
+                return value;
+            }
+
+            if (type == typeof(int) || type == typeof(long) || type == typeof(short) || type == typeof(byte) ||
+                type == typeof(uint) || type == typeof(ulong) || type == typeof(ushort) || type == typeof(sbyte))
+                return long.TryParse(value, System.Globalization.NumberStyles.AllowLeadingSign, invariant, out var whole)
+                    ? (JToken)whole : value;
+
+            if (type == typeof(float) || type == typeof(double) || type == typeof(decimal))
+                return TryParseFiniteDouble(value, out var real) ? (JToken)real : value;
+
+            if (type != null)
+            {
+                var trimmed = value.TrimStart();
+                if (trimmed.StartsWith("[", StringComparison.Ordinal) || trimmed.StartsWith("{", StringComparison.Ordinal))
+                {
+                    try { return JToken.Parse(value); }
+                    catch (JsonException) { }
+                }
+                return value;
+            }
+
+            if (bool.TryParse(value, out var undeclaredFlag)) return undeclaredFlag;
+            if (long.TryParse(value, System.Globalization.NumberStyles.AllowLeadingSign, invariant, out var undeclaredWhole))
+                return undeclaredWhole;
+            if (TryParseFiniteDouble(value, out var undeclaredReal)) return undeclaredReal;
+            return value;
+        }
+
+        private static bool TryParseFiniteDouble(string value, out double result) =>
+            double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out result) &&
+            !double.IsNaN(result) && !double.IsInfinity(result);
+
+        private static string DecodeQueryComponent(string component) =>
+            Uri.UnescapeDataString(component.Replace('+', ' '));
+
+        private static string EscapeForSingleQuotes(string text) => text.Replace("'", "'\\''");
+
         /// <summary>
         /// Writes a 503 COMPILING response when Unity is compiling or a domain reload is pending; returns true if the
         /// request was rejected. Shared by POST /skill/{name} and POST /skills/batch (which misses the "/skill/" prefix check).
@@ -2748,6 +3513,9 @@ namespace UnitySkills
         // ===== Cross-skill batch execution =====
 
         private const int MaxBatchSteps = 50;
+
+        // SkillRouter.ResolveWireVersion's value for ?wire=v2 (v1 is 1).
+        private const int WireV2 = 2;
 
         /// <summary>
         /// POST /skills/batch — executes multiple skills sequentially within a single main-thread job,
@@ -2880,7 +3648,8 @@ namespace UnitySkills
             var response = ExecuteBatchCore(steps, batchParams, continueOnError, dryRun, transactional, job.AgentId, captureDiff,
                 agentIdRefiner: () => { RefineAgentId(job); return job.AgentId; },
                 remotePort: job.RemotePort,
-                agentIdIsExplicit: job.AgentIdIsExplicit);
+                agentIdIsExplicit: job.AgentIdIsExplicit,
+                wire: SkillRouter.ResolveWireVersion(job.QueryString));
             job.StatusCode = 200;
             job.ResponseJson = JsonConvert.SerializeObject(response, _jsonSettings);
         }
@@ -2910,10 +3679,14 @@ namespace UnitySkills
         /// agentIdIsExplicit are forwarded to every RecordBatchStep call, so SkillTelemetryService.Record can do
         /// its own flush-time late-binding for each step -- the mechanism that actually fixes attribution for
         /// single-digit-ms skills, independent of whether agentIdRefiner's early recheck already landed.
+        ///
+        /// wire is the resolved ?wire= version (1 or 2). A dry run passes it to every step's SkillRouter.DryRun, so
+        /// ?wire=v2 yields the slim v2 step payloads and the envelope carries "wire":"v2" like every other v2 response.
+        /// Execution accepts and ignores it: step results are the skills' own return shapes, so nothing is marked v2.
         /// </summary>
         internal static JObject ExecuteBatchCore(JArray steps, JObject batchParams, bool continueOnError,
             bool dryRun, bool transactional, string agentId, bool captureDiff = false, Func<string> agentIdRefiner = null,
-            int remotePort = -1, bool agentIdIsExplicit = false)
+            int remotePort = -1, bool agentIdIsExplicit = false, int wire = 1)
         {
             int txStartGroup = -1;
             if (transactional)
@@ -2935,7 +3708,10 @@ namespace UnitySkills
             // One scope for the whole batch (not per-step): remotePort/agentIdIsExplicit don't change between
             // steps -- they describe the single accepted connection this batch arrived on. Every SkillRouter.Execute
             // call inside the loop below (and the "call" audit entry its permission gate writes) picks this up.
+            // A dry run also opens one pending-objects scope, so a step can name an object that an earlier step of the
+            // same preview would create (nothing exists yet, since a dry run creates nothing).
             using (SkillsAuditLog.BeginRequestContext(remotePort, agentId, agentIdIsExplicit))
+            using (dryRun ? SkillPlanningService.BeginPendingObjectsScope() : null)
             for (int i = 0; i < steps.Count; i++)
             {
                 string stepSkillName = GetBatchStepSkillName(steps[i]);
@@ -3135,7 +3911,7 @@ namespace UnitySkills
                 {
                     if (dryRun)
                     {
-                        stepJson = SkillRouter.DryRun(stepSkillName, argsJson);
+                        stepJson = SkillRouter.DryRun(stepSkillName, argsJson, wire);
                     }
                     else
                     {
@@ -3275,6 +4051,8 @@ namespace UnitySkills
                 ["mode"] = dryRun ? "dryRun" : (transactional ? "transactional" : "execute"),
                 ["dryRun"] = dryRun,
             };
+            if (dryRun && wire == WireV2)
+                response["wire"] = "v2";
             if (transactional)
             {
                 response["transactional"] = true;
@@ -3428,12 +4206,13 @@ namespace UnitySkills
 
         /// <summary>
         /// The full set of top-level request-body keys POST /skills/batch recognizes, and the full set of query
-        /// keys it reads (see TryResolveBatchRequestMode and TryResolveDiff).
+        /// keys it reads (see TryResolveBatchRequestMode, TryResolveDiff, the per-step dryRun wire format, and the
+        /// listener's expected-instance check).
         /// Anything else is rejected rather than ignored: a silently-dropped key is exactly what causes an agent
         /// to believe it requested a preview, or requested async execution, and got neither.
         /// </summary>
         private static readonly string[] BatchBodyParams = { "steps", "params", "continueOnError", "dryRun", "mode" };
-        private static readonly string[] BatchQueryParams = { "mode", "dryRun", "diff" };
+        private static readonly string[] BatchQueryParams = { "mode", "dryRun", "diff", "wire", ExpectInstanceQueryKey, ExpectProjectQueryKey };
 
         private static bool IsKnownBatchParam(string[] allowed, string name)
         {
@@ -3546,6 +4325,11 @@ namespace UnitySkills
                     return "Did you mean 'continueOnError'?";
                 case "diff":
                     return "'diff' is a query parameter, not a body field: POST /skills/batch?diff=1.";
+                case "wire":
+                    return "'wire' is a query parameter, not a body field: POST /skills/batch?mode=dryRun&wire=v2 returns each step's dryRun in the v2 shape.";
+                case "expectinstance":
+                case "expectproject":
+                    return "The expected instance is a query parameter (?expectInstance=<instanceId> / ?expectProject=<name>) or an X-Expect-Instance / X-Expect-Project header, not a body field.";
                 default:
                     return null;
             }
@@ -4177,7 +4961,8 @@ namespace UnitySkills
                 IsNullOrEmptyJArray(validation["missingParams"]) &&
                 IsNullOrEmptyJArray(validation["unknownParams"]) &&
                 IsNullOrEmptyJArray(validation["typeErrors"]) &&
-                IsNullOrEmptyJArray(validation["semanticErrors"]);
+                IsNullOrEmptyJArray(validation["semanticErrors"]) &&
+                IsNullOrEmptyJArray(validation["missingPackages"]);
         }
 
         private static bool IsNullOrEmptyJArray(JToken token) => !(token is JArray arr) || arr.Count == 0;
@@ -4324,6 +5109,7 @@ namespace UnitySkills
                         description = e.description,
                     }).ToArray();
 
+            bool terminal = IsTerminalStatus(record.status);
             job.StatusCode = 200;
             job.ResponseJson = JsonConvert.SerializeObject(new
             {
@@ -4344,8 +5130,19 @@ namespace UnitySkills
                 relatedWorkflowId = record.relatedWorkflowId,
                 canCancel = record.canCancel,
                 recentProgress = recentEvents,
-                terminal = IsTerminalStatus(record.status),
+                terminal,
             }, _jsonSettings);
+
+            // A ?wait= long-poll exists to save the follow-up read, so its terminal answer also carries the job's
+            // result (a script job's compile diagnostics, a test job's counts). The plain GET stays unchanged.
+            if (job.IsInternalProbe && terminal)
+            {
+                var snapshot = JObject.Parse(job.ResponseJson);
+                snapshot["resultData"] = record.resultData == null
+                    ? JValue.CreateNull()
+                    : JToken.FromObject(record.resultData, JsonSerializer.Create(_jsonSettings));
+                job.ResponseJson = snapshot.ToString(Formatting.None);
+            }
         }
 
         // ===== Permission system =====

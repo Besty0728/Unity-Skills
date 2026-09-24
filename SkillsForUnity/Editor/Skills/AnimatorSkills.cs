@@ -45,6 +45,7 @@ namespace UnitySkills
             Category = SkillCategory.Animator, Operation = SkillOperation.Modify,
             Tags = new[] { "animator", "parameter", "add", "controller" },
             Outputs = new[] { "success", "controller", "parameter", "type" },
+            RequiredParams = new[] { "paramName" },
             RequiresInput = new[] { "controllerPath" },
             MutatesAssets = true)]
         public static object AnimatorAddParameter(string controllerPath, string paramName, string paramType = "float", float defaultFloat = 0, int defaultInt = 0, bool defaultBool = false)
@@ -139,6 +140,7 @@ namespace UnitySkills
             Category = SkillCategory.Animator, Operation = SkillOperation.Modify,
             Tags = new[] { "animator", "parameter", "set", "value" },
             Outputs = new[] { "success", "gameObject", "parameter", "value" },
+            RequiredParams = new[] { "paramName" },
             RequiresInput = new[] { "gameObject" },
             MutatesScene = true)]
         public static object AnimatorSetParameter(
@@ -218,6 +220,7 @@ namespace UnitySkills
             Category = SkillCategory.Animator, Operation = SkillOperation.Execute,
             Tags = new[] { "animator", "play", "state", "animation" },
             Outputs = new[] { "success", "gameObject", "state", "layer" },
+            RequiredParams = new[] { "stateName" },
             RequiresInput = new[] { "gameObject" })]
         public static object AnimatorPlay(string name = null, int instanceId = 0, string path = null, string stateName = null, int layer = 0, float normalizedTime = 0)
         {

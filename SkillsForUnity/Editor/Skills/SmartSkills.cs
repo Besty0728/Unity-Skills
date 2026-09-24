@@ -192,6 +192,7 @@ namespace UnitySkills
             Category = SkillCategory.Smart, Operation = SkillOperation.Modify,
             Tags = new[] { "bind", "reference", "auto-wire", "list", "field" },
             Outputs = new[] { "boundCount", "field", "appendMode" },
+            RequiredParams = new[] { "fieldName" },
             RequiresInput = new[] { "gameObject", "component" }, MutatesScene = true)]
         public static object SmartReferenceBind(
             string targetName,          // name of the target GameObject

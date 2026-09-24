@@ -117,6 +117,7 @@ namespace UnitySkills
             Category = SkillCategory.Asset, Operation = SkillOperation.Modify,
             Tags = new[] { "move", "rename", "reorganize" },
             Outputs = new[] { "from", "to" },
+            RequiredParams = new[] { "sourcePath", "destinationPath" },
             RequiresInput = new[] { "assetPath" },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesAssets = true, RiskLevel = "medium")]

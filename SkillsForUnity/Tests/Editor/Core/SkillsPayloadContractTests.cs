@@ -630,7 +630,7 @@ namespace UnitySkills.Tests.Core
 
             foreach (var parameter in v2Parameters.Cast<JObject>())
             {
-                rebuilt.Add(new JObject
+                var entry = new JObject
                 {
                     ["name"] = parameter["name"],
                     ["type"] = parameter["type"],
@@ -638,7 +638,11 @@ namespace UnitySkills.Tests.Core
                     // v2 serializes with NullValueHandling.Ignore, so a parameter whose defaultValue is null
                     // has the whole key missing; v1 writes an explicit null.
                     ["defaultValue"] = parameter["defaultValue"] ?? JValue.CreateNull(),
-                });
+                };
+                // A SkillParam note is emitted only where one exists, in both wires, so it carries over as-is.
+                if (parameter["description"] != null)
+                    entry["description"] = parameter["description"];
+                rebuilt.Add(entry);
             }
             return rebuilt;
         }

@@ -210,10 +210,10 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("material_assign", "Assign a material asset to a renderer (supports name/instanceId/path)",
+        [UnitySkill("material_assign", "Assign a material asset to a renderer's first slot (supports name/instanceId/path). material/materialName are read back from renderer.sharedMaterial after the assignment.",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "material", "assign", "renderer" },
-            Outputs = new[] { "gameObject", "material" },
+            Outputs = new[] { "gameObject", "material", "materialName" },
             RequiresInput = new[] { "gameObject", "materialPath" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object MaterialAssign(string name = null, int instanceId = 0, string path = null, string materialPath = null)
@@ -235,7 +235,16 @@ namespace UnitySkills
             Undo.RecordObject(renderer, "Assign Material");
             renderer.sharedMaterial = material;
 
-            return new { success = true, gameObject = go.name, material = materialPath };
+            var assigned = renderer.sharedMaterial;
+            return new
+            {
+                success = true,
+                gameObject = go.name,
+                material = assigned != null ? AssetDatabase.GetAssetPath(assigned) : null,
+                materialName = assigned != null ? assigned.name : null,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go)
+            };
         }
 
         [UnitySkill("material_create_batch", "Create multiple materials (Efficient). items: JSON array of {name, shaderName?, savePath?}",
@@ -271,7 +280,7 @@ namespace UnitySkills
                 if (SkillResultHelper.TryGetError(result, out string errorText))
                     return new { error = errorText, target = item.name ?? item.path };
                 return result;
-            }, item => item.name ?? item.path);
+            }, item => item.name ?? item.path, atomic: true);
         }
 
         private class BatchMaterialAssignItem { public string name { get; set; } public int instanceId { get; set; } public string path { get; set; } public string materialPath { get; set; } }
@@ -579,6 +588,7 @@ namespace UnitySkills
             Tags = new[] { "property", "float", "material" },
             Outputs = new[] { "property", "value" },
             RequiresInput = new[] { "gameObject|path" },
+            RequiredParams = new[] { "propertyName" },
             TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetFloat(string name = null, int instanceId = 0, string path = null, string propertyName = null, float value = 0)
         {
@@ -610,6 +620,7 @@ namespace UnitySkills
             Tags = new[] { "property", "integer", "material" },
             Outputs = new[] { "property", "value" },
             RequiresInput = new[] { "gameObject|path" },
+            RequiredParams = new[] { "propertyName" },
             MutatesAssets = true)]
         public static object MaterialSetInt(string name = null, int instanceId = 0, string path = null, string propertyName = null, int value = 0)
         {
@@ -640,6 +651,7 @@ namespace UnitySkills
             Tags = new[] { "property", "vector", "material" },
             Outputs = new[] { "property", "value" },
             RequiresInput = new[] { "gameObject|path" },
+            RequiredParams = new[] { "propertyName" },
             MutatesAssets = true)]
         public static object MaterialSetVector(string name = null, int instanceId = 0, string path = null, 
             string propertyName = null, float x = 0, float y = 0, float z = 0, float w = 0)
@@ -723,6 +735,7 @@ namespace UnitySkills
             Tags = new[] { "keyword", "shader", "rendering" },
             Outputs = new[] { "keyword", "enabled", "allKeywords" },
             RequiresInput = new[] { "gameObject|path" },
+            RequiredParams = new[] { "keyword" },
             MutatesAssets = true)]
         public static object MaterialSetKeyword(string name = null, int instanceId = 0, string path = null, 
             string keyword = null, bool enable = true)
@@ -801,6 +814,7 @@ namespace UnitySkills
             Tags = new[] { "shader", "material", "pipeline" },
             Outputs = new[] { "shader" },
             RequiresInput = new[] { "gameObject|path" },
+            RequiredParams = new[] { "shaderName" },
             TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetShader(string name = null, int instanceId = 0, string path = null, string shaderName = null)
         {

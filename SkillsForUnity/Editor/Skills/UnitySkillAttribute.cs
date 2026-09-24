@@ -115,6 +115,13 @@ namespace UnitySkills
         /// <summary>The existing objects/resources this skill requires (e.g. "gameObject", "materialPath").</summary>
         public string[] RequiresInput { get; set; }
 
+        /// <summary>
+        /// Literal parameter names that are required even though the C# signature gives them a default
+        /// (e.g. <c>string componentType = null</c> that the body rejects via <c>Validate.Required</c>).
+        /// Matched case-insensitively; schema, dryRun and MISSING_PARAM report them as required.
+        /// </summary>
+        public string[] RequiredParams { get; set; }
+
         /// <summary>True when the skill has no side effects (pure query/read-only).</summary>
         public bool ReadOnly { get; set; }
 

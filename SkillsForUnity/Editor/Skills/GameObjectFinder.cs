@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using UnityEngine;
 using UnityEditor;
@@ -242,6 +242,43 @@ namespace UnitySkills
         private static SceneObjectCache _cachedSceneData;
         private static bool _cacheValid = false;
 
+        // Lookups that bind a loose reference (case-insensitive name, word/substring fallback, a path that only matched
+        // case-insensitively, several same-named objects) record one line here; the router drains them into the response
+        // as resolutionNotes, so the caller can see which object a fuzzy reference actually landed on.
+        private const int MaxResolutionNotes = 20;
+        private const int MaxAmbiguityCandidates = 10;
+        [System.ThreadStatic] private static List<string> _resolutionNotes;
+        [System.ThreadStatic] private static int _omittedResolutionNotes;
+
+        internal static void AddResolutionNote(string note)
+        {
+            if (string.IsNullOrEmpty(note))
+                return;
+            if (_resolutionNotes == null)
+                _resolutionNotes = new List<string>();
+            if (_resolutionNotes.Contains(note))
+                return;
+            if (_resolutionNotes.Count >= MaxResolutionNotes)
+            {
+                _omittedResolutionNotes++;
+                return;
+            }
+            _resolutionNotes.Add(note);
+        }
+
+        /// <summary>
+        /// Returns the resolution notes recorded on this thread since the last drain, and clears them. Never null.
+        /// </summary>
+        internal static List<string> DrainResolutionNotes()
+        {
+            var notes = _resolutionNotes ?? new List<string>();
+            if (_omittedResolutionNotes > 0)
+                notes.Add($"(+{_omittedResolutionNotes} more resolution note(s) omitted)");
+            _resolutionNotes = null;
+            _omittedResolutionNotes = 0;
+            return notes;
+        }
+
         /// <summary>
         /// Invalidates the scene object cache; should be called at the end of every request cycle.
         /// </summary>
@@ -353,7 +390,48 @@ namespace UnitySkills
             lookup[path] = go;
         }
 
-        private static string NormalizePathKey(string path)
+        /// <summary>
+        /// Adds a GameObject created during the current request, with its children, to the request cache, so later lookups
+        /// in the same request see it without a full rebuild. No-op when no cache has been built yet (the next build walks the live scene).
+        /// </summary>
+        internal static void RegisterCreated(GameObject go)
+        {
+            if (go == null || _cachedSceneData == null || !_cacheValid)
+                return;
+
+            var cache = _cachedSceneData;
+            if (cache.Objects.Contains(go))
+                return;
+
+            int depth = 0;
+            for (var parent = go.transform.parent; parent != null; parent = parent.parent)
+                depth++;
+
+            var sceneName = go.scene.name;
+            var stack = new Stack<(Transform transform, string path, int depth)>();
+            stack.Push((go.transform, GetPath(go), depth));
+            while (stack.Count > 0)
+            {
+                var (transform, path, level) = stack.Pop();
+                var current = transform.gameObject;
+                var entityId = UnityObjectIdUtility.GetEntityId(current);
+
+                cache.Objects.Add(current);
+                if (!string.IsNullOrEmpty(entityId))
+                {
+                    cache.PathsByEntityId[entityId] = path;
+                    cache.DepthsByEntityId[entityId] = level;
+                }
+                AddPathLookup(cache.PathLookup, path, current);
+                if (!string.IsNullOrEmpty(sceneName))
+                    AddPathLookup(cache.PathLookup, sceneName + "/" + path, current);
+
+                foreach (Transform child in transform)
+                    stack.Push((child, path + "/" + child.name, level + 1));
+            }
+        }
+
+        internal static string NormalizePathKey(string path)
         {
             if (string.IsNullOrWhiteSpace(path))
                 return null;
@@ -409,9 +487,10 @@ namespace UnitySkills
 
         /// <summary>
         /// Finds a GameObject using a flexible set of parameters, falling back step by step.
-        /// Priority order: entityId &gt; instanceId &gt; path &gt; name (exact) &gt; name (contains) &gt; tag &gt; component type
+        /// Priority order: entityId &gt; instanceId &gt; path &gt; name (exact) &gt; name (whole word, then contains) &gt; tag &gt; component type.
+        /// Non-exact resolutions are recorded for <see cref="DrainResolutionNotes"/>.
         /// </summary>
-        /// <param name="name">Simple name (exact match first, falls back to contains match)</param>
+        /// <param name="name">Simple name (exact match first, falls back to whole-word, then contains match; when that fallback is ambiguous the first match is returned — <see cref="FindOrError"/> rejects it instead)</param>
         /// <param name="instanceId">Legacy Unity instance ID</param>
         /// <param name="path">Hierarchy path, e.g. "Parent/Child/Target"</param>
         /// <param name="tag">Look up by tag, e.g. "MainCamera", "Player"</param>
@@ -420,6 +499,23 @@ namespace UnitySkills
         /// <returns>The found GameObject, or null if not found</returns>
         public static GameObject Find(string name = null, int instanceId = 0, string path = null, string tag = null, string componentType = null, string entityId = null)
         {
+            var go = Resolve(name, instanceId, path, tag, componentType, entityId, out var ambiguousMatches);
+            // Find has no error channel, so an ambiguous word/substring match keeps its historical first-match
+            // result; the note makes that choice visible instead of silent. FindOrError rejects it outright.
+            if (ambiguousMatches != null)
+                AddResolutionNote($"name '{name}' has no exact match and {ambiguousMatches.Count} objects contain it; used the first, '{go.name}' (path: {GetPath(go)})");
+            return go;
+        }
+
+        /// <summary>
+        /// The shared lookup behind <see cref="Find"/> and <see cref="FindOrError"/>. When the name's word/substring
+        /// fallback matches several objects, <paramref name="ambiguousMatches"/> lists them and the first is returned.
+        /// </summary>
+        private static GameObject Resolve(string name, int instanceId, string path, string tag, string componentType, string entityId,
+            out List<GameObject> ambiguousMatches)
+        {
+            ambiguousMatches = null;
+
             // Priority 1: EntityId (most precise, and compatible with Unity 6000.5).
             if (!string.IsNullOrWhiteSpace(entityId))
             {
@@ -441,24 +537,43 @@ namespace UnitySkills
             }
 
             // Priority 3: Hierarchy path (can locate nested objects).
+            bool pathMissed = false;
             if (!string.IsNullOrEmpty(path))
             {
                 var go = FindByPath(path);
                 if (go != null)
+                {
+                    NoteInexactPath(path, go);
                     return go;
+                }
+                pathMissed = true;
             }
 
-            // Priority 4: look up by simple name, exact match first.
+            // Priority 4: look up by simple name, exact match first, then whole-word, then substring.
             if (!string.IsNullOrEmpty(name))
             {
-                var go = FindByNameCaseInsensitive(name);
-                if (go != null)
-                    return go;
+                var go = FindByExactName(name);
+                if (go == null)
+                {
+                    var matches = FindByNameFallback(name, out var strategy);
+                    if (matches.Count > 1)
+                    {
+                        ambiguousMatches = matches;
+                        return matches[0];
+                    }
+                    if (matches.Count == 1)
+                    {
+                        go = matches[0];
+                        AddResolutionNote($"name '{name}' has no exact match; resolved by {strategy} to '{go.name}' (path: {GetPath(go)})");
+                    }
+                }
 
-                // If exact match misses, fall back to contains match.
-                go = FindByNameContains(name);
                 if (go != null)
+                {
+                    if (pathMissed)
+                        AddResolutionNote($"path '{path}' not found; resolved by name '{name}' instead (path: {GetPath(go)})");
                     return go;
+                }
             }
 
             // Priority 5: look up by tag.
@@ -482,6 +597,75 @@ namespace UnitySkills
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// The exact-name tier: a case-sensitive match wins, otherwise the first case-insensitive one. Records a note when
+        /// the match differs in case or when several objects share the name (the first in hierarchy order is used).
+        /// </summary>
+        private static GameObject FindByExactName(string name)
+        {
+            GameObject first = null;
+            GameObject sameCase = null;
+            int count = 0;
+            foreach (var candidate in GetAllSceneObjects())
+            {
+                if (!candidate.name.Equals(name, System.StringComparison.OrdinalIgnoreCase))
+                    continue;
+                count++;
+                if (first == null)
+                    first = candidate;
+                if (sameCase == null && string.Equals(candidate.name, name, System.StringComparison.Ordinal))
+                    sameCase = candidate;
+            }
+
+            var go = sameCase ?? first;
+            if (go == null)
+                return null;
+
+            if (sameCase == null)
+                AddResolutionNote($"name '{name}' matched '{go.name}' case-insensitively (path: {GetPath(go)})");
+            if (count > 1)
+                AddResolutionNote($"name '{name}' matches {count} objects; used '{GetPath(go)}' — pass path or entityId to target another");
+            return go;
+        }
+
+        /// <summary>
+        /// The fallback tiers for a name with no exact match: objects having it as a whole word ("Room" in "Room_Light"),
+        /// or failing that, objects containing it as a substring. Returns every match of the first tier that has any.
+        /// </summary>
+        private static List<GameObject> FindByNameFallback(string name, out string strategy)
+        {
+            var objects = GetAllSceneObjects();
+            var wholeWord = objects
+                .Where(go => go.name.Split(' ', '_', '-').Any(
+                    word => word.Equals(name, System.StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            if (wholeWord.Count > 0)
+            {
+                strategy = "whole-word match";
+                return wholeWord;
+            }
+
+            strategy = "substring";
+            return objects
+                .Where(go => go.name.IndexOf(name, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+        }
+
+        private static void NoteInexactPath(string requestedPath, GameObject go)
+        {
+            var normalized = NormalizePathKey(requestedPath);
+            var actual = GetPath(go);
+            if (string.Equals(normalized, actual, System.StringComparison.Ordinal))
+                return;
+
+            var sceneName = go.scene.name;
+            if (!string.IsNullOrEmpty(sceneName) &&
+                string.Equals(normalized, sceneName + "/" + actual, System.StringComparison.Ordinal))
+                return;
+
+            AddResolutionNote($"path '{requestedPath}' matched '{actual}' case-insensitively");
         }
 
         /// <summary>
@@ -665,11 +849,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Finds an object, returning an error with close-match suggestions when it can't be found.
+        /// Finds an object, returning an error with close-match suggestions when it can't be found, or with every
+        /// candidate when a name has no exact match and its whole-word/substring fallback matches more than one object.
         /// </summary>
         public static (GameObject go, object error) FindOrError(string name = null, int instanceId = 0, string path = null, string tag = null, string componentType = null, string entityId = null)
         {
-            var go = Find(name, instanceId, path, tag, componentType, entityId);
+            var go = Resolve(name, instanceId, path, tag, componentType, entityId, out var ambiguousMatches);
+            if (ambiguousMatches != null)
+                return (null, BuildAmbiguousNameError(name, ambiguousMatches));
+
             if (go == null)
             {
                 var identifier = !string.IsNullOrEmpty(entityId) ? $"entityId {entityId}" :
@@ -691,6 +879,38 @@ namespace UnitySkills
                 });
             }
             return (go, null);
+        }
+
+        /// <summary>
+        /// A name with no exact match whose word/substring fallback hits several objects: picking one would silently bind
+        /// the wrong target ("Room" -> "RoomLight"), so the caller gets every candidate's path and entityId to choose from.
+        /// </summary>
+        private static object BuildAmbiguousNameError(string name, List<GameObject> matches)
+        {
+            var candidates = matches.Take(MaxAmbiguityCandidates).Select(go => new
+            {
+                name = go.name,
+                path = GetPath(go),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go)
+            }).ToArray();
+
+            var listed = string.Join(", ", candidates.Select(candidate => $"'{candidate.path}'"));
+            var more = matches.Count > candidates.Length ? $" (+{matches.Count - candidates.Length} more)" : string.Empty;
+
+            return new
+            {
+                error = $"GameObject name '{name}' is ambiguous: no object has exactly that name and {matches.Count} objects contain it: {listed}{more}. Retry with the exact path or entityId of the intended object.",
+                errorCode = SkillErrorCode.TargetNotFound.ToWireString(),
+                retryStrategy = SkillErrorResponse.RetryFindAndRetry,
+                candidates,
+                relatedSkills = new[] { "gameobject_find", "scene_get_hierarchy" },
+                suggestedFixes = candidates.Take(3).Select(candidate => (object)new
+                {
+                    action = "fix_param",
+                    reason = $"Target '{candidate.path}' explicitly: pass its path or entityId {candidate.entityId}."
+                }).ToArray()
+            };
         }
 
         /// <summary>
@@ -868,6 +1088,35 @@ namespace UnitySkills
         /// <summary>Returns true if the path exists (file or directory).</summary>
         public static bool PathExists(string path) =>
             !string.IsNullOrEmpty(path) && (File.Exists(path) || Directory.Exists(path));
+
+        /// <summary>Case-insensitive Levenshtein distance, for "did you mean" suggestions.</summary>
+        internal static int EditDistance(string left, string right)
+        {
+            left = (left ?? string.Empty).ToLowerInvariant();
+            right = (right ?? string.Empty).ToLowerInvariant();
+            if (left.Length == 0) return right.Length;
+            if (right.Length == 0) return left.Length;
+
+            var previous = new int[right.Length + 1];
+            var current = new int[right.Length + 1];
+            for (int j = 0; j <= right.Length; j++)
+                previous[j] = j;
+
+            for (int i = 1; i <= left.Length; i++)
+            {
+                current[0] = i;
+                for (int j = 1; j <= right.Length; j++)
+                {
+                    int cost = left[i - 1] == right[j - 1] ? 0 : 1;
+                    current[j] = System.Math.Min(System.Math.Min(current[j - 1] + 1, previous[j] + 1), previous[j - 1] + cost);
+                }
+                var swap = previous;
+                previous = current;
+                current = swap;
+            }
+
+            return previous[right.Length];
+        }
 
         // -----------------------------------------------------------------
         // Unified type lookup (cached, shared by every ReflectionHelper)

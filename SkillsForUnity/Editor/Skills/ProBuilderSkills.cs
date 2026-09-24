@@ -29,7 +29,7 @@ namespace UnitySkills
         // Shape creation
         // ==================================================================================
 
-        [UnitySkill("probuilder_create_shape", "Create a ProBuilder primitive shape (Cube/Sphere/Cylinder/Cone/Torus/Prism/Arch/Pipe/Stairs/Door/Plane)", TracksWorkflow = true,
+        [UnitySkill("probuilder_create_shape", "Create a ProBuilder primitive shape (Cube/Sphere/Cylinder/Cone/Torus/Prism/Arch/Pipe/Stairs/Door/Plane). x/y/z and rotX/Y/Z are world-space; parent (a GameObject name) must exist and the shape keeps its world placement under it. Returns read-back position, rotation (world euler), size (mesh bounds in world units; sizeRequested is added when it differs) and parentPath.", TracksWorkflow = true,
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Create,
             Tags = new[] { "probuilder", "shape", "primitive", "mesh", "modeling" },
             Outputs = new[] { "success", "name", "instanceId", "shape", "vertexCount", "faceCount" },
@@ -48,7 +48,12 @@ namespace UnitySkills
             if (!ShapeTypeMap.TryGetValue(shape, out var shapeType))
                 return new { error = $"Unknown shape: {shape}. Available: {string.Join(", ", ShapeTypeMap.Keys)}" };
 
-            var pbMesh = CreatePBShape(shapeType, name, new Vector3(x, y, z), new Vector3(sizeX, sizeY, sizeZ), new Vector3(rotX, rotY, rotZ), parent);
+            // Resolved before anything is created: a parent that can't be found used to be dropped silently.
+            var (parentGo, parentError) = ResolveShapeParent(parent);
+            if (parentError != null) return parentError;
+
+            var requestedSize = new Vector3(sizeX, sizeY, sizeZ);
+            var pbMesh = CreatePBShape(shapeType, name, new Vector3(x, y, z), requestedSize, new Vector3(rotX, rotY, rotZ), parentGo);
             if (pbMesh == null)
                 return new { error = $"Failed to create ProBuilder shape: {shape}" };
 
@@ -56,7 +61,10 @@ namespace UnitySkills
 
             Undo.RegisterCreatedObjectUndo(go, "Create ProBuilder Shape");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
+            GameObjectFinder.RegisterCreated(go);
 
+            var t = go.transform;
+            var size = MeasureShapeSize(pbMesh);
             return new
             {
                 success = true,
@@ -64,8 +72,11 @@ namespace UnitySkills
                 entityId = UnityObjectIdUtility.GetEntityId(go),
                 instanceId = UnityObjectIdUtility.GetObjectId(go),
                 shape,
-                position = new { x, y, z },
-                size = new { x = sizeX, y = sizeY, z = sizeZ },
+                position = new { x = t.position.x, y = t.position.y, z = t.position.z },
+                rotation = new { x = t.eulerAngles.x, y = t.eulerAngles.y, z = t.eulerAngles.z },
+                size = new { x = size.x, y = size.y, z = size.z },
+                sizeRequested = SizeDiffers(size, requestedSize) ? new { x = sizeX, y = sizeY, z = sizeZ } : null,
+                parentPath = t.parent != null ? GameObjectFinder.GetPath(t.parent.gameObject) : null,
                 vertexCount = pbMesh.vertexCount,
                 faceCount = pbMesh.faceCount
             };
@@ -80,7 +91,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "extrude", "face", "modeling" },
             Outputs = new[] { "success", "extrudedFaceCount", "totalFaces", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderExtrudeFaces(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null,
@@ -141,7 +153,8 @@ namespace UnitySkills
             Tags = new[] { "probuilder", "delete", "face", "modeling" },
             Outputs = new[] { "success", "deletedCount", "remainingFaces", "remainingVertices" },
             RequiresInput = new[] { "gameObject" },
-            RiskLevel = "medium", MutatesScene = true)]
+            RiskLevel = "medium", MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderDeleteFaces(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null)
@@ -190,7 +203,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "merge", "face", "combine" },
             Outputs = new[] { "success", "mergedFromCount", "totalFaces", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderMergeFaces(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null)
@@ -232,7 +246,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "normals", "flip", "face" },
             Outputs = new[] { "success", "flippedCount" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderFlipNormals(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null)
@@ -271,7 +286,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "detach", "face", "separate" },
             Outputs = new[] { "success", "detachedFaceCount", "totalFaces", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderDetachFaces(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null,
@@ -334,7 +350,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "bevel", "chamfer", "edge" },
             Outputs = new[] { "success", "beveledEdgeCount", "newFaceCount", "totalFaces", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderBevelEdges(
             string name = null, int instanceId = 0, string path = null,
             string edgeIndexes = null,
@@ -393,7 +410,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "extrude", "edge", "wall" },
             Outputs = new[] { "success", "extrudedEdgeCount", "newEdgeCount", "totalFaces", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderExtrudeEdges(
             string name = null, int instanceId = 0, string path = null,
             string edgeIndexes = null,
@@ -462,7 +480,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Create | SkillOperation.Modify,
             Tags = new[] { "probuilder", "bridge", "edge", "connect" },
             Outputs = new[] { "success", "bridgedEdge", "totalFaces", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderBridgeEdges(
             string name = null, int instanceId = 0, string path = null,
             string edgeA = null,
@@ -514,7 +533,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "subdivide", "mesh", "detail" },
             Outputs = new[] { "success", "totalFaces", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderSubdivide(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null)
@@ -564,7 +584,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "normals", "conform", "consistency" },
             Outputs = new[] { "success", "status", "faceCount" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderConformNormals(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null)
@@ -604,7 +625,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "weld", "vertex", "merge" },
             Outputs = new[] { "success", "inputVertexCount", "weldedVertexCount", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderWeldVertices(
             string name = null, int instanceId = 0, string path = null,
             string vertexIndexes = null,
@@ -675,7 +697,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "material", "face", "submesh" },
             Outputs = new[] { "success", "affectedFaces", "materialCount" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderSetFaceMaterial(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null,
@@ -763,7 +786,8 @@ namespace UnitySkills
             Outputs = new[] { "vertexCount", "faceCount", "edgeCount", "triangleCount", "shapeType", "bounds" },
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
-            Mode = SkillMode.SemiAuto)]
+            Mode = SkillMode.SemiAuto,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderGetInfo(
             string name = null, int instanceId = 0, string path = null)
         {
@@ -812,7 +836,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "pivot", "center", "transform" },
             Outputs = new[] { "success", "pivot" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderCenterPivot(
             string name = null, int instanceId = 0, string path = null,
             float? worldX = null, float? worldY = null, float? worldZ = null)
@@ -861,7 +886,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "uv", "projection", "texture" },
             Outputs = new[] { "success", "projectedFaceCount", "channel", "method" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderProjectUV(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null,
@@ -916,7 +942,7 @@ namespace UnitySkills
             { "Door", typeof(Door) }, { "Plane", typeof(UnityEngine.ProBuilder.Shapes.Plane) },
         };
 
-        private static ProBuilderMesh CreatePBShape(Type shapeType, string objName, Vector3 pos, Vector3 size, Vector3 rot, string parentName)
+        private static ProBuilderMesh CreatePBShape(Type shapeType, string objName, Vector3 pos, Vector3 size, Vector3 rot, GameObject parent)
         {
             var pbMesh = ShapeFactory.Instantiate(shapeType);
             if (pbMesh == null) return null;
@@ -935,13 +961,33 @@ namespace UnitySkills
             go.transform.position = pos;
             go.transform.eulerAngles = rot;
 
-            if (!string.IsNullOrEmpty(parentName))
-            {
-                var parent = GameObjectFinder.Find(name: parentName);
-                if (parent != null) go.transform.SetParent(parent.transform, true);
-            }
+            if (parent != null)
+                go.transform.SetParent(parent.transform, true);
 
             return pbMesh;
+        }
+
+        private static (GameObject parent, object error) ResolveShapeParent(string parentName)
+        {
+            if (string.IsNullOrEmpty(parentName))
+                return (null, null);
+            return GameObjectFinder.FindOrError(name: parentName);
+        }
+
+        /// <summary>The shape's extent read back from its mesh: bounds are local and the scale was frozen into the vertices, so lossyScale converts them to world units.</summary>
+        private static Vector3 MeasureShapeSize(ProBuilderMesh pbMesh)
+        {
+            var filter = pbMesh.GetComponent<MeshFilter>();
+            var mesh = filter != null ? filter.sharedMesh : null;
+            return mesh != null ? Vector3.Scale(mesh.bounds.size, pbMesh.transform.lossyScale) : Vector3.zero;
+        }
+
+        private static bool SizeDiffers(Vector3 measured, Vector3 requested)
+        {
+            const float tolerance = 1e-4f;
+            return Mathf.Abs(measured.x - requested.x) > tolerance ||
+                   Mathf.Abs(measured.y - requested.y) > tolerance ||
+                   Mathf.Abs(measured.z - requested.z) > tolerance;
         }
 
         // ProBuilderShape is internal in ProBuilder 5.x, so read-only queries go through reflection
@@ -988,13 +1034,14 @@ namespace UnitySkills
         // Batching and level building
         // ==================================================================================
 
-        [UnitySkill("probuilder_create_batch", "Batch create multiple ProBuilder shapes in one call. items: JSON array of {shape, name, x, y, z, sizeX, sizeY, sizeZ, rotX, rotY, rotZ, parent, materialPath}", TracksWorkflow = true,
+        [UnitySkill("probuilder_create_batch", "Batch create multiple ProBuilder shapes in one call. items: JSON array of {shape, name, x, y, z, sizeX, sizeY, sizeZ, rotX, rotY, rotZ, parent, materialPath}; x/y/z and rot are world-space, parent (defaultParent when omitted) and materialPath must resolve. If any item fails the whole call is rolled back (rolledBack:true, the other items report reverted:true). Each result reads back position, rotation, size and parentPath.", TracksWorkflow = true,
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Create,
             Tags = new[] { "probuilder", "batch", "create", "level-design" },
             Outputs = new[] { "success", "results" },
             RequiresInput = new[] { "items" },
             MutatesScene = true,
-            RiskLevel = "medium")]
+            RiskLevel = "medium",
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderCreateBatch(string items, string defaultParent = null)
         {
 #if !PROBUILDER
@@ -1005,29 +1052,56 @@ namespace UnitySkills
                 if (!ShapeTypeMap.TryGetValue(item.shape ?? "Cube", out var shapeType))
                     return new { error = $"Unknown shape: {item.shape}" };
 
+                // Parent and material are resolved before the shape exists, so neither is dropped silently.
+                var parentName = item.parent ?? defaultParent;
+                var (parentGo, parentError) = ResolveShapeParent(parentName);
+                if (parentError != null)
+                {
+                    SkillResultHelper.TryGetError(parentError, out var parentMessage);
+                    return new { error = $"Parent '{parentName}' could not be resolved: {parentMessage}", parameter = "parent", target = item.name ?? item.shape };
+                }
+
+                Material material = null;
+                if (!string.IsNullOrEmpty(item.materialPath))
+                {
+                    material = AssetDatabase.LoadAssetAtPath<Material>(item.materialPath);
+                    if (material == null)
+                        return new { error = $"Material not found: {item.materialPath}", parameter = "materialPath", target = item.name ?? item.shape };
+                }
+
                 var pos = new Vector3(item.x, item.y, item.z);
                 var size = new Vector3(item.sizeX, item.sizeY, item.sizeZ);
                 var rot = new Vector3(item.rotX, item.rotY, item.rotZ);
-                var parent = item.parent ?? defaultParent;
 
-                var pbMesh = CreatePBShape(shapeType, item.name, pos, size, rot, parent);
+                var pbMesh = CreatePBShape(shapeType, item.name, pos, size, rot, parentGo);
                 if (pbMesh == null)
                     return new { error = $"Failed to create shape: {item.shape}" };
 
                 var go = pbMesh.gameObject;
-
-                if (!string.IsNullOrEmpty(item.materialPath))
-                {
-                    var mat = AssetDatabase.LoadAssetAtPath<Material>(item.materialPath);
-                    if (mat != null)
-                        pbMesh.GetComponent<MeshRenderer>().sharedMaterial = mat;
-                }
+                var renderer = pbMesh.GetComponent<MeshRenderer>();
+                if (material != null && renderer != null)
+                    renderer.sharedMaterial = material;
 
                 Undo.RegisterCreatedObjectUndo(go, "Create PB Shape");
                 WorkflowManager.SnapshotObject(go, SnapshotType.Created);
+                GameObjectFinder.RegisterCreated(go);
 
-                return new { success = true, name = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go), shape = item.shape ?? "Cube" };
-            }, item => item.name ?? item.shape);
+                var t = go.transform;
+                var measured = MeasureShapeSize(pbMesh);
+                return new
+                {
+                    success = true,
+                    name = go.name,
+                    entityId = UnityObjectIdUtility.GetEntityId(go),
+                    instanceId = UnityObjectIdUtility.GetObjectId(go),
+                    shape = item.shape ?? "Cube",
+                    position = new { x = t.position.x, y = t.position.y, z = t.position.z },
+                    rotation = new { x = t.eulerAngles.x, y = t.eulerAngles.y, z = t.eulerAngles.z },
+                    size = new { x = measured.x, y = measured.y, z = measured.z },
+                    parentPath = t.parent != null ? GameObjectFinder.GetPath(t.parent.gameObject) : null,
+                    material = renderer != null && renderer.sharedMaterial != null ? AssetDatabase.GetAssetPath(renderer.sharedMaterial) : null
+                };
+            }, item => item.name ?? item.shape, atomic: true);
 #endif
         }
 
@@ -1052,7 +1126,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "vertex", "move", "deform" },
             Outputs = new[] { "success", "movedVertexCount", "delta", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderMoveVertices(
             string name = null, int instanceId = 0, string path = null,
             string vertexIndexes = null,
@@ -1109,7 +1184,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "vertex", "position", "absolute" },
             Outputs = new[] { "success", "setVertexCount", "totalVertices" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderSetVertices(
             string name = null, int instanceId = 0, string path = null,
             string vertices = null)
@@ -1196,7 +1272,8 @@ namespace UnitySkills
             Outputs = new[] { "vertexCount", "faceCount", "vertices" },
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
-            Mode = SkillMode.SemiAuto)]
+            Mode = SkillMode.SemiAuto,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderGetVertices(
             string name = null, int instanceId = 0, string path = null,
             string vertexIndexes = null, bool verbose = true)
@@ -1256,7 +1333,8 @@ namespace UnitySkills
             // The real accepted param is "names" (a comma-separated list, or the literal string "selected") -
             // not the generic name/instanceId/path locator shape every other ProBuilder skill here uses.
             RequiresInput = new[] { "names" },
-            RiskLevel = "medium", MutatesScene = true)]
+            RiskLevel = "medium", MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderCombineMeshes(string names = null)
         {
 #if !PROBUILDER
@@ -1321,7 +1399,8 @@ namespace UnitySkills
             Category = SkillCategory.ProBuilder, Operation = SkillOperation.Modify,
             Tags = new[] { "probuilder", "material", "color", "appearance" },
             Outputs = new[] { "success", "material", "color" },
-            RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
+            RequiresInput = new[] { "gameObject" }, MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderSetMaterial(
             string name = null, int instanceId = 0, string path = null,
             string materialPath = null,

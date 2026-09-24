@@ -15,6 +15,7 @@ namespace UnitySkills
             Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
             Tags = new[] { "prefab", "asset", "save", "create" },
             Outputs = new[] { "prefabPath", "name" },
+            RequiredParams = new[] { "savePath" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true,
             MutatesScene = true, MutatesAssets = true, RiskLevel = "medium")]
@@ -358,6 +359,7 @@ namespace UnitySkills
             Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
             Tags = new[] { "prefab", "variant", "create", "inheritance" },
             Outputs = new[] { "sourcePath", "variantPath", "name" },
+            RequiredParams = new[] { "variantPath" },
             RequiresInput = new[] { "sourcePrefabPath" },
             TracksWorkflow = true, MutatesAssets = true)]
         public static object PrefabCreateVariant(string sourcePrefabPath, string variantPath)
@@ -406,6 +408,7 @@ namespace UnitySkills
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             Tags = new[] { "prefab", "property", "set", "component", "asset" },
             Outputs = new[] { "prefabPath", "gameObject", "component", "property", "valueSet" },
+            RequiredParams = new[] { "propertyName" },
             // Cannot write "prefabAsset": across the whole codebase it appears here alone — this
             // skill doesn't accept that parameter (the asset comes in via prefabPath), and no skill
             // outputs it either, so this token constrains nothing and links nothing up; an agent

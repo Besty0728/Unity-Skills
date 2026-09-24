@@ -60,6 +60,7 @@ namespace UnitySkills
             Tags = new[] { "add", "attach", "behaviour", "rigidbody", "collider", "script" },
             Outputs = new[] { "gameObject", "instanceId", "component", "fullTypeName" },
             RequiresInput = new[] { "gameObject" },
+            RequiredParams = new[] { "componentType" },
             TracksWorkflow = true,
             MutatesScene = true)]
         public static object ComponentAdd(string name = null, int instanceId = 0, string path = null, string componentType = null)
@@ -83,7 +84,10 @@ namespace UnitySkills
                     warning = $"Component {type.Name} already exists on {go.name}",
                     gameObject = go.name,
                     entityId = UnityObjectIdUtility.GetEntityId(go),
-                    instanceId = UnityObjectIdUtility.GetObjectId(go)
+                    instanceId = UnityObjectIdUtility.GetObjectId(go),
+                    component = type.Name,
+                    fullTypeName = type.FullName,
+                    alreadyPresent = true
                 };
 
             var comp = Undo.AddComponent(go, type);
@@ -142,7 +146,7 @@ namespace UnitySkills
 
                 EditorUtility.SetDirty(go);
                 return new { target = go.name, success = true, component = type.Name };
-            }, item => item.name ?? item.path);
+            }, item => item.name ?? item.path, atomic: true);
         }
 
         private class BatchAddComponentItem
@@ -158,6 +162,7 @@ namespace UnitySkills
             Tags = new[] { "remove", "detach", "destroy" },
             Outputs = new[] { "gameObject", "removed" },
             RequiresInput = new[] { "gameObject", "component" },
+            RequiredParams = new[] { "componentType" },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesScene = true,
             RiskLevel = "medium")]
@@ -231,7 +236,7 @@ namespace UnitySkills
 
                 EditorUtility.SetDirty(go);
                 return new { target = go.name, success = true, removed = type.Name, count = components.Length };
-            }, item => item.name ?? item.path);
+            }, item => item.name ?? item.path, atomic: true);
         }
 
         private class BatchRemoveComponentItem
@@ -298,11 +303,12 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("component_set_property", "Set a property/field on a component. Supports Vector2/3/4, Color, scene references by name/path, project assets by assetPath. Vector and Color values accept both the comma form (\"1,2,3\") and the JSON object form ({\"x\":1,\"y\":2,\"z\":3} / {\"r\":1,\"g\":0,\"b\":0,\"a\":1}); Color also accepts #RRGGBB and named colours. In the object form every vector component is required (a partial {\"y\":2} is rejected, not zero-filled); Color's \"a\" may be omitted and defaults to 1. valueSet echoes the stored value in a round-trippable form.",
+        [UnitySkill("component_set_property", "Set a property/field on a component. Supports Vector2/3/4, Color, scene references by name/path, project assets by assetPath. Vector and Color values accept both the comma form (\"1,2,3\") and the JSON object form ({\"x\":1,\"y\":2,\"z\":3} / {\"r\":1,\"g\":0,\"b\":0,\"a\":1}); Color also accepts #RRGGBB and named colours. In the object form every vector component is required (a partial {\"y\":2} is rejected, not zero-filled); Color's \"a\" may be omitted and defaults to 1. valueSet is read back from the component after the write, in a round-trippable form; valueRequested is added only when the stored value differs (clamped, normalised or wrapped by the setter). component/property report the resolved type and member names.",
             Category = SkillCategory.Component, Operation = SkillOperation.Modify,
             Tags = new[] { "property", "field", "value", "reference" },
             Outputs = new[] { "gameObject", "component", "property", "valueSet", "valueType" },
             RequiresInput = new[] { "gameObject", "component" },
+            RequiredParams = new[] { "componentType", "propertyName" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentSetProperty(
             string name = null, int instanceId = 0, string path = null,
@@ -310,8 +316,8 @@ namespace UnitySkills
             string value = null, string referencePath = null, string referenceName = null,
             string assetPath = null)
         {
-            if (string.IsNullOrEmpty(componentType) || string.IsNullOrEmpty(propertyName))
-                return new { error = "componentType and propertyName are required" };
+            if (Validate.Required(componentType, "componentType") is object typeErr) return typeErr;
+            if (Validate.Required(propertyName, "propertyName") is object propErr) return propErr;
 
             var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (error != null) return error;
@@ -359,7 +365,8 @@ namespace UnitySkills
                     converted = ConvertValue(value, targetType);
                 }
 
-                if (prop != null && prop.CanWrite)
+                bool viaProperty = prop != null && prop.CanWrite;
+                if (viaProperty)
                     prop.SetValue(comp, converted);
                 else if (field != null)
                     field.SetValue(comp, converted);
@@ -367,15 +374,23 @@ namespace UnitySkills
                     return new { error = $"Property {propertyName} is read-only" };
 
                 EditorUtility.SetDirty(comp);
-                
-                return new { 
-                    success = true, 
-                    gameObject = go.name, 
-                    component = componentType,
-                    property = propertyName,
-                    valueSet = FormatValue(converted),
-                    valueType = targetType.Name
+
+                var stored = ReadStoredValue(comp, viaProperty ? prop : null, viaProperty ? null : field, converted);
+                var response = new Dictionary<string, object>
+                {
+                    ["success"] = true,
+                    ["gameObject"] = go.name,
+                    ["component"] = type.Name,
+                    ["property"] = viaProperty ? prop.Name : field.Name,
+                    ["valueSet"] = stored.valueSet,
                 };
+                if (stored.valueRequested != null)
+                    response["valueRequested"] = stored.valueRequested;
+                if (!stored.readBack)
+                    response["readBack"] = false;
+                response["valueType"] = targetType.Name;
+                response["fullTypeName"] = type.FullName;
+                return response;
             }
             catch (PropertyValueException ex)
             {
@@ -406,8 +421,8 @@ namespace UnitySkills
         {
             return BatchExecutor.Execute<BatchSetPropertyItem>(items, item =>
             {
-                if (string.IsNullOrEmpty(item.componentType) || string.IsNullOrEmpty(item.propertyName))
-                    return new { error = "componentType and propertyName required" };
+                if (Validate.Required(item.componentType, "componentType") is object typeErr) return typeErr;
+                if (Validate.Required(item.propertyName, "propertyName") is object propErr) return propErr;
 
                 var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
                 if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
@@ -462,7 +477,8 @@ namespace UnitySkills
                     converted = ConvertValue(valStr, targetType);
                 }
 
-                if (prop != null && prop.CanWrite)
+                bool viaProperty = prop != null && prop.CanWrite;
+                if (viaProperty)
                     prop.SetValue(comp, converted);
                 else if (field != null)
                     field.SetValue(comp, converted);
@@ -470,15 +486,23 @@ namespace UnitySkills
                     return new { error = $"Property {item.propertyName} is read-only" };
 
                 EditorUtility.SetDirty(comp);
-                return new
+
+                var stored = ReadStoredValue(comp, viaProperty ? prop : null, viaProperty ? null : field, converted);
+                var itemResult = new Dictionary<string, object>
                 {
-                    target = go.name,
-                    success = true,
-                    property = item.propertyName,
-                    valueSet = FormatValue(converted),
-                    valueType = targetType.Name
+                    ["target"] = go.name,
+                    ["success"] = true,
+                    ["property"] = viaProperty ? prop.Name : field.Name,
+                    ["valueSet"] = stored.valueSet,
                 };
-            }, item => item.name ?? item.path);
+                if (stored.valueRequested != null)
+                    itemResult["valueRequested"] = stored.valueRequested;
+                if (!stored.readBack)
+                    itemResult["readBack"] = false;
+                itemResult["valueType"] = targetType.Name;
+                itemResult["component"] = type.Name;
+                return itemResult;
+            }, item => item.name ?? item.path, atomic: true);
         }
 
         [UnitySkill("component_get_serialized_properties", "List Inspector serialized properties on a component via SerializedObject (supports nested fields and array/list property paths)",
@@ -486,6 +510,7 @@ namespace UnitySkills
             Tags = new[] { "serialized", "inspector", "property", "field" },
             Outputs = new[] { "gameObject", "component", "properties" },
             RequiresInput = new[] { "gameObject", "component" },
+            RequiredParams = new[] { "componentType" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object ComponentGetSerializedProperties(
@@ -518,6 +543,7 @@ namespace UnitySkills
             Tags = new[] { "serialized", "inspector", "property", "field", "reference" },
             Outputs = new[] { "gameObject", "component", "propertyPath", "valueSet" },
             RequiresInput = new[] { "gameObject", "component" },
+            RequiredParams = new[] { "componentType", "propertyPath" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentSetSerializedProperty(
             string name = null, int instanceId = 0, string path = null,
@@ -561,13 +587,17 @@ namespace UnitySkills
             serializedObject.ApplyModifiedProperties();
             EditorUtility.SetDirty(comp);
 
+            // Re-read after applying: OnValidate and native setters may adjust what was written.
+            serializedObject.Update();
+            var stored = SerializedPropertySkillUtility.FindProperty(serializedObject, property.propertyPath) ?? property;
+
             return new
             {
                 success = true,
                 gameObject = go.name,
                 component = componentType,
                 propertyPath = property.propertyPath,
-                valueSet = SerializedPropertySkillUtility.DescribeValue(property)
+                valueSet = SerializedPropertySkillUtility.DescribeValue(stored)
             };
         }
 
@@ -591,7 +621,7 @@ namespace UnitySkills
                     return new { error = error, target = item.name ?? item.path };
                 }
                 return result;
-            }, item => item.name ?? item.path ?? item.instanceId.ToString());
+            }, item => item.name ?? item.path ?? item.instanceId.ToString(), atomic: true);
         }
 
         private class BatchSetPropertyItem
@@ -627,6 +657,7 @@ namespace UnitySkills
             Tags = new[] { "property", "field", "inspect", "reflection" },
             Outputs = new[] { "gameObject", "component", "properties", "fields" },
             RequiresInput = new[] { "gameObject", "component" },
+            RequiredParams = new[] { "componentType" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object ComponentGetProperties(string name = null, int instanceId = 0, string path = null, string componentType = null, bool includePrivate = false)
@@ -696,6 +727,7 @@ namespace UnitySkills
 
         private static object ReadPropertyValueSafely(Component comp, PropertyInfo property)
         {
+            // These getters instantiate a private copy in edit mode (and leak it), so read the shared asset instead.
             if (comp is Renderer renderer)
             {
                 if (property.Name == "material")
@@ -703,8 +735,41 @@ namespace UnitySkills
                 if (property.Name == "materials")
                     return renderer.sharedMaterials;
             }
+            else if (comp is MeshFilter meshFilter && property.Name == "mesh")
+                return meshFilter.sharedMesh;
+            else if (comp is Collider collider && property.Name == "material")
+                return collider.sharedMaterial;
 
             return property.GetValue(comp);
+        }
+
+        /// <summary>
+        /// Reads back the member just written — setters clamp, normalise or wrap what they are given (spotAngle clamps,
+        /// localEulerAngles wraps into [0,360)), so echoing the request could report a value the component never stored.
+        /// valueRequested is non-null only when the two differ; readBack is false for a write-only member, whose valueSet
+        /// then falls back to the converted request.
+        /// </summary>
+        private static (string valueSet, string valueRequested, bool readBack) ReadStoredValue(Component comp, PropertyInfo prop, FieldInfo field, object requested)
+        {
+            var requestedText = FormatValue(requested);
+            try
+            {
+                object stored;
+                if (prop != null && prop.CanRead)
+                    stored = ReadPropertyValueSafely(comp, prop);
+                else if (field != null)
+                    stored = field.GetValue(comp);
+                else
+                    return (requestedText, null, false);
+
+                var storedText = FormatValue(stored);
+                return (storedText, string.Equals(storedText, requestedText, System.StringComparison.Ordinal) ? null : requestedText, true);
+            }
+            catch (System.Exception ex)
+            {
+                SkillsLogger.LogVerbose($"Read-back of {comp.GetType().Name}.{prop?.Name ?? field?.Name} failed: {ex.Message}");
+                return (requestedText, null, false);
+            }
         }
 
         #region Type Finding (Enhanced for Third-Party)
@@ -1265,6 +1330,7 @@ namespace UnitySkills
             Tags = new[] { "copy", "paste", "duplicate", "transfer" },
             Outputs = new[] { "source", "target", "componentType" },
             RequiresInput = new[] { "gameObject", "component" },
+            RequiredParams = new[] { "componentType" },
             TracksWorkflow = true)]
         public static object ComponentCopy(string sourceName = null, int sourceInstanceId = 0, string sourcePath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, string componentType = null)
         {
@@ -1290,6 +1356,7 @@ namespace UnitySkills
             Tags = new[] { "copy", "paste", "duplicate", "serialized", "exact" },
             Outputs = new[] { "source", "target", "componentType", "verified", "mismatchCount" },
             RequiresInput = new[] { "gameObject", "component" },
+            RequiredParams = new[] { "componentType" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentCopyExact(string sourceName = null, int sourceInstanceId = 0, string sourcePath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, string componentType = null)
         {
@@ -1358,6 +1425,7 @@ namespace UnitySkills
             Tags = new[] { "enable", "disable", "toggle", "active" },
             Outputs = new[] { "gameObject", "componentType", "enabled" },
             RequiresInput = new[] { "gameObject", "component" },
+            RequiredParams = new[] { "componentType" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentSetEnabled(string name = null, int instanceId = 0, string path = null, string componentType = null, bool enabled = true)
         {

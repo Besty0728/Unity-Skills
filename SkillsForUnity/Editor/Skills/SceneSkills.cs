@@ -18,6 +18,7 @@ namespace UnitySkills
             Category = SkillCategory.Scene, Operation = SkillOperation.Create,
             Tags = new[] { "new", "empty", "setup" },
             Outputs = new[] { "scenePath", "sceneName" },
+            RequiredParams = new[] { "scenePath" },
             TracksWorkflow = true,
             MutatesScene = true, MutatesAssets = true, RiskLevel = "high")]
         public static object SceneCreate(string scenePath)

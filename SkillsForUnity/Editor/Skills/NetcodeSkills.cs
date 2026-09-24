@@ -330,6 +330,7 @@ namespace UnitySkills
             Category = SkillCategory.Netcode, Operation = SkillOperation.Modify,
             Tags = new[] { "netcode", "ngo", "transport", "connection" },
             Outputs = new[] { "success", "address", "port", "serverListenAddress" },
+            RequiredParams = new[] { "address" },
             MutatesScene = true, RiskLevel = "low", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
         public static object SetTransportAddress(
             string address,
@@ -369,6 +370,7 @@ namespace UnitySkills
             Category = SkillCategory.Netcode, Operation = SkillOperation.Modify,
             Tags = new[] { "netcode", "ngo", "transport", "relay" },
             Outputs = new[] { "success" },
+            RequiredParams = new[] { "address", "allocationIdBase64", "keyBase64", "connectionDataBase64" },
             MutatesScene = true, RiskLevel = "medium", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
         public static object SetRelayServerData(
             string address,

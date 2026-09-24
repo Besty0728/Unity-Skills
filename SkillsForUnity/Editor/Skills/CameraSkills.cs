@@ -304,6 +304,7 @@ namespace UnitySkills
             Category = SkillCategory.Camera, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "culling-mask", "layer", "visibility" },
             Outputs = new[] { "cullingMask" },
+            RequiredParams = new[] { "layerNames" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object CameraSetCullingMask(string layerNames, string name = null, int instanceId = 0, string path = null)

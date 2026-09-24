@@ -40,6 +40,21 @@ SCAN_TIMEOUT = 1
 # heartbeat interval is ~30s).
 REGISTRY_STALE_SECONDS = 120
 
+# A registry entry whose status is "reloading" or "stopped" has no heartbeat: the
+# Editor keeps it through a domain reload (or a non-permanent stop) and the server
+# prunes it once its process is gone. Older than this, it is treated as dead here
+# too (the client cannot see the pid). Entries without a status are running.
+REGISTRY_NON_RUNNING_MAX_SECONDS = 30 * 60
+
+# How long discovery waits for the current project's own Editor to answer again
+# (reload, restart) when no requestTimeoutMinutes from /health is known yet.
+DEFAULT_INSTANCE_WAIT_SECONDS = 120
+INSTANCE_WAIT_POLL_SECONDS = 1.5
+
+# requestTimeoutMinutes (in seconds) from the most recent /health payload of any
+# client in this process: the cap for waiting on a reloading instance.
+_last_known_request_timeout = None
+
 
 def _normalize_project_path(path: str) -> Optional[str]:
     """Return a canonical path suitable for comparing project directories."""
@@ -77,6 +92,63 @@ def _project_path_match_score(current_directory: str, project_path: str) -> int:
 
 def get_registry_path():
     return os.path.join(os.path.expanduser("~"), ".unity_skills", "registry.json")
+
+
+def _registry_status(info: Dict[str, Any]) -> str:
+    """'running', 'reloading' or 'stopped'; entries from servers without the field are running."""
+    status = info.get('status')
+    if isinstance(status, str) and status.lower() in ('reloading', 'stopped'):
+        return status.lower()
+    return 'running'
+
+
+def _registry_entry_is_live(info: Dict[str, Any], now: float) -> bool:
+    """The server's staleness rule (RegistryService.ShouldPrune) minus the pid probe:
+    a running entry needs a heartbeat within REGISTRY_STALE_SECONDS, a reloading or
+    stopped one a status change within REGISTRY_NON_RUNNING_MAX_SECONDS."""
+    last_active = info.get('last_active')
+    if _registry_status(info) == 'running':
+        return isinstance(last_active, (int, float)) and (now - last_active) <= REGISTRY_STALE_SECONDS
+    since = info.get('statusSince') or last_active
+    return isinstance(since, (int, float)) and (now - since) <= REGISTRY_NON_RUNNING_MAX_SECONDS
+
+
+def _registry_entries() -> List[Dict[str, Any]]:
+    """Well-formed registry entries (a dict with a positive int port), each a copy with 'path'
+    filled in from its registry key when the entry itself has none."""
+    entries = []
+    for registry_path, info in _load_registry().items():
+        if not isinstance(info, dict):
+            continue
+        port = info.get('port')
+        if not isinstance(port, int) or port <= 0:
+            continue
+        entry = dict(info)
+        entry['path'] = info.get('path') or registry_path
+        entries.append(entry)
+    return entries
+
+
+def _find_registry_entry(instance_id: Optional[str], project_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """The current registry entry of one instance: by instanceId, else by project path."""
+    entries = _registry_entries()
+    if instance_id:
+        for info in entries:
+            if info.get('id') == instance_id:
+                return info
+    normalized = _normalize_project_path(project_path) if project_path else None
+    if normalized:
+        for info in entries:
+            if _normalize_project_path(info['path']) == normalized:
+                return info
+    return None
+
+
+def _remember_request_timeout(health: Dict[str, Any]):
+    global _last_known_request_timeout
+    minutes = health.get('requestTimeoutMinutes')
+    if isinstance(minutes, (int, float)) and minutes > 0:
+        _last_known_request_timeout = float(minutes) * 60
 
 
 def _load_registry():
@@ -219,6 +291,12 @@ class UnitySkills:
             agent_id: Custom agent identifier (e.g. "MyScript", "ClaudeCode")
             timeout: Request timeout in seconds (default: 900)
         Priority: url > port > target > version > auto-discovery
+
+        When the instance comes from the registry by `target` or by the current directory
+        (auto-discovery), the client is pinned to it: every request carries
+        X-Expect-Instance, so one that lands on another Editor is refused
+        (INSTANCE_MISMATCH) instead of executed, and while that instance reloads the
+        client waits for it on its own port rather than switching projects.
         """
         self.url = url
         self.agent_id = agent_id or _get_agent_id()
@@ -237,6 +315,9 @@ class UnitySkills:
         # (category/operation enums, reserved parameter names, wire-v2 field defaults),
         # so it is fetched at most once per client and reused for the rest of the session.
         self._meta_cache = None
+        # instanceId of the registry entry this client is pinned to (see _pin_instance);
+        # None when the instance was given by url/port/version or found by a port scan.
+        self._expected_instance_id = None
 
         if not self.url:
             if port:
@@ -269,6 +350,7 @@ class UnitySkills:
             if resp.status_code == 200:
                 data = resp.json()
                 if isinstance(data, dict):
+                    _remember_request_timeout(data)
                     return data
         except (requests.exceptions.RequestException, ValueError):
             pass
@@ -295,41 +377,135 @@ class UnitySkills:
     def _registry_candidate_ports(self) -> List[int]:
         """Return live registry ports in their preferred probing order.
 
-        Entries whose last_active heartbeat (unix seconds, refreshed every ~30s by
-        the server) is older than REGISTRY_STALE_SECONDS are skipped, as are
-        malformed entries. Entries matching the current working directory are
-        preferred; within each group, the freshest heartbeat wins. The caller's
-        port scan remains the safety net.
+        Entries that fail _registry_entry_is_live (a running entry whose last_active
+        heartbeat, refreshed every ~30s by the server, is older than
+        REGISTRY_STALE_SECONDS; a reloading/stopped one past
+        REGISTRY_NON_RUNNING_MAX_SECONDS) are skipped, as are malformed entries.
+        Entries matching the current working directory are preferred; within each
+        group, the freshest heartbeat wins. The caller's port scan remains the safety net.
         """
         candidates = []
         now = time.time()
         current_directory = os.getcwd()
-        for registry_path, info in _load_registry().items():
-            if not isinstance(info, dict):
+        for info in _registry_entries():
+            if not _registry_entry_is_live(info, now):
                 continue
-            port = info.get('port')
             last_active = info.get('last_active')
-            if not isinstance(port, int) or port <= 0:
-                continue
-            if not isinstance(last_active, (int, float)) or (now - last_active) > REGISTRY_STALE_SECONDS:
-                continue
-
-            project_path = info.get('path') or registry_path
-            path_match_score = _project_path_match_score(current_directory, project_path)
-            candidates.append((path_match_score, last_active, port))
+            heartbeat = last_active if isinstance(last_active, (int, float)) else 0
+            path_match_score = _project_path_match_score(current_directory, info['path'])
+            candidates.append((path_match_score, heartbeat, info['port']))
 
         candidates.sort(reverse=True)
         return list(dict.fromkeys(port for _, _, port in candidates))
 
-    def _find_first_available(self) -> int:
-        """Find the first responsive Unity instance.
+    def _current_project_entry(self) -> Optional[Dict[str, Any]]:
+        """The registry entry of the project containing the current directory (the most
+        specific one when projects nest), or None. A running entry with a stale heartbeat
+        is still returned: a main thread busy for minutes stops heartbeats, not /health."""
+        best, best_score = None, 0
+        now = time.time()
+        current_directory = os.getcwd()
+        for info in _registry_entries():
+            score = _project_path_match_score(current_directory, info['path'])
+            if score <= best_score:
+                continue
+            if _registry_status(info) != 'running' and not _registry_entry_is_live(info, now):
+                continue
+            best, best_score = info, score
+        return best
 
-        Tries the current project's live registry entry first, followed by other
-        live entries ordered by heartbeat. Falls back to scanning ports 8090-8100
-        when the registry is missing, stale, or its entries stop responding. The
-        winning /health payload is kept on self._health_info so it is not fetched
-        a second time.
+    def _pin_instance(self, info: Dict[str, Any]):
+        """Pin this client to a registry entry: its instanceId goes out as X-Expect-Instance
+        on every request, and a reload of that instance is waited out (_await_own_instance)."""
+        instance_id = info.get('id')
+        if isinstance(instance_id, str) and instance_id:
+            self._expected_instance_id = instance_id
+            self._session.headers['X-Expect-Instance'] = instance_id
+
+    def _instance_wait_cap(self) -> float:
+        """requestTimeoutMinutes from the latest /health seen in this process, else DEFAULT_INSTANCE_WAIT_SECONDS."""
+        return _last_known_request_timeout or DEFAULT_INSTANCE_WAIT_SECONDS
+
+    def _wait_for_registered_instance(self, entry: Dict[str, Any]):
+        """Poll /health of the Editor behind a registry entry until it answers as itself
+        (same instanceId), re-reading the entry every round so a port that moved during a
+        reload is followed. Returns (port, gone): port when it answered (its payload is
+        kept on self._health_info), gone=True when the entry left the registry or went
+        stale as running (the Editor closed or died), (None, False) when the wait cap passed.
+        Prints one line to stderr when it has to wait."""
+        instance_id = entry.get('id')
+        project_path = entry.get('path')
+        label = entry.get('name') or instance_id or project_path
+        deadline = time.time() + self._instance_wait_cap()
+        announced = False
+        while True:
+            port = entry['port']
+            health = self._fetch_health(f"http://localhost:{port}", timeout=HEALTH_TIMEOUT)
+            answered_id = health.get('instanceId') if health else None
+            if health is not None and (not instance_id or not answered_id or answered_id == instance_id):
+                self._health_info = health
+                return port, False
+            if time.time() >= deadline:
+                return None, False
+            if not announced:
+                state = 'finish reloading' if _registry_status(entry) == 'reloading' else 'answer again'
+                print(f"[unity-skills] waiting for {label} (port {port}) to {state}...", file=sys.stderr)
+                announced = True
+            time.sleep(INSTANCE_WAIT_POLL_SECONDS)
+            entry = _find_registry_entry(instance_id, project_path)
+            if entry is None:
+                return None, True
+            if _registry_status(entry) == 'running' and not _registry_entry_is_live(entry, time.time()):
+                return None, True
+
+    def _await_own_instance(self) -> bool:
+        """After a request could not reach the server (or reached another Editor): when this
+        client is pinned, wait for its own instance, on the same port or the one it moved
+        to, instead of failing; it never switches to a different Editor. True when the
+        pinned instance answers again (self.url then points at it)."""
+        if not self._expected_instance_id:
+            return False
+        entry = _find_registry_entry(self._expected_instance_id)
+        if entry is None:
+            return False
+        port, _ = self._wait_for_registered_instance(entry)
+        if port is None:
+            return False
+        self.url = f"http://localhost:{port}"
+        return True
+
+    def _find_first_available(self) -> int:
+        """Find the Unity instance to talk to.
+
+        When the current directory belongs to a registered project, that Editor is the
+        only candidate. Reloading or stopped, or live but not answering, it is waited for
+        on its own port (up to requestTimeoutMinutes from the last /health, else
+        DEFAULT_INSTANCE_WAIT_SECONDS) and never replaced by another project; only a
+        running entry whose heartbeat is stale and whose port stays silent counts as
+        gone. Without such an entry, the other live registry entries are tried by
+        heartbeat, then ports 8090-8100 are scanned. The winning /health payload is kept
+        on self._health_info so it is not fetched a second time.
         """
+        own = self._current_project_entry()
+        if own is not None:
+            if _registry_status(own) == 'running' and not _registry_entry_is_live(own, time.time()):
+                health = self._fetch_health(f"http://localhost:{own['port']}", timeout=HEALTH_TIMEOUT)
+                if health is not None:
+                    self._health_info = health
+                    self._pin_instance(own)
+                    return own['port']
+            else:
+                port, gone = self._wait_for_registered_instance(own)
+                if port is not None:
+                    self._pin_instance(own)
+                    return port
+                if not gone:
+                    raise ConnectionError(
+                        f"The Unity project at {own['path']} is registered ({_registry_status(own)}) but its "
+                        f"UnitySkills server did not answer on port {own['port']} within "
+                        f"{int(self._instance_wait_cap())}s. Not switching to another project: restart the "
+                        "server in that Editor (Window > UnitySkills), or pass port= explicitly.")
+
         tried = set()
         for port in self._registry_candidate_ports():
             tried.add(port)
@@ -347,14 +523,31 @@ class UnitySkills:
         raise ConnectionError(f"No Unity instance found on ports {PORT_RANGE_START}-{PORT_RANGE_END}. Is UnitySkills server running?")
 
     def _find_port_by_target(self, target: str) -> Optional[int]:
-        data = _load_registry()
-        for path, info in data.items():
-            if info.get('id') == target:
-                return info.get('port')
-        for path, info in data.items():
-            if info.get('name') == target:
-                return info.get('port')
-        return None
+        """Registry lookup by instanceId, then by project name (the freshest heartbeat
+        wins when several projects share a name). The match pins the client; if it is
+        reloading or stopped, its port is waited for as in _find_first_available."""
+        entries = _registry_entries()
+        match = next((info for info in entries if info.get('id') == target), None)
+        if match is None:
+            named = [info for info in entries if info.get('name') == target]
+            if named:
+                match = max(named, key=lambda info: (
+                    _registry_status(info) == 'running',
+                    info.get('last_active') if isinstance(info.get('last_active'), (int, float)) else 0))
+        if match is None:
+            return None
+
+        self._pin_instance(match)
+        if _registry_status(match) == 'running' or not _registry_entry_is_live(match, time.time()):
+            return match['port']
+        port, gone = self._wait_for_registered_instance(match)
+        if port is not None:
+            return port
+        if gone:
+            return None
+        raise ConnectionError(
+            f"Unity instance '{target}' is {_registry_status(match)} and did not answer on port "
+            f"{match['port']} within {int(self._instance_wait_cap())}s.")
 
     def _find_port_by_version(self, version: str) -> Optional[int]:
         """
@@ -460,23 +653,36 @@ class UnitySkills:
         server's last response/data untouched, so callers see the real error payload
         rather than a synthesized one.
 
+        A pinned client (see _pin_instance) gets one more attempt on top of that budget
+        in two cases: the connection is still refused after the last retry (its instance
+        is waited for, e.g. through a long domain reload), or the server answers
+        INSTANCE_MISMATCH (the pinned instance is looked up again, e.g. after its port
+        moved). Neither ever redirects the request to a different Editor.
+
         Returns one of:
           {'ok': True, 'response': <requests.Response>, 'data': <parsed JSON dict>}
           {'ok': False, 'transport_error': <dict from _timeout_error_result/_connection_error_result>}
           {'ok': False, 'invalid_json': <response.text>}
           {'ok': False, 'exception': <str(exc)>}   # any other exception, not retried
         """
-        for attempt in range(_retries + 1):
+        attempt = 0
+        reconnect_used = False
+        while True:
             try:
                 response = self._post_skill(skill_name, payload, mode=mode, timeout=timeout)
             except requests.exceptions.Timeout:
                 if attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
+                    attempt += 1
                     continue
                 return {'ok': False, 'transport_error': self._timeout_error_result(timeout)}
             except requests.exceptions.ConnectionError:
                 if attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
+                    attempt += 1
+                    continue
+                if not reconnect_used and self._await_own_instance():
+                    reconnect_used = True
                     continue
                 return {'ok': False, 'transport_error': self._connection_error_result()}
             except Exception as e:
@@ -488,15 +694,17 @@ class UnitySkills:
                 return {'ok': False, 'invalid_json': response.text}
 
             if isinstance(data, dict) and data.get('status') == 'error':
+                if (data.get('errorCode') == 'INSTANCE_MISMATCH' and not reconnect_used
+                        and self._await_own_instance()):
+                    reconnect_used = True
+                    continue
                 retry_after = _structured_retry_after(data, response.status_code)
                 if retry_after is not None and attempt < _retries:
                     time.sleep(retry_after)
+                    attempt += 1
                     continue
 
             return {'ok': True, 'response': response, 'data': data}
-
-        # Unreachable: every branch above either continues or returns.
-        return {'ok': False, 'exception': 'retry loop exhausted unexpectedly'}
 
     @staticmethod
     def _mode_result_from_outcome(outcome: Dict[str, Any]) -> Dict[str, Any]:
@@ -736,7 +944,9 @@ class UnitySkills:
 
         Returns the server's parsed JSON (``{status, executed, failed, results:[...]}``)
         on success, or ``{'status': 'error', 'error': ...}`` on transport failure -- the
-        same convention as dry_run_skill()/plan_skill().
+        same convention as dry_run_skill()/plan_skill(). A pinned client waits out its
+        own instance's reload, or follows it after INSTANCE_MISMATCH, exactly as
+        _post_skill_with_retries does.
         """
         params = {}
         if mode:
@@ -754,7 +964,9 @@ class UnitySkills:
         json_data = json.dumps(body, ensure_ascii=False)
         effective_timeout = timeout or self.timeout
 
-        for attempt in range(_retries + 1):
+        attempt = 0
+        reconnect_used = False
+        while True:
             try:
                 response = self._session.post(
                     f"{self.url}/skills/batch{qs}",
@@ -765,11 +977,16 @@ class UnitySkills:
             except requests.exceptions.Timeout:
                 if attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
+                    attempt += 1
                     continue
                 return {'status': 'error', 'error': self._timeout_error_result(effective_timeout).get('error')}
             except requests.exceptions.ConnectionError:
                 if attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
+                    attempt += 1
+                    continue
+                if not reconnect_used and self._await_own_instance():
+                    reconnect_used = True
                     continue
                 return {'status': 'error', 'error': self._connection_error_result().get('error')}
             except Exception as e:
@@ -782,15 +999,17 @@ class UnitySkills:
                 return {'status': 'error', 'error': f"Invalid JSON response: {response.text}"}
 
             if isinstance(data, dict) and data.get('status') == 'error':
+                if (data.get('errorCode') == 'INSTANCE_MISMATCH' and not reconnect_used
+                        and self._await_own_instance()):
+                    reconnect_used = True
+                    continue
                 retry_after = _structured_retry_after(data, response.status_code)
                 if retry_after is not None and attempt < _retries:
                     time.sleep(retry_after)
+                    attempt += 1
                     continue
 
             return data
-
-        # Unreachable: every branch above either continues or returns.
-        return {'status': 'error', 'error': 'retry loop exhausted unexpectedly'}
 
     def poll_job(self, job_id: str, interval: float = 0.5, timeout: float = 300.0,
                  on_progress=None, max_interval: float = 5.0) -> Dict[str, Any]:
@@ -885,7 +1104,9 @@ def set_unity_version(version: str):
     _default_client = UnitySkills(version=version)
 
 def list_instances() -> list:
-    """Return list of active Unity instances from registry."""
+    """Return list of active Unity instances from registry. Entries written by current
+    servers carry status ("running" / "reloading" / "stopped") and statusSince; an
+    entry without status is running."""
     data = _load_registry()
     results = []
     for info in data.values():
@@ -1300,9 +1521,9 @@ def _fetch_with_cache(client: "UnitySkills", path: str, endpoint: str,
     return data
 
 
-# Process-wide lite-summary cache: /skills?summary=1 is ~143 KB (~35K tokens) — the cheap
+# Process-wide lite-summary cache: /skills?summary=1 is ~180 KB (~45K tokens) — the cheap
 # awareness layer (name/desc/category/operation/riskLevel per skill). Cache a successful
-# result per server URL for a short TTL so the agent doesn't re-pay 35K tokens to recall
+# result per server URL for a short TTL so the agent doesn't re-pay 45K tokens to recall
 # the toolset. Pull the full schema (get_skill_schema) for exact parameter schemas.
 _skills_summary_cache: Dict[str, Dict[str, Any]] = {}
 _SKILLS_SUMMARY_TTL = 300.0
@@ -1311,7 +1532,7 @@ _SKILLS_SUMMARY_TTL = 300.0
 def get_skills_summary(force_refresh: bool = False) -> Dict[str, Any]:
     """Get the lite awareness manifest (name/desc/category/operation/riskLevel per skill).
 
-    The token-friendly first fetch (~35K tokens vs ~150K full) for project awareness;
+    The token-friendly first fetch (~45K tokens vs ~170K full) for project awareness;
     server-cached and client-cached (memory + disk + ETag, see _fetch_with_cache) per
     URL for _SKILLS_SUMMARY_TTL seconds. Pull the full schema via get_skill_schema()
     when you need exact parameter schemas to execute.
@@ -1330,7 +1551,7 @@ def get_skills_summary(force_refresh: bool = False) -> Dict[str, Any]:
 
 def search_skills(query: str, category: str = None, limit: int = 20) -> List[Dict[str, Any]]:
     """Keyword search over the lite skills summary — avoids loading the full
-    summary (~143 KB / ~35K tokens) into context; only matching entries are returned.
+    summary (~180 KB / ~45K tokens) into context; only matching entries are returned.
 
     Data comes from get_skills_summary() (memory + disk + ETag cached), so repeated
     searches within the TTL re-read the cache instead of re-fetching the payload.
@@ -1389,7 +1610,7 @@ def search_skills(query: str, category: str = None, limit: int = 20) -> List[Dic
     return results
 
 
-# Process-wide schema cache: /skills/schema is ~618 KB; re-fetching it per call is the
+# Process-wide schema cache: /skills/schema is ~707 KB; re-fetching it per call is the
 # single biggest client-side token sink. Cache a successful result per server URL for a
 # short TTL and reuse it within a session.
 _schema_cache: Dict[str, Dict[str, Any]] = {}
@@ -1402,7 +1623,7 @@ def get_skill_schema(force_refresh: bool = False) -> Dict[str, Any]:
     This is the preferred source for exact skill names, parameters, and metadata
     when prompt/token budget matters more than loading large SKILL.md files.
 
-    The full schema is large (~618 KB), so a successful result is cached per server URL
+    The full schema is large (~707 KB), so a successful result is cached per server URL
     for `_SCHEMA_CACHE_TTL` seconds (plus an on-disk ETag cache shared across processes,
     see _fetch_with_cache). Pass force_refresh=True to bypass the cache (e.g. after
     adding/renaming skills and recompiling).
@@ -1438,7 +1659,7 @@ def find_skills(intent: str, top_n: int = 10, include_schema: bool = False,
             its parameter schema -- skip a separate get_skill_schema()/dryRun round trip
             when this is the only skill you need.
         wire: Optional wire-format override, e.g. "v2" to request the slimmer v2 envelope
-            (a "flags" array instead of six boolean fields; roughly halves the payload).
+            (a "flags" array instead of six boolean fields, defaults omitted).
     """
     try:
         client = _get_default_client()
@@ -1542,7 +1763,7 @@ def wait_for_health(timeout: float = 600.0, check_interval: float = 3.0) -> Opti
             data = resp.json()
             if data.get('status') == 'ok':
                 return data
-        except (requests.exceptions.RequestException, ValueError, RuntimeError):
+        except (requests.exceptions.RequestException, ValueError, RuntimeError, ConnectionError):
             pass
         time.sleep(check_interval)
     return None

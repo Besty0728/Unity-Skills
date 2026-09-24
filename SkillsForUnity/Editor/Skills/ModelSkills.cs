@@ -439,6 +439,7 @@ namespace UnitySkills
             Category = SkillCategory.Model, Operation = SkillOperation.Modify,
             Tags = new[] { "model", "animation", "clip", "splitting" },
             Outputs = new[] { "clipCount" },
+            RequiredParams = new[] { "clips" },
             RequiresInput = new[] { "assetPath" },
             TracksWorkflow = true,
             MutatesAssets = true)]

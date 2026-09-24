@@ -338,6 +338,7 @@ namespace UnitySkills
             Category = SkillCategory.Texture, Operation = SkillOperation.Modify,
             Tags = new[] { "texture", "platform", "compression", "optimization" },
             Outputs = new[] { "path", "platform", "maxSize", "format" },
+            RequiredParams = new[] { "platform" },
             RequiresInput = new[] { "assetPath" },
             TracksWorkflow = true,
             MutatesAssets = true)]
@@ -368,6 +369,7 @@ namespace UnitySkills
             Category = SkillCategory.Texture, Operation = SkillOperation.Query,
             Tags = new[] { "texture", "platform", "settings", "inspect" },
             Outputs = new[] { "overridden", "maxTextureSize", "format", "compressionQuality" },
+            RequiredParams = new[] { "platform" },
             RequiresInput = new[] { "assetPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]

@@ -15,10 +15,10 @@ namespace UnitySkills
     {
         private const int DefaultDiagnosticLimit = 20;
 
-        [UnitySkill("script_create", "Create a new C# script. Before generating gameplay scripts, actively consider coupling, performance, and maintainability. Optional: namespace", TracksWorkflow = true,
+        [UnitySkill("script_create", "Create a C# script: content writes the complete source verbatim (template and namespaceName are then ignored); without it a template is filled (template: MonoBehaviour by default, ScriptableObject, Editor, EditorWindow; namespaceName wraps it). scriptName is the file name, and a MonoBehaviour/ScriptableObject class must carry the same name (content that declares none only warns). GET the returned waitUrl (/jobs/<jobId>?wait=90) to get the compile result in one call. Before generating gameplay scripts, actively consider coupling, performance, and maintainability.", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Create,
             Tags = new[] { "script", "csharp", "create", "template" },
-            Outputs = new[] { "path", "className", "namespaceName", "jobId" },
+            Outputs = new[] { "path", "className", "namespaceName", "jobId", "waitUrl" },
             MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
         public static object ScriptCreate(
             string scriptName = null,
@@ -27,7 +27,8 @@ namespace UnitySkills
             string template = null,
             string namespaceName = null,
             bool checkCompile = true,
-            int diagnosticLimit = DefaultDiagnosticLimit)
+            int diagnosticLimit = DefaultDiagnosticLimit,
+            string content = null)
         {
             scriptName = scriptName ?? name;
             if (string.IsNullOrEmpty(scriptName))
@@ -35,7 +36,8 @@ namespace UnitySkills
             if (HasPathSeparators(scriptName))
                 return new { error = "scriptName must not contain path separators" };
 
-            if (IsEditorOnlyTemplate(template) &&
+            bool fromTemplate = string.IsNullOrEmpty(content);
+            if (fromTemplate && IsEditorOnlyTemplate(template) &&
                 string.Equals(folder, "Assets/Scripts", System.StringComparison.OrdinalIgnoreCase))
             {
                 folder = "Assets/Editor";
@@ -50,12 +52,8 @@ namespace UnitySkills
             if (File.Exists(path))
                 return new { error = $"Script already exists: {path}" };
 
-            string content = ResolveTemplate(template, namespaceName);
-
-            content = content.Replace("{CLASS}", scriptName);
-            content = content.Replace("{NAMESPACE}", string.IsNullOrEmpty(namespaceName) ? "DefaultNamespace" : namespaceName);
-
-            File.WriteAllText(path, content, SkillsCommon.Utf8NoBom);
+            var warnings = new List<string>();
+            WriteNewScriptFile(path, scriptName, template, namespaceName, content, warnings);
             AssetDatabase.ImportAsset(path);
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
@@ -63,12 +61,67 @@ namespace UnitySkills
 
             var result = CreateScriptMutationResult(path, "script_create", checkCompile, diagnosticLimit);
             result["className"] = scriptName;
-            result["namespaceName"] = namespaceName;
+            result["namespaceName"] = fromTemplate ? namespaceName : DeclaredNamespace(content);
+            if (warnings.Count > 0)
+                result["warnings"] = warnings;
             result["designReminder"] = "Before filling in gameplay logic, actively consider coupling, performance, and maintainability. Prefer clear responsibilities, explicit dependencies, avoid unnecessary Update-driven logic, and only introduce heavier patterns such as UniTask or global event systems when clearly justified.";
             return result;
         }
 
-        [UnitySkill("script_create_batch", "Create multiple scripts efficiently. Before batch-generating gameplay scripts, actively consider coupling, performance, and maintainability for each class role. items: JSON array of {scriptName, folder, template, namespace}", TracksWorkflow = true,
+        /// <summary>
+        /// Writes a new script file (UTF-8, no BOM) and returns the source written: content verbatim when given,
+        /// otherwise the filled template. Warnings about verbatim content are added to warnings.
+        /// </summary>
+        internal static string WriteNewScriptFile(string path, string scriptName, string template, string namespaceName,
+            string content, List<string> warnings)
+        {
+            string source;
+            if (string.IsNullOrEmpty(content))
+            {
+                source = ResolveTemplate(template, namespaceName)
+                    .Replace("{CLASS}", scriptName)
+                    .Replace("{NAMESPACE}", string.IsNullOrEmpty(namespaceName) ? "DefaultNamespace" : namespaceName);
+            }
+            else
+            {
+                source = content;
+                warnings?.AddRange(CheckVerbatimContent(content, scriptName, template, namespaceName));
+            }
+
+            File.WriteAllText(path, source, SkillsCommon.Utf8NoBom);
+            return source;
+        }
+
+        /// <summary>
+        /// Warnings for verbatim script content, which is written as-is even when they apply: template/namespaceName
+        /// passed alongside it are ignored, and a MonoBehaviour or ScriptableObject only binds to its asset when the
+        /// class name equals the file name, so content declaring no type named scriptName is flagged.
+        /// </summary>
+        internal static List<string> CheckVerbatimContent(string content, string scriptName, string template, string namespaceName)
+        {
+            var warnings = new List<string>();
+            if (!string.IsNullOrEmpty(template) || !string.IsNullOrEmpty(namespaceName))
+                warnings.Add("content was written verbatim, so template and namespaceName were ignored.");
+            if (!DeclaresTypeNamed(content, scriptName))
+                warnings.Add($"content declares no type named '{scriptName}'. Unity attaches a MonoBehaviour or ScriptableObject only when its class name equals the file name ({scriptName}.cs); rename the class or the file (script_rename) if this one is meant to be one.");
+            return warnings;
+        }
+
+        internal static bool DeclaresTypeNamed(string source, string typeName)
+        {
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(typeName))
+                return false;
+            return Regex.IsMatch(source, @"\b(?:class|struct|interface|enum|record)\s+" + Regex.Escape(typeName) + @"\b",
+                RegexOptions.None, System.TimeSpan.FromSeconds(1));
+        }
+
+        private static string DeclaredNamespace(string source)
+        {
+            var match = Regex.Match(source ?? string.Empty, @"^\s*namespace\s+([\w.]+)", RegexOptions.Multiline, System.TimeSpan.FromSeconds(1));
+            return match.Success ? match.Groups[1].Value : null;
+        }
+
+        [UnitySkill("script_create_batch", "Create multiple scripts efficiently. Before batch-generating gameplay scripts, actively consider coupling, performance, and maintainability for each class role. items: JSON array of {scriptName, folder, template, namespace, content} (content = verbatim source, as in script_create)", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Create,
             Tags = new[] { "script", "batch", "create", "bulk" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
@@ -84,7 +137,8 @@ namespace UnitySkills
                     null,
                     item.folder ?? "Assets/Scripts",
                     item.template,
-                    item.namespaceName ?? item.@namespace);
+                    item.namespaceName ?? item.@namespace,
+                    content: item.content);
                 if (SkillResultHelper.TryGetError(result, out string errorText))
                     throw new System.Exception(errorText);
                 return result;
@@ -99,6 +153,7 @@ namespace UnitySkills
             public string template { get; set; }
             public string namespaceName { get; set; }
             public string @namespace { get; set; }
+            public string content { get; set; }
         }
 
         [UnitySkill("script_read", "Read the contents of a script",
@@ -121,7 +176,7 @@ namespace UnitySkills
         [UnitySkill("script_delete", "Delete a script file", TracksWorkflow = true, SkipAutoPresnapshot = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Delete,
             Tags = new[] { "script", "delete", "remove", "file" },
-            Outputs = new[] { "deleted", "jobId" },
+            Outputs = new[] { "deleted", "jobId", "waitUrl" },
             RequiresInput = new[] { "scriptPath" },
             MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
         public static object ScriptDelete(string scriptPath)
@@ -138,7 +193,8 @@ namespace UnitySkills
                 ["success"] = true,
                 ["status"] = "accepted",
                 ["deleted"] = NormalizePath(scriptPath),
-                ["jobId"] = job.jobId
+                ["jobId"] = job.jobId,
+                ["waitUrl"] = BuildWaitUrl(job.jobId)
             };
             ServerAvailabilityHelper.AttachTransientUnavailableNotice(
                 result,
@@ -197,7 +253,7 @@ namespace UnitySkills
         [UnitySkill("script_append", "Append content to a script", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Modify,
             Tags = new[] { "script", "append", "insert", "code" },
-            Outputs = new[] { "path", "jobId" },
+            Outputs = new[] { "path", "jobId", "waitUrl" },
             RequiresInput = new[] { "scriptPath" },
             MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
         public static object ScriptAppend(string scriptPath, string content, int atLine = -1, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
@@ -229,12 +285,14 @@ namespace UnitySkills
         [UnitySkill("script_replace", "Find and replace content in a script file", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Modify,
             Tags = new[] { "script", "replace", "find", "refactor" },
-            Outputs = new[] { "path", "replacements", "jobId" },
+            Outputs = new[] { "path", "replacements", "jobId", "waitUrl" },
             RequiresInput = new[] { "scriptPath" },
+            RequiredParams = new[] { "find" },
             MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
         public static object ScriptReplace(string scriptPath, string find, string replace, bool isRegex = false, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
+            if (Validate.Required(find, "find") is object findErr) return findErr;
             if (!File.Exists(scriptPath))
                 return new { error = $"Script not found: {scriptPath}" };
 
@@ -314,8 +372,9 @@ namespace UnitySkills
         [UnitySkill("script_rename", "Rename a script file", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Modify,
             Tags = new[] { "script", "rename", "refactor", "file" },
-            Outputs = new[] { "path", "oldPath", "newName", "jobId" },
+            Outputs = new[] { "path", "oldPath", "newName", "jobId", "waitUrl" },
             RequiresInput = new[] { "scriptPath" },
+            RequiredParams = new[] { "newName" },
             MayTriggerReload = true, RiskLevel = "high", MutatesAssets = true)]
         public static object ScriptRename(string scriptPath, string newName, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
@@ -341,7 +400,7 @@ namespace UnitySkills
         [UnitySkill("script_move", "Move a script to a new folder", TracksWorkflow = true,
             Category = SkillCategory.Script, Operation = SkillOperation.Modify,
             Tags = new[] { "script", "move", "reorganize", "file" },
-            Outputs = new[] { "oldPath", "newPath", "jobId" },
+            Outputs = new[] { "oldPath", "newPath", "jobId", "waitUrl" },
             RequiresInput = new[] { "scriptPath", "newFolder" },
             MayTriggerReload = true, RiskLevel = "high", MutatesAssets = true)]
         public static object ScriptMove(string scriptPath, string newFolder, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
@@ -369,7 +428,7 @@ namespace UnitySkills
             return result;
         }
 
-        [UnitySkill("script_get_compile_feedback", "Get compile diagnostics related to a specific script. Use after script_create/script_append/script_replace/script_rename/script_move.",
+        [UnitySkill("script_get_compile_feedback", "Get compile diagnostics related to a specific script. Use after script_create/script_append/script_replace/script_rename/script_move, or GET the waitUrl they return (/jobs/<jobId>?wait=90), which answers once compilation settles with the same diagnostics in resultData.compilation.",
             Category = SkillCategory.Script, Operation = SkillOperation.Query,
             Tags = new[] { "script", "compile", "diagnostics", "errors" },
             Outputs = new[] { "scriptPath", "isCompiling", "hasErrors", "errorCount", "errors" },
@@ -392,7 +451,8 @@ namespace UnitySkills
                 ["success"] = true,
                 ["status"] = "accepted",
                 ["path"] = normalizedPath,
-                ["jobId"] = job.jobId
+                ["jobId"] = job.jobId,
+                ["waitUrl"] = BuildWaitUrl(job.jobId)
             };
 
             ServerAvailabilityHelper.AttachTransientUnavailableNotice(
@@ -402,6 +462,12 @@ namespace UnitySkills
 
             return result;
         }
+
+        /// <summary>
+        /// The long-poll URL for a script job: GET it and the server answers once compilation has settled, with the
+        /// compile diagnostics in resultData. A domain reload drops the connection; retry the same URL.
+        /// </summary>
+        private static string BuildWaitUrl(string jobId) => $"/jobs/{jobId}?wait=90";
 
         internal static Dictionary<string, object> GetCompilationFeedbackSnapshot(string scriptPath, int limit)
         {

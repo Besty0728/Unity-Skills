@@ -465,6 +465,7 @@ namespace UnitySkills
             Category = SkillCategory.ShaderGraph, Operation = SkillOperation.Create,
             Tags = new[] { "shadergraph", "property", "add", "blackboard" },
             Outputs = new[] { "assetPath", "property" },
+            RequiredParams = new[] { "propertyType", "displayName" },
             TracksWorkflow = true,
             MutatesAssets = true,
             RequiresInput = new[] { "assetPath" },

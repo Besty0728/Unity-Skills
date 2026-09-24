@@ -107,6 +107,7 @@ namespace UnitySkills
                 ["unknownParams"] = validation?.UnknownParams.Count > 0 ? validation.UnknownParams.ToArray() : null,
                 ["typeErrors"] = validation?.TypeErrors.Count > 0 ? validation.TypeErrors.ToArray() : null,
                 ["semanticErrors"] = validation?.SemanticErrors.Count > 0 ? validation.SemanticErrors.ToArray() : null,
+                ["missingPackages"] = validation?.MissingPackages.Count > 0 ? validation.MissingPackages.ToArray() : null,
                 ["warnings"] = validation?.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
             };
         }
@@ -814,23 +815,27 @@ namespace UnitySkills
             AddErrorFromValidation(validation, Validate.Required(name, "name"), "name");
 
             var primitiveType = GetStringArg(args, "primitiveType");
-            if (!string.IsNullOrWhiteSpace(primitiveType) &&
-                !primitiveType.Equals("Empty", StringComparison.OrdinalIgnoreCase) &&
-                !primitiveType.Equals("None", StringComparison.OrdinalIgnoreCase) &&
-                !Enum.TryParse<PrimitiveType>(primitiveType, true, out _))
-            {
+            if (IsUnknownPrimitiveType(primitiveType))
                 AddSemanticError(validation, "primitiveType", $"Unknown primitive type: {primitiveType}");
-            }
 
-            GameObject parentGo = null;
-            var (hasParent, parentName, parentInstanceId, parentPath, parentEntityId) = ReadObjectLocator(args, "parentName", "parentInstanceId", "parentPath", "parentEntityId");
+            var space = ReadTransformSpace(args, out var spaceError);
+            if (spaceError != null)
+                AddSemanticError(validation, "space", spaceError);
+
+            string parentPath = null;
+            var (hasParent, parentName, parentInstanceId, parentLocatorPath, parentEntityId) = ReadObjectLocator(args, "parentName", "parentInstanceId", "parentPath", "parentEntityId");
             if (hasParent)
             {
-                var (found, parentErr) = GameObjectFinder.FindOrError(parentName, parentInstanceId, parentPath, entityId: parentEntityId);
-                if (parentErr != null)
-                    AddSemanticError(validation, "parent", ExtractError(parentErr));
+                var parent = ResolveLocator(parentName, parentInstanceId, parentLocatorPath, parentEntityId);
+                if (parent.Error != null)
+                {
+                    AddSemanticError(validation, "parent", ExtractError(parent.Error));
+                }
                 else
-                    parentGo = found;
+                {
+                    parentPath = parent.Path;
+                    WarnIfPending(validation, "parent", parent);
+                }
             }
 
             if (plan != null)
@@ -838,7 +843,7 @@ namespace UnitySkills
                 MarkSemantic(plan);
                 var predictedPath = string.IsNullOrWhiteSpace(name)
                     ? "(unresolved)"
-                    : parentGo != null ? GameObjectFinder.GetPath(parentGo) + "/" + name : name;
+                    : parentPath != null ? parentPath + "/" + name : name;
                 SetPlanDetails(
                     plan,
                     new List<object>
@@ -849,24 +854,10 @@ namespace UnitySkills
                             ["action"] = "Create GameObject",
                             ["target"] = name,
                             ["primitiveType"] = string.IsNullOrWhiteSpace(primitiveType) ? "Empty" : primitiveType,
-                            ["parent"] = parentGo != null ? GameObjectFinder.GetPath(parentGo) : "(root)"
+                            ["parent"] = parentPath ?? "(root)"
                         }
                     },
-                    create: new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["name"] = name,
-                            ["predictedPath"] = predictedPath,
-                            ["primitiveType"] = string.IsNullOrWhiteSpace(primitiveType) ? "Empty" : primitiveType,
-                            ["position"] = new Dictionary<string, object>
-                            {
-                                ["x"] = GetFloatArg(args, "x"),
-                                ["y"] = GetFloatArg(args, "y"),
-                                ["z"] = GetFloatArg(args, "z")
-                            }
-                        }
-                    });
+                    create: new List<object> { BuildCreatePrediction(args, name, predictedPath, primitiveType, space) });
             }
         }
 
@@ -875,6 +866,8 @@ namespace UnitySkills
             var ctx = TryBeginBatchAnalyze(validation, plan);
             if (ctx == null) return;
 
+            // The error-free items seen so far, so a later item can be parented to one this same call creates.
+            var batchCreated = new PendingObjectSet();
             var creates = new List<object>();
             for (int i = 0; i < ctx.Items.Count; i++)
             {
@@ -885,30 +878,34 @@ namespace UnitySkills
                     errors.Add(ExtractError(nameErr));
 
                 var primitiveType = GetStringArg(item, "primitiveType");
-                if (!string.IsNullOrWhiteSpace(primitiveType) &&
-                    !primitiveType.Equals("Empty", StringComparison.OrdinalIgnoreCase) &&
-                    !primitiveType.Equals("None", StringComparison.OrdinalIgnoreCase) &&
-                    !Enum.TryParse<PrimitiveType>(primitiveType, true, out _))
-                {
+                if (IsUnknownPrimitiveType(primitiveType))
                     errors.Add($"Unknown primitive type: {primitiveType}");
-                }
 
-                string parentPath = "(root)";
+                var space = ReadTransformSpace(item, out var spaceError);
+                if (spaceError != null)
+                    errors.Add(spaceError);
+
+                string parentPath = null;
                 var (hasParent, parentName, parentInstanceId, parentLocatorPath, parentEntityId) = ReadObjectLocator(item, "parentName", "parentInstanceId", "parentPath", "parentEntityId");
                 if (hasParent)
                 {
-                    var (parentGo, parentErr) = GameObjectFinder.FindOrError(parentName, parentInstanceId, parentLocatorPath, entityId: parentEntityId);
-                    if (parentErr != null)
-                        errors.Add(ExtractError(parentErr));
+                    var parent = ResolveLocator(parentName, parentInstanceId, parentLocatorPath, parentEntityId, batchCreated);
+                    if (parent.Error != null)
+                    {
+                        errors.Add(ExtractError(parent.Error));
+                    }
                     else
-                        parentPath = GameObjectFinder.GetPath(parentGo);
+                    {
+                        parentPath = parent.Path;
+                        WarnIfPending(validation, "parent", parent, i);
+                    }
                 }
 
                 ctx.ReportItemErrors(i, errors);
 
                 var predictedPath = string.IsNullOrWhiteSpace(name)
                     ? "(unresolved)"
-                    : parentPath == "(root)" ? name : parentPath + "/" + name;
+                    : parentPath != null ? parentPath + "/" + name : name;
                 ctx.AddItemPlan(i,
                     name,
                     errors.Count == 0,
@@ -917,16 +914,67 @@ namespace UnitySkills
 
                 if (errors.Count == 0)
                 {
-                    creates.Add(new Dictionary<string, object>
-                    {
-                        ["name"] = name,
-                        ["predictedPath"] = predictedPath,
-                        ["primitiveType"] = string.IsNullOrWhiteSpace(primitiveType) ? "Empty" : primitiveType
-                    });
+                    creates.Add(BuildCreatePrediction(item, name, predictedPath, primitiveType, space));
+                    batchCreated.Register(name, predictedPath);
                 }
             }
             ctx.EmitPlan("Create GameObjects (batch)", create: creates);
         }
+
+        // Same acceptance as the executor: only null/empty, "Empty" and "None" mean an empty GameObject.
+        private static bool IsUnknownPrimitiveType(string primitiveType) =>
+            !string.IsNullOrEmpty(primitiveType) &&
+            !primitiveType.Equals("Empty", StringComparison.OrdinalIgnoreCase) &&
+            !primitiveType.Equals("None", StringComparison.OrdinalIgnoreCase) &&
+            !Enum.TryParse<PrimitiveType>(primitiveType, true, out _);
+
+        /// <summary>
+        /// The <c>space</c> of gameobject_create/_batch, accepted exactly as the executor does: omitted or empty means
+        /// "local" (the historic behavior), otherwise "local" or "world", case-insensitively. A bad value also yields the rejection message.
+        /// </summary>
+        private static string ReadTransformSpace(JObject args, out string error)
+        {
+            error = null;
+            var raw = GetStringArg(args, "space");
+            if (string.IsNullOrEmpty(raw) || raw.Equals("local", StringComparison.OrdinalIgnoreCase))
+                return "local";
+            if (raw.Equals("world", StringComparison.OrdinalIgnoreCase))
+                return "world";
+            error = $"Invalid value '{raw}' for parameter 'space'. Valid values: local, world";
+            return raw;
+        }
+
+        /// <summary>
+        /// The create[] entry of one new GameObject. <c>space</c> states how x/y/z and rotX/Y/Z are applied (relative to
+        /// the parent, or world); scale is always local. Rotation and scale appear only when the call sets them.
+        /// </summary>
+        private static Dictionary<string, object> BuildCreatePrediction(JObject args, string name, string predictedPath, string primitiveType, string space)
+        {
+            var created = new Dictionary<string, object>
+            {
+                ["name"] = name,
+                ["predictedPath"] = predictedPath,
+                ["primitiveType"] = string.IsNullOrWhiteSpace(primitiveType) ? "Empty" : primitiveType,
+                ["position"] = ReadVector(args, "x", "y", "z", 0f),
+                ["space"] = space
+            };
+            if (HasAnyArg(args, "rotX", "rotY", "rotZ"))
+                created["rotation"] = ReadVector(args, "rotX", "rotY", "rotZ", 0f);
+            if (HasAnyArg(args, "scaleX", "scaleY", "scaleZ"))
+                created["scale"] = ReadVector(args, "scaleX", "scaleY", "scaleZ", 1f);
+            return created;
+        }
+
+        private static Dictionary<string, object> ReadVector(JObject args, string xKey, string yKey, string zKey, float fallback) =>
+            new Dictionary<string, object>
+            {
+                ["x"] = GetFloatArg(args, xKey, fallback),
+                ["y"] = GetFloatArg(args, yKey, fallback),
+                ["z"] = GetFloatArg(args, zKey, fallback)
+            };
+
+        private static bool HasAnyArg(JObject args, params string[] keys) =>
+            args != null && keys.Any(key => args.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token) && token.Type != JTokenType.Null);
 
         private static void AnalyzeGameObjectRename(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
@@ -934,12 +982,13 @@ namespace UnitySkills
             var newName = GetStringArg(args, "newName");
             AddErrorFromValidation(validation, Validate.Required(newName, "newName"), "newName");
 
-            var (go, error) = ResolveGameObject(args);
-            if (error != null)
+            var target = ResolveTarget(args);
+            if (target.Error != null)
             {
-                AddSemanticError(validation, "gameObject", ExtractError(error));
+                AddSemanticError(validation, "gameObject", ExtractError(target.Error));
                 return;
             }
+            WarnIfPending(validation, "target", target);
 
             if (plan != null)
             {
@@ -952,7 +1001,7 @@ namespace UnitySkills
                         {
                             ["index"] = 1,
                             ["action"] = "Rename GameObject",
-                            ["target"] = GameObjectFinder.GetPath(go),
+                            ["target"] = target.Path,
                             ["newName"] = newName
                         }
                     },
@@ -960,8 +1009,8 @@ namespace UnitySkills
                     {
                         new Dictionary<string, object>
                         {
-                            ["target"] = GameObjectFinder.GetPath(go),
-                            ["oldName"] = go.name,
+                            ["target"] = target.Path,
+                            ["oldName"] = target.Name,
                             ["newName"] = newName
                         }
                     });
@@ -982,24 +1031,26 @@ namespace UnitySkills
                 if (Validate.Required(newName, "newName") is object nameErr)
                     errors.Add(ExtractError(nameErr));
 
-                var (go, error) = ResolveGameObject(item);
-                if (error != null)
-                    errors.Add(ExtractError(error));
+                var target = ResolveTarget(item);
+                if (target.Error != null)
+                    errors.Add(ExtractError(target.Error));
+                else
+                    WarnIfPending(validation, "target", target, i);
 
                 ctx.ReportItemErrors(i, errors);
 
                 ctx.AddItemPlan(i,
-                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    target.Error == null ? target.Path : InferPrimaryTarget(item),
                     errors.Count == 0,
                     errors.ToArray(),
                     new Dictionary<string, object> { ["newName"] = newName });
 
-                if (errors.Count == 0 && go != null)
+                if (errors.Count == 0)
                 {
                     modifies.Add(new Dictionary<string, object>
                     {
-                        ["target"] = GameObjectFinder.GetPath(go),
-                        ["oldName"] = go.name,
+                        ["target"] = target.Path,
+                        ["oldName"] = target.Name,
                         ["newName"] = newName
                     });
                 }
@@ -1011,29 +1062,35 @@ namespace UnitySkills
         {
             var args = validation.Args;
 
-            var (child, childError) = ResolveGameObject(args, "childName", "childInstanceId", "childPath", "childEntityId");
-            if (childError != null)
+            var child = ResolveTarget(args, "childName", "childInstanceId", "childPath", "childEntityId");
+            if (child.Error != null)
             {
-                AddSemanticError(validation, "child", ExtractError(childError));
+                AddSemanticError(validation, "child", ExtractError(child.Error));
                 return;
             }
+            WarnIfPending(validation, "child", child);
 
-            GameObject parentGo = null;
-            var (hasParent, parentName, parentInstanceId, parentPath, parentEntityId) = ReadObjectLocator(args, "parentName", "parentInstanceId", "parentPath", "parentEntityId");
+            string parentPath = null;
+            var (hasParent, parentName, parentInstanceId, parentLocatorPath, parentEntityId) = ReadObjectLocator(args, "parentName", "parentInstanceId", "parentPath", "parentEntityId");
             if (hasParent)
             {
-                var (found, parentErr) = GameObjectFinder.FindOrError(parentName, parentInstanceId, parentPath, entityId: parentEntityId);
-                if (parentErr != null)
-                    AddSemanticError(validation, "parent", ExtractError(parentErr));
+                var parent = ResolveLocator(parentName, parentInstanceId, parentLocatorPath, parentEntityId);
+                if (parent.Error != null)
+                {
+                    AddSemanticError(validation, "parent", ExtractError(parent.Error));
+                }
                 else
-                    parentGo = found;
+                {
+                    parentPath = parent.Path;
+                    WarnIfPending(validation, "parent", parent);
+                }
             }
 
             if (plan != null)
             {
-                var oldPath = GameObjectFinder.GetPath(child);
-                var newParentPath = parentGo != null ? GameObjectFinder.GetPath(parentGo) : "(root)";
-                var predictedPath = parentGo != null ? newParentPath + "/" + child.name : child.name;
+                var oldPath = child.Path;
+                var newParentPath = parentPath ?? "(root)";
+                var predictedPath = parentPath != null ? parentPath + "/" + child.Name : child.Name;
 
                 MarkSemantic(plan);
                 SetPlanDetails(
@@ -1086,12 +1143,13 @@ namespace UnitySkills
 
         private static void AnalyzeGameObjectDelete(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
-            var (go, error) = ResolveGameObject(validation.Args);
-            if (error != null)
+            var target = ResolveTarget(validation.Args);
+            if (target.Error != null)
             {
-                AddSemanticError(validation, "gameObject", ExtractError(error));
+                AddSemanticError(validation, "gameObject", ExtractError(target.Error));
                 return;
             }
+            WarnIfPending(validation, "target", target);
 
             if (plan != null)
             {
@@ -1104,15 +1162,15 @@ namespace UnitySkills
                         {
                             ["index"] = 1,
                             ["action"] = "Delete GameObject",
-                            ["target"] = GameObjectFinder.GetPath(go)
+                            ["target"] = target.Path
                         }
                     },
                     delete: new List<object>
                     {
                         new Dictionary<string, object>
                         {
-                            ["target"] = GameObjectFinder.GetPath(go),
-                            ["name"] = go.name
+                            ["target"] = target.Path,
+                            ["name"] = target.Name
                         }
                     });
             }
@@ -1133,22 +1191,24 @@ namespace UnitySkills
                 item ??= new JObject();
 
                 var errors = new List<string>();
-                var (go, error) = ResolveGameObject(item);
-                if (error != null)
-                    errors.Add(ExtractError(error));
+                var target = ResolveTarget(item);
+                if (target.Error != null)
+                    errors.Add(ExtractError(target.Error));
+                else
+                    WarnIfPending(validation, "target", target, i);
                 ctx.ReportItemErrors(i, errors);
 
                 ctx.AddItemPlan(i,
-                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    target.Error == null ? target.Path : InferPrimaryTarget(item),
                     errors.Count == 0,
                     errors.ToArray());
 
-                if (errors.Count == 0 && go != null)
+                if (errors.Count == 0)
                 {
                     deletes.Add(new Dictionary<string, object>
                     {
-                        ["target"] = GameObjectFinder.GetPath(go),
-                        ["name"] = go.name
+                        ["target"] = target.Path,
+                        ["name"] = target.Name
                     });
                 }
             }
@@ -1161,12 +1221,17 @@ namespace UnitySkills
             var componentType = GetStringArg(args, "componentType");
             AddErrorFromValidation(validation, Validate.Required(componentType, "componentType"), "componentType");
 
-            var (go, error) = ResolveGameObject(args);
-            if (error != null)
+            var target = ResolveTarget(args);
+            if (target.Error != null)
             {
-                AddSemanticError(validation, "gameObject", ExtractError(error));
+                AddSemanticError(validation, "gameObject", ExtractError(target.Error));
                 return;
             }
+            WarnIfPending(validation, "target", target);
+
+            // Already reported above, or listed in MissingParams.
+            if (string.IsNullOrEmpty(componentType))
+                return;
 
             var type = ComponentSkills.FindComponentType(componentType);
             if (type == null)
@@ -1175,7 +1240,8 @@ namespace UnitySkills
                 return;
             }
 
-            bool alreadyExists = go.GetComponent(type) != null && !AllowsMultiple(type);
+            var go = target.LiveObject;
+            bool alreadyExists = go != null && go.GetComponent(type) != null && !AllowsMultiple(type);
             if (alreadyExists)
                 AddWarning(validation, $"Component {type.Name} already exists on {go.name}; execution will be a no-op warning.");
 
@@ -1190,7 +1256,7 @@ namespace UnitySkills
                         {
                             ["index"] = 1,
                             ["action"] = "Add Component",
-                            ["target"] = GameObjectFinder.GetPath(go),
+                            ["target"] = target.Path,
                             ["componentType"] = type.FullName
                         }
                     },
@@ -1200,7 +1266,7 @@ namespace UnitySkills
                         {
                             new Dictionary<string, object>
                             {
-                                ["target"] = GameObjectFinder.GetPath(go),
+                                ["target"] = target.Path,
                                 ["component"] = type.Name,
                                 ["fullTypeName"] = type.FullName
                             }
@@ -1224,26 +1290,29 @@ namespace UnitySkills
                 if (Validate.Required(componentType, "componentType") is object typeErr)
                     errors.Add(ExtractError(typeErr));
 
-                var (go, error) = ResolveGameObject(item);
-                if (error != null)
-                    errors.Add(ExtractError(error));
+                var target = ResolveTarget(item);
+                if (target.Error != null)
+                    errors.Add(ExtractError(target.Error));
 
                 Type type = null;
                 if (errors.Count == 0)
                 {
                     type = ComponentSkills.FindComponentType(componentType);
+                    var go = target.LiveObject;
                     if (type == null)
                         errors.Add($"Component type not found: {componentType}");
-                    else if (go.GetComponent(type) != null && !AllowsMultiple(type))
+                    else if (go != null && go.GetComponent(type) != null && !AllowsMultiple(type))
                         warnings.Add($"Component {type.Name} already exists on {go.name}");
                 }
 
                 ctx.ReportItemErrors(i, errors);
                 foreach (var warning in warnings)
                     AddWarning(validation, $"items[{i}]: {warning}");
+                if (errors.Count == 0)
+                    WarnIfPending(validation, "target", target, i);
 
                 ctx.AddItemPlan(i,
-                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    target.Error == null ? target.Path : InferPrimaryTarget(item),
                     errors.Count == 0,
                     errors.ToArray());
 
@@ -1251,7 +1320,7 @@ namespace UnitySkills
                 {
                     creates.Add(new Dictionary<string, object>
                     {
-                        ["target"] = GameObjectFinder.GetPath(go),
+                        ["target"] = target.Path,
                         ["component"] = type.Name,
                         ["fullTypeName"] = type.FullName
                     });
@@ -1266,12 +1335,15 @@ namespace UnitySkills
             var componentType = GetStringArg(args, "componentType");
             AddErrorFromValidation(validation, Validate.Required(componentType, "componentType"), "componentType");
 
-            var (go, error) = ResolveGameObject(args);
-            if (error != null)
+            var target = ResolveTarget(args);
+            if (target.Error != null)
             {
-                AddSemanticError(validation, "gameObject", ExtractError(error));
+                AddSemanticError(validation, "gameObject", ExtractError(target.Error));
                 return;
             }
+
+            if (string.IsNullOrEmpty(componentType))
+                return;
 
             var type = ComponentSkills.FindComponentType(componentType);
             if (type == null)
@@ -1280,25 +1352,33 @@ namespace UnitySkills
                 return;
             }
 
-            var components = go.GetComponents(type);
-            if (components.Length == 0)
-            {
-                AddSemanticError(validation, "component", $"Component not found on {go.name}: {componentType}");
-                return;
-            }
-
             int componentIndex = GetIntArg(args, "componentIndex");
-            if (componentIndex >= components.Length)
+            var go = target.LiveObject;
+            if (go != null)
             {
-                AddSemanticError(validation, "componentIndex", $"Component index {componentIndex} out of range. Found {components.Length} components of type {componentType}");
-                return;
-            }
+                var components = go.GetComponents(type);
+                if (components.Length == 0)
+                {
+                    AddSemanticError(validation, "component", $"Component not found on {go.name}: {componentType}");
+                    return;
+                }
 
-            var requiredBy = GetRequiredByComponents(go, type);
-            if (requiredBy.Any())
+                if (componentIndex >= components.Length)
+                {
+                    AddSemanticError(validation, "componentIndex", $"Component index {componentIndex} out of range. Found {components.Length} components of type {componentType}");
+                    return;
+                }
+
+                var requiredBy = GetRequiredByComponents(go, type);
+                if (requiredBy.Any())
+                {
+                    AddSemanticError(validation, "component", $"Cannot remove {componentType} - required by: {string.Join(", ", requiredBy)}");
+                    return;
+                }
+            }
+            else
             {
-                AddSemanticError(validation, "component", $"Cannot remove {componentType} - required by: {string.Join(", ", requiredBy)}");
-                return;
+                WarnIfPending(validation, "target", target);
             }
 
             if (plan != null)
@@ -1312,7 +1392,7 @@ namespace UnitySkills
                         {
                             ["index"] = 1,
                             ["action"] = "Remove Component",
-                            ["target"] = GameObjectFinder.GetPath(go),
+                            ["target"] = target.Path,
                             ["componentType"] = type.FullName,
                             ["componentIndex"] = componentIndex
                         }
@@ -1321,7 +1401,7 @@ namespace UnitySkills
                     {
                         new Dictionary<string, object>
                         {
-                            ["target"] = GameObjectFinder.GetPath(go),
+                            ["target"] = target.Path,
                             ["component"] = type.Name,
                             ["componentIndex"] = componentIndex
                         }
@@ -1344,18 +1424,19 @@ namespace UnitySkills
                 if (Validate.Required(componentType, "componentType") is object typeErr)
                     errors.Add(ExtractError(typeErr));
 
-                var (go, error) = ResolveGameObject(item);
-                if (error != null)
-                    errors.Add(ExtractError(error));
+                var target = ResolveTarget(item);
+                if (target.Error != null)
+                    errors.Add(ExtractError(target.Error));
 
                 Type type = null;
                 int count = 0;
                 if (errors.Count == 0)
                 {
                     type = ComponentSkills.FindComponentType(componentType);
+                    var go = target.LiveObject;
                     if (type == null)
                         errors.Add($"Component type not found: {componentType}");
-                    else
+                    else if (go != null)
                     {
                         var components = go.GetComponents(type);
                         count = components.Length;
@@ -1367,20 +1448,25 @@ namespace UnitySkills
                 }
 
                 ctx.ReportItemErrors(i, errors);
+                if (errors.Count == 0)
+                    WarnIfPending(validation, "target", target, i);
 
                 ctx.AddItemPlan(i,
-                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    target.Error == null ? target.Path : InferPrimaryTarget(item),
                     errors.Count == 0,
                     errors.ToArray());
 
                 if (errors.Count == 0 && type != null)
                 {
-                    deletes.Add(new Dictionary<string, object>
+                    var removed = new Dictionary<string, object>
                     {
-                        ["target"] = GameObjectFinder.GetPath(go),
-                        ["component"] = type.Name,
-                        ["count"] = count
-                    });
+                        ["target"] = target.Path,
+                        ["component"] = type.Name
+                    };
+                    // A pending target has no components to count yet.
+                    if (target.LiveObject != null)
+                        removed["count"] = count;
+                    deletes.Add(removed);
                 }
             }
             ctx.EmitPlan("Remove Components (batch)", delete: deletes);
@@ -1394,12 +1480,15 @@ namespace UnitySkills
             AddErrorFromValidation(validation, Validate.Required(componentType, "componentType"), "componentType");
             AddErrorFromValidation(validation, Validate.Required(propertyName, "propertyName"), "propertyName");
 
-            var (go, error) = ResolveGameObject(args);
-            if (error != null)
+            var target = ResolveTarget(args);
+            if (target.Error != null)
             {
-                AddSemanticError(validation, "gameObject", ExtractError(error));
+                AddSemanticError(validation, "gameObject", ExtractError(target.Error));
                 return;
             }
+
+            if (string.IsNullOrEmpty(componentType))
+                return;
 
             var type = ComponentSkills.FindComponentType(componentType);
             if (type == null)
@@ -1408,12 +1497,23 @@ namespace UnitySkills
                 return;
             }
 
-            var comp = go.GetComponent(type);
-            if (comp == null)
+            // Only a live object can be asked whether it carries the component; everything below is checked on the type.
+            var go = target.LiveObject;
+            if (go != null)
             {
-                AddSemanticError(validation, "component", $"Component not found: {componentType}");
-                return;
+                if (go.GetComponent(type) == null)
+                {
+                    AddSemanticError(validation, "component", $"Component not found: {componentType}");
+                    return;
+                }
             }
+            else
+            {
+                WarnIfPending(validation, "target", target);
+            }
+
+            if (string.IsNullOrEmpty(propertyName))
+                return;
 
             var (prop, field) = FindMember(type, propertyName);
             if (prop == null && field == null)
@@ -1448,7 +1548,7 @@ namespace UnitySkills
                         {
                             ["index"] = 1,
                             ["action"] = "Set Component Property",
-                            ["target"] = GameObjectFinder.GetPath(go),
+                            ["target"] = target.Path,
                             ["componentType"] = type.FullName,
                             ["propertyName"] = propertyName,
                             ["valueType"] = targetType.Name
@@ -1458,7 +1558,7 @@ namespace UnitySkills
                     {
                         new Dictionary<string, object>
                         {
-                            ["target"] = GameObjectFinder.GetPath(go),
+                            ["target"] = target.Path,
                             ["component"] = type.Name,
                             ["property"] = propertyName,
                             ["valueType"] = targetType.Name
@@ -1482,16 +1582,16 @@ namespace UnitySkills
                 foreach (var warning in iv.Warnings)
                     AddWarning(validation, $"items[{i}]: {warning}");
 
-                var (go, _) = ResolveGameObject(item);
+                var target = ResolveTarget(item);
                 ctx.AddItemPlan(i,
-                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    target.Error == null ? target.Path : InferPrimaryTarget(item),
                     iv.SemanticErrors.Count == 0,
                     iv.SemanticErrors.Select(ExtractSemanticMessage).ToArray());
 
-                if (iv.SemanticErrors.Count == 0 && go != null)
+                if (iv.SemanticErrors.Count == 0 && target.Error == null)
                     modifies.Add(new Dictionary<string, object>
                     {
-                        ["target"] = GameObjectFinder.GetPath(go),
+                        ["target"] = target.Path,
                         ["component"] = GetStringArg(item, "componentType"),
                         ["property"] = GetStringArg(item, "propertyName")
                     });
@@ -1590,19 +1690,30 @@ namespace UnitySkills
             var materialPath = GetStringArg(args, "materialPath");
             AddErrorFromValidation(validation, Validate.Required(materialPath, "materialPath"), "materialPath");
 
-            var (go, error) = ResolveGameObject(args);
-            if (error != null)
+            var target = ResolveTarget(args);
+            if (target.Error != null)
             {
-                AddSemanticError(validation, "gameObject", ExtractError(error));
+                AddSemanticError(validation, "gameObject", ExtractError(target.Error));
                 return;
             }
 
-            var renderer = go.GetComponent<Renderer>();
-            if (renderer == null)
+            Renderer renderer = null;
+            if (target.LiveObject != null)
             {
-                AddSemanticError(validation, "renderer", "No Renderer component found");
-                return;
+                renderer = target.LiveObject.GetComponent<Renderer>();
+                if (renderer == null)
+                {
+                    AddSemanticError(validation, "renderer", "No Renderer component found");
+                    return;
+                }
             }
+            else
+            {
+                WarnIfPending(validation, "target", target);
+            }
+
+            if (string.IsNullOrEmpty(materialPath))
+                return;
 
             var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
             if (material == null)
@@ -1614,6 +1725,13 @@ namespace UnitySkills
             if (plan != null)
             {
                 MarkSemantic(plan);
+                var assigned = new Dictionary<string, object>
+                {
+                    ["target"] = target.Path,
+                    ["material"] = materialPath
+                };
+                if (renderer != null)
+                    assigned["rendererType"] = renderer.GetType().Name;
                 SetPlanDetails(plan,
                     new List<object>
                     {
@@ -1621,19 +1739,11 @@ namespace UnitySkills
                         {
                             ["index"] = 1,
                             ["action"] = "Assign Material",
-                            ["target"] = GameObjectFinder.GetPath(go),
+                            ["target"] = target.Path,
                             ["materialPath"] = materialPath
                         }
                     },
-                    modify: new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            ["target"] = GameObjectFinder.GetPath(go),
-                            ["material"] = materialPath,
-                            ["rendererType"] = renderer.GetType().Name
-                        }
-                    });
+                    modify: new List<object> { assigned });
             }
         }
 
@@ -1649,17 +1759,19 @@ namespace UnitySkills
                 var iv = new SkillRouter.ParameterValidationResult { Args = item };
                 AnalyzeMaterialAssign(iv, null);
                 ctx.ReportDelegatedErrors(i, iv);
+                foreach (var warning in iv.Warnings)
+                    AddWarning(validation, $"items[{i}]: {warning}");
 
-                var (go, _) = ResolveGameObject(item);
+                var target = ResolveTarget(item);
                 ctx.AddItemPlan(i,
-                    go != null ? GameObjectFinder.GetPath(go) : InferPrimaryTarget(item),
+                    target.Error == null ? target.Path : InferPrimaryTarget(item),
                     iv.SemanticErrors.Count == 0,
                     iv.SemanticErrors.Select(ExtractSemanticMessage).ToArray());
 
-                if (iv.SemanticErrors.Count == 0 && go != null)
+                if (iv.SemanticErrors.Count == 0 && target.Error == null)
                     modifies.Add(new Dictionary<string, object>
                     {
-                        ["target"] = GameObjectFinder.GetPath(go),
+                        ["target"] = target.Path,
                         ["material"] = GetStringArg(item, "materialPath")
                     });
             }
@@ -2029,9 +2141,11 @@ namespace UnitySkills
             AddErrorFromValidation(validation, Validate.Required(savePath, "savePath"), "savePath");
             AddErrorFromValidation(validation, Validate.SafePath(savePath, "savePath"), "savePath");
 
-            var (go, goErr) = ResolveGameObject(args);
-            if (goErr != null)
-                AddSemanticError(validation, "gameObject", ExtractError(goErr));
+            var source = ResolveTarget(args);
+            if (source.Error != null)
+                AddSemanticError(validation, "gameObject", ExtractError(source.Error));
+            else
+                WarnIfPending(validation, "source", source);
 
             if (!string.IsNullOrWhiteSpace(savePath))
             {
@@ -2044,7 +2158,7 @@ namespace UnitySkills
             if (plan != null)
             {
                 MarkSemantic(plan);
-                var goName = go != null ? go.name : GetStringArg(args, "name", "path");
+                var goName = source.Error == null ? source.Name : GetStringArg(args, "name", "path");
                 SetPlanDetails(plan,
                     new List<object>
                     {
@@ -2071,21 +2185,26 @@ namespace UnitySkills
         private static void AnalyzePrefabApply(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
             var args = validation.Args;
-            var (go, goErr) = ResolveGameObject(args);
-            if (goErr != null)
+            var target = ResolveTarget(args);
+            var go = target.LiveObject;
+            if (target.Error != null)
             {
-                AddSemanticError(validation, "gameObject", ExtractError(goErr));
+                AddSemanticError(validation, "gameObject", ExtractError(target.Error));
             }
             else if (go != null)
             {
                 if (!UnityEditor.PrefabUtility.IsPartOfPrefabInstance(go))
                     AddSemanticError(validation, "gameObject", $"'{go.name}' is not a prefab instance.");
             }
+            else
+            {
+                WarnIfPending(validation, "target", target);
+            }
 
             if (plan != null)
             {
                 MarkSemantic(plan);
-                var goName = go != null ? go.name : GetStringArg(args, "name", "path");
+                var goName = target.Error == null ? target.Name : GetStringArg(args, "name", "path");
                 string prefabPath = null;
                 if (go != null && UnityEditor.PrefabUtility.IsPartOfPrefabInstance(go))
                 {
@@ -2197,7 +2316,14 @@ namespace UnitySkills
 
                 if (!string.IsNullOrEmpty(referencePath) || !string.IsNullOrEmpty(referenceName))
                 {
-                    var resolved = ResolveSceneReference(targetType, referencePath, referenceName);
+                    var reference = ResolveLocator(referenceName, 0, referencePath, null);
+                    if (reference.IsPending)
+                    {
+                        WarnIfPending(validation, "reference", reference);
+                        return;
+                    }
+
+                    var resolved = reference.LiveObject != null ? ResolveSceneReference(targetType, reference.LiveObject) : null;
                     if (resolved == null)
                         AddSemanticError(validation, propertyName, $"Could not resolve reference for {propertyName}. Target: path='{referencePath}', name='{referenceName}'");
                     return;
@@ -2211,7 +2337,39 @@ namespace UnitySkills
             }
         }
 
-        private static (GameObject go, object error) ResolveGameObject(
+        // ===================== Scene target resolution & pending objects =====================
+
+        /// <summary>
+        /// Where a planner's locator points: a live scene object, an object that is only predicted (by an earlier item
+        /// of the same batch call, or an earlier step of a /skills/batch dry run), or nowhere. Planners run their
+        /// target-dependent checks (components, renderer, prefab link) only against a live object.
+        /// </summary>
+        private readonly struct TargetResolution
+        {
+            public readonly GameObject LiveObject;
+            public readonly string PendingPath;
+            // True when an earlier item of the same batch call predicted it: that is the call's own intent, so no warning.
+            public readonly bool FromBatch;
+            public readonly object Error;
+
+            private TargetResolution(GameObject liveObject, string pendingPath, bool fromBatch, object error)
+            {
+                LiveObject = liveObject;
+                PendingPath = pendingPath;
+                FromBatch = fromBatch;
+                Error = error;
+            }
+
+            public static TargetResolution Live(GameObject go) => new TargetResolution(go, null, false, null);
+            public static TargetResolution Pending(string path, bool fromBatch) => new TargetResolution(null, path, fromBatch, null);
+            public static TargetResolution Failed(object error) => new TargetResolution(null, null, false, error);
+
+            public bool IsPending => PendingPath != null;
+            public string Path => LiveObject != null ? GameObjectFinder.GetPath(LiveObject) : PendingPath;
+            public string Name => LiveObject != null ? LiveObject.name : PendingPath?.Substring(PendingPath.LastIndexOf('/') + 1);
+        }
+
+        private static TargetResolution ResolveTarget(
             JObject args,
             string nameKey = "name",
             string instanceIdKey = "instanceId",
@@ -2219,7 +2377,174 @@ namespace UnitySkills
             string entityIdKey = "entityId")
         {
             var (_, name, instanceId, path, entityId) = ReadObjectLocator(args, nameKey, instanceIdKey, pathKey, entityIdKey);
-            return GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
+            return ResolveLocator(name, instanceId, path, entityId);
+        }
+
+        /// <summary>
+        /// The one scene lookup every planner goes through. An id always means a live object -- nothing predicted has one.
+        /// A name or path is first matched against <paramref name="batchCreated"/> (earlier items of the same call, which the
+        /// executor also resolves first), then, inside <see cref="BeginPendingObjectsScope"/>, against what earlier steps
+        /// would create, in the order execution will find it: exact live path, pending path, exact live name, pending name.
+        /// Anything else falls through to the finder unchanged, fuzzy name match included -- outside a scope and without a
+        /// batch map, this is exactly <see cref="GameObjectFinder.FindOrError"/>.
+        /// </summary>
+        private static TargetResolution ResolveLocator(string name, int instanceId, string path, string entityId, PendingObjectSet batchCreated = null)
+        {
+            if (instanceId == 0 && string.IsNullOrEmpty(entityId))
+            {
+                if (batchCreated != null && batchCreated.TryMatch(name, path, liveFirst: false, out var batchPath))
+                    return TargetResolution.Pending(batchPath, fromBatch: true);
+
+                if (_pendingObjects != null && _pendingObjects.TryMatch(name, path, liveFirst: true, out var pendingPath))
+                    return TargetResolution.Pending(pendingPath, fromBatch: false);
+            }
+
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
+            return error != null ? TargetResolution.Failed(error) : TargetResolution.Live(go);
+        }
+
+        private static void WarnIfPending(SkillRouter.ParameterValidationResult validation, string role, TargetResolution target, int itemIndex = -1)
+        {
+            if (!target.IsPending || target.FromBatch)
+                return;
+
+            var note = $"{role} '{target.PendingPath}' will be created by an earlier step; checks that need the live object were skipped.";
+            AddWarning(validation, itemIndex >= 0 ? $"items[{itemIndex}]: {note}" : note);
+        }
+
+        // The ambient set of a /skills/batch dry run (BeginPendingObjectsScope); null outside one. Main thread only, like every planner.
+        [ThreadStatic] private static PendingObjectSet _pendingObjects;
+
+        /// <summary>
+        /// Opens the pending-objects scope a multi-step dry run wraps its loop in. While it is open, every
+        /// <c>SkillRouter.DryRun</c> / <c>Plan</c> registers the GameObjects its valid plan would create
+        /// (<see cref="RegisterPendingCreates"/>), and planners accept a later locator naming one of them, with a warning,
+        /// instead of reporting it as not found. A nested call reuses the outer set and its disposal leaves that set open.
+        /// </summary>
+        internal static IDisposable BeginPendingObjectsScope()
+        {
+            if (_pendingObjects != null)
+                return NestedPendingObjectsScope.Instance;
+
+            _pendingObjects = new PendingObjectSet();
+            return new PendingObjectsScope();
+        }
+
+        private sealed class PendingObjectsScope : IDisposable
+        {
+            private bool _disposed;
+
+            public void Dispose()
+            {
+                if (_disposed)
+                    return;
+                _disposed = true;
+                _pendingObjects = null;
+            }
+        }
+
+        private sealed class NestedPendingObjectsScope : IDisposable
+        {
+            public static readonly NestedPendingObjectsScope Instance = new NestedPendingObjectsScope();
+
+            public void Dispose() { }
+        }
+
+        /// <summary>
+        /// Inside a pending-objects scope, records the GameObjects a call would create: its planner's
+        /// <c>changes.create[]</c> entries that carry a <c>predictedPath</c>. An invalid call registers nothing -- execution
+        /// rejects it before anything exists. No-op outside a scope.
+        /// </summary>
+        internal static void RegisterPendingCreates(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
+        {
+            var pending = _pendingObjects;
+            if (pending == null || validation == null || !validation.Valid || plan == null)
+                return;
+
+            if (!plan.TryGetValue("changes", out var changesObj) || !(changesObj is IDictionary<string, object> changes) ||
+                !changes.TryGetValue("create", out var createObj) || !(createObj is IEnumerable<object> creates))
+                return;
+
+            foreach (var entry in creates.OfType<IDictionary<string, object>>())
+            {
+                if (entry.TryGetValue("predictedPath", out var predictedPath) && entry.TryGetValue("name", out var name))
+                    pending.Register(name as string, predictedPath as string);
+            }
+        }
+
+        /// <summary>
+        /// Objects that are predicted but do not exist yet. Names and hierarchy paths compare case-insensitively, the
+        /// finder's exact-match rules; a later registration of the same name or path wins, as in the batch executor.
+        /// </summary>
+        private sealed class PendingObjectSet
+        {
+            private readonly Dictionary<string, string> _pathsByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, string> _paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            public void Register(string name, string predictedPath)
+            {
+                var path = GameObjectFinder.NormalizePathKey(predictedPath);
+                if (path == null || string.IsNullOrWhiteSpace(name))
+                    return;
+
+                _paths[path] = path;
+                _pathsByName[name] = path;
+            }
+
+            /// <summary>
+            /// Follows the precedence execution will apply once the prediction exists. <paramref name="liveFirst"/> false
+            /// (earlier items of the same call): predicted path, live path, predicted name -- the executor's order.
+            /// True (earlier steps): an exact live match of the same kind wins over a prediction, as it would when both exist.
+            /// </summary>
+            public bool TryMatch(string name, string path, bool liveFirst, out string pendingPath)
+            {
+                pendingPath = null;
+                if (_paths.Count == 0)
+                    return false;
+
+                if (!string.IsNullOrEmpty(path))
+                {
+                    if (liveFirst && GameObjectFinder.FindByPath(path) != null)
+                        return false;
+                    if (TryMatchPath(path, out pendingPath))
+                        return true;
+                    if (!liveFirst && GameObjectFinder.FindByPath(path) != null)
+                        return false;
+                }
+
+                if (!string.IsNullOrEmpty(name))
+                {
+                    if (liveFirst && GameObjectFinder.FindByNameCaseInsensitive(name) != null)
+                        return false;
+                    if (_pathsByName.TryGetValue(name, out pendingPath))
+                        return true;
+                }
+
+                return false;
+            }
+
+            private bool TryMatchPath(string path, out string pendingPath)
+            {
+                pendingPath = null;
+                var key = GameObjectFinder.NormalizePathKey(path);
+                if (key == null)
+                    return false;
+                if (_paths.TryGetValue(key, out pendingPath))
+                    return true;
+
+                // The finder also accepts "SceneName/Root/Child"; a prediction never carries the scene segment.
+                int slash = key.IndexOf('/');
+                if (slash <= 0)
+                    return false;
+                var firstSegment = key.Substring(0, slash);
+                for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++)
+                {
+                    var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                    if (scene.IsValid() && scene.isLoaded && string.Equals(scene.name, firstSegment, StringComparison.OrdinalIgnoreCase))
+                        return _paths.TryGetValue(key.Substring(slash + 1), out pendingPath);
+                }
+                return false;
+            }
         }
 
         private static (bool hasLocator, string name, int instanceId, string path, string entityId) ReadObjectLocator(
@@ -2360,12 +2685,8 @@ namespace UnitySkills
             return (prop, field);
         }
 
-        private static object ResolveSceneReference(Type targetType, string referencePath, string referenceName)
+        private static object ResolveSceneReference(Type targetType, GameObject go)
         {
-            var (go, error) = GameObjectFinder.FindOrError(referenceName, 0, referencePath);
-            if (error != null || go == null)
-                return null;
-
             if (targetType == typeof(GameObject))
                 return go;
             if (targetType == typeof(Transform))
@@ -2429,18 +2750,21 @@ namespace UnitySkills
             return 0;
         }
 
-        private static float GetFloatArg(JObject args, string key)
+        private static float GetFloatArg(JObject args, string key, float fallback = 0f)
         {
             if (args != null && args.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token) && token.Type != JTokenType.Null)
             {
                 try { return token.ToObject<float>(); } catch { }
             }
-            return 0f;
+            return fallback;
         }
 
         private static void AddErrorFromValidation(SkillRouter.ParameterValidationResult validation, object result, string field)
         {
             if (result == null)
+                return;
+            // A parameter the router already lists in MissingParams is one problem, not two.
+            if (validation != null && validation.MissingParams.Any(missing => string.Equals(missing, field, StringComparison.OrdinalIgnoreCase)))
                 return;
             AddSemanticError(validation, field, ExtractError(result));
         }

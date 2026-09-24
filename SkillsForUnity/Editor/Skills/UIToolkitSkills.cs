@@ -1468,6 +1468,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Modify,
             Tags = new[] { "add", "uxml", "element", "visual-element" },
             Outputs = new[] { "path", "elementType", "elementName", "parentName" },
+            RequiredParams = new[] { "elementType" },
             RequiresInput = new[] { "filePath" },
             TracksWorkflow = true,
             MutatesAssets = true)]
@@ -1629,6 +1630,7 @@ $@"<?xml version=""1.0"" encoding=""utf-8""?>
             Category = SkillCategory.UIToolkit, Operation = SkillOperation.Create | SkillOperation.Modify,
             Tags = new[] { "uss", "rule", "selector", "style" },
             Outputs = new[] { "path", "selector", "action" },
+            RequiredParams = new[] { "selector", "properties" },
             RequiresInput = new[] { "filePath" },
             TracksWorkflow = true,
             MutatesAssets = true)]

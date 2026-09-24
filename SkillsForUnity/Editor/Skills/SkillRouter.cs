@@ -32,9 +32,12 @@ namespace UnitySkills
             public List<object> UnknownParams { get; } = new List<object>();
             public List<object> TypeErrors { get; } = new List<object>();
             public List<object> SemanticErrors { get; } = new List<object>();
+            // Declared RequiresPackages that are not installed. Stays empty for a ReadOnly skill (reported as a warning,
+            // so status probes keep answering) and while the package list is still loading (unknown is not absent).
+            public List<string> MissingPackages { get; } = new List<string>();
             public List<string> Warnings { get; } = new List<string>();
             public List<object> ParameterDetails { get; } = new List<object>();
-            public bool Valid => MissingParams.Count == 0 && UnknownParams.Count == 0 && TypeErrors.Count == 0 && SemanticErrors.Count == 0;
+            public bool Valid => MissingParams.Count == 0 && UnknownParams.Count == 0 && TypeErrors.Count == 0 && SemanticErrors.Count == 0 && MissingPackages.Count == 0;
         }
 
         internal sealed class SkillInfo
@@ -53,6 +56,8 @@ namespace UnitySkills
             public string[] Tags;
             public string[] Outputs;
             public string[] RequiresInput;
+            // Parameter names required despite a CLR default; see UnitySkillAttribute.RequiredParams.
+            public string[] RequiredParams;
             public bool ReadOnly;
             // Risk and impact metadata
             public bool MutatesScene;
@@ -70,6 +75,8 @@ namespace UnitySkills
             public SkillMode Mode;
             // Cached to avoid re-allocating on every Execute/DryRun
             public string[] ParameterNames;
+            // SkillParamAttribute text, index-aligned with Parameters; null when no parameter carries one.
+            public string[] ParameterDescriptions;
             public HashSet<string> AllowedParameterSet;
             // Precomputed lowercase form, for filtering/search (skips ToLowerInvariant on every query)
             public string NameLower;
@@ -621,6 +628,7 @@ namespace UnitySkills
                             Tags = attr.Tags,
                             Outputs = attr.Outputs,
                             RequiresInput = attr.RequiresInput,
+                            RequiredParams = attr.RequiredParams,
                             ReadOnly = attr.ReadOnly,
                             MutatesScene = attr.MutatesScene,
                             MutatesAssets = attr.MutatesAssets,
@@ -632,6 +640,7 @@ namespace UnitySkills
                             RequiresPackages = attr.RequiresPackages,
                             Mode = attr.Mode,
                             ParameterNames = parameterNames,
+                            ParameterDescriptions = ReadParameterDescriptions(parameters),
                             AllowedParameterSet = allowedSet,
                             NameLower = name.ToLowerInvariant(),
                             DescriptionLower = (attr.Description ?? "").ToLowerInvariant(),
@@ -882,12 +891,21 @@ namespace UnitySkills
             var wrapWithUndoTransaction = !skill.ReadOnly && !_transactionlessSkills.Contains(name);
             int undoGroup = -1;
             int workflowSnapshotCountBefore = WorkflowManager.CurrentTask?.snapshots?.Count ?? 0;
+            // Name-resolution notes the finder records while this call runs (e.g. a substring match); attached to the response.
+            List<string> resolutionNotes = null;
             // In the persisted editor change log, attributes the changes this call caused (including the
             // end-of-frame ObjectChangeEvent) to REST.
             EditorChangeTrackerService.BeginRestExecution();
             try
             {
+                // Discards notes a previous call left behind, so everything drained below belongs to this call.
+                GameObjectFinder.DrainResolutionNotes();
                 var validation = ValidateParameters(skill, json);
+                resolutionNotes = MergeResolutionNotes(resolutionNotes);
+
+                // A failed validation answers with the full correction report: the first failing bucket still picks the
+                // errorCode and message (same order as always), while details carries every bucket and the parameter list,
+                // so one response is enough to fix everything. Nothing has been touched yet, so these returns need no unwinding.
                 if (validation.UnknownParams.Count > 0)
                 {
                     var fixes = BuildUnknownParamFixes(name, validation.UnknownParams);
@@ -895,9 +913,16 @@ namespace UnitySkills
                         SkillErrorCode.UnknownParam,
                         $"Unknown parameters: {string.Join(", ", ExtractValidationParameterNames(validation.UnknownParams))}",
                         skill: name,
-                        details: new { unknownParams = validation.UnknownParams.ToArray(), allowedParams = GetEffectiveParameterNames(skill) },
+                        details: new
+                        {
+                            unknownParams = validation.UnknownParams.ToArray(),
+                            allowedParams = GetEffectiveParameterNames(skill),
+                            validation = BuildValidationBlock(validation),
+                            parameters = BuildParameterReport(skill)
+                        },
                         suggestedFixes: fixes,
-                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry,
+                        extra: ResolutionNotesExtra(resolutionNotes));
                 }
 
                 if (validation.MissingParams.Count > 0)
@@ -906,8 +931,15 @@ namespace UnitySkills
                         SkillErrorCode.MissingParam,
                         $"Missing required parameter: {validation.MissingParams[0]}",
                         skill: name,
-                        details: new { missingParams = validation.MissingParams.ToArray(), allowedParams = GetEffectiveParameterNames(skill) },
-                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                        details: new
+                        {
+                            missingParams = validation.MissingParams.ToArray(),
+                            allowedParams = GetEffectiveParameterNames(skill),
+                            validation = BuildValidationBlock(validation),
+                            parameters = BuildParameterReport(skill)
+                        },
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry,
+                        extra: ResolutionNotesExtra(resolutionNotes));
                 }
 
                 if (validation.TypeErrors.Count > 0)
@@ -920,8 +952,15 @@ namespace UnitySkills
                         SkillErrorCode.TypeMismatch,
                         message,
                         skill: name,
-                        details: new { typeErrors = validation.TypeErrors.ToArray() },
-                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                        details: new
+                        {
+                            typeErrors = validation.TypeErrors.ToArray(),
+                            allowedParams = GetEffectiveParameterNames(skill),
+                            validation = BuildValidationBlock(validation),
+                            parameters = BuildParameterReport(skill)
+                        },
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry,
+                        extra: ResolutionNotesExtra(resolutionNotes));
                 }
 
                 if (validation.SemanticErrors.Count > 0)
@@ -933,9 +972,13 @@ namespace UnitySkills
                         details: new
                         {
                             semanticErrors = validation.SemanticErrors.ToArray(),
-                            warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
+                            warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null,
+                            allowedParams = GetEffectiveParameterNames(skill),
+                            validation = BuildValidationBlock(validation),
+                            parameters = BuildParameterReport(skill)
                         },
-                        retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry,
+                        extra: ResolutionNotesExtra(resolutionNotes));
                 }
 
                 // The surface profile gate. Must run *before* the permission gate -- this ordering is itself a contract:
@@ -945,6 +988,12 @@ namespace UnitySkills
                 var surfaceGate = ApplySurfaceGate(skill, name);
                 if (surfaceGate != null)
                     return surfaceGate;
+
+                // The declared-package gate: a pure metadata check with no side effects. After the surface gate, so a hidden
+                // skill never sends the agent off to install a package for a call it can never make; before the permission
+                // gate, so the user is never asked to approve a call that can only fail.
+                if (validation.MissingPackages.Count > 0)
+                    return BuildMissingPackageResponse(skill, name, validation, resolutionNotes);
 
                 // The permission tier gate. Placed before the high-risk confirmation gate, so a skill that is both FullAuto and high-risk
                 // reports MODE_RESTRICTED first; the ConfirmationToken step only matters once the skill is already allowed to run.
@@ -1103,7 +1152,13 @@ namespace UnitySkills
                     args.Remove("limit");
                 }
 
+                // Discard notes from the workflow pre-snapshot / diff pre-capture: they look up the names a create is about to
+                // make, which says nothing about what the skill itself resolves (the skill records its own notes again).
+                GameObjectFinder.DrainResolutionNotes();
                 var result = skill.Method.Invoke(null, invoke);
+                // Drained before the success envelope is built: the entityId enrichment there looks objects up by name
+                // again, and those lookups describe the response, not what the skill resolved.
+                resolutionNotes = MergeResolutionNotes(resolutionNotes);
 
                 if (!skill.ReadOnly)
                     UnityEditor.Undo.FlushUndoRecordObjects();
@@ -1133,7 +1188,7 @@ namespace UnitySkills
                         suggestedFixes: errorContext.SuggestedFixes ?? classified.SuggestedFixes,
                         relatedSkills: errorContext.RelatedSkills ?? classified.RelatedSkills,
                         retryStrategy: errorContext.RetryStrategy ?? classified.RetryStrategy,
-                        extra: errorContext.Extra);
+                        extra: WithResolutionNotes(errorContext.Extra, resolutionNotes));
                 }
 
                 // ========== Automatic workflow wrap-up ==========
@@ -1205,9 +1260,9 @@ namespace UnitySkills
                                 preserved[arrayProperty] = new JArray();
                                 foreach (var property in emptyWrapper.Properties().Where(property => property.Name != "items"))
                                     preserved[property.Name] = property.Value;
-                                return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs);
+                                return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs, resolutionNotes);
                             }
-                            return SerializeSuccessResponse(emptyWrapper, sceneDiff, workflowEndMs);
+                            return SerializeSuccessResponse(emptyWrapper, sceneDiff, workflowEndMs, resolutionNotes);
                         }
 
                         int endIndex = (int)Math.Min((long)startIndex + pageSize, arr.Count);
@@ -1247,15 +1302,15 @@ namespace UnitySkills
                             preserved[arrayProperty] = paginatedItems;
                             foreach (var property in wrapper.Properties().Where(property => property.Name != "items"))
                                 preserved[property.Name] = property.Value;
-                            return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs);
+                            return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs, resolutionNotes);
                         }
 
-                        return SerializeSuccessResponse(wrapper, sceneDiff, workflowEndMs);
+                        return SerializeSuccessResponse(wrapper, sceneDiff, workflowEndMs, resolutionNotes);
                     }
                 }
 
                 // Full mode (verbose=true, or the result is already small): return as-is
-                return SerializeSuccessResponse(result, sceneDiff, workflowEndMs);
+                return SerializeSuccessResponse(result, sceneDiff, workflowEndMs, resolutionNotes);
             }
             catch (TargetInvocationException ex)
             {
@@ -1277,7 +1332,8 @@ namespace UnitySkills
                     $"[Transactional Revert] {inner.Message}",
                     skill: name,
                     details: new { exceptionType = inner.GetType().Name },
-                    retryStrategy: SkillErrorResponse.RetryWaitAndRetry);
+                    retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                    extra: ResolutionNotesExtra(MergeResolutionNotes(resolutionNotes)));
             }
             catch (Newtonsoft.Json.JsonException ex)
             {
@@ -1310,10 +1366,13 @@ namespace UnitySkills
                     $"[Transactional Revert] {ex.Message}",
                     skill: name,
                     details: new { exceptionType = ex.GetType().Name },
-                    retryStrategy: SkillErrorResponse.RetryWaitAndRetry);
+                    retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                    extra: ResolutionNotesExtra(MergeResolutionNotes(resolutionNotes)));
             }
             finally
             {
+                // Whatever is left was recorded after the response was decided (entityId enrichment); never carry it over.
+                GameObjectFinder.DrainResolutionNotes();
                 EditorChangeTrackerService.EndRestExecution();
             }
         }
@@ -1333,8 +1392,12 @@ namespace UnitySkills
 
             try
             {
+                GameObjectFinder.DrainResolutionNotes();
                 var validation = ValidateParameters(skill, json);
                 var planData = SkillPlanningService.BuildPlanData(skill, validation);
+                // Inside a /skills/batch dry run, what this step would create becomes nameable by the steps after it.
+                SkillPlanningService.RegisterPendingCreates(validation, planData);
+                var resolutionNotes = MergeResolutionNotes(null);
                 if (wire == WireV2)
                 {
                     var flags = new List<string>();
@@ -1349,7 +1412,7 @@ namespace UnitySkills
                         .Select(p => JObject.FromObject(p))
                         .Where(p => p.Value<bool?>("provided") == true || (p.Value<bool?>("required") == true && p.Value<bool?>("provided") != true))
                         .ToArray();
-                    return JsonConvert.SerializeObject(new
+                    return SerializeWithResolutionNotes(new
                     {
                         status = "dryRun",
                         wire = "v2",
@@ -1365,14 +1428,7 @@ namespace UnitySkills
                             flags = flags.ToArray()
                         },
                         parameters = compactParameters,
-                        validation = new
-                        {
-                            missingParams = validation.MissingParams.Count > 0 ? validation.MissingParams.ToArray() : null,
-                            unknownParams = validation.UnknownParams.Count > 0 ? validation.UnknownParams.ToArray() : null,
-                            typeErrors = validation.TypeErrors.Count > 0 ? validation.TypeErrors.ToArray() : null,
-                            semanticErrors = validation.SemanticErrors.Count > 0 ? validation.SemanticErrors.ToArray() : null,
-                            warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
-                        },
+                        validation = BuildValidationBlock(validation),
                         impact = new
                         {
                             readOnly = skill.ReadOnly,
@@ -1388,9 +1444,9 @@ namespace UnitySkills
                         steps = planData?["steps"],
                         changes = planData?["changes"],
                         note = "No execution performed"
-                    }, _jsonSettings);
+                    }, resolutionNotes);
                 }
-                return JsonConvert.SerializeObject(new
+                return SerializeWithResolutionNotes(new
                 {
                     status = "dryRun",
                     valid = validation.Valid,
@@ -1421,14 +1477,7 @@ namespace UnitySkills
                         approvalBehavior = SkillsModeManager.ApprovalBehaviorForSkill(skill)
                     },
                     parameters = validation.ParameterDetails,
-                    validation = new
-                    {
-                        missingParams = validation.MissingParams.Count > 0 ? validation.MissingParams.ToArray() : null,
-                        unknownParams = validation.UnknownParams.Count > 0 ? validation.UnknownParams.ToArray() : null,
-                        typeErrors = validation.TypeErrors.Count > 0 ? validation.TypeErrors.ToArray() : null,
-                        semanticErrors = validation.SemanticErrors.Count > 0 ? validation.SemanticErrors.ToArray() : null,
-                        warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
-                    },
+                    validation = BuildValidationBlock(validation),
                     impact = new
                     {
                         readOnly = skill.ReadOnly,
@@ -1444,7 +1493,7 @@ namespace UnitySkills
                     steps = planData?["steps"],
                     changes = planData?["changes"],
                     note = "No execution performed"
-                }, _jsonSettings);
+                }, resolutionNotes);
             }
             catch (Newtonsoft.Json.JsonException ex)
             {
@@ -1466,6 +1515,135 @@ namespace UnitySkills
                     details: new { exceptionType = ex.GetType().Name },
                     retryStrategy: SkillErrorResponse.Abort);
             }
+        }
+
+        // ========== Correction report and resolution notes ==========
+
+        internal const string ResolutionNotesKey = "resolutionNotes";
+
+        /// <summary>
+        /// Every validation bucket in one fixed shape, shared by dryRun (v1 and v2) and the failed-execute report, so an
+        /// agent reads the same block whichever of the two it received. An empty bucket is null, never omitted.
+        /// </summary>
+        private static object BuildValidationBlock(ParameterValidationResult validation) => new
+        {
+            missingParams = validation.MissingParams.Count > 0 ? validation.MissingParams.ToArray() : null,
+            unknownParams = validation.UnknownParams.Count > 0 ? validation.UnknownParams.ToArray() : null,
+            typeErrors = validation.TypeErrors.Count > 0 ? validation.TypeErrors.ToArray() : null,
+            semanticErrors = validation.SemanticErrors.Count > 0 ? validation.SemanticErrors.ToArray() : null,
+            missingPackages = validation.MissingPackages.Count > 0 ? validation.MissingPackages.ToArray() : null,
+            warnings = validation.Warnings.Count > 0 ? validation.Warnings.ToArray() : null
+        };
+
+        /// <summary>
+        /// The compact signature a failed execute carries: every effective parameter (the synthesized entityId included)
+        /// with its type and required flag, plus the SkillParam note where one exists -- enough to rewrite the call
+        /// without a separate schema or dryRun round trip.
+        /// </summary>
+        private static object[] BuildParameterReport(SkillInfo skill)
+        {
+            var report = new List<object>(skill.Parameters.Length + 1);
+            for (int i = 0; i < skill.Parameters.Length; i++)
+            {
+                var p = skill.Parameters[i];
+                var name = p.Name;
+                var type = GetJsonType(p.ParameterType);
+                var required = IsParameterRequired(skill, p);
+                var description = GetParameterDescription(skill, i);
+                report.Add(description == null
+                    ? (object)new { name, type, required }
+                    : new { name, type, required, description });
+            }
+
+            if (ShouldExposeSyntheticEntityId(skill))
+                report.Add(new { name = EntityIdParameterName, type = "string", required = false });
+
+            return report.ToArray();
+        }
+
+        private static string BuildMissingPackageResponse(SkillInfo skill, string name, ParameterValidationResult validation, List<string> resolutionNotes)
+        {
+            var missing = validation.MissingPackages.ToArray();
+            var fixes = missing
+                .Select(packageId => new SuggestedFix
+                {
+                    action = "install_package",
+                    skill = "package_install",
+                    args = new Dictionary<string, string> { ["packageId"] = packageId },
+                    reason = $"Install {packageId}, wait for the domain reload to finish, then retry {name}."
+                })
+                .ToList();
+            fixes.Add(new SuggestedFix
+            {
+                action = "retry",
+                skill = "package_check",
+                args = new Dictionary<string, string> { ["packageId"] = missing[0] },
+                reason = "Confirm what is installed before installing, e.g. when the package may come from another source."
+            });
+
+            return SkillErrorResponse.Build(
+                SkillErrorCode.MissingPackage,
+                $"Skill '{name}' requires package(s) that are not installed: {string.Join(", ", missing)}",
+                skill: name,
+                details: new
+                {
+                    missingPackages = missing,
+                    allowedParams = GetEffectiveParameterNames(skill),
+                    validation = BuildValidationBlock(validation),
+                    parameters = BuildParameterReport(skill)
+                },
+                suggestedFixes: fixes,
+                relatedSkills: new List<string> { "package_install", "package_check" },
+                retryStrategy: SkillErrorResponse.RetryInstallAndRetry,
+                extra: ResolutionNotesExtra(resolutionNotes));
+        }
+
+        /// <summary>
+        /// Appends the finder's pending notes to <paramref name="into"/>, skipping repeats: the planner, the workflow
+        /// pre-snapshot and the skill body often resolve the same locator, and one note per resolution is enough.
+        /// </summary>
+        private static List<string> MergeResolutionNotes(List<string> into)
+        {
+            var drained = GameObjectFinder.DrainResolutionNotes();
+            if (drained == null || drained.Count == 0)
+                return into;
+
+            into ??= new List<string>();
+            foreach (var note in drained)
+            {
+                if (!string.IsNullOrWhiteSpace(note) && !into.Contains(note))
+                    into.Add(note);
+            }
+            return into;
+        }
+
+        private static IDictionary<string, object> ResolutionNotesExtra(List<string> notes) =>
+            notes == null || notes.Count == 0
+                ? null
+                : new Dictionary<string, object> { [ResolutionNotesKey] = notes.ToArray() };
+
+        private static IDictionary<string, object> WithResolutionNotes(IDictionary<string, object> extra, List<string> notes)
+        {
+            if (notes == null || notes.Count == 0)
+                return extra;
+
+            var merged = extra != null ? new Dictionary<string, object>(extra) : new Dictionary<string, object>();
+            merged[ResolutionNotesKey] = notes.ToArray();
+            return merged;
+        }
+
+        /// <summary>
+        /// Serializes a preview payload, appending top-level <c>resolutionNotes</c> only when there are any -- the common
+        /// path keeps the exact bytes a direct serialization produces.
+        /// </summary>
+        private static string SerializeWithResolutionNotes(object payload, List<string> notes)
+        {
+            if (notes == null || notes.Count == 0)
+                return JsonConvert.SerializeObject(payload, _jsonSettings);
+
+            var obj = JObject.FromObject(payload, JsonSerializer.Create(_jsonSettings));
+            obj[ResolutionNotesKey] = JArray.FromObject(notes);
+            return JsonConvert.SerializeObject(obj, _jsonSettings);
         }
 
         /// <summary>
@@ -1584,7 +1762,7 @@ namespace UnitySkills
             };
         }
 
-        private static string SerializeSuccessResponse(object result, JToken sceneDiff = null, long? workflowEndMs = null)
+        private static string SerializeSuccessResponse(object result, JToken sceneDiff = null, long? workflowEndMs = null, List<string> resolutionNotes = null)
         {
             var jsonResult = NormalizeSuccessResult(result);
 
@@ -1600,20 +1778,34 @@ namespace UnitySkills
                         if (notice != null)
                         {
                             obj["serverAvailability"] = JToken.FromObject(notice);
-                            return BuildSuccessEnvelope(obj, sceneDiff, workflowEndMs);
+                            return BuildSuccessEnvelope(obj, sceneDiff, workflowEndMs, resolutionNotes);
                         }
                     }
                 }
                 catch { }
             }
 
-            return BuildSuccessEnvelope(jsonResult, sceneDiff, workflowEndMs);
+            return BuildSuccessEnvelope(jsonResult, sceneDiff, workflowEndMs, resolutionNotes);
         }
 
-        // Serializes the success envelope. sceneDiff (?diff=1) and workflowEndMs (the auto-workflow EndTask persistence
-        // time, in milliseconds) are only appended as top-level fields when present; when neither exists, output is byte-for-byte identical to before diff was introduced.
-        private static string BuildSuccessEnvelope(JToken result, JToken sceneDiff, long? workflowEndMs = null)
+        // Serializes the success envelope. sceneDiff (?diff=1), workflowEndMs (the auto-workflow EndTask persistence
+        // time, in milliseconds) and resolutionNotes are only appended as top-level fields when present; when none exists, output is byte-for-byte identical to before diff was introduced.
+        private static string BuildSuccessEnvelope(JToken result, JToken sceneDiff, long? workflowEndMs = null, List<string> resolutionNotes = null)
         {
+            if (resolutionNotes != null && resolutionNotes.Count > 0)
+            {
+                var envelope = new JObject
+                {
+                    ["status"] = "success",
+                    ["result"] = result,
+                    [ResolutionNotesKey] = JArray.FromObject(resolutionNotes)
+                };
+                if (sceneDiff != null)
+                    envelope["sceneDiff"] = sceneDiff;
+                if (workflowEndMs != null)
+                    envelope["workflowEndMs"] = workflowEndMs.Value;
+                return JsonConvert.SerializeObject(envelope, _jsonSettings);
+            }
             if (sceneDiff == null && workflowEndMs == null)
                 return JsonConvert.SerializeObject(new { status = "success", result }, _jsonSettings);
             if (workflowEndMs == null)
@@ -1853,19 +2045,40 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Explicit RequiresInput metadata with the same name overrides the CLR-level "optional (has a default value)" determination.
+        /// A parameter named in RequiredParams, or named literally in RequiresInput, is required whatever its CLR default.
         /// Otherwise, only a parameter with neither a default value nor null acceptance counts as required.
         /// </summary>
         private static bool IsParameterRequired(SkillInfo skill, ParameterInfo p)
         {
-            if (skill?.RequiresInput?.Any(required =>
-                    string.Equals(required, p.Name, StringComparison.OrdinalIgnoreCase)) == true)
+            if (ContainsParameter(skill?.RequiredParams, p.Name) || ContainsParameter(skill?.RequiresInput, p.Name))
                 return true;
             if (p.HasDefaultValue) return false;
             if (p.ParameterType.IsValueType && Nullable.GetUnderlyingType(p.ParameterType) == null)
                 return true;
             return false;
         }
+
+        /// <summary>The SkillParamAttribute notes of a skill's parameters, index-aligned; null when none carries one.</summary>
+        private static string[] ReadParameterDescriptions(ParameterInfo[] parameters)
+        {
+            string[] descriptions = null;
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                SkillParamAttribute note;
+                try { note = parameters[i].GetCustomAttribute<SkillParamAttribute>(); }
+                catch { continue; }
+                if (string.IsNullOrWhiteSpace(note?.Description))
+                    continue;
+                descriptions ??= new string[parameters.Length];
+                descriptions[i] = note.Description;
+            }
+            return descriptions;
+        }
+
+        private static string GetParameterDescription(SkillInfo skill, int parameterIndex) =>
+            skill?.ParameterDescriptions != null && parameterIndex < skill.ParameterDescriptions.Length
+                ? skill.ParameterDescriptions[parameterIndex]
+                : null;
 
         private static string[] FormatOperation(SkillOperation op)
         {
@@ -2423,13 +2636,21 @@ namespace UnitySkills
             if (skill == null)
                 return Array.Empty<object>();
 
-            var parameters = skill.Parameters.Select(p => (object)new
+            var parameters = new List<object>(skill.Parameters.Length + 1);
+            for (int i = 0; i < skill.Parameters.Length; i++)
             {
-                name = p.Name,
-                type = GetJsonType(p.ParameterType),
-                required = IsParameterRequired(skill, p),
-                defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
-            }).ToList();
+                var p = skill.Parameters[i];
+                var name = p.Name;
+                var type = GetJsonType(p.ParameterType);
+                var required = IsParameterRequired(skill, p);
+                var defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null;
+                var description = GetParameterDescription(skill, i);
+                // Two shapes rather than a null member: v1 writes nulls, and an always-present key would change the bytes
+                // of every parameter entry that carries no note.
+                parameters.Add(description == null
+                    ? (object)new { name, type, required, defaultValue }
+                    : new { name, type, required, defaultValue, description });
+            }
 
             if (ShouldExposeSyntheticEntityId(skill))
             {
@@ -2685,20 +2906,86 @@ namespace UnitySkills
 
         /// <summary>
         /// Intent-based skill recommendation. Scores by keyword matches against name (3 points), tags (2 points), and description (1 point),
-        /// returning the top N results.
+        /// returning the top N results. A query that repeats <c>intent=</c> is answered by <see cref="GetRecommendationsMulti"/>;
+        /// a single intent keeps its original response bytes.
         /// </summary>
         public static string GetRecommendations(string queryString)
         {
             Initialize();
-            var filters = ParseQueryString(queryString);
-            var intent = "";
-            int topN = 10;
-            bool includeSchema = false;
-            if (filters.TryGetValue("intent", out var i)) intent = i;
-            if (filters.TryGetValue("topn", out var n) && int.TryParse(n, out var parsed)) topN = Mathf.Clamp(parsed, 1, 50);
-            if (filters.TryGetValue("includeschema", out var inc))
-                includeSchema = inc.Equals("true", StringComparison.OrdinalIgnoreCase) || inc == "1";
-            int wire = ResolveWireVersion(filters);
+            var intents = DistinctIntents(ReadQueryValues(queryString, "intent"));
+            if (intents.Count > 1)
+                return GetRecommendationsMulti(intents, queryString);
+            return BuildSingleIntentRecommendations(intents.Count == 1 ? intents[0] : "", queryString);
+        }
+
+        /// <summary>
+        /// Several intents in one call, for a multi-step task: each intent is ranked independently with the same topN /
+        /// includeSchema / wire handling as a single intent, and the answer is
+        /// <c>{ topN, includeSchema, ..., intents: [ { intent, expandedKeywords, totalMatches, results } ] }</c>.
+        /// Blank and case-insensitively repeated intents are dropped; when only one remains, the single-intent response is returned unchanged.
+        /// <paramref name="queryString"/> supplies topN / includeSchema / wire exactly as it does for <see cref="GetRecommendations"/>.
+        /// </summary>
+        public static string GetRecommendationsMulti(IReadOnlyList<string> intents, string queryString)
+        {
+            Initialize();
+            var distinct = DistinctIntents(intents);
+            if (distinct.Count <= 1)
+                return BuildSingleIntentRecommendations(distinct.Count == 1 ? distinct[0] : "", queryString);
+
+            var options = ReadRecommendOptions(queryString);
+            var context = new RecommendContext();
+            var perIntent = distinct.Select(intent =>
+            {
+                var ranked = RankIntent(intent, options.TopN, context);
+                return new
+                {
+                    intent,
+                    expandedKeywords = ranked.ExpandedKeywords,
+                    totalMatches = ranked.TotalMatches,
+                    results = BuildRecommendationEntries(ranked, options, context)
+                };
+            }).ToList();
+
+            // Same envelope branches as a single intent (see BuildSingleIntentRecommendations): v2 states its wire contract,
+            // and v1 names the surface profile only when it pruned something.
+            if (options.Wire == WireV2)
+            {
+                return JsonConvert.SerializeObject(new
+                {
+                    topN = options.TopN,
+                    includeSchema = options.IncludeSchema,
+                    wire = "v2",
+                    metaUrl = MetaEndpointPath,
+                    defaults = BuildWireDefaults(),
+                    surfaceProfile = SkillsSurfaceProfile.IsFull ? null : SkillsSurfaceProfile.CurrentWire,
+                    surfaceProfileHint = SkillsSurfaceProfile.IsFull ? null : SurfaceProfilePrunedHint,
+                    intents = perIntent
+                }, _jsonSettingsV2);
+            }
+
+            if (!SkillsSurfaceProfile.IsFull)
+            {
+                return JsonConvert.SerializeObject(new
+                {
+                    topN = options.TopN,
+                    includeSchema = options.IncludeSchema,
+                    surfaceProfile = SkillsSurfaceProfile.CurrentWire,
+                    surfaceProfileHint = SurfaceProfilePrunedHint,
+                    intents = perIntent
+                }, _jsonSettings);
+            }
+
+            return JsonConvert.SerializeObject(new
+            {
+                topN = options.TopN,
+                includeSchema = options.IncludeSchema,
+                intents = perIntent
+            }, _jsonSettings);
+        }
+
+        private static string BuildSingleIntentRecommendations(string intent, string queryString)
+        {
+            var options = ReadRecommendOptions(queryString);
 
             if (string.IsNullOrWhiteSpace(intent))
             {
@@ -2709,12 +2996,115 @@ namespace UnitySkills
                     retryStrategy: SkillErrorResponse.RetryFixAndRetry);
             }
 
+            var context = new RecommendContext();
+            var ranked = RankIntent(intent, options.TopN, context);
+            var response = new
+            {
+                intent,
+                expandedKeywords = ranked.ExpandedKeywords,
+                topN = options.TopN,
+                includeSchema = options.IncludeSchema,
+                totalMatches = ranked.TotalMatches,
+                results = BuildRecommendationEntries(ranked, options, context)
+            };
+
+            if (options.Wire == WireV2)
+            {
+                // v2's recommend keeps the same envelope, only reshaping the per-skill schema, so it's described by the same
+                // `flags` / `defaults` contract as the manifest. Declared explicitly here rather than left implicit:
+                // a caller that requested v2 but silently got v1 would read a missing `flags` array as "no flags set" --
+                // treating a skill that mutates something as harmless -- and this echo exists to make that misreading impossible.
+                return JsonConvert.SerializeObject(new
+                {
+                    response.intent,
+                    response.expandedKeywords,
+                    response.topN,
+                    response.includeSchema,
+                    response.totalMatches,
+                    wire = "v2",
+                    metaUrl = MetaEndpointPath,
+                    defaults = BuildWireDefaults(),
+                    // Null under `full`, and v2 drops nulls -- so under the default profile it costs nothing.
+                    // See SurfaceProfilePrunedHint for why a ranking-style endpoint must state this.
+                    surfaceProfile = SkillsSurfaceProfile.IsFull ? null : SkillsSurfaceProfile.CurrentWire,
+                    surfaceProfileHint = SkillsSurfaceProfile.IsFull ? null : SurfaceProfilePrunedHint,
+                    response.results
+                }, _jsonSettingsV2);
+            }
+
+            // The scoring stage already skipped hidden skills, so a non-full profile silently shortens this ranking.
+            // Same rationale as the chain envelope, and the same byte-stability branch: v1 serialization writes out null,
+            // so `full` must never touch these extra fields.
+            if (!SkillsSurfaceProfile.IsFull)
+            {
+                return JsonConvert.SerializeObject(new
+                {
+                    response.intent,
+                    response.expandedKeywords,
+                    response.topN,
+                    response.includeSchema,
+                    response.totalMatches,
+                    surfaceProfile = SkillsSurfaceProfile.CurrentWire,
+                    surfaceProfileHint = SurfaceProfilePrunedHint,
+                    response.results
+                }, _jsonSettings);
+            }
+
+            return JsonConvert.SerializeObject(response, _jsonSettings);
+        }
+
+        private readonly struct RecommendOptions
+        {
+            public readonly int TopN;
+            public readonly bool IncludeSchema;
+            public readonly int Wire;
+
+            public RecommendOptions(int topN, bool includeSchema, int wire)
+            {
+                TopN = topN;
+                IncludeSchema = includeSchema;
+                Wire = wire;
+            }
+        }
+
+        private static RecommendOptions ReadRecommendOptions(string queryString)
+        {
+            var filters = ParseQueryString(queryString);
+            int topN = 10;
+            bool includeSchema = false;
+            if (filters.TryGetValue("topn", out var n) && int.TryParse(n, out var parsed)) topN = Mathf.Clamp(parsed, 1, 50);
+            if (filters.TryGetValue("includeschema", out var inc))
+                includeSchema = inc.Equals("true", StringComparison.OrdinalIgnoreCase) || inc == "1";
+            return new RecommendOptions(topN, includeSchema, ResolveWireVersion(filters));
+        }
+
+        /// <summary>Per-request state shared by every intent of one call.</summary>
+        private sealed class RecommendContext
+        {
+            public readonly IReadOnlyDictionary<string, SkillTelemetryService.RecommendationHealth> HealthBySkill =
+                SkillTelemetryService.GetRecommendationHealth();
+
+            // null while the package list is still refreshing asynchronously -- for why that means "skip the check" rather than "go find out,"
+            // see HasUninstalledPackage.
+            public readonly Dictionary<string, bool> PackageCache = PackageManagerHelper.InstalledPackages != null
+                ? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+                : null;
+        }
+
+        private sealed class RankedIntent
+        {
+            public string[] ExpandedKeywords;
+            public int TotalMatches;
+            public List<(SkillInfo skill, int score, int semanticScore, List<string> matchedOn, SkillTelemetryService.RecommendationHealth health)> Top;
+        }
+
+        private static RankedIntent RankIntent(string intent, int topN, RecommendContext context)
+        {
             var rawKeywords = intent.ToLowerInvariant().Split(new[] { ' ', '+', '_', ',' }, StringSplitOptions.RemoveEmptyEntries);
             var keywords = ExpandIntent(rawKeywords);
             var rawSet = new HashSet<string>(rawKeywords, StringComparer.OrdinalIgnoreCase);
             // Text-scoring vocabulary: no stopwords; operation verbs only as whole name tokens (handled inline below).
             var textKeywords = keywords.Where(k => !_intentStopwords.Contains(k)).ToArray();
-            var healthBySkill = SkillTelemetryService.GetRecommendationHealth();
             var scored = new List<(SkillInfo skill, int score, int semanticScore, List<string> matchedOn, SkillTelemetryService.RecommendationHealth health)>();
 
             // Precomputes operation and category matches (supports Chinese substrings)
@@ -2737,11 +3127,6 @@ namespace UnitySkills
             bool readIntent = rawKeywords.Any(_readIntentVerbs.Contains);
             bool writeIntent = rawKeywords.Any(_writeIntentVerbs.Contains);
             bool sampleIntent = rawKeywords.Any(_sampleIntentWords.Contains);
-            // null while the package list is still refreshing asynchronously -- for why that means "skip the check" rather than "go find out,"
-            // see HasUninstalledPackage.
-            var packageCache = PackageManagerHelper.InstalledPackages != null
-                ? new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
-                : null;
 
             foreach (var s in VisibleSkills())
             {
@@ -2828,8 +3213,8 @@ namespace UnitySkills
                 {
                     // Only adjusts skills that already matched something. Applying the read-intent bonus to zero-score skills
                     // would pull every read-only skill in the registry into the results based on intent alone.
-                    score = ApplyIntentAlignment(s, score, readIntent, writeIntent, sampleIntent, packageCache, matchedOn);
-                    healthBySkill.TryGetValue(s.Name, out var health);
+                    score = ApplyIntentAlignment(s, score, readIntent, writeIntent, sampleIntent, context.PackageCache, matchedOn);
+                    context.HealthBySkill.TryGetValue(s.Name, out var health);
                     var adjustedScore = Math.Max(1, score - (health?.Penalty ?? 0));
                     scored.Add((s, adjustedScore, score, matchedOn, health));
                 }
@@ -2842,16 +3227,55 @@ namespace UnitySkills
                 // the same intent would rank the same candidates differently for no reason.
                 .ThenBy(x => x.skill.Name, StringComparer.Ordinal)
                 .Take(topN).ToList();
-            var response = new
+
+            return new RankedIntent
             {
-                intent,
-                expandedKeywords = keywords.Length > rawKeywords.Length ? keywords : null,
-                topN,
-                includeSchema,
-                totalMatches = scored.Count,
-                results = results.Select(x => new
+                ExpandedKeywords = keywords.Length > rawKeywords.Length ? keywords : null,
+                TotalMatches = scored.Count,
+                Top = results
+            };
+        }
+
+        private const string UnavailableMissingPackage = "missing_package";
+
+        /// <summary>
+        /// One ranked candidate. A named type rather than an anonymous one only so the availability fields can be omitted
+        /// when unset: v1 serialization writes nulls, and an always-present key would change every entry's bytes.
+        /// Order pins the wire order to the anonymous shape this replaced.
+        /// </summary>
+        private sealed class RecommendationEntry
+        {
+            [JsonProperty(Order = 0)] public string name;
+            // Set when the candidate cannot run here as-is; its ranking is untouched (ApplyIntentAlignment already demotes it).
+            [JsonProperty(Order = 1, NullValueHandling = NullValueHandling.Ignore)] public string unavailable;
+            [JsonProperty(Order = 2, NullValueHandling = NullValueHandling.Ignore)] public string[] missingPackages;
+            [JsonProperty(Order = 3)] public string description;
+            [JsonProperty(Order = 4)] public string category;
+            [JsonProperty(Order = 5)] public int score;
+            [JsonProperty(Order = 6)] public int semanticScore;
+            [JsonProperty(Order = 7)] public string confidence;
+            [JsonProperty(Order = 8)] public string[] matchedOn;
+            [JsonProperty(Order = 9)] public object telemetry;
+            [JsonProperty(Order = 10)] public int telemetryPenalty;
+            [JsonProperty(Order = 11)] public string[] warnings;
+            [JsonProperty(Order = 12)] public object schema;
+        }
+
+        /// <summary>
+        /// Projects ranked candidates into result entries. A candidate whose declared package is missing is marked
+        /// <c>unavailable: "missing_package"</c> with the ids to install. Skills hidden by the surface profile never reach
+        /// this point (ranking enumerates <see cref="VisibleSkills"/> only), so there is no hidden-skill mark to give.
+        /// </summary>
+        private static List<RecommendationEntry> BuildRecommendationEntries(RankedIntent ranked, RecommendOptions options, RecommendContext context)
+        {
+            return ranked.Top.Select(x =>
+            {
+                var missingPackages = FindUninstalledPackages(x.skill, context.PackageCache);
+                return new RecommendationEntry
                 {
                     name = x.skill.Name,
+                    unavailable = missingPackages != null ? UnavailableMissingPackage : null,
+                    missingPackages = missingPackages?.ToArray(),
                     description = GetEffectiveDescription(x.skill),
                     category = x.skill.Category != SkillCategory.Uncategorized ? x.skill.Category.ToString() : null,
                     score = x.score,
@@ -2868,55 +3292,28 @@ namespace UnitySkills
                     },
                     telemetryPenalty = x.health?.Penalty ?? 0,
                     warnings = x.health != null && x.health.Warnings.Length > 0 ? x.health.Warnings : null,
-                    schema = includeSchema
-                        ? (wire == WireV2 ? BuildSkillSchemaForRecommendV2(x.skill) : BuildSkillSchemaForRecommend(x.skill))
+                    schema = options.IncludeSchema
+                        ? (options.Wire == WireV2 ? BuildSkillSchemaForRecommendV2(x.skill) : BuildSkillSchemaForRecommend(x.skill))
                         : null
-                })
-            };
+                };
+            }).ToList();
+        }
 
-            if (wire == WireV2)
+        /// <summary>Trims each intent and drops blanks and case-insensitive repeats, keeping first-seen order.</summary>
+        private static List<string> DistinctIntents(IEnumerable<string> intents)
+        {
+            var distinct = new List<string>();
+            if (intents == null)
+                return distinct;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var intent in intents)
             {
-                // v2's recommend keeps the same envelope, only reshaping the per-skill schema, so it's described by the same
-                // `flags` / `defaults` contract as the manifest. Declared explicitly here rather than left implicit:
-                // a caller that requested v2 but silently got v1 would read a missing `flags` array as "no flags set" --
-                // treating a skill that mutates something as harmless -- and this echo exists to make that misreading impossible.
-                return JsonConvert.SerializeObject(new
-                {
-                    response.intent,
-                    response.expandedKeywords,
-                    response.topN,
-                    response.includeSchema,
-                    response.totalMatches,
-                    wire = "v2",
-                    metaUrl = MetaEndpointPath,
-                    defaults = BuildWireDefaults(),
-                    // Null under `full`, and v2 drops nulls -- so under the default profile it costs nothing.
-                    // See SurfaceProfilePrunedHint for why a ranking-style endpoint must state this.
-                    surfaceProfile = SkillsSurfaceProfile.IsFull ? null : SkillsSurfaceProfile.CurrentWire,
-                    surfaceProfileHint = SkillsSurfaceProfile.IsFull ? null : SurfaceProfilePrunedHint,
-                    response.results
-                }, _jsonSettingsV2);
+                var trimmed = intent?.Trim();
+                if (!string.IsNullOrEmpty(trimmed) && seen.Add(trimmed))
+                    distinct.Add(trimmed);
             }
-
-            // The scoring stage already skipped hidden skills, so a non-full profile silently shortens this ranking.
-            // Same rationale as the chain envelope, and the same byte-stability branch: v1 serialization writes out null,
-            // so `full` must never touch these extra fields.
-            if (!SkillsSurfaceProfile.IsFull)
-            {
-                return JsonConvert.SerializeObject(new
-                {
-                    response.intent,
-                    response.expandedKeywords,
-                    response.topN,
-                    response.includeSchema,
-                    response.totalMatches,
-                    surfaceProfile = SkillsSurfaceProfile.CurrentWire,
-                    surfaceProfileHint = SurfaceProfilePrunedHint,
-                    response.results
-                }, _jsonSettings);
-            }
-
-            return JsonConvert.SerializeObject(response, _jsonSettings);
+            return distinct;
         }
 
         // Verbs used to judge whether the caller wants to observe or to change something. Matched only against the raw intent words (GetRecommendations),
@@ -3017,11 +3414,20 @@ namespace UnitySkills
         /// so a package shared by twenty skills is only resolved once. The cache is deliberately scoped per request:
         /// a longer-lived cache would keep answering "missing" even after the user installed the package.
         /// </summary>
-        private static bool HasUninstalledPackage(SkillInfo skill, Dictionary<string, bool> packageCache)
+        private static bool HasUninstalledPackage(SkillInfo skill, Dictionary<string, bool> packageCache) =>
+            FindUninstalledPackages(skill, packageCache) != null;
+
+        /// <summary>
+        /// The declared packages of <paramref name="skill"/> that are not installed, or null when none is missing (or when
+        /// <paramref name="packageCache"/> is null, the "package list not ready" signal of <see cref="HasUninstalledPackage"/>).
+        /// Every result is memoized in <paramref name="packageCache"/> for the rest of the request.
+        /// </summary>
+        private static List<string> FindUninstalledPackages(SkillInfo skill, Dictionary<string, bool> packageCache)
         {
             if (packageCache == null || skill.RequiresPackages == null || skill.RequiresPackages.Length == 0)
-                return false;
+                return null;
 
+            List<string> missing = null;
             foreach (var packageId in skill.RequiresPackages)
             {
                 if (string.IsNullOrWhiteSpace(packageId))
@@ -3033,11 +3439,11 @@ namespace UnitySkills
                     packageCache[packageId] = installed;
                 }
 
-                if (!installed)
-                    return true;
+                if (!installed && (missing == null || !missing.Contains(packageId)))
+                    (missing ??= new List<string>()).Add(packageId);
             }
 
-            return false;
+            return missing;
         }
 
         private static string ScoreToConfidence(int score)
@@ -3314,6 +3720,7 @@ namespace UnitySkills
             {
                 var p = ps[i];
                 bool provided = validation.Args.TryGetValue(p.Name, StringComparison.OrdinalIgnoreCase, out var token);
+                bool required = IsParameterRequired(skill, p);
 
                 if (provided)
                 {
@@ -3333,7 +3740,7 @@ namespace UnitySkills
                         validation.TypeErrors.Add(new { parameter = p.Name, expectedType = GetJsonType(p.ParameterType), error = ex.Message });
                     }
                 }
-                else if (IsParameterRequired(skill, p))
+                else if (required)
                 {
                     validation.MissingParams.Add(p.Name);
                 }
@@ -3346,14 +3753,13 @@ namespace UnitySkills
                     invoke[i] = null;
                 }
 
-                validation.ParameterDetails.Add(new
-                {
-                    name = p.Name,
-                    type = GetJsonType(p.ParameterType),
-                    required = IsParameterRequired(skill, p),
-                    provided,
-                    defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null
-                });
+                var name = p.Name;
+                var type = GetJsonType(p.ParameterType);
+                var defaultValue = p.HasDefaultValue ? p.DefaultValue?.ToString() : null;
+                var description = GetParameterDescription(skill, i);
+                validation.ParameterDetails.Add(description == null
+                    ? (object)new { name, type, required, provided, defaultValue }
+                    : new { name, type, required, provided, defaultValue, description });
             }
 
             if (ShouldExposeSyntheticEntityId(skill))
@@ -3370,8 +3776,47 @@ namespace UnitySkills
             }
 
             validation.InvokeArgs = invoke;
+            ApplyRequiredPackages(skill, validation);
             SkillPlanningService.ApplySemanticValidation(skill, validation);
             return validation;
+        }
+
+        /// <summary>
+        /// Checks the skill's declared RequiresPackages against what is installed, so dryRun stops calling a call
+        /// valid that can only fail and Execute refuses it before any side effect. Three verdicts:
+        /// <list type="bullet">
+        /// <item>absent, for a skill that writes -> <see cref="ParameterValidationResult.MissingPackages"/> (invalid);</item>
+        /// <item>absent, for a ReadOnly skill -> a warning only: status probes must keep answering "not installed" themselves;</item>
+        /// <item>unconfirmed while the async package list is still loading -> a warning, and the refresh is kicked off.
+        /// Same guard as recommend (<see cref="HasUninstalledPackage"/>): "don't know yet" must never read as "not installed".</item>
+        /// </list>
+        /// </summary>
+        private static void ApplyRequiredPackages(SkillInfo skill, ParameterValidationResult validation)
+        {
+            if (skill.RequiresPackages == null || skill.RequiresPackages.Length == 0)
+                return;
+
+            bool listReady = PackageManagerHelper.InstalledPackages != null;
+            // IsPackageInstalled also answers from a direct registry lookup, so a package confirmed that way is settled
+            // even before the list arrives; only a miss needs the list to be believed.
+            var missing = FindUninstalledPackages(skill, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+            if (missing == null)
+                return;
+
+            if (!listReady)
+            {
+                PackageManagerHelper.EnsurePackageListRefresh();
+                validation.Warnings.Add($"Package list is still refreshing; requiresPackages unverified: {string.Join(", ", missing)}.");
+                return;
+            }
+
+            if (skill.ReadOnly)
+            {
+                validation.Warnings.Add($"Required package(s) not installed: {string.Join(", ", missing)}. This read-only skill still runs and reports availability itself.");
+                return;
+            }
+
+            validation.MissingPackages.AddRange(missing);
         }
 
         private static void NormalizeSyntheticEntityIdLocator(SkillInfo skill, ParameterValidationResult validation)
@@ -3936,8 +4381,11 @@ namespace UnitySkills
 
             try
             {
+                GameObjectFinder.DrainResolutionNotes();
                 var validation = ValidateParameters(skill, json);
                 var plan = SkillPlanningService.BuildPlan(skill, validation);
+                SkillPlanningService.RegisterPendingCreates(validation, plan);
+                var resolutionNotes = MergeResolutionNotes(null);
 
                 // A plan made for a skill the profile hides is a plan that can never execute, and ?mode=plan used to be the one preview
                 // that never said so -- an agent would plan out the whole sequence, hit SURFACE_EXCLUDED on the very first execute,
@@ -3950,6 +4398,9 @@ namespace UnitySkills
                 if (SkillsSurfaceProfile.IsExcluded(skill) ||
                     SkillsSurfaceProfile.CarriedWritePreviewGate(skill.Name) != null)
                     plan["authorization"] = BuildAuthorizationPreview(skill);
+
+                if (resolutionNotes != null && resolutionNotes.Count > 0)
+                    plan[ResolutionNotesKey] = resolutionNotes.ToArray();
 
                 return JsonConvert.SerializeObject(plan, _jsonSettings);
             }
@@ -4129,10 +4580,32 @@ namespace UnitySkills
         internal static Dictionary<string, string> ParseQueryString(string qs)
         {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrEmpty(qs)) return result;
+            foreach (var (key, value) in EnumerateQueryPairs(qs))
+                result[key] = value;
+            return result;
+        }
+
+        /// <summary>
+        /// Every value given for <paramref name="key"/> (case-insensitive), in query order and parsed exactly like
+        /// <see cref="ParseQueryString"/>, which keeps only the last occurrence -- this is for keys that may repeat.
+        /// </summary>
+        internal static List<string> ReadQueryValues(string qs, string key)
+        {
+            var values = new List<string>();
+            foreach (var (k, value) in EnumerateQueryPairs(qs))
+            {
+                if (string.Equals(k, key, StringComparison.OrdinalIgnoreCase))
+                    values.Add(value);
+            }
+            return values;
+        }
+
+        private static IEnumerable<(string key, string value)> EnumerateQueryPairs(string qs)
+        {
+            if (string.IsNullOrEmpty(qs)) yield break;
 
             var raw = qs.StartsWith("?") ? qs.Substring(1) : qs;
-            if (string.IsNullOrEmpty(raw)) return result;
+            if (string.IsNullOrEmpty(raw)) yield break;
 
             foreach (var pair in raw.Split('&'))
             {
@@ -4152,9 +4625,8 @@ namespace UnitySkills
                 }
 
                 if (!string.IsNullOrEmpty(key))
-                    result[key] = val;
+                    yield return (key, val);
             }
-            return result;
         }
 
         /// <summary>

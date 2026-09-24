@@ -54,6 +54,8 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Light");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
+            // Read back from the created light, so the response shows what Unity stored rather than the request.
+            var position = go.transform.position;
             return new
             {
                 success = true,
@@ -61,9 +63,11 @@ namespace UnitySkills
                 entityId = UnityObjectIdUtility.GetEntityId(go),
                 instanceId = UnityObjectIdUtility.GetObjectId(go),
                 lightType = light.type.ToString(),
-                position = new { x, y, z },
-                color = new { r, g, b },
-                intensity,
+                position = new { x = position.x, y = position.y, z = position.z },
+                color = new { r = light.color.r, g = light.color.g, b = light.color.b },
+                intensity = light.intensity,
+                range = light.range,
+                spotAngle = light.spotAngle,
                 shadows = light.shadows.ToString()
             };
         }
@@ -280,7 +284,7 @@ namespace UnitySkills
             Undo.RecordObject(light, "Set Light Enabled");
             light.enabled = enabled;
 
-            return new { success = true, name = go.name, enabled };
+            return new { success = true, name = go.name, enabled = light.enabled };
         }
 
         [UnitySkill("light_set_enabled_batch", "Enable/disable multiple lights in one call (Efficient). items: JSON array of {name, instanceId, path, enabled}",
@@ -302,8 +306,8 @@ namespace UnitySkills
                 WorkflowManager.SnapshotObject(light);
                 Undo.RecordObject(light, "Batch Set Light Enabled");
                 light.enabled = item.enabled;
-                return new { target = go.name, success = true, enabled = item.enabled };
-            }, item => item.name ?? item.path ?? item.instanceId.ToString());
+                return new { target = go.name, success = true, enabled = light.enabled };
+            }, item => item.name ?? item.path ?? item.instanceId.ToString(), atomic: true);
         }
 
         private class BatchLightEnabledItem
@@ -347,8 +351,16 @@ namespace UnitySkills
                     light.range = item.range.Value;
                 if (shadowMode.HasValue) light.shadows = shadowMode.Value;
 
-                return new { target = go.name, success = true };
-            }, item => item.name ?? item.path ?? item.instanceId.ToString());
+                return new
+                {
+                    target = go.name,
+                    success = true,
+                    color = new { r = light.color.r, g = light.color.g, b = light.color.b, a = light.color.a },
+                    intensity = light.intensity,
+                    range = light.range,
+                    shadows = light.shadows.ToString()
+                };
+            }, item => item.name ?? item.path ?? item.instanceId.ToString(), atomic: true);
         }
 
         private class BatchLightPropsItem
@@ -419,7 +431,16 @@ namespace UnitySkills
             Undo.RegisterCreatedObjectUndo(go, "Create Reflection Probe");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
 
-            return new { success = true, name = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go), resolution, size = new { x = sizeX, y = sizeY, z = sizeZ } };
+            return new
+            {
+                success = true,
+                name = go.name,
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                instanceId = UnityObjectIdUtility.GetObjectId(go),
+                resolution = probe.resolution,
+                size = new { x = probe.size.x, y = probe.size.y, z = probe.size.z },
+                position = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z }
+            };
         }
 
         [UnitySkill("light_get_lightmap_settings", "Get Lightmap baking settings",

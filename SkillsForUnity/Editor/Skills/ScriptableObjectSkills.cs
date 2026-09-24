@@ -348,6 +348,7 @@ namespace UnitySkills
             Category = SkillCategory.ScriptableObject, Operation = SkillOperation.Modify,
             Tags = new[] { "scriptableobject", "serialized", "inspector", "property", "nested", "array", "reference" },
             Outputs = new[] { "assetPath", "propertyPath", "valueSet" },
+            RequiredParams = new[] { "propertyPath" },
             RequiresInput = new[] { "assetPath" },
             TracksWorkflow = true,
             MutatesAssets = true,
