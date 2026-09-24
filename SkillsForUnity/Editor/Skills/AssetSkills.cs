@@ -18,7 +18,10 @@ namespace UnitySkills
             Outputs = new[] { "imported" },
             TracksWorkflow = true,
             MutatesAssets = true, RiskLevel = "high")]
-        public static object AssetImport(string sourcePath, string destinationPath)
+        public static object AssetImport(
+            [SkillParam("Any real filesystem path, absolute or relative to the project root; unlike destinationPath it need not be inside Assets/.")]
+            string sourcePath,
+            string destinationPath)
         {
             bool isDir = Directory.Exists(sourcePath);
             if (!File.Exists(sourcePath) && !isDir)
@@ -166,7 +169,9 @@ namespace UnitySkills
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesAssets = true,
             RiskLevel = "high")]
-        public static object AssetImportBatch(string items)
+        public static object AssetImportBatch(
+            [SkillParam("JSON array of {sourcePath, destinationPath}; each copies sourcePath's file to destinationPath, as asset_import.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchImportItem>(items, item =>
             {
@@ -222,7 +227,9 @@ namespace UnitySkills
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true,
             RiskLevel = "medium")]
-        public static object AssetDeleteBatch(string items)
+        public static object AssetDeleteBatch(
+            [SkillParam("JSON array of {path}; each path is deleted as in asset_delete.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchDeleteItem>(items, item =>
             {
@@ -259,7 +266,9 @@ namespace UnitySkills
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true,
             RiskLevel = "medium")]
-        public static object AssetMoveBatch(string items)
+        public static object AssetMoveBatch(
+            [SkillParam("JSON array of {sourcePath, destinationPath}; each moves/renames as in asset_move.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchMoveItem>(items, item =>
             {
@@ -353,7 +362,10 @@ namespace UnitySkills
             RequiresInput = new[] { "searchFilter" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object AssetFind(string searchFilter, int limit = 50)
+        public static object AssetFind(
+            [SkillParam("Unity FindAssets syntax: name substrings and/or 't:Type' (e.g. t:Material), 'l:Label'; combine with spaces as AND. Not a path or glob.")]
+            string searchFilter,
+            int limit = 50)
         {
             var guids = AssetDatabase.FindAssets(searchFilter);
             var results = guids.Take(limit).Select(guid =>
@@ -403,7 +415,9 @@ namespace UnitySkills
             Outputs = new[] { "path", "guid" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true)]
-        public static object AssetCreateFolderBatch(string items)
+        public static object AssetCreateFolderBatch(
+            [SkillParam("JSON array of {folderPath}; each creates one folder as in asset_create_folder.")]
+            string items)
         {
             return BatchExecutor.Execute<BatchFolderItem>(items, item =>
             {

@@ -14,6 +14,8 @@ namespace UnitySkills
     /// </summary>
     public static class SceneSkills
     {
+        private const string SceneNameNote = "Bare scene name, no '.unity' extension or folder path -- appending either breaks the match against loaded scenes.";
+
         [UnitySkill("scene_create", "Create a new empty scene",
             Category = SkillCategory.Scene, Operation = SkillOperation.Create,
             Tags = new[] { "new", "empty", "setup" },
@@ -48,7 +50,9 @@ namespace UnitySkills
             Outputs = new[] { "sceneName", "scenePath" },
             RequiresInput = new[] { "scenePath" },
             MutatesScene = true, RiskLevel = "high")]
-        public static object SceneLoad(string scenePath, bool additive = false)
+        public static object SceneLoad(string scenePath,
+            [SkillParam("true = OpenSceneMode.Additive, keeps other loaded scenes open; false = Single, closes them first.")]
+            bool additive = false)
         {
             if (!File.Exists(scenePath))
                 return new { error = $"Scene not found: {scenePath}" };
@@ -65,7 +69,9 @@ namespace UnitySkills
             Outputs = new[] { "scenePath" },
             TracksWorkflow = true,
             MutatesAssets = true, RiskLevel = "high")]
-        public static object SceneSave(string scenePath = null)
+        public static object SceneSave(
+            [SkillParam("Omit to overwrite the active scene's own file; a different path re-associates the active scene with that file (Save As), not a copy.")]
+            string scenePath = null)
         {
             if (!string.IsNullOrEmpty(scenePath) && Validate.SafePath(scenePath, "scenePath") is object pathErr) return pathErr;
 
@@ -197,7 +203,9 @@ namespace UnitySkills
             Category = SkillCategory.Scene, Operation = SkillOperation.Execute,
             Tags = new[] { "screenshot", "capture", "image", "gameview", "playmode" },
             Outputs = new[] { "path", "width", "height", "isPlaying", "note", "imageBase64", "imageWidth", "imageHeight", "imageBytes" })]
-        public static object SceneScreenshot(string filename = "screenshot.png", int width = 1920, int height = 1080, bool returnImage = false, int maxDimension = 1280)
+        public static object SceneScreenshot(string filename = "screenshot.png", int width = 1920, int height = 1080, bool returnImage = false,
+            [SkillParam("Caps the longest side of the returnImage base64 PNG (clamped 256-4096); the file written to disk is unaffected.")]
+            int maxDimension = 1280)
         {
             // Strip all path components, to prevent writing outside Screenshots/
             filename = Path.GetFileName(filename);
@@ -297,7 +305,7 @@ namespace UnitySkills
             Tags = new[] { "unload", "close", "multi-scene" },
             Outputs = new[] { "unloaded" },
             RequiresInput = new[] { "sceneName" })]
-        public static object SceneUnload(string sceneName)
+        public static object SceneUnload([SkillParam(SceneNameNote)] string sceneName)
         {
             Scene sceneToUnload = default;
             for (int i = 0; i < SceneManager.sceneCount; i++)
@@ -330,7 +338,7 @@ namespace UnitySkills
             Tags = new[] { "active", "focus", "multi-scene" },
             Outputs = new[] { "activeScene" },
             RequiresInput = new[] { "sceneName" })]
-        public static object SceneSetActive(string sceneName)
+        public static object SceneSetActive([SkillParam(SceneNameNote)] string sceneName)
         {
             for (int i = 0; i < SceneManager.sceneCount; i++)
             {
@@ -352,7 +360,10 @@ namespace UnitySkills
             Outputs = new[] { "count", "objects", "instanceId", "path" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object SceneFindObjects(string namePattern = null, string tag = null, string componentType = null, int limit = 50)
+        public static object SceneFindObjects(
+            [SkillParam("Case-insensitive substring match, not a wildcard or regex pattern (for regex use gameobject_find).")]
+            string namePattern = null,
+            string tag = null, string componentType = null, int limit = 50)
         {
             IEnumerable<GameObject> objects = GameObjectFinder.GetSceneObjects();
 

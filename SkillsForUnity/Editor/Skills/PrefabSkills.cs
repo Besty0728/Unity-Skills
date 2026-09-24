@@ -60,7 +60,9 @@ namespace UnitySkills
             Outputs = new[] { "name", "instanceId" },
             RequiresInput = new[] { "prefabPath" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object PrefabInstantiate(string prefabPath, float x = 0, float y = 0, float z = 0, string name = null,
+        public static object PrefabInstantiate(string prefabPath,
+            [SkillParam("x/y/z: localPosition relative to the given parent; with no parent* locator, equals world position (scene root).")]
+            float x = 0, float y = 0, float z = 0, string name = null,
             string parentName = null, int parentInstanceId = 0, string parentPath = null, string parentEntityId = null)
         {
             GameObject parentGo = null;
@@ -99,7 +101,9 @@ namespace UnitySkills
             Outputs = new[] { "results", "name", "instanceId", "position" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object PrefabInstantiateBatch(string items)
+        public static object PrefabInstantiateBatch(
+            [SkillParam("JSON array of {prefabPath, x/y/z?, name?, rotX/Y/Z?, scaleX/Y/Z? (default 1), parentName|parentPath|parentInstanceId|parentEntityId?}.")]
+            string items)
         {
             // Cache loaded prefabs to avoid repeated AssetDatabase round trips
             var prefabCache = new System.Collections.Generic.Dictionary<string, GameObject>();
@@ -460,8 +464,14 @@ namespace UnitySkills
             RequiresInput = new[] { "prefabPath", "componentType" },
             TracksWorkflow = true, MutatesAssets = true)]
         public static object PrefabSetProperty(
-            string prefabPath = null, string componentType = null, string propertyName = null,
-            string value = null, string assetReferencePath = null, string gameObjectName = null)
+            string prefabPath = null, string componentType = null,
+            [SkillParam("Tries the exact name, then m_<Name>, _<name> and m_<name> (Unity's serialized-field naming conventions).")]
+            string propertyName = null,
+            string value = null,
+            [SkillParam("For an ObjectReference property; when given it is written and 'value' is ignored even if both are provided.")]
+            string assetReferencePath = null,
+            [SkillParam("Transform.Find path from the prefab root (e.g. 'Child/Grandchild'), or a bare name found anywhere in the hierarchy; omit for the root.")]
+            string gameObjectName = null)
         {
             if (Validate.Required(prefabPath, "prefabPath") is object reqErr1) return reqErr1;
             if (Validate.SafePath(prefabPath, "prefabPath") is object pathErr) return pathErr;

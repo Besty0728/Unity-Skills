@@ -18,7 +18,10 @@ namespace UnitySkills
             Outputs = new[] { "success", "name", "path" },
             RequiresInput = new[] { "name" },
             MutatesAssets = true)]
-        public static object AnimatorCreateController(string name, string folder = "Assets/Animations")
+        public static object AnimatorCreateController(
+            [SkillParam("Bare controller name, no path separators; saved as '<folder>/<name>.controller'.")]
+            string name,
+            string folder = "Assets/Animations")
         {
             if (Validate.Required(name, "name") is object nameErr) return nameErr;
             if (name.Contains("/") || name.Contains("\\") || name.Contains(".."))
@@ -48,7 +51,10 @@ namespace UnitySkills
             RequiredParams = new[] { "paramName" },
             RequiresInput = new[] { "controllerPath" },
             MutatesAssets = true)]
-        public static object AnimatorAddParameter(string controllerPath, string paramName, string paramType = "float", float defaultFloat = 0, int defaultInt = 0, bool defaultBool = false)
+        public static object AnimatorAddParameter(string controllerPath, string paramName,
+            [SkillParam("float, int, bool or trigger (case-insensitive); only the matching defaultFloat/defaultInt/defaultBool is applied.")]
+            string paramType = "float",
+            float defaultFloat = 0, int defaultInt = 0, bool defaultBool = false)
         {
             var pathErr = Validate.SafePath(controllerPath, "controllerPath");
             if (pathErr != null) return pathErr;
@@ -145,7 +151,9 @@ namespace UnitySkills
             MutatesScene = true)]
         public static object AnimatorSetParameter(
             string name = null, int instanceId = 0, string path = null,
-            string paramName = null, string paramType = "float",
+            string paramName = null,
+            [SkillParam("float, int, bool or trigger (case-insensitive); must match the parameter's declared type on the controller, or this errors.")]
+            string paramType = "float",
             float floatValue = 0, int intValue = 0, bool boolValue = false)
         {
             if (Validate.Required(paramName, "paramName") is object err) return err;
@@ -222,7 +230,12 @@ namespace UnitySkills
             Outputs = new[] { "success", "gameObject", "state", "layer" },
             RequiredParams = new[] { "stateName" },
             RequiresInput = new[] { "gameObject" })]
-        public static object AnimatorPlay(string name = null, int instanceId = 0, string path = null, string stateName = null, int layer = 0, float normalizedTime = 0)
+        public static object AnimatorPlay(string name = null, int instanceId = 0, string path = null,
+            [SkillParam("Simple state name, or a 'SubMachine.State' dotted path for a state inside a sub-state machine.")]
+            string stateName = null,
+            int layer = 0,
+            [SkillParam("Normalized start position within the state's clip: 0 = beginning, 1 = end.")]
+            float normalizedTime = 0)
         {
             if (Validate.Required(stateName, "stateName") is object err1) return err1;
 

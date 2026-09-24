@@ -45,6 +45,16 @@ namespace UnitySkills.Tests.Core
             // JSON payload shapes.
             ("gameobject_create_batch", "items"), ("gameobject_set_transform_batch", "items"),
             ("component_set_property_batch", "items"), ("batch_query_gameobjects", "queryJson"),
+            // Prefab/Scene/Asset/Animator/UI parameter semantics (round5 M9): locator precedence, value
+            // encodings, enum allowed values and value-application order.
+            ("prefab_instantiate", "x"), ("prefab_set_property", "assetReferencePath"), ("prefab_set_property", "propertyName"),
+            ("scene_load", "additive"), ("scene_save", "scenePath"), ("scene_screenshot", "maxDimension"), ("scene_unload", "sceneName"),
+            ("asset_find", "searchFilter"), ("asset_import", "sourcePath"),
+            ("animator_add_parameter", "paramType"), ("animator_set_parameter", "paramType"), ("animator_play", "stateName"),
+            ("ui_create_canvas", "renderMode"), ("ui_create_panel", "r"), ("ui_find_all", "uiType"),
+            ("ui_set_rect_transform", "anchoredPosX"), ("ui_set_rect_transform", "offsetMinX"), ("ui_set_rect_transform", "width"),
+            ("ui_create_scrollbar", "direction"), ("ui_set_image", "fillMethod"), ("ui_set_image", "fillOrigin"),
+            ("ui_configure_selectable", "normalR"),
         };
 
         // In these classes a JSON payload parameter is a bare string in the schema, so its note is the only place its shape is stated.
@@ -52,6 +62,7 @@ namespace UnitySkills.Tests.Core
         {
             typeof(GameObjectSkills), typeof(ComponentSkills), typeof(MaterialSkills),
             typeof(LightSkills), typeof(ScriptSkills), typeof(BatchSkills),
+            typeof(PrefabSkills), typeof(SceneSkills), typeof(AssetSkills), typeof(AnimatorSkills), typeof(UISkills),
         };
 
         private static readonly string[] PayloadParameterNames = { "items", "queryJson" };
