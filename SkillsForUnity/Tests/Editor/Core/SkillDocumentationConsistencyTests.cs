@@ -195,11 +195,11 @@ namespace UnitySkills.Tests.Core
         /// </summary>
         private static readonly Dictionary<string, int> PilotEntryByteBudgets = new Dictionary<string, int>(StringComparer.Ordinal)
         {
-            // All four pilots stay pending until a candidate passes the round4 benchmark.
-            { "gameobject", -1 },
-            { "component", -1 },
-            { "batch", -1 },
-            { "script", -1 }
+            // round4 benchmark candidate entries plus ~4% headroom.
+            { "gameobject", 5120 },
+            { "component", 6208 },
+            { "batch", 8448 },
+            { "script", 5184 }
         };
 
         private static readonly HashSet<string> ExactSignatureOptionalModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
