@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace UnitySkills.Tests.Core
+namespace UnitySkills.Tests.Fixtures
 {
     /// <summary>Fixture: a ScriptableObject with a bool field (strict bool parsing in scriptableobject_set_batch).</summary>
     public class BoolProbeAsset : ScriptableObject

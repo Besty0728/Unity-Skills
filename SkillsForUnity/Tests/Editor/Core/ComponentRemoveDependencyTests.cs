@@ -4,6 +4,7 @@ using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnitySkills.Tests.Fixtures;
 
 namespace UnitySkills.Tests.Core
 {
@@ -42,8 +43,7 @@ namespace UnitySkills.Tests.Core
         public void RemoveBatch_RequiredComponent_IsRefusedAndNothingRemoved()
         {
             var go = new GameObject("RD_Dependent");
-            go.AddComponent<RequiresBoxColliderProbe>();
-            Assume.That(go.GetComponent<BoxCollider>(), Is.Not.Null, "RequireComponent should have added the BoxCollider.");
+            Attach<RequiresBoxColliderProbe>(go);
             GameObjectFinder.InvalidateCache();
 
             var json = ToJson(ComponentSkills.ComponentRemoveBatch("[{\"name\":\"RD_Dependent\",\"componentType\":\"BoxCollider\"}]"));
@@ -113,7 +113,7 @@ namespace UnitySkills.Tests.Core
         {
             var go = new GameObject("RD_AnyCollider");
             go.AddComponent<BoxCollider>();
-            go.AddComponent<RequiresAnyColliderProbe>();
+            Attach<RequiresAnyColliderProbe>(go);
             GameObjectFinder.InvalidateCache();
 
             var json = ToJson(ComponentSkills.ComponentRemove(name: "RD_AnyCollider", componentType: "BoxCollider"));
@@ -135,7 +135,7 @@ namespace UnitySkills.Tests.Core
             var go = new GameObject("RD_TwoBoxes");
             var kept = go.AddComponent<BoxCollider>();
             go.AddComponent<BoxCollider>();
-            go.AddComponent<RequiresBoxColliderProbe>();
+            Attach<RequiresBoxColliderProbe>(go);
             GameObjectFinder.InvalidateCache();
 
             var json = ToJson(ComponentSkills.ComponentRemove(name: "RD_TwoBoxes", componentType: "BoxCollider", componentIndex: 1));
@@ -177,7 +177,7 @@ namespace UnitySkills.Tests.Core
         public void Remove_DryRunAndExecution_Agree()
         {
             var go = new GameObject("RD_PlanSingle");
-            go.AddComponent<RequiresBoxColliderProbe>();
+            Attach<RequiresBoxColliderProbe>(go);
             GameObjectFinder.InvalidateCache();
 
             var dry = JObject.Parse(SkillRouter.DryRun("component_remove", "{\"name\":\"RD_PlanSingle\",\"componentType\":\"BoxCollider\"}"));
@@ -193,7 +193,7 @@ namespace UnitySkills.Tests.Core
         public void RemoveBatch_DryRunAndExecution_Agree()
         {
             var go = new GameObject("RD_PlanBatch");
-            go.AddComponent<RequiresBoxColliderProbe>();
+            Attach<RequiresBoxColliderProbe>(go);
             GameObjectFinder.InvalidateCache();
             const string items = "[{\"name\":\"RD_PlanBatch\",\"componentType\":\"BoxCollider\"}]";
 
@@ -214,7 +214,7 @@ namespace UnitySkills.Tests.Core
         public void RemoveBatch_DependentRemovedByAnEarlierItem_IsAllowedInDryRunAndExecution()
         {
             var go = new GameObject("RD_Ordered");
-            go.AddComponent<RequiresBoxColliderProbe>();
+            Attach<RequiresBoxColliderProbe>(go);
             GameObjectFinder.InvalidateCache();
             const string items = "[{\"name\":\"RD_Ordered\",\"componentType\":\"RequiresBoxColliderProbe\"}," +
                                  "{\"name\":\"RD_Ordered\",\"componentType\":\"BoxCollider\"}]";
@@ -229,15 +229,29 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void FindBlockingDependents_RemovingTheDependentToo_BlocksNothing()
+        public void FindBlockingDependents_BlocksTheRequirementUnlessTheDependentGoesToo()
         {
             var go = new GameObject("RD_Together");
-            var dependent = go.AddComponent<RequiresBoxColliderProbe>();
+            var dependent = Attach<RequiresBoxColliderProbe>(go);
             var box = go.GetComponent<BoxCollider>();
 
-            Assert.That(ComponentSkills.FindBlockingDependents(go, new Component[] { box, dependent }), Is.Empty);
             Assert.That(ComponentSkills.FindBlockingDependents(go, new Component[] { box }),
-                Is.EqualTo(new[] { nameof(RequiresBoxColliderProbe) }));
+                Is.EqualTo(new[] { nameof(RequiresBoxColliderProbe) }), "Removing the required BoxCollider alone is blocked.");
+            Assert.That(ComponentSkills.FindBlockingDependents(go, new Component[] { box, dependent }), Is.Empty,
+                "Removing the dependent in the same call leaves nothing to block.");
+        }
+
+        /// <summary>
+        /// Adds a fixture and fails loudly if Unity refused it, so a dependency test can never pass vacuously
+        /// against an object that carries no dependent.
+        /// </summary>
+        private static T Attach<T>(GameObject go) where T : Component
+        {
+            var component = go.AddComponent<T>();
+            Assert.That(component, Is.Not.Null, $"Unity did not attach {typeof(T).Name}; fixtures must live in a non-editor assembly.");
+            if (typeof(T) == typeof(RequiresBoxColliderProbe))
+                Assert.That(go.GetComponent<BoxCollider>(), Is.Not.Null, "RequireComponent should have added the BoxCollider.");
+            return component;
         }
 
         private static JObject ToJson(object result) => JObject.Parse(JsonConvert.SerializeObject(result));

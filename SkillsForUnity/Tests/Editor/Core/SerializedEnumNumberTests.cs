@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnitySkills.Tests.Fixtures;
 
 namespace UnitySkills.Tests.Core
 {
@@ -30,6 +31,7 @@ namespace UnitySkills.Tests.Core
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             _probe = new GameObject(Target).AddComponent<EnumProbe>();
+            Assert.That(_probe, Is.Not.Null, "Unity did not attach EnumProbe; fixtures must live in a non-editor assembly.");
             GameObjectFinder.InvalidateCache();
         }
 

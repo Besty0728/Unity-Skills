@@ -3,6 +3,7 @@
     "rootNamespace": "UnitySkills.Tests",
     "references": [
         "UnitySkills.Editor",
+        "UnitySkills.Tests.Fixtures",
         "Newtonsoft.Json",
         "Cinemachine",
         "Unity.Cinemachine"

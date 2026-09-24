@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace UnitySkills.Tests.Core
+namespace UnitySkills.Tests.Fixtures
 {
     /// <summary>
     /// Fixture: requires the abstract Collider, which any subclass satisfies. Add a concrete collider first, since

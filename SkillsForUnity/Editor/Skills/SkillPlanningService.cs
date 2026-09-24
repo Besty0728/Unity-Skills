@@ -804,10 +804,13 @@ namespace UnitySkills
 
             for (int i = 0; i < items.Count; i++)
             {
+                var missing = $"items[{i}].enabled";
+                // A dryRun runs the planners twice on one validation (ValidateParameters, then BuildPlanData).
                 if (items[i] is JObject item &&
-                    (!item.TryGetValue("enabled", StringComparison.OrdinalIgnoreCase, out var enabled) || enabled.Type == JTokenType.Null))
+                    (!item.TryGetValue("enabled", StringComparison.OrdinalIgnoreCase, out var enabled) || enabled.Type == JTokenType.Null) &&
+                    !validation.MissingParams.Contains(missing))
                 {
-                    validation.MissingParams.Add($"items[{i}].enabled");
+                    validation.MissingParams.Add(missing);
                 }
             }
         }

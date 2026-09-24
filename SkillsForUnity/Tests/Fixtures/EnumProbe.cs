@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace UnitySkills.Tests.Core
+namespace UnitySkills.Tests.Fixtures
 {
     /// <summary>Fixture: enum fields whose member indexes and values differ in the ways serialized enum writes must handle.</summary>
     public class EnumProbe : MonoBehaviour

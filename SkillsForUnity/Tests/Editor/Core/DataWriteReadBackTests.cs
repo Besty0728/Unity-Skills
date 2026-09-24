@@ -7,6 +7,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnitySkills.Internal;
+using UnitySkills.Tests.Fixtures;
 
 namespace UnitySkills.Tests.Core
 {
@@ -294,7 +295,9 @@ namespace UnitySkills.Tests.Core
 
             var dry = JObject.Parse(SkillRouter.DryRun("light_set_enabled_batch", body));
             Assert.That(dry["valid"]?.Value<bool>(), Is.False, dry.ToString(Formatting.None));
-            Assert.That(dry["validation"]?["missingParams"]?.Values<string>(), Is.EqualTo(new[] { "items[1].enabled" }));
+            // Listed once, although a dryRun runs the planners twice on the same validation.
+            Assert.That(dry["validation"]?["missingParams"]?.Values<string>().ToArray(), Is.EqualTo(new[] { "items[1].enabled" }),
+                dry.ToString(Formatting.None));
 
             var executed = JObject.Parse(SkillRouter.Execute("light_set_enabled_batch", body));
             Assert.That(executed["errorCode"]?.ToString(), Is.EqualTo("MISSING_PARAM"), executed.ToString(Formatting.None));
@@ -345,6 +348,8 @@ namespace UnitySkills.Tests.Core
         {
             EnsureProbeFolder();
             var source = new GameObject(name, components);
+            foreach (var type in components)
+                Assert.That(source.GetComponent(type), Is.Not.Null, $"Unity did not attach {type.Name}; fixtures must live in a non-editor assembly.");
             var path = ProbeFolder + "/" + name + ".prefab";
             var saved = PrefabUtility.SaveAsPrefabAsset(source, path);
             Object.DestroyImmediate(source);

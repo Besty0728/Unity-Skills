@@ -5,6 +5,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnitySkills.Tests.Fixtures;
 
 namespace UnitySkills.Tests.Core
 {

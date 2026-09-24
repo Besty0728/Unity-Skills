@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace UnitySkills.Tests.Core
+namespace UnitySkills.Tests.Fixtures
 {
     /// <summary>Fixture: requires a BoxCollider exactly (component_remove dependency checks).</summary>
     [RequireComponent(typeof(BoxCollider))]
