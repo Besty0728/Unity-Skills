@@ -76,8 +76,8 @@ Auto-fill a List/Array field with matching objects.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `targetName` | string | Yes | - | Target GameObject |
-| `componentName` | string | Yes | - | Component on target |
+| `targetName` | string | No | - | Target GameObject |
+| `componentName` | string | No | - | Component on target |
 | `fieldName` | string | Yes | - | Field to fill |
 | `sourceTag` | string | No | null | Find by tag |
 | `sourceName` | string | No | null | Find by name contains |
@@ -171,7 +171,7 @@ Select all objects that have a specific component.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `componentName` | string | Yes | - | Component type name to search for |
+| `componentName` | string | No | - | Component type name to search for (`componentType` is an alias used when `componentName` is omitted) |
 
 **Returns:** `{ success, selected, component }`
 

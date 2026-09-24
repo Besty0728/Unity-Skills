@@ -19,26 +19,34 @@ namespace UnitySkills
         [UnitySkill("volume_profile_create", "Create a VolumeProfile asset",
             Category = SkillCategory.Volume, Operation = SkillOperation.Create,
             Tags = new[] { "volume", "profile", "create", "asset" },
-            Outputs = new[] { "path" },
+            Outputs = new[] { "name", "path", "instanceId" },
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesAssets = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RequiresInput = new[] { "name" },
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
         public static object VolumeProfileCreate(string name, string savePath = null) => RenderPipelineSkillsCommon.NoSRP();
 
         [UnitySkill("volume_create", "Create a global or local Volume GameObject",
             Category = SkillCategory.Volume, Operation = SkillOperation.Create,
             Tags = new[] { "volume", "create", "gameobject", "profile" },
-            Outputs = new[] { "name", "instanceId" },
+            Outputs = new[] { "name", "instanceId", "isGlobal", "profilePath" },
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesScene = true)]
+            TracksWorkflow = true,
+            MutatesScene = true,
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
         public static object VolumeCreate(string name = "Global Volume", bool isGlobal = true, string profilePath = null,
             float x = 0, float y = 0, float z = 0, float priority = 0, float blendDistance = 5f) => RenderPipelineSkillsCommon.NoSRP();
 
         [UnitySkill("volume_set_profile", "Assign or replace a Volume profile on a Volume component",
             Category = SkillCategory.Volume, Operation = SkillOperation.Modify,
             Tags = new[] { "volume", "profile", "assign" },
-            Outputs = new[] { "profilePath" },
+            Outputs = new[] { "gameObject", "profilePath" },
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesScene = true)]
+            TracksWorkflow = true,
+            MutatesScene = true,
+            RequiresInput = new[] { "gameObject", "profilePath" },
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
         public static object VolumeSetProfile(string name = null, int instanceId = 0, string path = null, string profilePath = null) => RenderPipelineSkillsCommon.NoSRP();
 
         [UnitySkill("volume_list_component_types", "List explicit VolumeComponent types supported by the active pipeline",
@@ -46,6 +54,7 @@ namespace UnitySkills
             Tags = new[] { "volume", "component", "list", "pipeline" },
             Outputs = new[] { "count", "components" },
             ReadOnly = true,
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" },
             Mode = SkillMode.SemiAuto)]
         public static object VolumeListComponentTypes(bool includePostProcess = true) => RenderPipelineSkillsCommon.NoSRP();
 
@@ -54,7 +63,10 @@ namespace UnitySkills
             Tags = new[] { "volume", "component", "add", "profile" },
             Outputs = new[] { "componentType", "profilePath" },
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesAssets = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RequiresInput = new[] { "profilePath", "componentType" },
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
         public static object VolumeAddComponent(string profilePath, string componentType, bool overrides = true) => RenderPipelineSkillsCommon.NoSRP();
 
         [UnitySkill("volume_remove_component", "Remove a VolumeComponent override from a VolumeProfile",
@@ -63,7 +75,10 @@ namespace UnitySkills
             Outputs = new[] { "componentType", "profilePath" },
             RiskLevel = "medium",
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesAssets = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RequiresInput = new[] { "profilePath", "componentType" },
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
         public static object VolumeRemoveComponent(string profilePath, string componentType) => RenderPipelineSkillsCommon.NoSRP();
 
         [UnitySkill("volume_get_component", "Inspect a VolumeComponent override on a VolumeProfile",
@@ -71,6 +86,8 @@ namespace UnitySkills
             Tags = new[] { "volume", "component", "inspect", "profile" },
             Outputs = new[] { "componentType", "parameters" },
             ReadOnly = true,
+            RequiresInput = new[] { "profilePath", "componentType" },
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" },
             Mode = SkillMode.SemiAuto)]
         public static object VolumeGetComponent(string profilePath, string componentType) => RenderPipelineSkillsCommon.NoSRP();
 
@@ -79,7 +96,10 @@ namespace UnitySkills
             Tags = new[] { "volume", "component", "parameter", "set" },
             Outputs = new[] { "componentType", "parameterName", "value" },
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesAssets = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RequiresInput = new[] { "profilePath", "componentType", "parameterName" },
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
         public static object VolumeSetParameter(string profilePath, string componentType, string parameterName, object value, bool? overrideState = true) => RenderPipelineSkillsCommon.NoSRP();
 
         [UnitySkill("volume_set_parameter_batch", "Set multiple parameters on a single VolumeComponent override. items: JSON array of {parameterName, value, overrideState}",
@@ -87,7 +107,10 @@ namespace UnitySkills
             Tags = new[] { "volume", "component", "parameter", "batch" },
             Outputs = new[] { "successCount", "failCount", "results" },
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesAssets = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RequiresInput = new[] { "profilePath", "componentType", "items" },
+            RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
         public static object VolumeSetParameterBatch(string profilePath, string componentType, string items) => RenderPipelineSkillsCommon.NoSRP();
 #else
         [UnitySkill("volume_profile_create", "Create a VolumeProfile asset",

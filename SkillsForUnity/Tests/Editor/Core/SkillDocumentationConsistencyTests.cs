@@ -813,6 +813,25 @@ namespace UnitySkills.Tests.Core
                     issues.Add($"文档多出参数: `{skillName}.{docParam.Name}` ({docSkill.RelativePath})");
                     continue;
                 }
+
+                // Type/Required comparison is enabled for table rows only: bullet and inline-list rows cannot
+                // express "optional" (TryParseBulletParameterRow hard-codes Required=true; the inline backtick
+                // list hard-codes both Type="" and Required=true), so comparing them here would just report the
+                // format's own inability to say "optional", not a real documentation error.
+                if (docParam.Source != DocParameterSource.Table)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(docParam.Type) && !TypesMatch(docParam.Type, codeParam.Type))
+                {
+                    issues.Add($"参数类型不符: `{skillName}.{docParam.Name}` 文档写 `{docParam.Type}`，代码是 `{codeParam.Type}` ({docSkill.RelativePath})");
+                }
+
+                if (docParam.Required != codeParam.Required)
+                {
+                    issues.Add($"参数必填标记不符: `{skillName}.{docParam.Name}` 文档写 Required={docParam.Required}，代码是 Required={codeParam.Required} ({docSkill.RelativePath})");
+                }
             }
 
         }
@@ -1208,6 +1227,9 @@ namespace UnitySkills.Tests.Core
         {
             var result = new Dictionary<string, CodeSkill>(StringComparer.Ordinal);
             var assembly = typeof(UnitySkillAttribute).Assembly;
+            // Unfiltered: this reasons about the registry itself, not "what the current surface profile offers".
+            var registeredByName = SkillRouter.GetAllSkillsSnapshotUnfiltered()
+                .ToDictionary(skill => skill.Name, skill => skill, StringComparer.Ordinal);
 
             foreach (var type in assembly.GetTypes())
             {
@@ -1219,13 +1241,14 @@ namespace UnitySkills.Tests.Core
                         continue;
                     }
 
+                    registeredByName.TryGetValue(attr.Name, out var registered);
                     var parameters = method
                         .GetParameters()
                         .Select(p => new CodeParameter
                         {
                             Name = p.Name,
                             Type = NormalizeCodeType(p.ParameterType),
-                            Required = !p.IsOptional
+                            Required = IsWireRequired(registered, p)
                         })
                         .ToDictionary(x => x.Name, x => x, StringComparer.Ordinal);
 
@@ -1240,6 +1263,34 @@ namespace UnitySkills.Tests.Core
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// The same "required" rule <c>SkillRouter.IsParameterRequired</c> applies at the wire boundary: a literal
+        /// <c>RequiredParams</c>/<c>RequiresInput</c> entry overrides an otherwise-optional CLR signature (round4
+        /// added these to several dozen skills whose parameter keeps a CLR default only so a bad value can still
+        /// reach the skill's own validation, e.g. for a friendlier error); short of that, a non-nullable value
+        /// type with no default is required. Duplicated here rather than called into SkillRouter (which keeps the
+        /// original private) because this is exactly the rule the docs' Required column is being checked against
+        /// - the bare `!p.IsOptional` this replaces flagged every one of those round4 additions as a doc/code
+        /// mismatch even when the doc correctly said "Required: Yes".
+        /// </summary>
+        private static bool IsWireRequired(SkillRouter.SkillInfo skill, ParameterInfo p)
+        {
+            bool NamesParameter(string[] tokens) =>
+                tokens != null && tokens.Any(token => string.Equals(token, p.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (skill != null && (NamesParameter(skill.RequiredParams) || NamesParameter(skill.RequiresInput)))
+            {
+                return true;
+            }
+
+            if (p.HasDefaultValue)
+            {
+                return false;
+            }
+
+            return p.ParameterType.IsValueType && Nullable.GetUnderlyingType(p.ParameterType) == null;
         }
 
         /// <summary>
@@ -1387,7 +1438,7 @@ namespace UnitySkills.Tests.Core
                     name = StripParameterShorthand(name);
                     if (!string.IsNullOrEmpty(name))
                     {
-                        parameters[name] = new DocParameter { Name = name, Type = string.Empty, Required = true };
+                        parameters[name] = new DocParameter { Name = name, Type = string.Empty, Required = true, Source = DocParameterSource.InlineList };
                     }
                 }
 
@@ -1445,7 +1496,8 @@ namespace UnitySkills.Tests.Core
             {
                 Name = name,
                 Type = NormalizeDocType(cells[1]),
-                Required = NormalizeRequired(cells[2])
+                Required = NormalizeRequired(cells[2]),
+                Source = DocParameterSource.Table
             };
             return true;
         }
@@ -1463,7 +1515,8 @@ namespace UnitySkills.Tests.Core
             {
                 Name = match.Groups["name"].Value.Trim(),
                 Type = NormalizeDocType(match.Groups["type"].Value),
-                Required = true
+                Required = true,
+                Source = DocParameterSource.Bullet
             };
             return true;
         }
@@ -1489,6 +1542,11 @@ namespace UnitySkills.Tests.Core
             value = ReplaceIgnoreCase(value, "boolean", "bool");
             value = ReplaceIgnoreCase(value, "number", "float");
             value = ReplaceIgnoreCase(value, "any", "object");
+            // "jsonstring": a *_batch skill's `items` documented as "the content is a JSON string" - the code
+            // parameter really is `string items` (the skill re-parses it internally), so this is not a distinct
+            // type from the wire's point of view. Recognized before "any"/"number" etc. would matter, since
+            // "jsonstring" does not contain any of those words as a substring.
+            value = ReplaceIgnoreCase(value, "jsonstring", "string");
             if (value.EndsWith("?", StringComparison.Ordinal))
             {
                 value = value.Substring(0, value.Length - 1);
@@ -1679,11 +1737,17 @@ namespace UnitySkills.Tests.Core
             public bool Required;
         }
 
+        /// <summary>Which of the three parameter-documentation shapes a <see cref="DocParameter"/> was read from.
+        /// Bullet and inline-list rows cannot express "optional" (see DocParameter.Required), so
+        /// <see cref="CompareParameters"/> only compares Type/Required for Table rows.</summary>
+        private enum DocParameterSource { Table, Bullet, InlineList }
+
         private sealed class DocParameter
         {
             public string Name;
             public string Type;
             public bool Required;
+            public DocParameterSource Source;
         }
     }
 }

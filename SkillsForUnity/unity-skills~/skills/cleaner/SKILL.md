@@ -114,7 +114,9 @@ Delete specified assets with **two-step confirmation**.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `paths` | string[] | Yes | Asset paths to delete |
+| `paths` | string[] | No* | Asset paths to delete |
+
+*Required for this preview step; omitted in Step 2, which deletes exactly the paths already captured by `confirmToken`.
 
 **Returns**: `{action: "preview", confirmToken, assetsToDelete, message}`
 

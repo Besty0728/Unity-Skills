@@ -86,7 +86,7 @@ Instantiate multiple prefabs in one call.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `items` | array | Yes | Array of instantiation configs |
+| `items` | jsonstring | Yes | Array of instantiation configs |
 
 **Item properties**: `prefabPath`, `name`, `x`, `y`, `z` (local position, relative to the parent if set), `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentEntityId`, `parentName`, `parentInstanceId`, `parentPath`
 

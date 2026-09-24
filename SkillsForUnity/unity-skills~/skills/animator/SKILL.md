@@ -78,7 +78,7 @@ Add a parameter to a controller.
 |-----------|------|----------|---------|-------------|
 | `controllerPath` | string | Yes | - | Controller asset path |
 | `paramName` | string | Yes | - | Parameter name |
-| `paramType` | string | Yes | - | float/int/bool/trigger |
+| `paramType` | string | No | float | float/int/bool/trigger |
 | `defaultFloat` | float | No | 0 | Initial float value |
 | `defaultInt` | int | No | 0 | Initial int value |
 | `defaultBool` | bool | No | false | Initial bool value |
@@ -101,7 +101,7 @@ Set a parameter value at runtime (supports `name`/`instanceId`/`path`).
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | GameObject hierarchy path |
 | `paramName` | string | Yes | Parameter name |
-| `paramType` | string | Yes | float/int/bool/trigger |
+| `paramType` | string | No | float/int/bool/trigger (default: float) |
 | `floatValue` | float | No* | Float value |
 | `intValue` | int | No* | Integer value |
 | `boolValue` | bool | No* | Boolean value |
@@ -161,7 +161,7 @@ Add a state to an Animator Controller layer.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `controllerPath` | string | Yes | - | Controller asset path |
-| `stateName` | string | Yes | - | Name for the new state |
+| `stateName` | string | No | - | Name for the new state |
 | `clipPath` | string | No | null | Animation clip asset path to assign |
 | `layer` | int | No | 0 | Layer index |
 
@@ -173,8 +173,8 @@ Add a transition between two states in an Animator Controller.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `controllerPath` | string | Yes | - | Controller asset path |
-| `fromState` | string | Yes | - | Source state name |
-| `toState` | string | Yes | - | Destination state name |
+| `fromState` | string | No | - | Source state name |
+| `toState` | string | No | - | Destination state name |
 | `layer` | int | No | 0 | Layer index |
 | `hasExitTime` | bool | No | true | Whether transition waits for exit time |
 | `duration` | float | No | 0.25 | Transition duration in seconds |

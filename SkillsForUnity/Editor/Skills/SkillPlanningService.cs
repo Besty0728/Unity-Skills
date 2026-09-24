@@ -367,6 +367,12 @@ namespace UnitySkills
             // available, and a candidate accepted by no declaring skill reads like a cover that doesn't actually exist
             // (SkillMetadataGuardTests.RequiredInputGroups_NameOnlyRealParameters).
             ["gameObject|graphAssetPath"] = new[] { "name", "path", "instanceId", "entityId", "graphAssetPath" },
+            // model_get_mesh_info: locate by scene GameObject (mesh on a MeshFilter/SkinnedMeshRenderer) or by
+            // asset path (mesh imported from a model file) - the only compound token that was never registered
+            // here, so an empty body used to dryRun as valid and fail only once GameObjectFinder.FindOrError ran
+            // (SkillMetadataGuardTests.CompoundRequiredInputTokens_NameAKeyTheSkillAccepts now also checks that
+            // every compound token is a registered key here, not just that each half names a real parameter).
+            ["gameObject|assetPath"] = new[] { "name", "path", "instanceId", "entityId", "assetPath" },
             // dotween_pro_set_loops: two mutually independent halves, either one alone makes a complete request.
             // Same reasoning as the two entries above (written 2026-08-23 alongside this skill's token) - without the
             // mapping the token enforces nothing, and "neither passed" is exactly the call that used to succeed and
@@ -2827,6 +2833,10 @@ namespace UnitySkills
             validation.SemanticErrors.Add(new Dictionary<string, object>
             {
                 ["field"] = field,
+                // Additive: UnknownParams's readers use "parameter", SemanticErrors's ~50 call sites (here) use
+                // "field". Carrying both under the same value means either convention's reader gets the right
+                // answer, without a one-time sweep of every internal/external consumer.
+                ["parameter"] = field,
                 ["error"] = message
             });
         }

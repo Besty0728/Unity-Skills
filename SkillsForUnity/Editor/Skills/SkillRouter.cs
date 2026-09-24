@@ -1067,42 +1067,25 @@ namespace UnitySkills
                 bool verbose = true; // Defaults to true when unspecified, for backward compatibility with direct calls
                 if (args.TryGetValue("verbose", StringComparison.OrdinalIgnoreCase, out var verboseToken))
                 {
-                    try
+                    // TryParseVerboseFlag is shared with ValidateParameters's dryRun-time check
+                    // (ValidateReservedBodyParameters), so the two paths accept and reject the same values.
+                    if (!TryParseVerboseFlag(verboseToken, out verbose))
                     {
-                        verbose = verboseToken.ToObject<bool>();
-                    }
-                    catch (Exception)
-                    {
-                        // ToObject<bool> accepts true/false/"true"/1 but rejects things like "1"/"yes".
-                        // Try the common string forms first; everything else is a client error and must be presented as
-                        // TYPE_MISMATCH + fix_and_retry -- the generic catch below would mislabel it as
-                        // INTERNAL "[Transactional Revert]" + wait_and_retry,
-                        // trapping the agent in a retry loop on a request body only it can fix.
-                        var raw = verboseToken.Type == JTokenType.String
-                            ? verboseToken.Value<string>()?.Trim().ToLowerInvariant()
-                            : null;
-                        if (raw == "true" || raw == "1" || raw == "yes")
-                            verbose = true;
-                        else if (raw == "false" || raw == "0" || raw == "no")
-                            verbose = false;
-                        else
-                        {
-                            // Nothing has been invoked yet at this point; roll back the bookkeeping started above,
-                            // consistent with the catch handling below.
-                            if (autoStartedWorkflow && WorkflowManager.IsRecording)
-                                WorkflowManager.AbortTask();
-                            else if (WorkflowManager.IsRecording)
-                                WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
-                            if (undoGroup >= 0)
-                                UnityEditor.Undo.RevertAllInCurrentGroup();
+                        // Nothing has been invoked yet at this point; roll back the bookkeeping started above,
+                        // consistent with the catch handling below.
+                        if (autoStartedWorkflow && WorkflowManager.IsRecording)
+                            WorkflowManager.AbortTask();
+                        else if (WorkflowManager.IsRecording)
+                            WorkflowManager.TruncateCurrentTask(workflowSnapshotCountBefore);
+                        if (undoGroup >= 0)
+                            UnityEditor.Undo.RevertAllInCurrentGroup();
 
-                            return SkillErrorResponse.Build(
-                                SkillErrorCode.TypeMismatch,
-                                $"Parameter 'verbose' must be a boolean (true/false), got: {verboseToken.ToString(Formatting.None)}",
-                                skill: name,
-                                details: new { typeErrors = new object[] { new { parameter = "verbose", expectedType = "boolean", error = $"Cannot convert {verboseToken.Type} to Boolean" } } },
-                                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
-                        }
+                        return SkillErrorResponse.Build(
+                            SkillErrorCode.TypeMismatch,
+                            $"Parameter 'verbose' must be a boolean (true/false), got: {verboseToken.ToString(Formatting.None)}",
+                            skill: name,
+                            details: new { typeErrors = new object[] { new { parameter = "verbose", expectedType = "boolean", error = $"Cannot convert {verboseToken.Type} to Boolean" } } },
+                            retryStrategy: SkillErrorResponse.RetryFixAndRetry);
                     }
                     args.Remove("verbose");
                 }
@@ -2601,6 +2584,32 @@ namespace UnitySkills
             skill != null && ContainsParameter(skill.ParameterNames, parameterName);
 
         /// <summary>
+        /// Lenient boolean parse for the reserved 'verbose' body parameter: accepts a JSON bool, or the strings
+        /// "true"/"false"/"1"/"0"/"yes"/"no" (ToObject&lt;bool&gt; alone accepts true/false/"true"/"false"/1/0 but
+        /// rejects "1"/"yes"/"no"). Shared by Execute's own read and ValidateParameters's dryRun-time check
+        /// (<see cref="ValidateReservedBodyParameters"/>), so the two paths accept and reject exactly the same
+        /// values instead of dryRun silently allowing what Execute would reject as TYPE_MISMATCH.
+        /// </summary>
+        private static bool TryParseVerboseFlag(JToken token, out bool value)
+        {
+            try
+            {
+                value = token.ToObject<bool>();
+                return true;
+            }
+            catch (Exception)
+            {
+                var raw = token.Type == JTokenType.String
+                    ? token.Value<string>()?.Trim().ToLowerInvariant()
+                    : null;
+                if (raw == "true" || raw == "1" || raw == "yes") { value = true; return true; }
+                if (raw == "false" || raw == "0" || raw == "no") { value = false; return true; }
+                value = false;
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Reads an envelope-layer pagination parameter ('offset'/'limit') as an integer no smaller than minValue.
         /// Also accepts both a JSON number and its string form ("10"), so a caller going through a query string also works.
         /// </summary>
@@ -3796,6 +3805,8 @@ namespace UnitySkills
                     : new { name, type, required, provided, defaultValue, description });
             }
 
+            ValidateReservedBodyParameters(skill, validation);
+
             if (ShouldExposeSyntheticEntityId(skill))
             {
                 validation.ParameterDetails.Add(new
@@ -3813,6 +3824,49 @@ namespace UnitySkills
             ApplyRequiredPackages(skill, validation);
             SkillPlanningService.ApplySemanticValidation(skill, validation);
             return validation;
+        }
+
+        /// <summary>
+        /// dryRun-time counterpart to the reserved-body-parameter parsing Execute performs just before invoking
+        /// the skill (verbose bool coercion; offset/limit/pageOffset/pageLimit integer + range checks): without
+        /// this, POST /skill/xxx?mode=dryRun with e.g. <c>{"offset":"abc"}</c> reported valid:true, and the same
+        /// body without ?mode=dryRun failed with TYPE_MISMATCH -- dryRun is supposed to preview exactly that
+        /// failure, not miss it. Skipped whenever the skill itself declares a same-named parameter (its own
+        /// declaration governs, e.g. asset_reimport_batch's own int <c>limit</c>) via the same
+        /// <see cref="SkillDeclaresParameter"/> guard Execute already uses for offset/limit -- extended here to
+        /// verbose/pageOffset/pageLimit too, so a skill can never have two different rules for the same name
+        /// depending on whether the call is a dryRun or not.
+        /// </summary>
+        private static void ValidateReservedBodyParameters(SkillInfo skill, ParameterValidationResult validation)
+        {
+            var args = validation.Args;
+
+            if (!SkillDeclaresParameter(skill, "verbose") &&
+                args.TryGetValue("verbose", StringComparison.OrdinalIgnoreCase, out var verboseToken) &&
+                !TryParseVerboseFlag(verboseToken, out _))
+            {
+                validation.TypeErrors.Add(new
+                {
+                    parameter = "verbose",
+                    expectedType = "boolean",
+                    error = $"Parameter 'verbose' must be a boolean (true/false), got: {verboseToken.ToString(Formatting.None)}"
+                });
+            }
+
+            ValidateReservedPagingParameter(skill, args, validation, "pageOffset", minValue: 0);
+            ValidateReservedPagingParameter(skill, args, validation, "pageLimit", minValue: 1);
+            ValidateReservedPagingParameter(skill, args, validation, "offset", minValue: 0);
+            ValidateReservedPagingParameter(skill, args, validation, "limit", minValue: 1);
+        }
+
+        private static void ValidateReservedPagingParameter(SkillInfo skill, JObject args, ParameterValidationResult validation, string parameterName, int minValue)
+        {
+            if (SkillDeclaresParameter(skill, parameterName) ||
+                !args.TryGetValue(parameterName, StringComparison.OrdinalIgnoreCase, out var token))
+                return;
+
+            if (!TryReadPagingArg(token, parameterName, minValue, out _, out var error))
+                validation.TypeErrors.Add(new { parameter = parameterName, expectedType = "integer", error });
         }
 
         /// <summary>
@@ -3872,6 +3926,12 @@ namespace UnitySkills
             {
                 validation.SemanticErrors.Add(new
                 {
+                    // "field" is the established semanticErrors key (SkillPlanningService.AddSemanticError,
+                    // ~50 call sites); "parameter" is UnknownParams's key. This was the one producer mixing the
+                    // two, so a skill's own semantic analyzer re-reporting the same failed entityId lookup under
+                    // "field" was never recognized as a duplicate by TokenAlreadyReported (which only reads
+                    // "field"). Both keys, same value, so either convention's reader gets the right answer.
+                    field = EntityIdParameterName,
                     parameter = EntityIdParameterName,
                     error = $"Object not found for entityId: {entityId}"
                 });

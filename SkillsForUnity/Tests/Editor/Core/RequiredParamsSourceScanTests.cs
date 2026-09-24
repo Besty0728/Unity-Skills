@@ -151,6 +151,79 @@ namespace UnitySkills.Tests.Core
                 $"Only {scan.GuardedPairs} guarded parameters found -- the opening-guard parser is likely broken.");
         }
 
+        /// <summary>
+        /// The URP-family <c>#if PKG ... #else ... #endif</c> modules (Decal/PostProcess/URP/Volume) each declare
+        /// every skill twice: a real branch that compiles in when the render pipeline package is installed, and a
+        /// stub branch (<c>RenderPipelineSkillsCommon.NoSRP()</c>/<c>NoURP()</c>) that compiles in when it isn't.
+        /// Only one branch is ever in the running binary, so a caller can never diff the two - which is exactly
+        /// why metadata drift between them is invisible at runtime: the 2026-09 audit found all 33 pairs had let
+        /// their stub branch's declarative fields (most commonly <c>RequiresPackages</c> itself, and
+        /// <c>TracksWorkflow</c>/<c>Mutates*</c>/<c>RequiresInput</c> on writers) silently fall behind the real
+        /// branch's, sometimes for years. The method signature and description are not compared here: a source
+        /// scan already confirmed those stay byte-for-byte identical in every pair (a second, independent
+        /// doc-consistency mechanism would catch a signature drift the moment it made the stub's parameter list
+        /// disagree with the shipped docs).
+        /// </summary>
+        [Test]
+        public void StubBranchMetadata_MatchesRealBranch()
+        {
+            var comparedFields = new[]
+            {
+                "Category", "Operation", "Tags", "Outputs", "RequiresInput", "RequiredParams",
+                "RequiresPackages", "TracksWorkflow", "MutatesScene", "MutatesAssets",
+                "MayTriggerReload", "MayEnterPlayMode", "ReadOnly", "Mode", "RiskLevel", "SkipAutoPresnapshot"
+            };
+
+            var root = GetSkillsSourceRoot();
+            var offenders = new List<string>();
+            var pairsChecked = 0;
+
+            foreach (var path in Directory.GetFiles(root, "*.cs").OrderBy(p => p, StringComparer.Ordinal))
+            {
+                var raw = File.ReadAllText(path);
+                var masked = SourceScanner.Mask(raw);
+
+                var occurrencesByName = new Dictionary<string, List<Dictionary<string, string>>>(StringComparer.Ordinal);
+                foreach (var span in SourceScanner.FindSkillAttributeSpans(raw, masked))
+                {
+                    if (!occurrencesByName.TryGetValue(span.Name, out var list))
+                        occurrencesByName[span.Name] = list = new List<Dictionary<string, string>>();
+                    list.Add(SourceScanner.ParseNamedFields(span.AttributeText));
+                }
+
+                // A skill name declared more than once in the same file is exactly the #if/#else stub-pair
+                // shape (confirmed: today that is only the 33 URP-family pairs, and only in these four files);
+                // anything declared once has no second branch to drift from and is skipped.
+                foreach (var group in occurrencesByName.Where(pair => pair.Value.Count > 1))
+                {
+                    pairsChecked++;
+                    foreach (var field in comparedFields)
+                    {
+                        var values = group.Value
+                            .Select(occurrence => occurrence.TryGetValue(field, out var value) ? value : null)
+                            .Distinct()
+                            .ToArray();
+                        if (values.Length > 1)
+                        {
+                            offenders.Add($"{Path.GetFileName(path)}::{group.Key}.{field}: " +
+                                          string.Join(" vs ", values.Select(value => value ?? "(not set)")));
+                        }
+                    }
+                }
+            }
+
+            Assert.That(pairsChecked, Is.GreaterThanOrEqualTo(33),
+                $"Only found {pairsChecked} skill(s) declared more than once in the same file; expected at least " +
+                "the 33 known #if/#else URP-family stub pairs (Decal/PostProcess/URP/Volume) - the attribute-span " +
+                "scanner may be broken, which would make a green result here meaningless.");
+
+            Assert.That(offenders, Is.Empty,
+                $"{offenders.Count} declarative metadata field(s) differ between a skill's #if stub branch and " +
+                "its real branch. Both branches are the same endpoint - only one ever compiles in, depending on " +
+                "whether the render pipeline package is installed - so a caller must see identical capability / " +
+                "impact metadata regardless of which one ships:\n" + string.Join("\n", offenders));
+        }
+
         /// <summary>RequiredParams flows through the router's one required check: schema flag, dryRun parameters, MissingParams.</summary>
         [Test]
         public void RequiredParams_MakeADefaultedParameterRequired_WithoutDoubleReporting()
@@ -397,6 +470,84 @@ namespace UnitySkills.Tests.Core
 
                     yield return new SkillDefinition { Name = raw.Substring(quote + 1, endQuote - quote - 1), Body = body };
                 }
+            }
+
+            /// <summary>One [UnitySkill(...)] attribute's raw (unmasked) argument text, keyed by the skill name
+            /// pulled from its first string literal. <see cref="StubBranchMetadataParityTests"/> below has no use
+            /// for the method body <see cref="FindSkillDefinitions"/> reads, only the attribute's own fields.</summary>
+            public sealed class SkillAttributeSpan
+            {
+                public string Name;
+                public string AttributeText;
+            }
+
+            /// <summary>
+            /// A second orchestrating walk over the same AttributeStart / MethodHead / MatchBracket primitives
+            /// <see cref="FindSkillDefinitions"/> already uses - not a second lexer - that keeps the attribute's
+            /// argument text instead of the method body. <see cref="FindSkillDefinitions"/> is left untouched:
+            /// <c>ScanRegistry</c> depends on its exact signature and behaviour.
+            /// </summary>
+            public static IEnumerable<SkillAttributeSpan> FindSkillAttributeSpans(string raw, string masked)
+            {
+                foreach (Match attribute in AttributeStart.Matches(masked))
+                {
+                    int open = attribute.Index + attribute.Length - 1;
+                    int close = MatchBracket(masked, open, '(', ')');
+                    if (close < 0)
+                        continue;
+
+                    int quote = masked.IndexOf('"', open, close - open);
+                    int endQuote = quote < 0 ? -1 : masked.IndexOf('"', quote + 1, close - quote - 1);
+                    if (endQuote < 0)
+                        continue;
+
+                    // Same follow-a-method-head requirement as FindSkillDefinitions, so both walks agree on
+                    // which attributes count as skill definitions (and skip e.g. doc-comment mentions).
+                    if (!MethodHead.Match(masked, close).Success)
+                        continue;
+
+                    yield return new SkillAttributeSpan
+                    {
+                        Name = raw.Substring(quote + 1, endQuote - quote - 1),
+                        AttributeText = raw.Substring(open + 1, close - open - 1)
+                    };
+                }
+            }
+
+            private static readonly Regex NamedField = new Regex(@"^\s*([A-Za-z_]\w*)\s*=(?!=)\s*", RegexOptions.Compiled);
+
+            /// <summary>
+            /// The top-level (bracket-depth 0) comma-separated field assignments in an attribute's argument text,
+            /// keyed by field name. The two positional arguments (name and description string literals) have no
+            /// leading "word =" and are silently skipped, exactly like every other malformed segment.
+            /// </summary>
+            public static Dictionary<string, string> ParseNamedFields(string attributeText)
+            {
+                var masked = Mask(attributeText);
+                var fields = new Dictionary<string, string>(StringComparer.Ordinal);
+                int depth = 0, start = 0;
+                for (int i = 0; i <= masked.Length; i++)
+                {
+                    bool atEnd = i == masked.Length;
+                    char c = atEnd ? ',' : masked[i];
+                    if (!atEnd)
+                    {
+                        if (c == '(' || c == '[' || c == '{') { depth++; continue; }
+                        if (c == ')' || c == ']' || c == '}') { depth--; continue; }
+                    }
+                    if (depth == 0 && c == ',')
+                    {
+                        var segment = masked.Substring(start, i - start);
+                        var match = NamedField.Match(segment);
+                        if (match.Success)
+                        {
+                            var value = attributeText.Substring(start + match.Length, segment.Length - match.Length).Trim();
+                            fields[match.Groups[1].Value] = Regex.Replace(value, @"\s+", " ");
+                        }
+                        start = i + 1;
+                    }
+                }
+                return fields;
             }
 
             /// <summary>The (parameter, guard kind) pairs named by a masked body's opening guards.</summary>

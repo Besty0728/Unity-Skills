@@ -444,10 +444,21 @@ namespace UnitySkills.Tests.Core
         /// yet rejects <c>materialPath</c> as an unknown parameter — and that name does exist on
         /// <c>material_assign</c> in the same module, so an agent generalizes it over and gets rejected for
         /// correctly reading the metadata.</para>
+        ///
+        /// <para>Also asserts the whole compound string is itself a <c>_requiredInputGroups</c> key. Every part
+        /// naming a real parameter is necessary but not sufficient: <see cref="SkillRouter"/>'s
+        /// <c>IsParameterRequired</c> only ever compares a token to a parameter name by exact string equality, so
+        /// it never matches a piped token; the *only* mechanism that can enforce a compound token is
+        /// <see cref="SkillPlanningService"/>'s <c>ApplyRequiredInputGroups</c> looking the whole string up as a
+        /// dictionary key. A token whose halves are individually valid but whose full string was never registered
+        /// (<c>model_get_mesh_info</c>'s <c>"gameObject|assetPath"</c>) used to pass this test outright while
+        /// enforcing nothing - an empty body dry-ran as valid and failed only once
+        /// <c>GameObjectFinder.FindOrError</c> ran during execution.</para>
         /// </summary>
         [Test]
         public void CompoundRequiredInputTokens_NameAKeyTheSkillAccepts()
         {
+            var groups = RequiredInputGroups();
             var offenders = new List<string>();
 
             foreach (var skill in SkillRouter.GetAllSkillsSnapshotUnfiltered()
@@ -469,6 +480,10 @@ namespace UnitySkills.Tests.Core
                         if (!SkillAcceptsParameter(skill, part))
                             offenders.Add($"{skill.Name}: token '{token}' names '{part}', which it does not accept");
                     }
+
+                    if (!groups.ContainsKey(token))
+                        offenders.Add($"{skill.Name}: compound token '{token}' is not a _requiredInputGroups key, " +
+                                      "so ApplyRequiredInputGroups never enforces it");
                 }
             }
 

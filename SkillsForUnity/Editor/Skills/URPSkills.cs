@@ -20,6 +20,7 @@ namespace UnitySkills
             Tags = new[] { "urp", "asset", "renderer", "info" },
             Outputs = new[] { "asset", "renderers" },
             ReadOnly = true,
+            RequiresPackages = new[] { "com.unity.render-pipelines.universal" },
             Mode = SkillMode.SemiAuto)]
         public static object URPGetInfo(string assetPath = null) => RenderPipelineSkillsCommon.NoURP();
 
@@ -28,7 +29,9 @@ namespace UnitySkills
             Tags = new[] { "urp", "asset", "settings", "modify" },
             Outputs = new[] { "asset" },
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesAssets = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
         public static object URPSetAssetSettings(string assetPath = null, bool? supportsHDR = null, int? msaaSampleCount = null,
             float? renderScale = null, bool? supportsMainLightShadows = null, bool? supportsAdditionalLightShadows = null,
             bool? supportsCameraDepthTexture = null, bool? supportsCameraOpaqueTexture = null, float? shadowDistance = null) => RenderPipelineSkillsCommon.NoURP();
@@ -38,6 +41,7 @@ namespace UnitySkills
             Tags = new[] { "urp", "renderers", "list" },
             Outputs = new[] { "count", "renderers" },
             ReadOnly = true,
+            RequiresPackages = new[] { "com.unity.render-pipelines.universal" },
             Mode = SkillMode.SemiAuto)]
         public static object URPListRenderers(string assetPath = null) => RenderPipelineSkillsCommon.NoURP();
 
@@ -46,6 +50,7 @@ namespace UnitySkills
             Tags = new[] { "urp", "renderer feature", "list" },
             Outputs = new[] { "count", "features" },
             ReadOnly = true,
+            RequiresPackages = new[] { "com.unity.render-pipelines.universal" },
             Mode = SkillMode.SemiAuto)]
         public static object URPListRendererFeatures(string assetPath = null, int rendererIndex = -1, string rendererDataPath = null) => RenderPipelineSkillsCommon.NoURP();
 
@@ -54,7 +59,10 @@ namespace UnitySkills
             Tags = new[] { "urp", "renderer feature", "add" },
             Outputs = new[] { "feature", "renderer" },
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesAssets = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RequiresInput = new[] { "featureType" },
+            RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
         public static object URPAddRendererFeature(string featureType, string assetPath = null, int rendererIndex = -1, string rendererDataPath = null, string featureName = null, bool active = true) => RenderPipelineSkillsCommon.NoURP();
 
         [UnitySkill("urp_remove_renderer_feature", "Remove a renderer feature from a URP renderer",
@@ -63,7 +71,9 @@ namespace UnitySkills
             Outputs = new[] { "removedFeature", "renderer" },
             RiskLevel = "medium",
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesAssets = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
         public static object URPRemoveRendererFeature(string assetPath = null, int rendererIndex = -1, string rendererDataPath = null, int featureIndex = -1, string featureName = null, string featureType = null) => RenderPipelineSkillsCommon.NoURP();
 
         [UnitySkill("urp_set_renderer_feature_active", "Enable or disable a renderer feature on a URP renderer",
@@ -71,7 +81,9 @@ namespace UnitySkills
             Tags = new[] { "urp", "renderer feature", "active" },
             Outputs = new[] { "feature", "active" },
             // Mirrors the real (URP) branch so metadata stays identical when the package is absent.
-            MutatesAssets = true)]
+            TracksWorkflow = true,
+            MutatesAssets = true,
+            RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
         public static object URPSetRendererFeatureActive(bool active, string assetPath = null, int rendererIndex = -1, string rendererDataPath = null, int featureIndex = -1, string featureName = null, string featureType = null) => RenderPipelineSkillsCommon.NoURP();
 #else
         [UnitySkill("urp_get_info", "Get information about the active URP asset and renderer setup",

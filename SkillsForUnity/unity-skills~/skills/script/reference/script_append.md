@@ -4,7 +4,7 @@ Insert lines into a script.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `scriptPath` | string | Yes | - | Script path |
-| `content` | string | Yes | - | Content to insert |
+| `content` | string | No | - | Content to insert |
 | `atLine` | int | No | -1 | 0-based line index to insert before; the line count appends at the end; -1 or out of range = the default placement below |
 | `checkCompile` | bool | No | true | Check compilation after append |
 | `diagnosticLimit` | int | No | 20 | Max compile diagnostics |

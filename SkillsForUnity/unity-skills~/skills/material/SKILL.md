@@ -78,7 +78,7 @@ Create a new material (auto-detects render pipeline).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `name` | string | Yes | - | Material name |
+| `name` | string | No | - | Material name |
 | `shaderName` | string | No | auto-detect | Shader (auto-detects URP/HDRP/Standard); an unresolved name falls back to the pipeline default and the response adds `shaderRequested` + `warnings` |
 | `savePath` | string | No | null | `Assets/...`, or a folder inside an embedded/local package (`Packages/<id>/...`); read-only packages are rejected |
 
@@ -206,7 +206,7 @@ Set a float property on a material.
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 | `propertyName` | string | Yes | Property name |
-| `value` | float | Yes | Value |
+| `value` | float | No | Value (default 0) |
 
 ### material_set_int
 Set an integer property on a material.
@@ -217,7 +217,7 @@ Set an integer property on a material.
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 | `propertyName` | string | Yes | Property name |
-| `value` | int | Yes | Value |
+| `value` | int | No | Value (default 0) |
 
 ### material_set_keyword
 Enable/disable shader keywords.
@@ -318,7 +318,7 @@ Set material render queue.
 | `name` | string | No* | GameObject name |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
-| `renderQueue` | int | Yes | Render queue value |
+| `renderQueue` | int | No | Render queue value (default -1 = shader default) |
 
 ### material_set_gi_flags
 Set material global illumination flags.
