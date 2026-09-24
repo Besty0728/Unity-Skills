@@ -801,8 +801,61 @@ namespace UnitySkills
         private static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets,
             string[] movedAssets, string[] movedFromAssetPaths)
         {
+            ScriptDomainImportCapture.Record(importedAssets, deletedAssets, movedAssets, movedFromAssetPaths);
             EditorChangeTrackerService.RecordFileChanges(
                 importedAssets, deletedAssets, movedAssets, movedFromAssetPaths);
+        }
+    }
+
+    /// <summary>
+    /// Collects the script-domain paths (see <see cref="ServerAvailabilityHelper.AffectsScriptDomain"/>) the asset
+    /// pipeline reports while the scope is open. OnPostprocessAllAssets runs synchronously inside
+    /// AssetDatabase.Refresh, so wrapping a refresh in a scope tells whether it touched scripts.
+    /// </summary>
+    internal sealed class ScriptDomainImportCapture : IDisposable
+    {
+        private static ScriptDomainImportCapture _current;
+
+        private readonly ScriptDomainImportCapture _outer;
+        private readonly List<string> _paths = new List<string>();
+        private readonly HashSet<string> _seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        private bool _disposed;
+
+        private ScriptDomainImportCapture(ScriptDomainImportCapture outer) => _outer = outer;
+
+        /// <summary>Distinct script-domain paths in the order they were reported.</summary>
+        public string[] Paths => _paths.ToArray();
+
+        public static ScriptDomainImportCapture Begin() => _current = new ScriptDomainImportCapture(_current);
+
+        internal static void Record(params string[][] pathGroups)
+        {
+            if (_current == null || pathGroups == null)
+                return;
+
+            foreach (var group in pathGroups)
+            {
+                foreach (string path in group ?? Array.Empty<string>())
+                {
+                    if (!ServerAvailabilityHelper.AffectsScriptDomain(path))
+                        continue;
+                    string normalized = path.Replace('\\', '/');
+                    for (var capture = _current; capture != null; capture = capture._outer)
+                    {
+                        if (capture._seen.Add(normalized))
+                            capture._paths.Add(normalized);
+                    }
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            if (_current == this)
+                _current = _outer;
         }
     }
 }

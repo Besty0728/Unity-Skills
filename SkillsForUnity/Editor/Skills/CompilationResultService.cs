@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.Compilation;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace UnitySkills
 {
@@ -12,7 +15,7 @@ namespace UnitySkills
     /// "did my last script edit compile" after the REST service recovers from the domain reload triggered by a successful compilation.
     ///
     /// Threading model: every CompilationPipeline event is dispatched on the main thread, and the
-    /// only reader (SkillsHttpServer.ProcessJob) also runs on the main thread, so no locking is needed.
+    /// readers (SkillsHttpServer.ProcessJob, EventChannelService, AsyncJobService's compile jobs) also run on the main thread, so no locking is needed.
     ///
     /// Persistence: the completed result is stored in SessionState -- it survives domain reloads
     /// and is cleared on editor shutdown, which is exactly the lifetime we want. A static field mirrors it; after a reload that field is empty and gets lazily restored on read.
@@ -35,8 +38,20 @@ namespace UnitySkills
         // JSON cache of the last completed result; null/empty means not yet loaded or no compilation has finished this session.
         private static string _cachedResultJson;
 
+        /// <summary>Bumped on every compilationStarted: compare it before and after a call to learn whether the call started a compilation.</summary>
+        internal static int CompilationStartCount { get; private set; }
+
+        /// <summary>When the current script domain was loaded. A compilation that finished after this is still waiting for its domain reload.</summary>
+        internal static long DomainLoadedUtcTicks { get; private set; }
+
+        internal static string LastResultJsonOverrideForTests;
+
+        private static string _outcomeJson;
+        private static CompilationOutcome _outcome;
+
         static CompilationResultService()
         {
+            DomainLoadedUtcTicks = DateTime.UtcNow.Ticks;
             CompilationPipeline.compilationStarted += OnCompilationStarted;
             CompilationPipeline.assemblyCompilationFinished += OnAssemblyCompilationFinished;
             CompilationPipeline.compilationFinished += OnCompilationFinished;
@@ -57,8 +72,67 @@ namespace UnitySkills
             return string.IsNullOrEmpty(_cachedResultJson) ? null : _cachedResultJson;
         }
 
+        /// <summary>The last completed compilation, parsed; null when none finished this editor session.</summary>
+        internal static CompilationOutcome GetLastOutcome()
+        {
+            string json = LastResultJsonOverrideForTests ?? GetLastCompilationJson();
+            if (string.IsNullOrEmpty(json))
+                return null;
+            // Compile jobs ask on every editor tick while they wait; parse each stored result once.
+            if (json == _outcomeJson)
+                return _outcome;
+
+            _outcomeJson = json;
+            _outcome = ParseOutcome(json);
+            return _outcome;
+        }
+
+        private static CompilationOutcome ParseOutcome(string json)
+        {
+            try
+            {
+                // DateParseHandling.None keeps finishedAtUtc as the ISO-8601 string it was written as.
+                JObject parsed;
+                using (var reader = new JsonTextReader(new StringReader(json)) { DateParseHandling = DateParseHandling.None })
+                    parsed = JObject.Load(reader);
+
+                string finishedAt = parsed.Value<string>("finishedAtUtc");
+                if (!DateTime.TryParse(finishedAt, CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var finished))
+                    return null;
+
+                var outcome = new CompilationOutcome
+                {
+                    FinishedAtUtc = finishedAt,
+                    FinishedAtUtcTicks = finished.Ticks,
+                    ErrorCount = parsed.Value<int?>("errorCount") ?? 0,
+                    Success = parsed.Value<bool?>("success") ?? true
+                };
+                if (parsed["errors"] is JArray errors)
+                {
+                    foreach (var error in errors.OfType<JObject>())
+                    {
+                        outcome.Errors.Add(new CompilationOutcome.Error
+                        {
+                            File = error.Value<string>("file"),
+                            Line = error.Value<int?>("line") ?? 0,
+                            Message = error.Value<string>("message")
+                        });
+                    }
+                }
+                return outcome;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        internal static void RecordCompilationStartForTests() => CompilationStartCount++;
+
         private static void OnCompilationStarted(object context)
         {
+            CompilationStartCount++;
             _startedUtc = DateTime.UtcNow;
             _errors.Clear();
             _warnings.Clear();
@@ -148,6 +222,24 @@ namespace UnitySkills
                 message = m.message;
                 this.assembly = assembly;
             }
+        }
+
+        internal sealed class CompilationOutcome
+        {
+            internal sealed class Error
+            {
+                public string File;
+                public int Line;
+                public string Message;
+            }
+
+            public string FinishedAtUtc;
+            public long FinishedAtUtcTicks;
+            public int ErrorCount;
+            public bool Success;
+            public readonly List<Error> Errors = new List<Error>();
+
+            public bool HasErrors => ErrorCount > 0 || !Success;
         }
     }
 }

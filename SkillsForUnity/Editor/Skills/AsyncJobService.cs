@@ -57,6 +57,11 @@ namespace UnitySkills
         /// <summary>Hard cap on the <see cref="Wait"/> blocking loop; callers needing to wait longer must switch to polling.</summary>
         internal const int MaxWaitTimeoutMs = 2000;
 
+        private const int RefreshCompileGraceSeconds = 5;
+        private const int MaxRefreshScriptPaths = 20;
+
+        internal static bool? PlayModeOverrideForTests;
+
         static AsyncJobService()
         {
             try
@@ -183,6 +188,46 @@ namespace UnitySkills
 
             job.status = ServerAvailabilityHelper.IsCompilationInProgress() ? "waiting_domain_reload" : "running";
             job.progress = ServerAvailabilityHelper.IsCompilationInProgress() ? 35 : 10;
+            job.progressStage = job.currentStage;
+            job.updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            BatchPersistence.UpsertJob(job);
+            return job;
+        }
+
+        /// <summary>
+        /// The compile job asset_refresh returns when its refresh starts a script compilation. It settles on the first
+        /// compilation that finishes after <paramref name="refreshStartedUtcTicks"/> (failed on errors, which are
+        /// project-wide), or completes with compiled:false when none follows within the grace period.
+        /// </summary>
+        internal static BatchJobRecord StartRefreshCompileJob(IEnumerable<string> scriptPaths, long refreshStartedUtcTicks, int diagnosticLimit = 20)
+        {
+            var metadata = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["operation"] = "asset_refresh",
+                ["scriptPath"] = string.Empty,
+                ["scriptPaths"] = (scriptPaths ?? Enumerable.Empty<string>()).Take(MaxRefreshScriptPaths).ToArray(),
+                ["diagnosticsScope"] = "project",
+                ["checkCompile"] = true,
+                ["supportsDiagnostics"] = true,
+                ["diagnosticLimit"] = diagnosticLimit,
+                ["compileGraceSeconds"] = RefreshCompileGraceSeconds,
+                ["refreshStartedUtcTicks"] = refreshStartedUtcTicks
+            };
+
+            bool compiling = ServerAvailabilityHelper.IsCompilationInProgress();
+            var job = CreateJob(
+                "compile",
+                compiling ? "waiting_domain_reload" : "refresh_applied",
+                "Asset refresh accepted; waiting for the script compilation it started.",
+                canCancel: false,
+                metadata: metadata,
+                resultData: new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["operation"] = "asset_refresh"
+                });
+
+            job.status = compiling ? "waiting_domain_reload" : "running";
+            job.progress = compiling ? 35 : 10;
             job.progressStage = job.currentStage;
             job.updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             BatchPersistence.UpsertJob(job);
@@ -716,6 +761,12 @@ namespace UnitySkills
                 return;
             }
 
+            if (string.Equals(GetMetadataString(job, "diagnosticsScope"), "project", StringComparison.OrdinalIgnoreCase))
+            {
+                ProcessProjectCompileJob(job, now);
+                return;
+            }
+
             var checkCompile = GetMetadataBool(job, "checkCompile", true);
             var supportsDiagnostics = GetMetadataBool(job, "supportsDiagnostics", true);
             var diagnosticLimit = GetMetadataInt(job, "diagnosticLimit", 20);
@@ -742,6 +793,110 @@ namespace UnitySkills
 
             CompleteJob(job.jobId, $"Script operation '{operation}' completed.", resultData);
         }
+
+        private static void ProcessProjectCompileJob(BatchJobRecord job, long now)
+        {
+            var operation = GetMetadataString(job, "operation", "asset_refresh");
+            var scriptPaths = GetMetadataStringArray(job, "scriptPaths");
+            var graceSeconds = GetMetadataInt(job, "compileGraceSeconds", RefreshCompileGraceSeconds);
+            var outcome = CompilationResultService.GetLastOutcome();
+
+            if (outcome != null && outcome.FinishedAtUtcTicks >= GetMetadataLong(job, "refreshStartedUtcTicks", 0))
+            {
+                // Types from a clean compile exist only after the domain reload that follows it. Unity skips that
+                // reload when no assembly changed, so the wait for it is bounded.
+                if (!outcome.HasErrors && CompilationResultService.DomainLoadedUtcTicks < outcome.FinishedAtUtcTicks)
+                {
+                    var waitingSince = GetMetadataLong(job, "reloadWaitSince", 0);
+                    if (waitingSince <= 0)
+                    {
+                        waitingSince = now;
+                        job.metadata["reloadWaitSince"] = now;
+                    }
+
+                    if (now - waitingSince < graceSeconds)
+                    {
+                        Transition(job, "waiting_domain_reload", "reload_pending", 80, "Compilation succeeded; waiting for Unity to reload the script domain.", "compile_reload_wait");
+                        return;
+                    }
+                }
+
+                Transition(job, "running", "verifying", 90, "Collecting compilation diagnostics.", "compile_verifying");
+                var resultData = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["operation"] = operation,
+                    ["compilation"] = BuildProjectCompilation(scriptPaths, outcome, GetMetadataInt(job, "diagnosticLimit", 20))
+                };
+                if (outcome.HasErrors)
+                    FailJob(job.jobId, "Script compilation completed with errors.", "failed_compile", resultData);
+                else
+                    CompleteJob(job.jobId, $"Script compilation after '{operation}' completed.", resultData);
+                return;
+            }
+
+            // Depending on "Script Changes While Playing", Unity defers compilation until Play Mode exits, so the grace
+            // period only starts counting once it has.
+            if (IsPlayModeActive())
+            {
+                job.metadata["graceAnchor"] = now;
+                Transition(job, "waiting_domain_reload", "waiting_play_mode_exit", 30, "Unity may defer script compilation until Play Mode exits.", "compile_play_mode_wait");
+                return;
+            }
+
+            if (now - Math.Max(job.startedAt, GetMetadataLong(job, "graceAnchor", 0)) < graceSeconds)
+            {
+                Transition(job, "running", "stabilizing", 20, "Waiting for the refresh to start a script compilation.", "compile_stabilizing");
+                return;
+            }
+
+            CompleteJob(job.jobId, $"'{operation}' completed; no script compilation ran.", new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["operation"] = operation,
+                ["compilation"] = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["scope"] = "project",
+                    ["compiled"] = false,
+                    ["scriptPaths"] = scriptPaths,
+                    ["isCompiling"] = false,
+                    ["hasErrors"] = false,
+                    ["errorCount"] = 0,
+                    ["errors"] = Array.Empty<object>(),
+                    ["nextAction"] = "No script compilation ran after the refresh, so the loaded scripts are unchanged. If you edited a script, check it is saved under Assets/ (or a local package), then call asset_refresh again."
+                }
+            });
+        }
+
+        private static Dictionary<string, object> BuildProjectCompilation(string[] scriptPaths, CompilationResultService.CompilationOutcome outcome, int diagnosticLimit)
+        {
+            var errors = outcome.Errors
+                .Take(Math.Max(1, diagnosticLimit))
+                .Select(error => new
+                {
+                    type = "Error",
+                    message = error.Message != null && error.Message.Length > 500 ? error.Message.Substring(0, 500) + "..." : error.Message,
+                    file = error.File?.Replace('\\', '/'),
+                    line = error.Line
+                })
+                .ToArray();
+
+            return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["scope"] = "project",
+                ["compiled"] = true,
+                ["scriptPaths"] = scriptPaths,
+                ["isCompiling"] = false,
+                ["hasErrors"] = outcome.HasErrors,
+                ["errorCount"] = Math.Max(outcome.ErrorCount, outcome.Errors.Count),
+                ["errors"] = errors,
+                ["finishedAtUtc"] = outcome.FinishedAtUtc,
+                ["nextAction"] = outcome.HasErrors
+                    ? "Fix the reported compile errors (they are project-wide), save, then call asset_refresh again and GET its new waitUrl."
+                    : "Compilation succeeded; new and changed types are ready to use."
+            };
+        }
+
+        private static bool IsPlayModeActive() =>
+            PlayModeOverrideForTests ?? (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode);
 
         private static void ProcessPackageJob(BatchJobRecord job)
         {

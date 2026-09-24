@@ -16,9 +16,11 @@ namespace UnitySkills
             ".dll"
         };
 
+        internal static bool? CompilationInProgressOverrideForTests;
+
         public static bool IsCompilationInProgress()
         {
-            return EditorApplication.isCompiling || EditorApplication.isUpdating;
+            return CompilationInProgressOverrideForTests ?? (EditorApplication.isCompiling || EditorApplication.isUpdating);
         }
 
         public static bool AffectsScriptDomain(string assetPath)

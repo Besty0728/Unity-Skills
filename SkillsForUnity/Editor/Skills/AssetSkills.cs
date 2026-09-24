@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEditor;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -427,24 +428,56 @@ namespace UnitySkills
 
         private class BatchFolderItem { public string folderPath; }
 
-        [UnitySkill("asset_refresh", "Refresh the Asset Database",
+        private const int MaxListedScriptChanges = 20;
+
+        internal static Action RefreshOverrideForTests;
+
+        [UnitySkill("asset_refresh", "Refresh the Asset Database (no parameters) so Unity imports files changed outside the Editor, e.g. a .cs you wrote with your own file tools. When the refresh starts a script compilation it returns compileTriggered:true with jobId and waitUrl: GET the waitUrl (/jobs/<jobId>?wait=90) to get the compile result in one call.",
             Category = SkillCategory.Asset, Operation = SkillOperation.Execute,
             Tags = new[] { "refresh", "reimport", "database" },
-            Outputs = new[] { "message" })]
+            Outputs = new[] { "message", "compileTriggered" })]
         public static object AssetRefresh()
         {
-            AssetDatabase.Refresh();
+            long refreshStartedUtcTicks = DateTime.UtcNow.Ticks;
+            int compilationStartsBefore = CompilationResultService.CompilationStartCount;
+            string[] scriptChanges;
+            using (var capture = ScriptDomainImportCapture.Begin())
+            {
+                if (RefreshOverrideForTests != null)
+                    RefreshOverrideForTests();
+                else
+                    AssetDatabase.Refresh();
+                scriptChanges = capture.Paths;
+            }
+
+            // Unity either compiles inside the refresh or queues the compilation right behind it, so any of the three
+            // signals means one is underway.
+            bool compileTriggered = scriptChanges.Length > 0 ||
+                                    CompilationResultService.CompilationStartCount != compilationStartsBefore ||
+                                    ServerAvailabilityHelper.IsCompilationInProgress();
 
             var result = new Dictionary<string, object>
             {
                 ["success"] = true,
-                ["message"] = "Asset database refreshed"
+                ["message"] = "Asset database refreshed",
+                ["compileTriggered"] = compileTriggered
             };
+            if (!compileTriggered)
+                return result;
+
+            var job = AsyncJobService.StartRefreshCompileJob(scriptChanges, refreshStartedUtcTicks);
+            result["status"] = "accepted";
+            result["jobId"] = job.jobId;
+            result["waitUrl"] = AsyncJobService.BuildWaitUrl(job.jobId);
+            if (scriptChanges.Length > 0)
+                result["scriptChanges"] = scriptChanges.Take(MaxListedScriptChanges).ToArray();
+            if (scriptChanges.Length > MaxListedScriptChanges)
+                result["scriptChangesTruncated"] = scriptChanges.Length - MaxListedScriptChanges;
 
             ServerAvailabilityHelper.AttachTransientUnavailableNotice(
                 result,
                 "AssetDatabase.Refresh may trigger a short asset refresh window. The REST server can be briefly unavailable if Unity starts recompiling scripts.",
-                alwaysInclude: false);
+                alwaysInclude: true);
 
             return result;
         }

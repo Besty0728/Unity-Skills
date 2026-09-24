@@ -190,9 +190,13 @@ unity_skills.call_skill("asset_create_folder_batch", items=json.dumps([
 ```
 
 ### asset_refresh
-Refresh the AssetDatabase after external changes.
+Refresh the AssetDatabase after external changes, e.g. files you wrote or deleted with your own file tools.
 
 No parameters.
+
+**Returns**: `{success, message, compileTriggered}`. When the refresh starts a script compilation (a `.cs`, `.asmdef`, `.asmref`, `.rsp` or `.dll` changed), `compileTriggered` is `true` and the result adds `status:"accepted"`, `jobId`, `waitUrl` (`/jobs/<jobId>?wait=90`), `serverAvailability` and, when Unity reported the files, `scriptChanges` (up to 20 paths; `scriptChangesTruncated` counts the rest). `compileTriggered:false` means there is nothing to wait for.
+
+Wrote a `.cs` yourself? Call `asset_refresh`, then GET its `waitUrl`, retrying the same URL through the domain reload: `curl -s --retry 20 --retry-connrefused --retry-all-errors --retry-delay 2 "http://localhost:<port>/jobs/<jobId>?wait=90"`. `status:"completed"` means the new types are ready to use; `"failed"` lists the compile errors in `resultData.compilation.errors`. The diagnostics are project-wide (`compilation.scope:"project"`); `compilation.compiled:false` means no compilation followed the refresh.
 
 ### asset_get_info
 Get information about an asset.
