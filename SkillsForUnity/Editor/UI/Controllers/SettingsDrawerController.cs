@@ -113,6 +113,7 @@ namespace UnitySkills
         private Label         _updateNotificationsHint;
         private Label         _updateCheckLabel;
         private Button        _updateCheckBtn;
+        private Label         _updateModeHint;
         private Label         _updateCheckStatus;
         private Toggle        _telemetryToggle;
         private Label         _telemetryLabel;
@@ -256,6 +257,7 @@ namespace UnitySkills
             _updateNotificationsHint   = _drawerContainer.Q<Label>("update-notifications-hint");
             _updateCheckLabel  = _drawerContainer.Q<Label>("update-check-label");
             _updateCheckBtn    = _drawerContainer.Q<Button>("update-check-btn");
+            _updateModeHint    = _drawerContainer.Q<Label>("update-mode-hint");
             _updateCheckStatus = _drawerContainer.Q<Label>("update-check-status");
             _telemetryToggle   = _drawerContainer.Q<Toggle>("telemetry-toggle");
             _telemetryLabel    = _drawerContainer.Q<Label>("telemetry-label");
@@ -620,6 +622,7 @@ namespace UnitySkills
             // re-resolve here in every state -- including a check or update that is still in flight.
             ApplyUpdateCheckButtonText();
             ApplyUpdateCheckStatus();
+            ApplyUpdateModeHint();
 
             if (_telemetryLabel != null)
                 _telemetryLabel.text = SkillsLocalization.Get("drawer_telemetry_label");
@@ -672,6 +675,8 @@ namespace UnitySkills
         private string _updateCheckStatusKey;     // null while no status line is shown
         private string _updateCheckStatusArgKey;  // {0} resolved from another key
         private string _updateCheckStatusArgText; // {0} taken verbatim (upstream Package Manager text)
+        private string _updateModeHintKey;        // null hides the update-method line
+        private string _updateModeHintArg;        // branch or tag of a git clone, verbatim
 
         private string UpdateCheckTargetText => _updateCheckTargetKey != null
             ? SkillsLocalization.Get(_updateCheckTargetKey)
@@ -708,6 +713,12 @@ namespace UnitySkills
             {
                 VersionCheckService.FetchBetaHeadSha(OnBetaHeadFetched);
             }
+            else if (_updateCheckKind == PackageManagerHelper.SelfInstallKind.Local)
+            {
+                // A git clone compares commits with its official branch; comparing release numbers would call a beta
+                // clone up to date forever, or downgrade it to the stable archive.
+                LocalSelfUpdateService.Check(OnLocalCheckCompleted);
+            }
             else
             {
                 VersionCheckService.CheckCompleted += OnStableCheckCompleted;
@@ -733,6 +744,73 @@ namespace UnitySkills
             {
                 EnterIdleState("update_check_latest");
             }
+        }
+
+        private void OnLocalCheckCompleted(LocalUpdateResult result)
+        {
+            if (_updateCheckState != UpdateCheckState.Checking) return;
+
+            SetUpdateModeHint(result.Probe);
+            switch (result.Outcome)
+            {
+                case LocalUpdateOutcome.UpdateAvailable:
+                    // Git targets are language-neutral literals ("main @ 1a2b3c4", "v2.9.0"); Start ignores the version.
+                    _updateCheckVersion = null;
+                    EnterReadyState(null, result.TargetLabel);
+                    break;
+                case LocalUpdateOutcome.AlreadyUpToDate:
+                    EnterIdleState("update_check_latest");
+                    break;
+                case LocalUpdateOutcome.ReleaseCheckRequired:
+                    VersionCheckService.CheckCompleted += OnStableCheckCompleted;
+                    VersionCheckService.StartCheck(force: true);
+                    break;
+                default:
+                    // Checking only reports; the dialogs belong to an actual update attempt.
+                    EnterIdleState("update_check_failed_fmt", argKey: SelfUpdateFeedback.ReasonKey(result.Outcome));
+                    break;
+            }
+        }
+
+        private void OnLocalUpdateCompleted(LocalUpdateResult result)
+        {
+            if (_updateCheckState != UpdateCheckState.Updating) return;
+
+            if (result.Probe != null) SetUpdateModeHint(result.Probe);
+            switch (result.Outcome)
+            {
+                case LocalUpdateOutcome.Updated:
+                    // The package change triggers a domain reload that tears this UI down anyway.
+                    SetUpdateCheckStatus(SelfUpdateFeedback.DoneStatusKey(result, out var backupPath), argText: backupPath);
+                    break;
+                case LocalUpdateOutcome.AlreadyUpToDate:
+                    EnterIdleState("update_check_latest");
+                    break;
+                case LocalUpdateOutcome.Cancelled:
+                    EnterIdleState("update_check_cancelled");
+                    break;
+                default:
+                    EnterIdleState("update_check_failed_fmt", argKey: SelfUpdateFeedback.ReasonKey(result.Outcome));
+                    SelfUpdateFeedback.ShowRefusalDialog(result);
+                    break;
+            }
+        }
+
+        private void SetUpdateModeHint(LocalUpdateProbe probe)
+        {
+            _updateModeHintKey = SelfUpdateFeedback.ModeHintKey(probe, out _updateModeHintArg);
+            ApplyUpdateModeHint();
+        }
+
+        private void ApplyUpdateModeHint()
+        {
+            if (_updateModeHint == null) return;
+            _updateModeHint.SetVisible(_updateModeHintKey != null);
+            _updateModeHint.text = _updateModeHintKey == null
+                ? string.Empty
+                : _updateModeHintArg == null
+                    ? SkillsLocalization.Get(_updateModeHintKey)
+                    : SkillsLocalization.Get(_updateModeHintKey, _updateModeHintArg);
         }
 
         private void OnBetaHeadFetched(string sha)
@@ -768,27 +846,9 @@ namespace UnitySkills
 
             if (_updateCheckKind == PackageManagerHelper.SelfInstallKind.Local)
             {
-                // Local (file:/embedded) installs download the repo archive and swap directories
-                // instead of asking the Package Manager to rewrite the manifest.
-                LocalSelfUpdateService.Start(_updateCheckVersion, (success, message) =>
-                {
-                    if (_updateCheckState != UpdateCheckState.Updating) return;
-                    if (success)
-                    {
-                        // The package swap triggers a domain reload that tears this UI down anyway.
-                        SetUpdateCheckStatus("update_check_done");
-                    }
-                    else if (message == LocalSelfUpdateService.CancelledMessage)
-                    {
-                        EnterIdleState("update_check_cancelled");
-                    }
-                    else
-                    {
-                        EnterIdleState("update_check_failed_fmt",
-                            argKey: ResolveFailureReasonKey(message),
-                            argText: message);
-                    }
-                });
+                // Local (file:/embedded) installs update on disk -- a git clone fast-forwards, anything else swaps in
+                // the release archive -- instead of asking the Package Manager to rewrite the manifest.
+                LocalSelfUpdateService.Start(_updateCheckVersion, OnLocalUpdateCompleted);
                 return;
             }
 
@@ -819,10 +879,6 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(message)) return "update_check_reason_unknown";
             if (message == PackageManagerHelper.BusyMessage) return "update_check_reason_busy";
             if (message == PackageManagerHelper.UnknownErrorMessage) return "update_check_reason_unknown";
-            if (message == LocalSelfUpdateService.NetworkErrorMessage) return "update_check_reason_network";
-            if (message == LocalSelfUpdateService.DiskErrorMessage) return "update_check_reason_disk";
-            if (message == LocalSelfUpdateService.InvalidPackageErrorMessage) return "update_check_reason_invalid";
-            if (message == LocalSelfUpdateService.PackageRootNotFoundMessage) return "update_check_reason_path";
             return null;
         }
 

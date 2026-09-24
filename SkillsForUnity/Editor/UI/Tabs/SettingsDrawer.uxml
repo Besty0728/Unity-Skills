@@ -173,6 +173,7 @@
                         <ui:Label name="update-check-label" class="setting-row__label" />
                         <ui:Button name="update-check-btn" class="mini-btn" />
                     </ui:VisualElement>
+                    <ui:Label name="update-mode-hint" class="setting-hint is-hidden" />
                     <ui:Label name="update-check-status" class="setting-hint" />
 
                     <ui:VisualElement name="telemetry-row" class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
