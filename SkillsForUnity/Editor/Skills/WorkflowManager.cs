@@ -649,6 +649,11 @@ namespace UnitySkills
             return true;
         }
 
+        /// <summary>
+        /// Destroys a scene GameObject or Component with Undo, recording a Deleted snapshot while a task is open.
+        /// Returns false when the object survives (Unity can refuse, e.g. a component another one still requires),
+        /// so the caller reports an error and no snapshot claims a deletion that never happened.
+        /// </summary>
         public static bool DeleteSceneObject(UnityEngine.Object obj)
         {
             if (obj == null) return false;
@@ -656,7 +661,7 @@ namespace UnitySkills
             if (_currentTask == null)
             {
                 Undo.DestroyObjectImmediate(obj);
-                return true;
+                return obj == null;
             }
 
             if (obj is GameObject go)
@@ -671,6 +676,8 @@ namespace UnitySkills
                     gameObjectHierarchy = CaptureGameObjectHierarchy(go)
                 };
                 Undo.DestroyObjectImmediate(go);
+                if (go != null)
+                    return false;
                 AddSnapshot(snapshot);
                 return true;
             }
@@ -695,6 +702,8 @@ namespace UnitySkills
                     parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(component.gameObject)
                 };
                 Undo.DestroyObjectImmediate(component);
+                if (component != null)
+                    return false;
                 NotifyComponentTopologyChanged(owner, componentType);
                 AddSnapshot(snapshot);
                 return true;

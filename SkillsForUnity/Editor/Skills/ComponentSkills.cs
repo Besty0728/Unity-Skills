@@ -16,7 +16,7 @@ namespace UnitySkills
     public static class ComponentSkills
     {
         // Also used by BatchSkills' set_property preview, which resolves members and values through the same helpers.
-        internal const string PropertyValueNote = "Parsed per member type: vectors '1,2,3' or {\"x\":1,...}; Color 'r,g,b[,a]' (0-1), #RRGGBB or a name; enums by name; Quaternion 'x,y,z' = Euler degrees. Omitted or 'null' = type default.";
+        internal const string PropertyValueNote = "Parsed per member type: vectors '1,2,3' or {\"x\":1,...}; Color 'r,g,b[,a]' (0-1), #RRGGBB or a name; enums by name; Quaternion 'x,y,z' = Euler degrees; bool true/false/1/0/yes/no/on/off; AnimationCurve preset (linear, easeIn, easeOut, easeInOut, constant) or JSON {keys:[...]}. Omitted or 'null' = type default.";
         internal const string PropertyNameNote = "C# property/field name (e.g. mass, isTrigger, a script field), exact then case-insensitive; for m_* serialized paths use component_set_serialized_property.";
         internal const string AssetReferenceNote = "Project asset path for an object-reference member (Material, Prefab, ScriptableObject...); takes precedence over referencePath/referenceName and value.";
 
@@ -169,7 +169,7 @@ namespace UnitySkills
         [UnitySkill("component_remove", "Remove a component from a GameObject (supports name/instanceId/path)",
             Category = SkillCategory.Component, Operation = SkillOperation.Delete,
             Tags = new[] { "remove", "detach", "destroy" },
-            Outputs = new[] { "gameObject", "removed" },
+            Outputs = new[] { "gameObject", "removed", "remainingOfType" },
             RequiresInput = new[] { "gameObject", "component" },
             RequiredParams = new[] { "componentType" },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
@@ -191,26 +191,29 @@ namespace UnitySkills
             if (components.Length == 0)
                 return new { error = $"Component not found on {go.name}: {componentType}" };
 
-            if (componentIndex >= components.Length)
+            if (componentIndex < 0 || componentIndex >= components.Length)
                 return new { error = $"Component index {componentIndex} out of range. Found {components.Length} components of type {componentType}" };
 
             var comp = components[componentIndex];
 
-            var requiredBy = GetRequiredByComponents(go, type);
-            if (requiredBy.Any())
+            var requiredBy = FindBlockingDependents(go, new[] { comp });
+            if (requiredBy.Length > 0)
                 return new {
                     error = $"Cannot remove {componentType} - required by: {string.Join(", ", requiredBy)}",
-                    hint = "Remove dependent components first"
+                    hint = "Remove dependent components first",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+                    requiredBy
                 };
 
             if (!WorkflowManager.DeleteSceneObject(comp))
                 return new { error = $"Failed to capture and remove {componentType}" };
             EditorUtility.SetDirty(go);
 
-            return new { success = true, gameObject = go.name, removed = componentType };
+            return new { success = true, gameObject = go.name, removed = type.Name, remainingOfType = go.GetComponents(type).Length };
         }
 
-        [UnitySkill("component_remove_batch", "Remove components from multiple GameObjects. items: JSON array of {name, componentType, path}",
+        [UnitySkill("component_remove_batch", "Remove components from multiple GameObjects. items: JSON array of {name, componentType, path, componentIndex}",
             Category = SkillCategory.Component, Operation = SkillOperation.Delete,
             Tags = new[] { "remove", "detach", "destroy", "batch" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
@@ -219,7 +222,7 @@ namespace UnitySkills
             MutatesScene = true,
             RiskLevel = "medium")]
         public static object ComponentRemoveBatch(
-            [SkillParam("JSON array of {name|path|instanceId, componentType}; removes every component of that type on the target.")]
+            [SkillParam("JSON array of {name|path|instanceId, componentType, componentIndex?}; without componentIndex every component of that type is removed; a component another one still needs is refused (as component_remove).")]
             string items)
         {
             return BatchExecutor.Execute<BatchRemoveComponentItem>(items, item =>
@@ -228,25 +231,44 @@ namespace UnitySkills
                 if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
 
                 if (string.IsNullOrEmpty(item.componentType))
-                    return new { error = "componentType required" };
+                    return new { error = "componentType required", target = go.name };
 
                 var type = FindComponentType(item.componentType);
                 if (type == null)
-                    return new { error = $"Component type not found: {item.componentType}" };
+                    return new { error = $"Component type not found: {item.componentType}", target = go.name };
 
                 var components = go.GetComponents(type);
                 if (components.Length == 0)
                     return new { error = $"Component not found: {item.componentType}", target = go.name };
 
-                Undo.RecordObject(go, "Batch Remove Component");
-                foreach (var c in components)
+                if (item.componentIndex.HasValue &&
+                    (item.componentIndex.Value < 0 || item.componentIndex.Value >= components.Length))
+                    return new { error = $"Component index {item.componentIndex.Value} out of range. Found {components.Length} components of type {item.componentType}", target = go.name };
+
+                var toRemove = item.componentIndex.HasValue ? new[] { components[item.componentIndex.Value] } : components;
+                var requiredBy = FindBlockingDependents(go, toRemove);
+                if (requiredBy.Length > 0)
+                    return new
+                    {
+                        error = $"Cannot remove {item.componentType} - required by: {string.Join(", ", requiredBy)}",
+                        errorCode = SkillParamUtil.SemanticInvalidCode,
+                        retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+                        target = go.name,
+                        requiredBy,
+                        suggestedFixes = new object[]
+                        {
+                            new { action = "fix_param", reason = "Remove the dependent components first (an earlier item or call), then retry." }
+                        }
+                    };
+
+                foreach (var c in toRemove)
                 {
                     if (!WorkflowManager.DeleteSceneObject(c))
-                        return new { error = $"Failed to capture and remove {item.componentType}" };
+                        return new { error = $"Failed to capture and remove {item.componentType}", target = go.name };
                 }
 
                 EditorUtility.SetDirty(go);
-                return new { target = go.name, success = true, removed = type.Name, count = components.Length };
+                return new { target = go.name, success = true, removed = type.Name, count = toRemove.Length, remainingOfType = go.GetComponents(type).Length };
             }, item => item.name ?? item.path, atomic: true);
         }
 
@@ -256,6 +278,7 @@ namespace UnitySkills
             public int instanceId { get; set; }
             public string path { get; set; }
             public string componentType { get; set; }
+            public int? componentIndex { get; set; }
         }
 
         [UnitySkill("component_list", "List all components on a GameObject with detailed info (supports name/instanceId/path)",
@@ -568,7 +591,7 @@ namespace UnitySkills
             string componentType = null,
             [SkillParam("SerializedProperty path, e.g. m_Mass or m_Materials.Array.data[0]; a bare name also tries m_<Name>, _<name> and m_<name>.")]
             string propertyPath = null,
-            [SkillParam("Integer (LayerMask = bit mask), bool true/false, enum name or display name ('A,B' for flags), vectors/Color as in component_set_property; omitted/'null' clears an object reference.")]
+            [SkillParam("Integer (LayerMask = bit mask), bool true/false/1/0/yes/no/on/off, enum name or display name ('A,B' for flags) or number (0..n-1 = member index, warned when it differs from the value; larger = raw value/bitmask), vectors/Color as in component_set_property; omitted/'null' clears an object reference.")]
             string value = null,
             string referenceName = null, int referenceInstanceId = 0, string referencePath = null,
             string assetPath = null,
@@ -599,15 +622,15 @@ namespace UnitySkills
                 };
             }
 
-            WorkflowManager.SnapshotObject(comp);
-            Undo.RecordObject(comp, "Set Serialized Property");
-
+            // Only the SerializedObject copy changes here, so a rejected value leaves the component and its history untouched.
             if (!SerializedPropertySkillUtility.TrySetProperty(
-                    property, value, referenceName, referenceInstanceId, referencePath, assetPath, objectType, out var setError))
+                    property, value, referenceName, referenceInstanceId, referencePath, assetPath, objectType, out var setError, out var setWarning))
             {
                 return new { error = setError };
             }
 
+            WorkflowManager.SnapshotObject(comp);
+            Undo.RecordObject(comp, "Set Serialized Property");
             serializedObject.ApplyModifiedProperties();
             EditorUtility.SetDirty(comp);
 
@@ -615,14 +638,17 @@ namespace UnitySkills
             serializedObject.Update();
             var stored = SerializedPropertySkillUtility.FindProperty(serializedObject, property.propertyPath) ?? property;
 
-            return new
+            var response = new Dictionary<string, object>
             {
-                success = true,
-                gameObject = go.name,
-                component = componentType,
-                propertyPath = property.propertyPath,
-                valueSet = SerializedPropertySkillUtility.DescribeValue(stored)
+                ["success"] = true,
+                ["gameObject"] = go.name,
+                ["component"] = componentType,
+                ["propertyPath"] = property.propertyPath,
+                ["valueSet"] = SerializedPropertySkillUtility.DescribeValue(stored)
             };
+            if (setWarning != null)
+                response["warnings"] = new[] { setWarning };
+            return response;
         }
 
         [UnitySkill("component_set_serialized_property_batch", "Set Inspector serialized properties on multiple components. items: JSON array of {name, instanceId, path, componentType, propertyPath, value, referenceName, referenceInstanceId, referencePath, assetPath, objectType}",
@@ -894,25 +920,85 @@ namespace UnitySkills
                 .ToArray();
         }
 
+        /// <summary>
+        /// SEMANTIC_INVALID for a component type name no loaded Component matches, in the shape gameobject_find uses
+        /// for its component filter. A dotted parameter (queryJson.componentType) is a key inside a JSON argument, so
+        /// its closest type goes into the reason rather than args.
+        /// </summary>
+        internal static object UnknownComponentTypeError(string componentType, string parameter)
+        {
+            var similarTypes = GetSimilarTypes(componentType);
+            var fixes = new List<object>();
+            if (similarTypes.Length > 0)
+            {
+                if (parameter.Contains("."))
+                    fixes.Add(new { action = "fix_param", reason = $"Closest loaded component type: '{similarTypes[0]}'." });
+                else
+                    fixes.Add(new { action = "fix_param", args = new Dictionary<string, object> { [parameter] = similarTypes[0] }, reason = "Closest loaded component type." });
+            }
+            fixes.Add(new { action = "fix_param", skill = "script_get_compile_feedback", reason = "A script class can only be used as a filter after it compiles." });
+
+            return new
+            {
+                error = $"Invalid value '{componentType}' for parameter '{parameter}': no loaded Component type has that name.",
+                errorCode = SkillParamUtil.SemanticInvalidCode,
+                retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+                parameter,
+                similarTypes,
+                suggestedFixes = fixes.ToArray()
+            };
+        }
+
         private static bool AllowMultiple(System.Type type)
         {
             try { return type.GetCustomAttributes(typeof(DisallowMultipleComponent), true).Length == 0; }
             catch { return true; }
         }
 
-        private static string[] GetRequiredByComponents(GameObject go, System.Type targetType)
+        /// <summary>
+        /// Components on <paramref name="go"/> whose RequireComponent would be left unmet by removing
+        /// <paramref name="toRemove"/>: a requirement is met by any remaining component assignable to it, so removing
+        /// one of two BoxColliders is allowed, and a requirement on a base type (Collider) counts every subclass.
+        /// <paramref name="alreadyRemoved"/> are treated as gone (earlier items of the same batch).
+        /// </summary>
+        internal static string[] FindBlockingDependents(GameObject go, IReadOnlyCollection<Component> toRemove,
+            IEnumerable<Component> alreadyRemoved = null)
         {
-            try
+            if (go == null || toRemove == null || toRemove.Count == 0)
+                return new string[0];
+
+            var removing = new HashSet<Component>(toRemove.Where(c => c != null));
+            var gone = alreadyRemoved != null ? new HashSet<Component>(alreadyRemoved.Where(c => c != null)) : new HashSet<Component>();
+            var remaining = go.GetComponents<Component>()
+                .Where(c => c != null && !removing.Contains(c) && !gone.Contains(c))
+                .ToArray();
+
+            var blockers = new List<string>();
+            foreach (var dependent in remaining)
             {
-                return go.GetComponents<Component>()
-                    .Where(c => c != null && c.GetType() != targetType)
-                    .Where(c => c.GetType().GetCustomAttributes(typeof(RequireComponent), true)
-                        .OfType<RequireComponent>()
-                        .Any(r => r.m_Type0 == targetType || r.m_Type1 == targetType || r.m_Type2 == targetType))
-                    .Select(c => c.GetType().Name)
-                    .ToArray();
+                RequireComponent[] requirements;
+                try
+                {
+                    requirements = dependent.GetType().GetCustomAttributes(typeof(RequireComponent), true).OfType<RequireComponent>().ToArray();
+                }
+                catch
+                {
+                    continue;
+                }
+
+                foreach (var requirement in requirements)
+                {
+                    foreach (var required in new[] { requirement.m_Type0, requirement.m_Type1, requirement.m_Type2 })
+                    {
+                        if (required == null ||
+                            !removing.Any(c => required.IsAssignableFrom(c.GetType())) ||
+                            remaining.Any(c => required.IsAssignableFrom(c.GetType())))
+                            continue;
+                        blockers.Add(dependent.GetType().Name);
+                    }
+                }
             }
-            catch { return new string[0]; }
+            return blockers.Distinct().ToArray();
         }
         
         #endregion
@@ -958,8 +1044,11 @@ namespace UnitySkills
 
         private static bool ParseBool(string value)
         {
-            value = value.ToLower().Trim();
-            return value == "true" || value == "1" || value == "yes" || value == "on";
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+            if (SkillParamUtil.TryParseBoolText(value, out var parsed))
+                return parsed;
+            throw new PropertyValueException($"Invalid value '{value}' for a Boolean member. Valid values: true, false, 1, 0, yes, no, on, off.");
         }
 
         private static Vector2 ParseVector2(string value)
@@ -1099,15 +1188,23 @@ namespace UnitySkills
 
         private static AnimationCurve ParseAnimationCurve(string value)
         {
-            value = value.ToLower().Trim();
-            switch (value)
+            // Same JSON shape as the serialized-property writers accept.
+            if (SkillParamUtil.LooksLikeJsonObject(value))
+            {
+                if (!SerializedPropertySkillUtility.TryParseAnimationCurveJson(value, out var curve, out var error))
+                    throw new PropertyValueException($"Invalid value '{value}' for an AnimationCurve member: {error}");
+                return curve;
+            }
+
+            switch (value.Trim().ToLowerInvariant())
             {
                 case "linear": return AnimationCurve.Linear(0, 0, 1, 1);
                 case "easein": return new AnimationCurve(new Keyframe(0, 0, 0, 0), new Keyframe(1, 1, 2, 0));
                 case "easeout": return new AnimationCurve(new Keyframe(0, 0, 0, 2), new Keyframe(1, 1, 0, 0));
                 case "easeinout": return AnimationCurve.EaseInOut(0, 0, 1, 1);
                 case "constant": return AnimationCurve.Constant(0, 1, 1);
-                default: return AnimationCurve.Linear(0, 0, 1, 1);
+                default:
+                    throw new PropertyValueException($"Invalid value '{value}' for an AnimationCurve member. Valid values: linear, easeIn, easeOut, easeInOut, constant, or a JSON curve {{\"keys\":[{{\"time\":0,\"value\":0}},...]}}.");
             }
         }
 
@@ -1354,10 +1451,10 @@ namespace UnitySkills
         [UnitySkill("component_copy", "Copy a component from one GameObject to another",
             Category = SkillCategory.Component, Operation = SkillOperation.Create,
             Tags = new[] { "copy", "paste", "duplicate", "transfer" },
-            Outputs = new[] { "source", "target", "componentType" },
+            Outputs = new[] { "source", "target", "componentType", "pasted" },
             RequiresInput = new[] { "gameObject", "component" },
             RequiredParams = new[] { "componentType" },
-            TracksWorkflow = true)]
+            TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentCopy(string sourceName = null, int sourceInstanceId = 0, string sourcePath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, string componentType = null)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
@@ -1370,11 +1467,24 @@ namespace UnitySkills
             if (type == null) return new { error = $"Component type not found: {componentType}" };
 
             var srcComp = srcGo.GetComponent(type);
-            if (srcComp == null) return new { error = $"No {componentType} on {sourceName}" };
+            if (srcComp == null) return new { error = $"No {componentType} on {srcGo.name}" };
+
+            var before = new HashSet<Component>(dstGo.GetComponents(type));
+            WorkflowManager.SnapshotObject(dstGo);
+            Undo.RegisterCompleteObjectUndo(dstGo, "Copy Component");
 
             UnityEditorInternal.ComponentUtility.CopyComponent(srcComp);
-            UnityEditorInternal.ComponentUtility.PasteComponentAsNew(dstGo);
-            return new { success = true, source = sourceName, target = targetName, componentType };
+            bool pasted = UnityEditorInternal.ComponentUtility.PasteComponentAsNew(dstGo);
+
+            var copied = dstGo.GetComponents(type).FirstOrDefault(c => !before.Contains(c));
+            if (copied != null)
+            {
+                Undo.RegisterCreatedObjectUndo(copied, "Copy Component");
+                WorkflowManager.SnapshotObject(copied, SnapshotType.Created);
+                EditorUtility.SetDirty(copied);
+            }
+
+            return new { success = true, source = srcGo.name, target = dstGo.name, componentType = type.Name, pasted = pasted && copied != null };
         }
 
         [UnitySkill("component_copy_exact", "Copy a component from one GameObject to another and verify every serialized Inspector field matches after paste",
@@ -1465,13 +1575,27 @@ namespace UnitySkills
             var comp = go.GetComponent(type);
             if (comp == null) return new { error = $"No {componentType} on {go.name}" };
 
-            Undo.RecordObject(comp, "Set Component Enabled");
-            if (comp is Behaviour behaviour) behaviour.enabled = enabled;
-            else if (comp is Renderer renderer) renderer.enabled = enabled;
-            else if (comp is Collider collider) collider.enabled = enabled;
-            else return new { error = $"{componentType} does not have an enabled property" };
+            if (!(comp is Behaviour) && !(comp is Renderer) && !(comp is Collider))
+                return new { error = $"{componentType} does not have an enabled property" };
 
-            return new { success = true, gameObject = go.name, componentType, enabled };
+            WorkflowManager.SnapshotObject(comp);
+            Undo.RecordObject(comp, "Set Component Enabled");
+            bool storedEnabled;
+            if (comp is Behaviour behaviour) { behaviour.enabled = enabled; storedEnabled = behaviour.enabled; }
+            else if (comp is Renderer renderer) { renderer.enabled = enabled; storedEnabled = renderer.enabled; }
+            else { var collider = (Collider)comp; collider.enabled = enabled; storedEnabled = collider.enabled; }
+
+            var response = new Dictionary<string, object>
+            {
+                ["success"] = true,
+                ["gameObject"] = go.name,
+                ["componentType"] = type.Name,
+                ["enabled"] = storedEnabled,
+            };
+            // A Behaviour on an inactive GameObject stays switched off whatever its own flag says.
+            if (comp is Behaviour activeCheck)
+                response["isActiveAndEnabled"] = activeCheck.isActiveAndEnabled;
+            return response;
         }
     }
 }

@@ -60,11 +60,11 @@ Create a prefab from a scene GameObject.
 | `name` | string | No* | Source object name |
 | `instanceId` | int | No* | Instance ID (preferred) |
 | `path` | string | No* | Object path |
-| `savePath` | string | Yes | Prefab save path |
+| `savePath` | string | Yes | Prefab save path; `.prefab` is appended when missing |
 
 *At least one source identifier required.
 
-**Returns**: `{success, prefabPath, name}`
+**Returns**: `{success, prefabPath, name, connected}`: `prefabPath` is the saved asset's path, `connected` whether the scene object is now an instance of it. A save Unity refuses is an error, not a success.
 
 ### prefab_instantiate
 Instantiate a prefab into the scene.
@@ -88,9 +88,9 @@ Instantiate multiple prefabs in one call.
 |-----------|------|----------|-------------|
 | `items` | array | Yes | Array of instantiation configs |
 
-**Item properties**: `prefabPath`, `name`, `x`, `y`, `z`, `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentEntityId`, `parentName`, `parentInstanceId`, `parentPath`
+**Item properties**: `prefabPath`, `name`, `x`, `y`, `z` (local position, relative to the parent if set), `rotX`, `rotY`, `rotZ`, `scaleX`, `scaleY`, `scaleZ`, `parentEntityId`, `parentName`, `parentInstanceId`, `parentPath`
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, entityId, instanceId, position}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{success, name, entityId, instanceId, position, localPosition}]}`: `position` is the world position read back, `localPosition` the local one. All-or-nothing: one failed item removes every instance the call created (`rolledBack: true`).
 
 ```python
 unity_skills.call_skill("prefab_instantiate_batch", items=[
@@ -165,7 +165,7 @@ Create a prefab variant from an existing prefab.
 | `sourcePrefabPath` | string | Yes | - | Path to the source prefab asset |
 | `variantPath` | string | Yes | - | Save path for the new variant |
 
-**Returns:** `{ success, sourcePath, variantPath, name }`
+**Returns:** `{ success, sourcePath, variantPath, name, isVariant }`: `variantPath` is the saved asset's path (`.prefab` appended when missing), `isVariant` whether Unity stored it as a variant of the source.
 
 ### prefab_find_instances
 Find all instances of a prefab in the current scene.
@@ -191,9 +191,9 @@ Set a property on a component inside a Prefab asset file (without instantiating 
 
 > Provide either `value` (basic types) or `assetReferencePath` (asset references).
 
-`value` covers Integer, Float, Boolean, String, Enum, Color, Vector2/3/4, Vector2Int/3Int, Quaternion, Rect, Bounds and LayerMask. A quaternion (`localRotation`) accepts 3 components as euler degrees (`"0,90,0"`) or 4 as raw x,y,z,w. Any other serialized type answers `SEMANTIC_INVALID` naming the type — that is the signal to use `assetReferencePath`, not to reformat `value`.
+`value` covers Integer, Float, Boolean, String, Enum, Color, Vector2/3/4, Vector2Int/3Int, Quaternion, Rect, Bounds and LayerMask. A quaternion (`localRotation`) accepts 3 components as euler degrees (`"0,90,0"`) or 4 as raw x,y,z,w. A bool is `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off` (anything else is rejected). An enum takes a name, display name, `A,B` for flags, or a number with the same rules as `component_set_serialized_property` (`0`..`n-1` = member index, warned when the member's value differs; undeclared bits rejected). Any other serialized type answers `SEMANTIC_INVALID` naming the type — that is the signal to use `assetReferencePath`, not to reformat `value`.
 
-**Returns:** `{ success, prefabPath, gameObject, component, property, valueSet }`
+**Returns:** `{ success, prefabPath, gameObject, component, property, valueSet, valueRequested?, warnings? }`: `component` / `property` are the resolved type name and serialized path; `valueSet` is read back from the asset after saving (serialized form: an enum reads as its index, a quaternion as x,y,z,w; for `assetReferencePath` the referenced asset's path); `valueRequested` appears only when the stored value differs from what was written (clamped by the component, or a reference of the wrong type not stored).
 
 ```python
 # Set a float property on prefab root

@@ -656,6 +656,9 @@ namespace UnitySkills
                     AnalyzeRequiredEnumParameter<LightType>(validation, "lightType");
                     AnalyzeRequiredEnumParameter<LightShadows>(validation, "shadows");
                     break;
+                case "light_set_enabled_batch":
+                    AnalyzeLightSetEnabledBatch(validation);
+                    break;
                 case "gameobject_create":
                     AnalyzeGameObjectCreate(validation, plan);
                     break;
@@ -781,6 +784,32 @@ namespace UnitySkills
             // and this generic check actively yields when one of them already covers the same target (see TokenAlreadyReported).
             // If placed first, an empty request body would get both verdicts at once, since nothing would yet be reported to yield to.
             ApplyRequiredInputGroups(skill, validation);
+        }
+
+        /// <summary>
+        /// light_set_enabled_batch refuses an item without <c>enabled</c> (MISSING_PARAM) rather than guessing a default,
+        /// so dryRun lists each such item as a missing parameter, <c>items[i].enabled</c>. Validation only, like the enum
+        /// analyzers above: a correct body gets exactly the response it got before, and malformed items are left to the
+        /// executor's own parse error.
+        /// </summary>
+        private static void AnalyzeLightSetEnabledBatch(SkillRouter.ParameterValidationResult validation)
+        {
+            var itemsJson = GetStringArg(validation?.Args, "items");
+            if (string.IsNullOrWhiteSpace(itemsJson))
+                return;
+
+            JArray items;
+            try { items = JArray.Parse(itemsJson); }
+            catch { return; }
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (items[i] is JObject item &&
+                    (!item.TryGetValue("enabled", StringComparison.OrdinalIgnoreCase, out var enabled) || enabled.Type == JTokenType.Null))
+                {
+                    validation.MissingParams.Add($"items[{i}].enabled");
+                }
+            }
         }
 
         private static void AnalyzeTimelineSceneLocatorSkill(string skillName, SkillRouter.ParameterValidationResult validation)
@@ -1363,14 +1392,14 @@ namespace UnitySkills
                     return;
                 }
 
-                if (componentIndex >= components.Length)
+                if (componentIndex < 0 || componentIndex >= components.Length)
                 {
                     AddSemanticError(validation, "componentIndex", $"Component index {componentIndex} out of range. Found {components.Length} components of type {componentType}");
                     return;
                 }
 
-                var requiredBy = GetRequiredByComponents(go, type);
-                if (requiredBy.Any())
+                var requiredBy = ComponentSkills.FindBlockingDependents(go, new[] { components[componentIndex] });
+                if (requiredBy.Length > 0)
                 {
                     AddSemanticError(validation, "component", $"Cannot remove {componentType} - required by: {string.Join(", ", requiredBy)}");
                     return;
@@ -1415,6 +1444,8 @@ namespace UnitySkills
             if (ctx == null) return;
 
             var deletes = new List<object>();
+            // What earlier items remove, so each item is judged against the object as execution will find it.
+            var removedSoFar = new HashSet<Component>();
             for (int i = 0; i < ctx.Items.Count; i++)
             {
                 var item = ctx.GetItem(i);
@@ -1429,7 +1460,8 @@ namespace UnitySkills
                     errors.Add(ExtractError(target.Error));
 
                 Type type = null;
-                int count = 0;
+                Component[] toRemove = null;
+                var componentIndex = GetOptionalIntArg(item, "componentIndex");
                 if (errors.Count == 0)
                 {
                     type = ComponentSkills.FindComponentType(componentType);
@@ -1438,12 +1470,18 @@ namespace UnitySkills
                         errors.Add($"Component type not found: {componentType}");
                     else if (go != null)
                     {
-                        var components = go.GetComponents(type);
-                        count = components.Length;
-                        if (count == 0)
+                        var components = go.GetComponents(type).Where(c => !removedSoFar.Contains(c)).ToArray();
+                        if (components.Length == 0)
                             errors.Add($"Component not found: {componentType}");
-                        else if (GetRequiredByComponents(go, type).Any())
-                            errors.Add($"Cannot remove {componentType} because another component requires it");
+                        else if (componentIndex.HasValue && (componentIndex.Value < 0 || componentIndex.Value >= components.Length))
+                            errors.Add($"Component index {componentIndex.Value} out of range. Found {components.Length} components of type {componentType}");
+                        else
+                        {
+                            toRemove = componentIndex.HasValue ? new[] { components[componentIndex.Value] } : components;
+                            var requiredBy = ComponentSkills.FindBlockingDependents(go, toRemove, removedSoFar);
+                            if (requiredBy.Length > 0)
+                                errors.Add($"Cannot remove {componentType} - required by: {string.Join(", ", requiredBy)}");
+                        }
                     }
                 }
 
@@ -1464,8 +1502,13 @@ namespace UnitySkills
                         ["component"] = type.Name
                     };
                     // A pending target has no components to count yet.
-                    if (target.LiveObject != null)
-                        removed["count"] = count;
+                    if (toRemove != null)
+                    {
+                        removed["count"] = toRemove.Length;
+                        removedSoFar.UnionWith(toRemove);
+                    }
+                    if (componentIndex.HasValue)
+                        removed["componentIndex"] = componentIndex.Value;
                     deletes.Add(removed);
                 }
             }
@@ -1606,13 +1649,21 @@ namespace UnitySkills
             AddErrorFromValidation(validation, Validate.Required(name, "name"), "name");
 
             var savePath = GetStringArg(args, "savePath");
+            bool savePathSafe = true;
             if (!string.IsNullOrEmpty(savePath) && Validate.SafePath(savePath, "savePath") is object saveErr)
+            {
                 AddSemanticError(validation, "savePath", ExtractError(saveErr));
+                savePathSafe = false;
+            }
 
             var resolvedShaderName = ResolveShaderName(GetStringArg(args, "shaderName"), validation);
             string resolvedPath = null;
             if (!string.IsNullOrEmpty(savePath) && !string.IsNullOrEmpty(name))
-                resolvedPath = ResolveMaterialSavePath(savePath, name);
+            {
+                // The executor's own resolver, so the plan names the file material_create will write.
+                if (savePathSafe && !MaterialSkills.TryResolveMaterialSavePath(savePath, name, out resolvedPath, out var resolveErr))
+                    AddSemanticError(validation, "savePath", ExtractError(resolveErr));
+            }
             else if (string.IsNullOrEmpty(savePath))
                 AddWarning(validation, "Material will be created in memory only because savePath is omitted.");
 
@@ -1673,11 +1724,14 @@ namespace UnitySkills
 
                 if (iv.SemanticErrors.Count == 0)
                 {
+                    string resolvedPath = null;
+                    if (!string.IsNullOrEmpty(savePath) && !string.IsNullOrEmpty(name))
+                        MaterialSkills.TryResolveMaterialSavePath(savePath, name, out resolvedPath, out _);
                     creates.Add(new Dictionary<string, object>
                     {
                         ["name"] = name,
                         ["shader"] = resolvedShader,
-                        ["path"] = !string.IsNullOrEmpty(savePath) && !string.IsNullOrEmpty(name) ? ResolveMaterialSavePath(savePath, name) : null
+                        ["path"] = resolvedPath
                     });
                 }
             }
@@ -2245,9 +2299,20 @@ namespace UnitySkills
             var args = validation.Args;
             var scriptName = GetStringArg(args, "scriptName", "name");
             var folder = GetStringArg(args, "folder") ?? "Assets/Scripts";
+            var template = GetStringArg(args, "template");
+            bool fromTemplate = string.IsNullOrEmpty(GetStringArg(args, "content"));
 
             if (string.IsNullOrWhiteSpace(scriptName))
                 AddSemanticError(validation, "scriptName", "scriptName or name is required.");
+
+            // Same template rules and default-folder switch as script_create itself.
+            if (fromTemplate)
+            {
+                if (!ScriptSkills.TryResolveTemplate(template, GetStringArg(args, "namespaceName"), out _, out var templateErr))
+                    AddSemanticError(validation, "template", ExtractError(templateErr));
+                else if (ScriptSkills.IsEditorOnlyTemplate(template) && string.Equals(folder, "Assets/Scripts", StringComparison.OrdinalIgnoreCase))
+                    folder = "Assets/Editor";
+            }
 
             if (!string.IsNullOrWhiteSpace(scriptName))
             {
@@ -2595,27 +2660,6 @@ namespace UnitySkills
             return shaderName;
         }
 
-        private static string ResolveMaterialSavePath(string savePath, string materialName)
-        {
-            if (string.IsNullOrEmpty(savePath))
-                return null;
-
-            if (!savePath.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase))
-                savePath = "Assets/" + savePath;
-
-            if (Directory.Exists(savePath) || !Path.HasExtension(savePath))
-            {
-                string fileName = string.IsNullOrEmpty(materialName) ? "NewMaterial" : materialName;
-                savePath = Path.Combine(savePath, fileName + ".mat").Replace("\\", "/");
-            }
-            else if (!savePath.EndsWith(".mat", StringComparison.OrdinalIgnoreCase))
-            {
-                savePath = savePath + ".mat";
-            }
-
-            return savePath;
-        }
-
         private static bool TryParseBatchItems(SkillRouter.ParameterValidationResult validation, out JArray items)
         {
             items = null;
@@ -2655,24 +2699,6 @@ namespace UnitySkills
             catch
             {
                 return true;
-            }
-        }
-
-        private static string[] GetRequiredByComponents(GameObject go, Type targetType)
-        {
-            try
-            {
-                return go.GetComponents<Component>()
-                    .Where(c => c != null && c.GetType() != targetType)
-                    .Where(c => c.GetType().GetCustomAttributes(typeof(RequireComponent), true)
-                        .OfType<RequireComponent>()
-                        .Any(r => r.m_Type0 == targetType || r.m_Type1 == targetType || r.m_Type2 == targetType))
-                    .Select(c => c.GetType().Name)
-                    .ToArray();
-            }
-            catch
-            {
-                return Array.Empty<string>();
             }
         }
 
@@ -2750,6 +2776,16 @@ namespace UnitySkills
                 try { return token.ToObject<int>(); } catch { }
             }
             return 0;
+        }
+
+        // Null when the key is absent, null or not an integer (the executor's item binding fails on the latter anyway).
+        private static int? GetOptionalIntArg(JObject args, string key)
+        {
+            if (args != null && args.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token) && token.Type != JTokenType.Null)
+            {
+                try { return token.ToObject<int>(); } catch { }
+            }
+            return null;
         }
 
         private static float GetFloatArg(JObject args, string key, float fallback = 0f)

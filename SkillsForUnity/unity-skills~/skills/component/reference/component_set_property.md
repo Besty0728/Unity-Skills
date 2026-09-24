@@ -28,4 +28,4 @@ call_skill("component_set_property", name="Obj", componentType="MeshRenderer", p
 call_skill("component_set_property", name="Hand", componentType="FixedJoint", propertyName="connectedBody", referencePath="Root/Player")
 ```
 
-`value="null"` clears an object reference. A read-only property fails; check names with `component_get_properties` (a wrong one fails listing the writable members).
+`value="null"` clears an object reference. Bools accept `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off` (anything else is rejected, not read as false); an AnimationCurve takes a preset (`linear`, `easeIn`, `easeOut`, `easeInOut`, `constant`) or the JSON curve `{"keys":[{"time":0,"value":0},...]}` that `component_set_serialized_property` takes, and an unknown preset is rejected. A read-only property fails; check names with `component_get_properties` (a wrong one fails listing the writable members).

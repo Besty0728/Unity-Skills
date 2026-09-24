@@ -17,7 +17,7 @@ namespace UnitySkills
         private static readonly Regex MultiWhitespaceRegex = new Regex(@"\s+", RegexOptions.Compiled);
         private static readonly Regex MultiUnderscoreRegex = new Regex(@"_+", RegexOptions.Compiled);
 
-        private const string QueryJsonNote = "JSON object, filters ANDed: name (substring), namePattern (regex), path/parentPath (exact), entityId, instanceId, tag, layer, componentType, sceneName, active, isStatic, prefabSource, includeInactive (false), limit (500).";
+        private const string QueryJsonNote = "JSON object, filters ANDed: name (substring), namePattern (regex), path/parentPath (exact), entityId, instanceId, tag, layer, componentType, sceneName, active, isStatic, prefabSource, includeInactive (false), limit (500). Unknown keys and an unresolvable tag/layer/componentType/namePattern are rejected; active:false implies includeInactive.";
         private const string MaterialPathNote = "Project path of a material asset, assigned as each Renderer's sharedMaterial.";
 
         [UnitySkill("batch_query_gameobjects", "Query GameObjects with unified batch filters. queryJson supports name/path/entityId/instanceId/tag/layer/active/componentType/sceneName/parentPath/prefabSource/includeInactive/limit.",
@@ -28,10 +28,23 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object BatchQueryGameObjects([SkillParam(QueryJsonNote)] string queryJson = null, int sampleLimit = 20)
         {
-            var query = ParseQuery(queryJson);
-            var targets = QueryTargets(query);
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
+                return queryError;
+            List<GameObject> targets;
+            try { targets = QueryTargets(query); }
+            catch (QueryRejectedException ex) { return ex.Payload; }
             var objects = targets.Take(Math.Max(1, sampleLimit)).Select(BuildTargetInfo).ToArray();
-            return new { success = true, count = targets.Count, summary = $"Matched {targets.Count} GameObjects.", query, objects };
+            var response = new Dictionary<string, object>
+            {
+                ["success"] = true,
+                ["count"] = targets.Count,
+                ["summary"] = $"Matched {targets.Count} GameObjects.",
+                ["query"] = query,
+                ["objects"] = objects
+            };
+            if (notes.Count > 0)
+                response["warnings"] = notes;
+            return response;
         }
 
         [UnitySkill("batch_query_components", "Query components with unified batch filters. Optional componentType narrows the result.",
@@ -42,11 +55,12 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object BatchQueryComponents([SkillParam(QueryJsonNote)] string queryJson = null, string componentType = null, int sampleLimit = 20)
         {
-            var query = ParseQuery(queryJson);
-            if (!string.IsNullOrWhiteSpace(componentType))
-                query.componentType = componentType;
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError, componentTypeOverride: componentType))
+                return queryError;
 
-            var targets = QueryTargets(query);
+            List<GameObject> targets;
+            try { targets = QueryTargets(query); }
+            catch (QueryRejectedException ex) { return ex.Payload; }
             var objects = targets.Take(Math.Max(1, sampleLimit)).Select(go => new
             {
                 name = go.name,
@@ -56,7 +70,17 @@ namespace UnitySkills
                 components = go.GetComponents<Component>().Where(component => component != null).Select(component => component.GetType().Name).ToArray()
             }).ToArray();
 
-            return new { success = true, count = targets.Count, summary = $"Matched {targets.Count} objects with component filters.", query, objects };
+            var response = new Dictionary<string, object>
+            {
+                ["success"] = true,
+                ["count"] = targets.Count,
+                ["summary"] = $"Matched {targets.Count} objects with component filters.",
+                ["query"] = query,
+                ["objects"] = objects
+            };
+            if (notes.Count > 0)
+                response["warnings"] = notes;
+            return response;
         }
 
         [UnitySkill("batch_query_assets", "Query project assets by type, path pattern, and labels.",
@@ -139,7 +163,7 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object BatchPreviewRename(
             [SkillParam(QueryJsonNote)] string queryJson = null,
-            [SkillParam("prefix | suffix | replace (search -> replacement, literal, case-sensitive) | regex_replace (regexPattern -> regexReplacement).")]
+            [SkillParam("prefix | suffix | replace (search -> replacement, literal, case-sensitive) | regex_replace (regexPattern -> regexReplacement). Each mode requires its input (prefix / suffix / search / regexPattern); another mode is rejected.")]
             string mode = "prefix",
             string prefix = null,
             string suffix = null,
@@ -149,11 +173,18 @@ namespace UnitySkills
             string regexReplacement = null,
             int sampleLimit = DefaultSampleLimit)
         {
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
+                return queryError;
+            if (!TryValidateRenameMode(mode, prefix, suffix, search, regexPattern, out var canonicalMode, out var modeError))
+                return modeError;
             try
             {
-                var query = ParseQuery(queryJson);
-                var preview = BuildRenamePreview(query, mode, prefix, suffix, search, replacement, regexPattern, regexReplacement);
-                return SavePreview(preview, sampleLimit);
+                var preview = BuildRenamePreview(query, canonicalMode, prefix, suffix, search, replacement, regexPattern, regexReplacement);
+                return SavePreview(preview, sampleLimit, notes);
+            }
+            catch (QueryRejectedException ex)
+            {
+                return ex.Payload;
             }
             catch (ArgumentException ex)
             {
@@ -178,11 +209,16 @@ namespace UnitySkills
             [SkillParam(ComponentSkills.AssetReferenceNote)] string assetPath = null,
             int sampleLimit = DefaultSampleLimit)
         {
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
+                return queryError;
             try
             {
-                var query = ParseQuery(queryJson);
                 var preview = BuildSetPropertyPreview(query, componentType, propertyName, value, referencePath, referenceName, assetPath);
-                return SavePreview(preview, sampleLimit);
+                return SavePreview(preview, sampleLimit, notes);
+            }
+            catch (QueryRejectedException ex)
+            {
+                return ex.Payload;
             }
             catch (ArgumentException ex)
             {
@@ -200,11 +236,16 @@ namespace UnitySkills
         public static object BatchPreviewReplaceMaterial([SkillParam(QueryJsonNote)] string queryJson = null,
             [SkillParam(MaterialPathNote)] string materialPath = null, int sampleLimit = DefaultSampleLimit)
         {
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
+                return queryError;
             try
             {
-                var query = ParseQuery(queryJson);
                 var preview = BuildReplaceMaterialPreview(query, materialPath);
-                return SavePreview(preview, sampleLimit);
+                return SavePreview(preview, sampleLimit, notes);
+            }
+            catch (QueryRejectedException ex)
+            {
+                return ex.Payload;
             }
             catch (ArgumentException ex)
             {
@@ -549,8 +590,16 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object BatchFixMissingScripts([SkillParam(QueryJsonNote)] string queryJson = null, int sampleLimit = DefaultSampleLimit)
         {
-            var preview = BuildMissingScriptsPreview(ParseQuery(queryJson));
-            return SavePreview(preview, sampleLimit);
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
+                return queryError;
+            try
+            {
+                return SavePreview(BuildMissingScriptsPreview(query), sampleLimit, notes);
+            }
+            catch (QueryRejectedException ex)
+            {
+                return ex.Payload;
+            }
         }
 
         [UnitySkill("batch_standardize_naming", "Preview standardizing names by trimming whitespace and normalizing separators. Execute with batch_execute(confirmToken).",
@@ -564,8 +613,16 @@ namespace UnitySkills
             string separator = "_",
             int sampleLimit = DefaultSampleLimit)
         {
-            var preview = BuildStandardizeNamingPreview(ParseQuery(queryJson), separator);
-            return SavePreview(preview, sampleLimit);
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
+                return queryError;
+            try
+            {
+                return SavePreview(BuildStandardizeNamingPreview(query, separator), sampleLimit, notes);
+            }
+            catch (QueryRejectedException ex)
+            {
+                return ex.Payload;
+            }
         }
 
         [UnitySkill("batch_set_render_layer", "Preview setting GameObject layers in batch. Execute with batch_execute(confirmToken).",
@@ -582,10 +639,16 @@ namespace UnitySkills
             string layer = null,
             bool recursive = false, int sampleLimit = DefaultSampleLimit)
         {
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
+                return queryError;
             try
             {
-                var preview = BuildSetLayerPreview(ParseQuery(queryJson), layer, recursive);
-                return SavePreview(preview, sampleLimit);
+                var preview = BuildSetLayerPreview(query, layer, recursive);
+                return SavePreview(preview, sampleLimit, notes);
+            }
+            catch (QueryRejectedException ex)
+            {
+                return ex.Payload;
             }
             catch (ArgumentException ex)
             {
@@ -606,10 +669,16 @@ namespace UnitySkills
         public static object BatchReplaceMaterial([SkillParam(QueryJsonNote)] string queryJson = null,
             [SkillParam(MaterialPathNote)] string materialPath = null, int sampleLimit = DefaultSampleLimit)
         {
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
+                return queryError;
             try
             {
-                var preview = BuildReplaceMaterialPreview(ParseQuery(queryJson), materialPath);
-                return SavePreview(preview, sampleLimit);
+                var preview = BuildReplaceMaterialPreview(query, materialPath);
+                return SavePreview(preview, sampleLimit, notes);
+            }
+            catch (QueryRejectedException ex)
+            {
+                return ex.Payload;
             }
             catch (ArgumentException ex)
             {
@@ -647,8 +716,16 @@ namespace UnitySkills
             string patternsCsv = null,
             int sampleLimit = DefaultSampleLimit)
         {
-            var preview = BuildCleanupTempObjectsPreview(ParseQuery(queryJson), patternsCsv);
-            return SavePreview(preview, sampleLimit);
+            if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
+                return queryError;
+            try
+            {
+                return SavePreview(BuildCleanupTempObjectsPreview(query, patternsCsv), sampleLimit, notes);
+            }
+            catch (QueryRejectedException ex)
+            {
+                return ex.Payload;
+            }
         }
 
         [UnitySkill("batch_retry_failed", "Re-run only the failed items from a previous batch execution report.",
@@ -901,25 +978,227 @@ namespace UnitySkills
                    ?? new Dictionary<string, object>();
         }
 
-        private static BatchTargetQuery ParseQuery(string queryJson)
+        private static readonly TimeSpan PatternTimeout = TimeSpan.FromSeconds(1);
+
+        private static readonly string[] QueryKeys = typeof(BatchTargetQuery)
+            .GetFields(BindingFlags.Public | BindingFlags.Instance)
+            .Where(field => field.GetCustomAttribute<JsonIgnoreAttribute>() == null)
+            .Select(field => field.Name)
+            .ToArray();
+
+        private static readonly string[] RenameModes = { "prefix", "suffix", "replace", "regex_replace" };
+
+        /// <summary>
+        /// Carries a structured rejection out of a query or preview builder (a pattern that timed out while
+        /// matching); every entry point returns its payload instead of letting it surface as an INTERNAL error.
+        /// </summary>
+        private sealed class QueryRejectedException : Exception
         {
-            BatchTargetQuery query = null;
+            public readonly object Payload;
+
+            public QueryRejectedException(object payload) : base(SkillResultHelper.TryGetError(payload, out var message) ? message : "Query rejected")
+            {
+                Payload = payload;
+            }
+        }
+
+        /// <summary>
+        /// Parses and validates queryJson before anything is queried or a token minted: malformed JSON, an unknown key
+        /// (which would silently widen the filter), an invalid namePattern and an unregistered tag / unknown layer /
+        /// unknown componentType (which would silently match nothing) are rejected as SEMANTIC_INVALID.
+        /// active:false with includeInactive false can only match nothing, so it implies includeInactive (noted).
+        /// </summary>
+        private static bool TryParseQuery(string queryJson, out BatchTargetQuery query, out List<string> notes, out object error,
+            string componentTypeOverride = null)
+        {
+            query = null;
+            notes = new List<string>();
+            error = null;
+
+            JObject raw = null;
             if (!string.IsNullOrWhiteSpace(queryJson))
             {
+                JToken token;
                 try
                 {
-                    query = JsonConvert.DeserializeObject<BatchTargetQuery>(queryJson);
+                    token = JToken.Parse(queryJson);
+                }
+                catch (JsonException ex)
+                {
+                    error = QueryJsonError(ex.Message);
+                    return false;
+                }
+
+                if (token.Type != JTokenType.Null)
+                {
+                    raw = token as JObject;
+                    if (raw == null)
+                    {
+                        error = QueryJsonError($"expected a JSON object, got {token.Type}");
+                        return false;
+                    }
+                }
+            }
+
+            if (raw != null)
+            {
+                foreach (var property in raw.Properties())
+                {
+                    if (QueryKeys.Any(key => string.Equals(key, property.Name, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+
+                    var unknown = new Dictionary<string, object>
+                    {
+                        ["error"] = $"Invalid value '{property.Name}' for parameter 'queryJson': unknown filter key. Valid values: {string.Join(", ", QueryKeys)}.",
+                        ["errorCode"] = SkillParamUtil.SemanticInvalidCode,
+                        ["retryStrategy"] = SkillErrorResponse.RetryFixAndRetry,
+                        ["parameter"] = "queryJson",
+                        ["validValues"] = QueryKeys
+                    };
+                    var closest = SkillsCommon.ClosestMatch(property.Name, QueryKeys);
+                    if (closest != null)
+                        unknown["suggestedFixes"] = new object[] { new { action = "fix_param", reason = $"Did you mean '{closest}'?" } };
+                    error = unknown;
+                    return false;
+                }
+
+                try
+                {
+                    query = raw.ToObject<BatchTargetQuery>();
                 }
                 catch (Exception ex)
                 {
-                    throw new ArgumentException($"Invalid queryJson: {ex.Message}");
+                    error = QueryJsonError(ex.Message);
+                    return false;
                 }
             }
 
             query = query ?? new BatchTargetQuery();
             if (query.limit <= 0)
                 query.limit = 500;
-            return query;
+            if (!string.IsNullOrWhiteSpace(componentTypeOverride))
+                query.componentType = componentTypeOverride;
+
+            if (!string.IsNullOrWhiteSpace(query.namePattern))
+            {
+                try
+                {
+                    new Regex(query.namePattern, RegexOptions.IgnoreCase, PatternTimeout);
+                }
+                catch (ArgumentException ex)
+                {
+                    error = InvalidRegexError(query.namePattern, "queryJson.namePattern", ex.Message);
+                    return false;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(query.tag) && !SkillsCommon.IsTagDefined(query.tag))
+            {
+                error = InvalidQueryValue(query.tag, "queryJson.tag", UnityEditorInternal.InternalEditorUtility.tags);
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(query.layer) && LayerMask.NameToLayer(query.layer) < 0)
+            {
+                error = InvalidQueryValue(query.layer, "queryJson.layer", SkillsCommon.DefinedLayerNames());
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(query.componentType) && ComponentSkills.FindComponentType(query.componentType) == null)
+            {
+                error = ComponentSkills.UnknownComponentTypeError(query.componentType,
+                    string.IsNullOrWhiteSpace(componentTypeOverride) ? "queryJson.componentType" : "componentType");
+                return false;
+            }
+
+            if (query.active == false && !query.includeInactive)
+            {
+                query.includeInactive = true;
+                notes.Add("active:false implies includeInactive:true (an inactive object is never active in the hierarchy).");
+            }
+
+            return true;
+        }
+
+        private static object QueryJsonError(string detail) => new
+        {
+            error = $"Invalid value for parameter 'queryJson': {detail}",
+            errorCode = SkillParamUtil.SemanticInvalidCode,
+            retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            parameter = "queryJson"
+        };
+
+        private static object InvalidQueryValue(string value, string parameter, string[] validValues) => new
+        {
+            error = $"Invalid value '{value}' for parameter '{parameter}'. Valid values: {string.Join(", ", validValues)}.",
+            errorCode = SkillParamUtil.SemanticInvalidCode,
+            retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            parameter,
+            validValues
+        };
+
+        private static object InvalidRegexError(string pattern, string parameter, string detail) => new
+        {
+            error = $"Invalid value '{pattern}' for parameter '{parameter}': not a valid .NET regular expression ({detail}).",
+            errorCode = SkillParamUtil.SemanticInvalidCode,
+            retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            parameter
+        };
+
+        private static object RegexTimeoutError(string pattern, string parameter) => new
+        {
+            error = $"Invalid value '{pattern}' for parameter '{parameter}': matching timed out after 1 s; simplify the pattern.",
+            errorCode = SkillParamUtil.SemanticInvalidCode,
+            retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            parameter
+        };
+
+        /// <summary>
+        /// batch_preview_rename's mode and the input that mode needs, checked before anything is queried or minted: an
+        /// unknown mode or a missing prefix/suffix/search/regexPattern used to preview zero changes under a fresh token.
+        /// </summary>
+        private static bool TryValidateRenameMode(string mode, string prefix, string suffix, string search, string regexPattern,
+            out string canonicalMode, out object error)
+        {
+            error = null;
+            canonicalMode = (mode ?? "prefix").Trim().ToLowerInvariant();
+            if (!RenameModes.Contains(canonicalMode))
+            {
+                error = InvalidQueryValue(mode, "mode", RenameModes);
+                return false;
+            }
+
+            string missing = null;
+            if (canonicalMode == "prefix" && string.IsNullOrEmpty(prefix)) missing = "prefix";
+            else if (canonicalMode == "suffix" && string.IsNullOrEmpty(suffix)) missing = "suffix";
+            else if (canonicalMode == "replace" && string.IsNullOrEmpty(search)) missing = "search";
+            else if (canonicalMode == "regex_replace" && string.IsNullOrEmpty(regexPattern)) missing = "regexPattern";
+            if (missing != null)
+            {
+                error = new
+                {
+                    error = $"{missing} is required for mode={canonicalMode}",
+                    errorCode = SkillErrorCode.MissingParam.ToWireString(),
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+                    parameter = missing
+                };
+                return false;
+            }
+
+            if (canonicalMode == "regex_replace")
+            {
+                try
+                {
+                    new Regex(regexPattern, RegexOptions.None, PatternTimeout);
+                }
+                catch (ArgumentException ex)
+                {
+                    error = InvalidRegexError(regexPattern, "regexPattern", ex.Message);
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static List<GameObject> QueryTargets(BatchTargetQuery query)
@@ -938,8 +1217,9 @@ namespace UnitySkills
                 results = results.Where(go => go.name.IndexOf(query.name, StringComparison.OrdinalIgnoreCase) >= 0);
             if (!string.IsNullOrWhiteSpace(query.namePattern))
             {
+                // Validated by TryParseQuery; this empty-set fallback only guards a query restored from a stored preview.
                 System.Text.RegularExpressions.Regex regex;
-                try { regex = new System.Text.RegularExpressions.Regex(query.namePattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase); }
+                try { regex = new System.Text.RegularExpressions.Regex(query.namePattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase, PatternTimeout); }
                 catch { return new List<GameObject>(); }
                 results = results.Where(go => regex.IsMatch(go.name));
             }
@@ -988,7 +1268,14 @@ namespace UnitySkills
                 });
             }
 
-            return results.Take(query.limit).ToList();
+            try
+            {
+                return results.Take(query.limit).ToList();
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                throw new QueryRejectedException(RegexTimeoutError(query.namePattern, "queryJson.namePattern"));
+            }
         }
 
         private static BatchPreviewEnvelope BuildRenamePreview(
@@ -1012,7 +1299,15 @@ namespace UnitySkills
 
             foreach (var target in QueryTargets(query))
             {
-                var nextName = ComputeRenamedValue(target.name, mode, prefix, suffix, search, replacement, regexPattern, regexReplacement);
+                string nextName;
+                try
+                {
+                    nextName = ComputeRenamedValue(target.name, mode, prefix, suffix, search, replacement, regexPattern, regexReplacement);
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    throw new QueryRejectedException(RegexTimeoutError(regexPattern, "regexPattern"));
+                }
                 if (string.IsNullOrWhiteSpace(nextName))
                 {
                     preview.items.Add(CreateSkippedItem(target, "rename", "rename_rule_produced_empty_name"));
@@ -1303,7 +1598,7 @@ namespace UnitySkills
             return preview;
         }
 
-        private static object SavePreview(BatchPreviewEnvelope preview, int sampleLimit)
+        private static object SavePreview(BatchPreviewEnvelope preview, int sampleLimit, List<string> notes = null)
         {
             BatchPersistence.UpsertPreview(preview);
 
@@ -1348,12 +1643,17 @@ namespace UnitySkills
             // This is "adding a field", not nulling one out, so under a profile that allows the operation
             // the payload stays byte-identical to before.
             var category = SurfaceCategoryForKind(preview.kind);
-            if (!SkillsSurfaceProfile.WithdrawsWriteIn(category))
+            bool withdrawn = SkillsSurfaceProfile.WithdrawsWriteIn(category);
+            bool hasNotes = notes != null && notes.Count > 0;
+            if (!withdrawn && !hasNotes)
                 return payload;
 
             var annotated = JObject.FromObject(payload);
-            annotated["surfaceExclusion"] =
-                JObject.FromObject(SkillsSurfaceProfile.CarriedWriteNotice("batch_execute", category));
+            if (hasNotes)
+                annotated["warnings"] = JArray.FromObject(notes);
+            if (withdrawn)
+                annotated["surfaceExclusion"] =
+                    JObject.FromObject(SkillsSurfaceProfile.CarriedWriteNotice("batch_execute", category));
             return annotated;
         }
 
@@ -1410,9 +1710,9 @@ namespace UnitySkills
                 case "replace":
                     return currentName.Replace(search ?? string.Empty, replacement ?? string.Empty);
                 case "regex_replace":
-                    if (string.IsNullOrWhiteSpace(regexPattern))
+                    if (string.IsNullOrEmpty(regexPattern))
                         return currentName;
-                    return Regex.Replace(currentName, regexPattern, regexReplacement ?? string.Empty);
+                    return Regex.Replace(currentName, regexPattern, regexReplacement ?? string.Empty, RegexOptions.None, PatternTimeout);
                 default:
                     return currentName;
             }

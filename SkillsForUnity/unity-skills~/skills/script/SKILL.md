@@ -25,7 +25,7 @@ Read-only `SemiAuto` skills run directly in every mode: `script_read`, `script_l
 
 ## Shared rules
 - `scriptName` is the file and class name, without `.cs` or path separators. Paths (`folder`, `scriptPath`, `newFolder`) are project-relative, starting with `Assets/` or `Packages/`; a missing folder is created. An existing file is never overwritten (`Script already exists`).
-- `script_create` writes `content` verbatim when given (then `template` / `namespaceName` are ignored, with a warning); otherwise it fills a template — `MonoBehaviour` (default), `ScriptableObject`, `Editor`, `EditorWindow` (the last two default to `Assets/Editor`) — wrapped in `namespaceName` if set. Any other `template` value is written as literal source, so use `content` for custom classes. A MonoBehaviour or ScriptableObject binds to its file only when the class name equals the file name; content declaring no such type gets a warning.
+- `script_create` writes `content` verbatim when given (then `template` / `namespaceName` are ignored, with a warning); otherwise it fills a template — `MonoBehaviour` (default), `ScriptableObject`, `Editor`, `EditorWindow` (the last two default to `Assets/Editor`) — wrapped in `namespaceName` if set. Any other bare name is rejected (`validValues` lists these four); text containing code stays a literal template with `{CLASS}`/`{NAMESPACE}` filled, but use `content` for custom classes. A MonoBehaviour or ScriptableObject binds to its file only when the class name equals the file name; content declaring no such type gets a warning.
 - 2+ new scripts → `script_create_batch`: one domain reload instead of N.
 
 ## Skills Overview

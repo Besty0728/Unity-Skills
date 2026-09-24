@@ -50,7 +50,7 @@ Set a top-level public field/property on a ScriptableObject via reflection. For 
 **Parameters:**
 - `assetPath` (string): Asset path.
 - `fieldName` (string): Field or property name.
-- `value` (string): Value to set.
+- `value` (string): Value to set, parsed per member type as in `component_set_property` (bools `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off`, anything else rejected; an AnimationCurve as a preset or the JSON curve below).
 
 ### `scriptableobject_list_types`
 List available ScriptableObject types in the project.
@@ -70,7 +70,7 @@ Set multiple fields on a ScriptableObject at once. fields: JSON object {fieldNam
 | assetPath | string | Yes | - | Asset path of the ScriptableObject |
 | fields | string | Yes | - | JSON object with field-value pairs, e.g. `{"fieldName": "value", ...}` |
 
-**Returns:** `{ success, fieldsSet }`
+**Returns:** `{ success, fieldsSet, failed, results: [{ field, error }] }`: a key that is not a writable public field/property, or whose value its type rejects, fails on its own (listed in `results`) while the other keys are still set; malformed `fields` JSON is rejected before anything is written.
 
 ### `scriptableobject_get_serialized_properties`
 List Inspector serialized properties of a ScriptableObject asset — `propertyPath`, type, and current value for every serialized field, including private `[SerializeField]` and nested/array children. Use the returned `propertyPath` values with `scriptableobject_set_serialized_property`.
@@ -101,13 +101,13 @@ Set a single Inspector serialized property by `propertyPath`. Works where `scrip
 - Array/List resize: `items.Array.size` with `value: "5"` (resize first, then set elements)
 
 **Value formats:**
-- Primitives: `"3.5"` / `"true"` / `"hello"`; Vector: `"1,2,3"`; Color: `"1,0,0,1"`; Enum: index or name
-- `[Flags]` enum: comma-separated names `"Fire,Ice"` (also `|`), or a raw bitmask number (`"3"`, `"-1"` = Everything)
+- Primitives: `"3.5"` / `"true"` / `"hello"` (bools: `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off`); Vector: `"1,2,3"`; Color: `"1,0,0,1"`; Enum: name, or a number `0`..`n-1` as the member index (a `warnings` entry names the member when its value differs; a larger number is a member value or declared bits, undeclared bits are rejected)
+- `[Flags]` enum: comma-separated names `"Fire,Ice"` (also `|`), or a raw bitmask number above the last member index (`"-1"` = Everything; smaller numbers are member indexes, as for any enum)
 - ObjectReference: pass `valueAssetPath: "Assets/Icons/sword.png"` (optionally `valueObjectType`); clear with `value: "null"`
 - Gradient: `{"colorKeys":[{"color":"1,0,0,1","time":0},{"color":"0,0,1,1","time":1}],"alphaKeys":[{"alpha":1,"time":0},{"alpha":1,"time":1}],"mode":"Blend"}`
 - AnimationCurve: `{"keys":[{"time":0,"value":0},{"time":1,"value":1,"inTangent":2,"outTangent":2}],"preWrapMode":"ClampForever","postWrapMode":"Loop"}`
 
-**Returns:** `{ success, assetPath, propertyPath, valueSet }`. Unknown propertyPath returns `error` plus `availableProperties` (first 60) for self-correction.
+**Returns:** `{ success, assetPath, propertyPath, valueSet, warnings? }`. A rejected value writes nothing. Unknown propertyPath returns `error` plus `availableProperties` (first 60) for self-correction.
 
 ### `scriptableobject_set_serialized_property_batch`
 Set multiple Inspector serialized properties on one ScriptableObject asset in a single call.

@@ -66,9 +66,27 @@ namespace UnitySkills
             string referencePath,
             string assetPath,
             string objectType,
-            out string error)
+            out string error) =>
+            TrySetProperty(property, value, referenceName, referenceInstanceId, referencePath, assetPath, objectType, out error, out _);
+
+        /// <summary>
+        /// Writes <paramref name="value"/> into the SerializedObject copy (nothing reaches the target until the
+        /// caller applies it). <paramref name="warning"/> is non-null when the write succeeded but may not mean what
+        /// the caller intended, e.g. an enum number taken as a member index.
+        /// </summary>
+        public static bool TrySetProperty(
+            SerializedProperty property,
+            string value,
+            string referenceName,
+            int referenceInstanceId,
+            string referencePath,
+            string assetPath,
+            string objectType,
+            out string error,
+            out string warning)
         {
             error = null;
+            warning = null;
             if (property == null)
             {
                 error = "SerializedProperty is null";
@@ -97,8 +115,18 @@ namespace UnitySkills
                         return false;
 
                     case SerializedPropertyType.Boolean:
-                        property.boolValue = ParseBool(value);
-                        return true;
+                        if (IsTypeDefaultText(value))
+                        {
+                            property.boolValue = false;
+                            return true;
+                        }
+                        if (SkillParamUtil.TryParseBoolText(value, out var boolValue))
+                        {
+                            property.boolValue = boolValue;
+                            return true;
+                        }
+                        error = $"Invalid value '{value}' for Boolean property '{property.propertyPath}'. Valid values: true, false, 1, 0, yes, no, on, off.";
+                        return false;
 
                     case SerializedPropertyType.Float:
                         if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue))
@@ -136,7 +164,7 @@ namespace UnitySkills
                         return true;
 
                     case SerializedPropertyType.Enum:
-                        return TrySetEnum(property, value, out error);
+                        return TrySetEnum(property, value, out error, out warning);
 
                     case SerializedPropertyType.Vector2:
                         property.vector2Value = (Vector2)ComponentSkills.ConvertValue(value, typeof(Vector2));
@@ -406,22 +434,18 @@ namespace UnitySkills
             return result;
         }
 
-        private static bool TrySetEnum(SerializedProperty property, string value, out string error)
+        /// <summary>
+        /// Writes an enum by name, display name, "A,B" flag combination or number. Numbers 0..n-1 are member
+        /// indexes (so "3" is A|B only when the enum has at most 3 members), because reads report the index and a
+        /// value read back must write back unchanged; a warning names the member when index and value differ.
+        /// Larger numbers are raw values or bitmasks; bits no member declares are rejected.
+        /// </summary>
+        internal static bool TrySetEnum(SerializedProperty property, string value, out string error, out string warning)
         {
             error = null;
-            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index))
-            {
-                if (index >= 0 && index < property.enumNames.Length)
-                {
-                    property.enumValueIndex = index;
-                    return true;
-                }
-
-                // An out-of-range numeric value is written as a raw bitmask, to preserve the
-                // ability to express [Flags] combinations (e.g. "3" = A|B, "-1" = Everything).
-                property.intValue = index;
-                return true;
-            }
+            warning = null;
+            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number))
+                return TrySetEnumNumber(property, number, out error, out warning);
 
             for (var i = 0; i < property.enumNames.Length; i++)
             {
@@ -440,6 +464,81 @@ namespace UnitySkills
 
             error = $"Enum value '{value}' not found for '{property.propertyPath}'. Valid names: {string.Join(", ", property.enumNames)}. [Flags] enums accept comma-separated names or a raw bitmask number";
             return false;
+        }
+
+        private static bool TrySetEnumNumber(SerializedProperty property, int number, out string error, out string warning)
+        {
+            error = null;
+            warning = null;
+            var names = property.enumNames;
+            var values = ReadEnumMemberValues(property);
+
+            if (number >= 0 && number < names.Length)
+            {
+                property.enumValueIndex = number;
+                if (values[number] != number)
+                {
+                    var meant = DescribeEnumBits(names, values, number);
+                    warning = $"'{number}' was applied as enum index {number} ('{names[number]}' = {values[number]}), not as the value {number}." +
+                              (meant != null ? $" For the value {number} pass '{meant}'." : string.Empty);
+                }
+                return true;
+            }
+
+            var declaredBits = values.Aggregate(0, (mask, v) => mask | v);
+            if (number == -1 || Array.IndexOf(values, number) >= 0)
+            {
+                property.intValue = number;
+                return true;
+            }
+
+            if ((number & ~declaredBits) == 0)
+            {
+                property.intValue = number;
+                var bits = DescribeEnumBits(names, values, number);
+                warning = $"'{number}' is not a declared member value of '{property.propertyPath}'; written as a raw bitmask" +
+                          (bits != null ? $" ({bits})" : string.Empty) + ", meaningful only for a [Flags] enum.";
+                return true;
+            }
+
+            error = $"Enum value '{number}' not found for '{property.propertyPath}': not a member index (0..{names.Length - 1}), a member value, or a combination of declared bits. Valid names: {string.Join(", ", names)}. [Flags] enums accept comma-separated names or a raw bitmask number";
+            return false;
+        }
+
+        // Each member's underlying value, via the same enumValueIndex -> intValue round trip as TrySetEnumFlags (works for native enums too).
+        private static int[] ReadEnumMemberValues(SerializedProperty property)
+        {
+            var original = property.intValue;
+            var values = new int[property.enumNames.Length];
+            for (var i = 0; i < values.Length; i++)
+            {
+                property.enumValueIndex = i;
+                values[i] = property.intValue;
+            }
+            property.intValue = original;
+            return values;
+        }
+
+        // The member whose value is exactly number, else the "A,B" set of members that ORs to it, else null.
+        private static string DescribeEnumBits(string[] names, int[] values, int number)
+        {
+            var exact = Array.IndexOf(values, number);
+            if (exact >= 0)
+                return names[exact];
+            if (number == 0)
+                return null;
+
+            var parts = new List<string>();
+            var combined = 0;
+            for (var i = 0; i < values.Length; i++)
+            {
+                if (values[i] != 0 && (values[i] & number) == values[i])
+                {
+                    parts.Add(names[i]);
+                    combined |= values[i];
+                }
+            }
+            return combined == number ? string.Join(",", parts) : null;
         }
 
         private static bool TrySetEnumFlags(SerializedProperty property, string value, out string error)
@@ -561,6 +660,22 @@ namespace UnitySkills
                 return false;
             }
 
+            if (!TryParseAnimationCurveJson(value, out var curve, out error))
+                return false;
+
+            property.animationCurveValue = curve;
+            return true;
+        }
+
+        /// <summary>
+        /// Parses <c>{"keys":[{time,value,inTangent,outTangent}],"preWrapMode","postWrapMode"}</c>; shared with
+        /// ComponentSkills.ConvertValue so reflection writes accept the same curve JSON as serialized ones.
+        /// </summary>
+        internal static bool TryParseAnimationCurveJson(string value, out AnimationCurve curve, out string error)
+        {
+            curve = null;
+            error = null;
+
             AnimationCurvePayload payload;
             try
             {
@@ -578,15 +693,15 @@ namespace UnitySkills
                 return false;
             }
 
-            var curve = new AnimationCurve(payload.keys
+            var parsed = new AnimationCurve(payload.keys
                 .Select(k => new Keyframe(k.time, k.value, k.inTangent, k.outTangent))
                 .ToArray());
             if (!TryParseWrapMode(payload.preWrapMode, out var preWrap, out error)) return false;
-            if (preWrap.HasValue) curve.preWrapMode = preWrap.Value;
+            if (preWrap.HasValue) parsed.preWrapMode = preWrap.Value;
             if (!TryParseWrapMode(payload.postWrapMode, out var postWrap, out error)) return false;
-            if (postWrap.HasValue) curve.postWrapMode = postWrap.Value;
+            if (postWrap.HasValue) parsed.postWrapMode = postWrap.Value;
 
-            property.animationCurveValue = curve;
+            curve = parsed;
             return true;
         }
 
@@ -652,11 +767,9 @@ namespace UnitySkills
             return parts.Select(p => int.Parse(p, CultureInfo.InvariantCulture)).ToArray();
         }
 
-        private static bool ParseBool(string value)
-        {
-            value = (value ?? string.Empty).Trim().ToLowerInvariant();
-            return value == "true" || value == "1" || value == "yes" || value == "on";
-        }
+        // Blank or "null" means the type default, as in ComponentSkills.ConvertValue.
+        internal static bool IsTypeDefaultText(string value) =>
+            string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "null", StringComparison.OrdinalIgnoreCase);
 
         private static Type ResolveUnityObjectType(string objectType)
         {

@@ -7,7 +7,7 @@ Create several scripts in one call: one domain reload instead of one per script.
 
 **Item properties**: `scriptName` (or `name`), `folder`, `template`, `namespaceName` (or `namespace`), `content`, each as in `script_create`.
 
-**Returns**: `{success, totalItems, successCount, failCount, results}`; each result is a full `script_create` result (`path`, `className`, `jobId`, `waitUrl`, ...) or `{target, success: false, error}`. Not atomic: one failed item (e.g. the file already exists) turns the whole response into an error, yet the other scripts are already written. Read `results` and resend only the failed items. All items share one compilation; each `waitUrl` reports its own file's diagnostics.
+**Returns**: `{success, totalItems, successCount, failCount, results}`; each result is a full `script_create` result (`path`, `className`, `jobId`, `waitUrl`, ...) or `{target, success: false, error, ...}` carrying the single call's structured error (`errorCode`, `parameter`, `validValues`, `suggestedFixes`). Not atomic: one failed item (e.g. the file already exists) turns the whole response into an error, yet the other scripts are already written. Read `results` and resend only the failed items. All items share one compilation; each `waitUrl` reports its own file's diagnostics.
 
 Before creating, decide each class role: thin MonoBehaviour bridge, ScriptableObject configuration asset, or plain C# domain/service class (pass it as `content`).
 

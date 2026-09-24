@@ -5,7 +5,7 @@ Create one C# script from verbatim `content` or from a template.
 |-----------|------|----------|---------|-------------|
 | `scriptName` | string | Yes | - | File and class name, no `.cs`, no path separators (`name` is an alias used when `scriptName` is omitted) |
 | `folder` | string | No | "Assets/Scripts" | Save folder under `Assets/` or `Packages/`, created if missing; `Editor` / `EditorWindow` templates default to `Assets/Editor` |
-| `template` | string | No | null | `MonoBehaviour` (null = this), `ScriptableObject`, `Editor`, `EditorWindow`, case-insensitive; any other string is written as literal source with `{CLASS}` / `{NAMESPACE}` substituted |
+| `template` | string | No | null | `MonoBehaviour` (null = this), `ScriptableObject`, `Editor`, `EditorWindow`, ignoring case and spaces (`Scriptable Object` works); another bare name (`Monobehavior`, `SO`) is rejected with `SEMANTIC_INVALID`, `validValues` and the closest name, before anything is written; text containing code (braces, `;`, a comment) is written as literal source with `{CLASS}` / `{NAMESPACE}` substituted |
 | `namespaceName` | string | No | null | Wraps the template class in a namespace |
 | `content` | string | No | null | Complete source written verbatim (UTF-8, no BOM); `template` / `namespaceName` are then ignored |
 | `checkCompile` | bool | No | true | Collect compile diagnostics in the job |

@@ -13,4 +13,4 @@ Copy a component from one GameObject to another (pasted as a new component).
 
 *At least one source identifier and one target identifier required
 
-**Returns**: `{success, source, target, componentType}`; `source` / `target` echo the names you passed (null when you used ids or paths). Use `component_copy_exact` when the copy must be verified.
+**Returns**: `{success, source, target, componentType, pasted}`: the resolved source and target object names, the resolved type name, and `pasted` (false when Unity did not add the copy, e.g. a type that disallows a second instance). The paste is undoable and tracked by workflow rollback. Use `component_copy_exact` when every field must be verified.

@@ -174,13 +174,27 @@ namespace UnitySkills
         {
             var asset = AssetDatabase.LoadAssetAtPath<ScriptableObject>(assetPath);
             if (asset == null) return new { error = $"ScriptableObject not found: {assetPath}" };
-            var dict = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.Dictionary<string, string>>(fields);
+            System.Collections.Generic.Dictionary<string, string> dict;
+            try
+            {
+                dict = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.Dictionary<string, string>>(fields ?? string.Empty);
+            }
+            catch (Newtonsoft.Json.JsonException ex)
+            {
+                return new
+                {
+                    error = $"Invalid value for parameter 'fields': {ex.Message}. Expected a JSON object of fieldName: value strings.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+                    parameter = "fields"
+                };
+            }
             if (dict == null || dict.Count == 0) return new { error = "No fields provided" };
             WorkflowManager.SnapshotObject(asset);
             Undo.RecordObject(asset, "Set SO Batch");
             var type = asset.GetType();
             int set = 0;
-            var failedKeys = new System.Collections.Generic.List<string>();
+            var failures = new System.Collections.Generic.List<(string field, string error)>();
             foreach (var kv in dict)
             {
                 // Same "fields first, then properties" fallback as scriptableobject_set: looking at
@@ -188,26 +202,30 @@ namespace UnitySkills
                 // Tile.color, which are auto-properties on Unity's built-in types), leaving fieldsSet
                 // untouched for that key with no indication of which key was skipped or why.
                 var field = type.GetField(kv.Key, BindingFlags.Public | BindingFlags.Instance);
-                if (field != null)
+                var prop = field == null ? type.GetProperty(kv.Key, BindingFlags.Public | BindingFlags.Instance) : null;
+                if (field == null && (prop == null || !prop.CanWrite))
                 {
-                    field.SetValue(asset, ComponentSkills.ConvertValue(kv.Value, field.FieldType));
-                    set++;
+                    failures.Add((kv.Key, "Field/property not found or not writable"));
                     continue;
                 }
 
-                var prop = type.GetProperty(kv.Key, BindingFlags.Public | BindingFlags.Instance);
-                if (prop != null && prop.CanWrite)
+                // A value the member's type rejects fails only that key, rather than escaping as an exception.
+                try
                 {
-                    prop.SetValue(asset, ComponentSkills.ConvertValue(kv.Value, prop.PropertyType));
+                    if (field != null)
+                        field.SetValue(asset, ComponentSkills.ConvertValue(kv.Value, field.FieldType));
+                    else
+                        prop.SetValue(asset, ComponentSkills.ConvertValue(kv.Value, prop.PropertyType));
                     set++;
-                    continue;
                 }
-
-                failedKeys.Add(kv.Key);
+                catch (System.Exception ex)
+                {
+                    failures.Add((kv.Key, (ex as TargetInvocationException)?.InnerException?.Message ?? ex.Message));
+                }
             }
             EditorUtility.SetDirty(asset);
             AssetDatabase.SaveAssets();
-            return new { success = failedKeys.Count == 0, fieldsSet = set, failed = failedKeys.Count, results = failedKeys.Select(k => new { field = k, error = "Field/property not found or not writable" }).ToArray() };
+            return new { success = failures.Count == 0, fieldsSet = set, failed = failures.Count, results = failures.Select(f => new { field = f.field, error = f.error }).ToArray() };
         }
 
         [UnitySkill("scriptableobject_delete", "Delete a ScriptableObject asset",
@@ -376,26 +394,28 @@ namespace UnitySkills
                 };
             }
 
-            WorkflowManager.SnapshotObject(asset);
-            Undo.RecordObject(asset, "Set SO Serialized Property");
-
             if (!SerializedPropertySkillUtility.TrySetProperty(
-                    property, value, null, 0, null, valueAssetPath, valueObjectType, out var setError))
+                    property, value, null, 0, null, valueAssetPath, valueObjectType, out var setError, out var setWarning))
             {
                 return new { error = setError };
             }
 
+            WorkflowManager.SnapshotObject(asset);
+            Undo.RecordObject(asset, "Set SO Serialized Property");
             serializedObject.ApplyModifiedProperties();
             EditorUtility.SetDirty(asset);
             AssetDatabase.SaveAssets();
 
-            return new
+            var response = new System.Collections.Generic.Dictionary<string, object>
             {
-                success = true,
-                assetPath,
-                propertyPath = property.propertyPath,
-                valueSet = SerializedPropertySkillUtility.DescribeValue(property)
+                ["success"] = true,
+                ["assetPath"] = assetPath,
+                ["propertyPath"] = property.propertyPath,
+                ["valueSet"] = SerializedPropertySkillUtility.DescribeValue(property)
             };
+            if (setWarning != null)
+                response["warnings"] = new[] { setWarning };
+            return response;
         }
 
         [UnitySkill("scriptableobject_set_serialized_property_batch", "Set multiple Inspector serialized properties on one ScriptableObject asset. items: JSON array of {propertyPath, value, valueAssetPath, valueObjectType}",
