@@ -977,6 +977,14 @@ namespace UnitySkills
             if (!PrefabUtility.IsPartOfPrefabInstance(child))
                 return false;
 
+            // A GameObject the user added under a Prefab instance (not part of the Prefab asset
+            // itself) is a supported override, and Unity does let it be reparented, including out
+            // of the instance -- only a member the Prefab asset actually defines is structurally
+            // fixed. IsPartOfPrefabInstance alone can't tell the two apart, so an added object must
+            // be excluded here or this guard would reject a reparent Unity would actually allow.
+            if (PrefabUtility.IsAddedGameObjectOverride(child))
+                return false;
+
             var childInstanceRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(child);
             if (childInstanceRoot == child)
                 return false;

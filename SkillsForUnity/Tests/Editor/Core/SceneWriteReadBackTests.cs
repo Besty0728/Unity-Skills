@@ -131,6 +131,30 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void SetParent_AddedGameObjectOverride_CanBeMovedOutOfTheInstance()
+        {
+            var root = new GameObject("RB_PrefabRootAdded7f3");
+            var originalChild = new GameObject("RB_PrefabOriginalChild7f3");
+            originalChild.transform.SetParent(root.transform);
+            var prefabPath = $"{ProbeFolder}/RB_PrefabAdded7f3.prefab";
+            PrefabUtility.SaveAsPrefabAssetAndConnect(root, prefabPath, InteractionMode.AutomatedAction);
+
+            // Added to the instance *after* it is connected to the Prefab asset: this is an "added
+            // GameObject" override, not a member the asset itself defines, so unlike the nested-child
+            // case above Unity does allow moving it out of the instance (including to scene root).
+            var addedChild = new GameObject("RB_AddedChild7f3");
+            addedChild.transform.SetParent(root.transform);
+            Assume.That(PrefabUtility.IsAddedGameObjectOverride(addedChild), Is.True,
+                "Precondition: addedChild must actually be classified as an added-GameObject override.");
+
+            var json = ToJson(GameObjectSkills.GameObjectSetParent(childName: "RB_AddedChild7f3"));
+
+            Assert.That(json["success"]?.Value<bool>(), Is.True, json.ToString(Formatting.None));
+            Assert.That(json["parent"]?.ToString(), Is.EqualTo("(root)"));
+            Assert.That(addedChild.transform.parent, Is.Null);
+        }
+
+        [Test]
         public void PhysicsSetMaterial_ReadsBackAssetPathAndColliderType()
         {
             var go = new GameObject("RB_PhysicsBox7f3");
