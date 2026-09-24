@@ -81,6 +81,12 @@
                     </ui:VisualElement>
                     <ui:Label name="confirm-hint" class="setting-hint" style="margin-left: 0; margin-bottom: 6px;" />
 
+                    <ui:VisualElement name="dryrun-policy-row" class="setting-row setting-row--gap-top">
+                        <ui:Label name="dryrun-policy-label" class="setting-row__label" text="Require dryRun first" />
+                        <ui:DropdownField name="dryrun-policy-dropdown" class="setting-row__field" />
+                    </ui:VisualElement>
+                    <ui:Label name="dryrun-policy-hint" class="setting-hint" />
+
                     <ui:VisualElement name="perm-pending-section" class="is-hidden" style="flex-direction: column; margin-top: 4px;">
                         <ui:Label name="perm-pending-title" class="bold-label" style="font-size: 11px; margin-bottom: 4px;" />
                         <ui:VisualElement name="perm-pending-list" style="flex-direction: column;" />

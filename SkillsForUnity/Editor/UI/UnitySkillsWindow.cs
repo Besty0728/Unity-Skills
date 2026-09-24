@@ -759,6 +759,7 @@ namespace UnitySkills
             "grant", "grant_executed", "approve", "deny",
             "allowlist_add", "allowlist_remove", "allowlist_clear", "allowlist_migrated",
             "audit_deleted", "audit_cleared",
+            "dryrun_passed", "dryrun_policy_changed",
             "revoke", "revoke_all",
         };
 
@@ -1085,6 +1086,8 @@ namespace UnitySkills
             public string Channel;
             public string Source;
             public string ArgsSummary;
+            public string Policy;
+            public string To;
             public int? TokenAgeSec;
             public int? Count;
             public string RawJson;
@@ -1113,6 +1116,8 @@ namespace UnitySkills
                 Channel     = obj["channel"]?.ToString(),
                 Source      = obj["source"]?.ToString(),
                 ArgsSummary = obj["argsSummary"]?.ToString(),
+                Policy      = obj["policy"]?.ToString(),
+                To          = obj["to"]?.ToString(),
                 TokenAgeSec = (int?)obj["tokenAgeSec"],
                 Count       = (int?)obj["count"],
                 RawJson     = obj.ToString(Newtonsoft.Json.Formatting.None),
@@ -1147,6 +1152,8 @@ namespace UnitySkills
                     { e.Icon = "!"; e.BadgeText = "CALL RESTRICT"; e.BadgeClass = "badge-restricted"; }
                     else if (e.Result == "forbidden")
                     { e.Icon = "x"; e.BadgeText = "CALL FORBID";   e.BadgeClass = "badge-forbidden"; }
+                    else if (e.Result == "dryRunRequired")
+                    { e.Icon = "?"; e.BadgeText = "CALL DRYRUN";   e.BadgeClass = "badge-restricted"; }
                     else
                     { e.Icon = "*"; e.BadgeText = "CALL";          e.BadgeClass = "badge-other"; }
                     break;
@@ -1162,6 +1169,8 @@ namespace UnitySkills
                 case "allowlist_migrated":  e.Icon = "^"; e.BadgeText = "MIGRATED";   e.BadgeClass = "badge-mode";       break;
                 case "audit_deleted":       e.Icon = "x"; e.BadgeText = "AUDIT DEL";  e.BadgeClass = "badge-revoke";     break;
                 case "audit_cleared":       e.Icon = "X"; e.BadgeText = "AUDIT CLR";  e.BadgeClass = "badge-deny";       break;
+                case "dryrun_passed":       e.Icon = ">"; e.BadgeText = "DRYRUN OK";  e.BadgeClass = "badge-allow";      break;
+                case "dryrun_policy_changed": e.Icon = "M"; e.BadgeText = "DRYRUN POL"; e.BadgeClass = "badge-mode";     break;
                 case "revoke":              e.Icon = "<"; e.BadgeText = "REVOKE";     e.BadgeClass = "badge-revoke";     break;
                 case "revoke_all":          e.Icon = "<<";e.BadgeText = "REVOKE ALL"; e.BadgeClass = "badge-revoke";     break;
                 default:
@@ -1177,6 +1186,7 @@ namespace UnitySkills
             switch (e.Type)
             {
                 case "mode_changed": return $"-> {e.Mode ?? "?"}";
+                case "dryrun_policy_changed": return $"-> {e.To ?? "?"}";
                 case "revoke_all":   return $"{(e.Count?.ToString() ?? "?")} skills";
                 default:             return string.IsNullOrEmpty(e.Skill) ? "" : e.Skill;
             }
@@ -1187,6 +1197,8 @@ namespace UnitySkills
             var parts = new List<string>();
             if (e.Type == "call" && !string.IsNullOrEmpty(e.Mode))
                 parts.Add($"{e.Mode}/{e.SkillMode ?? "?"}");
+            if (e.Type == "call" && !string.IsNullOrEmpty(e.Policy))
+                parts.Add($"dryRun:{e.Policy}");
             if (!string.IsNullOrEmpty(e.Agent))
                 parts.Add(e.Agent);
             if (!string.IsNullOrEmpty(e.GrantToken))

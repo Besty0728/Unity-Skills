@@ -28,6 +28,14 @@ namespace UnitySkills
             SkillsOperatingMode.Bypass,
         };
 
+        // Same position-for-position mapping for the dryRun policy dropdown, whose choices are localized.
+        private static readonly DryRunPolicy[] _dryRunPolicyOrder = new[]
+        {
+            DryRunPolicy.Off,
+            DryRunPolicy.HighRisk,
+            DryRunPolicy.AllWrites,
+        };
+
         private readonly VisualElement _root;
         private readonly UnitySkillsWindow _window;
 
@@ -54,6 +62,9 @@ namespace UnitySkills
         private Label         _confirmLabel;
         private Toggle        _confirmToggle;
         private Label         _confirmHint;
+        private Label         _dryRunPolicyLabel;
+        private DropdownField _dryRunPolicyDropdown;
+        private Label         _dryRunPolicyHint;
         private VisualElement _pendingSection;
         private Label         _pendingTitle;
         private VisualElement _pendingList;
@@ -171,6 +182,7 @@ namespace UnitySkills
             SkillsModeManager.OnChanged -= RefreshPermissionsUi;
             TabVisibilitySettings.OnChanged -= SyncTabVisibilityUi;
             SkillTelemetryService.OnChanged -= SyncTabVisibilityUi;
+            DryRunPolicyService.OnChanged -= RefreshDryRunPolicyUi;
             VersionCheckService.CheckCompleted -= OnStableCheckCompleted;
         }
 
@@ -203,6 +215,9 @@ namespace UnitySkills
             _confirmLabel        = _drawerContainer.Q<Label>("confirm-label");
             _confirmToggle       = _drawerContainer.Q<Toggle>("confirm-toggle");
             _confirmHint         = _drawerContainer.Q<Label>("confirm-hint");
+            _dryRunPolicyLabel    = _drawerContainer.Q<Label>("dryrun-policy-label");
+            _dryRunPolicyDropdown = _drawerContainer.Q<DropdownField>("dryrun-policy-dropdown");
+            _dryRunPolicyHint     = _drawerContainer.Q<Label>("dryrun-policy-hint");
             _pendingSection      = _drawerContainer.Q<VisualElement>("perm-pending-section");
             _pendingTitle        = _drawerContainer.Q<Label>("perm-pending-title");
             _pendingList         = _drawerContainer.Q<VisualElement>("perm-pending-list");
@@ -298,6 +313,9 @@ namespace UnitySkills
                     ConfirmationTokenService.RequireConfirmation = evt.newValue;
                 });
 
+            if (_dryRunPolicyDropdown != null)
+                _dryRunPolicyDropdown.RegisterValueChangedCallback(evt => ApplyDryRunPolicyChoice(evt.newValue));
+
             if (_tabVisibleSkillsToggle != null)
                 _tabVisibleSkillsToggle.RegisterValueChangedCallback(evt => TabVisibilitySettings.SetUserPreference("skills", evt.newValue));
             if (_tabVisibleAiConfigToggle != null)
@@ -312,6 +330,7 @@ namespace UnitySkills
             SkillsModeManager.OnChanged += RefreshPermissionsUi;
             TabVisibilitySettings.OnChanged += SyncTabVisibilityUi;
             SkillTelemetryService.OnChanged += SyncTabVisibilityUi;
+            DryRunPolicyService.OnChanged += RefreshDryRunPolicyUi;
 
             if (_allowlistClearBtn != null)
                 _allowlistClearBtn.clicked += () => SkillsModeManager.ClearAllowlist();
@@ -566,6 +585,17 @@ namespace UnitySkills
                 _panelApprovalHint.text = SkillsLocalization.Get("perm_require_panel_approval_hint");
             if (_confirmLabel != null) _confirmLabel.text = SkillsLocalization.Get("drawer_confirm_label");
             if (_confirmHint != null) _confirmHint.text = SkillsLocalization.Get("drawer_confirm_hint");
+            if (_dryRunPolicyLabel != null) _dryRunPolicyLabel.text = SkillsLocalization.Get("dryrun_policy_label");
+            if (_dryRunPolicyDropdown != null)
+            {
+                _dryRunPolicyDropdown.choices = new List<string>
+                {
+                    SkillsLocalization.Get("dryrun_policy_off"),
+                    SkillsLocalization.Get("dryrun_policy_high_risk"),
+                    SkillsLocalization.Get("dryrun_policy_all_writes"),
+                };
+            }
+            RefreshDryRunPolicyUi();
             if (_allowlistClearBtn != null) _allowlistClearBtn.text = SkillsLocalization.Get("perm_allowlist_clear_all");
             if (_allowlistAddBtn != null) _allowlistAddBtn.text = SkillsLocalization.Get("perm_add_skill_btn");
             if (_viewAuditBtn != null) _viewAuditBtn.text = SkillsLocalization.Get("perm_view_audit_log");
@@ -956,6 +986,38 @@ namespace UnitySkills
             int idx = Array.IndexOf(_modeOrder, mode);
             if (idx < 0 || idx >= _modeDropdown.choices.Count) return;
             _modeDropdown.SetValueWithoutNotify(_modeDropdown.choices[idx]);
+        }
+
+        // The index is looked up back into the enum via _dryRunPolicyOrder, not through the localized text.
+        private void ApplyDryRunPolicyChoice(string choice)
+        {
+            if (_dryRunPolicyDropdown == null) return;
+            int idx = _dryRunPolicyDropdown.choices.IndexOf(choice);
+            if (idx < 0 || idx >= _dryRunPolicyOrder.Length) return;
+            var target = _dryRunPolicyOrder[idx];
+            if (DryRunPolicyService.Current != target)
+                DryRunPolicyService.Current = target; // The setter raises OnChanged -> RefreshDryRunPolicyUi
+        }
+
+        private void RefreshDryRunPolicyUi()
+        {
+            var policy = DryRunPolicyService.Current;
+            int idx = Array.IndexOf(_dryRunPolicyOrder, policy);
+            if (_dryRunPolicyDropdown != null && idx >= 0 && idx < _dryRunPolicyDropdown.choices.Count)
+                _dryRunPolicyDropdown.SetValueWithoutNotify(_dryRunPolicyDropdown.choices[idx]);
+            if (_dryRunPolicyHint == null) return;
+            switch (policy)
+            {
+                case DryRunPolicy.HighRisk:
+                    _dryRunPolicyHint.text = SkillsLocalization.Get("dryrun_policy_high_risk_hint");
+                    break;
+                case DryRunPolicy.AllWrites:
+                    _dryRunPolicyHint.text = SkillsLocalization.Get("dryrun_policy_all_writes_hint");
+                    break;
+                default:
+                    _dryRunPolicyHint.text = SkillsLocalization.Get("dryrun_policy_off_hint");
+                    break;
+            }
         }
 
         private void ApplyModeHintText(SkillsOperatingMode mode)
