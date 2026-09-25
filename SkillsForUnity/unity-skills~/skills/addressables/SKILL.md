@@ -24,7 +24,7 @@ Editor-side automation for [Addressables](https://docs.unity3d.com/Packages/com.
 ## Guardrails
 
 **Two independent preconditions.** Failing either returns a structured error, not a permission denial:
-1. **Package installed.** Without it every skill except `addressables_check_installed` returns `errorCode: "MISSING_PACKAGE"` with `requiredPackage`, `docs` and install instructions.
+1. **Package installed.** Without it every skill except `addressables_check_installed` returns `errorCode: "MISSING_PACKAGE"` before running (the skills declare `com.unity.addressables`), with `details.missingPackages` and a `package_install` suggested fix.
 2. **Settings asset created.** The package can be installed while `AddressableAssetSettings` does not yet exist. Every skill except `addressables_check_installed` then returns `errorCode: "TARGET_NOT_FOUND"` telling you to create it from **Window > Asset Management > Addressables > Groups**. There is deliberately no skill for this step — only the Groups window (or a human) can create the settings singleton.
 
 **Always call `addressables_check_installed` first.** It is the only skill that works in both failure states, and its `installed` / `configured` pair tells you which precondition is missing.

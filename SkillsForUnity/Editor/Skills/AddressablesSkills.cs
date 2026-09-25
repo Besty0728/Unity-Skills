@@ -238,7 +238,8 @@ namespace UnitySkills
             Tags = new[] { "addressables", "groups", "list" },
             Outputs = new[] { "count", "groups" },
             ReadOnly = true,
-            Mode = SkillMode.SemiAuto)]
+            Mode = SkillMode.SemiAuto,
+            RequiresPackages = new[] { PackageId })]
         public static object AddressablesGroupList()
         {
             if (!Installed) return NoAddressables();
@@ -302,7 +303,8 @@ namespace UnitySkills
             // the method body below rejects both a missing value and an empty string. Declared explicitly here so the schema, dryRun evaluation, and runtime behavior all agree.
             RequiresInput = new[] { "groupName" },
             TracksWorkflow = false,
-            MutatesAssets = true)]
+            MutatesAssets = true,
+            RequiresPackages = new[] { PackageId })]
         public static object AddressablesGroupCreate(string groupName)
         {
             if (!Installed) return NoAddressables();
@@ -376,7 +378,8 @@ namespace UnitySkills
             Outputs = new[] { "assetPath", "groupName", "address" },
             RequiresInput = new[] { "assetPath", "groupName" },
             TracksWorkflow = false,
-            MutatesAssets = true)]
+            MutatesAssets = true,
+            RequiresPackages = new[] { PackageId })]
         public static object AddressablesGroupAddEntry(string assetPath, string groupName, string address = null)
         {
             if (!Installed) return NoAddressables();
@@ -464,7 +467,8 @@ namespace UnitySkills
             Tags = new[] { "addressables", "profile", "config" },
             Outputs = new[] { "activeProfile", "profiles" },
             ReadOnly = true,
-            Mode = SkillMode.SemiAuto)]
+            Mode = SkillMode.SemiAuto,
+            RequiresPackages = new[] { PackageId })]
         public static object AddressablesProfileGet()
         {
             if (!Installed) return NoAddressables();
@@ -527,7 +531,8 @@ namespace UnitySkills
             Outputs = new[] { "activeProfile", "changed" },
             RequiresInput = new[] { "profileName" },
             TracksWorkflow = false,
-            MutatesAssets = true)]
+            MutatesAssets = true,
+            RequiresPackages = new[] { PackageId })]
         public static object AddressablesProfileSet(string profileName)
         {
             if (!Installed) return NoAddressables();
@@ -588,7 +593,8 @@ namespace UnitySkills
             TracksWorkflow = false,
             MayTriggerReload = false,
             RiskLevel = "medium",
-            LongRunning = true)]
+            LongRunning = true,
+            RequiresPackages = new[] { PackageId })]
         public static object AddressablesBuild()
         {
             if (!Installed) return NoAddressables();
@@ -649,7 +655,8 @@ namespace UnitySkills
             RequiresInput = new[] { "groupName" },
             TracksWorkflow = false,
             MutatesAssets = true,
-            RiskLevel = "medium")]
+            RiskLevel = "medium",
+            RequiresPackages = new[] { PackageId })]
         public static object AddressablesGroupDelete(string groupName)
         {
             if (!Installed) return NoAddressables();
