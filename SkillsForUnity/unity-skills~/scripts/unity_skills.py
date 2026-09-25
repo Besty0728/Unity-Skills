@@ -2059,6 +2059,21 @@ def _parse_cli_value(value: str) -> Any:
             return value
     return value
 
+def _read_params_file(path: str):
+    """Parameters for one skill call from a JSON object file; returns (params, None) or (None, error).
+
+    utf-8-sig accepts files with and without a BOM: Windows PowerShell 5.1 `Set-Content -Encoding utf8` writes one.
+    """
+    try:
+        with open(path, 'r', encoding='utf-8-sig') as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        return None, f"Cannot read --params-file: {e}"
+    if not isinstance(data, dict):
+        return None, f"--params-file must contain a JSON object of parameters, got {type(data).__name__}"
+    return data, None
+
+
 def _module_helper_names() -> set:
     """Public functions/classes defined in this module.
 
@@ -2097,6 +2112,8 @@ def main():
     parser.add_argument('--diff', action='store_true', help='With --batch: request ?diff=1 (net sceneDiff on a successful response)')
     parser.add_argument('--dry-run-token', type=str, default=None, metavar='TOKEN',
                         help='Send ?dryRunToken=TOKEN (from a dryRun or a DRYRUN_REQUIRED response of the same arguments) with the skill call or --batch')
+    parser.add_argument('--params-file', type=str, default=None, metavar='JSON_FILE',
+                        help='Read the skill parameters from a UTF-8 JSON object file (with or without BOM); key=value arguments override its keys')
     parser.add_argument('--port', type=int, default=None, help='Connect to specific port')
     parser.add_argument('--version', type=str, default=None, dest='unity_version',
                         help='Connect to Unity instance by version (e.g. "6", "2022", "2022.3")')
@@ -2129,7 +2146,7 @@ def main():
         return
     elif args.batch:
         try:
-            with open(args.batch, 'r', encoding='utf-8') as f:
+            with open(args.batch, 'r', encoding='utf-8-sig') as f:
                 batch_body = json.load(f)
         except (OSError, ValueError) as e:
             print(json.dumps({"status": "error", "error": f"Cannot read --batch file: {e}"}, ensure_ascii=False, indent=2))
@@ -2161,6 +2178,11 @@ def main():
         sys.exit(2)
 
     params = {}
+    if args.params_file:
+        params, error = _read_params_file(args.params_file)
+        if error:
+            print(json.dumps({"status": "error", "error": error}, ensure_ascii=False, indent=2))
+            sys.exit(1)
     for arg in args.params:
         if '=' in arg:
             key, value = arg.split('=', 1)
