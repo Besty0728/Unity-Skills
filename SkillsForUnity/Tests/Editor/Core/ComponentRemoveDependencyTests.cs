@@ -43,17 +43,17 @@ namespace UnitySkills.Tests.Core
         public void RemoveBatch_RequiredComponent_IsRefusedAndNothingRemoved()
         {
             var go = new GameObject("RD_Dependent");
-            Attach<RequiresBoxColliderProbe>(go);
+            Attach<RequiresLeafProbe>(go);
             GameObjectFinder.InvalidateCache();
 
-            var json = ToJson(ComponentSkills.ComponentRemoveBatch("[{\"name\":\"RD_Dependent\",\"componentType\":\"BoxCollider\"}]"));
+            var json = ToJson(ComponentSkills.ComponentRemoveBatch("[{\"name\":\"RD_Dependent\",\"componentType\":\"RequiredLeafProbe\"}]"));
 
             Assert.That(json["failCount"]?.Value<int>(), Is.EqualTo(1), json.ToString(Formatting.None));
             var item = json["results"]?[0];
             Assert.That(item?["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"));
-            Assert.That(item?["requiredBy"]?.Values<string>(), Does.Contain(nameof(RequiresBoxColliderProbe)));
+            Assert.That(item?["requiredBy"]?.Values<string>(), Does.Contain(nameof(RequiresLeafProbe)));
             Assert.That(item?["target"]?.ToString(), Is.EqualTo("RD_Dependent"));
-            Assert.That(go.GetComponent<BoxCollider>(), Is.Not.Null, "A refused removal must remove nothing.");
+            Assert.That(go.GetComponent<RequiredLeafProbe>(), Is.Not.Null, "A refused removal must remove nothing.");
         }
 
         [Test]
@@ -111,38 +111,38 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Remove_BaseTypeRequirement_IsRefused()
         {
-            var go = new GameObject("RD_AnyCollider");
-            go.AddComponent<BoxCollider>();
-            Attach<RequiresAnyColliderProbe>(go);
+            var go = new GameObject("RD_AnyBase");
+            go.AddComponent<RequiredLeafProbe>();
+            Attach<RequiresAnyBaseProbe>(go);
             GameObjectFinder.InvalidateCache();
 
-            var json = ToJson(ComponentSkills.ComponentRemove(name: "RD_AnyCollider", componentType: "BoxCollider"));
+            var json = ToJson(ComponentSkills.ComponentRemove(name: "RD_AnyBase", componentType: "RequiredLeafProbe"));
 
             Assert.That(json["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"), json.ToString(Formatting.None));
-            Assert.That(json["requiredBy"]?.Values<string>(), Does.Contain(nameof(RequiresAnyColliderProbe)));
+            Assert.That(json["requiredBy"]?.Values<string>(), Does.Contain(nameof(RequiresAnyBaseProbe)));
             Assert.That(json["hint"], Is.Not.Null, "The existing hint stays; the new keys are additive.");
-            Assert.That(go.GetComponent<BoxCollider>(), Is.Not.Null);
+            Assert.That(go.GetComponent<RequiredLeafProbe>(), Is.Not.Null);
         }
 
         /// <summary>
         /// Unity's own reaction to removing a component another one requires was not verified headlessly; if Unity
-        /// refuses even though a second BoxCollider still satisfies the requirement, this fails with the post-check's
+        /// refuses even though a second RequiredLeafProbe still satisfies the requirement, this fails with the post-check's
         /// "Failed to capture and remove" and FindBlockingDependents must be tightened to match Unity.
         /// </summary>
         [Test]
         public void Remove_OneOfTwoSatisfyingInstances_IsAllowed()
         {
-            var go = new GameObject("RD_TwoBoxes");
-            var kept = go.AddComponent<BoxCollider>();
-            go.AddComponent<BoxCollider>();
-            Attach<RequiresBoxColliderProbe>(go);
+            var go = new GameObject("RD_TwoLeaves");
+            var kept = go.AddComponent<RequiredLeafProbe>();
+            go.AddComponent<RequiredLeafProbe>();
+            Attach<RequiresLeafProbe>(go);
             GameObjectFinder.InvalidateCache();
 
-            var json = ToJson(ComponentSkills.ComponentRemove(name: "RD_TwoBoxes", componentType: "BoxCollider", componentIndex: 1));
+            var json = ToJson(ComponentSkills.ComponentRemove(name: "RD_TwoLeaves", componentType: "RequiredLeafProbe", componentIndex: 1));
 
             Assert.That(json["success"]?.Value<bool>(), Is.True, json.ToString(Formatting.None));
             Assert.That(json["remainingOfType"]?.Value<int>(), Is.EqualTo(1));
-            Assert.That(go.GetComponents<BoxCollider>().Single(), Is.SameAs(kept));
+            Assert.That(go.GetComponents<RequiredLeafProbe>().Single(), Is.SameAs(kept));
         }
 
         [Test]
@@ -177,11 +177,11 @@ namespace UnitySkills.Tests.Core
         public void Remove_DryRunAndExecution_Agree()
         {
             var go = new GameObject("RD_PlanSingle");
-            Attach<RequiresBoxColliderProbe>(go);
+            Attach<RequiresLeafProbe>(go);
             GameObjectFinder.InvalidateCache();
 
-            var dry = JObject.Parse(SkillRouter.DryRun("component_remove", "{\"name\":\"RD_PlanSingle\",\"componentType\":\"BoxCollider\"}"));
-            var executed = ToJson(ComponentSkills.ComponentRemove(name: "RD_PlanSingle", componentType: "BoxCollider"));
+            var dry = JObject.Parse(SkillRouter.DryRun("component_remove", "{\"name\":\"RD_PlanSingle\",\"componentType\":\"RequiredLeafProbe\"}"));
+            var executed = ToJson(ComponentSkills.ComponentRemove(name: "RD_PlanSingle", componentType: "RequiredLeafProbe"));
 
             Assert.That(dry["valid"]?.Value<bool>(), Is.False, dry.ToString(Formatting.None));
             var planned = dry["validation"]?["semanticErrors"]?.FirstOrDefault(e => e["field"]?.ToString() == "component");
@@ -193,9 +193,9 @@ namespace UnitySkills.Tests.Core
         public void RemoveBatch_DryRunAndExecution_Agree()
         {
             var go = new GameObject("RD_PlanBatch");
-            Attach<RequiresBoxColliderProbe>(go);
+            Attach<RequiresLeafProbe>(go);
             GameObjectFinder.InvalidateCache();
-            const string items = "[{\"name\":\"RD_PlanBatch\",\"componentType\":\"BoxCollider\"}]";
+            const string items = "[{\"name\":\"RD_PlanBatch\",\"componentType\":\"RequiredLeafProbe\"}]";
 
             var dry = JObject.Parse(SkillRouter.DryRun("component_remove_batch", new JObject { ["items"] = items }.ToString(Formatting.None)));
             var executed = ToJson(ComponentSkills.ComponentRemoveBatch(items));
@@ -203,7 +203,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(dry["valid"]?.Value<bool>(), Is.False, dry.ToString(Formatting.None));
             var planned = dry["validation"]?["semanticErrors"]?.FirstOrDefault(e => e["field"]?.ToString() == "items[0]");
             Assert.That(planned?["error"]?.ToString(), Is.EqualTo(executed["results"]?[0]?["error"]?.ToString()));
-            Assert.That(go.GetComponent<BoxCollider>(), Is.Not.Null);
+            Assert.That(go.GetComponent<RequiredLeafProbe>(), Is.Not.Null);
         }
 
         /// <summary>
@@ -214,30 +214,30 @@ namespace UnitySkills.Tests.Core
         public void RemoveBatch_DependentRemovedByAnEarlierItem_IsAllowedInDryRunAndExecution()
         {
             var go = new GameObject("RD_Ordered");
-            Attach<RequiresBoxColliderProbe>(go);
+            Attach<RequiresLeafProbe>(go);
             GameObjectFinder.InvalidateCache();
-            const string items = "[{\"name\":\"RD_Ordered\",\"componentType\":\"RequiresBoxColliderProbe\"}," +
-                                 "{\"name\":\"RD_Ordered\",\"componentType\":\"BoxCollider\"}]";
+            const string items = "[{\"name\":\"RD_Ordered\",\"componentType\":\"RequiresLeafProbe\"}," +
+                                 "{\"name\":\"RD_Ordered\",\"componentType\":\"RequiredLeafProbe\"}]";
 
             var dry = JObject.Parse(SkillRouter.DryRun("component_remove_batch", new JObject { ["items"] = items }.ToString(Formatting.None)));
             Assert.That(dry["valid"]?.Value<bool>(), Is.True, dry.ToString(Formatting.None));
 
             var executed = ToJson(ComponentSkills.ComponentRemoveBatch(items));
             Assert.That(executed["success"]?.Value<bool>(), Is.True, executed.ToString(Formatting.None));
-            Assert.That(go.GetComponent<BoxCollider>(), Is.Null);
-            Assert.That(go.GetComponent<RequiresBoxColliderProbe>(), Is.Null);
+            Assert.That(go.GetComponent<RequiredLeafProbe>(), Is.Null);
+            Assert.That(go.GetComponent<RequiresLeafProbe>(), Is.Null);
         }
 
         [Test]
         public void FindBlockingDependents_BlocksTheRequirementUnlessTheDependentGoesToo()
         {
             var go = new GameObject("RD_Together");
-            var dependent = Attach<RequiresBoxColliderProbe>(go);
-            var box = go.GetComponent<BoxCollider>();
+            var dependent = Attach<RequiresLeafProbe>(go);
+            var leaf = go.GetComponent<RequiredLeafProbe>();
 
-            Assert.That(ComponentSkills.FindBlockingDependents(go, new Component[] { box }),
-                Is.EqualTo(new[] { nameof(RequiresBoxColliderProbe) }), "Removing the required BoxCollider alone is blocked.");
-            Assert.That(ComponentSkills.FindBlockingDependents(go, new Component[] { box, dependent }), Is.Empty,
+            Assert.That(ComponentSkills.FindBlockingDependents(go, new Component[] { leaf }),
+                Is.EqualTo(new[] { nameof(RequiresLeafProbe) }), "Removing the required leaf alone is blocked.");
+            Assert.That(ComponentSkills.FindBlockingDependents(go, new Component[] { leaf, dependent }), Is.Empty,
                 "Removing the dependent in the same call leaves nothing to block.");
         }
 
@@ -249,8 +249,8 @@ namespace UnitySkills.Tests.Core
         {
             var component = go.AddComponent<T>();
             Assert.That(component, Is.Not.Null, $"Unity did not attach {typeof(T).Name}; fixtures must live in a non-editor assembly.");
-            if (typeof(T) == typeof(RequiresBoxColliderProbe))
-                Assert.That(go.GetComponent<BoxCollider>(), Is.Not.Null, "RequireComponent should have added the BoxCollider.");
+            if (typeof(T) == typeof(RequiresLeafProbe))
+                Assert.That(go.GetComponent<RequiredLeafProbe>(), Is.Not.Null, "RequireComponent should have added the RequiredLeafProbe.");
             return component;
         }
 
