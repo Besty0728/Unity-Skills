@@ -21,7 +21,10 @@ namespace UnitySkills.Tests.Core
     /// by the docs themselves. Scans every *.md under unity-skills~ (root, references/, skills/*/ and their
     /// reference/ folders) for four forms: the root quick-reference table (`skill {a, b}` code spans in table rows),
     /// <c>call_skill("name", k=v, ...)</c>, <c>/skills/batch</c> step objects <c>{"skill": "name", "args": {...}}</c>,
-    /// and <c>/skill/name</c> URLs with a JSON body (<c>-d '{...}'</c>, or a JSON object on the next line).
+    /// and <c>/skill/name</c> URLs with a JSON body (curl / curl.exe <c>-d '{...}'</c>, PowerShell
+    /// <c>Invoke-RestMethod ... -Body '{...}'</c>, or a JSON object on the next line); commands may continue over
+    /// lines with a trailing <c>\</c> (shell) or backtick (PowerShell), and a body written with <c>\"</c> escapes for
+    /// Windows PowerShell 5.1's native-argument passing is read unescaped.
     ///
     /// Top-level argument names go through <see cref="SkillRouter.ValidateParameters"/> (UnknownParams must be empty);
     /// values are never judged, and placeholders such as <c>&lt;name&gt;</c>, <c>...</c> or Python variables stand in as null.
@@ -55,8 +58,9 @@ namespace UnitySkills.Tests.Core
         private static readonly Regex SkillUrlRegex =
             new Regex(@"/skill/(?<skill>" + SkillNamePattern + @")\b", RegexOptions.Compiled);
 
+        // curl's -d / --data* (case-sensitive: -D is --dump-header) and PowerShell's -Body (parameter names ignore case).
         private static readonly Regex CurlDataRegex =
-            new Regex(@"(?:^|\s)(?:-d|--data(?:-raw|-binary)?)\s+['""]", RegexOptions.Compiled);
+            new Regex(@"(?:^|\s)(?:-d|--data(?:-raw|-binary)?|-(?i:body))\s+['""]", RegexOptions.Compiled);
 
         /// <summary>Python call() keywords the client consumes itself instead of sending them to the server.</summary>
         private static readonly HashSet<string> PythonClientOnlyKeywords = new HashSet<string>(StringComparer.Ordinal)
@@ -168,7 +172,12 @@ namespace UnitySkills.Tests.Core
                 "```\n" +
                 "`POST /skills/batch` `{\"steps\":[{\"skill\":\"component_add\",\"args\":{\"name\":\"A\",\"componentType\":{\"$ref\":\"$0.type\"}}}]}`\n" +
                 "`curl -s -X POST \"http://localhost:<port>/skill/material_assign?expectProject=<p>\" -d '{\"name\":\"A\",\"materialPath\":\"<path>\"}'`\n" +
-                "Prose that mentions `unity_skills.call_skill(...)` and a response {\"index\":0,\"skill\":\"scene_save\",\"status\":\"success\"}.\n";
+                "Prose that mentions `unity_skills.call_skill(...)` and a response {\"index\":0,\"skill\":\"scene_save\",\"status\":\"success\"}.\n" +
+                "Invoke-RestMethod -Method Post -Uri \"http://localhost:<port>/skill/gameobject_create\" -ContentType 'application/json; charset=utf-8' -Body '{\"name\":\"Crate\",\"primitiveType\":\"Cube\"}'\n" +
+                "Invoke-RestMethod -Method Post `\n" +
+                "  -Uri \"http://localhost:<port>/skill/scene_save\" `\n" +
+                "  -body '{\"scenePath\":\"Assets/Scenes/Main.unity\"}'\n" +
+                "curl.exe -s -X POST \"http://localhost:<port>/skill/component_add\" -d '{\\\"name\\\":\\\"A\\\",\\\"componentType\\\":\\\"Rigidbody\\\"}'\n";
 
             var unparsed = new List<string>();
             var examples = DocExampleExtractor.Extract("sample.md", sample, true, unparsed);
@@ -181,6 +190,9 @@ namespace UnitySkills.Tests.Core
                 "7:call_skill:gameobject_duplicate(name,newName)",
                 "10:batch step:component_add(name,componentType)",
                 "11:/skill/ URL:material_assign(name,materialPath)",
+                "13:/skill/ URL:gameobject_create(name,primitiveType)",
+                "15:/skill/ URL:scene_save(scenePath)",
+                "17:/skill/ URL:component_add(name,componentType)",
             }), string.Join("\n", shapes));
 
             var items = (JArray)examples[1].Args["items"];
@@ -416,15 +428,18 @@ namespace UnitySkills.Tests.Core
                     JObject args = null;
                     if (body >= 0 && LooseLiteral.TryParse(text, body, out var token))
                         args = token as JObject;
+                    else if (body >= 0 && body < commandEnd && text.IndexOf("\\\"", body, commandEnd - body, StringComparison.Ordinal) >= 0 &&
+                             LooseLiteral.TryParse(text.Substring(body, commandEnd - body).Replace("\\\"", "\""), 0, out var unescaped))
+                        args = unescaped as JObject;
                     add(match.Index, match.Groups["skill"].Value, args, UrlSource);
                 }
             }
 
-            /// <summary>End of the line holding index, extended over shell line continuations.</summary>
+            /// <summary>End of the line holding index, extended over shell (\) and PowerShell (`) line continuations.</summary>
             private static int CommandEnd(string text, int index)
             {
                 int end = text.IndexOf('\n', index);
-                while (end > 0 && text[end - 1] == '\\')
+                while (end > 0 && (text[end - 1] == '\\' || text[end - 1] == '`'))
                 {
                     int next = text.IndexOf('\n', end + 1);
                     end = next < 0 ? text.Length : next;

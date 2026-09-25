@@ -1,6 +1,6 @@
 # references/ — what this directory actually is
 
-Two unrelated kinds of files live here. Check which kind you are opening before you read it.
+Two unrelated kinds of files live here, plus one shell guide. Check which kind you are opening before you read it.
 
 ## 1. Protocol documents — `protocol-*.md`
 
@@ -33,6 +33,10 @@ These are the sunk detail of the root `../SKILL.md`, not background reading. Ope
 | `3d.md` / `physics.md` | ~16 KB each |
 | `2d.md` | ~13 KB |
 | everything else | under 8 KB |
+
+## 3. Shell guide — `windows.md`
+
+Read it when your commands run in PowerShell (or Git Bash) on Windows: the root doc's calls rewritten for `Invoke-RestMethod`, and the quoting, encoding and `curl` alias traps that break them silently.
 
 ## Neither kind answers "what are this skill's parameters?"
 
