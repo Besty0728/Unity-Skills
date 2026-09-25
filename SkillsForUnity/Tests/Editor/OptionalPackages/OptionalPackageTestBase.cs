@@ -39,6 +39,16 @@ namespace UnitySkills.Tests.OptionalPackages
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
 
+            // Declared packages settle it without a call: a read-only probe still runs when its package is missing (it
+            // reports availability itself), and one with a required parameter would answer MISSING_PARAM first.
+            if (SkillRouter.TryGetSkill(ProbeSkill, out var skill) && skill.RequiresPackages != null)
+            {
+                var missing = skill.RequiresPackages.Where(id => !PackageManagerHelper.IsPackageInstalled(id)).ToArray();
+                if (missing.Length > 0)
+                    Assert.Ignore($"{string.Join(", ", missing)} not installed");
+            }
+
+            // Modules without a UPM package (DOTween, QFramework) report their absence from the probe itself.
             var probe = Run(ProbeSkill, ProbeArgs);
             if (probe["errorCode"]?.ToString() == "MISSING_PACKAGE")
                 Assert.Ignore($"{ProbeSkill}: package not installed ({probe["error"]})");
@@ -73,8 +83,13 @@ namespace UnitySkills.Tests.OptionalPackages
             GameObjectFinder.InvalidateCache();
         }
 
-        protected static JObject Run(string skill, JObject args) =>
-            JObject.Parse(SkillRouter.Execute(skill, args.ToString(Formatting.None)));
+        /// <summary>One call = one request: the HTTP layer drops the finder's scene cache after every request, and a
+        /// cache built before a skill created an object would otherwise hide that object from the next call.</summary>
+        protected static JObject Run(string skill, JObject args)
+        {
+            try { return JObject.Parse(SkillRouter.Execute(skill, args.ToString(Formatting.None))); }
+            finally { GameObjectFinder.InvalidateCache(); }
+        }
 
         /// <summary>Asserts success and returns the skill's own result object.</summary>
         protected static JObject Ok(JObject json)
