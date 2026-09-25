@@ -41,6 +41,15 @@ namespace UnitySkills
         };
 #endif
 
+#if NETCODE_GAMEOBJECTS
+        private static object NoBuiltInModule(string module, string component) => new
+        {
+            error = $"{component} needs the built-in module {module}, which is disabled in this project. " +
+                    "Enable it under Window > Package Manager > Built-in.",
+            errorCode = "MISSING_PACKAGE",
+        };
+#endif
+
         // ==================================================================================
         // 1. Configuration & validation (5 skills)
         // ==================================================================================
@@ -1090,8 +1099,12 @@ namespace UnitySkills
             if (go.GetComponent<NetworkObject>() == null)
                 return new { error = $"'{go.name}' lacks a NetworkObject component. Add one first." };
 
+            // NGO compiles NetworkRigidbody / NetworkRigidbody2D only when the matching built-in physics module is
+            // enabled (its own COM_UNITY_MODULES_* version defines, mirrored in UnitySkills.Editor.asmdef); referencing
+            // them unguarded broke compilation of the whole package in projects without that module.
             if (useRigidbody2D)
             {
+#if COM_UNITY_MODULES_PHYSICS2D
                 if (go.GetComponent<Rigidbody2D>() == null)
                     return new { error = $"'{go.name}' lacks a Rigidbody2D. Add it before NetworkRigidbody2D." };
                 if (go.GetComponent<NetworkRigidbody2D>() != null)
@@ -1101,9 +1114,13 @@ namespace UnitySkills
                 EditorUtility.SetDirty(go);
                 WorkflowManager.SnapshotObject(go);
                 return new { success = true, type = nameof(NetworkRigidbody2D) };
+#else
+                return NoBuiltInModule("com.unity.modules.physics2d", "NetworkRigidbody2D");
+#endif
             }
             else
             {
+#if COM_UNITY_MODULES_PHYSICS
                 if (go.GetComponent<Rigidbody>() == null)
                     return new { error = $"'{go.name}' lacks a Rigidbody. Add it before NetworkRigidbody." };
                 if (go.GetComponent<NetworkRigidbody>() != null)
@@ -1113,6 +1130,9 @@ namespace UnitySkills
                 EditorUtility.SetDirty(go);
                 WorkflowManager.SnapshotObject(go);
                 return new { success = true, type = nameof(NetworkRigidbody) };
+#else
+                return NoBuiltInModule("com.unity.modules.physics", "NetworkRigidbody");
+#endif
             }
 #endif
         }
@@ -1133,6 +1153,7 @@ namespace UnitySkills
             if (findErr != null) return findErr;
             if (go.GetComponent<NetworkObject>() == null)
                 return new { error = $"'{go.name}' lacks a NetworkObject component." };
+#if COM_UNITY_MODULES_ANIMATION
             if (go.GetComponent<Animator>() == null)
                 return new { error = $"'{go.name}' lacks an Animator. Add one first." };
             if (go.GetComponent<NetworkAnimator>() != null)
@@ -1142,6 +1163,9 @@ namespace UnitySkills
             EditorUtility.SetDirty(go);
             WorkflowManager.SnapshotObject(go);
             return new { success = true };
+#else
+            return NoBuiltInModule("com.unity.modules.animation", "NetworkAnimator");
+#endif
 #endif
         }
 
