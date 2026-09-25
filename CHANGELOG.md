@@ -50,7 +50,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 ### 评测与验证
 
 - **round4 评测（token 结论的唯一出处）** — 候选 `7b24e8c4`（含 round3 改动）+ round4 文档对比 2.8.4（`c479dd0c`），sonnet 无头 `claude -p`，每单元 5 对：design_qa 以外的 16 个单元（8 个任务 × 冷 / 热）processed tokens 全部稳定下降，合并 0.32 倍（95% CI 0.29–0.36），没有墙钟或回合回归，这 80 对全部通过。登记判定仍记为 FAIL：三条不通过都在 design_qa，事后的标签交换诊断把它们归因于评测提示词里的文档路径标签（标签效应 p=0.0010，内容效应 p=1.0），round5 协议已把路径中性化。round5 的改动（上文所有标注 round5 的条目与根文档定稿）不在这次评测范围内。
-- **TODO(lead)：round5 评测结果（pending）** — 协议 `temp/doc-bench/round5/protocol.md`（r5 对 r4 双向交叉，含新任务 `script_file_refresh`）；在结果出来之前，本版不对 round5 的 token 变化作任何表述。
+- **round5 评测（对照 round4 候选）** — 协议与全部登记修订在 `temp/doc-bench/round5/protocol.md`，报告 `round5/report.md`；316 次运行、0 环境故障。判据改为"先质量"：先看通过数，通过数相同才比成本。结果：**质量零下降**（20 个单元通过数全部相同），**token 持平**（合并 0.98 [0.93, 1.02]），脚本类与单对象编辑有收益（`script_file_refresh` 0.77、`script_attach` 0.80/0.88、`move_object` 0.84）。登记判定为**不通过**，原因只有三个单元的墙钟稳定回归；已定位到根文档一句"把 /health 和第一个调用写在同一条命令里"诱导被测方组合多调用命令并塞进多余的查找（两臂服务端调用耗时实测一致，行为无差异），改写该句并在速查表写明"不用先查对象"后复筛通过，回归消失、脚本类收益保持。round4 的 0.32 倍结论不受影响：round5 的价值在精度与正确性，不在继续压 token。
 - **集成验证（round5）** — 两个 Unity 版本（6000.3.9f1 / 2022.3.62f2）编译 0 错；全量 EditMode 1477/1479（2 跳过）；v1 契约对比 round4：805 个技能无增减，参数零删零增，Outputs 只增（21 个技能），只有登记过的纠正性变化（5 个参数改为必填、8 个技能补 `tracksWorkflow`、`component_copy` 补 `mutatesScene`）；只读 `/skillcheck` 审计计数全部同步、结构检查干净；`check_locales`（1127 键三语对齐）、`check_meta_files`（280 个 GUID 唯一）、版本锚点与 frontmatter 检查通过；活体检查：一次调用移动物体并带回世界 / 局部坐标、显式写错属性零写入、未知 layer 报错、同批前向父引用、Agent 自写脚本经 `asset_refresh` 一条命令等完编译（重载期间 503 + 重试）。
 
 ## [2.8.4] - 2026-09-19
