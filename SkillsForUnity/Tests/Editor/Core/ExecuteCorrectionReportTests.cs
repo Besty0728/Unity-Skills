@@ -157,8 +157,9 @@ namespace UnitySkills.Tests.Core
         public void MissingPackage_Execute_AnswersBeforeThePermissionGate()
         {
             var candidate = FindMissingPackageCandidate();
-            Assume.That(candidate, Is.Not.Null,
-                "No write skill here declares a package that is missing (or the package list is not loaded); nothing to probe.");
+            // Ignore rather than Assume: an inconclusive test makes Unity -runTests exit 2 in a project with every package installed.
+            if (candidate == null)
+                Assert.Ignore("No write skill here declares a package that is missing (or the package list is not loaded); nothing to probe.");
 
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
             int pendingBefore = SkillsModeManager.PendingGrantRequests.Count;
@@ -181,8 +182,9 @@ namespace UnitySkills.Tests.Core
         public void MissingPackage_DryRunAndPlan_ReportIt()
         {
             var candidate = FindMissingPackageCandidate();
-            Assume.That(candidate, Is.Not.Null,
-                "No write skill here declares a package that is missing (or the package list is not loaded); nothing to probe.");
+            // Ignore rather than Assume: an inconclusive test makes Unity -runTests exit 2 in a project with every package installed.
+            if (candidate == null)
+                Assert.Ignore("No write skill here declares a package that is missing (or the package list is not loaded); nothing to probe.");
 
             var dry = JObject.Parse(SkillRouter.DryRun(candidate.Name, "{}"));
             Assert.That(dry["valid"]?.Value<bool>(), Is.False, dry.ToString(Formatting.None));

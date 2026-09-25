@@ -83,12 +83,16 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void CandidateWithAMissingPackage_IsMarkedUnavailable()
         {
-            Assume.That(PackageManagerHelper.InstalledPackages, Is.Not.Null, "The package list is still loading; nothing is known to be missing.");
+            // Ignore rather than Assume: an inconclusive test makes Unity -runTests exit 2, and a project with every
+            // optional package installed (opt6000, the optional-packages workflow) has nothing to probe here.
+            if (PackageManagerHelper.InstalledPackages == null)
+                Assert.Ignore("The package list is still loading; nothing is known to be missing.");
             var candidate = SkillRouter.GetAllSkillsSnapshot()
                 .Where(s => s.RequiresPackages != null && s.RequiresPackages.Any(id => !PackageManagerHelper.IsPackageInstalled(id)))
                 .OrderBy(s => s.Name, StringComparer.Ordinal)
                 .FirstOrDefault();
-            Assume.That(candidate, Is.Not.Null, "Every declared package is installed here.");
+            if (candidate == null)
+                Assert.Ignore("Every declared package is installed here.");
 
             var response = JObject.Parse(SkillRouter.GetRecommendations("?intent=" + candidate.Name.Replace('_', '+') + "&topN=50"));
             var entry = ((JArray)response["results"]).FirstOrDefault(r => (string)r["name"] == candidate.Name);
