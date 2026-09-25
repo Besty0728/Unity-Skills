@@ -1183,7 +1183,7 @@ namespace UnitySkills
         /// identifier); blank means the OutQuad default. SanitizeEnumName alone wrote any identifier-shaped value into
         /// the script (Ease.Foobar fails to compile) and silently swapped anything else for OutQuad.
         /// </summary>
-        private static bool TryResolveGeneratorEase(string ease, out string canonical, out object error)
+        internal static bool TryResolveGeneratorEase(string ease, out string canonical, out object error)
         {
             error = null;
             var requested = string.IsNullOrWhiteSpace(ease) ? "OutQuad" : ease.Trim();
