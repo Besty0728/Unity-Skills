@@ -87,7 +87,8 @@ namespace UnitySkills
         // Interval for unconditionally waking the main thread; configurable.
         private const string PrefKeyKeepAliveInterval = "UnitySkills_KeepAliveIntervalSeconds";
 
-        // Thread-safe cached copy of KeepAliveIntervalSeconds (EditorPrefs can only be read on the main thread)
+        // Cached copy of KeepAliveIntervalSeconds (EditorPrefs can only be read on the main thread). Written on the main
+        // thread and read on the keep-alive thread, so every access goes through Volatile (a long can't be volatile).
         private static long _cachedKeepAliveIntervalTicks = 10L * TimeSpan.TicksPerSecond;
 
         /// <summary>
@@ -100,11 +101,12 @@ namespace UnitySkills
             set
             {
                 EditorPrefs.SetInt(PrefKeyKeepAliveInterval, Mathf.Max(1, value));
-                _cachedKeepAliveIntervalTicks = (long)Mathf.Max(1, value) * TimeSpan.TicksPerSecond;
+                Volatile.Write(ref _cachedKeepAliveIntervalTicks, (long)Mathf.Max(1, value) * TimeSpan.TicksPerSecond);
             }
         }
-        // Request processing timeout — cached for thread safety (EditorPrefs can only be read on the main thread)
-        private static int _cachedTimeoutMs = 15 * 60 * 1000;
+        // Request processing timeout — cached for thread safety (EditorPrefs can only be read on the main thread);
+        // volatile because the main thread refreshes it while listener and keep-alive threads read it.
+        private static volatile int _cachedTimeoutMs = 15 * 60 * 1000;
         private static int RequestTimeoutMs => _cachedTimeoutMs;
         internal static void RefreshTimeoutCache() => _cachedTimeoutMs = RequestTimeoutMinutes * 60 * 1000;
         private const int MaxBodySizeBytes = 10 * 1024 * 1024; // 10MB
@@ -1371,7 +1373,7 @@ namespace UnitySkills
                 HookUpdateLoop();
                 RefreshTimeoutCache();
                 // Cache the keep-alive interval, for thread-safe reads by the KeepAliveLoop thread
-                _cachedKeepAliveIntervalTicks = (long)KeepAliveIntervalSeconds * TimeSpan.TicksPerSecond;
+                Volatile.Write(ref _cachedKeepAliveIntervalTicks, (long)KeepAliveIntervalSeconds * TimeSpan.TicksPerSecond);
 
                 // Port probing: 8090 -> 8100
                 int startPort = 8090;
@@ -1575,7 +1577,7 @@ namespace UnitySkills
                     {
                         // Also wake periodically when there are no pending jobs, so the watchdog and heartbeat can run
                         long nowTicks = DateTime.UtcNow.Ticks;
-                        long intervalTicks = _cachedKeepAliveIntervalTicks;
+                        long intervalTicks = Volatile.Read(ref _cachedKeepAliveIntervalTicks);
                         if (nowTicks - _lastForceWakeTicks > intervalTicks)
                         {
                             _lastForceWakeTicks = nowTicks;
@@ -3229,32 +3231,43 @@ namespace UnitySkills
                 return false;
             }
 
-            if (qs.TryGetValue("dryRun", out var dryRunVal) && !string.IsNullOrWhiteSpace(dryRunVal))
-            {
-                if (dryRunVal.Equals("true", StringComparison.OrdinalIgnoreCase))
-                {
-                    mode = SkillRouter.RequestMode.DryRun;
-                    return true;
-                }
-                if (dryRunVal.Equals("false", StringComparison.OrdinalIgnoreCase))
-                    return true; // Explicit false = execute for real
-
-                job.StatusCode = 400;
-                job.ResponseJson = SkillErrorResponse.Build(
-                    SkillErrorCode.InvalidMode,
-                    $"Invalid dryRun value '{dryRunVal}' — request was NOT executed.",
-                    skill: skillName,
-                    details: new
-                    {
-                        received = dryRunVal,
-                        validValues = new[] { "true", "false" },
-                        hint = "Use '?dryRun=true' (or '?mode=dryRun') to validate without executing; omit the parameter to execute for real.",
-                    },
-                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+            if (!TryReadDryRunFlag(job, qs, skillName, out var dryRun))
                 return false;
-            }
-
+            if (dryRun)
+                mode = SkillRouter.RequestMode.DryRun;
             return true;
+        }
+
+        /// <summary>
+        /// Reads ?dryRun= for both endpoints: true previews, false or absent executes. Any other value writes
+        /// INVALID_MODE and returns false, so a misspelled flag never executes for real.
+        /// </summary>
+        private static bool TryReadDryRunFlag(RequestJob job, Dictionary<string, string> qs, string skillForErrors, out bool dryRun)
+        {
+            dryRun = false;
+            if (!qs.TryGetValue("dryRun", out var dryRunVal) || string.IsNullOrWhiteSpace(dryRunVal))
+                return true;
+            if (dryRunVal.Equals("true", StringComparison.OrdinalIgnoreCase))
+            {
+                dryRun = true;
+                return true;
+            }
+            if (dryRunVal.Equals("false", StringComparison.OrdinalIgnoreCase))
+                return true; // Explicit false = execute for real
+
+            job.StatusCode = 400;
+            job.ResponseJson = SkillErrorResponse.Build(
+                SkillErrorCode.InvalidMode,
+                $"Invalid dryRun value '{dryRunVal}' — request was NOT executed.",
+                skill: skillForErrors,
+                details: new
+                {
+                    received = dryRunVal,
+                    validValues = new[] { "true", "false" },
+                    hint = "Use '?dryRun=true' (or '?mode=dryRun') to validate without executing; omit the parameter to execute for real.",
+                },
+                retryStrategy: SkillErrorResponse.RetryFixAndRetry);
+            return false;
         }
 
         /// <summary>
@@ -3300,8 +3313,12 @@ namespace UnitySkills
 
         // ===== GET /skill/{name} → 405 with the POST rewrite =====
 
-        /// <summary>Request-level keys of POST /skill/{name}: they stay in the rewritten URL instead of moving into the body.</summary>
-        private static readonly string[] SkillRequestQueryKeys =
+        /// <summary>
+        /// The request-level query keys, the same for POST /skill/{name} and POST /skills/batch: they stay in the URL of a
+        /// GET→POST rewrite instead of moving into the body, and they are the only query keys /skills/batch accepts.
+        /// One list, so the two endpoints can't drift apart.
+        /// </summary>
+        private static readonly string[] RequestLevelQueryKeys =
             { "mode", "dryRun", "diff", "wire", DryRunPolicyService.TokenQueryKey, ExpectInstanceQueryKey, ExpectProjectQueryKey };
 
         /// <summary>
@@ -3365,7 +3382,7 @@ namespace UnitySkills
                 string key = DecodeQueryComponent(eq < 0 ? pair : pair.Substring(0, eq)).Trim();
                 if (key.Length == 0)
                     continue;
-                if (SkillRequestQueryKeys.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)))
+                if (RequestLevelQueryKeys.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)))
                 {
                     requestPairs.Add(pair);
                     continue;
@@ -4304,32 +4321,7 @@ namespace UnitySkills
                 return false;
             }
 
-            if (qs.TryGetValue("dryRun", out var dryRunVal) && !string.IsNullOrWhiteSpace(dryRunVal))
-            {
-                if (dryRunVal.Equals("true", StringComparison.OrdinalIgnoreCase))
-                {
-                    dryRun = true;
-                    return true;
-                }
-                if (dryRunVal.Equals("false", StringComparison.OrdinalIgnoreCase))
-                    return true; // Explicit false = execute for real
-
-                job.StatusCode = 400;
-                job.ResponseJson = SkillErrorResponse.Build(
-                    SkillErrorCode.InvalidMode,
-                    $"Invalid dryRun value '{dryRunVal}' — request was NOT executed.",
-                    skill: "skills_batch",
-                    details: new
-                    {
-                        received = dryRunVal,
-                        validValues = new[] { "true", "false" },
-                        hint = "Use '?dryRun=true' (or '?mode=dryRun') to validate without executing; omit the parameter to execute for real.",
-                    },
-                    retryStrategy: SkillErrorResponse.RetryFixAndRetry);
-                return false;
-            }
-
-            return true;
+            return TryReadDryRunFlag(job, qs, "skills_batch", out dryRun);
         }
 
         /// <summary>
@@ -4340,7 +4332,6 @@ namespace UnitySkills
         /// to believe it requested a preview, or requested async execution, and got neither.
         /// </summary>
         private static readonly string[] BatchBodyParams = { "steps", "params", "continueOnError", "dryRun", "mode" };
-        private static readonly string[] BatchQueryParams = { "mode", "dryRun", "diff", "wire", DryRunPolicyService.TokenQueryKey, ExpectInstanceQueryKey, ExpectProjectQueryKey };
 
         private static bool IsKnownBatchParam(string[] allowed, string name)
         {
@@ -4360,7 +4351,7 @@ namespace UnitySkills
             var unknown = new List<object>();
             foreach (var key in qs.Keys)
             {
-                if (IsKnownBatchParam(BatchQueryParams, key))
+                if (IsKnownBatchParam(RequestLevelQueryKeys, key))
                     continue;
 
                 var entry = new Dictionary<string, object> { ["parameter"] = key };
@@ -4381,7 +4372,7 @@ namespace UnitySkills
                 details: new
                 {
                     unknownParams = unknown,
-                    allowedParams = BatchQueryParams,
+                    allowedParams = RequestLevelQueryKeys,
                     location = "queryString",
                 },
                 retryStrategy: SkillErrorResponse.RetryFixAndRetry);
