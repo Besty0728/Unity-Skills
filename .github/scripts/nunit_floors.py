@@ -3,7 +3,7 @@
 module's prefix and that actually passed. A fixture that ignores itself (package missing, probe broken) passes CI
 with zero failures, so only a floor on *passed* tests catches a module that silently stopped running.
 
-    check_test_floors.py <results.xml> <floors.json> <key>
+    nunit_floors.py <results.xml> <floors.json> <key>
 
 floors.json maps key -> {module: {"prefix": "...", "min": N}}. Exit 1 when any module is below its floor.
 """

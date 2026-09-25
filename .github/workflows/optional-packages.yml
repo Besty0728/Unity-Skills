@@ -121,7 +121,7 @@ jobs:
           set -euo pipefail
           xml=$(find "${{ steps.tests.outputs.artifactsPath }}" -name '*.xml' | head -1)
           test -n "$xml"
-          python3 .github/scripts/check_test_floors.py "$xml" .github/optional-package-floors.json "${{ matrix.floorsKey }}"
+          python3 .github/scripts/nunit_floors.py "$xml" .github/optional-package-floors.json "${{ matrix.floorsKey }}"
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -1,5 +1,5 @@
 ﻿#!/usr/bin/env python3
-"""Tests for check_test_floors.py: a module counts only tests that passed, so an all-ignored fixture fails its floor.
+"""Tests for nunit_floors.py: a module counts only tests that passed, so an all-ignored fixture fails its floor.
 
     python3 -m unittest discover -s .github/scripts/tests -t .github/scripts/tests
 """
@@ -9,8 +9,8 @@ import importlib.util
 import os
 import unittest
 
-SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "check_test_floors.py")
-spec = importlib.util.spec_from_file_location("check_test_floors", SCRIPT)
+SCRIPT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "nunit_floors.py")
+spec = importlib.util.spec_from_file_location("nunit_floors", SCRIPT)
 floors_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(floors_module)
 
