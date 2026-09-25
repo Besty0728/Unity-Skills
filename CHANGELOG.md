@@ -24,6 +24,19 @@ All notable changes to **UnitySkills** will be documented in this file.
   - YooAsset（`yooasset_list_report_bundles` / `yooasset_list_report_assets`）：解析不了的 `filterEncrypted` 原来静默不过滤，未知 `sortBy` 退回默认排序；现在拒绝并给合法值。
   - QFramework：设置还原回调原来丢弃反射写入的结果、无条件报还原成功（UIKit 设置、ResKit 选项、编辑器语言）；`qframework_set_uikit_settings` / `qframework_set_reskit_build_options` / `qframework_set_editor_locale` 写入失败或该版本缺少对应成员时原来仍列为已修改；现在如实报告，`qframework_set_editor_locale` 返回读回的值。
   - `ApplyShaderStripping`（图形设置的工作流还原器）：三个剥离字段任一找不到时原来仍报还原成功；现在要么全部还原，要么失败。
+- **二次审计发现的静默降级（round6）** — 对 18 个文件逐个技能复查后修复，均在第一次写入之前拒绝，或如实报告实际结果：
+  - `decal_set_properties`：在 2022.3 / URP 14 上 `renderingLayerMask` 从来没有写进去过（URP 14 的序列化字段叫 `m_DecalLayerMask`，技能写的是 `m_RenderingLayerMask`），读回也恒为 0；改用公开属性，两个 URP 版本都能写入并读回。`scaleMode` 原来接受没有对应成员的数字（如 "99"）；所有参数改为先全部校验再写入，非法值不再留下改了一半的投影器。
+  - Cinemachine：`cinemachine_set_brain` / `cinemachine_set_blend` / `cinemachine_sequencer_add_instruction` / `cinemachine_configure_camera_manager` 拼错的混合样式原来被静默改成 `Cut`（枚举的零值成员，响应还回显写错的名字），拼错的 `updateMethod` / `blendUpdateMethod` 被丢弃；`cinemachine_create_freelook` / `cinemachine_create_state_driven_camera` / `cinemachine_configure_camera_manager` 找不到的跟随、注视或动画目标原来被跳过；`cinemachine_configure_camera_manager` 中目标不具备的管理器类型的参数原来被忽略；`cinemachine_configure_body` / `cinemachine_configure_aim` 一项都没写入时原来报成功；`cinemachine_configure_extension` 找不到的 `extensionName` 原来退回第一个扩展，写入失败的设置不留痕迹（新增 `warnings`）；`cinemachine_set_vcam_property` 经过只读结构体属性的点路径原来只改了一个副本却报成功。
+  - `scene_create` / `scene_save` / `scene_unload` / `scene_set_active`：原来丢弃 `SaveScene` / `CloseScene` / `SetActiveScene` 的返回值，写不进只读目录时照样报成功（`scene_unload` 还会连带丢掉未保存的修改）；现在报错，保存失败时场景保持加载。
+  - `scene_spatial_query` 解析不了的 `componentFilter` 原来被当作不过滤；`scene_find_objects` 未定义的 tag 原来得到 `count: 0`（Unity 只在控制台报错）、未知组件类型报成"找不到目标"；现在都以 `SEMANTIC_INVALID` 拒绝。
+  - `scriptableobject_set` 对只读属性原来什么都不写却报成功；`scriptableobject_import_json` 找不到文件、`scriptableobject_export_json` 目标目录不存在原来以 INTERNAL 异常结束（导出现在与其他写入技能一样先建目录）。
+  - `ui_create_image` / `ui_create_rawimage` 解析不了的 `spritePath` / `texturePath` 原来建出空的 Image / RawImage 并报成功（必要时还先建 Canvas），`animator_add_state` 解析不了的 `clipPath` 原来加了一个没有动作的状态；现在都在创建任何东西之前拒绝。
+  - `package_install_cinemachine`：2、3 以外的 `version` 原来被归到 CM2 或 CM3 照装；现在拒绝。
+  - HybridCLR：三个工作流还原器（设置、生成的源文件、DLL 文件集）原来吞掉失败、无条件报还原成功；备份时复制失败的文件原来不被跟踪，撤销时会被当成"操作新增的文件"删掉；现在如实报告还原失败并保留该文件。`hybridclr_settings_set` 中当前版本不存在的字段原来只在控制台警告，现在列在新增的 `unsupportedFields`，全部不支持时报错。
+  - DOTween：`dotween_generate_*_script` 的 `ease` 原来只检查是否形如标识符（`Ease.Foobar` 写进脚本后编译失败，含点或空格的值被静默换成 OutQuad），现在按 DOTween 的 `Ease` 成员校验（忽略大小写，写出正确的大小写）；`dotween_pro_add_animation` 等写入 `duration` / `delay` / `loops` 等字段失败原来被忽略，现在撤回组件并报错；`dotween_pro_copy_animation` 复制失败的字段列在新增的 `skippedFields`。
+  - `behavior_blackboard_set`（`graphAssetPath`）：重新烘焙运行时黑板的步骤失败原来被忽略，现在响应带 `warning`。
+  - Netcode：`netcode_configure_manager` 的非法 `networkTopology` 原来在其他字段写入之后才被拒绝，工作流快照也在写入之后才拍（撤销恢复不了旧配置）；现在先校验、先快照。`netcode_component_controller_configure` 的 `OnValidate` 展开失败原来只写在控制台，现在响应带 `warning`。
+  - `urp_set_asset_settings`：8 个设置写的是私有序列化字段（URP 14 / 17 上都存在），某个字段改名后原来会被静默跳过；现在缺字段时整次不写并报错。
 
 ### Changed
 
