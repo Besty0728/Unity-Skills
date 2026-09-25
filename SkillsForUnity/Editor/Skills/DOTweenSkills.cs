@@ -752,7 +752,7 @@ namespace UnitySkills
             "Copy all fields of a DOTweenAnimation from sourceTarget[sourceIndex] to destTarget (adds a new component).",
             Category = SkillCategory.DOTween, Operation = SkillOperation.Create,
             Tags = new[] { "dotween", "copy", "duplicate", "animation", "pro" },
-            Outputs = new[] { "success" },
+            Outputs = new[] { "success", "skippedFields" },
             // sourceTarget and destTarget are two independently required fields (AND, not "one of") -
             // each is added directly since both are real, literal parameter names.
             RequiresInput = new[] { "sourceTarget", "destTarget" },
