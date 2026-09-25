@@ -18,16 +18,16 @@ compatibility: Requires Unity Editor 2022.3+/6000.x with the UnitySkills package
 
 Ports `8090`–`8100` go first come, first served: add `?expectProject=<project>` (productName or folder name) or the exact `?expectInstance=<instanceId>` to every write. A different Editor answers 409 `INSTANCE_MISMATCH` and runs nothing.
 
-`GET /health` (exempt from the check) has `currentMode`, `surfaceProfile`, `dryRunPolicy`, `instanceId`: probe it once, in the same shell command as your first call, then only after a refused write, 409, 503/refused connection or surprising mode. `bypass` and `auto` run writes directly, but under `auto` confirm ≥5-object batches, prefab apply, scene-level, asset-overwriting or irreversible changes with the user first; `approval` gates `FullAuto` writes behind single-shot grants (permanent: the user's Allowlist).
+`GET /health` (exempt from the check) has `currentMode`, `surfaceProfile`, `dryRunPolicy`, `instanceId`: probe it once with your first call, then only after a refused write, 409, 503/refused connection or odd mode. `bypass` and `auto` run writes directly, but under `auto` confirm ≥5-object batches, prefab apply, scene-level, asset-overwriting or irreversible changes with the user first; `approval` gates `FullAuto` writes behind single-shot grants (permanent: the user's Allowlist).
 
-During a domain reload the port answers 503 or refuses for seconds while its `~/.unity_skills/registry.json` entry reads `reloading`: retry the same port, never another instance.
+During a domain reload the port answers 503 or refuses for seconds while its `~/.unity_skills/registry.json` entry reads `reloading`: retry it, never another instance.
 
 ## Quick reference
 
 Every skill is `POST /skill/<name>` with JSON args:
 `curl -s "http://localhost:<port>/skill/gameobject_set_transform?expectProject=<project>" -d '{"name":"Crate","posX":4,"posY":1.5,"posZ":-2}'`
 
-Target objects by `name` or the exact `path`/`instanceId` (likewise `parentPath`, `childPath`).
+Target objects by `name` or the exact `path`/`instanceId` (likewise `parentPath`, `childPath`); skip lookup calls — a wrong name fails the call and returns candidates.
 
 | Call |
 |---|
@@ -53,13 +53,13 @@ Target objects by `name` or the exact `path`/`instanceId` (likewise `parentPath`
 
 Several steps, one call: `POST /skills/batch?expectProject=<project>` `{"steps":[{"skill":"gameobject_create","args":{"name":"Rig"}},{"skill":"gameobject_create","args":{"name":"Arm","parentName":"Rig"}}]}` — ≤50 steps; a step may name objects earlier steps created, or use `{"$ref":"$0.instanceId"}`; the first failure skips the rest unless `continueOnError:true`; `?mode=transactional` = all-or-nothing → [batch](skills/batch/SKILL.md).
 
-**dryRun.** If this table, recommend or schema gave you the signature this session, execute directly: a call that fails validation runs nothing and returns the dryRun report (all `validation` buckets, parameter list). DryRun first (`?mode=dryRun&wire=v2`) for deletes, `riskLevel` high, `mayTriggerReload`/`mayEnterPlayMode`, approval mode, non-transactional multi-step batches, or when unsure; under a `dryRunPolicy`, execute with the returned `?dryRunToken=`. `valid:true` = no validation errors (`warnings` never block; the target may still be missing); `authorization` previews the permission gate.
+**dryRun.** If this table, recommend or schema gave you the signature this session, execute directly: a failed validation runs nothing and returns the dryRun report (all `validation` buckets, parameter list). DryRun first (`?mode=dryRun&wire=v2`) for deletes, `riskLevel` high, `mayTriggerReload`/`mayEnterPlayMode`, approval mode, non-transactional multi-step batches, or when unsure; under a `dryRunPolicy`, execute with the returned `?dryRunToken=`. `valid:true` = no validation errors (`warnings` never block; the target may still be missing); `authorization` previews the permission gate.
 
-Never invent skill or parameter names; use this table, recommend or schema. On failure read `suggestedFixes`; open a module doc only when a response names one.
+Never invent skill or parameter names: use this table, recommend or schema. On failure read `suggestedFixes`; open a module doc only when a response names one.
 
 ## Verify from the read-back
 
-A successful write returns the state read back from the Editor (e.g. world `position`, `valueSet`) — that is the verification; `resolutionNotes` flags a non-exact name match. Use `*_get_info` only for async results or missing fields. Script writes, and `asset_refresh` after you write a `.cs` yourself (`compileTriggered:true`), return `waitUrl`: one GET waits out compile and reload → `status:"completed"`, or `failed` with errors in `resultData.compilation`. One command:
+A successful write returns the state read back from the Editor (e.g. world `position`, `valueSet`) — that is the verification; `resolutionNotes` flags a non-exact name match. Use `*_get_info` only for async results or missing fields. Script writes, and `asset_refresh` after you write a `.cs` yourself (`compileTriggered:true`), return `waitUrl`: one GET waits out compile+reload → `status:"completed"`, or `failed` with errors in `resultData.compilation`. One command:
 `u=http://localhost:<port>; c="$u/skill/script_create?expectProject=<project>"; b='{"scriptName":"Spin","content":"<source>"}'; s='{"steps":[{"skill":"component_add","args":{"name":"Crate","componentType":"Spin"}},{"skill":"component_set_property","args":{"name":"Crate","componentType":"Spin","propertyName":"speed","value":"9"}}]}'; curl -s "$c&mode=dryRun" -d "$b" | grep -q '"valid":true' && J=$(curl -s "$c" -d "$b" | tee /dev/stderr | grep -o '/jobs/[^"]*=90') && curl -s --retry 20 --retry-connrefused --retry-all-errors --retry-delay 2 "$u$J" && curl -s "$u/skills/batch?expectProject=<project>" -d "$s"`
 
 ## Surface profile and errors
