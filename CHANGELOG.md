@@ -47,7 +47,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Changed
 
-- **Addressables 技能声明依赖包（round6）** — 7 个技能补上 `RequiresPackages = com.unity.addressables`，与其他按 UPM 检测的模块一致：dryRun、`/plan` 与 `/skills/recommend` 能提前报出缺包，写入类技能在执行前被拒；只读技能照常运行并自己报告缺包。`addressables_check_installed` 不声明——它就是没装包时也要回答的探针。
+- **Addressables 技能声明依赖包（round6）** — `addressables_group_list` / `addressables_group_create` / `addressables_group_add_entry` / `addressables_group_delete` / `addressables_profile_get` / `addressables_profile_set` / `addressables_build` 补上 `RequiresPackages = com.unity.addressables`（schema 的 `requiresPackages` 随之出现），与其他按 UPM 检测的模块一致：dryRun、`/plan` 能提前报出缺包，`/skills/recommend` 在没装包时把它们标为不可用并排到后面，写入类技能在执行前被拒；只读技能照常运行并自己报告缺包。`addressables_check_installed` 不声明——它就是没装包时也要回答的探针。
 - **git 自更新层只经 `LocalSelfUpdateService` 访问（round6）** — `Editor/Versioning/` 以外最后一处直接引用 `LocalGitSync` 的地方（`SelfUpdateFeedback` 取短 SHA 与列表上限）改为经服务转发；UI 可用的面只剩 `Check` / `Start`、这两个转发和 `LocalUpdate*` 结果类型。行为不变。
 - **三个核心类拆成分部类文件（round6）** — `SkillsHttpServer`（14 个文件）、`SkillRouter`（11 个）、`SkillPlanningService`（12 个）按职责拆分，最大文件从 5,938 行降到 1,081 行；纯搬移，不改任何成员体，带初始化器的静态字段与静态构造函数留在主文件。单技能与批量两个端点共用一份请求级查询键列表和一个 `?dryRun=` 解析；保活间隔与请求超时这两个跨线程缓存加了内存屏障。响应逐字节不变（固定请求语料 32 条比对）。
 
