@@ -391,6 +391,39 @@ namespace UnitySkills
 #endif
         }
 
+        // Rejection payload for a style that names no blend style, null when valid or blank (blank = not provided).
+        // CreateBlendDefinition's TryParse has no else: an unvalidated typo became Cut, the enum's zero member.
+        public static object InvalidBlendStyle(string style, string paramName)
+        {
+#if CINEMACHINE_3
+            return SkillParamUtil.TryParseEnumParam<CinemachineBlendDefinition.Styles>(style, paramName, out _, out var error) ? null : error;
+#else
+            return SkillParamUtil.TryParseEnumParam<CinemachineBlendDefinition.Style>(style, paramName, out _, out var error) ? null : error;
+#endif
+        }
+
+        public static object InvalidBrainUpdateMethod(string method, string paramName)
+        {
+#if CINEMACHINE_3
+            return SkillParamUtil.TryParseEnumParam<CinemachineBrain.UpdateMethods>(method, paramName, out _, out var error) ? null : error;
+#else
+            return SkillParamUtil.TryParseEnumParam<CinemachineBrain.UpdateMethod>(method, paramName, out _, out var error) ? null : error;
+#endif
+        }
+
+        public static object InvalidBrainBlendUpdateMethod(string method, string paramName)
+        {
+#if CINEMACHINE_3
+            return SkillParamUtil.TryParseEnumParam<CinemachineBrain.BrainUpdateMethods>(method, paramName, out _, out var error) ? null : error;
+#else
+            return SkillParamUtil.TryParseEnumParam<CinemachineBrain.BrainUpdateMethod>(method, paramName, out _, out var error) ? null : error;
+#endif
+        }
+
+        // A blank style or null time keeps the current value; style must already have passed InvalidBlendStyle.
+        public static CinemachineBlendDefinition MergeBlend(CinemachineBlendDefinition current, string style, float? time) =>
+            CreateBlendDefinition(string.IsNullOrWhiteSpace(style) ? GetBlendStyle(current) : style, time ?? GetBlendTime(current));
+
         public static CinemachineBlendDefinition CreateBlendDefinition(string style, float time)
         {
             var blend = new CinemachineBlendDefinition();

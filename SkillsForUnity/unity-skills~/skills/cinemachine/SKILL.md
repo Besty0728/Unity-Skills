@@ -294,7 +294,7 @@ Create a FreeLook camera. CM2 uses `CinemachineFreeLook`; CM3 builds `Cinemachin
 - `lookAtName` (string, optional): GameObject to look at.
 
 ### `cinemachine_configure_camera_manager`
-Configure ClearShot/StateDriven/Sequencer camera manager properties in one call. Applies only the properties whose matching component exists on the target.
+Configure ClearShot/StateDriven/Sequencer camera manager properties in one call. A parameter for a manager type the target lacks, an unresolved `animatorName` (or one without an Animator) and an unknown blend style are rejected before anything is written.
 **Parameters:**
 - `cameraName` (string, optional): Camera manager name. Provide one of name/instanceId/path.
 - `cameraInstanceId` (int, optional): Camera manager Instance ID.
@@ -309,7 +309,7 @@ Configure ClearShot/StateDriven/Sequencer camera manager properties in one call.
 - `loop` (bool, optional): Sequencer — loop playback.
 
 ### `cinemachine_configure_body`
-Configure the Body stage component (Follow, OrbitalFollow, ThirdPersonFollow, PositionComposer, FramingTransposer, etc.) in one call. Only fields matching the active component are applied.
+Configure the Body stage component (Follow, OrbitalFollow, ThirdPersonFollow, PositionComposer, FramingTransposer, etc.) in one call. Only fields matching the active component are applied; when none is, the call fails and `warnings` lists the fields that could not be written.
 **Parameters:**
 - `vcamName` (string, optional): VCam name. Provide one of name/instanceId/path.
 - `instanceId` (int, optional): VCam Instance ID.
@@ -338,7 +338,7 @@ PositionComposer / FramingTransposer:
 - `deadZoneWidth` / `deadZoneHeight` (float, optional): Dead zone size (0–1).
 
 ### `cinemachine_configure_aim`
-Configure the Aim stage component (RotationComposer, Composer, PanTilt, POV, etc.) in one call. Only fields matching the active component are applied.
+Configure the Aim stage component (RotationComposer, Composer, PanTilt, POV, etc.) in one call. Only fields matching the active component are applied; when none is, the call fails and `warnings` lists the fields that could not be written.
 **Parameters:**
 - `vcamName` (string, optional): VCam name. Provide one of name/instanceId/path.
 - `instanceId` (int, optional): VCam Instance ID.
@@ -360,7 +360,7 @@ Target offset:
 - `targetOffsetX` / `targetOffsetY` / `targetOffsetZ` (float, optional): Offset from target pivot.
 
 ### `cinemachine_configure_extension`
-Configure a Cinemachine extension (`CinemachineConfiner`, `CinemachineDeoccluder`/`Collider`, `CinemachineFollowZoom`, `CinemachineGroupFraming`, etc.). If `extensionName` is omitted, the first extension on the VCam is used.
+Configure a Cinemachine extension (`CinemachineConfiner`, `CinemachineDeoccluder`/`Collider`, `CinemachineFollowZoom`, `CinemachineGroupFraming`, etc.). If `extensionName` is omitted, the first extension on the VCam is used; an `extensionName` the VCam does not carry and an unresolved `boundingShapeName` are rejected. Settings that could not be written are listed in `warnings`.
 **Parameters:**
 - `vcamName` (string, optional): VCam name. Provide one of name/instanceId/path.
 - `instanceId` (int, optional): VCam Instance ID.

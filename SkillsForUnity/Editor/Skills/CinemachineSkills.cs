@@ -737,6 +737,16 @@ namespace UnitySkills
         }
 
 #if CINEMACHINE_2 || CINEMACHINE_3
+        private static (Animator animator, object error) FindAnimatorOrError(string animatorName, string parameter)
+        {
+            var (go, err) = GameObjectFinder.FindOrError(name: animatorName);
+            if (err != null) return (null, err);
+            var animator = go.GetComponent<Animator>();
+            if (animator == null)
+                return (null, new { error = $"'{go.name}' has no Animator component.", errorCode = SkillParamUtil.SemanticInvalidCode, parameter });
+            return (animator, null);
+        }
+
         private static bool SetFieldOrProperty(object target, string name, object value)
         {
             if (target == null) return false;
@@ -762,6 +772,9 @@ namespace UnitySkills
                 if (nestedTarget == null) return false;
 
                 bool isStruct = nestedTarget.GetType().IsValueType;
+                // A struct read through a get-only property is a copy: the write would land nowhere.
+                if (isStruct && field == null && !(type.GetProperty(currentName, flags)?.CanWrite ?? false))
+                    return false;
                 bool success = SetFieldOrProperty(nestedTarget, remainingName, value);
 
                 if (success && (isStruct || field != null))
@@ -1095,27 +1108,28 @@ namespace UnitySkills
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
+            // Resolved before anything is created: an unresolved name or a target without Animator used to be skipped silently.
+            Animator animator = null;
+            if (!string.IsNullOrEmpty(targetAnimatorName))
+            {
+                var (found, animatorErr) = FindAnimatorOrError(targetAnimatorName, "targetAnimatorName");
+                if (animatorErr != null) return animatorErr;
+                animator = found;
+            }
+
             var go = new GameObject(name);
             Undo.RegisterCreatedObjectUndo(go, "Create State Driven Camera");
             var cam = Undo.AddComponent<CinemachineStateDrivenCamera>(go);
             if (cam == null) return new { error = "Failed to add CinemachineStateDrivenCamera component" };
 
-            if (!string.IsNullOrEmpty(targetAnimatorName))
+            if (animator != null)
             {
-                var animatorGo = GameObjectFinder.Find(targetAnimatorName);
-                if (animatorGo != null)
-                {
-                    var animator = animatorGo.GetComponent<Animator>();
-                    if (animator != null)
-                    {
-                        Undo.RecordObject(cam, "Set Animated Target");
+                Undo.RecordObject(cam, "Set Animated Target");
 #if CINEMACHINE_3
-                        cam.AnimatedTarget = animator;
+                cam.AnimatedTarget = animator;
 #elif CINEMACHINE_2
-                        cam.m_AnimatedTarget = animator;
+                cam.m_AnimatedTarget = animator;
 #endif
-                    }
-                }
             }
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             return new { success = true, name = name };
@@ -1186,6 +1200,10 @@ namespace UnitySkills
             {
                 return new { error = "No Brain settings were provided to update." };
             }
+            // The adapter setters' TryParse had no else: a typo was dropped (update methods) or reset the blend to Cut.
+            if (CinemachineAdapter.InvalidBrainUpdateMethod(updateMethod, "updateMethod") is object updateErr) return updateErr;
+            if (CinemachineAdapter.InvalidBrainBlendUpdateMethod(blendUpdateMethod, "blendUpdateMethod") is object blendUpdateErr) return blendUpdateErr;
+            if (CinemachineAdapter.InvalidBlendStyle(defaultBlendStyle, "defaultBlendStyle") is object styleErr) return styleErr;
 
             var brain = CinemachineAdapter.FindBrain();
             if (brain == null) return new { error = "No CinemachineBrain found. Add one to the Main Camera first." };
@@ -1193,18 +1211,14 @@ namespace UnitySkills
             WorkflowManager.SnapshotObject(brain);
             Undo.RecordObject(brain, "Set Brain");
 
-            if (updateMethod != null)
+            if (!string.IsNullOrWhiteSpace(updateMethod))
                 CinemachineAdapter.SetBrainUpdateMethod(brain, updateMethod);
-            if (blendUpdateMethod != null)
+            if (!string.IsNullOrWhiteSpace(blendUpdateMethod))
                 CinemachineAdapter.SetBrainBlendUpdateMethod(brain, blendUpdateMethod);
 
-            if (defaultBlendStyle != null || defaultBlendTime.HasValue)
-            {
-                var current = CinemachineAdapter.GetBrainDefaultBlend(brain);
-                string style = defaultBlendStyle ?? CinemachineAdapter.GetBlendStyle(current);
-                float time = defaultBlendTime ?? CinemachineAdapter.GetBlendTime(current);
-                CinemachineAdapter.SetBrainDefaultBlend(brain, CinemachineAdapter.CreateBlendDefinition(style, time));
-            }
+            if (!string.IsNullOrWhiteSpace(defaultBlendStyle) || defaultBlendTime.HasValue)
+                CinemachineAdapter.SetBrainDefaultBlend(brain,
+                    CinemachineAdapter.MergeBlend(CinemachineAdapter.GetBrainDefaultBlend(brain), defaultBlendStyle, defaultBlendTime));
 
             if (showDebugText.HasValue) CinemachineAdapter.SetBrainBool(brain, "ShowDebugText", showDebugText.Value);
             if (showCameraFrustum.HasValue) CinemachineAdapter.SetBrainBool(brain, "ShowCameraFrustum", showCameraFrustum.Value);
@@ -1272,6 +1286,8 @@ namespace UnitySkills
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
+            if (CinemachineAdapter.InvalidBlendStyle(style, "style") is object styleErr) return styleErr;
+            if (string.IsNullOrWhiteSpace(style)) style = "EaseInOut";
             var brain = CinemachineAdapter.FindBrain();
             if (brain == null) return new { error = "No CinemachineBrain found." };
 
@@ -1283,7 +1299,7 @@ namespace UnitySkills
                 Undo.RecordObject(brain, "Set Default Blend");
                 CinemachineAdapter.SetBrainDefaultBlend(brain, blend);
                 EditorUtility.SetDirty(brain);
-                return new { success = true, message = $"Set default blend: {style} {time}s" };
+                return new { success = true, message = $"Set default blend: {CinemachineAdapter.GetBlendStyle(blend)} {time}s" };
             }
 
             if (string.IsNullOrEmpty(fromCamera) || string.IsNullOrEmpty(toCamera))
@@ -1350,6 +1366,8 @@ namespace UnitySkills
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
+            if (CinemachineAdapter.InvalidBlendStyle(blendStyle, "blendStyle") is object styleErr) return styleErr;
+            if (string.IsNullOrWhiteSpace(blendStyle)) blendStyle = "EaseInOut";
             var (go, err) = GameObjectFinder.FindOrError(sequencerName, sequencerInstanceId, sequencerPath, entityId: sequencerEntityId);
             if (err != null) return err;
 
@@ -1369,7 +1387,7 @@ namespace UnitySkills
             EditorUtility.SetDirty(seq);
 
             int count = CinemachineAdapter.GetSequencerInstructionCount(seq);
-            return new { success = true, message = $"Added instruction #{count}: {childGo.name} (hold={hold}s, blend={blendStyle} {blendTime}s)" };
+            return new { success = true, message = $"Added instruction #{count}: {childGo.name} (hold={hold}s, blend={CinemachineAdapter.GetBlendStyle(blend)} {blendTime}s)" };
 #endif
         }
 
@@ -1386,6 +1404,21 @@ namespace UnitySkills
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
+            // Targets are resolved before anything is created: an unresolved name used to be skipped silently.
+            Transform followTransform = null, lookAtTransform = null;
+            if (!string.IsNullOrEmpty(followName))
+            {
+                var (followGo, followErr) = GameObjectFinder.FindOrError(name: followName);
+                if (followErr != null) return followErr;
+                followTransform = followGo.transform;
+            }
+            if (!string.IsNullOrEmpty(lookAtName))
+            {
+                var (lookAtGo, lookAtErr) = GameObjectFinder.FindOrError(name: lookAtName);
+                if (lookAtErr != null) return lookAtErr;
+                lookAtTransform = lookAtGo.transform;
+            }
+
             var go = CinemachineAdapter.CreateFreeLook(name);
 
             // Ensure Brain exists
@@ -1400,32 +1433,16 @@ namespace UnitySkills
             var vcam = CinemachineAdapter.GetVCam(go);
             if (vcam != null)
             {
-                if (!string.IsNullOrEmpty(followName))
-                {
-                    var followGo = GameObjectFinder.Find(followName);
-                    if (followGo != null) CinemachineAdapter.SetFollow(vcam, followGo.transform);
-                }
-                if (!string.IsNullOrEmpty(lookAtName))
-                {
-                    var lookAtGo = GameObjectFinder.Find(lookAtName);
-                    if (lookAtGo != null) CinemachineAdapter.SetLookAt(vcam, lookAtGo.transform);
-                }
+                if (followTransform != null) CinemachineAdapter.SetFollow(vcam, followTransform);
+                if (lookAtTransform != null) CinemachineAdapter.SetLookAt(vcam, lookAtTransform);
             }
 #if CINEMACHINE_2
             // CM2 FreeLook has independent Follow/LookAt
             var freeLook = go.GetComponent<CinemachineFreeLook>();
             if (freeLook != null)
             {
-                if (!string.IsNullOrEmpty(followName))
-                {
-                    var followGo = GameObjectFinder.Find(followName);
-                    if (followGo != null) freeLook.m_Follow = followGo.transform;
-                }
-                if (!string.IsNullOrEmpty(lookAtName))
-                {
-                    var lookAtGo = GameObjectFinder.Find(lookAtName);
-                    if (lookAtGo != null) freeLook.m_LookAt = lookAtGo.transform;
-                }
+                if (followTransform != null) freeLook.m_Follow = followTransform;
+                if (lookAtTransform != null) freeLook.m_LookAt = lookAtTransform;
             }
 #endif
 
@@ -1465,10 +1482,49 @@ namespace UnitySkills
             var (go, err) = GameObjectFinder.FindOrError(cameraName, cameraInstanceId, cameraPath);
             if (err != null) return err;
 
+            var clearShot = go.GetComponent<CinemachineClearShot>();
+            var stateDriven = go.GetComponent<CinemachineStateDrivenCamera>();
+            var seq = CinemachineAdapter.GetSequencer(go);
+
+            // Everything is checked before the first write. A mistyped blend style used to reset the blend to Cut,
+            // and an unresolved animatorName or a parameter for a manager type this camera lacks was dropped while
+            // the other changes reported success.
+            if (CinemachineAdapter.InvalidBlendStyle(defaultBlendStyle, "defaultBlendStyle") is object styleErr) return styleErr;
+            bool blendRequested = !string.IsNullOrWhiteSpace(defaultBlendStyle) || defaultBlendTime.HasValue;
+            var inapplicable = new List<string>();
+            if (clearShot == null)
+            {
+                if (activateAfter.HasValue) inapplicable.Add("activateAfter");
+                if (minDuration.HasValue) inapplicable.Add("minDuration");
+                if (randomizeChoice.HasValue) inapplicable.Add("randomizeChoice");
+            }
+            if (stateDriven == null)
+            {
+                if (!string.IsNullOrEmpty(animatorName)) inapplicable.Add("animatorName");
+                if (layerIndex.HasValue) inapplicable.Add("layerIndex");
+            }
+            if (clearShot == null && stateDriven == null && blendRequested) inapplicable.Add("defaultBlendStyle/defaultBlendTime");
+            if (seq == null && loop.HasValue) inapplicable.Add("loop");
+            if (inapplicable.Count > 0)
+                return new
+                {
+                    error = $"'{go.name}' has no camera manager for {string.Join(", ", inapplicable)}. ClearShot takes activateAfter/minDuration/randomizeChoice, " +
+                            "StateDriven takes animatorName/layerIndex, both take defaultBlendStyle/defaultBlendTime, Sequencer takes loop.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = inapplicable[0],
+                };
+
+            Animator animator = null;
+            if (!string.IsNullOrEmpty(animatorName))
+            {
+                var (found, animatorErr) = FindAnimatorOrError(animatorName, "animatorName");
+                if (animatorErr != null) return animatorErr;
+                animator = found;
+            }
+
             var changes = new List<string>();
 
             // ClearShot
-            var clearShot = go.GetComponent<CinemachineClearShot>();
             if (clearShot != null)
             {
                 WorkflowManager.SnapshotObject(clearShot);
@@ -1477,50 +1533,37 @@ namespace UnitySkills
                 if (activateAfter.HasValue) { clearShot.ActivateAfter = activateAfter.Value; changes.Add($"activateAfter={activateAfter.Value}"); }
                 if (minDuration.HasValue) { clearShot.MinDuration = minDuration.Value; changes.Add($"minDuration={minDuration.Value}"); }
                 if (randomizeChoice.HasValue) { clearShot.RandomizeChoice = randomizeChoice.Value; changes.Add($"randomize={randomizeChoice.Value}"); }
-                if (defaultBlendStyle != null || defaultBlendTime.HasValue)
+                if (blendRequested)
                 {
-                    string style = defaultBlendStyle ?? CinemachineAdapter.GetBlendStyle(clearShot.DefaultBlend);
-                    float time = defaultBlendTime ?? CinemachineAdapter.GetBlendTime(clearShot.DefaultBlend);
-                    clearShot.DefaultBlend = CinemachineAdapter.CreateBlendDefinition(style, time);
-                    changes.Add($"blend={style} {time}s");
+                    clearShot.DefaultBlend = CinemachineAdapter.MergeBlend(clearShot.DefaultBlend, defaultBlendStyle, defaultBlendTime);
+                    changes.Add($"blend={CinemachineAdapter.GetBlendStyle(clearShot.DefaultBlend)} {CinemachineAdapter.GetBlendTime(clearShot.DefaultBlend)}s");
                 }
 #else
                 if (activateAfter.HasValue) { clearShot.m_ActivateAfter = activateAfter.Value; changes.Add($"activateAfter={activateAfter.Value}"); }
                 if (minDuration.HasValue) { clearShot.m_MinDuration = minDuration.Value; changes.Add($"minDuration={minDuration.Value}"); }
                 if (randomizeChoice.HasValue) { clearShot.m_RandomizeChoice = randomizeChoice.Value; changes.Add($"randomize={randomizeChoice.Value}"); }
-                if (defaultBlendStyle != null || defaultBlendTime.HasValue)
+                if (blendRequested)
                 {
-                    string style = defaultBlendStyle ?? CinemachineAdapter.GetBlendStyle(clearShot.m_DefaultBlend);
-                    float time = defaultBlendTime ?? CinemachineAdapter.GetBlendTime(clearShot.m_DefaultBlend);
-                    clearShot.m_DefaultBlend = CinemachineAdapter.CreateBlendDefinition(style, time);
-                    changes.Add($"blend={style} {time}s");
+                    clearShot.m_DefaultBlend = CinemachineAdapter.MergeBlend(clearShot.m_DefaultBlend, defaultBlendStyle, defaultBlendTime);
+                    changes.Add($"blend={CinemachineAdapter.GetBlendStyle(clearShot.m_DefaultBlend)} {CinemachineAdapter.GetBlendTime(clearShot.m_DefaultBlend)}s");
                 }
 #endif
                 EditorUtility.SetDirty(clearShot);
             }
 
             // StateDriven
-            var stateDriven = go.GetComponent<CinemachineStateDrivenCamera>();
             if (stateDriven != null)
             {
                 WorkflowManager.SnapshotObject(stateDriven);
                 Undo.RecordObject(stateDriven, "Configure StateDriven");
-                if (!string.IsNullOrEmpty(animatorName))
+                if (animator != null)
                 {
-                    var animGo = GameObjectFinder.Find(animatorName);
-                    if (animGo != null)
-                    {
-                        var animator = animGo.GetComponent<Animator>();
-                        if (animator != null)
-                        {
 #if CINEMACHINE_3
-                            stateDriven.AnimatedTarget = animator;
+                    stateDriven.AnimatedTarget = animator;
 #else
-                            stateDriven.m_AnimatedTarget = animator;
+                    stateDriven.m_AnimatedTarget = animator;
 #endif
-                            changes.Add($"animator={animatorName}");
-                        }
-                    }
+                    changes.Add($"animator={animator.gameObject.name}");
                 }
                 if (layerIndex.HasValue)
                 {
@@ -1531,24 +1574,21 @@ namespace UnitySkills
 #endif
                     changes.Add($"layerIndex={layerIndex.Value}");
                 }
-                if (defaultBlendStyle != null || defaultBlendTime.HasValue)
+                if (blendRequested)
                 {
 #if CINEMACHINE_3
-                    string style = defaultBlendStyle ?? CinemachineAdapter.GetBlendStyle(stateDriven.DefaultBlend);
-                    float time = defaultBlendTime ?? CinemachineAdapter.GetBlendTime(stateDriven.DefaultBlend);
-                    stateDriven.DefaultBlend = CinemachineAdapter.CreateBlendDefinition(style, time);
+                    stateDriven.DefaultBlend = CinemachineAdapter.MergeBlend(stateDriven.DefaultBlend, defaultBlendStyle, defaultBlendTime);
+                    var applied = stateDriven.DefaultBlend;
 #else
-                    string style = defaultBlendStyle ?? CinemachineAdapter.GetBlendStyle(stateDriven.m_DefaultBlend);
-                    float time = defaultBlendTime ?? CinemachineAdapter.GetBlendTime(stateDriven.m_DefaultBlend);
-                    stateDriven.m_DefaultBlend = CinemachineAdapter.CreateBlendDefinition(style, time);
+                    stateDriven.m_DefaultBlend = CinemachineAdapter.MergeBlend(stateDriven.m_DefaultBlend, defaultBlendStyle, defaultBlendTime);
+                    var applied = stateDriven.m_DefaultBlend;
 #endif
-                    changes.Add($"blend={style} {time}s");
+                    changes.Add($"blend={CinemachineAdapter.GetBlendStyle(applied)} {CinemachineAdapter.GetBlendTime(applied)}s");
                 }
                 EditorUtility.SetDirty(stateDriven);
             }
 
             // Sequencer
-            var seq = CinemachineAdapter.GetSequencer(go);
             if (seq != null && loop.HasValue)
             {
                 WorkflowManager.SnapshotObject(seq);
@@ -1760,7 +1800,9 @@ namespace UnitySkills
             }
 
             EditorUtility.SetDirty(body);
-            if (changes.Count == 0) return new { success = true, componentType = typeName, message = "No changes applied (parameters may not match this component type).", warnings };
+            // Like configure_extension / configure_impulse_source: nothing applied is a failure, not success with a note.
+            if (changes.Count == 0)
+                return new { error = $"No changes applied to {typeName}: the supplied parameters do not apply to it, or every write failed (see warnings).", componentType = typeName, warnings };
             return new { success = true, componentType = typeName, changes = string.Join(", ", changes), warnings };
 #endif
         }
@@ -1893,7 +1935,8 @@ namespace UnitySkills
             }
 
             EditorUtility.SetDirty(aim);
-            if (changes.Count == 0) return new { success = true, componentType = typeName, message = "No changes applied.", warnings };
+            if (changes.Count == 0)
+                return new { error = $"No changes applied to {typeName}: the supplied parameters do not apply to it, or every write failed (see warnings).", componentType = typeName, warnings };
             return new { success = true, componentType = typeName, changes = string.Join(", ", changes), warnings };
 #endif
         }
@@ -1903,7 +1946,7 @@ namespace UnitySkills
         [UnitySkill("cinemachine_configure_extension", "Configure Cinemachine extension properties (Confiner, Deoccluder, FollowZoom, GroupFraming, etc.).",
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify,
             Tags = new[] { "camera", "extension", "confiner", "deoccluder", "cinemachine" },
-            Outputs = new[] { "success", "extensionType", "changes" },
+            Outputs = new[] { "success", "extensionType", "changes", "warnings" },
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" }, MutatesScene = true)]
         public static object CinemachineConfigureExtension(
@@ -1933,13 +1976,24 @@ namespace UnitySkills
             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
             if (err != null) return err;
 
+            // An unresolved extensionName used to fall back to the first extension, configuring a different one.
             MonoBehaviour ext = null;
             if (!string.IsNullOrEmpty(extensionName))
             {
                 var type = FindCinemachineType(extensionName);
-                if (type != null) ext = go.GetComponent(type) as MonoBehaviour;
+                if (type != null && typeof(CinemachineExtension).IsAssignableFrom(type)) ext = go.GetComponent(type) as MonoBehaviour;
+                if (ext == null)
+                {
+                    var present = go.GetComponents<CinemachineExtension>().Select(e => e.GetType().Name).ToArray();
+                    return new
+                    {
+                        error = $"'{go.name}' has no extension '{extensionName}'. Extensions on it: {(present.Length > 0 ? string.Join(", ", present) : "none")}.",
+                        errorCode = SkillParamUtil.SemanticInvalidCode,
+                        parameter = "extensionName",
+                    };
+                }
             }
-            if (ext == null)
+            else
             {
                 // When unspecified, automatically use the first CinemachineExtension on the object.
                 var exts = go.GetComponents<CinemachineExtension>();
@@ -1947,18 +2001,33 @@ namespace UnitySkills
             }
             if (ext == null) return new { error = "No Cinemachine extension found. Add one first with cinemachine_add_extension." };
 
+            Collider2D shape2D = null;
+            Collider shape3D = null;
+            if (!string.IsNullOrEmpty(boundingShapeName))
+            {
+                var (shapeGo, shapeErr) = GameObjectFinder.FindOrError(name: boundingShapeName);
+                if (shapeErr != null) return shapeErr;
+                shape2D = shapeGo.GetComponent<Collider2D>();
+                shape3D = shapeGo.GetComponent<Collider>();
+                if (shape2D == null && shape3D == null)
+                    return new { error = $"'{shapeGo.name}' has no Collider or Collider2D to confine to.", errorCode = SkillParamUtil.SemanticInvalidCode, parameter = "boundingShapeName" };
+            }
+
             WorkflowManager.SnapshotObject(ext);
             Undo.RecordObject(ext, "Configure Extension");
             var typeName = ext.GetType().Name;
             var changes = new List<string>();
+            var warnings = new List<string>();
+            var attempted = new List<string>();
+            var applied = new HashSet<string>();
 
-            // Note: several branches below deliberately try two candidate field / property names for the same logical setting
-            // (e.g. CM3's "Damping" vs CM2's "m_Damping"). Depending on the installed Cinemachine version,
-            // one of them is guaranteed to fail to match, so a failure here isn't reported as a warning -- otherwise every successful call would produce noise.
+            // Several branches try two candidate names for one setting (CM3 "Damping" vs CM2 "m_Damping"), and one of the
+            // pair always misses, so a setting is only reported as failed when none of its candidates took.
             void TrySet(string prop, object val, string label)
             {
                 if (val == null) return;
-                if (SetFieldOrProperty(ext, prop, val)) changes.Add($"{label}={val}");
+                if (!attempted.Contains(label)) attempted.Add(label);
+                if (SetFieldOrProperty(ext, prop, val) && applied.Add(label)) changes.Add($"{label}={val}");
             }
 
             // Confiner (CM2: CinemachineConfiner, CM3: CinemachineConfiner2D/3D)
@@ -1966,21 +2035,17 @@ namespace UnitySkills
             {
                 if (!string.IsNullOrEmpty(boundingShapeName))
                 {
-                    var shapeGo = GameObjectFinder.Find(boundingShapeName);
-                    if (shapeGo != null)
-                    {
-                        // Try Collider2D first, then fall back to Collider.
-                        var col2d = shapeGo.GetComponent<Collider2D>();
-                        var col3d = shapeGo.GetComponent<Collider>();
-                        if (col2d != null && SetFieldOrProperty(ext, "BoundingShape2D", col2d))
-                            changes.Add($"boundingShape={boundingShapeName}(2D)");
-                        else if (col2d != null && SetFieldOrProperty(ext, "m_BoundingShape2D", col2d))
-                            changes.Add($"boundingShape={boundingShapeName}(2D)");
-                        else if (col3d != null && SetFieldOrProperty(ext, "BoundingVolume", col3d))
-                            changes.Add($"boundingVolume={boundingShapeName}(3D)");
-                        else if (col3d != null && SetFieldOrProperty(ext, "m_BoundingVolume", col3d))
-                            changes.Add($"boundingVolume={boundingShapeName}(3D)");
-                    }
+                    // Try Collider2D first, then fall back to Collider.
+                    if (shape2D != null && SetFieldOrProperty(ext, "BoundingShape2D", shape2D))
+                        changes.Add($"boundingShape={boundingShapeName}(2D)");
+                    else if (shape2D != null && SetFieldOrProperty(ext, "m_BoundingShape2D", shape2D))
+                        changes.Add($"boundingShape={boundingShapeName}(2D)");
+                    else if (shape3D != null && SetFieldOrProperty(ext, "BoundingVolume", shape3D))
+                        changes.Add($"boundingVolume={boundingShapeName}(3D)");
+                    else if (shape3D != null && SetFieldOrProperty(ext, "m_BoundingVolume", shape3D))
+                        changes.Add($"boundingVolume={boundingShapeName}(3D)");
+                    else
+                        warnings.Add($"Failed to set boundingShape on {typeName} (it takes a {(typeName.Contains("2D") ? "Collider2D" : "Collider")})");
                 }
                 TrySet("Damping", damping, "damping");
                 TrySet("m_Damping", damping, "damping");
@@ -2016,7 +2081,11 @@ namespace UnitySkills
                         SetFieldOrProperty(ext, "m_MaxFOV", fovMax);
                         changes.Add($"fovRange=({fovMin},{fovMax})");
                     }
+                    else
+                        warnings.Add($"Failed to set fovRange on {typeName}");
                 }
+                else if (fovMin.HasValue || fovMax.HasValue)
+                    warnings.Add("fovMin and fovMax are applied together; pass both");
             }
             // GroupFraming
             else if (typeName.Contains("GroupFraming"))
@@ -2033,10 +2102,11 @@ namespace UnitySkills
                 TrySet("CameraRadius", cameraRadius, "camRadius");
             }
 
+            warnings.AddRange(attempted.Where(label => !applied.Contains(label)).Select(label => $"Failed to set {label} on {typeName}"));
             if (changes.Count == 0)
-                return new { error = $"No compatible properties were changed on {typeName}. Check the extension type and supplied parameters." };
+                return new { error = $"No compatible properties were changed on {typeName}. Check the extension type and supplied parameters.", warnings };
             EditorUtility.SetDirty(ext);
-            return new { success = true, extensionType = typeName, changes = string.Join(", ", changes) };
+            return new { success = true, extensionType = typeName, changes = string.Join(", ", changes), warnings };
 #endif
         }
 

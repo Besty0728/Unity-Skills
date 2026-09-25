@@ -115,7 +115,7 @@ Read all serialized fields of one DOTweenAnimation. Parameters: `target`, `anima
 List DOTweenAnimation components on a target or across the scene. Parameters: `target?`, `recursive=false`. `animationIndex` is the component's position on its own GameObject, which is exactly the index the setters/remover take — pass it straight through.
 
 ### `dotween_pro_copy_animation`
-Copy all fields from `sourceTarget[sourceIndex]` to a new DOTweenAnimation on `destTarget`.
+Copy all fields from `sourceTarget[sourceIndex]` to a new DOTweenAnimation on `destTarget`. Fields that could not be copied are listed in `skippedFields`.
 
 ### `dotween_pro_remove_animation`
 Remove one DOTweenAnimation component by index.

@@ -94,7 +94,7 @@ Set one variable value.
 | `variable` | Variable name, case-sensitive. Required. |
 | `value` | New value. Accepted shapes depend on the declared type (see below). |
 | `name` / `instanceId` / `path` | GameObject locator — writes the **agent-level override**. |
-| `graphAssetPath` | Writes the **graph asset default** and rebakes the runtime blackboard. |
+| `graphAssetPath` | Writes the **graph asset default** and rebakes the runtime blackboard; if a rebake step fails the response carries `warning`. |
 
 Provide either the GameObject locator or `graphAssetPath`; the GameObject wins if both are given.
 

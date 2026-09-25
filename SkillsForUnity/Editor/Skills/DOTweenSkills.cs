@@ -216,6 +216,7 @@ namespace UnitySkills
             bool useSetLink = true)
         {
             if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+            if (!TryResolveGeneratorEase(ease, out ease, out var easeErr)) return easeErr;
             var spec = ResolveRuntimeTweenSpec(targetKind, tweenKind);
             if (spec == null) return UnsupportedTween(targetKind, tweenKind);
 
@@ -244,6 +245,7 @@ namespace UnitySkills
             string stepsJson = null)
         {
             if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+            if (!TryResolveGeneratorEase(ease, out ease, out var easeErr)) return easeErr;
             var steps = ParseSequenceSteps(stepsJson, tweenKind, duration);
             if (steps == null) return new { error = "stepsJson must be a JSON array of { op: Append|Join|AppendInterval, tweenKind, duration }." };
 
@@ -285,6 +287,7 @@ namespace UnitySkills
             bool useSetLink = true)
         {
             if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
+            if (!TryResolveGeneratorEase(ease, out ease, out var easeErr)) return easeErr;
             var spec = ResolveRuntimeTweenSpec(targetKind, tweenKind);
             if (spec == null) return UnsupportedTween(targetKind, tweenKind);
 
@@ -769,15 +772,17 @@ namespace UnitySkills
             var dst = Undo.AddComponent(destGo, type);
             if (dst == null) return new { error = "Failed to add DOTweenAnimation to destination" };
 
+            // Fields that fail to copy used to vanish from the response of a call described as copying all fields.
+            var skipped = new List<string>();
             foreach (var f in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
             {
                 if (f.IsInitOnly) continue;
                 try { f.SetValue(dst, f.GetValue(srcComp)); }
-                catch { /* skip unassignable fields */ }
+                catch (Exception ex) { skipped.Add($"{f.Name} ({ex.GetType().Name})"); }
             }
             WorkflowManager.SnapshotCreatedComponent(dst);
             EditorUtility.SetDirty(dst);
-            return new { success = true, sourceGameObject = srcComp.gameObject.name, destGameObject = destGo.name };
+            return new { success = true, sourceGameObject = srcComp.gameObject.name, destGameObject = destGo.name, skippedFields = skipped.ToArray() };
         }
 
         [UnitySkill("dotween_pro_remove_animation",
@@ -1171,6 +1176,28 @@ namespace UnitySkills
                 return loopTypeErr;
 
             return null;
+        }
+
+        /// <summary>
+        /// Resolves the generators' ease to a declared Ease name (case-insensitively, since the script needs the exact
+        /// identifier); blank means the OutQuad default. SanitizeEnumName alone wrote any identifier-shaped value into
+        /// the script (Ease.Foobar fails to compile) and silently swapped anything else for OutQuad.
+        /// </summary>
+        private static bool TryResolveGeneratorEase(string ease, out string canonical, out object error)
+        {
+            error = null;
+            var requested = string.IsNullOrWhiteSpace(ease) ? "OutQuad" : ease.Trim();
+            canonical = requested;
+            var names = DOTweenReflectionHelper.EnumNames(DOTweenReflectionHelper.FindTypeInAssemblies(DOTweenReflectionHelper.EaseEnumTypeName));
+            if (names.Length == 0) return true;
+            var match = names.FirstOrDefault(n => string.Equals(n, requested, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                canonical = match;
+                return true;
+            }
+            error = SkillParamUtil.InvalidValueError(ease, "ease", names);
+            return false;
         }
 
         private static object InvalidEnumFieldError(Type owner, string[] candidates, string paramName, string value)
@@ -1616,9 +1643,22 @@ namespace UnitySkills
                 return new { error = evErr };
             }
 
-            DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.DurationFieldCandidates, duration);
-            DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.DelayFieldCandidates, delay);
-            DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.LoopsFieldCandidates, loops);
+            // Plain field writes follow the same rule as ease / loopType below: a failed one (field missing or
+            // retyped on this version) used to leave the component on its default while reporting success.
+            string failedField = null;
+            void SetOrFail(string[] candidates, object value, string label)
+            {
+                if (failedField == null && !DOTweenReflectionHelper.SetFieldByCandidates(comp, candidates, value))
+                    failedField = label;
+            }
+            SetOrFail(DOTweenReflectionHelper.DurationFieldCandidates, duration, "duration");
+            SetOrFail(DOTweenReflectionHelper.DelayFieldCandidates, delay, "delay");
+            SetOrFail(DOTweenReflectionHelper.LoopsFieldCandidates, loops, "loops");
+            if (failedField != null)
+            {
+                Undo.DestroyObjectImmediate(comp);
+                return FieldWriteFailed(failedField);
+            }
             // The result of writing ease / loopType must be checked: a failed write leaves the component on its
             // default value while the skill still reports success:true without echoing any requested value.
             // Typos are already caught by ValidateAnimationSpec before the component was added, so reaching here
@@ -1635,12 +1675,17 @@ namespace UnitySkills
                 return SkillParamUtil.InvalidValueError(ease, "ease",
                     DOTweenReflectionHelper.EnumNamesForField(type, DOTweenReflectionHelper.EaseFieldCandidates));
             }
-            DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.IsRelativeFieldCandidates, isRelative);
-            DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.IsFromFieldCandidates, isFrom);
-            DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.AutoPlayFieldCandidates, autoPlay);
-            DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.AutoKillFieldCandidates, autoKill);
+            SetOrFail(DOTweenReflectionHelper.IsRelativeFieldCandidates, isRelative, "isRelative");
+            SetOrFail(DOTweenReflectionHelper.IsFromFieldCandidates, isFrom, "isFrom");
+            SetOrFail(DOTweenReflectionHelper.AutoPlayFieldCandidates, autoPlay, "autoPlay");
+            SetOrFail(DOTweenReflectionHelper.AutoKillFieldCandidates, autoKill, "autoKill");
             if (!string.IsNullOrEmpty(id))
-                DOTweenReflectionHelper.SetFieldByCandidates(comp, DOTweenReflectionHelper.IdFieldCandidates, id);
+                SetOrFail(DOTweenReflectionHelper.IdFieldCandidates, id, "id");
+            if (failedField != null)
+            {
+                Undo.DestroyObjectImmediate(comp);
+                return FieldWriteFailed(failedField);
+            }
 
             WorkflowManager.SnapshotCreatedComponent(comp);
             EditorUtility.SetDirty(comp);
@@ -1654,6 +1699,13 @@ namespace UnitySkills
                 animationIndex = indexOnGo
             };
         }
+
+        private static object FieldWriteFailed(string field) => new
+        {
+            error = $"Could not write '{field}' on DOTweenAnimation: this DOTween Pro version has no compatible field. Nothing was added.",
+            errorCode = SkillParamUtil.SemanticInvalidCode,
+            parameter = field,
+        };
 
         private static (Component comp, object error) ResolveAnimationComponent(
             string target, int targetInstanceId, string targetPath, int animationIndex)

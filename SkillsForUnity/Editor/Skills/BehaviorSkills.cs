@@ -1468,7 +1468,7 @@ namespace UnitySkills
         [UnitySkill("behavior_blackboard_set", "Set a blackboard variable value. With a GameObject locator this writes the agent-level override on that BehaviorGraphAgent; with graphAssetPath it writes the graph asset's authoring default and rebuilds the baked blackboard. Supports int/float/bool/string/enum/Vector2-3-4/Color/Quaternion and UnityEngine.Object references by asset path or scene name",
             Category = SkillCategory.Behavior, Operation = SkillOperation.Modify,
             Tags = new[] { "behavior", "blackboard", "variable", "set", "override", "ai", "behavior-tree" },
-            Outputs = new[] { "target", "variable", "type", "value" },
+            Outputs = new[] { "target", "variable", "type", "value", "warning" },
             RequiresInput = new[] { "variable" },
             TracksWorkflow = true,
             MutatesScene = true,
@@ -1667,11 +1667,19 @@ namespace UnitySkills
 
             // Mirrors the order of BehaviorAuthoringGraph.RebuildGraphAndBlackboardRuntimeData():
             // mark the blackboard dirty and rebake it first, then rebake and save the graph, so the runtime sub-assets stay in sync with it.
-            BehaviorReflectionHelper.TryInvoke(blackboard, "SetAssetDirty", null, out _, out _);
-            BehaviorReflectionHelper.TryInvoke(blackboard, "BuildRuntimeBlackboard", null, out _, out _);
-            BehaviorReflectionHelper.TryInvoke(authoring, "SetAssetDirty", new object[] { true }, out _, out _);
-            BehaviorReflectionHelper.TryInvoke(authoring, "BuildRuntimeGraph", new object[] { true }, out _, out _);
-            BehaviorReflectionHelper.TryInvoke(authoring, "SaveAsset", null, out _, out _);
+            // Each result is checked: the rebake is what makes the new value visible to agents, and unlike
+            // behavior_graph_create (which verifies by reloading the runtime graph) this used to report success either way.
+            var rebuildFailures = new List<string>();
+            void Rebake(object target, string method, object[] args)
+            {
+                if (!BehaviorReflectionHelper.TryInvoke(target, method, args, out _, out var invokeError))
+                    rebuildFailures.Add($"{method} ({invokeError})");
+            }
+            Rebake(blackboard, "SetAssetDirty", null);
+            Rebake(blackboard, "BuildRuntimeBlackboard", null);
+            Rebake(authoring, "SetAssetDirty", new object[] { true });
+            Rebake(authoring, "BuildRuntimeGraph", new object[] { true });
+            Rebake(authoring, "SaveAsset", null);
 
             if (blackboardObject != null) EditorUtility.SetDirty(blackboardObject);
             EditorUtility.SetDirty(authoring);
@@ -1686,7 +1694,11 @@ namespace UnitySkills
                 variable = variableName,
                 type = declaredType.Name,
                 value = RenderPipelineSkillsCommon.ToSerializableValue(converted),
-                note = "Written as the graph asset default. Existing agents keep their own overrides."
+                note = "Written as the graph asset default. Existing agents keep their own overrides.",
+                warning = rebuildFailures.Count > 0
+                    ? $"The graph asset value was written, but rebaking the runtime blackboard failed: {string.Join(", ", rebuildFailures)}. " +
+                      "Open the graph once in the Behavior editor window before relying on agents seeing the new value."
+                    : null
             };
         }
 

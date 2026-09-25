@@ -135,7 +135,7 @@ Notes:
 - `AttachableBehaviour` must live on a child GameObject nested under a `NetworkObject`'s hierarchy, not directly on the `NetworkObject`'s own GameObject.
 - `AttachableNode` must belong to a *different* `NetworkObject` than the `AttachableBehaviour` instances attaching to it.
 - `Attach()` / `Detach()` are runtime-only calls (require both instances spawned) and are intentionally **not** exposed as skills — same rationale as `netcode_spawn_object` not existing (see DO NOT above): the caller must already have a running NetworkManager and do this from NetworkBehaviour code.
-- `netcode_component_controller_configure`'s `targetPaths` accepts whole GameObjects; NGO's own `OnValidate()` (invoked by this skill) expands each into every eligible child component with a public `bool enabled` property, skipping `NetworkBehaviour`/`NetworkObject`/`NetworkManager` — identical to what happens when you drag a GameObject onto the Components field in the Inspector.
+- `netcode_component_controller_configure`'s `targetPaths` accepts whole GameObjects; NGO's own `OnValidate()` (invoked by this skill) expands each into every eligible child component with a public `bool enabled` property, skipping `NetworkBehaviour`/`NetworkObject`/`NetworkManager` — identical to what happens when you drag a GameObject onto the Components field in the Inspector. If that `OnValidate()` is missing or throws, the response carries `warning` and the entries stay unexpanded.
 
 ## Quick Start
 

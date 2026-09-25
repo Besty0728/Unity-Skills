@@ -62,7 +62,7 @@ Inspect a Decal Projector.
 \* Supply at least one locator — an empty call is refused up front rather than reported as "not found".
 
 ### `decal_set_properties`
-Modify Decal Projector properties. Every property below is applied only when supplied, so a call changes exactly the fields you name.
+Modify Decal Projector properties. Every property below is applied only when supplied, so a call changes exactly the fields you name; any invalid value rejects the whole call before anything is written.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
@@ -80,7 +80,7 @@ Modify Decal Projector properties. Every property below is applied only when sup
 | `size` | string | No | null | Projector box size as `"x,y,z"` |
 | `pivot` | string | No | null | Projector pivot offset as `"x,y,z"` |
 | `renderingLayerMask` | uint | No | null | Rendering layer mask bits |
-| `scaleMode` | string | No | null | `ScaleInvariant` or `InheritFromHierarchy` |
+| `scaleMode` | string | No | null | `ScaleInvariant` or `InheritFromHierarchy` (other values, including bare numbers, are rejected) |
 
 ### `decal_find_all`
 List Decal Projectors in the scene.

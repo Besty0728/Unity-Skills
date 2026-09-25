@@ -209,9 +209,14 @@ namespace UnitySkills
 #else
             var nm = FindManager(name);
             if (nm == null) return new { error = $"NetworkManager not found (name={name ?? "<any>"})." };
+            // Validated before the first write (an invalid topology used to be rejected after the other fields were
+            // applied), and the snapshot is taken before the writes so a workflow undo restores the old config.
+            if (!SkillParamUtil.TryParseEnumParam<NetworkTopologyTypes>(networkTopology, "networkTopology", out var topo, out var topoErr))
+                return topoErr;
+            WorkflowManager.SnapshotObject(nm.gameObject);
+            Undo.RecordObject(nm, "Configure NetworkManager");
             if (nm.NetworkConfig == null) nm.NetworkConfig = new NetworkConfig();
 
-            Undo.RecordObject(nm, "Configure NetworkManager");
             var applied = new Dictionary<string, object>();
 
             if (tickRate.HasValue) { nm.NetworkConfig.TickRate = tickRate.Value; applied["tickRate"] = tickRate.Value; }
@@ -229,16 +234,13 @@ namespace UnitySkills
             if (spawnTimeout.HasValue) { nm.NetworkConfig.SpawnTimeout = spawnTimeout.Value; applied["spawnTimeout"] = spawnTimeout.Value; }
             if (enableNetworkLogs.HasValue) { nm.NetworkConfig.EnableNetworkLogs = enableNetworkLogs.Value; applied["enableNetworkLogs"] = enableNetworkLogs.Value; }
             if (autoSpawnPlayerPrefabClientSide.HasValue) { nm.NetworkConfig.AutoSpawnPlayerPrefabClientSide = autoSpawnPlayerPrefabClientSide.Value; applied["autoSpawnPlayerPrefabClientSide"] = autoSpawnPlayerPrefabClientSide.Value; }
-            if (!string.IsNullOrEmpty(networkTopology))
+            if (!string.IsNullOrWhiteSpace(networkTopology))
             {
-                if (!Enum.TryParse<NetworkTopologyTypes>(networkTopology, true, out var topo))
-                    return new { error = $"Invalid networkTopology '{networkTopology}'. Valid: ClientServer, DistributedAuthority." };
                 nm.NetworkConfig.NetworkTopology = topo;
                 applied["networkTopology"] = topo.ToString();
             }
 
             EditorUtility.SetDirty(nm);
-            WorkflowManager.SnapshotObject(nm.gameObject);
             return new { success = true, applied };
 #endif
         }
@@ -1870,7 +1872,7 @@ namespace UnitySkills
             TracksWorkflow = true,
             Category = SkillCategory.Netcode, Operation = SkillOperation.Modify,
             Tags = new[] { "netcode", "ngo", "componentcontroller", "configure" },
-            Outputs = new[] { "success", "startEnabled", "componentCount", "entries" },
+            Outputs = new[] { "success", "startEnabled", "componentCount", "entries", "warning" },
             MutatesScene = true, RiskLevel = "low", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
         public static object ComponentControllerConfigure(
             string name = null,
@@ -1939,9 +1941,20 @@ namespace UnitySkills
                 // Reproduces the Inspector's own drag-and-drop expansion logic: OnValidate() strips whole-GameObject
                 // entries and replaces them with every eligible child component underneath, skipping
                 // NetworkBehaviour/NetworkObject/NetworkManager. Calling it here matches a human dragging the same GameObject onto this field.
+                // A missing or throwing OnValidate used to surface only in the Editor console, invisible to a REST caller.
+                string expansionWarning = null;
                 var onValidate = ccType.GetMethod("OnValidate", BindingFlags.NonPublic | BindingFlags.Instance);
-                try { onValidate?.Invoke(comp, null); }
-                catch (Exception ex) { SkillsLogger.LogWarning($"[netcode_component_controller_configure] OnValidate reflection call failed: {ex.Message}"); }
+                if (onValidate == null)
+                    expansionWarning = "ComponentController.OnValidate was not found on this NGO version, so GameObject entries were not expanded into their components.";
+                else
+                {
+                    try { onValidate.Invoke(comp, null); }
+                    catch (Exception ex)
+                    {
+                        expansionWarning = $"ComponentController.OnValidate failed ({(ex.InnerException ?? ex).Message}), so GameObject entries were not expanded into their components.";
+                        SkillsLogger.LogWarning($"[netcode_component_controller_configure] {expansionWarning}");
+                    }
+                }
 
                 EditorUtility.SetDirty(comp);
                 WorkflowManager.SnapshotObject(comp);
@@ -1971,7 +1984,8 @@ namespace UnitySkills
                     componentCount = finalList?.Count ?? 0,
                     entries,
                     resolvedTargets,
-                    missingTargets = missingTargets.Count > 0 ? missingTargets : null
+                    missingTargets = missingTargets.Count > 0 ? missingTargets : null,
+                    warning = expansionWarning
                 };
             }
             catch (Exception ex)
