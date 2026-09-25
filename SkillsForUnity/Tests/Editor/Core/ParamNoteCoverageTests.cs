@@ -122,7 +122,8 @@ namespace UnitySkills.Tests.Core
                     .Where(p => PayloadParameterNames.Contains(p.Name, StringComparer.Ordinal))
                     .Select(p => (skill: s.Name, parameter: p)))
                 .ToList();
-            Assume.That(payloads, Is.Not.Empty, "No JSON payload parameter found in the covered modules.");
+            // Assert, not Assume: an inconclusive precondition passes a gate that only reads red and green.
+            Assert.That(payloads, Is.Not.Empty, "No JSON payload parameter found in the covered modules.");
 
             var bare = payloads
                 .Where(x => string.IsNullOrWhiteSpace(x.parameter.GetCustomAttribute<SkillParamAttribute>()?.Description))
