@@ -4,6 +4,34 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI 在全部 6 个版本上都会红（round6，两处）** — (1) round5 新增的测试夹具程序集 `UnitySkills.Tests.Fixtures` 是运行时程序集，两个 RequireComponent 探针用了 `BoxCollider` / `Collider`；CI 的测试工程 manifest 不列任何内置模块，运行时程序集拿不到 Physics 模块，`error CS1069` 让 batchmode 在跑任何测试之前就中止。探针改用夹具自带的要求目标类型（`RequiredBaseProbe` / `RequiredLeafProbe`），断言逐条保留。(2) 7 个相机读回测试（需要 Scene View）和 1 个 dryRun 策略测试（需要 REST 服务）在 batchmode 下是"不确定"，Unity `-runTests` 因此以退出码 2 结束（实测：只跑这组相机测试退出码 2，只跑被 Ignore 的测试退出码 0），CI 会判失败；这些前置条件改为 `Assert.Ignore`，普通编辑器里照常运行。与 CI 同款 manifest 的 2022.3 / 6000.3 干净工程本地复现并验证：0 失败、退出码 0。
+- **2022 首次导入会改写 18 个手写 `.meta`（round6）** — 这些 `.meta` 只有 `fileFormatVersion` 和 `guid` 两行、没有结尾换行；2022.3 首次导入把它们改写成完整的 `MonoImporter` 形式（GUID 不变），git 克隆安装随之变脏，本地 git 自更新会以 `DirtyWorktree` 拒绝。改为提交 Unity 自己写出的形式。
+- **跑测试会清空用户的 allowlist（round6）** — 5 个调用 `SkillsModeManager.ResetForTests()` 的测试类里有 3 个只还原模式键（`AddressablesSkillsTests` 什么都不还原），而 `CompleteTestPreferenceRecovery` 只清除恢复记录，所以跑完 EditMode 后用户的 allowlist 变空（实测 `["create_cube"]` → `[]`）。新增 `ModePreferenceSnapshot`，五个偏好键全存全还原并重载缓存。
+- **长尾模块的静默降级（round6）** — 以下调用原来"什么都没做、做错了或写完再崩"却报成功，改为在第一次写入前返回结构化错误（`SEMANTIC_INVALID`，附合法值或最接近的名称），或如实报告：
+  - `terrain_paint_texture`：负数 `layerIndex` 原来能通过范围检查，把刷子范围内各层权重写坏后在读层名时抛 `IndexOutOfRangeException`；现在写入前拒绝。
+  - `console_get_logs` / `debug_get_logs`：认不出的 `type` 原来分别放宽成全部类型、收窄成只有 Error（`debug_get_logs` 的类型匹配还区分大小写，`warning` 读不到警告）；现在大小写不敏感地识别 All/Error/Warning/Log，一个都不含的值被拒绝；`console_get_logs` 捕获模式同样按此过滤。
+  - `smart_scene_query`：拼错的 `propertyName`、列表外的 `op`、对非数值成员或非数值 `value` 用 `>`/`<`/`>=`/`<=`、对 bool 用 `==`/`!=` 以外的比较，原来都静默匹配不到任何对象（`count: 0`，与"没有对象满足条件"无法区分；bool 分支还把 `>` 当成 `!=`）；现在逐一拒绝，拼错的成员名附最接近的建议。
+  - `uitk_create_from_template`：未知 `template` 原来写出通用模板、响应还回显写错的名字；现在列出 10 个合法模板并拒绝，不建文件。
+  - `test_smoke_skills`：解析不了的 `category` 原来跳过过滤、冒烟测试全部技能；现在拒绝。
+  - `cleaner_find_duplicates`：读不了、算不了哈希的文件原来从结果里消失；现在列在新增的 `skipped`（路径与原因）里。
+  - `debug_check_compilation`：原来只有 `isCompiling` / `isUpdating`，编译失败后两者都是 false，读起来像编译成功（旧程序集照跑）；新增 `lastCompilation`（`succeeded`、`errorCount`、`finishedAtUtc`、前 5 条错误），本会话还没有编译完成时为 null。
+  - `sprite_set_import_settings`：非法的 `pivotX` / `pivotY` 原来在导入器已被修改之后才抛异常，只给其中一个时被静默忽略；现在两者必须同时给出且都是数字，写入前校验。
+  - `project_add_tag`：直接取 `TagManager.asset` 加载结果的第一个元素，改用已有的判空辅助函数。
+  - XR（`xr_add_grab_interactable` / `xr_configure_interaction_layers`）：格式错误的 `attachTransformOffset` 原来整段跳过自定义挂点、未知 `movementType` 被静默丢弃；未定义的交互层名原来得到掩码 0（Nothing），纯数字的层掩码从未走到整数分支；现在都在写入前拒绝或按整数处理，写入失败报错；`attachTransformOffset` 按不变区域性解析。
+  - YooAsset（`yooasset_list_report_bundles` / `yooasset_list_report_assets`）：解析不了的 `filterEncrypted` 原来静默不过滤，未知 `sortBy` 退回默认排序；现在拒绝并给合法值。
+  - QFramework：设置还原回调原来丢弃反射写入的结果、无条件报还原成功（UIKit 设置、ResKit 选项、编辑器语言）；`qframework_set_uikit_settings` / `qframework_set_reskit_build_options` / `qframework_set_editor_locale` 写入失败或该版本缺少对应成员时原来仍列为已修改；现在如实报告，`qframework_set_editor_locale` 返回读回的值。
+  - `ApplyShaderStripping`（图形设置的工作流还原器）：三个剥离字段任一找不到时原来仍报还原成功；现在要么全部还原，要么失败。
+
+### Changed
+
+- **三个核心类拆成分部类文件（round6）** — `SkillsHttpServer`（14 个文件）、`SkillRouter`（11 个）、`SkillPlanningService`（12 个）按职责拆分，最大文件从 5,938 行降到 1,081 行；纯搬移，不改任何成员体，带初始化器的静态字段与静态构造函数留在主文件。单技能与批量两个端点共用一份请求级查询键列表和一个 `?dryRun=` 解析；保活间隔与请求超时这两个跨线程缓存加了内存屏障。响应逐字节不变（固定请求语料 32 条比对）。
+
+### 评测与验证
+
+- **假绿防护（round6）** — 模块文档里级别写错的技能标题（`####` / `##`）会让那一节脱离一致性比对，现在直接报错；必填参数源码扫描改用显式的未匹配清单（原来允许静默漏掉 10% 的技能）；Outputs 契约、写入标记、必填参数扫描器各补一个反例夹具；`check_meta_files.py` / `check_locales.py` 扫到的文件少于 git 跟踪的同类文件时失败，并新增 `.github/scripts/tests/`；README / AGENTS.md / 根文档里引用的技能总数与分类表由测试与注册表逐项核对；dryRun / plan 的授权预览与真实执行在 3 个画像 × 3 个模式 × allowlist 有无 × 3 类技能上逐例一致。
+
 ## [2.9.0] - 2026-09-25
 
 > **更少往返、更少 token 的 Agent 调用 + 精度与正确性修复 + 本地自更新双轨** —— 本版的重点是让 Agent 用更少的往返和 token 完成同样的 Unity 编辑器任务，同时不损失任何能力。(1) **更省**：根 `SKILL.md` 围绕"速查表 → 一次发现调用 → 直接执行 → 以写后读回为准"重写，配合 recommend 排序修复、多意图查询、写后读回与一条命令等完编译；在 Claude Code 无头模式（`claude -p`）下以 Sonnet 5 实测，同样的任务 token 约为 2.8.4 的三分之一，每次任务成本约从 US$0.185 降到 US$0.07，调用次数中位从 10 次降到 4 次（明细与测试条件见下方"本版实测"）。(2) **更准**：13 项"什么都没做或做错了却报成功"的静默降级改为明确报错，并给出合法值或最接近的名称；写技能回带从 Editor 读回的实际状态；缺少可选包在校验阶段就报出（含此前漏标的 33 个 URP 技能）；`expectProject` / `expectInstance` 防止写到另一个工程；设计类问答改为按指导文档作答。(3) **更稳**：新增按项目保存、默认关闭的 dryRun 策略开关，把"先 dryRun"从文档建议变成服务端保证（dryRun 令牌不能顶替 `_confirm`）；`asset_refresh` 在触发脚本编译时返回可等待的编译作业；长轮询被域重载打断时回可重试的 503。(4) **本地自更新双轨**：本地开发路径安装（`file:` / 嵌入）的一键更新在 UnitySkills 的 git 克隆上只做快进、同步官方同名分支，工作区有改动、分叉或不在 main / beta 上时拒绝并说明原因；非 git 副本走加固后的 ZIP 替换并保留上一版备份。805 个技能不增不减，没有删除任何参数。
