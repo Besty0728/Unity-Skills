@@ -4,6 +4,11 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- **Python CLI `--params-file`（round6）** — `python unity_skills.py --params-file params.json <skill> [key=value ...]` 从 UTF-8 JSON 对象文件（有无 BOM 都行）读取单次调用的参数，命令行的 `key=value` 覆盖文件里的同名键，文件不是 JSON 对象时直接报错、不发请求。PowerShell 里的 Agent 可以用自己的文件工具写参数文件，绕开向原生程序传引号的问题。
+- **`references/windows.md`（round6）** — PowerShell（5.1 / 7）与 Git Bash 下的调用写法：探活、单次调用、dryRun、批量、自写脚本 → `asset_refresh` → 等 `waitUrl`（带重试）、CLI `--params-file`；以及会静默出错的陷阱：5.1 的 `curl` 别名、7.3 以前向原生程序传的双引号、7.4 以前请求体不是 UTF-8、`-Encoding UTF8` 的 BOM、反斜杠资源路径，事实均引用 Microsoft Learn。在 `references/README.md` 里列出，不从根文档链接。
+
 ### Fixed
 
 - **CI 在全部 6 个版本上都会红（round6，两处）** — (1) round5 新增的测试夹具程序集 `UnitySkills.Tests.Fixtures` 是运行时程序集，两个 RequireComponent 探针用了 `BoxCollider` / `Collider`；CI 的测试工程 manifest 不列任何内置模块，运行时程序集拿不到 Physics 模块，`error CS1069` 让 batchmode 在跑任何测试之前就中止。探针改用夹具自带的要求目标类型（`RequiredBaseProbe` / `RequiredLeafProbe`），断言逐条保留。(2) 7 个相机读回测试（需要 Scene View）和 1 个 dryRun 策略测试（需要 REST 服务）在 batchmode 下是"不确定"，Unity `-runTests` 因此以退出码 2 结束（实测：只跑这组相机测试退出码 2，只跑被 Ignore 的测试退出码 0），CI 会判失败；这些前置条件改为 `Assert.Ignore`，普通编辑器里照常运行。与 CI 同款 manifest 的 2022.3 / 6000.3 干净工程本地复现并验证：0 失败、退出码 0。
@@ -37,14 +42,21 @@ All notable changes to **UnitySkills** will be documented in this file.
   - `behavior_blackboard_set`（`graphAssetPath`）：重新烘焙运行时黑板的步骤失败原来被忽略，现在响应带 `warning`。
   - Netcode：`netcode_configure_manager` 的非法 `networkTopology` 原来在其他字段写入之后才被拒绝，工作流快照也在写入之后才拍（撤销恢复不了旧配置）；现在先校验、先快照。`netcode_component_controller_configure` 的 `OnValidate` 展开失败原来只写在控制台，现在响应带 `warning`。
   - `urp_set_asset_settings`：8 个设置写的是私有序列化字段（URP 14 / 17 上都存在），某个字段改名后原来会被静默跳过；现在缺字段时整次不写并报错。
+- **可选包实测发现的三处缺陷（round6）** — (1) `xr_configure_interaction_layers` 从来没有写进过掩码：`InteractionLayerMask` 只能经隐式转换运算符从 int 转换，反射助手用的 `Convert.ChangeType` 抛异常，写入被丢弃（round6 之前报成功，第一次修复后报错）；现在匹配 `op_Implicit`，层名与整数掩码都能写入并读回（XRI 2.6.5 与 3.6.1 实测）。(2) 没有 HybridCLR 设置文件的工程里，切换过场景后 `hybridclr_settings_set` 以 INTERNAL 结束：被卸载的设置对象仍由 `LoadOrCreate` 的 `s_Instance ?? CreateInstance()` 返回，Undo 拒收，`Save()` 也静默不写；现在丢弃失效引用、重建实例。(3) Behavior 未安装时的错误声明了路由不认识的 `PACKAGE_NOT_INSTALLED`（靠消息文本才被归为 `MISSING_PACKAGE`），改为直接声明 `MISSING_PACKAGE`。
+- **Python CLI `--batch` 读不了带 BOM 的文件（round6）** — Windows PowerShell 5.1 的 `Set-Content -Encoding UTF8` 会写 BOM，`json.load` 直接拒绝；现在按 `utf-8-sig` 读取。
 
 ### Changed
 
+- **Addressables 技能声明依赖包（round6）** — 7 个技能补上 `RequiresPackages = com.unity.addressables`，与其他按 UPM 检测的模块一致：dryRun、`/plan` 与 `/skills/recommend` 能提前报出缺包，写入类技能在执行前被拒；只读技能照常运行并自己报告缺包。`addressables_check_installed` 不声明——它就是没装包时也要回答的探针。
+- **git 自更新层只经 `LocalSelfUpdateService` 访问（round6）** — `Editor/Versioning/` 以外最后一处直接引用 `LocalGitSync` 的地方（`SelfUpdateFeedback` 取短 SHA 与列表上限）改为经服务转发；UI 可用的面只剩 `Check` / `Start`、这两个转发和 `LocalUpdate*` 结果类型。行为不变。
 - **三个核心类拆成分部类文件（round6）** — `SkillsHttpServer`（14 个文件）、`SkillRouter`（11 个）、`SkillPlanningService`（12 个）按职责拆分，最大文件从 5,938 行降到 1,081 行；纯搬移，不改任何成员体，带初始化器的静态字段与静态构造函数留在主文件。单技能与批量两个端点共用一份请求级查询键列表和一个 `?dryRun=` 解析；保活间隔与请求超时这两个跨线程缓存加了内存屏障。响应逐字节不变（固定请求语料 32 条比对）。
 
 ### 评测与验证
 
 - **假绿防护（round6）** — 模块文档里级别写错的技能标题（`####` / `##`）会让那一节脱离一致性比对，现在直接报错；必填参数源码扫描改用显式的未匹配清单（原来允许静默漏掉 10% 的技能）；Outputs 契约、写入标记、必填参数扫描器各补一个反例夹具；`check_meta_files.py` / `check_locales.py` 扫到的文件少于 git 跟踪的同类文件时失败，并新增 `.github/scripts/tests/`；README / AGENTS.md / 根文档里引用的技能总数与分类表由测试与注册表逐项核对；dryRun / plan 的授权预览与真实执行在 3 个画像 × 3 个模式 × allowlist 有无 × 3 类技能上逐例一致。
+- **可选包真实路径测试（round6）** — 新增 `Tests/Editor/OptionalPackages/`：URP / Decal / Volume / PostProcess / Cinemachine（CM2 与 CM3）/ Timeline / Netcode / Addressables / HybridCLR / Behavior / DOTween Pro / PrimeTween / YooAsset / XR（XRI 2 与 3）/ ProBuilder（5 与 6）/ QFramework 共 87 个测试，每个模块覆盖创建、带读回的修改与查询，并在真实包上验证 round6 的修复；没装包的工程按探针技能声明的依赖整类忽略。两个一次性工程实测：6000.3 装齐注册表与 OpenUPM 包 80 个通过，2022.3（CM2 / XRI 2 / ProBuilder 5 / URP 14 / QFramework）52 个通过，均 0 失败、退出码 0；本地闸门按模块检查"实际通过"的下限，忽略一整类不再算绿。新增只能手动触发的 `.github/workflows/optional-packages.yml` 与 `check_test_floors.py`（尚未在 CI 实跑）。装齐全部可选包时，3 个"找缺包技能来测"的测试原来以"不确定"结束、让 Unity 退出码为 2，改为忽略。
+- **Windows 就绪的本地部分（round6）** — 带 UTF-8 BOM 的请求体（单次与批量）经实测照常解析，固定请求语料新增两条 BOM 请求锁住该行为；`DocExampleValidationTests` 能读 PowerShell `Invoke-RestMethod ... -Body` 的请求体、反引号续行与 `\"` 转义的 `curl.exe` 请求体，`references/windows.md` 的示例与其他文档一样逐条校验（注入错误键可被检出）。
+- **自更新隔离守卫（round6）** — `SelfUpdateBoundaryTests` 扫描 Editor 源码（带覆盖下限与反例）：`Editor/Versioning/` 以外出现 `LocalGitSync` / `GitCliRunner`、或 UI 调用未登记的 `LocalSelfUpdateService` 成员即失败。
 
 ## [2.9.0] - 2026-09-25
 
