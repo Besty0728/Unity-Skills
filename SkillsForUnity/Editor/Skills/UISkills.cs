@@ -235,6 +235,15 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object UICreateImage(string name = "Image", string parent = null, string spritePath = null, float width = 100, float height = 100)
         {
+            // Resolved before anything is created: an unresolvable path used to yield a sprite-less Image and success.
+            Sprite sprite = null;
+            if (!string.IsNullOrEmpty(spritePath))
+            {
+                sprite = AssetDatabase.LoadAssetAtPath<Sprite>(spritePath);
+                if (sprite == null)
+                    return new { error = $"Sprite not found: {spritePath} (missing, or the texture is not imported as Sprite)" };
+            }
+
             var parentGo = FindOrCreateCanvas(parent);
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
@@ -246,13 +255,8 @@ namespace UnitySkills
             rectTransform.sizeDelta = new Vector2(width, height);
 
             var image = go.AddComponent<Image>();
-
-            if (!string.IsNullOrEmpty(spritePath))
-            {
-                var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(spritePath);
-                if (sprite != null)
-                    image.sprite = sprite;
-            }
+            if (sprite != null)
+                image.sprite = sprite;
 
             Undo.RegisterCreatedObjectUndo(go, "Create Image");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);
@@ -1345,6 +1349,15 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object UICreateRawImage(string name = "RawImage", string parent = null, string texturePath = null, float width = 100, float height = 100)
         {
+            // Same as ui_create_image: an unresolvable path used to create a texture-less RawImage (hasTexture:false only).
+            Texture texture = null;
+            if (!string.IsNullOrEmpty(texturePath))
+            {
+                texture = AssetDatabase.LoadAssetAtPath<Texture>(texturePath);
+                if (texture == null)
+                    return new { error = $"Texture not found: {texturePath}" };
+            }
+
             var parentGo = FindOrCreateCanvas(parent);
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
@@ -1356,13 +1369,8 @@ namespace UnitySkills
             rectTransform.sizeDelta = new Vector2(width, height);
 
             var rawImage = go.AddComponent<RawImage>();
-
-            if (!string.IsNullOrEmpty(texturePath))
-            {
-                var texture = AssetDatabase.LoadAssetAtPath<Texture>(texturePath);
-                if (texture != null)
-                    rawImage.texture = texture;
-            }
+            if (texture != null)
+                rawImage.texture = texture;
 
             Undo.RegisterCreatedObjectUndo(go, "Create RawImage");
             WorkflowManager.SnapshotObject(go, SnapshotType.Created);

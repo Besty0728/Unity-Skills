@@ -95,6 +95,9 @@ namespace UnitySkills
 
             if (field == null && prop == null)
                 return new { error = $"Field/property not found: {fieldName}" };
+            // A get-only property used to skip the write and still answer success.
+            if (field == null && !prop.CanWrite)
+                return new { error = $"Property '{fieldName}' on {type.Name} is read-only.", errorCode = SkillParamUtil.SemanticInvalidCode, parameter = "fieldName" };
 
             WorkflowManager.SnapshotObject(asset);
             Undo.RecordObject(asset, "Set ScriptableObject Field");
@@ -282,6 +285,9 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(savePath))
             {
                 if (Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
+                var dir = Path.GetDirectoryName(savePath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
                 File.WriteAllText(savePath, json, SkillsCommon.Utf8NoBom);
                 return new { success = true, path = savePath };
             }
@@ -302,6 +308,7 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(data) && !string.IsNullOrEmpty(jsonFilePath))
             {
                 if (Validate.SafePath(jsonFilePath, "jsonFilePath") is object pathErr) return pathErr;
+                if (!File.Exists(jsonFilePath)) return new { error = $"JSON file not found: {jsonFilePath}" };
                 data = File.ReadAllText(jsonFilePath, System.Text.Encoding.UTF8);
             }
             if (string.IsNullOrEmpty(data)) return new { error = "No JSON data provided" };

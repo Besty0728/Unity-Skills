@@ -162,7 +162,7 @@ Add a state to an Animator Controller layer.
 |-----------|------|----------|---------|-------------|
 | `controllerPath` | string | Yes | - | Controller asset path |
 | `stateName` | string | Yes | - | Name for the new state |
-| `clipPath` | string | No | null | Animation clip asset path to assign |
+| `clipPath` | string | No | null | Animation clip asset path to assign; a path that is not an AnimationClip rejects the call before the state is added |
 | `layer` | int | No | 0 | Layer index |
 
 **Returns**: `{success, controller, stateName, layer}`

@@ -1349,6 +1349,9 @@ namespace UnitySkills
             Type filterType = string.IsNullOrEmpty(componentFilter)
                 ? null
                 : ComponentSkills.FindComponentType(componentFilter);
+            // An unresolvable filter used to fall through as "no filter" and return every object in range.
+            if (!string.IsNullOrEmpty(componentFilter) && filterType == null)
+                return ComponentSkills.UnknownComponentTypeError(componentFilter, "componentFilter");
 
             var found = new List<(float dist, object info)>();
             foreach (var go in allObjects)

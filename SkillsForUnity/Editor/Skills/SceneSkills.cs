@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
@@ -33,7 +33,8 @@ namespace UnitySkills
                 Directory.CreateDirectory(dir);
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            EditorSceneManager.SaveScene(scene, scenePath);
+            if (!EditorSceneManager.SaveScene(scene, scenePath))
+                return SaveFailedError(scenePath, "scenePath");
             AssetDatabase.Refresh();
 
             // SaveScene has already written the new .unity to disk; record it as Created, so on undo moving it into the storage area is equivalent to deleting it
@@ -92,7 +93,8 @@ namespace UnitySkills
                 if (oldAsset != null) WorkflowManager.SnapshotObject(oldAsset);
             }
 
-            EditorSceneManager.SaveScene(scene, path);
+            if (!EditorSceneManager.SaveScene(scene, path))
+                return SaveFailedError(path, "scenePath");
 
             if (!existedBefore)
             {
@@ -324,12 +326,12 @@ namespace UnitySkills
             if (SceneManager.sceneCount <= 1)
                 return new { success = false, error = "Cannot unload the only loaded scene" };
 
-            if (sceneToUnload.isDirty)
-            {
-                EditorSceneManager.SaveScene(sceneToUnload);
-            }
+            // Closing a dirty scene whose save failed would silently drop its unsaved edits.
+            if (sceneToUnload.isDirty && !EditorSceneManager.SaveScene(sceneToUnload))
+                return SaveFailedError(sceneToUnload.path, "sceneName");
 
-            EditorSceneManager.CloseScene(sceneToUnload, true);
+            if (!EditorSceneManager.CloseScene(sceneToUnload, true))
+                return new { success = false, error = $"Unity refused to close scene '{sceneName}'." };
             return new { success = true, unloaded = sceneName };
         }
 
@@ -348,7 +350,8 @@ namespace UnitySkills
                     if (!scene.isLoaded)
                         return new { success = false, error = $"Scene '{sceneName}' is not loaded" };
 
-                    SceneManager.SetActiveScene(scene);
+                    if (!SceneManager.SetActiveScene(scene))
+                        return new { success = false, error = $"Unity refused to make scene '{sceneName}' active." };
                     return new { success = true, activeScene = scene.name };
                 }
             }
@@ -367,10 +370,13 @@ namespace UnitySkills
         {
             IEnumerable<GameObject> objects = GameObjectFinder.GetSceneObjects();
 
+            // An undefined tag makes CompareTag log an error and match nothing (the old try/catch around the lazy Where
+            // never saw it), so it read as "no object has this tag"; check up front.
             if (!string.IsNullOrEmpty(tag))
             {
-                try { objects = objects.Where(go => go.CompareTag(tag)); }
-                catch { return new { error = $"Invalid tag: {tag}" }; }
+                if (!SkillsCommon.IsTagDefined(tag))
+                    return SkillParamUtil.InvalidValueError(tag, "tag", UnityEditorInternal.InternalEditorUtility.tags);
+                objects = objects.Where(go => go.CompareTag(tag));
             }
 
             if (!string.IsNullOrEmpty(namePattern))
@@ -379,7 +385,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(componentType))
             {
                 var type = ComponentSkills.FindComponentType(componentType);
-                if (type == null) return new { error = $"Component type not found: {componentType}" };
+                if (type == null) return ComponentSkills.UnknownComponentTypeError(componentType, "componentType");
                 objects = objects.Where(go => go.GetComponent(type) != null);
             }
 
@@ -390,6 +396,15 @@ namespace UnitySkills
 
             return new { success = true, count = results.Length, objects = results };
         }
+
+        // SaveScene reports failure (read-only or locked file or folder) only through its bool; ignoring it
+        // answered success for a scene that was never written.
+        private static object SaveFailedError(string path, string parameter) => new
+        {
+            success = false,
+            error = $"Unity could not save the scene to '{path}' (read-only or locked file or folder?); the Console has the reason.",
+            parameter,
+        };
     }
 }
 

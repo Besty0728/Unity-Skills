@@ -422,15 +422,18 @@ namespace UnitySkills
             var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(controllerPath);
             if (controller == null) return new { error = $"Controller not found: {controllerPath}" };
             if (layer < 0 || layer >= controller.layers.Length) return new { error = $"Invalid layer: {layer}" };
+            // Resolved before the state is added: an unresolvable path used to add a state with no motion and report success.
+            AnimationClip clip = null;
+            if (!string.IsNullOrEmpty(clipPath))
+            {
+                clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
+                if (clip == null) return new { error = $"AnimationClip not found: {clipPath}" };
+            }
 
             WorkflowManager.SnapshotObject(controller);
             var sm = controller.layers[layer].stateMachine;
             var state = sm.AddState(stateName);
-            if (!string.IsNullOrEmpty(clipPath))
-            {
-                var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
-                if (clip != null) state.motion = clip;
-            }
+            if (clip != null) state.motion = clip;
             AssetDatabase.SaveAssets();
             return new { success = true, controller = controllerPath, stateName, layer };
         }

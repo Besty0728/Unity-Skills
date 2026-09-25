@@ -238,7 +238,7 @@ namespace UnitySkills
             return p;
         }
 
-        private static string BackupRoot() => $"{ProjectRoot()}/Library/UnitySkills/HybridCLRBackups";
+        internal static string BackupRoot() => $"{ProjectRoot()}/Library/UnitySkills/HybridCLRBackups";
 
         private static bool TryParseBuildTarget(string value, out BuildTarget target, out object error)
         {
@@ -310,19 +310,19 @@ namespace UnitySkills
             public int maxMethodBridgeGenericIteration;
         }
 
-        private sealed class GeneratedSourceEntry
+        internal sealed class GeneratedSourceEntry
         {
             public string path;
             public bool existed;
             public string text;
         }
 
-        private sealed class GeneratedSourceSnapshot
+        internal sealed class GeneratedSourceSnapshot
         {
             public GeneratedSourceEntry[] files;
         }
 
-        private sealed class FileSetBackup
+        internal sealed class FileSetBackup
         {
             public string label;
             public string targetDir;
@@ -420,10 +420,13 @@ namespace UnitySkills
             SettingsField("maxGenericReferenceIteration")?.SetValue(s, snap.maxGenericReferenceIteration);
             SettingsField("maxMethodBridgeGenericIteration")?.SetValue(s, snap.maxMethodBridgeGenericIteration);
 
-            if (!AssignAsmdefs(s, snap.hotUpdateAssemblyDefinitions, out var missing) && missing.Count > 0)
+            // An unresolved asmdef used to be logged to the console and the restore still reported success,
+            // so workflow_undo left hotUpdateAssemblyDefinitions short an entry without saying so.
+            bool asmdefsComplete = AssignAsmdefs(s, snap.hotUpdateAssemblyDefinitions, out var missing);
+            if (!asmdefsComplete)
                 SkillsLogger.LogWarning($"[HybridCLR] settings restore could not resolve asmdef assets: {string.Join(", ", missing)}");
 
-            return SaveSettings();
+            return SaveSettings() && asmdefsComplete;
         }
 
         private static bool AssignAsmdefs(object settings, string[] assetPaths, out List<string> unresolved)
@@ -494,7 +497,7 @@ namespace UnitySkills
 
         private static string AotGenericReferencesPath() => AssetsRelativeSetting("outputAOTGenericReferenceFile");
 
-        private static bool ApplyGeneratedSources(string json)
+        internal static bool ApplyGeneratedSources(string json)
         {
             if (string.IsNullOrEmpty(json)) return false;
 
@@ -503,6 +506,7 @@ namespace UnitySkills
             catch { return false; }
             if (snap?.files == null) return false;
 
+            bool allRestored = true;
             foreach (var entry in snap.files)
             {
                 if (entry == null || string.IsNullOrEmpty(entry.path)) continue;
@@ -525,15 +529,16 @@ namespace UnitySkills
                 }
                 catch (Exception ex)
                 {
+                    allRestored = false;
                     SkillsLogger.LogWarning($"[HybridCLR] generated-source restore failed for '{entry.path}': {ex.Message}");
                 }
             }
 
             AssetDatabase.Refresh();
-            return true;
+            return allRestored;
         }
 
-        private static FileSetBackup CaptureFileSet(string label, string targetDir, bool refreshAssetDatabase)
+        internal static FileSetBackup CaptureFileSet(string label, string targetDir, bool refreshAssetDatabase)
         {
             var snap = new FileSetBackup
             {
@@ -553,18 +558,16 @@ namespace UnitySkills
             if (files.Length == 0) return snap;
 
             var backupDir = $"{BackupRoot()}/{label}/{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}";
-            var names = new List<string>(files.Length);
+            // Every pre-existing file is tracked even when its copy fails: ApplyFileSetBackup deletes untracked files
+            // as "added by the operation", and now reports a missing backup copy as a failed restore instead.
+            snap.files = files.Select(Path.GetFileName).ToArray();
             try
             {
                 Directory.CreateDirectory(backupDir);
                 foreach (var f in files)
                 {
                     var n = Path.GetFileName(f);
-                    try
-                    {
-                        File.Copy(f, Path.Combine(backupDir, n), true);
-                        names.Add(n);
-                    }
+                    try { File.Copy(f, Path.Combine(backupDir, n), true); }
                     catch (Exception ex)
                     {
                         SkillsLogger.LogWarning($"[HybridCLR] backup skipped '{n}': {ex.Message}");
@@ -578,7 +581,6 @@ namespace UnitySkills
             }
 
             snap.backupDir = Normalize(backupDir);
-            snap.files = names.ToArray();
             PruneBackups(label);
             return snap;
         }
@@ -604,7 +606,7 @@ namespace UnitySkills
             catch { /* pruning is never load-bearing */ }
         }
 
-        private static bool ApplyFileSetBackup(string json)
+        internal static bool ApplyFileSetBackup(string json)
         {
             if (string.IsNullOrEmpty(json)) return false;
 
@@ -615,6 +617,14 @@ namespace UnitySkills
             if (!IsInsideProject(snap.targetDir)) return false;
 
             var tracked = new HashSet<string>(snap.files ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+            bool allRestored = true;
+            // A backup that was never written (CaptureFileSet's CreateDirectory failed) would leave the
+            // overwritten DLLs gone while the restore still reported success.
+            if (tracked.Count > 0 && (string.IsNullOrEmpty(snap.backupDir) || !Directory.Exists(snap.backupDir)))
+            {
+                SkillsLogger.LogWarning($"[HybridCLR] no backup under '{snap.backupDir}' for '{snap.targetDir}'; {tracked.Count} file(s) cannot be restored.");
+                allRestored = false;
+            }
 
             // First delete any files this operation added outside the tracked set.
             if (Directory.Exists(snap.targetDir))
@@ -631,6 +641,7 @@ namespace UnitySkills
                     }
                     catch (Exception ex)
                     {
+                        allRestored = false;
                         SkillsLogger.LogWarning($"[HybridCLR] could not remove '{n}' during restore: {ex.Message}");
                     }
                 }
@@ -643,10 +654,16 @@ namespace UnitySkills
                 foreach (var n in tracked)
                 {
                     var src = Path.Combine(snap.backupDir, n);
-                    if (!File.Exists(src)) continue;
+                    if (!File.Exists(src))
+                    {
+                        allRestored = false;
+                        SkillsLogger.LogWarning($"[HybridCLR] no backup copy of '{n}'; it cannot be restored.");
+                        continue;
+                    }
                     try { File.Copy(src, Path.Combine(snap.targetDir, n), true); }
                     catch (Exception ex)
                     {
+                        allRestored = false;
                         SkillsLogger.LogWarning($"[HybridCLR] could not restore '{n}': {ex.Message}");
                     }
                 }
@@ -667,7 +684,7 @@ namespace UnitySkills
             }
 
             if (snap.refreshAssetDatabase) AssetDatabase.Refresh();
-            return true;
+            return allRestored;
         }
 
         // ==================================================================================
@@ -895,7 +912,7 @@ namespace UnitySkills
             "Write HybridCLRSettings fields (enable, hot-update assembly names/asmdefs, preserved + AOT-patch assemblies, output dirs, iteration limits, repo URLs) and persist to ProjectSettings/HybridCLRSettings.asset. Only the parameters you pass are changed; the full prior settings object is snapshotted for workflow undo.",
             Category = SkillCategory.HybridCLR, Operation = SkillOperation.Modify,
             Tags = new[] { "hybridclr", "settings", "config", "assemblies", "write" },
-            Outputs = new[] { "changed", "settings", "unresolvedAssemblyDefinitions" },
+            Outputs = new[] { "changed", "settings", "unresolvedAssemblyDefinitions", "unsupportedFields" },
             RequiresPackages = new[] { PackageId },
             TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesAssets = true, RiskLevel = "medium")]
@@ -957,13 +974,15 @@ namespace UnitySkills
                 Undo.RegisterCompleteObjectUndo(settingsObject, "HybridCLR Settings");
 
             var changed = new List<string>();
+            // Fields this package version doesn't declare used to be skipped with a console-only warning.
+            var unsupported = new List<string>();
 
             void SetField(string field, object value, string label)
             {
                 var f = SettingsField(field);
                 if (f == null)
                 {
-                    SkillsLogger.LogWarning($"[HybridCLR] settings field '{field}' not found on this package version — skipped.");
+                    unsupported.Add(label);
                     return;
                 }
                 f.SetValue(settings, value);
@@ -987,9 +1006,23 @@ namespace UnitySkills
 
             if (hotUpdateAssemblyDefinitions != null)
             {
-                AssignAsmdefs(settings, hotUpdateAssemblyDefinitions, out unresolved);
-                changed.Add("hotUpdateAssemblyDefinitions");
+                if (SettingsField("hotUpdateAssemblyDefinitions") == null)
+                    unsupported.Add("hotUpdateAssemblyDefinitions");
+                else
+                {
+                    AssignAsmdefs(settings, hotUpdateAssemblyDefinitions, out unresolved);
+                    changed.Add("hotUpdateAssemblyDefinitions");
+                }
             }
+
+            if (changed.Count == 0 && unsupported.Count > 0)
+                return new
+                {
+                    error = $"This HybridCLR version's settings declare none of: {string.Join(", ", unsupported)}; nothing was written.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = unsupported[0],
+                    unsupportedFields = unsupported.ToArray(),
+                };
 
             if (changed.Count == 0)
             {
@@ -1012,6 +1045,7 @@ namespace UnitySkills
                 changed = changed.ToArray(),
                 settings = after,
                 unresolvedAssemblyDefinitions = unresolved.ToArray(),
+                unsupportedFields = unsupported.ToArray(),
                 settingsAssetPath = "ProjectSettings/HybridCLRSettings.asset",
                 warning = unresolved.Count > 0
                     ? $"{unresolved.Count} asmdef path(s) could not be loaded and were dropped from hotUpdateAssemblyDefinitions."

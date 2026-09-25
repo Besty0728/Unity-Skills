@@ -56,7 +56,7 @@ Editor-side automation for [HybridCLR](https://hybridclr.doc.code-philosophy.com
 | Skill | Purpose | Key Parameters |
 |-------|---------|----------------|
 | `hybridclr_settings_get` | Read every `HybridCLRSettings` field, plus the **resolved** assembly lists `SettingsUtil` derives from asmdef assets and raw names (this is what the pipeline actually uses). | (none) |
-| `hybridclr_settings_set` | Write settings and persist to `ProjectSettings/HybridCLRSettings.asset`. Only the parameters you pass change; the full prior object is snapshotted for workflow undo. | `enable?`, `useGlobalIl2cpp?`, `hotUpdateAssemblies?`, `hotUpdateAssemblyDefinitions?`, `preserveHotUpdateAssemblies?`, `patchAOTAssemblies?`, `externalHotUpdateAssemblyDirs?`, `hotUpdateDllCompileOutputRootDir?`, `strippedAOTDllOutputRootDir?`, `outputLinkFile?`, `outputAOTGenericReferenceFile?`, `maxGenericReferenceIteration?`, `maxMethodBridgeGenericIteration?`, `hybridclrRepoURL?`, `il2cppPlusRepoURL?` |
+| `hybridclr_settings_set` | Write settings and persist to `ProjectSettings/HybridCLRSettings.asset`. Only the parameters you pass change; fields this HybridCLR version does not declare are listed in `unsupportedFields`; the full prior object is snapshotted for workflow undo. | `enable?`, `useGlobalIl2cpp?`, `hotUpdateAssemblies?`, `hotUpdateAssemblyDefinitions?`, `preserveHotUpdateAssemblies?`, `patchAOTAssemblies?`, `externalHotUpdateAssemblyDirs?`, `hotUpdateDllCompileOutputRootDir?`, `strippedAOTDllOutputRootDir?`, `outputLinkFile?`, `outputAOTGenericReferenceFile?`, `maxGenericReferenceIteration?`, `maxMethodBridgeGenericIteration?`, `hybridclrRepoURL?`, `il2cppPlusRepoURL?` |
 
 ### Diagnostics (1)
 | Skill | Purpose | Key Parameters |

@@ -84,7 +84,7 @@ Install Cinemachine using the supported package/version strategy.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `version` | int | No | 3 | `2` for CM2, `3` for CM3 |
+| `version` | int | No | 3 | `2` for CM2, `3` for CM3; any other value is rejected |
 
 **Notes:**
 - CM3 auto-installs the Splines dependency.

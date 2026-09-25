@@ -244,6 +244,10 @@ namespace UnitySkills
             MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
         public static object PackageInstallCinemachine(int version = 3)
         {
+            // version >= 3 used to bucket every other number (1, 4, 99), installing a version nobody asked for.
+            if (version != 2 && version != 3)
+                return SkillParamUtil.InvalidValueError(version.ToString(), "version", new[] { "2", "3" });
+
             var useV3 = version >= 3;
             var targetVersion = useV3 ? PackageManagerHelper.Cinemachine3Version : PackageManagerHelper.Cinemachine2Version;
 
