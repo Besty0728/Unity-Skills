@@ -18,7 +18,7 @@ compatibility: Requires Unity Editor 2022.3+/6000.x with the UnitySkills package
 
 Ports `8090`–`8100` go first come, first served: add `?expectProject=<project>` (productName or folder name) or the exact `?expectInstance=<instanceId>` to every write. A different Editor answers 409 `INSTANCE_MISMATCH` and runs nothing.
 
-`GET /health` (exempt from the check) has `currentMode`, `surfaceProfile`, `dryRunPolicy`, `instanceId`: probe it once with your first call, then only after a refused write, 409, 503/refused connection or odd mode. `bypass` and `auto` run writes directly, but under `auto` confirm ≥5-object batches, prefab apply, scene-level, asset-overwriting or irreversible changes with the user first; `approval` gates `FullAuto` writes behind single-shot grants (permanent: the user's Allowlist).
+`GET /health` (exempt from the check) has `currentMode`, `surfaceProfile`, `dryRunPolicy`, `instanceId`: probe it once in the same shell command as your first request, adding no other call, then only after a refused write, 409, 503/refused connection or odd mode. `bypass` and `auto` run writes directly, but under `auto` confirm ≥5-object batches, prefab apply, scene-level, asset-overwriting or irreversible changes with the user first (probe alone before those); `approval` gates `FullAuto` writes behind single-shot grants (permanent: the user's Allowlist).
 
 During a domain reload the port answers 503 or refuses for seconds while its `~/.unity_skills/registry.json` entry reads `reloading`: retry it, never another instance.
 
@@ -70,7 +70,6 @@ A successful write returns the state read back from the Editor (e.g. world `posi
 |---|---|
 | `MISSING_PARAM` / `TARGET_NOT_FOUND` | Bad or unresolvable arguments → fix from `details` / locate the target (`gameobject_find`). |
 | `INSTANCE_MISMATCH` (409) | Resend to the port `suggestedFixes` name. |
-| `METHOD_NOT_ALLOWED` (405) | Skills are POST → resend `details.curl`. |
 | `MISSING_PACKAGE` | Tell the user (dryRun `missingPackages`, recommend `unavailable` show it early); installing is their call. |
 | `MODE_RESTRICTED` / `MODE_FORBIDDEN` | Grant / bypass or Allowlist → [operating mode](references/protocol-operating-mode.md). |
 | other | [error codes](references/protocol-error-codes.md) |

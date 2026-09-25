@@ -6,7 +6,7 @@ Operating mode is a **server-side permission gate**, configured in the Unity pan
 
 > The root `SKILL.md` "Target the right Editor" is the condensed version of this section. Details below.
 
-`GET /health` is answered off the main thread, never checks an expected instance (below) and has no side effects. Probe it once at the start of a session, in the same shell command as your first call so it costs no extra round trip, then again only after a failure: a refused write, 409 `INSTANCE_MISMATCH`, a 503 or refused connection, or mode behaviour that surprises you. It reports:
+`GET /health` is answered off the main thread, never checks an expected instance (below) and has no side effects. Probe it once at the start of a session, in the same shell command as your first request so it costs no extra round trip, adding no other call to that command; when that request is a change `auto` asks you to confirm first (≥5-object batches, prefab apply, scene-level, asset-overwriting or irreversible changes), probe alone before it. Probe again only after a failure: a refused write, 409 `INSTANCE_MISMATCH`, a 503 or refused connection, or mode behaviour that surprises you. It reports:
 
 - `currentMode` — `"approval"` / `"auto"` / `"bypass"`
 - `panelApprovalRequired` — only meaningful under Approval; selects the grant channel
