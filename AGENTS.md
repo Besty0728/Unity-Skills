@@ -4,7 +4,7 @@ Audience: agents editing this repository. Agents *calling* the REST API read `Sk
 
 | Field | Value |
 |------|----|
-| Version | 2.8.4 |
+| Version | 2.9.0 |
 | Stack | C# Unity Editor plugin (UPM `com.besty.unity-skills`) + Python client |
 | Unity | 2022.3+, verified on 6000.x |
 | License | MIT |
