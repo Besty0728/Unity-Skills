@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
@@ -120,6 +120,12 @@ namespace UnitySkills
             var backup = marker?.Value<string>("backup");
             return string.IsNullOrEmpty(backup) ? line : line + " The previous version was kept at " + backup + ".";
         }
+
+        // With Check / Start and the LocalUpdate* result types, the UI's whole surface: SelfUpdateFeedback formats
+        // results through these instead of reaching into LocalGitSync (see SelfUpdateBoundaryTests).
+        internal const int MaxListedEntries = LocalGitSync.MaxListedEntries;
+
+        internal static string ShortSha(string sha) => LocalGitSync.ShortSha(sha);
 
         /// <summary>
         /// What an update would do, without writing anything: git clones ask the official remote for their branch head

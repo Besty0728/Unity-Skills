@@ -47,7 +47,7 @@ namespace UnitySkills
             if (probe == null) return null;
             if (probe.IsOfficialClone)
             {
-                argument = probe.HeadLabel ?? probe.Branch ?? LocalGitSync.ShortSha(probe.HeadSha);
+                argument = probe.HeadLabel ?? probe.Branch ?? LocalSelfUpdateService.ShortSha(probe.HeadSha);
                 return "update_mode_git_fmt";
             }
             switch (probe.Track)
@@ -93,7 +93,7 @@ namespace UnitySkills
                 case LocalUpdateOutcome.DirtyWorktree:
                     return SkillsLocalization.Get("update_git_dirty_body_fmt", repo, FormatEntries(result.Entries, result.EntryCount));
                 case LocalUpdateOutcome.DetachedHead:
-                    return SkillsLocalization.Get("update_git_detached_body_fmt", repo, probe.HeadLabel ?? LocalGitSync.ShortSha(probe.HeadSha));
+                    return SkillsLocalization.Get("update_git_detached_body_fmt", repo, probe.HeadLabel ?? LocalSelfUpdateService.ShortSha(probe.HeadSha));
                 case LocalUpdateOutcome.UnsupportedBranch:
                     return SkillsLocalization.Get("update_git_branch_body_fmt", repo, branch);
                 case LocalUpdateOutcome.Diverged:
@@ -132,10 +132,10 @@ namespace UnitySkills
                 SkillsLocalization.Get("dialog_cancel"));
         }
 
-        /// <summary>At most <see cref="LocalGitSync.MaxListedEntries"/> lines, then "...and N more" for the rest.</summary>
+        /// <summary>At most <see cref="LocalSelfUpdateService.MaxListedEntries"/> lines, then "...and N more" for the rest.</summary>
         internal static string FormatEntries(IReadOnlyList<string> entries, int count)
         {
-            var shown = (entries ?? new List<string>()).Take(LocalGitSync.MaxListedEntries).ToList();
+            var shown = (entries ?? new List<string>()).Take(LocalSelfUpdateService.MaxListedEntries).ToList();
             var lines = shown.Select(entry => "  " + entry).ToList();
             var hidden = count - shown.Count;
             if (hidden > 0) lines.Add(SkillsLocalization.Get("update_git_more_fmt", hidden));
