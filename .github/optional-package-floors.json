@@ -1,0 +1,90 @@
+{
+  "6000": {
+    "Urp": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.UrpSkillsLiveTests.",
+      "min": 3
+    },
+    "Decal": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.DecalSkillsLiveTests.",
+      "min": 3
+    },
+    "Volume": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.VolumeSkillsLiveTests.",
+      "min": 3
+    },
+    "PostProcess": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.PostProcessSkillsLiveTests.",
+      "min": 3
+    },
+    "Cinemachine": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.CinemachineSkillsLiveTests.",
+      "min": 12
+    },
+    "Timeline": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.TimelineSkillsLiveTests.",
+      "min": 5
+    },
+    "Netcode": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.NetcodeSkillsLiveTests.",
+      "min": 7
+    },
+    "Addressables": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.AddressablesSkillsLiveTests.",
+      "min": 3
+    },
+    "Behavior": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.BehaviorSkillsLiveTests.",
+      "min": 4
+    },
+    "PrimeTween": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.PrimeTweenSkillsLiveTests.",
+      "min": 3
+    },
+    "YooAsset": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.YooAssetSkillsLiveTests.",
+      "min": 6
+    },
+    "XR": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.XRSkillsLiveTests.",
+      "min": 9
+    },
+    "ProBuilder": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.ProBuilderSkillsLiveTests.",
+      "min": 7
+    }
+  },
+  "2022": {
+    "Urp": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.UrpSkillsLiveTests.",
+      "min": 3
+    },
+    "Decal": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.DecalSkillsLiveTests.",
+      "min": 3
+    },
+    "Volume": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.VolumeSkillsLiveTests.",
+      "min": 3
+    },
+    "PostProcess": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.PostProcessSkillsLiveTests.",
+      "min": 3
+    },
+    "Cinemachine": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.CinemachineSkillsLiveTests.",
+      "min": 12
+    },
+    "Timeline": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.TimelineSkillsLiveTests.",
+      "min": 5
+    },
+    "XR": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.XRSkillsLiveTests.",
+      "min": 9
+    },
+    "ProBuilder": {
+      "prefix": "UnitySkills.Tests.OptionalPackages.ProBuilderSkillsLiveTests.",
+      "min": 7
+    }
+  }
+}
