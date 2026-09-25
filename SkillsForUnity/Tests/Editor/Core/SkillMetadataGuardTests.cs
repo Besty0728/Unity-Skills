@@ -225,17 +225,8 @@ namespace UnitySkills.Tests.Core
                 ["workflow_snapshot_created"] = "same as workflow_snapshot_object",
             };
 
-            var markers = new[]
-            {
-                "Undo.Register", "Undo.RecordObject", "Undo.AddComponent", "Undo.DestroyObject",
-                "Undo.SetTransformParent", "WorkflowManager.Snapshot", "EditorSceneManager.MarkSceneDirty",
-                "EditorUtility.SetDirty", "AssetDatabase.CreateAsset", "AssetDatabase.SaveAssets",
-                "WriteImportSettingsIfDirty", "File.WriteAllText", "PrefabUtility.SaveAsPrefabAsset",
-                ".SaveAndReimport",
-            };
-
             var root = GetSkillsSourceRoot();
-            Assume.That(Directory.Exists(root), Is.True, $"Skill source directory not found: {root}");
+            Assert.That(Directory.Exists(root), Is.True, $"Skill source directory not found: {root}");
 
             var maskedByType = new Dictionary<string, string>(StringComparer.Ordinal);
             string GetMasked(string typeName)
@@ -273,7 +264,7 @@ namespace UnitySkills.Tests.Core
 
                 checkedCount++;
 
-                var hit = markers.FirstOrDefault(marker => bodies.Any(body => body.IndexOf(marker, StringComparison.Ordinal) >= 0));
+                var hit = FirstWriteMarker(bodies);
                 if (hit != null)
                 {
                     issues.Add($"{skill.Name} ({declaringType.Name}.{skill.Method.Name}): body contains '{hit}' " +
@@ -292,6 +283,54 @@ namespace UnitySkills.Tests.Core
 
             Assert.That(issues, Is.Empty,
                 $"{issues.Count} skill(s) write to the scene or an asset without declaring it:\n" + string.Join("\n", issues));
+        }
+
+        /// <summary>Calls that write scene or asset state; a body containing one must declare MutatesScene or MutatesAssets.</summary>
+        private static readonly string[] WriteMarkers =
+        {
+            "Undo.Register", "Undo.RecordObject", "Undo.AddComponent", "Undo.DestroyObject",
+            "Undo.SetTransformParent", "WorkflowManager.Snapshot", "EditorSceneManager.MarkSceneDirty",
+            "EditorUtility.SetDirty", "AssetDatabase.CreateAsset", "AssetDatabase.SaveAssets",
+            "WriteImportSettingsIfDirty", "File.WriteAllText", "PrefabUtility.SaveAsPrefabAsset",
+            ".SaveAndReimport",
+        };
+
+        private static string FirstWriteMarker(IEnumerable<string> maskedBodies)
+        {
+            var bodies = maskedBodies.ToList();
+            return WriteMarkers.FirstOrDefault(marker => bodies.Any(body => body.IndexOf(marker, StringComparison.Ordinal) >= 0));
+        }
+
+        /// <summary>
+        /// The canary for <see cref="SkillsRecordingUndoOrSnapshots_DeclareMutatesSceneOrAssets"/>: a real write call is
+        /// found, while the same text inside a comment or a string literal is not.
+        /// </summary>
+        [Test]
+        public void WriteMarkerScan_SeesCallsButNotCommentsOrStrings()
+        {
+            const string source =
+                "public static class CanarySkills\n" +
+                "{\n" +
+                "    public static object CanaryWrite(GameObject go)\n" +
+                "    {\n" +
+                "        // Undo.Register would be a marker, but this is a comment\n" +
+                "        var label = \"EditorUtility.SetDirty\";\n" +
+                "        Undo.RecordObject(go, label);\n" +
+                "        return null;\n" +
+                "    }\n" +
+                "\n" +
+                "    public static object CanaryRead(GameObject go)\n" +
+                "    {\n" +
+                "        /* AssetDatabase.SaveAssets(); */\n" +
+                "        return new { name = \"File.WriteAllText\" };\n" +
+                "    }\n" +
+                "}\n";
+            var masked = SourceMask.Mask(source);
+
+            Assert.That(FirstWriteMarker(SourceMask.FindMethodBodies(masked, "CanaryWrite")), Is.EqualTo("Undo.RecordObject"));
+            Assert.That(FirstWriteMarker(SourceMask.FindMethodBodies(masked, "CanaryRead")), Is.Null,
+                "Marker text inside comments and string literals must not count as a write.");
+            Assert.That(SourceMask.FindMethodBodies(masked, "CanaryRead"), Has.Count.EqualTo(1), "The body must be found at all.");
         }
 
         /// <summary>

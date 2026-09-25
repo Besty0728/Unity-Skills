@@ -109,15 +109,7 @@ namespace UnitySkills.Tests.Core
                     continue;
                 }
 
-                var missing = skill.Outputs
-                    .Where(x => !string.IsNullOrEmpty(x))
-                    .Where(x => !RouterInjectedOutputs.Contains(x))
-                    .Where(x => !actual.Contains(x))
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(x => x, StringComparer.Ordinal)
-                    .ToArray();
-
-                foreach (var ghost in missing)
+                foreach (var ghost in GhostOutputs(skill.Outputs, actual))
                 {
                     issues.Add($"幽灵输出键: `{skill.Name}.{ghost}` ({owner}.{skill.Method.Name}) —— " +
                                $"成功路径返回的是 {{{string.Join(", ", actual.OrderBy(x => x, StringComparer.Ordinal))}}}；" +
@@ -157,6 +149,46 @@ namespace UnitySkills.Tests.Core
             // Nested keys inside a cross-file helper (RenderPipelineSkillsCommon.DescribeVolumeComponent)
             AssertParsedKeys(index, "PostProcessSkills", "PostProcessGetEffect",
                 "effectType", "parameters");
+        }
+
+        /// <summary>
+        /// The canary for <see cref="SkillOutputs_ShouldExistInReturnedShape"/>: a synthetic skill that declares a key
+        /// its body never returns must come out as a ghost, and one whose keys are all returned must not.
+        /// </summary>
+        [Test]
+        public void GhostOutputCheck_FlagsADeclaredKeyTheBodyNeverReturns()
+        {
+            const string source =
+                "public static class CanarySkills\n" +
+                "{\n" +
+                "    public static object CanaryProbe(string name)\n" +
+                "    {\n" +
+                "        if (name == null) return new { error = \"missing\" };\n" +
+                "        return new { success = true, count = 1, items = new[] { new { instanceId = 7 } } };\n" +
+                "    }\n" +
+                "}\n";
+            var file = new SourceFile("CanarySkills.cs", source);
+            new MethodIndex(new List<SourceFile> { file });
+            var method = file.Methods.Single(m => m.Name == "CanaryProbe");
+            var actual = file.ReturnKeys(method);
+
+            Assert.That(actual, Is.SupersetOf(new[] { "success", "count", "items", "instanceId", "error" }),
+                "The parser must read top-level and nested keys of every return.");
+            Assert.That(GhostOutputs(new[] { "count", "instanceId", "ghostKey", "entityId" }, actual),
+                Is.EqualTo(new[] { "ghostKey" }), "A declared key the body never returns is a ghost; router-injected keys are not.");
+            Assert.That(GhostOutputs(new[] { "success", "count" }, actual), Is.Empty);
+        }
+
+        /// <summary>Declared output keys that appear nowhere in the parsed return shape (router-injected keys excluded).</summary>
+        private static string[] GhostOutputs(IEnumerable<string> declared, HashSet<string> actual)
+        {
+            return declared
+                .Where(x => !string.IsNullOrEmpty(x))
+                .Where(x => !RouterInjectedOutputs.Contains(x))
+                .Where(x => !actual.Contains(x))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToArray();
         }
 
         private static void AssertParsedKeys(MethodIndex index, string owner, string method, params string[] expected)
@@ -372,10 +404,15 @@ namespace UnitySkills.Tests.Core
             private readonly List<KeyValuePair<string, KeyValuePair<int, int>>> _types =
                 new List<KeyValuePair<string, KeyValuePair<int, int>>>();
 
-            public SourceFile(string path)
+            public SourceFile(string path) : this(path, File.ReadAllText(path))
+            {
+            }
+
+            /// <summary>Parses source text directly; the canary tests feed synthetic sources through here.</summary>
+            public SourceFile(string path, string text)
             {
                 Path = path;
-                Masked = Mask(File.ReadAllText(path));
+                Masked = Mask(text);
                 FindTypes();
                 FindMethods();
             }
