@@ -996,6 +996,7 @@
   "dryrun_policy_off_hint": "off：不强制，AI 可直接执行。",
   "dryrun_policy_high_risk_hint": "highRisk：删除、重载、进入播放模式与 RiskLevel=high 的技能须先以相同参数 dryRun，5 分钟内带返回的 token 执行；已由上方二次确认拦截的技能仍走确认流程。",
   "dryrun_policy_all_writes_hint": "allWrites：所有写入技能（只读技能除外）须先以相同参数 dryRun，5 分钟内带返回的 token 执行；已由上方二次确认拦截的技能仍走确认流程。",
+  "dryrun_policy_explain": "dryRun 即试运行：只检查参数与权限、预览将要做的改动，不会真的修改工程。",
   "agent_codex_install_success_fmt": "安装成功！\n{0}",
   "agent_codex_install_note": "\n\n注意：Antigravity 和 Codex 工作区共享 .agents/skills 路径。",
   "agent_select_install_dir": "选择安装目录",

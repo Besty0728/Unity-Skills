@@ -996,6 +996,7 @@
   "dryrun_policy_off_hint": "off: not enforced; the AI may execute directly.",
   "dryrun_policy_high_risk_hint": "highRisk: deletes, domain reloads, Play Mode and RiskLevel=high skills run only after a dryRun with the same arguments; execute with the returned token within 5 minutes. Skills held by the confirmation step above keep that step instead.",
   "dryrun_policy_all_writes_hint": "allWrites: every write skill (read-only skills excepted) runs only after a dryRun with the same arguments; execute with the returned token within 5 minutes. Skills held by the confirmation step above keep that step instead.",
+  "dryrun_policy_explain": "dryRun is a trial run: it only checks arguments and permissions and previews the changes, without modifying the project.",
   "agent_codex_install_success_fmt": "Install success!\n{0}",
   "agent_codex_install_note": "\n\nNote: Antigravity and Codex share .agents/skills in workspace mode.",
   "agent_select_install_dir": "Select Install Directory",

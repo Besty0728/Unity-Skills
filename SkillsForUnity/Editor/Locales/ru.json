@@ -996,6 +996,7 @@
   "dryrun_policy_off_hint": "off: не требуется, AI может выполнять сразу.",
   "dryrun_policy_high_risk_hint": "highRisk: удаление, перезагрузка домена, Play Mode и RiskLevel=high выполняются только после dryRun с теми же аргументами; вызов с полученным token в течение 5 мин. Skills, которые требуют подтверждения (переключатель выше), по-прежнему проходят подтверждение.",
   "dryrun_policy_all_writes_hint": "allWrites: каждый изменяющий skill выполняется только после dryRun с теми же аргументами; вызов с полученным token в течение 5 мин. Skills только для чтения не затрагиваются. Skills, которые требуют подтверждения (переключатель выше), по-прежнему проходят подтверждение.",
+  "dryrun_policy_explain": "dryRun — пробный прогон: только проверяет аргументы и права и показывает будущие изменения, не меняя проект.",
   "agent_codex_install_success_fmt": "Установка успешна!\n{0}",
   "agent_codex_install_note": "\n\nПримечание: Antigravity и Codex в workspace-режиме используют общий путь .agents/skills.",
   "agent_select_install_dir": "Выберите каталог установки",

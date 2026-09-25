@@ -86,6 +86,7 @@
                         <ui:DropdownField name="dryrun-policy-dropdown" class="setting-row__field" />
                     </ui:VisualElement>
                     <ui:Label name="dryrun-policy-hint" class="setting-hint" />
+                    <ui:Label name="dryrun-policy-explain" class="setting-hint" />
 
                     <ui:VisualElement name="perm-pending-section" class="is-hidden" style="flex-direction: column; margin-top: 4px;">
                         <ui:Label name="perm-pending-title" class="bold-label" style="font-size: 11px; margin-bottom: 4px;" />

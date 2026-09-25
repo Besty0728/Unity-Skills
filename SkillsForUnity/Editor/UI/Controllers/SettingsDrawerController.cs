@@ -65,6 +65,7 @@ namespace UnitySkills
         private Label         _dryRunPolicyLabel;
         private DropdownField _dryRunPolicyDropdown;
         private Label         _dryRunPolicyHint;
+        private Label         _dryRunPolicyExplain;
         private VisualElement _pendingSection;
         private Label         _pendingTitle;
         private VisualElement _pendingList;
@@ -218,6 +219,7 @@ namespace UnitySkills
             _dryRunPolicyLabel    = _drawerContainer.Q<Label>("dryrun-policy-label");
             _dryRunPolicyDropdown = _drawerContainer.Q<DropdownField>("dryrun-policy-dropdown");
             _dryRunPolicyHint     = _drawerContainer.Q<Label>("dryrun-policy-hint");
+            _dryRunPolicyExplain  = _drawerContainer.Q<Label>("dryrun-policy-explain");
             _pendingSection      = _drawerContainer.Q<VisualElement>("perm-pending-section");
             _pendingTitle        = _drawerContainer.Q<Label>("perm-pending-title");
             _pendingList         = _drawerContainer.Q<VisualElement>("perm-pending-list");
@@ -596,6 +598,7 @@ namespace UnitySkills
                 };
             }
             RefreshDryRunPolicyUi();
+            if (_dryRunPolicyExplain != null) _dryRunPolicyExplain.text = SkillsLocalization.Get("dryrun_policy_explain");
             if (_allowlistClearBtn != null) _allowlistClearBtn.text = SkillsLocalization.Get("perm_allowlist_clear_all");
             if (_allowlistAddBtn != null) _allowlistAddBtn.text = SkillsLocalization.Get("perm_add_skill_btn");
             if (_viewAuditBtn != null) _viewAuditBtn.text = SkillsLocalization.Get("perm_view_audit_log");
