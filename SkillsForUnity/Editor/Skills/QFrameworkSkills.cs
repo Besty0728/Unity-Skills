@@ -99,6 +99,14 @@ namespace UnitySkills
             }
         }
 
+        private static bool InstanceCanSet(object instance, string name)
+        {
+            var type = instance?.GetType();
+            if (type == null) return false;
+            var prop = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+            return (prop != null && prop.CanWrite) || type.GetField(name, BindingFlags.Public | BindingFlags.Instance) != null;
+        }
+
         private static bool InstanceSet(object instance, string name, object value)
         {
             if (instance == null) return false;
@@ -180,19 +188,19 @@ namespace UnitySkills
         {
             WorkflowSettingRestorerRegistry.Register("qframework.simulationMode",
                 () => JsonConvert.SerializeObject(GetSimulationMode()),
-                json => { SetSimulationModeRaw(JsonConvert.DeserializeObject<bool>(json)); return true; });
+                json => SetSimulationModeRaw(JsonConvert.DeserializeObject<bool>(json)));
 
             WorkflowSettingRestorerRegistry.Register("qframework.reskitAppendHash",
                 () => JsonConvert.SerializeObject(GetResKitEditorPrefBool(AppendHashKey())),
-                json => { SetResKitEditorPrefBool(AppendHashKey(), JsonConvert.DeserializeObject<bool>(json)); return true; });
+                json => SetResKitEditorPrefBool(AppendHashKey(), JsonConvert.DeserializeObject<bool>(json)));
 
             WorkflowSettingRestorerRegistry.Register("qframework.reskitAutoGenerateClass",
                 () => JsonConvert.SerializeObject(GetResKitEditorPrefBool(AutoGenerateClassKey())),
-                json => { SetResKitEditorPrefBool(AutoGenerateClassKey(), JsonConvert.DeserializeObject<bool>(json)); return true; });
+                json => SetResKitEditorPrefBool(AutoGenerateClassKey(), JsonConvert.DeserializeObject<bool>(json)));
 
             WorkflowSettingRestorerRegistry.Register("qframework.editorLocaleIsCN",
                 () => JsonConvert.SerializeObject(GetEditorLocaleIsCN()),
-                json => { SetEditorLocaleIsCNRaw(JsonConvert.DeserializeObject<bool>(json)); return true; });
+                json => SetEditorLocaleIsCNRaw(JsonConvert.DeserializeObject<bool>(json)));
 
             WorkflowSettingRestorerRegistry.Register(UIKitSettingsKey, CaptureUIKitSettingsJson, ApplyUIKitSettingsJson);
         }
@@ -203,7 +211,7 @@ namespace UnitySkills
             return v is bool b && b;
         }
 
-        private static void SetSimulationModeRaw(bool value) =>
+        private static bool SetSimulationModeRaw(bool value) =>
             StaticSet(QType("QFramework.ResKitEditorAPI"), "SimulationMode", value);
 
         // ResKitView.KEY_APPEND_HASH / KEY_AUTOGENERATE_CLASS are public const strings with no public
@@ -213,7 +221,12 @@ namespace UnitySkills
         private static string AutoGenerateClassKey() => StaticGet(QType("QFramework.ResKitView"), "KEY_AUTOGENERATE_CLASS") as string;
 
         private static bool GetResKitEditorPrefBool(string key) => !string.IsNullOrEmpty(key) && EditorPrefs.GetBool(key, false);
-        private static void SetResKitEditorPrefBool(string key, bool value) { if (!string.IsNullOrEmpty(key)) EditorPrefs.SetBool(key, value); }
+        private static bool SetResKitEditorPrefBool(string key, bool value)
+        {
+            if (string.IsNullOrEmpty(key)) return false;
+            EditorPrefs.SetBool(key, value);
+            return true;
+        }
 
         private static bool GetEditorLocaleIsCN()
         {
@@ -221,10 +234,10 @@ namespace UnitySkills
             return InstanceGet(prop, "Value") is bool b && b;
         }
 
-        private static void SetEditorLocaleIsCNRaw(bool value)
+        private static bool SetEditorLocaleIsCNRaw(bool value)
         {
             var prop = StaticGet(QType("QFramework.LocaleKitEditor"), "IsCN");
-            InstanceSet(prop, "Value", value);
+            return InstanceSet(prop, "Value", value);
         }
 
         private sealed class UIKitSettingsSnapshot
@@ -272,10 +285,12 @@ namespace UnitySkills
             var settings = LoadUIKitSettings();
             if (settings == null) return false;
 
-            InstanceSet(settings, "Namespace", snap.Namespace);
-            InstanceSet(settings, "UIScriptDir", snap.UIScriptDir);
-            InstanceSet(settings, "UIPrefabDir", snap.UIPrefabDir);
-            InstanceSet(settings, "AssemblyNamesToSearch", snap.AssemblyNamesToSearch ?? new List<string>());
+            // Every field is attempted; a restore that could not write one of them fails instead of saving a half-restored config.
+            bool restored = InstanceSet(settings, "Namespace", snap.Namespace)
+                            & InstanceSet(settings, "UIScriptDir", snap.UIScriptDir)
+                            & InstanceSet(settings, "UIPrefabDir", snap.UIPrefabDir)
+                            & InstanceSet(settings, "AssemblyNamesToSearch", snap.AssemblyNamesToSearch ?? new List<string>());
+            if (!restored) return false;
             SaveUIKitSettings(settings);
             return true;
         }
@@ -816,10 +831,23 @@ namespace UnitySkills
             var changed = new List<string>();
             var beforeJson = CaptureUIKitSettingsJson();
 
-            if (namespaceName != null) { InstanceSet(settings, "Namespace", namespaceName); changed.Add("namespaceName"); }
-            if (uiScriptDir != null) { InstanceSet(settings, "UIScriptDir", uiScriptDir); changed.Add("uiScriptDir"); }
-            if (uiPrefabDir != null) { InstanceSet(settings, "UIPrefabDir", uiPrefabDir); changed.Add("uiPrefabDir"); }
-            if (parsedAssemblyNames != null) { InstanceSet(settings, "AssemblyNamesToSearch", parsedAssemblyNames); changed.Add("assemblyNamesToSearch"); }
+            var requested = new List<(string parameter, string member, object value)>();
+            if (namespaceName != null) requested.Add(("namespaceName", "Namespace", namespaceName));
+            if (uiScriptDir != null) requested.Add(("uiScriptDir", "UIScriptDir", uiScriptDir));
+            if (uiPrefabDir != null) requested.Add(("uiPrefabDir", "UIPrefabDir", uiPrefabDir));
+            if (parsedAssemblyNames != null) requested.Add(("assemblyNamesToSearch", "AssemblyNamesToSearch", parsedAssemblyNames));
+
+            // Checked before anything is written: a member this QFramework version lacks used to be skipped while the
+            // response still listed it as changed.
+            var unwritable = requested.Where(r => !InstanceCanSet(settings, r.member)).Select(r => r.member).ToArray();
+            if (unwritable.Length > 0)
+                return NoQFramework("QFramework.UIKitSettingData." + string.Join("/", unwritable));
+            foreach (var (parameter, member, value) in requested)
+            {
+                if (!InstanceSet(settings, member, value))
+                    return new { error = $"Writing UIKitSettingData.{member} failed; nothing was saved.", errorCode = SkillParamUtil.SemanticInvalidCode, parameter };
+                changed.Add(parameter);
+            }
 
             if (changed.Count == 0)
             {
@@ -986,12 +1014,18 @@ namespace UnitySkills
             if (apiType == null || viewType == null) return NoQFramework("QFramework.ResKitEditorAPI");
 
             var changed = new List<string>();
+            // Both keys are QFramework constants; if this version lacks one, the write used to be skipped silently.
+            if (appendHash.HasValue && string.IsNullOrEmpty(AppendHashKey()))
+                return NoQFramework("QFramework.ResKitView.KEY_APPEND_HASH");
+            if (autoGenerateClass.HasValue && string.IsNullOrEmpty(AutoGenerateClassKey()))
+                return NoQFramework("QFramework.ResKitView.KEY_AUTOGENERATE_CLASS");
 
             if (simulationMode.HasValue)
             {
                 if (WorkflowManager.IsRecording)
                     WorkflowManager.SnapshotSetting("qframework.simulationMode", JsonConvert.SerializeObject(GetSimulationMode()), "QFramework: ResKit SimulationMode");
-                SetSimulationModeRaw(simulationMode.Value);
+                if (!SetSimulationModeRaw(simulationMode.Value))
+                    return NoQFramework("QFramework.ResKitEditorAPI.SimulationMode (not writable)");
                 changed.Add("simulationMode");
             }
 
@@ -1382,10 +1416,12 @@ namespace UnitySkills
             {
                 if (WorkflowManager.IsRecording)
                     WorkflowManager.SnapshotSetting("qframework.editorLocaleIsCN", JsonConvert.SerializeObject(before), "QFramework: Editor Locale");
-                InstanceSet(propObj, "Value", isCN);
+                if (!InstanceSet(propObj, "Value", isCN))
+                    return NoQFramework("QFramework.LocaleKitEditor.IsCN.Value (not writable)");
             }
 
-            return new { isCN, changed };
+            // Read back rather than echo the request.
+            return new { isCN = InstanceGet(propObj, "Value") is bool now && now, changed };
         }
 
         [UnitySkill("qframework_set_language_defines",

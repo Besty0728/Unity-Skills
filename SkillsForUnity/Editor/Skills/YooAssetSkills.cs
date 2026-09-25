@@ -1581,6 +1581,9 @@ namespace UnitySkills
 #endif
         }
 
+        private static readonly string[] BundleSortKeys = { "size", "name", "refcount", "dependcount" };
+        private static readonly string[] AssetSortKeys = { "path", "size", "bundle", "dependcount" };
+
         [UnitySkill("yooasset_list_report_bundles",
             "List bundles from a BuildReport JSON with paging + filtering. Sort by size / name / refCount / dependCount.",
             Category = SkillCategory.YooAsset, Operation = SkillOperation.Analyze,
@@ -1602,6 +1605,16 @@ namespace UnitySkills
             return NoYooAsset();
 #else
             if (string.IsNullOrEmpty(reportPath)) return new { error = "reportPath is required." };
+            // Checked first: an unparseable filterEncrypted used to drop the filter and an unknown sortBy fell back to size.
+            bool? wantEncrypted = null;
+            if (!string.IsNullOrEmpty(filterEncrypted))
+            {
+                if (!SkillParamUtil.TryParseBoolText(filterEncrypted, out var parsedEncrypted))
+                    return SkillParamUtil.InvalidValueError(filterEncrypted, "filterEncrypted", new[] { "true", "false" });
+                wantEncrypted = parsedEncrypted;
+            }
+            if (!BundleSortKeys.Contains((sortBy ?? "size").ToLowerInvariant()))
+                return SkillParamUtil.InvalidValueError(sortBy, "sortBy", new[] { "size", "name", "refCount", "dependCount" });
             if (!File.Exists(reportPath))         return new { error = $"Report file not found: {reportPath}" };
 
             BuildReport report;
@@ -1610,8 +1623,8 @@ namespace UnitySkills
 
             IEnumerable<ReportBundleInfo> bundles = report.BundleInfos ?? new List<ReportBundleInfo>();
 
-            if (!string.IsNullOrEmpty(filterEncrypted) && bool.TryParse(filterEncrypted, out var wantEnc))
-                bundles = bundles.Where(b => b.Encrypted == wantEnc);
+            if (wantEncrypted.HasValue)
+                bundles = bundles.Where(b => b.Encrypted == wantEncrypted.Value);
 
             if (!string.IsNullOrEmpty(filterTag))
                 bundles = bundles.Where(b => b.Tags != null && b.Tags.Contains(filterTag));
@@ -1621,7 +1634,7 @@ namespace UnitySkills
                 case "name":        bundles = bundles.OrderBy(b => b.BundleName); break;
                 case "refcount":    bundles = bundles.OrderByDescending(b => b.ReferenceBundles?.Count ?? 0); break;
                 case "dependcount": bundles = bundles.OrderByDescending(b => b.DependBundles?.Count ?? 0); break;
-                default:            bundles = bundles.OrderByDescending(b => b.FileSize); break;
+                default:            bundles = bundles.OrderByDescending(b => b.FileSize); break; // "size"
             }
 
             var materialized = bundles.ToArray();
@@ -1720,6 +1733,8 @@ namespace UnitySkills
 #if !YOO_ASSET
             return NoYooAsset();
 #else
+            if (!AssetSortKeys.Contains((sortBy ?? "path").ToLowerInvariant()))
+                return SkillParamUtil.InvalidValueError(sortBy, "sortBy", new[] { "path", "size", "bundle", "dependCount" });
             var reportError = TryLoadReport(reportPath, out var report);
             if (reportError != null) return reportError;
             IEnumerable<ReportAssetInfo> assets = report.AssetInfos ?? new List<ReportAssetInfo>();
@@ -1736,7 +1751,7 @@ namespace UnitySkills
                 case "size": assets = assets.OrderByDescending(a => a.MainBundleSize); break;
                 case "bundle": assets = assets.OrderBy(a => a.MainBundleName); break;
                 case "dependcount": assets = assets.OrderByDescending(a => a.DependAssets?.Count ?? 0); break;
-                default: assets = assets.OrderBy(a => a.AssetPath); break;
+                default: assets = assets.OrderBy(a => a.AssetPath); break; // "path"
             }
             var materialized = assets.ToArray();
             var page = materialized.Skip(Math.Max(0, offset)).Take(Math.Max(1, limit)).ToArray();

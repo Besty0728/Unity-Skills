@@ -677,6 +677,31 @@ namespace UnitySkills
             var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
             if (findErr != null) return findErr;
 
+            // Both checked before anything is added: a malformed offset used to skip the custom attach point, and an
+            // unknown movementType was dropped by SetEnumProperty, while the call reported success either way.
+            Vector3? attachOffset = null;
+            if (!string.IsNullOrEmpty(attachTransformOffset))
+            {
+                attachOffset = ParseVector3(attachTransformOffset);
+                if (!attachOffset.HasValue)
+                {
+                    return new
+                    {
+                        error = $"attachTransformOffset '{attachTransformOffset}' must be three comma-separated numbers, e.g. '0,0.1,0'.",
+                        errorCode = SkillParamUtil.SemanticInvalidCode,
+                        parameter = "attachTransformOffset",
+                    };
+                }
+            }
+            var movementProperty = XRReflectionHelper.ResolveXRType("XRGrabInteractable")?
+                .GetProperty("movementType", BindingFlags.Public | BindingFlags.Instance);
+            if (movementProperty != null && movementProperty.PropertyType.IsEnum)
+            {
+                var movementNames = Enum.GetNames(movementProperty.PropertyType);
+                if (!movementNames.Any(n => string.Equals(n, movementType, StringComparison.OrdinalIgnoreCase)))
+                    return SkillParamUtil.InvalidValueError(movementType, "movementType", movementNames);
+            }
+
             Undo.RecordObject(go, "Add XRGrabInteractable");
 
             var rb = go.GetComponent<Rigidbody>();
@@ -703,7 +728,8 @@ namespace UnitySkills
 
             Undo.RegisterCreatedObjectUndo(comp, "Add XRGrabInteractable");
 
-            XRReflectionHelper.SetEnumProperty(comp, "movementType", movementType);
+            if (!XRReflectionHelper.SetEnumProperty(comp, "movementType", movementType))
+                return new { error = $"Could not set movementType '{movementType}' on XRGrabInteractable.", errorCode = SkillParamUtil.SemanticInvalidCode, parameter = "movementType" };
             XRReflectionHelper.SetProperty(comp, "throwOnDetach", throwOnDetach);
             XRReflectionHelper.SetProperty(comp, "smoothPosition", smoothPosition);
             XRReflectionHelper.SetProperty(comp, "smoothRotation", smoothRotation);
@@ -711,16 +737,13 @@ namespace UnitySkills
             XRReflectionHelper.SetProperty(comp, "smoothRotationAmount", smoothRotationAmount);
 
             // When offset is specified, create and set a custom attach transform
-            if (!string.IsNullOrEmpty(attachTransformOffset))
+            if (attachOffset.HasValue)
             {
-                var offsets = ParseVector3(attachTransformOffset);
-                if (offsets.HasValue)
-                {
-                    var attachGo = new GameObject("Attach Point");
-                    attachGo.transform.SetParent(go.transform, false);
-                    attachGo.transform.localPosition = offsets.Value;
-                    XRReflectionHelper.SetProperty(comp, "attachTransform", attachGo.transform);
-                }
+                var attachGo = new GameObject("Attach Point");
+                Undo.RegisterCreatedObjectUndo(attachGo, "Add XR Attach Point");
+                attachGo.transform.SetParent(go.transform, false);
+                attachGo.transform.localPosition = attachOffset.Value;
+                XRReflectionHelper.SetProperty(comp, "attachTransform", attachGo.transform);
             }
 
             WorkflowManager.SnapshotObject(go);
@@ -1466,30 +1489,15 @@ namespace UnitySkills
             if (comp == null)
                 return new { error = $"No XR {(isInteractor ? "interactor" : "interactable")} found on '{go.name}'." };
 
+            // Resolved before anything is recorded: an unknown layer name used to yield mask 0 (Nothing), and garbage
+            // input that also failed the integer fallback wrote nothing, while the call reported success.
+            if (!TryResolveInteractionLayerMask(layers, out var mask, out var maskError))
+                return maskError;
+
             Undo.RecordObject(comp, "Configure Interaction Layers");
             WorkflowManager.SnapshotObject(comp);
-
-            // Try setting the interaction layer via InteractionLayerMask
-            var ilmType = XRReflectionHelper.ResolveXRType("InteractionLayerMask");
-            if (ilmType != null)
-            {
-                var getMethod = ilmType.GetMethod("GetMask", BindingFlags.Public | BindingFlags.Static);
-                if (getMethod != null)
-                {
-                    try
-                    {
-                        var layerNames = layers.Split(',').Select(l => l.Trim()).ToArray();
-                        var mask = getMethod.Invoke(null, new object[] { layerNames });
-                        XRReflectionHelper.SetProperty(comp, "interactionLayers", mask);
-                    }
-                    catch
-                    {
-                        // Fallback: assign using an integer value instead
-                        if (int.TryParse(layers, out int layerMask))
-                            XRReflectionHelper.SetProperty(comp, "interactionLayers", layerMask);
-                    }
-                }
-            }
+            if (!XRReflectionHelper.SetProperty(comp, "interactionLayers", mask))
+                return new { error = $"Could not write interactionLayers on {comp.GetType().Name}.", errorCode = SkillParamUtil.SemanticInvalidCode, parameter = "layers" };
 
             return new
             {
@@ -1513,11 +1521,58 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(csv)) return null;
             var parts = csv.Split(',');
             if (parts.Length != 3) return null;
-            if (float.TryParse(parts[0].Trim(), out var x) &&
-                float.TryParse(parts[1].Trim(), out var y) &&
-                float.TryParse(parts[2].Trim(), out var z))
+            var style = System.Globalization.NumberStyles.Float;
+            var culture = System.Globalization.CultureInfo.InvariantCulture;
+            if (float.TryParse(parts[0].Trim(), style, culture, out var x) &&
+                float.TryParse(parts[1].Trim(), style, culture, out var y) &&
+                float.TryParse(parts[2].Trim(), style, culture, out var z))
                 return new Vector3(x, y, z);
             return null;
+        }
+
+        /// <summary>
+        /// An integer is taken as the mask itself; otherwise every comma-separated name must be a defined interaction
+        /// layer (InteractionLayerMask.GetMask returns 0 for an unknown name instead of failing).
+        /// </summary>
+        private static bool TryResolveInteractionLayerMask(string layers, out object mask, out object error)
+        {
+            mask = null;
+            error = null;
+            if (int.TryParse(layers?.Trim(), out var numeric))
+            {
+                mask = numeric;
+                return true;
+            }
+
+            var getMask = XRReflectionHelper.ResolveXRType("InteractionLayerMask")?
+                .GetMethod("GetMask", BindingFlags.Public | BindingFlags.Static);
+            if (getMask == null)
+            {
+                error = new { error = "InteractionLayerMask.GetMask was not found in this XR Interaction Toolkit version; nothing was changed." };
+                return false;
+            }
+
+            var names = (layers ?? string.Empty).Split(',').Select(l => l.Trim()).Where(l => l.Length > 0).ToArray();
+            if (names.Length == 0)
+            {
+                error = new { error = "layers is empty; pass layer names (comma-separated) or an integer mask.", errorCode = SkillParamUtil.SemanticInvalidCode, parameter = "layers" };
+                return false;
+            }
+
+            var unknown = names.Where(n => Convert.ToInt32(getMask.Invoke(null, new object[] { new[] { n } })) == 0).ToArray();
+            if (unknown.Length > 0)
+            {
+                error = new
+                {
+                    error = $"Unknown interaction layer(s): {string.Join(", ", unknown)}. Define them in the XR Interaction Toolkit's interaction layer settings, or pass an integer mask.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = "layers",
+                };
+                return false;
+            }
+
+            mask = getMask.Invoke(null, new object[] { names });
+            return true;
         }
 
         private static Type FindTrackedPoseDriverType()
