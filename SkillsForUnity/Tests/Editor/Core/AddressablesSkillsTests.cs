@@ -14,6 +14,14 @@ namespace UnitySkills.Tests.Core
         private string _groupName;
         private string _assetPath;
 
+        private ModePreferenceSnapshot _modePreferences;
+
+        [OneTimeSetUp]
+        public void OneTimeSetUp() => _modePreferences = ModePreferenceSnapshot.Capture();
+
+        [OneTimeTearDown]
+        public void OneTimeTearDown() => _modePreferences.Restore();
+
         [SetUp]
         public void SetUp()
         {

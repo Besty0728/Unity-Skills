@@ -16,32 +16,14 @@ namespace UnitySkills.Tests.Core
     [TestFixture]
     public class SkillsModeManagerOneShotTests
     {
-        private const string PrefKeyMode = "UnitySkills_OperatingMode";
-        private const string PrefKeyPanelApproval = "UnitySkills_PanelApprovalRequired";
 
-        private bool _hadMode;
-        private string _savedMode;
-        private bool _hadPanelApproval;
-        private bool _savedPanelApproval;
+        private ModePreferenceSnapshot _modePreferences;
 
         [OneTimeSetUp]
-        public void OneTimeSetUp()
-        {
-            _hadMode = EditorPrefs.HasKey(PrefKeyMode);
-            _savedMode = EditorPrefs.GetString(PrefKeyMode, string.Empty);
-            _hadPanelApproval = EditorPrefs.HasKey(PrefKeyPanelApproval);
-            _savedPanelApproval = EditorPrefs.GetBool(PrefKeyPanelApproval, false);
-        }
+        public void OneTimeSetUp() => _modePreferences = ModePreferenceSnapshot.Capture();
 
         [OneTimeTearDown]
-        public void OneTimeTearDown()
-        {
-            if (_hadMode) EditorPrefs.SetString(PrefKeyMode, _savedMode);
-            else EditorPrefs.DeleteKey(PrefKeyMode);
-            if (_hadPanelApproval) EditorPrefs.SetBool(PrefKeyPanelApproval, _savedPanelApproval);
-            else EditorPrefs.DeleteKey(PrefKeyPanelApproval);
-            SkillsModeManager.CompleteTestPreferenceRecovery();
-        }
+        public void OneTimeTearDown() => _modePreferences.Restore();
 
         [SetUp]
         public void SetUp()
