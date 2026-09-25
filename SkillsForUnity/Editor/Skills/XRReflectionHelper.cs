@@ -535,6 +535,17 @@ namespace UnitySkills
                 catch { return null; }
             }
 
+            // Struct wrappers such as InteractionLayerMask convert only through an implicit operator (no IConvertible):
+            // Convert.ChangeType threw for them, so every interactionLayers write was dropped.
+            var implicitOperator = targetType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .FirstOrDefault(m => m.Name == "op_Implicit" && m.ReturnType == targetType &&
+                                     m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType.IsInstanceOfType(value));
+            if (implicitOperator != null)
+            {
+                try { return implicitOperator.Invoke(null, new[] { value }); }
+                catch { return null; }
+            }
+
             // Numeric type conversion
             try { return Convert.ChangeType(value, targetType); }
             catch { return null; }

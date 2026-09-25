@@ -138,7 +138,21 @@ namespace UnitySkills
         {
             var t = SettingsType;
             if (t == null) return null;
-            try { return t.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null); }
+            try
+            {
+                var instance = t.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                // LoadOrCreate falls back with `s_Instance ?? CreateInstance()`: once a scene change has unloaded the
+                // instance and no settings file exists yet, Instance keeps returning the destroyed object, so Undo
+                // throws and Save() silently writes nothing. Drop the dead reference so Instance builds a live one.
+                if (instance is UnityEngine.Object unityObject && unityObject == null)
+                {
+                    t.GetField("s_Instance", BindingFlags.NonPublic | BindingFlags.Static)?.SetValue(null, null);
+                    instance = t.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
+                    if (instance is UnityEngine.Object stillDead && stillDead == null)
+                        return null;
+                }
+                return instance;
+            }
             catch (Exception ex)
             {
                 SkillsLogger.LogWarning($"[HybridCLR] HybridCLRSettings.Instance failed: {ex.Message}");

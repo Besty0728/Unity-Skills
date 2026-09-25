@@ -113,7 +113,8 @@ namespace UnitySkills
         {
             error = "Unity Behavior package (com.unity.behavior) is not installed. " +
                     "All behavior_* skills require it.",
-            errorCode = "PACKAGE_NOT_INSTALLED",
+            // A code the router does not know was dropped and the message reclassified; name the real one.
+            errorCode = "MISSING_PACKAGE",
             package = PackageId,
             suggestedFixes = new[]
             {

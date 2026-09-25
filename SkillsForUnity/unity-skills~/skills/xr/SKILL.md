@@ -25,7 +25,7 @@ Use this module for XR Interaction Toolkit setup and configuration. All `xr_*` s
 - **Auto** / **Bypass**: SemiAuto and FullAuto run directly.
 - This module contains **no** Delete / PlayMode / Reload / `RiskLevel="high"` skills, so nothing is auto-classified as forbidden — every skill is reachable via grant.
 - When `com.unity.xr.interaction.toolkit` is missing, every `xr_*` skill returns the `NoXRI()` install instruction instead of executing.
-- **Reflection-sensitive**: property names on XRI components must match XRI 2.x/3.x exactly. A wrong field name on `xr_configure_interactable` / `xr_configure_haptics` / `xr_configure_interaction_layers` is silently ignored. Load `API_REFERENCE.md` before issuing detailed property edits.
+- **Reflection-sensitive**: property names on XRI components must match XRI 2.x/3.x exactly. A wrong field name on `xr_configure_interactable` / `xr_configure_haptics` is silently ignored; `xr_configure_interaction_layers` takes layer names or an integer mask and rejects undefined names. Load `API_REFERENCE.md` before issuing detailed property edits.
 
 **DO NOT** (common hallucinations):
 - `XRHand`, `XRPlayer`, `XRTeleporter`, `GrabInteractor`, `VRController`, `XRLocomotion`, and `XRManager` are not the runtime classes you want here
