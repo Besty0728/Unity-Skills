@@ -229,7 +229,7 @@ Paint terrain texture layer. Requires terrain layers already configured.
 |-----------|------|----------|---------|-------------|
 | `normalizedX` | float | Yes | - | X position (0-1) |
 | `normalizedZ` | float | Yes | - | Z position (0-1) |
-| `layerIndex` | int | Yes | - | Terrain layer index (0-based; use `terrain_get_info` to query available layers) |
+| `layerIndex` | int | Yes | - | Terrain layer index (0-based; use `terrain_get_info` to query available layers). Out of range, including negative, is rejected before anything is painted |
 | `strength` | float | No | 1.0 | Paint strength |
 | `brushSize` | int | No | 10 | Brush size in pixels |
 | `name` | string | No | null | Terrain name |

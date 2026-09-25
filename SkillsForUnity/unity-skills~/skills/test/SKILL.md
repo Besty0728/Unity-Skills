@@ -124,7 +124,7 @@ Run a reusable smoke test across registered skills.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| category | string | No | - | Only test one skill category |
+| category | string | No | - | Only test one skill category (a SkillCategory name; an unknown name is rejected instead of testing everything) |
 | nameContains | string | No | - | Filter skills by partial name |
 | excludeNamesCsv | string | No | - | Comma-separated skill names to exclude |
 | executeReadOnly | bool | No | true | Execute safe read-only skills directly |

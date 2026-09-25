@@ -336,6 +336,27 @@ namespace UnitySkills
             var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
             if (importer == null) return new { error = $"Not a texture: {assetPath}" };
 
+            if ((pivotX == null) != (pivotY == null))
+            {
+                return new
+                {
+                    error = "pivotX and pivotY go together: pass both, or neither to keep the current pivot.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = pivotX == null ? "pivotX" : "pivotY",
+                };
+            }
+            Vector2? pivot = null;
+            if (pivotX != null)
+            {
+                var style = System.Globalization.NumberStyles.Float;
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
+                if (!float.TryParse(pivotX, style, culture, out var px))
+                    return new { error = $"pivotX '{pivotX}' is not a number.", errorCode = SkillParamUtil.SemanticInvalidCode, parameter = "pivotX" };
+                if (!float.TryParse(pivotY, style, culture, out var py))
+                    return new { error = $"pivotY '{pivotY}' is not a number.", errorCode = SkillParamUtil.SemanticInvalidCode, parameter = "pivotY" };
+                pivot = new Vector2(px, py);
+            }
+
             // Must be validated before forcing textureType=Sprite below: otherwise an invalid spriteMode
             // would leave the asset already converted to Sprite while the requested mode is silently dropped.
             if (!SkillParamUtil.TryParseOptionalEnum<SpriteImportMode>(spriteMode, "spriteMode", out var parsedSpriteMode, out var spriteModeError))
@@ -362,12 +383,8 @@ namespace UnitySkills
 #pragma warning restore CS0618
 #endif
             }
-            if (pivotX != null && pivotY != null)
-            {
-                importer.spritePivot = new Vector2(
-                    float.Parse(pivotX, System.Globalization.CultureInfo.InvariantCulture),
-                    float.Parse(pivotY, System.Globalization.CultureInfo.InvariantCulture));
-            }
+            if (pivot.HasValue)
+                importer.spritePivot = pivot.Value;
 
             importer.SaveAndReimport();
 

@@ -335,6 +335,9 @@ namespace UnitySkills
             int chunkSize = 25,
             int failureItemLimit = 50)
         {
+            if (!SkillParamUtil.TryParseOptionalEnum<SkillCategory>(category, "category", out _, out var categoryError))
+                return categoryError;
+
             var request = BuildSmokeRequest(category, nameContains, excludeNamesCsv, executeReadOnly, includeMutating, limit);
 
             if (runAsync)

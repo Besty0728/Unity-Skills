@@ -512,8 +512,15 @@ namespace UnitySkills
 
             var data = terrain.terrainData;
             
-            if (data.terrainLayers == null || layerIndex >= data.terrainLayers.Length)
-                return new { success = false, error = $"Layer index {layerIndex} out of range. Terrain has {data.terrainLayers?.Length ?? 0} layers." };
+            // A negative index used to pass this check, repaint every layer toward zero, then crash reading the name.
+            if (data.terrainLayers == null || layerIndex < 0 || layerIndex >= data.terrainLayers.Length)
+                return new
+                {
+                    success = false,
+                    error = $"Layer index {layerIndex} out of range. Terrain has {data.terrainLayers?.Length ?? 0} layers.",
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = "layerIndex",
+                };
 
             Undo.RegisterCompleteObjectUndo(data, "Paint Terrain Texture");
 

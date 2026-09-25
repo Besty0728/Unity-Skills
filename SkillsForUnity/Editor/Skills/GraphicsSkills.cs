@@ -136,22 +136,27 @@ namespace UnitySkills
             });
         }
 
-        private static bool ApplyShaderStripping(string json)
+        private static bool ApplyShaderStripping(string json) =>
+            ApplyShaderStripping(json, RenderPipelineSkillsCommon.GetGraphicsSettingsObject());
+
+        /// <summary>
+        /// Restores all three stripping modes or none: a field that can't be found fails the restore instead of being
+        /// skipped while the restore still reports success.
+        /// </summary>
+        internal static bool ApplyShaderStripping(string json, SerializedObject graphicsSettings)
         {
             var value = JsonConvert.DeserializeObject<ShaderStrippingValue>(json);
-            if (value == null)
-                return false;
-
-            var graphicsSettings = RenderPipelineSkillsCommon.GetGraphicsSettingsObject();
-            if (graphicsSettings == null)
+            if (value == null || graphicsSettings == null)
                 return false;
 
             var lightmap = graphicsSettings.FindProperty("m_LightmapStripping");
             var fog = graphicsSettings.FindProperty("m_FogStripping");
             var instancing = graphicsSettings.FindProperty("m_InstancingStripping");
-            if (lightmap != null) lightmap.enumValueIndex = value.lightmap;
-            if (fog != null) fog.enumValueIndex = value.fog;
-            if (instancing != null) instancing.enumValueIndex = value.instancing;
+            if (lightmap == null || fog == null || instancing == null)
+                return false;
+            lightmap.enumValueIndex = value.lightmap;
+            fog.enumValueIndex = value.fog;
+            instancing.enumValueIndex = value.instancing;
             graphicsSettings.ApplyModifiedPropertiesWithoutUndo();
             return true;
         }

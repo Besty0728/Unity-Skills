@@ -103,14 +103,18 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object ConsoleGetLogs(string type = "All", string filter = null, int limit = 100)
         {
+            const int allTypes = DebugSkills.ErrorModeMask | DebugSkills.WarningModeMask | DebugSkills.LogModeMask;
+            if (!DebugSkills.TryParseLogTypeMask(type, allTypes, out var targetMask))
+                return SkillParamUtil.InvalidValueError(type, "type", DebugSkills.LogTypeNames);
+
             if (_capturing)
             {
                 // Capture mode: returns timestamped logs from the buffer.
                 lock (_logLock)
                 {
                     IEnumerable<LogEntry> results = _logs;
-                    if (type != "All")
-                        results = results.Where(l => CapturedLogMatchesType(l.type, type));
+                    if (targetMask != allTypes)
+                        results = results.Where(l => CapturedLogMatchesMask(l.type, targetMask));
                     if (!string.IsNullOrEmpty(filter))
                         results = results.Where(l => l.message.Contains(filter));
 
@@ -125,24 +129,19 @@ namespace UnitySkills
             }
 
             // Direct-read mode: reads existing entries from Unity Console via reflection on LogEntries.
-            int targetMask = 0;
-            if (type == "All" || type.Contains("Error"))   targetMask |= DebugSkills.ErrorModeMask;
-            if (type == "All" || type.Contains("Warning")) targetMask |= DebugSkills.WarningModeMask;
-            if (type == "All" || type.Contains("Log"))     targetMask |= DebugSkills.LogModeMask;
-            if (targetMask == 0) targetMask = DebugSkills.ErrorModeMask | DebugSkills.WarningModeMask | DebugSkills.LogModeMask;
-
             var logs = DebugSkills.ReadLogEntries(targetMask, filter, limit);
             return new { count = logs.Count, logs, source = "console" };
         }
 
-        private static bool CapturedLogMatchesType(LogType logType, string typeFilter)
+        private static bool CapturedLogMatchesMask(LogType logType, int mask)
         {
-            switch (typeFilter)
+            switch (logType)
             {
-                case "Error":   return logType == LogType.Error || logType == LogType.Exception || logType == LogType.Assert;
-                case "Warning": return logType == LogType.Warning;
-                case "Log":     return logType == LogType.Log;
-                default:        return true;
+                case LogType.Error:
+                case LogType.Exception:
+                case LogType.Assert:  return (mask & DebugSkills.ErrorModeMask) != 0;
+                case LogType.Warning: return (mask & DebugSkills.WarningModeMask) != 0;
+                default:              return (mask & DebugSkills.LogModeMask) != 0;
             }
         }
 

@@ -48,7 +48,7 @@ Debug utilities for error checking and diagnostics.
 ### `debug_get_logs`
 Get console logs filtered by type and content.
 **Parameters:**
-- `type` (string, optional): Filter by type (Error/Warning/Log). Default: Error.
+- `type` (string, optional): Filter by type (Error/Warning/Log/All, case-insensitive; a value naming none of them is rejected with `SEMANTIC_INVALID`). Default: Error.
 - `filter` (string, optional): Filter by content.
 - `limit` (int, optional): Max entries. Default: 50.
 
@@ -58,8 +58,9 @@ Get only active errors and exceptions from console.
 - `limit` (int, optional): Max entries. Default: 50.
 
 ### `debug_check_compilation`
-Check if there are any compilation errors.
+Whether Unity is compiling right now, and whether the last finished compilation succeeded.
 **Parameters:** None.
+**Returns:** `{isCompiling, isUpdating, lastCompilation: {succeeded, errorCount, finishedAtUtc, errors: [{file, line, message}]}}` — `lastCompilation` is null until a compilation finishes in this editor session. `isCompiling: false` alone never means the last compile succeeded: after a failed compile Unity keeps running the old assemblies.
 
 ### `debug_force_recompile`
 Force Unity to recompile all scripts.

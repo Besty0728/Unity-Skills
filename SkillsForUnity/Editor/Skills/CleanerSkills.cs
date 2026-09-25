@@ -85,7 +85,7 @@ namespace UnitySkills
         [UnitySkill("cleaner_find_duplicates", "Find duplicate files by content hash",
             Category = SkillCategory.Cleaner, Operation = SkillOperation.Analyze,
             Tags = new[] { "cleaner", "duplicates", "hash", "files" },
-            Outputs = new[] { "duplicateGroupCount", "totalWastedBytes", "totalWastedMB", "groups" },
+            Outputs = new[] { "duplicateGroupCount", "totalWastedBytes", "totalWastedMB", "groups", "skipped" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object CleanerFindDuplicates(
@@ -112,6 +112,7 @@ namespace UnitySkills
             }
 
             var duplicateGroups = new List<object>();
+            var skipped = new List<object>();
             using (var md5 = MD5.Create())
             {
                 foreach (var group in sizeGroups.Values.Where(g => g.Count > 1))
@@ -131,7 +132,11 @@ namespace UnitySkills
                                 hashGroups[hash].Add(path);
                             }
                         }
-                        catch (System.Exception ex) { SkillsLogger.LogVerbose($"Hash failed for {path}: {ex.Message}"); }
+                        catch (System.Exception ex)
+                        {
+                            SkillsLogger.LogVerbose($"Hash failed for {path}: {ex.Message}");
+                            skipped.Add(new { path, reason = ex.Message });
+                        }
                     }
 
                     foreach (var hashGroup in hashGroups.Values.Where(g => g.Count > 1))
@@ -157,7 +162,8 @@ namespace UnitySkills
                 duplicateGroupCount = duplicateGroups.Count,
                 totalWastedBytes = totalWasted,
                 totalWastedMB = totalWasted / (1024.0 * 1024.0),
-                groups = duplicateGroups
+                groups = duplicateGroups,
+                skipped
             };
         }
 

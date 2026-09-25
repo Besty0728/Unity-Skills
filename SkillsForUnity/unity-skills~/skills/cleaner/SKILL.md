@@ -81,7 +81,7 @@ Find duplicate files by MD5 hash.
 | `searchPath` | string | No | "Assets" | Search path |
 | `limit` | int | No | 50 | Max groups |
 
-**Returns**: `{success, duplicateGroupCount, totalWastedBytes, totalWastedMB, groups: [{count, sizeBytes, wastedBytes, files}]}`
+**Returns**: `{success, duplicateGroupCount, totalWastedBytes, totalWastedMB, groups: [{count, sizeBytes, wastedBytes, files}], skipped: [{path, reason}]}` — `skipped` lists files that could not be read for hashing, so they are not silently missing from the groups.
 
 ```python
 # Find duplicate textures

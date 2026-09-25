@@ -227,28 +227,56 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object DebugGetLogs(string type = "Error", string filter = null, int limit = 50)
         {
-            int targetMask = 0;
-            if (type.Contains("Error")) targetMask |= ErrorModeMask;
-            if (type.Contains("Warning")) targetMask |= WarningModeMask;
-            if (type.Contains("Log")) targetMask |= LogModeMask;
-            if (targetMask == 0) targetMask = ErrorModeMask;
+            if (!TryParseLogTypeMask(type, ErrorModeMask, out var targetMask))
+                return SkillParamUtil.InvalidValueError(type, "type", LogTypeNames);
 
             var results = ReadLogEntries(targetMask, filter, limit);
             return new { count = results.Count, logs = results };
         }
 
-        [UnitySkill("debug_check_compilation", "Check if Unity is currently compiling scripts.",
+        internal static readonly string[] LogTypeNames = { "All", "Error", "Warning", "Log" };
+
+        /// <summary>
+        /// Console mode mask for a log-type filter: every type name the text contains, case-insensitively ("All" = all
+        /// three; "Errors" still reads as Error). Empty text takes the skill's default. Returns false when the text names
+        /// no type at all, so a typo is rejected instead of silently widening or narrowing the result.
+        /// </summary>
+        internal static bool TryParseLogTypeMask(string type, int defaultMask, out int mask)
+        {
+            mask = defaultMask;
+            if (string.IsNullOrWhiteSpace(type))
+                return true;
+
+            const int all = ErrorModeMask | WarningModeMask | LogModeMask;
+            mask = 0;
+            if (type.IndexOf("All", System.StringComparison.OrdinalIgnoreCase) >= 0) mask |= all;
+            if (type.IndexOf("Error", System.StringComparison.OrdinalIgnoreCase) >= 0) mask |= ErrorModeMask;
+            if (type.IndexOf("Warning", System.StringComparison.OrdinalIgnoreCase) >= 0) mask |= WarningModeMask;
+            if (type.IndexOf("Log", System.StringComparison.OrdinalIgnoreCase) >= 0) mask |= LogModeMask;
+            return mask != 0;
+        }
+
+        [UnitySkill("debug_check_compilation", "Check if Unity is currently compiling scripts, and whether the last finished compilation succeeded (lastCompilation: succeeded, errorCount, finishedAtUtc, errors; null until a compilation finishes in this editor session).",
             Category = SkillCategory.Debug, Operation = SkillOperation.Query,
             Tags = new[] { "compilation", "compiling", "status", "check" },
-            Outputs = new[] { "isCompiling", "isUpdating" },
+            Outputs = new[] { "isCompiling", "isUpdating", "lastCompilation" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object DebugCheckCompilation()
         {
+            // isCompiling=false alone reads like success after a failed compilation, while the old assemblies keep running.
+            var last = CompilationResultService.GetLastOutcome();
             return new
             {
                 isCompiling = EditorApplication.isCompiling,
-                isUpdating = EditorApplication.isUpdating
+                isUpdating = EditorApplication.isUpdating,
+                lastCompilation = last == null ? null : new
+                {
+                    succeeded = !last.HasErrors,
+                    errorCount = last.ErrorCount,
+                    finishedAtUtc = last.FinishedAtUtc,
+                    errors = last.Errors.Take(5).Select(e => new { file = e.File, line = e.Line, message = e.Message }).ToArray()
+                }
             };
         }
 

@@ -383,7 +383,9 @@ namespace UnitySkills
         {
             if (Validate.Required(tagName, "tagName") is object err) return err;
 
-            var tagManager = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            var tagManager = GetTagManager();
+            if (tagManager == null)
+                return new { error = "ProjectSettings/TagManager.asset could not be loaded." };
             var tagsProp = tagManager.FindProperty("tags");
             for (int i = 0; i < tagsProp.arraySize; i++)
             {

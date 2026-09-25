@@ -43,6 +43,8 @@ Find objects based on component property values (SQL-like).
 | `limit` | int | No | 50 | Max results |
 | `query` | string | No | null | Unsupported shorthand; if provided alone returns a guidance error |
 
+Rejected with `SEMANTIC_INVALID` (and a closest-name suggestion for a misspelled member) instead of silently matching nothing: an unknown `propertyName`, an `op` outside the list, `>`/`<`/`>=`/`<=` on a non-numeric member or with a non-numeric `value`, and anything but `==`/`!=` on a bool.
+
 **Example**:
 ```python
 # Find all lights with intensity > 2

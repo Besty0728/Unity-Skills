@@ -67,7 +67,7 @@ Get Unity Console logs (reads existing console history directly; if `console_sta
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `type` | string | No | "All" | All / Error / Warning / Log |
+| `type` | string | No | "All" | All / Error / Warning / Log (case-insensitive; a value naming none of them is rejected with `SEMANTIC_INVALID`) |
 | `filter` | string | No | null | Substring content filter |
 | `limit` | int | No | 100 | Max results |
 

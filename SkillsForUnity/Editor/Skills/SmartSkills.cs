@@ -69,6 +69,10 @@ namespace UnitySkills
                 return new { success = false, error = $"Component type '{componentName}' not found. Try: Light, MeshRenderer, Camera, etc." };
 
             var components = FindHelper.FindAll(type, includeInactive: false);
+            // Validated before scanning: a misspelled member, an unknown operator or an ordering on a non-number used to
+            // match nothing and report count 0, indistinguishable from "no object meets the condition".
+            if (ValidateQuery(type, components, propertyName, op, value) is object queryError)
+                return queryError;
             
             foreach (var comp in components)
             {
@@ -336,6 +340,72 @@ namespace UnitySkills
                 .FirstOrDefault(type => type.Name.Equals(name, System.StringComparison.OrdinalIgnoreCase));
         }
 
+        private static readonly string[] QueryOperators = { "==", "!=", ">", "<", ">=", "<=", "contains" };
+
+        private static object ValidateQuery(System.Type type, IEnumerable<Object> components, string propertyName, string op, string value)
+        {
+            if (!QueryOperators.Contains(op))
+                return SkillParamUtil.InvalidValueError(op, "op", QueryOperators);
+
+            var memberType = FindMemberType(type, propertyName)
+                ?? components.Select(c => c.GetType()).Distinct().Select(t => FindMemberType(t, propertyName)).FirstOrDefault(t => t != null);
+            if (memberType == null)
+            {
+                var names = type.GetFields(BindingFlags.Public | BindingFlags.Instance).Select(f => f.Name)
+                    .Concat(type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(p => p.CanRead).Select(p => p.Name))
+                    .Distinct().ToArray();
+                var closest = SkillsCommon.ClosestMatch(propertyName, names);
+                return new
+                {
+                    error = $"'{type.Name}' has no readable field or property '{propertyName}'." +
+                            (closest != null ? $" Did you mean '{closest}'?" : ""),
+                    errorCode = SkillParamUtil.SemanticInvalidCode,
+                    parameter = "propertyName",
+                    suggestion = closest,
+                };
+            }
+
+            bool ordering = op == ">" || op == "<" || op == ">=" || op == "<=";
+            if (memberType == typeof(bool))
+            {
+                if (op != "==" && op != "!=")
+                    return SkillParamUtil.InvalidValueError(op, "op", new[] { "==", "!=" });
+                if (!SkillParamUtil.TryParseBoolText(value, out _))
+                    return SkillParamUtil.InvalidValueError(value, "value", new[] { "true", "false" });
+            }
+            else if (ordering)
+            {
+                if (!IsNumericType(memberType))
+                    return SkillParamUtil.InvalidValueError(op, "op", new[] { "==", "!=", "contains" });
+                if (!double.TryParse(value, out _))
+                {
+                    return new
+                    {
+                        error = $"op '{op}' compares numbers, but value '{value}' is not a number.",
+                        errorCode = SkillParamUtil.SemanticInvalidCode,
+                        parameter = "value",
+                    };
+                }
+            }
+            return null;
+        }
+
+        private static System.Type FindMemberType(System.Type type, string memberName)
+        {
+            var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            if (field != null) return field.FieldType;
+            var prop = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            return prop != null && prop.CanRead ? prop.PropertyType : null;
+        }
+
+        private static bool IsNumericType(System.Type t)
+        {
+            t = System.Nullable.GetUnderlyingType(t) ?? t;
+            return t == typeof(int) || t == typeof(float) || t == typeof(double) || t == typeof(long) || t == typeof(short)
+                   || t == typeof(byte) || t == typeof(uint) || t == typeof(ulong) || t == typeof(ushort) || t == typeof(sbyte)
+                   || t == typeof(decimal) || t.IsEnum;
+        }
+
         private static object GetMemberValue(object obj, string memberName)
         {
             var type = obj.GetType();
@@ -359,7 +429,7 @@ namespace UnitySkills
                 // Boolean special case
                 if (val is bool b)
                 {
-                    bool targetBool = target?.ToLower() == "true";
+                    SkillParamUtil.TryParseBoolText(target, out bool targetBool);
                     return op == "==" ? b == targetBool : b != targetBool;
                 }
                 
