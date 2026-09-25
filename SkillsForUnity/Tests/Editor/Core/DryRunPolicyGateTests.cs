@@ -502,7 +502,7 @@ namespace UnitySkills.Tests.Core
         {
             var server = typeof(SkillsHttpServer);
             if (!(bool)server.GetField("_modeHookInstalled", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null))
-                Assert.Inconclusive("The REST server has not installed its change hooks in this editor session.");
+                Assert.Ignore("The REST server has not installed its change hooks in this editor session (batchmode never starts it).");
 
             var dirty = server.GetField("_healthSnapshotDirty", BindingFlags.NonPublic | BindingFlags.Static);
             dirty.SetValue(null, false);

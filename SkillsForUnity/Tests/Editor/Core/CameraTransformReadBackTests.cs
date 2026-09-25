@@ -27,10 +27,14 @@ namespace UnitySkills.Tests.Core
         {
             _savedMode = SkillsModeManager.CurrentMode;
             _savedProfile = SkillsSurfaceProfile.Current;
+            // After saving: NUnit runs TearDown even when SetUp stops early. Ignore, not Assume: batchmode has no
+            // Scene View, and an inconclusive result makes Unity's -runTests exit with 2, failing a CI run that has
+            // no failing test.
+            if (SceneView.lastActiveSceneView == null)
+                Assert.Ignore("No active Scene View in this test run (batchmode has none).");
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            Assume.That(SceneView.lastActiveSceneView, Is.Not.Null, "No active Scene View in this test run.");
         }
 
         [TearDown]
