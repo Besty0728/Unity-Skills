@@ -18,6 +18,14 @@ namespace UnitySkills.Tests.Core
             new Regex(@"^###\s+`?(?<name>[a-z0-9]+(?:_[a-z0-9]+)+)`?\s*$", RegexOptions.Compiled);
 
         /// <summary>
+        /// Any ATX heading whose text looks like a skill name, at any level. Only exactly three '#' open a skill
+        /// section for <see cref="ParseDocumentedSkills"/>; a section written as '####' or '##' silently drops out of
+        /// every comparison, which is how a whole module once left this check while the test stayed green.
+        /// </summary>
+        private static readonly Regex AnyLevelSkillHeadingRegex =
+            new Regex(@"^(?<hashes>#{1,6})\s+`?(?<name>[a-z0-9]+(?:_[a-z0-9]+)+)`?\s*$", RegexOptions.Compiled);
+
+        /// <summary>
         /// A complete code-span in the top-level SKILL.md that looks like a skill name. Requires backticks on both
         /// sides, so a wildcard pattern like `workflow_session_*` doesn't match as a whole and needs no extra exemption.
         /// </summary>
@@ -244,6 +252,110 @@ namespace UnitySkills.Tests.Core
             }
 
             AssertNoIssues(issues, "Skill 文档与 schema-first 约束不一致");
+        }
+
+        /// <summary>
+        /// A registered skill's section heading at the wrong level is invisible to <see cref="ParseDocumentedSkills"/>,
+        /// so its parameter table, ghost check and duplicate check all stop running without any test going red.
+        /// </summary>
+        [Test]
+        public void SkillHeadings_UseExactlyThreeHashes()
+        {
+            var skillNames = new HashSet<string>(LoadCodeSkills().Keys, StringComparer.Ordinal);
+            var docsRoot = GetDocsRoot();
+            var issues = new List<string>();
+            var filesScanned = 0;
+            var sectionsFound = 0;
+
+            foreach (var moduleDir in Directory.GetDirectories(docsRoot).OrderBy(x => x, StringComparer.Ordinal))
+            {
+                if (!IsRestModule(Path.GetFileName(moduleDir)))
+                {
+                    continue;
+                }
+
+                foreach (var docPath in EnumerateModuleDocs(moduleDir))
+                {
+                    filesScanned++;
+                    var lines = File.ReadAllLines(docPath);
+                    sectionsFound += lines.Count(line => SkillHeadingRegex.IsMatch(line));
+                    var relative = docPath.Substring(docsRoot.Length).TrimStart(Path.DirectorySeparatorChar, '/');
+                    foreach (var (line, name, level) in FindMisleveledSkillHeadings(lines, skillNames))
+                    {
+                        issues.Add($"{relative}:{line}: `{new string('#', level)} {name}` 必须写成 `### {name}`，" +
+                                   "否则这一节不参与任何一致性比对");
+                    }
+                }
+            }
+
+            Assert.That(filesScanned, Is.GreaterThan(50),
+                $"只扫描到 {filesScanned} 个模块文档 —— 文档目录解析多半坏了，空跑的绿色毫无意义。");
+            Assert.That(sectionsFound, Is.GreaterThan(400),
+                $"只找到 {sectionsFound} 个 `### skill_name` 段 —— 标题解析多半坏了。");
+            AssertNoIssues(issues, "技能段标题级别错误");
+        }
+
+        /// <summary>The canary for <see cref="SkillHeadings_UseExactlyThreeHashes"/>: it must flag what it exists to catch.</summary>
+        [Test]
+        public void MisleveledHeadingCheck_FlagsWrongLevelsButNotCodeFences()
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal) { "gameobject_create", "component_add" };
+            var sample = new[]
+            {
+                "## Overview",
+                "### gameobject_create",
+                "#### component_add",
+                "```bash",
+                "# gameobject_create",
+                "```",
+                "## `gameobject_create`",
+                "#### not_a_registered_skill",
+            };
+
+            var found = FindMisleveledSkillHeadings(sample, names);
+
+            Assert.That(found, Is.EqualTo(new[] { (3, "component_add", 4), (7, "gameobject_create", 2) }),
+                "The check must flag '####' and '##' skill headings, and ignore fenced code and unregistered names.");
+        }
+
+        /// <summary>
+        /// (1-based line, skill name, heading level) for every heading outside fenced code whose text is a registered
+        /// skill name but whose level is not three.
+        /// </summary>
+        private static List<(int Line, string Name, int Level)> FindMisleveledSkillHeadings(
+            IReadOnlyList<string> lines, ISet<string> skillNames)
+        {
+            var result = new List<(int Line, string Name, int Level)>();
+            var inFence = false;
+            for (var i = 0; i < lines.Count; i++)
+            {
+                var trimmed = lines[i].TrimStart();
+                if (trimmed.StartsWith("```", StringComparison.Ordinal) || trimmed.StartsWith("~~~", StringComparison.Ordinal))
+                {
+                    inFence = !inFence;
+                    continue;
+                }
+
+                if (inFence)
+                {
+                    continue;
+                }
+
+                var match = AnyLevelSkillHeadingRegex.Match(lines[i]);
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                var level = match.Groups["hashes"].Value.Length;
+                var name = match.Groups["name"].Value;
+                if (level != 3 && skillNames.Contains(name))
+                {
+                    result.Add((i + 1, name, level));
+                }
+            }
+
+            return result;
         }
 
         [Test]
