@@ -19,6 +19,8 @@ import os
 import re
 import sys
 
+from scan_floor import floor_problem
+
 LOCALES_DIR_REL = os.path.join("SkillsForUnity", "Editor", "Locales")
 REQUIRED_FILES = ("en.json", "zh-CN.json", "ru.json")
 
@@ -139,6 +141,15 @@ def main() -> int:
             errors.append(f"读取 C# 文件 {cs_file} 失败: {ex}")
 
     print(f"  ✓ 扫描 {len(cs_files)} 个 C# 文件（含 Editor/UI/Controllers/），发现 {total_refs} 处 SkillsLocalization.Get/TryGet/Has 键引用")
+
+    scanned = {os.path.relpath(p, repo_root).replace(os.sep, "/") for p in cs_files}
+    coverage = floor_problem("C# 文件", scanned, repo_root, os.path.join("SkillsForUnity", "Editor"), (".cs",))
+    if coverage:
+        errors.append(f"扫描覆盖不足（遍历多半坏了）: {coverage}")
+    if total_refs == 0:
+        errors.append("没有找到任何 SkillsLocalization 键引用 —— 调用匹配多半坏了，悬挂键检查形同虚设")
+    if not all_keys:
+        errors.append("三个词典都是空的")
 
     if cs_missing_keys:
         for k, f in cs_missing_keys:

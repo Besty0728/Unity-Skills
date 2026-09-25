@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Meta Check (CI) — .meta 配对与 GUID 重复校验.
 
 只读校验，覆盖 /metacheck 提示词中可自动化、无需人工判断的两项核心检查：
@@ -20,6 +20,8 @@ from __future__ import annotations
 import os
 import re
 import sys
+
+from scan_floor import floor_problem
 
 SCAN_ROOT_REL = "SkillsForUnity"
 CHECKED_EXTENSIONS = (".cs", ".uxml", ".uss", ".json")
@@ -45,11 +47,17 @@ def main() -> int:
     missing_meta: list[str] = []
     guid_to_files: dict[str, list[str]] = {}
     unreadable_meta: list[tuple[str, str]] = []
+    checked_files: set[str] = set()
+    meta_files: set[str] = set()
 
     for path in iter_files(scan_root):
         rel_path = os.path.relpath(path, repo_root).replace(os.sep, "/")
 
+        if path.endswith(".meta"):
+            meta_files.add(rel_path)
+
         if path.endswith(CHECKED_EXTENSIONS):
+            checked_files.add(rel_path)
             if not os.path.isfile(path + ".meta"):
                 missing_meta.append(rel_path)
             continue
@@ -80,6 +88,17 @@ def main() -> int:
 
     print("🔍 Meta Check (CI) — .meta 配对与 GUID 重复校验")
     print("━" * 30)
+    print(f"  扫描 {len(checked_files)} 个 .cs/.uxml/.uss/.json、{len(meta_files)} 个 .meta")
+
+    coverage = [p for p in (
+        floor_problem("源文件", checked_files, repo_root, SCAN_ROOT_REL, CHECKED_EXTENSIONS),
+        floor_problem(".meta", meta_files, repo_root, SCAN_ROOT_REL, (".meta",)),
+    ) if p]
+    if coverage:
+        ok = False
+        print("\n🔴 扫描覆盖不足（遍历多半坏了，下面的「通过」不可信）")
+        for problem in coverage:
+            print(f"  - {problem}")
 
     if missing_meta:
         ok = False
