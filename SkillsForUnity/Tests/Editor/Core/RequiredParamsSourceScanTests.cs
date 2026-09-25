@@ -50,6 +50,14 @@ namespace UnitySkills.Tests.Core
             "Required", "SafePath", "IsNullOrEmpty", "IsNullOrWhiteSpace"
         };
 
+        /// <summary>
+        /// Registered skills the source scan cannot pair with a definition, each with the reason. Empty today: every
+        /// registered skill is defined by a [UnitySkill] method under Editor/Skills.
+        /// </summary>
+        private static readonly Dictionary<string, string> KnownUnmatchedSkills = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+        };
+
         private SurfaceProfileKind _savedProfile;
 
         [SetUp]
@@ -141,14 +149,61 @@ namespace UnitySkills.Tests.Core
         public void Scan_CoversTheRegistry()
         {
             var scan = ScanRegistry();
-            int registered = SkillRouter.GetAllSkillsSnapshotUnfiltered().Length;
 
-            Assert.That(scan.SkillsMatched, Is.GreaterThanOrEqualTo(registered * 9 / 10),
-                $"Only {scan.SkillsMatched} of {registered} registered skills were found in source " +
-                $"({scan.DefinitionsParsed} [UnitySkill] definitions parsed) -- the scanner is broken and a green result would mean nothing.");
+            // An explicit list instead of a ratio floor: a ratio let up to a tenth of the registry drop out of every
+            // guard check without anything going red.
+            var unexpected = scan.UnmatchedSkills.Where(name => !KnownUnmatchedSkills.ContainsKey(name)).ToArray();
+            var stale = KnownUnmatchedSkills.Keys.Where(name => !scan.UnmatchedSkills.Contains(name))
+                .OrderBy(name => name, StringComparer.Ordinal).ToArray();
+            Assert.That(unexpected, Is.Empty,
+                $"{unexpected.Length} registered skill(s) have no [UnitySkill] definition the scanner can find " +
+                $"({scan.DefinitionsParsed} definitions parsed, {scan.SkillsMatched} skills matched), so every guard " +
+                "check silently skips them. Fix the scanner, or list them in KnownUnmatchedSkills with the reason:\n" +
+                string.Join("\n", unexpected));
+            Assert.That(stale, Is.Empty,
+                "KnownUnmatchedSkills entries the scanner now finds; remove them so the list keeps meaning something: " +
+                string.Join(", ", stale));
             // About 230 guarded no-default parameters exist today; far fewer means the guard parser stopped recognizing them.
             Assert.That(scan.GuardedPairs, Is.GreaterThanOrEqualTo(150),
                 $"Only {scan.GuardedPairs} guarded parameters found -- the opening-guard parser is likely broken.");
+        }
+
+        /// <summary>
+        /// The canary for the scanner itself: a synthetic skill whose guards are known, including the two historical
+        /// traps -- a guard after the opening run must not count, and a comment holding commas inside the attribute
+        /// must not shift the named fields that follow it.
+        /// </summary>
+        [Test]
+        public void SourceScanner_ReadsASyntheticSkill()
+        {
+            const string raw =
+                "public static class CanarySkills\n" +
+                "{\n" +
+                "    [UnitySkill(\"canary_probe\", \"A probe, with commas.\",\n" +
+                "        Category = SkillCategory.Debug, // a comment, with, commas\n" +
+                "        TracksWorkflow = true, RiskLevel = \"high\")]\n" +
+                "    public static object CanaryProbe(string target = null, string mode = null, string late = null)\n" +
+                "    {\n" +
+                "        if (Validate.Required(target, \"target\") is object err) return err;\n" +
+                "        if (string.IsNullOrEmpty(mode)) return null;\n" +
+                "        DoWork();\n" +
+                "        if (string.IsNullOrEmpty(late)) return null;\n" +
+                "        return null;\n" +
+                "    }\n" +
+                "}\n";
+
+            var definitions = SourceScanner.FindSkillDefinitions(raw, SourceScanner.Mask(raw)).ToList();
+            Assert.That(definitions.Select(d => d.Name), Is.EqualTo(new[] { "canary_probe" }));
+
+            var guards = SourceScanner.OpeningGuards(definitions[0].Body);
+            Assert.That(guards, Is.EquivalentTo(new[] { ("target", "Required"), ("mode", "IsNullOrEmpty") }),
+                "Opening guards name target and mode; the guard after DoWork() is outside the opening run.");
+
+            var span = SourceScanner.FindSkillAttributeSpans(raw, SourceScanner.Mask(raw)).Single();
+            var fields = SourceScanner.ParseNamedFields(span.AttributeText);
+            Assert.That(fields["TracksWorkflow"], Is.EqualTo("true"), "A comment with commas must not shift later fields.");
+            Assert.That(fields["RiskLevel"], Is.EqualTo("\"high\""));
+            Assert.That(fields["Category"], Is.EqualTo("SkillCategory.Debug"));
         }
 
         /// <summary>
@@ -258,6 +313,7 @@ namespace UnitySkills.Tests.Core
             public int DefinitionsParsed;
             public int SkillsMatched;
             public int GuardedPairs;
+            public readonly SortedSet<string> UnmatchedSkills = new SortedSet<string>(StringComparer.Ordinal);
             public readonly SortedDictionary<string, string> MustBeRequired = new SortedDictionary<string, string>(StringComparer.Ordinal);
             public readonly SortedDictionary<string, string> MustStayOptional = new SortedDictionary<string, string>(StringComparer.Ordinal);
         }
@@ -292,7 +348,10 @@ namespace UnitySkills.Tests.Core
             foreach (var skill in SkillRouter.GetAllSkillsSnapshotUnfiltered())
             {
                 if (!guardsBySkill.TryGetValue(skill.Name, out var guards))
+                {
+                    result.UnmatchedSkills.Add(skill.Name);
                     continue;
+                }
                 result.SkillsMatched++;
 
                 foreach (var pair in guards)
