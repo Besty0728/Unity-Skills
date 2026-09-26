@@ -11,9 +11,12 @@
   → tag 自身完整矩阵
   → 创建稳定 GitHub Release
   → 核验 releases/latest 与 Release 跳转地址
+  → 重新生成 main 的 Star History 图表
 ```
 
 Unity 更新提醒只读取 GitHub `releases/latest`。因此在最后一步正式 Release 创建成功之前，不能宣称用户已经收到更新通知。
+
+`beta` 与 `main` 是两条平行线：Star History 机器人的图表提交只落 `main`，`beta` 永远不接收，也不为此把 `main` 合并或变基进 `beta`。发布时 `main` 被移动到候选提交，这些图表提交随之丢弃，阶段 10 再重新生成。
 
 ## 输入
 
@@ -41,10 +44,11 @@ Unity 更新提醒只读取 GitHub `releases/latest`。因此在最后一步正�
    RELEASE_SHA=$(git rev-parse beta)
    VERSION_TAG="v{VERSION}"
    ```
-5. 确认本地 `beta` 没有遗漏远端提交，也没有基于过期的 main 发布：
+5. 确认本地 `beta` 没有遗漏远端提交；`origin/main` 相对 `beta` 只允许多出 Star History 图表提交：
    ```bash
    git log beta..origin/beta --oneline
-   git log beta..origin/main --oneline
+   git log --format='%h %an %s' beta..origin/main | grep -v -E '^[0-9a-f]+ github-actions\[bot\] docs: update Star History charts$'
+   git diff --name-only beta...origin/main | grep -v -x -E 'docs/star-history-(light|dark)\.svg'
    ```
    任一有输出都停止并列出提交。
 6. 检查本地 `main` 是否存在未推送提交。后续会把本地 `main` 精确移动到候选提交；若存在必须先交给用户处理：
@@ -150,7 +154,7 @@ Highlights 使用用户语言，突出“能做什么”，不要照搬内部实
 - `{VERSION}` 与 `RELEASE_SHA`
 - Release Note 文件和完整内容
 - 预发布矩阵的成功 URL
-- `origin/main` 将从哪个 SHA 精确移动到哪个 SHA
+- `origin/main` 将从哪个 SHA 精确移动到哪个 SHA，以及随之丢弃的 Star History 图表提交数
 - 接下来会创建不可复用的 `v{VERSION}` tag 并在检查成功后创建正式 GitHub Release
 
 必须获得用户明确的“确认正式发布”后才能继续。普通的“看看”“准备一下”“生成说明”不构成授权。
@@ -168,7 +172,8 @@ test -z "$(git status --porcelain)"
 test "$(git branch --show-current)" = "beta"
 test "$(git rev-parse beta)" = "${RELEASE_SHA}"
 test "$(git rev-parse origin/beta)" = "${RELEASE_SHA}"
-test -z "$(git log beta..origin/main --oneline)"
+test -z "$(git log --format='%h %an %s' beta..origin/main | grep -v -E '^[0-9a-f]+ github-actions\[bot\] docs: update Star History charts$')"
+test -z "$(git diff --name-only beta...origin/main | grep -v -x -E 'docs/star-history-(light|dark)\.svg')"
 test -z "$(git tag -l "${VERSION_TAG}")"
 test -z "$(git ls-remote --tags origin "refs/tags/${VERSION_TAG}" "refs/tags/${VERSION_TAG}^{}")"
 ```
@@ -285,6 +290,16 @@ gh api repos/Besty0728/Unity-Skills/releases/latest \
 
 只有全部满足后，才能报告：Unity 的稳定版更新提醒现在会把旧版本用户引导到这个 Release 页面。客户端有 24 小时成功缓存，因此已打开的 Unity 不保证立刻刷新。
 
+## 阶段 10：重新生成 main 的 Star History 图表
+
+阶段 9 全部满足后，`main` 上的图表已随移动退回候选提交里的旧版本。触发一次图表工作流，让 `main` 立即恢复最新图表（只提交到 `main`）：
+
+```bash
+gh workflow run update-star-history.yml --ref main
+```
+
+触发失败不影响发布结论，每日定时任务也会补上；在最终输出中注明。
+
 ## 最终输出
 
 输出：
@@ -295,6 +310,7 @@ gh api repos/Besty0728/Unity-Skills/releases/latest \
 - tag 矩阵 URL
 - main/beta/远端四方一致性结果
 - `releases/latest` 核验结果
+- Star History 图表工作流的触发结果
 - 当前分支与工作区状态
 
 ## 不可违反的规则

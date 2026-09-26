@@ -238,13 +238,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/star-history-light.svg docs/star-history-dark.svg
           git commit -m "docs: update Star History charts"
+          # main only: beta runs parallel and never takes chart commits; /release drops them when it moves main.
           git push origin "HEAD:${DEFAULT_BRANCH}"
-
-          if git ls-remote --exit-code --heads origin beta >/dev/null 2>&1; then
-            git fetch origin beta
-            if git merge-base --is-ancestor origin/beta HEAD; then
-              git push origin HEAD:beta
-            else
-              echo "origin/beta has diverged; skipping beta fast-forward sync."
-            fi
-          fi

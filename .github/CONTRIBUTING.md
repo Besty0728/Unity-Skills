@@ -5,7 +5,7 @@ Thank you for contributing to Unity-Skills!
 
 ## Workflow | 贡献流程
 
-**All pull requests target the `beta` branch.** `main` only ever moves through the maintainer's `/release` flow, which fast-forwards it to a verified `beta` commit; a PR opened against `main` will be asked to retarget. | **所有 PR 一律合并到 `beta` 分支。** `main` 只通过维护者的 `/release` 流程线性推进到已验证的 `beta` 提交；提交到 `main` 的 PR 会被要求改回 `beta`。
+**All pull requests target the `beta` branch.** `main` only ever moves through the maintainer's `/release` flow, which moves it to a verified `beta` commit; a PR opened against `main` will be asked to retarget. | **所有 PR 一律合并到 `beta` 分支。** `main` 只通过维护者的 `/release` 流程线性推进到已验证的 `beta` 提交；提交到 `main` 的 PR 会被要求改回 `beta`。
 
 1. **Fork** this repository | Fork 本仓库
 2. **Branch from `beta` | 从 `beta` 切分支**:
@@ -66,7 +66,7 @@ Or: your fork → **Actions** → **Unity Package Compile Matrix** → **Run wor
 
 > Do **not** dispatch the matrix on the upstream repository and do **not** push tags: upstream runs consume the maintainer's Unity license quota and CI minutes, and tags belong to the `/release` flow. | **不要**在上游仓库触发矩阵，也**不要**推送 tag：上游运行会消耗维护者的 Unity 许可证配额与 CI 时长，tag 属于 `/release` 流程。
 
-> `Update Star History` (`.github/workflows/update-star-history.yml`) is a scheduled maintenance job gated to the default branch — contributors never need to run it. | `Update Star History`（`.github/workflows/update-star-history.yml`）是限定默认分支的定时维护任务，贡献者无需运行。
+> `Update Star History` (`.github/workflows/update-star-history.yml`) is a scheduled maintenance job gated to the default branch; its chart commits land on `main` only, never on `beta` — contributors never need to run it. | `Update Star History`（`.github/workflows/update-star-history.yml`）是限定默认分支的定时维护任务，图表提交只落在 `main`、不进 `beta`，贡献者无需运行。
 
 ### 3. Optional live check | 可选的真机检查
 
