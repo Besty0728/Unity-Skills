@@ -34,10 +34,16 @@ namespace UnitySkills.Tests.Core
             StringAssert.Contains("/skill/script_list?mode=dryRun' -H 'Content-Type: application/json'", curl);
             StringAssert.EndsWith("-d '{\"folder\":\"Assets/Scripts\",\"limit\":5}'", curl);
 
+            string powershell = body["details"]?["powershell"]?.ToString();
+            StringAssert.StartsWith("Invoke-RestMethod -Method Post -Uri 'http://localhost:", powershell);
+            StringAssert.Contains("/skill/script_list?mode=dryRun' -ContentType 'application/json; charset=utf-8'", powershell);
+            StringAssert.EndsWith("-Body '{\"folder\":\"Assets/Scripts\",\"limit\":5}'", powershell);
+
             var fix = body["suggestedFixes"]?[0];
             Assert.That(fix?["skill"]?.ToString(), Is.EqualTo("script_list"));
             Assert.That(JToken.DeepEquals(fix?["args"], converted), Is.True);
             StringAssert.Contains(curl, fix?["reason"]?.ToString());
+            StringAssert.Contains(powershell, fix?["reason"]?.ToString());
         }
 
         [Test]
@@ -102,6 +108,8 @@ namespace UnitySkills.Tests.Core
 
             StringAssert.Contains("'\\''", body["details"]?["curl"]?.ToString(),
                 "A single quote inside the single-quoted -d argument must be closed, escaped and reopened.");
+            StringAssert.Contains("it''s", body["details"]?["powershell"]?.ToString(),
+                "PowerShell escapes a literal single quote inside a single-quoted string by doubling it.");
             Assert.That(body["details"]?["body"]?["filter"]?.ToString(), Is.EqualTo("it's"));
         }
 

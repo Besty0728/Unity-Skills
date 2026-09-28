@@ -204,25 +204,6 @@ namespace UnitySkills
             return true;
         }
 
-        private static void EnsureDirectoryExists(string filePath)
-        {
-            var dir = Path.GetDirectoryName(filePath);
-            if (!string.IsNullOrEmpty(dir) && !AssetDatabase.IsValidFolder(dir))
-            {
-                var folders = dir.Split('/');
-                var currentPath = folders[0];
-                for (int i = 1; i < folders.Length; i++)
-                {
-                    var newPath = currentPath + "/" + folders[i];
-                    if (!AssetDatabase.IsValidFolder(newPath))
-                    {
-                        AssetDatabase.CreateFolder(currentPath, folders[i]);
-                    }
-                    currentPath = newPath;
-                }
-            }
-        }
-
         /// <summary>Forwards a structured error object as-is, plus a batch item's <c>target</c> (bugs.md B1).</summary>
         private static JObject WithTarget(object error, string target)
         {
@@ -426,7 +407,7 @@ namespace UnitySkills
 
             if (resolvedSavePath != null)
             {
-                EnsureDirectoryExists(resolvedSavePath);
+                RenderPipelineSkillsCommon.EnsureAssetFolderExists(resolvedSavePath);
 
                 AssetDatabase.CreateAsset(material, resolvedSavePath);
                 WorkflowManager.SnapshotObject(material, SnapshotType.Created);
@@ -608,7 +589,7 @@ namespace UnitySkills
 
             var newMaterial = new Material(sourceMaterial) { name = newName };
 
-            EnsureDirectoryExists(resolvedSavePath);
+            RenderPipelineSkillsCommon.EnsureAssetFolderExists(resolvedSavePath);
             AssetDatabase.CreateAsset(newMaterial, resolvedSavePath);
             WorkflowManager.SnapshotObject(newMaterial, SnapshotType.Created);
             AssetDatabase.SaveAssets();

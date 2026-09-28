@@ -11,6 +11,8 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Fixed
 
+- **Windows beta 回归修正** — 材质创建与复制的父目录处理改用现有跨平台 helper，修复 `Path.GetDirectoryName` 返回反斜杠后按 `/` 拆分、未创建父目录导致 `CreateAsset` 失败的问题；本地 Git 自更新的克隆目录名沿用平台路径比较规则，避免 Windows 大小写变体在 Git 不可用时误入 ZIP 更新轨。405 响应保留 Bash/Git Bash 的 `details.curl`，新增带 UTF-8 charset 和 PowerShell 单引号转义的 `details.powershell`。Git 候选路径测试按宿主平台验证，并补齐 Windows 的超时、取消、stdin EOF 测试；Python 检查测试为子进程输出和捕获解码显式指定 UTF-8，避免默认 GBK 管道编码报错。
+
 - **CI 在全部 6 个版本上都会红（round6，两处）** — (1) round5 新增的测试夹具程序集 `UnitySkills.Tests.Fixtures` 是运行时程序集，两个 RequireComponent 探针用了 `BoxCollider` / `Collider`；CI 的测试工程 manifest 不列任何内置模块，运行时程序集拿不到 Physics 模块，`error CS1069` 让 batchmode 在跑任何测试之前就中止。探针改用夹具自带的要求目标类型（`RequiredBaseProbe` / `RequiredLeafProbe`），断言逐条保留。(2) 7 个相机读回测试（需要 Scene View）和 1 个 dryRun 策略测试（需要 REST 服务）在 batchmode 下是"不确定"，Unity `-runTests` 因此以退出码 2 结束（实测：只跑这组相机测试退出码 2，只跑被 Ignore 的测试退出码 0），CI 会判失败；这些前置条件改为 `Assert.Ignore`，普通编辑器里照常运行。与 CI 同款 manifest 的 2022.3 / 6000.3 干净工程本地复现并验证：0 失败、退出码 0。
 - **2022 首次导入会改写 18 个手写 `.meta`（round6）** — 这些 `.meta` 只有 `fileFormatVersion` 和 `guid` 两行、没有结尾换行；2022.3 首次导入把它们改写成完整的 `MonoImporter` 形式（GUID 不变），git 克隆安装随之变脏，本地 git 自更新会以 `DirtyWorktree` 拒绝。改为提交 Unity 自己写出的形式。
 - **跑测试会清空用户的 allowlist（round6）** — 5 个调用 `SkillsModeManager.ResetForTests()` 的测试类里有 3 个只还原模式键（`AddressablesSkillsTests` 什么都不还原），而 `CompleteTestPreferenceRecovery` 只清除恢复记录，所以跑完 EditMode 后用户的 allowlist 变空（实测 `["create_cube"]` → `[]`）。新增 `ModePreferenceSnapshot`，五个偏好键全存全还原并重载缓存。
@@ -52,6 +54,8 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **三个核心类拆成分部类文件（round6）** — `SkillsHttpServer`（14 个文件）、`SkillRouter`（11 个）、`SkillPlanningService`（12 个）按职责拆分，最大文件从 5,938 行降到 1,081 行；纯搬移，不改任何成员体，带初始化器的静态字段与静态构造函数留在主文件。单技能与批量两个端点共用一份请求级查询键列表和一个 `?dryRun=` 解析；保活间隔与请求超时这两个跨线程缓存加了内存屏障。响应逐字节不变（固定请求语料 32 条比对）。
 
 ### 评测与验证
+
+- **Windows beta 实机回归（2026-09-28）** — Windows Editor / Unity 2022.3.48f1c1 / URP 14.0.11，8090 本地包工程：修正后完整 EditMode **1602 项，1521 通过、0 失败、81 跳过、0 不确定**；两轮修改均编译成功并完成 domain reload。修正前已复现 Git 候选路径测试失败，以及材质创建、复制的父目录错误。清除外部 `PYTHONUTF8` / `PYTHONIOENCODING` 后 Python 检查测试 **24/24**；405 返回的 PowerShell 命令在 Windows PowerShell 5.1 实际调用成功。保留 Bash 命令和 Unix 进程测试分支；本轮未实跑 macOS、Unity 6，也未补 Windows junction 实测，跳过项不计为通过。
 
 - **假绿防护（round6）** — 模块文档里级别写错的技能标题（`####` / `##`）会让那一节脱离一致性比对，现在直接报错；必填参数源码扫描改用显式的未匹配清单（原来允许静默漏掉 10% 的技能）；Outputs 契约、写入标记、必填参数扫描器各补一个反例夹具；`check_meta_files.py` / `check_locales.py` 扫到的文件少于 git 跟踪的同类文件时失败，并新增 `.github/scripts/tests/`；README / AGENTS.md / 根文档里引用的技能总数与分类表由测试与注册表逐项核对；dryRun / plan 的授权预览与真实执行在 3 个画像 × 3 个模式 × allowlist 有无 × 3 类技能上逐例一致。
 - **可选包真实路径测试（round6）** — 新增 `Tests/Editor/OptionalPackages/`：URP / Decal / Volume / PostProcess / Cinemachine（CM2 与 CM3）/ Timeline / Netcode / Addressables / HybridCLR / Behavior / DOTween Pro / PrimeTween / YooAsset / XR（XRI 2 与 3）/ ProBuilder（5 与 6）/ QFramework 共 87 个测试，每个模块覆盖创建、带读回的修改与查询，并在真实包上验证 round6 的修复；没装包的工程按探针技能声明的依赖整类忽略。两个一次性工程实测：6000.3 装齐注册表与 OpenUPM 包 80 个通过，2022.3（CM2 / XRI 2 / ProBuilder 5 / URP 14 / QFramework）52 个通过，均 0 失败、退出码 0；本地闸门按模块检查"实际通过"的下限，忽略一整类不再算绿。新增只能手动触发的 `.github/workflows/optional-packages.yml` 与 `nunit_floors.py`（尚未在 CI 实跑）。装齐全部可选包时，3 个"找缺包技能来测"的测试原来以"不确定"结束、让 Unity 退出码为 2，改为忽略。

@@ -313,6 +313,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void BuildCandidateList_OnlyAbsolutePaths_AndNeverTheMacShim()
         {
+            if (GitCliRunner.IsWindows) Assert.Ignore("Unix path semantics; Windows candidates have their own test.");
             var mac = GitCliRunner.BuildCandidateList(false, true, "relative/bin:/usr/bin:/usr//bin/:/opt/homebrew/bin::", _ => null);
             Assert.That(mac, Does.Not.Contain("/usr/bin/git"), "The Command Line Tools shim pops the installer when the tools are missing.");
             Assert.That(mac.First(), Is.EqualTo("/opt/homebrew/bin/git"));
@@ -322,6 +323,33 @@ namespace UnitySkills.Tests.Core
 
             var linux = GitCliRunner.BuildCandidateList(false, false, "/usr/bin", _ => null);
             Assert.That(linux, Does.Contain("/usr/bin/git"));
+        }
+
+        [Test]
+        public void BuildCandidateList_Windows_HandlesSpacesFallbacksAndDuplicates()
+        {
+            if (!GitCliRunner.IsWindows) Assert.Ignore("Windows path semantics.");
+            var pathDir = Dir("path with spaces");
+            var roots = new Dictionary<string, string>
+            {
+                ["ProgramFiles"] = Dir("Program Files"),
+                ["ProgramFiles(x86)"] = Dir("Program Files (x86)"),
+                ["LocalAppData"] = Dir("Local App Data"),
+                ["UserProfile"] = Dir("User Profile"),
+            };
+            var candidates = GitCliRunner.BuildCandidateList(true, false,
+                "relative/bin;\"" + pathDir + "\";" + pathDir.ToUpperInvariant() + ";;",
+                name => roots.TryGetValue(name, out var root) ? root : null);
+
+            Assert.That(candidates, Is.EqualTo(new[]
+            {
+                Path.Combine(pathDir, "git.exe"),
+                Path.Combine(roots["ProgramFiles"], "Git", "cmd", "git.exe"),
+                Path.Combine(roots["ProgramFiles(x86)"], "Git", "cmd", "git.exe"),
+                Path.Combine(roots["LocalAppData"], "Programs", "Git", "cmd", "git.exe"),
+                Path.Combine(roots["UserProfile"], "scoop", "shims", "git.exe"),
+            }));
+            Assert.That(candidates.All(Path.IsPathRooted), Is.True);
         }
 
         [Test]
@@ -342,8 +370,9 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Runner_Timeout_KillsTheProcess()
         {
-            if (GitCliRunner.IsWindows) Assert.Ignore("Uses /bin/sh.");
-            var run = GitCliRunner.Run("/bin/sh", null, new[] { "-c", "sleep 30" }, 500);
+            var run = GitCliRunner.IsWindows
+                ? RunWindowsPowerShell("Start-Sleep -Seconds 30", 500)
+                : GitCliRunner.Run("/bin/sh", null, new[] { "-c", "sleep 30" }, 500);
             Assert.That(run.TimedOut, Is.True);
             Assert.That(run.ElapsedMs, Is.LessThan(5000));
         }
@@ -351,10 +380,11 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Runner_Cancellation_KillsTheProcess()
         {
-            if (GitCliRunner.IsWindows) Assert.Ignore("Uses /bin/sh.");
             var started = DateTime.UtcNow;
-            var run = GitCliRunner.Run("/bin/sh", null, new[] { "-c", "sleep 30" }, 60000,
-                () => (DateTime.UtcNow - started).TotalMilliseconds > 300);
+            Func<bool> cancelled = () => (DateTime.UtcNow - started).TotalMilliseconds > 300;
+            var run = GitCliRunner.IsWindows
+                ? RunWindowsPowerShell("Start-Sleep -Seconds 30", 60000, cancelled)
+                : GitCliRunner.Run("/bin/sh", null, new[] { "-c", "sleep 30" }, 60000, cancelled);
             Assert.That(run.Cancelled, Is.True);
             Assert.That(run.ElapsedMs, Is.LessThan(5000));
         }
@@ -362,9 +392,19 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Runner_ClosesStdin_SoPromptsReadEndOfFile()
         {
-            if (GitCliRunner.IsWindows) Assert.Ignore("Uses /bin/cat.");
-            var run = GitCliRunner.Run("/bin/cat", null, Array.Empty<string>(), 5000);
-            Assert.That(run.Succeeded, Is.True, "cat would block forever on an open stdin.");
+            var run = GitCliRunner.IsWindows
+                ? RunWindowsPowerShell("[Console]::In.ReadToEnd() | Out-Null", 10000)
+                : GitCliRunner.Run("/bin/cat", null, Array.Empty<string>(), 5000);
+            Assert.That(run.Succeeded, Is.True, "Reading stdin would block forever without EOF.");
+        }
+
+        private static ProcessRunResult RunWindowsPowerShell(string script, int timeoutMs, Func<bool> isCancelled = null)
+        {
+            var exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "WindowsPowerShell", "v1.0", "powershell.exe");
+            var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+            return GitCliRunner.Run(exe, null,
+                new[] { "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded }, timeoutMs, isCancelled);
         }
 
         // ================= no git: filesystem fallback =================
@@ -390,6 +430,29 @@ namespace UnitySkills.Tests.Core
             var old = NoGitContext(Dir("clone", "SkillsForUnity"));
             old.GitVersion = new Version(2, 10);
             Assert.That(LocalGitSync.Probe(old).Blocker, Is.EqualTo(LocalUpdateOutcome.GitTooOld));
+        }
+
+        [TestCase("skillsforunity")]
+        [TestCase("SKILLSFORUNITY")]
+        public void NoGit_MarkerCloneShaped_CaseVariantsFollowPlatformPathRules(string folder)
+        {
+            var repo = Dir("clone");
+            Directory.CreateDirectory(Path.Combine(repo, ".git"));
+            var package = Dir("clone", folder);
+            var ctx = NoGitContext(package);
+            var probe = LocalGitSync.Probe(ctx);
+
+            if (GitCliRunner.IsWindows || GitCliRunner.IsMac)
+            {
+                Assert.That(probe.Track, Is.EqualTo(LocalUpdateTrack.Blocked));
+                Assert.That(probe.Blocker, Is.EqualTo(LocalUpdateOutcome.GitMissingForRepository));
+                ctx.GitVersion = new Version(2, 10);
+                Assert.That(LocalGitSync.Probe(ctx).Blocker, Is.EqualTo(LocalUpdateOutcome.GitTooOld));
+            }
+            else
+            {
+                Assert.That(probe.Track, Is.EqualTo(LocalUpdateTrack.ArchiveUnverified));
+            }
         }
 
         [Test]

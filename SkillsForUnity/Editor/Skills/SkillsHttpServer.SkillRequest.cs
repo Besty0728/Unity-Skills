@@ -136,14 +136,17 @@ namespace UnitySkills
         /// <summary>
         /// The 405 METHOD_NOT_ALLOWED body for GET /skill/{name} on a registered skill. It carries the POST the caller
         /// most likely meant, ready to paste: the query's arguments become the JSON body (details.body, also the fix's
-        /// args) and the request-level keys stay in the URL (details.curl). Main thread only (reads the skill's
+        /// args) and the request-level keys stay in the URL. Details carries shell-specific commands for Bash/Git Bash
+        /// (curl) and PowerShell (powershell). Main thread only (reads the skill's
         /// declared parameters), otherwise pure.
         /// </summary>
         internal static string BuildMethodNotAllowedResponse(string skillName, string rawQuery, System.Reflection.ParameterInfo[] parameters, int port)
         {
             var body = ConvertQueryToSkillBody(rawQuery, parameters, out string requestQuery);
             string url = $"http://localhost:{port}/skill/{skillName}{requestQuery}";
-            string curl = $"curl -s -X POST '{EscapeForSingleQuotes(url)}' -H 'Content-Type: application/json' -d '{EscapeForSingleQuotes(body.ToString(Formatting.None))}'";
+            string json = body.ToString(Formatting.None);
+            string curl = $"curl -s -X POST '{EscapeForSingleQuotes(url)}' -H 'Content-Type: application/json' -d '{EscapeForSingleQuotes(json)}'";
+            string powershell = $"Invoke-RestMethod -Method Post -Uri '{EscapeForPowerShellSingleQuotes(url)}' -ContentType 'application/json; charset=utf-8' -Body '{EscapeForPowerShellSingleQuotes(json)}'";
 
             return SkillErrorResponse.Build(
                 SkillErrorCode.MethodNotAllowed,
@@ -156,6 +159,7 @@ namespace UnitySkills
                     url,
                     body,
                     curl,
+                    powershell,
                 },
                 suggestedFixes: new List<SuggestedFix>
                 {
@@ -164,7 +168,7 @@ namespace UnitySkills
                         action = "retry",
                         skill = skillName,
                         args = body,
-                        reason = $"Resend as POST with the query parameters as the JSON body: {curl}",
+                        reason = $"Resend as POST with the query parameters as the JSON body. Bash/Git Bash: {curl} PowerShell: {powershell}",
                     },
                 },
                 retryStrategy: SkillErrorResponse.RetryFixAndRetry);
@@ -260,6 +264,8 @@ namespace UnitySkills
             Uri.UnescapeDataString(component.Replace('+', ' '));
 
         private static string EscapeForSingleQuotes(string text) => text.Replace("'", "'\\''");
+
+        private static string EscapeForPowerShellSingleQuotes(string text) => text.Replace("'", "''");
 
         /// <summary>The raw query (leading '?' dropped) without any pair whose key is <paramref name="key"/>; other pairs stay encoded, in order.</summary>
         private static string QueryWithout(string rawQuery, string key)

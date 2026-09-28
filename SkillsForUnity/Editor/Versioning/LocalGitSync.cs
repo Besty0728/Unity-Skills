@@ -833,7 +833,7 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(packageDir) || string.IsNullOrEmpty(markerRoot)) return false;
             var full = TrimSeparators(Path.GetFullPath(packageDir));
             var parent = Path.GetDirectoryName(full);
-            return string.Equals(Path.GetFileName(full), ClonePackageFolder, StringComparison.Ordinal) &&
+            return PathEquals(Path.GetFileName(full), ClonePackageFolder) &&
                    parent != null && PathEquals(TrimSeparators(parent), TrimSeparators(Path.GetFullPath(markerRoot)));
         }
 

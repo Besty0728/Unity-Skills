@@ -17,7 +17,15 @@ SCRIPTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def run_script(name: str, repo: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, os.path.join(SCRIPTS, name), repo], capture_output=True, text=True)
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    return subprocess.run(
+        [sys.executable, os.path.join(SCRIPTS, name), repo],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+    )
 
 
 def write(repo: str, rel: str, text: str) -> None:
