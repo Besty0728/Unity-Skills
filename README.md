@@ -23,6 +23,15 @@
 
 > The current official maintenance baseline is **Unity 2022.3+**. Some Unity 2021 compatibility logic may still remain in the codebase, but future feature work, regression testing, and adaptation will focus on **2022.3+ / Unity 6**.
 
+## 💖 Sponsors
+
+<!-- sponsors:start -->
+<p align="center">
+  <i>Sponsor slots are open. Your logo and link will appear here.</i><br>
+  <a href="https://github.com/Besty0728/Unity-Skills/issues/new?title=Sponsorship%20inquiry">Become a sponsor →</a>
+</p>
+<!-- sponsors:end -->
+
 ## 📈 Project Contribution Rankings
 
 <p align="center">

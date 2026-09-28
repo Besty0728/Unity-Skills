@@ -23,6 +23,15 @@
 
 > 当前官方维护基线为 **Unity 2022.3+**。仓库中仍可能保留部分对 Unity 2021 的兼容逻辑，但后续功能开发、回归验证与适配工作将以 **2022.3+ / Unity 6** 为主。
 
+## 💖 赞助商
+
+<!-- sponsors:start -->
+<p align="center">
+  <i>赞助位开放中，您的 Logo 与链接将展示在这里。</i><br>
+  <a href="https://github.com/Besty0728/Unity-Skills/issues/new?title=%E8%B5%9E%E5%8A%A9%E5%92%A8%E8%AF%A2">成为赞助商 →</a>
+</p>
+<!-- sponsors:end -->
+
 ## 📈 项目贡献排名
 
 <p align="center">
