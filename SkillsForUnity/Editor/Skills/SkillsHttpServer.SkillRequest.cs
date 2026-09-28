@@ -136,9 +136,9 @@ namespace UnitySkills
         /// <summary>
         /// The 405 METHOD_NOT_ALLOWED body for GET /skill/{name} on a registered skill. It carries the POST the caller
         /// most likely meant, ready to paste: the query's arguments become the JSON body (details.body, also the fix's
-        /// args) and the request-level keys stay in the URL. Details carries shell-specific commands for Bash/Git Bash
-        /// (curl) and PowerShell (powershell). Main thread only (reads the skill's
-        /// declared parameters), otherwise pure.
+        /// args) and the request-level keys stay in the URL. details.curl (Bash/Git Bash) and details.powershell carry
+        /// the ready-to-paste commands; the fix's reason repeats only curl so the payload stays short for every client.
+        /// Main thread only (reads the skill's declared parameters), otherwise pure.
         /// </summary>
         internal static string BuildMethodNotAllowedResponse(string skillName, string rawQuery, System.Reflection.ParameterInfo[] parameters, int port)
         {
@@ -168,7 +168,7 @@ namespace UnitySkills
                         action = "retry",
                         skill = skillName,
                         args = body,
-                        reason = $"Resend as POST with the query parameters as the JSON body. Bash/Git Bash: {curl} PowerShell: {powershell}",
+                        reason = $"Resend as POST with the query parameters as the JSON body: {curl}",
                     },
                 },
                 retryStrategy: SkillErrorResponse.RetryFixAndRetry);

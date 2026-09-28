@@ -43,7 +43,8 @@ namespace UnitySkills.Tests.Core
             Assert.That(fix?["skill"]?.ToString(), Is.EqualTo("script_list"));
             Assert.That(JToken.DeepEquals(fix?["args"], converted), Is.True);
             StringAssert.Contains(curl, fix?["reason"]?.ToString());
-            StringAssert.Contains(powershell, fix?["reason"]?.ToString());
+            StringAssert.DoesNotContain("Invoke-RestMethod", fix?["reason"]?.ToString(),
+                "The reason repeats only curl; PowerShell stays in details.powershell to keep the 405 short.");
         }
 
         [Test]
