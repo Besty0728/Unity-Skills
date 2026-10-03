@@ -117,6 +117,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **Windows 就绪的本地部分（round6）** — 带 UTF-8 BOM 的请求体（单次与批量）经实测照常解析，固定请求语料新增两条 BOM 请求锁住该行为；`DocExampleValidationTests` 能读 PowerShell `Invoke-RestMethod ... -Body` 的请求体、反引号续行与 `\"` 转义的 `curl.exe` 请求体，`references/windows.md` 的示例与其他文档一样逐条校验（注入错误键可被检出）。
 - **自更新隔离守卫（round6）** — `SelfUpdateBoundaryTests` 扫描 Editor 源码（带覆盖下限与反例）：`Editor/Versioning/` 以外出现 `LocalGitSync` / `GitCliRunner`、或 UI 调用未登记的 `LocalSelfUpdateService` 成员即失败。
 - **Windows beta 实机回归（2026-09-28）** — Windows Editor / Unity 2022.3.48f1c1 / URP 14.0.11，8090 本地包工程：修正后完整 EditMode **1602 项，1521 通过、0 失败、81 跳过、0 不确定**；两轮修改均编译成功并完成 domain reload。修正前已复现 Git 候选路径测试失败，以及材质创建、复制的父目录错误。清除外部 `PYTHONUTF8` / `PYTHONIOENCODING` 后 Python 检查测试 **24/24**；405 返回的 PowerShell 命令在 Windows PowerShell 5.1 实际调用成功。保留 Bash 命令和 Unix 进程测试分支；本轮未实跑 macOS、Unity 6，也未补 Windows junction 实测，跳过项不计为通过。
+- **发布前完整 CI 矩阵（2026-10-04）** — round6 之后首次跑完整 6 版本矩阵，暴露 4 个只在 CI 环境出现的问题，均只改测试：6000.5 上测试程序集一处 `EditorUtility.InstanceIDToObject` 已升为 error 级 obsolete、整个测试程序集编不过，改经 `UnityObjectIdUtility.EntityIdToObject`；一个批量 `$ref` 测试引用 `$0.instanceId`，而 6000.4+ 按设计只回 `entityId`（`instanceId` 为 0），改用 `$0.entityId`；5 个用 chmod 制造"不可写 / 不可读"的测试在 game-ci 容器里以 root 运行时无法制造拒绝，现在先探测 chmod 能否真的拒绝本进程、不能则忽略；Outputs 契约测试在 CI runner 上耗时 166–193 秒、超出 NUnit 默认 180 秒，超时上调到 600 秒。
 
 ## [2.8.4] - 2026-09-19
 

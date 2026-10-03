@@ -157,8 +157,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void CleanerFindDuplicates_ReportsFilesItCouldNotHash()
         {
-            if (Application.platform == RuntimePlatform.WindowsEditor)
-                Assert.Ignore("Making a file unreadable relies on chmod.");
+            PosixPermissionProbe.IgnoreUnlessChmodCanDenyAccess();
 
             Directory.CreateDirectory(ProbeFolder);
             foreach (var name in new[] { "a", "b", "c" })

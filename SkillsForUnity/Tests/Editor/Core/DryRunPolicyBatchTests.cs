@@ -63,7 +63,7 @@ namespace UnitySkills.Tests.Core
             DryRunPolicyService.OverrideForTests = DryRunPolicy.AllWrites;
             var body = BatchBody(
                 Step("gameobject_create", new JObject { ["name"] = "RefProbe" }),
-                Step("gameobject_delete", new JObject { ["instanceId"] = new JObject { ["$ref"] = "$0.instanceId" } }));
+                Step("gameobject_delete", new JObject { ["entityId"] = new JObject { ["$ref"] = "$0.entityId" } }));
 
             var preview = DryRunPolicyTestHarness.Post("/skills/batch", "?mode=dryRun", body);
             var names = preview.Properties().Select(p => p.Name).ToList();

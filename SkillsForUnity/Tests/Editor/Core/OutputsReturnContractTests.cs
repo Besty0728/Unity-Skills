@@ -66,6 +66,7 @@ namespace UnitySkills.Tests.Core
             };
 
         [Test]
+        [Timeout(600000)] // the 805-skill sweep takes 166-193 s on the CI runners; NUnit defaults to 180 s
         public void SkillOutputs_ShouldExistInReturnedShape()
         {
             var sources = LoadSkillSources();

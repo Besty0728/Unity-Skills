@@ -147,7 +147,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(result?["success"]?.Value<bool>(), Is.True, response.ToString(Formatting.None));
             Assert.That(result?["name"]?.ToString(), Is.EqualTo("__m7_missing_param_probe__"));
 
-            var created = EditorUtility.InstanceIDToObject(result["instanceId"].Value<int>());
+            var created = UnityObjectIdUtility.EntityIdToObject(result["entityId"]?.ToString());
             if (created != null)
                 UnityEngine.Object.DestroyImmediate(created);
         }

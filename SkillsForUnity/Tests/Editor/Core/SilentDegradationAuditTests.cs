@@ -95,8 +95,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void SceneCreateSaveUnload_UnwritableFolder_ReportFailure()
         {
-            if (Application.platform == RuntimePlatform.WindowsEditor)
-                Assert.Ignore("Making a folder unwritable relies on chmod.");
+            PosixPermissionProbe.IgnoreUnlessChmodCanDenyAccess();
             if (!Application.isBatchMode)
                 Assert.Ignore("A failed scene save can raise a modal dialog in an interactive editor; runs in the batchmode gates.");
 
@@ -202,8 +201,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void HybridClrFileSetRestore_KeepsAndReportsAFileWhoseBackupFailed()
         {
-            if (Application.platform == RuntimePlatform.WindowsEditor)
-                Assert.Ignore("Making a file unreadable relies on chmod.");
+            PosixPermissionProbe.IgnoreUnlessChmodCanDenyAccess();
 
             var target = $"{_tempRoot}/Target";
             Directory.CreateDirectory(target);
@@ -228,8 +226,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void HybridClrGeneratedSourcesRestore_FailsWhenAFileCannotBeWritten()
         {
-            if (Application.platform == RuntimePlatform.WindowsEditor)
-                Assert.Ignore("Making a folder unwritable relies on chmod.");
+            PosixPermissionProbe.IgnoreUnlessChmodCanDenyAccess();
 
             var locked = $"{_tempRoot}/Locked";
             Directory.CreateDirectory(locked);

@@ -1,4 +1,4 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 using System;
 using System.IO;
@@ -313,6 +313,7 @@ namespace UnitySkills.Tests.Core
         public void SwapDirectories_ParentNotWritable_TargetIntact()
         {
             if (GitCliRunner.IsWindows) Assert.Ignore("POSIX permissions only; the hook-based tests cover the same paths on Windows.");
+            PosixPermissionProbe.IgnoreUnlessChmodCanDenyAccess();
             var parent = Path.Combine(_tempDir, "locked");
             var target = Path.Combine(parent, "target");
             var staging = Path.Combine(_tempDir, "staging");
