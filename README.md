@@ -27,8 +27,12 @@
 
 <!-- sponsors:start -->
 <p align="center">
-  <i>Sponsor slots are open. Your logo and link will appear here.</i><br>
-  <a href="https://github.com/Besty0728/Unity-Skills/issues/new?title=Sponsorship%20inquiry">Become a sponsor →</a>
+  <a href="https://mirasim.ai"><img src="docs/sponsors/mirasim.png" alt="Mirasim" width="120"></a><br>
+  <a href="https://mirasim.ai"><b>Mirasim</b></a><br>
+  <i>Provides substantial API credits for the upcoming v3.0, with continued API support to follow.</i>
+</p>
+<p align="center">
+  Interested in sponsoring? Email <a href="mailto:x2120060205@gmail.com?subject=Unity-Skills%20Sponsorship%20Inquiry">x2120060205@gmail.com</a>
 </p>
 <!-- sponsors:end -->
 

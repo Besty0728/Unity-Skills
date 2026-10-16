@@ -27,8 +27,12 @@
 
 <!-- sponsors:start -->
 <p align="center">
-  <i>赞助位开放中，您的 Logo 与链接将展示在这里。</i><br>
-  <a href="https://github.com/Besty0728/Unity-Skills/issues/new?title=%E8%B5%9E%E5%8A%A9%E5%92%A8%E8%AF%A2">成为赞助商 →</a>
+  <a href="https://mirasim.ai"><img src="docs/sponsors/mirasim.png" alt="Mirasim" width="120"></a><br>
+  <a href="https://mirasim.ai"><b>Mirasim</b></a><br>
+  <i>为即将发布的 v3.0 提供大量 API 额度支持，后续也将持续提供 API 支持。</i>
+</p>
+<p align="center">
+  成为赞助商：发送邮件至 <a href="mailto:x2120060205@gmail.com?subject=Unity-Skills%20%E8%B5%9E%E5%8A%A9%E5%92%A8%E8%AF%A2">x2120060205@gmail.com</a>
 </p>
 <!-- sponsors:end -->
 
