@@ -39,7 +39,7 @@
 </table>
 </div>
 <p align="center">
-  Interested in sponsoring? Email <a href="mailto:x2120060205@gmail.com?subject=Unity-Skills%20Sponsorship%20Inquiry">x2120060205@gmail.com</a>
+  <a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#120;&#50;&#49;&#50;&#48;&#48;&#54;&#48;&#50;&#48;&#53;&#64;&#103;&#109;&#97;&#105;&#108;&#46;&#99;&#111;&#109;?subject=Unity-Skills%20Sponsorship%20Inquiry">Become a sponsor →</a>
 </p>
 <!-- sponsors:end -->
 
