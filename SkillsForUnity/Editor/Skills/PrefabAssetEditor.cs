@@ -30,6 +30,7 @@ namespace UnitySkills.Internal
             internal string Requested;
             internal string Warning;
             internal string OriginalPath;
+            internal string FinalPath;
             internal bool Deleted;
             internal bool RemovedComponent;
             internal Type MatchType;
@@ -271,10 +272,14 @@ namespace UnitySkills.Internal
                 PrefabUtility.UnloadPrefabContents(contents); contents = null;
                 AssetDatabase.ImportAsset(prefabPath, ImportAssetOptions.ForceUpdate);
                 var persisted = RequireAsset(prefabPath);
-                var results = receipts.Select(r => Json(r.ReadBack(persisted))).ToArray();
+                var results = receipts.Select(r =>
+                {
+                    var result = Json(new { success = true, prefabPath, skill = r.Skill, gameObjectPath = r.FinalPath });
+                    result.Merge(r.ReadBack(persisted));
+                    return result;
+                }).ToArray();
                 PrefabAssetUndo.Record(prefabPath, before, metaBefore, File.ReadAllBytes(prefabPath),
                     File.Exists(prefabPath + ".meta") ? File.ReadAllBytes(prefabPath + ".meta") : null);
-                foreach (var result in results) { result["success"] = true; result["prefabPath"] = prefabPath; }
                 return batch ? (object)new { success = true, prefabPath, results } : results[0];
             }
             catch (Exception ex)
@@ -590,13 +595,13 @@ namespace UnitySkills.Internal
 
         private static void PrepareReadBack(GameObject root, Receipt receipt)
         {
-            var path = receipt.Target != null ? PathOf(root, receipt.Target) : receipt.OriginalPath;
+            var path = receipt.FinalPath = receipt.Target != null ? PathOf(root, receipt.Target) : receipt.OriginalPath;
             var gone = receipt.Target == null;
             var componentGone = receipt.Component == null;
             var index = componentGone ? -1 : Array.IndexOf(receipt.Target.GetComponents(receipt.MatchType), receipt.Component);
             receipt.ReadBack = persisted =>
             {
-                var result = new JObject { ["skill"] = receipt.Skill, ["gameObjectPath"] = path };
+                var result = new JObject();
                 if (gone) { result["deleted"] = true; return result; }
                 var target = Resolve(persisted, path);
                 result.Merge(Json(DescribeNode(persisted, target)));
@@ -652,15 +657,38 @@ namespace UnitySkills.Internal
                     targetPath = PathOf(root, matches[0].gameObject);
                 }
                 if (string.IsNullOrEmpty(value) && string.IsNullOrEmpty(assetReferencePath)) throw new EditFailure("Either 'value' or 'assetReferencePath' must be provided", SkillErrorCode.MissingParam);
+                // The engine takes concrete types only; GetComponents(concrete)[0], which it edits, is the component GetComponent found.
+                var componentType = LegacyComponent(Resolve(root, targetPath), type).GetType();
                 var result = Run(path, new JArray(new JObject { ["skill"] = "prefab_set_serialized_property",
-                    ["args"] = Json(new { componentType = type, propertyPath = property, value, assetPath = assetReferencePath, gameObjectPath = targetPath }) }), false, legacy: true);
+                    ["args"] = Json(new { componentType = componentType.AssemblyQualifiedName, propertyPath = property, value, assetPath = assetReferencePath, gameObjectPath = targetPath }) }), false, legacy: true);
                 if (SkillResultHelper.TryGetError(result, out _)) return result;
-                var response = Json(result);
-                response["component"] = type == null ? null : ComponentType(type).Name;
-                response["property"] = response["propertyPath"];
+                var readBack = Json(result);
+                // The v2.9.0 response: the legacy skill keeps its own keys and gains none of the engine's node read-back.
+                var response = new Dictionary<string, object>
+                {
+                    ["success"] = true,
+                    ["prefabPath"] = path,
+                    ["gameObject"] = readBack.Value<string>("gameObject"),
+                    ["component"] = componentType.Name,
+                    ["property"] = readBack.Value<string>("propertyPath"),
+                    ["valueSet"] = readBack.Value<string>("valueSet")
+                };
+                if (readBack["valueRequested"] != null) response["valueRequested"] = readBack.Value<string>("valueRequested");
+                if (readBack["warnings"] != null) response["warnings"] = readBack["warnings"];
                 return response;
             }
             catch (Exception ex) { return Error(ex); }
+        }
+
+        /// <summary>v2.9.0's lookup: the first component assignable to the named type, abstract bases included.</summary>
+        private static Component LegacyComponent(GameObject target, string typeName)
+        {
+            if (string.IsNullOrWhiteSpace(typeName)) throw new EditFailure("componentType is required", SkillErrorCode.MissingParam);
+            var type = ComponentSkills.FindComponentType(typeName);
+            if (type == null) throw new EditFailure($"Component type not found: {typeName}", SkillErrorCode.TargetNotFound);
+            var component = target.GetComponent(type);
+            if (component == null) throw new EditFailure($"Component '{typeName}' not found on '{target.name}' in prefab", SkillErrorCode.TargetNotFound);
+            return component;
         }
 
         /// <summary>Checks existing asset state only: dryRun never creates contents or applies a property.</summary>

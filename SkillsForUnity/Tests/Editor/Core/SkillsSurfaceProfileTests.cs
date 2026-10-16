@@ -179,22 +179,24 @@ namespace UnitySkills.Tests.Core
         {
             Assume.That(SkillRouter.HasSkill("test_smoke_skills"), Is.True, "test_smoke_skills 未注册。");
 
-            // The gameobject_ prefix is deliberately chosen in a category both profiles hide, and the
+            // The gameobject_ fragment is deliberately chosen in a category both profiles hide, and the
             // probe surface is narrowed to a dozen-odd skills: runAsync=false runs a dryRun per selected skill, and running the full set isn't needed and would be slower.
-            const string prefix = "gameobject_";
+            // The registry is cut with the probe's own nameContains predicate (case-insensitive substring), since names outside
+            // the module carry the fragment too: prefab_create_gameobject_batch is a Prefab write that guide leaves visible.
+            const string fragment = "gameobject_";
             var registry = SkillRouter.GetAllSkillsSnapshotUnfiltered()
-                .Where(s => s.Name.StartsWith(prefix, StringComparison.Ordinal))
+                .Where(s => s.Name.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0)
                 .ToArray();
-            Assume.That(registry, Is.Not.Empty, $"注册表里没有 {prefix}* 技能。");
+            Assume.That(registry, Is.Not.Empty, $"注册表里没有 *{fragment}* 技能。");
 
             var expectedHidden = registry.Where(s => IsExpectedHidden(s, profile))
                 .Select(s => s.Name).ToArray();
             var expectedVisible = registry.Where(s => !IsExpectedHidden(s, profile))
                 .Select(s => s.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
             Assert.That(expectedHidden, Is.Not.Empty,
-                $"{profile} 档没有隐藏任何 {prefix}* 技能，这条测试会是空的。");
+                $"{profile} 档没有隐藏任何 *{fragment}* 技能，这条测试会是空的。");
             Assert.That(expectedVisible, Is.Not.Empty,
-                $"{prefix}* 全部被隐藏，无法区分「过滤生效」和「探测本身返回空」。");
+                $"*{fragment}* 全部被隐藏，无法区分「过滤生效」和「探测本身返回空」。");
 
             SkillsSurfaceProfile.Current = profile;
 
@@ -202,7 +204,7 @@ namespace UnitySkills.Tests.Core
             // runAsync=false -> a synchronous response with a results list; the default runAsync=true
             // only returns a jobId, from which no names could be read (that's how v1 was written, caught by its own non-empty guard).
             var response = JObject.Parse(SkillRouter.Execute("test_smoke_skills",
-                "{\"nameContains\":\"" + prefix + "\",\"executeReadOnly\":false," +
+                "{\"nameContains\":\"" + fragment + "\",\"executeReadOnly\":false," +
                 "\"includeMutating\":true,\"runAsync\":false}"));
 
             Assume.That(response["errorCode"], Is.Null,
@@ -231,7 +233,7 @@ namespace UnitySkills.Tests.Core
 
             // Pinned positively: the visible set must all show up without exception, or "no leak" could just mean the probe returned nothing at all.
             Assert.That(reported, Is.EqualTo(expectedVisible),
-                $"{profile} 档下 {prefix}* 的探测名单应与推导的可见集完全一致。");
+                $"{profile} 档下 *{fragment}* 的探测名单应与推导的可见集完全一致。");
         }
 
         /// <summary>

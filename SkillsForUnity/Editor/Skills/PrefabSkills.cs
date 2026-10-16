@@ -486,7 +486,7 @@ namespace UnitySkills
         public static object PrefabGetInfo(string prefabPath, string gameObjectPath = null) =>
             PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeNode(root, PrefabAssetEditor.Resolve(root, gameObjectPath)));
 
-        [UnitySkill("prefab_get_hierarchy", "Read prefab asset get hierarchy. prefabPath is the asset; gameObjectPath is root-relative when accepted.",
+        [UnitySkill("prefab_get_hierarchy", "List the nodes of the prefab asset at prefabPath, inactive ones included, up to limit (default 200; truncated reports a cut). Each node carries its root-relative path, active state, layer, tag and local transform.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Query,
             RequiredParams = new[] { "prefabPath" },
             Tags = new[] { "prefab", "asset", "query" }, Outputs = new[] { "prefabPath" },
@@ -510,7 +510,7 @@ namespace UnitySkills
         public static object PrefabGetSerializedProperties(string prefabPath, string componentType, string gameObjectPath = null, int componentIndex = 0, bool includeChildren = true, int limit = 200) =>
             PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeProperties(root, PrefabAssetEditor.Resolve(root, gameObjectPath), componentType, componentIndex, includeChildren, limit));
 
-        [UnitySkill("prefab_add_component", "Edit prefab asset: add component. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_add_component", "Add componentType to the node at gameObjectPath (root-relative; omitted = root) in the prefab asset at prefabPath; only that asset is saved. RequireComponent dependencies come along; a DisallowMultipleComponent duplicate is refused.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
             RequiredParams = new[] { "prefabPath", "componentType" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -523,10 +523,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabAddComponentBatch(string items) =>
+        public static object PrefabAddComponentBatch(
+            [SkillParam("JSON array of {prefabPath, componentType, gameObjectPath? (omitted = root)}, each as in prefab_add_component.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_add_component", items);
 
-        [UnitySkill("prefab_remove_component", "Edit prefab asset: remove component. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_remove_component", "Remove the componentIndex-th (zero-based) componentType from the node at gameObjectPath (root-relative; omitted = root) in the prefab asset at prefabPath; only that asset is saved. Transform and components another one requires are refused.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Delete,
             RequiredParams = new[] { "prefabPath", "componentType" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -539,10 +541,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "high")]
-        public static object PrefabRemoveComponentBatch(string items) =>
+        public static object PrefabRemoveComponentBatch(
+            [SkillParam("JSON array of {prefabPath, componentType, gameObjectPath? (omitted = root), componentIndex? (default 0)}, each as in prefab_remove_component.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_remove_component", items);
 
-        [UnitySkill("prefab_set_component_enabled", "Edit prefab asset: set component enabled. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_set_component_enabled", "Set enabled on the componentIndex-th (zero-based) componentType of the node at gameObjectPath (root-relative; omitted = root) in the prefab asset at prefabPath; only that asset is saved.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             RequiredParams = new[] { "prefabPath", "componentType", "enabled" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -555,10 +559,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabSetComponentEnabledBatch(string items) =>
+        public static object PrefabSetComponentEnabledBatch(
+            [SkillParam("JSON array of {prefabPath, componentType, enabled, gameObjectPath? (omitted = root), componentIndex? (default 0)}, each as in prefab_set_component_enabled.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_set_component_enabled", items);
 
-        [UnitySkill("prefab_set_serialized_property", "Edit prefab asset: set serialized property. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_set_serialized_property", "Write propertyPath on the componentIndex-th componentType of the node at gameObjectPath (root-relative; omitted = root) in the prefab asset at prefabPath; only that asset is saved. Plain fields take value; an object reference takes one of assetPath, referenceGameObjectPath (with referenceComponentType/referenceComponentIndex for a component in this prefab) or clearReference.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             RequiredParams = new[] { "prefabPath", "componentType", "propertyPath" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -571,10 +577,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabSetSerializedPropertyBatch(string items) =>
+        public static object PrefabSetSerializedPropertyBatch(
+            [SkillParam("JSON array of {prefabPath, componentType, propertyPath, gameObjectPath? (omitted = root), componentIndex? (default 0), value?, assetPath?, referenceGameObjectPath?, referenceComponentType?, referenceComponentIndex? (default 0), clearReference? (default false)}, each as in prefab_set_serialized_property: value for a plain field, exactly one of assetPath, referenceGameObjectPath or clearReference:true for an object reference.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_set_serialized_property", items);
 
-        [UnitySkill("prefab_create_gameobject", "Edit prefab asset: create gameobject. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_create_gameobject", "Create a node called name under parentPath (root-relative; omitted = root) in the prefab asset at prefabPath, with a RectTransform when rectTransform is true; only that asset is saved. Sibling names must stay unique.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
             RequiredParams = new[] { "prefabPath", "name" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -587,10 +595,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabCreateGameObjectBatch(string items) =>
+        public static object PrefabCreateGameObjectBatch(
+            [SkillParam("JSON array of {prefabPath, name, parentPath? (omitted = root), rectTransform? (default false)}, each as in prefab_create_gameobject.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_create_gameobject", items);
 
-        [UnitySkill("prefab_delete_gameobject", "Edit prefab asset: delete gameobject. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_delete_gameobject", "Delete the node at gameObjectPath (root-relative) and its subtree from the prefab asset at prefabPath; only that asset is saved. The root and nodes inherited from a variant base or nested prefab are refused.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Delete,
             RequiredParams = new[] { "prefabPath", "gameObjectPath" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -603,10 +613,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "high")]
-        public static object PrefabDeleteGameObjectBatch(string items) =>
+        public static object PrefabDeleteGameObjectBatch(
+            [SkillParam("JSON array of {prefabPath, gameObjectPath}, each as in prefab_delete_gameobject.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_delete_gameobject", items);
 
-        [UnitySkill("prefab_duplicate_gameobject", "Edit prefab asset: duplicate gameobject. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_duplicate_gameobject", "Duplicate the node at gameObjectPath (root-relative) and its subtree as a sibling called newName (default <name>_Copy) in the prefab asset at prefabPath; only that asset is saved. The root cannot be duplicated.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
             RequiredParams = new[] { "prefabPath", "gameObjectPath" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -619,10 +631,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabDuplicateGameObjectBatch(string items) =>
+        public static object PrefabDuplicateGameObjectBatch(
+            [SkillParam("JSON array of {prefabPath, gameObjectPath, newName? (default <name>_Copy)}, each as in prefab_duplicate_gameobject.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_duplicate_gameobject", items);
 
-        [UnitySkill("prefab_rename_gameobject", "Edit prefab asset: rename gameobject. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_rename_gameobject", "Rename the node at gameObjectPath (root-relative; omitted = root) to newName in the prefab asset at prefabPath; only that asset is saved. Sibling names must stay unique.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             RequiredParams = new[] { "prefabPath", "newName" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -635,10 +649,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabRenameGameObjectBatch(string items) =>
+        public static object PrefabRenameGameObjectBatch(
+            [SkillParam("JSON array of {prefabPath, newName, gameObjectPath? (omitted = root)}, each as in prefab_rename_gameobject.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_rename_gameobject", items);
 
-        [UnitySkill("prefab_set_transform", "Edit prefab asset: set transform. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_set_transform", "Set posX/Y/Z, rotX/Y/Z, scaleX/Y/Z, and on a RectTransform anchoredPos, anchorMin, anchorMax, pivot and sizeDelta X/Y, of the node at gameObjectPath (root-relative; omitted = root) in the prefab asset at prefabPath; only that asset is saved. Transform axes are local and omitted axes are kept.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             RequiredParams = new[] { "prefabPath" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -646,15 +662,17 @@ namespace UnitySkills
         public static object PrefabSetTransform(string prefabPath, string gameObjectPath = null, float? posX = null, float? posY = null, float? posZ = null, float? rotX = null, float? rotY = null, float? rotZ = null, float? scaleX = null, float? scaleY = null, float? scaleZ = null, float? anchoredPosX = null, float? anchoredPosY = null, float? anchorMinX = null, float? anchorMinY = null, float? anchorMaxX = null, float? anchorMaxY = null, float? pivotX = null, float? pivotY = null, float? sizeDeltaX = null, float? sizeDeltaY = null) =>
             PrefabAssetEditor.Edit(prefabPath, "prefab_set_transform", new { gameObjectPath, posX, posY, posZ, rotX, rotY, rotZ, scaleX, scaleY, scaleZ, anchoredPosX, anchoredPosY, anchorMinX, anchorMinY, anchorMaxX, anchorMaxY, pivotX, pivotY, sizeDeltaX, sizeDeltaY });
 
-        [UnitySkill("prefab_set_transform_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, gameObjectPath, posX, posY, posZ, rotX, rotY, rotZ, scaleX, scaleY, scaleZ, anchoredPosX, anchoredPosY, anchorMinX, anchorMinY, anchorMaxX, anchorMaxY, pivotX, pivotY, sizeDeltaX, sizeDeltaY}. Each asset group is atomic; successful assets remain saved when another group fails.",
+        [UnitySkill("prefab_set_transform_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, gameObjectPath, posX, posY, posZ, rotX, rotY, rotZ, scaleX, scaleY, scaleZ, anchoredPosX, anchoredPosY, anchorMinX, anchorMinY, anchorMaxX, anchorMaxY, pivotX, pivotY, sizeDeltaX, sizeDeltaY}. Transform axes are local and omitted axes are kept. Each asset group is atomic; successful assets remain saved when another group fails.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabSetTransformBatch(string items) =>
+        public static object PrefabSetTransformBatch(
+            [SkillParam("JSON array of {prefabPath, gameObjectPath? (omitted = root), posX/Y/Z?, rotX/Y/Z?, scaleX/Y/Z?, anchoredPosX/Y?, anchorMinX/Y?, anchorMaxX/Y?, pivotX/Y?, sizeDeltaX/Y?}, each as in prefab_set_transform: local axes, omitted axes keep their value, and the anchoredPos/anchorMin/anchorMax/pivot/sizeDelta fields need a RectTransform node.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_set_transform", items);
 
-        [UnitySkill("prefab_set_parent", "Edit prefab asset: set parent. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_set_parent", "Move the node at gameObjectPath under parentPath (both root-relative; omitted parentPath = root) in the prefab asset at prefabPath, keeping its world pose when worldPositionStays is true; only that asset is saved. The root, inherited nodes and cycles are refused.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             RequiredParams = new[] { "prefabPath", "gameObjectPath" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -667,10 +685,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabSetParentBatch(string items) =>
+        public static object PrefabSetParentBatch(
+            [SkillParam("JSON array of {prefabPath, gameObjectPath, parentPath? (omitted = root), worldPositionStays? (default false)}, each as in prefab_set_parent.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_set_parent", items);
 
-        [UnitySkill("prefab_set_active", "Edit prefab asset: set active. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_set_active", "Set active (activeSelf) on the node at gameObjectPath (root-relative; omitted = root) in the prefab asset at prefabPath; only that asset is saved.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             RequiredParams = new[] { "prefabPath", "active" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -683,10 +703,12 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabSetActiveBatch(string items) =>
+        public static object PrefabSetActiveBatch(
+            [SkillParam("JSON array of {prefabPath, active, gameObjectPath? (omitted = root)}, each as in prefab_set_active.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_set_active", items);
 
-        [UnitySkill("prefab_set_sibling_index", "Edit prefab asset: set sibling index. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+        [UnitySkill("prefab_set_sibling_index", "Set the sibling index of the node at gameObjectPath (root-relative) to index in the prefab asset at prefabPath; only that asset is saved. The root and inherited nodes are refused.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
             RequiredParams = new[] { "prefabPath", "index", "gameObjectPath" },
             Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
@@ -699,7 +721,9 @@ namespace UnitySkills
             RequiredParams = new[] { "items" },
             Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabSetSiblingIndexBatch(string items) =>
+        public static object PrefabSetSiblingIndexBatch(
+            [SkillParam("JSON array of {prefabPath, gameObjectPath, index}, each as in prefab_set_sibling_index.")]
+            string items) =>
             PrefabAssetEditor.Batch("prefab_set_sibling_index", items);
 
         [UnitySkill("prefab_edit_batch", "Atomically edit one prefab asset. steps: JSON array of {skill, args}; only prefab asset edit operations are allowed, maximum 50 steps. Earlier-created paths are available to later steps.",

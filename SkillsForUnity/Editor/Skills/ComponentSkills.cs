@@ -713,11 +713,13 @@ namespace UnitySkills
             return ComponentInvocationService.GetMethods(componentType, isStatic, includePrivate, methodName, assembly);
         }
 
-        [UnitySkill("component_get_methods_batch", "Discover method signatures for JSON items containing componentType, isStatic, includePrivate, methodName.",
+        [UnitySkill("component_get_methods_batch", "Discover method signatures for JSON items containing componentType, isStatic, includePrivate, methodName, assembly.",
             Category = SkillCategory.Component, Operation = SkillOperation.Query,
             Tags = new[] { "method", "reflection", "batch" }, Outputs = new[] { "results" },
             RequiredParams = new[] { "items" }, ReadOnly = true, Mode = SkillMode.SemiAuto)]
-        public static object ComponentGetMethodsBatch(string items)
+        public static object ComponentGetMethodsBatch(
+            [SkillParam("JSON array of {componentType, isStatic? (default false), includePrivate? (default true), methodName?, assembly?}, each as in component_get_methods.")]
+            string items)
         {
             return BatchExecutor.Execute<MethodDiscoveryItem>(items, item => ComponentGetMethods(item.componentType, item.isStatic, item.includePrivate, item.methodName, item.assembly), item => item.componentType);
         }
@@ -747,7 +749,9 @@ namespace UnitySkills
             Category = SkillCategory.Component, Operation = SkillOperation.Execute,
             Tags = new[] { "method", "invoke", "runtime", "batch", "job" }, Outputs = new[] { "results" },
             RequiredParams = new[] { "items" }, RiskLevel = "high", MutatesScene = true, MutatesAssets = true, MayEnterPlayMode = true, MayTriggerReload = true, SupportsDryRun = true)]
-        public static object ComponentInvokeMethodBatch(string items)
+        public static object ComponentInvokeMethodBatch(
+            [SkillParam("JSON array of {componentType, methodName, name|path|instanceId? (instance calls), componentIndex?, isStatic?, parameterTypes?, genericTypeArguments?, arguments?, executionMode? (play|edit, default play), timeoutSeconds? (1-600, default 30), assembly?}, each as in component_invoke_method; parameterTypes, genericTypeArguments and arguments are JSON-array strings.")]
+            string items)
         {
             return BatchExecutor.Execute<ComponentInvocationService.Request>(items, ComponentInvocationService.Start, item => item.componentType + "." + item.methodName, atomic: false);
         }

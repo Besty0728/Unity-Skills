@@ -390,6 +390,25 @@ namespace UnitySkills.Tests.Core
             Assert.That(result.Value<string>("gameObject"), Is.EqualTo("Child"));
         }
 
+        // v2.9.0 resolved componentType with GetComponent, so an abstract base type matched its concrete subclass.
+        [Test]
+        public void LegacyPropertyWriter_AbstractBaseType_EditsTheMatchingSubclass()
+        {
+            var path = Create("AbstractBase", root => root.AddComponent<RequiredLeafProbe>());
+            var result = Success(PrefabSkills.PrefabSetProperty(path, nameof(RequiredBaseProbe), "m_Enabled", "false"));
+            Assert.That(result.Value<string>("component"), Is.EqualTo(nameof(RequiredLeafProbe)));
+            Assert.That(Asset(path).GetComponent<RequiredLeafProbe>().enabled, Is.False);
+        }
+
+        // v2.9.0 reported the matched component's own type name, not the requested base type.
+        [Test]
+        public void LegacyPropertyWriter_BaseTypeRequest_ReportsTheConcreteComponentType()
+        {
+            var result = Success(PrefabSkills.PrefabSetProperty(_path, "Collider", "isTrigger", "true", gameObjectName: "Child"));
+            Assert.That(result.Value<string>("component"), Is.EqualTo("BoxCollider"));
+            Assert.That(Asset(_path).transform.Find("Child").GetComponent<BoxCollider>().isTrigger, Is.True);
+        }
+
         [TestCase("[]")]
         [TestCase("not-json")]
         [TestCase("[null]")]
