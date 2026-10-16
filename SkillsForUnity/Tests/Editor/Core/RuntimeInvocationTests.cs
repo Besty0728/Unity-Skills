@@ -173,10 +173,11 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void InheritedProtectedInstanceMethodResolves()
         {
-            _target = new GameObject("InvocationFixture");
+            _target = new GameObject("InvocationFixture_" + Guid.NewGuid().ToString("N"));
             _target.AddComponent<InvocationComponentFixture>();
+            GameObjectFinder.InvalidateCache();
             var request = new ComponentInvocationService.Request { componentType = typeof(InvocationComponentFixture).FullName,
-                methodName = "ProtectedDouble", instanceId = _target.GetInstanceID(), arguments = "[7]", executionMode = "edit" };
+                methodName = "ProtectedDouble", path = _target.name, arguments = "[7]", executionMode = "edit" };
             var call = ComponentInvocationService.Bind(request);
             Assert.That(call.Method.Invoke(call.Target, call.Arguments), Is.EqualTo(14));
         }
@@ -214,13 +215,41 @@ namespace UnitySkills.Tests.Core
             Assert.That(output.Value<string>("text"), Is.EqualTo("done"));
         }
 
+#if !UNITY_6000_4_OR_NEWER
+        // The legacy instance ID reads 0 on Unity 6000.4+, so this variant only exists below it.
         [Test]
         public void SceneObjectArgumentsResolveByInstanceId()
         {
             _target = new GameObject("InvocationReference");
-            var token = new JObject { ["referenceInstanceId"] = _target.GetInstanceID() };
+            var token = new JObject { ["referenceInstanceId"] = UnityObjectIdUtility.GetObjectId(_target) };
             Assert.That(ComponentInvocationService.ConvertArgument(token, typeof(Transform)), Is.SameAs(_target.transform));
             Assert.Throws<ArgumentException>(() => ComponentInvocationService.ConvertArgument(token, typeof(BoxCollider)));
+        }
+#endif
+
+        [Test]
+        public void SceneObjectArgumentsResolveByPathAndName()
+        {
+            _target = new GameObject("InvocationReference_" + Guid.NewGuid().ToString("N"));
+            GameObjectFinder.InvalidateCache();
+            foreach (var key in new[] { "referencePath", "referenceName" })
+            {
+                var token = new JObject { [key] = _target.name };
+                Assert.That(ComponentInvocationService.ConvertArgument(token, typeof(Transform)), Is.SameAs(_target.transform), key);
+                Assert.Throws<ArgumentException>(() => ComponentInvocationService.ConvertArgument(token, typeof(BoxCollider)), key);
+            }
+        }
+
+        [Test]
+        public void UnityObjectResultsCarryAnEntityIdThatResolvesBack()
+        {
+            _target = new GameObject("InvocationResult");
+            var result = (JObject)ComponentInvocationService.BoundedValue(_target);
+            Assert.That(result.Value<string>("entityId"), Is.EqualTo(UnityObjectIdUtility.GetEntityId(_target)));
+            Assert.That(result.Value<int>("instanceId"), Is.EqualTo(UnityObjectIdUtility.GetObjectId(_target)));
+            Assert.That(result.Value<string>("name"), Is.EqualTo("InvocationResult"));
+            Assert.That(result.Value<string>("type"), Is.EqualTo(typeof(GameObject).FullName));
+            Assert.That(UnityObjectIdUtility.EntityIdToObject(result.Value<string>("entityId")), Is.SameAs(_target));
         }
 
         [Test]

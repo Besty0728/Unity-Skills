@@ -6,7 +6,7 @@ Accept one exact method call as an asynchronous job. This is high risk, non-atom
 | `componentType` | string | Yes | - | Component type, or ordinary C# type for static calls |
 | `methodName` | string | Yes | - | Exact method name |
 | `name` | string | No* | null | Instance target GameObject name |
-| `instanceId` | int | No* | 0 | Instance target GameObject ID |
+| `instanceId` | int | No* | 0 | Legacy instance ID (Unity < 6000.4, where it is nonzero); on 6000.4+ pass `entityId` (resolved to the path) or `path` |
 | `path` | string | No* | null | Instance target hierarchy path |
 | `componentIndex` | int | No | 0 | Zero-based index among components of this type |
 | `isStatic` | bool | No | false | Call a static method without a GameObject target |
@@ -21,8 +21,8 @@ Accept one exact method call as an asynchronous job. This is high risk, non-atom
 
 **Returns**: `{success, status, jobId, kind, waitUrl}`. A completed job has `resultData: {returnValue, refOut, signature}`. Plain, Task, Task<T>, ValueTask, ValueTask<T> and IEnumerator results are supported; output is bounded and marks truncation/cycles. Coroutine yields support null, nested iterators/CustomYieldInstruction, AsyncOperation and Play Mode WaitForSeconds.
 
-Use shared scalar/vector/colour conversion, JSON arrays for arrays/params, and `{referenceName}`, `{referencePath}`, `{referenceInstanceId}` or `{assetPath}` for Unity object parameters. Method exceptions fail the job. Timeout/cancellation cannot undo effects or forcibly stop arbitrary user Tasks. Synchronous code cannot be preempted. Started calls lost during domain reload report interrupted and are never replayed.
+Use shared scalar/vector/colour conversion, JSON arrays for arrays/params, and `{referenceName}`, `{referencePath}`, `{referenceInstanceId}` (Unity < 6000.4) or `{assetPath}` for Unity object parameters. Method exceptions fail the job. Timeout/cancellation cannot undo effects or forcibly stop arbitrary user Tasks. Synchronous code cannot be preempted. Started calls lost during domain reload report interrupted and are never replayed.
 
 Every terminal outcome also records `acceptedUtc`, `executionStartedUtc`, `finishedUtc`, `acceptedFrame`, `startFrame`, `finishFrame`, `acceptedLogSeq`, `startLogSeq`, `finishLogSeq` and `logWindow`. Start fields are null if invocation never began. The log window spans acceptance through terminal observation; it associates logs by time/sequence, without claiming exclusive causation. Its errors do not by themselves fail a completed method call; use a scenario to assert runtime health. Coverage gaps and pagination remain explicit in the window.
 
-Failures caused by exceptions include `exception: {type, message, stackTrace, truncated}` with bounded text. Return serialization reads public fields and auto-property backing fields without custom getter execution. More than 64 fields/properties, excessive depth/node count, or omitted unsafe getters set truncation markers; objects without any safely readable data carry `$unsupported` and `$reason`, rather than silently returning only a type name. An ambiguous method or type returns `details.candidates`; choose an exact signature/type and submit a new request, without overload guessing.
+Failures caused by exceptions include `exception: {type, message, stackTrace, truncated}` with bounded text. Return serialization reads public fields and auto-property backing fields without custom getter execution; a Unity object is returned as `{entityId, instanceId, name, type}`, with `instanceId` `0` on Unity 6000.4+. More than 64 fields/properties, excessive depth/node count, or omitted unsafe getters set truncation markers; objects without any safely readable data carry `$unsupported` and `$reason`, rather than silently returning only a type name. An ambiguous method or type returns `details.candidates`; choose an exact signature/type and submit a new request, without overload guessing.

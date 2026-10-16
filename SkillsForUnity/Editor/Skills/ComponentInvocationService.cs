@@ -372,7 +372,7 @@ namespace UnitySkills
         {
             if (--budget < 0 || depth > 6) return new JObject { ["truncated"] = true };
             if (value == null) return JValue.CreateNull();
-            if (value is UnityEngine.Object obj) return obj == null ? JValue.CreateNull() : new JObject { ["instanceId"] = obj.GetInstanceID(), ["name"] = obj.name, ["type"] = obj.GetType().FullName };
+            if (value is UnityEngine.Object obj) return obj == null ? JValue.CreateNull() : new JObject { ["entityId"] = UnityObjectIdUtility.GetEntityId(obj), ["instanceId"] = UnityObjectIdUtility.GetObjectId(obj), ["name"] = obj.name, ["type"] = obj.GetType().FullName };
             if (value is string text) return new JValue(text.Length > 4096 ? text.Substring(0, 4096) + "[truncated]" : text);
             var type = value.GetType();
             if (type.IsEnum) return new JValue(value.ToString());
