@@ -18,9 +18,9 @@ description: Manage Unity AssetDatabase operations
 
 ## Operating Mode
 
-- **Approval**：本模块 Mixed —— `asset_find` / `asset_get_info` / `asset_get_labels` 标 `SkillMode.SemiAuto`，可直接执行；写类 skill (`asset_move` / `asset_move_batch` / `asset_duplicate` / `asset_create_folder` / `asset_create_folder_batch` / `asset_reimport*` / `asset_set_labels`) 走默认 `SkillMode.FullAuto`，需 grant。
+- **Approval**：本模块 Mixed —— `asset_find` / `asset_get_info` / `asset_get_labels` 标 `SkillMode.SemiAuto`，可直接执行；写类 skill (`asset_move` / `asset_move_batch` / `asset_duplicate` / `asset_create_folder` / `asset_create_folder_batch` / `asset_refresh` / `asset_reimport*` / `asset_set_labels`) 走默认 `SkillMode.FullAuto`，需 grant。
 - **Auto / Bypass**：FullAuto 直接执行。
-- **含 NeverInSemi 高危 skill**：`asset_import` / `asset_import_batch` (标 `RiskLevel = "high"` —— 写入项目)；`asset_delete` / `asset_delete_batch` (Operation.Delete)；`asset_refresh` (标 `MayTriggerReload = true` —— 刷新可能触发编译与域重载)。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
+- **含 NeverInSemi 高危 skill**：`asset_import` / `asset_import_batch` (标 `RiskLevel = "high"` —— 写入项目)；`asset_delete` / `asset_delete_batch` (Operation.Delete)。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
 
 **DO NOT** (common hallucinations):
 - `asset_create` does not exist → use `asset_create_folder` (folders), `material_create` (materials), `script_create` (scripts)
@@ -190,7 +190,7 @@ unity_skills.call_skill("asset_create_folder_batch", items=json.dumps([
 ```
 
 ### asset_refresh
-Refresh the AssetDatabase after external changes, e.g. files you wrote or deleted with your own file tools. This skill declares `MayTriggerReload=true`: Approval/Auto reload restrictions apply; it requires Bypass or an explicit Allowlist match.
+Refresh the AssetDatabase after external changes, e.g. files you wrote or deleted with your own file tools.
 
 No parameters.
 
