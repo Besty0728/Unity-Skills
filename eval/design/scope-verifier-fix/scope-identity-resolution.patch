@@ -1,0 +1,141 @@
+diff --git a/eval/harness/journal.py b/eval/harness/journal.py
+--- a/eval/harness/journal.py
++++ b/eval/harness/journal.py
+@@ -123,12 +123,45 @@ def adopted_paths(records, object_root):
+     return out
+ 
+ 
++def _object_identity(rec):
++    value = rec.get("entityId")
++    if value in (None, ""):
++        value = rec.get("instanceId")
++    return None if value in (None, "") else str(value)
++
++
++def _object_location_observation(rec):
++    """Trusted location evidence for later pathless destruction records.
++
++    A create proves that the attempt introduced this identity at path. A reparent proves its new
++    current path. Other records may mention an identity and path, but do not prove creation or a
++    move and therefore cannot make an otherwise unknown destruction safe.
++    """
++    kind = rec.get("kind")
++    if kind == "gameobject_created":
++        return rec.get("path")
++    if kind == "gameobject_reparented":
++        return rec.get("toPath")
++    return None
++
++
+ def scope_violations(records, object_root, asset_root, run_scene=None, extra_allowed=None):
+     """Changes outside the run's object/asset roots (meta files follow their asset)."""
+     bad = []
+     adopted = adopted_paths(records, object_root)
++    object_locations = {}
+     for rec in records:
+         kind = rec.get("kind")
++        identity = _object_identity(rec)
++        observed_path = _object_location_observation(rec)
++        if identity and observed_path:
++            previous = object_locations.get(identity) or {}
++            object_locations[identity] = {
++                "path": observed_path,
++                "scenePath": rec.get("scenePath") or previous.get("scenePath")
++            }
+         if extra_allowed and extra_allowed(rec):
++            if kind == "gameobject_destroyed" and identity:
++                object_locations.pop(identity, None)
+             continue
+         if kind in ("imported", "deleted", "moved"):
+@@ -150,11 +181,19 @@ def scope_violations(records, object_root, asset_root, run_scene=None, extra_all
+             if asset:
+                 if not under(asset, asset_root):
+                     bad.append(rec)
+-            elif not all(under(p, object_root) for p in paths) or (not paths and not adopted.intersection(
+-                    p for p in (rec.get("path"), rec.get("fromPath")) if p)):
+-                bad.append(rec)
++            elif not paths and kind == "gameobject_destroyed":
++                location = object_locations.get(identity) if identity else None
++                if not location or not under(location.get("path"), object_root) or (run_scene and
++                        location.get("scenePath") and location.get("scenePath") != run_scene):
++                    bad.append(rec)
++            elif not all(under(p, object_root) for p in paths) or (not paths and not adopted.intersection(
++                        p for p in (rec.get("path"), rec.get("fromPath")) if p)):
++                bad.append(rec)
+             elif run_scene and rec.get("scenePath") and rec.get("scenePath") != run_scene:
+                 bad.append(rec)
++            if kind == "gameobject_destroyed" and identity:
++                # Do not let a later Unity instance-id reuse inherit the destroyed object's location.
++                object_locations.pop(identity, None)
+         elif kind == "undo_redo":
+             continue
+     return bad
+diff --git a/eval/harness/task.py b/eval/harness/task.py
+--- a/eval/harness/task.py
++++ b/eval/harness/task.py
+@@ -75,7 +75,7 @@ class Task(object):
+     id = None
+     title = ""
+     tier = "basic"
+-    case_version = "1"
++    case_version = "2"
+     timeout_s = 900
+     budget_usd = 8.0
+     needs_focus = False         # compile happens while the subject runs
+diff --git a/eval/tests/test_harness.py b/eval/tests/test_harness.py
+--- a/eval/tests/test_harness.py
++++ b/eval/tests/test_harness.py
+@@ -126,6 +126,53 @@ class JournalTests(unittest.TestCase):
+         self.assertFalse(J.under("EV_r10/A", "EV_r1"))
+         self.assertTrue(J.under("Assets\\X\\y.mat", "Assets/X"))
+ 
++    def test_pathless_rollback_destroy_uses_prior_in_scope_create_identity(self):
++        records = [
++            {"type": "scene_changes", "kind": "gameobject_created", "entityId": "-10",
++             "path": self.ROOT + "/Transient", "scenePath": self.SCENE},
++            {"type": "undo_redo", "kind": "undo_redo"},
++            {"type": "scene_changes", "kind": "gameobject_destroyed", "entityId": "-10"},
++        ]
++        self.assertEqual(J.scope_violations(records, self.ROOT, self.ASSETS, self.SCENE), [])
++
++    def test_pathless_destroy_of_unknown_identity_fails_closed(self):
++        destroyed = {"type": "scene_changes", "kind": "gameobject_destroyed", "entityId": "-11"}
++        bad = J.scope_violations([destroyed], self.ROOT, self.ASSETS, self.SCENE)
++        self.assertEqual(bad, [destroyed])
++
++    def test_pathless_destroy_of_outside_created_identity_fails(self):
++        destroyed = {"type": "scene_changes", "kind": "gameobject_destroyed", "entityId": "-12"}
++        records = [
++            {"type": "scene_changes", "kind": "gameobject_created", "entityId": "-12",
++             "path": "Main Camera", "scenePath": "Assets/Scenes/Main.unity"},
++            destroyed,
++        ]
++        self.assertIn(destroyed, J.scope_violations(records, self.ROOT, self.ASSETS, self.SCENE))
++
++    def test_move_outside_then_pathless_destroy_remains_violation(self):
++        destroyed = {"type": "scene_changes", "kind": "gameobject_destroyed", "entityId": "-13"}
++        records = [
++            {"type": "scene_changes", "kind": "gameobject_created", "entityId": "-13",
++             "path": self.ROOT + "/Transient", "scenePath": self.SCENE},
++            {"type": "scene_changes", "kind": "gameobject_reparented", "entityId": "-13",
++             "fromPath": self.ROOT + "/Transient", "toPath": "Outside/Transient",
++             "newParentPath": "Outside", "scenePath": self.SCENE},
++            destroyed,
++        ]
++        bad = J.scope_violations(records, self.ROOT, self.ASSETS, self.SCENE)
++        self.assertIn(destroyed, bad)
++
++    def test_adopted_identity_uses_latest_in_scope_path_for_destroy(self):
++        records = [
++            {"type": "scene_changes", "kind": "gameobject_created", "entityId": "-14",
++             "path": "Canvas/Transient", "scenePath": self.SCENE},
++            {"type": "scene_changes", "kind": "gameobject_reparented", "entityId": "-14",
++             "fromPath": "Canvas/Transient", "toPath": self.ROOT + "/Transient",
++             "newParentPath": self.ROOT, "scenePath": self.SCENE},
++            {"type": "scene_changes", "kind": "gameobject_destroyed", "entityId": "-14"},
++        ]
++        self.assertEqual(J.scope_violations(records, self.ROOT, self.ASSETS, self.SCENE), [])
++
+ 
+ class MetricsTests(unittest.TestCase):
+     def stream(self, tmp):

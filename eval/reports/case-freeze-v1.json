@@ -1,0 +1,1143 @@
+{
+  "suite": "p0-codex-isolated-v1",
+  "frozenAfterCalibrationAt": "2026-10-11T19:22:22.165781+00:00",
+  "purpose": "Preserve evaluated case version 1; proposed future fixes are unapplied and require a new source identity.",
+  "sourceManifest": "../runs/isolated-source-freeze-20261011.json",
+  "sourceArchiveSha256": "11c766e5704036c117ee2f59a533a2bf02817d92cf6abb2994b52a83bc90d319",
+  "docsTreeSha256": "5bbb9d35718645e3c76ae0a260bc857e1a4490db811737d132206f6f41d040f5",
+  "observedReports": 168,
+  "cases": [
+    {
+      "task": "S01",
+      "title": "Crate cube with a new material",
+      "caseVersion": "1",
+      "tier": "basic",
+      "wallTimeoutSeconds": 600,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "A1",
+          1.5,
+          false,
+          "exactly one new Crate under Props with Transform/MeshFilter/MeshRenderer/BoxCollider"
+        ],
+        [
+          "A2",
+          1.5,
+          false,
+          "world position (0, 0.5, 0)"
+        ],
+        [
+          "A3",
+          0.5,
+          false,
+          "identity rotation and unit local scale"
+        ],
+        [
+          "A4",
+          0.5,
+          false,
+          "mesh is the built-in Cube"
+        ],
+        [
+          "A5",
+          1.5,
+          false,
+          "material asset at A/Materials/CrateMaterial.mat uses the pipeline's default Lit shader"
+        ],
+        [
+          "A6",
+          2.0,
+          false,
+          "Crate has exactly one slot and slot 0 is that asset"
+        ],
+        [
+          "A7",
+          1.0,
+          true,
+          "decoy legacy material and the Control object unchanged"
+        ],
+        [
+          "A8",
+          1.0,
+          true,
+          "no side effects outside R/A and no scene save"
+        ],
+        [
+          "A9",
+          0.5,
+          false,
+          "answer fields match the actual state"
+        ]
+      ],
+      "answerSchema": "{\"objectPath\": \"Crate 的完整层级路径\", \"objectInstanceId\": 整数, \"materialPath\": \"材质资产路径\", \"declaredComplete\": true 或 false}",
+      "sourceSha256": "6a312439d7769464200b479b7b7b04744bb14326ed47bdd3bb1b260f685a0808",
+      "seedsByRep": {
+        "0": [
+          "7001"
+        ],
+        "1": [
+          "14920"
+        ],
+        "2": [
+          "22839"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "S03",
+      "title": "Reparent keeping the local pose",
+      "caseVersion": "1",
+      "tier": "basic",
+      "wallTimeoutSeconds": 420,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "B1",
+          2.0,
+          false,
+          "the original Lamp (same instanceId) is now a child of Props"
+        ],
+        [
+          "B2",
+          2.0,
+          false,
+          "Lamp m_LocalPosition equals the old local position"
+        ],
+        [
+          "B3",
+          2.0,
+          false,
+          "Lamp local rotation equals the old local rotation (10, 20, 0)"
+        ],
+        [
+          "B4",
+          1.0,
+          false,
+          "Lamp m_LocalScale equals the old local scale"
+        ],
+        [
+          "B5",
+          1.0,
+          false,
+          "Bulb (same id) keeps parent and local TRS; Lamp components/order/enabled unchanged"
+        ],
+        [
+          "B6",
+          1.0,
+          true,
+          "other nodes incl. the decoy Lamp unchanged; Props keeps child order, Lamp last"
+        ],
+        [
+          "B7",
+          0.5,
+          false,
+          "answer fields match the actual state"
+        ],
+        [
+          "B8",
+          0.5,
+          false,
+          "no side effects outside R/A and no scene save"
+        ]
+      ],
+      "answerSchema": "{\"newPath\": \"Lamp 移动后的完整层级路径\", \"localPosition\": [x, y, z], \"localEulerAngles\": [x, y, z], \"localScale\": [x, y, z], \"declaredComplete\": true 或 false}",
+      "sourceSha256": "5188b6bdb91cb54d40bc5c7120b616102d2193c3248725c589cfc76a0f47e700",
+      "seedsByRep": {
+        "0": [
+          "7102"
+        ],
+        "1": [
+          "15021"
+        ],
+        "2": [
+          "22940"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "S04",
+      "title": "Disable the right same-name sibling",
+      "caseVersion": "1",
+      "tier": "basic",
+      "wallTimeoutSeconds": 300,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "C1",
+          4.0,
+          false,
+          "the Marker under Markers that has an AudioSource is inactive (activeSelf false)"
+        ],
+        [
+          "C2",
+          2.0,
+          false,
+          "the other four Markers keep their C0 active states"
+        ],
+        [
+          "C3",
+          1.0,
+          false,
+          "decoys (Marker_Archive, marker, Backup/Marker) unchanged"
+        ],
+        [
+          "C4",
+          1.5,
+          true,
+          "ids, names, parents, sibling order and components of the Hall subtree unchanged"
+        ],
+        [
+          "C5",
+          0.5,
+          false,
+          "answer reports the target's instanceId and path"
+        ],
+        [
+          "C6",
+          1.0,
+          false,
+          "journal: only active-state changes, nothing outside R/A, no scene save"
+        ]
+      ],
+      "answerSchema": "{\"disabledInstanceId\": 整数, \"disabledPath\": \"被禁用对象的完整层级路径\", \"declaredComplete\": true 或 false}",
+      "sourceSha256": "ccdfdf6ba799b74aa8e4ad93d73815a2bd92b57577de28ac98c61973944f6d0b",
+      "seedsByRep": {
+        "0": [
+          "7203"
+        ],
+        "1": [
+          "15122"
+        ],
+        "2": [
+          "23041"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "S06",
+      "title": "Nested material from a backslash path",
+      "caseVersion": "1",
+      "tier": "basic",
+      "wallTimeoutSeconds": 420,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "D1",
+          2.0,
+          false,
+          "A/Materials/Nested/BluePanel.mat exists as a Material, folders registered"
+        ],
+        [
+          "D2",
+          2.5,
+          false,
+          "the new material uses URP Lit with _BaseColor (0.1, 0.4, 0.8, 1)"
+        ],
+        [
+          "D3",
+          2.0,
+          false,
+          "DisplayCube has one slot and slot 0 is A/Materials/Nested/BluePanel.mat"
+        ],
+        [
+          "D4",
+          2.0,
+          true,
+          "PanelBase.mat unchanged and ControlCube still uses it"
+        ],
+        [
+          "D5",
+          0.5,
+          false,
+          "answer fields match the actual state"
+        ],
+        [
+          "D6",
+          1.0,
+          false,
+          "no folder/file with a literal backslash, nothing outside R/A, no scene save"
+        ]
+      ],
+      "answerSchema": "{\"materialPath\": \"新材质的资产路径（用正斜杠）\", \"colorProperty\": \"写入主颜色的着色器属性名\", \"readback\": [r, g, b, a] 写入后读回的颜色, \"declaredComplete\": true 或 false}",
+      "sourceSha256": "ef134d93926d188d2d2c4f5a94de45538e7b18ac9220b12a15a04de23c306956",
+      "seedsByRep": {
+        "0": [
+          "7304"
+        ],
+        "1": [
+          "15223"
+        ],
+        "2": [
+          "23142"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "S08",
+      "title": "Regex + component inventory (read-only)",
+      "caseVersion": "1",
+      "tier": "basic",
+      "wallTimeoutSeconds": 300,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "E1",
+          2.5,
+          false,
+          "every matching object is listed (fraction of 8)"
+        ],
+        [
+          "E2",
+          2.5,
+          false,
+          "no extra or duplicate entries"
+        ],
+        [
+          "E3",
+          1.5,
+          false,
+          "each listed path belongs to the listed instanceId"
+        ],
+        [
+          "E4",
+          1.0,
+          false,
+          "total equals the true count (8)"
+        ],
+        [
+          "E5",
+          1.5,
+          true,
+          "scene state unchanged (names, active, components, enabled), nothing outside R/A"
+        ],
+        [
+          "E6",
+          1.0,
+          false,
+          "no write recorded in the change journal"
+        ]
+      ],
+      "answerSchema": "{\"total\": 整数, \"matches\": [{\"path\": \"完整层级路径\", \"instanceId\": 整数}], \"declaredComplete\": true 或 false}",
+      "sourceSha256": "1c6a9b50eb5e665e830411b69425568214cf1931decb66b2f97000ca8d825444",
+      "seedsByRep": {
+        "0": [
+          "7405"
+        ],
+        "1": [
+          "15324"
+        ],
+        "2": [
+          "23243"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "D01",
+      "title": "Inventory of 63 objects across pages",
+      "caseVersion": "1",
+      "tier": "basic",
+      "wallTimeoutSeconds": 420,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "F1",
+          3.0,
+          false,
+          "every Slot_ object under Inventory is listed (fraction of 63)"
+        ],
+        [
+          "F2",
+          3.0,
+          false,
+          "no extra or duplicate entries"
+        ],
+        [
+          "F3",
+          2.0,
+          false,
+          "each listed path belongs to the listed instanceId"
+        ],
+        [
+          "F4",
+          1.0,
+          false,
+          "total equals 63"
+        ],
+        [
+          "F5",
+          0.5,
+          true,
+          "scene state unchanged, nothing outside R/A, no scene save"
+        ],
+        [
+          "F6",
+          0.5,
+          false,
+          "no write recorded in the change journal"
+        ]
+      ],
+      "answerSchema": "{\"total\": 整数, \"items\": [{\"path\": \"完整层级路径\", \"instanceId\": 整数}], \"declaredComplete\": true 或 false}",
+      "sourceSha256": "6749379c929d4e251e1c69de3ac40db09e14782b86f8cb7b4f1b8242e504f927",
+      "seedsByRep": {
+        "0": [
+          "7506"
+        ],
+        "1": [
+          "15425"
+        ],
+        "2": [
+          "23344"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "T1",
+      "title": "Turret scripts, config asset and component references",
+      "caseVersion": "1",
+      "tier": "composite",
+      "wallTimeoutSeconds": 2400,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "B1",
+          1.0,
+          false,
+          "both scripts exist at A/Scripts/<Class>.cs with exactly the given content"
+        ],
+        [
+          "B2",
+          0.5,
+          false,
+          "compilation finished without errors and both classes are loaded"
+        ],
+        [
+          "B3",
+          1.0,
+          true,
+          "no .cs file other than the two scripts was added anywhere under Assets"
+        ],
+        [
+          "B4",
+          1.0,
+          false,
+          "A/Data/MainTurretConfig.asset exists and is a TurretConfig_<k>"
+        ],
+        [
+          "B5",
+          1.0,
+          false,
+          "config asset fireRate 2.5 and burstCount 3"
+        ],
+        [
+          "B6",
+          1.0,
+          false,
+          "config projectilePrefab is A/Prefabs/Projectile_<k>.prefab (GUID on disk)"
+        ],
+        [
+          "B7",
+          1.0,
+          false,
+          "exactly one TurretAI in the scene, on the turret with the largest world X; other turrets unchanged"
+        ],
+        [
+          "B8",
+          0.5,
+          false,
+          "TurretAI.config is the asset at A/Data/MainTurretConfig.asset"
+        ],
+        [
+          "B9",
+          1.0,
+          false,
+          "TurretAI.target is the Transform of the Respawn-tagged dummy"
+        ],
+        [
+          "B10",
+          0.5,
+          false,
+          "TurretAI.turnSpeed is 90"
+        ],
+        [
+          "B11",
+          0.5,
+          true,
+          "dummies, barrels and the three projectile prefabs unchanged"
+        ],
+        [
+          "B12",
+          0.5,
+          true,
+          "no side effects outside R/A and no scene save"
+        ],
+        [
+          "B13",
+          0.5,
+          false,
+          "answer fields match the actual state"
+        ]
+      ],
+      "answerSchema": "{\"scriptPaths\": [\"两个脚本的资产路径\"], \"configAssetPath\": \"配置资产路径\", \"turretInstanceId\": 整数, \"targetDummyInstanceId\": 整数, \"declaredComplete\": true 或 false}",
+      "sourceSha256": "bbccab069a9d1b5c6705bc04071444183e418f3d55752d45eb10c66903fcb312",
+      "seedsByRep": {
+        "0": [
+          "7607"
+        ],
+        "1": [
+          "15526"
+        ],
+        "2": [
+          "23445"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "T2",
+      "title": "UGUI start button with ordered persistent listeners",
+      "caseVersion": "1",
+      "tier": "composite",
+      "wallTimeoutSeconds": 2400,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "D1",
+          1.0,
+          false,
+          "exactly one Button in the scene: StartButton directly under R/UI/MenuCanvas"
+        ],
+        [
+          "D2",
+          0.5,
+          false,
+          "StartButton has RectTransform, Image and Button"
+        ],
+        [
+          "D3",
+          0.5,
+          false,
+          "a TextMeshProUGUI under the button reads \"Start Game\""
+        ],
+        [
+          "D4",
+          1.0,
+          false,
+          "anchorMin = anchorMax = (0.5, 0), pivot (0.5, 0)"
+        ],
+        [
+          "D5",
+          1.0,
+          false,
+          "anchoredPosition (0, 120), size 320 x 80"
+        ],
+        [
+          "D6",
+          1.0,
+          false,
+          "exactly one EventSystem in the scene, at R/UI/EventSystem with StandaloneInputModule"
+        ],
+        [
+          "D7",
+          0.5,
+          false,
+          "onClick has exactly two persistent calls"
+        ],
+        [
+          "D8",
+          1.5,
+          false,
+          "call 0: Finish-tagged Menu GameObject.SetActive(false)"
+        ],
+        [
+          "D9",
+          1.0,
+          false,
+          "call 1: GameController_<k>.StartGame() on R/Systems/GameController, no-argument mode"
+        ],
+        [
+          "D10",
+          0.5,
+          false,
+          "both calls RuntimeOnly"
+        ],
+        [
+          "D11",
+          0.5,
+          true,
+          "menus, canvases, archive and controller unchanged; still exactly two Canvas objects"
+        ],
+        [
+          "D12",
+          0.5,
+          true,
+          "no side effects outside R/A and no scene save"
+        ],
+        [
+          "D13",
+          0.5,
+          false,
+          "answer fields match the actual state"
+        ]
+      ],
+      "answerSchema": "{\"buttonInstanceId\": 整数, \"eventSystemInstanceId\": 整数, \"listeners\": [{\"targetInstanceId\": 目标 GameObject 的 instanceId, \"method\": \"方法名\"}], \"declaredComplete\": true 或 false}",
+      "sourceSha256": "3da55ba096de117d25071266023ca908baeeb9d766e101f390af50e3a97ecceb",
+      "seedsByRep": {
+        "0": [
+          "7708"
+        ],
+        "1": [
+          "15627"
+        ],
+        "2": [
+          "23546"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "T3",
+      "title": "Physics bridge with hinge chain, physic material and a collision pair",
+      "caseVersion": "1",
+      "tier": "composite",
+      "wallTimeoutSeconds": 1800,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "P1",
+          1.0,
+          false,
+          "each plank has exactly one Rigidbody (mass 2) and exactly one HingeJoint"
+        ],
+        [
+          "P2",
+          1.5,
+          false,
+          "hinge chain by world X: plank1 -> AnchorLeft, plank k -> plank k-1"
+        ],
+        [
+          "P3",
+          0.5,
+          false,
+          "every hinge axis is (0, 0, 1)"
+        ],
+        [
+          "P4",
+          1.0,
+          false,
+          "A/Physics/BridgeGrip_<k>.physicMaterial with dynamic 0.8, static 0.9, bounce 0"
+        ],
+        [
+          "P5",
+          0.5,
+          false,
+          "exactly one physic material asset under A"
+        ],
+        [
+          "P6",
+          1.5,
+          false,
+          "material on every plank BoxCollider, not on plank3's SphereCollider"
+        ],
+        [
+          "P7",
+          1.0,
+          false,
+          "the five planks are on L1, their children keep their layer"
+        ],
+        [
+          "P8",
+          1.0,
+          false,
+          "L1 x L2 collision disabled; every other pair with L1 or L2 unchanged"
+        ],
+        [
+          "P9",
+          1.0,
+          true,
+          "AnchorLeft, Spare/Plank, plank TRS/children/order/component order unchanged"
+        ],
+        [
+          "P10",
+          0.5,
+          true,
+          "no side effects outside R/A except the collision pair, no scene save"
+        ],
+        [
+          "P11",
+          0.5,
+          false,
+          "answer matches the actual state"
+        ]
+      ],
+      "answerSchema": "{\"planks\": [{\"number\": 1 到 5 的编号, \"instanceId\": 整数}, ...共 5 项], \"materialPath\": \"物理材质资产路径\", \"plankLayerIndex\": 整数, \"declaredComplete\": true 或 false}",
+      "sourceSha256": "898220dadddf3a53ec35101f69d3102b4d5ea2ae3a6a4f4e2fa9dc558c813558",
+      "seedsByRep": {
+        "0": [
+          "7809"
+        ],
+        "1": [
+          "15728"
+        ],
+        "2": [
+          "23647"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "T4",
+      "title": "Multi-slot material with a shared-material trap",
+      "caseVersion": "1",
+      "tier": "composite",
+      "wallTimeoutSeconds": 1800,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "M1",
+          1.0,
+          false,
+          "Car still has exactly 2 material slots"
+        ],
+        [
+          "M2",
+          1.5,
+          false,
+          "Car slot 0 is a new saved asset under A: URP Lit, _BaseColor (0.8, 0.1, 0.1, 1)"
+        ],
+        [
+          "M3",
+          1.5,
+          true,
+          "BodyPaint asset unchanged"
+        ],
+        [
+          "M4",
+          0.5,
+          false,
+          "Trim and GlowOld assets unchanged"
+        ],
+        [
+          "M5",
+          1.0,
+          false,
+          "CarTwin keeps [BodyPaint, Trim]; both cars' transforms/components unchanged"
+        ],
+        [
+          "M6",
+          1.5,
+          false,
+          "Car slot 1 is Glow_<k>, the only Glow_<k> material in the project"
+        ],
+        [
+          "M7",
+          1.0,
+          false,
+          "A/Materials/Glow_<k>.mat exists and uses URP Lit"
+        ],
+        [
+          "M8",
+          0.5,
+          false,
+          "Glow emission enabled (_EMISSION on, giFlags not EmissiveIsBlack)"
+        ],
+        [
+          "M9",
+          0.5,
+          false,
+          "Glow _EmissionColor rgb == (2, 1, 0)"
+        ],
+        [
+          "M10",
+          0.5,
+          true,
+          "no side effects outside R/A and no scene save"
+        ],
+        [
+          "M11",
+          0.5,
+          false,
+          "answer matches the actual state"
+        ]
+      ],
+      "answerSchema": "{\"bodyMaterialPath\": \"Car 槽 0 材质的资产路径\", \"glowMaterialPath\": \"Car 槽 1 材质的资产路径\", \"declaredComplete\": true 或 false}",
+      "sourceSha256": "29a511f2e29d00ed23dfdc83ac864e7356fdcb7c236b630b0d8c3f269b31927d",
+      "seedsByRep": {
+        "0": [
+          "7910"
+        ],
+        "1": [
+          "15829"
+        ],
+        "2": [
+          "23748"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "T5",
+      "title": "Prefab variant replacement keeping pose and sibling index",
+      "caseVersion": "1",
+      "tier": "composite",
+      "wallTimeoutSeconds": 1800,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "V1",
+          1.0,
+          false,
+          "A/Prefabs/Crate_Heavy.prefab exists and is a variant of Crate.prefab"
+        ],
+        [
+          "V2",
+          1.5,
+          false,
+          "the variant asset overrides the root Rigidbody mass to 50"
+        ],
+        [
+          "V3",
+          1.5,
+          true,
+          "Crate.prefab unchanged (file bytes and GUID)"
+        ],
+        [
+          "V4",
+          0.5,
+          false,
+          "the old 75-degree Crate is gone"
+        ],
+        [
+          "V5",
+          1.0,
+          false,
+          "the other crates (values, mass) and pallets unchanged"
+        ],
+        [
+          "V6",
+          1.5,
+          false,
+          "one new Crate_Heavy instance named Crate at the old sibling index under Row"
+        ],
+        [
+          "V7",
+          1.5,
+          false,
+          "new instance has the old local position/rotation/scale (same world pose)"
+        ],
+        [
+          "V8",
+          1.0,
+          true,
+          "no side effects outside R/A and no scene save"
+        ],
+        [
+          "V9",
+          0.5,
+          false,
+          "answer matches the actual state"
+        ]
+      ],
+      "answerSchema": "{\"variantPath\": \"变体资产路径\", \"newInstanceId\": 整数, \"siblingIndex\": 整数, \"declaredComplete\": true 或 false}",
+      "sourceSha256": "89879e2af162a1773ee62e8f4733ef5e44cc56c8743b20a82b5848ebec2a315d",
+      "seedsByRep": {
+        "0": [
+          "8011"
+        ],
+        "1": [
+          "15930"
+        ],
+        "2": [
+          "23849"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "T7",
+      "title": "Large-set incremental repair",
+      "caseVersion": "1",
+      "tier": "composite",
+      "wallTimeoutSeconds": 1800,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "G1",
+          2.0,
+          false,
+          "every match that had no BoxCollider now has exactly one, enabled (fraction)"
+        ],
+        [
+          "G2",
+          1.0,
+          false,
+          "matches that already had a BoxCollider keep exactly one with the same enabled state"
+        ],
+        [
+          "G3",
+          0.5,
+          false,
+          "matches keep their other components (Sphere/Mesh colliders, renderers) unchanged"
+        ],
+        [
+          "G4",
+          2.0,
+          false,
+          "every match whose Rigidbody mass was not 4.5 now has mass 4.5 (fraction)"
+        ],
+        [
+          "G5",
+          1.0,
+          false,
+          "no Rigidbody added or removed; matches already at 4.5 unchanged"
+        ],
+        [
+          "G6",
+          1.0,
+          true,
+          "decoys, R/Archive/Crate_A01, fillers and groups unchanged"
+        ],
+        [
+          "G7",
+          0.5,
+          false,
+          "hierarchy unchanged: same objects, names, paths, active flags, sibling order"
+        ],
+        [
+          "G8",
+          0.5,
+          false,
+          "addedBoxCollider lists exactly the objects that gained a BoxCollider"
+        ],
+        [
+          "G9",
+          0.5,
+          false,
+          "fixedMass lists exactly the objects whose Rigidbody mass changed"
+        ],
+        [
+          "G10",
+          0.5,
+          false,
+          "matchedCount is 73 and declaredComplete is true"
+        ],
+        [
+          "G11",
+          0.5,
+          true,
+          "no side effects outside R/A and no scene save"
+        ]
+      ],
+      "answerSchema": "{\"matchedCount\": 整数, \"addedBoxCollider\": [instanceId 整数...], \"fixedMass\": [instanceId 整数...], \"declaredComplete\": true 或 false}",
+      "sourceSha256": "fa189521bd26132f3e8df3145089e90dda4cd6a77a25ca86205046596bf7ae6f",
+      "seedsByRep": {
+        "0": [
+          "8112"
+        ],
+        "1": [
+          "16031"
+        ],
+        "2": [
+          "23950"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "T9",
+      "title": "Rename serialized fields keeping the stored values",
+      "caseVersion": "1",
+      "tier": "composite",
+      "wallTimeoutSeconds": 2400,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "C1",
+          1.0,
+          false,
+          "Patrol script declares moveSpeed/patrolTarget/laps, no speed/waypoint, same class"
+        ],
+        [
+          "C2",
+          1.0,
+          false,
+          "FormerlySerializedAs(\"speed\") on moveSpeed and (\"waypoint\") on patrolTarget"
+        ],
+        [
+          "C3",
+          0.5,
+          false,
+          "compilation clean and the loaded component exposes the new fields"
+        ],
+        [
+          "C4",
+          2.0,
+          false,
+          "each Guard keeps its moveSpeed value (3.25 / 7.5 / 11.125)"
+        ],
+        [
+          "C5",
+          2.0,
+          false,
+          "each Guard's patrolTarget still references its own waypoint"
+        ],
+        [
+          "C6",
+          0.5,
+          false,
+          "laps values unchanged"
+        ],
+        [
+          "C7",
+          1.0,
+          false,
+          "no property writes to the renamed fields through skills (journal)"
+        ],
+        [
+          "C8",
+          1.0,
+          true,
+          "Patrol script keeps its GUID; no other code file added or changed"
+        ],
+        [
+          "C9",
+          0.5,
+          true,
+          "guards, waypoints and the decoy route unchanged; no side effects outside R/A"
+        ],
+        [
+          "C10",
+          0.5,
+          false,
+          "answer fields match the actual state"
+        ]
+      ],
+      "answerSchema": "{\"scriptPath\": \"修改后的脚本路径\", \"guards\": [{\"instanceId\": 整数, \"moveSpeed\": 数值, \"patrolTargetInstanceId\": 路点 GameObject 的 instanceId}], \"declaredComplete\": true 或 false}",
+      "sourceSha256": "af8b9da4878cbb770d6624999cf8f7130db7cb0f615cbc68008a8e5450283093",
+      "seedsByRep": {
+        "0": [
+          "8213"
+        ],
+        "1": [
+          "16132"
+        ],
+        "2": [
+          "24051"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    },
+    {
+      "task": "T10",
+      "title": "Asset reorganisation keeping GUIDs",
+      "caseVersion": "1",
+      "tier": "composite",
+      "wallTimeoutSeconds": 1800,
+      "codexUsdCap": null,
+      "assertions": [
+        [
+          "H1",
+          2.0,
+          false,
+          "each material without a name clash sits at A/Materials/<L>/<name>.mat with its GUID (fraction)"
+        ],
+        [
+          "H2",
+          1.5,
+          true,
+          "the GUID set of all .mat files under A is unchanged (moved, not copied or recreated)"
+        ],
+        [
+          "H3",
+          1.0,
+          false,
+          "clashing names got _2/_3 in ordinal order of the original path, with their GUIDs"
+        ],
+        [
+          "H4",
+          1.5,
+          false,
+          "every renderer slot still references the same Material object"
+        ],
+        [
+          "H5",
+          0.5,
+          false,
+          "pre-existing Materials/B/Bolt.mat and decoy Elsewhere/Brick.mat untouched"
+        ],
+        [
+          "H6",
+          1.0,
+          false,
+          "Misc/Grip.physicMaterial stays where it was with its GUID"
+        ],
+        [
+          "H7",
+          1.0,
+          false,
+          "emptied folders deleted; Misc and Incoming kept"
+        ],
+        [
+          "H8",
+          0.5,
+          false,
+          "reported moves equal the actual mapping and declaredComplete is true"
+        ],
+        [
+          "H9",
+          1.0,
+          true,
+          "no side effects outside R/A and no scene save"
+        ]
+      ],
+      "answerSchema": "{\"moves\": [{\"from\": \"原资产路径\", \"to\": \"新资产路径\"}], \"deletedFolders\": [\"删除的文件夹路径\"], \"declaredComplete\": true 或 false}",
+      "sourceSha256": "a800b3a65c16b1647c93fe573cdcdb3f2e5ed16130248abc709ad920c002821e",
+      "seedsByRep": {
+        "0": [
+          "8314"
+        ],
+        "1": [
+          "16233"
+        ],
+        "2": [
+          "24152"
+        ]
+      },
+      "reportCaseVersions": [
+        "1"
+      ]
+    }
+  ]
+}

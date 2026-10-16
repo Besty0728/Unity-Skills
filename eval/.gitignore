@@ -1,0 +1,8 @@
+# local-only: run artifacts (transcripts, reports), frozen docs, baselines, reserved task variants
+runs/
+reserved/
+__pycache__/
+
+# Calibration summaries and release-note drafts are source-controlled deliverables.
+!reports/
+!reports/*.md
