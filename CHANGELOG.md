@@ -2,6 +2,41 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [2.9.1] - 2026-10-17
+
+> **直接编辑预制体资产 + 运行时方法调用与场景验证 + 持续保存的 Console 日志** —— (1) **预制体资产编辑**：29 个新技能不实例化到场景就能查询和修改 `.prefab` 里的节点、组件、序列化属性与引用；单资产多步操作全部成功才保存，支持原生 Undo 与 Workflow 恢复，保留变体与嵌套预制体连接。(2) **运行时验证**：发现并调用组件或静态 C# 方法，`editor_run_scenario` 把"调用 → 等待 → 断言"组合成一次验证作业，配套 Python 辅助脚本串起编译验证与有界修复。(3) **Console 日志历史**：日志持续收集并持久化，带 UTC 时间、固定快照分页、重复分组与时间窗口。(4) **更稳**：编译结果绑定到具体编译周期，所有 GET 请求统一在主线程处理，Python 客户端轮询作业时锁定原 Editor、不重放结果不明的写操作。(5) 新增赞助商 **Mirasim**。技能 805 → 839（+34），不删除任何技能或参数。
+
+### Added
+
+- **预制体资产编辑（29 个技能）** — `prefab_get_info` / `prefab_get_hierarchy` / `prefab_list_components` / `prefab_get_serialized_properties` 只读查询；组件增删与启用、序列化属性（含内部与资产引用）、节点创建 / 复制 / 删除 / 改名 / 换父节点、变换、激活状态、同级顺序共 12 组单项与批量技能；`prefab_edit_batch` 在单个资产上按序执行全有或全无的事务。全部成功才保存，提供原生 Undo 与 Workflow 恢复，保留变体与嵌套预制体连接；参数与返回见 `skills/prefab/ASSET_EDITING.md`。
+- **组件与静态方法的发现和调用（4 个技能）** — `component_get_methods(_batch)` 列出组件或静态类型的方法签名；`component_invoke_method(_batch)` 异步调用，支持精确重载签名、泛型、可选参数、ref/out、Task/ValueTask 与协程，记录返回值、异常、执行帧与日志窗口。默认要求 Play Mode，调用本身不会进入 Play Mode；运行时调用可能产生任意副作用，因此不进入承诺回滚的事务批次，域重载后不重放已开始的调用。
+- **运行场景验证 `editor_run_scenario`** — 把调用、读取、等待与显式断言组合成一个异步验证作业，返回实际值与行为证据。
+- **`scripts/runtime_verification.py`** — 串起编译验证、场景执行与调用方提供的修复回调，默认最多修复 3 次、总计 30 分钟；插件与脚本本身不调用模型。协议见 `references/protocol-runtime-verification.md`。
+- **Console 日志历史** — 持续收集并持久化托管日志（UTC 时间戳），`console_get_logs` 支持固定快照游标分页、类型 / 内容 / 时间窗口过滤、完整堆栈与覆盖缺口标记；Play 期间的错误先计入捕获再对事件通知限流，高频错误不再被静默漏计。
+- **`skill-creator` 指南（advisory 模块）** — 在自己的工程里编写 `[UnitySkill]` 自定义技能的约定与发现规则。
+- **面板页脚 GitHub 按钮** — tooltip 已三语本地化。
+- **赞助商 Mirasim** — README 赞助区改为"图标 | 赞助内容"两列表格；Mirasim 为即将发布的 v3.0 提供大量 API 额度支持。赞助申请改为邮件链接。
+
+### Changed
+
+- **`console_get_logs` 默认合并重复日志** — 新增 `collapse`（默认 `true`，按类型 / 消息 / 堆栈完整相同分组）、`cursor`、`fromUtc` / `toUtc`、`groupId` 等参数，返回新增 `cursor`、`nextCursor`、`totalMatched`、`hasMore`、`complete`、`dropped`、`coverage`；`source` 的取值改为 `history` / `capture_session`（原为 `console` / `capture`）。原有 `type` / `filter` / `limit` 参数用法不变。
+- **`console_export` / `console_get_stats` 读取持久化历史** — 返回新增 `complete`、`dropped`、`truncated`，说明有界保留是否截断了结果。
+- **`debug_force_recompile` 返回可追踪作业** — 新增 `jobId` 与 `waitUrl`，作业带本次编译周期的结果与新域加载证据；Unity 可能把请求推迟到退出 Play Mode 之后。
+- **编译证据绑定到具体编译周期** — 脚本写入、`asset_refresh` 与强制重编译只采用自己触发的那一次编译结果（程序集数量、错误与新域加载），不再借用其他周期的成功状态；已结束作业的普通 GET 也携带结果数据。`asset_refresh` 的权限分类与 2.9.0 相同，Auto / Approval 模式下照常可用。
+- **HTTP 请求统一走主线程队列** — health、技能目录等 GET 也在主线程处理；后台唤醒与后台日志都转到主线程执行；`/health` 新增 `updateTickCount`、`playerFrameCount`、`playerFrameIdleMs`、`wakePostedCount`、`wakeCompletedCount` 等诊断字段。
+- **Python 客户端作业恢复** — 轮询作业时固定原 Editor 身份，只跟随该实例的端口迁移；用单调时钟控制等待预算并保留最后进度与传输错误；结果不明的写请求不自动重放，预览与明确未执行的拒绝按规则重试。
+- **技能重名告警** — 注册表遇到同名技能时记录警告并列出两个声明类型，后注册者生效。
+- **卸载保留用户文件** — 正常卸载只清理模板拥有的路径，保留用户自己添加的文件（无法解析模板目录时仍回退为整目录删除）。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `2.9.1`。
+
+### Fixed
+
+- **`prefab_set_property` 兼容 2.9.0** — 改由新的资产编辑引擎执行后，仍接受抽象基类作为组件类型、返回实际组件类型名，响应键与 2.9.0 相同。
+
+### Docs
+
+- 技能计数、模块数与 NeverInSemi 清单同步到 839 个技能、83 个模块文档（29 个 advisory）；`asset_import_batch`、`asset_delete_batch`、`asset_move_batch`、`cleaner_delete_assets`、`scene_get_loaded`、`shader_get_properties` 的返回形状按代码修正；`skill-creator` 示例改用实际存在的 `SkillOperation.Query`；预制体与 Editor 模块概览补全新技能。
+
 ## [2.9.0] - 2026-09-28
 
 > **更少往返、更少 token 的 Agent 调用 + 精度与正确性修复 + 本地自更新双轨** —— 本版的重点是让 Agent 用更少的往返和 token 完成同样的 Unity 编辑器任务，同时不损失任何能力。(1) **更省**：根 `SKILL.md` 围绕"速查表 → 一次发现调用 → 直接执行 → 以写后读回为准"重写，配合 recommend 排序修复、多意图查询、写后读回与一条命令等完编译；在 Claude Code 无头模式（`claude -p`）下以 Sonnet 5 实测，同样的任务 token 约为 2.8.4 的三分之一，每次任务成本约从 US$0.185 降到 US$0.07，调用次数中位从 10 次降到 4 次（明细与测试条件见下方"本版实测"）。(2) **更准**：13 项"什么都没做或做错了却报成功"的静默降级改为明确报错，并给出合法值或最接近的名称；写技能回带从 Editor 读回的实际状态；缺少可选包在校验阶段就报出（含此前漏标的 33 个 URP 技能）；`expectProject` / `expectInstance` 防止写到另一个工程；设计类问答改为按指导文档作答。(3) **更稳**：新增按项目保存、默认关闭的 dryRun 策略开关，把"先 dryRun"从文档建议变成服务端保证（dryRun 令牌不能顶替 `_confirm`）；`asset_refresh` 在触发脚本编译时返回可等待的编译作业；长轮询被域重载打断时回可重试的 503。(4) **本地自更新双轨**：本地开发路径安装（`file:` / 嵌入）的一键更新在 UnitySkills 的 git 克隆上只做快进、同步官方同名分支，工作区有改动、分叉或不在 main / beta 上时拒绝并说明原因；非 git 副本走加固后的 ZIP 替换并保留上一版备份。805 个技能不增不减，没有删除任何参数。 (5) **round6 加固**：CI 在全部 6 个 Unity 版本上恢复绿色；新增 16 个可选包模块共 87 个真实路径测试；再修 30 余项静默降级；三个核心类拆成分部类文件；Windows（PowerShell / Git Bash）就绪并在 Windows 2022.3 实机完整回归；Addressables 技能声明依赖包。
