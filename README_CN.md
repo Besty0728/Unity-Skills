@@ -26,11 +26,18 @@
 ## 💖 赞助商
 
 <!-- sponsors:start -->
-<p align="center">
-  <a href="https://mirasim.ai"><img src="docs/sponsors/mirasim.png" alt="Mirasim" width="120"></a><br>
-  <a href="https://mirasim.ai"><b>Mirasim</b></a><br>
-  <i>为即将发布的 v3.0 提供大量 API 额度支持，后续也将持续提供 API 支持。</i>
-</p>
+<div align="center">
+<table>
+  <tr>
+    <th>赞助商</th>
+    <th>赞助内容</th>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://mirasim.ai" title="Mirasim"><img src="docs/sponsors/mirasim.png" alt="Mirasim" width="96"></a></td>
+    <td>为即将发布的 v3.0 提供大量 API 额度支持，后续也将持续提供 API 支持。</td>
+  </tr>
+</table>
+</div>
 <p align="center">
   成为赞助商：发送邮件至 <a href="mailto:x2120060205@gmail.com?subject=Unity-Skills%20%E8%B5%9E%E5%8A%A9%E5%92%A8%E8%AF%A2">x2120060205@gmail.com</a>
 </p>

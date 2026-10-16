@@ -26,11 +26,18 @@
 ## 💖 Sponsors
 
 <!-- sponsors:start -->
-<p align="center">
-  <a href="https://mirasim.ai"><img src="docs/sponsors/mirasim.png" alt="Mirasim" width="120"></a><br>
-  <a href="https://mirasim.ai"><b>Mirasim</b></a><br>
-  <i>Provides substantial API credits for the upcoming v3.0, with continued API support to follow.</i>
-</p>
+<div align="center">
+<table>
+  <tr>
+    <th>Sponsor</th>
+    <th>Contribution</th>
+  </tr>
+  <tr>
+    <td align="center"><a href="https://mirasim.ai" title="Mirasim"><img src="docs/sponsors/mirasim.png" alt="Mirasim" width="96"></a></td>
+    <td>Provides substantial API credits for the upcoming v3.0, with continued API support to follow.</td>
+  </tr>
+</table>
+</div>
 <p align="center">
   Interested in sponsoring? Email <a href="mailto:x2120060205@gmail.com?subject=Unity-Skills%20Sponsorship%20Inquiry">x2120060205@gmail.com</a>
 </p>
