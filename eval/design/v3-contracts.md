@@ -1255,6 +1255,8 @@ private static void RegisterLifecycleFlush()
 
 ## 8. Token usage 读取
 
+> 实现补充、本机实测与白名单增补见 §8.6；与 §8.2–§8.3 冲突处以 §8.6 为准。
+
 ### 8.1 输入与宿主识别
 
 | 输入 | 来源 |
@@ -1295,7 +1297,7 @@ private static void RegisterLifecycleFlush()
 
 ### 8.4 隐私白名单
 
-- 只允许读取：顶层 `type, timestamp, sessionId, isSidechain, effort, requestedModel, version`；`message.id, message.model` 与 `message.usage` 的数值字段；`payload.type, payload.id, payload.session_id, payload.cwd, payload.thread_source, payload.cli_version, payload.model, payload.effort, payload.role, payload.info.total_token_usage.*`。
+- 只允许读取：顶层 `type, timestamp, sessionId, isSidechain, effort, requestedModel, version, ordinal`；`message.id, message.model` 与 `message.usage` 的数值字段；`payload.type, payload.id, payload.session_id, payload.parent_thread_id, payload.cwd, payload.thread_source, payload.cli_version, payload.subagent_history_start_ordinal, payload.model, payload.effort, payload.role, payload.info.total_token_usage.*`。其中 `ordinal`、`parent_thread_id`、`subagent_history_start_ordinal` 是 §8.6 增补的，只含 id 与整数。
 - 不得存储或记录：消息内容、工具输入输出、指令、`base_instructions`、文件名以外的路径（`payload.cwd` 只比较、不存）。出错只记文件名、行号与异常类型名。
 - 测试：合成日志在内容字段放哨兵字符串，断言 usage 输出、result、ledger、runner.log 中都不出现它。
 
@@ -1303,6 +1305,44 @@ private static void RegisterLifecycleFlush()
 
 - 整套模式下上下文逐题累积，单题成本不能和逐题模式直接比较；报告记录会话模式与语言。
 - 宿主日志格式变化导致解析失败时置 null（`parse_error`），不影响评分；解析规则变化时 `parserVersion` 递增。
+
+### 8.6 实现补充（WP7；与 §8.2–§8.3 冲突处以本节为准）
+
+入口 `usk_eval.usage`：`detect_host`、`capture_host`、`merge_session_ids`、`read_usage(host, t0, t1, enabled, env)`、`detect_declared`、`manual_usage`、`parse_manual_args`、`unavailable_usage`、`ledger_summary`、`PARSER_VERSION`。`host` 即 `state.host`；日志类问题不抛异常，只进 `unavailableReason` 与 `errors`；t0 / t1 无法解析才抛 `ValueError`，`t1` 缺省为现在；时间一律经 `store.parse_utc / iso / now_iso`。`tokens` 为 null 当且仅当 `unavailableReason` 非空且不是 `no_messages_in_window`。
+
+**实现选择**（每条是"选择 —— 理由"）
+
+1. Claude `message.model == "<synthetic>"` 的行整行跳过，不计入 `messages` 与 `model.values` —— 它是 Claude Code 为失败的 API 调用写的本地占位（`isApiErrorMessage: true`，id 是 UUID，用量全 0），不是提供方响应。
+2. `subagents.files` 只数窗口内有计入内容的子代理文件（Claude：有计入的消息；Codex：有窗口内 `token_count`）；读取成功时 `subagents` 恒为对象（没有就 `files: 0`），`null` 留给"没读" —— 更早题目的子代理不能算进本题。
+3. 读取失败（`session_log_not_found`、`rollout_not_found`、`ambiguous_rollouts`、`counter_reset`、`parse_error`）时 `source` 仍是所尝试的来源；只有根本没读（`disabled_by_user`、`no_host_session`）才是 `none` —— 报告里能看出尝试过什么。
+4. `parse_error` 的触发：Claude 有含 `"assistant"` 的候选行但没有一行能解析成 JSON 对象；Codex 有 `token_count`（`info` 为对象）但没有一个带 `total_token_usage` 对象；按 thread id 找到的 rollout 前 5 行里没有 `session_meta`；读取器内部的意外异常（只记异常类型名）。
+5. Claude 行的 `timestamp` 缺失或不可解析：跳过并记入 `errors`（只记行号与 `ValueError` 类型名）；`model`、`effort`、`version`、`cli_version` 只接受 ≤120 个可打印字符的字符串，其余丢弃 —— 宿主把字段改成自由文本时也漏不进记录。
+6. Codex 的 `counter_reset` 比 §8.3 #4 更严：窗口内任一事件相对前一个 `token_count` 有字段下降即判定，不止比较两端 —— 中途归零再回升会让两端差值偏小而不报错。
+7. Codex 窗口内没有任何有效 `token_count`（主线程与子代理都没有）→ tokens 全 0、`no_messages_in_window`，与 Claude 对齐；按 thread id 定位时不要求主线程窗口内有事件。
+8. Codex 的 model / effort 按文件取（窗口内的 `turn_context`，没有则取 t0 之前最后一个），再对窗口内有计数的主线程与子代理文件取并集；`messages` 同样是各文件之和 —— 整题常在一个回合里完成，窗口内往往没有 `turn_context`。
+9. 子代理归属：调用方是 user 线程（`thread_source != "subagent"`）时取同 `session_id` 的全部 `subagent` rollout；调用方本身是子代理（`CODEX_THREAD_ID` 是子代理 id）时只取经 `parent_thread_id` 可达的后代，不含兄弟与父线程。子代理在 [t0 − 1 天, t1 + 1 天] 的日期目录里找（这些目录都不存在时递归整棵树）；按 thread id 找主线程先查这些目录，再退回整棵树。
+10. 子代理 rollout 开头复制了父线程的历史（时间戳统一盖成 fork 时刻，含父线程的 assistant 消息与 `turn_context`）：凡 `ordinal < payload.subagent_history_start_ordinal` 的行一律不读（只对子代理文件；字段缺失则不跳过），副本里即使有 `token_count` 也不参与差值；`session_meta` 只取文件中第一个 —— 否则 `messages`、model、effort 会重复计入。
+11. §8.4 白名单增补 `ordinal`、`parent_thread_id`、`subagent_history_start_ordinal`（只含 id 与整数；lead 已确认）。
+12. 标准库（≤ 3.13）读不了 zstd，而 Codex 会把旧 rollout 压成 `.jsonl.zst`：按 thread id 只找到 `.zst` 时返回 `rollout_not_found`，并在 `errors` 记 `{file: <文件名>, line: 0, error: "CompressedRollout"}`；按目录匹配不看 `.zst`。
+13. `detect_declared`：Claude 取窗口末（缺省为现在）之前最后一条 assistant 行的 `version`、`requestedModel`（缺则 `message.model`；`[1m]` 之类后缀原样保留）、`effort`；Codex 取主 rollout 的 `cli_version` 与最后一个 `turn_context` 的 `model` / `effort`。无窗口时 Codex 按目录匹配只认最近 30 分钟内有计数的 rollout。
+14. 宿主 id 只接受 `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`（会拼进文件名）；默认根目录的 home 在 Windows 上取 `USERPROFILE`（Git Bash 的 `HOME` 是 POSIX 路径）；`payload.cwd` 去掉 `\\?\` 前缀后再比较。
+
+**本机实测**（macOS；Claude Code 2.1.296；Codex 0.142–0.162 的 rollout；只读结构，未保存任何内容）
+
+- rollout 压缩：`~/.codex/sessions` 的 183 个文件里 147 个是 `.jsonl.zst`。已压缩的最晚在 `2026/10/05` 目录，未压缩的最早在 `2026/10/09` 目录（实测日 10-17），压缩阈值落在 8–12 天之间，具体规则未查到，不要依赖。所以 Codex 的 usage 必须在 `submit`（S12）当场算出并存下；会话结束时的重算（§11 #23）与日后的 `usage --attempt` 只有在日志还没被压缩时才读得到。建议 runner 在重算得到 `tokens: null` 而已有成功记录时保留旧记录、只给 notice（与 §11 #23"以最新 usage 行为准"需一并约定）。Claude 日志不压缩。
+- 子代理占多数：36 个未压缩 rollout 里 33 个是 `thread_source == "subagent"`，一个根会话最多带 25 个子代理文件。子代理的 `session_meta.payload.session_id` 是根线程的会话 id，`payload.id` 才是自己的 thread id，文件名以 `-<自己的 id>.jsonl` 结尾。
+- `thread_source` 取值：`user`、`subagent`、`agent_created_thread`（独立的根会话，`session_id == id`），旧版本没有这个字段；除 `subagent` 外一律按根线程处理。
+- fork 历史：28 个文件含两个 `session_meta`（第二个是父线程的副本，`thread_source: "user"`），到 `subagent_history_start_ordinal` 为止的行都是副本；子代理自己的计数从 0 起（首个事件的 `last_token_usage == total_token_usage`）；本机副本里没见到 `token_count`。
+- Claude 日志里的特殊行：`cost-state`（`totalCostUSD`、`modelUsage`，不是 `assistant`，不读）；`<synthetic>` 占位行（采样的 2388 条 assistant 行里有 4 条）；`output_tokens_details` 可能为 `null` 或缺失（按 0）；`usage.iterations` 至多一项且与顶层数值相同（不读）；同一 id 的多行里只有 `output_tokens` 与 `thinking_tokens` 会变（1228 个 id 中 161 个），最后一行最大。
+- Codex 的 `token_count`：约 4.8 万个事件（其间夹着 400 条 `compacted`）无一次计数下降；`info: null` 共 15 条，都在已压缩的旧文件里；6 个计数字段在所有样本里都存在，缺失仍按 0。
+- `CODEX_THREAD_ID`：Codex 0.161.0 二进制里它出现在 `unified_exec` / `exec_command` 的子进程环境构造附近（同处还有 `CODEX_VERSION`、`CODEX_PERMISSION_PROFILE`），很可能导出给工具子进程；这台机器上没有 Codex 的工具 shell，未能实测，仍属 WP0x。
+
+**局限**（补充 §8.5）
+
+- Codex 按目录匹配要求 runner 的 cwd 与 `session_meta.payload.cwd` 规范化后相等；Agent 先 `cd` 到别处就得到 `rollout_not_found`（有 `CODEX_THREAD_ID` 时不受影响）。
+- Claude 的子代理与 Agent Teams 成员日志都在主会话的 `subagents/` 下：窗口内同一会话里所有成员的用量都会计入，分不出调用者。
+- 面板代提交的进程没有 `CLAUDE_CONFIG_DIR` / `CODEX_HOME`，自定义日志根的用户读不到。
+- §8.1 的识别顺序让 `CLAUDECODE=1` 优先：在 Claude Code 里再启动的 Codex 会被识别成 Claude Code。
 
 ## 9. 版本与门禁
 
@@ -1362,7 +1402,7 @@ private static void RegisterLifecycleFlush()
 20. 静态 `verify` 在前，dev 的 SCENARIO 与 `verify_runtime` 在后；SCENARIO 可以是 dict 或 callable —— 遵循草案的冻结顺序；步骤常常要引用 handles 里的 instanceId。
 21. `answer_schema` 用 JSON Schema 子集加双语 `desc`，runner 自动加必填的 `declaredComplete`，`{schema}` 渲染用英文类型词 —— 两种语言共用一份结构，并能做非阻断校验。
 22. caseVersion 用 int（v1 是字符串 `"1"`） —— 便于比较和校验递增。
-23. usage 在 submit 时算一次，会话结束时对全部尝试重算，以 ledger 中最新的 `usage` 行为准 —— 宿主日志可能滞后写入。
+23. usage 在 submit 时算一次，会话结束时对全部尝试重算，以 ledger 中最新的 `usage` 行为准；但重算结果 `tokens` 为 null 时不覆盖此前 `tokens` 非 null 的记录（Codex 旧 rollout 会被压缩成 `.jsonl.zst`，见 §8.6），只在该记录的 `errors` 里追加重算失败原因 —— 宿主日志可能滞后写入，也可能事后变得不可读。
 24. Claude 先按 message.id 去重（保留最后一行），再按该行时间判断是否落在窗口内 —— 最后一行才有最终 usage，也避免同一响应跨窗口重复计数。
 25. Codex 优先用 `CODEX_THREAD_ID`，否则按 cwd 加时间窗匹配；子代理按 `session_id` 归并 —— 二进制里有该变量但导出与否未证实；多会话并行时 cwd 匹配可能有歧义，此时置 null。
 26. usage 记录增加 `effort{values, source}` 与 `errors[]` —— 两种宿主日志都带 effort（v1 里 effort 是槽位身份的一部分）；错误只记类型，便于排查又不泄露内容。
