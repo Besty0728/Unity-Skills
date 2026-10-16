@@ -181,7 +181,7 @@
             </ui:VisualElement>
 
             <ui:VisualElement name="credit-block" class="credit-block">
-                <ui:Button name="credit-github" class="credit-block__icon" text="" tooltip="Open project on GitHub" />
+                <ui:Button name="credit-github" class="credit-block__icon" text="" />
             </ui:VisualElement>
         </ui:VisualElement>
 

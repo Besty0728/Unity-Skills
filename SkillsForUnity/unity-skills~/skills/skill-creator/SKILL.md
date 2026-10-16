@@ -38,7 +38,7 @@ Note: `script_create` is `MayTriggerReload` + high-risk — it is **NeverInSemi*
 ## Naming rules (read this before choosing a name)
 
 - Skill names are `snake_case` verbs like `gameobject_create`. A user custom skill **must be prefixed** (e.g. `my_`, `acme_`): `my_apply_team_branding`, not `apply_branding`.
-- Name collisions are **silent last-writer-wins** with nondeterministic order — a name that matches a built-in can shadow it (or be shadowed) without an error. Always check the name is free first.
+- On a name collision the **later-registered** declaration wins, and registration order is not guaranteed — a name that matches a built-in can shadow it (or be shadowed). The registry logs a warning naming both declaring types (`Skill name conflict: '<name>' declared by both <A> and <B>; using the latter.`). Always check the name is free first.
 - Provide a matching `xxx_batch` variant when per-item looping makes sense.
 
 ## The metadata contract (the attribute)

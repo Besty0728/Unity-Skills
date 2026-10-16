@@ -197,6 +197,7 @@
   "footer_queue": "Pending",
   "footer_done": "Done",
   "footer_lang_tooltip": "Switch language",
+  "footer_github_tooltip": "Open project on GitHub",
   "language_pins_title": "Pinned languages",
   "skills_search_placeholder": "Search skills…",
   "skills_count_format": "{0} skills · {1} categories",

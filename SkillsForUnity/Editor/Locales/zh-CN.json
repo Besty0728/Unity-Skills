@@ -197,6 +197,7 @@
   "footer_queue": "待处理",
   "footer_done": "已完成",
   "footer_lang_tooltip": "切换语言",
+  "footer_github_tooltip": "在 GitHub 上打开项目",
   "language_pins_title": "固定语言",
   "skills_search_placeholder": "搜索 Skill…",
   "skills_count_format": "{0} 个 Skill · {1} 个分组",

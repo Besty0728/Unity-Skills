@@ -197,6 +197,7 @@
   "footer_queue": "В ожидании",
   "footer_done": "Готово",
   "footer_lang_tooltip": "Сменить язык",
+  "footer_github_tooltip": "Открыть проект на GitHub",
   "language_pins_title": "Закреплённые языки",
   "skills_search_placeholder": "Поиск skills…",
   "skills_count_format": "{0} skills · {1} категорий",

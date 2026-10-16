@@ -97,7 +97,7 @@ namespace UnitySkills
             var seg = _root.Q<VisualElement>("lang-segment");
             if (seg != null) seg.tooltip = SkillsLocalization.Get("footer_lang_tooltip");
 
-            if (_creditGithubBtn != null) _creditGithubBtn.tooltip = "Open project on GitHub";
+            if (_creditGithubBtn != null) _creditGithubBtn.tooltip = SkillsLocalization.Get("footer_github_tooltip");
         }
 
         private static void ConfigureButton(Button button, SkillsLocalization.Language language)
