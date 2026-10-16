@@ -18,9 +18,9 @@ description: Manage Unity AssetDatabase operations
 
 ## Operating Mode
 
-- **Approval**：本模块 Mixed —— `asset_find` / `asset_get_info` / `asset_get_labels` 标 `SkillMode.SemiAuto`，可直接执行；写类 skill (`asset_move` / `asset_move_batch` / `asset_duplicate` / `asset_create_folder` / `asset_create_folder_batch` / `asset_refresh` / `asset_reimport*` / `asset_set_labels`) 走默认 `SkillMode.FullAuto`，需 grant。
+- **Approval**：本模块 Mixed —— `asset_find` / `asset_get_info` / `asset_get_labels` 标 `SkillMode.SemiAuto`，可直接执行；写类 skill (`asset_move` / `asset_move_batch` / `asset_duplicate` / `asset_create_folder` / `asset_create_folder_batch` / `asset_reimport*` / `asset_set_labels`) 走默认 `SkillMode.FullAuto`，需 grant。
 - **Auto / Bypass**：FullAuto 直接执行。
-- **含 NeverInSemi 高危 skill**：`asset_import` / `asset_import_batch` (标 `RiskLevel = "high"` —— 写入项目)；`asset_delete` / `asset_delete_batch` (Operation.Delete)。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
+- **含 NeverInSemi 高危 skill**：`asset_import` / `asset_import_batch` (标 `RiskLevel = "high"` —— 写入项目)；`asset_delete` / `asset_delete_batch` (Operation.Delete)；`asset_refresh` (标 `MayTriggerReload = true` —— 刷新可能触发编译与域重载)。这些在 Approval/Auto 下返 `MODE_FORBIDDEN`，仅 Bypass 或 Allowlist 命中可调。
 
 **DO NOT** (common hallucinations):
 - `asset_create` does not exist → use `asset_create_folder` (folders), `material_create` (materials), `script_create` (scripts)
@@ -71,7 +71,7 @@ Import multiple external files.
 
 `items` currently expects a JSON string, not a native array.
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{success, sourcePath, destinationPath}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, serverAvailability?}]}`: `target` is the item's `destinationPath`; `serverAvailability` appears only when a script-domain asset was written or Unity is compiling.
 
 ```python
 import json
@@ -98,7 +98,7 @@ Delete multiple assets.
 
 `items` currently expects a JSON string, not a native array.
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{success, path}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, serverAvailability?}]}`: `target` is the deleted `path`; `serverAvailability` appears only when a script-domain asset was deleted or Unity is compiling.
 
 ```python
 import json
@@ -126,7 +126,7 @@ Move multiple assets.
 
 `items` currently expects a JSON string, not a native array.
 
-**Returns**: `{success, totalItems, successCount, failCount, results: [{success, sourcePath, destinationPath}]}`
+**Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, from, to, serverAvailability?}]}`: `target` is the item's `sourcePath`; `serverAvailability` appears only when a script-domain asset was moved or Unity is compiling.
 
 ```python
 import json

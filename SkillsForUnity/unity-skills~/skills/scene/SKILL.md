@@ -123,7 +123,7 @@ Get list of all currently loaded scenes.
 
 No parameters.
 
-**Returns**: `{success, scenes: [{name, path, isActive, isDirty}]}`
+**Returns**: `{success, count, scenes: [{name, path, isLoaded, isDirty, isActive, rootCount, isPseudoScene}]}`. In Play Mode a `DontDestroyOnLoad` pseudo-scene (`isPseudoScene:true`, empty `path`) is appended when it has root objects.
 
 ### scene_unload
 Unload a loaded scene (additive).

@@ -118,7 +118,7 @@ Delete specified assets with **two-step confirmation**.
 
 *Required for this preview step; omitted in Step 2, which deletes exactly the paths already captured by `confirmToken`.
 
-**Returns**: `{action: "preview", confirmToken, assetsToDelete, message}`
+**Returns**: `{success, action: "preview", totalAssets, existingAssets, totalBytes, totalMB, confirmToken, message, expiresIn, assetsToDelete: [{path, exists, sizeBytes, sizeMB}]}`
 
 **Step 2 - Confirm** (with confirmToken):
 
@@ -126,7 +126,7 @@ Delete specified assets with **two-step confirmation**.
 |-----------|------|----------|-------------|
 | `confirmToken` | string | Yes | Token from preview step |
 
-**Returns**: `{action: "deleted", deletedCount, results}`
+**Returns**: `{success, action: "deleted", deletedCount, totalMB, message, results: [{path, deleted}]}`
 
 ```python
 # Step 1: Preview what will be deleted

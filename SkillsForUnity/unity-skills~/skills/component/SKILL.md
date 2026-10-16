@@ -15,7 +15,7 @@ description: Manage GameObject components
 Add, remove, copy, toggle and edit components. Parameters come from the schema (recommend `includeSchema=true` or `/skills/schema?names=`), which notes the non-obvious ones — never from a skill's name. Execution, dryRun and verification rules: root [SKILL.md](../../SKILL.md).
 
 ## Operating Mode
-`component_list`, `component_get_methods`, `component_get_methods_batch`, `component_get_properties`, `component_get_serialized_properties` are `SemiAuto` (read-only); every writer is `FullAuto`. `component_remove` / `component_remove_batch` (`Operation.Delete`) are NeverInSemi: `MODE_FORBIDDEN` under Approval/Auto, run only under Bypass or an Allowlist hit → [operating mode](../../references/protocol-operating-mode.md).
+`component_list`, `component_get_methods`, `component_get_methods_batch`, `component_get_properties`, `component_get_serialized_properties` are `SemiAuto` (read-only); every writer is `FullAuto`. `component_remove` / `component_remove_batch` (`Operation.Delete`) and `component_invoke_method*` (high risk) are NeverInSemi: `MODE_FORBIDDEN` under Approval/Auto, run only under Bypass or an Allowlist hit → [operating mode](../../references/protocol-operating-mode.md).
 
 ## Shared rules
 

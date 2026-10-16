@@ -54,6 +54,25 @@ See [ASSET_EDITING.md](ASSET_EDITING.md) for the four query APIs, twelve single 
 - `prefab_find_instances` - Find all instances of a prefab in scene
 - `prefab_set_property` - Set a property on a component inside a Prefab asset (supports basic types, vectors, colors, and asset references)
 
+**Asset editing** (parameters and returns in [ASSET_EDITING.md](ASSET_EDITING.md)):
+
+| Single | Batch |
+|---|---|
+| `prefab_add_component` | `prefab_add_component_batch` |
+| `prefab_remove_component` | `prefab_remove_component_batch` |
+| `prefab_set_component_enabled` | `prefab_set_component_enabled_batch` |
+| `prefab_set_serialized_property` | `prefab_set_serialized_property_batch` |
+| `prefab_create_gameobject` | `prefab_create_gameobject_batch` |
+| `prefab_delete_gameobject` | `prefab_delete_gameobject_batch` |
+| `prefab_duplicate_gameobject` | `prefab_duplicate_gameobject_batch` |
+| `prefab_rename_gameobject` | `prefab_rename_gameobject_batch` |
+| `prefab_set_transform` | `prefab_set_transform_batch` |
+| `prefab_set_parent` | `prefab_set_parent_batch` |
+| `prefab_set_active` | `prefab_set_active_batch` |
+| `prefab_set_sibling_index` | `prefab_set_sibling_index_batch` |
+
+Read-only, no batch: `prefab_get_info`, `prefab_get_hierarchy`, `prefab_list_components`, `prefab_get_serialized_properties`. One ordered all-or-nothing transaction on a single asset: `prefab_edit_batch`.
+
 ---
 
 ## Skills

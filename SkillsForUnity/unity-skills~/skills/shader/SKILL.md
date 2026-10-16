@@ -107,7 +107,7 @@ Get all properties defined in a shader.
 |-----------|------|----------|-------------|
 | `shaderNameOrPath` | string | Yes | Shader name or shader asset path |
 
-**Returns**: `{success, properties: [{name, type, description}]}`
+**Returns**: `{success, shaderName, propertyCount, properties: [{name, type, description}]}`
 
 ### `shader_check_errors`
 Check shader for compilation errors.

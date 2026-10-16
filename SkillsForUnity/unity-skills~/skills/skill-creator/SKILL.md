@@ -49,7 +49,7 @@ Fill `[UnitySkill]` truthfully — the router, permission gating, schema, and ag
 [UnitySkill("my_greet",
     "First sentence is what the agent reads; mention parameters.",
     Category = SkillCategory.Uncategorized,                 // user skills cannot add enum values
-    Operation = SkillOperation.Read,                        // Create | Read | Update | Delete (combine with |)
+    Operation = SkillOperation.Query,                       // Query | Create | Modify | Delete | Execute | Analyze (combine with |)
     Tags = new[] { "greeting", "demo" },                    // improves /skills/recommend matching
     Outputs = new[] { "message" },                          // MUST be a subset of what you actually return
     TracksWorkflow = false, MutatesScene = false,           // honest risk flags (see below)
@@ -80,7 +80,7 @@ using UnitySkills;
 public static class MyCustomSkills
 {
     [UnitySkill("my_greet", "Return a greeting for a name.",
-        Operation = SkillOperation.Read,
+        Operation = SkillOperation.Query,
         Tags = new[] { "greeting" }, Outputs = new[] { "message" },
         MutatesScene = false, RiskLevel = "low")]
     public static object MyGreet([SkillParam("Who to greet")] string name = "world")
