@@ -16,7 +16,17 @@ Instead of hammering `/compile/status` in a loop, subscribe to a 500-entry in-me
 
 ## `GET /analytics` — execution telemetry
 
-Aggregates how skills have been performing. Query `?window=1h|24h|7d|all` (default `24h`). The same local data feeds `/skills/recommend`: at least 5 valid calls are required before a high failure rate applies a bounded 1–3 point penalty; slow skills are warned but not penalized. Client/permission errors are ignored, and telemetry disabled means recommendation order remains semantic-only.
+Aggregates how skills have been performing. Query `?window=1h|24h|7d|all` (default `24h`). The same local data feeds `/skills/recommend`: at least 5 valid calls are required before a high failure rate applies a bounded 1–3 point penalty; slow skills are warned but not penalized. Client/permission errors are ignored, and telemetry disabled means recommendation order remains semantic-only. The answer is cached for 30 s, so count from the files below when you need exact, current numbers.
+
+## Change journal and log files
+
+`editor_get_changes` reads a journal the plugin keeps in `Library/UnitySkills/`: the active `editor_changes.jsonl` plus rotated `editor_changes.1.jsonl` (newest) to `editor_changes.10.jsonl`, one JSON entry per line. The append that brings the active file to 2,000 entries or 8 MiB renames it to `.1` and shifts older files up; what falls past `.10` is dropped. Files are only appended to or renamed, never rewritten. If a rename fails (for example a reader holds the file open on Windows) the active file keeps growing and the next append retries; a gap left by a failed shift is closed first, so no file is lost early.
+
+`seq` is monotonic across files and Domain Reloads (after a reload it continues from the newest file that has entries). The skill still answers from a 500-entry in-memory window (`retention`, `oldestSeq`, `dropped`); read the files for older history. Read them newest to oldest (active, `.1`, `.2`, …): a rotation during the read can only show you one file twice, never skip one. Ignore an unparseable last line of the active file, which is an append in progress, and de-duplicate by `seq`. Every `seq` between two cursors being present is the proof that nothing is missing.
+
+Entry layout: `seq, type, source, agent, isPlaying, tsUtc, payload`. `agent` (REST caller id, `"mixed"`, `"unknown"`, or `null` for manual edits) and `isPlaying` are newer fields; entries written by older plugin versions lack them. The per-type additions are listed under `editor_get_changes` in the editor module doc.
+
+The telemetry file (`Library/UnitySkillsTelemetry.jsonl`, rotated to `UnitySkillsTelemetry.1.jsonl` to `.3.jsonl` at 1 MB) and the audit log are written about 200 ms after a call so the client identity can resolve first. Both are also flushed straight away before a Domain Reload and when the Editor quits, so a record queued just before either survives.
 
 ## Compilation proof and recovery
 

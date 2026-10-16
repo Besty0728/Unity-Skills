@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
@@ -15,6 +16,11 @@ namespace UnitySkills
     /// The persisted, bounded editor-change log behind editor_get_changes. It continuously observes scene structure,
     /// serialized properties, and imported files, with no need to start a recording session. Entries are stored under Library:
     /// that lets them survive domain reloads while staying out of version control and the user's Assets folder.
+    ///
+    /// Disk history is a chain of segments: the active <c>editor_changes.jsonl</c> plus rotated <c>editor_changes.1.jsonl</c>
+    /// (newest) to <c>editor_changes.10.jsonl</c>. A segment is rotated once it holds <see cref="SegmentMaxEntries"/> entries or
+    /// <see cref="SegmentMaxBytes"/> bytes; files are only ever appended to or renamed, never rewritten. The in-memory ring
+    /// (<see cref="BufferCapacity"/>) is what <see cref="ReadChanges"/> serves.
     /// </summary>
     [InitializeOnLoad]
     public static class EditorChangeTrackerService
@@ -23,15 +29,25 @@ namespace UnitySkills
         internal const int DefaultReadLimit = 100;
         internal const int MaxReadLimit = 500;
 
+        internal const int SegmentMaxEntries = 2000;
+        internal const long SegmentMaxBytes = 8L * 1024 * 1024;
+        internal const int MaxRotatedSegments = 10;
+
+        internal const string AgentMixed = "mixed";
+        internal const string AgentUnknown = "unknown";
+
         private const double PropertyDebounceSeconds = 0.25;
         private const int MaxChangesPerEvent = 200;
         private const int MaxValueChars = 300;
-        private const int CompactEveryOverflowEntries = 100;
         private const string RelativeLogPath = "Library/UnitySkills/editor_changes.jsonl";
+
+        /// <summary>Same shape as <see cref="ClientProcessResolver.TryGetAgentId"/>, so the attribution rule can be tested with a fake.</summary>
+        internal delegate bool AgentLookup(int remotePort, out string agentId);
 
         private sealed class CatalogEntry
         {
             public string EntityId;
+            public int InstanceId;
             public string Name;
             public string Path;
             public string ScenePath;
@@ -41,6 +57,8 @@ namespace UnitySkills
         private sealed class PendingPropertyChange
         {
             public string Source;
+            public string Agent;
+            public bool IsPlaying;
             public JObject Change;
         }
 
@@ -54,9 +72,15 @@ namespace UnitySkills
         private static double _propertyFlushDue;
         private static long _seq;
         private static int _restDepth;
-        private static int _overflowEntriesSinceCompact;
+        private static string _restAgent;
+        private static int _activeEntries;
+        private static long _activeBytes;
+        private static bool _rotationFailureLogged;
 
         internal static string OverrideLogPathForTests;
+        internal static int OverrideSegmentMaxEntriesForTests;
+        internal static long OverrideSegmentMaxBytesForTests;
+        internal static bool? OverrideIsPlayingForTests;
 
         static EditorChangeTrackerService()
         {
@@ -70,6 +94,7 @@ namespace UnitySkills
                 EditorSceneManager.sceneOpened += OnSceneOpened;
                 EditorSceneManager.sceneSaved += OnSceneSaved;
                 AssemblyReloadEvents.beforeAssemblyReload += FlushPendingProperties;
+                EditorApplication.quitting += FlushPendingProperties;
             }
             catch (Exception ex)
             {
@@ -77,8 +102,20 @@ namespace UnitySkills
             }
         }
 
-        /// <summary>Marks changes triggered by a REST skill, so callers can distinguish them from manual edits.</summary>
-        public static void BeginRestExecution() => _restDepth++;
+        /// <summary>
+        /// Marks changes triggered by a REST skill, so callers can distinguish them from manual edits. Also decides which
+        /// caller the journal attributes them to: the first request of a depth window sets it, a different caller joining
+        /// the same window turns it into <see cref="AgentMixed"/>.
+        /// </summary>
+        public static void BeginRestExecution()
+        {
+            string agent = ResolveRestAgent(SkillsAuditLog.CaptureRequestContext(), ClientProcessResolver.TryGetAgentId);
+            if (_restDepth == 0)
+                _restAgent = agent;
+            else if (!string.Equals(_restAgent, agent, StringComparison.Ordinal))
+                _restAgent = AgentMixed;
+            _restDepth++;
+        }
 
         public static void EndRestExecution()
         {
@@ -86,10 +123,36 @@ namespace UnitySkills
             tick = () =>
             {
                 EditorApplication.update -= tick;
-                if (_restDepth > 0)
-                    _restDepth--;
+                EndRestWindowStep();
             };
             EditorApplication.update += tick;
+        }
+
+        private static void EndRestWindowStep()
+        {
+            if (_restDepth > 0)
+                _restDepth--;
+            if (_restDepth == 0)
+                _restAgent = null;
+        }
+
+        /// <summary>
+        /// The REST caller's agent id. An explicit X-Agent-Id wins; otherwise the process resolver's answer for the remote
+        /// port, then the header/User-Agent guess. No request context (panel, tests) or no usable id gives
+        /// <see cref="AgentUnknown"/>.
+        /// </summary>
+        internal static string ResolveRestAgent(SkillsAuditLog.AmbientContext context, AgentLookup lookup)
+        {
+            if (!context.Active)
+                return AgentUnknown;
+
+            string agent = context.FallbackAgentId;
+            if (!context.AgentIdIsExplicit && context.RemotePort > 0 &&
+                lookup(context.RemotePort, out var resolved) && !string.IsNullOrEmpty(resolved))
+            {
+                agent = resolved;
+            }
+            return string.IsNullOrEmpty(agent) ? AgentUnknown : agent;
         }
 
         public static object ReadChanges(long since = 0, string types = null, string source = "all", int limit = DefaultReadLimit)
@@ -137,10 +200,10 @@ namespace UnitySkills
 
         internal static void RecordFileChanges(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
         {
-            var importedPaths = CleanPaths(imported);
-            var deletedPaths = CleanPaths(deleted);
-            var movedPaths = CleanPaths(moved);
-            var movedFromPaths = CleanPaths(movedFrom);
+            var importedPaths = CleanPaths(imported, out int importedTotal);
+            var deletedPaths = CleanPaths(deleted, out int deletedTotal);
+            var movedPaths = CleanPaths(moved, out int movedToTotal);
+            var movedFromPaths = CleanPaths(movedFrom, out int movedFromTotal);
             if (importedPaths.Length == 0 && deletedPaths.Length == 0 && movedPaths.Length == 0 && movedFromPaths.Length == 0)
                 return;
 
@@ -149,12 +212,17 @@ namespace UnitySkills
             for (int i = 0; i < pairCount; i++)
                 movePairs.Add(new JObject { ["from"] = movedFromPaths[i], ["to"] = movedPaths[i] });
 
+            int movedTotal = Math.Min(movedToTotal, movedFromTotal);
             Publish("file_changes", CurrentSource(), new JObject
             {
                 ["imported"] = JArray.FromObject(importedPaths),
                 ["deleted"] = JArray.FromObject(deletedPaths),
                 ["moved"] = movePairs,
-                ["count"] = importedPaths.Length + deletedPaths.Length + pairCount
+                ["count"] = importedPaths.Length + deletedPaths.Length + pairCount,
+                ["omitted"] = (importedTotal - importedPaths.Length) + (deletedTotal - deletedPaths.Length) + (movedTotal - pairCount),
+                ["importedTotal"] = importedTotal,
+                ["deletedTotal"] = deletedTotal,
+                ["movedTotal"] = movedTotal
             });
         }
 
@@ -270,13 +338,15 @@ namespace UnitySkills
             }
         }
 
-        private static UndoPropertyModification[] OnPostprocessModifications(UndoPropertyModification[] modifications)
+        internal static UndoPropertyModification[] OnPostprocessModifications(UndoPropertyModification[] modifications)
         {
             try
             {
                 string source = CurrentSource();
+                string agent = CurrentAgent();
+                bool isPlaying = IsPlayingNow();
                 foreach (var modification in modifications ?? Array.Empty<UndoPropertyModification>())
-                    CapturePropertyModification(modification, source);
+                    CapturePropertyModification(modification, source, agent, isPlaying);
 
                 if (PendingProperties.Count > 0)
                     SchedulePropertyFlush();
@@ -288,7 +358,7 @@ namespace UnitySkills
             return modifications;
         }
 
-        private static void CapturePropertyModification(UndoPropertyModification modification, string source)
+        private static void CapturePropertyModification(UndoPropertyModification modification, string source, string agent, bool isPlaying)
         {
             var current = modification.currentValue;
             if (current?.target == null)
@@ -307,7 +377,9 @@ namespace UnitySkills
             string targetKey = go != null
                 ? UnityObjectIdUtility.GetEntityId(go) + ":" + target.GetType().FullName
                 : assetPath + ":" + target.GetType().FullName;
-            string key = source + ":" + targetKey + ":" + propertyPath;
+            // Play state is part of the key: edit-mode and play-mode changes to one property must stay two entries,
+            // because play-mode records are exempt from scope checks and the edit-mode one must not hide in them.
+            string key = source + ":" + (isPlaying ? "play" : "edit") + ":" + targetKey + ":" + propertyPath;
 
             var change = new JObject
             {
@@ -345,10 +417,18 @@ namespace UnitySkills
             {
                 existing.Change["value"] = change["value"];
                 existing.Change["objectReference"] = change["objectReference"];
+                if (!string.Equals(existing.Agent, agent, StringComparison.Ordinal))
+                    existing.Agent = AgentMixed;
             }
             else
             {
-                PendingProperties[key] = new PendingPropertyChange { Source = source, Change = change };
+                PendingProperties[key] = new PendingPropertyChange
+                {
+                    Source = source,
+                    Agent = agent,
+                    IsPlaying = isPlaying,
+                    Change = change
+                };
             }
 
             _propertyFlushDue = EditorApplication.timeSinceStartup + PropertyDebounceSeconds;
@@ -371,7 +451,7 @@ namespace UnitySkills
             FlushPendingProperties();
         }
 
-        private static void FlushPendingProperties()
+        internal static void FlushPendingProperties()
         {
             if (_propertyFlushScheduled)
             {
@@ -381,16 +461,18 @@ namespace UnitySkills
             if (PendingProperties.Count == 0)
                 return;
 
-            foreach (var group in PendingProperties.Values.GroupBy(p => p.Source))
+            // The debounce outlives the REST window that caused the change, so attribution is the value captured with each
+            // change, not whatever is current now.
+            foreach (var group in PendingProperties.Values.GroupBy(p => new { p.Source, p.Agent, p.IsPlaying }))
             {
                 var changes = new JArray(group.Take(MaxChangesPerEvent).Select(p => p.Change));
                 int total = group.Count();
-                Publish("scene_changes", group.Key, new JObject
+                Publish("scene_changes", group.Key.Source, new JObject
                 {
                     ["count"] = total,
                     ["omitted"] = Math.Max(0, total - changes.Count),
                     ["changes"] = changes
-                });
+                }, group.Key.Agent, group.Key.IsPlaying);
             }
             PendingProperties.Clear();
         }
@@ -439,10 +521,15 @@ namespace UnitySkills
             return change;
         }
 
-        private static JObject CaptureDestroyed(string entityId)
+        internal static JObject CaptureDestroyed(string entityId)
         {
             if (!Catalog.TryGetValue(entityId, out var entry))
-                return new JObject { ["kind"] = "gameobject_destroyed", ["entityId"] = entityId };
+                return new JObject
+                {
+                    ["kind"] = "gameobject_destroyed",
+                    ["entityId"] = entityId,
+                    ["instanceId"] = LegacyInstanceIdFromKey(entityId)
+                };
 
             var change = new JObject
             {
@@ -450,7 +537,9 @@ namespace UnitySkills
                 ["name"] = entry.Name,
                 ["path"] = entry.Path,
                 ["scenePath"] = entry.ScenePath,
-                ["components"] = JArray.FromObject(entry.ComponentTypes ?? new List<string>())
+                ["components"] = JArray.FromObject(entry.ComponentTypes ?? new List<string>()),
+                ["entityId"] = entry.EntityId,
+                ["instanceId"] = entry.InstanceId
             };
 
             string childPrefix = string.IsNullOrEmpty(entry.Path) ? null : entry.Path + "/";
@@ -463,7 +552,7 @@ namespace UnitySkills
             return change;
         }
 
-        private static JObject CaptureReparented(string entityId, string newParentEntityId)
+        internal static JObject CaptureReparented(string entityId, string newParentEntityId)
         {
             Catalog.TryGetValue(entityId, out var before);
             var go = ResolveGameObject(entityId);
@@ -477,7 +566,10 @@ namespace UnitySkills
                 ["fromPath"] = before?.Path,
                 ["toPath"] = GameObjectFinder.GetPath(go),
                 ["newParentPath"] = go.transform.parent != null ? GameObjectFinder.GetPath(go.transform.parent.gameObject) : null,
-                ["newParentEntityId"] = newParentEntityId
+                ["newParentEntityId"] = newParentEntityId,
+                ["entityId"] = UnityObjectIdUtility.GetEntityId(go),
+                ["instanceId"] = UnityObjectIdUtility.GetObjectId(go),
+                ["scenePath"] = go.scene.path
             };
             CatalogHierarchy(go);
             return change;
@@ -544,7 +636,7 @@ namespace UnitySkills
                 CatalogHierarchy(child.gameObject);
         }
 
-        private static void UpsertCatalog(GameObject go)
+        internal static void UpsertCatalog(GameObject go)
         {
             string id = UnityObjectIdUtility.GetEntityId(go);
             if (id == null)
@@ -552,6 +644,7 @@ namespace UnitySkills
             Catalog[id] = new CatalogEntry
             {
                 EntityId = id,
+                InstanceId = UnityObjectIdUtility.GetObjectId(go),
                 Name = go.name,
                 Path = GameObjectFinder.GetPath(go),
                 ScenePath = go.scene.path,
@@ -616,25 +709,27 @@ namespace UnitySkills
             target["scenePath"] = go.scene.path;
         }
 
-        private static void Publish(string type, string source, JObject payload)
+        /// <param name="agent">Attribution to store. Null derives it from <paramref name="source"/>: the current REST window's agent for "rest", null for "editor".</param>
+        /// <param name="isPlaying">Play state to store. Null reads it now.</param>
+        private static void Publish(string type, string source, JObject payload, string agent = null, bool? isPlaying = null)
         {
             EnsureLoaded();
+            string entryAgent = agent ??
+                (string.Equals(source, "rest", StringComparison.Ordinal) ? (_restAgent ?? AgentUnknown) : null);
             var entry = new JObject
             {
                 ["seq"] = ++_seq,
                 ["type"] = type,
                 ["source"] = source,
+                ["agent"] = entryAgent == null ? (JToken)JValue.CreateNull() : new JValue(entryAgent),
+                ["isPlaying"] = isPlaying ?? IsPlayingNow(),
                 ["tsUtc"] = DateTime.UtcNow.ToString("o"),
                 ["payload"] = payload ?? new JObject()
             };
             Buffer.Enqueue(entry);
-            bool overflowed = Buffer.Count > BufferCapacity;
             while (Buffer.Count > BufferCapacity)
                 Buffer.Dequeue();
-            bool compact = overflowed && ++_overflowEntriesSinceCompact >= CompactEveryOverflowEntries;
-            Persist(entry, compact);
-            if (compact)
-                _overflowEntriesSinceCompact = 0;
+            Persist(entry);
         }
 
         private static void EnsureLoaded()
@@ -644,37 +739,89 @@ namespace UnitySkills
             _loaded = true;
             Buffer.Clear();
             _seq = 0;
-            _overflowEntriesSinceCompact = 0;
+            _activeEntries = 0;
+            _activeBytes = 0;
 
-            string path = LogPath;
-            if (!File.Exists(path))
-                return;
+            var ring = new List<JObject>();
+            string active = LogPath;
+            if (File.Exists(active) && TryReadSegmentTail(active, BufferCapacity, out var activeTail, out int lines, out long activeMaxSeq))
+            {
+                ring = activeTail;
+                _activeEntries = lines;
+                _activeBytes = new FileInfo(active).Length;
+                _seq = activeMaxSeq;
+            }
 
+            // Rotated segments (newest first) top the ring up when the active one holds fewer than BufferCapacity entries, and
+            // stand in for the seq counter when the active one is absent or empty, e.g. just after a rotation.
+            for (int n = 1; n <= MaxRotatedSegments && (ring.Count < BufferCapacity || _seq == 0); n++)
+            {
+                string segment = SegmentPath(n);
+                if (!File.Exists(segment) || !TryReadSegmentTail(segment, BufferCapacity - ring.Count, out var older, out _, out long segmentMaxSeq))
+                    continue;
+                _seq = Math.Max(_seq, segmentMaxSeq);
+                ring.InsertRange(0, older);
+            }
+
+            foreach (var entry in ring)
+                Buffer.Enqueue(entry);
+        }
+
+        /// <summary>
+        /// Reads one segment, keeping only the last <paramref name="keep"/> lines for parsing: a segment can hold thousands of
+        /// entries and the ring needs a few hundred. Seq grows with the line order, so the newest line decides the max.
+        /// </summary>
+        private static bool TryReadSegmentTail(string path, int keep, out List<JObject> entries, out int lineCount, out long maxSeq)
+        {
+            entries = new List<JObject>();
+            lineCount = 0;
+            maxSeq = 0;
             try
             {
-                foreach (string line in File.ReadLines(path))
+                var window = new Queue<string>();
+                foreach (string line in ReadLinesShared(path))
                 {
                     if (string.IsNullOrWhiteSpace(line))
                         continue;
+                    lineCount++;
+                    window.Enqueue(line);
+                    if (window.Count > keep)
+                        window.Dequeue();
+                }
+
+                foreach (string line in window)
+                {
                     JObject entry;
                     try { entry = JObject.Parse(line); }
                     catch { continue; }
                     long seq = entry.Value<long?>("seq") ?? 0;
                     if (seq <= 0)
                         continue;
-                    _seq = Math.Max(_seq, seq);
-                    Buffer.Enqueue(entry);
-                    while (Buffer.Count > BufferCapacity)
-                        Buffer.Dequeue();
+                    maxSeq = Math.Max(maxSeq, seq);
+                    entries.Add(entry);
                 }
+                return true;
             }
             catch (Exception ex)
             {
-                SkillsLogger.LogWarning("Failed to load editor change journal: " + ex.Message);
+                SkillsLogger.LogWarning("Failed to load editor change journal segment: " + ex.Message);
+                return false;
             }
         }
 
-        private static void Persist(JObject entry, bool compact)
+        private static IEnumerable<string> ReadLinesShared(string path)
+        {
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var reader = new StreamReader(stream, SkillsCommon.Utf8NoBom))
+            {
+                string line;
+                while ((line = reader.ReadLine()) != null)
+                    yield return line;
+            }
+        }
+
+        /// <summary>One write per entry, so a concurrent reader sees a whole line or none of it.</summary>
+        private static void Persist(JObject entry)
         {
             try
             {
@@ -683,19 +830,71 @@ namespace UnitySkills
                 if (!string.IsNullOrEmpty(directory))
                     Directory.CreateDirectory(directory);
 
-                if (compact)
-                {
-                    File.WriteAllLines(path, Buffer.Select(e => e.ToString(Formatting.None)));
-                }
-                else
-                {
-                    File.AppendAllText(path, entry.ToString(Formatting.None) + Environment.NewLine);
-                }
+                byte[] bytes = SkillsCommon.Utf8NoBom.GetBytes(entry.ToString(Formatting.None) + Environment.NewLine);
+                using (var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+                    stream.Write(bytes, 0, bytes.Length);
+                _activeEntries++;
+                _activeBytes += bytes.Length;
             }
             catch (Exception ex)
             {
                 SkillsLogger.LogWarning("Failed to persist editor change journal: " + ex.Message);
+                return;
             }
+            RotateIfNeeded();
+        }
+
+        private static int EntryCap => OverrideSegmentMaxEntriesForTests > 0 ? OverrideSegmentMaxEntriesForTests : SegmentMaxEntries;
+
+        private static long ByteCap => OverrideSegmentMaxBytesForTests > 0 ? OverrideSegmentMaxBytesForTests : SegmentMaxBytes;
+
+        /// <summary>
+        /// Moves the active segment to <c>.1</c> once it is full, shifting older ones up and dropping the oldest. Nothing is
+        /// ever overwritten, and any failure (a reader holding a file open on Windows, a read-only folder) just leaves the
+        /// segment growing: the next append retries.
+        /// </summary>
+        private static void RotateIfNeeded()
+        {
+            if (_activeEntries < EntryCap && _activeBytes < ByteCap)
+                return;
+
+            try
+            {
+                // The lowest free slot is where the shift ends. Normally that is right after the contiguous run of segments;
+                // a gap left by an earlier failed shift gets closed first, so a retry never drops a segment that is not due.
+                int free = 1;
+                while (free <= MaxRotatedSegments && File.Exists(SegmentPath(free)))
+                    free++;
+                if (free > MaxRotatedSegments)
+                {
+                    File.Delete(SegmentPath(MaxRotatedSegments));
+                    free = MaxRotatedSegments;
+                }
+
+                for (int n = free - 1; n >= 1; n--)
+                    File.Move(SegmentPath(n), SegmentPath(n + 1));
+                File.Move(LogPath, SegmentPath(1));
+
+                _activeEntries = 0;
+                _activeBytes = 0;
+                _rotationFailureLogged = false;
+            }
+            catch (Exception ex)
+            {
+                if (!_rotationFailureLogged)
+                {
+                    _rotationFailureLogged = true;
+                    SkillsLogger.LogWarning("Editor change journal rotation failed; it is retried on the next change: " + ex.Message);
+                }
+            }
+        }
+
+        /// <summary>Rotated segment <paramref name="n"/> (1 = newest) next to the active file: <c>editor_changes.1.jsonl</c>.</summary>
+        internal static string SegmentPath(int n)
+        {
+            string active = LogPath;
+            string directory = Path.GetDirectoryName(active) ?? string.Empty;
+            return Path.Combine(directory, Path.GetFileNameWithoutExtension(active) + "." + n + Path.GetExtension(active));
         }
 
         private static string LogPath => !string.IsNullOrEmpty(OverrideLogPathForTests)
@@ -704,11 +903,30 @@ namespace UnitySkills
 
         private static string CurrentSource() => _restDepth > 0 ? "rest" : "editor";
 
-        private static string[] CleanPaths(string[] paths) => (paths ?? Array.Empty<string>())
-            .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(MaxChangesPerEvent)
-            .ToArray();
+        private static string CurrentAgent() => _restDepth > 0 ? (_restAgent ?? AgentUnknown) : null;
+
+        private static bool IsPlayingNow() => OverrideIsPlayingForTests ?? EditorApplication.isPlaying;
+
+        /// <summary>The raw id from an ObjectChangeEvent key as a legacy instance id; 0 where Unity no longer has one (6000.4+).</summary>
+        private static int LegacyInstanceIdFromKey(string entityId)
+        {
+#if UNITY_6000_4_OR_NEWER
+            return 0;
+#else
+            return int.TryParse(entityId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int instanceId) ? instanceId : 0;
+#endif
+        }
+
+        /// <param name="total">Distinct non-blank paths before the per-event cap.</param>
+        private static string[] CleanPaths(string[] paths, out int total)
+        {
+            var distinct = (paths ?? Array.Empty<string>())
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            total = distinct.Length;
+            return total <= MaxChangesPerEvent ? distinct : distinct.Take(MaxChangesPerEvent).ToArray();
+        }
 
         private static string Truncate(string value, int maxChars)
         {
@@ -776,9 +994,27 @@ namespace UnitySkills
             _seq = 0;
             _loaded = true;
             _restDepth = 0;
-            _overflowEntriesSinceCompact = 0;
-            if (deleteFile && File.Exists(LogPath))
+            _restAgent = null;
+            _activeEntries = 0;
+            _activeBytes = 0;
+            _rotationFailureLogged = false;
+            if (deleteFile)
+                DeleteJournalFilesForTests();
+        }
+
+        private static void DeleteJournalFilesForTests()
+        {
+            if (File.Exists(LogPath))
                 File.Delete(LogPath);
+            // One past the last rotated slot as well, so a test can assert that slot never appears.
+            for (int n = 1; n <= MaxRotatedSegments + 1; n++)
+            {
+                string segment = SegmentPath(n);
+                if (File.Exists(segment))
+                    File.Delete(segment);
+                else if (Directory.Exists(segment))
+                    Directory.Delete(segment, true);
+            }
         }
 
         internal static void ReloadForTests()
@@ -786,7 +1022,6 @@ namespace UnitySkills
             Buffer.Clear();
             _seq = 0;
             _loaded = false;
-            _overflowEntriesSinceCompact = 0;
             EnsureLoaded();
         }
 
@@ -794,6 +1029,9 @@ namespace UnitySkills
         {
             Publish(type, source, payload ?? new JObject());
         }
+
+        /// <summary>Closes one REST depth step at once, standing in for the next-frame tick <see cref="EndRestExecution"/> schedules.</summary>
+        internal static void EndRestExecutionNowForTests() => EndRestWindowStep();
     }
 
     internal sealed class EditorChangeAssetPostprocessor : AssetPostprocessor

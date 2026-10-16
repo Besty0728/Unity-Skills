@@ -27,6 +27,8 @@ namespace UnitySkills.Tests.Core
         {
             EditorChangeTrackerService.ResetForTests(deleteFile: true);
             EditorChangeTrackerService.OverrideLogPathForTests = _savedOverride;
+            // Hand the live journal back with its own ring and seq, not the emptied state ResetForTests leaves behind.
+            EditorChangeTrackerService.ReloadForTests();
         }
 
         [Test]

@@ -33,7 +33,7 @@ Observe and control the Unity Editor without parsing scene YAML.
 - For console errors → use `debug` module's `debug_get_errors`
 - For scene save → `scene_save` (scene module) or `editor_execute_menu` menuPath="File/Save"
 - When file watching reports changes, or the AI resumes after the user edited Unity → call `editor_get_changes` before reading `.unity` YAML
-- If `editor_get_changes.dropped=true` → its 500-entry retention window was exceeded; rebuild context with `scene_context` / `scene_diff`
+- If `editor_get_changes.dropped=true` → your `since` is older than the 500-entry in-memory window (`retention`); rebuild context with `scene_context` / `scene_diff`. The files under `Library/UnitySkills/` keep more history, but this skill does not return it
 
 ## Skills Overview
 
@@ -139,6 +139,8 @@ Get full editor context including selection, assets, and scene info.
 ### editor_get_changes
 Read the persistent change journal at `Library/UnitySkills/editor_changes.jsonl`. It captures scene object/component/property summaries plus imported, deleted, and moved asset paths across Domain Reloads. It never parses or returns raw `.unity` YAML.
 
+On disk the journal is up to 11 files: the active `editor_changes.jsonl` plus rotated `editor_changes.1.jsonl` (newest) to `editor_changes.10.jsonl`. A file rotates at 2,000 entries or 8 MiB, is never rewritten, and the oldest rotated file is dropped. This skill serves only the newest 500 entries (the in-memory window, `retention`), which it reloads from those files after a Domain Reload.
+
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `since` | long | No | `0` | Previous response cursor; `0` reads retained history |
@@ -146,7 +148,13 @@ Read the persistent change journal at `Library/UnitySkills/editor_changes.jsonl`
 | `source` | string | No | `all` | `editor`/`manual`, `rest`, or `all` |
 | `limit` | int | No | `100` | Newest entries to return, 1-500 |
 
-**Returns:** `{hasChanges, cursor, oldestSeq, dropped, truncated, changes}`. Save `cursor` for the next call. `dropped=true` means older changes fell outside the 500-entry journal, so rebuild full scene context.
+**Returns:** `{hasChanges, cursor, oldestSeq, dropped, truncated, changes}`. Save `cursor` for the next call. `dropped=true` means older changes fell outside the 500-entry window, so rebuild full scene context.
+
+**Entry fields:** `seq`, `type`, `source`, `agent`, `isPlaying`, `tsUtc`, `payload`. Entries written by older versions lack `agent` and `isPlaying`.
+- `agent`: for `source:"rest"` the caller's agent id; `"mixed"` when callers with different ids overlapped in one REST window (calls in quick succession can share a window); `"unknown"` when the call carried no identity; `null` for `source:"editor"`. It is attribution evidence, not proof.
+- `isPlaying`: `EditorApplication.isPlaying` when the entry was written (Play Mode changes are transient).
+- `file_changes` payload: `count` is the number of listed paths; `importedTotal` / `deletedTotal` / `movedTotal` count them before the 200-per-list cap, and `omitted` is how many the cap dropped.
+- `gameobject_reparented` carries `entityId`, `instanceId`, `scenePath`; `gameobject_destroyed` carries `entityId`, `instanceId`. `instanceId` is always `0` on Unity 6000.4+, so compare objects by `entityId`.
 
 ### editor_undo
 Undo the last action.

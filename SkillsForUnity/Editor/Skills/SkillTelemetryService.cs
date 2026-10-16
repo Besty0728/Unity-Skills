@@ -240,6 +240,17 @@ namespace UnitySkills
         internal static void FlushSync() => FlushPending();
 
         /// <summary>
+        /// The delayed flush (see <see cref="FlushDelayMs"/>) is a thread-pool task that does not survive its domain, so
+        /// whatever is still queued when a domain reload starts or the editor quits is written out here. Logs nothing.
+        /// </summary>
+        [InitializeOnLoadMethod]
+        private static void RegisterLifecycleFlush()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload += FlushSync;
+            EditorApplication.quitting += FlushSync;
+        }
+
+        /// <summary>
         /// Deletes telemetry records within a statistics window, using the same window values as
         /// <see cref="BuildAnalyticsJson"/>: <c>1h</c> / <c>24h</c> / <c>7d</c> / <c>all</c>.
         /// <c>all</c> wipes every retained file; other windows only delete records with
