@@ -137,7 +137,6 @@ jobs:
           key: Library-${{ runner.os }}-${{ matrix.unityVersion }}-${{ hashFiles('TempUnityProject/Packages/manifest.json') }}
           restore-keys: |
             Library-${{ runner.os }}-${{ matrix.unityVersion }}-
-            Library-${{ runner.os }}-
 
       - uses: game-ci/unity-test-runner@v4
         id: tests
