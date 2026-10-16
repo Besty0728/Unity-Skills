@@ -76,6 +76,6 @@ A successful write returns the state read back from the Editor (e.g. world `posi
 
 Compile status, events, analytics → [observability](references/protocol-observability.md); closed Editor + opt-in Unity CLI → [unity-cli](references/protocol-unity-cli.md).
 
-Current snapshot: `805` REST skills, `56` source files, `54` categories, `82` module doc directories (`54` REST/module docs + `28` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `839` REST skills, `56` source files, `54` categories, `83` module doc directories (`54` REST/module docs + `29` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`

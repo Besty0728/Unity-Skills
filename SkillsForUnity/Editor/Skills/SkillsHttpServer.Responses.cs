@@ -59,7 +59,7 @@ namespace UnitySkills
             catch (ObjectDisposedException) { /* Response already closed */ }
             catch (Exception ex)
             {
-                SkillsLogger.LogWarning($"SendImmediateJsonResponse failed: {ex.GetType().Name}: {ex.Message}");
+                QueueBackgroundLog("warning", $"SendImmediateJsonResponse failed: {ex.GetType().Name}: {ex.Message}");
             }
             finally
             {

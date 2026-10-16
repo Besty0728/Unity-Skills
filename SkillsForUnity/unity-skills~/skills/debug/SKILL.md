@@ -63,7 +63,7 @@ Whether Unity is compiling right now, and whether the last finished compilation 
 **Returns:** `{isCompiling, isUpdating, lastCompilation: {succeeded, errorCount, finishedAtUtc, errors: [{file, line, message}]}}` — `lastCompilation` is null until a compilation finishes in this editor session. `isCompiling: false` alone never means the last compile succeeded: after a failed compile Unity keeps running the old assemblies.
 
 ### `debug_force_recompile`
-Force Unity to recompile all scripts.
+Request a clean script compilation and return `status:"accepted"`, `jobId` and `waitUrl`. GET the job to verify its matching cycle compiled assemblies successfully and loaded the new domain (`resultData.compilation.compiled`, `success`, `domainLoaded`). Requesting Unity's `CleanBuildCache` is not itself evidence that assemblies were compiled: an empty requested cycle fails at `no_compilation`. Use an actual script mutation's compile job when validating a changed script. Unity may defer the request until Play Mode exits, and the job never exits Play Mode automatically.
 **Parameters:** None.
 
 ### `debug_get_system_info`

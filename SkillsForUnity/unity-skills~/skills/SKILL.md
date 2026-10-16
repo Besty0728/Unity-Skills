@@ -33,7 +33,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 | [component](./component/SKILL.md) | Mixed* | Component add/remove/configure | Yes |
 | [material](./material/SKILL.md) | FA | Material property edits | Yes |
 | [light](./light/SKILL.md) | FA | Light create/configure | Yes |
-| [prefab](./prefab/SKILL.md) | FA | Prefab create/apply/spawn | Yes |
+| [prefab](./prefab/SKILL.md) | Mixed* | Prefab create/apply/spawn, asset queries, component/node edits and atomic batches | Yes |
 | [asset](./asset/SKILL.md) | SA* | Asset refresh/find/info | Yes |
 | [batch](./batch/SKILL.md) | SA | Batch and async jobs | Built-in |
 | [ui](./ui/SKILL.md) | FA | UGUI Canvas/UI creation | Yes |
@@ -118,6 +118,7 @@ Documentation only — these modules define no REST skills.
 | [manual-component](./manual-component/SKILL.md) | Manually add, configure, reorder, and copy components on GameObjects using Unity Editor UI |
 | [manual-material](./manual-material/SKILL.md) | Manually create and edit Materials and assign them to objects using Unity Editor UI |
 | [manual-scene](./manual-scene/SKILL.md) | Manually navigate, save, and manage scenes using Unity Editor UI |
+| [skill-creator](./skill-creator/SKILL.md) | Author new REST skills: naming/registration contract, truthful risk flags, docs placement, compile loop |
 
 ## Batch-First Rule
 

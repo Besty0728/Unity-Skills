@@ -3,6 +3,7 @@ using UnityEditor;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
@@ -390,14 +391,93 @@ namespace UnitySkills
             }
         }
 
-        private static (bool success, string message) UninstallSkill(string targetPath, string name)
+        // internal: the uninstall regression tests drive this against a temp target directly (tests are
+        // InternalsVisibleTo this assembly), so the fixture never has to reach a real install location.
+        internal static (bool success, string message) UninstallSkill(string targetPath, string name)
         {
             if (!Directory.Exists(targetPath))
                 return (false, $"{name} skill not installed at this location");
 
-            Directory.Delete(targetPath, true);
+            string templateRoot = null;
+            try { templateRoot = GetSkillTemplateRoot(); }
+            catch (DirectoryNotFoundException)
+            {
+                // Exotic setup without a resolvable template: fall back to removing the whole
+                // destination directory, which may also take files the user added into it.
+                SkillsLogger.LogWarning("Uninstalling via full directory delete because the skill template root could not be resolved; user-added files under " + targetPath + " may be removed.");
+                Directory.Delete(targetPath, true);
+                SkillsLogger.Log("Uninstalled skill from: " + targetPath);
+                return (true, targetPath);
+            }
+
+            DeleteInstalledTemplateTree(templateRoot, targetPath);
             SkillsLogger.Log("Uninstalled skill from: " + targetPath);
             return (true, targetPath);
+        }
+
+        /// <summary>
+        /// Removes only the paths the installed template owns: every template file mirrored under
+        /// <paramref name="targetPath"/>, the installer-written scripts/agent_config.json (not part of
+        /// the template), then the now-empty directories of the template tree deepest-first. Files the
+        /// user added keep their directories — and the destination root — alive.
+        /// </summary>
+        private static void DeleteInstalledTemplateTree(string templateRoot, string targetPath)
+        {
+            var templateDirectories = Directory.GetDirectories(templateRoot, "*", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(templateRoot, path))
+                .Where(relativePath => !ShouldSkipTemplatePath(relativePath))
+                .ToList();
+
+            var templateDirectoriesSet = new HashSet<string>(
+                templateDirectories.Select(NormalizeRelativePath), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var file in Directory.GetFiles(templateRoot, "*", SearchOption.AllDirectories))
+            {
+                string relativePath = Path.GetRelativePath(templateRoot, file);
+                if (ShouldSkipTemplatePath(relativePath))
+                    continue;
+
+                // A template file inside a skipped directory can never match the copy contract; it only
+                // occurs when the template itself violates it, and the destination file may be user content.
+                string parent = NormalizeRelativePath(Path.GetDirectoryName(relativePath));
+                while (!string.IsNullOrEmpty(parent))
+                {
+                    if (!templateDirectoriesSet.Contains(parent))
+                        goto NextFile;
+                    parent = NormalizeRelativePath(Path.GetDirectoryName(parent));
+                }
+
+                string destination = Path.Combine(targetPath, relativePath);
+                if (File.Exists(destination))
+                    File.Delete(destination);
+
+                NextFile:;
+            }
+
+            // Installer-written version stamp, skipped from the template copy itself.
+            string agentConfig = Path.Combine(targetPath, "scripts", "agent_config.json");
+            if (File.Exists(agentConfig))
+                File.Delete(agentConfig);
+
+            foreach (var relativePath in templateDirectories
+                .OrderByDescending(path => path.Count(c => c == Path.DirectorySeparatorChar || c == Path.AltDirectorySeparatorChar))
+                .ThenByDescending(path => path.Length))
+            {
+                string directory = Path.Combine(targetPath, relativePath);
+                if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+                    Directory.Delete(directory);
+            }
+
+            if (!Directory.EnumerateFileSystemEntries(targetPath).Any())
+                Directory.Delete(targetPath);
+        }
+
+        private static string NormalizeRelativePath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return string.Empty;
+            return path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar)
+                .TrimEnd(Path.DirectorySeparatorChar);
         }
 
         private static (bool success, string message) InstallSkill(string targetPath, string name, string agentId, string instructionFilePath = null)

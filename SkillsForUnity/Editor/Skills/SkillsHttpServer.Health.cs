@@ -240,6 +240,15 @@ namespace UnitySkills
                 // A single-digit value means the editor is idle and healthy; several seconds means "alive but Unity is busy"
                 // (a long skill, a modal dialog, importing) rather than "the server is dead".
                 mainThreadIdleMs = idleMs,
+                updateTickCount = Interlocked.Read(ref _mainThreadTickCount),
+                playerFrameCount = Volatile.Read(ref _snapPlayerFrameCount),
+                playerFrameIdleMs = Interlocked.Read(ref _playerFrameTickUtc) == 0 ? -1L :
+                    Math.Max(0L, (DateTime.UtcNow.Ticks - Interlocked.Read(ref _playerFrameTickUtc)) / TimeSpan.TicksPerMillisecond),
+                wakePostedCount = Interlocked.Read(ref _wakePostedCount),
+                wakeCompletedCount = Interlocked.Read(ref _wakeCompletedCount),
+                wakeDispatchPending = Volatile.Read(ref _wakePostPending) != 0,
+                wakeDispatcherAvailable = _mainThreadContext != null,
+                wakeDispatchError = Volatile.Read(ref _wakeDispatchError),
                 // Requests admitted but not yet answered (queue depth plus in-flight responders); the MaxPendingRequests admission cap.
                 pendingRequests = Volatile.Read(ref _pendingRequests),
                 // Depth of each of the two job-queue lanes; light is drained every frame.
@@ -254,44 +263,6 @@ namespace UnitySkills
                 live,
                 note = "If you get 'Connection Refused', Unity may be reloading scripts. Wait 2-3 seconds and retry."
             }, _jsonSettings);
-        }
-
-        /// <summary>
-        /// HTTP-thread responder for GET /health and GET /. Every value comes from a plain static field or the
-        /// main-thread snapshot — zero Unity API, zero EditorPrefs, zero SkillsLogger — same contract as SendCachedGetResponse.
-        ///
-        /// The point is staying diagnosable under load: on the old "everything through the main thread" path, one
-        /// long-running skill could hang the liveness probe itself, so callers couldn't tell "server is dead" from
-        /// "Unity is busy". Now it answers instantly and mainThreadIdleMs says which; use GET /health?live=1 for a strictly live value.
-        /// </summary>
-        private static void SendHealthFastPath(HttpListenerContext context, HttpListenerRequest request)
-        {
-            HttpListenerResponse response = null;
-            try
-            {
-                response = context.Response;
-                response.Headers.Add("Access-Control-Allow-Methods", CorsAllowMethods);
-                response.Headers.Add("Access-Control-Allow-Headers", CorsAllowHeaders);
-                response.Headers.Add("Access-Control-Allow-Origin", "*");
-                response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
-                response.Headers.Add("X-Agent-Id", DetectAgent(request));
-                AddInstanceHeaders(response);
-                response.Headers.Add("X-Fast-Path", "true");
-                response.StatusCode = 200;
-                response.ContentType = "application/json; charset=utf-8";
-
-                byte[] buffer = Encoding.UTF8.GetBytes(BuildHealthJson(HealthVitals.FromSnapshot(), live: false));
-                response.ContentLength64 = buffer.Length;
-                response.OutputStream.Write(buffer, 0, buffer.Length);
-            }
-            catch (HttpListenerException) { /* Client disconnected */ }
-            catch (System.IO.IOException) { /* Client disconnected mid-write */ }
-            catch (ObjectDisposedException) { /* Response already closed */ }
-            catch { /* Never let fast-path errors kill the listener loop */ }
-            finally
-            {
-                try { response?.Close(); } catch { }
-            }
         }
 
         /// <summary>

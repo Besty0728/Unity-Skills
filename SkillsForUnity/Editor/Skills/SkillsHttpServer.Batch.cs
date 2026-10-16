@@ -1026,6 +1026,9 @@ namespace UnitySkills
         /// unknown/malformed steps, a skill that might trigger a domain reload (wipes the undo stack), and
         /// continueOnError=true (a transaction is fail-fast by definition). Returns true if the batch was rejected.
         /// </summary>
+        internal static bool IsRuntimeInvocationSkill(string name) =>
+            name == "component_invoke_method" || name == "component_invoke_method_batch" || name == "editor_run_scenario";
+
         private static bool RejectTransactionalPrecheck(RequestJob job, JArray steps, bool continueOnError)
         {
             if (continueOnError)
@@ -1049,6 +1052,8 @@ namespace UnitySkills
                     reason = "step is not an object with a non-empty 'skill' field";
                 else if (!SkillRouter.TryGetSkill(name, out var info))
                     reason = "unknown skill";
+                else if (IsRuntimeInvocationSkill(name))
+                    reason = "runtime calls have arbitrary side effects and cannot promise transactional rollback";
                 else if (info.MayTriggerReload)
                     reason = "the skill declares MayTriggerReload — a domain reload wipes the editor undo stack, so the transactional rollback promise cannot be kept";
 

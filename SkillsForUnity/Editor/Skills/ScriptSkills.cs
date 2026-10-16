@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
 using System.IO;
@@ -38,6 +39,8 @@ namespace UnitySkills
             [SkillParam("Complete C# source, written verbatim (template and namespaceName are ignored). A MonoBehaviour/ScriptableObject must declare a class named scriptName.")]
             string content = null)
         {
+            long compileRequestStartedUtcTicks = DateTime.UtcNow.Ticks;
+            int compilationStartsBefore = CompilationResultService.CompilationStartCount;
             scriptName = scriptName ?? name;
             if (string.IsNullOrEmpty(scriptName))
                 return new { error = "scriptName is required" };
@@ -71,7 +74,7 @@ namespace UnitySkills
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
             if (asset != null) WorkflowManager.SnapshotCreatedAsset(asset);
 
-            var result = CreateScriptMutationResult(path, "script_create", checkCompile, diagnosticLimit);
+            var result = CreateScriptMutationResult(path, "script_create", checkCompile, diagnosticLimit, compileRequestStartedUtcTicks, compilationStartsBefore);
             result["className"] = scriptName;
             result["namespaceName"] = fromTemplate ? namespaceName : DeclaredNamespace(content);
             if (warnings.Count > 0)
@@ -202,13 +205,15 @@ namespace UnitySkills
             MutatesAssets = true, MayTriggerReload = true, RiskLevel = "high")]
         public static object ScriptDelete(string scriptPath)
         {
+            long compileRequestStartedUtcTicks = DateTime.UtcNow.Ticks;
+            int compilationStartsBefore = CompilationResultService.CompilationStartCount;
             if (Validate.SafePath(scriptPath, "scriptPath", isDelete: true) is object pathErr) return pathErr;
             if (!File.Exists(scriptPath))
                 return new { error = $"Script not found: {scriptPath}" };
 
             if (!WorkflowManager.DeleteAssetToTrash(scriptPath))
                 return new { error = $"Failed to delete script: {scriptPath}" };
-            var job = AsyncJobService.StartScriptMutationJob("script_delete", NormalizePath(scriptPath), checkCompile: false, diagnosticLimit: DefaultDiagnosticLimit, supportsDiagnostics: false);
+            var job = AsyncJobService.StartScriptMutationJob("script_delete", NormalizePath(scriptPath), checkCompile: false, diagnosticLimit: DefaultDiagnosticLimit, supportsDiagnostics: false, requestStartedUtcTicks: compileRequestStartedUtcTicks, compilationStartsBefore: compilationStartsBefore);
             var result = new Dictionary<string, object>
             {
                 ["success"] = true,
@@ -285,6 +290,8 @@ namespace UnitySkills
             int atLine = -1,
             bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
+            long compileRequestStartedUtcTicks = DateTime.UtcNow.Ticks;
+            int compilationStartsBefore = CompilationResultService.CompilationStartCount;
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (!File.Exists(scriptPath))
                 return new { error = $"Script not found: {scriptPath}" };
@@ -298,7 +305,7 @@ namespace UnitySkills
 
             File.WriteAllLines(scriptPath, lines, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(scriptPath);
-            var result = CreateScriptMutationResult(scriptPath, "script_append", checkCompile, diagnosticLimit);
+            var result = CreateScriptMutationResult(scriptPath, "script_append", checkCompile, diagnosticLimit, compileRequestStartedUtcTicks, compilationStartsBefore);
             result["insertedAtLine"] = placement.Index;
             result["insertionScope"] = placement.Scope;
             if (placement.Warning != null)
@@ -592,6 +599,8 @@ namespace UnitySkills
             string replace,
             bool isRegex = false, bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
+            long compileRequestStartedUtcTicks = DateTime.UtcNow.Ticks;
+            int compilationStartsBefore = CompilationResultService.CompilationStartCount;
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (Validate.Required(find, "find") is object findErr) return findErr;
             // Omitted replace deletes every match: string.Replace(old, null) already treats a null
@@ -616,7 +625,7 @@ namespace UnitySkills
             File.WriteAllText(scriptPath, newContent, SkillsCommon.Utf8NoBom);
             AssetDatabase.ImportAsset(scriptPath);
 
-            var result = CreateScriptMutationResult(scriptPath, "script_replace", checkCompile, diagnosticLimit);
+            var result = CreateScriptMutationResult(scriptPath, "script_replace", checkCompile, diagnosticLimit, compileRequestStartedUtcTicks, compilationStartsBefore);
             result["replacements"] = changes;
             return result;
         }
@@ -687,6 +696,8 @@ namespace UnitySkills
             string newName,
             bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
+            long compileRequestStartedUtcTicks = DateTime.UtcNow.Ticks;
+            int compilationStartsBefore = CompilationResultService.CompilationStartCount;
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (!File.Exists(scriptPath)) return new { error = $"Script not found: {scriptPath}" };
             if (Validate.Required(newName, "newName") is object newNameErr) return newNameErr;
@@ -700,7 +711,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(renameResult)) return new { error = renameResult };
 
             var renamedPath = Path.Combine(Path.GetDirectoryName(scriptPath) ?? "", newName + ".cs");
-            var result = CreateScriptMutationResult(renamedPath, "script_rename", checkCompile, diagnosticLimit);
+            var result = CreateScriptMutationResult(renamedPath, "script_rename", checkCompile, diagnosticLimit, compileRequestStartedUtcTicks, compilationStartsBefore);
             result["oldPath"] = NormalizePath(scriptPath);
             result["newName"] = newName;
             return result;
@@ -717,6 +728,8 @@ namespace UnitySkills
             string newFolder,
             bool checkCompile = true, int diagnosticLimit = DefaultDiagnosticLimit)
         {
+            long compileRequestStartedUtcTicks = DateTime.UtcNow.Ticks;
+            int compilationStartsBefore = CompilationResultService.CompilationStartCount;
             if (Validate.SafePath(scriptPath, "scriptPath") is object pathErr) return pathErr;
             if (!File.Exists(scriptPath)) return new { error = $"Script not found: {scriptPath}" };
             if (Validate.SafePath(newFolder, "newFolder") is object folderErr) return folderErr;
@@ -734,7 +747,7 @@ namespace UnitySkills
             var moveResult = AssetDatabase.MoveAsset(scriptPath, newPath);
             if (!string.IsNullOrEmpty(moveResult)) return new { error = moveResult };
 
-            var result = CreateScriptMutationResult(newPath, "script_move", checkCompile, diagnosticLimit);
+            var result = CreateScriptMutationResult(newPath, "script_move", checkCompile, diagnosticLimit, compileRequestStartedUtcTicks, compilationStartsBefore);
             result["oldPath"] = NormalizePath(scriptPath);
             result["newPath"] = NormalizePath(newPath);
             return result;
@@ -754,10 +767,11 @@ namespace UnitySkills
             return GetCompilationFeedbackSnapshot(scriptPath, limit);
         }
 
-        private static Dictionary<string, object> CreateScriptMutationResult(string scriptPath, string operation, bool checkCompile, int diagnosticLimit)
+        private static Dictionary<string, object> CreateScriptMutationResult(string scriptPath, string operation, bool checkCompile, int diagnosticLimit, long requestStartedUtcTicks, int compilationStartsBefore)
         {
             var normalizedPath = NormalizePath(scriptPath);
-            var job = AsyncJobService.StartScriptMutationJob(operation, normalizedPath, checkCompile, diagnosticLimit);
+            var job = AsyncJobService.StartScriptMutationJob(operation, normalizedPath, checkCompile, diagnosticLimit,
+                requestStartedUtcTicks: requestStartedUtcTicks, compilationStartsBefore: compilationStartsBefore);
             var result = new Dictionary<string, object>
             {
                 ["success"] = true,

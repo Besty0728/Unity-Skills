@@ -15,6 +15,62 @@ namespace UnitySkills
         // Prefab semantic planner
         // ==================================================================================
 
+        private static void AnalyzePrefabAssetEditing(string name, SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
+        {
+            var planned = new List<object>();
+            try
+            {
+                var entries = new List<(string path, string skill, JObject args)>();
+                if (name == "prefab_edit_batch")
+                {
+                    var steps = JArray.Parse(GetStringArg(validation.Args, "steps") ?? "[]");
+                    UnitySkills.Internal.PrefabAssetEditor.ValidateSteps(steps);
+                    foreach (JObject step in steps) entries.Add((GetStringArg(validation.Args, "prefabPath"), step.Value<string>("skill"), (JObject)step["args"]));
+                }
+                else if (name.EndsWith("_batch", StringComparison.Ordinal))
+                {
+                    if (!TryParseBatchItems(validation, out var items)) return;
+                    if (items.Count > 50) { AddSemanticError(validation, "items", "At most 50 prefab batch items are allowed"); return; }
+                    foreach (var token in items)
+                    {
+                        if (!(token is JObject item)) { AddSemanticError(validation, "items", "Each item must be an object"); return; }
+                        var args = (JObject)item.DeepClone(); args.Remove("prefabPath");
+                        entries.Add((item.Value<string>("prefabPath"), name.Substring(0, name.Length - 6), args));
+                    }
+                }
+                else entries.Add((GetStringArg(validation.Args, "prefabPath"), name, (JObject)validation.Args.DeepClone()));
+
+                var pendingAssets = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var entry in entries)
+                {
+                    entry.args.Remove("prefabPath");
+                    // Router-reserved controls are not operation arguments.
+                    entry.args.Remove("verbose"); entry.args.Remove("offset");
+                    try
+                    {
+                        UnitySkills.Internal.PrefabAssetEditor.RequireAsset(entry.path, true);
+                        UnitySkills.Internal.PrefabAssetEditor.Preview(entry.path, entry.skill, entry.args);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (name.EndsWith("_batch", StringComparison.Ordinal) && name != "prefab_edit_batch")
+                            AddWarning(validation, $"Asset group '{entry.path}' may fail: {ex.Message}. Other asset groups will still execute.");
+                        else if (pendingAssets.Contains(entry.path))
+                            AddWarning(validation, "A later prefab operation depends on an earlier edit; its target and values will be validated on isolated contents at execution.");
+                        else AddSemanticError(validation, "prefabPath", ex.Message);
+                    }
+                    planned.Add(new { action = entry.skill, prefabPath = entry.path, gameObjectPath = entry.args.Value<string>("gameObjectPath") ?? "" });
+                    pendingAssets.Add(entry.path);
+                }
+            }
+            catch (Exception ex) { AddSemanticError(validation, "prefabPath", ex.Message); }
+            if (plan != null)
+            {
+                MarkSemantic(plan);
+                SetPlanDetails(plan, planned, modify: planned);
+            }
+        }
+
         private static void AnalyzePrefabCreate(SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
         {
             var args = validation.Args;

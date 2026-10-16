@@ -11,21 +11,21 @@ Audience: agents editing this repository. Agents *calling* the REST API read `Sk
 
 ## Architecture
 
-`AI agent → unity_skills.py → HTTP localhost:8090-8100 → SkillsHttpServer (producer-consumer) → SkillRouter (reflects [UnitySkill]) → 56 *Skills.cs / 54 SkillCategory / 805 skills`. `WorkflowManager` = persistent undo/rollback, `RegistryService` = multi-instance discovery. 56 vs 54: `BatchSkills.cs` registers into Workflow + Validation, `DiagnoseSkills.cs` into Debug. The per-category table lives in `README.md`; `/skillcheck` keeps every count in sync — do not hand-edit counts.
+`AI agent → unity_skills.py → HTTP localhost:8090-8100 → SkillsHttpServer (producer-consumer) → SkillRouter (reflects [UnitySkill]) → 56 *Skills.cs / 54 SkillCategory / 839 skills`. `WorkflowManager` = persistent undo/rollback, `RegistryService` = multi-instance discovery. 56 vs 54: `BatchSkills.cs` registers into Workflow + Validation, `DiagnoseSkills.cs` into Debug. The per-category table lives in `README.md`; `/skillcheck` keeps every count in sync — do not hand-edit counts.
 
 - **Threading (hard rule)**: the HTTP thread only enqueues; the Unity main thread drains the queue from `EditorApplication.update`. Zero `UnityEngine.*`/`UnityEditor.*` calls off the main thread.
 - **Every request, including GET `/health` `/jobs/{id}` `/skills`, goes through that main-thread queue** (≤20 per tick). A skill that blocks the main thread also freezes liveness; the Python client polls `GET /jobs/{id}` instead of `job_wait` for this reason.
 - **No auth + wildcard CORS is intentional** (loopback bind is the accepted boundary). Do not report "add auth / tighten CORS / validate Origin" as a security finding.
 - Optional-package modules (ProBuilder, XR, Netcode, YooAsset, DOTween, PrimeTween, Behavior, HybridCLR, Addressables, QFramework) detect their dependency and return `MISSING_PACKAGE`; URP-family modules (Volume/PostProcess/Decal/URP) compile to same-named `NoURP()` stubs without `com.unity.render-pipelines.universal`. QFramework has no UPM package, so detection is by reflected anchor type and it must not declare `RequiresPackages`.
 - Optional-package behavior is tested for real in `Tests/Editor/OptionalPackages/`: one fixture per module on `OptionalPackageTestBase` (skills called by name, state read back by reflection, fixture ignored when the probe skill's package is missing), with per-module floors of passed tests in `.github/optional-package-floors.json`; a new optional module adds a fixture and a floor. Package code that needs a built-in module (NGO's `NetworkRigidbody2D` needs physics2d) mirrors the package's `COM_UNITY_MODULES_*` versionDefines, or a project without that module fails to compile the whole package.
-- 28 advisory modules under `unity-skills~/skills/` are documentation only: no REST skills, no C# stub, ever.
+- 29 advisory modules under `unity-skills~/skills/` are documentation only: no REST skills, no C# stub, ever.
 
 Key files (`SkillsForUnity/Editor/`):
 - `Skills/`: `SkillsHttpServer.cs`, `SkillRouter.cs`, `SkillPlanningService.cs` (/plan + dryRun engine, not a skill) — each is a `partial` class split by concern into `<Class>.<Area>.cs` (e.g. `SkillsHttpServer.Batch.cs`, `SkillRouter.Gates.cs`); fields with initializers and the static constructor stay in the main file, since static initializer order across partial files is unspecified; `UnitySkillAttribute.cs`, `SkillErrorResponse.cs` + `SkillErrorCode.cs`, `SkillsLogger.cs` (single source of `Version`), `SkillsModeManager.cs`, `SkillsAuditLog.cs`, `ConfirmationTokenService.cs`, `WorkflowManager.cs`, `RegistryService.cs`, `GameObjectFinder.cs`, `BatchExecutor.cs`, `SkillInstaller.cs`, `AgentInstructionService.cs`, `UnityCliService.cs`, `ClientProcessResolver.cs` (caller identity via TCP port → PID → parent chain), `*Skills.cs` ×56.
 - `Locales/{en,zh-CN,ru}.json`: all UI strings.
 - `Versioning/`: self-update. Only files here may name `LocalGitSync` / `GitCliRunner`; the UI uses `LocalSelfUpdateService` (`Check` / `Start`, `ShortSha`, `MaxListedEntries`, the `LocalUpdate*` result types), enforced by `SelfUpdateBoundaryTests`.
 - `UI/`: `UnitySkillsWindow.{cs,uxml,uss}`, `Controllers/*.cs`, `Tabs/*.uxml`, `EditorUiScheduler.cs`, `ShortcutActions.cs`, `UISkillsFontIncrementalUpdater.cs`, `AuditLogWindow`, `AllowlistPickerWindow`, `UnityCliWindow`.
-- `SkillsForUnity/unity-skills~/`: shipped template — `SKILL.md`, `scripts/unity_skills.py`, `skills/` (82 module docs: 54 REST + 28 advisory), `references/` (protocol docs, Unity manual URL indexes, `windows.md` PowerShell / Git Bash guide).
+- `SkillsForUnity/unity-skills~/`: shipped template — `SKILL.md`, `scripts/unity_skills.py`, `skills/` (83 module docs: 54 REST + 29 advisory), `references/` (protocol docs, Unity manual URL indexes, `windows.md` PowerShell / Git Bash guide).
 
 ## Rules
 

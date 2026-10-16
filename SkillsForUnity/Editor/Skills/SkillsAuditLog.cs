@@ -74,6 +74,8 @@ namespace UnitySkills
 
         [ThreadStatic] private static AmbientContext _ambient;
 
+        internal static AmbientContext CaptureRequestContext() => _ambient;
+
         /// <summary>Restores whatever ambient context was active before <see cref="BeginRequestContext"/> was called -- correctly nestable, not just a clear-to-blank.</summary>
         internal readonly struct RequestContextScope : IDisposable
         {

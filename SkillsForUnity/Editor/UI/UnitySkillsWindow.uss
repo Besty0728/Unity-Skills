@@ -2090,3 +2090,22 @@
     -unity-text-align: middle-right;
     padding-right: 8px;
 }
+
+/* Credit block — single GitHub icon button, right of the language segment */
+.credit-block {
+    margin-left: 6px;
+}
+
+.credit-block__icon {
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    margin: 0;
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.credit-block__icon:hover {
+    opacity: 0.85;
+}

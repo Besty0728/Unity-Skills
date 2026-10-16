@@ -24,6 +24,13 @@ namespace UnitySkills
     public static class CompilationResultService
     {
         private const string SessionKey = "UnitySkills_LastCompilationResult";
+        private const string CycleKey = "UnitySkills_CompilationCycle";
+        private const string HistoryKey = "UnitySkills_CompilationHistory";
+        private const int MaxHistoryCycles = 16;
+        private static string _historyJson;
+        private static string _parsedHistoryJson;
+        private static CompilationOutcome[] _historyOutcomes = Array.Empty<CompilationOutcome>();
+        private static int _assemblyCount;
 
         // Payload cap: bounds the response body when an unusually large number of errors occurs.
         // The count fields still reflect the true total; the `truncated` flag signals when the arrays were actually cut.
@@ -45,6 +52,7 @@ namespace UnitySkills
         internal static long DomainLoadedUtcTicks { get; private set; }
 
         internal static string LastResultJsonOverrideForTests;
+        internal static string HistoryJsonOverrideForTests;
 
         private static string _outcomeJson;
         private static CompilationOutcome _outcome;
@@ -52,6 +60,7 @@ namespace UnitySkills
         static CompilationResultService()
         {
             DomainLoadedUtcTicks = DateTime.UtcNow.Ticks;
+            CompilationStartCount = SessionState.GetInt(CycleKey, 0);
             CompilationPipeline.compilationStarted += OnCompilationStarted;
             CompilationPipeline.assemblyCompilationFinished += OnAssemblyCompilationFinished;
             CompilationPipeline.compilationFinished += OnCompilationFinished;
@@ -87,6 +96,53 @@ namespace UnitySkills
             return _outcome;
         }
 
+        /// <summary>Return only the fixed cycle allocated to this request, never a later cycle's verdict.</summary>
+        internal static CompilationOutcome GetOutcomeForRequest(int expectedCycleId, long requestStartedUtcTicks)
+        {
+            // Test overrides isolate the fixture from the Editor's real SessionState history.
+            if (HistoryJsonOverrideForTests == null && LastResultJsonOverrideForTests != null)
+            {
+                var overridden = GetLastOutcome();
+                return MatchesRequest(overridden, expectedCycleId, requestStartedUtcTicks) ? overridden : null;
+            }
+            string json = HistoryJsonOverrideForTests ??
+                (_historyJson ?? (_historyJson = SessionState.GetString(HistoryKey, string.Empty)));
+            if (json != _parsedHistoryJson)
+            {
+                _parsedHistoryJson = json;
+                try
+                {
+                    _historyOutcomes = string.IsNullOrEmpty(json) ? Array.Empty<CompilationOutcome>() :
+                        JArray.Parse(json).OfType<JObject>().Select(entry => ParseOutcome(entry.ToString(Formatting.None)))
+                            .Where(outcome => outcome != null).ToArray();
+                }
+                catch (Exception) { _historyOutcomes = Array.Empty<CompilationOutcome>(); }
+            }
+            var matched = _historyOutcomes.FirstOrDefault(outcome => MatchesRequest(outcome, expectedCycleId, requestStartedUtcTicks));
+            if (matched != null) return matched;
+            // Backward compatibility for a session that predates history persistence.
+            var last = GetLastOutcome();
+            return MatchesRequest(last, expectedCycleId, requestStartedUtcTicks) ? last : null;
+        }
+
+        private static bool MatchesRequest(CompilationOutcome outcome, int cycleId, long startedTicks) =>
+            outcome != null && outcome.CycleId == cycleId && outcome.StartedAtUtcTicks >= startedTicks;
+
+        /// <summary>Pure history seam; bounded entries survive domain reload in SessionState.</summary>
+        internal static string AppendHistoryJson(string historyJson, string resultJson)
+        {
+            JArray history;
+            try { history = string.IsNullOrEmpty(historyJson) ? new JArray() : JArray.Parse(historyJson); }
+            catch (Exception) { history = new JArray(); }
+            var result = JObject.Parse(resultJson);
+            int cycleId = result.Value<int?>("cycleId") ?? 0;
+            foreach (var previous in history.OfType<JObject>().Where(entry => entry.Value<int?>("cycleId") == cycleId).ToArray())
+                previous.Remove();
+            history.Add(result);
+            while (history.Count > MaxHistoryCycles) history.RemoveAt(0);
+            return history.ToString(Formatting.None);
+        }
+
         private static CompilationOutcome ParseOutcome(string json)
         {
             try
@@ -103,10 +159,13 @@ namespace UnitySkills
 
                 var outcome = new CompilationOutcome
                 {
+                    CycleId = parsed.Value<int?>("cycleId") ?? 0,
+                    StartedAtUtcTicks = DateTime.TryParse(parsed.Value<string>("startedAtUtc"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var started) ? started.Ticks : 0,
+                    AssemblyCount = parsed.Value<int?>("assemblyCount") ?? 0,
                     FinishedAtUtc = finishedAt,
                     FinishedAtUtcTicks = finished.Ticks,
                     ErrorCount = parsed.Value<int?>("errorCount") ?? 0,
-                    Success = parsed.Value<bool?>("success") ?? true
+                    Success = parsed.Value<bool?>("success") ?? false
                 };
                 if (parsed["errors"] is JArray errors)
                 {
@@ -133,6 +192,8 @@ namespace UnitySkills
         private static void OnCompilationStarted(object context)
         {
             CompilationStartCount++;
+            SessionState.SetInt(CycleKey, CompilationStartCount);
+            _assemblyCount = 0;
             _startedUtc = DateTime.UtcNow;
             _errors.Clear();
             _warnings.Clear();
@@ -145,6 +206,7 @@ namespace UnitySkills
 
         private static void OnAssemblyCompilationFinished(string assemblyPath, CompilerMessage[] messages)
         {
+            _assemblyCount++;
             if (messages == null || messages.Length == 0)
                 return;
 
@@ -172,6 +234,9 @@ namespace UnitySkills
 
             var result = new
             {
+                cycleId = CompilationStartCount,
+                startedAtUtc = _startedUtc.ToString("o"),
+                assemblyCount = _assemblyCount,
                 finishedAtUtc = DateTime.UtcNow.ToString("o"),
                 durationMs,
                 success = _errors.Count == 0,
@@ -184,6 +249,8 @@ namespace UnitySkills
 
             _cachedResultJson = JsonConvert.SerializeObject(result, SkillsCommon.JsonSettings);
             SessionState.SetString(SessionKey, _cachedResultJson);
+            _historyJson = AppendHistoryJson(_historyJson ?? SessionState.GetString(HistoryKey, string.Empty), _cachedResultJson);
+            SessionState.SetString(HistoryKey, _historyJson);
 
             SkillsLogger.LogVerbose(
                 $"Compilation finished - success={result.success}, errors={result.errorCount}, " +
@@ -233,6 +300,9 @@ namespace UnitySkills
                 public string Message;
             }
 
+            public int CycleId;
+            public long StartedAtUtcTicks;
+            public int AssemblyCount;
             public string FinishedAtUtc;
             public long FinishedAtUtcTicks;
             public int ErrorCount;

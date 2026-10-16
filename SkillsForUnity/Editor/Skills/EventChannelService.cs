@@ -57,6 +57,10 @@ namespace UnitySkills
         // Prevents a log emitted by a failed Publish from re-entering OnLogMessageReceived and recursing.
         private static bool _publishingConsoleError;
 
+        // Test seam: verifies Play-capture error collection precedes event-stream throttling without
+        // starting Play Mode or persisting a real job from an editor test.
+        internal static Action<string, string, LogType> RuntimeErrorRecorderForTests;
+
         static EventChannelService()
         {
             try
@@ -241,6 +245,14 @@ namespace UnitySkills
             if (_publishingConsoleError)
                 return;
 
+            // Play-capture evidence must see every raw runtime error. The event stream's 20/sec
+            // throttling only protects long-poll clients; applying it first silently made a busy
+            // runtime observation look healthy.
+            if (RuntimeErrorRecorderForTests != null)
+                RuntimeErrorRecorderForTests(message, stackTrace, type);
+            else
+                PlayCaptureService.RecordRuntimeError(message, stackTrace, type);
+
             long nowTicks = DateTime.UtcNow.Ticks;
             if (nowTicks - _consoleWindowStartTicks >= TimeSpan.TicksPerSecond)
             {
@@ -261,7 +273,6 @@ namespace UnitySkills
             _publishingConsoleError = true;
             try
             {
-                PlayCaptureService.RecordRuntimeError(message, stackTrace, type);
                 Publish("console_error", new
                 {
                     logType = type.ToString(),
@@ -295,6 +306,20 @@ namespace UnitySkills
                     return s;
             }
             return s.Substring(0, idx);
+        }
+
+        internal static void OnConsoleErrorForTests(string message, string stackTrace, LogType type)
+        {
+            OnLogMessageReceived(message, stackTrace, type);
+        }
+
+        internal static void ResetConsoleErrorThrottleForTests()
+        {
+            _consoleWindowStartTicks = 0;
+            _consoleErrorsThisWindow = 0;
+            _consoleDroppedSinceLast = 0;
+            _publishingConsoleError = false;
+            RuntimeErrorRecorderForTests = null;
         }
     }
 }

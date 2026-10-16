@@ -15,7 +15,7 @@ description: Manage GameObject components
 Add, remove, copy, toggle and edit components. Parameters come from the schema (recommend `includeSchema=true` or `/skills/schema?names=`), which notes the non-obvious ones — never from a skill's name. Execution, dryRun and verification rules: root [SKILL.md](../../SKILL.md).
 
 ## Operating Mode
-`component_list`, `component_get_properties`, `component_get_serialized_properties` are `SemiAuto` (read-only); every writer is `FullAuto`. `component_remove` / `component_remove_batch` (`Operation.Delete`) are NeverInSemi: `MODE_FORBIDDEN` under Approval/Auto, run only under Bypass or an Allowlist hit → [operating mode](../../references/protocol-operating-mode.md).
+`component_list`, `component_get_methods`, `component_get_methods_batch`, `component_get_properties`, `component_get_serialized_properties` are `SemiAuto` (read-only); every writer is `FullAuto`. `component_remove` / `component_remove_batch` (`Operation.Delete`) are NeverInSemi: `MODE_FORBIDDEN` under Approval/Auto, run only under Bypass or an Allowlist hit → [operating mode](../../references/protocol-operating-mode.md).
 
 ## Shared rules
 
@@ -25,15 +25,17 @@ Add, remove, copy, toggle and edit components. Parameters come from the schema (
 - **Value source** (`component_set_property`, its batch, `batch_preview_set_property`): exactly one of `assetPath` (project asset) > `referencePath` (scene object by path) / `referenceName` (by name, first match) > `value`, checked in that order; a lower one sent alongside is silently ignored. Sending none writes the type's default (0 / false / null).
 - **`value` encoding**: numbers and bools (`true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`; others rejected) as JSON or strings; enums by member name, case-insensitive; vectors, Quaternion (3 values = euler, 4 = xyzw), Rect (`x,y,w,h`) and Bounds (`cx,cy,cz,sx,sy,sz`) as comma strings (`"1,2,3"`); colours as `"r,g,b[,a]"` (0–1), `#RRGGBB[AA]` or a name (red, green, blue, white, black, yellow, cyan, magenta, gray/grey, clear); LayerMask as a layer name or an integer mask. The JSON object form (`{"x":1,"y":2,"z":3}`, `{"r":1,"g":0,"b":0}`) works only for Vector2/3/4 and Color/Color32, with every component required (colour `a` defaults to 1; an explicit `null` counts as missing); partial objects, unknown keys and non-numbers are rejected naming the expected keys.
 - **Read-back**: `component_set_property` returns `valueSet` read from the component after the write, plus `valueRequested` only when the setter clamped or normalised it; `component_set_serialized_property` re-reads after applying. No follow-up read needed.
-- **Batches**: all-or-nothing — one failed item reverts the whole call (`rolledBack:true`, other items `reverted:true`); unknown item keys are named in `warnings`.
+- **Property/add/remove batches**: all-or-nothing — one failed item reverts the whole call (`rolledBack:true`, other items `reverted:true`); unknown item keys are named in `warnings`.
 
 ## Skills Overview
 
-Use a `*_batch` skill for 2+ objects or several properties (one call instead of N).
+Invocation batches are non-atomic async jobs; details: [method calls](reference/component_invoke_method.md).
 
 | Single | Batch |
 |---|---|
 | `component_add` | `component_add_batch` |
+| `component_get_methods` | `component_get_methods_batch` |
+| `component_invoke_method` | `component_invoke_method_batch` |
 | `component_remove` | `component_remove_batch` |
 | `component_set_property` | `component_set_property_batch` |
 | `component_set_serialized_property` | `component_set_serialized_property_batch` |
@@ -45,8 +47,6 @@ Per-skill tables, item fields and return shapes: `reference/<skill_name>.md` —
 **DO NOT** (common hallucinations):
 - `component_create` / `component_get` do not exist → use `component_add` (add) and `component_get_properties` (read)
 - `component_find` does not exist → use `component_list` to list components on an object
-
-**Elsewhere**: a new C# component → `script_create`, wait for compilation, then `component_add`.
 
 ## Exact Signatures
 

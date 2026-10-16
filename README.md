@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-805-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-839-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -47,7 +47,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **805 REST Skills Toolkit**: 56 source files across 54 categories, plus 28 advisory design modules, with Batch operations.
+- 🛠️ **839 REST Skills Toolkit**: 56 source files across 54 categories, plus 29 advisory design modules, with Batch operations.
 - ⚡ **UnityCLI Support**: Bind UnityCLI to cold-start the bound project — no need to launch Unity Hub.
 - 🔐 **Three-Tier Permission Modes**: Approval / Auto / Bypass with dual approval channels, aligned with Claude Code permission modes.
 - 🤖 **6 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code — one-click install and use.
@@ -95,7 +95,7 @@ UnitySkills ships with a true server-side permission system aligned with Claude 
 
 Upgrading users are detected automatically and stay on **Bypass**, preserving the previous Full-Auto behavior with no action required. Dual approval channels (Dialog / Panel), the audit log (`Library/UnitySkillsAudit.jsonl`), Allowlist and installer details → [Operating Modes & Governance](docs/OPERATING_MODES.md).
 
-> 28 advisory design modules (architecture, performance, design patterns, testability, package-specific source rules, etc.) are available in all modes and loaded on demand.
+> 29 advisory design modules (architecture, performance, design patterns, testability, package-specific source rules, etc.) are available in all modes and loaded on demand.
 
 ---
 
@@ -201,7 +201,7 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><b>📦 Skills Category Overview (805)</b></summary>
+<summary><b>📦 Skills Category Overview (839)</b></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
@@ -226,7 +226,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Decal** | 7 | URP Decal Projector create/inspect/configure/delete workflows |
 | **DOTween** | 21 | DOTweenAnimation editor-time setup and tuning |
 | **PrimeTween** | 5 | PrimeTween Free inspection, factory discovery, and runtime tween/sequence script generation |
-| **Editor** | 16 | Play mode runtime capture/Frame stepping/Live state inspect/Selection/Undo-Redo/Context retrieval/Change journal/Menu execution |
+| **Editor** | 17 | Play mode runtime capture/Frame stepping/Live state inspect/Selection/Undo-Redo/Context retrieval/Change journal/Menu execution |
 | **Physics** | 12 | Raycast/SphereCast/BoxCast/Physics materials/Layer collision matrix |
 | **Script** | 12 | C# script create/Read/Replace/List/Info/Rename/Move/Analyze |
 | **Timeline** | 12 | Track create/Delete/Clip management/Playback control/Binding/Duration |
@@ -235,13 +235,13 @@ If you're using other tools that support Skills, install according to the Skills
 | **Camera** | 12 | Scene View control/Game Camera create/Properties/Screenshot/Orthographic toggle/List |
 | **Graphics** | 11 | GraphicsSettings/QualitySettings/SRP asset operations |
 | **Package** | 11 | Package management/Install/Remove/Search/Versions/Dependencies/Cinemachine/Splines |
-| **Prefab** | 11 | Create/Instantiate/Override apply & revert/Batch instantiate/Variants/Find instances/Asset property editing |
+| **Prefab** | 40 | Create/Instantiate/Overrides/Variants/Asset queries, components, hierarchy edits and atomic batches |
 | **Shader** | 11 | Shader create/URP templates/Compile check/Keywords/Variant analysis/Global keywords |
 | **Test** | 13 | Test run/Run by name/Categories/Template create/Summary statistics |
 | **Animator** | 10 | Animation controller/Parameters/State machine/Transitions/Assign/Play |
 | **Audio** | 10 | Audio import settings/AudioSource/AudioClip/AudioMixer/Batch |
 | **Cleaner** | 10 | Unused assets/Duplicate files/Empty folders/Missing script fix/Dependency tree |
-| **Component** | 14 | Add/Remove/Property config/Batch operations/Copy/Enable-Disable |
+| **Component** | 18 | Add/Remove/Property config/Batch operations/Copy/Enable-Disable |
 | **Console** | 10 | Log capture/Clear/Export/Statistics/Pause control/Collapse/Clear on play |
 | **Debug** | 11 | Error logs/Compile check/Stack trace/Assemblies/Define symbols/Memory info/Editor health diagnose |
 | **Event** | 11 | UnityEvent listener management/Batch add/Copy/State control/List |
@@ -262,7 +262,7 @@ If you're using other tools that support Skills, install according to the Skills
 
 > ⚠️ Most modules support `*_batch` batch operations. When operating on multiple objects, prioritize batch Skills for better performance.
 >
-> 🧠 `unity-skills/skills/` also includes **28 advisory design modules** for architecture, script design, performance, maintainability, Inspector guidance, and package-specific source rules.
+> 🧠 `unity-skills/skills/` also includes **29 advisory design modules** for architecture, script design, performance, maintainability, Inspector guidance, and package-specific source rules.
 
 </details>
 
@@ -278,11 +278,11 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   ├── SKILL.md                # Main Skill Definitions (AI-readable)
 │   │   ├── scripts/
 │   │   │   └── unity_skills.py     # Python Client Library
-│   │   ├── skills/                 # 82 module docs (54 REST/module docs + 28 documentation-only docs)
+│   │   ├── skills/                 # 83 module docs (54 REST/module docs + 29 documentation-only docs)
 │   │   └── references/             # Unity Development References
 │   └── Editor/
 │       ├── Locales/                # Decoupled JSON Localization Assets (en.json, zh-CN.json, ru.json)
-│       ├── Skills/                 # Core Skill Logic (56 *Skills.cs files → 54 SkillCategory categories, 805 Skills)
+│       ├── Skills/                 # Core Skill Logic (56 *Skills.cs files → 54 SkillCategory categories, 839 Skills)
 │       │   ├── SkillsHttpServer.cs # HTTP Server Core (Producer-Consumer)
 │       │   ├── SkillRouter.cs      # Request Routing & Reflection-based Skill Discovery
 │       │   ├── WorkflowManager.cs  # Persistent Workflow (Task/Session/Snapshot)
@@ -290,7 +290,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       │   ├── GameObjectFinder.cs # Unified GO Finder (name/instanceId/path)
 │       │   ├── BatchExecutor.cs    # Generic Batch Processing Framework
 │       │   ├── Localization.cs     # Multi-Language Localization Engine
-│       │   └── ...                 # 805 Skills source code
+│       │   └── ...                 # 839 Skills source code
 │       └── UI/                     # UI Toolkit Windows & Controllers
 │           ├── UnitySkillsWindow.{cs,uxml,uss} # Main Dashboard Window
 │           ├── UnityCliWindow.{cs,uxml,uss}    # Unity CLI Configuration Panel

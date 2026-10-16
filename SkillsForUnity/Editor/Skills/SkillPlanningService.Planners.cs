@@ -11,11 +11,55 @@ namespace UnitySkills
 {
     internal static partial class SkillPlanningService
     {
+        private static void AnalyzeRuntimeExecution(string name, SkillRouter.ParameterValidationResult validation, IDictionary<string, object> plan)
+        {
+            if (!validation.Valid) return;
+            try
+            {
+                var args = validation.Args;
+                object preview;
+                if (name == "editor_run_scenario")
+                    preview = RuntimeScenarioService.Preview(args.Value<string>("steps"), args.Value<string>("executionMode") ?? "play", args.Value<int?>("timeoutSeconds") ?? 60);
+                else if (name.EndsWith("_batch", StringComparison.Ordinal))
+                {
+                    var items = JArray.Parse(args.Value<string>("items") ?? "");
+                    var results = new JArray();
+                    foreach (var item in items)
+                    {
+                        var request = item.ToObject<ComponentInvocationService.Request>(Newtonsoft.Json.JsonSerializer.Create(SkillsCommon.JsonSettings));
+                        var result = JToken.FromObject(ComponentInvocationService.Preview(request));
+                        if (result["error"] != null) validation.SemanticErrors.Add(new { parameter = "items", error = result["error"].ToString(), details = result["details"] });
+                        results.Add(result);
+                    }
+                    preview = results;
+                }
+                else
+                    preview = ComponentInvocationService.Preview(args.ToObject<ComponentInvocationService.Request>(Newtonsoft.Json.JsonSerializer.Create(SkillsCommon.JsonSettings)));
+                var data = JToken.FromObject(preview);
+                if (data is JObject && data["error"] != null) validation.SemanticErrors.Add(new { parameter = "target", error = data["error"].ToString(), details = data["details"] });
+                if (plan != null)
+                {
+                    plan["runtimePreview"] = data;
+                    plan["planLevel"] = "semantic";
+                }
+                AddWarning(validation, "Arbitrary method side effects cannot be undone; cancellation stops waiting and subsequent work only.");
+            }
+            catch (Exception ex) { AddSemanticError(validation, "arguments", ex.Message); }
+        }
+
         private static void ApplySemanticPlanner(
             SkillRouter.SkillInfo skill,
             SkillRouter.ParameterValidationResult validation,
             IDictionary<string, object> plan)
         {
+            if (UnitySkills.Internal.PrefabAssetEditor.OperationFields.ContainsKey(skill.Name) ||
+                (skill.Name.EndsWith("_batch", StringComparison.Ordinal) && UnitySkills.Internal.PrefabAssetEditor.OperationFields.ContainsKey(skill.Name.Substring(0, skill.Name.Length - 6))) ||
+                skill.Name == "prefab_edit_batch")
+                AnalyzePrefabAssetEditing(skill.Name, validation, plan);
+
+            if (SkillsHttpServer.IsRuntimeInvocationSkill(skill.Name))
+                AnalyzeRuntimeExecution(skill.Name, validation, plan);
+
             switch (skill.Name)
             {
                 case "camera_set_properties":

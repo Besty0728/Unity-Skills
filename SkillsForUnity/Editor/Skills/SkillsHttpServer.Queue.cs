@@ -177,8 +177,7 @@ namespace UnitySkills
         ///
         /// Every handler here has been individually verified; don't add an endpoint before re-reading its handler.
         /// - OPTIONS — straight to 204, has no handler at all.
-        /// - GET /health, GET / — only the ?live=1 probe goes through the queue (everything else is answered on the
-        ///   HTTP thread); that handler reads EditorPrefs and two compile flags.
+        /// - GET /health, GET / — all probes go through the main-thread queue; the handler reads EditorPrefs and compile flags.
         /// - GET /compile/status — two EditorApplication flags plus a cached SessionState string.
         /// - GET /jobs, /jobs/{id}[/logs|/progress] — BatchPersistence.ListJobs / GetJob just projects an
         ///   already-loaded in-memory list; the GET handler never reaches any write path.
@@ -191,8 +190,7 @@ namespace UnitySkills
         ///   the first call for a given window is unbounded I/O, which fails the "millisecond-scale" half of the test.
         /// - GET /skills/recommend — calls SkillRouter.Initialize() (a full reflection scan on a cold domain), then
         ///   scores every skill.
-        /// - GET /skills, /skills/schema — anything that actually reaches the queue is, by definition, a cache
-        ///   miss — i.e. exactly the request that has to build a several-hundred-KB manifest.
+        /// - GET /skills, /skills/schema — all requests reach the queue; a cold cache can build a several-hundred-KB manifest.
         /// </summary>
         private static bool IsLightRequest(string httpMethod, string path)
         {

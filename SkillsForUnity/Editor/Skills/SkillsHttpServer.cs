@@ -124,6 +124,16 @@ namespace UnitySkills
 
         // KeepAlive: unconditional wake interval (ticks; 5 seconds = 50_000_000 ticks)
         private static long _lastForceWakeTicks = 0;
+        private static SynchronizationContext _mainThreadContext;
+        private static int _wakePostPending;
+        private static long _wakePostedCount;
+        private static long _wakeCompletedCount;
+        private static long _mainThreadTickCount;
+        private static long _playerFrameTickUtc;
+        private static int _snapPlayerFrameCount;
+        private static volatile bool _snapHasActiveJobs;
+        private static string _wakeDispatchError;
+        private static readonly ConcurrentQueue<KeyValuePair<string, string>> _backgroundLogs = new ConcurrentQueue<KeyValuePair<string, string>>();
 
         // Statistics
         private static long _totalRequestsProcessed = 0;
@@ -581,6 +591,8 @@ namespace UnitySkills
             try
             {
                 HookUpdateLoop();
+                _mainThreadContext = SynchronizationContext.Current;
+                Interlocked.Exchange(ref _wakePostPending, 0);
                 RefreshTimeoutCache();
                 // Cache the keep-alive interval, for thread-safe reads by the KeepAliveLoop thread
                 Volatile.Write(ref _cachedKeepAliveIntervalTicks, (long)KeepAliveIntervalSeconds * TimeSpan.TicksPerSecond);
@@ -764,10 +776,7 @@ namespace UnitySkills
             Stop(permanent: true);
         }
 
-        /// <summary>
-        /// The keep-alive loop — forces Unity to keep updating while it's unfocused.
-        /// Never calls any Unity API directly (goes through the thread-safe QueuePlayerLoopUpdate).
-        /// </summary>
+        /// <summary>Managed wake dispatcher. Unity APIs run only in the captured main-thread context.</summary>
         private static void KeepAliveLoop()
         {
             while (_isRunning)
@@ -775,38 +784,59 @@ namespace UnitySkills
                 try
                 {
                     Thread.Sleep(KeepAlivePollingMs);
-                    
-                    bool hasPendingJobs = QueuedRequests > 0;
-
-                    if (hasPendingJobs)
-                    {
-                        // Wake the Unity main thread in a thread-safe way
-                        EditorApplication.QueuePlayerLoopUpdate();
-                    }
-                    else
-                    {
-                        // Also wake periodically when there are no pending jobs, so the watchdog and heartbeat can run
-                        long nowTicks = DateTime.UtcNow.Ticks;
-                        long intervalTicks = Volatile.Read(ref _cachedKeepAliveIntervalTicks);
-                        if (nowTicks - _lastForceWakeTicks > intervalTicks)
-                        {
-                            _lastForceWakeTicks = nowTicks;
-                            EditorApplication.QueuePlayerLoopUpdate();
-                        }
-                    }
+                    long nowTicks = DateTime.UtcNow.Ticks;
+                    if (QueuedRequests == 0 && !_snapHasActiveJobs &&
+                        nowTicks - _lastForceWakeTicks <= Volatile.Read(ref _cachedKeepAliveIntervalTicks))
+                        continue;
+                    _lastForceWakeTicks = nowTicks;
+                    RequestMainThreadWake();
                 }
                 catch (ThreadAbortException) { break; }
                 catch (Exception ex)
                 {
-                    // On Unity 6000.3+, QueuePlayerLoopUpdate sometimes throws a harmless
-                    // "SetSceneRepaintDirty can only be called from the main thread",
-                    // even though the wake-up itself actually succeeded. Suppress the noise here;
-                    // whether the queue actually got drained is verified by the main thread's ProcessJobQueue.
-                    if (ex is UnityException && ex.Message != null && ex.Message.Contains("main thread"))
-                        SkillsLogger.LogVerbose($"KeepAlive wake-up benign: {ex.Message.Split('\n')[0]}");
-                    else
-                        SkillsLogger.LogWarning($"KeepAlive iteration error: {ex.GetType().Name}: {ex.Message}");
+                    // Retain a managed diagnostic; SkillsLogger also touches Unity and cannot run here.
+                    Volatile.Write(ref _wakeDispatchError, ex.GetType().Name + ": " + ex.Message);
                 }
+            }
+        }
+
+        // HTTP responders and self-check workers retain diagnostics without touching Unity's logger.
+        private static void QueueBackgroundLog(string level, string message) =>
+            _backgroundLogs.Enqueue(new KeyValuePair<string, string>(level, message));
+
+        private static void DrainBackgroundLogs()
+        {
+            for (int i = 0; i < 20 && _backgroundLogs.TryDequeue(out var entry); i++)
+            {
+                switch (entry.Key)
+                {
+                    case "warning": SkillsLogger.LogWarning(entry.Value); break;
+                    case "error": SkillsLogger.LogError(entry.Value); break;
+                    default: SkillsLogger.LogVerbose(entry.Value); break;
+                }
+            }
+        }
+
+        private static void RequestMainThreadWake()
+        {
+            var context = _mainThreadContext;
+            if (context == null || Interlocked.CompareExchange(ref _wakePostPending, 1, 0) != 0)
+                return;
+            try
+            {
+                Interlocked.Increment(ref _wakePostedCount);
+                context.Post(_ =>
+                {
+                    Interlocked.Exchange(ref _wakePostPending, 0);
+                    if (!_isRunning) return;
+                    Interlocked.Increment(ref _wakeCompletedCount);
+                    EditorApplication.QueuePlayerLoopUpdate();
+                }, null);
+            }
+            catch
+            {
+                Interlocked.Exchange(ref _wakePostPending, 0);
+                throw;
             }
         }
 

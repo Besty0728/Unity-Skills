@@ -126,10 +126,7 @@ namespace UnitySkills
                         }
                     }
 
-                    // Fast path: GET /skills, GET /skills/schema, and GET /health are answered directly on this
-                    // HTTP thread using the cache/snapshot the main thread already built (zero Unity API — see
-                    // SkillRouter.TryGetCachedGetResponse and SendHealthFastPath).
-                    // A miss falls through to the regular main-thread queue, which populates the cache/snapshot for next time.
+                    // Long polls use managed responders; every job snapshot and ordinary GET is queued.
                     if (request.HttpMethod == "GET")
                     {
                         string fastPath = url.AbsolutePath;
@@ -179,23 +176,6 @@ namespace UnitySkills
                             continue;
                         }
 
-                        // Liveness probe: answered from the main-thread snapshot, so a busy/blocked main thread can no longer hang
-                        // /health itself. Falls back to the queue before the first snapshot exists, or when the caller asks for ?live=1.
-                        if ((fastPath == "/" || string.Equals(fastPath, "/health", StringComparison.OrdinalIgnoreCase)) &&
-                            _snapReady && !WantsLiveHealth(url.Query))
-                        {
-                            SendHealthFastPath(context, request);
-                            continue;
-                        }
-
-                        if ((string.Equals(fastPath, "/skills", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(fastPath, "/skills/schema", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(fastPath, "/skills/meta", StringComparison.OrdinalIgnoreCase)) &&
-                            SkillRouter.TryGetCachedGetResponse(fastPath, url.Query, out var cachedJson, out var cachedEtag))
-                        {
-                            SendCachedGetResponse(context, request, cachedJson, cachedEtag);
-                            continue;
-                        }
                     }
 
                     if (request.HttpMethod == "POST" && request.ContentLength64 > 0)
@@ -282,7 +262,7 @@ namespace UnitySkills
                     // A single request's failure (aborted upload, malformed body, ...). The finally block below returns the quota
                     // and socket, so this just needs to briefly yield — sleeping long here would stall the one accept thread over one bad client.
                     if (!_isRunning) break;
-                    SkillsLogger.LogVerbose($"Request dropped: {ex.GetType().Name}: {ex.Message}");
+                    QueueBackgroundLog("verbose", $"Request dropped: {ex.GetType().Name}: {ex.Message}");
                     Thread.Sleep(50);
                 }
                 finally
@@ -308,14 +288,14 @@ namespace UnitySkills
                 return;
             }
 
-            SkillsLogger.LogWarning("WaitAndRespond callback received invalid state.");
+            QueueBackgroundLog("warning", "WaitAndRespond callback received invalid state.");
         }
 
         private static void WaitAndRespond(RequestJob job)
         {
             if (job == null)
             {
-                SkillsLogger.LogWarning("WaitAndRespond received a null request job.");
+                QueueBackgroundLog("warning", "WaitAndRespond received a null request job.");
                 return;
             }
 
@@ -364,9 +344,9 @@ namespace UnitySkills
                 {
                     // A domain reload aborts in-flight responder threads: losing the answer then is the normal reload path.
                     if (ex is ThreadAbortException || ex2 is ThreadAbortException)
-                        SkillsLogger.LogVerbose($"Response abandoned by a domain reload: {ex.Message}");
+                        QueueBackgroundLog("verbose", $"Response abandoned by a domain reload: {ex.Message}");
                     else
-                        SkillsLogger.LogError($"Fallback response failed: primary={ex.Message}, fallback={ex2.Message}");
+                        QueueBackgroundLog("error", $"Fallback response failed: primary={ex.Message}, fallback={ex2.Message}");
                 }
             }
             finally

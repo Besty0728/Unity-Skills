@@ -136,6 +136,7 @@ def _find_registry_entry(instance_id: Optional[str], project_path: Optional[str]
         for info in entries:
             if info.get('id') == instance_id:
                 return info
+        return None
     normalized = _normalize_project_path(project_path) if project_path else None
     if normalized:
         for info in entries:
@@ -373,6 +374,8 @@ class UnitySkills:
         """Return this instance's /health payload, fetching once and caching it."""
         if self._health_info is None:
             self._health_info = self._fetch_health(self.url)
+        if self._health_info and self._health_info.get('instanceId') and not self._expected_instance_id:
+            self._pin_instance({'id': self._health_info['instanceId']})
         return self._health_info
 
     def _sync_timeout_from_server(self):
@@ -449,16 +452,16 @@ class UnitySkills:
         instance_id = entry.get('id')
         project_path = entry.get('path')
         label = entry.get('name') or instance_id or project_path
-        deadline = time.time() + self._instance_wait_cap()
+        deadline = time.monotonic() + self._instance_wait_cap()
         announced = False
         while True:
             port = entry['port']
             health = self._fetch_health(f"http://localhost:{port}", timeout=HEALTH_TIMEOUT)
             answered_id = health.get('instanceId') if health else None
-            if health is not None and (not instance_id or not answered_id or answered_id == instance_id):
+            if health is not None and (not instance_id or answered_id == instance_id):
                 self._health_info = health
                 return port, False
-            if time.time() >= deadline:
+            if time.monotonic() >= deadline:
                 return None, False
             if not announced:
                 state = 'finish reloading' if _registry_status(entry) == 'reloading' else 'answer again'
@@ -630,6 +633,9 @@ class UnitySkills:
             timeout=timeout or self.timeout
         )
         response.encoding = 'utf-8'
+        origin = response.headers.get('X-Unity-Instance')
+        if origin and not self._expected_instance_id:
+            self._pin_instance({'id': origin})
         return response
 
     def _timeout_error_result(self, timeout: Optional[float] = None) -> Dict[str, Any]:
@@ -639,7 +645,8 @@ class UnitySkills:
             'error': f"Request to {self.url} timed out after {effective_timeout} seconds.",
             'transportError': 'timeout',
             'retryable': True,
-            'suggestion': 'Unity may still be compiling scripts or processing a long-running operation. Wait a moment and retry.',
+            'requestOutcomeUnknown': True,
+            'suggestion': 'Do not replay a write after this timeout. Read its job or verify its state; Unity may still be compiling scripts or processing a long-running operation. Wait a moment and retry.',
         }
 
     def _connection_error_result(self) -> Dict[str, Any]:
@@ -657,7 +664,7 @@ class UnitySkills:
                                   _retry_delay: float = 2.0, dry_run_token: Optional[str] = None) -> Dict[str, Any]:
         """Shared retry loop for POST /skill/{name}, used by call(), dry_run_skill() and plan_skill().
 
-        Retries (within the shared `_retries` budget) on two kinds of transient failure:
+        DryRun/plan previews retry transport failures within `_retries`. Writes never replay after an unknown transport outcome. Structured rejections may retry because nothing executed. Failure categories:
           - transport errors (connection refused / timed out) -- typical while Unity is
             mid Domain Reload and the HTTP listener itself is down;
           - structured "wait and retry" error bodies the server returns once the listener
@@ -688,17 +695,17 @@ class UnitySkills:
                 response = self._post_skill(skill_name, payload, mode=mode, timeout=timeout,
                                             dry_run_token=dry_run_token)
             except requests.exceptions.Timeout:
-                if attempt < _retries:
+                if mode in ('dryRun', 'plan') and attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
                     attempt += 1
                     continue
                 return {'ok': False, 'transport_error': self._timeout_error_result(timeout)}
             except requests.exceptions.ConnectionError:
-                if attempt < _retries:
+                if mode in ('dryRun', 'plan') and attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
                     attempt += 1
                     continue
-                if not reconnect_used and self._await_own_instance():
+                if mode in ('dryRun', 'plan') and not reconnect_used and self._await_own_instance():
                     reconnect_used = True
                     continue
                 return {'ok': False, 'transport_error': self._connection_error_result()}
@@ -843,20 +850,48 @@ class UnitySkills:
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
         return self.call('job_status', jobId=job_id)
 
-    def get_job_logs(self, job_id: str, limit: int = 100) -> Dict[str, Any]:
-        """Read structured logs via GET /jobs/{id}/logs?limit=N (lightweight, bypasses
-        the skill router and the main-thread skill queue, like get_job()/get_job_progress()).
-
-        The server clamps `limit` to [1, 500] and returns the most recent entries:
-        {jobId, count, totalCount, logs:[{timestamp, level, stage, message, code}]}.
-        A missing job id comes back as the server's structured NOT_FOUND error body
-        (same shape get_job() surfaces for an unknown id), not a raised exception.
-        """
+    def _read_job(self, path: str, params=None, timeout: float = HEALTH_TIMEOUT) -> Dict[str, Any]:
+        """One instance-bound GET. Retry scheduling belongs to poll_job's monotonic budget."""
+        read_started = time.monotonic()
+        if not self._expected_instance_id:
+            health = self._health_info or self._fetch_health(self.url, timeout=max(0.01, timeout))
+            if health and health.get('instanceId'):
+                self._health_info = health
+                self._pin_instance({'id': health['instanceId']})
+            if not health or not self._expected_instance_id:
+                return {'status': 'error', 'error': 'Cannot establish the original Editor identity',
+                        'transportError': 'connection', 'retryable': True}
+        timeout = max(0.01, timeout - (time.monotonic() - read_started))
+        entry = _find_registry_entry(self._expected_instance_id)
+        if entry is not None:
+            self.url = f"http://localhost:{entry['port']}"
+        query = dict(params or {})
+        query['expectInstance'] = self._expected_instance_id
         try:
-            resp = self._session.get(f"{self.url}/jobs/{job_id}/logs?limit={int(limit)}", timeout=HEALTH_TIMEOUT)
-            return resp.json()
-        except Exception as exc:
-            return {'status': 'error', 'error': str(exc)}
+            resp = self._session.get(f"{self.url}{path}?{urlencode(query)}", timeout=max(0.01, timeout))
+            try:
+                result = resp.json()
+            except ValueError as exc:
+                return {'status': 'error', 'success': False, 'error': str(exc),
+                        'transportError': 'invalid_response', '_httpStatus': resp.status_code,
+                        'retryable': resp.status_code in (200, 429, 502, 503, 504)}
+            if not isinstance(result, dict):
+                return {'status': 'error', 'success': False, 'error': 'Job endpoint returned a non-object JSON response',
+                        'transportError': 'invalid_response', '_httpStatus': resp.status_code,
+                        'retryable': resp.status_code in (200, 429, 502, 503, 504)}
+            result['_httpStatus'] = resp.status_code
+            return result
+        except requests.exceptions.Timeout:
+            return self._timeout_error_result(timeout)
+        except requests.exceptions.ConnectionError:
+            return self._connection_error_result()
+        except requests.exceptions.RequestException as exc:
+            return {'status': 'error', 'success': False, 'error': str(exc),
+                    'transportError': 'connection', 'retryable': True}
+
+    def get_job_logs(self, job_id: str, limit: int = 100) -> Dict[str, Any]:
+        """Read structured logs via the main-thread job snapshot queue, bound to this Editor."""
+        return self._read_job(f"/jobs/{job_id}/logs", {'limit': int(limit)})
 
     def wait_for_job(self, job_id: str, timeout: float = 60.0) -> Dict[str, Any]:
         """Wait for a job to finish, polling GET /jobs/{id} until terminal or `timeout`.
@@ -892,6 +927,9 @@ class UnitySkills:
             'error': snapshot.get('error'),
             'details': snapshot.get('resultData'),
             'terminal': snapshot.get('terminal'),
+            'snapshot': snapshot,
+            'progressStage': snapshot.get('progressStage'),
+            'lastTransportError': snapshot.get('lastTransportError'),
         }
         if snapshot.get('_pollTimeout'):
             result['timedOut'] = True
@@ -901,29 +939,15 @@ class UnitySkills:
                 result['report'] = report
         return result
 
-    def get_job(self, job_id: str) -> Dict[str, Any]:
-        """Read a job snapshot via GET /jobs/{id} (lightweight, bypasses skill router)."""
-        try:
-            resp = self._session.get(f"{self.url}/jobs/{job_id}", timeout=HEALTH_TIMEOUT)
-            return resp.json()
-        except Exception as exc:
-            return {'status': 'error', 'error': str(exc)}
+    def get_job(self, job_id: str, _timeout: float = HEALTH_TIMEOUT) -> Dict[str, Any]:
+        """Read the original Editor's job, following only its registry port migration."""
+        return self._read_job(f"/jobs/{job_id}", timeout=_timeout)
 
     def list_jobs(self, limit: int = 50) -> Dict[str, Any]:
-        """List recent jobs via GET /jobs."""
-        try:
-            resp = self._session.get(f"{self.url}/jobs?limit={int(limit)}", timeout=HEALTH_TIMEOUT)
-            return resp.json()
-        except Exception as exc:
-            return {'status': 'error', 'error': str(exc)}
+        return self._read_job('/jobs', {'limit': int(limit)})
 
     def get_job_progress(self, job_id: str, offset: int = 0) -> Dict[str, Any]:
-        """Read fine-grained progress events via GET /jobs/{id}/progress?offset=N."""
-        try:
-            resp = self._session.get(f"{self.url}/jobs/{job_id}/progress?offset={int(offset)}", timeout=HEALTH_TIMEOUT)
-            return resp.json()
-        except Exception as exc:
-            return {'status': 'error', 'error': str(exc)}
+        return self._read_job(f"/jobs/{job_id}/progress", {'offset': int(offset)})
 
     def get_meta(self, force_refresh: bool = False) -> Dict[str, Any]:
         """GET /skills/meta -- session constants (category/operation enums, reserved
@@ -1017,17 +1041,17 @@ class UnitySkills:
                     timeout=effective_timeout,
                 )
             except requests.exceptions.Timeout:
-                if attempt < _retries:
+                if (dry_run or mode in ('dryRun', 'plan')) and attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
                     attempt += 1
                     continue
                 return {'status': 'error', 'error': self._timeout_error_result(effective_timeout).get('error')}
             except requests.exceptions.ConnectionError:
-                if attempt < _retries:
+                if (dry_run or mode in ('dryRun', 'plan')) and attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
                     attempt += 1
                     continue
-                if not reconnect_used and self._await_own_instance():
+                if (dry_run or mode in ('dryRun', 'plan')) and not reconnect_used and self._await_own_instance():
                     reconnect_used = True
                     continue
                 return {'status': 'error', 'error': self._connection_error_result().get('error')}
@@ -1035,6 +1059,9 @@ class UnitySkills:
                 return {'status': 'error', 'error': str(e)}
 
             response.encoding = 'utf-8'
+            origin = response.headers.get('X-Unity-Instance')
+            if origin and not self._expected_instance_id:
+                self._pin_instance({'id': origin})
             try:
                 data = response.json()
             except ValueError:
@@ -1063,7 +1090,7 @@ class UnitySkills:
                  on_progress=None, max_interval: float = 5.0) -> Dict[str, Any]:
         """
         Poll GET /jobs/{id} until the job reaches a terminal state or timeout elapses.
-        Designed as the lightweight alternative to wait_for_job (which holds a worker slot).
+        Uses instance-bound, short reads; wait_for_job delegates to this same poll loop.
 
         Args:
             job_id: Job identifier returned by an async skill (e.g. script_create).
@@ -1075,26 +1102,38 @@ class UnitySkills:
 
         Returns the final snapshot dict (with `terminal=True` on natural completion).
         """
-        deadline = time.time() + max(0.0, timeout)
-        last = None
+        deadline = time.monotonic() + max(0.0, timeout)
+        last_snapshot = None
+        last_error = None
         cur = max(0.05, interval)
         while True:
-            last = self.get_job(job_id)
-            if isinstance(last, dict):
-                if on_progress:
-                    try:
-                        on_progress(last)
-                    except Exception:
-                        pass
-                if last.get('terminal') is True:
-                    return last
-                if last.get('errorCode') in ('NOT_FOUND', 'INTERNAL'):
-                    return last
-            if time.time() >= deadline:
-                if isinstance(last, dict):
-                    last['_pollTimeout'] = True
-                return last or {'status': 'error', 'error': 'poll_job timed out'}
-            time.sleep(cur)
+            remaining = max(0.01, deadline - time.monotonic())
+            snapshot = self.get_job(job_id, _timeout=min(HEALTH_TIMEOUT, remaining))
+            if isinstance(snapshot, dict):
+                if snapshot.get('jobId') == job_id and snapshot.get('status') not in ('error', None):
+                    last_snapshot = snapshot
+                    if on_progress:
+                        try:
+                            on_progress(snapshot)
+                        except Exception:
+                            pass
+                    if snapshot.get('terminal') is True:
+                        return snapshot
+                else:
+                    last_error = snapshot
+                    retryable = (snapshot.get('retryable') is True or
+                                 _is_retryable_transport_error(snapshot) or
+                                 _structured_retry_after(snapshot, snapshot.get('_httpStatus')) is not None or
+                                 snapshot.get('errorCode') == 'INSTANCE_MISMATCH')
+                    if not retryable:
+                        return snapshot
+            if time.monotonic() >= deadline:
+                result = dict(last_snapshot or last_error or {'jobId': job_id, 'status': 'unknown'})
+                result['_pollTimeout'] = True
+                if last_snapshot is not None and last_error is not None:
+                    result['lastTransportError'] = last_error
+                return result
+            time.sleep(min(cur, max(0.0, deadline - time.monotonic())))
             cur = min(max_interval, cur * 1.5)
 
 

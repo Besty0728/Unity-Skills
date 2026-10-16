@@ -14,22 +14,28 @@ description: Manage Prefabs and variants
 
 # Unity Prefab Skills
 
-> **BATCH-FIRST**: Use `prefab_instantiate_batch` when spawning 2+ prefab instances.
+> **BATCH-FIRST**: Use `prefab_instantiate_batch` when spawning 2+ prefab instances; use asset edit `_batch` APIs for multiple asset edits.
 
 ## Operating Mode
 
-Approval 模式下本模块为 Mixed —— 只读 skill `prefab_get_overrides` / `prefab_find_instances`（标 `ReadOnly = true`, `Mode = SkillMode.SemiAuto`）可直接执行；其余 9 个写类 skill (`prefab_create` / `prefab_instantiate` / `prefab_instantiate_batch` / `prefab_apply` / `prefab_unpack` / `prefab_revert_overrides` / `prefab_apply_overrides` / `prefab_create_variant` / `prefab_set_property`) 为 `SkillMode.FullAuto`，需用户 grant 单次执行返结果。Auto / Bypass 直接执行。本模块**不含 NeverInSemi 高危 skill**（无 Delete / PlayMode / Reload）。
+Read APIs (`prefab_get_overrides`, `prefab_find_instances` and the four asset query APIs) are SemiAuto. Writes are FullAuto. Component/node deletion and `prefab_edit_batch` are NeverInSemi through Delete/high metadata. Auto / Bypass execute directly; Approval uses the framework grants/allowlist. See [asset editing](ASSET_EDITING.md) for targeting, batching and Undo semantics.
 
 **DO NOT** (common hallucinations):
 - `prefab_create_from_object` does not exist → use `prefab_create` (takes scene object name/instanceId and savePath)
 - `prefab_spawn` does not exist → use `prefab_instantiate`
-- `prefab_edit` / `prefab_modify` do not exist → use `prefab_set_property` (edit prefab asset directly) or instantiate, modify, then `prefab_apply`
+- `prefab_edit` / `prefab_modify` do not exist → use `prefab_edit_batch` for ordered direct asset edits.
 - `prefab_save` does not exist → use `prefab_apply` (applies instance changes to source prefab)
 
 **Routing**:
 - To modify components on a prefab instance in scene → use `component` module skills, then `prefab_apply`
-- To set a property directly on the prefab asset → `prefab_set_property` (this module)
+- To edit a prefab asset directly → the asset query/component/node APIs in [ASSET_EDITING.md](ASSET_EDITING.md); start with `prefab_get_hierarchy` / `prefab_list_components`, then `prefab_add_component` / `prefab_set_serialized_property`.
+- To keep an existing `prefab_set_property` call → it remains supported with its original parameters.
+- To compose edits on one asset → `prefab_edit_batch`; to edit many assets with one operation → its `_batch` variant.
 - To find all instances of a prefab → `prefab_find_instances` (this module)
+
+## Direct asset editing
+
+See [ASSET_EDITING.md](ASSET_EDITING.md) for the four query APIs, twelve single write APIs and their batch versions, and `prefab_edit_batch`. `gameObjectPath` is root-relative; componentType/componentIndex identify components. Writes save only the requested asset, including Variant/nested overrides.
 
 ## Skills Overview
 

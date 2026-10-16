@@ -1,4 +1,6 @@
-﻿using UnityEngine.UIElements;
+﻿using UnityEditor;
+using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace UnitySkills
 {
@@ -18,8 +20,11 @@ namespace UnitySkills
         private Label _doneValue;
         private Label _doneLabel;
 
+        private const string GitHubUrl = "https://github.com/Besty0728/Unity-Skills";
+
         private Button _langEnBtn;
         private Button _langCnBtn;
+        private Button _creditGithubBtn;
 
         public FooterController(VisualElement root, UnitySkillsWindow window)
         {
@@ -36,6 +41,8 @@ namespace UnitySkills
             _langEnBtn = _root.Q<Button>("lang-seg-en");
             _langCnBtn = _root.Q<Button>("lang-seg-cn");
 
+            _creditGithubBtn = _root.Q<Button>("credit-github");
+
             BindEvents();
             UpdateLiveData();
         }
@@ -44,6 +51,14 @@ namespace UnitySkills
         {
             if (_langEnBtn != null) _langEnBtn.clicked += () => SwitchLanguage(SkillsLocalization.PinnedPrimary);
             if (_langCnBtn != null) _langCnBtn.clicked += () => SwitchLanguage(SkillsLocalization.PinnedSecondary);
+            if (_creditGithubBtn != null)
+            {
+                _creditGithubBtn.clicked += () => Application.OpenURL(GitHubUrl);
+                var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(
+                    "Packages/com.besty.unity-skills/Editor/UI/Icons/github.png");
+                if (tex != null)
+                    _creditGithubBtn.style.backgroundImage = new StyleBackground(tex);
+            }
         }
 
         private void SwitchLanguage(SkillsLocalization.Language lang)
@@ -81,6 +96,8 @@ namespace UnitySkills
 
             var seg = _root.Q<VisualElement>("lang-segment");
             if (seg != null) seg.tooltip = SkillsLocalization.Get("footer_lang_tooltip");
+
+            if (_creditGithubBtn != null) _creditGithubBtn.tooltip = "Open project on GitHub";
         }
 
         private static void ConfigureButton(Button button, SkillsLocalization.Language language)

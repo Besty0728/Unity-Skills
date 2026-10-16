@@ -179,6 +179,10 @@
                 <ui:Button name="lang-seg-en" class="lang-segment__seg active" text="EN" />
                 <ui:Button name="lang-seg-cn" class="lang-segment__seg" text="中文" />
             </ui:VisualElement>
+
+            <ui:VisualElement name="credit-block" class="credit-block">
+                <ui:Button name="credit-github" class="credit-block__icon" text="" tooltip="Open project on GitHub" />
+            </ui:VisualElement>
         </ui:VisualElement>
 
         <!-- ============================================

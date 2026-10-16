@@ -27,6 +27,7 @@ namespace UnitySkills.Tests.Core
             ServerAvailabilityHelper.CompilationInProgressOverrideForTests = false;
             AsyncJobService.PlayModeOverrideForTests = false;
             CompilationResultService.LastResultJsonOverrideForTests = string.Empty;
+            CompilationResultService.HistoryJsonOverrideForTests = null;
         }
 
         [TearDown]
@@ -36,6 +37,7 @@ namespace UnitySkills.Tests.Core
             ServerAvailabilityHelper.CompilationInProgressOverrideForTests = null;
             AsyncJobService.PlayModeOverrideForTests = null;
             CompilationResultService.LastResultJsonOverrideForTests = null;
+            CompilationResultService.HistoryJsonOverrideForTests = null;
             foreach (var jobId in _jobIds)
                 BatchPersistence.RemoveJob(jobId);
             _jobIds.Clear();
@@ -124,7 +126,7 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void Outputs_AreReturnedByTheirBranch_AndTheSkillStaysAllowedOutsideBypass()
+        public void Outputs_AreReturnedByTheirBranch_AndReloadRiskIsTruthful()
         {
             Assert.That(SkillRouter.TryGetSkill("asset_refresh", out var skill), Is.True);
 
@@ -136,9 +138,8 @@ namespace UnitySkills.Tests.Core
             Assert.That(skill.Outputs, Is.SubsetOf(quiet.Keys.Union(compiling.Keys)));
             Assert.That(skill.Outputs, Is.SubsetOf(compiling.Keys));
             Assert.That(quiet.Keys, Does.Not.Contain("jobId").And.Not.Contain("waitUrl"));
-            Assert.That(skill.MayTriggerReload, Is.False,
-                "MayTriggerReload would make asset_refresh MODE_FORBIDDEN in auto and approval modes.");
-            Assert.That(SkillsModeManager.IsForbiddenInSemi(skill), Is.False);
+            Assert.That(skill.MayTriggerReload, Is.True);
+            Assert.That(SkillsModeManager.IsForbiddenInSemi(skill), Is.True);
         }
 
         [Test]
@@ -188,10 +189,10 @@ namespace UnitySkills.Tests.Core
             Assert.That(first["file"]?.ToString(), Is.EqualTo("Assets/Scripts/Spin.cs"));
             Assert.That(first["line"]?.Value<int>(), Is.EqualTo(7));
 
-            var probed = JObject.Parse(GetJobsResponse(job.jobId, internalProbe: true));
+            var probed = JObject.Parse(GetJobsResponse(job.jobId, internalProbe: false));
             Assert.That(probed["status"]?.ToString(), Is.EqualTo("failed"));
             Assert.That(probed["resultData"]?["compilation"]?["errorCount"]?.Value<int>(), Is.EqualTo(2),
-                "The waitUrl's terminal answer carries the diagnostics.");
+                "An ordinary terminal poll carries the diagnostics too.");
         }
 
         [Test]
@@ -212,7 +213,7 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void ProjectJob_CleanCompileStillAheadOfItsReload_WaitsForTheReload_Bounded()
+        public void ProjectJob_CleanCompileStillAheadOfItsReload_DoesNotInventReloadProof()
         {
             var job = StartSettledJob(DateTime.UtcNow.AddSeconds(-60).Ticks);
             SetLastResult(DateTime.UtcNow);
@@ -224,7 +225,7 @@ namespace UnitySkills.Tests.Core
 
             job.metadata["reloadWaitSince"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 10;
             AsyncJobService.Pump(job.jobId);
-            Assert.That(job.status, Is.EqualTo("completed"), "Unity skips the reload when no assembly changed; the wait must end.");
+            Assert.That(job.status, Is.EqualTo("waiting_domain_reload"), "Elapsed time cannot prove the new assembly was loaded.");
         }
 
         [TestCase(true)]
@@ -290,42 +291,111 @@ namespace UnitySkills.Tests.Core
             Assert.That(CompilationResultService.GetLastOutcome(), Is.Null);
         }
 
-        // ---------- script jobs are untouched ----------
-
         [Test]
-        public void ScriptJob_KeepsItsMetadata_AndIgnoresTheProjectResult()
+        public void ForcedJob_NoCompilation_FailsWithoutClaimingSuccess()
         {
-            var job = AsyncJobService.StartScriptMutationJob("script_delete", "Assets/Scripts/Gone.cs",
-                checkCompile: false, diagnosticLimit: 20, supportsDiagnostics: false);
+            var job = AsyncJobService.StartRefreshCompileJob(Array.Empty<string>(), DateTime.UtcNow.Ticks,
+                operation: "debug_force_recompile", requireCompilation: true);
             _jobIds.Add(job.jobId);
             job.startedAt -= 10;
-            SetLastResult(DateTime.UtcNow, ("Assets/Scripts/Other.cs", 1, "an unrelated error"));
-
-            Assert.That(job.metadata.Keys,
-                Is.EquivalentTo(new[] { "operation", "scriptPath", "checkCompile", "diagnosticLimit", "supportsDiagnostics" }));
             AsyncJobService.Pump(job.jobId);
-
-            Assert.That(job.status, Is.EqualTo("completed"));
-            Assert.That(job.resultData.Keys, Is.EquivalentTo(new[] { "path", "operation" }));
+            Assert.That(job.status, Is.EqualTo("failed"));
+            Assert.That(job.currentStage, Is.EqualTo("no_compilation"));
+            Assert.That(Compilation(job)["compiled"]?.Value<bool>(), Is.False);
         }
 
         [Test]
-        public void ScriptJob_StillReportsPerScriptDiagnostics()
+        public void ProjectJob_WrongCycleWithNewTimestamp_DoesNotBorrowItsSuccess()
         {
-            // A name no console entry can mention, so the per-script scan deterministically finds nothing.
-            var path = $"Assets/Scripts/R5Probe{Guid.NewGuid():N}.cs";
-            var job = AsyncJobService.StartScriptMutationJob("script_create", path, checkCompile: true, diagnosticLimit: 20);
+            var job = StartSettledJob(DateTime.UtcNow.AddSeconds(-60).Ticks);
+            SetLastResult(DateTime.UtcNow);
+            var result = JObject.Parse(CompilationResultService.LastResultJsonOverrideForTests);
+            result["cycleId"] = (int)job.metadata["expectedCycleId"] + 1;
+            CompilationResultService.LastResultJsonOverrideForTests = result.ToString();
+            AsyncJobService.Pump(job.jobId);
+            Assert.That(Compilation(job)["compiled"]?.Value<bool>(), Is.False);
+        }
+
+        [Test]
+        public void ForcedJob_PlayModeDefersWithoutRequestingAnExit()
+        {
+            var job = AsyncJobService.StartRefreshCompileJob(Array.Empty<string>(), DateTime.UtcNow.Ticks,
+                operation: "debug_force_recompile", requireCompilation: true);
             _jobIds.Add(job.jobId);
             job.startedAt -= 10;
-            SetLastResult(DateTime.UtcNow, ("Assets/Scripts/Other.cs", 1, "an unrelated error"));
+            AsyncJobService.PlayModeOverrideForTests = true;
+            AsyncJobService.Pump(job.jobId);
+            Assert.That(job.status, Is.EqualTo("waiting_domain_reload"));
+            Assert.That(job.currentStage, Is.EqualTo("waiting_play_mode_exit"));
+            Assert.That(AsyncJobService.PlayModeOverrideForTests, Is.True);
+        }
+
+        [Test]
+        public void ForcedJob_ActualCycleSurvivesALaterEmptyCycle()
+        {
+            var finished = new DateTime(CompilationResultService.DomainLoadedUtcTicks, DateTimeKind.Utc).AddSeconds(-10);
+            var job = AsyncJobService.StartRefreshCompileJob(Array.Empty<string>(), finished.AddSeconds(-10).Ticks,
+                operation: "debug_force_recompile", requireCompilation: true);
+            _jobIds.Add(job.jobId);
+            job.startedAt -= 10;
+            SetLastResult(finished);
+            string actual = CompilationResultService.LastResultJsonOverrideForTests;
+            var emptyLater = JObject.Parse(actual);
+            emptyLater["cycleId"] = (int)job.metadata["expectedCycleId"] + 1;
+            emptyLater["assemblyCount"] = 0;
+            emptyLater["finishedAtUtc"] = finished.AddSeconds(1).ToString("o");
+            string later = emptyLater.ToString(Newtonsoft.Json.Formatting.None);
+            CompilationResultService.HistoryJsonOverrideForTests = CompilationResultService.AppendHistoryJson(
+                CompilationResultService.AppendHistoryJson(null, actual), later);
+            CompilationResultService.LastResultJsonOverrideForTests = later;
 
             AsyncJobService.Pump(job.jobId);
 
             Assert.That(job.status, Is.EqualTo("completed"));
-            var compilation = Compilation(job);
-            Assert.That(compilation.Properties().Select(p => p.Name),
-                Is.EquivalentTo(new[] { "scriptPath", "isCompiling", "hasErrors", "errorCount", "errors", "nextAction" }));
-            Assert.That(compilation["scriptPath"]?.ToString(), Is.EqualTo(path));
+            Assert.That(Compilation(job)["cycleId"]?.Value<int>(), Is.EqualTo(job.metadata["expectedCycleId"]));
+            Assert.That(Compilation(job)["assemblyCount"]?.Value<int>(), Is.EqualTo(1));
+            Assert.That(Compilation(job)["domainLoaded"]?.Value<bool>(), Is.True);
+        }
+
+        [Test]
+        public void ForcedJob_EmptyRequestedCycleCannotBorrowLaterAssemblyCompilation()
+        {
+            var finished = new DateTime(CompilationResultService.DomainLoadedUtcTicks, DateTimeKind.Utc).AddSeconds(-10);
+            var job = AsyncJobService.StartRefreshCompileJob(Array.Empty<string>(), finished.AddSeconds(-10).Ticks,
+                operation: "debug_force_recompile", requireCompilation: true);
+            _jobIds.Add(job.jobId);
+            job.startedAt -= 10;
+            SetLastResult(finished);
+            var requested = JObject.Parse(CompilationResultService.LastResultJsonOverrideForTests);
+            requested["assemblyCount"] = 0;
+            var later = (JObject)requested.DeepClone();
+            later["cycleId"] = (int)job.metadata["expectedCycleId"] + 1;
+            later["assemblyCount"] = 5;
+            CompilationResultService.HistoryJsonOverrideForTests = CompilationResultService.AppendHistoryJson(
+                CompilationResultService.AppendHistoryJson(null, requested.ToString()), later.ToString());
+            CompilationResultService.LastResultJsonOverrideForTests = later.ToString();
+
+            AsyncJobService.Pump(job.jobId);
+
+            Assert.That(job.status, Is.EqualTo("failed"));
+            Assert.That(job.currentStage, Is.EqualTo("no_compilation"));
+            Assert.That(Compilation(job)["assemblyCount"]?.Value<int>(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void CompilationHistory_IsBoundedToSixteenCycles()
+        {
+            SetLastResult(DateTime.UtcNow);
+            var entry = JObject.Parse(CompilationResultService.LastResultJsonOverrideForTests);
+            string history = null;
+            for (int cycle = 1; cycle <= 20; cycle++)
+            {
+                entry["cycleId"] = cycle;
+                history = CompilationResultService.AppendHistoryJson(history, entry.ToString());
+            }
+            var parsed = JArray.Parse(history);
+            Assert.That(parsed.Count, Is.EqualTo(16));
+            Assert.That(parsed[0]["cycleId"]?.Value<int>(), Is.EqualTo(5));
         }
 
         // ---------- helpers ----------
@@ -352,6 +422,9 @@ namespace UnitySkills.Tests.Core
         {
             CompilationResultService.LastResultJsonOverrideForTests = new JObject
             {
+                ["cycleId"] = CompilationResultService.CompilationStartCount + 1,
+                ["startedAtUtc"] = finishedUtc.AddSeconds(-1).ToString("o"),
+                ["assemblyCount"] = 1,
                 ["finishedAtUtc"] = finishedUtc.ToString("o"),
                 ["durationMs"] = 1200,
                 ["success"] = errors.Length == 0,

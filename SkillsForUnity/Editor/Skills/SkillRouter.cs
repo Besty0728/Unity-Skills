@@ -276,6 +276,9 @@ namespace UnitySkills
 
         private static readonly HashSet<string> _transactionlessSkills = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
+            "component_invoke_method",
+            "component_invoke_method_batch",
+            "editor_run_scenario",
             "editor_undo",
             "editor_redo",
             "gameobject_create",

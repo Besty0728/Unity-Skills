@@ -462,7 +462,7 @@ namespace UnitySkills
             // taking it literally would just get UNKNOWN_PARAM. prefabPath is also prefab_create's
             // return value, so the corrected token also wires both into the Outputs→RequiresInput chain.
             RequiresInput = new[] { "prefabPath", "componentType" },
-            TracksWorkflow = true, MutatesAssets = true)]
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true)]
         public static object PrefabSetProperty(
             string prefabPath = null, string componentType = null,
             [SkillParam("Tries the exact name, then m_<Name>, _<name> and m_<name> (Unity's serialized-field naming conventions).")]
@@ -473,142 +473,242 @@ namespace UnitySkills
             [SkillParam("Transform.Find path from the prefab root (e.g. 'Child/Grandchild'), or a bare name found anywhere in the hierarchy; omit for the root.")]
             string gameObjectName = null)
         {
-            if (Validate.Required(prefabPath, "prefabPath") is object reqErr1) return reqErr1;
-            if (Validate.SafePath(prefabPath, "prefabPath") is object pathErr) return pathErr;
-            if (Validate.Required(componentType, "componentType") is object reqErr2) return reqErr2;
-            if (Validate.Required(propertyName, "propertyName") is object reqErr3) return reqErr3;
-
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-            if (prefab == null) return new { error = $"Prefab not found: {prefabPath}" };
-
-            // Locate the target GameObject inside the prefab (root, or find a child by name)
-            GameObject targetGo = prefab;
-            if (!string.IsNullOrEmpty(gameObjectName))
-            {
-                var child = prefab.transform.Find(gameObjectName);
-                if (child == null)
-                {
-                    foreach (var t in prefab.GetComponentsInChildren<Transform>(true))
-                    {
-                        if (t.name == gameObjectName) { child = t; break; }
-                    }
-                }
-                if (child == null)
-                    return new { error = $"Child GameObject '{gameObjectName}' not found in prefab" };
-                targetGo = child.gameObject;
-            }
-
-            var compType = ComponentSkills.FindComponentType(componentType);
-            if (compType == null)
-                return new { error = $"Component type not found: {componentType}" };
-
-            var comp = targetGo.GetComponent(compType);
-            if (comp == null)
-                return new { error = $"Component '{componentType}' not found on '{targetGo.name}' in prefab" };
-
-            var so = new SerializedObject(comp);
-            var prop = FindSerializedProperty(so, propertyName);
-            if (prop == null)
-                return new { error = $"Property '{propertyName}' not found on {componentType}", availableProperties = ListSerializedProperties(so) };
-
-            UnityEngine.Object requestedAsset = null;
-            string intended = null;
-            string warning = null;
-
-            // Dispatch the write based on the property type; only the SerializedObject copy changes until it is applied.
-            if (!string.IsNullOrEmpty(assetReferencePath))
-            {
-                if (prop.propertyType != SerializedPropertyType.ObjectReference)
-                    return new { error = $"Property '{propertyName}' is not an Object reference field (type: {prop.propertyType})" };
-
-                requestedAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetReferencePath);
-                if (requestedAsset == null)
-                    return new { error = $"Asset not found: {assetReferencePath}" };
-
-                prop.objectReferenceValue = requestedAsset;
-            }
-            else if (!string.IsNullOrEmpty(value))
-            {
-                bool applied = false;
-                bool typeSupported = true;
-                string parseError = null;
-                try
-                {
-                    applied = SetSerializedPropertyValue(prop, value, out typeSupported, out parseError, out warning);
-                }
-                catch (System.Exception ex)
-                {
-                    // For invalid text formats, the converter throws rather than returning null
-                    // (e.g. passing "1,2" for a Vector3, a Quaternion given only two components,
-                    // or a non-numeric key inside JSON-object form). Not catching this would
-                    // surface as an unclassified SKILL_ERROR + abort carrying only the raw parser
-                    // message. No other exception source exists within this call, so this is
-                    // judged to be "the value is the problem" rather than swallowing a real bug.
-                    return new { error = $"Invalid value '{value}' for property '{propertyName}' (type: {prop.propertyType}): {ex.Message}" };
-                }
-
-                if (!applied)
-                {
-                    // "Failed to set value" reads as "your value is wrong" — but for an unsupported
-                    // property type, nothing the caller writes could ever succeed; only spelling
-                    // this out stops it from retrying the same call with a different format.
-                    // Both messages open with their own classifying word ("Invalid" / "Unsupported"),
-                    // so SkillErrorClassifier's leading-word rule yields SEMANTIC_INVALID + fix_and_retry,
-                    // instead of the unclassified SKILL_ERROR + abort the old wording
-                    // "Failed to set value …" used to produce.
-                    if (!typeSupported)
-                        return new { error = $"Unsupported serialized property type {prop.propertyType} for property '{propertyName}'. prefab_set_property writes Integer, Float, Boolean, String, Enum, Color, Vector2/3/4, Vector2Int/3Int, Quaternion, Rect, Bounds and LayerMask from 'value'; use assetReferencePath for an ObjectReference field." };
-                    return parseError != null
-                        ? new { error = $"Invalid value '{value}' for property '{propertyName}' (type: {prop.propertyType}): {parseError}" }
-                        : new { error = $"Invalid value '{value}' for property '{propertyName}' (type: {prop.propertyType}) — that property type is supported but the text could not be parsed into it." };
-                }
-                intended = SerializedPropertySkillUtility.DescribeValue(prop);
-            }
-            else
-            {
-                return new { error = "Either 'value' or 'assetReferencePath' must be provided" };
-            }
-
-            WorkflowManager.SnapshotObject(comp);
-            so.ApplyModifiedProperties();
-            EditorUtility.SetDirty(comp);
-            AssetDatabase.SaveAssets();
-
-            // Read back after applying: OnValidate and native setters may adjust what was written, and an
-            // object reference of the wrong type may not be stored.
-            so.Update();
-            var stored = so.FindProperty(prop.propertyPath) ?? prop;
-            string valueSet;
-            string valueRequested = null;
-            if (requestedAsset != null)
-            {
-                var storedAsset = stored.objectReferenceValue;
-                valueSet = storedAsset != null ? AssetDatabase.GetAssetPath(storedAsset) : "null";
-                if (storedAsset != requestedAsset)
-                    valueRequested = assetReferencePath;
-            }
-            else
-            {
-                valueSet = SerializedPropertySkillUtility.DescribeValue(stored);
-                if (!string.Equals(valueSet, intended, System.StringComparison.Ordinal))
-                    valueRequested = intended;
-            }
-
-            var response = new System.Collections.Generic.Dictionary<string, object>
-            {
-                ["success"] = true,
-                ["prefabPath"] = prefabPath,
-                ["gameObject"] = targetGo.name,
-                ["component"] = comp.GetType().Name,
-                ["property"] = stored.propertyPath,
-                ["valueSet"] = valueSet
-            };
-            if (valueRequested != null)
-                response["valueRequested"] = valueRequested;
-            if (warning != null)
-                response["warnings"] = new[] { warning };
-            return response;
+            return PrefabAssetEditor.LegacySetProperty(prefabPath, componentType, propertyName,
+                value, assetReferencePath, gameObjectName);
         }
+
+
+        [UnitySkill("prefab_get_info", "Read prefab asset get info. prefabPath is the asset; gameObjectPath is root-relative when accepted.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Query,
+            RequiredParams = new[] { "prefabPath" },
+            Tags = new[] { "prefab", "asset", "query" }, Outputs = new[] { "prefabPath" },
+            ReadOnly = true, Mode = SkillMode.SemiAuto)]
+        public static object PrefabGetInfo(string prefabPath, string gameObjectPath = null) =>
+            PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeNode(root, PrefabAssetEditor.Resolve(root, gameObjectPath)));
+
+        [UnitySkill("prefab_get_hierarchy", "Read prefab asset get hierarchy. prefabPath is the asset; gameObjectPath is root-relative when accepted.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Query,
+            RequiredParams = new[] { "prefabPath" },
+            Tags = new[] { "prefab", "asset", "query" }, Outputs = new[] { "prefabPath" },
+            ReadOnly = true, Mode = SkillMode.SemiAuto)]
+        public static object PrefabGetHierarchy(string prefabPath, int limit = 200) =>
+            PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeHierarchy(root, limit));
+
+        [UnitySkill("prefab_list_components", "Read prefab asset list components. prefabPath is the asset; gameObjectPath is root-relative when accepted.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Query,
+            RequiredParams = new[] { "prefabPath" },
+            Tags = new[] { "prefab", "asset", "query" }, Outputs = new[] { "prefabPath" },
+            ReadOnly = true, Mode = SkillMode.SemiAuto)]
+        public static object PrefabListComponents(string prefabPath, string gameObjectPath = null, bool includeProperties = false) =>
+            PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeComponents(root, PrefabAssetEditor.Resolve(root, gameObjectPath), includeProperties));
+
+        [UnitySkill("prefab_get_serialized_properties", "Read prefab asset get serialized properties. prefabPath is the asset; gameObjectPath is root-relative when accepted.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Query,
+            RequiredParams = new[] { "prefabPath", "componentType" },
+            Tags = new[] { "prefab", "asset", "query" }, Outputs = new[] { "prefabPath" },
+            ReadOnly = true, Mode = SkillMode.SemiAuto)]
+        public static object PrefabGetSerializedProperties(string prefabPath, string componentType, string gameObjectPath = null, int componentIndex = 0, bool includeChildren = true, int limit = 200) =>
+            PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeProperties(root, PrefabAssetEditor.Resolve(root, gameObjectPath), componentType, componentIndex, includeChildren, limit));
+
+        [UnitySkill("prefab_add_component", "Edit prefab asset: add component. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
+            RequiredParams = new[] { "prefabPath", "componentType" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabAddComponent(string prefabPath, string componentType, string gameObjectPath = null) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_add_component", new { componentType, gameObjectPath });
+
+        [UnitySkill("prefab_add_component_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, componentType, gameObjectPath}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabAddComponentBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_add_component", items);
+
+        [UnitySkill("prefab_remove_component", "Edit prefab asset: remove component. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Delete,
+            RequiredParams = new[] { "prefabPath", "componentType" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "high")]
+        public static object PrefabRemoveComponent(string prefabPath, string componentType, string gameObjectPath = null, int componentIndex = 0) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_remove_component", new { componentType, gameObjectPath, componentIndex });
+
+        [UnitySkill("prefab_remove_component_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, componentType, gameObjectPath, componentIndex}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Delete,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "high")]
+        public static object PrefabRemoveComponentBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_remove_component", items);
+
+        [UnitySkill("prefab_set_component_enabled", "Edit prefab asset: set component enabled. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "prefabPath", "componentType", "enabled" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetComponentEnabled(string prefabPath, string componentType, bool enabled, string gameObjectPath = null, int componentIndex = 0) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_set_component_enabled", new { componentType, enabled, gameObjectPath, componentIndex });
+
+        [UnitySkill("prefab_set_component_enabled_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, componentType, enabled, gameObjectPath, componentIndex}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetComponentEnabledBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_set_component_enabled", items);
+
+        [UnitySkill("prefab_set_serialized_property", "Edit prefab asset: set serialized property. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "prefabPath", "componentType", "propertyPath" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetSerializedProperty(string prefabPath, string componentType, string propertyPath, string gameObjectPath = null, int componentIndex = 0, string value = null, string assetPath = null, string referenceGameObjectPath = null, string referenceComponentType = null, int referenceComponentIndex = 0, bool clearReference = false) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_set_serialized_property", new { componentType, propertyPath, gameObjectPath, componentIndex, value, assetPath, referenceGameObjectPath, referenceComponentType, referenceComponentIndex, clearReference });
+
+        [UnitySkill("prefab_set_serialized_property_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, componentType, propertyPath, gameObjectPath, componentIndex, value, assetPath, referenceGameObjectPath, referenceComponentType, referenceComponentIndex, clearReference}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetSerializedPropertyBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_set_serialized_property", items);
+
+        [UnitySkill("prefab_create_gameobject", "Edit prefab asset: create gameobject. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
+            RequiredParams = new[] { "prefabPath", "name" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabCreateGameObject(string prefabPath, string name, string parentPath = null, bool rectTransform = false) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_create_gameobject", new { name, parentPath, rectTransform });
+
+        [UnitySkill("prefab_create_gameobject_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, name, parentPath, rectTransform}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabCreateGameObjectBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_create_gameobject", items);
+
+        [UnitySkill("prefab_delete_gameobject", "Edit prefab asset: delete gameobject. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Delete,
+            RequiredParams = new[] { "prefabPath", "gameObjectPath" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "high")]
+        public static object PrefabDeleteGameObject(string prefabPath, string gameObjectPath) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_delete_gameobject", new { gameObjectPath });
+
+        [UnitySkill("prefab_delete_gameobject_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, gameObjectPath}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Delete,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "high")]
+        public static object PrefabDeleteGameObjectBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_delete_gameobject", items);
+
+        [UnitySkill("prefab_duplicate_gameobject", "Edit prefab asset: duplicate gameobject. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
+            RequiredParams = new[] { "prefabPath", "gameObjectPath" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabDuplicateGameObject(string prefabPath, string gameObjectPath, string newName = null) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_duplicate_gameobject", new { gameObjectPath, newName });
+
+        [UnitySkill("prefab_duplicate_gameobject_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, gameObjectPath, newName}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Create,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabDuplicateGameObjectBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_duplicate_gameobject", items);
+
+        [UnitySkill("prefab_rename_gameobject", "Edit prefab asset: rename gameobject. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "prefabPath", "newName" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabRenameGameObject(string prefabPath, string newName, string gameObjectPath = null) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_rename_gameobject", new { newName, gameObjectPath });
+
+        [UnitySkill("prefab_rename_gameobject_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, newName, gameObjectPath}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabRenameGameObjectBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_rename_gameobject", items);
+
+        [UnitySkill("prefab_set_transform", "Edit prefab asset: set transform. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "prefabPath" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetTransform(string prefabPath, string gameObjectPath = null, float? posX = null, float? posY = null, float? posZ = null, float? rotX = null, float? rotY = null, float? rotZ = null, float? scaleX = null, float? scaleY = null, float? scaleZ = null, float? anchoredPosX = null, float? anchoredPosY = null, float? anchorMinX = null, float? anchorMinY = null, float? anchorMaxX = null, float? anchorMaxY = null, float? pivotX = null, float? pivotY = null, float? sizeDeltaX = null, float? sizeDeltaY = null) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_set_transform", new { gameObjectPath, posX, posY, posZ, rotX, rotY, rotZ, scaleX, scaleY, scaleZ, anchoredPosX, anchoredPosY, anchorMinX, anchorMinY, anchorMaxX, anchorMaxY, pivotX, pivotY, sizeDeltaX, sizeDeltaY });
+
+        [UnitySkill("prefab_set_transform_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, gameObjectPath, posX, posY, posZ, rotX, rotY, rotZ, scaleX, scaleY, scaleZ, anchoredPosX, anchoredPosY, anchorMinX, anchorMinY, anchorMaxX, anchorMaxY, pivotX, pivotY, sizeDeltaX, sizeDeltaY}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetTransformBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_set_transform", items);
+
+        [UnitySkill("prefab_set_parent", "Edit prefab asset: set parent. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "prefabPath", "gameObjectPath" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetParent(string prefabPath, string gameObjectPath, string parentPath = null, bool worldPositionStays = false) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_set_parent", new { gameObjectPath, parentPath, worldPositionStays });
+
+        [UnitySkill("prefab_set_parent_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, gameObjectPath, parentPath, worldPositionStays}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetParentBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_set_parent", items);
+
+        [UnitySkill("prefab_set_active", "Edit prefab asset: set active. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "prefabPath", "active" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetActive(string prefabPath, bool active, string gameObjectPath = null) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_set_active", new { active, gameObjectPath });
+
+        [UnitySkill("prefab_set_active_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, active, gameObjectPath}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetActiveBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_set_active", items);
+
+        [UnitySkill("prefab_set_sibling_index", "Edit prefab asset: set sibling index. prefabPath targets only this asset; gameObjectPath is root-relative; transform axes are local and omitted axes are kept.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "prefabPath", "index", "gameObjectPath" },
+            Tags = new[] { "prefab", "asset", "edit" }, Outputs = new[] { "prefabPath", "gameObjectPath" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetSiblingIndex(string prefabPath, int index, string gameObjectPath) =>
+            PrefabAssetEditor.Edit(prefabPath, "prefab_set_sibling_index", new { index, gameObjectPath });
+
+        [UnitySkill("prefab_set_sibling_index_batch", "Edit prefab assets in groups. items: JSON array of {prefabPath, index, gameObjectPath}. Each asset group is atomic; successful assets remain saved when another group fails.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify,
+            RequiredParams = new[] { "items" },
+            Tags = new[] { "prefab", "asset", "batch" }, Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "medium")]
+        public static object PrefabSetSiblingIndexBatch(string items) =>
+            PrefabAssetEditor.Batch("prefab_set_sibling_index", items);
+
+        [UnitySkill("prefab_edit_batch", "Atomically edit one prefab asset. steps: JSON array of {skill, args}; only prefab asset edit operations are allowed, maximum 50 steps. Earlier-created paths are available to later steps.",
+            Category = SkillCategory.Prefab, Operation = SkillOperation.Modify | SkillOperation.Delete,
+            RequiredParams = new[] { "prefabPath", "steps" },
+            Tags = new[] { "prefab", "asset", "batch", "transaction" }, Outputs = new[] { "prefabPath", "results" },
+            TracksWorkflow = true, SkipAutoPresnapshot = true, MutatesAssets = true, RiskLevel = "high")]
+        public static object PrefabEditBatch(string prefabPath, string steps) =>
+            PrefabAssetEditor.EditSteps(prefabPath, steps);
 
         #region Prefab SerializedProperty Helpers
 
@@ -725,32 +825,6 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Looks up a SerializedProperty by name, falling back through Unity naming conventions
-        /// (m_PropertyName, _propertyName).
-        /// </summary>
-        private static SerializedProperty FindSerializedProperty(SerializedObject so, string propertyName)
-        {
-            var prop = so.FindProperty(propertyName);
-            if (prop != null) return prop;
-
-            // Unity convention: m_PropertyName
-            var mName = "m_" + char.ToUpper(propertyName[0]) + propertyName.Substring(1);
-            prop = so.FindProperty(mName);
-            if (prop != null) return prop;
-
-            // Underscore prefix: _propertyName
-            prop = so.FindProperty("_" + propertyName);
-            if (prop != null) return prop;
-
-            // m_ prefix + first letter kept lowercase
-            var mLower = "m_" + propertyName;
-            prop = so.FindProperty(mLower);
-            if (prop != null) return prop;
-
-            return null;
-        }
-
-        /// <summary>
         /// Writes a SerializedProperty's value from a string, returning true on success.
         ///
         /// <para><paramref name="typeSupported"/> distinguishes two kinds of failure — a single
@@ -760,7 +834,7 @@ namespace UnitySkills
         /// be parsed, with the reason in <paramref name="error"/> when one is known. This switch is the
         /// sole source of truth for which types are supported — only the default branch clears this flag.</para>
         /// </summary>
-        private static bool SetSerializedPropertyValue(SerializedProperty prop, string value, out bool typeSupported,
+        internal static bool SetSerializedPropertyValue(SerializedProperty prop, string value, out bool typeSupported,
             out string error, out string warning)
         {
             typeSupported = true;
@@ -855,23 +929,6 @@ namespace UnitySkills
                     typeSupported = false;
                     return false;
             }
-        }
-
-        /// <summary>
-        /// Lists top-level serialized properties, for error diagnostics.
-        /// </summary>
-        private static string[] ListSerializedProperties(SerializedObject so)
-        {
-            var names = new System.Collections.Generic.List<string>();
-            var prop = so.GetIterator();
-            bool enter = true;
-            while (prop.NextVisible(enter) && names.Count < 30)
-            {
-                enter = false;
-                if (prop.name == "m_Script") continue;
-                names.Add(prop.name);
-            }
-            return names.ToArray();
         }
 
         #endregion

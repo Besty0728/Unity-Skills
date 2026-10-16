@@ -51,7 +51,7 @@ namespace UnitySkills
         /// </summary>
         private static readonly HashSet<string> EngineDrivenJobKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "compile", "package", "test", "playmode", "play_capture", "build_player", "playmode_step"
+            "compile", "package", "test", "playmode", "play_capture", "build_player", "playmode_step", "component_invoke", "run_scenario"
         };
 
         /// <summary>Hard cap on the <see cref="Wait"/> blocking loop; callers needing to wait longer must switch to polling.</summary>
@@ -79,7 +79,7 @@ namespace UnitySkills
         private static void RecoverTestCallbacksAfterReload()
         {
             var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            foreach (var job in BatchPersistence.ListJobs(100))
+            foreach (var job in BatchPersistence.ListJobs(int.MaxValue))
             {
                 if (job == null ||
                     !string.Equals(job.kind, "test", StringComparison.OrdinalIgnoreCase) ||
@@ -163,7 +163,7 @@ namespace UnitySkills
             string targetPath,
             bool checkCompile,
             int diagnosticLimit,
-            bool supportsDiagnostics = true)
+            bool supportsDiagnostics = true, long requestStartedUtcTicks = 0, int compilationStartsBefore = -1)
         {
             var metadata = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
             {
@@ -171,7 +171,11 @@ namespace UnitySkills
                 ["scriptPath"] = targetPath ?? string.Empty,
                 ["checkCompile"] = checkCompile,
                 ["diagnosticLimit"] = diagnosticLimit,
-                ["supportsDiagnostics"] = supportsDiagnostics
+                ["supportsDiagnostics"] = supportsDiagnostics,
+                ["diagnosticsScope"] = "project",
+                ["scriptPaths"] = new[] { targetPath ?? string.Empty },
+                ["refreshStartedUtcTicks"] = requestStartedUtcTicks > 0 ? requestStartedUtcTicks : DateTime.UtcNow.Ticks,
+                ["expectedCycleId"] = (compilationStartsBefore >= 0 ? compilationStartsBefore : CompilationResultService.CompilationStartCount) + 1
             };
 
             var job = CreateJob(
@@ -199,11 +203,12 @@ namespace UnitySkills
         /// compilation that finishes after <paramref name="refreshStartedUtcTicks"/> (failed on errors, which are
         /// project-wide), or completes with compiled:false when none follows within the grace period.
         /// </summary>
-        internal static BatchJobRecord StartRefreshCompileJob(IEnumerable<string> scriptPaths, long refreshStartedUtcTicks, int diagnosticLimit = 20)
+        internal static BatchJobRecord StartRefreshCompileJob(IEnumerable<string> scriptPaths, long refreshStartedUtcTicks, int diagnosticLimit = 20, int compilationStartsBefore = -1,
+            string operation = "asset_refresh", bool requireCompilation = false)
         {
             var metadata = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
             {
-                ["operation"] = "asset_refresh",
+                ["operation"] = operation,
                 ["scriptPath"] = string.Empty,
                 ["scriptPaths"] = (scriptPaths ?? Enumerable.Empty<string>()).Take(MaxRefreshScriptPaths).ToArray(),
                 ["diagnosticsScope"] = "project",
@@ -211,7 +216,9 @@ namespace UnitySkills
                 ["supportsDiagnostics"] = true,
                 ["diagnosticLimit"] = diagnosticLimit,
                 ["compileGraceSeconds"] = RefreshCompileGraceSeconds,
-                ["refreshStartedUtcTicks"] = refreshStartedUtcTicks
+                ["refreshStartedUtcTicks"] = refreshStartedUtcTicks,
+                ["expectedCycleId"] = (compilationStartsBefore >= 0 ? compilationStartsBefore : CompilationResultService.CompilationStartCount) + 1,
+                ["requireCompilation"] = requireCompilation
             };
 
             bool compiling = ServerAvailabilityHelper.IsCompilationInProgress();
@@ -223,7 +230,7 @@ namespace UnitySkills
                 metadata: metadata,
                 resultData: new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["operation"] = "asset_refresh"
+                    ["operation"] = operation
                 });
 
             job.status = compiling ? "waiting_domain_reload" : "running";
@@ -544,6 +551,8 @@ namespace UnitySkills
             }
 
             PlayCaptureService.NotifyCancelled(job);
+            ComponentInvocationService.NotifyCancelled(job);
+            RuntimeScenarioService.NotifyCancelled(job);
 
             job.status = "cancelled";
             job.currentStage = "cancelled";
@@ -710,7 +719,7 @@ namespace UnitySkills
 
         private static void ProcessJobs(string onlyJobId)
         {
-            foreach (var job in BatchPersistence.ListJobs(100))
+            foreach (var job in BatchPersistence.ListJobs(int.MaxValue))
             {
                 if (job == null || job.preview != null || IsTerminal(job.status))
                     continue;
@@ -721,6 +730,12 @@ namespace UnitySkills
 
                 switch (job.kind)
                 {
+                    case "component_invoke":
+                        ComponentInvocationService.Process(job);
+                        break;
+                    case "run_scenario":
+                        RuntimeScenarioService.Process(job);
+                        break;
                     case "compile":
                         ProcessCompileJob(job);
                         break;
@@ -799,26 +814,19 @@ namespace UnitySkills
             var operation = GetMetadataString(job, "operation", "asset_refresh");
             var scriptPaths = GetMetadataStringArray(job, "scriptPaths");
             var graceSeconds = GetMetadataInt(job, "compileGraceSeconds", RefreshCompileGraceSeconds);
-            var outcome = CompilationResultService.GetLastOutcome();
-
-            if (outcome != null && outcome.FinishedAtUtcTicks >= GetMetadataLong(job, "refreshStartedUtcTicks", 0))
+            int expectedCycle = GetMetadataInt(job, "expectedCycleId", -1);
+            var outcome = CompilationResultService.GetOutcomeForRequest(expectedCycle,
+                GetMetadataLong(job, "refreshStartedUtcTicks", 0));
+            if (outcome != null)
             {
-                // Types from a clean compile exist only after the domain reload that follows it. Unity skips that
-                // reload when no assembly changed, so the wait for it is bounded.
-                if (!outcome.HasErrors && CompilationResultService.DomainLoadedUtcTicks < outcome.FinishedAtUtcTicks)
+                // A successful assembly compilation is usable only after a subsequent domain load.
+                // Waiting longer cannot prove a reload; retain the truthful pending phase until it occurs.
+                if (!outcome.HasErrors && outcome.AssemblyCount > 0 &&
+                    CompilationResultService.DomainLoadedUtcTicks < outcome.FinishedAtUtcTicks)
                 {
-                    var waitingSince = GetMetadataLong(job, "reloadWaitSince", 0);
-                    if (waitingSince <= 0)
-                    {
-                        waitingSince = now;
-                        job.metadata["reloadWaitSince"] = now;
-                    }
-
-                    if (now - waitingSince < graceSeconds)
-                    {
-                        Transition(job, "waiting_domain_reload", "reload_pending", 80, "Compilation succeeded; waiting for Unity to reload the script domain.", "compile_reload_wait");
-                        return;
-                    }
+                    Transition(job, "waiting_domain_reload", "reload_pending", 80,
+                        "Compilation succeeded; waiting for proof that Unity loaded the new script domain.", "compile_reload_wait");
+                    return;
                 }
 
                 Transition(job, "running", "verifying", 90, "Collecting compilation diagnostics.", "compile_verifying");
@@ -827,7 +835,9 @@ namespace UnitySkills
                     ["operation"] = operation,
                     ["compilation"] = BuildProjectCompilation(scriptPaths, outcome, GetMetadataInt(job, "diagnosticLimit", 20))
                 };
-                if (outcome.HasErrors)
+                if (outcome.AssemblyCount == 0 && GetMetadataBool(job, "requireCompilation", false))
+                    FailJob(job.jobId, "Unity finished the requested cycle without compiling any assembly.", "no_compilation", resultData);
+                else if (outcome.HasErrors)
                     FailJob(job.jobId, "Script compilation completed with errors.", "failed_compile", resultData);
                 else
                     CompleteJob(job.jobId, $"Script compilation after '{operation}' completed.", resultData);
@@ -849,13 +859,16 @@ namespace UnitySkills
                 return;
             }
 
-            CompleteJob(job.jobId, $"'{operation}' completed; no script compilation ran.", new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+            var noCompileResult = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
             {
                 ["operation"] = operation,
                 ["compilation"] = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["scope"] = "project",
                     ["compiled"] = false,
+                    ["success"] = false,
+                    ["domainLoaded"] = false,
+                    ["expectedCycleId"] = expectedCycle,
                     ["scriptPaths"] = scriptPaths,
                     ["isCompiling"] = false,
                     ["hasErrors"] = false,
@@ -863,7 +876,11 @@ namespace UnitySkills
                     ["errors"] = Array.Empty<object>(),
                     ["nextAction"] = "No script compilation ran after the refresh, so the loaded scripts are unchanged. If you edited a script, check it is saved under Assets/ (or a local package), then call asset_refresh again."
                 }
-            });
+            };
+            if (GetMetadataBool(job, "requireCompilation", false))
+                FailJob(job.jobId, "No script compilation was observed for the requested cycle.", "no_compilation", noCompileResult);
+            else
+                CompleteJob(job.jobId, $"'{operation}' completed; no script compilation ran.", noCompileResult);
         }
 
         private static Dictionary<string, object> BuildProjectCompilation(string[] scriptPaths, CompilationResultService.CompilationOutcome outcome, int diagnosticLimit)
@@ -882,7 +899,13 @@ namespace UnitySkills
             return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
             {
                 ["scope"] = "project",
-                ["compiled"] = true,
+                ["compiled"] = outcome.AssemblyCount > 0,
+                ["cycleId"] = outcome.CycleId,
+                ["startedAtUtcTicks"] = outcome.StartedAtUtcTicks,
+                ["assemblyCount"] = outcome.AssemblyCount,
+                ["success"] = !outcome.HasErrors && outcome.AssemblyCount > 0,
+                ["domainLoaded"] = CompilationResultService.DomainLoadedUtcTicks >= outcome.FinishedAtUtcTicks,
+                ["domainLoadedAtUtcTicks"] = CompilationResultService.DomainLoadedUtcTicks,
                 ["scriptPaths"] = scriptPaths,
                 ["isCompiling"] = false,
                 ["hasErrors"] = outcome.HasErrors,
@@ -891,7 +914,8 @@ namespace UnitySkills
                 ["finishedAtUtc"] = outcome.FinishedAtUtc,
                 ["nextAction"] = outcome.HasErrors
                     ? "Fix the reported compile errors (they are project-wide), save, then call asset_refresh again and GET its new waitUrl."
-                    : "Compilation succeeded; new and changed types are ready to use."
+                    : outcome.AssemblyCount > 0 ? "Compilation succeeded and the new script domain is loaded."
+                    : "The cycle finished without compiling assemblies; loaded scripts are unchanged."
             };
         }
 

@@ -18,6 +18,15 @@ namespace UnitySkills
             RecoverStalePlaymodeStepJobs();
         }
 
+        [UnitySkill("editor_run_scenario", "Run persisted invoke/read/assert/wait_frames/wait_seconds/wait_condition steps through SkillRouter; executionMode defaults to play. Return an async job with actual/expected evidence and restore owned Play Mode/background settings.",
+            Category = SkillCategory.Editor, Operation = SkillOperation.Execute | SkillOperation.Analyze,
+            Tags = new[] { "scenario", "runtime", "assert", "test", "job" }, Outputs = new[] { "jobId", "kind", "waitUrl" },
+            RequiredParams = new[] { "steps" }, RiskLevel = "high", MutatesScene = true, MutatesAssets = true, MayEnterPlayMode = true, MayTriggerReload = true, SupportsDryRun = true)]
+        public static object EditorRunScenario(string steps, string executionMode = "play", int timeoutSeconds = 60)
+        {
+            return RuntimeScenarioService.Start(steps, executionMode, timeoutSeconds);
+        }
+
         [UnitySkill("editor_play", "Enter play mode. Warning: any unsaved scene changes made during Play mode will be lost when exiting.",
             Category = SkillCategory.Editor, Operation = SkillOperation.Execute,
             Tags = new[] { "play", "runtime", "test" },

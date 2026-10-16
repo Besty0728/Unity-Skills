@@ -60,6 +60,17 @@ namespace UnitySkills.Tests.Core
                 "A query value only overrides its own kind; the other header still applies.");
         }
 
+        [TestCase("/jobs/job1")]
+        [TestCase("/jobs/job1/logs")]
+        [TestCase("/jobs/job1/progress")]
+        public void JobGetRoutes_AreNotExemptFromOriginalInstanceGuard(string path)
+        {
+            var exempt = typeof(SkillsHttpServer).GetMethod("IsInstanceCheckExempt", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That((bool)exempt.Invoke(null, new object[] { "GET", path }), Is.False);
+            var expected = SkillsHttpServer.ReadInstanceExpectation("?wait=90&expectInstance=" + ServingId, null, null);
+            Assert.That(expected.Matches("Another_Editor", ServingName, ServingPath), Is.False);
+        }
+
         // ---------- matching ----------
 
         [Test]

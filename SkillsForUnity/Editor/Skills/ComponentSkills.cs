@@ -704,6 +704,54 @@ namespace UnitySkills
             public string objectType { get; set; }
         }
 
+        [UnitySkill("component_get_methods", "Discover public/private/protected method signatures and exact parameterTypes for component or static C# calls.",
+            Category = SkillCategory.Component, Operation = SkillOperation.Query,
+            Tags = new[] { "method", "reflection", "signature", "runtime" }, Outputs = new[] { "componentType", "methods" },
+            RequiredParams = new[] { "componentType" }, ReadOnly = true, Mode = SkillMode.SemiAuto)]
+        public static object ComponentGetMethods(string componentType, bool isStatic = false, bool includePrivate = true, string methodName = null, string assembly = null)
+        {
+            return ComponentInvocationService.GetMethods(componentType, isStatic, includePrivate, methodName, assembly);
+        }
+
+        [UnitySkill("component_get_methods_batch", "Discover method signatures for JSON items containing componentType, isStatic, includePrivate, methodName.",
+            Category = SkillCategory.Component, Operation = SkillOperation.Query,
+            Tags = new[] { "method", "reflection", "batch" }, Outputs = new[] { "results" },
+            RequiredParams = new[] { "items" }, ReadOnly = true, Mode = SkillMode.SemiAuto)]
+        public static object ComponentGetMethodsBatch(string items)
+        {
+            return BatchExecutor.Execute<MethodDiscoveryItem>(items, item => ComponentGetMethods(item.componentType, item.isStatic, item.includePrivate, item.methodName, item.assembly), item => item.componentType);
+        }
+
+        private sealed class MethodDiscoveryItem
+        {
+            public string componentType, methodName, assembly;
+            public bool isStatic;
+            public bool includePrivate = true;
+        }
+
+        [UnitySkill("component_invoke_method", "Invoke an exact component or static C# method once as a job. Supports arguments, parameterTypes, genericTypeArguments; executionMode defaults to play. No Undo or atomicity guarantee.",
+            Category = SkillCategory.Component, Operation = SkillOperation.Execute,
+            Tags = new[] { "method", "invoke", "runtime", "job" }, Outputs = new[] { "jobId", "kind", "waitUrl" },
+            RequiredParams = new[] { "componentType", "methodName" }, RiskLevel = "high", MutatesScene = true, MutatesAssets = true, MayEnterPlayMode = true, MayTriggerReload = true, SupportsDryRun = true)]
+        public static object ComponentInvokeMethod(string componentType, string methodName, string name = null, int instanceId = 0,
+            string path = null, int componentIndex = 0, bool isStatic = false, string parameterTypes = null,
+            string genericTypeArguments = null, string arguments = null, string executionMode = "play", int timeoutSeconds = 30, string assembly = null)
+        {
+            return ComponentInvocationService.Start(new ComponentInvocationService.Request { componentType = componentType, methodName = methodName,
+                name = name, instanceId = instanceId, path = path, componentIndex = componentIndex, isStatic = isStatic,
+                parameterTypes = parameterTypes, genericTypeArguments = genericTypeArguments, arguments = arguments,
+                executionMode = executionMode, timeoutSeconds = timeoutSeconds, assembly = assembly });
+        }
+
+        [UnitySkill("component_invoke_method_batch", "Accept independent method invocation jobs from JSON items. Each item uses component_invoke_method parameters; accepted jobs are non-atomic and cannot be rolled back.",
+            Category = SkillCategory.Component, Operation = SkillOperation.Execute,
+            Tags = new[] { "method", "invoke", "runtime", "batch", "job" }, Outputs = new[] { "results" },
+            RequiredParams = new[] { "items" }, RiskLevel = "high", MutatesScene = true, MutatesAssets = true, MayEnterPlayMode = true, MayTriggerReload = true, SupportsDryRun = true)]
+        public static object ComponentInvokeMethodBatch(string items)
+        {
+            return BatchExecutor.Execute<ComponentInvocationService.Request>(items, ComponentInvocationService.Start, item => item.componentType + "." + item.methodName, atomic: false);
+        }
+
         [UnitySkill("component_get_properties", "Get all properties of a component (supports name/instanceId/path)",
             Category = SkillCategory.Component, Operation = SkillOperation.Query,
             Tags = new[] { "property", "field", "inspect", "reflection" },

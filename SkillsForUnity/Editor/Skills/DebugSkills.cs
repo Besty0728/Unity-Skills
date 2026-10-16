@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Compilation;
@@ -280,20 +281,30 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("debug_force_recompile", "Force script recompilation.",
+        internal static Action ForceRecompileOverrideForTests;
+
+        [UnitySkill("debug_force_recompile", "Request script recompilation (no parameters); returns jobId and waitUrl. Poll the job for cycle-specific compilation and domain-load proof. Unity may defer this request until Play Mode exits.",
             Category = SkillCategory.Debug, Operation = SkillOperation.Execute,
             Tags = new[] { "recompile", "refresh", "scripts", "compilation" },
-            Outputs = new[] { "message" },
+            Outputs = new[] { "message", "jobId", "waitUrl" },
             MayTriggerReload = true)]
         public static object DebugForceRecompile()
         {
-            AssetDatabase.Refresh();
-            CompilationPipeline.RequestScriptCompilation();
+            var job = AsyncJobService.StartRefreshCompileJob(Array.Empty<string>(), DateTime.UtcNow.Ticks,
+                compilationStartsBefore: CompilationResultService.CompilationStartCount,
+                operation: "debug_force_recompile", requireCompilation: true);
+            if (ForceRecompileOverrideForTests != null)
+                ForceRecompileOverrideForTests();
+            else
+                CompilationPipeline.RequestScriptCompilation(RequestScriptCompilationOptions.CleanBuildCache);
 
             return new
             {
                 success = true,
-                message = "Compilation requested",
+                status = "accepted",
+                message = "Compilation requested; poll the job for its outcome",
+                jobId = job.jobId,
+                waitUrl = AsyncJobService.BuildWaitUrl(job.jobId),
                 serverAvailability = ServerAvailabilityHelper.CreateTransientUnavailableNotice(
                     "Compilation was requested manually. The REST server may be briefly unavailable while Unity reloads assemblies.",
                     alwaysInclude: true)

@@ -25,12 +25,21 @@ namespace UnitySkills
             // /health.mainThreadIdleMs by subtracting "now" from it — exactly how a caller tells "server is dead" from
             // "Unity is busy". Writing it early means the next probe counts a long job in this tick as idle — the honest reading.
             Interlocked.Exchange(ref _mainThreadTickUtc, DateTime.UtcNow.Ticks);
+            Interlocked.Increment(ref _mainThreadTickCount);
+            int playerFrame = Time.frameCount;
+            if (playerFrame != _snapPlayerFrameCount)
+            {
+                _snapPlayerFrameCount = playerFrame;
+                Interlocked.Exchange(ref _playerFrameTickUtc, DateTime.UtcNow.Ticks);
+            }
+            _snapHasActiveJobs = BatchPersistence.ListJobs(int.MaxValue).Any(job => job.status != "completed" && job.status != "failed" && job.status != "cancelled");
 
             // Startup diagnostic counter (a cheap volatile increment, stops at 10000)
             var diagTick = _pjqTicksSinceStart;
             if (diagTick >= 0 && diagTick < 10000)
                 _pjqTicksSinceStart = diagTick + 1;
 
+            DrainBackgroundLogs();
             double frameStart = EditorApplication.timeSinceStartup;
 
             // /health snapshot: the cheap half refreshes every frame, the expensive half only on permission changes or when the 1-second floor expires.

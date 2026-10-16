@@ -102,7 +102,10 @@ namespace UnitySkills.Tests.Core
             // skills/SKILL.md's index already states unity-cli belongs to the same category as manual-* /
             // *-design: "pure doc modules defining no REST skills." It stayed green while unlisted only because
             // that doc kept a leftover Exact Signatures + /skills/schema paragraph; removing it (valid for a zero-endpoint module) would turn it red.
-            "unity-cli"
+            "unity-cli",
+            // Pure authoring guide for extending the plugin itself (0 REST skills), added with the
+            // skill-creator module — same exemption family as adr / unity-cli.
+            "skill-creator"
         };
 
         /// <summary>

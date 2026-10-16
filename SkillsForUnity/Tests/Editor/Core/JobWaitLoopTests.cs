@@ -9,7 +9,7 @@ namespace UnitySkills.Tests.Core
     /// <summary>
     /// GET /jobs/{id}?wait= long polling. The responder itself runs on a ThreadPool thread against a live listener,
     /// so these drive its three testable parts: the query parser, the loop (with a fake clock, probe and abort
-    /// signal) and the response builder; plus the main-thread snapshot that adds resultData for a probe.
+    /// signal) and the response builder; plus the main-thread snapshot that adds resultData for any terminal GET.
     /// </summary>
     [TestFixture]
     public class JobWaitLoopTests
@@ -257,7 +257,7 @@ namespace UnitySkills.Tests.Core
         // ---------- the main-thread snapshot ----------
 
         [Test]
-        public void Snapshot_CarriesResultData_OnlyForATerminalProbe()
+        public void Snapshot_CarriesResultData_ForEveryTerminalGet()
         {
             string jobId = "w1ctest" + Guid.NewGuid().ToString("N").Substring(0, 8);
             var record = new BatchJobRecord
@@ -276,7 +276,8 @@ namespace UnitySkills.Tests.Core
                 var plain = JObject.Parse(ProcessJobsRequest("/jobs/" + jobId, internalProbe: false));
                 var probed = JObject.Parse(ProcessJobsRequest("/jobs/" + jobId, internalProbe: true));
 
-                Assert.That(plain.Property("resultData"), Is.Null, "The plain GET /jobs/{id} shape must not change.");
+                Assert.That(plain["resultData"]?["compilation"]?["hasErrors"]?.Value<bool>(), Is.True,
+                    "Ordinary terminal polls must carry the same result proof as long polls.");
                 Assert.That(probed["terminal"]?.Value<bool>(), Is.True);
                 Assert.That(probed["resultData"]?["compilation"]?["hasErrors"]?.Value<bool>(), Is.True);
 

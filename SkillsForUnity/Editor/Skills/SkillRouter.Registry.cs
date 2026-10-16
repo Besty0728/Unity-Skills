@@ -56,6 +56,8 @@ namespace UnitySkills
                         allowedSet.UnionWith(_reservedBodyParameters);
                         if (!allowedSet.Contains(EntityIdParameterName) && SupportsSyntheticEntityId(parameterNames))
                             allowedSet.Add(EntityIdParameterName);
+                        if (skills.TryGetValue(name, out var existing))
+                            SkillsLogger.LogWarning($"[UnitySkills] Skill name conflict: '{name}' declared by both {existing.Method.DeclaringType.FullName} and {method.DeclaringType.FullName}; using the latter.");
                         skills[name] = new SkillInfo
                         {
                             Name = name,

@@ -181,9 +181,9 @@ namespace UnitySkills
                 terminal,
             }, _jsonSettings);
 
-            // A ?wait= long-poll exists to save the follow-up read, so its terminal answer also carries the job's
-            // result (a script job's compile diagnostics, a test job's counts). The plain GET stays unchanged.
-            if (job.IsInternalProbe && terminal)
+            // Every terminal snapshot includes the result: Python polls ordinary GETs across reloads,
+            // and needs the same compilation/runtime proof as the long-poll responder.
+            if (terminal)
             {
                 var snapshot = JObject.Parse(job.ResponseJson);
                 snapshot["resultData"] = record.resultData == null

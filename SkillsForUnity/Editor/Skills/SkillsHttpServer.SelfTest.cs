@@ -20,7 +20,7 @@ namespace UnitySkills
             if (!_isRunning) return;
             int port = _port;
             int pjqTicks = _pjqTicksSinceStart;
-            SkillsLogger.LogVerbose($"[Self-Test] Starting (ProcessJobQueue ticks={pjqTicks}, listener={_listener?.IsListening})");
+            QueueBackgroundLog("verbose", $"[Self-Test] Starting (ProcessJobQueue ticks={pjqTicks}, listener={_listener?.IsListening})");
 
             ThreadPool.QueueUserWorkItem(_ =>
             {
@@ -54,7 +54,7 @@ namespace UnitySkills
 
                                 if (response.Contains("200") && response.Contains("\"status\""))
                                 {
-                                    SkillsLogger.LogVerbose($"[Self-Test] {url} -> OK");
+                                    QueueBackgroundLog("verbose", $"[Self-Test] {url} -> OK");
                                     success = true;
                                     break;
                                 }
@@ -69,7 +69,7 @@ namespace UnitySkills
                                         continue;
                                     }
 
-                                    SkillsLogger.LogWarning($"[Self-Test] {url} -> {firstLine}");
+                                    QueueBackgroundLog("warning", $"[Self-Test] {url} -> {firstLine}");
                                     success = true;
                                     break;
                                 }
@@ -87,8 +87,8 @@ namespace UnitySkills
 
                     if (!success)
                     {
-                        SkillsLogger.LogWarning($"[Self-Test] {url} -> FAILED after 3 attempts: {lastError}");
-                        SkillsLogger.LogWarning($"[Self-Test] Main thread may be busy (PJQ ticks={_pjqTicksSinceStart}). External clients can connect once editor is responsive.");
+                        QueueBackgroundLog("warning", $"[Self-Test] {url} -> FAILED after 3 attempts: {lastError}");
+                        QueueBackgroundLog("warning", $"[Self-Test] Main thread may be busy (PJQ ticks={_pjqTicksSinceStart}). External clients can connect once editor is responsive.");
                     }
                 }
 
