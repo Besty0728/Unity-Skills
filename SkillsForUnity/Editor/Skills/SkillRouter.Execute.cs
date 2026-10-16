@@ -373,7 +373,9 @@ namespace UnitySkills
                 // the diff can never break the response, and a skill that reported an error above never reaches this point anyway.
                 JToken sceneDiff = BuildSceneDiff(captureDiff, skill, diffCapture, result);
 
-                if (!verbose && result != null)
+                // Explicit paging keys page the response whatever verbose says; verbose only governs the automatic truncation.
+                bool explicitPaging = offset.HasValue || limit.HasValue;
+                if ((!verbose || explicitPaging) && result != null)
                 {
                     // "Summary Mode" logic with pagination
                     var jsonResult = JToken.FromObject(result);
@@ -382,7 +384,7 @@ namespace UnitySkills
                     // Read once: a single main-thread EditorPrefs-backed property access, reused below as both the
                     // auto-truncation trigger and the default page size, so the two can never disagree with each other.
                     int summaryPageSize = SummaryPageSize;
-                    if (arr != null && ((SummaryAutoTruncate && arr.Count > summaryPageSize) || offset.HasValue || limit.HasValue))
+                    if (arr != null && ((SummaryAutoTruncate && arr.Count > summaryPageSize) || explicitPaging))
                     {
                         int startIndex = offset ?? 0;
                         int pageSize = limit ?? summaryPageSize;
@@ -435,8 +437,10 @@ namespace UnitySkills
 
                         if (hasMore)
                         {
+                            // With paging keys sent, verbose=true alone returns this same page again.
+                            var allItems = explicitPaging ? "drop the paging keys and pass 'verbose=true'" : "'verbose=true'";
                             wrapper["nextOffset"] = nextOffset;
-                            wrapper["hint"] = $"Showing items {startIndex}-{endIndex - 1} of {arr.Count}. To see more, pass 'pageOffset={nextOffset}' (or 'verbose=true' for all items).";
+                            wrapper["hint"] = $"Showing items {startIndex}-{endIndex - 1} of {arr.Count}. To see more, pass 'pageOffset={nextOffset}' (or {allItems} for all items).";
                         }
                         else
                         {
@@ -456,7 +460,7 @@ namespace UnitySkills
                     }
                 }
 
-                // Full mode (verbose=true, or the result is already small): return as-is
+                // Full mode (verbose=true without paging keys, or the result is already small): return as-is
                 return SerializeSuccessResponse(result, sceneDiff, workflowEndMs, resolutionNotes);
             }
             catch (TargetInvocationException ex)

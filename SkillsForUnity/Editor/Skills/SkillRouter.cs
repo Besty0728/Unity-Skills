@@ -262,6 +262,8 @@ namespace UnitySkills
             "sequencerPath"
         };
 
+        // Only decides whether a skill exposes the synthetic entityId (SupportsSyntheticEntityId): entityId is never
+        // forwarded as a name, since a same-name object would take the call.
         private static readonly string[] _entityIdNameFallbackParameters =
         {
             "name",
