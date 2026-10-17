@@ -1294,6 +1294,7 @@
   "tab_eval_problem_scene_untitled": "请打开或保存一个有文件路径的场景，再重试。",
   "tab_eval_problem_residue_found": "发现之前评测留下的数据（{0}）；请在评测页点击清理旧数据，或运行 cleanup --stale。",
   "tab_eval_problem_private_pack_unreachable": "请确保可以连接 raw.githubusercontent.com 或 cdn.jsdelivr.net，或从发布页下载验收文件 zip 包并传入 --private-zip <zip>。",
+  "tab_eval_problem_private_pack_tls": "下载验收文件时证书校验失败。请为你的 Python 安装根证书，或把 SSL_CERT_FILE 设为你的 CA 证书文件，也可以导入离线 zip 包（--private-zip <zip>），然后重试。{0}",
   "tab_eval_problem_verification_pending": "验收文件无法下载。请恢复网络连接（或获取验收文件 zip 包），然后运行：{0}",
   "tab_eval_problem_pack_plugin_range": "该题包需要 UnitySkills {0} 到 {1}，请更新包。",
   "tab_eval_problem_cleanup_needs_scene": "请先在 Unity 中打开一个你自己的场景，再重新清理。",

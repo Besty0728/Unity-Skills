@@ -1294,6 +1294,7 @@
   "tab_eval_problem_scene_untitled": "Откройте или сохраните сцену с путём к файлу и повторите.",
   "tab_eval_problem_residue_found": "Найдены остатки прошлой оценки ({0}); нажмите «Очистить старые запуски» на вкладке «Оценка» или выполните cleanup --stale.",
   "tab_eval_problem_private_pack_unreachable": "Разрешите доступ к raw.githubusercontent.com или cdn.jsdelivr.net либо скачайте zip-архив закрытого пакета со страницы релиза и передайте --private-zip <zip>.",
+  "tab_eval_problem_private_pack_tls": "Не удалось проверить TLS-сертификат при загрузке файлов проверки. Установите корневые сертификаты для своего Python или укажите в SSL_CERT_FILE путь к файлу сертификатов CA, либо импортируйте офлайн-архив (--private-zip <zip>), затем повторите. {0}",
   "tab_eval_problem_verification_pending": "Не удалось скачать файлы проверки. Восстановите доступ к сети (или получите zip-архив закрытого пакета) и выполните: {0}",
   "tab_eval_problem_pack_plugin_range": "Этому пакету заданий нужен UnitySkills от {0} до {1}; обновите пакет.",
   "tab_eval_problem_cleanup_needs_scene": "Откройте в Unity одну из своих сцен и снова запустите очистку.",

@@ -1294,6 +1294,7 @@
   "tab_eval_problem_scene_untitled": "Open or save a scene that has a file path, then retry.",
   "tab_eval_problem_residue_found": "Leftover evaluation data found ({0}); click Clean up in the Evaluation tab or run cleanup --stale.",
   "tab_eval_problem_private_pack_unreachable": "Allow access to raw.githubusercontent.com or cdn.jsdelivr.net, or download the private pack zip from the release page and pass --private-zip <zip>.",
+  "tab_eval_problem_private_pack_tls": "Certificate verification failed while downloading the verification files. Install the root certificates for your Python or set SSL_CERT_FILE to your CA certificate file, or import the offline zip (--private-zip <zip>), then retry. {0}",
   "tab_eval_problem_verification_pending": "Verification files could not be downloaded. Restore network access (or get the private pack zip), then run: {0}",
   "tab_eval_problem_pack_plugin_range": "This task pack needs UnitySkills {0} to {1}; update the package.",
   "tab_eval_problem_cleanup_needs_scene": "Open one of your own scenes in Unity, then run cleanup again.",
