@@ -2,16 +2,18 @@
 import io
 import os
 import shutil
+from unittest import mock
 
 try:
-    from .test_pack_support import TempCase, read_text, save_json, write_text
+    from .test_pack_support import TempCase, pack, read_text, save_json, write_text
 except ImportError:
-    from test_pack_support import TempCase, read_text, save_json, write_text
+    from test_pack_support import TempCase, pack, read_text, save_json, write_text
 
 import build_pack_manifest as builder  # noqa: E402
 import lint_pack as lint               # noqa: E402
 
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc")
+BASIC_TASKS = ("S01", "S03", "S04", "S06", "S08", "D01")
 
 
 class LintCase(TempCase):
@@ -75,10 +77,20 @@ class ShippedPackTests(LintCase):
         self.assert_only()
 
     def test_every_task_is_linted(self):
-        tasks = {f.task for f in lint.lint(self.pack_root, self.private_root, self.solutions_root)}
-        self.assertTrue(tasks <= {"S01", "S03", "S04", "S06", "S08", "D01", None})
-        self.assertEqual(lint._task_ids(self.pack_root, builder._read_previous(
-            os.path.join(self.pack_root, "manifest.json"))), ["S01", "S03", "S04", "S06", "S08", "D01"])
+        manifest = builder._read_previous(os.path.join(self.pack_root, "manifest.json"))
+        wanted = pack.all_task_ids(manifest)
+        for task_id in BASIC_TASKS:
+            self.assertIn(task_id, wanted)
+        linted = []
+        real = lint.lint_task
+
+        def spy(task_id, *args, **kwargs):
+            linted.append(task_id)
+            return real(task_id, *args, **kwargs)
+
+        with mock.patch.object(lint, "lint_task", spy):
+            lint.lint(self.pack_root, self.private_root, self.solutions_root)
+        self.assertEqual(linted, wanted)
 
 
 class RuleTests(LintCase):
