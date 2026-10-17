@@ -56,6 +56,11 @@
                         <ui:Label name="tab-visible-analytics-label" class="setting-row__label" text="Analytics" />
                         <ui:Toggle name="tab-visible-analytics-toggle" class="setting-toggle" />
                     </ui:VisualElement>
+
+                    <ui:VisualElement class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                        <ui:Label name="tab-visible-evaluation-label" class="setting-row__label" text="Evaluation" />
+                        <ui:Toggle name="tab-visible-evaluation-toggle" class="setting-toggle" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
 
                 <!-- Permissions group -->

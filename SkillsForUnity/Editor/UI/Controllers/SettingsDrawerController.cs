@@ -90,6 +90,8 @@ namespace UnitySkills
         private Label         _tabVisibleAnalyticsLabel;
         private Toggle        _tabVisibleAnalyticsToggle;
         private VisualElement _rowTabVisibleAnalytics;
+        private Label         _tabVisibleEvaluationLabel;
+        private Toggle        _tabVisibleEvaluationToggle;
 
         // AI tools group
         private Label  _agentSyncGroupTitle;
@@ -244,6 +246,8 @@ namespace UnitySkills
             _tabVisibleAnalyticsLabel = _drawerContainer.Q<Label>("tab-visible-analytics-label");
             _tabVisibleAnalyticsToggle= _drawerContainer.Q<Toggle>("tab-visible-analytics-toggle");
             _rowTabVisibleAnalytics   = _drawerContainer.Q<VisualElement>("row-tab-visible-analytics");
+            _tabVisibleEvaluationLabel = _drawerContainer.Q<Label>("tab-visible-evaluation-label");
+            _tabVisibleEvaluationToggle = _drawerContainer.Q<Toggle>("tab-visible-evaluation-toggle");
 
             _agentSyncGroupTitle = _drawerContainer.Q<Label>("group-agent-sync-title");
             _agentAutoSyncToggle = _drawerContainer.Q<Toggle>("agent-autosync-toggle");
@@ -328,6 +332,8 @@ namespace UnitySkills
                 _tabVisibleHistoryToggle.RegisterValueChangedCallback(evt => TabVisibilitySettings.SetUserPreference("history", evt.newValue));
             if (_tabVisibleAnalyticsToggle != null)
                 _tabVisibleAnalyticsToggle.RegisterValueChangedCallback(evt => TabVisibilitySettings.SetUserPreference("analytics", evt.newValue));
+            if (_tabVisibleEvaluationToggle != null)
+                _tabVisibleEvaluationToggle.RegisterValueChangedCallback(evt => TabVisibilitySettings.SetUserPreference("evaluation", evt.newValue));
 
             SkillsModeManager.OnChanged += RefreshPermissionsUi;
             TabVisibilitySettings.OnChanged += SyncTabVisibilityUi;
@@ -501,6 +507,7 @@ namespace UnitySkills
             _tabVisibleUnityCliToggle?.SetValueWithoutNotify(TabVisibilitySettings.GetUserPreference("unitycli"));
             _tabVisibleHistoryToggle?.SetValueWithoutNotify(TabVisibilitySettings.GetUserPreference("history"));
             _tabVisibleAnalyticsToggle?.SetValueWithoutNotify(TabVisibilitySettings.GetUserPreference("analytics"));
+            _tabVisibleEvaluationToggle?.SetValueWithoutNotify(TabVisibilitySettings.GetUserPreference("evaluation"));
         }
 
         public void Open()
@@ -610,6 +617,7 @@ namespace UnitySkills
             if (_tabVisibleUnityCliLabel != null) _tabVisibleUnityCliLabel.text = SkillsLocalization.Get("tab_unity_cli");
             if (_tabVisibleHistoryLabel != null) _tabVisibleHistoryLabel.text = SkillsLocalization.Get("tab_history");
             if (_tabVisibleAnalyticsLabel != null) _tabVisibleAnalyticsLabel.text = SkillsLocalization.Get("tab_analytics");
+            if (_tabVisibleEvaluationLabel != null) _tabVisibleEvaluationLabel.text = SkillsLocalization.Get("tab_evaluation");
 
             if (_agentSyncGroupTitle != null)
                 _agentSyncGroupTitle.text = SkillsLocalization.Get("drawer_section_agent_sync");
@@ -1074,6 +1082,7 @@ namespace UnitySkills
             _tabVisibleUnityCliToggle?.SetValueWithoutNotify(TabVisibilitySettings.GetUserPreference("unitycli"));
             _tabVisibleHistoryToggle?.SetValueWithoutNotify(TabVisibilitySettings.GetUserPreference("history"));
             _tabVisibleAnalyticsToggle?.SetValueWithoutNotify(TabVisibilitySettings.GetUserPreference("analytics"));
+            _tabVisibleEvaluationToggle?.SetValueWithoutNotify(TabVisibilitySettings.GetUserPreference("evaluation"));
 
             // 3) The Pending list — shown only in Approval mode + when there are pending items
             var pending = SkillsModeManager.PendingGrantRequests;

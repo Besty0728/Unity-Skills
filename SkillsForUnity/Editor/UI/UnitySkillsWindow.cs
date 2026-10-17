@@ -11,7 +11,7 @@ namespace UnitySkills
     /// <summary>
     /// Unity Editor Window — UnitySkills layout.
     /// Topbar (server status + URL + toggle + settings) — persistent.
-    /// 6 tabs: Skills / AI Config / Permissions / Unity CLI / History / Analytics.
+    /// 6 tabs: Skills / AI Config / Unity CLI / History / Analytics / Evaluation.
     /// Footer: version + live stats pill + segmented language switch.
     /// Settings panel: slide-in drawer from the right.
     /// </summary>
@@ -37,6 +37,7 @@ namespace UnitySkills
             UnityCli,
             History,
             Analytics,
+            Evaluation,
         }
 
         private sealed class MainTabDefinition
@@ -67,6 +68,7 @@ namespace UnitySkills
             new MainTabDefinition(MainTabId.UnityCli, "tab-btn-unity-cli", "tab-wrap-unity-cli", "tab-content-unity-cli", "tab-underline-unity-cli", "tab_unity_cli"),
             new MainTabDefinition(MainTabId.History, "tab-btn-history", "tab-wrap-history", "tab-content-history", "tab-underline-history", "tab_history"),
             new MainTabDefinition(MainTabId.Analytics, "tab-btn-analytics", "tab-wrap-analytics", "tab-content-analytics", "tab-underline-analytics", "tab_analytics"),
+            new MainTabDefinition(MainTabId.Evaluation, "tab-btn-evaluation", "tab-wrap-evaluation", "tab-content-evaluation", "tab-underline-evaluation", "tab_evaluation"),
         };
 
         private const float FixedTabWidth = 120f;
@@ -99,6 +101,7 @@ namespace UnitySkills
         private UnityCliTabController    _cliController;
         private HistoryTabController     _historyController;
         private AnalyticsTabController   _analyticsController;
+        private EvaluationTabController  _evaluationController;
 
         // ----- Tab strip -----
         private VisualElement[] _tabContents;
@@ -150,6 +153,8 @@ namespace UnitySkills
             _skillsController = null;
             _cliController?.Dispose();
             _cliController = null;
+            _evaluationController?.Dispose();
+            _evaluationController = null;
             _drawer?.Dispose();
             _drawer = null;
         }
@@ -203,6 +208,7 @@ namespace UnitySkills
             _cliController = new UnityCliTabController(GetTabContent(MainTabId.UnityCli), this);
             _historyController = new HistoryTabController(GetTabContent(MainTabId.History), this);
             _analyticsController = new AnalyticsTabController(GetTabContent(MainTabId.Analytics), this);
+            _evaluationController = new EvaluationTabController(GetTabContent(MainTabId.Evaluation), this);
 
             // --- Tab clicks ---
             for (int i = 0; i < _tabButtons.Length; i++)
@@ -404,6 +410,8 @@ namespace UnitySkills
             // Analytics pulls aggregates on demand (30s cache in SkillTelemetryService),
             // so activating the tab is the natural refresh point — no live tick involved.
             if (MainTabs[index].Id == MainTabId.Analytics) _analyticsController?.OnTabSelected();
+            // The Evaluation tab re-reads the runner's state files and consumes finished commands on activation.
+            if (MainTabs[index].Id == MainTabId.Evaluation) _evaluationController?.OnTabSelected();
         }
 
         private int GetTabIndex(MainTabId id)
@@ -565,6 +573,7 @@ namespace UnitySkills
             _cliController?.RefreshLocalization();
             _historyController?.RefreshLocalization();
             _analyticsController?.RefreshLocalization();
+            _evaluationController?.RefreshLocalization();
         }
 
         // ===== Skill catalog (preserved API for controllers) =====

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -517,17 +518,7 @@ namespace UnitySkills
                 return templateRoot;
 
             // 2. Inside the UPM package (unity-skills~ is the tilde hidden directory shipped with the package)
-            string resolvedPath = null;
-            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(SkillInstaller).Assembly);
-            if (packageInfo != null)
-                resolvedPath = packageInfo.resolvedPath;
-
-            if (string.IsNullOrEmpty(resolvedPath))
-            {
-                packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/com.besty.unity-skills");
-                if (packageInfo != null)
-                    resolvedPath = packageInfo.resolvedPath;
-            }
+            PackageRootLocator.TryGet(out var resolvedPath);
 
             if (!string.IsNullOrEmpty(resolvedPath))
             {

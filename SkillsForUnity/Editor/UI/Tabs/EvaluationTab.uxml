@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements"
+         xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements"
+         editor="UnityEditor.UIElements"
+         noNamespaceSchemaLocation="../../../../../../../UIElementsSchema/UIElementsSchema.xsd">
+
+    <ui:ScrollView name="eval-scroll" class="eval-scroll scroll-view"
+                   style="flex-grow: 1; min-height: 0;">
+
+        <!-- Header: title + what the runner is doing -->
+        <ui:VisualElement name="eval-header" class="eval-header"
+                          style="flex-direction: row; align-items: center; flex-shrink: 0;">
+            <ui:Label name="eval-title" class="section-title" text="Evaluation" />
+            <ui:VisualElement style="flex-grow: 1;" />
+            <ui:Label name="eval-activity" class="eval-activity is-hidden" text="" />
+        </ui:VisualElement>
+        <ui:Label name="eval-intro" class="eval-hint" text="" />
+
+        <!-- 1. Environment: marker, Python, operating mode, check -->
+        <ui:VisualElement name="eval-env-section" class="eval-section" style="flex-direction: column;">
+            <ui:Label name="eval-env-title" class="eval-section-title" text="Environment" />
+
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-marker-label" class="eval-row-label" text="Project" />
+                <ui:Label name="eval-marker-value" class="eval-value" text="" />
+                <ui:Button name="eval-marker-btn" class="mini-btn" text="Mark" />
+            </ui:VisualElement>
+            <ui:VisualElement name="eval-marker-confirm" class="eval-confirm is-hidden" style="flex-direction: column;">
+                <ui:Label name="eval-marker-confirm-text" class="eval-hint" text="" />
+                <ui:Label name="eval-marker-error" class="eval-message eval-message--problem is-hidden" text="" />
+                <ui:VisualElement class="eval-row eval-row--actions" style="flex-direction: row;">
+                    <ui:Button name="eval-marker-confirm-ok" class="mini-btn eval-btn-primary" text="Mark" />
+                    <ui:Button name="eval-marker-confirm-cancel" class="mini-btn" text="Cancel" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-python-label" class="eval-row-label" text="Python" />
+                <ui:Label name="eval-python-value" class="eval-value" text="" />
+                <ui:Button name="eval-python-detect-btn" class="mini-btn" text="Detect" />
+            </ui:VisualElement>
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-python-override-label" class="eval-row-label" text="Python path" />
+                <ui:TextField name="eval-python-override" class="eval-field" />
+                <ui:Button name="eval-python-use-btn" class="mini-btn" text="Use" />
+                <ui:Button name="eval-python-clear-btn" class="mini-btn" text="Clear" />
+            </ui:VisualElement>
+
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-mode-label" class="eval-row-label" text="Operating mode" />
+                <ui:Label name="eval-mode-value" class="eval-value" text="" />
+            </ui:VisualElement>
+            <ui:VisualElement class="eval-row eval-row--actions" style="flex-direction: row;">
+                <ui:Button name="eval-mode-switch-btn" class="mini-btn" text="Switch to Bypass" />
+                <ui:Button name="eval-mode-restore-btn" class="mini-btn" text="Restore now" />
+            </ui:VisualElement>
+            <ui:Label name="eval-mode-note" class="eval-hint is-hidden" text="" />
+
+            <ui:VisualElement class="eval-row eval-row--actions" style="flex-direction: row; align-items: center;">
+                <ui:Button name="eval-check-btn" class="mini-btn eval-btn-primary" text="Run check" />
+                <ui:Button name="eval-cleanup-btn" class="mini-btn" text="Clean up" />
+            </ui:VisualElement>
+            <ui:Label name="eval-check-summary" class="eval-value is-hidden" text="" />
+            <ui:VisualElement name="eval-env-messages" class="eval-messages" style="flex-direction: column;" />
+        </ui:VisualElement>
+
+        <!-- 2. Configuration -->
+        <ui:VisualElement name="eval-config-section" class="eval-section" style="flex-direction: column;">
+            <ui:Label name="eval-config-title" class="eval-section-title" text="Configuration" />
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-track-label" class="eval-row-label" text="Track" />
+                <ui:DropdownField name="eval-track" class="eval-choice" />
+            </ui:VisualElement>
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-tier-label" class="eval-row-label" text="Tier" />
+                <ui:DropdownField name="eval-tier" class="eval-choice" />
+            </ui:VisualElement>
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-run-mode-label" class="eval-row-label" text="Session mode" />
+                <ui:DropdownField name="eval-run-mode" class="eval-choice" />
+            </ui:VisualElement>
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-lang-label" class="eval-row-label" text="Prompt language" />
+                <ui:DropdownField name="eval-lang" class="eval-choice" />
+            </ui:VisualElement>
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-host-label" class="eval-row-label" text="Agent host" />
+                <ui:DropdownField name="eval-host" class="eval-choice" />
+            </ui:VisualElement>
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-model-label" class="eval-row-label" text="Model" />
+                <ui:TextField name="eval-model" class="eval-field" />
+            </ui:VisualElement>
+            <ui:VisualElement class="eval-row" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-effort-label" class="eval-row-label" text="Reasoning effort" />
+                <ui:TextField name="eval-effort" class="eval-field" />
+            </ui:VisualElement>
+            <ui:Label name="eval-declared-hint" class="eval-hint" text="" />
+            <ui:VisualElement class="setting-row" style="flex-direction: row; align-items: center; justify-content: space-between;">
+                <ui:Label name="eval-usage-label" class="setting-row__label" text="Read token usage" />
+                <ui:Toggle name="eval-usage-toggle" class="setting-toggle" />
+            </ui:VisualElement>
+            <ui:Label name="eval-usage-hint" class="eval-hint" text="" />
+        </ui:VisualElement>
+
+        <!-- 3. Start -->
+        <ui:VisualElement name="eval-start-section" class="eval-section" style="flex-direction: column;">
+            <ui:Label name="eval-start-title" class="eval-section-title" text="Start" />
+            <ui:Label name="eval-start-hint" class="eval-hint" text="" />
+            <ui:VisualElement class="eval-row eval-row--actions" style="flex-direction: row; align-items: center;">
+                <ui:Button name="eval-start-btn" class="mini-btn eval-btn-primary" text="Start session" />
+                <ui:Button name="eval-copy-prompt-btn" class="mini-btn" text="Copy session prompt" />
+                <ui:Button name="eval-open-prompt-btn" class="mini-btn" text="Open prompt file" />
+            </ui:VisualElement>
+            <ui:Label name="eval-copied" class="eval-copied is-hidden" text="" />
+            <ui:VisualElement name="eval-start-messages" class="eval-messages" style="flex-direction: column;" />
+        </ui:VisualElement>
+
+        <!-- 4. Progress: read from the runner's state files, never scores -->
+        <ui:VisualElement name="eval-progress-section" class="eval-section" style="flex-direction: column;">
+            <ui:VisualElement class="eval-section-head" style="flex-direction: row; align-items: center;">
+                <ui:Label name="eval-progress-title" class="eval-section-title" text="Progress" />
+                <ui:VisualElement style="flex-grow: 1;" />
+                <ui:Button name="eval-refresh-btn" class="mini-btn" tooltip="Refresh" />
+            </ui:VisualElement>
+            <ui:Label name="eval-session-line" class="eval-value" text="" />
+            <ui:Label name="eval-task-line" class="eval-value is-hidden" text="" />
+            <ui:VisualElement name="eval-task-list" class="eval-list" style="flex-direction: column;" />
+            <ui:VisualElement class="eval-row eval-row--actions" style="flex-direction: row; align-items: center;">
+                <ui:Button name="eval-submit-btn" class="mini-btn" text="Check completion" />
+                <ui:Button name="eval-abort-btn" class="mini-btn danger" text="Abort session" />
+            </ui:VisualElement>
+            <ui:Label name="eval-submit-hint" class="eval-hint" text="" />
+            <ui:VisualElement name="eval-abort-confirm" class="eval-confirm is-hidden" style="flex-direction: column;">
+                <ui:Label name="eval-abort-confirm-text" class="eval-hint" text="" />
+                <ui:VisualElement class="eval-row eval-row--actions" style="flex-direction: row;">
+                    <ui:Button name="eval-abort-confirm-ok" class="mini-btn danger" text="Abort" />
+                    <ui:Button name="eval-abort-confirm-cancel" class="mini-btn" text="Cancel" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="eval-progress-messages" class="eval-messages" style="flex-direction: column;" />
+        </ui:VisualElement>
+
+        <!-- 5. Report and history -->
+        <ui:VisualElement name="eval-report-section" class="eval-section" style="flex-direction: column;">
+            <ui:Label name="eval-report-title" class="eval-section-title" text="Report" />
+            <ui:Label name="eval-report-session" class="eval-hint" text="" />
+            <ui:Label name="eval-report-summary" class="eval-value is-hidden" text="" />
+            <ui:Label name="eval-report-metrics" class="eval-value is-hidden" text="" />
+            <ui:Label name="eval-report-unofficial" class="eval-message eval-message--notice is-hidden" text="" />
+            <ui:VisualElement name="eval-report-tasks" class="eval-list" style="flex-direction: column;" />
+            <ui:VisualElement class="eval-row eval-row--actions" style="flex-direction: row; align-items: center;">
+                <ui:Button name="eval-report-btn" class="mini-btn" text="Build report" />
+                <ui:Button name="eval-open-report-btn" class="mini-btn" text="Open report" />
+                <ui:Button name="eval-reveal-report-btn" class="mini-btn" text="Reveal" />
+            </ui:VisualElement>
+            <ui:VisualElement name="eval-report-messages" class="eval-messages" style="flex-direction: column;" />
+            <ui:Label name="eval-history-title" class="eval-subtitle" text="History" />
+            <ui:VisualElement name="eval-history-list" class="eval-list" style="flex-direction: column;" />
+        </ui:VisualElement>
+    </ui:ScrollView>
+</ui:UXML>

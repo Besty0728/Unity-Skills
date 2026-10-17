@@ -2109,3 +2109,242 @@
 .credit-block__icon:hover {
     opacity: 0.85;
 }
+
+/* ===================================================================
+ * EVALUATION TAB (EvaluationTabController) — existing tokens only, so
+ * the light theme needs no extra values.
+ * =================================================================== */
+.eval-scroll {
+    padding: 8px 10px;
+}
+
+.eval-header {
+    margin-bottom: 2px;
+}
+
+.eval-activity {
+    font-size: 10px;
+    color: var(--color-warning);
+    margin-left: 8px;
+}
+
+.eval-section {
+    background-color: var(--color-card-bg);
+    border-width: 1px;
+    border-color: var(--color-card-border);
+    border-radius: 3px;
+    padding: 8px 10px;
+    margin-top: 8px;
+}
+
+.eval-section-title {
+    font-size: 11px;
+    color: var(--color-accent);
+    margin-bottom: 6px;
+}
+
+.eval-section-head > .eval-section-title {
+    margin-bottom: 0;
+}
+
+.eval-section-head {
+    margin-bottom: 6px;
+}
+
+.eval-subtitle {
+    font-size: 10px;
+    color: var(--color-muted);
+    margin-top: 10px;
+    margin-bottom: 4px;
+    padding-bottom: 2px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--color-card-border);
+}
+
+.eval-row {
+    flex-direction: row;
+    align-items: center;
+    min-width: 0;
+    margin-bottom: 4px;
+}
+
+.eval-row--actions {
+    flex-wrap: wrap;
+}
+
+.eval-row--actions > .mini-btn {
+    margin: 0 4px 4px 0;
+}
+
+.eval-row-label {
+    width: 120px;
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    white-space: normal;
+    margin-right: 6px;
+}
+
+.eval-value {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    font-size: 11px;
+    color: var(--color-text);
+    white-space: normal;
+    margin-bottom: 2px;
+}
+
+.eval-hint {
+    font-size: 10px;
+    color: var(--color-muted);
+    white-space: normal;
+    margin-bottom: 4px;
+}
+
+.eval-field {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 60px;
+    height: 20px;
+    margin: 0 2px 0 0;
+}
+
+.eval-choice {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 80px;
+    height: 20px;
+    margin: 0;
+}
+
+.eval-confirm {
+    background-color: var(--color-panel);
+    border-left-width: 3px;
+    border-left-color: var(--color-warning);
+    padding: 6px 8px;
+    margin: 2px 0 6px 0;
+}
+
+.mini-btn.eval-btn-primary {
+    background-color: var(--color-accent-dark);
+    border-color: var(--color-accent-dark);
+    color: var(--color-text-on-accent);
+}
+
+.mini-btn.eval-btn-primary:hover {
+    background-color: var(--color-accent);
+}
+
+.eval-copied {
+    font-size: 10px;
+    color: var(--color-success);
+    white-space: normal;
+    margin-bottom: 4px;
+}
+
+.eval-state--ok { color: var(--color-success); }
+.eval-state--warn { color: var(--color-warning); }
+.eval-state--error { color: var(--color-error); }
+
+.eval-messages {
+    margin-top: 2px;
+}
+
+.eval-message-row {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 4px;
+    margin-bottom: 2px;
+}
+
+.eval-message-head {
+    font-size: 10px;
+    color: var(--color-muted);
+    margin-right: 6px;
+}
+
+.eval-message {
+    font-size: 11px;
+    white-space: normal;
+    padding-left: 6px;
+    margin-bottom: 2px;
+    border-left-width: 2px;
+    border-left-color: var(--color-card-border);
+    color: var(--color-text-secondary);
+}
+
+.eval-message--ok {
+    color: var(--color-success);
+    border-left-color: var(--color-success);
+}
+
+.eval-message--problem {
+    color: var(--color-error);
+    border-left-color: var(--color-error);
+}
+
+.eval-message--notice {
+    color: var(--color-warning);
+    border-left-color: var(--color-warning);
+}
+
+.eval-list {
+    margin-top: 2px;
+    margin-bottom: 4px;
+}
+
+.eval-list-row {
+    flex-direction: row;
+    align-items: center;
+    min-height: 18px;
+    margin-bottom: 1px;
+}
+
+.eval-list-row__id {
+    width: 90px;
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--color-text);
+}
+
+.eval-list-row--history > .eval-list-row__id {
+    width: 170px;
+}
+
+.eval-list-row__text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    white-space: normal;
+}
+
+.eval-list-subline {
+    font-size: 10px;
+    color: var(--color-muted);
+    white-space: normal;
+    margin-left: 90px;
+    margin-bottom: 2px;
+}
+
+.eval-usage-editor {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-left: 90px;
+    margin-bottom: 4px;
+}
+
+.eval-usage-editor__label {
+    font-size: 10px;
+    color: var(--color-text-secondary);
+    margin-right: 4px;
+}
+
+.eval-usage-editor__field {
+    width: 90px;
+    height: 20px;
+    margin: 0 8px 0 0;
+}

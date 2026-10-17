@@ -14,16 +14,16 @@ namespace UnitySkills.Tests.Core
         private const string WindowUssPath = "Packages/com.besty.unity-skills/Editor/UI/UnitySkillsWindow.uss";
 
         [Test]
-        public void MainTabRegistry_PreservesFiveLocalizedEntries()
+        public void MainTabRegistry_PreservesSixLocalizedEntries()
         {
             var field = typeof(UnitySkillsWindow).GetField("MainTabs", BindingFlags.Static | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, "MainTabs registry is missing.");
 
             var entries = ((Array)field.GetValue(null)).Cast<object>().ToArray();
-            Assert.That(entries.Length, Is.EqualTo(5));
+            Assert.That(entries.Length, Is.EqualTo(6));
 
             var ids = entries.Select(entry => entry.GetType().GetField("Id").GetValue(entry).ToString()).ToArray();
-            Assert.That(ids, Is.EqualTo(new[] { "Skills", "AiConfig", "UnityCli", "History", "Analytics" }));
+            Assert.That(ids, Is.EqualTo(new[] { "Skills", "AiConfig", "UnityCli", "History", "Analytics", "Evaluation" }));
 
             var localizationKeys = entries
                 .Select(entry => (string)entry.GetType().GetField("LocalizationKey").GetValue(entry))
@@ -31,7 +31,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(localizationKeys, Is.EqualTo(new[]
             {
                 "tab_skills", "tab_ai_config", "tab_unity_cli",
-                "tab_history", "tab_analytics"
+                "tab_history", "tab_analytics", "tab_evaluation"
             }));
         }
 
@@ -49,7 +49,7 @@ namespace UnitySkills.Tests.Core
             StringAssert.DoesNotContain("tab-btn-0", uxml);
             StringAssert.DoesNotContain("tab-content-0", uxml);
 
-            foreach (var id in new[] { "skills", "ai-config", "unity-cli", "history", "analytics" })
+            foreach (var id in new[] { "skills", "ai-config", "unity-cli", "history", "analytics", "evaluation" })
             {
                 StringAssert.Contains($"tab-btn-{id}", uxml);
                 StringAssert.Contains($"tab-wrap-{id}", uxml);

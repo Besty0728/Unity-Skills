@@ -130,6 +130,10 @@
                         <ui:Button name="tab-btn-analytics" text="Analytics" class="tab-btn" />
                         <ui:VisualElement name="tab-underline-analytics" class="tab-underline" />
                     </ui:VisualElement>
+                    <ui:VisualElement name="tab-wrap-evaluation" class="tab-wrap" style="flex-grow: 1; flex-direction: column;">
+                        <ui:Button name="tab-btn-evaluation" text="Evaluation" class="tab-btn" />
+                        <ui:VisualElement name="tab-underline-evaluation" class="tab-underline" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:ScrollView>
             <ui:Button name="tab-scroll-next-btn" class="tab-scroll-arrow-btn tab-scroll-arrow-btn--next"
@@ -148,6 +152,7 @@
             <ui:VisualElement name="tab-content-unity-cli" class="tab-pane" style="flex-grow: 1;" />
             <ui:VisualElement name="tab-content-history" class="tab-pane" style="flex-grow: 1;" />
             <ui:VisualElement name="tab-content-analytics" class="tab-pane" style="flex-grow: 1;" />
+            <ui:VisualElement name="tab-content-evaluation" class="tab-pane" style="flex-grow: 1;" />
         </ui:VisualElement>
 
         <!-- ============================================

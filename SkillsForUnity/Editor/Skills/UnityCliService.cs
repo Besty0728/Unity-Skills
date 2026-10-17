@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using Newtonsoft.Json;
 using UnityEngine;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -144,7 +145,7 @@ namespace UnitySkills
             string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 #if UNITY_EDITOR_WIN
             yield return Path.Combine(home, ".unity", "bin", "unity.exe");
-            yield return ResolveViaShell("where unity", winWhere: true);
+            yield return ShellCommandResolver.Resolve("where unity", winWhere: true);
             yield return Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Unity", "cli", "unity.exe");
@@ -154,57 +155,12 @@ namespace UnitySkills
             // through .zshrc's `. ~/.unity/env`, which a GUI process can't pick up, so this
             // directory must be probed directly)
             yield return Path.Combine(home, ".unity", "bin", "unity");
-            yield return ResolveViaShell("command -v unity", winWhere: false);
+            yield return ShellCommandResolver.Resolve("command -v unity", winWhere: false);
             yield return Path.Combine(home, ".local", "bin", "unity");
             yield return "/usr/local/bin/unity";
             yield return "/opt/homebrew/bin/unity";
             yield return "unity";
 #endif
-        }
-
-        /// <summary>
-        /// Resolves unity on PATH via a login shell. The editor's GUI process (especially when
-        /// launched from the macOS Dock) doesn't inherit the user shell's PATH, so this must go
-        /// through -lc to let the profile take effect. Returns null on failure.
-        /// </summary>
-        private static string ResolveViaShell(string cmd, bool winWhere)
-        {
-            try
-            {
-                var psi = new System.Diagnostics.ProcessStartInfo
-                {
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                };
-                if (winWhere)
-                {
-                    psi.FileName = "cmd.exe";
-                    psi.Arguments = "/c " + cmd;
-                }
-                else
-                {
-                    string shell = Environment.GetEnvironmentVariable("SHELL");
-                    psi.FileName = string.IsNullOrEmpty(shell) ? "/bin/zsh" : shell;
-                    // -lic: login + interactive. -l alone doesn't load .zshrc (that's
-                    // interactive-only), and Unity CLI and similar tools' PATH injection is
-                    // written precisely in .zshrc — verified in practice that -lc alone fails to find it.
-                    psi.Arguments = "-lic \"" + cmd + "\"";
-                }
-                using (var p = System.Diagnostics.Process.Start(psi))
-                {
-                    p.BeginErrorReadLine();          // Drain stderr, to avoid a deadlock from a full buffer (rc files can be noisy)
-                    string stdout = p.StandardOutput.ReadToEnd();
-                    if (!p.WaitForExit(8000)) { try { p.Kill(); } catch { } return null; }
-                    if (p.ExitCode != 0) return null;
-                    // "where" may return multiple lines; take the first one
-                    var first = (stdout ?? "").Trim()
-                        .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                    return first.Length > 0 ? first[0].Trim() : null;
-                }
-            }
-            catch { return null; }
         }
 
         private readonly struct VersionAttempt
