@@ -36,7 +36,7 @@ Python helper shortcuts — **these are `unity_skills.py` functions, not skill n
 
 Use module `SKILL.md` files for routing guidance, guardrails, and minimal examples, not as the canonical source of exact signatures.
 
-Current snapshot: `839` REST skills, `56` `*Skills.cs` source files grouped into `54` `SkillCategory` categories (the two differ by design: `BatchSkills.cs` holds no category of its own and registers into Workflow and Validation, `DiagnoseSkills.cs` folds into Debug), `83` module documentation directories (`54` REST/module docs + `29` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
+Current snapshot: `839` REST skills, `56` `*Skills.cs` source files grouped into `54` `SkillCategory` categories (the two differ by design: `BatchSkills.cs` holds no category of its own and registers into Workflow and Validation, `DiagnoseSkills.cs` folds into Debug), `84` module documentation directories (`54` REST/module docs + `30` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
 
 Python helper: `unity-skills/scripts/unity_skills.py`
 
@@ -147,7 +147,7 @@ The REST surface (`839` skills) is partitioned by `[UnitySkill]` `Mode` and runt
 SemiAuto (read/query/analyze) skills are directly callable in every mode and span the modules below; use `GET /skills/schema?category=<Category>` for the exact list (write skills in the same modules stay FullAuto):
 
 - **script** (`script_read` / `script_list` / `script_get_info` / `script_find_in_file` / `script_get_compile_feedback`) · **perception** (`scene_analyze` / `scene_context` / `scene_health_check` / `scene_find_hotspots` / `project_stack_detect` — the module is named perception but its skills carry the `scene_*` prefix) · **scene** (`scene_get_info` / `scene_get_hierarchy` / `scene_get_loaded` / `scene_find_objects`) · **editor** (`editor_get_context` / `editor_get_state` / `editor_get_selection` / `editor_get_tags` / `editor_get_layers`) · **asset** (`asset_find` / `asset_get_info`) · **workflow** (`workflow_list` / `workflow_session_*` / `workflow_plan` — prefer workflow & batch helpers for planning/preview/jobs/rollback) · **debug + console** (`debug_check_compilation` / `debug_get_errors` / `debug_get_system_info` / `debug_get_memory_info` / `debug_get_logs` / `console_get_logs`)
-- plus most modules' own info / list / get / find skills. **Advisory**: `29` documentation-only modules (no REST skills) — see Coding Reference Index below.
+- plus most modules' own info / list / get / find skills. **Advisory**: `30` documentation-only modules (no REST skills) — see Coding Reference Index below.
 
 ## Compilation Feedback, Events & Telemetry
 
@@ -197,7 +197,7 @@ Every error response carries a top-level `errorCode` (plus `retryStrategy` / `re
 
 ## Coding Reference Index
 
-Before writing or refactoring Unity code, **load the relevant advisory module first**. These are the `29` `Documentation only` design modules (no REST skills — loadable under any mode) that pin rules to engine source and prevent hallucinated / removed APIs. Load on demand by topic, not all at once.
+Before writing or refactoring Unity code, **load the relevant advisory module first**. These are the `30` `Documentation only` design modules (no REST skills — loadable under any mode) that pin rules to engine source and prevent hallucinated / removed APIs. Load on demand by topic, not all at once.
 
 **General coding & architecture** — before writing gameplay code or making structural decisions:
 

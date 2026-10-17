@@ -58,7 +58,7 @@
 
 ## 🚀 核心特性
 
-- 🛠️ **839 REST Skills 全能库**：56 个源文件、54 个分类，另有 29 个 advisory 设计模块，支持 Batch 批处理。
+- 🛠️ **839 REST Skills 全能库**：56 个源文件、54 个分类，另有 30 个 advisory 设计模块，支持 Batch 批处理。
 - ⚡ **支持UnityCLI**：支持绑定UnityCLI，对应项目冷启动，不用开启UnityHub
 - 🔐 **三档权限模式**：Approval / Auto / Bypass + 双轨审批，对齐 Claude Code permission modes。
 - 🤖 **6 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code，一键安装即用。
@@ -106,7 +106,7 @@ UnitySkills 引入真正的服务端权限系统，对齐 Claude Code permission
 
 老用户升级自动识别旧安装并保持 **Bypass**，行为与原 Full-Auto 完全一致，无需任何操作。双轨审批（Dialog / Panel）、审计日志（`Library/UnitySkillsAudit.jsonl`）、Allowlist 与卸载按钮等完整说明 → [操作模式与治理层](docs/OPERATING_MODES_CN.md)。
 
-> 29 个 advisory 设计模块（架构、性能、设计模式、可测试性、包级源码规则等）在所有模式下均可用，按需自动加载。
+> 30 个 advisory 设计模块（架构、性能、设计模式、可测试性、包级源码规则等）在所有模式下均可用，按需自动加载。
 
 ---
 
@@ -273,7 +273,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 
 > ⚠️ 大部分模块支持 `*_batch` 批量操作，操作多个物体时应优先使用批量 Skills 以提升性能。
 >
-> 🧠 `unity-skills/skills/` 目录下额外提供 **29 个 advisory 设计模块**，用于在脚本编写前辅助 AI 进行架构、性能、可维护性、Inspector 设计与包级源码规则决策。
+> 🧠 `unity-skills/skills/` 目录下额外提供 **30 个 advisory 设计模块**，用于在脚本编写前辅助 AI 进行架构、性能、可维护性、Inspector 设计与包级源码规则决策。
 
 </details>
 
@@ -289,7 +289,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │   │   ├── SKILL.md                # 主 Skill 定义 (AI 读取)
 │   │   ├── scripts/
 │   │   │   └── unity_skills.py     # Python 客户端库
-│   │   ├── skills/                 # 83 个模块文档（54 个 REST/模块文档 + 29 个 advisory 文档）
+│   │   ├── skills/                 # 84 个模块文档（54 个 REST/模块文档 + 30 个 advisory 文档）
 │   │   └── references/             # Unity 开发参考文档
 │   └── Editor/
 │       ├── Locales/                # 独立多语言 JSON 资产 (en.json, zh-CN.json, ru.json)

@@ -6,6 +6,9 @@
 1. SkillsForUnity/ 下所有 .cs / .uxml / .uss 文件都有对应的 .meta 文件。
 2. SkillsForUnity/ 下所有 .meta 文件的 guid 字段互不重复。
 
+名称以 `~` 结尾的目录（Evaluation~、unity-skills~）Unity 不导入、也不需要 .meta，
+整棵子树跳过（其中的 .json、.meta 都不参与上面两项）。
+
 启发式伪 GUID 检测与第三方包 GUID 黑名单对照（.claude/commands/metacheck.md
 步骤 2 / 2b）需要人工判断"是否有外部引用""是否属于历史白名单"等语境，
 不适合做成会中断 CI 的硬门槛，继续保留给 /metacheck 交互式审计。
@@ -21,7 +24,7 @@ import os
 import re
 import sys
 
-from scan_floor import floor_problem
+from scan_floor import floor_problem, is_unity_hidden_dir
 
 SCAN_ROOT_REL = "SkillsForUnity"
 CHECKED_EXTENSIONS = (".cs", ".uxml", ".uss", ".json")
@@ -31,7 +34,7 @@ GUID_RE = re.compile(r"^guid:\s*([0-9a-fA-F]{32})\s*$", re.MULTILINE)
 
 def iter_files(scan_root: str):
     for dirpath, dirnames, filenames in os.walk(scan_root):
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIR_NAMES]
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIR_NAMES and not is_unity_hidden_dir(d)]
         for filename in filenames:
             yield os.path.join(dirpath, filename)
 

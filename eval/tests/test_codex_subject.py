@@ -77,6 +77,7 @@ class CommandTests(unittest.TestCase):
             self.assertEqual(S.env_record()["ANTHROPIC_AUTH_TOKEN"], "<set>")
             self.assertNotIn("ANTHROPIC_AUTH_TOKEN", S.child_env("codex"))
 
+    @unittest.skipUnless(sys.version_info >= (3, 11), "subject.py reads config.toml with tomllib, a 3.11+ module")
     def test_neutral_codex_home_copies_auth_and_only_transport(self):
         source = Path(self.docs, "source")
         source.mkdir()

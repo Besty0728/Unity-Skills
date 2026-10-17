@@ -119,6 +119,7 @@ Documentation only — these modules define no REST skills.
 | [manual-material](./manual-material/SKILL.md) | Manually create and edit Materials and assign them to objects using Unity Editor UI |
 | [manual-scene](./manual-scene/SKILL.md) | Manually navigate, save, and manage scenes using Unity Editor UI |
 | [skill-creator](./skill-creator/SKILL.md) | Author new REST skills: naming/registration contract, truthful risk flags, docs placement, compile loop |
+| [evaluation](./evaluation/SKILL.md) | Run the UnitySkills evaluation set, only when the user explicitly asks: start a session with `scripts/unity_eval.py`, follow its prompts, relay problem fixes |
 
 ## Batch-First Rule
 

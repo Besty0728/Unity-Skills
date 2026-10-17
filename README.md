@@ -58,7 +58,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **839 REST Skills Toolkit**: 56 source files across 54 categories, plus 29 advisory design modules, with Batch operations.
+- 🛠️ **839 REST Skills Toolkit**: 56 source files across 54 categories, plus 30 advisory design modules, with Batch operations.
 - ⚡ **UnityCLI Support**: Bind UnityCLI to cold-start the bound project — no need to launch Unity Hub.
 - 🔐 **Three-Tier Permission Modes**: Approval / Auto / Bypass with dual approval channels, aligned with Claude Code permission modes.
 - 🤖 **6 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code — one-click install and use.
@@ -106,7 +106,7 @@ UnitySkills ships with a true server-side permission system aligned with Claude 
 
 Upgrading users are detected automatically and stay on **Bypass**, preserving the previous Full-Auto behavior with no action required. Dual approval channels (Dialog / Panel), the audit log (`Library/UnitySkillsAudit.jsonl`), Allowlist and installer details → [Operating Modes & Governance](docs/OPERATING_MODES.md).
 
-> 29 advisory design modules (architecture, performance, design patterns, testability, package-specific source rules, etc.) are available in all modes and loaded on demand.
+> 30 advisory design modules (architecture, performance, design patterns, testability, package-specific source rules, etc.) are available in all modes and loaded on demand.
 
 ---
 
@@ -273,7 +273,7 @@ If you're using other tools that support Skills, install according to the Skills
 
 > ⚠️ Most modules support `*_batch` batch operations. When operating on multiple objects, prioritize batch Skills for better performance.
 >
-> 🧠 `unity-skills/skills/` also includes **29 advisory design modules** for architecture, script design, performance, maintainability, Inspector guidance, and package-specific source rules.
+> 🧠 `unity-skills/skills/` also includes **30 advisory design modules** for architecture, script design, performance, maintainability, Inspector guidance, and package-specific source rules.
 
 </details>
 
@@ -289,7 +289,7 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   ├── SKILL.md                # Main Skill Definitions (AI-readable)
 │   │   ├── scripts/
 │   │   │   └── unity_skills.py     # Python Client Library
-│   │   ├── skills/                 # 83 module docs (54 REST/module docs + 29 documentation-only docs)
+│   │   ├── skills/                 # 84 module docs (54 REST/module docs + 30 documentation-only docs)
 │   │   └── references/             # Unity Development References
 │   └── Editor/
 │       ├── Locales/                # Decoupled JSON Localization Assets (en.json, zh-CN.json, ru.json)

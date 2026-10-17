@@ -12,8 +12,14 @@ import os
 import subprocess
 
 
+def is_unity_hidden_dir(name: str) -> bool:
+    """Unity never imports a folder whose name ends in '~' (Evaluation~, unity-skills~), so nothing in it needs a .meta."""
+    return name.endswith("~")
+
+
 def tracked_files(repo_root: str, rel_dir: str, suffixes: tuple[str, ...]) -> set[str] | None:
-    """Existing files under rel_dir that git tracks, as repo-relative '/' paths; None when git can't answer."""
+    """Existing files under rel_dir that git tracks, as repo-relative '/' paths; None when git can't answer.
+    Files below a '~' folder are left out, the same way the scanners skip those folders."""
     try:
         out = subprocess.run(
             ["git", "-C", repo_root, "ls-files", "-z", "--", rel_dir],
@@ -21,11 +27,15 @@ def tracked_files(repo_root: str, rel_dir: str, suffixes: tuple[str, ...]) -> se
         ).stdout
     except (OSError, subprocess.CalledProcessError):
         return None
+    base = rel_dir.replace("\\", "/").strip("/")
     result = set()
     for raw in out.split(b"\0"):
         if not raw:
             continue
         rel = raw.decode("utf-8", errors="replace")
+        below = rel[len(base):] if rel.startswith(base) else rel
+        if any(is_unity_hidden_dir(part) for part in below.split("/")[:-1]):
+            continue
         if rel.endswith(suffixes) and os.path.isfile(os.path.join(repo_root, rel)):
             result.add(rel)
     return result

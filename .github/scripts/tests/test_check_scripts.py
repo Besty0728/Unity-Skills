@@ -20,7 +20,7 @@ def run_script(name: str, repo: str) -> subprocess.CompletedProcess:
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
     return subprocess.run(
-        [sys.executable, os.path.join(SCRIPTS, name), repo],
+        [sys.executable, "-B", os.path.join(SCRIPTS, name), repo],
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -82,6 +82,45 @@ class MetaCheckTests(unittest.TestCase):
                 write(repo, f"SkillsForUnity/Editor/{name}.cs", "class X {}\n")
                 write(repo, f"SkillsForUnity/Editor/{name}.cs.meta", meta("a" * 32))
             self.assertNotEqual(run_script("check_meta_files.py", repo).returncode, 0)
+
+    @staticmethod
+    def tree_with_tilde_folders(repo: str) -> None:
+        write(repo, "SkillsForUnity/Editor/A.cs", "class A {}\n")
+        write(repo, "SkillsForUnity/Editor/A.cs.meta", meta("0" * 31 + "1"))
+        # Unity never imports a folder whose name ends in "~", so nothing below it carries a .meta.
+        write(repo, "SkillsForUnity/Evaluation~/pack/manifest.json", "{}\n")
+        write(repo, "SkillsForUnity/unity-skills~/scripts/Sample.cs", "class Sample {}\n")
+
+    def test_tilde_folders_need_no_meta(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.tree_with_tilde_folders(repo)
+            result = run_script("check_meta_files.py", repo)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_tracked_files_in_tilde_folders_are_not_missed_files(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.tree_with_tilde_folders(repo)
+            git_init(repo)
+            result = run_script("check_meta_files.py", repo)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_meta_files_in_tilde_folders_are_not_scanned(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.tree_with_tilde_folders(repo)
+            write(repo, "SkillsForUnity/Evaluation~/stray.cs.meta", meta("0" * 31 + "1"))
+            git_init(repo)
+            result = run_script("check_meta_files.py", repo)
+            self.assertEqual(result.returncode, 0, "a .meta Unity never reads cannot clash with a real GUID\n" + result.stdout)
+
+    def test_only_a_trailing_tilde_hides_a_folder(self):
+        with tempfile.TemporaryDirectory() as repo:
+            self.tree_with_tilde_folders(repo)
+            write(repo, "SkillsForUnity/Editor/a~b/B.json", "{}\n")
+            result = run_script("check_meta_files.py", repo)
+            self.assertNotEqual(result.returncode, 0, "a '~' inside the folder name hides nothing")
+            self.assertIn("a~b/B.json", result.stdout)
+            self.assertNotIn("Evaluation~", result.stdout)
+            self.assertNotIn("unity-skills~", result.stdout)
 
 
 class LocaleCheckTests(unittest.TestCase):

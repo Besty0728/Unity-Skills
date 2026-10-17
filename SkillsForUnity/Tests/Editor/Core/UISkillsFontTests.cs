@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -30,9 +31,14 @@ namespace UnitySkills.Tests.Core
         {
             var fontAsset = AssetDatabase.LoadAssetAtPath<FontAsset>(UISkillsFont.FontAssetPath);
             Assert.That(fontAsset, Is.Not.Null);
+
+            // Check the serialized character table, not HasCharacter: HasCharacter answers from TextCore's lookup cache,
+            // which can also hold characters resolved from the source font at runtime, so it passes for a character
+            // the atlas never baked and the panel then renders it from the wrong place.
+            var baked = new HashSet<uint>(fontAsset.characterTable.Select(character => character.unicode));
             var characters = UISkillsFontAssetBaker.CollectUiCharacters();
             var missing = characters
-                .Where(value => !fontAsset.HasCharacter(value, false, false))
+                .Where(value => !baked.Contains(value))
                 .Distinct()
                 .ToArray();
 

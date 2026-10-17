@@ -77,6 +77,42 @@ jobs:
       - name: Check locale JSONs, key parity, and C# references
         run: python3 .github/scripts/check_locales.py .
 
+  python-tests:
+    name: Python Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+        python-version:
+          - '3.9'
+          - '3.x'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install pyyaml requests
+
+      - name: CI script and agent entry tests
+        run: python -B -m unittest discover -s .github/scripts/tests
+
+      # The v1 harness under eval/tests/*.py is POSIX-only (fcntl, process groups, /tmp); the runner tests under
+      # eval/tests/runner are the cross-platform ones, so Windows runs only those.
+      - name: Evaluation tests (all)
+        if: runner.os != 'Windows'
+        run: python -B -m unittest discover eval/tests
+
+      - name: Evaluation runner tests (Windows)
+        if: runner.os == 'Windows'
+        run: python -B -m unittest discover -s eval/tests/runner -t eval/tests
+
   editmode:
     name: Unity ${{ matrix.unityVersion }} EditMode
     needs:

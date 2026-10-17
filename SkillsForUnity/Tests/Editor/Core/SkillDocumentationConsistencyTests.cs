@@ -105,7 +105,9 @@ namespace UnitySkills.Tests.Core
             "unity-cli",
             // Pure authoring guide for extending the plugin itself (0 REST skills), added with the
             // skill-creator module — same exemption family as adr / unity-cli.
-            "skill-creator"
+            "skill-creator",
+            // How to drive the evaluation runner that ships with the package (scripts/unity_eval.py), 0 REST skills.
+            "evaluation"
         };
 
         /// <summary>

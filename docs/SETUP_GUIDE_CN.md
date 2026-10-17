@@ -70,7 +70,7 @@ Window → UnitySkills → AI Config 标签页
 
 ```
 SKILL.md                    # 主 Skill 定义（AI 读取）
-skills/                     # 按模块分类的 Skill 文档（54 个 REST 模块文档 + 29 个顾问 = 83；共 839 个 Skills）
+skills/                     # 按模块分类的 Skill 文档（54 个 REST 模块文档 + 30 个顾问 = 84；共 839 个 Skills）
 scripts/unity_skills.py     # Python 客户端库
 scripts/agent_config.json   # Agent 配置
 references/                 # Unity 开发参考文档
