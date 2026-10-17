@@ -76,7 +76,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void AddListener_ByTargetInstanceId_BindsThatSameNameObject()
         {
-            Assume.That(UnityObjectIdUtility.GetObjectId(_right.gameObject), Is.Not.EqualTo(0), "This Unity version has no legacy instance ids.");
+            if (UnityObjectIdUtility.GetObjectId(_right.gameObject) == 0) Assert.Ignore("This Unity version has no legacy instance ids.");
 
             var json = AddListener(targetObjectName: Twin, targetInstanceId: UnityObjectIdUtility.GetObjectId(_right.gameObject),
                 methodName: nameof(EventProbe.Ping), targetComponentName: nameof(EventProbe));
@@ -143,7 +143,7 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void AddListener_ObjectArgument_ByInstanceId_IsStored()
         {
-            Assume.That(UnityObjectIdUtility.GetObjectId(_right.gameObject), Is.Not.EqualTo(0), "This Unity version has no legacy instance ids.");
+            if (UnityObjectIdUtility.GetObjectId(_right.gameObject) == 0) Assert.Ignore("This Unity version has no legacy instance ids.");
 
             var json = AddListener(targetObjectName: Twin, targetPath: "LeftRoot/Twin", targetComponentName: nameof(EventProbe),
                 methodName: nameof(EventProbe.TakeObject), argType: "object", objectArgInstanceId: UnityObjectIdUtility.GetObjectId(_right.gameObject));

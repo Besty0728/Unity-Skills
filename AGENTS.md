@@ -55,6 +55,7 @@ public static object SkillName(string name, float x = 0f) { ... }
 - Provide `xxx` and `xxx_batch` pairs; batch uses `BatchExecutor.Execute<TItem>(items, perItem, idFn)`.
 - New module: `SkillCategory` enum entry + `XxxSkills.cs` + `unity-skills~/skills/<module>/SKILL.md`; reflection discovers the methods. Run `/skillcheck` afterwards.
 - Never write a regression test whose failure mode installs a package, compiles scripts or enters Play Mode: a regressed guard would change the project running the test (round6: a red run of a `package_install_cinemachine` guard installed Cinemachine into the dev project). Test such guards through an internal seam, or not at all.
+- Gate version-specific tests with `#if UNITY_6000_4_OR_NEWER` or `Assert.Ignore`, never `Assume`: an Inconclusive result makes the command-line test run exit non-zero, so CI fails with no failed test.
 
 ### Shared helpers — do not reimplement
 | Need | Use | Not |

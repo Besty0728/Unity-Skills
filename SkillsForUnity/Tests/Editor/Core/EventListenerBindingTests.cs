@@ -260,7 +260,7 @@ namespace UnitySkills.Tests.Core
         public void GetListeners_ThenSetListener_RoundTripsTheLegacyInstanceId()
         {
             var (_, second) = CreateSpeaker();
-            Assume.That(LegacyId(second), Is.Not.EqualTo(0), "This Unity version has no legacy instance ids.");
+            if (LegacyId(second) == 0) Assert.Ignore("This Unity version has no legacy instance ids.");
             UnityEventTools.AddPersistentListener(_emitter.onFire, second.Play);
 
             var listener = Listeners().Single();
