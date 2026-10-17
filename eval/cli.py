@@ -9,12 +9,15 @@
   python3 eval/cli.py report --suite NAME
   python3 eval/cli.py selftest3 [--task ID ...] [--repeat 2] [--private-dir D | --pack-dir D] [--dry-run]
   python3 eval/cli.py gate3 [--task ID ...] [--unity-major 2022|6000] [--pipeline BuiltIn|URP|HDRP|Custom]
+  python3 eval/cli.py suite3 --suite NAME [--host claude|codex] [--models ...] [--effort E] [--mode strict|suite]
+                             [--plan pilot|calibration | --reps N] [--private-zip Z | --pack-dir D] [--dry-run]
 
 The project is --project or $UNITYSKILLS_EVAL_PROJECT; it must be open in an editor whose
 UnitySkills server is running (the harness never opens or closes editors).
 
-selftest3 / gate3 are the v3 gate (eval/selftest3.py): they drive the runner under SkillsForUnity/Evaluation~ and
-the pack under eval/pack; the other commands are v1 and keep working on the frozen v1 harness.
+selftest3 / gate3 are the v3 gate (eval/selftest3.py) and suite3 the v3 batch mode (eval/suite3.py): they drive the
+runner under SkillsForUnity/Evaluation~ and the pack under eval/pack; the other commands are v1 and keep working on the
+frozen v1 harness.
 """
 import argparse
 import json
@@ -393,6 +396,11 @@ def cmd_gate3(args):
     return selftest3.gate_from_args(args, GATE_INPUTS)
 
 
+def cmd_suite3(args):
+    import suite3
+    return suite3.run_from_args(args, GATE_INPUTS, MODELS)
+
+
 def _add_v3_pack_options(p):
     p.add_argument("--project", default=argparse.SUPPRESS)
     p.add_argument("--task", nargs="*")
@@ -466,8 +474,31 @@ def main(argv=None):
                                       "editor")
     p.add_argument("--plugin-version", help="default: the editor's, or SkillsForUnity/package.json with --unity-major")
     p.set_defaults(func=cmd_gate3)
+    p = sub.add_parser("suite3", help="v3 batch: headless agents take the evaluation through the runner")
+    _add_v3_pack_options(p)
+    p.add_argument("--suite", required=True, help="cohort name; resume with the same name, a new one per experiment")
+    p.add_argument("--private-zip", help="private verifiers zip (release asset) instead of the URL download")
+    p.add_argument("--host", choices=("claude", "codex"), default="claude")
+    p.add_argument("--models", nargs="*", help="aliases of MODELS or model ids (default: the host's registered set)")
+    p.add_argument("--effort", help="reasoning effort; without it the host default applies, recorded as 'default'")
+    p.add_argument("--track", choices=("ops", "dev"), default="ops")
+    p.add_argument("--tier", choices=("basic", "standard", "challenge"), default="basic")
+    p.add_argument("--mode", choices=("strict", "suite"), default="strict",
+                   help="strict: one agent and session per task (default); suite: one agent for the whole selection")
+    p.add_argument("--plan", choices=sorted(PLANS), help="pilot = 1 rep, calibration = 3 reps")
+    p.add_argument("--reps", type=int, help="repetitions (overrides --plan; default 1)")
+    p.add_argument("--lang", choices=("en", "zh-CN"), default="en")
+    p.add_argument("--timeout-factor", type=float, default=4.0,
+                   help="agent timeout = factor x the tasks' minutes (at least 10 minutes)")
+    p.add_argument("--budget-usd", type=float, default=10.0, help="Claude --max-budget-usd per task")
+    p.add_argument("--cold", action="store_true", help="do not hand the agent the root SKILL.md as known context")
+    p.add_argument("--force", action="store_true", help="run tasks whose gate3 entry is not green")
+    p.add_argument("--wait-quiet", type=float, default=900.0, help="seconds to wait for running editor jobs")
+    p.add_argument("--wait-lease", type=float, default=0.0, help="seconds to wait for another selftest/E2E/suite")
+    p.add_argument("--dry-run", action="store_true", help="list every slot and its state; runs nothing")
+    p.set_defaults(func=cmd_suite3)
     args = parser.parse_args(argv)
-    if hasattr(args, "models") and args.models is None:
+    if hasattr(args, "models") and args.models is None and args.cmd != "suite3":
         args.models = ["astra", "sol", "terra", "luna-max"] if getattr(args, "host", "claude") == "codex" else ["opus", "sonnet", "fable"]
     args.project = os.path.realpath(args.project)
     return args.func(args)

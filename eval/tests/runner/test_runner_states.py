@@ -822,6 +822,85 @@ class UsageAndReportTests(Base):
             with open(path, "r", encoding="utf-8") as handle:
                 self.assertNotIn("SENTINEL-HOST-CONTENT", handle.read(), path)
 
+    def batch_record(self, **fields):
+        record = {"source": "stream", "tokens": {"input": 1200, "output": 300, "cacheRead": 4000, "cacheWrite": 500,
+                                                 "reasoning": 0},
+                  "models": ["claude-test-model"], "sessionIds": ["9f1c2d3e-0000-4000-8000-000000000001"],
+                  "raw": {"input_tokens": 1200}, "messages": 7}
+        record.update(fields)
+        path = os.path.join(self.b.tmp, "record-%d.json" % len(os.listdir(self.b.tmp)))
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(record, handle)
+        return path
+
+    def test_batch_usage_from_the_host_output(self):
+        host = {"CLAUDE_CODE_SESSION_ID": "c1a2b3c4-0000-4000-8000-00000000abcd"}
+        sid = self.start("--tasks", "S99,S98", "--launcher", "batch")
+        first = self.issue(sid, **host)
+        self.b.solve(first)
+        self.claude_log(host["CLAUDE_CODE_SESSION_ID"], "msg_first", 100)
+        self.submit(sid, first, **host)
+        code, env = self.b.run("usage", "--attempt", first["attemptId"], "--record", self.batch_record(),
+                               "--launcher", "batch")
+        self.assertEqual(code, 0, env)
+        usage = self.b.result(sid, first["attemptId"])["usage"]
+        state = self.b.state(sid, first["attemptId"])
+        self.assertEqual((usage["source"], usage["host"], usage["tokens"]),
+                         ("stream", "claude-code", {"input": 1200, "output": 300, "cacheRead": 4000, "cacheWrite": 500,
+                                                    "reasoning": 0, "processed": 6000}))
+        self.assertEqual((usage["model"], usage["sessionIds"], usage["messages"], usage["raw"]),
+                         ({"values": ["claude-test-model"], "source": "provider-returned"},
+                          ["9f1c2d3e-0000-4000-8000-000000000001"], 7, {"input_tokens": 1200}))
+        self.assertEqual(usage["window"], {"from": state["issuedAt"], "to": state["submittedAt"]})
+        code, env = self.b.run("usage", "--attempt", first["attemptId"], **host)       # a host-log recompute
+        self.assertEqual((code, env["data"]["usage"]["source"]), (0, "claude-session-log"))
+        self.b.run("usage", "--attempt", first["attemptId"], "--record", self.batch_record(), "--launcher", "batch")
+        second = self.issue(sid, **host)
+        self.b.solve(second)
+        self.submit(sid, second, **host)                       # the session ends: its recompute keeps the record
+        self.assertEqual(self.b.session(sid)["status"], "completed")
+        self.assertEqual(self.b.result(sid, first["attemptId"])["usage"]["source"], "stream")
+        code, env = self.b.run("usage", "--attempt", second["attemptId"], "--record",
+                               self.batch_record(source="proxy", models=[], sessionIds=[]), "--launcher", "batch")
+        self.assertEqual(code, 0, env)
+        usage = self.b.result(sid, second["attemptId"])["usage"]
+        self.assertEqual((usage["source"], usage["host"], usage["model"]),
+                         ("proxy", "codex", {"values": [], "source": None}))
+        report = store.read_json(os.path.join(self.b.paths.session_dir(sid), "report.json"))
+        self.assertEqual(report["summary"]["usage"]["processed"], 12000)
+        rows = [r for r in store.read_jsonl(self.b.paths.ledger) if r.get("kind") == "usage"]
+        self.assertEqual(rows[-1]["usage"], {"source": "proxy", "processed": 6000})
+
+    def test_batch_usage_is_checked(self):
+        sid = self.start("--tasks", "S99")
+        data = self.issue(sid)
+        self.b.solve(data)
+        self.submit(sid, data)
+        code, env = self.b.run("usage", "--attempt", data["attemptId"], "--record", self.batch_record())
+        self.assertEqual((code, self.codes(env)), (3, ["BAD_ARGUMENTS"]))
+        self.assertIn("only for batch sessions", env["problems"][0]["args"][0])
+        sid = self.start("--tasks", "S99", "--launcher", "batch")
+        data = self.issue(sid)
+        self.b.solve(data)
+        self.submit(sid, data)
+        aid = data["attemptId"]
+        for fields, message in (({"source": "user"}, "source must be stream or proxy"),
+                                ({"tokens": {"input": 1}}, "tokens needs at least input and output"),
+                                ({"tokens": {"input": -1, "output": 2}}, "input must be a non-negative integer"),
+                                ({"models": "claude"}, "models must be a list"),
+                                ({"sessionIds": "abc"}, "sessionIds must be a list"),
+                                ({"messages": True}, "messages must be a non-negative integer"),
+                                ({"raw": {"input_tokens": 1.5}}, "raw must map names")):
+            code, env = self.b.run("usage", "--attempt", aid, "--record", self.batch_record(**fields))
+            self.assertEqual((code, self.codes(env)), (3, ["BAD_ARGUMENTS"]), fields)
+            self.assertIn(message, env["problems"][0]["args"][0], fields)
+        code, env = self.b.run("usage", "--attempt", aid, "--record", os.path.join(self.b.tmp, "missing.json"))
+        self.assertIn("missing.json: FileNotFoundError", env["problems"][0]["args"][0])
+        code, env = self.b.run("usage", "--attempt", aid, "--record", self.batch_record(), "--manual", "input=1",
+                               "output=1")
+        self.assertIn("mutually exclusive", env["problems"][0]["args"][0])
+        self.assertIsNone(self.b.result(sid, aid)["usage"]["tokens"])
+
     def test_status_never_carries_scores(self):
         sid = self.start("--tasks", "S99")
         data = self.issue(sid)

@@ -30,6 +30,8 @@ BUSY_WAIT_S = 90.0             # start and next N1: how long a compiling, import
 DECLARED_KEYS = ("host", "hostVersion", "model", "effort")
 DECLARED_SOURCES = ("detected", "user", "batch", "unknown")
 DECLARED_HOSTS = ("claude-code", "codex", "cursor", "other")
+BATCH_USAGE_HOSTS = {"stream": "claude-code", "proxy": "codex"}   # usage --record: source -> host
+BATCH_TOKEN_KEYS = ("input", "output", "cacheRead", "cacheWrite", "reasoning")
 
 
 # ---------------------------------------------------------------- persistence
@@ -713,7 +715,16 @@ def cmd_usage(rt):
             raise ProblemError(problem("BAD_ARGUMENTS", ["attempt %s has no result yet" % state["attemptId"]]))
         result = store.read_json(result_path)
         usage = submodule("usage")
-        if args.manual:
+        if args.manual and args.record:
+            raise ProblemError(problem("BAD_ARGUMENTS", ["--manual and --record are mutually exclusive"]))
+        if args.record:
+            if session.get("launcher") != "batch":
+                raise ProblemError(problem("BAD_ARGUMENTS", ["--record is only for batch sessions"]))
+            try:
+                record = batch_usage(usage, args.record, state)
+            except ValueError as exc:
+                raise ProblemError(problem("BAD_ARGUMENTS", ["--record: %s" % exc]))
+        elif args.manual:
             try:
                 values, model = usage.parse_manual_args(args.manual)
                 end = state.get("submittedAt") or state.get("tornDownAt") or state.get("createdAt")
@@ -731,6 +742,40 @@ def cmd_usage(rt):
         if record.get("tokens") is None:
             notices.append(notice("USAGE_UNAVAILABLE", [record.get("unavailableReason") or "unknown"]))
         return Outcome({"attemptId": state["attemptId"], "usage": record, "notices": notices})
+
+
+def batch_usage(usage, path, state):
+    """UsageRecord of source stream (Claude stream-json) or proxy (Codex) from the batch driver's file: the counts it
+    took from the headless host's own output for the attempt window (contract 2.4 usage, 4.7). ValueError if bad."""
+    try:
+        with open(path, "r", encoding="utf-8-sig") as handle:
+            given = json.load(handle)
+    except (OSError, ValueError) as exc:
+        raise ValueError("%s: %s" % (os.path.basename(path), type(exc).__name__))
+    if not isinstance(given, dict) or given.get("source") not in BATCH_USAGE_HOSTS:
+        raise ValueError("source must be stream or proxy")
+    tokens = given.get("tokens")
+    if not isinstance(tokens, dict) or not all(key in tokens for key in ("input", "output")):
+        raise ValueError("tokens needs at least input and output")
+    counts = {key: tokens.get(key, 0) for key in BATCH_TOKEN_KEYS}
+    models = given.get("models") or []
+    if not isinstance(models, list) or not all(isinstance(m, str) and m.strip() == m and 0 < len(m) <= 120
+                                               and m.isprintable() for m in models):
+        raise ValueError("models must be a list of short model names")
+    ids, messages, raw = given.get("sessionIds") or [], given.get("messages"), given.get("raw")
+    if not isinstance(ids, list):
+        raise ValueError("sessionIds must be a list")
+    if messages is not None and (not isinstance(messages, int) or isinstance(messages, bool) or messages < 0):
+        raise ValueError("messages must be a non-negative integer")
+    if raw is not None and not (isinstance(raw, dict) and all(
+            isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool) and v >= 0 for k, v in raw.items())):
+        raise ValueError("raw must map names to non-negative integers")
+    end = state.get("submittedAt") or state.get("tornDownAt") or state.get("createdAt")
+    record = usage.manual_usage(counts, state.get("issuedAt") or end, end, host=BATCH_USAGE_HOSTS[given["source"]])
+    record.update(source=given["source"], sessionIds=usage.merge_session_ids(ids),
+                  model={"values": sorted(set(models)), "source": "provider-returned" if models else None},
+                  raw=raw, messages=messages)
+    return record
 
 
 # ---------------------------------------------------------------- cleanup

@@ -5,6 +5,101 @@ through UnitySkills: a bank of 14 tasks (6 basic, 8 composite), an independent v
 the editor state back, and a calibration across models. Lives outside `SkillsForUnity/` and is not
 shipped with the package. P1 will move the same rules into the editor panel.
 
+## v3 maintainer workflow
+
+v3 moves the evaluation into the package: the runner is `SkillsForUnity/Evaluation~/run_eval.py` (contract:
+[design/v3-contracts.md](design/v3-contracts.md)), users start it from the Evaluation tab or through their agent, and
+the public tasks ship in `SkillsForUnity/Evaluation~/pack/`. This folder keeps what must not ship: the private
+verifiers (`pack/private/<ID>.py`, published per release tag and as a zip), the reference solutions
+(`pack/solutions/<ID>.py`) and the maintainer tools below. Everything under `runs/` stays local.
+
+| Path | Content |
+|---|---|
+| `cli.py` | maintainer CLI: `selftest3`, `gate3`, `suite3` (v3); the v1 commands further down keep working |
+| `selftest3.py`, `harness/solver_driver.py` | the gate: scripted solutions drive the real runner CLI |
+| `suite3.py`, `harness/subject.py`, `harness/codex_proxy.py` | batch mode: headless Claude Code / Codex agents |
+| `tools/` | `build_pack_manifest.py`, `check_eval_pack.py`, `lint_pack.py`, `build_private_zip.py` |
+| `runs/selftest/gate.json`, `runs/suite3/<suite>/` | gate record; batch cohort, ledger and transcripts (local) |
+
+Requirements: a Unity project whose `com.besty.unity-skills` is the version under test (for development a `file:`
+dependency on this repository's `SkillsForUnity`), its editor open with the UnitySkills server running, operating mode
+Bypass and skill surface Full; Python 3.9+ (Codex batch runs need 3.11+). Pass the project with `--project` or set
+`UNITYSKILLS_EVAL_PROJECT`. One maintainer tool drives an editor at a time (`Library/UnitySkills/driver.lock`).
+
+### Gate
+
+```bash
+python3 -B eval/cli.py selftest3 --dry-run                 # pack, solutions and case list; no editor
+python3 -B eval/cli.py selftest3 [--task S01 ...]          # reference x2, negatives, alternatives through the runner
+python3 -B eval/cli.py gate3 [--task ...] [--unity-major 2022 --pipeline URP --plugin-version 3.0.0]
+```
+
+A task is gated per Unity major, render pipeline and plugin version, keyed by the hash of its gate inputs (runner,
+task files, private verifier, solutions, `GATE_INPUTS` in `cli.py`); any change to those files needs a new run.
+Basic tasks accept URP and the Built-in pipeline and are gated on 2022 and 6000 in both; standard and challenge tasks
+are URP only. `selftest3` reads the private verifiers from `pack/private` (`--private-dir` to change it).
+
+### Batch suite
+
+```bash
+python3 -B eval/cli.py suite3 --suite my-sonnet-v3 --models sonnet --dry-run      # every slot; runs nothing
+python3 -B eval/cli.py suite3 --suite my-sonnet-v3 --models sonnet --plan pilot
+python3 -B eval/cli.py suite3 --suite my-sonnet-v3 --models sonnet --plan calibration
+python3 -B eval/cli.py suite3 --suite my-codex-v3 --host codex --models sol --effort high --mode suite
+```
+
+- A slot is one headless agent session (`claude -p` / `codex exec`, v1 isolation: neutral cwd, frozen docs, process
+  group killed on timeout). The agent gets the start command of the frozen docs' entry script with `--launcher batch`
+  and does what a user's agent does: start, the session prompt, next, the task through REST, the answer, submit.
+  `--mode strict` (default) is one agent and one runner session per task; `--mode suite` one agent for the selection.
+- Slot identity is suite, rep, task, host, model and effort. Without `--effort` the host's own default applies and is
+  recorded as `default`, a slot identity of its own. `luna-max` is `gpt-6-luna` at effort `max`.
+- The first run binds the suite to its cohort (`runs/suite3/<suite>/cohort.json`: pack id, version and manifest hash,
+  plugin version, Unity version, pipeline, each task's gate inputs hash, configurations, frozen docs, host version);
+  a later run with any difference is refused, so a new experiment needs a new `--suite`. Tasks need a green `gate3`
+  entry for the editor's Unity major, pipeline and plugin version unless `--force` is given.
+- Resume by rerunning the same command: finished slots are skipped, a session left open is finished first. A strict
+  slot whose outcome is `invalid` gets one new session; never rename a suite to retry a model outcome.
+- Results: the runner's own `result.json` and report per session, plus the suite ledger
+  `runs/suite3/<suite>/ledger.jsonl` (`attempt` and `outcome` lines). The ledger overlays the v1 host checks on the
+  runner's status: model identity, host errors, process cleanup and missing usage evidence make a slot `invalid`;
+  requests to another editor or touching evaluation paths (runner state `Library/UnitySkills/eval`, runner code
+  `Evaluation~`, this repository, host logs) make it `contaminated`.
+- Token usage comes from the host itself: Claude's stream-json, Codex through the forwarding observer, counted over
+  the attempt window and stored with `usage --record` (sources `stream`, `proxy`); without host messages in the
+  window the runner's log-based usage stays.
+- Sessions use `--private-dir pack/private` unless `--private-zip` or `--pack-dir` is given; the agents see a copy of
+  that folder or zip under `/tmp/eve-p/`, kept for a later `submit --retry-verify` of the same suite.
+
+### Private verifiers zip
+
+Each release publishes the private verifiers twice: in the git tag (the runner downloads `eval/pack/private/<ID>.py`
+from `v<plugin>`, `main` or `beta`) and as a release asset for machines that cannot reach GitHub:
+
+```bash
+python3 -B eval/tools/build_private_zip.py --out dist/unity-skills-eval-private-v3.0.0.zip
+python3 -B SkillsForUnity/Evaluation~/run_eval.py start --project <P> --private-zip <zip>   # or the panel / agent
+```
+
+The zip holds exactly the manifest's `<ID>.py` files at its root, checked against the manifest hashes and read back
+through the runner; equal files give a byte-identical zip.
+
+### Reserved packs
+
+Official comparisons use tasks that are never published. A reserved pack is a self-contained folder outside the
+repository (or under the git-ignored `reserved/`): `manifest.json`, `tasks/<ID>/`, `private/<ID>.py` and
+`solutions/<ID>.py`, built and checked with the same tools (`build_pack_manifest.py --pack-dir`,
+`check_eval_pack.py --pack-dir`). Gate it and run it with `--pack-dir`:
+
+```bash
+python3 -B eval/cli.py selftest3 --pack-dir ~/usk-reserved/pack
+python3 -B eval/cli.py suite3 --suite reserved-sonnet-v3 --models sonnet --pack-dir ~/usk-reserved/pack
+```
+
+Sessions on a `--pack-dir` pack are never official and their reports stay local; publish only summaries.
+
+The sections below describe the frozen v1 harness.
+
 ## Completed calibration
 
 The isolated Codex cohort completed **168/168** slots on 2026-10-12: raw **162 pass / 6 partial**,

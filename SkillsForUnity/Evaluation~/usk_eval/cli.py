@@ -76,6 +76,7 @@ def _parser(command):
     if command == "usage":
         parser.add_argument("--attempt", required=True)
         parser.add_argument("--manual", nargs="+")
+        parser.add_argument("--record")
     if command == "cleanup":
         parser.add_argument("--stale", action="store_true")
         parser.add_argument("--dry-run", dest="dry_run", action="store_true")

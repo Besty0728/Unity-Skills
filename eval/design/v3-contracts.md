@@ -341,6 +341,8 @@ data = { sessionId, status, reportJson: abs-path, reportMd: abs-path, summary: R
 
 `usage --attempt AID` 重算宿主 usage；`usage --attempt AID --manual input=N output=N [cacheRead=N] [cacheWrite=N] [reasoning=N] [model=NAME]` 记录手填值（`source:"user"`；整数 ≥ 0；键名区分大小写）。写回 `result.json.usage`，并向 ledger 追加 `kind:"usage"` 行。
 
+`usage --attempt AID --record FILE`（只用于 `session.launcher == "batch"` 的会话，与 `--manual` 互斥，否则 `BAD_ARGUMENTS`）记录批量驱动从无头宿主自己的输出取得的该尝试 (t0, t1] 内的 token 数。FILE 为 `{source: "stream"|"proxy", tokens: {input, output, cacheRead?, cacheWrite?, reasoning?}, models?: [string], sessionIds?: [string], raw?: {string: int}, messages?: int}`（计数为整数 ≥ 0，缺省为 0）；host 由 source 推出（stream → `claude-code`，proxy → `codex`），`model.source` 为 `provider-returned`，`processed` 照 §4.7 计算。S12 与会话结束时的重算不覆盖 source 为 `user`、`stream`、`proxy` 的记录；显式的 `usage --attempt AID` 重算仍按 §11 #23 合并。
+
 ```ts
 data = { attemptId, usage: UsageRecord /* §4.7 */ }
 ```
@@ -716,7 +718,7 @@ evidence = {
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `host` | `claude-code` \| `codex` \| `other` \| `none` | |
-| `source` | `claude-session-log` \| `codex-rollout` \| `stream` \| `proxy` \| `user` \| `none` | stream、proxy 只用于 batch |
+| `source` | `claude-session-log` \| `codex-rollout` \| `stream` \| `proxy` \| `user` \| `none` | stream、proxy 只用于 batch（`usage --record`，§2.4） |
 | `sessionIds` | [string] | Claude 会话 id / Codex thread id |
 | `window` | `{from: iso, to: iso}` | (t0, t1] |
 | `model` | `{values: [string], source: "provider-returned"\|"host-requested"\|"user"\|null}` | |
@@ -1371,6 +1373,13 @@ private static void RegisterLifecycleFlush()
 - 插件 C# 不进 hash，靠 `pluginVersion` 进键：开发中途改插件不会自动让门禁失效，所以 `/release` 的 `check_eval_pack` 步骤必须对候选版本重跑门禁（草案 P7）。
 - 门禁记录 `eval/runs/selftest/gate.json`：`{"schema":1,"gates":{"<gateKey>":{"taskId","caseVersion","unityMajor","pluginVersion","pipeline","gateInputsHash","green":bool,"cases":int,"failing":[case],"recordedAt"}}}`。同一 (taskId, caseVersion, unityMajor, pluginVersion, pipeline) 下 `gateInputsHash` 变化时，新条目取代旧条目；其余条目保留。`gate3` 逐行打印 Unity 大版本与管线。
 - `gateKey` 只有一个实现：`eval/selftest3.py` 的 `gate_key(...)`（含 `pipeline`）。`usk_eval` 不提供门禁键，只提供 `environment.gate_inputs_hash`（默认布局下与 `selftest3.gate_inputs_hash` 结果相同，有测试守住）。发布检查（`check_eval_pack`）要核对门禁时用 `selftest3.gate_key`。
+
+**批量（`eval/cli.py suite3`，`eval/suite3.py`，WP16）**
+- slot 身份 = (suite, rep, taskId, host, model, effort)；不传 `--effort` 时不向宿主传推理强度，slot 记 `effort: "default"`，与显式强度是不同的 slot。默认逐题（strict）：每个 slot 一个 runner 会话、一个无头 Agent 会话；`--mode suite` 每个 (配置, rep) 一个 Agent 跑完整个选择。
+- Agent 自己运行驱动给出的 start 命令（冻结文档副本里的 `scripts/unity_eval.py start --launcher batch --declared <沙箱内文件> --mode … --tasks …`，`declared` 各项 source 为 `batch`），然后照会话提示执行 next、做题、submit；驱动只在 Agent 之间等待编辑器空闲并读取 runner 状态。Agent 留下未提交的尝试由驱动 `submit --no-answer`（submittedBy driver）；验收挂起时重试一次，仍挂起则停止运行。
+- usage：Claude 取 stream-json（每行记录到达时间，用 §8.2 的同一读取器按 (t0, t1] 计），Codex 取转发观察器记录的响应（同样带时间），经 `usage --record` 写回；窗口内没有消息时保留 runner 自己按日志读到的 usage。
+- 宿主层核查沿用 v1（`harness/classify.py`）：进程组清理未确认、模型身份不符、usage 证据缺失、宿主错误、API 重试过多判 invalid；访问其他编辑器端口、访问评测路径（含 runner 状态目录 `Library/UnitySkills/eval` 与 runner 代码 `Evaluation~`）判 contaminated。这些只覆盖在批量账本 `eval/runs/suite3/<suite>/ledger.jsonl`，不改写 runner 的 result.json。
+- 队列（cohort）：首次运行把 pack id/version/manifestSha256、pluginVersion、unityVersion、pipeline、每题 gateInputsHash、配置、冻结文档 treeHash、宿主版本写入 `cohort.json`；之后同名 suite 的任一项不同即拒绝。所选题在当前 (Unity, pipeline, pluginVersion) 下的 gate3 条目必须为绿，`--force` 才放行。`--dry-run` 不访问编辑器、不启动 Agent，只列出全部 slot 及其状态。
 
 ## 10. 基线
 

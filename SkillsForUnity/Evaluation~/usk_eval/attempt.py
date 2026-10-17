@@ -35,6 +35,7 @@ SCENARIO_GRACE_S = 120.0
 SUBMITTED_BY = {"agent": "agent", "panel": "panel", "batch": "driver"}
 CALLS_FILE = "runner-calls.jsonl"
 MAX_USAGE_ERRORS = 20
+KEPT_USAGE_SOURCES = ("user", "stream", "proxy")    # given to the runner, never replaced by a host-log recompute
 IMPORT_HINT = {
     "en": "Records marked importedAtSubmit are files that were written to disk outside Unity during the attempt and "
           "imported when the runner refreshed the assets at submit. If another tool wrote them (an IDE, a sync "
@@ -1009,7 +1010,7 @@ def recompute_usage(rt, session):
             path = rt.paths.result_file(session["sessionId"], aid)
             try:
                 result = store.read_json(path, missing_ok=True)
-                if not result or (result.get("usage") or {}).get("source") == "user":
+                if not result or (result.get("usage") or {}).get("source") in KEPT_USAGE_SOURCES:
                     continue
                 state = S.load_state(rt.paths, session["sessionId"], aid)
                 record = compute_usage(rt, session, state)
@@ -1048,7 +1049,7 @@ def finish_attempt(rt, session, state, allow_complete=True):
     if result is None:
         result = _write_result(rt, session, state, state.get("status") or "invalid",
                                state.get("reasons") or ["build_interrupted"], teardown=state.get("teardown"))
-    if (result.get("usage") or {}).get("source") != "user":
+    if (result.get("usage") or {}).get("source") not in KEPT_USAGE_SOURCES:
         store_usage(rt, session, state, result, compute_usage(rt, session, state), ledger=False)
     if not _ledger_has(rt.paths.ledger, state["attemptId"]):
         store.append_jsonl(rt.paths.ledger, _ledger_row(rt, session, state, result))
