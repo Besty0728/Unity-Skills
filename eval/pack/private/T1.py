@@ -198,7 +198,7 @@ def verify(ctx, card):
     card.check("B5", V.close_tuple(props.get("fireRate"), (2.5,)) and V.as_int(props.get("burstCount")) == 3,
                expected={"fireRate": 2.5, "burstCount": 3},
                actual={"fireRate": props.get("fireRate"), "burstCount": props.get("burstCount")})
-    guids = {path: guid for path, _sha, guid in c0.get("prefabs") or []}
+    guids = {path: guid for path, _digest, guid in c0.get("prefabs") or []}
     text = _text(ctx, h["configAsset"]) if config else None
     match = PREFAB_REF_RE.search(text or "")
     disk_guid = match.group(1) if match else None
