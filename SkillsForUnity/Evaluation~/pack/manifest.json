@@ -16,7 +16,13 @@
     "S08",
     "D01"
    ],
-   "standard": [],
+   "standard": [
+    "T3",
+    "T4",
+    "T5",
+    "T7",
+    "T10"
+   ],
    "challenge": []
   },
   "dev": {
@@ -196,6 +202,131 @@
     "bytes": 6498
    }
   },
+  "T3": {
+   "track": "ops",
+   "tier": "standard",
+   "caseVersion": 2,
+   "minutes": 25,
+   "seeds": [
+    7809
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "0c8ce5eb251e3aeb1d1906b5ff5d097a51f0963c9c89a306074e2b4c8431ac9f",
+    "prompt.zh-CN.md": "31266f5a1782dff838134eebda3dcf04092714978794f394b48a85977bbbd7b3",
+    "prompt.en.md": "cea3c64d6870f5fc6ec3d869ff56b7ae52296fdd9e3e48fcb06f10c18a2cc3ba"
+   },
+   "private": {
+    "file": "T3.py",
+    "sha256": "6387764c5987d9ea69b708a2ea3869b9318bddc274fd557d954779adc23a8c50",
+    "bytes": 16377
+   }
+  },
+  "T4": {
+   "track": "ops",
+   "tier": "standard",
+   "caseVersion": 2,
+   "minutes": 15,
+   "seeds": [
+    7910
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "1a1807145f15f3f1024977bb7d2fdd246c22a8cf4d6c579c341e8dc2ed48967e",
+    "prompt.zh-CN.md": "e92cb2a8978904d2d5caaf32d2448b6b20fab75c59905e45372365bdf350c098",
+    "prompt.en.md": "954e1b3e166b31383aec7f5e2437c6a10216b042233bbc8aeca6b7f0839977d1"
+   },
+   "private": {
+    "file": "T4.py",
+    "sha256": "94886b18aacea9c88ee2e0f8fd42d4ea6e09d02721bd23ac98a5764c53a10693",
+    "bytes": 11117
+   }
+  },
+  "T5": {
+   "track": "ops",
+   "tier": "standard",
+   "caseVersion": 2,
+   "minutes": 20,
+   "seeds": [
+    8011
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "a32a0164dc8f9012581bec2699df801e9fef0f7e54893b22f3f98c2d508992da",
+    "prompt.zh-CN.md": "fbe4c209337aabe9f0414f4a523fc11fb5f9e412a703284f90040dbbba9a41c7",
+    "prompt.en.md": "58af9690f28ef2e83a997bb9ac8cd54f67481729c2b0ca2a35e37ed056896693"
+   },
+   "private": {
+    "file": "T5.py",
+    "sha256": "d1454f2cd19343d8025ea239a194d9a4f8d26f3c99b7c14d303e66d91ea0a7f5",
+    "bytes": 14443
+   }
+  },
+  "T7": {
+   "track": "ops",
+   "tier": "standard",
+   "caseVersion": 2,
+   "minutes": 20,
+   "seeds": [
+    8112
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "d07296f46fa3332247c6757094a0e044702dbae54af2d27d939345fae0bd3dad",
+    "prompt.zh-CN.md": "5f9f1e2be1c4e48ddec8673c5d117adc73747177eaf0686fb2061fb7365eb15a",
+    "prompt.en.md": "9b65173ee5eed87217b122e1886005790253ebc2a6a38a2fdbbc180992f75f30"
+   },
+   "private": {
+    "file": "T7.py",
+    "sha256": "da74cb6ecfde7edf66d28e991816a0cdb208b22c6550e5a7462c12b155d81b2e",
+    "bytes": 12325
+   }
+  },
+  "T10": {
+   "track": "ops",
+   "tier": "standard",
+   "caseVersion": 2,
+   "minutes": 20,
+   "seeds": [
+    8314
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "39926693beb01e02db928f58d308f8eacedb7c4f473329f4731740dd6a21c276",
+    "prompt.zh-CN.md": "fce52ee48f2d1f5d53f784335c31d5eb3c66a3f4f385972d4f6ef41c0c973325",
+    "prompt.en.md": "ba43327baf7e2615208cdbff3d3021659facbfd239548b21e5313b638e16f5e5"
+   },
+   "private": {
+    "file": "T10.py",
+    "sha256": "2ab1baf0015954c3d33e22c6e17fb31efc2c734e6aa420a8a4e8a1c7e978b433",
+    "bytes": 12405
+   }
+  },
   "T1": {
    "track": "dev",
    "tier": "standard",
@@ -217,8 +348,8 @@
    },
    "private": {
     "file": "T1.py",
-    "sha256": "18b1fb9cf918ce0020dbe1b9436d15a6db0266e726c97d3522947839b170f54d",
-    "bytes": 15904
+    "sha256": "1178b707ad467371d265cf284764983b03ee8d5d6a8a9cfa22028e8f2cb04c2c",
+    "bytes": 15907
    }
   }
  },
