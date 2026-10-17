@@ -167,12 +167,12 @@ namespace UnitySkills.Tests.Core
             GameObjectFinder.InvalidateCache();
             var args = new JObject { ["entityId"] = Id(target) };
 
-            var validation = ValidateArgs("prefab_revert_overrides", args);
+            var validation = ValidateArgs("terrain_get_info", args);
             Assert.That(validation.Valid, Is.False);
             Assert.That(validation.Args["name"], Is.Null);
             Assert.That(validation.Args["instanceId"], Is.Null);
 
-            AssertRefused(Execute("prefab_revert_overrides", args), "noPathParameter", target, other);
+            AssertRefused(Execute("terrain_get_info", args), "noPathParameter", target, other);
         }
 
         [Test]

@@ -279,9 +279,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Resolves an object reference to write: an asset by <paramref name="assetPath"/>, otherwise a scene object by
-        /// <paramref name="referenceEntityId"/>, instance id, path or name. An entityId that names nothing is an error and never
-        /// falls back to the other locators, which could bind a same-name object instead.
+        /// Resolves an object reference to write: an asset by <paramref name="assetPath"/>, otherwise the object
+        /// <see cref="TryFindObject"/> locates. A component's id binds that exact component when <paramref name="objectType"/>
+        /// names its type or a base type, and an id may name an asset or any other object, which is the reference as it is.
         /// </summary>
         public static bool TryResolveObjectReference(
             string referenceName,
@@ -293,13 +293,35 @@ namespace UnitySkills
             out string error,
             string referenceEntityId = null)
         {
+            var resolved = TryResolveObjectReferenceDetailed(
+                referenceName, referenceInstanceId, referencePath, assetPath, objectType, referenceEntityId, out result, out var detail);
+            error = null;
+            if (!resolved)
+                error = SkillResultHelper.TryGetError(detail, out var text) ? text : "Object reference could not be resolved";
+            return resolved;
+        }
+
+        /// <summary>
+        /// <see cref="TryResolveObjectReference"/> with the failure as a ready-to-return skill result, so an ambiguous name
+        /// keeps its candidate list.
+        /// </summary>
+        internal static bool TryResolveObjectReferenceDetailed(
+            string referenceName,
+            int referenceInstanceId,
+            string referencePath,
+            string assetPath,
+            string objectType,
+            string referenceEntityId,
+            out UnityEngine.Object result,
+            out object error)
+        {
             result = null;
             error = null;
 
             if (!string.IsNullOrWhiteSpace(assetPath))
             {
-                var targetType = ResolveUnityObjectType(objectType) ?? typeof(UnityEngine.Object);
-                result = AssetDatabase.LoadAssetAtPath(assetPath, targetType);
+                var assetType = ResolveUnityObjectType(objectType) ?? typeof(UnityEngine.Object);
+                result = AssetDatabase.LoadAssetAtPath(assetPath, assetType);
                 if (result == null)
                 {
                     result = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
@@ -307,37 +329,44 @@ namespace UnitySkills
 
                 if (result == null)
                 {
-                    error = $"Asset not found: {assetPath}";
+                    error = new { error = $"Asset not found: {assetPath}" };
                     return false;
                 }
 
-                if (targetType != typeof(UnityEngine.Object) && !targetType.IsAssignableFrom(result.GetType()))
+                if (assetType != typeof(UnityEngine.Object) && !assetType.IsAssignableFrom(result.GetType()))
                 {
-                    error = $"Asset '{assetPath}' is {result.GetType().Name}, expected {targetType.Name}";
+                    error = new { error = $"Asset '{assetPath}' is {result.GetType().Name}, expected {assetType.Name}" };
+                    result = null;
                     return false;
                 }
 
                 return true;
             }
 
-            GameObject go;
-            if (!string.IsNullOrWhiteSpace(referenceEntityId))
+            if (string.IsNullOrWhiteSpace(referenceEntityId) && referenceInstanceId == 0 &&
+                string.IsNullOrWhiteSpace(referencePath) && string.IsNullOrWhiteSpace(referenceName))
             {
-                go = FindGameObjectByEntityId(referenceEntityId);
-                if (go == null)
-                {
-                    error = $"Scene reference not found: entityId='{referenceEntityId}'";
-                    return false;
-                }
+                error = new { error = "Scene reference not found: pass one of entityId, instanceId, path or name" };
+                return false;
             }
-            else
+
+            if (!TryFindObject(referenceName, referenceInstanceId, referenceEntityId, referencePath, "Scene reference", out var found, out error))
+                return false;
+
+            var named = found as Component;
+            var go = found as GameObject ?? named?.gameObject;
+            if (go == null)
             {
-                go = GameObjectFinder.Find(name: referenceName, instanceId: referenceInstanceId, path: referencePath);
-                if (go == null)
+                // An id named an asset or another object outside the scene: it is the reference as it is, if the bound type accepts it.
+                var boundType = ResolveUnityObjectType(objectType) ?? typeof(UnityEngine.Object);
+                if (!boundType.IsAssignableFrom(found.GetType()))
                 {
-                    error = $"Scene reference not found: name='{referenceName}', instanceId={referenceInstanceId}, path='{referencePath}'";
+                    error = new { error = $"'{found.name}' is a {found.GetType().Name}, expected {boundType.Name}" };
                     return false;
                 }
+
+                result = found;
+                return true;
             }
 
             if (string.IsNullOrWhiteSpace(objectType) ||
@@ -348,44 +377,99 @@ namespace UnitySkills
                 return true;
             }
 
+            Type wanted;
             if (string.Equals(objectType, "Transform", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(objectType, "UnityEngine.Transform", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(objectType, "RectTransform", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(objectType, "UnityEngine.RectTransform", StringComparison.OrdinalIgnoreCase))
+                string.Equals(objectType, "UnityEngine.Transform", StringComparison.OrdinalIgnoreCase))
             {
-                result = go.GetComponent(objectType.EndsWith("RectTransform", StringComparison.OrdinalIgnoreCase)
-                    ? typeof(RectTransform)
-                    : typeof(Transform));
-                if (result == null)
+                wanted = typeof(Transform);
+            }
+            else if (string.Equals(objectType, "RectTransform", StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(objectType, "UnityEngine.RectTransform", StringComparison.OrdinalIgnoreCase))
+            {
+                wanted = typeof(RectTransform);
+            }
+            else
+            {
+                wanted = ComponentSkills.FindComponentType(objectType);
+                if (wanted == null)
                 {
-                    error = $"Component '{objectType}' not found on '{go.name}'";
+                    error = new { error = $"Unity Object type not found: {objectType}" };
                     return false;
                 }
-                return true;
             }
 
-            var componentType = ComponentSkills.FindComponentType(objectType);
-            if (componentType != null)
+            // A component's own id names that component, even when its GameObject carries several of the type.
+            result = named != null && wanted.IsAssignableFrom(named.GetType()) ? named : go.GetComponent(wanted);
+            if (result == null)
             {
-                result = go.GetComponent(componentType);
-                if (result == null)
-                {
-                    error = $"Component '{objectType}' not found on '{go.name}'";
-                    return false;
-                }
-                return true;
+                error = new { error = $"Component '{objectType}' not found on '{go.name}'" };
+                return false;
             }
 
-            error = $"Unity Object type not found: {objectType}";
-            return false;
+            return true;
         }
 
-        /// <summary>The GameObject an entityId names, or the owner of the component it names; null when it names neither.</summary>
-        internal static GameObject FindGameObjectByEntityId(string entityId)
+        /// <summary>
+        /// Finds the object a reference names. One locator decides, in this order: entityId, instance id, path, name. The
+        /// first one given is never replaced by a lower one, so a stale id or a mistyped path is an error and cannot land on
+        /// a same-name object. An id may name a GameObject, a component or an asset; a path or a name names a GameObject,
+        /// and an ambiguous name is reported with its candidates, as <see cref="GameObjectFinder.FindOrError"/> does.
+        /// <paramref name="error"/> is a ready-to-return skill result.
+        /// </summary>
+        internal static bool TryFindObject(string name, int instanceId, string entityId, string path, string what,
+            out UnityEngine.Object found, out object error)
         {
-            var found = UnityObjectIdUtility.EntityIdToObject(entityId);
-            return found as GameObject ?? (found as Component)?.gameObject;
+            found = null;
+            error = null;
+
+            if (!string.IsNullOrWhiteSpace(entityId))
+            {
+                found = UnityObjectIdUtility.EntityIdToObject(entityId);
+                if (found == null)
+                {
+                    error = NotFoundError($"{what} not found for entityId {entityId.Trim()}");
+                    return false;
+                }
+
+                return true;
+            }
+
+            if (instanceId != 0)
+            {
+                found = UnityObjectIdUtility.ObjectIdToObject(instanceId);
+                if (found == null)
+                {
+                    error = NotFoundError($"{what} not found for instanceId {instanceId}"
+#if UNITY_6000_4_OR_NEWER
+                        + " (this Unity version has no legacy instance ids: pass the entityId)"
+#endif
+                    );
+                    return false;
+                }
+
+                return true;
+            }
+
+            var (go, findError) = !string.IsNullOrWhiteSpace(path)
+                ? GameObjectFinder.FindOrError(path: path)
+                : GameObjectFinder.FindOrError(name: name);
+            if (findError != null)
+            {
+                error = findError;
+                return false;
+            }
+
+            found = go;
+            return true;
         }
+
+        private static object NotFoundError(string message) => new
+        {
+            error = message,
+            errorCode = SkillErrorCode.TargetNotFound.ToWireString(),
+            retryStrategy = SkillErrorResponse.RetryFindAndRetry,
+            relatedSkills = new[] { "gameobject_find", "scene_get_hierarchy" }
+        };
 
         public static List<object> CompareSerializedProperties(UnityEngine.Object source, UnityEngine.Object target, int limit = 50)
         {
@@ -842,7 +926,7 @@ namespace UnitySkills
         internal static bool IsTypeDefaultText(string value) =>
             string.IsNullOrWhiteSpace(value) || string.Equals(value.Trim(), "null", StringComparison.OrdinalIgnoreCase);
 
-        private static Type ResolveUnityObjectType(string objectType)
+        internal static Type ResolveUnityObjectType(string objectType)
         {
             if (string.IsNullOrWhiteSpace(objectType)) return null;
             if (string.Equals(objectType, "GameObject", StringComparison.OrdinalIgnoreCase) ||

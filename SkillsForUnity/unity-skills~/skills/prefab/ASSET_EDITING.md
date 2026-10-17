@@ -6,7 +6,7 @@ These APIs edit `.prefab` assets without spawning scene instances. Each asset tr
 
 Use `prefabPath` plus an exact root-relative `gameObjectPath` (empty means root); no scene instance IDs. Duplicate sibling names produce candidates with siblingIndex and reject ambiguous paths. Reads include inactive nodes. New names must not create sibling collisions.
 
-Component indices are zero-based among the requested type's matches; use full concrete type names returned by `prefab_list_components` for an unambiguous round trip. Batch results describe the final saved state, including changes made by later steps.
+Component indices are zero-based among the components of exactly the requested type (a subclass instance of it does not shift the count; subclasses only stand in when none has exactly that type), the index `prefab_list_components` reports; use the full concrete type names it returns for an unambiguous round trip. Batch results describe the final saved state, including changes made by later steps.
 
 Only the requested asset is saved. Variant and nested-prefab edits preserve their connections as overrides; they never apply to the base/source asset. Unity-invalid inherited structure changes are rejected. Root deletion/reparent/duplication, Transform replacement/removal, cycles, script/bookkeeping property writes and scene references are rejected. Node duplication supports child subtrees; creation makes an empty Transform or RectTransform node. No dedicated tag/layer API is added.
 

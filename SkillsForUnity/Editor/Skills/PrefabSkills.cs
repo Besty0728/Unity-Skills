@@ -245,7 +245,9 @@ namespace UnitySkills
             [SkillParam("Hierarchy path of the prefab instance (or any object inside it), e.g. Level/Enemy; picks one of several same-name instances.")]
             string path = null,
             [SkillParam("false (default): counts only. true: also returns overrides, one entry per property override, added or removed component and added GameObject: kind, gameObjectPath (relative to the instance root, empty = the root), component, componentIndex, property, value.")]
-            bool includeDetails = false)
+            bool includeDetails = false,
+            [SkillParam("With includeDetails: max overrides listed, property overrides first, then added components, removed components and added GameObjects. count is how many came back, totalMatched every override, truncated=true means limit cut the list, so raise it to see the rest.")]
+            int limit = 50)
         {
             var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (goErr != null) return goErr;
@@ -341,18 +343,27 @@ namespace UnitySkills
                 ["hasOverrides"] = propOverrides.Count > 0 || addedComponents.Count > 0 || removedComponents.Count > 0 || addedObjects.Count > 0
             };
 
-            // Built from the same filtered lists the counts above come from, so the list and the counts always agree.
+            // Built from the same lists the counts above come from, one entry per counted override (an override Unity reports
+            // without a live object is listed with a null gameObjectPath, not left out), so totalMatched always equals the four counts.
             if (includeDetails)
-                response["overrides"] = DescribeInstanceOverrides(prefabRoot, propOverrides, addedComponents, removedComponents, addedObjects);
+            {
+                var all = DescribeInstanceOverrides(prefabRoot, propOverrides, addedComponents, removedComponents, addedObjects);
+                var page = all.Take(System.Math.Max(0, limit)).ToList();
+                response["count"] = page.Count;
+                response["totalMatched"] = all.Count;
+                response["truncated"] = all.Count > page.Count;
+                response["overrides"] = page;
+            }
 
             return response;
         }
 
-        // One entry per override: kind (property | addedComponent | removedComponent | addedGameObject), gameObjectPath
-        // relative to the instance root ("" = the root; null when a property's source object has no counterpart in this
-        // instance), component + componentIndex (the Nth of that type on the GameObject; "GameObject" for GameObject-level
-        // properties), and for properties the propertyPath and value (objectReference when the override is a reference).
-        private static System.Collections.Generic.List<object> DescribeInstanceOverrides(
+        // One entry per override, none left out: kind (property | addedComponent | removedComponent | addedGameObject),
+        // gameObjectPath relative to the instance root ("" = the root; null when Unity reports no live object for the entry, e.g. a
+        // property's source object with no counterpart in this instance, or a component whose script is missing), component +
+        // componentIndex (the Nth component of exactly that type on the GameObject, as prefab_list_components counts; "GameObject" for
+        // GameObject-level properties), and for properties the propertyPath and value (objectReference when the override is a reference).
+        internal static System.Collections.Generic.List<object> DescribeInstanceOverrides(
             GameObject instanceRoot,
             System.Collections.Generic.List<(PropertyModification modification, UnityEngine.Object live)> propertyOverrides,
             System.Collections.Generic.List<UnityEditor.SceneManagement.AddedComponent> addedComponents,
@@ -383,23 +394,22 @@ namespace UnitySkills
             foreach (var added in addedComponents)
             {
                 var component = added.instanceComponent;
-                if (component == null) continue;
                 entries.Add(new System.Collections.Generic.Dictionary<string, object>
                 {
                     ["kind"] = "addedComponent",
-                    ["gameObjectPath"] = PathFromInstanceRoot(instanceRoot, component.gameObject),
-                    ["component"] = component.GetType().Name,
-                    ["componentIndex"] = ComponentIndex(component)
+                    ["gameObjectPath"] = component != null ? PathFromInstanceRoot(instanceRoot, component.gameObject) : null,
+                    ["component"] = component != null ? component.GetType().Name : null,
+                    ["componentIndex"] = component != null ? ComponentIndex(component) : 0
                 });
             }
 
             foreach (var removed in removedComponents)
             {
-                if (removed.containingInstanceGameObject == null) continue;
+                var owner = removed.containingInstanceGameObject;
                 entries.Add(new System.Collections.Generic.Dictionary<string, object>
                 {
                     ["kind"] = "removedComponent",
-                    ["gameObjectPath"] = PathFromInstanceRoot(instanceRoot, removed.containingInstanceGameObject),
+                    ["gameObjectPath"] = owner != null ? PathFromInstanceRoot(instanceRoot, owner) : null,
                     ["component"] = removed.assetComponent != null ? removed.assetComponent.GetType().Name : null
                 });
             }
@@ -407,13 +417,12 @@ namespace UnitySkills
             foreach (var added in addedObjects)
             {
                 var addedGameObject = added.instanceGameObject;
-                if (addedGameObject == null) continue;
                 entries.Add(new System.Collections.Generic.Dictionary<string, object>
                 {
                     ["kind"] = "addedGameObject",
-                    ["gameObjectPath"] = PathFromInstanceRoot(instanceRoot, addedGameObject),
+                    ["gameObjectPath"] = addedGameObject != null ? PathFromInstanceRoot(instanceRoot, addedGameObject) : null,
                     ["component"] = "GameObject",
-                    ["name"] = addedGameObject.name
+                    ["name"] = addedGameObject != null ? addedGameObject.name : null
                 });
             }
 
@@ -423,8 +432,10 @@ namespace UnitySkills
         private static string ComponentLabel(UnityEngine.Object target) =>
             target is Component component ? component.GetType().Name : "GameObject";
 
+        // The same index prefab_list_components reports and prefab_set_serialized_property and the other prefab asset edits take:
+        // the Nth component of exactly this type on its GameObject, so a subclass instance of the base type does not shift it.
         private static int ComponentIndex(Component component) =>
-            System.Array.IndexOf(component.gameObject.GetComponents(component.GetType()), component);
+            PrefabAssetEditor.IndexOfComponent(component.gameObject, component);
 
         // Names from the instance root (excluded) down to the object, "/"-joined; "" for the root itself.
         private static string PathFromInstanceRoot(GameObject instanceRoot, GameObject target)
@@ -449,9 +460,11 @@ namespace UnitySkills
             Tags = new[] { "prefab", "revert", "overrides", "reset" },
             Outputs = new[] { "reverted" },
             RequiresInput = new[] { "gameObject" }, TracksWorkflow = true, MutatesScene = true)]
-        public static object PrefabRevertOverrides(string name = null, int instanceId = 0)
+        public static object PrefabRevertOverrides(string name = null, int instanceId = 0,
+            [SkillParam("Hierarchy path of the prefab instance (or any object inside it), e.g. Level/Enemy; picks one of several same-name instances.")]
+            string path = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (findErr != null) return findErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
@@ -470,9 +483,11 @@ namespace UnitySkills
             Tags = new[] { "prefab", "apply", "overrides", "save" },
             Outputs = new[] { "appliedTo" },
             RequiresInput = new[] { "gameObject" }, MutatesAssets = true)]
-        public static object PrefabApplyOverrides(string name = null, int instanceId = 0)
+        public static object PrefabApplyOverrides(string name = null, int instanceId = 0,
+            [SkillParam("Hierarchy path of the prefab instance (or any object inside it), e.g. Level/Enemy; picks one of several same-name instances.")]
+            string path = null)
         {
-            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId);
+            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (goErr != null) return goErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);

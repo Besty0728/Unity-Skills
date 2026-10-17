@@ -130,7 +130,7 @@ namespace UnitySkills
             }
         }
 
-        private static PackageWriteCheck CheckPackageWritability(string assetPath)
+        internal static PackageWriteCheck CheckPackageWritability(string assetPath)
         {
             var info = PkgInfo.FindForAssetPath(assetPath);
             if (info == null)
@@ -140,11 +140,17 @@ namespace UnitySkills
             return new PackageWriteCheck(found: true, writable, info.name, info.source.ToString());
         }
 
-        private static object BuildPackagePathError(string savePath, string reason, string packageName, string packageSource)
+        /// <summary>
+        /// The structured error for a savePath inside a package that cannot be written. <paramref name="subject"/>,
+        /// <paramref name="fallbackFolder"/> and <paramref name="fixReason"/> let other asset creators (physics_create_material)
+        /// reuse it with their own wording.
+        /// </summary>
+        internal static object BuildPackagePathError(string savePath, string reason, string packageName, string packageSource,
+            string subject = "Materials", string fallbackFolder = "Assets/Materials", string fixReason = "Save the material under Assets/ instead.")
         {
             return new
             {
-                error = $"Invalid value '{savePath}' for parameter 'savePath': {reason}. Materials can be saved under Assets/ or inside an embedded/local package.",
+                error = $"Invalid value '{savePath}' for parameter 'savePath': {reason}. {subject} can be saved under Assets/ or inside an embedded/local package.",
                 errorCode = SkillParamUtil.SemanticInvalidCode,
                 retryStrategy = SkillErrorResponse.RetryFixAndRetry,
                 parameter = "savePath",
@@ -152,7 +158,7 @@ namespace UnitySkills
                 packageSource,
                 suggestedFixes = new object[]
                 {
-                    new { action = "fix_param", args = new { savePath = "Assets/Materials" }, reason = "Save the material under Assets/ instead." }
+                    new { action = "fix_param", args = new { savePath = fallbackFolder }, reason = fixReason }
                 },
             };
         }

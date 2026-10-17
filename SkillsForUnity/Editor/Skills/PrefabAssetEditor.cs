@@ -137,10 +137,23 @@ namespace UnitySkills.Internal
 
         private static Component FindComponent(GameObject target, string typeName, int index)
         {
-            var matches = target.GetComponents(ComponentType(typeName));
+            var matches = ComponentsOfType(target, ComponentType(typeName));
             if (index < 0 || index >= matches.Length) throw new EditFailure($"Component index {index} not found for {typeName} on {target.name}", SkillErrorCode.TargetNotFound);
             return matches[index];
         }
+
+        // The components a (type, index) pair addresses. The index counts components of exactly this type, as prefab_list_components
+        // reports it, so a subclass instance in front of one does not shift the count; subclasses only stand in when no component has
+        // exactly this type.
+        private static Component[] ComponentsOfType(GameObject target, Type type)
+        {
+            var all = target.GetComponents(type);
+            var exact = all.Where(c => c != null && c.GetType() == type).ToArray();
+            return exact.Length > 0 ? exact : all;
+        }
+
+        internal static int IndexOfComponent(GameObject target, Component component) =>
+            Array.IndexOf(ComponentsOfType(target, component.GetType()), component);
 
         internal static object DescribeNode(GameObject root, GameObject target)
         {
@@ -598,7 +611,7 @@ namespace UnitySkills.Internal
             var path = receipt.FinalPath = receipt.Target != null ? PathOf(root, receipt.Target) : receipt.OriginalPath;
             var gone = receipt.Target == null;
             var componentGone = receipt.Component == null;
-            var index = componentGone ? -1 : Array.IndexOf(receipt.Target.GetComponents(receipt.MatchType), receipt.Component);
+            var index = componentGone ? -1 : Array.IndexOf(ComponentsOfType(receipt.Target, receipt.MatchType), receipt.Component);
             receipt.ReadBack = persisted =>
             {
                 var result = new JObject();
@@ -609,7 +622,7 @@ namespace UnitySkills.Internal
                 {
                     result["removed"] = true;
                     result["componentType"] = receipt.MatchType.FullName;
-                    result["remainingCount"] = target.GetComponents(receipt.MatchType).Length;
+                    result["remainingCount"] = ComponentsOfType(target, receipt.MatchType).Length;
                 }
                 else if (receipt.MatchType != null)
                 {
@@ -638,7 +651,7 @@ namespace UnitySkills.Internal
             if (value == null) return "null";
             var go = value as GameObject ?? (value as Component)?.gameObject;
             if (go != null && (go == root || go.transform.IsChildOf(root.transform)))
-                return PathOf(root, go) + (value is Component comp ? ":" + comp.GetType().FullName + "[" + Array.IndexOf(go.GetComponents(comp.GetType()), comp) + "]" : "");
+                return PathOf(root, go) + (value is Component comp ? ":" + comp.GetType().FullName + "[" + IndexOfComponent(go, comp) + "]" : "");
             return AssetDatabase.GetAssetPath(value);
         }
 

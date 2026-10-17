@@ -134,7 +134,7 @@ Create a PhysicMaterial asset.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | "New PhysicMaterial" | Material name |
-| savePath | string | No | "Assets" | Save folder under `Assets/` or `Packages/`; it and any missing parent folders are created |
+| savePath | string | No | "Assets" | Save folder under `Assets/`, or inside an embedded/local package (`Packages/<id>/...`); it and any missing parent folders are created. A read-only package (registry, git, built-in) or a path no package owns is refused with `SEMANTIC_INVALID` before anything is created |
 | dynamicFriction | float | No | 0.6 | Dynamic friction value |
 | staticFriction | float | No | 0.6 | Static friction value |
 | bounciness | float | No | 0 | Bounciness value |

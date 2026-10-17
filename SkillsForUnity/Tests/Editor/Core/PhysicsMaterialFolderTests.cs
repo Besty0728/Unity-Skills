@@ -1,4 +1,7 @@
-﻿using Newtonsoft.Json;
+﻿using System;
+using System.IO;
+using System.Linq;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEditor;
@@ -8,7 +11,9 @@ namespace UnitySkills.Tests.Core
 {
     /// <summary>
     /// physics_create_material asked AssetDatabase for a unique path inside a folder that did not exist yet, got an empty
-    /// path back and failed with "Invalid path" (P8). The folder is now created first, so a new savePath works.
+    /// path back and failed with "Invalid path" (P8). The folder is now created first, so a new savePath works, a savePath inside
+    /// a read-only package is refused with a structured error before anything is created, and the created asset is snapshotted
+    /// for workflow undo.
     /// </summary>
     [TestFixture]
     public class PhysicsMaterialFolderTests
@@ -87,13 +92,153 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void ARejectedSavePath_CreatesNothing()
+        public void ATraversingSavePath_IsRefused_AndCreatesNothing()
         {
             var json = ToJson(PhysicsSkills.PhysicsCreateMaterial("Escape", "Assets/../Outside"));
 
-            Assert.That(json["error"], Is.Not.Null, json.ToString(Formatting.None));
-            Assert.That(AssetDatabase.IsValidFolder(TempRoot), Is.False);
+            Assert.That(json["error"]?.ToString(), Does.Contain("traversal"), json.ToString(Formatting.None));
+            Assert.That(AssetDatabase.IsValidFolder("Assets/Outside"), Is.False);
+            Assert.That(PhysicsMaterialAssetsNamed("Escape"), Is.Empty);
         }
+
+        [Test]
+        public void ANameWithSeparators_IsRefused_AndCreatesNothing()
+        {
+            var json = ToJson(PhysicsSkills.PhysicsCreateMaterial("Bad/Name", TempRoot + "/Never"));
+
+            Assert.That(json["error"]?.ToString(), Does.Contain("path separators"), json.ToString(Formatting.None));
+            Assert.That(AssetDatabase.IsValidFolder(TempRoot + "/Never"), Is.False);
+        }
+
+        // ---------- read-only packages ----------
+
+        [Test]
+        public void APathInsideABuiltInPackage_IsRefusedWithAStructuredError_AndCreatesNothing()
+        {
+            // A built-in module is always installed and never writable.
+            var folder = "Packages/com.unity.modules.physics/PhysicsMaterialProbe";
+
+            var json = ToJson(PhysicsSkills.PhysicsCreateMaterial("Blocked", folder));
+
+            AssertPackageRefusal(json, folder);
+            Assert.That(AssetDatabase.IsValidFolder(folder), Is.False, "Nothing may be created inside the package.");
+        }
+
+        [Test]
+        public void ThePackagesRoot_IsRefused_BecauseNoPackageOwnsIt()
+        {
+            var json = ToJson(PhysicsSkills.PhysicsCreateMaterial("Root", "Packages"));
+
+            AssertPackageRefusal(json, "Packages");
+        }
+
+        [Test]
+        public void ReadOnlyPackage_ByTheOwnershipSeam_NamesThePackageAndItsSource()
+        {
+            var registry = new MaterialSkills.PackageWriteCheck(found: true, writable: false, packageName: "com.example.pkg", packageSource: "Registry");
+
+            var json = ToJson(PhysicsSkills.CreatePhysicsMaterial("Blocked", "Packages/com.example.pkg/Materials", 0.6f, 0.6f, 0f, _ => registry));
+
+            AssertPackageRefusal(json, "Packages/com.example.pkg/Materials");
+            Assert.That(json["error"]?.ToString(), Does.Contain("package 'com.example.pkg' is a Registry package (read-only)"));
+            Assert.That(json["packageName"]?.ToString(), Is.EqualTo("com.example.pkg"));
+            Assert.That(json["packageSource"]?.ToString(), Is.EqualTo("Registry"));
+            Assert.That(AssetDatabase.IsValidFolder("Packages/com.example.pkg"), Is.False);
+        }
+
+        [Test]
+        public void APathNoPackageOwns_ByTheOwnershipSeam_IsRefused()
+        {
+            var unowned = new MaterialSkills.PackageWriteCheck(found: false, writable: false, packageName: null, packageSource: null);
+
+            var json = ToJson(PhysicsSkills.CreatePhysicsMaterial("Blocked", "Packages/com.nobody/Materials", 0.6f, 0.6f, 0f, _ => unowned));
+
+            AssertPackageRefusal(json, "Packages/com.nobody/Materials");
+            Assert.That(json["error"]?.ToString(), Does.Contain("no installed package owns"));
+        }
+
+        [Test]
+        public void APackagePath_ThroughTheRouter_AnswersWithTheStructuredError()
+        {
+            var args = new JObject { ["name"] = "Routed", ["savePath"] = "Packages/com.unity.modules.physics/PhysicsMaterialProbe" };
+
+            var response = JObject.Parse(SkillRouter.Execute("physics_create_material", args.ToString(Formatting.None)));
+
+            Assert.That(response["status"]?.ToString(), Is.EqualTo("error"), response.ToString(Formatting.None));
+            Assert.That(response["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"));
+            Assert.That(response["error"]?.ToString(), Does.Contain("savePath"));
+        }
+
+        // ---------- workflow ----------
+
+        [Test]
+        public void TheCreatedAsset_IsSnapshottedForWorkflowUndo()
+        {
+            var workflowRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsPhysicsMaterialTests_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(workflowRoot);
+            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(workflowRoot, "workflow_history.json");
+            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(workflowRoot, "workflow_files");
+            WorkflowManager.ResetStateForTests();
+            try
+            {
+                WorkflowManager.BeginTask("physics-material", "test");
+
+                var json = ToJson(PhysicsSkills.PhysicsCreateMaterial("Tracked", TempRoot + "/Undo"));
+
+                Assert.That(json["success"]?.Value<bool>(), Is.True, json.ToString(Formatting.None));
+                var snapshot = WorkflowManager.CurrentTask.snapshots.Single(s => s.assetPath == (string)json["path"]);
+                Assert.That(snapshot.type.ToString(), Is.EqualTo("Created"), "Undoing the task deletes the asset it created.");
+            }
+            finally
+            {
+                WorkflowManager.AbortTask();
+                WorkflowManager.ResetStateForTests();
+                WorkflowManager.OverrideHistoryFilePathForTests = null;
+                WorkflowFileStore.OverrideStoreRootForTests = null;
+                try { if (Directory.Exists(workflowRoot)) Directory.Delete(workflowRoot, true); } catch { }
+            }
+        }
+
+        [Test]
+        public void ARefusedCall_RecordsNoSnapshot()
+        {
+            var workflowRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsPhysicsMaterialTests_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(workflowRoot);
+            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(workflowRoot, "workflow_history.json");
+            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(workflowRoot, "workflow_files");
+            WorkflowManager.ResetStateForTests();
+            try
+            {
+                WorkflowManager.BeginTask("physics-material-refused", "test");
+
+                PhysicsSkills.PhysicsCreateMaterial("Blocked", "Packages/com.unity.modules.physics/PhysicsMaterialProbe");
+
+                Assert.That(WorkflowManager.CurrentTask.snapshots, Is.Empty);
+            }
+            finally
+            {
+                WorkflowManager.AbortTask();
+                WorkflowManager.ResetStateForTests();
+                WorkflowManager.OverrideHistoryFilePathForTests = null;
+                WorkflowFileStore.OverrideStoreRootForTests = null;
+                try { if (Directory.Exists(workflowRoot)) Directory.Delete(workflowRoot, true); } catch { }
+            }
+        }
+
+        private static void AssertPackageRefusal(JObject json, string savePath)
+        {
+            Assert.That(json["errorCode"]?.ToString(), Is.EqualTo("SEMANTIC_INVALID"), json.ToString(Formatting.None));
+            Assert.That(json["parameter"]?.ToString(), Is.EqualTo("savePath"));
+            Assert.That(json["error"]?.ToString(), Does.Contain(savePath).And.Contain("Physics materials"));
+            Assert.That(json["retryStrategy"]?.ToString(), Is.EqualTo("fix_and_retry"));
+            Assert.That(json["suggestedFixes"]?[0]?["args"]?["savePath"]?.ToString(), Is.EqualTo("Assets/PhysicsMaterials"));
+        }
+
+        private static string[] PhysicsMaterialAssetsNamed(string name) =>
+            AssetDatabase.FindAssets(name)
+                .Select(AssetDatabase.GUIDToAssetPath)
+                .Where(path => path.EndsWith(".physicMaterial", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
 
         private static void AssertSaved(string path, float? dynamicFriction = null, float? staticFriction = null, float? bounciness = null)
         {

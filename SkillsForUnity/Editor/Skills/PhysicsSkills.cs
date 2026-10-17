@@ -314,12 +314,38 @@ namespace UnitySkills
             Outputs = new[] { "success", "path" }, MutatesAssets = true)]
         public static object PhysicsCreateMaterial(
             string name = "New PhysicMaterial", string savePath = "Assets",
-            float dynamicFriction = 0.6f, float staticFriction = 0.6f, float bounciness = 0f)
+            float dynamicFriction = 0.6f, float staticFriction = 0.6f, float bounciness = 0f) =>
+            CreatePhysicsMaterial(name, savePath, dynamicFriction, staticFriction, bounciness, MaterialSkills.CheckPackageWritability);
+
+        /// <summary>
+        /// The <paramref name="packageWritabilityCheck"/> seam lets tests stub package ownership without depending on which
+        /// packages happen to be installed in the test project, as <see cref="MaterialSkills.TryResolveMaterialSavePath"/> does.
+        /// </summary>
+        internal static object CreatePhysicsMaterial(string name, string savePath, float dynamicFriction, float staticFriction, float bounciness,
+            System.Func<string, MaterialSkills.PackageWriteCheck> packageWritabilityCheck)
         {
             if (Validate.Required(name, "name") is object nameErr) return nameErr;
             if (name.Contains("/") || name.Contains("\\") || name.Contains(".."))
                 return new { error = "name must not contain path separators" };
             if (Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
+
+            var path = System.IO.Path.Combine(savePath, name + ".physicMaterial").Replace('\\', '/');
+            while (path.Contains("//")) path = path.Replace("//", "/");
+
+            // Rejected before anything is created: registry, git and built-in packages are read-only on disk, so writing there
+            // would otherwise fail deep inside AssetDatabase (the "Packages" root and a folder no package owns included).
+            if (path.StartsWith("Packages/", System.StringComparison.Ordinal))
+            {
+                var check = packageWritabilityCheck(path);
+                if (!check.Writable)
+                {
+                    var reason = check.Found
+                        ? $"package '{check.PackageName}' is a {check.PackageSource} package (read-only)"
+                        : $"no installed package owns '{path}'";
+                    return MaterialSkills.BuildPackagePathError(savePath, reason, check.PackageName, check.PackageSource,
+                        "Physics materials", "Assets/PhysicsMaterials", "Save the physics material under Assets/ instead.");
+                }
+            }
 
 #if UNITY_6000_0_OR_NEWER
             var mat = new PhysicsMaterial(name)
@@ -331,7 +357,6 @@ namespace UnitySkills
                 staticFriction = staticFriction,
                 bounciness = bounciness
             };
-            var path = System.IO.Path.Combine(savePath, name + ".physicMaterial").Replace('\\', '/');
             // Cannot use System.IO.Directory.CreateDirectory: it only touches the filesystem, and
             // AssetDatabase doesn't know the new folder exists until a Refresh, so with the
             // parent directory not yet a *known* asset folder, savePath would make
