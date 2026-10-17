@@ -11,7 +11,7 @@ namespace UnitySkills
 {
     /// <summary>
     /// Component management skills: add/remove components, read/write properties.
-    /// Supports locating targets by name / instanceId / path, with fairly thorough type conversion and reference resolution.
+    /// Supports locating targets by name / entityId / instanceId / path, with fairly thorough type conversion and reference resolution.
     /// </summary>
     public static class ComponentSkills
     {
@@ -60,7 +60,7 @@ namespace UnitySkills
             "Rewired.",
         };
 
-        [UnitySkill("component_add", "Add a component to a GameObject (supports name/instanceId/path). Works with Cinemachine, TextMeshPro, etc.",
+        [UnitySkill("component_add", "Add a component to a GameObject (supports name/entityId/instanceId/path). Works with Cinemachine, TextMeshPro, etc.",
             Category = SkillCategory.Component, Operation = SkillOperation.Create,
             Tags = new[] { "add", "attach", "behaviour", "rigidbody", "collider", "script" },
             Outputs = new[] { "gameObject", "instanceId", "component", "fullTypeName" },
@@ -70,11 +70,11 @@ namespace UnitySkills
             MutatesScene = true)]
         public static object ComponentAdd(string name = null, int instanceId = 0, string path = null,
             [SkillParam("Type name, simple or namespace-qualified (Rigidbody, BoxCollider, TMPro.TextMeshProUGUI, your script class); case-insensitive.")]
-            string componentType = null)
+            string componentType = null, string entityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var type = FindComponentType(componentType);
@@ -116,7 +116,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("component_add_batch", "Add components to multiple GameObjects. items: JSON array of {name, componentType, path}",
+        [UnitySkill("component_add_batch", "Add components to multiple GameObjects. items: JSON array of {name, componentType, path, entityId}",
             Category = SkillCategory.Component, Operation = SkillOperation.Create,
             Tags = new[] { "add", "attach", "behaviour", "batch" },
             // The keys declared here are for the outer batch envelope, not the per-item keys inside results[].
@@ -129,13 +129,13 @@ namespace UnitySkills
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentAddBatch(
-            [SkillParam("JSON array of {name|path|instanceId, componentType}.")]
+            [SkillParam("JSON array of {name|path|instanceId|entityId, componentType}.")]
             string items)
         {
             return BatchExecutor.Execute<BatchAddComponentItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
+                if (error != null) return new { error = "Object not found", target = item.name ?? item.path ?? item.entityId };
 
                 if (string.IsNullOrEmpty(item.componentType))
                     return new { error = "componentType required" };
@@ -155,18 +155,19 @@ namespace UnitySkills
 
                 EditorUtility.SetDirty(go);
                 return new { target = go.name, success = true, component = type.Name };
-            }, item => item.name ?? item.path, atomic: true);
+            }, item => item.name ?? item.path ?? item.entityId, atomic: true);
         }
 
         private class BatchAddComponentItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public string componentType { get; set; }
         }
 
-        [UnitySkill("component_remove", "Remove a component from a GameObject (supports name/instanceId/path)",
+        [UnitySkill("component_remove", "Remove a component from a GameObject (supports name/entityId/instanceId/path)",
             Category = SkillCategory.Component, Operation = SkillOperation.Delete,
             Tags = new[] { "remove", "detach", "destroy" },
             Outputs = new[] { "gameObject", "removed", "remainingOfType" },
@@ -175,11 +176,11 @@ namespace UnitySkills
             TracksWorkflow = true, SkipAutoPresnapshot = true,
             MutatesScene = true,
             RiskLevel = "medium")]
-        public static object ComponentRemove(string name = null, int instanceId = 0, string path = null, string componentType = null, int componentIndex = 0)
+        public static object ComponentRemove(string name = null, int instanceId = 0, string path = null, string componentType = null, int componentIndex = 0, string entityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var type = FindComponentType(componentType);
@@ -213,7 +214,7 @@ namespace UnitySkills
             return new { success = true, gameObject = go.name, removed = type.Name, remainingOfType = go.GetComponents(type).Length };
         }
 
-        [UnitySkill("component_remove_batch", "Remove components from multiple GameObjects. items: JSON array of {name, componentType, path, componentIndex}",
+        [UnitySkill("component_remove_batch", "Remove components from multiple GameObjects. items: JSON array of {name, componentType, path, entityId, componentIndex}",
             Category = SkillCategory.Component, Operation = SkillOperation.Delete,
             Tags = new[] { "remove", "detach", "destroy", "batch" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
@@ -222,13 +223,13 @@ namespace UnitySkills
             MutatesScene = true,
             RiskLevel = "medium")]
         public static object ComponentRemoveBatch(
-            [SkillParam("JSON array of {name|path|instanceId, componentType, componentIndex?}; without componentIndex every component of that type is removed; a component another one still needs is refused (as component_remove).")]
+            [SkillParam("JSON array of {name|path|instanceId|entityId, componentType, componentIndex?}; without componentIndex every component of that type is removed; a component another one still needs is refused (as component_remove).")]
             string items)
         {
             return BatchExecutor.Execute<BatchRemoveComponentItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
+                if (error != null) return new { error = "Object not found", target = item.name ?? item.path ?? item.entityId };
 
                 if (string.IsNullOrEmpty(item.componentType))
                     return new { error = "componentType required", target = go.name };
@@ -269,28 +270,29 @@ namespace UnitySkills
 
                 EditorUtility.SetDirty(go);
                 return new { target = go.name, success = true, removed = type.Name, count = toRemove.Length, remainingOfType = go.GetComponents(type).Length };
-            }, item => item.name ?? item.path, atomic: true);
+            }, item => item.name ?? item.path ?? item.entityId, atomic: true);
         }
 
         private class BatchRemoveComponentItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public string componentType { get; set; }
             public int? componentIndex { get; set; }
         }
 
-        [UnitySkill("component_list", "List all components on a GameObject with detailed info (supports name/instanceId/path)",
+        [UnitySkill("component_list", "List all components on a GameObject with detailed info (supports name/entityId/instanceId/path)",
             Category = SkillCategory.Component, Operation = SkillOperation.Query,
             Tags = new[] { "list", "inspect", "enumerate" },
             Outputs = new[] { "gameObject", "instanceId", "path", "components" },
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object ComponentList(string name = null, int instanceId = 0, string path = null, bool includeProperties = false)
+        public static object ComponentList(string name = null, int instanceId = 0, string path = null, bool includeProperties = false, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var components = go.GetComponents<Component>()
@@ -353,12 +355,14 @@ namespace UnitySkills
             string referencePath = null,
             [SkillParam("Scene object name for a reference member; used when referencePath is omitted or misses.")]
             string referenceName = null,
-            [SkillParam(AssetReferenceNote)] string assetPath = null)
+            [SkillParam(AssetReferenceNote)] string assetPath = null, string entityId = null,
+            [SkillParam("entityId of the scene object (or of the exact component) for a reference member; outranks referencePath and referenceName.")]
+            string referenceEntityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object typeErr) return typeErr;
             if (Validate.Required(propertyName, "propertyName") is object propErr) return propErr;
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var type = FindComponentType(componentType);
@@ -393,11 +397,11 @@ namespace UnitySkills
                         return new { error = $"Asset not found or type mismatch: '{assetPath}' (expected {targetType.Name})" };
                 }
                 // In-scene reference (Transform / GameObject / Component).
-                else if (!string.IsNullOrEmpty(referencePath) || !string.IsNullOrEmpty(referenceName))
+                else if (!string.IsNullOrEmpty(referencePath) || !string.IsNullOrEmpty(referenceName) || UnityObjectIdUtility.IsGivenEntityId(referenceEntityId))
                 {
-                    converted = ResolveReference(targetType, referencePath, referenceName);
+                    converted = ResolveReference(targetType, referencePath, referenceName, referenceEntityId);
                     if (converted == null)
-                        return new { error = $"Could not resolve reference for {propertyName}. Target: path='{referencePath}', name='{referenceName}'" };
+                        return new { error = $"Could not resolve reference for {propertyName}. Target: path='{referencePath}', name='{referenceName}', entityId='{referenceEntityId}'" };
                 }
                 else
                 {
@@ -450,14 +454,14 @@ namespace UnitySkills
             }
         }
 
-        [UnitySkill("component_set_property_batch","Set properties on multiple components (Efficient). items: JSON array of {name, componentType, propertyName, value, referencePath, referenceName, assetPath}",
+        [UnitySkill("component_set_property_batch","Set properties on multiple components (Efficient). items: JSON array of {name, entityId, componentType, propertyName, value, referencePath, referenceName, referenceEntityId, assetPath}",
             Category = SkillCategory.Component, Operation = SkillOperation.Modify,
             Tags = new[] { "property", "field", "value", "reference", "batch" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentSetPropertyBatch(
-            [SkillParam("JSON array of {name|path|instanceId, componentType, propertyName, value?, referencePath?, referenceName?, assetPath?}; value may be a string, number, bool or JSON object/array.")]
+            [SkillParam("JSON array of {name|path|instanceId|entityId, componentType, propertyName, value?, referencePath?, referenceName?, referenceEntityId?, assetPath?}; value may be a string, number, bool or JSON object/array.")]
             string items)
         {
             return BatchExecutor.Execute<BatchSetPropertyItem>(items, item =>
@@ -465,8 +469,8 @@ namespace UnitySkills
                 if (Validate.Required(item.componentType, "componentType") is object typeErr) return typeErr;
                 if (Validate.Required(item.propertyName, "propertyName") is object propErr) return propErr;
 
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
+                if (error != null) return new { error = "Object not found", target = item.name ?? item.path ?? item.entityId };
 
                 var type = FindComponentType(item.componentType);
                 if (type == null)
@@ -493,9 +497,9 @@ namespace UnitySkills
                     if (converted == null)
                         return new { error = $"Asset not found or type mismatch: '{item.assetPath}' (expected {targetType.Name})" };
                 }
-                else if (!string.IsNullOrEmpty(item.referencePath) || !string.IsNullOrEmpty(item.referenceName))
+                else if (!string.IsNullOrEmpty(item.referencePath) || !string.IsNullOrEmpty(item.referenceName) || UnityObjectIdUtility.IsGivenEntityId(item.referenceEntityId))
                 {
-                    converted = ResolveReference(targetType, item.referencePath, item.referenceName);
+                    converted = ResolveReference(targetType, item.referencePath, item.referenceName, item.referenceEntityId);
                     if (converted == null)
                         return new { error = $"Reference resolution failed for {item.propertyName}" };
                 }
@@ -543,7 +547,7 @@ namespace UnitySkills
                 itemResult["valueType"] = targetType.Name;
                 itemResult["component"] = type.Name;
                 return itemResult;
-            }, item => item.name ?? item.path, atomic: true);
+            }, item => item.name ?? item.path ?? item.entityId, atomic: true);
         }
 
         [UnitySkill("component_get_serialized_properties", "List Inspector serialized properties on a component via SerializedObject (supports nested fields and array/list property paths)",
@@ -560,11 +564,11 @@ namespace UnitySkills
             [SkillParam("Max properties listed, counted over every entry including nested children.")]
             int limit = 200,
             [SkillParam(SerializedPropertySkillUtility.IncludeHiddenNote)]
-            bool includeHidden = false)
+            bool includeHidden = false, string entityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object reqErr) return reqErr;
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var type = FindComponentType(componentType);
@@ -600,12 +604,12 @@ namespace UnitySkills
             string referenceName = null, int referenceInstanceId = 0, string referencePath = null,
             string assetPath = null,
             [SkillParam("Type bound for object references: a scene reference is the GameObject unless this names a component (Transform, Rigidbody...); for assetPath an asset type (Material...).")]
-            string objectType = null)
+            string objectType = null, string entityId = null, string referenceEntityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object reqErr1) return reqErr1;
             if (Validate.Required(propertyPath, "propertyPath") is object reqErr2) return reqErr2;
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var type = FindComponentType(componentType);
@@ -628,7 +632,8 @@ namespace UnitySkills
 
             // Only the SerializedObject copy changes here, so a rejected value leaves the component and its history untouched.
             if (!SerializedPropertySkillUtility.TrySetProperty(
-                    property, value, referenceName, referenceInstanceId, referencePath, assetPath, objectType, out var setError, out var setWarning))
+                    property, value, referenceName, referenceInstanceId, referencePath, assetPath, objectType, out var setError, out var setWarning,
+                    referenceEntityId))
             {
                 return new { error = setError };
             }
@@ -655,14 +660,14 @@ namespace UnitySkills
             return response;
         }
 
-        [UnitySkill("component_set_serialized_property_batch", "Set Inspector serialized properties on multiple components. items: JSON array of {name, instanceId, path, componentType, propertyPath, value, referenceName, referenceInstanceId, referencePath, assetPath, objectType}",
+        [UnitySkill("component_set_serialized_property_batch", "Set Inspector serialized properties on multiple components. items: JSON array of {name, instanceId, path, entityId, componentType, propertyPath, value, referenceName, referenceInstanceId, referencePath, referenceEntityId, assetPath, objectType}",
             Category = SkillCategory.Component, Operation = SkillOperation.Modify,
             Tags = new[] { "serialized", "inspector", "property", "field", "batch" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object ComponentSetSerializedPropertyBatch(
-            [SkillParam("JSON array of {name|path|instanceId, componentType, propertyPath, value?, referenceName?, referenceInstanceId?, referencePath?, assetPath?, objectType?}; value is a string, e.g. \"1,2,3\".")]
+            [SkillParam("JSON array of {name|path|instanceId|entityId, componentType, propertyPath, value?, referenceName?, referenceInstanceId?, referencePath?, referenceEntityId?, assetPath?, objectType?}; value is a string, e.g. \"1,2,3\".")]
             string items)
         {
             return BatchExecutor.Execute<BatchSetSerializedPropertyItem>(items, item =>
@@ -671,18 +676,19 @@ namespace UnitySkills
                     item.name, item.instanceId, item.path,
                     item.componentType, item.propertyPath, item.value,
                     item.referenceName, item.referenceInstanceId, item.referencePath,
-                    item.assetPath, item.objectType);
+                    item.assetPath, item.objectType, entityId: item.entityId, referenceEntityId: item.referenceEntityId);
                 if (SkillResultHelper.TryGetError(result, out var error))
                 {
-                    return new { error = error, target = item.name ?? item.path };
+                    return new { error = error, target = item.name ?? item.path ?? item.entityId };
                 }
                 return result;
-            }, item => item.name ?? item.path ?? item.instanceId.ToString(), atomic: true);
+            }, item => item.name ?? item.path ?? item.entityId ?? item.instanceId.ToString(), atomic: true);
         }
 
         private class BatchSetPropertyItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public string componentType { get; set; }
@@ -690,18 +696,21 @@ namespace UnitySkills
             public object value { get; set; }
             public string referencePath { get; set; }
             public string referenceName { get; set; }
+            public string referenceEntityId { get; set; }
             public string assetPath { get; set; }
         }
 
         private class BatchSetSerializedPropertyItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public string componentType { get; set; }
             public string propertyPath { get; set; }
             public string value { get; set; }
             public string referenceName { get; set; }
+            public string referenceEntityId { get; set; }
             public int referenceInstanceId { get; set; }
             public string referencePath { get; set; }
             public string assetPath { get; set; }
@@ -741,10 +750,10 @@ namespace UnitySkills
             RequiredParams = new[] { "componentType", "methodName" }, RiskLevel = "high", MutatesScene = true, MutatesAssets = true, MayEnterPlayMode = true, MayTriggerReload = true, SupportsDryRun = true)]
         public static object ComponentInvokeMethod(string componentType, string methodName, string name = null, int instanceId = 0,
             string path = null, int componentIndex = 0, bool isStatic = false, string parameterTypes = null,
-            string genericTypeArguments = null, string arguments = null, string executionMode = "play", int timeoutSeconds = 30, string assembly = null)
+            string genericTypeArguments = null, string arguments = null, string executionMode = "play", int timeoutSeconds = 30, string assembly = null, string entityId = null)
         {
             return ComponentInvocationService.Start(new ComponentInvocationService.Request { componentType = componentType, methodName = methodName,
-                name = name, instanceId = instanceId, path = path, componentIndex = componentIndex, isStatic = isStatic,
+                name = name, instanceId = instanceId, path = path, entityId = entityId, componentIndex = componentIndex, isStatic = isStatic,
                 parameterTypes = parameterTypes, genericTypeArguments = genericTypeArguments, arguments = arguments,
                 executionMode = executionMode, timeoutSeconds = timeoutSeconds, assembly = assembly });
         }
@@ -754,13 +763,13 @@ namespace UnitySkills
             Tags = new[] { "method", "invoke", "runtime", "batch", "job" }, Outputs = new[] { "results" },
             RequiredParams = new[] { "items" }, RiskLevel = "high", MutatesScene = true, MutatesAssets = true, MayEnterPlayMode = true, MayTriggerReload = true, SupportsDryRun = true)]
         public static object ComponentInvokeMethodBatch(
-            [SkillParam("JSON array of {componentType, methodName, name|path|instanceId? (instance calls), componentIndex?, isStatic?, parameterTypes?, genericTypeArguments?, arguments?, executionMode? (play|edit, default play), timeoutSeconds? (1-600, default 30), assembly?}, each as in component_invoke_method; parameterTypes, genericTypeArguments and arguments are JSON-array strings.")]
+            [SkillParam("JSON array of {componentType, methodName, name|path|instanceId|entityId? (instance calls), componentIndex?, isStatic?, parameterTypes?, genericTypeArguments?, arguments?, executionMode? (play|edit, default play), timeoutSeconds? (1-600, default 30), assembly?}, each as in component_invoke_method; parameterTypes, genericTypeArguments and arguments are JSON-array strings.")]
             string items)
         {
             return BatchExecutor.Execute<ComponentInvocationService.Request>(items, ComponentInvocationService.Start, item => item.componentType + "." + item.methodName, atomic: false);
         }
 
-        [UnitySkill("component_get_properties", "Get all properties of a component (supports name/instanceId/path)",
+        [UnitySkill("component_get_properties", "Get all properties of a component (supports name/entityId/instanceId/path)",
             Category = SkillCategory.Component, Operation = SkillOperation.Query,
             Tags = new[] { "property", "field", "inspect", "reflection" },
             Outputs = new[] { "gameObject", "component", "properties", "fields" },
@@ -768,11 +777,11 @@ namespace UnitySkills
             RequiredParams = new[] { "componentType" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object ComponentGetProperties(string name = null, int instanceId = 0, string path = null, string componentType = null, bool includePrivate = false)
+        public static object ComponentGetProperties(string name = null, int instanceId = 0, string path = null, string componentType = null, bool includePrivate = false, string entityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var type = FindComponentType(componentType);
@@ -1379,10 +1388,15 @@ namespace UnitySkills
         /// <summary>
         /// Resolves an in-scene Unity object reference by path or name, supporting Transform, GameObject, and components.
         /// </summary>
-        private static object ResolveReference(System.Type targetType, string referencePath, string referenceName)
+        private static object ResolveReference(System.Type targetType, string referencePath, string referenceName, string referenceEntityId = null)
         {
-            // Goes through GameObjectFinder uniformly, which internally prefers path over name.
-            GameObject targetGo = GameObjectFinder.Find(name: referenceName, path: referencePath);
+            // An entityId naming a component of the member's type binds that exact component, not the first of its type.
+            if (UnityObjectIdUtility.IsGivenEntityId(referenceEntityId) &&
+                UnityObjectIdUtility.EntityIdToObject(referenceEntityId) is Component named && targetType.IsInstanceOfType(named))
+                return named;
+
+            // Goes through GameObjectFinder uniformly: an entityId decides alone, otherwise path is preferred over name.
+            GameObject targetGo = GameObjectFinder.Find(name: referenceName, path: referencePath, entityId: referenceEntityId);
 
             if (targetGo == null)
                 return null;
@@ -1511,12 +1525,12 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject", "component" },
             RequiredParams = new[] { "componentType" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object ComponentCopy(string sourceName = null, int sourceInstanceId = 0, string sourcePath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, string componentType = null)
+        public static object ComponentCopy(string sourceName = null, int sourceInstanceId = 0, string sourcePath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, string componentType = null, string sourceEntityId = null, string targetEntityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
-            var (srcGo, srcErr) = GameObjectFinder.FindOrError(name: sourceName, instanceId: sourceInstanceId, path: sourcePath);
+            var (srcGo, srcErr) = GameObjectFinder.FindOrError(name: sourceName, instanceId: sourceInstanceId, path: sourcePath, entityId: sourceEntityId);
             if (srcErr != null) return srcErr;
-            var (dstGo, dstErr) = GameObjectFinder.FindOrError(name: targetName, instanceId: targetInstanceId, path: targetPath);
+            var (dstGo, dstErr) = GameObjectFinder.FindOrError(name: targetName, instanceId: targetInstanceId, path: targetPath, entityId: targetEntityId);
             if (dstErr != null) return dstErr;
 
             var type = FindComponentType(componentType);
@@ -1550,12 +1564,12 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject", "component" },
             RequiredParams = new[] { "componentType" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object ComponentCopyExact(string sourceName = null, int sourceInstanceId = 0, string sourcePath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, string componentType = null)
+        public static object ComponentCopyExact(string sourceName = null, int sourceInstanceId = 0, string sourcePath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, string componentType = null, string sourceEntityId = null, string targetEntityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
-            var (srcGo, srcErr) = GameObjectFinder.FindOrError(name: sourceName, instanceId: sourceInstanceId, path: sourcePath);
+            var (srcGo, srcErr) = GameObjectFinder.FindOrError(name: sourceName, instanceId: sourceInstanceId, path: sourcePath, entityId: sourceEntityId);
             if (srcErr != null) return srcErr;
-            var (dstGo, dstErr) = GameObjectFinder.FindOrError(name: targetName, instanceId: targetInstanceId, path: targetPath);
+            var (dstGo, dstErr) = GameObjectFinder.FindOrError(name: targetName, instanceId: targetInstanceId, path: targetPath, entityId: targetEntityId);
             if (dstErr != null) return dstErr;
 
             var type = FindComponentType(componentType);
@@ -1619,10 +1633,10 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject", "component" },
             RequiredParams = new[] { "componentType" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object ComponentSetEnabled(string name = null, int instanceId = 0, string path = null, string componentType = null, bool enabled = true)
+        public static object ComponentSetEnabled(string name = null, int instanceId = 0, string path = null, string componentType = null, bool enabled = true, string entityId = null)
         {
             if (Validate.Required(componentType, "componentType") is object err) return err;
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var type = FindComponentType(componentType);

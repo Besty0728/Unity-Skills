@@ -122,6 +122,7 @@ Get full RectTransform data for a UI element.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | null | GameObject name |
+| `entityId` | string | No* | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | null | Hierarchy path |
 
@@ -133,6 +134,7 @@ Set full RectTransform data for a UI element.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | null | GameObject name |
+| `entityId` | string | No* | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | null | Hierarchy path |
 | `anchorMinX` / `anchorMinY` | float | No | null | Anchor min |
@@ -187,6 +189,7 @@ Read the response payload if you need to know which one was created before later
 6. For world-space gameplay UI, build the Canvas here first, then convert for XR only if needed.
 7. `ui_create_batch` is mainly for bulk creation, not precise positioning. Follow it with layout or rect/anchor adjustments.
 8. `ui_create_batch.items` is a JSON string parameter in the current REST/API layer, not a raw array object.
+9. `ui_create_*` (and `ui_create_batch` items) take `parentEntityId` to pick the parent by id: it outranks `parent`, and unlike a parent name that misses, it never falls back to the first Canvas.
 
 ## Minimal Example
 

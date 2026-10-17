@@ -97,7 +97,8 @@ Inspect a GameObject's live runtime state: transform (position/rotation/scale), 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Object name |
-| `instanceId` | int | No* | Instance ID (preferred) |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
+| `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Object path |
 | `componentType` | string | No | Component type name; when set, also returns its public fields/properties |
 
@@ -111,7 +112,8 @@ Select a GameObject.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Object name |
-| `instanceId` | int | No* | Instance ID (preferred) |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
+| `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Object path |
 
 *One identifier required

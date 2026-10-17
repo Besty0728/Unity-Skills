@@ -144,7 +144,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("light_set_properties", "Set light properties (supports name/instanceId/path). Colour takes r/g/b/a, each defaulting to the light's current channel. Rejects the whole call if shadows is not a valid value; the response lists which parameters were 'applied' and which were 'skipped' because the light type does not carry them (range needs Point/Spot, spotAngle needs Spot).",
+        [UnitySkill("light_set_properties", "Set light properties (supports name/entityId/instanceId/path). Colour takes r/g/b/a, each defaulting to the light's current channel. Rejects the whole call if shadows is not a valid value; the response lists which parameters were 'applied' and which were 'skipped' because the light type does not carry them (range needs Point/Spot, spotAngle needs Spot).",
             Category = SkillCategory.Light, Operation = SkillOperation.Modify,
             Tags = new[] { "light", "color", "intensity", "shadow" },
             Outputs = new[] { "lightType", "color", "intensity", "range", "spotAngle", "shadows", "applied", "skipped" },
@@ -160,9 +160,9 @@ namespace UnitySkills
             float? range = null,
             [SkillParam("Cone angle in degrees; Spot only, otherwise reported in skipped.")]
             float? spotAngle = null,
-            [SkillParam(ShadowsNote)] string shadows = null)
+            [SkillParam(ShadowsNote)] string shadows = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var light = go.GetComponent<Light>();
@@ -198,7 +198,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("light_get_info", "Get information about a light (supports name/instanceId/path)",
+        [UnitySkill("light_get_info", "Get information about a light (supports name/entityId/instanceId/path)",
             Category = SkillCategory.Light, Operation = SkillOperation.Query,
             Tags = new[] { "light", "info", "inspect" },
             // Must list every key ReadLight actually returns: omitting one from Outputs means
@@ -208,12 +208,12 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object LightGetInfo(string name = null, int instanceId = 0, string path = null)
+        public static object LightGetInfo(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            return ReadLight(name, instanceId, path);
+            return ReadLight(name, instanceId, path, entityId);
         }
 
-        [UnitySkill("light_get_properties", "Alias of light_get_info — get information about a light (supports name/instanceId/path). Same parameters, same response; exists because the setter is light_set_properties and callers reach for the matching getter name.",
+        [UnitySkill("light_get_properties", "Alias of light_get_info — get information about a light (supports name/entityId/instanceId/path). Same parameters, same response; exists because the setter is light_set_properties and callers reach for the matching getter name.",
             Category = SkillCategory.Light, Operation = SkillOperation.Query,
             Tags = new[] { "light", "info", "inspect" },
             // Must list every key ReadLight actually returns: omitting one from Outputs means
@@ -223,14 +223,14 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object LightGetProperties(string name = null, int instanceId = 0, string path = null)
+        public static object LightGetProperties(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            return ReadLight(name, instanceId, path);
+            return ReadLight(name, instanceId, path, entityId);
         }
 
-        private static object ReadLight(string name, int instanceId, string path)
+        private static object ReadLight(string name, int instanceId, string path, string entityId)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var light = go.GetComponent<Light>();
@@ -287,15 +287,15 @@ namespace UnitySkills
             return new { count = results.Length, lights = results };
         }
 
-        [UnitySkill("light_set_enabled", "Enable or disable a light (supports name/instanceId/path). Returns: {success, name, enabled}",
+        [UnitySkill("light_set_enabled", "Enable or disable a light (supports name/entityId/instanceId/path). Returns: {success, name, enabled}",
             Category = SkillCategory.Light, Operation = SkillOperation.Modify,
             Tags = new[] { "light", "enable", "disable", "toggle" },
             Outputs = new[] { "name", "enabled" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object LightSetEnabled(string name = null, int instanceId = 0, string path = null, bool enabled = true)
+        public static object LightSetEnabled(string name = null, int instanceId = 0, string path = null, bool enabled = true, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var light = go.GetComponent<Light>();
@@ -309,20 +309,20 @@ namespace UnitySkills
             return new { success = true, name = go.name, enabled = light.enabled };
         }
 
-        [UnitySkill("light_set_enabled_batch", "Enable/disable multiple lights in one call (Efficient). items: JSON array of {name, instanceId, path, enabled}",
+        [UnitySkill("light_set_enabled_batch", "Enable/disable multiple lights in one call (Efficient). items: JSON array of {name, instanceId, path, entityId, enabled}",
             Category = SkillCategory.Light, Operation = SkillOperation.Modify,
             Tags = new[] { "light", "enable", "batch", "toggle" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object LightSetEnabledBatch(
-            [SkillParam("JSON array of {name|path|instanceId, enabled (required: true or false)}.")]
+            [SkillParam("JSON array of {name|path|instanceId|entityId, enabled (required: true or false)}.")]
             string items)
         {
             return BatchExecutor.Execute<BatchLightEnabledItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
+                if (error != null) return new { error = "Object not found", target = item.name ?? item.path ?? item.entityId };
 
                 var light = go.GetComponent<Light>();
                 if (light == null) return new { error = "No Light component", target = go.name };
@@ -346,31 +346,32 @@ namespace UnitySkills
                 Undo.RecordObject(light, "Batch Set Light Enabled");
                 light.enabled = item.enabled.Value;
                 return new { target = go.name, success = true, enabled = light.enabled };
-            }, item => item.name ?? item.path ?? item.instanceId.ToString(), atomic: true);
+            }, item => item.name ?? item.path ?? item.entityId ?? item.instanceId.ToString(), atomic: true);
         }
 
         private class BatchLightEnabledItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public bool? enabled { get; set; }
         }
 
-        [UnitySkill("light_set_properties_batch", "Set properties for multiple lights in one call (Efficient). items: JSON array of {name, instanceId, r, g, b, a, intensity, range, spotAngle, shadows}",
+        [UnitySkill("light_set_properties_batch", "Set properties for multiple lights in one call (Efficient). items: JSON array of {name, instanceId, entityId, r, g, b, a, intensity, range, spotAngle, shadows}",
             Category = SkillCategory.Light, Operation = SkillOperation.Modify,
             Tags = new[] { "light", "batch", "properties", "color" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object LightSetPropertiesBatch(
-            [SkillParam("JSON array of {name|path|instanceId, r?, g?, b?, a? (0-1; omitted keep current), intensity?, range? (Point/Spot only), spotAngle? (Spot only), shadows? (None|Hard|Soft)}. range/spotAngle the light type cannot carry are listed in each result's skipped, as in light_set_properties.")]
+            [SkillParam("JSON array of {name|path|instanceId|entityId, r?, g?, b?, a? (0-1; omitted keep current), intensity?, range? (Point/Spot only), spotAngle? (Spot only), shadows? (None|Hard|Soft)}. range/spotAngle the light type cannot carry are listed in each result's skipped, as in light_set_properties.")]
             string items)
         {
             return BatchExecutor.Execute<BatchLightPropsItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
-                if (error != null) return new { error = "Object not found", target = item.name ?? item.path };
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
+                if (error != null) return new { error = "Object not found", target = item.name ?? item.path ?? item.entityId };
 
                 var light = go.GetComponent<Light>();
                 if (light == null) return new { error = "No Light component", target = go.name };
@@ -399,12 +400,13 @@ namespace UnitySkills
                     spotAngle = light.spotAngle,
                     shadows = light.shadows.ToString()
                 };
-            }, item => item.name ?? item.path ?? item.instanceId.ToString(), atomic: true);
+            }, item => item.name ?? item.path ?? item.entityId ?? item.instanceId.ToString(), atomic: true);
         }
 
         private class BatchLightPropsItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public float? r { get; set; }
@@ -426,9 +428,9 @@ namespace UnitySkills
         public static object LightAddProbeGroup(string name = null, int instanceId = 0, string path = null,
             [SkillParam("Probes per axis; a grid is built only when gridX, gridY and gridZ are all > 0, replacing existing probes. Positions are local, centred on X/Z, rising from y=0.")]
             int gridX = 0, int gridY = 0, int gridZ = 0,
-            float spacingX = 2f, float spacingY = 1.5f, float spacingZ = 2f)
+            float spacingX = 2f, float spacingY = 1.5f, float spacingZ = 2f, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var lpg = go.GetComponent<LightProbeGroup>();

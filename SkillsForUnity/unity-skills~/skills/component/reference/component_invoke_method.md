@@ -6,7 +6,8 @@ Accept one exact method call as an asynchronous job. This is high risk, non-atom
 | `componentType` | string | Yes | - | Component type, or ordinary C# type for static calls |
 | `methodName` | string | Yes | - | Exact method name |
 | `name` | string | No* | null | Instance target GameObject name |
-| `instanceId` | int | No* | 0 | Legacy instance ID (Unity < 6000.4, where it is nonzero); on 6000.4+ pass `entityId` (resolved to the path) or `path` |
+| `entityId` | string | No* | null | Entity ID of the target GameObject (preferred; the only id on Unity 6000.4+) |
+| `instanceId` | int | No* | 0 | Legacy instance ID (Unity < 6000.4, where it is nonzero); on 6000.4+ pass `entityId` or `path` |
 | `path` | string | No* | null | Instance target hierarchy path |
 | `componentIndex` | int | No | 0 | Zero-based index among components of this type |
 | `isStatic` | bool | No | false | Call a static method without a GameObject target |

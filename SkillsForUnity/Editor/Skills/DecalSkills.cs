@@ -35,7 +35,7 @@ namespace UnitySkills
             ReadOnly = true,
             RequiresPackages = new[] { "com.unity.render-pipelines.universal" },
             Mode = SkillMode.SemiAuto)]
-        public static object DecalGetInfo(string name = null, int instanceId = 0, string path = null) => RenderPipelineSkillsCommon.NoURP();
+        public static object DecalGetInfo(string name = null, int instanceId = 0, string path = null, string entityId = null) => RenderPipelineSkillsCommon.NoURP();
 
         [UnitySkill("decal_set_properties", "Modify Decal Projector properties",
             Category = SkillCategory.Decal, Operation = SkillOperation.Modify,
@@ -62,7 +62,7 @@ namespace UnitySkills
             string size = null,
             string pivot = null,
             uint? renderingLayerMask = null,
-            string scaleMode = null) => RenderPipelineSkillsCommon.NoURP();
+            string scaleMode = null, string entityId = null) => RenderPipelineSkillsCommon.NoURP();
 
         [UnitySkill("decal_find_all", "Find all Decal Projectors in the scene",
             Category = SkillCategory.Decal, Operation = SkillOperation.Query,
@@ -82,9 +82,9 @@ namespace UnitySkills
             TracksWorkflow = true,
             MutatesScene = true,
             RequiresPackages = new[] { "com.unity.render-pipelines.universal" })]
-        public static object DecalDelete(string name = null, int instanceId = 0, string path = null) => RenderPipelineSkillsCommon.NoURP();
+        public static object DecalDelete(string name = null, int instanceId = 0, string path = null, string entityId = null) => RenderPipelineSkillsCommon.NoURP();
 
-        [UnitySkill("decal_set_properties_batch", "Modify multiple Decal Projectors in one request. items: JSON array of {name, instanceId, path, materialPath, drawDistance, fadeScale, fadeFactor, startAngleFade, endAngleFade, uvScale, uvBias, size, pivot, renderingLayerMask, scaleMode}",
+        [UnitySkill("decal_set_properties_batch", "Modify multiple Decal Projectors in one request. items: JSON array of {name, instanceId, path, entityId, materialPath, drawDistance, fadeScale, fadeFactor, startAngleFade, endAngleFade, uvScale, uvBias, size, pivot, renderingLayerMask, scaleMode}",
             Category = SkillCategory.Decal, Operation = SkillOperation.Modify,
             Tags = new[] { "decal", "projector", "batch" },
             Outputs = new[] { "successCount", "failCount", "results" },
@@ -144,9 +144,9 @@ namespace UnitySkills
             ReadOnly = true,
             RequiresPackages = new[] { "com.unity.render-pipelines.universal" },
             Mode = SkillMode.SemiAuto)]
-        public static object DecalGetInfo(string name = null, int instanceId = 0, string path = null)
+        public static object DecalGetInfo(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var projectorResult = GetProjector(name, instanceId, path);
+            var projectorResult = GetProjector(name, instanceId, path, entityId);
             if (projectorResult.error != null) return projectorResult.error;
             return DescribeProjector(projectorResult.projector);
         }
@@ -173,9 +173,9 @@ namespace UnitySkills
             string size = null,
             string pivot = null,
             uint? renderingLayerMask = null,
-            string scaleMode = null)
+            string scaleMode = null, string entityId = null)
         {
-            var projectorResult = GetProjector(name, instanceId, path);
+            var projectorResult = GetProjector(name, instanceId, path, entityId);
             if (projectorResult.error != null) return projectorResult.error;
 
             // Resolve and parse everything before the first write, so a rejected call leaves the projector untouched.
@@ -255,9 +255,9 @@ namespace UnitySkills
             MutatesScene = true,
             RequiresPackages = new[] { "com.unity.render-pipelines.universal" },
             RiskLevel = "medium")]
-        public static object DecalDelete(string name = null, int instanceId = 0, string path = null)
+        public static object DecalDelete(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var projectorResult = GetProjector(name, instanceId, path);
+            var projectorResult = GetProjector(name, instanceId, path, entityId);
             if (projectorResult.error != null) return projectorResult.error;
 
             var go = projectorResult.projector.gameObject;
@@ -271,7 +271,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("decal_set_properties_batch", "Modify multiple Decal Projectors in one request. items: JSON array of {name, instanceId, path, materialPath, drawDistance, fadeScale, fadeFactor, startAngleFade, endAngleFade, uvScale, uvBias, size, pivot, renderingLayerMask, scaleMode}",
+        [UnitySkill("decal_set_properties_batch", "Modify multiple Decal Projectors in one request. items: JSON array of {name, instanceId, path, entityId, materialPath, drawDistance, fadeScale, fadeFactor, startAngleFade, endAngleFade, uvScale, uvBias, size, pivot, renderingLayerMask, scaleMode}",
             Category = SkillCategory.Decal, Operation = SkillOperation.Modify,
             Tags = new[] { "decal", "projector", "batch" },
             Outputs = new[] { "successCount", "failCount", "results" },
@@ -300,13 +300,14 @@ namespace UnitySkills
                     size: item.size,
                     pivot: item.pivot,
                     renderingLayerMask: item.renderingLayerMask,
-                    scaleMode: item.scaleMode);
+                    scaleMode: item.scaleMode,
+                    entityId: item.entityId);
 
                 if (SkillResultHelper.TryGetError(result, out var errorText))
                     throw new ArgumentException(errorText);
 
                 return result;
-            }, item => item.name ?? item.path);
+            }, item => item.name ?? item.path ?? item.entityId);
         }
 
         [UnitySkill("decal_ensure_renderer_feature", "Ensure the current URP renderer has a DecalRendererFeature",
@@ -341,9 +342,9 @@ namespace UnitySkills
             return URPSkills.URPAddRendererFeature("DecalRendererFeature", assetPath, rendererIndex, rendererDataPath);
         }
 
-        private static (DecalProjector projector, object error) GetProjector(string name, int instanceId, string path)
+        private static (DecalProjector projector, object error) GetProjector(string name, int instanceId, string path, string entityId)
         {
-            var (go, goErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, goErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (goErr != null) return (null, goErr);
 
             var projector = go.GetComponent<DecalProjector>();
@@ -400,6 +401,7 @@ namespace UnitySkills
         private sealed class DecalBatchItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public string materialPath { get; set; }

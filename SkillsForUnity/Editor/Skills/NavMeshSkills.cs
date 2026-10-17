@@ -90,9 +90,9 @@ namespace UnitySkills
             Tags = new[] { "navmesh", "agent", "component", "navigation" },
             Outputs = new[] { "success", "gameObject" },
             RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
-        public static object NavMeshAddAgent(string name = null, int instanceId = 0, string path = null)
+        public static object NavMeshAddAgent(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
             if (go.GetComponent<NavMeshAgent>() != null) return new { error = $"{go.name} already has NavMeshAgent" };
             Undo.AddComponent<NavMeshAgent>(go);
@@ -107,9 +107,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
         public static object NavMeshSetAgent(string name = null, int instanceId = 0, string path = null,
             float? speed = null, float? acceleration = null, float? angularSpeed = null,
-            float? radius = null, float? height = null, float? stoppingDistance = null)
+            float? radius = null, float? height = null, float? stoppingDistance = null, string entityId = null)
         {
-            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
             var agent = go.GetComponent<NavMeshAgent>();
             if (agent == null) return new { error = $"No NavMeshAgent on {go.name}" };
@@ -129,9 +129,9 @@ namespace UnitySkills
             Tags = new[] { "navmesh", "obstacle", "component", "carving" },
             Outputs = new[] { "success", "gameObject", "carving" },
             RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
-        public static object NavMeshAddObstacle(string name = null, int instanceId = 0, string path = null, bool carve = true)
+        public static object NavMeshAddObstacle(string name = null, int instanceId = 0, string path = null, bool carve = true, string entityId = null)
         {
-            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
             if (go.GetComponent<NavMeshObstacle>() != null) return new { error = $"{go.name} already has NavMeshObstacle" };
             var obs = Undo.AddComponent<NavMeshObstacle>(go);
@@ -146,9 +146,9 @@ namespace UnitySkills
             Outputs = new[] { "success", "gameObject", "shape", "carving" },
             RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
         public static object NavMeshSetObstacle(string name = null, int instanceId = 0, string path = null,
-            string shape = null, float? sizeX = null, float? sizeY = null, float? sizeZ = null, bool? carving = null)
+            string shape = null, float? sizeX = null, float? sizeY = null, float? sizeZ = null, bool? carving = null, string entityId = null)
         {
-            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
             var obs = go.GetComponent<NavMeshObstacle>();
             if (obs == null) return new { error = $"No NavMeshObstacle on {go.name}" };

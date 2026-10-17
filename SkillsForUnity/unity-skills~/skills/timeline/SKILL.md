@@ -49,6 +49,7 @@ Add an Audio track to a Timeline.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | trackName | string | No | "Audio Track" | Name of the new track |
@@ -61,10 +62,12 @@ Add an Animation track to a Timeline, optionally binding an object.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | trackName | string | No | "Animation Track" | Name of the new track |
 | bindingObjectName | string | No | - | Name of the GameObject to bind (animator) |
+| bindingEntityId | string | No | - | Entity ID of the GameObject to bind; outranks bindingObjectName |
 
 **Returns:** `{ success, trackName, boundObject }`
 
@@ -74,6 +77,7 @@ Add an Activation track to control object visibility.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | trackName | string | No | "Activation Track" | Name of the new track |
@@ -86,6 +90,7 @@ Add a Control track for nested Timelines or prefab spawning.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | trackName | string | No | "Control Track" | Name of the new track |
@@ -98,6 +103,7 @@ Add a Signal track for event markers.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | trackName | string | No | "Signal Track" | Name of the new track |
@@ -110,6 +116,7 @@ Remove a track by name from a Timeline.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | trackName | string | Yes | - | Name of the track to remove |
@@ -122,6 +129,7 @@ List all tracks in a Timeline.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 
@@ -133,6 +141,7 @@ Add a clip to a track by track name.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | trackName | string | Yes | - | Name of the target track |
@@ -147,6 +156,7 @@ Set Timeline duration and wrap mode.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | duration | double | No | 0 | Fixed duration in seconds |
@@ -160,6 +170,7 @@ Play, pause, or stop a Timeline (Editor preview).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | action | string | No | "play" | Action: play/pause/stop |
@@ -172,10 +183,14 @@ Set the binding object for a track.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | - | GameObject name with PlayableDirector |
+| entityId | string | No | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | - | GameObject hierarchy path |
 | trackName | string | Yes | - | Name of the track |
-| bindingObjectName | string | Yes | - | Name of the object to bind |
+| bindingObjectName | string | No* | - | Name of the object to bind |
+| bindingEntityId | string | No* | - | Entity ID of the GameObject to bind; outranks bindingObjectName |
+
+*One of `bindingObjectName` / `bindingEntityId` is required.
 
 **Returns:** `{ success, trackName, boundTo }`
 

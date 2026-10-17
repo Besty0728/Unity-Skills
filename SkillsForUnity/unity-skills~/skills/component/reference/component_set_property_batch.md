@@ -5,7 +5,7 @@ Set properties on several components in one call.
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects |
 
-**Item properties**: `name`, `instanceId`, `path`, `componentType`, `propertyName`, `value`, `referencePath`, `referenceName`, `assetPath` (same rules as `component_set_property`). `value` may be any JSON: number, bool, string, or a vector/colour object. Items may target the same object to set several properties in one call.
+**Item properties**: `name`, `entityId`, `instanceId`, `path`, `componentType`, `propertyName`, `value`, `referencePath`, `referenceName`, `referenceEntityId`, `assetPath` (same rules as `component_set_property`). `value` may be any JSON: number, bool, string, or a vector/colour object. Items may target the same object to set several properties in one call.
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, property, valueSet, valueRequested?, readBack?, valueType, component}]}`, read back per item. All-or-nothing: one rejected item reverts every write.
 

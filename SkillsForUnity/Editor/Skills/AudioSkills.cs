@@ -235,9 +235,9 @@ namespace UnitySkills
             Outputs = new[] { "success", "gameObject", "instanceId" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object AudioAddSource(string name = null, int instanceId = 0, string path = null, string clipPath = null, bool playOnAwake = false, bool loop = false, float volume = 1f)
+        public static object AudioAddSource(string name = null, int instanceId = 0, string path = null, string clipPath = null, bool playOnAwake = false, bool loop = false, float volume = 1f, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             // If clipPath is given but doesn't resolve, this must be rejected before AddComponent: otherwise
@@ -273,9 +273,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object AudioGetSourceInfo(string name = null, int instanceId = 0, string path = null)
+        public static object AudioGetSourceInfo(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (source, error) = GameObjectFinder.FindComponentOrError<AudioSource>(name, instanceId, path);
+            var (source, error) = GameObjectFinder.FindComponentOrError<AudioSource>(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             return new { success = true, gameObject = source.gameObject.name, clip = source.clip != null ? source.clip.name : "null",
@@ -291,9 +291,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object AudioSetSourceProperties(string name = null, int instanceId = 0, string path = null, string clipPath = null,
-            float? volume = null, float? pitch = null, bool? loop = null, bool? playOnAwake = null, bool? mute = null, float? spatialBlend = null, int? priority = null)
+            float? volume = null, float? pitch = null, bool? loop = null, bool? playOnAwake = null, bool? mute = null, float? spatialBlend = null, int? priority = null, string entityId = null)
         {
-            var (source, error) = GameObjectFinder.FindComponentOrError<AudioSource>(name, instanceId, path);
+            var (source, error) = GameObjectFinder.FindComponentOrError<AudioSource>(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             Undo.RecordObject(source, "Set AudioSource Properties");

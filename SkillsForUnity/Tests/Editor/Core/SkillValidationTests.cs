@@ -66,11 +66,10 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Plan_WithUnresolvableEntityId_ReportsFieldAndParameterKeys()
         {
-            // animator_get_info declares no literal 'entityId' parameter, so any entityId it accepts is the
-            // router's own synthetic locator (SkillRouter.ShouldExposeSyntheticEntityId /
-            // NormalizeSyntheticEntityIdLocator) - the one SemanticErrors producer that used to emit "parameter"
-            // instead of "field", so a skill's own analyzer re-reporting the same failed lookup under "field"
-            // was never recognized as a duplicate.
+            // An entityId that names nothing is reported under both semanticErrors keys, "field" and "parameter":
+            // the router's synthetic locator once emitted only "parameter", so a skill's own analyzer re-reporting the
+            // same failed lookup under "field" was never recognized as a duplicate. animator_get_info declares entityId
+            // itself, so SkillPlanningService.ApplyEntityIdLocatorChecks reports it, with the synthetic locator's wording.
             var response = JObject.Parse(SkillRouter.Plan("animator_get_info", @"{""entityId"":""does-not-exist""}"));
 
             Assert.That(response["valid"]?.Value<bool>(), Is.False);

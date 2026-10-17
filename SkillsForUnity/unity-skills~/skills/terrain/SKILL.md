@@ -71,7 +71,9 @@ Get terrain information.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Terrain name |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | Instance ID |
+| `path` | string | No* | Terrain hierarchy path |
 
 *If neither provided, uses first terrain in scene
 
@@ -85,6 +87,8 @@ Get terrain height at world position.
 | `worldX` | float | Yes | World X coordinate |
 | `worldZ` | float | Yes | World Z coordinate |
 | `name` | string | No | Terrain name |
+| `path` | string | No | Terrain hierarchy path |
+| `entityId` | string | No | Terrain entity ID (preferred; the only id on Unity 6000.4+) |
 
 **Returns**: `{success, worldX, worldZ, height, worldY}`
 
@@ -97,7 +101,9 @@ Set height at normalized coordinates.
 | `normalizedZ` | float | Yes | Z position (0-1) |
 | `height` | float | Yes | Height value (0-1) |
 | `name` | string | No | Terrain name |
+| `entityId` | string | No | Terrain entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No | Terrain instance ID |
+| `path` | string | No | Terrain hierarchy path |
 
 **Returns**: `{success, normalizedX, normalizedZ, height, pixelX, pixelZ}`
 
@@ -110,7 +116,9 @@ Set height at normalized coordinates.
 | `startZ` | int | Yes | Start Z pixel index |
 | `heights` | float[][] | Yes | 2D array [z][x] with values 0-1 |
 | `name` | string | No | Terrain name |
+| `entityId` | string | No | Terrain entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No | Terrain instance ID |
+| `path` | string | No | Terrain hierarchy path |
 
 **Returns**: `{success, startX, startZ, modifiedWidth, modifiedLength, totalPointsModified}`
 
@@ -131,7 +139,9 @@ call_skill("terrain_set_heights_batch", startX=50, startZ=50, heights=heights)
 | `height` | float | No | 0.5 | Hill height (0-1) |
 | `smoothness` | float | No | 1.0 | Smoothness factor (higher = smoother) |
 | `name` | string | No | null | Terrain name |
+| `entityId` | string | No | null | Terrain entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No | 0 | Terrain instance ID |
+| `path` | string | No | null | Terrain hierarchy path |
 
 **Returns**: `{success, centerX, centerZ, radius, height, affectedArea}`
 
@@ -162,6 +172,8 @@ for i in range(5):
 | `lacunarity` | float | No | 2.0 | Frequency increase per octave |
 | `seed` | int | No | 0 | Random seed (0 = random) |
 | `name` | string | No | null | Terrain name |
+| `path` | string | No | null | Terrain hierarchy path |
+| `entityId` | string | No | null | Terrain entity ID (preferred; the only id on Unity 6000.4+) |
 
 **Returns**: `{success, resolution, scale, heightMultiplier, octaves, persistence, lacunarity, seed}`
 
@@ -189,7 +201,9 @@ call_skill("terrain_generate_perlin",
 | `radius` | float | No | 0.1 | Smoothing radius (0-1) |
 | `iterations` | int | No | 1 | Number of smoothing passes |
 | `name` | string | No | null | Terrain name |
+| `entityId` | string | No | null | Terrain entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No | 0 | Terrain instance ID |
+| `path` | string | No | null | Terrain hierarchy path |
 
 **Returns**: `{success, centerX, centerZ, radius, iterations, affectedArea}`
 
@@ -211,7 +225,9 @@ call_skill("terrain_smooth",
 | `radius` | float | No | 0.1 | Flatten radius (0-1) |
 | `strength` | float | No | 1.0 | Flatten strength (0-1) |
 | `name` | string | No | null | Terrain name |
+| `entityId` | string | No | null | Terrain entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No | 0 | Terrain instance ID |
+| `path` | string | No | null | Terrain hierarchy path |
 
 **Returns**: `{success, centerX, centerZ, targetHeight, radius, strength}`
 
@@ -233,7 +249,9 @@ Paint terrain texture layer. Requires terrain layers already configured.
 | `strength` | float | No | 1.0 | Paint strength |
 | `brushSize` | int | No | 10 | Brush size in pixels |
 | `name` | string | No | null | Terrain name |
+| `entityId` | string | No | null | Terrain entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No | 0 | Terrain instance ID |
+| `path` | string | No | null | Terrain hierarchy path |
 
 **Returns**: `{success, layerIndex, layerName, centerX, centerZ, brushSize, strength}`
 

@@ -4,9 +4,11 @@ Copy a component from one GameObject to another (pasted as a new component).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `sourceName` | string | No* | null | Source GameObject name |
+| `sourceEntityId` | string | No* | - | Source Entity ID (preferred; the only id on Unity 6000.4+) |
 | `sourceInstanceId` | int | No* | 0 | Source Instance ID |
 | `sourcePath` | string | No* | null | Source hierarchy path |
 | `targetName` | string | No* | null | Target GameObject name |
+| `targetEntityId` | string | No* | - | Target Entity ID (preferred; the only id on Unity 6000.4+) |
 | `targetInstanceId` | int | No* | 0 | Target Instance ID |
 | `targetPath` | string | No* | null | Target hierarchy path |
 | `componentType` | string | Yes | - | Component type to copy |

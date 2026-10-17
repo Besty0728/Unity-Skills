@@ -10,7 +10,7 @@ using PkgInfo = UnityEditor.PackageManager.PackageInfo;
 namespace UnitySkills
 {
     /// <summary>
-    /// Material skills: create, modify, assign. Supports lookup by name, instanceId, or path,
+    /// Material skills: create, modify, assign. Supports lookup by name, entityId, instanceId, or path,
     /// auto-detects the render pipeline to pick the correct shader, and covers HDR, keyword, and GI flag operations.
     /// </summary>
     public static class MaterialSkills
@@ -22,7 +22,7 @@ namespace UnitySkills
         #region Helper Methods
         
         /// <summary>
-        /// Finds a material by asset path, or by a GameObject's name/instanceId/path.
+        /// Finds a material by asset path, or by a GameObject's name/entityId/instanceId/path; an entityId outranks the asset path.
         ///
         /// <para>Both branches return the material on disk: either a directly loaded .mat, or <c>renderer.sharedMaterial</c> --
         /// the latter IS that same .mat, not a per-renderer copy. So every setter that goes through here, regardless of how the caller addresses it,
@@ -30,9 +30,9 @@ namespace UnitySkills
         /// and a setter missing this tag remains callable even under a profile that explicitly forbids such operations. Addressing by GameObject name doesn't make the write
         /// scene-local -- it modifies the material shared by every object that uses it.</para>
         /// </summary>
-        private static (Material material, GameObject go, object error) FindMaterial(string name = null, int instanceId = 0, string path = null)
+        private static (Material material, GameObject go, object error) FindMaterial(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            if (!string.IsNullOrEmpty(path) && (path.StartsWith("Assets/") || path.EndsWith(".mat")))
+            if (!UnityObjectIdUtility.IsGivenEntityId(entityId) && !string.IsNullOrEmpty(path) && (path.StartsWith("Assets/") || path.EndsWith(".mat")))
             {
                 var material = AssetDatabase.LoadAssetAtPath<Material>(path);
                 if (material == null)
@@ -40,7 +40,7 @@ namespace UnitySkills
                 return (material, null, null);
             }
             
-            var result = GameObjectFinder.FindOrError(name, instanceId, path);
+            var result = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (result.error != null)
                 return (null, null, result.error);
             
@@ -462,7 +462,7 @@ namespace UnitySkills
             return onDiskResult;
         }
 
-        [UnitySkill("material_assign", "Assign a material asset to a renderer's first slot (supports name/instanceId/path). material/materialName are read back from renderer.sharedMaterial after the assignment.",
+        [UnitySkill("material_assign", "Assign a material asset to a renderer's first slot (supports name/entityId/instanceId/path). material/materialName are read back from renderer.sharedMaterial after the assignment.",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "material", "assign", "renderer" },
             Outputs = new[] { "gameObject", "material", "materialName" },
@@ -470,11 +470,11 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object MaterialAssign(string name = null, int instanceId = 0, string path = null,
             [SkillParam("Project path of a material asset, e.g. Assets/Materials/Red.mat; a model file path yields its first embedded material.")]
-            string materialPath = null)
+            string materialPath = null, string entityId = null)
         {
             if (Validate.Required(materialPath, "materialPath") is object err) return err;
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var renderer = go.GetComponent<Renderer>();
@@ -522,26 +522,26 @@ namespace UnitySkills
 
         private class BatchMaterialCreateItem { public string name { get; set; } public string shaderName { get; set; } public string savePath { get; set; } }
 
-        [UnitySkill("material_assign_batch", "Assign materials to multiple objects (Efficient). items: JSON array of {name, materialPath}",
+        [UnitySkill("material_assign_batch", "Assign materials to multiple objects (Efficient). items: JSON array of {name, entityId, materialPath}",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "material", "assign", "batch", "renderer" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object MaterialAssignBatch(
-            [SkillParam("JSON array of {name|path|instanceId, materialPath}.")]
+            [SkillParam("JSON array of {name|path|instanceId|entityId, materialPath}.")]
             string items)
         {
             return BatchExecutor.Execute<BatchMaterialAssignItem>(items, item =>
             {
-                var result = MaterialAssign(name: item.name, instanceId: item.instanceId, path: item.path, materialPath: item.materialPath);
+                var result = MaterialAssign(name: item.name, instanceId: item.instanceId, path: item.path, materialPath: item.materialPath, entityId: item.entityId);
                 if (SkillResultHelper.TryGetError(result, out string errorText))
-                    return new { error = errorText, target = item.name ?? item.path };
+                    return new { error = errorText, target = item.name ?? item.path ?? item.entityId };
                 return result;
-            }, item => item.name ?? item.path, atomic: true);
+            }, item => item.name ?? item.path ?? item.entityId, atomic: true);
         }
 
-        private class BatchMaterialAssignItem { public string name { get; set; } public int instanceId { get; set; } public string path { get; set; } public string materialPath { get; set; } }
+        private class BatchMaterialAssignItem { public string name { get; set; } public string entityId { get; set; } public int instanceId { get; set; } public string path { get; set; } public string materialPath { get; set; } }
         
         [UnitySkill("material_duplicate", "Duplicate an existing material",
             Category = SkillCategory.Material, Operation = SkillOperation.Create,
@@ -627,9 +627,9 @@ namespace UnitySkills
             [SkillParam("Shader colour property, exact then case-insensitive. Omitted: auto-detect (pipeline default, _BaseColor, _Color, _TintColor, _EmissionColor). A missing _BaseColor/_Color/_MainColor/_TintColor falls back to the main colour present (propertyRequested + warnings); any other missing or non-colour name is rejected with validValues. propertyUsed names the property written.")]
             string propertyName = null,
             [SkillParam("HDR multiplier on r/g/b (alpha unchanged); writing _EmissionColor with intensity > 0 also enables _EMISSION.")]
-            float intensity = 1.0f)
+            float intensity = 1.0f, string entityId = null)
         {
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             if (!TryResolveColorProperty(material, propertyName, out var resolvedProperty, out var warning, out var resolveError))
@@ -668,26 +668,26 @@ namespace UnitySkills
 
         private static object ColorObject(Color c) => new { r = c.r, g = c.g, b = c.b, a = c.a };
 
-        [UnitySkill("material_set_colors_batch", "Set colors on multiple GameObjects in a single call. items: JSON array of {name, instanceId, path, r, g, b, a}, e.g. [{name:'Obj1',r:1,g:0,b:0},{name:'Obj2',r:0,g:1,b:0}]. Much more efficient than calling material_set_color multiple times.",
+        [UnitySkill("material_set_colors_batch", "Set colors on multiple GameObjects in a single call. items: JSON array of {name, instanceId, path, entityId, r, g, b, a}, e.g. [{name:'Obj1',r:1,g:0,b:0},{name:'Obj2',r:0,g:1,b:0}]. Much more efficient than calling material_set_color multiple times.",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "color", "batch", "rendering" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetColorsBatch(
-            [SkillParam("JSON array of {name|path|instanceId, r?, g?, b?, a?, propertyName?}: 0-1 floats, each omitted channel = 1; path may be a material asset path; propertyName overrides the batch-level one.")]
+            [SkillParam("JSON array of {name|path|instanceId|entityId, r?, g?, b?, a?, propertyName?}: 0-1 floats, each omitted channel = 1; path may be a material asset path; propertyName overrides the batch-level one.")]
             string items = null,
             [SkillParam("Default colour property for every item, same rules as material_set_color; omitted = auto-detect.")]
             string propertyName = null)
         {
             return BatchExecutor.Execute<BatchColorItem>(items, item =>
             {
-                var (material, go, error) = FindMaterial(item.name, item.instanceId, item.path);
-                if (error != null) return WithTarget(error, item.name ?? item.path);
+                var (material, go, error) = FindMaterial(item.name, item.instanceId, item.path, item.entityId);
+                if (error != null) return WithTarget(error, item.name ?? item.path ?? item.entityId);
 
                 var effectiveProperty = item.propertyName ?? propertyName;
                 if (!TryResolveColorProperty(material, effectiveProperty, out var resolvedProperty, out var warning, out var resolveError))
-                    return WithTarget(resolveError, item.name ?? item.path);
+                    return WithTarget(resolveError, item.name ?? item.path ?? item.entityId);
 
                 var color = new Color(item.r, item.g, item.b, item.a);
 
@@ -709,12 +709,13 @@ namespace UnitySkills
                     result["warnings"] = new[] { warning };
                 }
                 return result;
-            }, item => item.name ?? item.path, atomic: true);
+            }, item => item.name ?? item.path ?? item.entityId, atomic: true);
         }
 
         private class BatchColorItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public float r { get; set; } = 1f;
@@ -737,9 +738,9 @@ namespace UnitySkills
             [SkillParam("r/g/b: base emission colour as 0-1 floats; intensity multiplies them.")]
             float r = 1, float g = 1, float b = 1,
             [SkillParam("HDR multiplier on r/g/b; intensity <= 0 or enableEmission=false disables _EMISSION.")]
-            float intensity = 1.0f, bool enableEmission = true)
+            float intensity = 1.0f, bool enableEmission = true, string entityId = null)
         {
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             WorkflowManager.SnapshotObject(material);
@@ -794,22 +795,22 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("material_set_emission_batch", "Set emission on multiple objects (Efficient). items: JSON array of {name, r, g, b, intensity?, enableEmission?}",
+        [UnitySkill("material_set_emission_batch", "Set emission on multiple objects (Efficient). items: JSON array of {name, entityId, r, g, b, intensity?, enableEmission?}",
             Category = SkillCategory.Material, Operation = SkillOperation.Modify,
             Tags = new[] { "emission", "hdr", "batch", "lighting" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetEmissionBatch(
-            [SkillParam("JSON array of {name|path|instanceId, r, g, b (0-1, omitted = 0; material_set_emission defaults to 1), intensity? (default 1; <= 0 disables emission, as in material_set_emission), enableEmission? (default true)}.")]
+            [SkillParam("JSON array of {name|path|instanceId|entityId, r, g, b (0-1, omitted = 0; material_set_emission defaults to 1), intensity? (default 1; <= 0 disables emission, as in material_set_emission), enableEmission? (default true)}.")]
             string items)
         {
             return BatchExecutor.Execute<BatchEmissionItem>(items, item =>
             {
                 var result = MaterialSetEmission(name: item.name, instanceId: item.instanceId, path: item.path,
-                    r: item.r ?? 0f, g: item.g ?? 0f, b: item.b ?? 0f, intensity: item.intensity, enableEmission: item.enableEmission);
+                    r: item.r ?? 0f, g: item.g ?? 0f, b: item.b ?? 0f, intensity: item.intensity, enableEmission: item.enableEmission, entityId: item.entityId);
                 if (SkillResultHelper.TryGetError(result, out string errorText))
-                    return new { error = errorText, target = item.name ?? item.path };
+                    return new { error = errorText, target = item.name ?? item.path ?? item.entityId };
 
                 var json = JObject.FromObject(result);
                 bool allChannelsOmitted = item.r == null && item.g == null && item.b == null;
@@ -820,12 +821,13 @@ namespace UnitySkills
                     });
                 }
                 return json;
-            }, item => item.name ?? item.path, atomic: true);
+            }, item => item.name ?? item.path ?? item.entityId, atomic: true);
         }
 
         private class BatchEmissionItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public float? r { get; set; }
@@ -848,7 +850,7 @@ namespace UnitySkills
         public static object MaterialSetTexture(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
             string texturePath = null,
-            [SkillParam(MainTextureNote)] string propertyName = null)
+            [SkillParam(MainTextureNote)] string propertyName = null, string entityId = null)
         {
             if (Validate.Required(texturePath, "texturePath") is object err) return err;
 
@@ -857,7 +859,7 @@ namespace UnitySkills
                 propertyName = ProjectSkills.GetMainTexturePropertyName();
             }
 
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             if (!material.HasProperty(propertyName))
@@ -899,11 +901,11 @@ namespace UnitySkills
         public static object MaterialSetFloat(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
             [SkillParam(ShaderPropertyNote)] string propertyName = null,
-            float value = 0)
+            float value = 0, string entityId = null)
         {
             if (Validate.Required(propertyName, "propertyName") is object err) return err;
 
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             if (!material.HasProperty(propertyName))
@@ -934,11 +936,11 @@ namespace UnitySkills
         public static object MaterialSetInt(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
             [SkillParam(ShaderPropertyNote)] string propertyName = null,
-            int value = 0)
+            int value = 0, string entityId = null)
         {
             if (Validate.Required(propertyName, "propertyName") is object err) return err;
 
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             if (!material.HasProperty(propertyName))
@@ -968,11 +970,11 @@ namespace UnitySkills
         public static object MaterialSetVector(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
             [SkillParam(ShaderPropertyNote)] string propertyName = null,
-            float x = 0, float y = 0, float z = 0, float w = 0)
+            float x = 0, float y = 0, float z = 0, float w = 0, string entityId = null)
         {
             if (Validate.Required(propertyName, "propertyName") is object err) return err;
 
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             if (!material.HasProperty(propertyName))
@@ -1001,9 +1003,9 @@ namespace UnitySkills
         public static object MaterialSetTextureOffset(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
             [SkillParam(MainTextureNote)] string propertyName = null,
-            float x = 0, float y = 0)
+            float x = 0, float y = 0, string entityId = null)
         {
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             if (string.IsNullOrEmpty(propertyName))
@@ -1037,9 +1039,9 @@ namespace UnitySkills
         public static object MaterialSetTextureScale(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
             [SkillParam(MainTextureNote)] string propertyName = null,
-            float x = 1, float y = 1)
+            float x = 1, float y = 1, string entityId = null)
         {
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             if (string.IsNullOrEmpty(propertyName))
@@ -1077,11 +1079,11 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetKeyword(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
-            string keyword = null, bool enable = true)
+            string keyword = null, bool enable = true, string entityId = null)
         {
             if (Validate.Required(keyword, "keyword") is object err) return err;
 
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             WorkflowManager.SnapshotObject(material);
@@ -1117,9 +1119,9 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetRenderQueue(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
-            int renderQueue = -1)
+            int renderQueue = -1, string entityId = null)
         {
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             WorkflowManager.SnapshotObject(material);
@@ -1168,11 +1170,11 @@ namespace UnitySkills
         public static object MaterialSetShader(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
             [SkillParam("Full shader name, e.g. 'Universal Render Pipeline/Lit' or 'Standard'.")]
-            string shaderName = null)
+            string shaderName = null, string entityId = null)
         {
             if (Validate.Required(shaderName, "shaderName") is object err) return err;
 
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             var shader = Shader.Find(shaderName);
@@ -1206,9 +1208,9 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesAssets = true)]
         public static object MaterialSetGIFlags(string name = null, int instanceId = 0,
             [SkillParam(MaterialPathNote)] string path = null,
-            string flags = "RealtimeEmissive")
+            string flags = "RealtimeEmissive", string entityId = null)
         {
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             MaterialGlobalIlluminationFlags giFlags;
@@ -1246,9 +1248,9 @@ namespace UnitySkills
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object MaterialGetProperties(string name = null, int instanceId = 0,
-            [SkillParam(MaterialPathNote)] string path = null)
+            [SkillParam(MaterialPathNote)] string path = null, string entityId = null)
         {
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             var shader = material.shader;
@@ -1319,9 +1321,9 @@ namespace UnitySkills
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object MaterialGetKeywords(string name = null, int instanceId = 0,
-            [SkillParam(MaterialPathNote)] string path = null)
+            [SkillParam(MaterialPathNote)] string path = null, string entityId = null)
         {
-            var (material, go, error) = FindMaterial(name, instanceId, path);
+            var (material, go, error) = FindMaterial(name, instanceId, path, entityId);
             if (error != null) return error;
 
             var commonKeywords = new[] {

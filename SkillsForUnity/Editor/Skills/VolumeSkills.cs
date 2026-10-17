@@ -47,7 +47,7 @@ namespace UnitySkills
             MutatesScene = true,
             RequiresInput = new[] { "gameObject", "profilePath" },
             RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
-        public static object VolumeSetProfile(string name = null, int instanceId = 0, string path = null, string profilePath = null) => RenderPipelineSkillsCommon.NoSRP();
+        public static object VolumeSetProfile(string name = null, int instanceId = 0, string path = null, string profilePath = null, string entityId = null) => RenderPipelineSkillsCommon.NoSRP();
 
         [UnitySkill("volume_list_component_types", "List explicit VolumeComponent types supported by the active pipeline",
             Category = SkillCategory.Volume, Operation = SkillOperation.Query,
@@ -215,7 +215,7 @@ namespace UnitySkills
             MutatesScene = true,
             RequiresInput = new[] { "gameObject", "profilePath" },
             RequiresPackages = new[] { "com.unity.render-pipelines.core" })]
-        public static object VolumeSetProfile(string name = null, int instanceId = 0, string path = null, string profilePath = null)
+        public static object VolumeSetProfile(string name = null, int instanceId = 0, string path = null, string profilePath = null, string entityId = null)
         {
             if (Validate.Required(profilePath, "profilePath") is object err) return err;
             if (Validate.SafePath(profilePath, "profilePath") is object pathErr) return pathErr;
@@ -224,7 +224,7 @@ namespace UnitySkills
             if (profile == null)
                 return new { error = $"VolumeProfile not found: {profilePath}" };
 
-            var (go, goErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, goErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (goErr != null) return goErr;
 
             var volume = go.GetComponent<Volume>();

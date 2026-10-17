@@ -231,13 +231,15 @@ namespace UnitySkills
             string referencePath = null,
             string referenceName = null,
             [SkillParam(ComponentSkills.AssetReferenceNote)] string assetPath = null,
-            int sampleLimit = DefaultSampleLimit)
+            int sampleLimit = DefaultSampleLimit,
+            [SkillParam("entityId of the scene object (or of the exact component) for a reference member; outranks referencePath and referenceName.")]
+            string referenceEntityId = null)
         {
             if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
                 return queryError;
             try
             {
-                var preview = BuildSetPropertyPreview(query, componentType, propertyName, value, referencePath, referenceName, assetPath);
+                var preview = BuildSetPropertyPreview(query, componentType, propertyName, value, referencePath, referenceName, assetPath, referenceEntityId);
                 return SavePreview(preview, sampleLimit, notes);
             }
             catch (QueryRejectedException ex)
@@ -1383,7 +1385,8 @@ namespace UnitySkills
             string value,
             string referencePath,
             string referenceName,
-            string assetPath)
+            string assetPath,
+            string referenceEntityId)
         {
             if (string.IsNullOrWhiteSpace(componentType) || string.IsNullOrWhiteSpace(propertyName))
                 throw new ArgumentException("componentType and propertyName are required");
@@ -1394,6 +1397,7 @@ namespace UnitySkills
             preview.operation["value"] = value;
             preview.operation["referencePath"] = referencePath;
             preview.operation["referenceName"] = referenceName;
+            preview.operation["referenceEntityId"] = referenceEntityId;
             preview.operation["assetPath"] = assetPath;
 
             var targetComponentType = ComponentSkills.FindComponentType(componentType);
@@ -1417,7 +1421,7 @@ namespace UnitySkills
 
                 var memberType = property != null ? property.PropertyType : field.FieldType;
                 object converted;
-                try { converted = ResolveValue(memberType, value, referencePath, referenceName, assetPath); }
+                try { converted = ResolveValue(memberType, value, referencePath, referenceName, assetPath, referenceEntityId); }
                 catch (Exception ex)
                 {
                     preview.items.Add(CreateSkippedItem(target, "set_property", $"invalid_value:{ex.Message}"));
@@ -1815,7 +1819,7 @@ namespace UnitySkills
             return property != null || field != null;
         }
 
-        private static object ResolveValue(Type targetType, string value, string referencePath, string referenceName, string assetPath)
+        private static object ResolveValue(Type targetType, string value, string referencePath, string referenceName, string assetPath, string referenceEntityId)
         {
             if (!string.IsNullOrWhiteSpace(assetPath))
             {
@@ -1824,9 +1828,14 @@ namespace UnitySkills
                     throw new ArgumentException($"Asset not found or type mismatch: {assetPath}");
                 return asset;
             }
-            if (!string.IsNullOrWhiteSpace(referencePath) || !string.IsNullOrWhiteSpace(referenceName))
+            if (!string.IsNullOrWhiteSpace(referencePath) || !string.IsNullOrWhiteSpace(referenceName) || UnityObjectIdUtility.IsGivenEntityId(referenceEntityId))
             {
-                var gameObject = GameObjectFinder.Find(referenceName, path: referencePath);
+                // An entityId naming a component of the member's type binds that exact component, not the first of its type.
+                if (UnityObjectIdUtility.IsGivenEntityId(referenceEntityId) &&
+                    UnityObjectIdUtility.EntityIdToObject(referenceEntityId) is Component named && targetType.IsInstanceOfType(named))
+                    return named;
+
+                var gameObject = GameObjectFinder.Find(referenceName, path: referencePath, entityId: referenceEntityId);
                 if (gameObject == null)
                     throw new ArgumentException("Reference target not found");
                 if (targetType == typeof(GameObject))
@@ -1910,7 +1919,8 @@ namespace UnitySkills
             object converted;
             try
             {
-                converted = ResolveValue(memberType, GetOperationString(preview.operation, "value"), GetOperationString(preview.operation, "referencePath"), GetOperationString(preview.operation, "referenceName"), GetOperationString(preview.operation, "assetPath"));
+                converted = ResolveValue(memberType, GetOperationString(preview.operation, "value"), GetOperationString(preview.operation, "referencePath"), GetOperationString(preview.operation, "referenceName"), GetOperationString(preview.operation, "assetPath"),
+                    GetOperationString(preview.operation, "referenceEntityId"));
             }
             catch (Exception ex)
             {

@@ -56,6 +56,7 @@ Inspect a Decal Projector.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | null | GameObject name |
+| `entityId` | string | No* | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | null | GameObject hierarchy path |
 
@@ -67,6 +68,7 @@ Modify Decal Projector properties. Every property below is applied only when sup
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | null | GameObject name |
+| `entityId` | string | No* | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | null | GameObject hierarchy path |
 | `materialPath` | string | No | null | Decal material asset path |
@@ -95,6 +97,7 @@ Delete a Decal Projector GameObject.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | null | GameObject name |
+| `entityId` | string | No* | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | null | GameObject hierarchy path |
 
@@ -103,7 +106,7 @@ Batch-edit Decal Projectors.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `items` | json string | Yes | - | JSON array of `{name, instanceId, path, materialPath, drawDistance, fadeScale, fadeFactor, startAngleFade, endAngleFade, uvScale, uvBias, size, pivot, renderingLayerMask, scaleMode}` — same per-item keys as `decal_set_properties` |
+| `items` | json string | Yes | - | JSON array of `{name, instanceId, path, entityId, materialPath, drawDistance, fadeScale, fadeFactor, startAngleFade, endAngleFade, uvScale, uvBias, size, pivot, renderingLayerMask, scaleMode}` — same per-item keys as `decal_set_properties` |
 
 ### `decal_ensure_renderer_feature`
 Ensure the target URP renderer has a DecalRendererFeature.

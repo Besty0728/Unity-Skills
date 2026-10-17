@@ -124,9 +124,9 @@ namespace UnitySkills
             Tags = new[] { "scene-view", "align", "look-at", "focus" },
             Outputs = new[] { "message" },
             RequiresInput = new[] { "gameObject" })]
-        public static object CameraAlignViewToObject(string name = null, int instanceId = 0, string path = null)
+        public static object CameraAlignViewToObject(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
 
             if (SceneView.lastActiveSceneView != null)
@@ -260,16 +260,16 @@ namespace UnitySkills
             return new { success = true, name = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go) };
         }
 
-        [UnitySkill("camera_get_properties", "Get Game Camera properties (supports name/instanceId/path)",
+        [UnitySkill("camera_get_properties", "Get Game Camera properties (supports name/entityId/instanceId/path)",
             Category = SkillCategory.Camera, Operation = SkillOperation.Query,
             Tags = new[] { "camera", "properties", "fov", "clip-plane" },
             Outputs = new[] { "name", "fieldOfView", "nearClipPlane", "farClipPlane", "orthographic", "orthographicSize", "depth", "cullingMask", "clearFlags", "backgroundColor", "rect" },
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object CameraGetProperties(string name = null, int instanceId = 0, string path = null)
+        public static object CameraGetProperties(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
+            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
             return new
             {
@@ -298,9 +298,9 @@ namespace UnitySkills
             [SkillParam("Skybox, SolidColor (or Color), Depth or Nothing (case-insensitive).")]
             string clearFlags = null,
             [SkillParam("bgR/bgG/bgB/bgA: background colour as 0-1 floats; omitted channels keep their value.")]
-            float? bgR = null, float? bgG = null, float? bgB = null, float? bgA = null)
+            float? bgR = null, float? bgG = null, float? bgB = null, float? bgA = null, string entityId = null)
         {
-            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
+            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             // All values must be parsed before touching the camera: otherwise an invalid
@@ -356,10 +356,10 @@ namespace UnitySkills
             RequiredParams = new[] { "layerNames" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object CameraSetCullingMask(string layerNames, string name = null, int instanceId = 0, string path = null)
+        public static object CameraSetCullingMask(string layerNames, string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
             if (Validate.Required(layerNames, "layerNames") is object layerNamesErr) return layerNamesErr;
-            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
+            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             // All layer names must be resolved before touching the mask. For a name that isn't
@@ -390,9 +390,9 @@ namespace UnitySkills
             Outputs = new[] { "path", "width", "height", "imageBase64", "imageWidth", "imageHeight", "imageBytes" },
             RequiresInput = new[] { "gameObject" },
             MutatesAssets = true)]
-        public static object CameraScreenshot(string savePath = "Assets/screenshot.png", int width = 1920, int height = 1080, string name = null, int instanceId = 0, string path = null, bool returnImage = false, int maxDimension = 1280)
+        public static object CameraScreenshot(string savePath = "Assets/screenshot.png", int width = 1920, int height = 1080, string name = null, int instanceId = 0, string path = null, bool returnImage = false, int maxDimension = 1280, string entityId = null)
         {
-            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
+            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
             if (Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
             if (!savePath.EndsWith(".png")) savePath += ".png";
@@ -586,9 +586,9 @@ namespace UnitySkills
             Outputs = new[] { "orthographic", "orthographicSize" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object CameraSetOrthographic(bool orthographic, float? orthographicSize = null, string name = null, int instanceId = 0, string path = null)
+        public static object CameraSetOrthographic(bool orthographic, float? orthographicSize = null, string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path);
+            var (cam, err) = GameObjectFinder.FindComponentOrError<Camera>(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
             WorkflowManager.SnapshotObject(cam);
             Undo.RecordObject(cam, "Set Orthographic");

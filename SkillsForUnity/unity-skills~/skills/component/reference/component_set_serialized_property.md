@@ -4,12 +4,14 @@ Set an Inspector serialized property by `propertyPath`: nested fields, arrays/li
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 | `componentType` | string | Yes | Component type |
 | `propertyPath` | string | Yes | SerializedProperty path, e.g. `m_Mass`, `items.Array.data[0]`; a bare name is retried as `m_<Name>`, `_<name>`, `m_<name>` |
 | `value` | string | Cond. | Primitive/vector/color/enum value: integers (a LayerMask is the bit mask), bools `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off`, enum name or display name (`A,B` for flags) or number, vectors/colours as in `component_set_property` |
 | `referenceName` | string | No | Scene object name for ObjectReference |
+| `referenceEntityId` | string | No | Scene object entity ID for ObjectReference (preferred; the only id on Unity 6000.4+) |
 | `referenceInstanceId` | int | No | Scene object instance ID for ObjectReference |
 | `referencePath` | string | No | Scene object path for ObjectReference |
 | `assetPath` | string | No | Project asset path for ObjectReference |

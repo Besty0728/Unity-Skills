@@ -63,6 +63,7 @@ Add NavMeshAgent component to an object.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 
@@ -74,6 +75,7 @@ Set NavMeshAgent properties (speed, acceleration, radius, height, stoppingDistan
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | speed | float | No | null | Agent movement speed |
@@ -91,6 +93,7 @@ Add NavMeshObstacle component to an object.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | carve | bool | No | true | Enable carving |
@@ -103,6 +106,7 @@ Set NavMeshObstacle properties (shape, size, carving).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | shape | string | No | null | Obstacle shape (e.g. Box, Capsule) |

@@ -415,6 +415,8 @@ namespace UnitySkills
             // four can be wire-required (a literal RequiresInput entry would make it so).
             ["targetObjectName|targetEntityId|targetInstanceId|targetPath"] = new[] { "targetObjectName", "targetEntityId", "targetInstanceId", "targetPath" },
             ["targetName|targetEntityId|targetInstanceId|targetPath"] = new[] { "targetName", "targetEntityId", "targetInstanceId", "targetPath" },
+            // timeline_set_binding: the object to bind, by name or by entityId; either one is enough, so neither is wire-required.
+            ["bindingObjectName|bindingEntityId"] = new[] { "bindingObjectName", "bindingEntityId" },
         };
     }
 }

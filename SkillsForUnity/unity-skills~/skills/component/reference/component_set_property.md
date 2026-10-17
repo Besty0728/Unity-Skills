@@ -4,6 +4,7 @@ Set one property or field of a component through its C# member name.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 | `componentType` | string | Yes | Component type |
@@ -11,6 +12,7 @@ Set one property or field of a component through its C# member name.
 | `value` | string | Cond. | New value (basic types, vectors, colours, enums) |
 | `referencePath` | string | No | Scene object hierarchy path (for scene references) |
 | `referenceName` | string | No | Scene object name (for scene references; first match) |
+| `referenceEntityId` | string | No | Scene object entity ID for a reference member (or the exact component); outranks referencePath and referenceName |
 | `assetPath` | string | No | Project asset path (Material, Texture, AudioClip, ScriptableObject, Prefab, ...) |
 
 *At least one identifier required. Send exactly one value source; the module entry has the precedence and encodings.

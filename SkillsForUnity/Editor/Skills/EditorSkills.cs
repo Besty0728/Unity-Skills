@@ -252,9 +252,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object EditorPlaymodeInspect(string name = null, int instanceId = 0, string path = null, string componentType = null)
+        public static object EditorPlaymodeInspect(string name = null, int instanceId = 0, string path = null, string componentType = null, string entityId = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var t = go.transform;
@@ -289,9 +289,9 @@ namespace UnitySkills
             Tags = new[] { "select", "focus", "highlight" },
             Outputs = new[] { "selected" },
             RequiresInput = new[] { "gameObject" })]
-        public static object EditorSelect(string name = null, int instanceId = 0, string path = null)
+        public static object EditorSelect(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
 
             Selection.activeGameObject = go;

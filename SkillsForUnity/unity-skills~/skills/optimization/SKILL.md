@@ -85,6 +85,7 @@ Set static flags on GameObjects. `flags` is comma-separated, drawn from `Contrib
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | flags | string | No | "Everything" | Comma-separated static flags, or the `Everything` / `Nothing` aliases (see above) |
@@ -98,6 +99,7 @@ Get static flags of a GameObject.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 
@@ -139,6 +141,7 @@ Add or configure LOD Group. lodDistances: comma-separated screen-relative height
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | lodDistances | string | No | "0.6,0.3,0.1" | Comma-separated screen-relative transition heights |

@@ -117,7 +117,8 @@ namespace UnitySkills
         /// <summary>
         /// Writes <paramref name="value"/> into the SerializedObject copy (nothing reaches the target until the
         /// caller applies it). <paramref name="warning"/> is non-null when the write succeeded but may not mean what
-        /// the caller intended, e.g. an enum number taken as a member index.
+        /// the caller intended, e.g. an enum number taken as a member index. An object reference is located by
+        /// <paramref name="referenceEntityId"/>, instance id, path or name, as <see cref="TryResolveObjectReference"/> orders them.
         /// </summary>
         public static bool TrySetProperty(
             SerializedProperty property,
@@ -128,7 +129,8 @@ namespace UnitySkills
             string assetPath,
             string objectType,
             out string error,
-            out string warning)
+            out string warning,
+            string referenceEntityId = null)
         {
             error = null;
             warning = null;
@@ -195,13 +197,14 @@ namespace UnitySkills
                             string.IsNullOrWhiteSpace(referenceName) &&
                             referenceInstanceId == 0 &&
                             string.IsNullOrWhiteSpace(referencePath) &&
+                            !UnityObjectIdUtility.IsGivenEntityId(referenceEntityId) &&
                             (value == null || string.Equals(value, "null", StringComparison.OrdinalIgnoreCase)))
                         {
                             property.objectReferenceValue = null;
                             return true;
                         }
 
-                        if (!TryResolveObjectReference(referenceName, referenceInstanceId, referencePath, assetPath, objectType, out var objectValue, out error))
+                        if (!TryResolveObjectReference(referenceName, referenceInstanceId, referencePath, assetPath, objectType, out var objectValue, out error, referenceEntityId))
                         {
                             return false;
                         }

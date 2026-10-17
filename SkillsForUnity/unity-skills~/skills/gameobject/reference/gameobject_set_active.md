@@ -3,7 +3,7 @@ Enable or disable a GameObject.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `entityId` | string | No* | null | Entity ID (Unity 6000.4+, preferred) |
+| `entityId` | string | No* | null | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `name` | string | No* | null | Object name |
 | `instanceId` | int | No* | 0 | Instance ID |
 | `path` | string | No* | null | Hierarchy path |

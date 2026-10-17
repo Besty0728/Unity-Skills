@@ -364,7 +364,7 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject|assetPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object ModelGetMeshInfo(string name = null, int instanceId = 0, string path = null, string assetPath = null)
+        public static object ModelGetMeshInfo(string name = null, int instanceId = 0, string path = null, string assetPath = null, string entityId = null)
         {
             Mesh mesh = null;
             if (!string.IsNullOrEmpty(assetPath))
@@ -378,7 +378,7 @@ namespace UnitySkills
             }
             else
             {
-                var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+                var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
                 if (error != null) return error;
                 var mf = go.GetComponent<MeshFilter>();
                 var smr = go.GetComponent<SkinnedMeshRenderer>();

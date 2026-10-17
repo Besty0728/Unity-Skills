@@ -5,7 +5,7 @@ Remove components from several GameObjects in one call.
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects |
 
-**Item properties**: `name`, `instanceId`, `path`, `componentType`, `componentIndex?`. With `componentIndex` only that instance is removed (as in `component_remove`); without it every component of that type on the object is removed. A component another one still requires is refused before anything is removed (`requiredBy`, as in `component_remove`); items run in order, so removing the dependent in an earlier item frees it.
+**Item properties**: `name`, `entityId`, `instanceId`, `path`, `componentType`, `componentIndex?`. With `componentIndex` only that instance is removed (as in `component_remove`); without it every component of that type on the object is removed. A component another one still requires is refused before anything is removed (`requiredBy`, as in `component_remove`); items run in order, so removing the dependent in an earlier item frees it.
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, removed, count, remainingOfType}]}` (`count` = components removed, `remainingOfType` = that type still on the object). All-or-nothing. NeverInSemi.
 

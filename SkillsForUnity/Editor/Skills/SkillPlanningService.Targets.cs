@@ -20,6 +20,7 @@ namespace UnitySkills
             var assetPath = GetStringArg(args, "assetPath");
             var referencePath = GetStringArg(args, "referencePath");
             var referenceName = GetStringArg(args, "referenceName");
+            var referenceEntityId = GetStringArg(args, "referenceEntityId");
             var value = GetStringArg(args, "value");
 
             try
@@ -32,12 +33,19 @@ namespace UnitySkills
                     return;
                 }
 
-                if (!string.IsNullOrEmpty(referencePath) || !string.IsNullOrEmpty(referenceName))
+                if (!string.IsNullOrEmpty(referencePath) || !string.IsNullOrEmpty(referenceName) || UnityObjectIdUtility.IsGivenEntityId(referenceEntityId))
                 {
-                    var reference = ResolveLocator(referenceName, 0, referencePath, null);
+                    var reference = ResolveLocator(referenceName, 0, referencePath, referenceEntityId);
                     if (reference.IsPending)
                     {
                         WarnIfPending(validation, "reference", reference);
+                        return;
+                    }
+
+                    // Reported under the parameter, so the generic entityId check does not report the same miss again.
+                    if (reference.Error != null && UnityObjectIdUtility.IsGivenEntityId(referenceEntityId))
+                    {
+                        AddSemanticError(validation, "referenceEntityId", ExtractError(reference.Error));
                         return;
                     }
 

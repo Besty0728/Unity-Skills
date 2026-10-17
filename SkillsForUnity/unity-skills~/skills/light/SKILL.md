@@ -36,7 +36,7 @@ description: Create and configure Unity lights
 - For reflection probes → `light_add_reflection_probe` (this module)
 - For light probe groups → `light_add_probe_group` (this module)
 
-> **Object Targeting**: All single-object skills accept `name` (string) and `instanceId` (int, preferred). Provide at least one. `path` (hierarchy path) is also accepted where noted.
+> **Object Targeting**: All single-object skills accept `entityId` (string, preferred; the only id on Unity 6000.4+), `name` (string) and `instanceId` (int, older Unity). Provide at least one. `path` (hierarchy path) is also accepted where noted. An id that names nothing is an error, never a fallback to the name.
 
 ## Skills Overview
 
@@ -90,7 +90,8 @@ Configure light properties. Every parameter is optional and omitted ones keep th
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Light object name |
-| `instanceId` | int | No* | Instance ID (preferred) |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
+| `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 | `r`, `g`, `b` | float | No | Color (0-1); each channel defaults to the light's current value |
 | `a` | float | No | Colour alpha (0-1) |
@@ -104,7 +105,7 @@ Configure light properties. Every parameter is optional and omitted ones keep th
 An unrecognised `shadows` value rejects the **whole call** with `SEMANTIC_INVALID` + `validValues` and applies nothing, so a typo can no longer leave a half-configured light behind.
 
 ### light_set_properties_batch
-Configure multiple lights. Each item accepts: `name`/`instanceId`/`path` (identifier) + `r`, `g`, `b`, `a`, `intensity`, `range`, `spotAngle`, `shadows` (all optional). This batch is all-or-nothing: a bad `shadows` value fails that item with `SEMANTIC_INVALID` + `validValues` and names the object in `target`, and rolls back every item the call already applied.
+Configure multiple lights. Each item accepts: `name`/`entityId`/`instanceId`/`path` (identifier) + `r`, `g`, `b`, `a`, `intensity`, `range`, `spotAngle`, `shadows` (all optional). This batch is all-or-nothing: a bad `shadows` value fails that item with `SEMANTIC_INVALID` + `validValues` and names the object in `target`, and rolls back every item the call already applied.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects (see example below) |
@@ -126,6 +127,7 @@ Enable or disable a light.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | - | Light object name |
+| `entityId` | string | No* | - | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | - | Instance ID |
 | `path` | string | No* | - | Hierarchy path |
 | `enabled` | bool | No | `true` | Enable state |
@@ -155,6 +157,7 @@ Get detailed light information.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Light object name |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 
@@ -166,6 +169,7 @@ Alias of `light_get_info` — same parameters, same response. It exists because 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Light object name |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |
 
@@ -187,6 +191,7 @@ Add a Light Probe Group to a GameObject. Optional grid layout: gridX/gridY/gridZ
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No | null | GameObject name |
+| `entityId` | string | No | null | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No | 0 | Instance ID |
 | `path` | string | No | null | Hierarchy path |
 | `gridX` | int | No | 0 | Probe count on X axis |

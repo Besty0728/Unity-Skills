@@ -176,9 +176,9 @@ namespace UnitySkills
             Outputs = new[] { "gameObject", "flags", "affectedCount" },
             RequiresInput = new[] { "gameObject" },
             MutatesScene = true)]
-        public static object OptimizeSetStaticFlags(string name = null, int instanceId = 0, string path = null, string flags = "Everything", bool includeChildren = false)
+        public static object OptimizeSetStaticFlags(string name = null, int instanceId = 0, string path = null, string flags = "Everything", bool includeChildren = false, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             // StaticEditorFlags doesn't declare Everything or Nothing members, so a plain enum
@@ -208,9 +208,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object OptimizeGetStaticFlags(string name = null, int instanceId = 0, string path = null)
+        public static object OptimizeGetStaticFlags(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var flags = GameObjectUtility.GetStaticEditorFlags(go);
@@ -352,9 +352,9 @@ namespace UnitySkills
             Outputs = new[] { "gameObject", "lodLevels", "distances" },
             RequiresInput = new[] { "gameObject" },
             MutatesScene = true)]
-        public static object OptimizeSetLodGroup(string name = null, int instanceId = 0, string path = null, string lodDistances = "0.6,0.3,0.1")
+        public static object OptimizeSetLodGroup(string name = null, int instanceId = 0, string path = null, string lodDistances = "0.6,0.3,0.1", string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var distanceParts = lodDistances.Split(',');

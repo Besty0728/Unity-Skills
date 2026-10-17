@@ -41,6 +41,7 @@ Control the Scene View camera and Game Cameras (creation, transform, properties,
 Align Scene View camera to look at an object.
 **Parameters:**
 - `name` (string, optional): Target GameObject name.
+- `entityId` (string, optional): Target GameObject entity ID (preferred; the only id on Unity 6000.4+).
 - `instanceId` (int, optional): Target GameObject instance ID.
 - `path` (string, optional): Target GameObject hierarchy path.
 
@@ -80,11 +81,12 @@ Create a new Game Camera.
 **Returns:** `{ success, name, instanceId }`
 
 ### `camera_get_properties`
-Get Game Camera properties (supports name/instanceId/path).
+Get Game Camera properties (supports name/entityId/instanceId/path).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | Name of the camera GameObject |
+| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | Instance ID of the camera GameObject |
 | path | string | No | null | Hierarchy path of the camera GameObject |
 
@@ -96,6 +98,7 @@ Set Game Camera properties (FOV, clip planes, clear flags, background color, dep
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | Name of the camera GameObject |
+| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | Instance ID of the camera GameObject |
 | path | string | No | null | Hierarchy path of the camera GameObject |
 | fieldOfView | float? | No | null | Camera field of view |
@@ -119,6 +122,7 @@ Set Game Camera culling mask by layer names (comma-separated).
 |-----------|------|----------|---------|-------------|
 | layerNames | string | Yes | - | Comma-separated layer names |
 | name | string | No | null | Name of the camera GameObject |
+| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | Instance ID of the camera GameObject |
 | path | string | No | null | Hierarchy path of the camera GameObject |
 
@@ -133,6 +137,7 @@ Capture a screenshot from a Game Camera to file.
 | width | int | No | 1920 | Screenshot width in pixels |
 | height | int | No | 1080 | Screenshot height in pixels |
 | name | string | No | null | Name of the camera GameObject |
+| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | Instance ID of the camera GameObject |
 | path | string | No | null | Hierarchy path of the camera GameObject |
 | returnImage | bool | No | false | Also return the PNG as base64 in the response (`imageBase64`), for clients without filesystem access |
@@ -162,6 +167,7 @@ Switch Game Camera between orthographic and perspective mode.
 | orthographic | bool | Yes | - | True for orthographic, false for perspective |
 | orthographicSize | float? | No | null | Orthographic size (only applies in orthographic mode) |
 | name | string | No | null | Name of the camera GameObject |
+| entityId | string | No | null | Entity ID of the camera GameObject (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | Instance ID of the camera GameObject |
 | path | string | No | null | Hierarchy path of the camera GameObject |
 

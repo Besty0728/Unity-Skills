@@ -142,7 +142,7 @@ namespace UnitySkills
             return new { controller = controllerPath, parameters };
         }
 
-        [UnitySkill("animator_set_parameter", "Set a parameter value on a GameObject's Animator (supports name/instanceId/path)",
+        [UnitySkill("animator_set_parameter", "Set a parameter value on a GameObject's Animator (supports name/entityId/instanceId/path)",
             Category = SkillCategory.Animator, Operation = SkillOperation.Modify,
             Tags = new[] { "animator", "parameter", "set", "value" },
             Outputs = new[] { "success", "gameObject", "parameter", "value" },
@@ -154,11 +154,11 @@ namespace UnitySkills
             string paramName = null,
             [SkillParam("float, int, bool or trigger (case-insensitive); must match the parameter's declared type on the controller, or this errors.")]
             string paramType = "float",
-            float floatValue = 0, int intValue = 0, bool boolValue = false)
+            float floatValue = 0, int intValue = 0, bool boolValue = false, string entityId = null)
         {
             if (Validate.Required(paramName, "paramName") is object err) return err;
 
-            var (animator, error) = GameObjectFinder.FindComponentOrError<Animator>(name, instanceId, path);
+            var (animator, error) = GameObjectFinder.FindComponentOrError<Animator>(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             if (animator.runtimeAnimatorController == null)
@@ -224,7 +224,7 @@ namespace UnitySkills
             }
         }
 
-        [UnitySkill("animator_play", "Play an animation state on a GameObject (supports name/instanceId/path)",
+        [UnitySkill("animator_play", "Play an animation state on a GameObject (supports name/entityId/instanceId/path)",
             Category = SkillCategory.Animator, Operation = SkillOperation.Execute,
             Tags = new[] { "animator", "play", "state", "animation" },
             Outputs = new[] { "success", "gameObject", "state", "layer" },
@@ -235,11 +235,11 @@ namespace UnitySkills
             string stateName = null,
             int layer = 0,
             [SkillParam("Normalized start position within the state's clip: 0 = beginning, 1 = end.")]
-            float normalizedTime = 0)
+            float normalizedTime = 0, string entityId = null)
         {
             if (Validate.Required(stateName, "stateName") is object err1) return err1;
 
-            var (animator, error) = GameObjectFinder.FindComponentOrError<Animator>(name, instanceId, path);
+            var (animator, error) = GameObjectFinder.FindComponentOrError<Animator>(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             // Animator.Play likewise fails silently on a state name that doesn't exist, so the state
@@ -304,16 +304,16 @@ namespace UnitySkills
             return found;
         }
 
-        [UnitySkill("animator_get_info", "Get Animator component information (supports name/instanceId/path)",
+        [UnitySkill("animator_get_info", "Get Animator component information (supports name/entityId/instanceId/path)",
             Category = SkillCategory.Animator, Operation = SkillOperation.Query,
             Tags = new[] { "animator", "info", "inspect", "controller" },
             Outputs = new[] { "gameObject", "instanceId", "hasController", "controllerPath", "speed", "layerCount", "parameterCount" },
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object AnimatorGetInfo(string name = null, int instanceId = 0, string path = null)
+        public static object AnimatorGetInfo(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (animator, error) = GameObjectFinder.FindComponentOrError<Animator>(name, instanceId, path);
+            var (animator, error) = GameObjectFinder.FindComponentOrError<Animator>(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var controllerPath = animator.runtimeAnimatorController != null
@@ -336,19 +336,19 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("animator_assign_controller", "Assign an Animator Controller to a GameObject (supports name/instanceId/path)",
+        [UnitySkill("animator_assign_controller", "Assign an Animator Controller to a GameObject (supports name/entityId/instanceId/path)",
             Category = SkillCategory.Animator, Operation = SkillOperation.Modify,
             Tags = new[] { "animator", "controller", "assign", "bind" },
             Outputs = new[] { "success", "gameObject", "controller" },
             RequiresInput = new[] { "gameObject", "controllerPath" },
             MutatesScene = true)]
-        public static object AnimatorAssignController(string name = null, int instanceId = 0, string path = null, string controllerPath = null)
+        public static object AnimatorAssignController(string name = null, int instanceId = 0, string path = null, string controllerPath = null, string entityId = null)
         {
             if (Validate.Required(controllerPath, "controllerPath") is object err2) return err2;
             var pathErr = Validate.SafePath(controllerPath, "controllerPath");
             if (pathErr != null) return pathErr;
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var animator = go.GetComponent<Animator>();

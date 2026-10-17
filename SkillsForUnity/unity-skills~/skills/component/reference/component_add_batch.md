@@ -5,7 +5,7 @@ Add components to several GameObjects in one call.
 |-----------|------|----------|---------|-------------|
 | `items` | json string | Yes | - | JSON array of per-item objects |
 
-**Item properties**: `name`, `instanceId`, `path`, `componentType` (required per item).
+**Item properties**: `name`, `entityId`, `instanceId`, `path`, `componentType` (required per item).
 
 **Returns**: `{success, totalItems, successCount, failCount, results: [{target, success, component}]}`; an already-present single-instance type gives `{target, success: true, warning: "Component already exists", component}`. All-or-nothing: an unknown object or type reverts every add.
 

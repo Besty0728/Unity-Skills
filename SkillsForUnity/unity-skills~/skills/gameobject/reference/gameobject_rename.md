@@ -3,7 +3,7 @@ Rename a GameObject.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `entityId` | string | No* | Entity ID (Unity 6000.4+, preferred) |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `name` | string | No* | Current object name |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path |

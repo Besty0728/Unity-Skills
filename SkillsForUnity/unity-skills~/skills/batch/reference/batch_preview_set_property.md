@@ -9,6 +9,7 @@ Preview setting one component property or field across the queried objects.
 | `value` | string | No | null | Literal value |
 | `referencePath` | string | No | null | Scene reference path |
 | `referenceName` | string | No | null | Scene reference object name |
+| `referenceEntityId` | string | No | - | Scene object entity ID for a reference member (or the exact component); outranks referencePath and referenceName |
 | `assetPath` | string | No | null | Asset reference path |
 | `sampleLimit` | int | No | 10 | Max preview items |
 

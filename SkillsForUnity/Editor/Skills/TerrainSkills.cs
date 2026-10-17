@@ -57,11 +57,11 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object TerrainGetInfo(string name = null, int instanceId = 0)
+        public static object TerrainGetInfo(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var terrain = FindTerrain(name, instanceId);
-            if (terrain == null)
-                return new { success = false, error = "Terrain not found" };
+            var (terrain, findError) = FindTerrain(name, instanceId, path, entityId);
+            if (findError != null)
+                return findError;
 
             var data = terrain.terrainData;
             var layers = new List<object>();
@@ -105,11 +105,11 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object TerrainGetHeight(float worldX, float worldZ, string name = null, int instanceId = 0)
+        public static object TerrainGetHeight(float worldX, float worldZ, string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var terrain = FindTerrain(name, instanceId);
-            if (terrain == null)
-                return new { success = false, error = "Terrain not found" };
+            var (terrain, findError) = FindTerrain(name, instanceId, path, entityId);
+            if (findError != null)
+                return findError;
 
             var height = terrain.SampleHeight(new Vector3(worldX, 0, worldZ));
             
@@ -130,11 +130,11 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" }, MutatesAssets = true)]
         public static object TerrainSetHeight(
             float normalizedX, float normalizedZ, float height,
-            string name = null, int instanceId = 0)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var terrain = FindTerrain(name, instanceId);
-            if (terrain == null)
-                return new { success = false, error = "Terrain not found" };
+            var (terrain, findError) = FindTerrain(name, instanceId, path, entityId);
+            if (findError != null)
+                return findError;
 
             var data = terrain.terrainData;
             WorkflowManager.SnapshotObject(data);
@@ -171,11 +171,11 @@ namespace UnitySkills
         public static object TerrainSetHeightsBatch(
             int startX, int startZ,
             float[][] heights,
-            string name = null, int instanceId = 0)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var terrain = FindTerrain(name, instanceId);
-            if (terrain == null)
-                return new { success = false, error = "Terrain not found" };
+            var (terrain, findError) = FindTerrain(name, instanceId, path, entityId);
+            if (findError != null)
+                return findError;
 
             if (heights == null || heights.Length == 0)
                 return new { success = false, error = "Heights array is empty" };
@@ -227,11 +227,11 @@ namespace UnitySkills
             float radius = 0.2f,
             float height = 0.5f,
             float smoothness = 1f,
-            string name = null, int instanceId = 0)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var terrain = FindTerrain(name, instanceId);
-            if (terrain == null)
-                return new { success = false, error = "Terrain not found" };
+            var (terrain, findError) = FindTerrain(name, instanceId, path, entityId);
+            if (findError != null)
+                return findError;
 
             var data = terrain.terrainData;
             WorkflowManager.SnapshotObject(data);
@@ -299,11 +299,11 @@ namespace UnitySkills
             float persistence = 0.5f,
             float lacunarity = 2f,
             int seed = 0,
-            string name = null, int instanceId = 0)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var terrain = FindTerrain(name, instanceId);
-            if (terrain == null)
-                return new { success = false, error = "Terrain not found" };
+            var (terrain, findError) = FindTerrain(name, instanceId, path, entityId);
+            if (findError != null)
+                return findError;
 
             var data = terrain.terrainData;
             WorkflowManager.SnapshotObject(data);
@@ -366,11 +366,11 @@ namespace UnitySkills
             float normalizedX, float normalizedZ,
             float radius = 0.1f,
             int iterations = 1,
-            string name = null, int instanceId = 0)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var terrain = FindTerrain(name, instanceId);
-            if (terrain == null)
-                return new { success = false, error = "Terrain not found" };
+            var (terrain, findError) = FindTerrain(name, instanceId, path, entityId);
+            if (findError != null)
+                return findError;
 
             var data = terrain.terrainData;
             WorkflowManager.SnapshotObject(data);
@@ -435,11 +435,11 @@ namespace UnitySkills
             float targetHeight = 0.5f,
             float radius = 0.1f,
             float strength = 1f,
-            string name = null, int instanceId = 0)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var terrain = FindTerrain(name, instanceId);
-            if (terrain == null)
-                return new { success = false, error = "Terrain not found" };
+            var (terrain, findError) = FindTerrain(name, instanceId, path, entityId);
+            if (findError != null)
+                return findError;
 
             var data = terrain.terrainData;
             WorkflowManager.SnapshotObject(data);
@@ -504,11 +504,11 @@ namespace UnitySkills
             int layerIndex,
             float strength = 1f,
             int brushSize = 10,
-            string name = null, int instanceId = 0)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var terrain = FindTerrain(name, instanceId);
-            if (terrain == null)
-                return new { success = false, error = "Terrain not found" };
+            var (terrain, findError) = FindTerrain(name, instanceId, path, entityId);
+            if (findError != null)
+                return findError;
 
             var data = terrain.terrainData;
             
@@ -582,21 +582,28 @@ namespace UnitySkills
             };
         }
 
-        private static Terrain FindTerrain(string name, int instanceId)
+        /// <summary>
+        /// The terrain the locators name (entityId, instanceId, path, name, as GameObjectFinder orders them), or with no
+        /// locator at all the first terrain in the open scenes. A locator that names nothing is an error, never that fallback.
+        /// </summary>
+        private static (Terrain terrain, object error) FindTerrain(string name, int instanceId, string path, string entityId)
         {
-            if (instanceId != 0)
+            if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path) && !UnityObjectIdUtility.IsGivenEntityId(entityId))
             {
-                var obj = UnityObjectIdUtility.ObjectIdToObject(instanceId) as GameObject;
-                return obj?.GetComponent<Terrain>();
+                var any = Object.FindAnyObjectByType<Terrain>();
+                if (any == null)
+                    return (null, new { success = false, error = "Terrain not found" });
+                return (any, null);
             }
 
-            if (!string.IsNullOrEmpty(name))
-            {
-                var go = GameObjectFinder.Find(name: name);
-                return go?.GetComponent<Terrain>();
-            }
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
+            if (error != null)
+                return (null, error);
 
-            return Object.FindAnyObjectByType<Terrain>();
+            var terrain = go.GetComponent<Terrain>();
+            if (terrain == null)
+                return (null, new { success = false, error = $"No Terrain component on {go.name}" });
+            return (terrain, null);
         }
     }
 }

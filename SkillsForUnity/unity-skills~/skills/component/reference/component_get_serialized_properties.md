@@ -4,6 +4,7 @@ List a component's Inspector serialized properties via `SerializedObject`.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | null | GameObject name |
+| `entityId` | string | No* | null | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | Instance ID |
 | `path` | string | No* | null | Hierarchy path |
 | `componentType` | string | Yes | - | Component type |

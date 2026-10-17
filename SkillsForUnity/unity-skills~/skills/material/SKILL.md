@@ -107,6 +107,7 @@ Assign material to object's renderer.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | GameObject hierarchy path |
 | `materialPath` | string | Yes | Material asset to assign (e.g. `Assets/Materials/X.mat`) |
@@ -133,6 +134,7 @@ Set material color with optional HDR intensity.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | - | GameObject name |
+| `entityId` | string | No* | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | - | Material asset path |
 | `r`, `g`, `b` | float | No | 1 | Color (0-1) |
@@ -143,10 +145,10 @@ Set material color with optional HDR intensity.
 **Returns**: `{success, target, color, intensity, propertyUsed, hdrEnabled, materialPath}`. Auto-detection tries the pipeline's property first, then `_BaseColor`, `_Color`, `_TintColor`, `_EmissionColor`, and **`propertyUsed` reports which one it actually wrote** — check it before concluding a colour "didn't apply". An explicit `propertyName` that the shader doesn't have (or that names a non-colour property like `_Metallic`) is rejected with `validValues`; one that's missing but is `_BaseColor`/`_Color`/`_MainColor`/`_TintColor` falls back to whichever of that family exists (`propertyRequested` + `warnings` report it). It never falls back to `_EmissionColor` for an explicit request.
 
 ### material_set_colors_batch
-Set colors on multiple objects. Each item accepts: identifier (`name`/`instanceId`/`path`) + `r`, `g`, `b`, `a`, optional per-item `propertyName` (same resolution rules as `material_set_color`; overrides the batch-level `propertyName`).
+Set colors on multiple objects. Each item accepts: identifier (`name`/`entityId`/`instanceId`/`path`) + `r`, `g`, `b`, `a`, optional per-item `propertyName` (same resolution rules as `material_set_color`; overrides the batch-level `propertyName`).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `items` | json string | Yes | - | JSON array of `{name\|instanceId\|path, r, g, b, a, propertyName?}` per-item objects (see example below) |
+| `items` | json string | Yes | - | JSON array of `{name\|entityId\|instanceId\|path, r, g, b, a, propertyName?}` per-item objects (see example below) |
 | `propertyName` | string | No | auto-detect | Default color property applied to all items unless overridden |
 
 
@@ -166,6 +168,7 @@ Set emission color with auto-enable keyword.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | - | GameObject name |
+| `entityId` | string | No* | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | - | Material asset path |
 | `r`, `g`, `b` | float | No | 1 | Emission color (0-1) |
@@ -194,6 +197,7 @@ Set material texture.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | - | GameObject name |
+| `entityId` | string | No* | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | - | Material asset path |
 | `texturePath` | string | Yes | - | Texture asset path |
@@ -205,6 +209,7 @@ Set a float property on a material.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 | `propertyName` | string | Yes | Property name |
@@ -216,6 +221,7 @@ Set an integer property on a material.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 | `propertyName` | string | Yes | Property name |
@@ -227,6 +233,7 @@ Enable/disable shader keywords.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | - | GameObject name |
+| `entityId` | string | No* | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | - | Material asset path |
 | `keyword` | string | Yes | - | Keyword name |
@@ -240,6 +247,7 @@ Get all material properties.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 
@@ -255,6 +263,7 @@ Get all enabled shader keywords on a material.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 
@@ -275,6 +284,7 @@ Change the shader of a material.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 | `shaderName` | string | Yes | Shader name |
@@ -285,6 +295,7 @@ Set a Vector4 property on a material.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 | `propertyName` | string | Yes | Property name |
@@ -296,6 +307,7 @@ Set texture offset (tiling position).
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 | `propertyName` | string | No | Texture property name |
@@ -307,6 +319,7 @@ Set texture scale (tiling).
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 | `propertyName` | string | No | Texture property name |
@@ -318,6 +331,7 @@ Set material render queue.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | Material asset path |
 | `renderQueue` | int | No | Render queue value (default -1 = shader default) |
@@ -328,6 +342,7 @@ Set material global illumination flags.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | - | GameObject name |
+| `entityId` | string | No* | - | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | - | GameObject hierarchy path or material asset path |
 | `flags` | string | No | `RealtimeEmissive` | GI flags: `None` / `RealtimeEmissive` / `BakedEmissive` / `EmissiveIsBlack` / `AnyEmissive` |

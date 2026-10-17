@@ -93,11 +93,12 @@ Get all parameters from a controller.
 **Returns**: `{controller, parameters: [{name, type, defaultFloat, defaultInt, defaultBool}]}`
 
 ### animator_set_parameter
-Set a parameter value at runtime (supports `name`/`instanceId`/`path`).
+Set a parameter value at runtime (supports `name`/`entityId`/`instanceId`/`path`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | GameObject hierarchy path |
 | `paramName` | string | Yes | Parameter name |
@@ -109,11 +110,12 @@ Set a parameter value at runtime (supports `name`/`instanceId`/`path`).
 *At least one identifier required. Use the appropriate value for paramType (trigger doesn't need a value).
 
 ### animator_play
-Play a specific animation state (supports `name`/`instanceId`/`path`).
+Play a specific animation state (supports `name`/`entityId`/`instanceId`/`path`).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | - | GameObject name |
+| `entityId` | string | No* | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | GameObject instance ID |
 | `path` | string | No* | null | GameObject hierarchy path |
 | `stateName` | string | Yes | - | Animation state name |
@@ -123,22 +125,24 @@ Play a specific animation state (supports `name`/`instanceId`/`path`).
 *At least one identifier required.
 
 ### animator_get_info
-Get Animator component information (supports `name`/`instanceId`/`path`).
+Get Animator component information (supports `name`/`entityId`/`instanceId`/`path`).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No | null | GameObject name |
+| `entityId` | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No | 0 | GameObject instance ID |
 | `path` | string | No | null | GameObject hierarchy path |
 
 **Returns**: `{gameObject, instanceId, hasController, controllerPath, speed, applyRootMotion, updateMode, cullingMode, layerCount, parameterCount}`
 
 ### animator_assign_controller
-Assign a controller to a GameObject (supports `name`/`instanceId`/`path`).
+Assign a controller to a GameObject (supports `name`/`entityId`/`instanceId`/`path`).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | GameObject name |
+| `entityId` | string | No* | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | GameObject instance ID |
 | `path` | string | No* | GameObject hierarchy path |
 | `controllerPath` | string | Yes | Controller asset path |

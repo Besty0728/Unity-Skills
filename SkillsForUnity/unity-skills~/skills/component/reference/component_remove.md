@@ -4,6 +4,7 @@ Remove one component from a GameObject.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | - | GameObject name |
+| `entityId` | string | No* | - | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | - | Instance ID |
 | `path` | string | No* | - | Hierarchy path |
 | `componentType` | string | Yes | - | Component type to remove |

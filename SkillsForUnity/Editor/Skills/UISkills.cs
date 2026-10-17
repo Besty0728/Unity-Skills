@@ -15,6 +15,8 @@ namespace UnitySkills
     /// </summary>
     public static class UISkills
     {
+        private const string ParentEntityIdNote = "entityId of the parent; outranks parent and, unlike a parent name, never falls back to another Canvas.";
+
         // Cache TMP types to avoid repeated reflection
         private static Type _tmpTextType;
         private static Type _tmpInputFieldType;
@@ -141,9 +143,12 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object UICreatePanel(string name = "Panel", string parent = null,
             [SkillParam("r/g/b/a: colour channels as 0-1 floats (not 0-255).")]
-            float r = 1, float g = 1, float b = 1, float a = 0.5f)
+            float r = 1, float g = 1, float b = 1, float a = 0.5f,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -169,9 +174,12 @@ namespace UnitySkills
             Tags = new[] { "button", "ugui", "interactive", "click" },
             Outputs = new[] { "name", "instanceId", "parent", "text" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object UICreateButton(string name = "Button", string parent = null, string text = "Button", float width = 160, float height = 30)
+        public static object UICreateButton(string name = "Button", string parent = null, string text = "Button", float width = 160, float height = 30,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -208,9 +216,12 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object UICreateText(string name = "Text", string parent = null, string text = "New Text", int fontSize = 14,
             [SkillParam("r/g/b: colour channels as 0-1 floats (not 0-255).")]
-            float r = 0, float g = 0, float b = 0)
+            float r = 0, float g = 0, float b = 0,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -233,7 +244,8 @@ namespace UnitySkills
             Tags = new[] { "image", "ugui", "sprite", "graphic" },
             Outputs = new[] { "name", "instanceId", "parent" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object UICreateImage(string name = "Image", string parent = null, string spritePath = null, float width = 100, float height = 100)
+        public static object UICreateImage(string name = "Image", string parent = null, string spritePath = null, float width = 100, float height = 100,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
             // Resolved before anything is created: an unresolvable path used to yield a sprite-less Image and success.
             Sprite sprite = null;
@@ -244,7 +256,9 @@ namespace UnitySkills
                     return new { error = $"Sprite not found: {spritePath} (missing, or the texture is not imported as Sprite)" };
             }
 
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -264,7 +278,7 @@ namespace UnitySkills
             return new { success = true, name = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go), parent = parentGo.name };
         }
 
-        [UnitySkill("ui_create_batch", "Create multiple UI elements (Efficient). items: JSON array of {type, name, parent, text, width, height, ...}",
+        [UnitySkill("ui_create_batch", "Create multiple UI elements (Efficient). items: JSON array of {type, name, parent, parentEntityId, text, width, height, ...}",
             Category = SkillCategory.UI, Operation = SkillOperation.Create,
             Tags = new[] { "batch", "ugui", "bulk", "multiple" },
             Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
@@ -284,37 +298,37 @@ namespace UnitySkills
                         result = UICreateCanvas(item.name, item.renderMode ?? "ScreenSpaceOverlay");
                         break;
                     case "panel":
-                        result = UICreatePanel(item.name, item.parent, item.r, item.g, item.b, item.a);
+                        result = UICreatePanel(item.name, item.parent, item.r, item.g, item.b, item.a, parentEntityId: item.parentEntityId);
                         break;
                     case "button":
-                        result = UICreateButton(item.name, item.parent, item.text ?? "Button", item.width, item.height);
+                        result = UICreateButton(item.name, item.parent, item.text ?? "Button", item.width, item.height, parentEntityId: item.parentEntityId);
                         break;
                     case "text":
-                        result = UICreateText(item.name, item.parent, item.text ?? "Text", (int)item.fontSize, item.r, item.g, item.b);
+                        result = UICreateText(item.name, item.parent, item.text ?? "Text", (int)item.fontSize, item.r, item.g, item.b, parentEntityId: item.parentEntityId);
                         break;
                     case "image":
-                        result = UICreateImage(item.name, item.parent, item.spritePath, item.width, item.height);
+                        result = UICreateImage(item.name, item.parent, item.spritePath, item.width, item.height, parentEntityId: item.parentEntityId);
                         break;
                     case "inputfield":
-                        result = UICreateInputField(item.name, item.parent, item.placeholder ?? "Enter text...", item.width, item.height);
+                        result = UICreateInputField(item.name, item.parent, item.placeholder ?? "Enter text...", item.width, item.height, parentEntityId: item.parentEntityId);
                         break;
                     case "slider":
-                        result = UICreateSlider(item.name, item.parent, item.minValue, item.maxValue, item.value, item.width, item.height);
+                        result = UICreateSlider(item.name, item.parent, item.minValue, item.maxValue, item.value, item.width, item.height, parentEntityId: item.parentEntityId);
                         break;
                     case "toggle":
-                        result = UICreateToggle(item.name, item.parent, item.label ?? "Toggle", item.isOn);
+                        result = UICreateToggle(item.name, item.parent, item.label ?? "Toggle", item.isOn, parentEntityId: item.parentEntityId);
                         break;
                     case "dropdown":
-                        result = UICreateDropdown(item.name, item.parent, item.options, item.width, item.height);
+                        result = UICreateDropdown(item.name, item.parent, item.options, item.width, item.height, parentEntityId: item.parentEntityId);
                         break;
                     case "scrollview":
-                        result = UICreateScrollview(item.name, item.parent, item.width, item.height);
+                        result = UICreateScrollview(item.name, item.parent, item.width, item.height, parentEntityId: item.parentEntityId);
                         break;
                     case "rawimage":
-                        result = UICreateRawImage(item.name, item.parent, item.texturePath, item.width, item.height);
+                        result = UICreateRawImage(item.name, item.parent, item.texturePath, item.width, item.height, parentEntityId: item.parentEntityId);
                         break;
                     case "scrollbar":
-                        result = UICreateScrollbar(item.name, item.parent, item.direction ?? "BottomToTop", item.value, item.size, (int)item.numberOfSteps);
+                        result = UICreateScrollbar(item.name, item.parent, item.direction ?? "BottomToTop", item.value, item.size, (int)item.numberOfSteps, parentEntityId: item.parentEntityId);
                         break;
                     default:
                         result = SkillParamUtil.InvalidValueError(item.type, "type", validTypes, item.type);
@@ -329,6 +343,7 @@ namespace UnitySkills
             public string type { get; set; } // Button, Text, Image, etc.
             public string name { get; set; } = "UI Element";
             public string parent { get; set; }
+            public string parentEntityId { get; set; }
             public string text { get; set; }
             public float width { get; set; } = 100;
             public float height { get; set; } = 30;
@@ -357,9 +372,12 @@ namespace UnitySkills
             Tags = new[] { "inputfield", "ugui", "text-input", "tmp" },
             Outputs = new[] { "name", "instanceId", "parent", "placeholder", "usingTMP" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object UICreateInputField(string name = "InputField", string parent = null, string placeholder = "Enter text...", float width = 200, float height = 30)
+        public static object UICreateInputField(string name = "InputField", string parent = null, string placeholder = "Enter text...", float width = 200, float height = 30,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -460,9 +478,12 @@ namespace UnitySkills
             Tags = new[] { "slider", "ugui", "range", "interactive" },
             Outputs = new[] { "name", "instanceId", "parent", "minValue", "maxValue", "value" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object UICreateSlider(string name = "Slider", string parent = null, float minValue = 0, float maxValue = 1, float value = 0.5f, float width = 160, float height = 20)
+        public static object UICreateSlider(string name = "Slider", string parent = null, float minValue = 0, float maxValue = 1, float value = 0.5f, float width = 160, float height = 20,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -530,9 +551,12 @@ namespace UnitySkills
             Tags = new[] { "toggle", "ugui", "checkbox", "interactive" },
             Outputs = new[] { "name", "instanceId", "parent", "label", "isOn" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object UICreateToggle(string name = "Toggle", string parent = null, string label = "Toggle", bool isOn = false)
+        public static object UICreateToggle(string name = "Toggle", string parent = null, string label = "Toggle", bool isOn = false,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -583,15 +607,15 @@ namespace UnitySkills
             return new { success = true, name = go.name, entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go), parent = parentGo.name, label, isOn };
         }
 
-        [UnitySkill("ui_set_text", "Set text content on a UI Text element (supports name/instanceId/path)",
+        [UnitySkill("ui_set_text", "Set text content on a UI Text element (supports name/entityId/instanceId/path)",
             Category = SkillCategory.UI, Operation = SkillOperation.Modify,
             Tags = new[] { "text", "ugui", "content", "tmp" },
             Outputs = new[] { "name", "text", "usingTMP" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object UISetText(string name = null, int instanceId = 0, string path = null, string text = null)
+        public static object UISetText(string name = null, int instanceId = 0, string path = null, string text = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             // Try TMP first if available
@@ -660,6 +684,17 @@ namespace UnitySkills
             return new { count = results.Count, elements = results };
         }
 
+        /// <summary>
+        /// The parent a new UI element goes under. A parentEntityId decides alone: one that names nothing is an error, while a
+        /// parent name that misses still falls back to the first Canvas, or a new one.
+        /// </summary>
+        private static (GameObject parent, object error) ResolveUiParent(string parentName, string parentEntityId)
+        {
+            if (UnityObjectIdUtility.IsGivenEntityId(parentEntityId))
+                return GameObjectFinder.FindOrError(entityId: parentEntityId);
+            return (FindOrCreateCanvas(parentName), null);
+        }
+
         private static GameObject FindOrCreateCanvas(string parentName)
         {
             if (!string.IsNullOrEmpty(parentName))
@@ -717,9 +752,9 @@ namespace UnitySkills
             Outputs = new[] { "name", "preset", "anchorMin", "anchorMax" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object UISetAnchor(string name = null, int instanceId = 0, string path = null, string preset = "MiddleCenter", bool setPivot = true)
+        public static object UISetAnchor(string name = null, int instanceId = 0, string path = null, string preset = "MiddleCenter", bool setPivot = true, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var rect = go.GetComponent<RectTransform>();
@@ -778,9 +813,9 @@ namespace UnitySkills
             [SkillParam("posX/posY: RectTransform.anchoredPosition, not world position; omitted axes keep their current value.")]
             float? posX = null, float? posY = null,
             [SkillParam("left/right/top/bottom: RectTransform offsets from each edge, meaningful mainly when anchors are stretched; omitted sides keep their value.")]
-            float? left = null, float? right = null, float? top = null, float? bottom = null)
+            float? left = null, float? right = null, float? top = null, float? bottom = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var rect = go.GetComponent<RectTransform>();
@@ -829,9 +864,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object UIGetRectTransform(string name = null, int instanceId = 0, string path = null)
+        public static object UIGetRectTransform(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var rect = go.GetComponent<RectTransform>();
@@ -864,9 +899,9 @@ namespace UnitySkills
             float? localRotX = null, float? localRotY = null, float? localRotZ = null,
             float? localScaleX = null, float? localScaleY = null, float? localScaleZ = null,
             [SkillParam("width/height: rect size for the current anchors, applied after sizeDeltaX/Y and before offsetMinX/Y/offsetMaxX/Y.")]
-            float? width = null, float? height = null)
+            float? width = null, float? height = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var rect = go.GetComponent<RectTransform>();
@@ -886,19 +921,19 @@ namespace UnitySkills
             return BuildRectTransformResult(go, rect);
         }
 
-        [UnitySkill("ui_set_rect_transform_batch", "Set full RectTransform data for multiple UI elements. items: JSON array of {name, instanceId, path, anchorMinX/Y, anchorMaxX/Y, pivotX/Y, anchoredPosX/Y/Z, sizeDeltaX/Y, offsetMinX/Y, offsetMaxX/Y, localPosX/Y/Z, localRotX/Y/Z, localScaleX/Y/Z, width, height}",
+        [UnitySkill("ui_set_rect_transform_batch", "Set full RectTransform data for multiple UI elements. items: JSON array of {name, instanceId, path, entityId, anchorMinX/Y, anchorMaxX/Y, pivotX/Y, anchoredPosX/Y/Z, sizeDeltaX/Y, offsetMinX/Y, offsetMaxX/Y, localPosX/Y/Z, localRotX/Y/Z, localScaleX/Y/Z, width, height}",
             Category = SkillCategory.UI, Operation = SkillOperation.Modify,
             Tags = new[] { "rect-transform", "ugui", "anchor", "offset", "layout", "batch" },
             Outputs = new[] { "name", "anchorMin", "anchorMax", "anchoredPosition3D" },
             RequiresInput = new[] { "items" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object UISetRectTransformBatch(
-            [SkillParam("JSON array mirroring ui_set_rect_transform's parameters per item: name|instanceId|path plus the same anchor/pivot/size/offset/local fields.")]
+            [SkillParam("JSON array mirroring ui_set_rect_transform's parameters per item: name|instanceId|path|entityId plus the same anchor/pivot/size/offset/local fields.")]
             string items)
         {
             return BatchExecutor.Execute<BatchRectTransformItem>(items, item =>
             {
-                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path);
+                var (go, error) = GameObjectFinder.FindOrError(item.name, item.instanceId, item.path, entityId: item.entityId);
                 if (error != null) throw new Exception("Object not found");
 
                 var rect = go.GetComponent<RectTransform>();
@@ -916,7 +951,7 @@ namespace UnitySkills
 
                 EditorUtility.SetDirty(rect);
                 return BuildRectTransformResult(go, rect);
-            }, item => item.name ?? item.path ?? item.instanceId.ToString());
+            }, item => item.name ?? item.path ?? item.entityId ?? item.instanceId.ToString());
         }
 
         [UnitySkill("ui_layout_children", "Arrange child UI elements in a layout (Vertical, Horizontal, Grid)",
@@ -930,9 +965,9 @@ namespace UnitySkills
             float spacing = 10f,
             float paddingLeft = 0, float paddingRight = 0, float paddingTop = 0, float paddingBottom = 0,
             int gridColumns = 3,
-            bool childForceExpandWidth = false, bool childForceExpandHeight = false)
+            bool childForceExpandWidth = false, bool childForceExpandHeight = false, string entityId = null)
         {
-            var (parentGo, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (parentGo, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var rect = parentGo.GetComponent<RectTransform>();
@@ -1117,9 +1152,12 @@ namespace UnitySkills
             Tags = new[] { "dropdown", "ugui", "select", "options" },
             Outputs = new[] { "name", "instanceId", "parent", "optionCount" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object UICreateDropdown(string name = "Dropdown", string parent = null, string options = null, float width = 160, float height = 30)
+        public static object UICreateDropdown(string name = "Dropdown", string parent = null, string options = null, float width = 160, float height = 30,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -1292,12 +1330,15 @@ namespace UnitySkills
             float width = 300, float height = 200,
             bool horizontal = false, bool vertical = true,
             [SkillParam("Unrestricted, Elastic or Clamped (ScrollRect.MovementType, case-insensitive).")]
-            string movementType = "Elastic")
+            string movementType = "Elastic",
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
             if (!SkillParamUtil.TryParseRequiredEnum<ScrollRect.MovementType>(movementType, "movementType", out var mt, out var movementTypeError))
                 return movementTypeError;
 
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -1347,7 +1388,8 @@ namespace UnitySkills
             Tags = new[] { "rawimage", "ugui", "texture", "render-texture" },
             Outputs = new[] { "name", "instanceId", "parent", "hasTexture" },
             TracksWorkflow = true, MutatesScene = true)]
-        public static object UICreateRawImage(string name = "RawImage", string parent = null, string texturePath = null, float width = 100, float height = 100)
+        public static object UICreateRawImage(string name = "RawImage", string parent = null, string texturePath = null, float width = 100, float height = 100,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
             // Same as ui_create_image: an unresolvable path used to create a texture-less RawImage (hasTexture:false only).
             Texture texture = null;
@@ -1358,7 +1400,9 @@ namespace UnitySkills
                     return new { error = $"Texture not found: {texturePath}" };
             }
 
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -1386,14 +1430,17 @@ namespace UnitySkills
         public static object UICreateScrollbar(
             string name = "Scrollbar", string parent = null,
             [SkillParam("LeftToRight, RightToLeft, TopToBottom or BottomToTop (case-insensitive); also selects the bar's long axis (horizontal vs vertical).")]
-            string direction = "BottomToTop", float value = 0, float size = 0.2f, int numberOfSteps = 0)
+            string direction = "BottomToTop", float value = 0, float size = 0.2f, int numberOfSteps = 0,
+            [SkillParam(ParentEntityIdNote)] string parentEntityId = null)
         {
             // Resolve first: direction also determines the sizeDelta axis below, so a parse failure would
             // produce a scrollbar sized on one axis but laid out along the other.
             if (!SkillParamUtil.TryParseRequiredEnum<Scrollbar.Direction>(direction, "direction", out var dir, out var directionError))
                 return directionError;
 
-            var parentGo = FindOrCreateCanvas(parent);
+            var (parentGo, parentError) = ResolveUiParent(parent, parentEntityId);
+            if (parentError != null)
+                return parentError;
             if (parentGo == null)
                 return new { error = "Parent not found and could not create Canvas" };
 
@@ -1455,9 +1502,9 @@ namespace UnitySkills
             string fillMethod = null, float? fillAmount = null, bool? fillClockwise = null,
             [SkillParam("Meaning depends on fillMethod: an index (0-3) into that method's own Origin enum (e.g. OriginHorizontal for Horizontal).")]
             int? fillOrigin = null,
-            bool? preserveAspect = null, string spritePath = null, float? pixelsPerUnitMultiplier = null)
+            bool? preserveAspect = null, string spritePath = null, float? pixelsPerUnitMultiplier = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var image = go.GetComponent<Image>();
@@ -1518,9 +1565,9 @@ namespace UnitySkills
             float? minWidth = null, float? minHeight = null,
             float? preferredWidth = null, float? preferredHeight = null,
             float? flexibleWidth = null, float? flexibleHeight = null,
-            bool? ignoreLayout = null, int? layoutPriority = null)
+            bool? ignoreLayout = null, int? layoutPriority = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var layout = go.GetComponent<LayoutElement>() ?? Undo.AddComponent<LayoutElement>(go);
@@ -1556,9 +1603,9 @@ namespace UnitySkills
             string name = null, int instanceId = 0, string path = null,
             [SkillParam("0-1 float (not 0-255).")]
             float? alpha = null, bool? interactable = null,
-            bool? blocksRaycasts = null, bool? ignoreParentGroups = null)
+            bool? blocksRaycasts = null, bool? ignoreParentGroups = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var group = go.GetComponent<CanvasGroup>();
@@ -1591,7 +1638,7 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true)]
         public static object UIAddMask(
             string name = null, int instanceId = 0, string path = null,
-            string maskType = "RectMask2D", bool showMaskGraphic = true)
+            string maskType = "RectMask2D", bool showMaskGraphic = true, string entityId = null)
         {
             // Validate before touching the GameObject: the old else branch treated any value other than "Mask"
             // as RectMask2D, so a typo like "BogusMask" would silently add a RectMask2D while echoing that invalid string back.
@@ -1599,7 +1646,7 @@ namespace UnitySkills
             if (!validMaskTypes.Any(v => string.Equals(v, maskType, StringComparison.OrdinalIgnoreCase)))
                 return SkillParamUtil.InvalidValueError(maskType, "maskType", validMaskTypes);
 
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             WorkflowManager.SnapshotObject(go);
@@ -1637,9 +1684,9 @@ namespace UnitySkills
             [SkillParam("r/g/b/a: colour channels as 0-1 floats (not 0-255).")]
             float r = 0, float g = 0, float b = 0, float a = 0.5f,
             float distanceX = 1, float distanceY = -1,
-            bool useGraphicAlpha = true)
+            bool useGraphicAlpha = true, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             bool isShadow = effectType.Equals("Shadow", StringComparison.OrdinalIgnoreCase);
@@ -1703,9 +1750,9 @@ namespace UnitySkills
             float? highlightedR = null, float? highlightedG = null, float? highlightedB = null, float? highlightedA = null,
             float? pressedR = null, float? pressedG = null, float? pressedB = null, float? pressedA = null,
             float? disabledR = null, float? disabledG = null, float? disabledB = null, float? disabledA = null,
-            float? colorMultiplier = null, float? fadeDuration = null)
+            float? colorMultiplier = null, float? fadeDuration = null, string entityId = null)
         {
-            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, error) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (error != null) return error;
 
             var selectable = go.GetComponent<Selectable>();
@@ -1892,6 +1939,7 @@ namespace UnitySkills
         private class BatchRectTransformItem
         {
             public string name { get; set; }
+            public string entityId { get; set; }
             public int instanceId { get; set; }
             public string path { get; set; }
             public float? anchorMinX { get; set; }
