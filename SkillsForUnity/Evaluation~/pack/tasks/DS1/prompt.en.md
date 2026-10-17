@@ -1,0 +1,8 @@
+<!-- usk-eval prompt; task DS1; lang en -->
+R1. Under `{scripts}`, create the C# script `{cls}.cs` defining the MonoBehaviour class `{cls}` with three public serialized fields: `route` (Transform), `speed` (float, world units per second) and `pauseSeconds` (float, seconds). The script must compile.
+R2. Behaviour: in Play Mode, the object carrying the component treats the direct children of `route` (in sibling order) as waypoints, taken at their world positions; when Play starts the object stands on the first waypoint, and it must at once (without pausing) move from its current position in a straight line at the constant speed `speed` to the second waypoint, stay in place for `pauseSeconds` seconds after reaching each waypoint, then head for the next waypoint the same way; after the last waypoint and its pause it heads for the first waypoint again, and so on. The movement changes the object's world position.
+R3. Attach the component to `{guard}` (the only such component in the scene) and set, in the scene: route = the Transform of `{route}`, speed = {speed}, pauseSeconds = {pause}.
+R4. Verification enters Play Mode and reads the world position of `{guard}` at several moments after entering: the sample at time t passes when the actual position is within 0.1 of the ideal position, computed by the rules of R2, at any time between t−0.3 s and t+0.3 s; no error or exception may be logged while running.
+R5. Apart from this script, do not add or change any code file (editor scripts included).
+R6. Do not modify `{route}` or its children, the parent or the position of `{guard}`, or any other object or asset.
+R7. In the answer, report the script's asset path and the full hierarchy path of `{guard}`.
