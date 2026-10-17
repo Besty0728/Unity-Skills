@@ -1,5 +1,6 @@
 ﻿"""open_pack: sources, integrity labels, task modules and their manifest cross-checks (contract 5.1, 5.2, 5.9)."""
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -441,7 +442,7 @@ class LoadTaskTests(TempCase):
                  ("\x00\n", "null bytes"))
         for line, expected in cases:
             with self.subTest(expected):
-                root = self.copy_pack("f-" + expected.replace(" ", "-"))
+                root = self.copy_pack("f-" + re.sub(r"[^A-Za-z0-9]+", "-", expected))
                 self.edit_task(root, "F01", "TASK = F01()", line + "TASK = F01()")
                 before = sys.modules.get("usk_eval_task_F01")
                 with self.assertRaises(problems.ProblemError) as exc:
