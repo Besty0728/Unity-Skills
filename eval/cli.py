@@ -7,9 +7,14 @@
   python3 eval/cli.py suite --plan pilot|calibration [--models ...] [--tasks ...]
   python3 eval/cli.py estimate --plan pilot|calibration
   python3 eval/cli.py report --suite NAME
+  python3 eval/cli.py selftest3 [--task ID ...] [--repeat 2] [--private-dir D | --pack-dir D] [--dry-run]
+  python3 eval/cli.py gate3 [--task ID ...] [--unity-major 2022|6000] [--pipeline BuiltIn|URP|HDRP|Custom]
 
 The project is --project or $UNITYSKILLS_EVAL_PROJECT; it must be open in an editor whose
 UnitySkills server is running (the harness never opens or closes editors).
+
+selftest3 / gate3 are the v3 gate (eval/selftest3.py): they drive the runner under SkillsForUnity/Evaluation~ and
+the pack under eval/pack; the other commands are v1 and keep working on the frozen v1 harness.
 """
 import argparse
 import json
@@ -28,6 +33,10 @@ DEFAULT_PROJECT = os.environ.get("UNITYSKILLS_EVAL_PROJECT", "/Users/betsy/Unity
 MODELS = {"opus": "claude-opus-5-5[1M]", "sonnet": "claude-sonnet-5-5[1M]", "fable": "claude-fable-5-1[1M]",
           "luna": "gpt-6-luna", "luna-max": "gpt-6-luna", "terra": "gpt-5.6-terra",
           "sol": "gpt-6.1-sol", "astra": "gpt-6-astra"}
+
+# Repo files that go into every task's gateInputsHash next to the runner and the task's own files (contract 9);
+# the glob patterns are relative to the repository root.
+GATE_INPUTS = ("eval/cli.py", "eval/selftest3.py", "eval/harness/solver_driver.py")
 
 
 def cmd_setup_check(args):
@@ -374,6 +383,25 @@ def cmd_report(args):
     return 0
 
 
+def cmd_selftest3(args):
+    import selftest3
+    return selftest3.run_from_args(args, GATE_INPUTS)
+
+
+def cmd_gate3(args):
+    import selftest3
+    return selftest3.gate_from_args(args, GATE_INPUTS)
+
+
+def _add_v3_pack_options(p):
+    p.add_argument("--project", default=argparse.SUPPRESS)
+    p.add_argument("--task", nargs="*")
+    p.add_argument("--private-dir", help="verifier folder (default eval/pack/private); public tasks come from the package")
+    p.add_argument("--pack-dir", help="self-contained pack folder (manifest.json, tasks/, private/, solutions/)")
+    p.add_argument("--solutions-dir", help="solution modules (default eval/pack/solutions, or <pack-dir>/solutions)")
+    p.add_argument("--gate-file", help="gate record (default eval/runs/selftest/gate.json)")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="eval/cli.py")
     parser.add_argument("--project", default=DEFAULT_PROJECT)
@@ -418,6 +446,26 @@ def main(argv=None):
     p.add_argument("--output")
     p.add_argument("--models", nargs="*", default=None)
     p.set_defaults(func=cmd_report)
+    p = sub.add_parser("selftest3", help="v3 gate: reference x2, negatives, alternatives through the runner CLI")
+    _add_v3_pack_options(p)
+    p.add_argument("--repeat", type=int, default=2, help="reference repeats at the default seed (at least 2)")
+    p.add_argument("--extra-seed", type=int, nargs="*", help="further seeds, one reference run each")
+    p.add_argument("--case", nargs="*", help="run only cases whose name contains one of these (gate not recorded)")
+    p.add_argument("--no-gate", action="store_true", help="do not write the gate record")
+    p.add_argument("--abort-active", action="store_true", help="abort an evaluation session left active")
+    p.add_argument("--cleanup-stale", action="store_true", help="run cleanup --stale before the first case")
+    p.add_argument("--wait-quiet", type=float, default=900.0, help="seconds to wait for running editor jobs")
+    p.add_argument("--wait-lease", type=float, default=0.0, help="seconds to wait for another selftest/E2E run")
+    p.add_argument("--lang", choices=("zh-CN", "en"), default="en")
+    p.add_argument("--dry-run", action="store_true", help="check pack and solutions, list the cases, no editor")
+    p.set_defaults(func=cmd_selftest3)
+    p = sub.add_parser("gate3", help="is the recorded v3 gate green for the current inputs?")
+    _add_v3_pack_options(p)
+    p.add_argument("--unity-major", help="Unity major (2022, 6000) or full version; default: ask the editor")
+    p.add_argument("--pipeline", help="render pipeline of the gated run (BuiltIn, URP, HDRP, Custom); default: ask the "
+                                      "editor")
+    p.add_argument("--plugin-version", help="default: the editor's, or SkillsForUnity/package.json with --unity-major")
+    p.set_defaults(func=cmd_gate3)
     args = parser.parse_args(argv)
     if hasattr(args, "models") and args.models is None:
         args.models = ["astra", "sol", "terra", "luna-max"] if getattr(args, "host", "claude") == "codex" else ["opus", "sonnet", "fable"]

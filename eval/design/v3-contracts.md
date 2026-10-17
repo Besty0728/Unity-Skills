@@ -1360,7 +1360,7 @@ private static void RegisterLifecycleFlush()
 | 可比性键 | (packId, taskId, caseVersion)；v1 与 v3 的成绩不比较（草案 3.1） |
 
 **门禁**
-- 门禁键 = `canonical_digest({"taskId", "caseVersion", "unityMajor", "pluginVersion", "gateInputsHash"})`；`unityMajor` = `unityVersion` 第一个点之前的部分（`2022`、`6000`）。两个平台分别门禁（草案：2022.3 URP 与 6000.x）。
+- 门禁键 = `canonical_digest({"taskId", "caseVersion", "unityMajor", "pluginVersion", "pipeline", "gateInputsHash"})`；`unityMajor` = `unityVersion` 第一个点之前的部分（`2022`、`6000`）；`pipeline` = 该次运行实际使用的渲染管线（`project_get_render_pipeline.pipelineType`：`BuiltIn`、`URP`、`HDRP`、`Custom`），取 runner 出题时记录的环境快照（`state.env.atIssue.pipelineType`），不另发 REST 请求。Unity 大版本与管线各自门禁（草案：2022.3 URP 与 6000.x）；basic 题声明 `requires.pipeline = ["URP","BuiltIn"]`，同一 Unity 大版本在两种管线上的门禁各占一个条目，互不覆盖。同一次运行内管线必须不变，否则 selftest 中止。
 - `gateInputsHash`（每题一个）：对下列文件按相对路径排序，逐个把 `relpath + "\0" + sha256(LF 规范化内容) + "\n"` 喂进 sha256（同 v1 `env.py:26-42` 的规则）：
   - `SkillsForUnity/Evaluation~/run_eval.py`；
   - `SkillsForUnity/Evaluation~/usk_eval/**/*.py`，**不含** `usk_eval/usage/**` 与 `usk_eval/report.py`（不影响判定，收窄以减少重跑门禁）；
@@ -1368,7 +1368,8 @@ private static void RegisterLifecycleFlush()
   - `eval/pack/private/<ID>.py`、`eval/pack/solutions/<ID>.py`；
   - `eval/cli.py` 与 WP12 的 selftest 驱动模块（WP12 在 `eval/cli.py` 中把清单写成常量 `GATE_INPUTS`）。
 - 插件 C# 不进 hash，靠 `pluginVersion` 进键：开发中途改插件不会自动让门禁失效，所以 `/release` 的 `check_eval_pack` 步骤必须对候选版本重跑门禁（草案 P7）。
-- 门禁记录 `eval/runs/selftest/gate.json`：`{"schema":1,"gates":{"<gateKey>":{"taskId","caseVersion","unityMajor","pluginVersion","gateInputsHash","green":bool,"cases":int,"failing":[case],"recordedAt"}}}`。
+- 门禁记录 `eval/runs/selftest/gate.json`：`{"schema":1,"gates":{"<gateKey>":{"taskId","caseVersion","unityMajor","pluginVersion","pipeline","gateInputsHash","green":bool,"cases":int,"failing":[case],"recordedAt"}}}`。同一 (taskId, caseVersion, unityMajor, pluginVersion, pipeline) 下 `gateInputsHash` 变化时，新条目取代旧条目；其余条目保留。`gate3` 逐行打印 Unity 大版本与管线。
+- `gateKey` 的权威实现是 `eval/selftest3.py` 的 `gate_key(...)`；`usk_eval.environment.gate_key` 尚无 `pipeline` 参数，发布检查（`check_eval_pack`）要核对门禁时必须用带 `pipeline` 的那一个。
 
 ## 10. 基线
 
@@ -1409,7 +1410,7 @@ private static void RegisterLifecycleFlush()
 24. Claude 先按 message.id 去重（保留最后一行），再按该行时间判断是否落在窗口内 —— 最后一行才有最终 usage，也避免同一响应跨窗口重复计数。
 25. Codex 优先用 `CODEX_THREAD_ID`，否则按 cwd 加时间窗匹配；子代理按 `session_id` 归并 —— 二进制里有该变量但导出与否未证实；多会话并行时 cwd 匹配可能有歧义，此时置 null。
 26. usage 记录增加 `effort{values, source}` 与 `errors[]` —— 两种宿主日志都带 effort（v1 里 effort 是槽位身份的一部分）；错误只记类型，便于排查又不泄露内容。
-27. 门禁键含 `pluginVersion` 而不是插件 C# 的 hash，GATE_INPUTS 排除 `usage/` 与 `report.py` —— 收窄门禁输入、降低重跑成本（草案风险项），发布前强制重跑。
+27. 门禁键含 `pluginVersion` 而不是插件 C# 的 hash，GATE_INPUTS 排除 `usage/` 与 `report.py` —— 收窄门禁输入、降低重跑成本（草案风险项），发布前强制重跑。门禁键另含渲染管线（见 §9）—— 同一 Unity 大版本的 Built-in 与 URP 门禁不能互相覆盖，否则某一管线的红会被另一条管线的绿盖住。
 28. 冻结时在途作业最多等 300 s，超时只记 `inflightJobs`、不改判 —— Agent 留下的长作业是它自己的行为，不是基础设施故障。
 29. 出题与提交之间 registry pid 变化判 `invalid`（`editor_restarted`） —— 未保存的 run 场景会丢失，结果无法归因。
 30. 新 id 一律用 UTC —— 跨时区、跨进程排序一致（v1 的 runId 用本地时间）。
