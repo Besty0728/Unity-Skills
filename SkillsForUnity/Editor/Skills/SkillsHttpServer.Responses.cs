@@ -34,6 +34,65 @@ namespace UnitySkills
             response.Headers.Add("X-Unity-Project", ascii ? projectName : Uri.EscapeDataString(projectName));
         }
 
+        private const string JsonContentType = "application/json; charset=utf-8";
+
+        /// <summary>
+        /// Presets the not-executed answer's status line on a response the moment its request is accepted. HttpListener
+        /// flushes whatever status a response carries when its connection is closed without an answer (a client aborting
+        /// mid-upload, Stop() during a domain reload): left alone that is 200 with an empty body, which reads as success.
+        /// HTTP-thread safe: no Unity API.
+        /// </summary>
+        internal static void PresetNotExecuted(HttpListenerResponse response)
+        {
+            response.StatusCode = 503;
+            response.Headers.Set("Retry-After", NotExecutedRetryAfterSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            response.ContentType = JsonContentType;
+        }
+
+        /// <summary>
+        /// Swaps the preset to 504 once a request that may change state starts running: a connection closed after that,
+        /// before the answer is written, must read as outcome unknown, never as the not-executed 503 a client resends.
+        /// </summary>
+        internal static void PresetOutcomeUnknown(HttpListenerResponse response)
+        {
+            response.StatusCode = 504;
+            response.Headers.Remove("Retry-After");
+        }
+
+        /// <summary>
+        /// Replaces the preset with the real answer's status line, right before the body is written: the status,
+        /// Retry-After on a 429/503 whose body carries retryAfterSeconds (removed otherwise), and the JSON content type
+        /// only when there is a body.
+        /// </summary>
+        internal static void SetAnswerStatus(HttpListenerResponse response, int statusCode, string json)
+        {
+            response.StatusCode = statusCode;
+            string retryAfter = statusCode == 429 || statusCode == 503 ? ReadRetryAfterSeconds(json) : null;
+            if (retryAfter != null)
+                response.Headers.Set("Retry-After", retryAfter);
+            else
+                response.Headers.Remove("Retry-After");
+            response.ContentType = string.IsNullOrEmpty(json) ? null : JsonContentType;
+        }
+
+        /// <summary>retryAfterSeconds of an error body as a Retry-After value; null when the body has none.</summary>
+        private static string ReadRetryAfterSeconds(string json)
+        {
+            if (string.IsNullOrEmpty(json) || json.IndexOf("\"retryAfterSeconds\"", StringComparison.Ordinal) < 0)
+                return null;
+            try
+            {
+                var value = JObject.Parse(json)["retryAfterSeconds"];
+                return value != null && value.Type == JTokenType.Integer && value.Value<long>() > 0
+                    ? value.Value<long>().ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    : null;
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
         private static void SendImmediateJsonResponse(HttpListenerContext context, HttpListenerRequest request, int statusCode, object payload)
         {
             HttpListenerResponse response = null;
@@ -46,11 +105,10 @@ namespace UnitySkills
                 response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
                 response.Headers.Add("X-Agent-Id", DetectAgent(request));
                 AddInstanceHeaders(response);
-                response.StatusCode = statusCode;
 
                 string responseJson = JsonConvert.SerializeObject(payload, _jsonSettings);
                 byte[] buffer = Encoding.UTF8.GetBytes(responseJson);
-                response.ContentType = "application/json; charset=utf-8";
+                SetAnswerStatus(response, statusCode, responseJson);
                 response.ContentLength64 = buffer.Length;
                 response.OutputStream.Write(buffer, 0, buffer.Length);
             }
@@ -68,53 +126,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Fast-path responder for cached GET /skills and /skills/schema. Runs on the HTTP listener thread — must
-        /// never touch the Unity API or SkillsLogger (only headers, hashing, compression, socket writes). Attaches an
-        /// ETag header, answers If-None-Match with an empty-body 304, and serves the cached gzip body when asked.
-        /// </summary>
-        private static void SendCachedGetResponse(HttpListenerContext context, HttpListenerRequest request, string json, string etag)
-        {
-            HttpListenerResponse response = null;
-            try
-            {
-                response = context.Response;
-                response.Headers.Add("Access-Control-Allow-Methods", CorsAllowMethods);
-                response.Headers.Add("Access-Control-Allow-Headers", CorsAllowHeaders);
-                response.Headers.Add("Access-Control-Allow-Origin", "*");
-                response.Headers.Add("X-Request-Id", $"req_{Interlocked.Increment(ref _requestIdCounter):X8}");
-                response.Headers.Add("X-Agent-Id", DetectAgent(request));
-                AddInstanceHeaders(response);
-                response.Headers.Add("X-Fast-Path", "true");
-                response.Headers.Add("ETag", $"\"{etag}\"");
-                // The same URL now has two possible response bodies (identity / gzip); without Vary,
-                // an intermediate proxy might hand the gzip body to a client that never asked for compression.
-                response.Headers.Add("Vary", "Accept-Encoding");
-
-                // 304 is decided before compression: unchanged content should cost zero bytes and zero CPU, not a wasted gzip pass.
-                if (IfNoneMatchSatisfied(request.Headers["If-None-Match"], etag))
-                {
-                    response.StatusCode = 304; // Not Modified — must not carry a response body
-                    return;
-                }
-
-                response.StatusCode = 200;
-                response.ContentType = "application/json; charset=utf-8";
-                WriteNegotiatedBody(response, json, etag, request.Headers["Accept-Encoding"]);
-            }
-            catch (HttpListenerException) { /* Client disconnected */ }
-            catch (System.IO.IOException) { /* Client disconnected mid-write */ }
-            catch (ObjectDisposedException) { /* Response already closed */ }
-            catch { /* Never let fast-path errors kill the listener loop */ }
-            finally
-            {
-                try { response?.Close(); } catch { }
-            }
-        }
-
-        /// <summary>
-        /// Writes the body as gzip when the client supports it and a compressed body is available, else plain UTF-8.
-        /// Shared by the HTTP-thread fast path and main-thread slow path, so content negotiation is identical between
-        /// them. The caller must have already set the status code and content type.
+        /// Writes the body as gzip when the client supports it and a compressed body is available (only the two
+        /// cacheable GET endpoints carry an ETag), else plain UTF-8. The caller must have already set the status code
+        /// and content type.
         /// </summary>
         private static void WriteNegotiatedBody(HttpListenerResponse response, string json, string etag, string acceptEncoding)
         {

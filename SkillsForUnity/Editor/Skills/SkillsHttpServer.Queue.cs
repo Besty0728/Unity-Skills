@@ -119,7 +119,8 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Best-effort close for a context that the accept loop never handed off to a responder.
+        /// Best-effort close for a context no answer will be written to; the client then reads the preset status the
+        /// response got when it was accepted (<see cref="PresetNotExecuted"/>).
         /// Closing an already-closed response is a no-op; not closing it leaks the socket until the editor process exits.
         /// </summary>
         private static void CloseContextSafely(HttpListenerContext context)
@@ -209,6 +210,12 @@ namespace UnitySkills
             return path.StartsWith("/jobs/", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>GET / HEAD / OPTIONS: running the request changes nothing, so resending it is always safe.</summary>
+        private static bool IsSafeMethod(string httpMethod) =>
+            string.Equals(httpMethod, "GET", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(httpMethod, "HEAD", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(httpMethod, "OPTIONS", StringComparison.OrdinalIgnoreCase);
+
         /// <summary>
         /// Dequeues a job and keeps the mirrored depth counter in sync. Only decrements on a successful take, so a
         /// race with a concurrent producer that has already incremented but not yet enqueued leaves the count unchanged.
@@ -223,23 +230,93 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Fails every job still queued on a lane with 503 SERVER_STOPPED, releasing its waiting responder. Safe to call
-        /// without extra synchronization only because Stop() runs it after the listener thread is joined, when no producer can still be enqueuing.
+        /// Fails every job still queued on a lane with the not-executed 503 (<see cref="BuildNotExecutedResponse"/>),
+        /// releasing its waiting responder. Main thread only: it is the lanes' only consumer, so a queued job has not
+        /// started, and a job a producer enqueues meanwhile is left for the next pass.
         /// </summary>
         private static void FailQueuedJobs(ConcurrentQueue<RequestJob> queue, ref int counter)
         {
+            string answer = null;
             while (TryDequeueJob(queue, ref counter, out var job))
             {
                 job.StatusCode = 503;
-                job.ResponseJson = SkillErrorResponse.Build(
-                    SkillErrorCode.ServerStopped,
-                    "Server stopped",
-                    retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
-                    retryAfterSeconds: 5);
+                job.ResponseJson = answer ??= BuildNotExecutedResponse(_domainReloadPending);
                 job.IsProcessed = true;
                 job.CompletionSignal?.Set();
             }
         }
+
+        // How long Stop() or a domain reload waits at most for responders to write their answers before the listener closes.
+        private const int DrainTimeoutMs = 1000;
+        private const int DrainPollMs = 5;
+        // Retry-After of the not-executed answer: a stop is brief (a watchdog restart), a reload takes seconds.
+        internal const int NotExecutedRetryAfterSeconds = 5;
+        internal const int ReloadRetryAfterSeconds = 8;
+
+        /// <summary>
+        /// Answers every request this server still holds before Stop() or a domain reload closes the listener: closed
+        /// first, HttpListener would end each unanswered connection with whatever status its response carries. Main thread
+        /// only, so no job is mid-execution: queued jobs get the not-executed 503, the listener refuses new requests the
+        /// same way while <see cref="_draining"/> is set, long polls end, and the wait lasts until every responder has
+        /// written its answer or <see cref="DrainTimeoutMs"/> passes; whatever is left then closes with its preset status.
+        /// </summary>
+        private static void DrainInFlightRequests()
+        {
+            _draining = true;
+            bool drained = AwaitDrained(
+                () => Volatile.Read(ref _pendingRequests),
+                () =>
+                {
+                    FailQueuedJobs(_lightQueue, ref _lightQueued);
+                    FailQueuedJobs(_heavyQueue, ref _heavyQueued);
+                },
+                () => DateTime.UtcNow.Ticks,
+                Thread.Sleep,
+                DrainTimeoutMs);
+            if (!drained)
+                SkillsLogger.LogVerbose($"Shutdown drain timed out with {Volatile.Read(ref _pendingRequests)} request(s) unanswered; they close with their preset status.");
+        }
+
+        /// <summary>
+        /// The loop behind <see cref="DrainInFlightRequests"/>, free of statics so tests can drive it: fails the queues,
+        /// then returns true once pending() reaches zero, or false when timeoutMs has passed. The queues are failed on every
+        /// pass, which also catches a job the listener enqueued just before it saw the drain flag.
+        /// </summary>
+        internal static bool AwaitDrained(Func<int> pending, Action failQueued, Func<long> utcNowTicks, Action<int> sleep, int timeoutMs)
+        {
+            long deadline = utcNowTicks() + timeoutMs * TimeSpan.TicksPerMillisecond;
+            while (true)
+            {
+                failQueued();
+                if (pending() <= 0)
+                    return true;
+                if (utcNowTicks() >= deadline)
+                    return false;
+                sleep(DrainPollMs);
+            }
+        }
+
+        /// <summary>
+        /// The answer for a request this server did not run and will not run because it is stopping or a domain reload has
+        /// begun: 503 wait_and_retry with details.executed=false, so resending it is safe, writes included. COMPILING while a
+        /// reload is pending (the server comes back on the same port), SERVER_STOPPED otherwise.
+        /// </summary>
+        internal static string BuildNotExecutedResponse(bool domainReloadPending) =>
+            SkillErrorResponse.Build(
+                domainReloadPending ? SkillErrorCode.Compiling : SkillErrorCode.ServerStopped,
+                domainReloadPending
+                    ? "Unity is reloading scripts; the request was not executed."
+                    : "Server stopped; the request was not executed.",
+                details: new
+                {
+                    domainReloadPending,
+                    executed = false,
+                    suggestion = domainReloadPending
+                        ? "Wait for the server to come back on the same port after the reload, then resend the same request."
+                        : "Wait for the server to come back (Window > UnitySkills > Start Server), then resend the same request.",
+                },
+                retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
+                retryAfterSeconds: domainReloadPending ? ReloadRetryAfterSeconds : NotExecutedRetryAfterSeconds);
 
         /// <summary>
         /// Parses an already-serialized error JSON string back into a JObject, so it can be emitted through

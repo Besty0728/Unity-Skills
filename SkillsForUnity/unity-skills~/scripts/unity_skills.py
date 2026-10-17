@@ -277,6 +277,73 @@ def _structured_retry_after(data: Dict[str, Any], status_code: Optional[int] = N
     return min(float(retry_after), _MAX_STRUCTURED_RETRY_SECONDS)
 
 
+def _connection_dropped_after_send(exc: Exception) -> bool:
+    """True when a requests ConnectionError says the connection closed after the request went
+    out (RemoteDisconnected, a reset while waiting for the answer): the server may have run it.
+    urllib3 raises those as ProtocolError('Connection aborted.', ...); a refused or failed
+    connect, where nothing was sent, is a NewConnectionError instead."""
+    return 'Connection aborted' in str(exc)
+
+
+def _retry_after_header(response) -> Optional[float]:
+    """The Retry-After header in seconds (capped like retryAfterSeconds), or None when absent."""
+    try:
+        seconds = float(response.headers.get('Retry-After'))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return min(seconds, _MAX_STRUCTURED_RETRY_SECONDS) if seconds > 0 else None
+
+
+def _unanswered_retry_after(response, preview: bool) -> Optional[float]:
+    """Wait before resending a request whose answer had no JSON body, or None when it must not be
+    resent. Such an answer comes from a connection closed before the server wrote one (a domain
+    reload): 503/429 means nothing ran, so anything is resent; another status (an empty 200 or 504)
+    may follow a run, so only a dryRun/plan preview is."""
+    if response.status_code in _RETRYABLE_HTTP_STATUS:
+        return _retry_after_header(response) or _DEFAULT_STRUCTURED_RETRY_SECONDS
+    return _DEFAULT_STRUCTURED_RETRY_SECONDS if preview else None
+
+
+def _transient_read_wait(response) -> Optional[float]:
+    """Wait before repeating a read whose answer is transient -- 429/503 (not executed), 504, or an
+    empty 200 left by a connection a domain reload closed -- else None."""
+    status = response.status_code
+    if status == 200 and not response.content:
+        return _DEFAULT_STRUCTURED_RETRY_SECONDS
+    if status not in (429, 503, 504):
+        return None
+    wait = _retry_after_header(response)
+    if wait is None:
+        try:
+            wait = _structured_retry_after(response.json(), status)
+        except ValueError:
+            wait = None
+    return wait or _DEFAULT_STRUCTURED_RETRY_SECONDS
+
+
+def _get_with_retries(client: "UnitySkills", path: str, headers: Optional[Dict[str, str]] = None,
+                      retries: int = 3) -> requests.Response:
+    """GET for the read-only helpers below. A read is always safe to repeat, so a refused or dropped
+    connection and a transient answer (see _transient_read_wait) are retried up to `retries` times,
+    waiting the server's Retry-After / retryAfterSeconds. The last response is returned as is."""
+    attempt = 0
+    while True:
+        try:
+            response = client._session.get(f"{client.url}{path}", headers=headers, timeout=client.timeout)
+        except requests.exceptions.ConnectionError:
+            if attempt >= retries:
+                raise
+            time.sleep(_DEFAULT_STRUCTURED_RETRY_SECONDS * (attempt + 1))
+            attempt += 1
+            continue
+        response.encoding = 'utf-8'
+        wait = _transient_read_wait(response) if attempt < retries else None
+        if wait is None:
+            return response
+        time.sleep(wait)
+        attempt += 1
+
+
 def _dry_run_required_token(data: Any) -> Optional[str]:
     """The fresh token a DRYRUN_REQUIRED response carries in details.dryRunToken, else None.
 
@@ -649,6 +716,16 @@ class UnitySkills:
             'suggestion': 'Do not replay a write after this timeout. Read its job or verify its state; Unity may still be compiling scripts or processing a long-running operation. Wait a moment and retry.',
         }
 
+    def _dropped_connection_result(self) -> Dict[str, Any]:
+        return {
+            'success': False,
+            'error': f"{self.url} closed the connection before answering.",
+            'transportError': 'connection',
+            'retryable': True,
+            'requestOutcomeUnknown': True,
+            'suggestion': 'Do not replay a write after this error: it may have run. Read its job or verify its state; Unity may be reloading scripts (Domain Reload).',
+        }
+
     def _connection_error_result(self) -> Dict[str, Any]:
         return {
             'success': False,
@@ -664,7 +741,7 @@ class UnitySkills:
                                   _retry_delay: float = 2.0, dry_run_token: Optional[str] = None) -> Dict[str, Any]:
         """Shared retry loop for POST /skill/{name}, used by call(), dry_run_skill() and plan_skill().
 
-        DryRun/plan previews retry transport failures within `_retries`. Writes never replay after an unknown transport outcome. Structured rejections may retry because nothing executed. Failure categories:
+        DryRun/plan previews retry transport failures within `_retries`. Writes never replay after an unknown outcome (a timeout, a connection dropped after sending, a 504, or an answer without a JSON body other than 503/429). Structured rejections may retry because nothing executed. Failure categories:
           - transport errors (connection refused / timed out) -- typical while Unity is
             mid Domain Reload and the HTTP listener itself is down;
           - structured "wait and retry" error bodies the server returns once the listener
@@ -684,10 +761,12 @@ class UnitySkills:
 
         Returns one of:
           {'ok': True, 'response': <requests.Response>, 'data': <parsed JSON dict>}
-          {'ok': False, 'transport_error': <dict from _timeout_error_result/_connection_error_result>}
-          {'ok': False, 'invalid_json': <response.text>}
+          {'ok': False, 'transport_error': <dict from _timeout_error_result/_dropped_connection_result/_connection_error_result>}
+          {'ok': False, 'invalid_json': <response.text>, 'outcome_unknown': <bool>}
           {'ok': False, 'exception': <str(exc)>}   # any other exception, not retried
+        A 504 answer to a write comes back as {'ok': True, ..., 'outcome_unknown': True}, never resent.
         """
+        preview = mode in ('dryRun', 'plan')
         attempt = 0
         reconnect_used = False
         while True:
@@ -695,19 +774,21 @@ class UnitySkills:
                 response = self._post_skill(skill_name, payload, mode=mode, timeout=timeout,
                                             dry_run_token=dry_run_token)
             except requests.exceptions.Timeout:
-                if mode in ('dryRun', 'plan') and attempt < _retries:
+                if preview and attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
                     attempt += 1
                     continue
                 return {'ok': False, 'transport_error': self._timeout_error_result(timeout)}
-            except requests.exceptions.ConnectionError:
-                if mode in ('dryRun', 'plan') and attempt < _retries:
+            except requests.exceptions.ConnectionError as exc:
+                if preview and attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
                     attempt += 1
                     continue
-                if mode in ('dryRun', 'plan') and not reconnect_used and self._await_own_instance():
+                if preview and not reconnect_used and self._await_own_instance():
                     reconnect_used = True
                     continue
+                if not preview and _connection_dropped_after_send(exc):
+                    return {'ok': False, 'transport_error': self._dropped_connection_result()}
                 return {'ok': False, 'transport_error': self._connection_error_result()}
             except Exception as e:
                 return {'ok': False, 'exception': str(e)}
@@ -715,13 +796,23 @@ class UnitySkills:
             try:
                 data = response.json()
             except ValueError:
-                return {'ok': False, 'invalid_json': response.text}
+                wait = _unanswered_retry_after(response, preview)
+                if wait is not None and attempt < _retries:
+                    time.sleep(wait)
+                    attempt += 1
+                    continue
+                return {'ok': False, 'invalid_json': response.text,
+                        'outcome_unknown': not preview and response.status_code not in _RETRYABLE_HTTP_STATUS}
 
             if isinstance(data, dict) and data.get('status') == 'error':
                 if (data.get('errorCode') == 'INSTANCE_MISMATCH' and not reconnect_used
                         and self._await_own_instance()):
                     reconnect_used = True
                     continue
+                # A 504 means the server lost track of the request (a stalled main thread, a reload
+                # that closed its connection): a write may have run, so it is never resent blindly.
+                if response.status_code == 504 and not preview:
+                    return {'ok': True, 'response': response, 'data': data, 'outcome_unknown': True}
                 retry_after = _structured_retry_after(data, response.status_code)
                 if retry_after is not None and attempt < _retries:
                     time.sleep(retry_after)
@@ -784,7 +875,10 @@ class UnitySkills:
 
         if not outcome['ok']:
             if 'invalid_json' in outcome:
-                return {'success': False, 'error': f"Invalid JSON response: {outcome['invalid_json']}"}
+                result = {'success': False, 'error': f"Invalid JSON response: {outcome['invalid_json']}"}
+                if outcome.get('outcome_unknown'):
+                    result['requestOutcomeUnknown'] = True
+                return result
             if 'transport_error' in outcome:
                 return outcome['transport_error']
             return {'success': False, 'error': outcome.get('exception', 'Unknown error')}
@@ -812,6 +906,8 @@ class UnitySkills:
                         'relatedSkills', 'retryAfterSeconds', 'skill', 'message'):
                 if key in data:
                     normalized[key] = data[key]
+            if outcome.get('outcome_unknown'):
+                normalized['requestOutcomeUnknown'] = True
             return normalized
         else:
             if wait_for_job and isinstance(data, dict) and data.get('jobId'):
@@ -961,12 +1057,11 @@ class UnitySkills:
         if not force_refresh and self._meta_cache is not None:
             return self._meta_cache
         try:
-            response = self._session.get(f"{self.url}/skills/meta", timeout=self.timeout)
-            response.encoding = 'utf-8'
-            data = response.json()
+            data = _get_with_retries(self, "/skills/meta").json()
         except Exception as e:
             return {"status": "error", "error": str(e)}
-        self._meta_cache = data
+        if not (isinstance(data, dict) and data.get('status') == 'error'):
+            self._meta_cache = data
         return data
 
     def execute_batch(self, steps: List[Dict[str, Any]], dry_run: bool = False,
@@ -1003,7 +1098,9 @@ class UnitySkills:
         Shares call()'s retry contract (see _post_skill_with_retries): transport errors
         and the server's structured "wait and retry" responses (COMPILING/RATE_LIMIT/
         QUEUE_FULL/SERVER_STOPPED) are retried up to `_retries` times, using the server's
-        own retryAfterSeconds when present.
+        own retryAfterSeconds when present. A batch that may have run (timeout, dropped
+        connection, 504, an answer without JSON other than 503/429) is never resent; its
+        result carries ``requestOutcomeUnknown: True``.
 
         Returns the server's parsed JSON (``{status, executed, failed, results:[...]}``)
         on success, or ``{'status': 'error', 'error': ...}`` on transport failure -- the
@@ -1028,6 +1125,7 @@ class UnitySkills:
 
         json_data = json.dumps(body, ensure_ascii=False)
         effective_timeout = timeout or self.timeout
+        preview = params.get('mode') in ('dryRun', 'plan')
 
         attempt = 0
         reconnect_used = False
@@ -1041,19 +1139,25 @@ class UnitySkills:
                     timeout=effective_timeout,
                 )
             except requests.exceptions.Timeout:
-                if (dry_run or mode in ('dryRun', 'plan')) and attempt < _retries:
+                if preview and attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
                     attempt += 1
                     continue
-                return {'status': 'error', 'error': self._timeout_error_result(effective_timeout).get('error')}
-            except requests.exceptions.ConnectionError:
-                if (dry_run or mode in ('dryRun', 'plan')) and attempt < _retries:
+                result = {'status': 'error', 'error': self._timeout_error_result(effective_timeout).get('error')}
+                if not preview:
+                    result['requestOutcomeUnknown'] = True
+                return result
+            except requests.exceptions.ConnectionError as exc:
+                if preview and attempt < _retries:
                     time.sleep(_retry_delay * (attempt + 1))
                     attempt += 1
                     continue
-                if (dry_run or mode in ('dryRun', 'plan')) and not reconnect_used and self._await_own_instance():
+                if preview and not reconnect_used and self._await_own_instance():
                     reconnect_used = True
                     continue
+                if not preview and _connection_dropped_after_send(exc):
+                    return {'status': 'error', 'error': self._dropped_connection_result().get('error'),
+                            'requestOutcomeUnknown': True}
                 return {'status': 'error', 'error': self._connection_error_result().get('error')}
             except Exception as e:
                 return {'status': 'error', 'error': str(e)}
@@ -1065,13 +1169,24 @@ class UnitySkills:
             try:
                 data = response.json()
             except ValueError:
-                return {'status': 'error', 'error': f"Invalid JSON response: {response.text}"}
+                wait = _unanswered_retry_after(response, preview)
+                if wait is not None and attempt < _retries:
+                    time.sleep(wait)
+                    attempt += 1
+                    continue
+                result = {'status': 'error', 'error': f"Invalid JSON response: {response.text}"}
+                if not preview and response.status_code not in _RETRYABLE_HTTP_STATUS:
+                    result['requestOutcomeUnknown'] = True
+                return result
 
             if isinstance(data, dict) and data.get('status') == 'error':
                 if (data.get('errorCode') == 'INSTANCE_MISMATCH' and not reconnect_used
                         and self._await_own_instance()):
                     reconnect_used = True
                     continue
+                if response.status_code == 504 and not preview:
+                    data['requestOutcomeUnknown'] = True
+                    return data
                 retry_after = _structured_retry_after(data, response.status_code)
                 if retry_after is not None and attempt < _retries:
                     time.sleep(retry_after)
@@ -1430,7 +1545,9 @@ def call_skill_with_retry(skill_name: str, max_retries: int = 3, retry_delay: fl
         **kwargs: Additional arguments passed to call_skill.
 
     Returns:
-        The result from call_skill, or the last result if all retries are exhausted.
+        The result from call_skill, or the last result if all retries are exhausted. A result
+        with ``requestOutcomeUnknown`` (a timeout or a connection dropped after sending: the
+        call may have run) is returned at once, never re-sent.
     """
     last_result = None
     # Collapse retry into a single layer: the underlying call no longer self-retries
@@ -1439,7 +1556,7 @@ def call_skill_with_retry(skill_name: str, max_retries: int = 3, retry_delay: fl
     for attempt in range(1 + max_retries):
         result = call_skill(skill_name, **kwargs)
 
-        if not _is_retryable_transport_error(result):
+        if not _is_retryable_transport_error(result) or result.get('requestOutcomeUnknown'):
             return result
 
         last_result = result
@@ -1483,9 +1600,7 @@ def get_skills(category: str = None, operation: str = None, tags: str = None,
         if q is not None: params["q"] = q
         if full: params["full"] = "1"
         qs = f"?{urlencode(params)}" if params else ""
-        response = client._session.get(f"{client.url}/skills{qs}", timeout=client.timeout)
-        response.encoding = 'utf-8'
-        return response.json()
+        return _get_with_retries(client, f"/skills{qs}").json()
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -1592,8 +1707,7 @@ def _fetch_with_cache(client: "UnitySkills", path: str, endpoint: str,
     if etag:
         headers['If-None-Match'] = etag
 
-    response = client._session.get(f"{client.url}{path}", timeout=client.timeout, headers=headers)
-    response.encoding = 'utf-8'
+    response = _get_with_retries(client, path, headers=headers)
 
     if response.status_code == 304 and disk_entry:
         payload = disk_entry['payload']
@@ -1757,10 +1871,7 @@ def find_skills(intent: str, top_n: int = 10, include_schema: bool = False,
             params["includeSchema"] = "true"
         if wire:
             params["wire"] = wire
-        response = client._session.get(
-            f"{client.url}/skills/recommend?{urlencode(params)}", timeout=client.timeout)
-        response.encoding = 'utf-8'
-        return response.json()
+        return _get_with_retries(client, f"/skills/recommend?{urlencode(params)}").json()
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -1770,10 +1881,7 @@ def get_skill_chain(target_output: str, max_depth: int = 3) -> Dict[str, Any]:
     try:
         client = _get_default_client()
         params = {"output": target_output, "maxDepth": str(max_depth)}
-        response = client._session.get(
-            f"{client.url}/skills/chain?{urlencode(params)}", timeout=client.timeout)
-        response.encoding = 'utf-8'
-        return response.json()
+        return _get_with_retries(client, f"/skills/chain?{urlencode(params)}").json()
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -1879,9 +1987,7 @@ def _permission_get(path: str, params: Optional[Dict[str, Any]] = None) -> Dict[
     """Internal helper: sends a GET request to a /permission/* endpoint and returns the JSON."""
     client = _get_default_client()
     qs = f"?{urlencode(params)}" if params else ""
-    response = client._session.get(f"{client.url}{path}{qs}", timeout=client.timeout)
-    response.encoding = 'utf-8'
-    return response.json()
+    return _get_with_retries(client, f"{path}{qs}").json()
 
 
 def _permission_post(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:

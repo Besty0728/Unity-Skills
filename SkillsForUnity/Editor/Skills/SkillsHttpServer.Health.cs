@@ -10,6 +10,7 @@ using UnityEditor.Compilation;
 using UnityEngine;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -47,6 +48,8 @@ namespace UnitySkills
             public bool SummaryAutoTruncate;
             public int SummaryPageSize;
             public string TokenLevel;
+            // Where Unity resolved com.besty.unity-skills when this domain first refreshed the snapshot (see DomainPackageRoot).
+            public string PackageRoot;
 
             /// <summary>HTTP-thread safe: reads only plain static fields, zero Unity API.</summary>
             public static HealthVitals FromSnapshot() => new HealthVitals
@@ -67,6 +70,7 @@ namespace UnitySkills
                 SummaryAutoTruncate = _snapSummaryAutoTruncate,
                 SummaryPageSize = _snapSummaryPageSize,
                 TokenLevel = _snapTokenLevel,
+                PackageRoot = _snapPackageRoot,
             };
 
             /// <summary>Main thread only — reads the Unity API, EditorPrefs, and permission sets.</summary>
@@ -92,8 +96,24 @@ namespace UnitySkills
                     SummaryPageSize = SkillRouter.SummaryPageSize,
                     // Lowercase wire form, matching ModeToWire/CurrentWire's convention for other enum-backed fields.
                     TokenLevel = SkillsTokenLevel.Current.ToString().ToLowerInvariant(),
+                    PackageRoot = DomainPackageRoot(),
                 };
             }
+        }
+
+        // Main thread only; resolved once per domain, then kept.
+        private static string _domainPackageRoot;
+
+        /// <summary>
+        /// The package location the running assemblies were loaded with: resolved on this domain's first snapshot (when the
+        /// server starts), then kept, so a manifest repointed to another checkout shows the old root until the next domain
+        /// reload loads code from the new one. Main thread only.
+        /// </summary>
+        private static string DomainPackageRoot()
+        {
+            if (_domainPackageRoot == null && PackageRootLocator.TryGet(out var root))
+                _domainPackageRoot = root;
+            return _domainPackageRoot;
         }
 
         /// <summary>
@@ -131,6 +151,7 @@ namespace UnitySkills
                 _snapSummaryAutoTruncate = vitals.SummaryAutoTruncate;
                 _snapSummaryPageSize = vitals.SummaryPageSize;
                 _snapTokenLevel = vitals.TokenLevel;
+                _snapPackageRoot = vitals.PackageRoot;
                 _snapReady = true;
             }
             catch (Exception ex)
@@ -258,6 +279,11 @@ namespace UnitySkills
                 // True when this session's workflow history failed to load: rollback data is degraded, and
                 // library cleanup stays paused until the history is cleared.
                 workflowRecoveryMode = WorkflowManager.IsHistoryRecoveryMode,
+                // Which plugin build answers, for maintainer tools: the package root this domain loaded from and when this
+                // domain's assemblies were loaded (ISO-8601 UTC, the same clock compile jobs use for domainLoadedAtUtcTicks).
+                packageRoot = v.PackageRoot,
+                assembliesLoadedAtUtc = new DateTime(CompilationResultService.DomainLoadedUtcTicks, DateTimeKind.Utc)
+                    .ToString("o", System.Globalization.CultureInfo.InvariantCulture),
                 // false = answered on the HTTP thread from a snapshot up to ~1 second old.
                 // true  = answered after a live read on the main thread (GET /health?live=1).
                 live,

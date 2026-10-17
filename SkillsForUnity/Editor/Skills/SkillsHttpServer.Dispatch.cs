@@ -151,6 +151,14 @@ namespace UnitySkills
         /// </summary>
         private static void RunJob(RequestJob job)
         {
+            // A request that may change state starts running here: a connection closed from now on, before its answer is
+            // written, must read as outcome unknown (504), never as the accept-time not-executed 503 that invites a resend.
+            if (job.Context != null && !IsSafeMethod(job.HttpMethod))
+            {
+                try { PresetOutcomeUnknown(job.Context.Response); }
+                catch (Exception) { /* response already closed: the client is gone */ }
+            }
+
             try
             {
                 ProcessJob(job);

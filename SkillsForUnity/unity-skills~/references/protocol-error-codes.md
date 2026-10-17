@@ -13,17 +13,17 @@ The HTTP status tells you whether the *request* was accepted, not whether the *s
 
 So a client that branches on `response.status_code == 200` will read a failed skill call as a success. Always parse the body and check `status` / `errorCode`. The two authorization outcomes (`MODE_RESTRICTED`, `MODE_FORBIDDEN`), `SURFACE_EXCLUDED` and `DRYRUN_REQUIRED` are also HTTP `200` — they are decisions, not transport faults.
 
-Every error response carries a top-level `errorCode` (plus `retryStrategy` / `retryAfterSeconds` when applicable — see `SkillErrorResponse.Build` in the server source). **The Python client (`unity_skills.py`) already auto-retries `COMPILING` / `RATE_LIMIT` / `QUEUE_FULL` / `SERVER_STOPPED`** using the server's own `retryAfterSeconds` — if you're calling through `unity_skills.call_skill(...)` you normally never see these codes at all; the table below is for building a custom client or interpreting a final failure after retries are exhausted.
+Every error response carries a top-level `errorCode` (plus `retryStrategy` / `retryAfterSeconds` when applicable — see `SkillErrorResponse.Build` in the server source). **The Python client (`unity_skills.py`) already auto-retries `COMPILING` / `RATE_LIMIT` / `QUEUE_FULL` / `SERVER_STOPPED`** using the server's own `retryAfterSeconds` — if you're calling through `unity_skills.call_skill(...)` you normally never see these codes at all; the table below is for building a custom client or interpreting a final failure after retries are exhausted. It never resends a write whose outcome is unknown (a `504`, a timeout, a connection dropped after sending): that result carries `requestOutcomeUnknown: true`.
 
 ## Transport / transient errors
 
 | `errorCode` | HTTP | Meaning | Action |
 |---|---|---|---|
-| `COMPILING` | 503 | Unity is compiling or mid-Domain-Reload — expected right after script/define/package edits | Wait `retryAfterSeconds` (5s, 8s if a reload is pending) and retry. Auto-retried by the Python client |
+| `COMPILING` | 503 | Unity is compiling or mid-Domain-Reload — expected right after script/define/package edits. Nothing ran (with `details.executed:false` when a reload began while the request was queued) | Wait `retryAfterSeconds` (5s, 8s if a reload is pending) and retry, writes included. Auto-retried by the Python client |
 | `RATE_LIMIT` | 429 | Too many requests/sec against the admission limiter | Wait `retryAfterSeconds` (1s) and retry. Auto-retried by the Python client |
 | `QUEUE_FULL` | 503 | Too many requests already pending on the main-thread queue | Wait `retryAfterSeconds` (2s) and retry. Auto-retried by the Python client |
-| `SERVER_STOPPED` | 503 | Server is stopping/stopped (manual stop or reload teardown) | Wait `retryAfterSeconds` (5s) for it to come back and retry. Auto-retried by the Python client |
-| `TIMEOUT` | 504 | Main thread didn't respond within the request timeout | Wait (5s if a Domain Reload is pending, else 10s) and retry; if it persists, check for a stuck modal dialog or long-running operation in the Editor |
+| `SERVER_STOPPED` | 503 | Server is stopping (manual stop, Editor quit, watchdog restart); the request never ran (`details.executed:false`) | Wait `retryAfterSeconds` (5s) for it to come back and retry, writes included. Auto-retried by the Python client |
+| `TIMEOUT` | 504 | Main thread didn't respond within the request timeout. Outcome unknown: the request may still run, or may have run | A read: wait (5s if a Domain Reload is pending, else 10s) and retry. A write: do not resend it blindly — check its job (`GET /jobs`) or the state it changes first. If it persists, check for a stuck modal dialog or long-running operation in the Editor |
 | `BODY_TOO_LARGE` | 413 | POST body exceeded the server's max size | Not retryable as-is — shrink the request (e.g. split a large `/skills/batch` into smaller batches) |
 | `MODE_RESTRICTED` | 200 (`status:"error"` in the body) | Approval mode: the skill is `FullAuto` and needs a user grant | Follow the Approval Mode Grant Protocol — do not retry the raw call |
 | `MODE_FORBIDDEN` | 200 (`status:"error"` in the body) | Skill is auto-classified `NeverInSemi` (Delete/PlayMode/Reload/high-risk) and the current mode isn't Bypass | Tell the user it needs Bypass mode or an Allowlist entry — do not attempt the grant flow |
@@ -31,6 +31,15 @@ Every error response carries a top-level `errorCode` (plus `retryStrategy` / `re
 | `SURFACE_EXCLUDED` | 200 (`status:"error"` in the body) | The current `surfaceProfile` hides this skill — either because it is a write in a hidden category, or by name for a master key like `editor_execute_menu`. Not a permission problem: the user took the operation off the menu, so no mode — Bypass included — and no Allowlist entry can run it | Follow `details.hint`. When `details.manualDoc` is set (`guide` profile), read that document and instruct the user through the Editor steps; when it is null — a name-hidden skill, or any `noSceneAuthoring` exclusion — name the menu path yourself or tell the user the step needs the profile back on `full`. Do not retry, and do not reach for another module that does the same write |
 
 > **Two response shapes carry this code.** A name-hidden or category-hidden skill's rejection nests `manualDoc`/`hint` under `details`, like any other skill error. A *carried-write* rejection — `batch_execute` / `batch_retry_failed` acting on a `confirmToken`'s payload, or `workflow_undo_task` / `workflow_redo_task` / `workflow_revert_task` / `workflow_session_undo` restoring a snapshot — instead puts `surfaceProfile` / `category` / `operation` / `manualDoc` / `userControlled` / `hint` at the response's **top level**, because the router's skill-error pass-through forwards a skill's unrecognised members verbatim but drops a skill-authored `details` object; nesting them there would silently lose them.
+
+## Domain reload and server stop
+
+When a reload begins (script, define or package change, entering Play Mode) or the server stops, it first answers every request it still holds, then closes the port until it is back:
+
+- `503` — `COMPILING` during a reload, `SERVER_STOPPED` on a stop — with `details.executed:false`: the request never ran, so resending it is safe, writes included. A request arriving while the server drains gets the same answer.
+- `504`: the request may have run. Retry a read; for a write, check its outcome (its job, or the state it changes) instead of resending it.
+- Every `429` / `503` also carries a `Retry-After` header equal to `retryAfterSeconds`.
+- A connection the reload closed before an answer was written ends with a bare status line and no body: `503` + `Retry-After` if the request never started, `504` if a write had started. An empty `200`, or a connection closed with no answer at all, means no answer was ever written (the request reached the port in the instant the listener closed, or went out on an idle connection the server had just closed): treat it like a `504`.
 
 ## Request errors (4xx)
 

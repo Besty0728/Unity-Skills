@@ -55,7 +55,7 @@ namespace UnitySkills
 
         /// <summary>
         /// Long-poll responder for GET /events. Runs entirely on a ThreadPool thread — zero Unity API, zero
-        /// SessionState, no SkillsLogger (same constraints as SendCachedGetResponse). Loops "scan buffer → wait"
+        /// SessionState, no SkillsLogger (same constraints as SendResponse). Loops "scan buffer → wait"
         /// until an event newer than 'since' shows up, it times out, or the server stops (reload) — writes the response directly.
         /// Correctness relies on the 250ms poll interval; the publish signal only reduces latency.
         /// Query params: since (default: current max seq, i.e. wait for new events only; 0 replays the buffer),
@@ -134,7 +134,7 @@ namespace UnitySkills
 
                 // The server is stopping (a domain reload is imminent): answer immediately with whatever's on
                 // hand (i.e. empty), so the client reconnects instead of hanging.
-                if (!_isRunning)
+                if (!_isRunning || _draining)
                 {
                     timedOut = true;
                     break;
@@ -173,7 +173,7 @@ namespace UnitySkills
 
         /// <summary>
         /// Writes the /events HTTP response. ThreadPool thread — only headers, encoding, and socket writes
-        /// (the pure-string counterpart of SendCachedGetResponse/SendResponse).
+        /// (the pure-string counterpart of SendResponse).
         /// </summary>
         private static void WriteEventsResponse(EventsPollState poll, int statusCode, string json) =>
             WriteRawJsonResponse(poll.Context, poll.RequestId, poll.AgentId, statusCode, json);
@@ -194,9 +194,8 @@ namespace UnitySkills
                 response.Headers.Add("X-Request-Id", requestId);
                 response.Headers.Add("X-Agent-Id", agentId);
                 AddInstanceHeaders(response);
-                response.StatusCode = statusCode;
-                response.ContentType = "application/json; charset=utf-8";
                 byte[] buffer = Encoding.UTF8.GetBytes(json ?? string.Empty);
+                SetAnswerStatus(response, statusCode, json);
                 response.ContentLength64 = buffer.Length;
                 response.OutputStream.Write(buffer, 0, buffer.Length);
             }
@@ -455,9 +454,9 @@ namespace UnitySkills
         private static string FormatSeconds(double seconds) =>
             seconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
-        /// <summary>True once the listener a long-poll arrived on has stopped (even if a new one started) or a reload is pending.</summary>
+        /// <summary>True once the listener a long-poll arrived on drains or has stopped (even if a new one started), or a reload is pending.</summary>
         private static bool ShouldAbortJobWait(int generation) =>
-            !_isRunning || _domainReloadPending || Volatile.Read(ref _listenerGeneration) != generation;
+            !_isRunning || _draining || _domainReloadPending || Volatile.Read(ref _listenerGeneration) != generation;
 
         private static void SleepUnlessJobWaitAborted(int generation, int milliseconds)
         {

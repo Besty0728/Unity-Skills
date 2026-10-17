@@ -144,9 +144,8 @@ namespace UnitySkills
 
         // ===== Main-thread liveness mirror + /health snapshot =====
         //
-        // Everything in this block is only ever written on the main thread, read by SendHealthFastPath on the HTTP
-        // listener thread. It exists so GET /health can answer without going through the job queue: previously probes
-        // got stuck behind a long-running skill, making "server is dead" and "Unity is busy" look identical to clients.
+        // Everything in this block is only ever written on the main thread. GET /health is answered from the main-thread
+        // queue (ProcessJob); HTTP threads read only the identity fields, for the X-Unity-* headers and the expected-instance check.
 
         // DateTime.UtcNow.Ticks from the most recent ProcessJobQueue frame. C# doesn't allow `volatile long`,
         // so it's accessed via Interlocked — which is likewise atomic on 32-bit builds.
@@ -158,6 +157,8 @@ namespace UnitySkills
         private static volatile string _snapProjectName;
         // Not on /health; read by the listener's expected-instance check (project folder name) and its mismatch payload.
         private static volatile string _snapProjectPath;
+        // /health packageRoot, resolved once per domain (see DomainPackageRoot).
+        private static volatile string _snapPackageRoot;
         private static volatile string _snapCurrentMode;
         private static volatile bool _snapPanelApprovalRequired;
         private static volatile string _snapDryRunPolicy = DryRunPolicyService.WireOff;
@@ -223,9 +224,14 @@ namespace UnitySkills
         private const int MaxConsecutiveFailures = 10;
 
         // Domain reload tracking
-        // volatile: read by the HTTP thread (/health fast path) and by ThreadPool responders (timeout diagnostics),
+        // volatile: read by the listener thread and ThreadPool responders (shutdown answers, timeout diagnostics),
         // only ever written on the main thread.
         private static volatile bool _domainReloadPending = false;
+
+        // Set on the main thread when Stop() or a domain reload begins, cleared by Start(). While set, the listener answers
+        // new requests with the not-executed 503 instead of queueing them and long polls end, so every request already
+        // admitted is answered before the listener closes its socket (see DrainInFlightRequests).
+        private static volatile bool _draining;
 
         // Bumped by every Stop(). A GET /jobs/{id}?wait= responder remembers the value it was accepted under, so a stop
         // that is immediately followed by a restart (the watchdog) still ends its wait.
@@ -337,6 +343,8 @@ namespace UnitySkills
         private static void OnBeforeAssemblyReload()
         {
             _domainReloadPending = true;
+            // Nothing admitted from here on can run in this domain: refuse it as not executed instead of queueing it.
+            _draining = true;
 
             // Stop the process-chain resolver's background worker before the domain unloads. Its cache is lost,
             // which is fine (cheap to rebuild) -- what matters is not leaving a dangling background thread.
@@ -359,6 +367,9 @@ namespace UnitySkills
                 // Keep the registry entry (port, pid) and mark it reloading: a client in this project waits for the same
                 // port instead of falling back to another Editor. The restart's Register flips it back to running.
                 RegistryService.MarkReloading(_port);
+                // Answer every request still held first: closing the listener ends each unanswered connection with
+                // whatever status its response carries.
+                DrainInFlightRequests();
                 // Actively close the HttpListener to release the port immediately
                 _isRunning = false;
                 try { _listener?.Stop(); } catch { }
@@ -366,6 +377,9 @@ namespace UnitySkills
                 // Wait for the threads to exit, to ensure the port is fully released
                 try { _listenerThread?.Join(2000); } catch { }
                 try { _keepAliveThread?.Join(100); } catch { }
+                // Release the responder of a job queued in the drain's last instant; its socket is already closed.
+                FailQueuedJobs(_lightQueue, ref _lightQueued);
+                FailQueuedJobs(_heavyQueue, ref _heavyQueued);
             }
         }
 
@@ -660,6 +674,7 @@ namespace UnitySkills
                     return;
                 }
 
+                _draining = false;
                 _isRunning = true;
 
                 // Persist state, for use in domain-reload recovery
@@ -726,6 +741,8 @@ namespace UnitySkills
         public static void Stop(bool permanent = false)
         {
             if (!_isRunning) return;
+            // Answer every request still held while its socket can still be written (see DrainInFlightRequests).
+            DrainInFlightRequests();
             _isRunning = false;
             Interlocked.Increment(ref _listenerGeneration);
 
@@ -757,8 +774,8 @@ namespace UnitySkills
             // ReleasePendingSlot() clamps at 0, so a late release is still safe.
             Interlocked.Exchange(ref _pendingRequests, 0);
 
-            // Notify every pending job that it ended in an error. This runs after joining the listener thread
-            // above, so both lanes are already quiescent and no locking is needed.
+            // Release the responder of a job queued in the drain's last instant; its socket is already closed. The
+            // listener thread is joined above, so both lanes are quiescent.
             FailQueuedJobs(_lightQueue, ref _lightQueued);
             FailQueuedJobs(_heavyQueue, ref _heavyQueued);
 

@@ -60,6 +60,9 @@ namespace UnitySkills
                 {
                     // Grab the raw data immediately (never touch the Unity API)
                     var request = context.Request;
+                    // Every path below writes a real answer or closes the connection; a close sends this preset (503,
+                    // nothing ran) instead of HttpListener's default empty 200, also when a domain reload stops the listener.
+                    PresetNotExecuted(context.Response);
 
                     if (!CheckAdmissionRateLimit())
                     {
@@ -81,6 +84,14 @@ namespace UnitySkills
                             details: new { pendingLimit = MaxPendingRequests },
                             retryStrategy: SkillErrorResponse.RetryWaitAndRetry,
                             retryAfterSeconds: 2)));
+                        continue;
+                    }
+
+                    // Stop() or a domain reload is answering what this server already holds: nothing new is queued.
+                    if (_draining)
+                    {
+                        SendImmediateJsonResponse(context, request, 503,
+                            BuildErrorPayload(BuildNotExecutedResponse(_domainReloadPending)));
                         continue;
                     }
 
@@ -386,15 +397,14 @@ namespace UnitySkills
                 if (job.AllowHeader != null)
                     response.Headers.Add("Allow", job.AllowHeader);
 
-                response.StatusCode = job.StatusCode;
+                // The real status replaces the accept-time preset only now: a throw above still closes with the preset
+                // (not executed, or outcome unknown once a write started running), never with a bare 200.
+                SetAnswerStatus(response, job.StatusCode, job.ResponseJson);
 
                 // By the time a 304 reaches here, ResponseJson has already been cleared, so this never falls into
                 // the response-body branch and never carries a Content-Encoding.
                 if (!string.IsNullOrEmpty(job.ResponseJson))
-                {
-                    response.ContentType = "application/json; charset=utf-8";
                     WriteNegotiatedBody(response, job.ResponseJson, job.ETag, job.AcceptEncoding);
-                }
             }
             catch { /* Ignore write errors - client may have disconnected */ }
             finally
