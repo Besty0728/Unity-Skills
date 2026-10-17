@@ -1,0 +1,209 @@
+{
+ "schema": 1,
+ "packId": "unity-skills-eval",
+ "packVersion": "1.1.0",
+ "plugin": {
+  "min": "2.9.1",
+  "max": null
+ },
+ "tracks": {
+  "ops": {
+   "basic": [
+    "S01",
+    "S03",
+    "S04",
+    "S06",
+    "S08",
+    "D01"
+   ],
+   "standard": [],
+   "challenge": []
+  },
+  "dev": {
+   "basic": [],
+   "standard": [],
+   "challenge": []
+  }
+ },
+ "tasks": {
+  "S01": {
+   "track": "ops",
+   "tier": "basic",
+   "caseVersion": 2,
+   "minutes": 10,
+   "seeds": [
+    7001
+   ],
+   "requires": {
+    "pipeline": [
+     "URP",
+     "BuiltIn"
+    ],
+    "mode": "bypass",
+    "dedicated": false,
+    "packages": []
+   },
+   "public": {
+    "task.py": "718fe1d9c22bf12e36c7244a0d58e9fb16b9c29aeb1135fe2330e5ab2043abc1",
+    "prompt.zh-CN.md": "afd798ff61f92f401821986fcb779780639580de3d955f8a7d956993639ca285",
+    "prompt.en.md": "91437f59137aff5dd12e69c1eb6cf90fa23041aaf39eba9d74ac052e9ee03bc4"
+   },
+   "private": {
+    "file": "S01.py",
+    "sha256": "0bacd1bf3e8f22c55fda314e51fb5f50d3f5f2fe39207325a4e203e097c40e05",
+    "bytes": 7918
+   }
+  },
+  "S03": {
+   "track": "ops",
+   "tier": "basic",
+   "caseVersion": 2,
+   "minutes": 7,
+   "seeds": [
+    7102
+   ],
+   "requires": {
+    "pipeline": [
+     "URP",
+     "BuiltIn"
+    ],
+    "mode": "bypass",
+    "dedicated": false,
+    "packages": []
+   },
+   "public": {
+    "task.py": "8b0bd16220731699239868c9f35656d65a3c32bbcb91fa09e907ebfacf8f688e",
+    "prompt.zh-CN.md": "77d6099677f9d4eb0535144965fd0a3191499ecacf1975594b41ef8c8551768c",
+    "prompt.en.md": "fec75c31aa76f8aac606716c512ee56aa4e65f5862a063ff9be5966461017db3"
+   },
+   "private": {
+    "file": "S03.py",
+    "sha256": "1c33d0f1eaf887dea67dcaffcf34774e912b561209459b4f987effd1dadcf242",
+    "bytes": 8369
+   }
+  },
+  "S04": {
+   "track": "ops",
+   "tier": "basic",
+   "caseVersion": 2,
+   "minutes": 5,
+   "seeds": [
+    7203
+   ],
+   "requires": {
+    "pipeline": [
+     "URP",
+     "BuiltIn"
+    ],
+    "mode": "bypass",
+    "dedicated": false,
+    "packages": []
+   },
+   "public": {
+    "task.py": "5fd2dcf895fc89fd377c9a3b2814c38037b9e37979b0d2741f25cf610a322f6c",
+    "prompt.zh-CN.md": "52b5058fd2c3011fa41bd02b52dcd9e24a0079caeba74ff4160c94abcf41b439",
+    "prompt.en.md": "b4a8b5aece4492b9ca6b2a71267cb629669e1c558a1be4035e38eb7babe931f9"
+   },
+   "private": {
+    "file": "S04.py",
+    "sha256": "e327e0a037c04e7b0347992b479b9532316cdb36ea2278d187ddaf8163c5c03b",
+    "bytes": 6373
+   }
+  },
+  "S06": {
+   "track": "ops",
+   "tier": "basic",
+   "caseVersion": 2,
+   "minutes": 7,
+   "seeds": [
+    7304
+   ],
+   "requires": {
+    "pipeline": [
+     "URP",
+     "BuiltIn"
+    ],
+    "mode": "bypass",
+    "dedicated": false,
+    "packages": []
+   },
+   "public": {
+    "task.py": "9f7d24a99fe9da6bd9bc87822f31e5d900b33eb0bc64ab2f0a2b94053160d3d6",
+    "prompt.zh-CN.md": "550dd2944def3e607aa914fd47b3ac687e88fc0aaf21c22876f4fd18cf84ec23",
+    "prompt.en.md": "49411e4ecbca74514c62a28252d4a499e151f9dbb370e268553826bc569f2494"
+   },
+   "private": {
+    "file": "S06.py",
+    "sha256": "df9a56b051277441240cd5b33e28c1c5edaf15aea6a53d72cf43ebdc0469e8d7",
+    "bytes": 7046
+   }
+  },
+  "S08": {
+   "track": "ops",
+   "tier": "basic",
+   "caseVersion": 2,
+   "minutes": 5,
+   "seeds": [
+    7405
+   ],
+   "requires": {
+    "pipeline": [
+     "URP",
+     "BuiltIn"
+    ],
+    "mode": "bypass",
+    "dedicated": false,
+    "packages": []
+   },
+   "public": {
+    "task.py": "c26471bbe7765ca38f13444898d8b907255bffbc9ddfe166bc0a0c6e1a72c655",
+    "prompt.zh-CN.md": "570603502ce9dab8dddf3f64a56fc7e14c7bd4448bc0f7f555e901e39a54b0d8",
+    "prompt.en.md": "31820535d9c7a446e6cb354ad74127a040e09b7bc1f8ecb382581b30ee6356e3"
+   },
+   "private": {
+    "file": "S08.py",
+    "sha256": "04e312dc55ff639173750aeec60d132de4c2af8b1ead8272000ec6156bc110f6",
+    "bytes": 6728
+   }
+  },
+  "D01": {
+   "track": "ops",
+   "tier": "basic",
+   "caseVersion": 2,
+   "minutes": 7,
+   "seeds": [
+    7506
+   ],
+   "requires": {
+    "pipeline": [
+     "URP",
+     "BuiltIn"
+    ],
+    "mode": "bypass",
+    "dedicated": false,
+    "packages": []
+   },
+   "public": {
+    "task.py": "3198eedee9984d2a5630d9f6329c7bb0caa3f391627db9cbf91d55d9afd456e1",
+    "prompt.zh-CN.md": "d76bbcfd5939afc34d860f204a1ad5c9f38a8f135a01e2a412fb0750d06998e7",
+    "prompt.en.md": "e3d58e946e93f232a36c4db5073aebb769548a31661a2f2598f2ebd144b963e0"
+   },
+   "private": {
+    "file": "D01.py",
+    "sha256": "217f34d415b36d289eb6d4ffbce604361aa000bc3b249dcf599630d0fd77d562",
+    "bytes": 6498
+   }
+  }
+ },
+ "private": {
+  "urlTemplates": [
+   "https://raw.githubusercontent.com/Besty0728/Unity-Skills/{ref}/eval/pack/private/{file}",
+   "https://cdn.jsdelivr.net/gh/Besty0728/Unity-Skills@{ref}/eval/pack/private/{file}"
+  ],
+  "refs": [
+   "v{plugin}",
+   "main",
+   "beta"
+  ]
+ }
+}
