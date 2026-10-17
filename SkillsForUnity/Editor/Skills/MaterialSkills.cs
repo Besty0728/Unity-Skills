@@ -427,7 +427,7 @@ namespace UnitySkills
                     ["renderPipeline"] = pipelineType2.ToString(),
                     ["colorProperty"] = ProjectSkills.GetColorPropertyName(),
                     ["textureProperty"] = ProjectSkills.GetMainTexturePropertyName(),
-                    ["warning"] = "Material created in memory only (no savePath). It will be lost on editor restart. Use asset_save or specify savePath to persist."
+                    ["warning"] = "Material created in memory only (no savePath). It will be lost on editor restart. Call material_create with savePath to create it as an asset instead."
                 };
                 if (shaderFellBack)
                 {

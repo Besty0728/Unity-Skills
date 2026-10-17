@@ -134,12 +134,12 @@ Create a PhysicMaterial asset.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | "New PhysicMaterial" | Material name |
-| savePath | string | No | "Assets" | Save directory path |
+| savePath | string | No | "Assets" | Save folder under `Assets/` or `Packages/`; it and any missing parent folders are created |
 | dynamicFriction | float | No | 0.6 | Dynamic friction value |
 | staticFriction | float | No | 0.6 | Static friction value |
 | bounciness | float | No | 0 | Bounciness value |
 
-**Returns:** `{ success, path }`
+**Returns:** `{ success, path }` — `path` is `<savePath>/<name>.physicMaterial`; a name already taken there gets a numeric suffix (`<name> 1.physicMaterial`).
 
 ### `physics_set_material`
 Set PhysicMaterial on a collider (supports name/instanceId/path).

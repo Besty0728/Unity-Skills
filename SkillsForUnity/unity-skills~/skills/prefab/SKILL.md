@@ -31,7 +31,7 @@ Read APIs (`prefab_get_overrides`, `prefab_find_instances` and the four asset qu
 - To edit a prefab asset directly → the asset query/component/node APIs in [ASSET_EDITING.md](ASSET_EDITING.md); start with `prefab_get_hierarchy` / `prefab_list_components`, then `prefab_add_component` / `prefab_set_serialized_property`.
 - To keep an existing `prefab_set_property` call → it remains supported with its original parameters.
 - To compose edits on one asset → `prefab_edit_batch`; to edit many assets with one operation → its `_batch` variant.
-- To find all instances of a prefab → `prefab_find_instances` (this module)
+- To find the instances of a prefab in the scene → `prefab_find_instances` (this module); to see what one overrides → `prefab_get_overrides`
 
 ## Direct asset editing
 
@@ -47,11 +47,11 @@ See [ASSET_EDITING.md](ASSET_EDITING.md) for the four query APIs, twelve single 
 - `prefab_create` - Create prefab from scene object
 - `prefab_apply` - Apply instance changes to prefab
 - `prefab_unpack` - Unpack prefab instance
-- `prefab_get_overrides` - Get instance overrides
+- `prefab_get_overrides` - Count (or, with `includeDetails`, list) the overrides on an instance
 - `prefab_revert_overrides` - Revert to prefab values
 - `prefab_apply_overrides` - Apply overrides to prefab
 - `prefab_create_variant` - Create a prefab variant
-- `prefab_find_instances` - Find all instances of a prefab in scene
+- `prefab_find_instances` - Find the instance roots of a prefab in the scene (`includeInactive` adds inactive ones)
 - `prefab_set_property` - Set a property on a component inside a Prefab asset (supports basic types, vectors, colors, and asset references)
 
 **Asset editing** (parameters and returns in [ASSET_EDITING.md](ASSET_EDITING.md)):
@@ -153,14 +153,18 @@ Unpack a prefab instance (break prefab connection).
 **Returns**: `{success, unpacked}` (`unpacked` is the instance's GameObject name)
 
 ### prefab_get_overrides
-Get a summary of property overrides on a prefab instance (counts, not the individual override list).
+Count the overrides on a prefab instance; `includeDetails: true` also lists each one.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | No* | Prefab instance name |
-| `instanceId` | int | No* | Instance ID |
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `name` | string | No* | null | Prefab instance name |
+| `instanceId` | int | No* | 0 | Instance ID |
+| `path` | string | No* | null | Hierarchy path of the instance (or any object inside it); picks one of several same-name instances |
+| `includeDetails` | bool | No | false | Also return `overrides`, one entry per override |
 
 **Returns**: `{success, prefabPath, propertyOverrides, addedComponents, removedComponents, addedGameObjects, hasOverrides}` — `propertyOverrides`/`addedComponents`/`removedComponents`/`addedGameObjects` are **counts** (int), not arrays; `hasOverrides` is `true` when any of those counts is non-zero.
+
+With `includeDetails: true` the same response gains `overrides`: one entry per counted override, so the list and the counts always agree. Every entry has `kind` (`property`, `addedComponent`, `removedComponent` or `addedGameObject`), `gameObjectPath` (relative to the instance root, `""` = the root; null for a property whose source object has no counterpart in this instance, which then also carries `target`) and `component` (`GameObject` for GameObject-level properties). `property` entries add `componentIndex` (the Nth component of that type), `property` (the serialized path, e.g. `m_LocalPosition.x`) and `value` (plus `objectReference` for a reference override); `addedComponent` adds `componentIndex`; `addedGameObject` adds `name`. The instance's own name is never an override.
 
 ### prefab_revert_overrides
 Revert all overrides on a prefab instance back to prefab values.
@@ -193,14 +197,17 @@ Create a prefab variant from an existing prefab.
 **Returns:** `{ success, sourcePath, variantPath, name, isVariant }`: `variantPath` is the saved asset's path (`.prefab` appended when missing), `isVariant` whether Unity stored it as a variant of the source.
 
 ### prefab_find_instances
-Find all instances of a prefab in the current scene.
+Find the instances of a prefab in the current scene: instance roots only, never the children of an instance.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `prefabPath` | string | Yes | - | Prefab asset path to search for |
 | `limit` | int | No | 50 | Maximum number of instances to return |
+| `includeInactive` | bool | No | false | Also list instances that are inactive in the hierarchy |
 
-**Returns:** `{ success, prefabPath, count, instances: [{ name, path, entityId, instanceId }] }`
+**Returns:** `{ success, prefabPath, count, totalMatched, truncated, instances: [{ name, path, entityId, instanceId, active, nested }] }`
+
+`count` is how many instances came back (at most `limit`), `totalMatched` every match, and `truncated: true` means `limit` cut the list: raise it to see the rest. `active` is the instance's active state in the hierarchy; `nested` is true for an instance root inside another prefab instance (a nested prefab), which counts as an instance of its own prefab. An instance of a variant belongs to the variant's path, not its base prefab's. Objects open in Prefab Mode are not part of the scene.
 
 ### prefab_set_property
 Set a property on a component inside a Prefab asset file (without instantiating it). Supports basic types, vectors, colors, enums, and asset references.

@@ -331,17 +331,19 @@ namespace UnitySkills
                 staticFriction = staticFriction,
                 bounciness = bounciness
             };
-            var path = System.IO.Path.Combine(savePath, name + ".physicMaterial");
-            path = AssetDatabase.GenerateUniqueAssetPath(path);
+            var path = System.IO.Path.Combine(savePath, name + ".physicMaterial").Replace('\\', '/');
             // Cannot use System.IO.Directory.CreateDirectory: it only touches the filesystem, and
             // AssetDatabase doesn't know the new folder exists until a Refresh, so with the
             // parent directory not yet a *known* asset folder, savePath would make
             // AssetDatabase.CreateAsset throw a raw ArgumentException ("Invalid path").
             // EnsureAssetFolderExists instead creates folders level by level with
             // AssetDatabase.CreateFolder, registering each as it's created — the same approach
-            // material_create uses, for the same reason.
+            // material_create uses, for the same reason. It must run before GenerateUniqueAssetPath,
+            // which returns "" for a path whose folder does not exist yet.
             RenderPipelineSkillsCommon.EnsureAssetFolderExists(path);
+            path = AssetDatabase.GenerateUniqueAssetPath(path);
             AssetDatabase.CreateAsset(mat, path);
+            WorkflowManager.SnapshotCreatedAsset(mat);
             AssetDatabase.SaveAssets();
             return new { success = true, path };
         }

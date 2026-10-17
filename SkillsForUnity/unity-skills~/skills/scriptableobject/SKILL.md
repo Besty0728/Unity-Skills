@@ -80,8 +80,9 @@ List Inspector serialized properties of a ScriptableObject asset — `propertyPa
 | assetPath | string | Yes | - | Asset path of the ScriptableObject |
 | includeChildren | bool | No | `true` | Recurse into nested/array child properties |
 | limit | int | No | `200` | Maximum number of properties to return |
+| includeHidden | bool | No | `false` | Also list fields the Inspector hides (`[HideInInspector]` members and Unity's `m_ObjectHideFlags` / `m_PrefabInstance` bookkeeping); they count toward `limit` |
 
-**Returns:** `{ success, path, typeName, properties: [{ propertyPath, name, displayName, propertyType, type, isArray, editable, value }] }`
+**Returns:** `{ success, path, typeName, properties: [{ propertyPath, name, displayName, propertyType, type, isArray, editable, value }] }`; an `ObjectReference` property also has `referenceState` (`none`, `missing` or `assigned`), which tells a never-assigned reference from one whose target was deleted when `value` reads `"null"`.
 
 ### `scriptableobject_set_serialized_property`
 Set a single Inspector serialized property by `propertyPath`. Works where `scriptableobject_set` cannot: nested fields, arrays/lists, `UnityEngine.Object` references, private `[SerializeField]` fields, gradients, animation curves, and `[Flags]` enums.

@@ -30,7 +30,17 @@ namespace UnitySkills
             return serializedObject.FindProperty("m_" + propertyPath);
         }
 
-        public static object[] ListProperties(UnityEngine.Object target, bool includeChildren = true, int limit = 200)
+        /// <summary>The [SkillParam] note of every serialized-property reader's includeHidden parameter.</summary>
+        internal const string IncludeHiddenNote =
+            "false (default) lists what the Inspector shows. true also lists fields it hides, e.g. HingeJoint m_ConnectedBody, [HideInInspector] members and Unity's m_ObjectHideFlags / m_PrefabInstance bookkeeping, which count toward limit.";
+
+        /// <summary>
+        /// Lists the target's serialized properties. <paramref name="includeHidden"/> walks with Next instead of
+        /// NextVisible, so fields the Inspector hides (HingeJoint.m_ConnectedBody, [HideInInspector] members, Unity's
+        /// own m_ObjectHideFlags / m_PrefabInstance bookkeeping) are listed too and count toward <paramref name="limit"/>.
+        /// An ObjectReference entry carries <c>referenceState</c>; other entries carry no such key.
+        /// </summary>
+        public static object[] ListProperties(UnityEngine.Object target, bool includeChildren = true, int limit = 200, bool includeHidden = false)
         {
             var serializedObject = new SerializedObject(target);
             serializedObject.Update();
@@ -38,10 +48,28 @@ namespace UnitySkills
             var results = new List<object>();
             var iterator = serializedObject.GetIterator();
             var enterChildren = true;
-            while (iterator.NextVisible(enterChildren) && results.Count < Math.Max(1, limit))
+            while ((includeHidden ? iterator.Next(enterChildren) : iterator.NextVisible(enterChildren)) && results.Count < Math.Max(1, limit))
             {
-                enterChildren = includeChildren;
                 var copy = iterator.Copy();
+                // Next, unlike NextVisible, also steps into a string's character array and a reference's m_FileID / m_PathID.
+                enterChildren = includeChildren && !(includeHidden && IsLeafValue(copy));
+                if (copy.propertyType == SerializedPropertyType.ObjectReference)
+                {
+                    results.Add(new
+                    {
+                        propertyPath = copy.propertyPath,
+                        name = copy.name,
+                        displayName = copy.displayName,
+                        propertyType = copy.propertyType.ToString(),
+                        type = copy.type,
+                        isArray = copy.isArray,
+                        editable = copy.editable,
+                        value = DescribeValue(copy),
+                        referenceState = DescribeReferenceState(copy)
+                    });
+                    continue;
+                }
+
                 results.Add(new
                 {
                     propertyPath = copy.propertyPath,
@@ -56,6 +84,23 @@ namespace UnitySkills
             }
 
             return results.ToArray();
+        }
+
+        private static bool IsLeafValue(SerializedProperty property) =>
+            property.propertyType == SerializedPropertyType.String || property.propertyType == SerializedPropertyType.ObjectReference;
+
+        /// <summary>
+        /// What an ObjectReference property holds, which its <c>"null"</c> value cannot say: <c>none</c> (never assigned or
+        /// cleared), <c>missing</c> (assigned, but the target was destroyed or its asset deleted) or <c>assigned</c>.
+        /// Null for any other property type.
+        /// </summary>
+        public static string DescribeReferenceState(SerializedProperty property)
+        {
+            if (property == null || property.propertyType != SerializedPropertyType.ObjectReference)
+                return null;
+            if (property.objectReferenceValue != null)
+                return "assigned";
+            return UnityObjectIdUtility.HasMissingObjectReference(property) ? "missing" : "none";
         }
 
         public static bool TrySetProperty(
@@ -233,6 +278,11 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// Resolves an object reference to write: an asset by <paramref name="assetPath"/>, otherwise a scene object by
+        /// <paramref name="referenceEntityId"/>, instance id, path or name. An entityId that names nothing is an error and never
+        /// falls back to the other locators, which could bind a same-name object instead.
+        /// </summary>
         public static bool TryResolveObjectReference(
             string referenceName,
             int referenceInstanceId,
@@ -240,7 +290,8 @@ namespace UnitySkills
             string assetPath,
             string objectType,
             out UnityEngine.Object result,
-            out string error)
+            out string error,
+            string referenceEntityId = null)
         {
             result = null;
             error = null;
@@ -269,11 +320,24 @@ namespace UnitySkills
                 return true;
             }
 
-            var go = GameObjectFinder.Find(name: referenceName, instanceId: referenceInstanceId, path: referencePath);
-            if (go == null)
+            GameObject go;
+            if (!string.IsNullOrWhiteSpace(referenceEntityId))
             {
-                error = $"Scene reference not found: name='{referenceName}', instanceId={referenceInstanceId}, path='{referencePath}'";
-                return false;
+                go = FindGameObjectByEntityId(referenceEntityId);
+                if (go == null)
+                {
+                    error = $"Scene reference not found: entityId='{referenceEntityId}'";
+                    return false;
+                }
+            }
+            else
+            {
+                go = GameObjectFinder.Find(name: referenceName, instanceId: referenceInstanceId, path: referencePath);
+                if (go == null)
+                {
+                    error = $"Scene reference not found: name='{referenceName}', instanceId={referenceInstanceId}, path='{referencePath}'";
+                    return false;
+                }
             }
 
             if (string.IsNullOrWhiteSpace(objectType) ||
@@ -314,6 +378,13 @@ namespace UnitySkills
 
             error = $"Unity Object type not found: {objectType}";
             return false;
+        }
+
+        /// <summary>The GameObject an entityId names, or the owner of the component it names; null when it names neither.</summary>
+        internal static GameObject FindGameObjectByEntityId(string entityId)
+        {
+            var found = UnityObjectIdUtility.EntityIdToObject(entityId);
+            return found as GameObject ?? (found as Component)?.gameObject;
         }
 
         public static List<object> CompareSerializedProperties(UnityEngine.Object source, UnityEngine.Object target, int limit = 50)
@@ -362,7 +433,7 @@ namespace UnitySkills
                     return property.stringValue;
                 case SerializedPropertyType.Color:
                     var c = property.colorValue;
-                    return $"{c.r:G9},{c.g:G9},{c.b:G9},{c.a:G9}";
+                    return Join(c.r, c.g, c.b, c.a);
                 case SerializedPropertyType.ObjectReference:
                     return property.objectReferenceValue == null
                         ? "null"
@@ -385,15 +456,15 @@ namespace UnitySkills
                 case SerializedPropertyType.Quaternion:
                     return Format(property.quaternionValue);
                 case SerializedPropertyType.Vector2Int:
-                    return $"{property.vector2IntValue.x},{property.vector2IntValue.y}";
+                    return Join(property.vector2IntValue.x, property.vector2IntValue.y);
                 case SerializedPropertyType.Vector3Int:
-                    return $"{property.vector3IntValue.x},{property.vector3IntValue.y},{property.vector3IntValue.z}";
+                    return Join(property.vector3IntValue.x, property.vector3IntValue.y, property.vector3IntValue.z);
                 case SerializedPropertyType.RectInt:
                     var ri = property.rectIntValue;
-                    return $"{ri.x},{ri.y},{ri.width},{ri.height}";
+                    return Join(ri.x, ri.y, ri.width, ri.height);
                 case SerializedPropertyType.BoundsInt:
                     var bi = property.boundsIntValue;
-                    return $"{bi.position.x},{bi.position.y},{bi.position.z},{bi.size.x},{bi.size.y},{bi.size.z}";
+                    return Join(bi.position.x, bi.position.y, bi.position.z, bi.size.x, bi.size.y, bi.size.z);
                 case SerializedPropertyType.Character:
                     return property.intValue.ToString(CultureInfo.InvariantCulture);
                 case SerializedPropertyType.Gradient:
@@ -800,12 +871,19 @@ namespace UnitySkills
                      string.Equals(t.FullName, objectType, StringComparison.Ordinal)));
         }
 
-        private static string Format(Vector2 v) => $"{v.x:G9},{v.y:G9}";
-        private static string Format(Vector3 v) => $"{v.x:G9},{v.y:G9},{v.z:G9}";
-        private static string Format(Vector4 v) => $"{v.x:G9},{v.y:G9},{v.z:G9},{v.w:G9}";
-        private static string Format(Rect r) => $"{r.x:G9},{r.y:G9},{r.width:G9},{r.height:G9}";
+        // Culture-invariant: a comma-decimal or non-ASCII-minus current culture must not change the comma-separated values.
+        private static string Join(params float[] values) =>
+            string.Join(",", values.Select(v => v.ToString("G9", CultureInfo.InvariantCulture)));
+
+        private static string Join(params int[] values) =>
+            string.Join(",", values.Select(v => v.ToString(CultureInfo.InvariantCulture)));
+
+        private static string Format(Vector2 v) => Join(v.x, v.y);
+        private static string Format(Vector3 v) => Join(v.x, v.y, v.z);
+        private static string Format(Vector4 v) => Join(v.x, v.y, v.z, v.w);
+        private static string Format(Rect r) => Join(r.x, r.y, r.width, r.height);
         private static string Format(Bounds b) => $"{Format(b.center)},{Format(b.size)}";
-        private static string Format(Quaternion q) => $"{q.x:G9},{q.y:G9},{q.z:G9},{q.w:G9}";
+        private static string Format(Quaternion q) => Join(q.x, q.y, q.z, q.w);
     }
 }
 

@@ -556,7 +556,11 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object ComponentGetSerializedProperties(
             string name = null, int instanceId = 0, string path = null,
-            string componentType = null, bool includeChildren = true, int limit = 200)
+            string componentType = null, bool includeChildren = true,
+            [SkillParam("Max properties listed, counted over every entry including nested children.")]
+            int limit = 200,
+            [SkillParam(SerializedPropertySkillUtility.IncludeHiddenNote)]
+            bool includeHidden = false)
         {
             if (Validate.Required(componentType, "componentType") is object reqErr) return reqErr;
 
@@ -575,7 +579,7 @@ namespace UnitySkills
                 gameObject = go.name,
                 component = componentType,
                 fullTypeName = type.FullName,
-                properties = SerializedPropertySkillUtility.ListProperties(comp, includeChildren, limit)
+                properties = SerializedPropertySkillUtility.ListProperties(comp, includeChildren, limit, includeHidden)
             };
         }
 

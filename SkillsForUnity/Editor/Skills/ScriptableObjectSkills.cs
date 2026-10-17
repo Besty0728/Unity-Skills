@@ -354,7 +354,9 @@ namespace UnitySkills
             RequiresInput = new[] { "assetPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object ScriptableObjectGetSerializedProperties(string assetPath, bool includeChildren = true, int limit = 200)
+        public static object ScriptableObjectGetSerializedProperties(string assetPath, bool includeChildren = true, int limit = 200,
+            [SkillParam(SerializedPropertySkillUtility.IncludeHiddenNote)]
+            bool includeHidden = false)
         {
             if (Validate.Required(assetPath, "assetPath") is object reqErr) return reqErr;
 
@@ -367,7 +369,7 @@ namespace UnitySkills
                 success = true,
                 path = assetPath,
                 typeName = asset.GetType().Name,
-                properties = SerializedPropertySkillUtility.ListProperties(asset, includeChildren, limit)
+                properties = SerializedPropertySkillUtility.ListProperties(asset, includeChildren, limit, includeHidden)
             };
         }
 

@@ -174,7 +174,7 @@ namespace UnitySkills.Internal
                 nodes = transforms.Take(limit).Select(t => DescribeNode(root, t.gameObject)).ToArray() };
         }
 
-        internal static object DescribeComponents(GameObject root, GameObject target, bool includeProperties)
+        internal static object DescribeComponents(GameObject root, GameObject target, bool includeProperties, bool includeHidden = false)
         {
             var indexes = new Dictionary<Type, int>();
             var list = new List<object>();
@@ -187,17 +187,17 @@ namespace UnitySkills.Internal
                 var item = new JObject { ["componentType"] = type.FullName, ["componentIndex"] = index };
                 var enabled = new SerializedObject(component).FindProperty("m_Enabled");
                 if (enabled != null && enabled.propertyType == SerializedPropertyType.Boolean) item["enabled"] = enabled.boolValue;
-                if (includeProperties) item["properties"] = JArray.FromObject(SerializedPropertySkillUtility.ListProperties(component));
+                if (includeProperties) item["properties"] = JArray.FromObject(SerializedPropertySkillUtility.ListProperties(component, true, 200, includeHidden));
                 list.Add(item);
             }
             return new { gameObjectPath = PathOf(root, target), components = list };
         }
 
-        internal static object DescribeProperties(GameObject root, GameObject target, string typeName, int index, bool children, int limit)
+        internal static object DescribeProperties(GameObject root, GameObject target, string typeName, int index, bool children, int limit, bool includeHidden = false)
         {
             var component = FindComponent(target, typeName, index);
             return new { gameObjectPath = PathOf(root, target), componentType = component.GetType().FullName, componentIndex = index,
-                properties = SerializedPropertySkillUtility.ListProperties(component, children, limit) };
+                properties = SerializedPropertySkillUtility.ListProperties(component, children, limit, includeHidden) };
         }
 
         internal static object Edit(string prefabPath, string skill, object args) => Run(prefabPath,

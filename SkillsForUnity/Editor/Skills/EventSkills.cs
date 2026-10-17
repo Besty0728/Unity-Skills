@@ -13,7 +13,7 @@ namespace UnitySkills
     /// </summary>
     public static class EventSkills
     {
-        [UnitySkill("event_get_listeners", "Get persistent listeners of a UnityEvent",
+        [UnitySkill("event_get_listeners", "Get persistent listeners of a UnityEvent. Each listener names its target by name, entityId, instanceId (0 on Unity 6000.4+), scene path or asset path, so same-name targets can be told apart.",
             Category = SkillCategory.Event, Operation = SkillOperation.Query,
             Tags = new[] { "event", "listeners", "unityevent", "inspect" },
             Outputs = new[] { "gameObject", "component", "eventName", "listenerCount", "listeners" },
@@ -52,11 +52,21 @@ namespace UnitySkills
                 var methodName = unityEvent.GetPersistentMethodName(i);
                 var state = unityEvent.GetPersistentListenerState(i);
 
+                // A scene object is located by path, an asset (ScriptableObject, prefab...) by asset path; the other key is null.
+                // A destroyed target compares equal to null but is not a null reference, so it is checked before .gameObject is read.
+                var targetAssetPath = target != null ? AssetDatabase.GetAssetPath(target) : null;
+                var isAsset = !string.IsNullOrEmpty(targetAssetPath);
+                var targetGameObject = target == null ? null : target as GameObject ?? (target as Component)?.gameObject;
+
                 listeners.Add(new
                 {
                     index = i,
                     target = target != null ? target.name : "null",
                     targetType = target != null ? target.GetType().Name : "null",
+                    targetEntityId = UnityObjectIdUtility.GetEntityId(target),
+                    targetInstanceId = UnityObjectIdUtility.GetObjectId(target),
+                    targetPath = !isAsset && targetGameObject != null ? GameObjectFinder.GetPath(targetGameObject) : null,
+                    targetAssetPath = isAsset ? targetAssetPath : null,
                     method = methodName,
                     state = state.ToString()
                 });
@@ -73,24 +83,39 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("event_add_listener", "Add a persistent listener to a UnityEvent (Editor time). Supported args: void, int, float, string, bool, Object. mode: Off/EditorAndRuntime/RuntimeOnly.", TracksWorkflow = true,
+        [UnitySkill("event_add_listener", "Add a persistent listener to a UnityEvent (Editor time). Supported args: void, int, float, string, bool, Object. mode: Off/EditorAndRuntime/RuntimeOnly. The target GameObject is located by targetEntityId, targetInstanceId, targetPath or targetObjectName; an Object argument by the objectArg* parameters.", TracksWorkflow = true,
             Category = SkillCategory.Event, Operation = SkillOperation.Modify,
             Tags = new[] { "event", "listener", "add", "callback" },
-            Outputs = new[] { "message", "index", "mode" },
-            RequiresInput = new[] { "gameObject", "componentName", "eventName", "targetObjectName", "methodName" },
+            Outputs = new[] { "message", "index", "mode", "target", "targetType", "targetEntityId", "targetInstanceId", "targetPath", "method", "argType" },
+            // Any one of the four target locators in the compound token names the target (a _requiredInputGroups key),
+            // so none of them is wire-required; validation refuses a call that gives none.
+            RequiresInput = new[] { "gameObject", "componentName", "eventName", "targetObjectName|targetEntityId|targetInstanceId|targetPath", "methodName" },
             MutatesScene = true)]
         public static object EventAddListener(
             string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null,
             string targetObjectName = null, string targetComponentName = null, string methodName = null,
             string mode = "RuntimeOnly",
-            string argType = "void", // void, int, float, string, bool, object
-            float floatArg = 0, int intArg = 0, string stringArg = null, bool boolArg = false)
+            [SkillParam("void, int, float, string, bool or object. object takes its argument from objectArgAssetPath (an asset) or objectArgEntityId / objectArgInstanceId / objectArgPath / objectArgName (a scene object).")]
+            string argType = "void",
+            float floatArg = 0, int intArg = 0, string stringArg = null, bool boolArg = false,
+            [SkillParam("Legacy instance id of the target GameObject (always 0 on Unity 6000.4+; use targetEntityId). Locator precedence: targetEntityId, targetInstanceId, targetPath, then targetObjectName.")]
+            int targetInstanceId = 0,
+            [SkillParam("Entity id of the target GameObject, or of one of its components. Outranks the other target locators and is never replaced by them: an id that names nothing is an error.")]
+            string targetEntityId = null,
+            [SkillParam("Hierarchy path of the target GameObject, e.g. Canvas/Menu; tells same-name objects apart when no id is given.")]
+            string targetPath = null,
+            string objectArgName = null, int objectArgInstanceId = 0, string objectArgEntityId = null, string objectArgPath = null,
+            [SkillParam("Project path of an asset to pass as the Object argument; when given, the scene locators objectArgName / objectArgInstanceId / objectArgEntityId / objectArgPath are ignored.")]
+            string objectArgAssetPath = null,
+            [SkillParam("Type bound for the Object argument: a scene reference is the GameObject unless this names a component (Transform, Rigidbody...); for objectArgAssetPath an asset type (Material...).")]
+            string objectArgType = null)
         {
             // mode must be strictly parsed up front: comparing it with two string.Equals calls would
             // let an unrecognized value fall through to RuntimeOnly after the listener is already
             // added, so "EditorOnly" would silently become a runtime listener while reporting success.
             if (!SkillParamUtil.TryParseRequiredEnum<UnityEventCallState>(mode, "mode", out var callState, out var modeError))
                 return modeError;
+            if (Validate.Required(methodName, "methodName") is object methodErr) return methodErr;
 
             var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (goErr != null) return goErr;
@@ -98,23 +123,11 @@ namespace UnitySkills
             var component = FindComponentOnGameObject(go, componentName);
             if (component == null) return new { error = $"Source Component not found: {componentName}" };
 
-            var (targetGo, tgtErr) = GameObjectFinder.FindOrError(name: targetObjectName);
-            if (tgtErr != null) return tgtErr;
-
-            // "GameObject" is not a component; in that case just use the GameObject itself as the target object.
-            Object targetObj = null;
-            System.Type targetType = null;
-            if (targetComponentName == "GameObject" || targetComponentName == "UnityEngine.GameObject")
+            // "GameObject" (or no component name) is not a component; in that case the GameObject itself is the target object.
+            if (!TryResolveListenerTarget(targetObjectName, targetInstanceId, targetEntityId, targetPath, targetComponentName,
+                    out var targetObj, out var targetType, out var targetError))
             {
-                targetObj = targetGo;
-                targetType = typeof(GameObject);
-            }
-            else
-            {
-                var targetComponent = FindComponentOnGameObject(targetGo, targetComponentName);
-                if (targetComponent == null) return new { error = $"Target Component not found: {targetComponentName}" };
-                targetObj = targetComponent;
-                targetType = targetComponent.GetType();
+                return targetError;
             }
 
             var type = component.GetType();
@@ -133,6 +146,18 @@ namespace UnitySkills
             unityEvent = rawEvent as UnityEvent;
             if (unityEvent == null)
                 return new { error = $"Field '{eventName}' is not a standard UnityEvent. Generic events (UnityEvent<T>) not yet supported in this version." };
+
+            var normalizedArgType = (argType ?? "void").Trim().ToLowerInvariant();
+
+            // Resolved before anything is recorded, so a bad Object argument leaves no snapshot or Undo entry behind.
+            Object objectArg = null;
+            if (normalizedArgType == "object" &&
+                !TryResolveObjectArgument(objectArgName, objectArgInstanceId, objectArgEntityId, objectArgPath, objectArgAssetPath, objectArgType,
+                    "objectArgAssetPath, objectArgEntityId, objectArgInstanceId, objectArgPath or objectArgName",
+                    out objectArg, out var objectArgError))
+            {
+                return new { error = objectArgError };
+            }
 
             WorkflowManager.SnapshotObject(component);
             Undo.RecordObject(component, "Add Event Listener");
@@ -157,11 +182,11 @@ namespace UnitySkills
                 return null;
             }
 
-            switch (argType.ToLower())
+            switch (normalizedArgType)
             {
                 case "void":
                     methodInfo = FindMethodOnTarget(System.Type.EmptyTypes);
-                    if (methodInfo == null) return new { error = $"Method '{methodName}()' not found on {targetComponentName}" };
+                    if (methodInfo == null) return new { error = $"Method '{methodName}()' not found on {targetType.Name}" };
                     var voidDelegate = System.Delegate.CreateDelegate(typeof(UnityAction), targetObj, methodInfo) as UnityAction;
                     UnityEventTools.AddPersistentListener(unityEvent, voidDelegate);
                     break;
@@ -194,6 +219,13 @@ namespace UnitySkills
                     UnityEventTools.AddBoolPersistentListener(unityEvent, boolDelegate, boolArg);
                     break;
 
+                case "object":
+                    var objectMethod = FindObjectArgumentMethod(targetType, methodName, objectArg);
+                    if (objectMethod == null) return new { error = $"Compatible object method '{methodName}(Object)' not found on {targetType.Name}" };
+                    if (!TryAddObjectPersistentListener(unityEvent, targetObj, objectMethod, objectArg, out var objectAddError))
+                        return new { error = objectAddError };
+                    break;
+
                 default:
                     return new { error = $"Unsupported argType: {argType}" };
             }
@@ -201,13 +233,22 @@ namespace UnitySkills
             // The listener just added is guaranteed to be at the end of the list.
             int index = unityEvent.GetPersistentEventCount() - 1;
             unityEvent.SetPersistentListenerState(index, callState);
+            EditorUtility.SetDirty(component);
 
+            var boundGameObject = targetObj as GameObject ?? (targetObj as Component)?.gameObject;
             return new
             {
                 success = true,
-                message = $"Added listener {targetComponentName}.{methodName} to {componentName}.{eventName}",
+                message = $"Added listener {(string.IsNullOrWhiteSpace(targetComponentName) ? targetType.Name : targetComponentName)}.{methodName} to {componentName}.{eventName}",
                 index,
-                mode = callState.ToString()
+                mode = callState.ToString(),
+                target = targetObj.name,
+                targetType = targetType.Name,
+                targetEntityId = UnityObjectIdUtility.GetEntityId(targetObj),
+                targetInstanceId = UnityObjectIdUtility.GetObjectId(targetObj),
+                targetPath = boundGameObject != null ? GameObjectFinder.GetPath(boundGameObject) : null,
+                method = methodName,
+                argType = normalizedArgType
             };
         }
 
@@ -304,24 +345,64 @@ namespace UnitySkills
             return (evt, component, null);
         }
 
+        /// <summary>
+        /// Locates the listener's target: <paramref name="targetEntityId"/> first, then instance id, path and name as
+        /// GameObjectFinder orders them. An entityId that names nothing is an error and never falls back to the other
+        /// locators, which could bind a same-name object instead. A blank component name (or "GameObject") targets the
+        /// GameObject itself. <paramref name="error"/> is a ready-to-return skill result.
+        /// </summary>
         private static bool TryResolveListenerTarget(
             string targetName,
             int targetInstanceId,
+            string targetEntityId,
             string targetPath,
             string targetComponentName,
             out Object targetObj,
             out System.Type targetType,
-            out string error)
+            out object error)
         {
             targetObj = null;
             targetType = null;
             error = null;
 
-            var (targetGo, targetErr) = GameObjectFinder.FindOrError(name: targetName, instanceId: targetInstanceId, path: targetPath);
-            if (targetErr != null)
+            // Validation already refuses a call with no locator; in-process callers such as batch items reach this check instead.
+            if (string.IsNullOrWhiteSpace(targetName) && targetInstanceId == 0 && string.IsNullOrWhiteSpace(targetEntityId) && string.IsNullOrWhiteSpace(targetPath))
             {
-                error = SkillResultHelper.TryGetError(targetErr, out var findError) ? findError : "Target object not found";
+                error = new
+                {
+                    error = "A target is required: pass one of the target name, targetEntityId, targetInstanceId or targetPath",
+                    errorCode = SkillErrorCode.MissingParam.ToWireString(),
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry,
+                    suggestedFixes = new[] { new { action = "fix_param", reason = "Name the GameObject that holds the method; targetEntityId or targetPath tells same-name objects apart." } }
+                };
                 return false;
+            }
+
+            GameObject targetGo;
+            if (!string.IsNullOrWhiteSpace(targetEntityId))
+            {
+                targetGo = SerializedPropertySkillUtility.FindGameObjectByEntityId(targetEntityId);
+                if (targetGo == null)
+                {
+                    error = new
+                    {
+                        error = $"Target object not found for entityId {targetEntityId.Trim()}",
+                        errorCode = SkillErrorCode.TargetNotFound.ToWireString(),
+                        retryStrategy = SkillErrorResponse.RetryFindAndRetry,
+                        relatedSkills = new[] { "gameobject_find", "event_get_listeners" }
+                    };
+                    return false;
+                }
+            }
+            else
+            {
+                var (found, targetErr) = GameObjectFinder.FindOrError(name: targetName, instanceId: targetInstanceId, path: targetPath);
+                if (targetErr != null)
+                {
+                    error = targetErr;
+                    return false;
+                }
+                targetGo = found;
             }
 
             if (string.IsNullOrWhiteSpace(targetComponentName) ||
@@ -336,13 +417,34 @@ namespace UnitySkills
             var targetComponent = FindComponentOnGameObject(targetGo, targetComponentName);
             if (targetComponent == null)
             {
-                error = $"Target Component not found: {targetComponentName}";
+                error = new { error = $"Target Component not found: {targetComponentName}" };
                 return false;
             }
 
             targetObj = targetComponent;
             targetType = targetComponent.GetType();
             return true;
+        }
+
+        /// <summary>
+        /// Resolves the Object argument of an argType "object" listener. Asking for one without any locator is its own
+        /// error, naming <paramref name="locatorHint"/>, instead of a lookup failure on empty values.
+        /// </summary>
+        private static bool TryResolveObjectArgument(
+            string name, int instanceId, string entityId, string path, string assetPath, string objectType,
+            string locatorHint, out Object argument, out string error)
+        {
+            argument = null;
+            error = null;
+            if (string.IsNullOrWhiteSpace(name) && instanceId == 0 && string.IsNullOrWhiteSpace(entityId) &&
+                string.IsNullOrWhiteSpace(path) && string.IsNullOrWhiteSpace(assetPath))
+            {
+                error = $"argType 'object' needs the argument: pass {locatorHint}";
+                return false;
+            }
+
+            return SerializedPropertySkillUtility.TryResolveObjectReference(
+                name, instanceId, path, assetPath, objectType, out argument, out error, entityId);
         }
 
         private static Component FindComponentOnGameObject(GameObject go, string componentName)
@@ -574,11 +676,12 @@ namespace UnitySkills
             return new { success = true, index, state = callState.ToString() };
         }
 
-        [UnitySkill("event_set_listener", "Replace a persistent UnityEvent listener at a specific index. Supports void/int/float/string/bool/Object static arguments.",
+        [UnitySkill("event_set_listener", "Replace a persistent UnityEvent listener at a specific index. Supports void/int/float/string/bool/Object static arguments. The target GameObject is located by targetEntityId, targetInstanceId, targetPath or targetName.",
             Category = SkillCategory.Event, Operation = SkillOperation.Modify,
             Tags = new[] { "event", "listener", "set", "replace", "persistent" },
-            Outputs = new[] { "index", "target", "method", "state", "argType" },
-            RequiresInput = new[] { "gameObject", "componentName", "eventName", "targetName", "methodName" },
+            Outputs = new[] { "index", "target", "targetEntityId", "targetInstanceId", "targetPath", "method", "state", "argType" },
+            // As for event_add_listener, the target locators are alternatives (a _requiredInputGroups key) and none is wire-required.
+            RequiresInput = new[] { "gameObject", "componentName", "eventName", "targetName|targetEntityId|targetInstanceId|targetPath", "methodName" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object EventSetListener(
             string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null,
@@ -589,16 +692,21 @@ namespace UnitySkills
             string argType = "void",
             float floatArg = 0, int intArg = 0, string stringArg = null, bool boolArg = false,
             string objectReferenceName = null, int objectReferenceInstanceId = 0, string objectReferencePath = null,
-            string objectAssetPath = null, string objectType = null)
+            string objectAssetPath = null, string objectType = null,
+            [SkillParam("Entity id of the target GameObject, or of one of its components. Outranks targetInstanceId, targetPath and targetName and is never replaced by them: an id that names nothing is an error.")]
+            string targetEntityId = null,
+            [SkillParam("Entity id of the scene object passed as the Object argument; used when objectAssetPath is empty, and an id that names nothing is an error.")]
+            string objectReferenceEntityId = null)
         {
             var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);
             if (err != null) return err;
             if (index < 0 || index >= evt.GetPersistentEventCount()) return new { error = "Index out of range" };
             if (Validate.Required(methodName, "methodName") is object methodErr) return methodErr;
 
-            if (!TryResolveListenerTarget(targetName, targetInstanceId, targetPath, targetComponentName, out var targetObj, out var targetType, out var targetError))
+            if (!TryResolveListenerTarget(targetName, targetInstanceId, targetEntityId, targetPath, targetComponentName,
+                    out var targetObj, out var targetType, out var targetError))
             {
-                return new { error = targetError };
+                return targetError;
             }
 
             if (!SkillParamUtil.TryParseRequiredEnum<UnityEventCallState>(mode, "mode", out var callState, out var modeError))
@@ -650,8 +758,9 @@ namespace UnitySkills
                     break;
 
                 case "object":
-                    if (!SerializedPropertySkillUtility.TryResolveObjectReference(
-                            objectReferenceName, objectReferenceInstanceId, objectReferencePath, objectAssetPath, objectType,
+                    if (!TryResolveObjectArgument(
+                            objectReferenceName, objectReferenceInstanceId, objectReferenceEntityId, objectReferencePath, objectAssetPath, objectType,
+                            "objectAssetPath, objectReferenceEntityId, objectReferenceInstanceId, objectReferencePath or objectReferenceName",
                             out var objectArg, out var objectArgError))
                     {
                         return new { error = objectArgError };
@@ -672,12 +781,16 @@ namespace UnitySkills
             evt.SetPersistentListenerState(index, callState);
             EditorUtility.SetDirty(comp);
 
+            var boundGameObject = targetObj as GameObject ?? (targetObj as Component)?.gameObject;
             return new
             {
                 success = true,
                 index,
                 target = targetObj != null ? targetObj.name : "null",
                 targetType = targetType.Name,
+                targetEntityId = UnityObjectIdUtility.GetEntityId(targetObj),
+                targetInstanceId = UnityObjectIdUtility.GetObjectId(targetObj),
+                targetPath = boundGameObject != null ? GameObjectFinder.GetPath(boundGameObject) : null,
                 method = methodName,
                 state = callState.ToString(),
                 argType = normalizedArgType
@@ -705,13 +818,15 @@ namespace UnitySkills
             return new { success = true, component = componentName, count = events.Length, events };
         }
 
-        [UnitySkill("event_add_listener_batch", "Add multiple listeners at once. items: JSON array of {targetObjectName, targetComponentName, methodName, mode, argType, floatArg, intArg, stringArg, boolArg}", TracksWorkflow = true,
+        [UnitySkill("event_add_listener_batch", "Add multiple listeners at once. items: JSON array of {targetObjectName, targetComponentName, methodName, mode, argType, floatArg, intArg, stringArg, boolArg, targetEntityId, targetInstanceId, targetPath, objectArgName, objectArgEntityId, objectArgInstanceId, objectArgPath, objectArgAssetPath, objectArgType}", TracksWorkflow = true,
             Category = SkillCategory.Event, Operation = SkillOperation.Modify,
             Tags = new[] { "event", "listener", "batch", "bulk" },
             Outputs = new[] { "added", "total", "failed", "results" },
             RequiresInput = new[] { "gameObject", "componentName", "eventName", "items" },
             MutatesScene = true)]
-        public static object EventAddListenerBatch(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, string items = null)
+        public static object EventAddListenerBatch(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null,
+            [SkillParam("JSON array of {targetObjectName|targetEntityId|targetInstanceId|targetPath, targetComponentName?, methodName, mode? (default RuntimeOnly), argType? (default void), floatArg?, intArg?, stringArg?, boolArg?, objectArgName|objectArgEntityId|objectArgInstanceId|objectArgPath|objectArgAssetPath?, objectArgType?}, each as in event_add_listener.")]
+            string items = null)
         {
             var list = Newtonsoft.Json.JsonConvert.DeserializeObject<List<BatchListenerItem>>(items);
             if (list == null || list.Count == 0) return new { error = "No items provided" };
@@ -730,17 +845,21 @@ namespace UnitySkills
                     item.targetObjectName, item.targetComponentName, item.methodName,
                     string.IsNullOrEmpty(item.mode) ? "RuntimeOnly" : item.mode,
                     string.IsNullOrEmpty(item.argType) ? "void" : item.argType,
-                    item.floatArg, item.intArg, item.stringArg, item.boolArg);
+                    item.floatArg, item.intArg, item.stringArg, item.boolArg,
+                    targetInstanceId: item.targetInstanceId, targetEntityId: item.targetEntityId, targetPath: item.targetPath,
+                    objectArgName: item.objectArgName, objectArgInstanceId: item.objectArgInstanceId, objectArgEntityId: item.objectArgEntityId,
+                    objectArgPath: item.objectArgPath, objectArgAssetPath: item.objectArgAssetPath, objectArgType: item.objectArgType);
 
+                var label = item.targetObjectName ?? item.targetPath ?? item.targetEntityId ?? (item.targetInstanceId != 0 ? item.targetInstanceId.ToString() : null);
                 if (SkillResultHelper.TryGetError(result, out var itemError))
                 {
                     failed++;
-                    results.Add(new { target = item.targetObjectName, method = item.methodName, success = false, error = itemError });
+                    results.Add(new { target = label, method = item.methodName, success = false, error = itemError });
                 }
                 else
                 {
                     added++;
-                    results.Add(new { target = item.targetObjectName, method = item.methodName, success = true });
+                    results.Add(new { target = label, method = item.methodName, success = true });
                 }
             }
             return new { success = failed == 0, added, failed, total = list.Count, results };
@@ -757,6 +876,15 @@ namespace UnitySkills
             public int intArg { get; set; }
             public string stringArg { get; set; }
             public bool boolArg { get; set; }
+            public int targetInstanceId { get; set; }
+            public string targetEntityId { get; set; }
+            public string targetPath { get; set; }
+            public string objectArgName { get; set; }
+            public int objectArgInstanceId { get; set; }
+            public string objectArgEntityId { get; set; }
+            public string objectArgPath { get; set; }
+            public string objectArgAssetPath { get; set; }
+            public string objectArgType { get; set; }
         }
 
         [UnitySkill("event_copy_listeners", "Copy listeners from one event to another, preserving each listener's argument type and value (void/int/float/string/bool/Object)", TracksWorkflow = true,

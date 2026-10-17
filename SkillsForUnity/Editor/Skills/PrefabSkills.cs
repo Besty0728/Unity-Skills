@@ -234,16 +234,20 @@ namespace UnitySkills
             return new { success = true, unpacked = go.name };
         }
 
-        [UnitySkill("prefab_get_overrides", "Get list of property overrides on a prefab instance",
+        [UnitySkill("prefab_get_overrides", "Count the overrides on a prefab instance (property overrides, added/removed components, added GameObjects); includeDetails=true also lists each one. Locate the instance by name, instanceId or path.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Query,
             Tags = new[] { "prefab", "overrides", "inspect", "diff" },
             Outputs = new[] { "prefabPath", "propertyOverrides", "addedComponents", "removedComponents", "addedGameObjects", "hasOverrides" },
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object PrefabGetOverrides(string name = null, int instanceId = 0)
+        public static object PrefabGetOverrides(string name = null, int instanceId = 0,
+            [SkillParam("Hierarchy path of the prefab instance (or any object inside it), e.g. Level/Enemy; picks one of several same-name instances.")]
+            string path = null,
+            [SkillParam("false (default): counts only. true: also returns overrides, one entry per property override, added or removed component and added GameObject: kind, gameObjectPath (relative to the instance root, empty = the root), component, componentIndex, property, value.")]
+            bool includeDetails = false)
         {
-            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId);
+            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
             if (goErr != null) return goErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
@@ -254,7 +258,7 @@ namespace UnitySkills
             var removedComponents = PrefabUtility.GetRemovedComponents(prefabRoot);
             var addedObjects = PrefabUtility.GetAddedGameObjects(prefabRoot);
 
-            var propOverrides = new System.Collections.Generic.List<object>();
+            var propOverrides = new System.Collections.Generic.List<(PropertyModification modification, UnityEngine.Object live)>();
             if (overrides != null)
             {
                 // GetPropertyModifications returns the bookkeeping entries Unity writes into every
@@ -306,7 +310,7 @@ namespace UnitySkills
                     // dropping a genuine override.
                     if (!liveBySource.TryGetValue(o.target, out var liveInstance))
                     {
-                        propOverrides.Add(new { target = o.target.name, property = o.propertyPath, value = o.value });
+                        propOverrides.Add((o, null));
                         continue;
                     }
 
@@ -315,22 +319,18 @@ namespace UnitySkills
                     if (instProp != null && srcProp != null && SerializedProperty.DataEquals(instProp, srcProp))
                         continue; // Instance value matches the source asset; a phantom bookkeeping entry, not a genuine override
 
-                    propOverrides.Add(new {
-                        target = o.target.name,
-                        property = o.propertyPath,
-                        value = o.value
-                    });
+                    propOverrides.Add((o, liveInstance));
                 }
             }
 
-            return new
+            var response = new System.Collections.Generic.Dictionary<string, object>
             {
-                success = true,
-                prefabPath = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabRoot),
-                propertyOverrides = propOverrides.Count,
-                addedComponents = addedComponents.Count,
-                removedComponents = removedComponents.Count,
-                addedGameObjects = addedObjects.Count,
+                ["success"] = true,
+                ["prefabPath"] = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabRoot),
+                ["propertyOverrides"] = propOverrides.Count,
+                ["addedComponents"] = addedComponents.Count,
+                ["removedComponents"] = removedComponents.Count,
+                ["addedGameObjects"] = addedObjects.Count,
                 // Reuse the count from the actual field-by-field comparison above rather than
                 // PrefabUtility.HasPrefabInstanceAnyOverrides — that aggregate value reads Unity's
                 // cached modification list, which can be stale for a property just changed in
@@ -338,8 +338,110 @@ namespace UnitySkills
                 // SetDirty/RecordPrefabInstancePropertyModifications to change a Transform field
                 // directly). Deriving hasOverrides from propOverrides.Count keeps these two fields
                 // in the same response self-consistent.
-                hasOverrides = propOverrides.Count > 0 || addedComponents.Count > 0 || removedComponents.Count > 0 || addedObjects.Count > 0
+                ["hasOverrides"] = propOverrides.Count > 0 || addedComponents.Count > 0 || removedComponents.Count > 0 || addedObjects.Count > 0
             };
+
+            // Built from the same filtered lists the counts above come from, so the list and the counts always agree.
+            if (includeDetails)
+                response["overrides"] = DescribeInstanceOverrides(prefabRoot, propOverrides, addedComponents, removedComponents, addedObjects);
+
+            return response;
+        }
+
+        // One entry per override: kind (property | addedComponent | removedComponent | addedGameObject), gameObjectPath
+        // relative to the instance root ("" = the root; null when a property's source object has no counterpart in this
+        // instance), component + componentIndex (the Nth of that type on the GameObject; "GameObject" for GameObject-level
+        // properties), and for properties the propertyPath and value (objectReference when the override is a reference).
+        private static System.Collections.Generic.List<object> DescribeInstanceOverrides(
+            GameObject instanceRoot,
+            System.Collections.Generic.List<(PropertyModification modification, UnityEngine.Object live)> propertyOverrides,
+            System.Collections.Generic.List<UnityEditor.SceneManagement.AddedComponent> addedComponents,
+            System.Collections.Generic.List<UnityEditor.SceneManagement.RemovedComponent> removedComponents,
+            System.Collections.Generic.List<UnityEditor.SceneManagement.AddedGameObject> addedObjects)
+        {
+            var entries = new System.Collections.Generic.List<object>();
+
+            foreach (var (modification, live) in propertyOverrides)
+            {
+                var owner = live as GameObject ?? (live as Component)?.gameObject;
+                var entry = new System.Collections.Generic.Dictionary<string, object>
+                {
+                    ["kind"] = "property",
+                    ["gameObjectPath"] = owner != null ? PathFromInstanceRoot(instanceRoot, owner) : null,
+                    ["component"] = ComponentLabel(modification.target),
+                    ["componentIndex"] = live is Component liveComponent ? ComponentIndex(liveComponent) : 0,
+                    ["property"] = modification.propertyPath,
+                    ["value"] = modification.value
+                };
+                if (modification.objectReference != null)
+                    entry["objectReference"] = DescribeReferenceTarget(modification.objectReference);
+                if (owner == null)
+                    entry["target"] = modification.target.name;
+                entries.Add(entry);
+            }
+
+            foreach (var added in addedComponents)
+            {
+                var component = added.instanceComponent;
+                if (component == null) continue;
+                entries.Add(new System.Collections.Generic.Dictionary<string, object>
+                {
+                    ["kind"] = "addedComponent",
+                    ["gameObjectPath"] = PathFromInstanceRoot(instanceRoot, component.gameObject),
+                    ["component"] = component.GetType().Name,
+                    ["componentIndex"] = ComponentIndex(component)
+                });
+            }
+
+            foreach (var removed in removedComponents)
+            {
+                if (removed.containingInstanceGameObject == null) continue;
+                entries.Add(new System.Collections.Generic.Dictionary<string, object>
+                {
+                    ["kind"] = "removedComponent",
+                    ["gameObjectPath"] = PathFromInstanceRoot(instanceRoot, removed.containingInstanceGameObject),
+                    ["component"] = removed.assetComponent != null ? removed.assetComponent.GetType().Name : null
+                });
+            }
+
+            foreach (var added in addedObjects)
+            {
+                var addedGameObject = added.instanceGameObject;
+                if (addedGameObject == null) continue;
+                entries.Add(new System.Collections.Generic.Dictionary<string, object>
+                {
+                    ["kind"] = "addedGameObject",
+                    ["gameObjectPath"] = PathFromInstanceRoot(instanceRoot, addedGameObject),
+                    ["component"] = "GameObject",
+                    ["name"] = addedGameObject.name
+                });
+            }
+
+            return entries;
+        }
+
+        private static string ComponentLabel(UnityEngine.Object target) =>
+            target is Component component ? component.GetType().Name : "GameObject";
+
+        private static int ComponentIndex(Component component) =>
+            System.Array.IndexOf(component.gameObject.GetComponents(component.GetType()), component);
+
+        // Names from the instance root (excluded) down to the object, "/"-joined; "" for the root itself.
+        private static string PathFromInstanceRoot(GameObject instanceRoot, GameObject target)
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            for (var node = target.transform; node != null && node != instanceRoot.transform; node = node.parent)
+                parts.Add(node.name);
+            parts.Reverse();
+            return string.Join("/", parts);
+        }
+
+        private static string DescribeReferenceTarget(UnityEngine.Object reference)
+        {
+            var assetPath = AssetDatabase.GetAssetPath(reference);
+            if (!string.IsNullOrEmpty(assetPath)) return assetPath;
+            var go = reference as GameObject ?? (reference as Component)?.gameObject;
+            return go != null ? GameObjectFinder.GetPath(go) : reference.name;
         }
 
         [UnitySkill("prefab_revert_overrides", "Revert all overrides on a prefab instance back to prefab values",
@@ -428,27 +530,44 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("prefab_find_instances", "Find all instances of a prefab in the current scene",
+        [UnitySkill("prefab_find_instances", "Find the instances of a prefab in the current scene: instance roots only (not their children), active ones unless includeInactive is true. totalMatched counts every match; truncated=true means limit cut the list.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Query,
             Tags = new[] { "prefab", "find", "instances", "scene" },
-            Outputs = new[] { "prefabPath", "count", "instances" },
+            Outputs = new[] { "prefabPath", "count", "totalMatched", "truncated", "instances" },
             RequiresInput = new[] { "prefabPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object PrefabFindInstances(string prefabPath, int limit = 50)
+        public static object PrefabFindInstances(string prefabPath,
+            [SkillParam("Max instances returned. count is how many came back, totalMatched every match; truncated=true means limit cut the list, so raise it to see the rest.")]
+            int limit = 50,
+            [SkillParam("false (default): only instances that are active in the hierarchy. true: inactive ones too; each entry's active tells which.")]
+            bool includeInactive = false)
         {
             if (Validate.Required(prefabPath, "prefabPath") is object err) return err;
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             if (prefab == null) return new { error = $"Prefab not found: {prefabPath}" };
 
-            var allObjects = FindHelper.FindAll<GameObject>();
-            var instances = allObjects
-                .Where(go => PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(go) == prefabPath)
-                .Take(limit)
-                .Select(go => new { name = go.name, path = GameObjectFinder.GetPath(go), entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go) })
+            // Instance roots only: a child of an instance reports the same nearest-root asset path but is no instance itself.
+            // The scene walk (not FindObjectsByType) lists inactive objects, in a stable order, and leaves out Prefab Mode contents.
+            var matches = GameObjectFinder.GetSceneObjects()
+                .Where(go => go != null &&
+                    PrefabUtility.IsAnyPrefabInstanceRoot(go) &&
+                    PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(go) == prefabPath &&
+                    (includeInactive || go.activeInHierarchy));
+            var page = GameObjectSkills.TakeWithTotal(matches, limit, out var total);
+            var instances = page
+                .Select(go => new
+                {
+                    name = go.name,
+                    path = GameObjectFinder.GetPath(go),
+                    entityId = UnityObjectIdUtility.GetEntityId(go),
+                    instanceId = UnityObjectIdUtility.GetObjectId(go),
+                    active = go.activeInHierarchy,
+                    nested = PrefabUtility.GetOutermostPrefabInstanceRoot(go) != go
+                })
                 .ToArray();
 
-            return new { success = true, prefabPath, count = instances.Length, instances };
+            return new { success = true, prefabPath, count = instances.Length, totalMatched = total, truncated = total > instances.Length, instances };
         }
 
         [UnitySkill("prefab_set_property", "Set a property on a component inside a Prefab asset file. Supports basic types (int/float/bool/string/enum), vectors, colors, and asset references via assetReferencePath",
@@ -499,16 +618,20 @@ namespace UnitySkills
             RequiredParams = new[] { "prefabPath" },
             Tags = new[] { "prefab", "asset", "query" }, Outputs = new[] { "prefabPath" },
             ReadOnly = true, Mode = SkillMode.SemiAuto)]
-        public static object PrefabListComponents(string prefabPath, string gameObjectPath = null, bool includeProperties = false) =>
-            PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeComponents(root, PrefabAssetEditor.Resolve(root, gameObjectPath), includeProperties));
+        public static object PrefabListComponents(string prefabPath, string gameObjectPath = null, bool includeProperties = false,
+            [SkillParam("With includeProperties: also lists the fields the Inspector hides, e.g. Unity's m_ObjectHideFlags / m_PrefabInstance bookkeeping (see prefab_get_serialized_properties).")]
+            bool includeHidden = false) =>
+            PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeComponents(root, PrefabAssetEditor.Resolve(root, gameObjectPath), includeProperties, includeHidden));
 
         [UnitySkill("prefab_get_serialized_properties", "Read prefab asset get serialized properties. prefabPath is the asset; gameObjectPath is root-relative when accepted.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Query,
             RequiredParams = new[] { "prefabPath", "componentType" },
             Tags = new[] { "prefab", "asset", "query" }, Outputs = new[] { "prefabPath" },
             ReadOnly = true, Mode = SkillMode.SemiAuto)]
-        public static object PrefabGetSerializedProperties(string prefabPath, string componentType, string gameObjectPath = null, int componentIndex = 0, bool includeChildren = true, int limit = 200) =>
-            PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeProperties(root, PrefabAssetEditor.Resolve(root, gameObjectPath), componentType, componentIndex, includeChildren, limit));
+        public static object PrefabGetSerializedProperties(string prefabPath, string componentType, string gameObjectPath = null, int componentIndex = 0, bool includeChildren = true, int limit = 200,
+            [SkillParam(SerializedPropertySkillUtility.IncludeHiddenNote)]
+            bool includeHidden = false) =>
+            PrefabAssetEditor.Read(prefabPath, root => PrefabAssetEditor.DescribeProperties(root, PrefabAssetEditor.Resolve(root, gameObjectPath), componentType, componentIndex, includeChildren, limit, includeHidden));
 
         [UnitySkill("prefab_add_component", "Add componentType to the node at gameObjectPath (root-relative; omitted = root) in the prefab asset at prefabPath; only that asset is saved. RequireComponent dependencies come along; a DisallowMultipleComponent duplicate is refused.",
             Category = SkillCategory.Prefab, Operation = SkillOperation.Create,

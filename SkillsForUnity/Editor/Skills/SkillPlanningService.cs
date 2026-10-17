@@ -410,6 +410,11 @@ namespace UnitySkills
             // "targetName..." locates the member being added/removed - neither is the generic name/path/instanceId shape.
             ["groupName|groupInstanceId|groupPath"] = new[] { "groupName", "groupInstanceId", "groupPath" },
             ["targetName|targetInstanceId|targetPath"] = new[] { "targetName", "targetInstanceId", "targetPath" },
+            // event_add_listener / event_set_listener: the listener's target GameObject is named by any one of these. The name
+            // parameter differs per skill, hence one key each; an entityId or path tells same-name objects apart, so none of the
+            // four can be wire-required (a literal RequiresInput entry would make it so).
+            ["targetObjectName|targetEntityId|targetInstanceId|targetPath"] = new[] { "targetObjectName", "targetEntityId", "targetInstanceId", "targetPath" },
+            ["targetName|targetEntityId|targetInstanceId|targetPath"] = new[] { "targetName", "targetEntityId", "targetInstanceId", "targetPath" },
         };
     }
 }
