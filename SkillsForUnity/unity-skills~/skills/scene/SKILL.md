@@ -147,9 +147,9 @@ Search GameObjects by name pattern, tag, or component type. For advanced search 
 | `namePattern` | string | No | - | Name substring to match (case-insensitive) |
 | `tag` | string | No | - | Filter by tag; a tag not defined in Tags & Layers is rejected |
 | `componentType` | string | No | - | Filter by component type name; an unknown type is rejected |
-| `limit` | int | No | 50 | Max results to return |
+| `limit` | int | No | 50 | Max results to return; a longer match list is cut and flagged by `truncated` |
 
-**Returns**: `{success, count, objects: [{name, path, instanceId, active, tag}]}`
+**Returns**: `{success, count, totalMatched, truncated, objects: [{name, path, instanceId, active, tag}]}`. `count` is the number of objects returned (at most `limit`); `totalMatched` is every match before the cut and `truncated` is `true` when `limit` cut the list (raise `limit` to see the rest). Router paging (`pageOffset` / `pageLimit`) pages `objects` and adds its own `totalCount` / `limit` for the page; `totalMatched` and `truncated` still describe this skill's own cut.
 
 ---
 

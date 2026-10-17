@@ -7,6 +7,7 @@ namespace UnitySkills
     {
         public string name;
         public string namePattern;
+        public bool caseSensitive;
         public string path;
         public string entityId;
         public int instanceId;
@@ -63,6 +64,8 @@ namespace UnitySkills
         public int targetCount;
         public int executableCount;
         public int skipCount;
+        public int totalMatched;
+        public bool truncated;
     }
 
     internal class BatchFailureGroup

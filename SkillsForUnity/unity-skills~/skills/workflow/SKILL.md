@@ -123,11 +123,12 @@ Query project assets with filters that are useful before batch cleanup or migrat
 | `searchFilter` | string | No | - | Extra `AssetDatabase.FindAssets` filter text |
 | `folder` | string | No | `Assets` | Search root |
 | `typeFilter` | string | No | - | Asset type filter such as `t:Material` or `Prefab` |
-| `namePattern` | string | No | - | Regex applied to file name without extension |
+| `namePattern` | string | No | - | Regex applied to file name without extension; ignores case unless `caseSensitive` |
 | `labelFilter` | string | No | - | Asset label filter such as `l:Addressable` |
 | `maxResults` | int | No | `200` | Max assets returned |
+| `caseSensitive` | bool | No | `false` | `true` makes `namePattern` match case exactly |
 
-**Returns:** `{ count, totalMatched, summary, assets }`
+**Returns:** `{ count, totalMatched, truncated, summary, assets }` (`totalMatched` counts after the `namePattern` filter; `truncated` = `maxResults` cut the list)
 
 ### `batch_retry_failed`
 Retry only the failed items from an earlier batch execution report. This now reuses the original operation context stored in the report.

@@ -17,13 +17,13 @@ namespace UnitySkills
         private static readonly Regex MultiWhitespaceRegex = new Regex(@"\s+", RegexOptions.Compiled);
         private static readonly Regex MultiUnderscoreRegex = new Regex(@"_+", RegexOptions.Compiled);
 
-        private const string QueryJsonNote = "JSON object, filters ANDed: name (substring), namePattern (regex), path/parentPath (exact), entityId, instanceId, tag, layer, componentType, sceneName, active, isStatic, prefabSource, includeInactive (false), limit (500). Unknown keys and an unresolvable tag/layer/componentType/namePattern are rejected; active:false implies includeInactive.";
+        private const string QueryJsonNote = "JSON object, filters ANDed: name (substring), namePattern (.NET regex), path/parentPath (exact), entityId, instanceId, tag, layer, componentType, sceneName, active, isStatic, prefabSource, includeInactive (false), caseSensitive (false), limit (500; a cut shows as truncated + totalMatched in the response). name and namePattern ignore case unless caseSensitive:true; (?-i) inside a pattern works too. Unknown keys and an unresolvable tag/layer/componentType/namePattern are rejected; active:false implies includeInactive.";
         private const string MaterialPathNote = "Project path of a material asset, assigned as each Renderer's sharedMaterial.";
 
         [UnitySkill("batch_query_gameobjects", "Query GameObjects with unified batch filters. queryJson supports name/path/entityId/instanceId/tag/layer/active/componentType/sceneName/parentPath/prefabSource/includeInactive/limit.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
             Tags = new[] { "batch", "query", "gameobject", "filter" },
-            Outputs = new[] { "count", "objects", "summary" },
+            Outputs = new[] { "count", "totalMatched", "truncated", "objects", "summary" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchQueryGameObjects([SkillParam(QueryJsonNote)] string queryJson = null, int sampleLimit = 20)
@@ -31,14 +31,17 @@ namespace UnitySkills
             if (!TryParseQuery(queryJson, out var query, out var notes, out var queryError))
                 return queryError;
             List<GameObject> targets;
-            try { targets = QueryTargets(query); }
+            int totalMatched;
+            try { targets = QueryTargets(query, out totalMatched); }
             catch (QueryRejectedException ex) { return ex.Payload; }
             var objects = targets.Take(Math.Max(1, sampleLimit)).Select(BuildTargetInfo).ToArray();
             var response = new Dictionary<string, object>
             {
                 ["success"] = true,
                 ["count"] = targets.Count,
-                ["summary"] = $"Matched {targets.Count} GameObjects.",
+                ["totalMatched"] = totalMatched,
+                ["truncated"] = totalMatched > targets.Count,
+                ["summary"] = MatchSummary(targets.Count, totalMatched, query.limit, "GameObjects"),
                 ["query"] = query,
                 ["objects"] = objects
             };
@@ -50,7 +53,7 @@ namespace UnitySkills
         [UnitySkill("batch_query_components", "Query components with unified batch filters. Optional componentType narrows the result.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
             Tags = new[] { "batch", "query", "component", "filter" },
-            Outputs = new[] { "count", "objects", "summary" },
+            Outputs = new[] { "count", "totalMatched", "truncated", "objects", "summary" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchQueryComponents([SkillParam(QueryJsonNote)] string queryJson = null, string componentType = null, int sampleLimit = 20)
@@ -59,7 +62,8 @@ namespace UnitySkills
                 return queryError;
 
             List<GameObject> targets;
-            try { targets = QueryTargets(query); }
+            int totalMatched;
+            try { targets = QueryTargets(query, out totalMatched); }
             catch (QueryRejectedException ex) { return ex.Payload; }
             var objects = targets.Take(Math.Max(1, sampleLimit)).Select(go => new
             {
@@ -74,7 +78,9 @@ namespace UnitySkills
             {
                 ["success"] = true,
                 ["count"] = targets.Count,
-                ["summary"] = $"Matched {targets.Count} objects with component filters.",
+                ["totalMatched"] = totalMatched,
+                ["truncated"] = totalMatched > targets.Count,
+                ["summary"] = MatchSummary(targets.Count, totalMatched, query.limit, "objects with component filters"),
                 ["query"] = query,
                 ["objects"] = objects
             };
@@ -83,10 +89,16 @@ namespace UnitySkills
             return response;
         }
 
+        // The original "Matched N <what>." sentence stays as is until queryJson.limit cut the list.
+        private static string MatchSummary(int count, int totalMatched, int limit, string what) =>
+            totalMatched > count
+                ? $"Matched {count} of {totalMatched} {what} (queryJson.limit {limit} reached; raise it to see the rest)."
+                : $"Matched {count} {what}.";
+
         [UnitySkill("batch_query_assets", "Query project assets by type, path pattern, and labels.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
             Tags = new[] { "batch", "query", "asset", "filter", "project" },
-            Outputs = new[] { "count", "assets", "summary" },
+            Outputs = new[] { "count", "totalMatched", "truncated", "assets", "summary" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchQueryAssets(
@@ -94,10 +106,12 @@ namespace UnitySkills
             string folder = "Assets",
             [SkillParam("Asset type for FindAssets, 't:' prefix optional (Material, Prefab, Texture2D...).")]
             string typeFilter = null,
-            [SkillParam("Case-insensitive regex matched against the file name without extension.")]
+            [SkillParam("Regex matched against the file name without extension; ignores case unless caseSensitive=true ((?-i) inside the pattern works too).")]
             string namePattern = null,
             string labelFilter = null,
-            int maxResults = 200)
+            int maxResults = 200,
+            [SkillParam("true makes namePattern match case exactly (default false).")]
+            bool caseSensitive = false)
         {
             var filterParts = new List<string>();
             if (!string.IsNullOrWhiteSpace(searchFilter))
@@ -117,20 +131,29 @@ namespace UnitySkills
             System.Text.RegularExpressions.Regex regex = null;
             if (!string.IsNullOrWhiteSpace(namePattern))
             {
-                try { regex = new System.Text.RegularExpressions.Regex(namePattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase); }
+                try { regex = new System.Text.RegularExpressions.Regex(namePattern, caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase); }
                 catch (Exception ex) { return new { error = $"Invalid namePattern regex: {ex.Message}" }; }
             }
 
             var assets = new List<object>();
+            // Every FindAssets hit matches without a namePattern, so that loop may stop at maxResults; with one, only a full pass counts the matches.
+            int totalMatched = regex == null ? guids.Length : 0;
             foreach (var guid in guids)
             {
-                if (assets.Count >= maxResults)
+                if (regex == null && assets.Count >= maxResults)
                     break;
 
                 var assetPath = AssetDatabase.GUIDToAssetPath(guid);
                 var fileName = System.IO.Path.GetFileNameWithoutExtension(assetPath);
 
-                if (regex != null && !regex.IsMatch(fileName))
+                if (regex != null)
+                {
+                    if (!regex.IsMatch(fileName))
+                        continue;
+                    totalMatched++;
+                }
+
+                if (assets.Count >= maxResults)
                     continue;
 
                 var assetType = AssetDatabase.GetMainAssetTypeAtPath(assetPath);
@@ -147,8 +170,9 @@ namespace UnitySkills
             {
                 success = true,
                 count = assets.Count,
-                totalMatched = guids.Length,
-                summary = $"Found {assets.Count} assets" + (guids.Length > assets.Count ? $" (showing {assets.Count} of {guids.Length})" : "") + ".",
+                totalMatched,
+                truncated = totalMatched > assets.Count,
+                summary = $"Found {assets.Count} assets" + (totalMatched > assets.Count ? $" (showing {assets.Count} of {totalMatched})" : "") + ".",
                 filter,
                 folder,
                 assets = assets.ToArray()
@@ -158,7 +182,7 @@ namespace UnitySkills
         [UnitySkill("batch_preview_rename", "Preview batch renaming. mode supports prefix/suffix/replace/regex_replace.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "preview", "rename" },
-            Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            Outputs = new[] { "confirmToken", "targetCount", "totalMatched", "truncated", "sampleChanges", "riskLevel" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchPreviewRename(
@@ -195,7 +219,7 @@ namespace UnitySkills
         [UnitySkill("batch_preview_set_property", "Preview setting a component property or field across queried targets.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "preview", "property", "component" },
-            Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            Outputs = new[] { "confirmToken", "targetCount", "totalMatched", "truncated", "sampleChanges", "riskLevel" },
             RequiresInput = new[] { "componentType", "propertyName" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
@@ -229,7 +253,7 @@ namespace UnitySkills
         [UnitySkill("batch_preview_replace_material", "Preview replacing Renderer materials across queried targets.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "preview", "material", "renderer" },
-            Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            Outputs = new[] { "confirmToken", "targetCount", "totalMatched", "truncated", "sampleChanges", "riskLevel" },
             RequiresInput = new[] { "materialPath" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
@@ -585,7 +609,7 @@ namespace UnitySkills
         [UnitySkill("batch_fix_missing_scripts", "Preview batch removal of missing scripts. Execute with batch_execute(confirmToken).",
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "missing", "scripts", "cleanup" },
-            Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            Outputs = new[] { "confirmToken", "targetCount", "totalMatched", "truncated", "sampleChanges", "riskLevel" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchFixMissingScripts([SkillParam(QueryJsonNote)] string queryJson = null, int sampleLimit = DefaultSampleLimit)
@@ -605,7 +629,7 @@ namespace UnitySkills
         [UnitySkill("batch_standardize_naming", "Preview standardizing names by trimming whitespace and normalizing separators. Execute with batch_execute(confirmToken).",
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "naming", "standardize", "rename" },
-            Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            Outputs = new[] { "confirmToken", "targetCount", "totalMatched", "truncated", "sampleChanges", "riskLevel" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchStandardizeNaming([SkillParam(QueryJsonNote)] string queryJson = null,
@@ -628,7 +652,7 @@ namespace UnitySkills
         [UnitySkill("batch_set_render_layer", "Preview setting GameObject layers in batch. Execute with batch_execute(confirmToken).",
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "layer", "rendering", "gameobject" },
-            Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            Outputs = new[] { "confirmToken", "targetCount", "totalMatched", "truncated", "sampleChanges", "riskLevel" },
             // If layer is empty, BuildSetLayerPreview throws "layer is required"; without this declaration
             // that would become execute-then-fail. queryJson still stays optional (default = all scene objects).
             RequiresInput = new[] { "layer" },
@@ -659,7 +683,7 @@ namespace UnitySkills
         [UnitySkill("batch_replace_material", "Preview replacing materials in batch. Execute with batch_execute(confirmToken).",
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "material", "replace", "renderer" },
-            Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            Outputs = new[] { "confirmToken", "targetCount", "totalMatched", "truncated", "sampleChanges", "riskLevel" },
             // Shares the same builder as batch_preview_replace_material, so the two declarations must stay
             // in sync: without this line, an empty materialPath would run all the way to
             // BuildReplaceMaterialPreview before failing, instead of being rejected right at the entry point.
@@ -708,7 +732,7 @@ namespace UnitySkills
         [UnitySkill("batch_cleanup_temp_objects", "Preview deleting temporary helper objects by common temp-name patterns. Execute with batch_execute(confirmToken).",
             Category = SkillCategory.Validation, Operation = SkillOperation.Analyze,
             Tags = new[] { "batch", "cleanup", "temp", "delete" },
-            Outputs = new[] { "confirmToken", "targetCount", "sampleChanges", "riskLevel" },
+            Outputs = new[] { "confirmToken", "targetCount", "totalMatched", "truncated", "sampleChanges", "riskLevel" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object BatchCleanupTempObjects([SkillParam(QueryJsonNote)] string queryJson = null,
@@ -1083,7 +1107,7 @@ namespace UnitySkills
             {
                 try
                 {
-                    new Regex(query.namePattern, RegexOptions.IgnoreCase, PatternTimeout);
+                    new Regex(query.namePattern, NameRegexOptions(query), PatternTimeout);
                 }
                 catch (ArgumentException ex)
                 {
@@ -1201,7 +1225,26 @@ namespace UnitySkills
             return true;
         }
 
-        private static List<GameObject> QueryTargets(BatchTargetQuery query)
+        // At most query.limit matches, plus a count of all of them: the scan runs on past the limit so callers can report the cut.
+        private static List<GameObject> QueryTargets(BatchTargetQuery query, out int totalMatched)
+        {
+            try
+            {
+                return GameObjectSkills.TakeWithTotal(FilterTargets(query), query.limit, out totalMatched);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                throw new QueryRejectedException(RegexTimeoutError(query.namePattern, "queryJson.namePattern"));
+            }
+        }
+
+        private static StringComparison NameComparison(BatchTargetQuery query) =>
+            query.caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+        private static RegexOptions NameRegexOptions(BatchTargetQuery query) =>
+            query.caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase;
+
+        private static IEnumerable<GameObject> FilterTargets(BatchTargetQuery query)
         {
             IEnumerable<GameObject> results = GameObjectFinder.GetSceneObjects();
 
@@ -1214,13 +1257,13 @@ namespace UnitySkills
             if (!string.IsNullOrWhiteSpace(query.path))
                 results = results.Where(go => string.Equals(GameObjectFinder.GetCachedPath(go), query.path.Trim(), StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrWhiteSpace(query.name))
-                results = results.Where(go => go.name.IndexOf(query.name, StringComparison.OrdinalIgnoreCase) >= 0);
+                results = results.Where(go => go.name.IndexOf(query.name, NameComparison(query)) >= 0);
             if (!string.IsNullOrWhiteSpace(query.namePattern))
             {
                 // Validated by TryParseQuery; this empty-set fallback only guards a query restored from a stored preview.
                 System.Text.RegularExpressions.Regex regex;
-                try { regex = new System.Text.RegularExpressions.Regex(query.namePattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase, PatternTimeout); }
-                catch { return new List<GameObject>(); }
+                try { regex = new System.Text.RegularExpressions.Regex(query.namePattern, NameRegexOptions(query), PatternTimeout); }
+                catch { return Enumerable.Empty<GameObject>(); }
                 results = results.Where(go => regex.IsMatch(go.name));
             }
             if (query.isStatic.HasValue)
@@ -1268,14 +1311,7 @@ namespace UnitySkills
                 });
             }
 
-            try
-            {
-                return results.Take(query.limit).ToList();
-            }
-            catch (RegexMatchTimeoutException)
-            {
-                throw new QueryRejectedException(RegexTimeoutError(query.namePattern, "queryJson.namePattern"));
-            }
+            return results;
         }
 
         private static BatchPreviewEnvelope BuildRenamePreview(
@@ -1297,7 +1333,7 @@ namespace UnitySkills
             preview.operation["regexPattern"] = regexPattern;
             preview.operation["regexReplacement"] = regexReplacement;
 
-            foreach (var target in QueryTargets(query))
+            foreach (var target in QueryPreviewTargets(preview, query))
             {
                 string nextName;
                 try
@@ -1364,7 +1400,7 @@ namespace UnitySkills
             if (targetComponentType == null)
                 throw new ArgumentException($"Component type not found: {componentType}");
 
-            foreach (var target in QueryTargets(query))
+            foreach (var target in QueryPreviewTargets(preview, query))
             {
                 var component = target.GetComponent(targetComponentType);
                 if (component == null)
@@ -1430,7 +1466,7 @@ namespace UnitySkills
             var preview = CreatePreviewEnvelope("replace_material", query, "medium");
             preview.operation["materialPath"] = materialPath;
 
-            foreach (var target in QueryTargets(query))
+            foreach (var target in QueryPreviewTargets(preview, query))
             {
                 var renderer = target.GetComponent<Renderer>();
                 if (renderer == null)
@@ -1468,7 +1504,7 @@ namespace UnitySkills
         private static BatchPreviewEnvelope BuildMissingScriptsPreview(BatchTargetQuery query)
         {
             var preview = CreatePreviewEnvelope("fix_missing_scripts", query, "high");
-            foreach (var target in QueryTargets(query))
+            foreach (var target in QueryPreviewTargets(preview, query))
             {
                 var missingCount = GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(target);
                 if (missingCount <= 0)
@@ -1499,7 +1535,7 @@ namespace UnitySkills
             var preview = CreatePreviewEnvelope("standardize_naming", query, "medium");
             preview.operation["separator"] = string.IsNullOrWhiteSpace(separator) ? "_" : separator;
 
-            foreach (var target in QueryTargets(query))
+            foreach (var target in QueryPreviewTargets(preview, query))
             {
                 var standardized = StandardizeName(target.name, GetOperationString(preview.operation, "separator", "_"));
                 if (string.Equals(target.name, standardized, StringComparison.Ordinal))
@@ -1540,7 +1576,7 @@ namespace UnitySkills
             preview.operation["layer"] = layer;
             preview.operation["recursive"] = recursive;
 
-            foreach (var target in QueryTargets(query))
+            foreach (var target in QueryPreviewTargets(preview, query))
             {
                 var currentLayer = LayerMask.LayerToName(target.layer);
                 if (string.Equals(currentLayer, layer, StringComparison.OrdinalIgnoreCase))
@@ -1573,7 +1609,7 @@ namespace UnitySkills
         {
             var preview = CreatePreviewEnvelope("cleanup_temp_objects", query, "high");
             var patterns = ParseTempPatterns(patternsCsv);
-            var matchedTargets = QueryTargets(query)
+            var matchedTargets = QueryPreviewTargets(preview, query)
                 .Where(target => patterns.Any(pattern => target.name.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0))
                 .ToList();
 
@@ -1600,6 +1636,9 @@ namespace UnitySkills
 
         private static object SavePreview(BatchPreviewEnvelope preview, int sampleLimit, List<string> notes = null)
         {
+            if (preview.truncated)
+                preview.summary += $" Stopped at queryJson.limit {preview.query.limit}: {preview.totalMatched} objects matched the query, {preview.totalMatched - preview.query.limit} are not in this preview and batch_execute will not touch them; raise limit to include them.";
+
             BatchPersistence.UpsertPreview(preview);
 
             var samples = preview.items.Where(item => item.willChange).Take(Math.Max(1, sampleLimit)).Select(item => new
@@ -1632,6 +1671,8 @@ namespace UnitySkills
                 targetCount = preview.targetCount,
                 executableCount = preview.executableCount,
                 skipCount = preview.skipCount,
+                totalMatched = preview.totalMatched,
+                truncated = preview.truncated,
                 sampleChanges = samples,
                 skipReasons
             };
@@ -1655,6 +1696,15 @@ namespace UnitySkills
                 annotated["surfaceExclusion"] =
                     JObject.FromObject(SkillsSurfaceProfile.CarriedWriteNotice("batch_execute", category));
             return annotated;
+        }
+
+        // The preview works on at most query.limit matches; totalMatched / truncated record what the limit left out.
+        private static List<GameObject> QueryPreviewTargets(BatchPreviewEnvelope preview, BatchTargetQuery query)
+        {
+            var targets = QueryTargets(query, out var totalMatched);
+            preview.totalMatched = totalMatched;
+            preview.truncated = totalMatched > targets.Count;
+            return targets;
         }
 
         private static BatchPreviewEnvelope CreatePreviewEnvelope(string kind, BatchTargetQuery query, string riskLevel)

@@ -56,8 +56,8 @@ POST /skills/batch
 
 ## Preview → execute
 
-1. Select with `queryJson` (filters ANDed: `name` substring, `namePattern` regex, `path` / `parentPath` exact, `entityId`, `instanceId`, `tag`, `layer`, `componentType`, `sceneName`, `active`, `isStatic`, `prefabSource`, `includeInactive` (false), `limit` (500)); `batch_query_*` shows what matches.
-2. Preview with `batch_preview_*` or a fixer (`batch_fix_missing_scripts`, `batch_standardize_naming`, `batch_set_render_layer`, `batch_replace_material`, `batch_cleanup_temp_objects`). Previews are read-only and return `{confirmToken, kind, summary, riskLevel, targetCount, executableCount, skipCount, sampleChanges: [{targetPath, action, before, after}], skipReasons}`.
+1. Select with `queryJson` (filters ANDed: `name` substring and `namePattern` .NET regex, both ignoring case unless `caseSensitive:true` (`(?-i)` also works), `path` / `parentPath` exact, `entityId`, `instanceId`, `tag`, `layer`, `componentType`, `sceneName`, `active`, `isStatic`, `prefabSource`, `includeInactive` (false), `limit` (500)); `batch_query_*` shows what matches. A `limit` cut shows as `truncated:true` with the full `totalMatched` (`count` stops at `limit`); previews return both too and then cover only `limit` of the matches.
+2. Preview with `batch_preview_*` or a fixer (`batch_fix_missing_scripts`, `batch_standardize_naming`, `batch_set_render_layer`, `batch_replace_material`, `batch_cleanup_temp_objects`). Previews are read-only and return `{confirmToken, kind, summary, riskLevel, targetCount, executableCount, skipCount, totalMatched, truncated, sampleChanges: [{targetPath, action, before, after}], skipReasons}`.
 3. Review samples and risk (execution may delete or modify many objects), then `batch_execute(confirmToken)`. The token is single-use and expires after an hour: preview again. Large runs return a `jobId`; the report (`batch_report_get`) lists failures, and `batch_retry_failed(reportId)` reruns only those.
 
 Under the `guide` surface profile previews still work but carry `surfaceExclusion`; `batch_execute` then returns `SURFACE_EXCLUDED` without consuming the token.

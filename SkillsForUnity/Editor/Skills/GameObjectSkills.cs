@@ -466,7 +466,7 @@ namespace UnitySkills
         [UnitySkill("gameobject_find", "Find GameObjects by name/regex, tag, layer, or component",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Query,
             Tags = new[] { "search", "filter", "regex", "tag", "layer" },
-            Outputs = new[] { "count", "objects" },
+            Outputs = new[] { "count", "totalMatched", "truncated", "objects" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object GameObjectFind(
@@ -476,7 +476,9 @@ namespace UnitySkills
             [SkillParam("Layer name as in Tags & Layers, not an index; an unknown name is rejected with the defined layers.")]
             string layer = null,
             [SkillParam("Component type name as in component_add; an unknown name is rejected.")]
-            string component = null, int limit = 50)
+            string component = null,
+            [SkillParam("Max objects returned. count is how many came back, totalMatched every match; truncated=true means limit cut the list, so raise it to see the rest.")]
+            int limit = 50)
         {
             // A tag that isn't registered in TagManager makes GameObject.FindGameObjectsWithTag throw
             // UnityException, so this must be rejected at the entry point rather than letting that call
@@ -566,10 +568,11 @@ namespace UnitySkills
             if (compType != null)
                 results = results.Where(go => go.GetComponent(compType) != null);
 
-            GameObject[] materialized;
+            List<GameObject> materialized;
+            int total;
             try
             {
-                materialized = results.Take(limit).ToArray();
+                materialized = TakeWithTotal(results, limit, out total);
             }
             catch (System.Text.RegularExpressions.RegexMatchTimeoutException)
             {
@@ -593,7 +596,21 @@ namespace UnitySkills
                 position = new { x = go.transform.position.x, y = go.transform.position.y, z = go.transform.position.z }
             }).ToArray();
 
-            return new { count = list.Length, objects = list };
+            return new { count = list.Length, totalMatched = total, truncated = total > list.Length, objects = list };
+        }
+
+        // Keeps the first `limit` matches and counts the rest, so a find reports its cut instead of hiding it.
+        internal static List<GameObject> TakeWithTotal(IEnumerable<GameObject> matches, int limit, out int total)
+        {
+            var page = new List<GameObject>();
+            total = 0;
+            foreach (var go in matches)
+            {
+                if (total < limit)
+                    page.Add(go);
+                total++;
+            }
+            return page;
         }
 
         [UnitySkill("gameobject_set_transform", "Set transform properties (supports name/instanceId/path). posX/Y/Z = world position, rotX/Y/Z = world euler angles, scaleX/Y/Z = localScale, localPosX/Y/Z = local position (applied after posX/Y/Z, so it wins on the same axis); omitted axes keep their current value. UI/RectTransform also takes anchoredPosX/Y, anchorMinX/Y, anchorMaxX/Y, pivotX/Y, sizeDeltaX/Y, width/height. Returns the read-back position (world), localPosition, rotation (world euler) and scale (local), plus the RectTransform values for UI.",

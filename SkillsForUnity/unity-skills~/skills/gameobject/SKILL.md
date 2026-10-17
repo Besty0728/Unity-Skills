@@ -41,7 +41,7 @@ Use `*_batch` for 2+ objects (one call instead of N).
 | - | `gameobject_set_tag_batch` |
 | `gameobject_set_sibling_index` (index clamped) | - |
 
-Query (no batch): `gameobject_find` (name substring or regex, tag, layer, component), `gameobject_get_info` (transform, parent, children, components).
+Query (no batch): `gameobject_find` (name substring or regex, tag, layer, component; at most `limit` (50) objects, `truncated:true` + `totalMatched` report a cut), `gameobject_get_info` (transform, parent, children, components).
 
 Per-skill tables, item fields and return shapes: `reference/<skill_name>.md` — rarely needed, the schema notes the parameters.
 

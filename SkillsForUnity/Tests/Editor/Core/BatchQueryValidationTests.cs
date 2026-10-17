@@ -136,7 +136,11 @@ namespace UnitySkills.Tests.Core
         {
             var json = ToJson(BatchSkills.BatchQueryGameObjects("{\"name\":\"BQ_Cube\"}"));
 
-            Assert.That(json.Properties().Select(p => p.Name), Is.EqualTo(new[] { "success", "count", "summary", "query", "objects" }));
+            // totalMatched and truncated are additive (P11); every earlier key keeps its place.
+            var keys = json.Properties().Select(p => p.Name).Where(name => name != "totalMatched" && name != "truncated");
+            Assert.That(keys, Is.EqualTo(new[] { "success", "count", "summary", "query", "objects" }));
+            Assert.That(json["totalMatched"]?.Value<int>(), Is.EqualTo(1));
+            Assert.That(json["truncated"]?.Value<bool>(), Is.False);
         }
 
         [Test]

@@ -360,13 +360,15 @@ namespace UnitySkills
         [UnitySkill("scene_find_objects", "Search GameObjects by name pattern, tag, or component type. For advanced search (regex, layer, path) use gameobject_find.",
             Category = SkillCategory.Scene, Operation = SkillOperation.Query,
             Tags = new[] { "search", "filter", "find", "objects" },
-            Outputs = new[] { "count", "objects", "instanceId", "path" },
+            Outputs = new[] { "count", "totalMatched", "truncated", "objects", "instanceId", "path" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object SceneFindObjects(
             [SkillParam("Case-insensitive substring match, not a wildcard or regex pattern (for regex use gameobject_find).")]
             string namePattern = null,
-            string tag = null, string componentType = null, int limit = 50)
+            string tag = null, string componentType = null,
+            [SkillParam("Max objects returned. count is how many came back, totalMatched every match; truncated=true means limit cut the list, so raise it to see the rest.")]
+            int limit = 50)
         {
             IEnumerable<GameObject> objects = GameObjectFinder.GetSceneObjects();
 
@@ -389,12 +391,12 @@ namespace UnitySkills
                 objects = objects.Where(go => go.GetComponent(type) != null);
             }
 
-            var results = objects.Take(limit).Select(go => new {
+            var results = GameObjectSkills.TakeWithTotal(objects, limit, out var total).Select(go => new {
                 name = go.name, path = GameObjectFinder.GetCachedPath(go), entityId = UnityObjectIdUtility.GetEntityId(go), instanceId = UnityObjectIdUtility.GetObjectId(go),
                 active = go.activeInHierarchy, tag = go.tag
             }).ToArray();
 
-            return new { success = true, count = results.Length, objects = results };
+            return new { success = true, count = results.Length, totalMatched = total, truncated = total > results.Length, objects = results };
         }
 
         // SaveScene reports failure (read-only or locked file or folder) only through its bool; ignoring it
