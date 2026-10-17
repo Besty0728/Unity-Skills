@@ -54,6 +54,10 @@ class Unreachable(RestError):
     """No answer within the retry window."""
 
 
+class StillBusy(Unreachable):
+    """wait_idle ran out of time while the editor kept compiling or importing; payload is its last /health."""
+
+
 class WriteUncertain(RestError):
     """The write may or may not have executed; read state back before deciding."""
 
@@ -247,6 +251,7 @@ class Client(object):
         """Wait until the editor reports no compile/import twice in a row."""
         deadline = time.time() + timeout_s
         quiet = 0
+        health = None
         while time.time() < deadline:
             health = self.health()
             comp = health.get("compilation") or {}
@@ -255,7 +260,7 @@ class Client(object):
             if quiet >= 2:
                 return health
             time.sleep(IDLE_SETTLE_S if settle_s is None else settle_s)
-        raise Unreachable("editor still busy after %.0fs" % timeout_s)
+        raise StillBusy("editor still busy after %.0fs" % timeout_s, payload=health)
 
 
 class ReadOnlyView(object):

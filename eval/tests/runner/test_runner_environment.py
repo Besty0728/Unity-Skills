@@ -1,11 +1,12 @@
-﻿"""environment.py: tree hash rules, gate keys (contract 9), dedicated marker (7.4), installed skill docs (2.8)."""
+﻿"""environment.py: tree hash rules, gate inputs (contract 9), dedicated marker (7.4), installed skill docs (2.8)."""
 import json
 import os
+import re
 import shutil
 import tempfile
 import unittest
 
-from .runner_support import store
+from .runner_support import REPO
 from usk_eval import environment as E
 
 
@@ -74,12 +75,17 @@ class GateTests(unittest.TestCase):
             self.assertNotEqual(changed, base, rel)
             base = changed
 
-    def test_gate_key_uses_the_unity_major(self):
-        key = E.gate_key("S01", 2, "6000.3.9f1", "3.0.0", "ab" * 32)
-        self.assertEqual(key, E.gate_key("S01", 2, "6000.0.1f1", "3.0.0", "ab" * 32))
-        self.assertNotEqual(key, E.gate_key("S01", 2, "2022.3.62f2", "3.0.0", "ab" * 32))
-        self.assertEqual(key, store.canonical_digest({"taskId": "S01", "caseVersion": 2, "unityMajor": "6000",
-                                                      "pluginVersion": "3.0.0", "gateInputsHash": "ab" * 32}))
+    def test_the_gate_key_has_one_definition(self):
+        found = []
+        for top in (os.path.join(REPO, "SkillsForUnity", "Evaluation~"), os.path.join(REPO, "eval")):
+            for folder, dirs, files in os.walk(top):
+                dirs[:] = [d for d in dirs if d not in ("runs", "__pycache__") and not d.startswith(".")]
+                for name in files:
+                    if name.endswith(".py"):
+                        with open(os.path.join(folder, name), "r", encoding="utf-8-sig") as handle:
+                            if re.search(r"^def gate_key\(", handle.read(), re.M):
+                                found.append(os.path.relpath(os.path.join(folder, name), REPO).replace(os.sep, "/"))
+        self.assertEqual(found, ["eval/selftest3.py"])
 
 
 class MarkerAndDocsTests(unittest.TestCase):

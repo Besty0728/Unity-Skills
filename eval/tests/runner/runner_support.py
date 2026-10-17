@@ -21,7 +21,7 @@ EVAL_DIR = os.path.join(REPO, "SkillsForUnity", "Evaluation~")
 if EVAL_DIR not in sys.path:
     sys.path.insert(0, EVAL_DIR)
 
-from usk_eval import attempt, cli, fixture, journal, lock, package_version, paths, rest, store  # noqa: E402
+from usk_eval import attempt, cli, fixture, journal, lock, package_version, paths, rest, session, store  # noqa: E402
 from usk_eval import pack as real_pack  # noqa: E402
 from usk_eval import private as real_private  # noqa: E402
 from usk_eval.verifylib import checks as real_checks  # noqa: E402
@@ -704,6 +704,7 @@ class Bench(object):
         self._patch(test, fixture, "RETRY_DELAY_S", 0.0)
         self._patch(test, lock, "POLL_S", 0.01)
         self._patch(test, attempt, "TELEMETRY_SETTLE_S", 0.0)
+        self._patch(test, session, "BUSY_WAIT_S", 0.3)
 
     @staticmethod
     def _patch(test, module, name, value):

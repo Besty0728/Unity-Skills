@@ -159,11 +159,12 @@ def skill_docs(project, environ):
     return out
 
 
-# ---------------------------------------------------------------- gate keys (contract 9)
+# ---------------------------------------------------------------- gate inputs (contract 9)
 
 
 def gate_inputs_hash(repo_root, task_id, extra=()):
-    """Per-task gateInputsHash over the runner (minus usage/ and report.py), the task's files and extra repo files."""
+    """Per-task gateInputsHash over the runner (minus usage/ and report.py), the task's files and extra repo files.
+    The gate key itself has one definition, eval/selftest3.py gate_key (it includes the pipeline)."""
     runner = os.path.join(repo_root, "SkillsForUnity", "Evaluation~")
     entries = []
 
@@ -184,11 +185,5 @@ def gate_inputs_hash(repo_root, task_id, extra=()):
         for path in sorted(glob.glob(os.path.join(repo_root, *rel.split("/")))):
             add(path)
     return hash_files(sorted(set(entries)))
-
-
-def gate_key(task_id, case_version, unity_version, plugin_version, inputs_hash):
-    return store.canonical_digest({"taskId": task_id, "caseVersion": case_version,
-                                   "unityMajor": str(unity_version or "").split(".", 1)[0],
-                                   "pluginVersion": plugin_version, "gateInputsHash": inputs_hash})
 
 # Producer:Betsy

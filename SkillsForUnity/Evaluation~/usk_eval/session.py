@@ -5,6 +5,7 @@ Attempt-level work (next/submit, teardown, finishing an attempt) lives in attemp
 import json
 import os
 import shutil
+import time
 
 from . import RUNNER_DIR, submodule
 from . import attempt as A
@@ -13,9 +14,10 @@ from . import fixture as F
 from . import prompts
 from . import report as R
 from . import store
+from .focus import FocusKeeper
 from .paths import EVAL_ASSET_ROOT, packages_lock, resolve_package_root
 from .problems import Outcome, ProblemError, notice, problem, store_problem
-from .rest import RestError, as_problems
+from .rest import RestError, StillBusy, as_problems
 
 TRACKS = ("ops", "dev")
 TIERS = ("basic", "standard", "challenge")
@@ -24,6 +26,7 @@ FINAL_TASK_STATES = ("done", "invalid", "cancelled")
 OPEN_TASK_STATES = ("pending", "issued")
 DEFAULT_REQUIRES = {"pipeline": "URP", "mode": "bypass", "dedicated": False, "packages": []}
 CHECK_WAIT_S = 15.0
+BUSY_WAIT_S = 90.0             # start and next N1: how long a compiling, importing or reloading editor is waited for
 DECLARED_KEYS = ("host", "hostVersion", "model", "effort")
 DECLARED_SOURCES = ("detected", "user", "batch", "unknown")
 DECLARED_HOSTS = ("claude-code", "codex", "cursor", "other")
@@ -156,6 +159,23 @@ def allowed_pipelines(requires_list):
     return allowed
 
 
+def settle(rt, client, health, wait_s):
+    """/health once the editor has finished compiling and importing (start, next N1); after wait_s the last busy
+    answer, which editor_checks then reports as EDITOR_BUSY."""
+    if wait_s <= 0 or not E.busy(health):
+        return health
+    rt.log.info("editor is compiling or importing; waiting up to %.0f s for it to settle" % wait_s)
+    started = time.time()
+    try:
+        with FocusKeeper(client, rt.registry_pid(), environ=rt.environ):
+            health = client.wait_idle(timeout_s=wait_s)
+    except StillBusy as exc:
+        rt.log.info("editor still busy after %.0f s" % wait_s)
+        return exc.payload or health
+    rt.log.info("editor settled after %.1f s" % (time.time() - started))
+    return health
+
+
 def editor_checks(rt, client, health, requires_list):
     """(problems, notices, info) for version, compile/import, Play Mode, mode, surface and pipeline."""
     problems, notices = [], []
@@ -236,8 +256,9 @@ def _options(args):
             "packDir": args.pack_dir, "privateZip": args.private_zip, "privateDir": args.private_dir}
 
 
-def run_checks(rt, opts):
-    """Every check item (contract 2.4 check); returns (data, problems, notices, extras) and never stops early."""
+def run_checks(rt, opts, busy_wait_s=0.0):
+    """Every check item (contract 2.4 check); returns (data, problems, notices, extras) and never stops early.
+    busy_wait_s (start) is how long a busy editor is waited for before EDITOR_BUSY; check reports it at once."""
     problems, notices, extras = [], [], {}
     data = {"project": None, "package": None, "instance": None, "editor": None, "settings": None, "pipeline": None,
             "scenes": None, "session": None, "residue": [], "pack": None,
@@ -283,9 +304,9 @@ def run_checks(rt, opts):
     plugin_version = None
     run_id = active_run_id(rt)
     try:
-        instance = rt.instance(wait_s=CHECK_WAIT_S)
+        instance = rt.instance(wait_s=CHECK_WAIT_S, busy_wait_s=busy_wait_s)
         client = rt.client()
-        health = client.health()
+        health = settle(rt, client, client.health(), busy_wait_s)
         plugin_version = health.get("version")
         data["instance"] = {"id": instance.instance_id, "port": instance.port, "pid": instance.pid,
                             "pluginVersion": plugin_version}
@@ -473,7 +494,7 @@ def cmd_start(rt):
                 return _start_data(rt, session, False, [])
             raise ProblemError(problem("SESSION_ACTIVE", [session["sessionId"]]))
         opts = _options(args)
-        data, problems, notices, extras = run_checks(rt, opts)
+        data, problems, notices, extras = run_checks(rt, opts, BUSY_WAIT_S)
         if problems:
             return Outcome({"created": False, "check": data, "notices": notices}, problems)
         session = _new_session(rt, args, opts, data, extras)

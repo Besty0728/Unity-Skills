@@ -158,20 +158,22 @@ class VerifyContext(_Context):
         return check
 
     def violations(self, extra=None):
-        """Scope violations, ignoring Play Mode records and the runner's own attempt-window records."""
+        """Scope violations, ignoring Play Mode records and the runner's own attempt-window records. Here and in
+        direct_writes / write_records, files the runner's refresh imported at submit are copies marked
+        importedAtSubmit; they still count."""
         records = [r for r in self.records if not r.get("isPlaying")
                    and not (r.get("agent") == RUNNER_AGENT and r.get("origin") == "attempt")]
-        return submodule("scope").scope_violations(records, self.R, self.A, self.scene,
-                                                   extra_allowed=self.allowed(extra))
+        return _mark_imports(submodule("scope").scope_violations(records, self.R, self.A, self.scene,
+                                                                 extra_allowed=self.allowed(extra)))
 
     def non_rest(self):
         return submodule("scope").non_rest(self.records, self.A, self.scene, allowed=self.allowed())
 
     def direct_writes(self):
-        return submodule("scope").direct_writes(self.records, self.A, self.scene)
+        return _mark_imports(submodule("scope").direct_writes(self.records, self.A, self.scene))
 
     def write_records(self):
-        return submodule("scope").write_records(self.records, self.scene, RUNNER_AGENT)
+        return _mark_imports(submodule("scope").write_records(self.records, self.scene, RUNNER_AGENT))
 
     def saved_scenes(self):
         return [r for r in self.records if r.get("kind") == "scene_saved"]
@@ -179,6 +181,12 @@ class VerifyContext(_Context):
     def saved_other_scenes(self):
         scene = self.scene.replace("\\", "/")
         return [r for r in self.saved_scenes() if str(r.get("path") or "").replace("\\", "/") != scene]
+
+
+def _mark_imports(records):
+    """Files the runner's own asset_refresh imported at submit (S3): written to disk outside Unity meanwhile."""
+    return [dict(r, importedAtSubmit=True) if r.get("agent") == RUNNER_AGENT and r.get("origin") == "refresh" else r
+            for r in records]
 
 
 class SolverContext(_Context):

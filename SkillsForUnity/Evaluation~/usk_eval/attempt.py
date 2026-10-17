@@ -35,6 +35,13 @@ SCENARIO_GRACE_S = 120.0
 SUBMITTED_BY = {"agent": "agent", "panel": "panel", "batch": "driver"}
 CALLS_FILE = "runner-calls.jsonl"
 MAX_USAGE_ERRORS = 20
+IMPORT_HINT = {
+    "en": "Records marked importedAtSubmit are files that were written to disk outside Unity during the attempt and "
+          "imported when the runner refreshed the assets at submit. If another tool wrote them (an IDE, a sync "
+          "client, another agent), re-run in a quiet project.",
+    "zh-CN": "标记 importedAtSubmit 的记录是作答期间在 Unity 之外写入磁盘、提交时 runner 刷新资源才导入的文件。"
+             "如果它们是其他工具（IDE、同步工具、另一个 Agent）写的，请在没有其他程序改动文件的工程里重跑。",
+}
 
 
 # ---------------------------------------------------------------- small helpers
@@ -209,9 +216,9 @@ def _issue_new(rt, session, task_id):
             lines = prompts.parse_prompt(handle.read())
     except (OSError, ValueError) as exc:
         raise ProblemError(problem("PACK_INVALID", detail="%s: %s" % (os.path.basename(prompt_path), exc)))
-    # N1: same editor checks as `check`
+    # N1: same editor checks as `check`, after waiting for a busy editor like `start`
     client = rt.client()
-    health = client.health()
+    health = S.settle(rt, client, client.health(), S.BUSY_WAIT_S)
     found, _notices, _info = S.editor_checks(rt, client, health, [meta["requires"]])
     if found:
         raise ProblemError(found)
@@ -714,8 +721,21 @@ def _score(card, hints, lang):
             entry = hints.get(row.get("id")) if isinstance(hints, dict) else None
             hint = (entry.get(lang) or entry.get("en")) if isinstance(entry, dict) else (
                 entry if isinstance(entry, str) else None)
+            if _imported_at_submit([row.get("expected"), row.get("actual"), row.get("evidence")]):
+                hint = (hint + ("" if lang == "zh-CN" else " ") if hint else "") + IMPORT_HINT[lang]
         row["hint"] = hint
     return data
+
+
+def _imported_at_submit(value, depth=0):
+    """Whether a row's details hold a record marked importedAtSubmit (task_api._mark_imports)."""
+    if depth > 8:
+        return False
+    if isinstance(value, dict):
+        return value.get("importedAtSubmit") is True or any(_imported_at_submit(v, depth + 1) for v in value.values())
+    if isinstance(value, list):
+        return any(_imported_at_submit(v, depth + 1) for v in value)
+    return False
 
 
 def _verify(rt, session, state, overrides):

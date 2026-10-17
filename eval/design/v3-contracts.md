@@ -250,7 +250,7 @@ next = ready ? start 命令 : null
 | `--pack-dir` / `--private-zip` / `--private-dir` | — | 同 check；写入 `session.pack` |
 | `--no-usage` | 读取 | 关闭宿主日志读取 |
 
-效果：执行 check 全部项；有阻断问题则不建会话。否则建 `sessions/<sid>/`，写 `session.json`、`current.json`、会话提示（状态目录与 IO 目录各一份），不调用任何写技能。
+效果：执行 check 全部项；编辑器正在编译、导入或重载（`/health.compilation`、`domainReloadPending`，或注册表为 `reloading`、`/health` 超时）时先等它空闲，最多 90 s（`wait_idle`：连续两次空闲才算），仍忙才报 `EDITOR_BUSY`（`check` 不等，立即报）；有阻断问题则不建会话。否则建 `sessions/<sid>/`，写 `session.json`、`current.json`、会话提示（状态目录与 IO 目录各一份），不调用任何写技能。
 
 ```ts
 data = { sessionId, created: bool, mode, lang, n: int, selection: { track, tier, tasks },
@@ -437,7 +437,7 @@ pid_alive(pid):
 
 **`next` 构建（N1–N9）**
 
-1. N1 定位实例；校验版本、模式、surface、管线、Play、编译（同 check；失败直接返回问题，不建尝试）。
+1. N1 定位实例；校验版本、模式、surface、管线、Play、编译（同 check；编辑器忙时像 start 一样先等最多 90 s；失败直接返回问题，不建尝试）。
 2. N2 `scene_get_loaded`：任一 `isDirty` → `SCENE_DIRTY`；活动场景 `path` 为空 → `SCENE_UNTITLED`（沿用 v1 `fixture.py:57-61`）。记 `resting.scenes = [{path, isActive, isLoaded}]`，取代硬编码的 `RESTING_SCENE`（`fixture.py:16`）。
 3. N3 新建 runId 与 scope；写 `state.json`（phase `building`）、`session.tasks[ID].state = "issued"`、`current.json.activeAttemptId`。
 4. N4 层碰撞快照（任务 `layer_pairs`，v1 `fixture.py:101-107`）；`asset_create_folder` 建 `Assets/__UnitySkillsEval`（不存在时）与 run 目录；`scene_create(scenePath)`（`SceneSkills.cs:19-46`：以 Single 模式新建并保存）；确认活动场景就是 run 场景；`gameobject_create(name=objectRoot)` 得 `rootInstanceId`（同 v1 `fixture.py:72-87`）。
@@ -496,7 +496,7 @@ pid_alive(pid):
 | `INSTANCE_NOT_RUNNING` | registry 无条目或 /health 不应答 | check, start, next, submit, abort, cleanup | 2 | `tab_eval_problem_instance_not_running` | Open the project in Unity and make sure the UnitySkills server is running (Window > UnitySkills). |
 | `INSTANCE_MISMATCH` | 应答的 instanceId 与工程不符（含 HTTP 409） | 同上 | 2 | `tab_eval_problem_instance_mismatch` | Another editor answers for this project; close duplicate editors and restart the UnitySkills server. |
 | `VERSION_MISMATCH` | runnerVersion ≠ pluginVersion | check, start, next, submit | 2 | `tab_eval_problem_version_mismatch` | The editor runs UnitySkills {0} but this runner is {1}; wait until Unity finishes importing the package (or restart the editor), then retry. |
-| `EDITOR_BUSY` | 正在编译或导入 | check, start, next | 2 | `tab_eval_problem_editor_busy` | Wait until Unity finishes compiling and importing, then retry. |
+| `EDITOR_BUSY` | 正在编译或导入（start、next 先等最多 90 s） | check, start, next | 2 | `tab_eval_problem_editor_busy` | Wait until Unity finishes compiling and importing, then retry. |
 | `PLAY_MODE_ACTIVE` | 处于 Play 模式 | check, start, next | 2 | `tab_eval_problem_play_mode_active` | Exit Play Mode in Unity, then retry. |
 | `MODE_NOT_BYPASS` | 模式不是任务要求的 bypass | check, start, next | 2 | `tab_eval_problem_mode_not_bypass` | Switch the UnitySkills operating mode to Bypass (Evaluation tab: Switch to Bypass; it is restored when the session ends). |
 | `SURFACE_NOT_FULL` | surfaceProfile ≠ full | check, start, next | 2 | `tab_eval_problem_surface_not_full` | Set the UnitySkills skill surface to Full in the settings drawer. |
@@ -709,7 +709,7 @@ evidence = {
 }
 ```
 
-`assertions[].hint` 在 S10 从私有模块的 `HINTS[id][lang]` 复制（只对未通过的断言），因为私有文件在验收后即删除。
+`assertions[].hint` 在 S10 从私有模块的 `HINTS[id][lang]` 复制（只对未通过的断言），因为私有文件在验收后即删除。未通过的断言若在 `expected`/`actual`/`evidence` 中带有 `importedAtSubmit: true` 的记录（§5.7），runner 在 hint 末尾追加一句说明（`attempt.IMPORT_HINT[lang]`：这些文件是作答期间在 Unity 之外写入磁盘、提交时由 runner 的刷新导入的；若是其他工具写的，在安静的工程里重跑）；没有 HINTS 时 hint 就是这句。计分不变。
 
 ### 4.7 Usage 记录（`UsageRecord`）
 
@@ -977,6 +977,7 @@ ALTERNATIVES = [("root_then_move", root_then_move)]                      # >= 1;
 - `records` 每条 = v1 `flatten` 的结果（`eval/harness/journal.py:70-104`）加上 `agent`、`isPlaying`、`tsUtc`、`origin`（seq ∈ refreshWindow 为 `"refresh"`，否则 `"attempt"`）。
 - `violations()`：`scope.scope_violations(records, R, A, scene, allowed)`；先剔除 `isPlaying` 记录，以及 agent 为 runner 且 origin 为 attempt 的记录（runner 自己的 `editor_stop` 等）；包含身份表补丁（`eval/design/scope-verifier-fix`，它依赖 §7.1 新增的身份字段）。
 - `direct_writes()`：A 下的文件记录中 `origin == "refresh"` 或 `source == "editor"` 的那些，即 Agent 绕过技能直接写盘的证据（供 ops 的 G4 断言）。
+- `violations()`、`direct_writes()`、`write_records()` 返回的记录里，agent 为 runner 且 origin 为 refresh 的（S3 的 `asset_refresh` 导入的文件）是带 `importedAtSubmit: true` 的副本；照样计入，`records` 本身不变。
 - `write_records()`：除下列之外的全部记录：run 场景的 `scene_saved`、run 场景文件（`.unity`、`.unity.meta`）的导入、`isPlaying` 记录、runner 自身记录。只读题的"零写入"断言用它（草案 3.1：只读题忽略本轮场景的 scene_saved 与场景文件导入）。
 - `saved_scenes()`：全部 `scene_saved`；`saved_other_scenes()`：path 不等于 run 场景的那些（G2）。
 
@@ -1369,7 +1370,7 @@ private static void RegisterLifecycleFlush()
   - `eval/cli.py` 与 WP12 的 selftest 驱动模块（WP12 在 `eval/cli.py` 中把清单写成常量 `GATE_INPUTS`）。
 - 插件 C# 不进 hash，靠 `pluginVersion` 进键：开发中途改插件不会自动让门禁失效，所以 `/release` 的 `check_eval_pack` 步骤必须对候选版本重跑门禁（草案 P7）。
 - 门禁记录 `eval/runs/selftest/gate.json`：`{"schema":1,"gates":{"<gateKey>":{"taskId","caseVersion","unityMajor","pluginVersion","pipeline","gateInputsHash","green":bool,"cases":int,"failing":[case],"recordedAt"}}}`。同一 (taskId, caseVersion, unityMajor, pluginVersion, pipeline) 下 `gateInputsHash` 变化时，新条目取代旧条目；其余条目保留。`gate3` 逐行打印 Unity 大版本与管线。
-- `gateKey` 的权威实现是 `eval/selftest3.py` 的 `gate_key(...)`；`usk_eval.environment.gate_key` 尚无 `pipeline` 参数，发布检查（`check_eval_pack`）要核对门禁时必须用带 `pipeline` 的那一个。
+- `gateKey` 只有一个实现：`eval/selftest3.py` 的 `gate_key(...)`（含 `pipeline`）。`usk_eval` 不提供门禁键，只提供 `environment.gate_inputs_hash`（默认布局下与 `selftest3.gate_inputs_hash` 结果相同，有测试守住）。发布检查（`check_eval_pack`）要核对门禁时用 `selftest3.gate_key`。
 
 ## 10. 基线
 

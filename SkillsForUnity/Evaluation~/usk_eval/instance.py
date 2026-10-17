@@ -72,9 +72,11 @@ def _health(port, headers, timeout):
         return json.loads(response.read().decode("utf-8"))
 
 
-def locate(project_path, environ, user_agent, wait_s=120.0, poll_s=1.0, clock=time.time, sleep=time.sleep):
-    """The verified Instance for project_path; INSTANCE_NOT_RUNNING / INSTANCE_MISMATCH / REST_UNREACHABLE."""
-    deadline = clock() + wait_s
+def locate(project_path, environ, user_agent, wait_s=120.0, poll_s=1.0, clock=time.time, sleep=time.sleep,
+           busy_wait_s=None):
+    """The verified Instance for project_path; INSTANCE_NOT_RUNNING / INSTANCE_MISMATCH / REST_UNREACHABLE.
+    A reloading editor, or one too busy to answer /health, is waited for up to busy_wait_s when that is longer."""
+    started = clock()
     product = product_name_from_disk(project_path)
     last, busy = "no answer", False
     while True:
@@ -119,9 +121,10 @@ def locate(project_path, environ, user_agent, wait_s=120.0, poll_s=1.0, clock=ti
                 last, busy = "no answer (%s)" % type(exc).__name__, True
         else:
             last, busy = "editor is %s" % status, False
-        if clock() >= deadline:
+        limit = max(wait_s, busy_wait_s or 0.0) if busy or status == "reloading" else wait_s
+        if clock() - started >= limit:
             code = "REST_UNREACHABLE" if busy else "INSTANCE_NOT_RUNNING"
-            raise ProblemError(problem(code, detail="%s within %.0fs" % (last, wait_s)))
+            raise ProblemError(problem(code, detail="%s within %.0fs" % (last, limit)))
         sleep(poll_s)
 
 # Producer:Betsy

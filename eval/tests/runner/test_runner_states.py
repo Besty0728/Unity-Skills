@@ -3,12 +3,13 @@ import json
 import os
 import shutil
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
 
-from .runner_support import Bench, real_private, rest, store
-from usk_eval import attempt, fixture
+from .runner_support import Bench, real_private, rest, store, verify_module
+from usk_eval import attempt, fixture, session
 
 
 class Crash(BaseException):
@@ -491,6 +492,109 @@ class ReloadingEditorTests(Base):
         code, env = self.submit(sid, data)
         self.assertEqual(code, 0, env)
         self.assertEqual((self.b.unity.playing, self.stops()), (False, 1))
+
+
+class BusyEditorTests(Base):
+    """start and next wait for a compiling, importing or reloading editor before EDITOR_BUSY; check reports it."""
+
+    def set_constant(self, name, value):
+        old = getattr(session, name)
+        setattr(session, name, value)
+        self.addCleanup(setattr, session, name, old)
+
+    def compile_for(self, seconds):
+        self.b.unity.compiling = True
+        timer = threading.Timer(seconds, setattr, (self.b.unity, "compiling", False))
+        timer.start()
+        self.addCleanup(timer.cancel)
+
+    def test_start_and_next_wait_for_a_compile_to_finish(self):
+        self.set_constant("BUSY_WAIT_S", 30.0)
+        self.compile_for(0.5)
+        started = time.time()
+        sid = self.start("--tasks", "S99")
+        self.assertGreaterEqual(time.time() - started, 0.5)
+        self.compile_for(0.5)
+        started = time.time()
+        self.assertEqual(self.issue(sid)["taskId"], "S99")
+        self.assertGreaterEqual(time.time() - started, 0.5)
+
+    def test_check_reports_a_compiling_editor_at_once(self):
+        self.set_constant("BUSY_WAIT_S", 30.0)
+        self.b.unity.compiling = True
+        started = time.time()
+        code, env = self.b.run("check", "--tasks", "S99")
+        self.assertEqual((code, self.codes(env)), (2, ["EDITOR_BUSY"]))
+        self.assertLess(time.time() - started, 10.0)
+
+    def test_an_editor_still_busy_after_the_wait_is_reported(self):
+        self.b.unity.compiling = True                              # the bench waits 0.3 s
+        code, env = self.b.run("start", "--tasks", "S99")
+        self.assertEqual((code, self.codes(env), env["data"]["created"]), (2, ["EDITOR_BUSY"], False))
+        self.assertEqual(env["problems"][0]["fix"], "Wait until Unity finishes compiling and importing, then retry.")
+        self.b.unity.compiling = False
+        sid = self.start("--tasks", "S99")
+        self.b.unity.compiling = True
+        code, env = self.b.run("next", "--session", sid)
+        self.assertEqual((code, self.codes(env)), (2, ["EDITOR_BUSY"]))
+        self.assertEqual(self.b.session(sid)["tasks"]["S99"]["attempts"], [])
+
+    def test_start_waits_for_a_reloading_editor_and_check_does_not(self):
+        self.set_constant("BUSY_WAIT_S", 30.0)
+        self.set_constant("CHECK_WAIT_S", 0.5)
+        self.b.write_registry(status="reloading")
+        code, env = self.b.run("check", "--tasks", "S99")
+        self.assertEqual((code, self.codes(env)), (2, ["INSTANCE_NOT_RUNNING"]))
+        timer = threading.Timer(2.5, self.b.write_registry)      # locate polls every second
+        timer.start()
+        self.addCleanup(timer.cancel)
+        self.start("--tasks", "S99")
+
+    def test_start_waits_while_health_is_refused_for_load(self):
+        self.set_constant("BUSY_WAIT_S", 30.0)
+        self.set_constant("CHECK_WAIT_S", 0.5)
+        self.b.unity.http_status = [503] * 100000
+        timer = threading.Timer(2.5, setattr, (self.b.unity, "http_status", []))
+        timer.start()
+        self.addCleanup(timer.cancel)
+        self.start("--tasks", "S99")
+
+
+class ImportAttributionTests(Base):
+    def test_files_the_refresh_imported_at_submit_are_marked_and_explained(self):
+        def verify(ctx, card):
+            card.check("A1", True)
+            bad = ctx.violations()
+            card.check("A2", not bad, actual={"violations": bad[:10]})
+
+        self.b.stand.verify = verify_module(verify)
+        original = self.b.unity.call
+
+        def call(name, args, agent):             # another tool's file, found by the runner's refresh at submit
+            result = original(name, args, agent)
+            if name == "asset_refresh" and agent == rest.RUNNER_AGENT:
+                self.b.unity.publish("file_changes", "rest", agent, {
+                    "imported": ["Packages/other/Tool.cs"], "deleted": [], "moved": [], "count": 1, "omitted": 0})
+            return result
+
+        self.b.unity.call = call
+        sid = self.start("--tasks", "S99")
+        data = self.issue(sid)
+        self.b.solve(data)
+        code, env = self.submit(sid, data)
+        self.assertEqual(code, 0, env)
+        result = self.b.result(sid, data["attemptId"])
+        row = result["score"]["assertions"][1]
+        self.assertEqual((row["id"], row["pass"]), ("A2", False))
+        self.assertEqual([(v["assetPath"], v.get("importedAtSubmit")) for v in row["actual"]["violations"]],
+                         [("Packages/other/Tool.cs", True)])
+        self.assertEqual(row["hint"], attempt.IMPORT_HINT["en"])
+        self.assertEqual(result["score"]["completion"], 60.0)
+        report = store.read_json(os.path.join(self.b.paths.session_dir(sid), "report.json"))
+        self.assertEqual(report["tasks"][0]["failed"], [{"id": "A2", "req": ["R2", "G1"],
+                                                        "hint": attempt.IMPORT_HINT["en"]}])
+        with open(os.path.join(self.b.paths.session_dir(sid), "report.md"), "r", encoding="utf-8") as handle:
+            self.assertIn("- A2 (R2, G1): " + attempt.IMPORT_HINT["en"], handle.read())
 
 
 class AbortTests(Base):

@@ -120,14 +120,15 @@ class Runtime(object):
         self._instance_error = None
         self._client = None
 
-    def instance(self, wait_s=None):
+    def instance(self, wait_s=None, busy_wait_s=None):
         """The verified editor, located once per command; a failed lookup is not retried within the command."""
         if self._instance is None:
             if self._instance_error is not None:
                 raise self._instance_error
             try:
                 self._instance = I.locate(self.project, self.environ, self.user_agent,
-                                          wait_s=LOCATE_WAIT_S if wait_s is None else wait_s)
+                                          wait_s=LOCATE_WAIT_S if wait_s is None else wait_s,
+                                          busy_wait_s=busy_wait_s)
             except ProblemError as exc:
                 self._instance_error = exc
                 raise

@@ -3,7 +3,8 @@ import json
 import unittest
 
 from .runner_support import Bench, real_pack
-from usk_eval import task_api
+from usk_eval import attempt, task_api
+from usk_eval.verifylib import Scorecard
 from usk_eval.fixture import Scope, address, new_run_id
 
 MODERN = "4294974300"          # 6000.4+: EntityId as a ulong, instanceId always 0
@@ -74,6 +75,49 @@ class ContextGuardTests(unittest.TestCase):
         with self.assertRaises(TypeError):
             task_api.PublicTask.requires["mode"] = "auto"
         self.assertEqual(real_pack.normalize_requires(task_api.PublicTask.requires), real_pack.DEFAULT_REQUIRES)
+
+
+class ImportedAtSubmitTests(unittest.TestCase):
+    """Files the runner's refresh imported at submit are marked in the evidence and explained in the hint."""
+
+    args = ContextGuardTests.args
+    verify_ctx = ContextGuardTests.verify_ctx
+
+    def records(self):
+        root = self.args()["scope"].asset_root
+        base = {"type": "file_changes", "source": "rest", "isPlaying": False, "kind": "imported"}
+        return [dict(base, seq=3, agent="claude-code", origin="attempt", assetPath="Assets/Elsewhere/A.mat"),
+                dict(base, seq=5, agent="UnitySkillsEval", origin="refresh", assetPath="Packages/other/Tool.cs"),
+                dict(base, seq=6, agent="UnitySkillsEval", origin="refresh", assetPath=root + "/Direct.mat")]
+
+    def test_evidence_marks_the_refresh_imports(self):
+        records = self.records()
+        ctx = self.verify_ctx(records)
+        marks = lambda found: [(r["assetPath"], r.get("importedAtSubmit")) for r in found]  # noqa: E731
+        self.assertEqual(marks(ctx.violations()), [("Assets/Elsewhere/A.mat", None), ("Packages/other/Tool.cs", True)])
+        self.assertEqual(marks(ctx.direct_writes()), [(records[2]["assetPath"], True)])
+        self.assertEqual([m[1] for m in marks(ctx.write_records())], [None, True, True])
+        self.assertIs(ctx.violations()[0], records[0])
+        self.assertFalse(any("importedAtSubmit" in r for r in ctx.records))
+
+    def card(self, actual):
+        card = Scorecard([("A1", 4.0, False, ["R1"], "material"), ("A2", 6.0, True, ["G1"], "no side effects")])
+        card.check("A1", False, actual={"slot": None})
+        card.check("A2", False, actual={"violations": actual})
+        return card.finish()
+
+    def test_the_hint_explains_a_failure_that_counts_them(self):
+        flagged = self.verify_ctx(self.records()).violations()
+        hints = {"A2": {"en": "Change only the crate.", "zh-CN": "只改箱子。"}}
+        rows = attempt._score(self.card(flagged), hints, "en")["assertions"]
+        self.assertEqual([r["hint"] for r in rows], [None, "Change only the crate. " + attempt.IMPORT_HINT["en"]])
+        rows = attempt._score(self.card(flagged), hints, "zh-CN")["assertions"]
+        self.assertEqual(rows[1]["hint"], "只改箱子。" + attempt.IMPORT_HINT["zh-CN"])
+        rows = attempt._score(self.card(flagged), {}, "en")["assertions"]
+        self.assertEqual(rows[1]["hint"], attempt.IMPORT_HINT["en"])
+        rows = attempt._score(self.card(flagged[:1]), hints, "en")["assertions"]
+        self.assertEqual(rows[1]["hint"], "Change only the crate.")
+        self.assertEqual(attempt._score(self.card(flagged), hints, "en")["score"], 0.0)
 
 
 class Unity6000_4Tests(unittest.TestCase):
