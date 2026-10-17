@@ -156,6 +156,13 @@ class InstanceTests(unittest.TestCase):
         os.remove(self.bench.registry)
         self.assertEqual(self.code(), "INSTANCE_NOT_RUNNING")
 
+    def test_an_empty_or_cut_short_health_answer_is_waited_for(self):
+        self.bench.unity.spoil["/health"] = ["cut", "empty", "garbled"]
+        self.assertEqual(self.locate(wait_s=5).port, self.bench.unity.port)
+        self.assertEqual(self.bench.unity.spoil["/health"], [])
+        self.bench.unity.spoil["/health"] = ["cut"] * 1000
+        self.assertEqual(self.code(), "REST_UNREACHABLE")
+
     def test_reloading_entry_is_waited_for(self):
         self.bench.write_registry(status="reloading")
         self.assertEqual(self.code(), "INSTANCE_NOT_RUNNING")

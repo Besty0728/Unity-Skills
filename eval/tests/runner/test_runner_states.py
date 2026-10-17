@@ -7,7 +7,7 @@ import time
 import unittest
 from unittest import mock
 
-from .runner_support import Bench, real_private, store
+from .runner_support import Bench, real_private, rest, store
 from usk_eval import attempt, fixture
 
 
@@ -438,6 +438,59 @@ class CrashRecoveryTests(Base):
         self.assertEqual(self.b.session(sid)["status"], "completed")
         rows = [r for r in store.read_jsonl(self.b.paths.ledger) if r["kind"] == "attempt"]
         self.assertEqual([r["attemptId"] for r in rows], [data["attemptId"]])
+
+
+class ReloadingEditorTests(Base):
+    """A listener shutting down for a domain reload can answer 200 with no body (seen right after editor_play)."""
+
+    def setUp(self):
+        Base.setUp(self)
+        patcher = mock.patch.object(rest, "TRANSIENT_WAIT_S", 0.01)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def stops(self):
+        return sum(1 for _method, path, _agent in self.b.unity.requests if path == "/skill/editor_stop")
+
+    def test_an_empty_schema_answer_during_submit_is_retried(self):
+        sid = self.start("--tasks", "S99")
+        data = self.issue(sid)
+        self.b.solve(data)
+        self.b.unity.spoil["/skills/schema"] = ["empty"]
+        code, env = self.submit(sid, data)
+        self.assertEqual(code, 0, env)
+        self.assertEqual(self.b.unity.spoil["/skills/schema"], [])
+        self.assertEqual(self.b.result(sid, data["attemptId"])["status"], "pass")
+
+    def test_a_cut_short_health_answer_while_locating_the_editor_is_retried(self):
+        sid = self.start("--tasks", "S99")
+        data = self.issue(sid)
+        self.b.solve(data)
+        self.b.unity.spoil["/health"] = ["empty", "cut"]
+        code, env = self.submit(sid, data)
+        self.assertEqual(code, 0, env)
+        self.assertEqual(self.b.unity.spoil["/health"], [])
+        self.assertEqual(self.b.result(sid, data["attemptId"])["status"], "pass")
+
+    def test_an_editor_stop_that_did_not_run_is_asked_again(self):
+        sid = self.start("--tasks", "S99")
+        data = self.issue(sid)
+        self.b.solve(data)
+        self.b.unity.playing = True
+        self.b.unity.spoil["/skill/editor_stop"] = ["empty"]
+        code, env = self.submit(sid, data)
+        self.assertEqual(code, 0, env)
+        self.assertEqual((self.b.unity.playing, self.stops()), (False, 2))
+
+    def test_an_editor_stop_that_ran_is_not_repeated(self):
+        sid = self.start("--tasks", "S99")
+        data = self.issue(sid)
+        self.b.solve(data)
+        self.b.unity.playing = True
+        self.b.unity.spoil["/skill/editor_stop"] = ["cut"]
+        code, env = self.submit(sid, data)
+        self.assertEqual(code, 0, env)
+        self.assertEqual((self.b.unity.playing, self.stops()), (False, 1))
 
 
 class AbortTests(Base):

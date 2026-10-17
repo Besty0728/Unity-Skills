@@ -5,6 +5,7 @@ report the instanceId RegistryService derives from productName + the project pat
 (RegistryService.cs: InstanceId / ComputeStableHash). /health runs on the main thread, so a timeout means busy.
 """
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -113,7 +114,7 @@ def locate(project_path, environ, user_agent, wait_s=120.0, poll_s=1.0, clock=ti
                 else:
                     rest.REQUESTS.bump()
                     last, busy = "transport error %r" % getattr(exc, "reason", exc), True
-            except (socket.timeout, TimeoutError, ConnectionResetError, ValueError) as exc:
+            except (socket.timeout, TimeoutError, ConnectionResetError, ValueError, http.client.HTTPException) as exc:
                 rest.REQUESTS.bump()
                 last, busy = "no answer (%s)" % type(exc).__name__, True
         else:

@@ -2,10 +2,12 @@
 
 Retry semantics follow what the server guarantees (SkillsHttpServer.Listener/Dispatch): 503/429 are answered
 before execution and a refused connection never reached the editor, so both are retried for any request. 504
-means the job is still queued and may run later, and a reset/timeout mid-response is ambiguous: reads retry,
-writes raise WriteUncertain so the caller reads state back instead of replaying a non-idempotent change.
+means the job is still queued and may run later, and a reset/timeout mid-response is ambiguous, as is an empty or
+cut-short body (a listener shutting down for a domain reload can answer 200 with no body): reads retry, writes raise
+WriteUncertain so the caller reads state back instead of replaying a non-idempotent change.
 Every request carries X-Agent-Id, User-Agent and X-Expect-Instance (contract 7.3).
 """
+import http.client
 import json
 import socket
 import threading
@@ -19,6 +21,7 @@ SOLVER_AGENT = "SelftestSolver"
 MUTATING_FLAGS = ("mutatesScene", "mutatesAssets", "mayTriggerReload", "mayEnterPlayMode")
 TERMINAL_JOB_STATES = ("completed", "failed", "cancelled")
 IDLE_SETTLE_S = 2.0
+TRANSIENT_WAIT_S = 2.0
 
 
 def user_agent(runner_version, solver=False):
@@ -96,14 +99,12 @@ class Client(object):
                 "X-Expect-Instance": self.instance.instance_id}
 
     def _once(self, method, path, body=None, timeout=None):
+        """(status, payload) of one exchange; an empty or cut-short body raises ValueError (unreadable)."""
         data = None if body is None else json.dumps(body).encode("utf-8")
         request = urllib.request.Request(self.instance.base_url + path, data=data, method=method,
                                          headers=self._headers())
         try:
-            with urllib.request.urlopen(request, timeout=timeout or self.timeout_s) as response:
-                REQUESTS.bump()
-                raw = response.read().decode("utf-8")
-                return response.status, json.loads(raw) if raw else {}
+            response = urllib.request.urlopen(request, timeout=timeout or self.timeout_s)
         except urllib.error.URLError as exc:
             if isinstance(exc, urllib.error.HTTPError) or not refused(exc):
                 REQUESTS.bump()
@@ -111,6 +112,18 @@ class Client(object):
         except (socket.timeout, TimeoutError, ConnectionResetError):
             REQUESTS.bump()
             raise
+        except http.client.HTTPException as exc:      # a garbled status line or headers
+            REQUESTS.bump()
+            raise ValueError("garbled answer to %s %s: %s" % (method, path, type(exc).__name__)) from None
+        REQUESTS.bump()
+        with response:
+            try:
+                raw = response.read().decode("utf-8")
+            except http.client.HTTPException:        # IncompleteRead
+                raise ValueError("cut-short answer to %s %s" % (method, path)) from None
+        if not raw.strip():
+            raise ValueError("empty answer to %s %s" % (method, path))
+        return response.status, json.loads(raw)
 
     def request(self, method, path, body=None, write=False, timeout=None):
         deadline = time.time() + self.retry_window_s
@@ -134,15 +147,15 @@ class Client(object):
             except urllib.error.URLError as exc:
                 if not refused(exc) and write:
                     raise WriteUncertain("transport error for write %s %s: %r" % (method, path, exc))
-                last, wait = exc, 2.0
+                last, wait = exc, TRANSIENT_WAIT_S
             except (socket.timeout, TimeoutError, ConnectionResetError) as exc:
                 if write:
                     raise WriteUncertain("timeout/reset for write %s %s: %r" % (method, path, exc))
-                last, wait = exc, 2.0
-            except ValueError as exc:     # a truncated body during a reload
+                last, wait = exc, TRANSIENT_WAIT_S
+            except ValueError as exc:     # an empty, cut-short or garbled body during a reload
                 if write:
-                    raise WriteUncertain("unreadable answer for write %s %s" % (method, path))
-                last, wait = exc, 2.0
+                    raise WriteUncertain("unreadable answer for write %s %s: %s" % (method, path, exc))
+                last, wait = exc, TRANSIENT_WAIT_S
             if time.time() + wait > deadline:
                 raise Unreachable("%s %s unreachable within %.0fs: %r" % (method, path, self.retry_window_s, last))
             time.sleep(wait)
@@ -164,21 +177,28 @@ class Client(object):
         return self.request("GET", path + query, timeout=timeout)
 
     def schema(self, names):
+        """Schema entry per name. A reloading editor can answer without some names, so a missing one is asked for
+        once more and then reported; it is never cached as unknown."""
+        missing = self._fetch_schema(names)
+        if missing:
+            time.sleep(TRANSIENT_WAIT_S)
+            missing = self._fetch_schema(missing)
+        if missing:
+            raise RestError("/skills/schema has no entry for %s (asked twice)" % ", ".join(missing))
+        return {n: self._schema[n] for n in names}
+
+    def _fetch_schema(self, names):
+        """Fetches the names not cached yet; returns those the answer left out."""
         missing = [n for n in names if n not in self._schema]
         if missing:
             payload = self.get("/skills/schema", {"names": ",".join(missing), "wire": "v2"})
             result = payload.get("result", payload)
             for skill in result.get("skills") or []:
                 self._schema[skill["name"]] = skill
-            for name in missing:
-                self._schema.setdefault(name, None)
-        return {n: self._schema.get(n) for n in names}
+        return [n for n in missing if n not in self._schema]
 
     def is_read_only(self, skill):
-        meta = self.schema([skill])[skill]
-        if not meta:
-            return False
-        flags = meta.get("flags") or []
+        flags = self.schema([skill])[skill].get("flags") or []
         return "readOnly" in flags and not any(f in flags for f in MUTATING_FLAGS)
 
     def read(self, skill, **args):

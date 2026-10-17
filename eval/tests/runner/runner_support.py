@@ -90,6 +90,8 @@ class FakeUnity(object):
         self.jobs = {}
         self.fail_skill = {}          # skill -> SkillFailure to raise (once unless sticky)
         self.http_status = []         # statuses answered (and consumed) before routing
+        self.spoil = {}               # path -> ["empty" (200, no body) | "garbled" (no status line), both not run |
+                                      #          "cut" (run, half the body)], applied to that path's answers in turn
         self.delete_fails = False
         self.collision = {}
         self.journal_path = os.path.join(project, "Library", "UnitySkills", "editor_changes.jsonl")
@@ -148,12 +150,12 @@ class FakeUnity(object):
     # ------------------------------------------------------------------ HTTP
 
     def _send(self, req, status, body):
-        data = json.dumps(body).encode("utf-8")
+        data = b"" if body is None else json.dumps(body).encode("utf-8")
         req.send_response(status)
         req.send_header("Content-Type", "application/json")
         req.send_header("Content-Length", str(len(data)))
         req.end_headers()
-        req.wfile.write(data)
+        req.wfile.write(data[:len(data) // 2] if req.spoiled == "cut" else data)
 
     def _handle(self, req, method):
         parts = urllib.parse.urlsplit(req.path)
@@ -163,8 +165,14 @@ class FakeUnity(object):
             self.received += 1
             self.requests.append((method, parts.path, agent))
             forced = self.http_status.pop(0) if self.http_status else None
+            spoils = self.spoil.get(parts.path)
+            req.spoiled = spoils.pop(0) if spoils and not forced else None
         if forced:
             return self._send(req, forced, {"status": "error", "errorCode": "FORCED", "error": "forced %d" % forced})
+        if req.spoiled == "empty":    # a listener shutting down for a domain reload
+            return self._send(req, 200, None)
+        if req.spoiled == "garbled":
+            return req.wfile.write(b"garbled\r\n\r\n")
         expect = req.headers.get("X-Expect-Instance")
         if expect and expect != self.instance_id:
             return self._send(req, 409, {"status": "error", "errorCode": "INSTANCE_MISMATCH"})

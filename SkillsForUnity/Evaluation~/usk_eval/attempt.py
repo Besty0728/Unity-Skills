@@ -584,7 +584,12 @@ def _refresh(client):
 def _stop_play(client):
     if not client.read("editor_get_state").get("isPlaying"):
         return False
-    client.write("editor_stop")
+    try:
+        client.write("editor_stop")
+    except WriteUncertain:             # stopping is idempotent: settle, read back, ask again only if still playing
+        client.wait_idle(timeout_s=IDLE_TIMEOUT_S)
+        if client.read("editor_get_state").get("isPlaying"):
+            client.write("editor_stop")
     deadline = time.time() + 60
     while client.read("editor_get_state").get("isPlaying"):
         if time.time() > deadline:
