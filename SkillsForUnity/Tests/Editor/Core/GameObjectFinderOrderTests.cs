@@ -233,7 +233,7 @@ namespace UnitySkills.Tests.Core
             var response = Execute("gameobject_set_active", new JObject { ["entityId"] = staleId, ["name"] = "Crate", ["active"] = false });
 
             Assert.That(response["status"]?.ToString(), Is.EqualTo("error"), response.ToString(Formatting.None));
-            Assert.That(response.ToString(Formatting.None), Does.Contain("entityId " + staleId));
+            Assert.That(response["error"]?.ToString(), Does.Contain("entityId").And.Contain(staleId));
             Assert.That(survivor.activeSelf, Is.True, "A stale id must not land on the same-name object.");
         }
 
@@ -242,7 +242,7 @@ namespace UnitySkills.Tests.Core
         {
             var doomed = Create("Crate");
             var staleId = UnityObjectIdUtility.GetObjectId(doomed);
-            Assume.That(staleId, Is.Not.EqualTo(0), "This Unity version has no legacy instance ids.");
+            if (staleId == 0) Assert.Ignore("This Unity version has no legacy instance ids.");
             Object.DestroyImmediate(doomed);
             Create("Crate");
             GameObjectFinder.InvalidateCache();
@@ -260,7 +260,7 @@ namespace UnitySkills.Tests.Core
         public void InstanceId_WithoutLegacyIds_PointsToTheEntityId()
         {
             var crate = Create("Crate");
-            Assume.That(UnityObjectIdUtility.GetObjectId(crate), Is.EqualTo(0), "Only Unity 6000.4+ has no legacy instance ids.");
+            if (UnityObjectIdUtility.GetObjectId(crate) != 0) Assert.Ignore("Only Unity 6000.4+ has no legacy instance ids.");
 
             var (go, error) = GameObjectFinder.FindOrError(name: "Crate", instanceId: 12345);
 

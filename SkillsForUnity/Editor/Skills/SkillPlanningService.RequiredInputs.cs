@@ -181,6 +181,10 @@ namespace UnitySkills
                 catch { return false; }
             }
 
+            // "0" names no object, so GameObjectFinder reads it as no entityId at all.
+            if (IsEntityIdKey(key))
+                return UnityObjectIdUtility.IsGivenEntityId(token.ToString());
+
             return !string.IsNullOrWhiteSpace(token.ToString());
         }
 
@@ -191,6 +195,47 @@ namespace UnitySkills
         /// </summary>
         private static bool IsNumericLocatorKey(string key) =>
             key != null && key.EndsWith("instanceId", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>entityId and its prefixed forms (parentEntityId, targetEntityId, ...), all string ids.</summary>
+        private static bool IsEntityIdKey(string key) =>
+            key != null && key.EndsWith("entityId", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// GameObjectFinder treats a given id as the whole locator: one that names nothing is an error, never a fallback
+        /// to the path or name. So each entityId / *EntityId the skill declares is resolved here, and dryRun and plan
+        /// refuse what execution would. Only existence is checked: a skill may take any object by id (workflow_snapshot_object).
+        ///
+        /// <para>Runs after the per-skill analyzers and yields to them: when one already reported the same locator role
+        /// (the parameter itself, its prefix such as "parent", or for the plain entityId "gameObject" / "target"), a second
+        /// wording of that complaint would only blur it. The router's synthetic entityId is not a declared parameter and
+        /// reports its own lookups (SkillRouter.NormalizeSyntheticEntityIdLocator).</para>
+        /// </summary>
+        private static void ApplyEntityIdLocatorChecks(SkillRouter.SkillInfo skill, SkillRouter.ParameterValidationResult validation)
+        {
+            if (skill?.Parameters == null || validation?.Args == null)
+                return;
+
+            foreach (var parameter in skill.Parameters)
+            {
+                if (parameter.ParameterType != typeof(string) || !IsEntityIdKey(parameter.Name))
+                    continue;
+
+                var entityId = GetStringArg(validation.Args, parameter.Name);
+                if (!UnityObjectIdUtility.IsGivenEntityId(entityId) || UnityObjectIdUtility.EntityIdToObject(entityId) != null)
+                    continue;
+
+                var role = parameter.Name.Substring(0, parameter.Name.Length - "entityId".Length);
+                var reportedFields = role.Length == 0
+                    ? new[] { parameter.Name, "gameObject", "target" }
+                    : new[] { parameter.Name, role };
+                if (validation.SemanticErrors.Any(entry =>
+                        SkillResultHelper.TryGetMemberValue(entry, "field", out var field) &&
+                        reportedFields.Any(name => string.Equals(name, field?.ToString(), StringComparison.OrdinalIgnoreCase))))
+                    continue;
+
+                AddSemanticError(validation, parameter.Name, $"Object not found for entityId: {entityId.Trim()}");
+            }
+        }
 
         /// <summary>
         /// A validation-only planner, for cases where the only risk worth planning for is a setter on an enum

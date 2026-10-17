@@ -693,7 +693,12 @@ namespace UnitySkills
             return true;
         }
 
-        private static JArray FindPageArray(JToken result, out string propertyName)
+        /// <summary>
+        /// The list a summary page is cut from: the result itself when it is an array, else the first of the conventional
+        /// names. Explicit paging keys also reach a list under any other name when it is the only top-level array the skill
+        /// declares in its Outputs (prefab_find_instances' instances); automatic truncation keeps to the conventional names.
+        /// </summary>
+        private static JArray FindPageArray(JToken result, SkillInfo skill, bool explicitPaging, out string propertyName)
         {
             propertyName = null;
             if (result is JArray array)
@@ -709,7 +714,35 @@ namespace UnitySkills
                     return nested;
                 }
             }
-            return null;
+
+            if (!explicitPaging)
+                return null;
+
+            var declared = DeclaredTopLevelArrays(obj, skill);
+            if (declared.Count != 1)
+                return null;
+
+            propertyName = declared[0].Name;
+            return (JArray)declared[0].Value;
+        }
+
+        private static List<JProperty> DeclaredTopLevelArrays(JObject result, SkillInfo skill) =>
+            result.Properties()
+                .Where(property => property.Value is JArray &&
+                    skill?.Outputs != null &&
+                    skill.Outputs.Any(output => string.Equals(output, property.Name, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+        /// <summary>
+        /// Why explicit paging keys left a result whole: it declares no list, or several, so there is no one to page.
+        /// Reported in the result instead of silently returning everything.
+        /// </summary>
+        private static string DescribeUnpageableResult(JObject result, SkillInfo skill)
+        {
+            var lists = DeclaredTopLevelArrays(result, skill).Select(property => property.Name).ToList();
+            return lists.Count == 0
+                ? "Paging keys ignored: this result has no list to page."
+                : $"Paging keys ignored: this result has {lists.Count} lists ({string.Join(", ", lists)}), not one to page.";
         }
 
         /// <summary>

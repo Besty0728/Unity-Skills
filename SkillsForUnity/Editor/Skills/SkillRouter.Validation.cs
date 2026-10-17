@@ -196,7 +196,7 @@ namespace UnitySkills
             }
 
             var entityId = token.Type == JTokenType.Null ? null : token.ToString();
-            if (string.IsNullOrWhiteSpace(entityId))
+            if (!UnityObjectIdUtility.IsGivenEntityId(entityId))
                 return;
 
             var unityObject = UnityObjectIdUtility.EntityIdToObject(entityId);

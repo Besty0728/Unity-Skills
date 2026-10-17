@@ -49,48 +49,12 @@ namespace UnitySkills
                     catch { continue; }
                     if (attr != null)
                     {
-                        var name = attr.Name ?? ToSnakeCase(method.Name);
-                        var parameters = method.GetParameters();
-                        var parameterNames = parameters.Select(p => p.Name).ToArray();
-                        var allowedSet = new HashSet<string>(parameterNames, StringComparer.OrdinalIgnoreCase);
-                        allowedSet.UnionWith(_reservedBodyParameters);
-                        if (!allowedSet.Contains(EntityIdParameterName) && SupportsSyntheticEntityId(parameterNames))
-                            allowedSet.Add(EntityIdParameterName);
-                        if (skills.TryGetValue(name, out var existing))
-                            SkillsLogger.LogWarning($"[UnitySkills] Skill name conflict: '{name}' declared by both {existing.Method.DeclaringType.FullName} and {method.DeclaringType.FullName}; using the latter.");
-                        skills[name] = new SkillInfo
-                        {
-                            Name = name,
-                            Description = attr.Description ?? "",
-                            Method = method,
-                            Parameters = parameters,
-                            TracksWorkflow = attr.TracksWorkflow,
-                            SkipAutoPresnapshot = attr.SkipAutoPresnapshot,
-                            Category = attr.Category,
-                            Operation = attr.Operation,
-                            Tags = attr.Tags,
-                            Outputs = attr.Outputs,
-                            RequiresInput = attr.RequiresInput,
-                            RequiredParams = attr.RequiredParams,
-                            ReadOnly = attr.ReadOnly,
-                            MutatesScene = attr.MutatesScene,
-                            MutatesAssets = attr.MutatesAssets,
-                            MayTriggerReload = attr.MayTriggerReload,
-                            MayEnterPlayMode = attr.MayEnterPlayMode,
-                            SupportsDryRun = attr.SupportsDryRun,
-                            LongRunning = attr.LongRunning,
-                            RiskLevel = attr.RiskLevel ?? "low",
-                            RequiresPackages = attr.RequiresPackages,
-                            Mode = attr.Mode,
-                            ParameterNames = parameterNames,
-                            ParameterDescriptions = ReadParameterDescriptions(parameters),
-                            AllowedParameterSet = allowedSet,
-                            NameLower = name.ToLowerInvariant(),
-                            DescriptionLower = (attr.Description ?? "").ToLowerInvariant(),
-                            TagsLower = attr.Tags?.Select(t => t.ToLowerInvariant()).ToArray()
-                        };
+                        var info = BuildSkillInfo(method, attr);
+                        if (skills.TryGetValue(info.Name, out var existing))
+                            SkillsLogger.LogWarning($"[UnitySkills] Skill name conflict: '{info.Name}' declared by both {existing.Method.DeclaringType.FullName} and {method.DeclaringType.FullName}; using the latter.");
+                        skills[info.Name] = info;
                         if (attr.TracksWorkflow)
-                            trackedSkills.Add(name);
+                            trackedSkills.Add(info.Name);
                     }
                 }
 
@@ -118,6 +82,53 @@ namespace UnitySkills
                 _initialized = true;
                 SkillsLogger.LogVerbose($"Discovered {_skills.Count} skills"); // Start() reports the count on its own line
             }
+        }
+
+        /// <summary>
+        /// One registry entry, built exactly as <see cref="Initialize"/> builds it. Internal so tests can wrap a probe method
+        /// in a SkillInfo and validate calls against it without registering it.
+        /// </summary>
+        internal static SkillInfo BuildSkillInfo(MethodInfo method, UnitySkillAttribute attr)
+        {
+            var name = attr.Name ?? ToSnakeCase(method.Name);
+            var parameters = method.GetParameters();
+            var parameterNames = parameters.Select(p => p.Name).ToArray();
+            var allowedSet = new HashSet<string>(parameterNames, StringComparer.OrdinalIgnoreCase);
+            allowedSet.UnionWith(_reservedBodyParameters);
+            if (!allowedSet.Contains(EntityIdParameterName) && SupportsSyntheticEntityId(parameterNames))
+                allowedSet.Add(EntityIdParameterName);
+
+            return new SkillInfo
+            {
+                Name = name,
+                Description = attr.Description ?? "",
+                Method = method,
+                Parameters = parameters,
+                TracksWorkflow = attr.TracksWorkflow,
+                SkipAutoPresnapshot = attr.SkipAutoPresnapshot,
+                Category = attr.Category,
+                Operation = attr.Operation,
+                Tags = attr.Tags,
+                Outputs = attr.Outputs,
+                RequiresInput = attr.RequiresInput,
+                RequiredParams = attr.RequiredParams,
+                ReadOnly = attr.ReadOnly,
+                MutatesScene = attr.MutatesScene,
+                MutatesAssets = attr.MutatesAssets,
+                MayTriggerReload = attr.MayTriggerReload,
+                MayEnterPlayMode = attr.MayEnterPlayMode,
+                SupportsDryRun = attr.SupportsDryRun,
+                LongRunning = attr.LongRunning,
+                RiskLevel = attr.RiskLevel ?? "low",
+                RequiresPackages = attr.RequiresPackages,
+                Mode = attr.Mode,
+                ParameterNames = parameterNames,
+                ParameterDescriptions = ReadParameterDescriptions(parameters),
+                AllowedParameterSet = allowedSet,
+                NameLower = name.ToLowerInvariant(),
+                DescriptionLower = (attr.Description ?? "").ToLowerInvariant(),
+                TagsLower = attr.Tags?.Select(t => t.ToLowerInvariant()).ToArray()
+            };
         }
 
         /// <summary>

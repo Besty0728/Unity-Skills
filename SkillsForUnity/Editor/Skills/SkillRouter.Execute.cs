@@ -380,7 +380,13 @@ namespace UnitySkills
                     // "Summary Mode" logic with pagination
                     var jsonResult = JToken.FromObject(result);
 
-                    var arr = FindPageArray(jsonResult, out var arrayProperty);
+                    var arr = FindPageArray(jsonResult, skill, explicitPaging, out var arrayProperty);
+                    if (arr == null && explicitPaging && jsonResult is JObject unpageable)
+                    {
+                        // Returning everything without a word would read as the page that was asked for.
+                        unpageable["pagingIgnored"] = DescribeUnpageableResult(unpageable, skill);
+                        return SerializeSuccessResponse(unpageable, sceneDiff, workflowEndMs, resolutionNotes);
+                    }
                     // Read once: a single main-thread EditorPrefs-backed property access, reused below as both the
                     // auto-truncation trigger and the default page size, so the two can never disagree with each other.
                     int summaryPageSize = SummaryPageSize;

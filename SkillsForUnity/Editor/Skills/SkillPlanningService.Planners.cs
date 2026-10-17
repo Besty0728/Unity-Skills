@@ -200,6 +200,7 @@ namespace UnitySkills
             // and this generic check actively yields when one of them already covers the same target (see TokenAlreadyReported).
             // If placed first, an empty request body would get both verdicts at once, since nothing would yet be reported to yield to.
             ApplyRequiredInputGroups(skill, validation);
+            ApplyEntityIdLocatorChecks(skill, validation);
         }
 
         /// <summary>
