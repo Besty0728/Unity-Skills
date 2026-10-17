@@ -64,6 +64,26 @@ namespace UnitySkills
             return objectId != 0 && GetLegacyInstanceId(obj) == objectId;
         }
 
+        /// <summary>False on Unity 6000.4+, which has no legacy instance ids: every instanceId there reads 0.</summary>
+        public static bool HasLegacyInstanceIds
+        {
+            get
+            {
+#if UNITY_6000_4_OR_NEWER
+                return false;
+#else
+                return true;
+#endif
+            }
+        }
+
+        /// <summary>
+        /// Whether an entityId argument was supplied at all. Blank and "0" mean "not supplied", as instanceId 0 does:
+        /// 0 names no object on any Unity version.
+        /// </summary>
+        public static bool IsGivenEntityId(string entityId) =>
+            !string.IsNullOrWhiteSpace(entityId) && entityId.Trim() != "0";
+
         public static UnityEngine.Object EntityIdToObject(string entityId)
         {
             if (string.IsNullOrWhiteSpace(entityId))
