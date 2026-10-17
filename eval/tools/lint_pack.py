@@ -12,7 +12,8 @@ Every finding names the rule it breaks:
   5  handle and C0 key names avoid the role blacklist; a task whose prompts call it read-only keeps C0 to digests
   6  module hygiene: public task modules carry no trap or grading words (comments, docstrings, identifiers) and
      import only task_api, verifylib and the standard library; private verifiers import only verifylib and the
-     standard library and open no files or connections; solutions never import the private verifier
+     standard library, open no connections and change no file (reading is fine); solutions never import the
+     private verifier
   7  solutions: reference(), at least 5 negatives with known expected-failure sets, at least 1 alternative
   8  check_eval_pack: the manifest matches the public files and the private verifiers
 Exit 0 without errors (warnings allowed), 1 with errors, 2 when the lint cannot run.
@@ -65,6 +66,9 @@ NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
 REQ_LINE_RE = re.compile(r"^R(\d+)\. ")
 G_LINE_RE = re.compile(r"^G(\d+) ")
 CONTINUATION = "   "
+FS_WRITES = ("remove", "unlink", "rename", "renames", "replace", "makedirs", "mkdir", "rmdir", "removedirs", "rmtree",
+             "move", "copy", "copy2", "copyfile", "copytree", "symlink", "link", "chmod", "truncate")
+PATH_WRITES = ("write_text", "write_bytes", "touch", "unlink", "mkdir", "rmdir", "symlink_to", "hardlink_to")
 NETWORK_MODULES = ("socket", "ssl", "http", "urllib", "ftplib", "smtplib", "poplib", "imaplib", "telnetlib",
                    "subprocess", "shutil", "tempfile", "asyncio", "multiprocessing", "requests", "webbrowser")
 _STDLIB_FALLBACK = frozenset((
@@ -468,9 +472,26 @@ def check_private(found, tree):
         elif module.split(".")[0] in NETWORK_MODULES:
             found.error(6, "private verifier line %d imports %s (no files or connections)" % (line, module))
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("open", "exec", "eval",
-                                                                                               "__import__"):
-            found.error(6, "private verifier line %d calls %s()" % (node.lineno, node.func.id))
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id in ("exec", "eval", "__import__"):
+            found.error(6, "private verifier line %d calls %s()" % (node.lineno, func.id))
+        elif isinstance(func, ast.Name) and func.id == "open" and _writes(node):
+            found.error(6, "private verifier line %d opens a file for writing" % node.lineno)
+        elif isinstance(func, ast.Attribute) and (func.attr in PATH_WRITES or (
+                isinstance(func.value, ast.Name) and func.value.id in ("os", "shutil") and func.attr in FS_WRITES)):
+            found.error(6, "private verifier line %d calls %s() (no filesystem changes)" % (node.lineno, func.attr))
+
+
+def _writes(call):
+    """True unless open()'s mode is a literal read-only mode ("r", "rb", "rt", omitted)."""
+    mode = call.args[1] if len(call.args) > 1 else next((kw.value for kw in call.keywords if kw.arg == "mode"), None)
+    if mode is None:
+        return False
+    if not (isinstance(mode, ast.Constant) and isinstance(mode.value, str)):
+        return True
+    return any(flag in mode.value for flag in "wax+")
 
 
 def check_solutions_imports(found, tree, private_file):

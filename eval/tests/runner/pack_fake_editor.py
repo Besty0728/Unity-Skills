@@ -43,7 +43,15 @@ FULL_TYPES = {"Transform": "UnityEngine.Transform", "AudioSource": "UnityEngine.
 READ_SKILLS = frozenset((
     "gameobject_get_info", "component_list", "component_get_serialized_properties", "component_get_properties",
     "material_get_properties", "asset_get_info", "model_get_mesh_info", "batch_query_gameobjects", "gameobject_find",
-    "project_get_render_pipeline", "scene_get_info", "scene_get_loaded", "editor_get_state", "editor_get_changes"))
+    "project_get_render_pipeline", "scene_get_info", "scene_get_loaded", "editor_get_state", "editor_get_changes",
+    "debug_check_compilation", "script_get_compile_feedback", "scriptableobject_get_serialized_properties",
+    "editor_playmode_inspect"))
+BUILTIN_COMPONENTS = ENABLEABLE + ("MeshFilter", "Rigidbody", "Light", "Camera")
+CLASS_RE = re.compile(r"public\s+(?:static\s+)?class\s+(\w+)\s*(?::\s*([\w.]+))?")
+FIELD_RE = re.compile(r"((?:\[[^\]]*\]\s*)*)public\s+([\w.]+)\s+(\w+)\s*(?:=\s*([^;\n]+))?;")
+FORMERLY_RE = re.compile(r"FormerlySerializedAs(?:Attribute)?\s*\(\s*\"(\w+)\"\s*\)")
+UNTERMINATED_RE = re.compile(r"^\s*public\s+[\w.]+\s+\w+\s*=\s*[^;{}\n]+$", re.M)
+SCALARS = {"float": float, "int": int, "bool": lambda text: text.strip().lower() == "true", "string": str}
 RUNNER = "UnitySkillsEval"
 
 
@@ -114,6 +122,7 @@ class Obj(object):
         self.active = True
         self.pos, self.rot, self.scale = (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 1.0)
         self.components = [["Transform", None]]
+        self.fields = {}
         self.mesh = None
         self.materials = []
         self.tag, self.layer = "Untagged", "Default"
@@ -136,6 +145,13 @@ class FakeEditor(object):
         self.entries = []
         self.seq = 0
         self._next = 1000
+        self.classes = {}
+        self.scripts = {}
+        self.compile_errors = []
+        self.sos = {}
+        self.prefabs = {}
+        self.owners = {}
+        self.playing = False
         os.makedirs(os.path.join(project, "Assets", "Scenes"), exist_ok=True)
         self._write_file(self.scene_path, "%YAML 1.1\n")
 
@@ -201,7 +217,20 @@ class FakeEditor(object):
         self._imported(agent, created)
 
     def refresh(self, agent=RUNNER):
-        """The runner's asset_refresh: imports files under Assets/ that no skill wrote."""
+        """The runner's asset_refresh: imports files under Assets/ that no skill wrote (and recompiles scripts whose
+        file changed on disk)."""
+        changed = False
+        for path, source in list(self.scripts.items()):
+            try:
+                with open(self.disk(path), "r", encoding="utf-8-sig") as handle:
+                    now = handle.read()
+            except OSError:
+                continue
+            if now != source:
+                self.scripts[path] = now
+                changed = True
+        if changed:
+            self._compile()
         found = []
         for base, dirs, files in os.walk(self.disk("Assets")):
             dirs.sort()
@@ -256,9 +285,10 @@ class FakeEditor(object):
         eid, iid, path, name = arg("entityId"), arg("instanceId"), arg("path"), arg("name")
         found = None
         if eid not in (None, ""):
-            found = self.objects.get(str(eid))
+            found = self.objects.get(str(eid)) or self.objects.get(self.owners.get(str(eid)))
         elif iid not in (None, 0):
-            found = next((o for o in self.objects.values() if o.iid == iid and o.iid != 0), None)
+            found = next((o for o in self.objects.values() if o.iid == iid and o.iid != 0), None) or \
+                self.objects.get(self.owners.get(str(iid)))
         elif path:
             found = next((o for o in self.walk() if self.path(o) == path), None)
         elif name:
@@ -384,7 +414,7 @@ class FakeEditor(object):
         raise _fail("NOT_PLAYING", "Not in play mode")
 
     def _skill_editor_get_state(self, agent, args):
-        return {"isPlaying": False, "isPaused": False, "isCompiling": False}
+        return {"isPlaying": self.playing, "isPaused": False, "isCompiling": False}
 
     def _skill_editor_get_changes(self, agent, args):
         return {"success": True, "cursor": self.seq, "changes": []}
@@ -404,6 +434,7 @@ class FakeEditor(object):
             obj.materials = ["Default-Material"]
         self._siblings(obj).append(obj)
         self.objects[eid] = obj
+        self.owners[self.transform_id(obj)] = eid
         position = (float(item.get("x", 0)), float(item.get("y", 0)), float(item.get("z", 0)))
         rotation = q_from_euler((float(item.get("rotX", 0)), float(item.get("rotY", 0)), float(item.get("rotZ", 0))))
         obj.scale = (float(item.get("scaleX", 1)), float(item.get("scaleY", 1)), float(item.get("scaleZ", 1)))
@@ -511,7 +542,11 @@ class FakeEditor(object):
     def _skill_component_add(self, agent, args):
         obj = self.find(args)
         kind = args["componentType"]
-        obj.components.append([kind, True if kind in ENABLEABLE else None])
+        if kind not in BUILTIN_COMPONENTS and kind not in self.classes:
+            raise _fail("COMPONENT_TYPE_NOT_FOUND", "Component type not found: %s" % kind)
+        obj.components.append([kind, True if kind in ENABLEABLE or kind in self.classes else None])
+        if kind in self.classes:
+            obj.fields[kind] = {name: default for _type, name, default, _old in self.classes[kind]["fields"]}
         self._change(agent, self._identity(obj, kind="components_changed"))
         return {"success": True, "gameObject": obj.name, "component": kind}
 
@@ -546,6 +581,8 @@ class FakeEditor(object):
             return out
         if kind.lower() == "meshfilter" and obj.mesh:
             return {"m_Mesh": "1:UnityEngine.Mesh:%s" % obj.mesh}
+        if kind in obj.fields and self.component(obj, kind):
+            return {name: self.format_value(value) for name, value in obj.fields[kind].items()}
         raise _fail("COMPONENT_NOT_FOUND", "component not found: %s" % kind)
 
     def _skill_component_get_serialized_properties(self, agent, args):
@@ -567,7 +604,9 @@ class FakeEditor(object):
     def _skill_component_set_property(self, agent, args):
         obj = self.find(args)
         kind, prop = args["componentType"].lower(), args["propertyName"]
-        if kind == "transform" and prop == "localEulerAngles":
+        if args["componentType"] in obj.fields:
+            self.set_field(obj, args["componentType"], prop, args)
+        elif kind == "transform" and prop == "localEulerAngles":
             obj.rot = q_from_euler(_numbers(args["value"], 3))
         elif kind == "transform" and prop == "localPosition":
             obj.pos = _numbers(args["value"], 3)
@@ -583,6 +622,11 @@ class FakeEditor(object):
     def _skill_component_set_serialized_property(self, agent, args):
         obj = self.find(args)
         path = args["propertyPath"]
+        if args["componentType"] in obj.fields:
+            self.set_field(obj, args["componentType"], path, args)
+            self._change(agent, self._identity(obj, kind="property_changed", targetType=args["componentType"],
+                                               property=path, previousValue="", value=str(args.get("value"))))
+            return {"success": True}
         if args["componentType"].lower() != "transform" or path not in ("m_LocalPosition", "m_LocalRotation",
                                                                         "m_LocalScale"):
             raise _fail("PROPERTY_NOT_FOUND", "%s is not modelled" % path)
@@ -614,6 +658,12 @@ class FakeEditor(object):
             kind = "DefaultAsset"
         elif path in self.materials:
             kind = "Material"
+        elif path in self.sos:
+            kind = self.sos[path]["type"]
+        elif path in self.prefabs:
+            kind = "GameObject"
+        elif path.endswith(".cs"):
+            kind = "MonoScript"
         elif path.endswith(".unity"):
             kind = "SceneAsset"
         else:
@@ -721,6 +771,253 @@ class FakeEditor(object):
                                           for n, v in sorted(material["colors"].items())],
                                "floats": [{"name": n, "value": v} for n, v in sorted(material["floats"].items())]}}
 
+    # ------------------------------------------------------------ dev track: scripts, ScriptableObjects, prefabs
+
+    def transform_id(self, obj):
+        if self.entity_mode == "6000.4":
+            return str(int(obj.eid) + 1)
+        return str(obj.iid - 1)
+
+    def asset_id(self, path):
+        return str(int(self._guid(path)[:7], 16))
+
+    def format_value(self, value):
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return "True" if value else "False"
+        if isinstance(value, float):
+            return "%.9g" % value
+        if isinstance(value, tuple) and value and value[0] == "asset":
+            path = value[1]
+            kind = self.sos[path]["type"] if path in self.sos else "UnityEngine.GameObject"
+            return "%s:%s:%s" % (self.asset_id(path), kind, os.path.splitext(os.path.basename(path))[0])
+        if isinstance(value, tuple) and value and value[0] == "object":
+            obj = self.objects.get(value[1])
+            if obj is None:
+                return "null"
+            if value[2] == "Transform":
+                return "%s:UnityEngine.Transform:%s" % (self.transform_id(obj), obj.name)
+            return "%s:UnityEngine.GameObject:%s" % (obj.eid, obj.name)
+        return str(value)
+
+    def _field_type(self, cls, name):
+        return next((kind for kind, field, _default, _old in self.classes.get(cls, {}).get("fields", ())
+                     if field == name), None)
+
+    def _parse_value(self, kind, text):
+        if kind in SCALARS:
+            return SCALARS[kind](str(text).rstrip("fF")) if kind != "bool" else SCALARS[kind](str(text))
+        return text
+
+    def set_field(self, obj, cls, name, args):
+        kind = self._field_type(cls, name)
+        if kind is None:
+            raise _fail("PROPERTY_NOT_FOUND", "%s has no field %s" % (cls, name))
+        if args.get("assetPath"):
+            if args["assetPath"] not in self.sos and args["assetPath"] not in self.prefabs:
+                raise _fail("ASSET_NOT_FOUND", "Asset not found: %s" % args["assetPath"])
+            value = ("asset", args["assetPath"])
+        elif args.get("referenceInstanceId") not in (None, 0) or args.get("referencePath"):
+            target = self.find({"instanceId": args.get("referenceInstanceId"), "path": args.get("referencePath")})
+            value = ("object", target.eid, "Transform" if kind == "Transform" or
+                     args.get("objectType") == "Transform" else "GameObject")
+        else:
+            value = self._parse_value(kind, args.get("value"))
+        obj.fields[cls][name] = value
+
+    def _compile(self):
+        """Parses every script: classes with their public fields (and FormerlySerializedAs names); a source with an
+        unterminated field initializer or unbalanced braces is a compile error and keeps the previous classes."""
+        errors = [path for path, source in self.scripts.items()
+                  if source.count("{") != source.count("}") or UNTERMINATED_RE.search(source)]
+        self.compile_errors = errors
+        if errors:
+            return
+        classes = {}
+        for path, source in sorted(self.scripts.items()):
+            for match in CLASS_RE.finditer(source):
+                fields = []
+                for attrs, kind, name, default in FIELD_RE.findall(source[match.end():]):
+                    old = FORMERLY_RE.search(attrs)
+                    value = self._parse_value(kind, default.strip()) if default.strip() else (
+                        self._parse_value(kind, "0") if kind in ("float", "int") else
+                        (False if kind == "bool" else None))
+                    fields.append((kind, name, value, old.group(1) if old else None))
+                classes[match.group(1)] = {"base": match.group(2), "fields": fields, "path": path}
+        for obj in self.objects.values():
+            for cls, values in list(obj.fields.items()):
+                spec = classes.get(cls)
+                if spec is None:
+                    continue
+                obj.fields[cls] = {name: values[name] if name in values else
+                                   (values[old] if old and old in values else default)
+                                   for _kind, name, default, old in spec["fields"]}
+        self.classes = classes
+
+    def _skill_script_create(self, agent, args):
+        name = args.get("scriptName") or args.get("name")
+        path = "%s/%s.cs" % ((args.get("folder") or "Assets/Scripts").rstrip("/"), name)
+        if path in self.scripts:
+            raise _fail("ASSET_EXISTS", "Script already exists: %s" % path)
+        self._ensure_folder(path.rsplit("/", 1)[0], agent)
+        self._write_file(path, args.get("content") or "")
+        self.scripts[path] = args.get("content") or ""
+        self.publish("file_changes", agent, {"imported": [path], "deleted": [], "moved": [], "count": 1,
+                                             "omitted": 0}, source="editor")
+        self._compile()
+        return {"success": True, "status": "accepted", "path": path, "className": name, "jobId": "job-" + name}
+
+    def _skill_script_replace(self, agent, args):
+        path = args["scriptPath"]
+        if path not in self.scripts:
+            raise _fail("ASSET_NOT_FOUND", "Script not found: %s" % path)
+        if args.get("isRegex"):
+            source = re.sub(args["find"], lambda _m: args.get("replace") or "", self.scripts[path], count=1)
+        else:
+            source = self.scripts[path].replace(args["find"], args.get("replace") or "")
+        self._write_file(path, source)
+        self.scripts[path] = source
+        self.publish("file_changes", agent, {"imported": [path], "deleted": [], "moved": [], "count": 1,
+                                             "omitted": 0}, source="editor")
+        self._compile()
+        return {"success": True, "status": "accepted", "path": path, "jobId": "job-replace"}
+
+    def _skill_debug_check_compilation(self, agent, args):
+        failed = bool(self.compile_errors)
+        return {"isCompiling": False, "isUpdating": False,
+                "lastCompilation": {"succeeded": not failed, "errorCount": len(self.compile_errors), "errors": []}}
+
+    def _skill_script_get_compile_feedback(self, agent, args):
+        path = args["scriptPath"]
+        if not os.path.isfile(self.disk(path)):
+            raise _fail("ASSET_NOT_FOUND", "Script not found: %s" % path)
+        return {"scriptPath": path, "isCompiling": False, "hasErrors": path in self.compile_errors,
+                "errorCount": int(path in self.compile_errors), "errors": []}
+
+    def _write_so(self, path):
+        record = self.sos[path]
+        lines = ["%YAML 1.1", "--- !u!114 &11400000", "MonoBehaviour:",
+                 "  m_Name: %s" % os.path.splitext(os.path.basename(path))[0]]
+        for name, value in record["fields"].items():
+            if isinstance(value, tuple) and value[0] == "asset":
+                lines.append("  %s: {fileID: 100100000, guid: %s, type: 3}" % (name, self._guid(value[1])))
+            elif value is None or isinstance(value, tuple):
+                lines.append("  %s: {fileID: 0}" % name)
+            else:
+                lines.append("  %s: %s" % (name, self.format_value(value)))
+        self._write_file(path, "\n".join(lines) + "\n")
+
+    def _skill_scriptableobject_create(self, agent, args):
+        cls, path = args["typeName"], args["savePath"]
+        if cls not in self.classes:
+            raise _fail("TYPE_NOT_FOUND", "ScriptableObject type not found: %s" % cls)
+        self._ensure_folder(path.rsplit("/", 1)[0], agent)
+        self.sos[path] = {"type": cls, "fields": {name: default for _kind, name, default, _old in
+                                                    self.classes[cls]["fields"]}}
+        self._write_so(path)
+        self._imported(agent, [path])
+        return {"success": True, "path": path, "type": cls}
+
+    def _set_so(self, agent, path, name, args):
+        record = self.sos.get(path)
+        if record is None:
+            raise _fail("ASSET_NOT_FOUND", "Asset not found: %s" % path)
+        kind = self._field_type(record["type"], name)
+        if kind is None:
+            raise _fail("PROPERTY_NOT_FOUND", "%s has no field %s" % (record["type"], name))
+        if args.get("valueAssetPath"):
+            record["fields"][name] = ("asset", args["valueAssetPath"])
+        else:
+            record["fields"][name] = self._parse_value(kind, args.get("value"))
+        self._write_so(path)
+        self._change(agent, {"kind": "property_changed", "targetType": record["type"], "property": name,
+                             "previousValue": "", "value": "", "assetPath": path})
+        return {"success": True}
+
+    def _skill_scriptableobject_set(self, agent, args):
+        return self._set_so(agent, args["assetPath"], args["fieldName"], args)
+
+    def _skill_scriptableobject_set_serialized_property(self, agent, args):
+        return self._set_so(agent, args["assetPath"], args["propertyPath"], args)
+
+    def _skill_scriptableobject_get_serialized_properties(self, agent, args):
+        record = self.sos.get(args["assetPath"])
+        if record is None:
+            raise _fail("ASSET_NOT_FOUND", "Asset not found: %s" % args["assetPath"])
+        return {"success": True, "properties": [{"propertyPath": name, "value": self.format_value(value)}
+                                                for name, value in record["fields"].items()]}
+
+    def _skill_prefab_create(self, agent, args):
+        obj = self.find(args)
+        path = args["savePath"]
+        self._ensure_folder(path.rsplit("/", 1)[0], agent)
+        self.prefabs[path] = {"name": obj.name, "mesh": obj.mesh}
+        self._write_file(path, "%%YAML 1.1\n--- !u!1 &1\nGameObject:\n  m_Name: %s\n" % obj.name)
+        self._imported(agent, [path])
+        return {"success": True, "prefabPath": path}
+
+    def _skill_gameobject_set_tag_batch(self, agent, args):
+        results = []
+        for item in json.loads(args["items"]):
+            obj = self.find(item)
+            obj.tag = item["tag"]
+            self._change(agent, self._identity(obj, kind="property_changed", targetType="GameObject",
+                                               property="m_TagString", previousValue="", value=obj.tag))
+            results.append({"target": obj.name, "entityId": obj.eid, "success": True, "tag": obj.tag})
+        return {"success": True, "results": results}
+
+    def _skill_editor_playmode_inspect(self, agent, args):
+        obj = self.find(args)
+        out = {"success": True, "gameObject": obj.name, "entityId": obj.eid, "instanceId": obj.iid,
+               "path": self.path(obj), "activeSelf": obj.active, "isPlaying": self.playing, "component": None}
+        cls = args.get("componentType")
+        if cls:
+            if cls in obj.fields:
+                out["component"] = {"component": cls, "fields": [
+                    {"name": name, "value": self.format_value(value)} for name, value in obj.fields[cls].items()]}
+            else:
+                out["component"] = {"error": "Component not found: %s" % cls}
+        return out
+
+    def run_scenario(self, spec, agent=RUNNER):
+        """editor_run_scenario's job result, run on this model: steps in order, the first failed step or assert ends
+        it, `passed` needs every assert to pass (the model logs no errors). Play Mode is a flag only."""
+        steps, records, passed, error, last = spec.get("steps") or [], [], True, None, None
+        self.playing = spec.get("executionMode", "play") == "play"
+        try:
+            for index, step in enumerate(steps):
+                kind = step.get("kind")
+                if kind in ("wait_frames", "wait_seconds"):
+                    records.append({"index": index, "kind": kind, "passed": True, "actual": None})
+                    continue
+                actual = last
+                if kind in ("read", "invoke", "wait_condition") or (kind == "assert" and step.get("skill")):
+                    try:
+                        actual = self.call(step["skill"], dict(step.get("args") or {}), agent)
+                    except SkillError as exc:
+                        records.append({"index": index, "kind": kind, "skill": step.get("skill"),
+                                        "actual": exc.payload, "passed": False})
+                        passed, error = False, "Step refused or failed; inspect its actual response."
+                        break
+                if kind in ("assert", "wait_condition"):
+                    selected = _select(actual, step.get("select"))
+                    ok = _matches(selected, step.get("expected"), float(step.get("tolerance") or 0))
+                    records.append({"index": index, "kind": kind, "skill": step.get("skill"),
+                                    "expected": step.get("expected"), "actual": selected, "passed": ok})
+                    if not ok:
+                        passed, error = False, "Assertion failed."
+                        break
+                else:
+                    records.append({"index": index, "kind": kind, "skill": step.get("skill"), "actual": actual,
+                                    "passed": True})
+                last = actual
+        finally:
+            self.playing = False
+        return {"status": "completed" if passed else "failed", "passed": passed, "error": error,
+                "interrupted": False, "executionUncertain": False, "steps": records, "compilation": None,
+                "logWindow": {"complete": True, "entries": []}}
+
     # ------------------------------------------------------------ queries
 
     def _skill_batch_query_gameobjects(self, agent, args):
@@ -762,6 +1059,31 @@ class FakeEditor(object):
         limit = int(args.get("limit") or 50)
         return {"count": min(len(out), limit), "totalMatched": len(out), "truncated": len(out) > limit,
                 "objects": out[:limit]}
+
+
+def _select(value, path):
+    """The subset of Newtonsoft JSONPath the scenarios use: dotted keys, [index] and [?(@.key == 'text')]."""
+    if not path:
+        return value
+    for part in re.findall(r"\[\?\(@\.(\w+)\s*==\s*'([^']*)'\)\]|\[(\d+)\]|([^.\[\]$]+)", path):
+        key, wanted, index, name = part
+        if key:
+            value = next((item for item in value or [] if isinstance(item, dict) and str(item.get(key)) == wanted),
+                         None)
+        elif index:
+            value = value[int(index)] if isinstance(value, list) and int(index) < len(value) else None
+        elif name:
+            value = value.get(name) if isinstance(value, dict) else None
+    return value
+
+
+def _matches(actual, expected, tolerance):
+    if actual is None:
+        return False
+    numbers = (int, float)
+    if isinstance(actual, numbers) and isinstance(expected, numbers) and not isinstance(actual, bool):
+        return abs(float(actual) - float(expected)) <= tolerance
+    return actual == expected
 
 
 def _fail(code, message):

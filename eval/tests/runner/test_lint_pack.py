@@ -17,17 +17,24 @@ BASIC_TASKS = ("S01", "S03", "S04", "S06", "S08", "D01")
 
 
 class LintCase(TempCase):
-    """Writable copies of the pack, the private verifiers and the solutions; edits rebuild the manifest unless told
-    not to, so only the rule under test can fail."""
+    """Writable copies of the manifest's tasks (public folders, private verifiers, solutions), so task folders still
+    being written next to the shipped pack do not leak in; edits rebuild the manifest unless told not to, so only the
+    rule under test can fail."""
 
     def setUp(self):
         TempCase.setUp(self)
         self.pack_root = self.path("pack")
         self.private_root = self.path("private")
         self.solutions_root = self.path("solutions")
-        shutil.copytree(lint.DEFAULT_PACK_ROOT, self.pack_root, ignore=IGNORE)
-        shutil.copytree(lint.DEFAULT_PRIVATE_ROOT, self.private_root, ignore=IGNORE)
-        shutil.copytree(lint.DEFAULT_SOLUTIONS_ROOT, self.solutions_root, ignore=IGNORE)
+        manifest = builder._read_previous(os.path.join(lint.DEFAULT_PACK_ROOT, "manifest.json"))
+        for root in (self.private_root, self.solutions_root, os.path.join(self.pack_root, "tasks")):
+            os.makedirs(root)
+        shutil.copy2(os.path.join(lint.DEFAULT_PACK_ROOT, "manifest.json"), self.pack_root)
+        for task_id, entry in manifest["tasks"].items():
+            shutil.copytree(os.path.join(lint.DEFAULT_PACK_ROOT, "tasks", task_id),
+                            os.path.join(self.pack_root, "tasks", task_id), ignore=IGNORE)
+            shutil.copy2(os.path.join(lint.DEFAULT_PRIVATE_ROOT, entry["private"]["file"]), self.private_root)
+            shutil.copy2(os.path.join(lint.DEFAULT_SOLUTIONS_ROOT, task_id + ".py"), self.solutions_root)
 
     def file(self, kind, task_id, name=None):
         if kind == "public":
@@ -61,15 +68,16 @@ class ShippedPackTests(LintCase):
         self.assertEqual([f.line() for f in found if f.level == "error"], [])
 
     def test_command_line_exit_codes(self):
+        roots = ["--pack-root", self.pack_root, "--private-root", self.private_root, "--solutions-root",
+                 self.solutions_root]
         out = io.StringIO()
-        self.assertEqual(lint.main([], out=out), 0, out.getvalue())
+        self.assertEqual(lint.main(roots, out=out), 0, out.getvalue())
         self.assertIn("lint_pack: OK", out.getvalue())
         out = io.StringIO()
         self.assertEqual(lint.main(["--pack-root", self.path("nowhere")], out=out), 2)
         self.edit(self.file("private", "S01"), '("A9", 0.5, False, ["R6", "G8"]', '("A9", 0.5, False, ["G8"]')
         out = io.StringIO()
-        code = lint.main(["--pack-root", self.pack_root, "--private-root", self.private_root, "--solutions-root",
-                          self.solutions_root], out=out)
+        code = lint.main(roots, out=out)
         self.assertEqual(code, 1, out.getvalue())
         self.assertIn("S01 rule 3: R6 is not covered", out.getvalue())
 
@@ -184,10 +192,22 @@ class RuleTests(LintCase):
                   "from usk_eval import private, verifylib as V")
         self.assert_only(("S06", 6))
 
-    def test_rule_6_private_opens_files(self):
+    def test_rule_6_private_writes_files(self):
         self.edit(self.file("private", "S06"), "def material_path(ctx):",
-                  "def _peek(path):\n    return open(path).read()\n\n\ndef material_path(ctx):")
+                  "def _note(path):\n    with open(path, \"w\") as handle:\n        handle.write(\"x\")\n\n\n"
+                  "def material_path(ctx):")
         self.assert_only(("S06", 6))
+
+    def test_rule_6_private_changes_the_filesystem(self):
+        self.edit(self.file("private", "S08"), "def inventory(tree):",
+                  "def _drop(path):\n    os.remove(path)\n\n\ndef inventory(tree):")
+        self.assert_only(("S08", 6))
+
+    def test_rule_6_private_may_read_files(self):
+        self.edit(self.file("private", "S06"), "def material_path(ctx):",
+                  "def _peek(path):\n    with open(path, \"rb\") as handle:\n        return handle.read()\n\n\n"
+                  "def material_path(ctx):")
+        self.assert_only()
 
     def test_rule_6_solutions_import_the_verifier(self):
         self.edit(self.file("solutions", "S08"), "import re\n", "import re\n\nimport S08  # noqa\n", rebuild=False)

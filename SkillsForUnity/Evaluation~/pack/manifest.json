@@ -21,7 +21,9 @@
   },
   "dev": {
    "basic": [],
-   "standard": [],
+   "standard": [
+    "T1"
+   ],
    "challenge": []
   }
  },
@@ -192,6 +194,31 @@
     "file": "D01.py",
     "sha256": "217f34d415b36d289eb6d4ffbce604361aa000bc3b249dcf599630d0fd77d562",
     "bytes": 6498
+   }
+  },
+  "T1": {
+   "track": "dev",
+   "tier": "standard",
+   "caseVersion": 2,
+   "minutes": 40,
+   "seeds": [
+    7607
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "b90ff2cea2cc0b8afb030cd6ced725a010b19ba860f0b14363e7085ddf55a213",
+    "prompt.zh-CN.md": "aaed0720cbd745d95d502c5c5bb8787a0f76621a423887f9b0b138ad6acd88fe",
+    "prompt.en.md": "19aa94ab05f67f2d19316370cb7d3806646aff5e1bfe067d156a97bdc141b541"
+   },
+   "private": {
+    "file": "T1.py",
+    "sha256": "18b1fb9cf918ce0020dbe1b9436d15a6db0266e726c97d3522947839b170f54d",
+    "bytes": 15904
    }
   }
  },

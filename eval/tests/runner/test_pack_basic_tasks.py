@@ -18,7 +18,8 @@ from usk_eval.task_api import BuildContext, SolverContext, VerifyContext  # noqa
 
 TASKS = ("S01", "S03", "S04", "S06", "S08", "D01")
 READ_ONLY = ("S08", "D01")
-SEEDS = {"S01": 7001, "S03": 7102, "S04": 7203, "S06": 7304, "S08": 7405, "D01": 7506}
+SEEDS = {"S01": 7001, "S03": 7102, "S04": 7203, "S06": 7304, "S08": 7405, "D01": 7506, "T1": 7607, "T2": 7708,
+         "T9": 8213}
 PACK_ROOT = os.path.join(REPO, "SkillsForUnity", "Evaluation~", "pack")
 PRIVATE_ROOT = os.path.join(REPO, "eval", "pack", "private")
 SOLUTIONS_ROOT = os.path.join(REPO, "eval", "pack", "solutions")
@@ -54,7 +55,8 @@ def keys(value, out=None):
 
 class Offline(object):
     """One attempt the way the runner runs it: run folder, scene and root (N4), build (N5), C0 (N6), then a solver,
-    the submit-time refresh (S3) and the private verify on the flattened journal (S8)."""
+    the submit-time refresh (S3), the private verify on the flattened journal (S8) and, for dev tasks, the SCENARIO
+    on the model followed by verify_runtime (S9)."""
 
     def __init__(self, test, task_id, seed=None, pipeline="BuiltIn", entity_mode="legacy", lang="en"):
         self.tmp = tempfile.mkdtemp(prefix="usk-pack-test-")
@@ -68,7 +70,9 @@ class Offline(object):
         client = self.editor.client(RUNNER_AGENT)
         fixture.enter(client, self.scope, lambda: None)
         self.env = environment.snapshot(client, 4242)
-        ctx = BuildContext(client, self.scope, self.seed, self.project, self.env, lang, "ops", "basic", self.task)
+        self.track, self.tier = self.task.track, self.task.tier
+        ctx = BuildContext(client, self.scope, self.seed, self.project, self.env, lang, self.track, self.tier,
+                           self.task)
         self.handles = self.task.build(ctx)
         attempt._check_handles(self.handles)
         json.dumps(self.handles, allow_nan=False)
@@ -82,7 +86,7 @@ class Offline(object):
 
     def solve(self, fn):
         ctx = SolverContext(self.editor.client(SOLVER_AGENT), self.scope, self.seed, self.project, self.env,
-                            self.lang, "ops", "basic", self.task, handles=self.handles, private=self.private)
+                            self.lang, self.track, self.tier, self.task, handles=self.handles, private=self.private)
         return fn(ctx)
 
     def verify(self, answer):
@@ -91,7 +95,8 @@ class Offline(object):
         window = {"from": start, "to": self.editor.seq}
         entries = [entry for entry in self.editor.entries if entry["seq"] > self.cursor0]
         ctx = VerifyContext(self.editor.client(RUNNER_AGENT), self.scope, self.seed, self.project, self.env,
-                            self.lang, "ops", "basic", self.task, handles=self.handles, c0=self.snap.get("data"),
+                            self.lang, self.track, self.tier, self.task, handles=self.handles,
+                            c0=self.snap.get("data"),
                             c0_digests=self.snap.get("digests"),
                             answer=json.loads(json.dumps(answer)) if answer is not None else None,
                             records=journal.flatten(entries, window), journal_complete=True,
@@ -100,6 +105,11 @@ class Offline(object):
                             allowed_change=getattr(self.private, "allowed_change", None))
         card = verifylib.Scorecard(self.private.ASSERTIONS)
         self.private.verify(ctx, card)
+        definition = getattr(self.private, "SCENARIO", None)
+        if self.track == "dev" and definition is not None:
+            self.scenario = self.editor.run_scenario(definition(ctx) if callable(definition) else definition)
+            ctx.scenario = self.scenario
+            self.private.verify_runtime(ctx, card)
         return card.finish()
 
     def failed(self, fn):

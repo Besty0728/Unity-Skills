@@ -5,6 +5,8 @@ editor model of pack_fake_editor, whose journal entries go to the file the runne
 direct tests do not: the shipped manifest and prompt files, the private verifier fetched from eval/pack/private, the
 answer copied by submit, result.json and the teardown back to the resting scene.
 """
+import json
+import os
 import unittest
 
 from . import runner_support as RS
@@ -23,11 +25,22 @@ class PackUnity(RS.FakeUnity):
 
     def call(self, name, args, agent):
         with self.lock:
+            if name == "editor_run_scenario":
+                return self.scenario(args)
             try:
                 return self.model.call(name, args, agent)
             except SkillError as exc:
                 payload = exc.payload or {}
                 raise RS.SkillFailure(payload.get("errorCode") or "ERROR", payload.get("error") or str(exc))
+
+    def scenario(self, args):
+        """editor_run_scenario as a finished job: runs the steps on the model, /jobs/<id> answers the result."""
+        result = self.model.run_scenario({"steps": json.loads(args["steps"]),
+                                          "executionMode": args.get("executionMode") or "play"})
+        job_id = "scenario-%d" % (len(self.jobs) + 1)
+        self.jobs[job_id] = {"jobId": job_id, "kind": "run_scenario", "status": result["status"],
+                             "error": result["error"], "resultData": result}
+        return {"success": True, "status": "accepted", "jobId": job_id, "kind": "run_scenario"}
 
 
 class RunnerFlowTests(unittest.TestCase):
@@ -42,7 +55,12 @@ class RunnerFlowTests(unittest.TestCase):
         return bench
 
     def attempt(self, bench, task_id, solver, lang="zh-CN"):
-        code, env = bench.run("start", "--lang", lang, "--tasks", task_id, "--private-dir", PRIVATE_ROOT)
+        task = modules(task_id)[0]
+        if task.requires.get("dedicated"):
+            with open(os.path.join(bench.project, "ProjectSettings", "UnitySkillsEvaluation.json"), "w") as handle:
+                json.dump({"schema": 1, "kind": "UnitySkillsEvaluationProject"}, handle)
+        code, env = bench.run("start", "--lang", lang, "--track", task.track, "--tier", task.tier, "--tasks",
+                              task_id, "--private-dir", PRIVATE_ROOT)
         self.assertEqual(code, 0, env)
         code, env = bench.run("next")
         self.assertEqual(code, 0, env)
@@ -80,6 +98,19 @@ class RunnerFlowTests(unittest.TestCase):
                 self.assertTrue(result["requirementsFailed"])
                 failed_rows = [r for r in result["score"]["assertions"] if not r["pass"]]
                 self.assertTrue(all(r["hint"] for r in failed_rows), failed_rows)
+
+    def test_dev_task_through_the_runner_scenario(self):
+        _task, _private, solutions = modules("T1")
+        bench = self.bench("URP")
+        result, state = self.attempt(bench, "T1", solutions.reference)
+        self.assertEqual(result["status"], "pass", result)
+        self.assertEqual(result["evidence"]["scenario"]["passed"], True, result["evidence"]["scenario"])
+        self.assertTrue(os.path.isfile(os.path.join(bench.paths.attempt_dir(state["sessionId"], state["attemptId"]),
+                                                    "scenario.json")))
+        negative = next(n for n in solutions.NEGATIVES if n.name == "turnspeed_unset")
+        bench = self.bench("URP")
+        result, _state = self.attempt(bench, "T1", negative.apply, lang="en")
+        self.assertEqual(self.failed(result), negative.expect_failed, result.get("score"))
 
     def test_urp_reference(self):
         for task_id in ("S01", "S06"):
