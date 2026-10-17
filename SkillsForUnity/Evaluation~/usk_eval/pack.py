@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import urllib.parse
+from collections.abc import Mapping
 
 from . import RUNNER_DIR, store, submodule
 from .problems import ProblemError, problem
@@ -81,13 +82,18 @@ def read_file(path, limit=MAX_FILE_BYTES):
 
 
 def normalize_requires(requires):
-    """A task's `requires` with the contract defaults filled in (the manifest and task.py may omit keys)."""
+    """A task's `requires` with the contract defaults filled in (the manifest and task.py may omit keys).
+
+    `requires` may be any mapping (task_api's default is a read-only one). The two sequence-valued keys, packages and
+    pipeline (a list of accepted pipelines), always come out as new lists, so a tuple in task.py compares equal to the
+    JSON array in the manifest and the result never shares a list with its argument.
+    """
     out = dict(DEFAULT_REQUIRES)
-    out["packages"] = list(DEFAULT_REQUIRES["packages"])
-    if isinstance(requires, dict):
+    if isinstance(requires, Mapping):
         out.update(requires)
-    if isinstance(out.get("packages"), (list, tuple)):
-        out["packages"] = list(out["packages"])
+    for key in ("packages", "pipeline"):
+        if isinstance(out.get(key), (list, tuple)):
+            out[key] = list(out[key])
     return out
 
 
@@ -171,15 +177,33 @@ def _tracks_errors(tracks, bad):
     return listed
 
 
+def _pipeline_errors(where, value, bad):
+    """requires.pipeline: a pipeline name, null (any pipeline) or a non-empty list of distinct names, in task order."""
+    names = "|".join(PIPELINES)
+    if value is None or (isinstance(value, str) and value in PIPELINES):
+        return
+    if not isinstance(value, list):
+        bad(where, "expected one of %s, a list of them or null, got %s" % (names, _short(value)))
+        return
+    if not value:
+        bad(where, "expected at least one of %s" % names)
+    seen = set()
+    for index, item in enumerate(value):
+        if not (isinstance(item, str) and item in PIPELINES):
+            bad("%s[%d]" % (where, index), "expected one of %s, got %s" % (names, _short(item)))
+        elif item in seen:
+            bad("%s[%d]" % (where, index), "duplicate pipeline %s" % item)
+        else:
+            seen.add(item)
+
+
 def _requires_errors(where, requires, bad):
     if requires is None:
         return
     if not isinstance(requires, dict):
         bad(where, "expected an object")
         return
-    pipeline = requires.get("pipeline", DEFAULT_REQUIRES["pipeline"])
-    if pipeline is not None and pipeline not in PIPELINES:
-        bad(where + ".pipeline", "expected one of %s or null" % "|".join(PIPELINES))
+    _pipeline_errors(where + ".pipeline", requires.get("pipeline", DEFAULT_REQUIRES["pipeline"]), bad)
     if requires.get("mode", DEFAULT_REQUIRES["mode"]) not in MODES:
         bad(where + ".mode", "expected one of %s" % "|".join(MODES))
     if type(requires.get("dedicated", False)) is not bool:
@@ -436,8 +460,11 @@ def task_mismatches(task, task_id, entry):
                                    ("minutes", task.minutes, entry.get("minutes"))):
         if actual != expected or type(actual) is not type(expected):
             out.append("%s is %s but the manifest says %s" % (name, _short(actual), _short(expected)))
-    if normalize_requires(task.requires) != normalize_requires(entry.get("requires")):
-        out.append("requires differs from the manifest")
+    actual, expected = normalize_requires(task.requires), normalize_requires(entry.get("requires"))
+    for key in sorted(set(actual) | set(expected)):
+        if actual.get(key) != expected.get(key):
+            out.append("requires.%s is %s but the manifest says %s" % (key, _short(actual.get(key)),
+                                                                        _short(expected.get(key))))
     return out
 
 

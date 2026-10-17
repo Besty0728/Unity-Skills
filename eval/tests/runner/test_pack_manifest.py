@@ -2,6 +2,7 @@
 import copy
 import json
 import unittest
+from types import MappingProxyType
 
 try:
     from .test_pack_support import BOM, GOOD, TempCase, load_json, pack, problems, read_bytes, store
@@ -49,6 +50,14 @@ DEFECTS = [
     ("seeds bool", lambda m: m["tasks"]["F01"].update(seeds=[True]), "seeds"),
     ("requires mode", lambda m: m["tasks"]["F01"]["requires"].update(mode="manual"), "requires.mode"),
     ("requires pipeline", lambda m: m["tasks"]["F01"]["requires"].update(pipeline="Standard"), "requires.pipeline"),
+    ("requires pipeline list empty", lambda m: m["tasks"]["F01"]["requires"].update(pipeline=[]), "expected at least one"),
+    ("requires pipeline duplicate", lambda m: m["tasks"]["F01"]["requires"].update(pipeline=["URP", "URP"]),
+     "requires.pipeline[1]: duplicate pipeline URP"),
+    ("requires pipeline unknown item", lambda m: m["tasks"]["F01"]["requires"].update(pipeline=["URP", "Standard"]),
+     "requires.pipeline[1]: expected one of"),
+    ("requires pipeline item not text", lambda m: m["tasks"]["F01"]["requires"].update(pipeline=["URP", 3]),
+     "requires.pipeline[1]: expected one of"),
+    ("requires pipeline wrong type", lambda m: m["tasks"]["F01"]["requires"].update(pipeline=3), "requires.pipeline:"),
     ("requires dedicated", lambda m: m["tasks"]["F01"]["requires"].update(dedicated="yes"), "requires.dedicated"),
     ("requires packages", lambda m: m["tasks"]["F01"]["requires"].update(packages=[1]), "requires.packages"),
     ("requires not an object", lambda m: m["tasks"]["F01"].update(requires=[]), "requires:"),
@@ -147,6 +156,139 @@ class ManifestValidationTests(TempCase):
         manifest["packVersion"] = "x"
         manifest["tasks"]["F01"]["minutes"] = 0
         self.assertEqual(len(pack.manifest_errors(manifest)), 3)
+
+
+class PipelineRequirementTests(TempCase):
+    """requires.pipeline: a name, null (any pipeline) or a non-empty list of distinct names in task order."""
+
+    def manifest_with(self, value):
+        manifest = good_manifest()
+        manifest["tasks"]["F01"]["requires"]["pipeline"] = value
+        return manifest
+
+    def errors(self, value):
+        return pack.manifest_errors(self.manifest_with(value), require_urls=True)
+
+    def test_valid_forms(self):
+        for value in ("URP", None, ["URP"], ["URP", "BuiltIn"], ["Custom", "HDRP", "URP", "BuiltIn"]):
+            with self.subTest(value):
+                self.assertEqual(self.errors(value), [])
+
+    def test_every_name_is_accepted_alone_and_in_a_list(self):
+        self.assertEqual(pack.PIPELINES, ("BuiltIn", "URP", "HDRP", "Custom"))
+        for name in pack.PIPELINES:
+            with self.subTest(name):
+                self.assertEqual(self.errors(name), [])
+                self.assertEqual(self.errors([name]), [])
+
+    def test_the_key_may_be_missing(self):
+        manifest = good_manifest()
+        del manifest["tasks"]["F01"]["requires"]["pipeline"]
+        self.assertEqual(pack.manifest_errors(manifest, require_urls=True), [])
+
+    def test_invalid_forms_name_their_position(self):
+        names = "BuiltIn|URP|HDRP|Custom"
+        where = "tasks.F01.requires.pipeline"
+        exact = (([], "%s: expected at least one of %s" % (where, names)),
+                 (["URP", "URP"], "%s[1]: duplicate pipeline URP" % where),
+                 (["URP", "BuiltIn", "URP"], "%s[2]: duplicate pipeline URP" % where),
+                 (["URP", "Standard"], "%s[1]: expected one of %s, got 'Standard'" % (where, names)),
+                 ([3], "%s[0]: expected one of %s, got 3" % (where, names)),
+                 ("Standard", "%s: expected one of %s, a list of them or null, got 'Standard'" % (where, names)))
+        for value, message in exact:
+            with self.subTest(value):
+                self.assertEqual(self.errors(value), [message])
+        prefixed = ((["urp"], where + "[0]: "), ([None], where + "[0]: "), ([["URP"]], where + "[0]: "),
+                    ("", where + ": "), (3, where + ": "), (True, where + ": "), ({}, where + ": "),
+                    (("URP",), where + ": "))                       # a tuple is not JSON: manifests hold lists only
+        for value, prefix in prefixed:
+            with self.subTest(value):
+                errors = self.errors(value)
+                self.assertEqual(len(errors), 1, errors)
+                self.assertTrue(errors[0].startswith(prefix), errors)
+
+    def test_every_bad_item_is_reported(self):
+        errors = self.errors(["URP", "URP", "Nope", 3, "BuiltIn", "BuiltIn"])
+        self.assertEqual(len(errors), 4)
+        for position, expected in ((1, "duplicate pipeline URP"), (2, "got 'Nope'"), (3, "got 3"),
+                                   (5, "duplicate pipeline BuiltIn")):
+            self.assertTrue(any("pipeline[%d]: " % position in e and expected in e for e in errors), (position, errors))
+
+    def test_the_order_survives_parsing_and_meta(self):
+        manifest = self.manifest_with(["BuiltIn", "URP"])
+        parsed = pack.parse_manifest(json.dumps(manifest).encode("utf-8"), require_urls=True)
+        self.assertEqual(parsed["tasks"]["F01"]["requires"]["pipeline"], ["BuiltIn", "URP"])
+        opened = pack.Pack(str(GOOD), parsed, "0" * 64, "pack-dir", "pack-dir", None, False, [])
+        meta = opened.meta("F01")
+        self.assertEqual(meta["requires"]["pipeline"], ["BuiltIn", "URP"])
+        meta["requires"]["pipeline"].append("HDRP")                       # the caller's copy, not the manifest
+        self.assertEqual(parsed["tasks"]["F01"]["requires"]["pipeline"], ["BuiltIn", "URP"])
+        self.assertEqual(opened.meta("F01")["requires"]["pipeline"], ["BuiltIn", "URP"])
+
+    def test_the_runner_reads_every_form_the_manifest_allows(self):
+        """session.allowed_pipelines is what check/start/next apply; it must understand each validated shape."""
+        from usk_eval import session
+        for value, allowed in (("URP", ["URP"]), (["URP", "BuiltIn"], ["URP", "BuiltIn"]), (["HDRP"], ["HDRP"]),
+                               (None, None)):
+            with self.subTest(value):
+                self.assertEqual(self.errors(value), [])
+                meta = pack.Pack(str(GOOD), self.manifest_with(value), "0" * 64, "pack-dir", "pack-dir", None, False,
+                                 []).meta("F01")
+                self.assertEqual(session.allowed_pipelines([meta["requires"]]), allowed)
+        both = [{"pipeline": ["URP", "BuiltIn"]}, {"pipeline": "BuiltIn"}]               # several tasks: the intersection
+        self.assertEqual(session.allowed_pipelines(both), ["BuiltIn"])
+
+    def test_the_fixture_keeps_the_single_name_form(self):
+        self.assertEqual(good_manifest()["tasks"]["F01"]["requires"]["pipeline"], "URP")
+
+
+class NormalizeRequiresTests(unittest.TestCase):
+    DEFAULTS = {"pipeline": "URP", "mode": "bypass", "dedicated": False, "packages": []}
+
+    def test_defaults_fill_the_gaps(self):
+        for value in (None, {}, {"unrelated": 1}):
+            self.assertEqual({k: v for k, v in pack.normalize_requires(value).items() if k != "unrelated"},
+                             self.DEFAULTS)
+        self.assertEqual(pack.normalize_requires({"pipeline": "HDRP"}), dict(self.DEFAULTS, pipeline="HDRP"))
+        self.assertEqual(pack.normalize_requires({"pipeline": None})["pipeline"], None)
+
+    def test_any_mapping_is_read_not_only_dicts(self):
+        read_only = MappingProxyType({"pipeline": ("HDRP", "URP"), "dedicated": True, "packages": ("a",)})
+        self.assertEqual(pack.normalize_requires(read_only), {"pipeline": ["HDRP", "URP"], "mode": "bypass",
+                                                              "dedicated": True, "packages": ["a"]})
+
+    def test_what_is_not_a_mapping_means_the_defaults(self):
+        for value in ([], "URP", 3, [("pipeline", "HDRP")]):
+            self.assertEqual(pack.normalize_requires(value), self.DEFAULTS)
+
+    def test_sequences_become_new_lists(self):
+        source = {"pipeline": ("URP", "BuiltIn"), "packages": ("a", "b")}
+        out = pack.normalize_requires(source)
+        self.assertEqual((out["pipeline"], out["packages"]), (["URP", "BuiltIn"], ["a", "b"]))
+        out["pipeline"].append("HDRP")
+        out["packages"].append("c")
+        self.assertEqual(source, {"pipeline": ("URP", "BuiltIn"), "packages": ("a", "b")})
+        listed = {"pipeline": ["URP"], "packages": ["a"]}
+        again = pack.normalize_requires(listed)
+        self.assertIsNot(again["pipeline"], listed["pipeline"])
+        self.assertIsNot(again["packages"], listed["packages"])
+
+    def test_a_tuple_and_a_json_array_compare_equal(self):
+        self.assertEqual(pack.normalize_requires({"pipeline": ("URP", "BuiltIn")}),
+                         pack.normalize_requires({"pipeline": ["URP", "BuiltIn"]}))
+        self.assertNotEqual(pack.normalize_requires({"pipeline": ["BuiltIn", "URP"]}),
+                            pack.normalize_requires({"pipeline": ["URP", "BuiltIn"]}))
+        self.assertNotEqual(pack.normalize_requires({"pipeline": "URP"}), pack.normalize_requires({"pipeline": ["URP"]}))
+
+    def test_the_defaults_are_never_shared(self):
+        pack.normalize_requires(None)["packages"].append("x")
+        self.assertEqual(pack.normalize_requires(None)["packages"], [])
+        self.assertEqual(pack.DEFAULT_REQUIRES["packages"], [])
+
+    def test_the_task_api_default_means_the_same(self):
+        """task_api.PublicTask.requires and the pack default must not drift apart."""
+        from usk_eval.task_api import PublicTask
+        self.assertEqual(pack.normalize_requires(PublicTask.requires), pack.normalize_requires(None))
 
 
 class ParseManifestTests(TempCase):

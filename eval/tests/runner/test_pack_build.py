@@ -137,6 +137,34 @@ class RebuildTests(BuilderCase):
         self.assertFalse(manifest["tasks"]["F02"]["requires"]["dedicated"])
         pack.open_pack(pack_dir=root).load_task("F01")
 
+    def test_a_list_valued_pipeline_is_written_as_declared(self):
+        root = self.copy_pack()
+        self.edit_task(root, "F01", '"pipeline": "URP"', '"pipeline": ["URP", "BuiltIn"]')
+        code, text = run_builder("--pack-dir", root)
+        self.assertEqual(code, 0, text)
+        self.assertIn("F01: task.py, requires changed", text)
+        manifest = load_json(self.manifest_path(root))
+        requires = manifest["tasks"]["F01"]["requires"]
+        self.assertEqual(requires["pipeline"], ["URP", "BuiltIn"])
+        self.assertEqual(list(requires), ["pipeline", "mode", "dedicated", "packages"])
+        self.assertEqual(manifest["tasks"]["F02"]["requires"]["pipeline"], "URP")         # the name form stays a name
+        self.assertEqual(run_builder("--pack-dir", root, "--check")[0], 0)
+        opened = pack.open_pack(pack_dir=root)
+        self.assertEqual(opened.modified, [])
+        self.assertEqual(opened.load_task("F01").requires["pipeline"], ["URP", "BuiltIn"])
+
+    def test_a_tuple_or_null_pipeline_in_task_py_is_written_as_json(self):
+        root = self.copy_pack()
+        self.edit_task(root, "F01", '"pipeline": "URP"', '"pipeline": ("HDRP", "URP")')
+        self.edit_task(root, "F02", '"pipeline": "URP"', '"pipeline": None')
+        self.assertEqual(run_builder("--pack-dir", root)[0], 0)
+        manifest = load_json(self.manifest_path(root))
+        self.assertEqual(manifest["tasks"]["F01"]["requires"]["pipeline"], ["HDRP", "URP"])    # task order, not sorted
+        self.assertIsNone(manifest["tasks"]["F02"]["requires"]["pipeline"])
+        self.assertEqual(run_builder("--pack-dir", root, "--check")[0], 0)
+        opened = pack.open_pack(pack_dir=root)
+        self.assertEqual((opened.load_task("F01").id, opened.load_task("F02").id), ("F01", "F02"))
+
     def test_a_new_task_is_added_after_the_existing_ones_with_a_free_seed(self):
         root = self.copy_pack()
         self.clone_task(root, "F01", "F03")
@@ -282,6 +310,17 @@ class FailureTests(BuilderCase):
         self.assertEqual(code, 0, text)
         self.assertIn("warning: tasks/LEFT has no task.py and is not in the manifest", text)
         self.assertEqual(list(load_json(self.manifest_path(root))["tasks"]), ["F01", "F02"])
+
+    def test_a_bad_pipeline_declaration_in_task_py_stops_the_build(self):
+        cases = (("[]", "requires.pipeline: expected at least one of"),
+                 ('["URP", "URP"]', "requires.pipeline[1]: duplicate pipeline URP"),
+                 ('["URP", "Standard"]', "requires.pipeline[1]: expected one of"),
+                 ('"Standard"', "requires.pipeline: expected one of"), ("3", "requires.pipeline: expected one of"))
+        for index, (source, expected) in enumerate(cases):
+            with self.subTest(source):
+                root = self.copy_pack("bad-pipeline-%d" % index)
+                self.edit_task(root, "F01", '"pipeline": "URP"', '"pipeline": %s' % source)
+                self.fails(root, expected="tasks.F01." + expected)
 
     def test_a_missing_required_public_file(self):
         root = self.copy_pack()

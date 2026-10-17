@@ -527,6 +527,29 @@ class CheckTests(Base):
         self.assertEqual((code, env["data"]["created"]), (2, False))
         self.assertFalse(os.path.exists(self.b.paths.current))
 
+    def test_list_valued_pipeline_requirements(self):
+        from usk_eval.session import allowed_pipelines
+        self.assertIsNone(allowed_pipelines([{"pipeline": None}, {}]))
+        self.assertEqual(allowed_pipelines([{"pipeline": ["URP", "BuiltIn"]}, {"pipeline": None}]), ["URP", "BuiltIn"])
+        self.assertEqual(allowed_pipelines([{"pipeline": ["URP", "BuiltIn"]}, {"pipeline": "URP"}]), ["URP"])
+        self.assertEqual(allowed_pipelines([{"pipeline": "HDRP"}, {"pipeline": "URP"}]), [])
+        tasks = self.b.stand.pack.manifest["tasks"]
+        tasks["S99"]["requires"]["pipeline"] = ["URP", "BuiltIn"]
+        self.b.unity.pipeline = "BuiltIn"
+        code, env = self.b.run("check", "--tasks", "S99")
+        self.assertEqual(code, 0, env)
+        self.b.unity.pipeline = "HDRP"
+        code, env = self.b.run("check", "--tasks", "S99")
+        self.assertEqual(self.codes(env), ["PIPELINE_UNSUPPORTED"])
+        self.assertEqual(env["problems"][0]["args"], ["URP, BuiltIn"])
+        self.assertEqual(env["problems"][0]["fix"],
+                         "Use a project whose render pipeline is one the selected tasks support (URP, BuiltIn).")
+        self.b.unity.pipeline = "BuiltIn"
+        code, env = self.b.run("check", "--tasks", "S99,S98")                 # S98 keeps the default "URP"
+        self.assertEqual((self.codes(env), env["problems"][0]["args"]), (["PIPELINE_UNSUPPORTED"], ["URP"]))
+        sid = self.start("--tasks", "S99")                                    # next's N1 applies the same rule
+        self.assertEqual(self.issue(sid)["taskId"], "S99")
+
     def test_selection_and_pack_range(self):
         code, env = self.b.run("check", "--tasks", "S01")
         self.assertEqual((code, self.codes(env)), (3, ["TASKS_INVALID"]))

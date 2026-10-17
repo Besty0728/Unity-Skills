@@ -500,7 +500,7 @@ pid_alive(pid):
 | `PLAY_MODE_ACTIVE` | 处于 Play 模式 | check, start, next | 2 | `tab_eval_problem_play_mode_active` | Exit Play Mode in Unity, then retry. |
 | `MODE_NOT_BYPASS` | 模式不是任务要求的 bypass | check, start, next | 2 | `tab_eval_problem_mode_not_bypass` | Switch the UnitySkills operating mode to Bypass (Evaluation tab: Switch to Bypass; it is restored when the session ends). |
 | `SURFACE_NOT_FULL` | surfaceProfile ≠ full | check, start, next | 2 | `tab_eval_problem_surface_not_full` | Set the UnitySkills skill surface to Full in the settings drawer. |
-| `PIPELINE_UNSUPPORTED` | 渲染管线不符合 `requires.pipeline` | check, start | 2 | `tab_eval_problem_pipeline_unsupported` | Use a project created from the Universal 3D (URP) template. |
+| `PIPELINE_UNSUPPORTED` | 渲染管线不符合 `requires.pipeline` | check, start, next | 2 | `tab_eval_problem_pipeline_unsupported` | Use a project whose render pipeline is one the selected tasks support ({0}). |
 | `PROJECT_NOT_DEDICATED` | 所选题要求专用工程但没有标识 | check, start | 2 | `tab_eval_problem_project_not_dedicated` | Mark an empty URP project as the dedicated evaluation project in the Evaluation tab, or choose the basic tier. |
 | `PACKAGE_MISSING` | 缺少 `requires.packages` 中的包 | check, start | 2 | `tab_eval_problem_package_missing` | Install the package {0} required by task {1}, or choose other tasks. |
 | `SCENE_DIRTY` | 有已加载场景未保存 | check, start, next, cleanup | 2 | `tab_eval_problem_scene_dirty` | Save or discard the unsaved changes in {0}, then retry. |
@@ -813,7 +813,7 @@ HINTS 只出现在报告（与 result.json）里。
 | `tasks.<ID>.track` / `tier` / `caseVersion` / `minutes` / `requires` | 必须与所在 tracks 位置及 task.py 的类属性一致（`pack.py` 加载时校验，不一致 → `PACK_INVALID`） |
 | `minutes` | 建议用时（G8）与 `overBudget` 的阈值 |
 | `seeds` | 公开种子，`seeds[0]` 为默认；保留种子不进公开 manifest（v1 公开种子为 `7001 + i*101`，`eval/tasks/__init__.py:4-5`） |
-| `requires.pipeline` | `project_get_render_pipeline.pipelineType` 必须等于它 |
+| `requires.pipeline` | `project_get_render_pipeline.pipelineType` 必须等于它，或为列表时属于其中之一（null 表示不限）；多题时取各题允许集合的交集 |
 | `requires.mode` | `/health.currentMode` 必须等于它（wire 值 `approval\|auto\|bypass`，`SkillsModeManager.cs:601-602`） |
 | `requires.dedicated` | true 时必须有专用工程标识（草案：standard、challenge 为 true，basic 为 false） |
 | `requires.packages` | UPM 包名列表，必须出现在 `packages-lock.json.dependencies` |

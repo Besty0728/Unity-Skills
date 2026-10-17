@@ -263,10 +263,40 @@ class BaselineRuleTests(CheckerCase):
         code, text = self.check()
         self.assertEqual(code, 1)
         self.assertIn("task F01: seeds changed but caseVersion is still 2", text)
-        self.assertRegex(text, r"task F02: .*minutes.*requires.* changed but caseVersion is still 1|"
-                               r"task F02: .*changed but caseVersion is still 1")
-        self.assertIn("minutes", text)
-        self.assertIn("requires", text)
+        self.assertIn("task F02: task.py, minutes, requires changed but caseVersion is still 1", text)
+
+    def test_a_changed_pipeline_list_needs_a_higher_case_version(self):
+        self.edit_task("F01", '"pipeline": "URP"', '"pipeline": ["URP", "BuiltIn"]')
+        self.rebuild()
+        code, text = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("task F01: task.py, requires changed but caseVersion is still 2", text)
+        self.edit_task("F01", "case_version = 2", "case_version = 3")
+        self.rebuild("--pack-version", "1.1.0")
+        code, text = self.check()
+        self.assertEqual(code, 0, text)
+
+    def test_reordering_a_pipeline_list_counts_as_a_change(self):
+        self.edit_task("F01", '"pipeline": "URP"', '"pipeline": ["URP", "BuiltIn"]')
+        self.rebuild()
+        save_json(self.baseline, load_json(self.manifest_path()))              # this state is the released one
+        code, text = self.check()
+        self.assertEqual(code, 0, text)
+        self.edit_task("F01", '["URP", "BuiltIn"]', '["BuiltIn", "URP"]')
+        self.rebuild()
+        code, text = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("task F01: task.py, requires changed but caseVersion is still 2", text)
+
+    def test_a_tuple_and_a_list_are_the_same_declaration(self):
+        self.edit_task("F01", '"pipeline": "URP"', '"pipeline": ["URP", "BuiltIn"]')
+        self.rebuild()
+        save_json(self.baseline, load_json(self.manifest_path()))
+        self.edit_task("F01", '["URP", "BuiltIn"]', '("URP", "BuiltIn")')
+        self.rebuild()
+        code, text = self.check()
+        self.assertEqual(code, 1)
+        self.assertIn("task F01: task.py changed but caseVersion is still 2", text)       # the file, not the requirement
 
     def test_a_falling_case_version(self):
         self.edit_baseline(lambda m: m["tasks"]["F01"].update(caseVersion=5))

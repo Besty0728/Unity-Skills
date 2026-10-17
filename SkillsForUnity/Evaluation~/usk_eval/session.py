@@ -143,6 +143,19 @@ def pack_summary(pack):
 # ---------------------------------------------------------------- editor checks (check, start, next N1)
 
 
+def allowed_pipelines(requires_list):
+    """Pipelines every task accepts, in manifest order; None when none restricts it (requires.pipeline null).
+    requires.pipeline is one pipelineType or a list of them (contract 5.1)."""
+    allowed = None
+    for requires in requires_list:
+        value = requires.get("pipeline")
+        if value is None:
+            continue
+        values = [value] if isinstance(value, str) else [v for v in value if isinstance(v, str)]
+        allowed = values if allowed is None else [v for v in allowed if v in values]
+    return allowed
+
+
 def editor_checks(rt, client, health, requires_list):
     """(problems, notices, info) for version, compile/import, Play Mode, mode, surface and pipeline."""
     problems, notices = [], []
@@ -170,10 +183,11 @@ def editor_checks(rt, client, health, requires_list):
         notices.append(notice("SETTINGS_NONSTANDARD", [dry_run, token_level]))
     pipeline = client.read("project_get_render_pipeline")
     kind = pipeline.get("pipelineType")
-    wanted_pipelines = sorted({r.get("pipeline") for r in requires_list if r.get("pipeline")})
-    if any(p != kind for p in wanted_pipelines):
-        problems.append(problem("PIPELINE_UNSUPPORTED", detail="project uses %s, tasks need %s" % (
-            kind, "/".join(wanted_pipelines))))
+    allowed = allowed_pipelines(requires_list)
+    if allowed is not None and kind not in allowed:
+        listed = ", ".join(allowed) or "none"
+        problems.append(problem("PIPELINE_UNSUPPORTED", [listed], detail="project uses %s, the selected tasks "
+                                                                         "accept %s" % (kind, listed)))
     info = {"editor": editor,
             "settings": {"mode": mode, "surface": health.get("surfaceProfile"), "dryRunPolicy": dry_run,
                          "tokenLevel": token_level, "telemetryEnabled": None},

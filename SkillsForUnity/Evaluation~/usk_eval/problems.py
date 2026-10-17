@@ -32,7 +32,7 @@ BLOCKING = {
     "SURFACE_NOT_FULL": (2, "The skill surface is not Full",
                          "Set the UnitySkills skill surface to Full in the settings drawer."),
     "PIPELINE_UNSUPPORTED": (2, "The render pipeline does not match the selected tasks",
-                             "Use a project created from the Universal 3D (URP) template."),
+                             "Use a project whose render pipeline is one the selected tasks support ({0})."),
     "PROJECT_NOT_DEDICATED": (2, "The selected tasks need a dedicated evaluation project",
                               "Mark an empty URP project as the dedicated evaluation project in the Evaluation tab, "
                               "or choose the basic tier."),

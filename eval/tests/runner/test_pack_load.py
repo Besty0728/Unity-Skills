@@ -338,7 +338,7 @@ class LoadTaskTests(TempCase):
                  ('track = "ops"', 'track = "dev"', "track is 'dev'"),
                  ('tier = "basic"', 'tier = "standard"', "tier is 'standard'"),
                  ('id = "F01"', 'id = "F09"', "id is 'F09'"),
-                 ('"pipeline": "URP"', '"pipeline": "HDRP"', "requires differs"),
+                 ('"pipeline": "URP"', '"pipeline": "HDRP"', "requires.pipeline is 'HDRP' but the manifest says 'URP'"),
                  ("case_version = 2", "case_version = True", "case_version is True"),
                  ("minutes = 5", "minutes = 5.0", "minutes is 5.0"))
         for old, new, expected in cases:
@@ -350,6 +350,67 @@ class LoadTaskTests(TempCase):
                 self.assertEqual(code_of(exc), "PACK_INVALID")
                 self.assertIn(expected, message_of(exc))
                 self.assertIn("task F01", message_of(exc))
+
+    def set_pipeline(self, root, task_id, in_task, in_manifest):
+        """Rewrites one task's pipeline requirement in task.py (Python source text) and in the manifest (JSON value),
+        and refreshes the manifest's hash of task.py so the pack still counts as unmodified."""
+        self.edit_task(root, task_id, '"pipeline": "URP"', '"pipeline": %s' % in_task)
+        path = os.path.join(root, "tasks", task_id, "task.py")
+
+        def update(manifest):
+            manifest["tasks"][task_id]["requires"]["pipeline"] = in_manifest
+            manifest["tasks"][task_id]["public"]["task.py"] = store.sha256_bytes(read_bytes(path))
+        edit_json(os.path.join(root, "manifest.json"), update)
+
+    def test_a_list_valued_pipeline_loads_when_task_and_manifest_agree(self):
+        root = self.copy_pack()
+        self.set_pipeline(root, "F01", '["URP", "BuiltIn"]', ["URP", "BuiltIn"])
+        opened = pack.open_pack(base_dir=root)
+        self.assertEqual(opened.modified, [])
+        task = opened.load_task("F01")
+        self.assertEqual(task.requires["pipeline"], ["URP", "BuiltIn"])
+        self.assertEqual(opened.meta("F01")["requires"]["pipeline"], ["URP", "BuiltIn"])
+        self.assertEqual(pack.task_mismatches(task, "F01", opened.manifest["tasks"]["F01"]), [])
+        self.assertEqual(opened.load_task("F02").requires["pipeline"], "URP")          # other tasks keep the name
+
+    def test_a_tuple_in_task_py_equals_the_json_array(self):
+        root = self.copy_pack()
+        self.set_pipeline(root, "F01", '("URP", "BuiltIn")', ["URP", "BuiltIn"])
+        self.assertEqual(self.load(root).requires["pipeline"], ("URP", "BuiltIn"))
+
+    def test_a_null_pipeline_agrees_on_both_sides(self):
+        root = self.copy_pack()
+        self.set_pipeline(root, "F01", "None", None)
+        self.assertIsNone(self.load(root).requires["pipeline"])
+        self.assertIsNone(pack.open_pack(base_dir=root).meta("F01")["requires"]["pipeline"])
+
+    def test_the_order_of_a_pipeline_list_is_part_of_the_declaration(self):
+        root = self.copy_pack()
+        self.set_pipeline(root, "F01", '["BuiltIn", "URP"]', ["URP", "BuiltIn"])
+        with self.assertRaises(problems.ProblemError) as exc:
+            self.load(root)
+        self.assertEqual(code_of(exc), "PACK_INVALID")
+        self.assertIn("requires.pipeline is ['BuiltIn', 'URP'] but the manifest says ['URP', 'BuiltIn']", message_of(exc))
+
+    def test_a_name_and_a_one_item_list_are_different_declarations(self):
+        root = self.copy_pack()
+        self.set_pipeline(root, "F01", '"URP"', ["URP"])
+        with self.assertRaises(problems.ProblemError) as exc:
+            self.load(root)
+        self.assertIn("requires.pipeline is 'URP' but the manifest says ['URP']", message_of(exc))
+
+    def test_every_differing_requires_key_is_named(self):
+        root = self.copy_pack()
+        self.edit_task(root, "F01", '"pipeline": "URP", "mode": "bypass", "dedicated": False, "packages": []',
+                       '"pipeline": "HDRP", "mode": "auto", "dedicated": True, "packages": ["p"]')
+        with self.assertRaises(problems.ProblemError) as exc:
+            self.load(root)
+        message = message_of(exc)
+        for expected in ("requires.dedicated is True but the manifest says False",
+                         "requires.mode is 'auto' but the manifest says 'bypass'",
+                         "requires.packages is ['p'] but the manifest says []",
+                         "requires.pipeline is 'HDRP' but the manifest says 'URP'"):
+            self.assertIn(expected, message)
 
     def test_omitted_requires_equals_the_defaults(self):
         root = self.copy_pack()
