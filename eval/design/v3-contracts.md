@@ -507,6 +507,7 @@ pid_alive(pid):
 | `SCENE_UNTITLED` | 活动场景没有文件路径 | check, start, next | 2 | `tab_eval_problem_scene_untitled` | Open or save a scene that has a file path, then retry. |
 | `RESIDUE_FOUND` | 有不属于活动题的 run 残留 | check, start, next | 2 | `tab_eval_problem_residue_found` | Leftover evaluation data found ({0}); click Clean up in the Evaluation tab or run cleanup --stale. |
 | `PRIVATE_PACK_UNREACHABLE` | 探测不到私有 verify | check, start | 2 | `tab_eval_problem_private_pack_unreachable` | Allow access to raw.githubusercontent.com or cdn.jsdelivr.net, or download the private pack zip from the release page and pass --private-zip <zip>. |
+| `PRIVATE_PACK_TLS` | 私有 verify 的全部下载尝试都因 TLS 证书校验失败（`tls_error`）；其他失败仍报 `PRIVATE_PACK_UNREACHABLE` / `VERIFICATION_PENDING`，并在 fix 末尾追加 `private.fix_hint(attempts)` | check, start, submit, next | 2 | `tab_eval_problem_private_pack_tls` | TLS certificate verification failed. Install the root certificates for your Python (macOS python.org builds: run "Install Certificates.command" from the Python folder in Applications; behind a company proxy: set SSL_CERT_FILE to your CA bundle), or download the private pack zip from the release page and pass --private-zip <zip>. submit/next 时 `args[0]` 为重试命令，fix 末尾追加 `Then run: {0}`。 |
 | `VERIFICATION_PENDING` | 尝试在等待验收（私有包下载失败） | submit, next | 2 | `tab_eval_problem_verification_pending` | Verification files could not be downloaded. Restore network access (or get the private pack zip), then run: {0} |
 | `PACK_PLUGIN_RANGE` | pluginVersion 不在 pack 支持范围 | check, start | 2 | `tab_eval_problem_pack_plugin_range` | This task pack needs UnitySkills {0} to {1}; update the package. |
 | `CLEANUP_NEEDS_SCENE` | 清理时活动场景是 run 场景且没有 resting 记录 | cleanup | 2 | `tab_eval_problem_cleanup_needs_scene` | Open one of your own scenes in Unity, then run cleanup again. |
@@ -638,6 +639,7 @@ pid_alive(pid):
 | `schema` | int | Y | 1 |
 | `sessionId`、`attemptId`、`taskId` | string | Y | |
 | `caseVersion`、`seed`、`k` | int | Y | k 从 1 起 |
+| `minutes` | int | N | manifest 的 `minutes`（建议用时）；runner 总会写入，`status.active.minutes` 与面板读它 |
 | `phase` | `building` \| `ready` \| `submitted` \| `verifying` \| `pending_verification` \| `scored` \| `torn_down` | Y | |
 | `status` | `pass` \| `partial` \| `fail` \| `invalid` \| `contaminated` \| `cancelled` \| null | Y | 终结前为 null |
 | `reasons` | [string] | Y | |
@@ -970,7 +972,7 @@ ALTERNATIVES = [("root_then_move", root_then_move)]                      # >= 1;
 | `scenario` | — | 只在 verify_runtime | — |
 | `private` | — | — | ✓ |
 | `wait_idle()`、`wait_job(jobId)` | ✓ | — | ✓ |
-| `log(msg)` | ✓ | ✓ | ✓ |
+| `log(msg)` | ✓ | ✓（空操作，不写 runner.log：私有 verify 的推导不得落盘，§4.2） | ✓ |
 
 - `records` 每条 = v1 `flatten` 的结果（`eval/harness/journal.py:70-104`）加上 `agent`、`isPlaying`、`tsUtc`、`origin`（seq ∈ refreshWindow 为 `"refresh"`，否则 `"attempt"`）。
 - `violations()`：`scope.scope_violations(records, R, A, scene, allowed)`；先剔除 `isPlaying` 记录，以及 agent 为 runner 且 origin 为 attempt 的记录（runner 自己的 `editor_stop` 等）；包含身份表补丁（`eval/design/scope-verifier-fix`，它依赖 §7.1 新增的身份字段）。
@@ -994,6 +996,7 @@ ALTERNATIVES = [("root_then_move", root_then_move)]                      # >= 1;
 | `hierarchy_signature(probe, root_iid, limit=8)`、`asset_listing(project_path, asset_root)` | v1 `task.py:138-159` | |
 | `fingerprint(ctx)` | v1 `task.py:131-135`、`runner.py:138` | 先把 runId 替换成 `<RUN>`，再 `canonical_digest({"hierarchy": …, "assets": …})` |
 | `scope_violations, adopted_paths, under` | `usk_eval.scope` 重导出 | |
+| `object_id(value)`、`same_id(a, b)`、`address(ref, prefix="")` | 新（Unity 6000.4+ id 规则） | 规范 id：非零且在 C# int 范围内的 instanceId 用 int，否则用 entityId 文本；`same_id` 跨写法比较；`address` 生成 `{instanceId}` 或 `{entityId}`（prefix 非空时为 `parentInstanceId`/`parentEntityId` 之类），无对象时抛 `ValueError`；`Probe` 与 runner 的 `fixture.address` 共用这一实现 |
 
 ### 5.9 私有 verify 的获取
 
@@ -1308,7 +1311,7 @@ private static void RegisterLifecycleFlush()
 
 ### 8.6 实现补充（WP7；与 §8.2–§8.3 冲突处以本节为准）
 
-入口 `usk_eval.usage`：`detect_host`、`capture_host`、`merge_session_ids`、`read_usage(host, t0, t1, enabled, env)`、`detect_declared`、`manual_usage`、`parse_manual_args`、`unavailable_usage`、`ledger_summary`、`PARSER_VERSION`。`host` 即 `state.host`；日志类问题不抛异常，只进 `unavailableReason` 与 `errors`；t0 / t1 无法解析才抛 `ValueError`，`t1` 缺省为现在；时间一律经 `store.parse_utc / iso / now_iso`。`tokens` 为 null 当且仅当 `unavailableReason` 非空且不是 `no_messages_in_window`。
+入口 `usk_eval.usage`：`detect_host`、`capture_host`、`merge_session_ids`、`read_usage(host, t0, t1, enabled, env)`、`detect_declared`、`manual_usage`、`parse_manual_args`、`unavailable_usage`、`ledger_summary`、`PARSER_VERSION`。`host` 即 `state.host`；日志类问题不抛异常，只进 `unavailableReason` 与 `errors`；t0 / t1 无法解析才抛 `ValueError`，`t1` 缺省为现在；时间一律经 `store.parse_utc / iso / now_iso`。`read_usage` 返回的记录里，`tokens` 为 null 当且仅当 `unavailableReason` 非空且不是 `no_messages_in_window`；`unavailable_usage` 返回的记录 `tokens` 恒为 null（runner 对从未出题的尝试用它配 `no_messages_in_window`，表示根本没有窗口）。
 
 **实现选择**（每条是"选择 —— 理由"）
 

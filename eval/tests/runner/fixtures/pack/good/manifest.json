@@ -1,0 +1,90 @@
+{
+ "schema": 1,
+ "packId": "fixture-pack",
+ "packVersion": "1.0.0",
+ "plugin": {
+  "min": "2.9.0",
+  "max": null
+ },
+ "tracks": {
+  "ops": {
+   "basic": [
+    "F01"
+   ],
+   "standard": [],
+   "challenge": []
+  },
+  "dev": {
+   "basic": [],
+   "standard": [
+    "F02"
+   ],
+   "challenge": []
+  }
+ },
+ "tasks": {
+  "F01": {
+   "track": "ops",
+   "tier": "basic",
+   "caseVersion": 2,
+   "minutes": 5,
+   "seeds": [
+    7001
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": false,
+    "packages": []
+   },
+   "public": {
+    "task.py": "0a52f41cc92a1d4c1529fdd5da393643389ee52e94be860b233662d6784cc267",
+    "prompt.zh-CN.md": "11086ef785682b5183b727aedb077ee2ebd58c6c9fb59fe4e3b872cae22bfd55",
+    "prompt.en.md": "7dcf3fd0e57416ce5688e7a5d45f6ba70d86600aa22873e5fb84a67decb3ee34"
+   },
+   "private": {
+    "file": "F01.py",
+    "sha256": "9e9ce6f79ae85994e15ced1614c7db2ae6c62eb19df43d5d6fdf4b28a5c0ad97",
+    "bytes": 294
+   }
+  },
+  "F02": {
+   "track": "dev",
+   "tier": "standard",
+   "caseVersion": 1,
+   "minutes": 8,
+   "seeds": [
+    7102
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": [
+     "com.unity.cinemachine"
+    ]
+   },
+   "public": {
+    "task.py": "f5bdb8fdf319961cf28f9f00f2cbd38a309eada64d697658c11d6aaa73aa90fd",
+    "prompt.zh-CN.md": "de448f93162a4b355c6068c2f87f961e98ffe09b646d406f2be46a17c8d2f01c",
+    "prompt.en.md": "066a68af7e4ef559ab4236503ef65484bc134981ca9c092b22bbfb137b679223"
+   },
+   "private": {
+    "file": "F02.py",
+    "sha256": "318f3aa8a63e414a2b42917f6ebfd2593d748abd3222604b2849364cb5c9749b",
+    "bytes": 311
+   }
+  }
+ },
+ "private": {
+  "urlTemplates": [
+   "https://raw.githubusercontent.com/Besty0728/Unity-Skills/{ref}/eval/pack/private/{file}",
+   "https://cdn.jsdelivr.net/gh/Besty0728/Unity-Skills@{ref}/eval/pack/private/{file}"
+  ],
+  "refs": [
+   "v{plugin}",
+   "main",
+   "beta"
+  ]
+ }
+}
