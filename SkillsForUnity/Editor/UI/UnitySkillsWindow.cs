@@ -1,6 +1,7 @@
 ﻿using System;
 using UnityEngine;
 using UnityEditor;
+using UnitySkills.Internal;
 using UnityEngine.UIElements;
 using System.Linq;
 using System.Reflection;
@@ -679,8 +680,9 @@ namespace UnitySkills
         private void MaybeShowFirstRunToast()
         {
             if (EditorPrefs.HasKey(PrefKeyFirstRunToast)) return;
-            // A mode has already been explicitly chosen -> this isn't a fresh install's first launch, no need to prompt.
-            if (EditorPrefs.HasKey("UnitySkills_OperatingMode")) return;
+            // A mode has already been explicitly chosen (in this project, or machine-wide before 3.0) -> this isn't a
+            // fresh install's first launch, no need to prompt.
+            if (ProjectPrefs.HasKey("UnitySkills_OperatingMode")) return;
             if (PermissionUiHelpers.IsExistingInstall()) return;
 
             // Set the flag before showing the dialog: the dialog runs inside delayCall, and the user might close the window in the meantime; writing the pref immediately guarantees
@@ -713,21 +715,10 @@ namespace UnitySkills
     internal static class PermissionUiHelpers
     {
         /// <summary>
-        /// UI-side determination kept in sync with <c>SkillsModeManager</c>'s internal IsExistingInstall, used to decide whether to hide the first-run toast for existing
-        /// users; just keep the two key lists consistent.
+        /// The "existing install" probe <c>SkillsModeManager</c> uses for its upgrade defaults, used here to decide
+        /// whether to hide the first-run toast for existing users.
         /// </summary>
-        public static bool IsExistingInstall()
-        {
-            return EditorPrefs.HasKey("UnitySkills_RequireConfirmation")
-                || EditorPrefs.HasKey("UnitySkills_PreferredPort")
-                || EditorPrefs.HasKey("UnitySkills_LogLevel")
-                || EditorPrefs.HasKey("UnitySkills_TelemetryEnabled")
-                || EditorPrefs.HasKey("UnitySkills_Language")
-                || EditorPrefs.HasKey("UnitySkills_GuideMode")
-                || EditorPrefs.HasKey("UnitySkills_RequestTimeoutMinutes")
-                || EditorPrefs.HasKey("UnitySkills_KeepAliveIntervalSeconds")
-                || EditorPrefs.HasKey("UnitySkills_AutoInstallPackagesOnStartup");
-        }
+        public static bool IsExistingInstall() => SkillsModeManager.IsExistingInstallForDefaults();
 
         public static string FormatCountdown(DateTime expiresAtUtc)
         {

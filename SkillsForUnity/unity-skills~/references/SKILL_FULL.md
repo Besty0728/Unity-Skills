@@ -46,7 +46,7 @@ If the REST server is unreachable at session start, check `<projectRoot>/Library
 
 ## Operating Mode (v1.9.0+)
 
-Operating mode is a **server-side permission gate**, configured in the Unity panel (`Window > UnitySkills` → ⚙ Settings → Server section) and persisted in EditorPrefs per-machine. It is not an AI routing policy and **cannot** be switched via chat or REST — chat-side trigger words no longer apply.
+Operating mode is a **server-side permission gate**, configured in the Unity panel (`Window > UnitySkills` → ⚙ Settings → Server section) and persisted **per project** in `UserSettings/UnitySkills/settings.json` (see `protocol-operating-mode.md`). It is not an AI routing policy and **cannot** be switched via chat or REST — chat-side trigger words no longer apply.
 
 ### Boot Handshake
 

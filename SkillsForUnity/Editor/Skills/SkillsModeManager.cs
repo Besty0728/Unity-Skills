@@ -7,6 +7,7 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -52,16 +53,19 @@ namespace UnitySkills
     ///   is let through exactly once, then immediately consumed and cleared.
     /// - **Grant Plan B (single-step execution)**: on Granted, <see cref="TryGrantAndReturnArgs"/> also returns
     ///   the cached original argsJson and marks it one-shot, so the HTTP endpoint can call SkillRouter.Execute directly.
-    /// - **EditorPrefs migration**: the old key <c>UnitySkills_GrantedSkills</c> is auto-migrated on first launch to
+    /// - **Allowlist migration**: the old key <c>UnitySkills_GrantedSkills</c> is auto-migrated on first launch to
     ///   the new key <c>UnitySkills_AllowlistSkills</c>; the migration is idempotent.
     ///
     /// State storage:
-    /// - <c>CurrentMode</c> / <c>PanelApprovalRequired</c> / <c>AllowlistSkills</c>: EditorPrefs (per machine)
+    /// - <c>CurrentMode</c> / <c>PanelApprovalRequired</c> / <c>AllowlistSkills</c>: per project and per user, in
+    ///   <see cref="ProjectPrefs"/> (UserSettings/UnitySkills/settings.json); a project without its own value reads the
+    ///   machine-wide EditorPrefs value a pre-3.0 version left behind
     /// - Pending grant tokens: in-memory only (TTL 5 minutes, at most 256 live)
     /// - One-shot bypass marker: in-memory ThreadStatic only
     ///
-    /// Upgrade compatibility: if the install already has any pre-v1.9 <c>UnitySkills_*</c> pref
-    /// (e.g. <c>UnitySkills_PreferredPort</c>), it defaults to <see cref="SkillsOperatingMode.Bypass"/>,
+    /// Upgrade compatibility: if the machine already had any pre-v1.9 <c>UnitySkills_*</c> pref when this was first
+    /// checked (e.g. <c>UnitySkills_PreferredPort</c>; the verdict is then kept in <c>UnitySkills_InstallEra</c>), a
+    /// project that never chose a mode defaults to <see cref="SkillsOperatingMode.Bypass"/>,
     /// so existing users see zero behavior change; a fresh install defaults to <see cref="SkillsOperatingMode.Auto"/> —
     /// every skill not auto-classified as NeverInSemi (including FullAuto write skills) executes directly, and only
     /// NeverInSemi skills (Delete / MayEnterPlayMode / MayTriggerReload / RiskLevel=high) return MODE_FORBIDDEN.
@@ -82,9 +86,12 @@ namespace UnitySkills
         /// <summary>The old GrantedSkills key (read only for the one-time migration; kept after migration to allow rollback).</summary>
         private const string PrefKeyLegacyGranted = "UnitySkills_GrantedSkills";
 
-        // ResetForTests temporarily clears these machine-level preferences. SessionState survives domain reloads,
-        // so the user's original settings can still be restored if a test run gets interrupted.
+        // ResetForTests temporarily clears these per-project preferences. SessionState survives domain reloads,
+        // so the user's original settings can still be restored if a test run gets interrupted. The settings file
+        // they were captured from is recorded too: values captured from a test's temp store are never restored
+        // into the real project, and an in-memory test store (gone after a reload anyway) is not captured at all.
         private const string TestRecoveryActiveKey = "UnitySkills.Tests.PreferenceRecovery.Active";
+        private const string TestRecoverySettingsFileKey = "UnitySkills.Tests.PreferenceRecovery.SettingsFile";
         private const string TestRecoveryModeExistsKey = "UnitySkills.Tests.PreferenceRecovery.Mode.Exists";
         private const string TestRecoveryModeValueKey = "UnitySkills.Tests.PreferenceRecovery.Mode.Value";
         private const string TestRecoveryPanelApprovalExistsKey = "UnitySkills.Tests.PreferenceRecovery.PanelApproval.Exists";
@@ -128,6 +135,17 @@ namespace UnitySkills
         private static HashSet<string> _allowlist;
         internal static bool? ExistingInstallOverrideForTests;
 
+        /// <summary>Machine-wide verdict of the install-era probe: "existing" or "fresh", decided once.</summary>
+        private const string PrefKeyInstallEra = "UnitySkills_InstallEra";
+        private const string InstallEraExisting = "existing";
+        private const string InstallEraFresh = "fresh";
+
+        /// <summary>
+        /// Test seam: when set, stands in for the machine-wide EditorPrefs that the install-era decision reads (the
+        /// legacy probe keys) and writes (the verdict), so a test can play a fresh or an upgraded machine.
+        /// </summary>
+        internal static Dictionary<string, string> InstallEraPrefsForTests;
+
         /// <summary>
         /// The "bypass token" for a one-shot grant. Set by <see cref="TryGrantAndReturnArgs"/>,
         /// consumed by <see cref="ConsumeOneShotBypass"/>. ThreadStatic ensures different request threads don't interfere.
@@ -155,18 +173,19 @@ namespace UnitySkills
         // ===== Properties =====
 
         /// <summary>
-        /// The current operating mode. The setter persists to EditorPrefs and raises <see cref="OnChanged"/>.
-        /// With no explicit pref set, the getter applies the factory-default rule: an existing install (any other
-        /// UnitySkills_* key present) → <see cref="SkillsOperatingMode.Bypass"/>; a fresh install → <see cref="SkillsOperatingMode.Auto"/>.
+        /// The current operating mode, per project. The setter persists to <see cref="ProjectPrefs"/> and raises <see cref="OnChanged"/>.
+        /// With no explicit pref set, the getter applies the factory-default rule: an existing install (pre-v1.9
+        /// UnitySkills_* keys present, decided once per machine — see IsExistingInstall) → <see cref="SkillsOperatingMode.Bypass"/>;
+        /// a fresh install → <see cref="SkillsOperatingMode.Auto"/>.
         /// Never defaults to Approval.
         /// </summary>
         public static SkillsOperatingMode CurrentMode
         {
             get
             {
-                if (EditorPrefs.HasKey(PrefKeyMode))
+                if (ProjectPrefs.HasKey(PrefKeyMode))
                 {
-                    var raw = EditorPrefs.GetString(PrefKeyMode, string.Empty);
+                    var raw = ProjectPrefs.GetString(PrefKeyMode, string.Empty);
                     if (Enum.TryParse<SkillsOperatingMode>(raw, true, out var parsed))
                         return parsed;
                 }
@@ -174,7 +193,7 @@ namespace UnitySkills
             }
             set
             {
-                EditorPrefs.SetString(PrefKeyMode, value.ToString());
+                ProjectPrefs.SetString(PrefKeyMode, value.ToString());
                 SkillsAuditLog.Append("mode_changed", new { mode = value.ToString().ToLowerInvariant() });
                 RaiseChanged();
             }
@@ -187,10 +206,10 @@ namespace UnitySkills
         /// </summary>
         public static bool PanelApprovalRequired
         {
-            get => EditorPrefs.GetBool(PrefKeyPanelApproval, false);
+            get => ProjectPrefs.GetBool(PrefKeyPanelApproval, false);
             set
             {
-                EditorPrefs.SetBool(PrefKeyPanelApproval, value);
+                ProjectPrefs.SetBool(PrefKeyPanelApproval, value);
                 RaiseChanged();
             }
         }
@@ -638,11 +657,24 @@ namespace UnitySkills
                 SaveAllowlistUnlocked();
             }
             ClearOneShotBypass();
-            EditorPrefs.DeleteKey(PrefKeyMode);
-            EditorPrefs.DeleteKey(PrefKeyPanelApproval);
-            EditorPrefs.DeleteKey(PrefKeyAllowlist);
-            EditorPrefs.DeleteKey(PrefKeyMigrationDone);
-            EditorPrefs.DeleteKey(PrefKeyLegacyGranted);
+            ProjectPrefs.DeleteKey(PrefKeyMode);
+            ProjectPrefs.DeleteKey(PrefKeyPanelApproval);
+            ProjectPrefs.DeleteKey(PrefKeyAllowlist);
+            ProjectPrefs.DeleteKey(PrefKeyMigrationDone);
+            ProjectPrefs.DeleteKey(PrefKeyLegacyGranted);
+            RaiseChanged();
+        }
+
+        /// <summary>
+        /// Test-only: drops the cached allowlist after a test switched the settings store (or rewrote its values), so the
+        /// next read loads it — and runs the one-time migration check — from the store now in use; notifies subscribers.
+        /// </summary>
+        internal static void ReloadPreferencesForTests()
+        {
+            lock (_allowlistLock)
+            {
+                _allowlist = null;
+            }
             RaiseChanged();
         }
 
@@ -657,15 +689,19 @@ namespace UnitySkills
         {
             if (!SessionState.GetBool(TestRecoveryActiveKey, false)) return;
 
-            RestoreStringPreference(PrefKeyMode, TestRecoveryModeExistsKey, TestRecoveryModeValueKey);
-            RestoreBoolPreference(PrefKeyPanelApproval, TestRecoveryPanelApprovalExistsKey,
-                TestRecoveryPanelApprovalValueKey);
-            RestoreStringPreference(PrefKeyAllowlist, TestRecoveryAllowlistExistsKey,
-                TestRecoveryAllowlistValueKey);
-            RestoreBoolPreference(PrefKeyMigrationDone, TestRecoveryMigrationExistsKey,
-                TestRecoveryMigrationValueKey);
-            RestoreStringPreference(PrefKeyLegacyGranted, TestRecoveryLegacyGrantedExistsKey,
-                TestRecoveryLegacyGrantedValueKey);
+            if (string.Equals(SessionState.GetString(TestRecoverySettingsFileKey, string.Empty),
+                    ProjectPrefs.SettingsFilePath, StringComparison.Ordinal))
+            {
+                RestoreStringPreference(PrefKeyMode, TestRecoveryModeExistsKey, TestRecoveryModeValueKey);
+                RestoreBoolPreference(PrefKeyPanelApproval, TestRecoveryPanelApprovalExistsKey,
+                    TestRecoveryPanelApprovalValueKey);
+                RestoreStringPreference(PrefKeyAllowlist, TestRecoveryAllowlistExistsKey,
+                    TestRecoveryAllowlistValueKey);
+                RestoreBoolPreference(PrefKeyMigrationDone, TestRecoveryMigrationExistsKey,
+                    TestRecoveryMigrationValueKey);
+                RestoreStringPreference(PrefKeyLegacyGranted, TestRecoveryLegacyGrantedExistsKey,
+                    TestRecoveryLegacyGrantedValueKey);
+            }
             ClearTestPreferenceRecovery();
         }
 
@@ -716,7 +752,7 @@ namespace UnitySkills
             {
                 if (_allowlist != null) return;
                 var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var raw = EditorPrefs.GetString(PrefKeyAllowlist, string.Empty);
+                var raw = ProjectPrefs.GetString(PrefKeyAllowlist, string.Empty);
                 if (!string.IsNullOrWhiteSpace(raw))
                 {
                     try
@@ -748,10 +784,10 @@ namespace UnitySkills
         /// </summary>
         private static void MigrateLegacyGrantedToAllowlist()
         {
-            if (EditorPrefs.GetBool(PrefKeyMigrationDone, false)) return;
+            if (ProjectPrefs.GetBool(PrefKeyMigrationDone, false)) return;
 
             int migrated = 0;
-            var legacy = EditorPrefs.GetString(PrefKeyLegacyGranted, string.Empty);
+            var legacy = ProjectPrefs.GetString(PrefKeyLegacyGranted, string.Empty);
             if (!string.IsNullOrWhiteSpace(legacy))
             {
                 try
@@ -770,7 +806,7 @@ namespace UnitySkills
                 }
             }
             if (migrated > 0) SaveAllowlistUnlocked();
-            EditorPrefs.SetBool(PrefKeyMigrationDone, true);
+            ProjectPrefs.SetBool(PrefKeyMigrationDone, true);
             SkillsAuditLog.Append("allowlist_migrated", new { count = migrated, source = "v1.9_granted" });
         }
 
@@ -779,7 +815,7 @@ namespace UnitySkills
             var arr = new JArray();
             foreach (var s in _allowlist.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
                 arr.Add(s);
-            EditorPrefs.SetString(PrefKeyAllowlist, arr.ToString(Formatting.None));
+            ProjectPrefs.SetString(PrefKeyAllowlist, arr.ToString(Formatting.None));
         }
 
         private static void CleanupExpired()
@@ -830,6 +866,8 @@ namespace UnitySkills
         private static void CapturePreferencesForTestRecovery()
         {
             if (SessionState.GetBool(TestRecoveryActiveKey, false)) return;
+            var settingsFile = ProjectPrefs.SettingsFilePath;
+            if (settingsFile == null) return;
 
             StoreStringPreference(PrefKeyMode, TestRecoveryModeExistsKey, TestRecoveryModeValueKey);
             StoreBoolPreference(PrefKeyPanelApproval, TestRecoveryPanelApprovalExistsKey,
@@ -840,42 +878,44 @@ namespace UnitySkills
                 TestRecoveryMigrationValueKey);
             StoreStringPreference(PrefKeyLegacyGranted, TestRecoveryLegacyGrantedExistsKey,
                 TestRecoveryLegacyGrantedValueKey);
+            SessionState.SetString(TestRecoverySettingsFileKey, settingsFile);
             SessionState.SetBool(TestRecoveryActiveKey, true);
         }
 
         private static void StoreStringPreference(string preferenceKey, string existsKey, string valueKey)
         {
-            var exists = EditorPrefs.HasKey(preferenceKey);
+            var exists = ProjectPrefs.HasKey(preferenceKey);
             SessionState.SetBool(existsKey, exists);
-            SessionState.SetString(valueKey, exists ? EditorPrefs.GetString(preferenceKey) : string.Empty);
+            SessionState.SetString(valueKey, exists ? ProjectPrefs.GetString(preferenceKey) : string.Empty);
         }
 
         private static void StoreBoolPreference(string preferenceKey, string existsKey, string valueKey)
         {
-            var exists = EditorPrefs.HasKey(preferenceKey);
+            var exists = ProjectPrefs.HasKey(preferenceKey);
             SessionState.SetBool(existsKey, exists);
-            SessionState.SetBool(valueKey, exists && EditorPrefs.GetBool(preferenceKey));
+            SessionState.SetBool(valueKey, exists && ProjectPrefs.GetBool(preferenceKey));
         }
 
         private static void RestoreStringPreference(string preferenceKey, string existsKey, string valueKey)
         {
             if (SessionState.GetBool(existsKey, false))
-                EditorPrefs.SetString(preferenceKey, SessionState.GetString(valueKey, string.Empty));
+                ProjectPrefs.SetString(preferenceKey, SessionState.GetString(valueKey, string.Empty));
             else
-                EditorPrefs.DeleteKey(preferenceKey);
+                ProjectPrefs.DeleteKey(preferenceKey);
         }
 
         private static void RestoreBoolPreference(string preferenceKey, string existsKey, string valueKey)
         {
             if (SessionState.GetBool(existsKey, false))
-                EditorPrefs.SetBool(preferenceKey, SessionState.GetBool(valueKey, false));
+                ProjectPrefs.SetBool(preferenceKey, SessionState.GetBool(valueKey, false));
             else
-                EditorPrefs.DeleteKey(preferenceKey);
+                ProjectPrefs.DeleteKey(preferenceKey);
         }
 
         private static void ClearTestPreferenceRecovery()
         {
             SessionState.EraseBool(TestRecoveryActiveKey);
+            SessionState.EraseString(TestRecoverySettingsFileKey);
             SessionState.EraseBool(TestRecoveryModeExistsKey);
             SessionState.EraseString(TestRecoveryModeValueKey);
             SessionState.EraseBool(TestRecoveryPanelApprovalExistsKey);
@@ -926,29 +966,56 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// The criterion for a pre-v1.9 install. If any of these global UnitySkills_* prefs exist, the user was
-        /// already using this package before the mode system existed → default to Bypass so the upgrade is behavior-neutral.
+        /// Whether this machine used the package before the mode system existed (pre-v1.9) → default to Bypass so the
+        /// upgrade is behavior-neutral. Decided once per machine: the first evaluation runs the legacy probe and stores
+        /// the verdict in the machine-wide <c>UnitySkills_InstallEra</c> EditorPrefs key, and every later evaluation
+        /// returns it. Otherwise a fresh install would turn "existing" as soon as the user changed a machine-wide
+        /// setting (language, log level, keep-alive), and every project that never chose a mode would fall back to Bypass.
         /// </summary>
         private static bool IsExistingInstall()
         {
             if (ExistingInstallOverrideForTests.HasValue)
                 return ExistingInstallOverrideForTests.Value;
-            return EditorPrefs.HasKey("UnitySkills_RequireConfirmation")
-                || EditorPrefs.HasKey("UnitySkills_PreferredPort")
-                || EditorPrefs.HasKey("UnitySkills_LogLevel")
-                || EditorPrefs.HasKey("UnitySkills_TelemetryEnabled")
-                || EditorPrefs.HasKey("UnitySkills_Language")
-                || EditorPrefs.HasKey("UnitySkills_GuideMode")
-                || EditorPrefs.HasKey("UnitySkills_RequestTimeoutMinutes")
-                || EditorPrefs.HasKey("UnitySkills_KeepAliveIntervalSeconds")
-                || EditorPrefs.HasKey("UnitySkills_AutoInstallPackagesOnStartup");
+
+            var stored = InstallEraPrefsForTests != null
+                ? (InstallEraPrefsForTests.TryGetValue(PrefKeyInstallEra, out var value) ? value : string.Empty)
+                : EditorPrefs.GetString(PrefKeyInstallEra, string.Empty);
+            if (stored == InstallEraExisting) return true;
+            if (stored == InstallEraFresh) return false;
+
+            bool existing = HasPreModeSystemPrefs();
+            var verdict = existing ? InstallEraExisting : InstallEraFresh;
+            if (InstallEraPrefsForTests != null) InstallEraPrefsForTests[PrefKeyInstallEra] = verdict;
+            else EditorPrefs.SetString(PrefKeyInstallEra, verdict);
+            return existing;
         }
 
         /// <summary>
+        /// The legacy probe: any of these machine-wide UnitySkills_* EditorPrefs keys means the package was in use
+        /// before the mode system. Only EditorPrefs counts — the settings 3.0 keeps per project never write these keys
+        /// there, so they cannot change the verdict.
+        /// </summary>
+        private static bool HasPreModeSystemPrefs()
+        {
+            return HasMachinePref("UnitySkills_RequireConfirmation")
+                || HasMachinePref("UnitySkills_PreferredPort")
+                || HasMachinePref("UnitySkills_LogLevel")
+                || HasMachinePref("UnitySkills_TelemetryEnabled")
+                || HasMachinePref("UnitySkills_Language")
+                || HasMachinePref("UnitySkills_GuideMode")
+                || HasMachinePref("UnitySkills_RequestTimeoutMinutes")
+                || HasMachinePref("UnitySkills_KeepAliveIntervalSeconds")
+                || HasMachinePref("UnitySkills_AutoInstallPackagesOnStartup");
+        }
+
+        private static bool HasMachinePref(string key) =>
+            InstallEraPrefsForTests != null ? InstallEraPrefsForTests.ContainsKey(key) : EditorPrefs.HasKey(key);
+
+        /// <summary>
         /// Shared upgrade-default probe for settings that were introduced after the initial
-        /// package release. Keep the key list in this method aligned with the permission panel's
-        /// <c>PermissionUiHelpers.IsExistingInstall</c>; callers must not infer installation age
-        /// from the presence of a setting that was introduced in the current release.
+        /// package release; the permission panel's <c>PermissionUiHelpers.IsExistingInstall</c>
+        /// delegates here. Callers must not infer installation age from the presence of a setting
+        /// that was introduced in the current release.
         /// </summary>
         internal static bool IsExistingInstallForDefaults() => IsExistingInstall();
     }

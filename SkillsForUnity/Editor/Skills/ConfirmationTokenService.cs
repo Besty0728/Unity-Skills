@@ -2,6 +2,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -25,17 +26,17 @@ namespace UnitySkills
 
         private static readonly OneTimeTokenStore _tokens = new OneTimeTokenStore(DefaultTtlSeconds, MaxLiveTokens);
 
-        /// <summary>Test seam: when set, <see cref="RequireConfirmation"/> reads this instead of the machine-wide pref.</summary>
+        /// <summary>Test seam: when set, <see cref="RequireConfirmation"/> reads this instead of the per-project setting.</summary>
         internal static bool? RequireConfirmationOverrideForTests;
 
         /// <summary>
-        /// Global switch. Defaults to false -- most users want unattended automation.
+        /// Per-project switch (<see cref="ProjectPrefs"/>). Defaults to false -- most users want unattended automation.
         /// When false, this service is entirely a no-op and skills execute without confirmation.
         /// </summary>
         public static bool RequireConfirmation
         {
-            get => RequireConfirmationOverrideForTests ?? EditorPrefs.GetBool(PrefKeyRequire, false);
-            set => EditorPrefs.SetBool(PrefKeyRequire, value);
+            get => RequireConfirmationOverrideForTests ?? ProjectPrefs.GetBool(PrefKeyRequire, false);
+            set => ProjectPrefs.SetBool(PrefKeyRequire, value);
         }
 
         public static int Ttl => DefaultTtlSeconds;

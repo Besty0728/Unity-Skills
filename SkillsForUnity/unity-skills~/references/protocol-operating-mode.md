@@ -1,6 +1,6 @@
 # Protocol: Operating Mode (v1.9.0+)
 
-Operating mode is a **server-side permission gate**, configured in the Unity panel (`Window > UnitySkills` → ⚙ Settings → Server section) and persisted in EditorPrefs per-machine. It is not an AI routing policy and **cannot** be switched via chat or REST — chat-side trigger words no longer apply.
+Operating mode is a **server-side permission gate**, configured in the Unity panel (`Window > UnitySkills` → ⚙ Settings → Server section) and persisted **per project** in `UserSettings/UnitySkills/settings.json` (per user, not in version control; a project never changed since upgrading keeps the value older versions stored machine-wide). The Allowlist, `RequireConfirmation`, the surface profile and the token-level settings are per project too, so two Unity instances can report different values. It is not an AI routing policy and **cannot** be switched via chat or REST — chat-side trigger words no longer apply.
 
 ## Boot Handshake
 
@@ -47,7 +47,7 @@ Quitting the Editor removes its entry. A `reloading` or `stopped` entry has no h
 
 ## Surface profile
 
-`surfaceProfile` (on `/health`, and on recommend or listing envelopes when it is not `full`) says which slice of the skill surface the user exposed. Only the user can switch it, in the UnitySkills panel; `guideMode` is a legacy boolean, `surfaceProfile` is authoritative.
+`surfaceProfile` (on `/health`, and on recommend or listing envelopes when it is not `full`) says which slice of the skill surface the user exposed. Only the user can switch it, per project, in the UnitySkills panel; `guideMode` is a legacy boolean, `surfaceProfile` is authoritative.
 
 | Profile | Hidden | What to do |
 |---|---|---|
@@ -78,7 +78,7 @@ Never gated: `supportsDryRun:false` skills, skills with their own `confirmToken`
 
 ## Token Level
 
-`tokenLevel` on `/health` is a **derived** view, not a separate persisted setting — it is computed from three source values every time it's read: `surfaceProfile` (see "Surface profile" above), `summaryAutoTruncate`, and `summaryPageSize`. Changing any of the three source values immediately changes the reported `tokenLevel`; there is no separate "set token level" call.
+`tokenLevel` on `/health` is a **derived** view, not a separate persisted setting — it is computed from three per-project source values every time it's read: `surfaceProfile` (see "Surface profile" above), `summaryAutoTruncate`, and `summaryPageSize`. Changing any of the three source values immediately changes the reported `tokenLevel`; there is no separate "set token level" call.
 
 | `tokenLevel` | `surfaceProfile` | `summaryAutoTruncate` | `summaryPageSize` |
 |---|---|---|---|

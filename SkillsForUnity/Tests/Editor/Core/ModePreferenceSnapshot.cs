@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
-using System.Reflection;
-using UnityEditor;
+using UnitySkills.Internal;
 
 namespace UnitySkills.Tests.Core
 {
@@ -8,7 +7,9 @@ namespace UnitySkills.Tests.Core
     /// Snapshots every preference <see cref="SkillsModeManager.ResetForTests"/> deletes, and puts all of them back.
     /// A fixture that saved only the mode keys ended a test run with the user's allowlist deleted: ResetForTests
     /// removes it, and <see cref="SkillsModeManager.CompleteTestPreferenceRecovery"/> only clears the domain-reload
-    /// recovery data. Capture in [OneTimeSetUp], restore in [OneTimeTearDown].
+    /// recovery data. Capture in [OneTimeSetUp], restore in [OneTimeTearDown]. The values are per-project settings
+    /// (<see cref="ProjectPrefs"/>); during a test run that is the in-memory store <see cref="ProjectPrefsTestIsolation"/>
+    /// installs, so this keeps fixtures from leaking permission state into each other.
     /// </summary>
     internal sealed class ModePreferenceSnapshot
     {
@@ -30,14 +31,14 @@ namespace UnitySkills.Tests.Core
             var snapshot = new ModePreferenceSnapshot();
             foreach (var key in StringKeys)
             {
-                if (EditorPrefs.HasKey(key))
-                    snapshot._strings[key] = EditorPrefs.GetString(key);
+                if (ProjectPrefs.HasKey(key))
+                    snapshot._strings[key] = ProjectPrefs.GetString(key);
             }
 
             foreach (var key in BoolKeys)
             {
-                if (EditorPrefs.HasKey(key))
-                    snapshot._bools[key] = EditorPrefs.GetBool(key);
+                if (ProjectPrefs.HasKey(key))
+                    snapshot._bools[key] = ProjectPrefs.GetBool(key);
             }
 
             return snapshot;
@@ -47,18 +48,18 @@ namespace UnitySkills.Tests.Core
         {
             foreach (var key in StringKeys)
             {
-                if (_strings.TryGetValue(key, out var value)) EditorPrefs.SetString(key, value);
-                else EditorPrefs.DeleteKey(key);
+                if (_strings.TryGetValue(key, out var value)) ProjectPrefs.SetString(key, value);
+                else ProjectPrefs.DeleteKey(key);
             }
 
             foreach (var key in BoolKeys)
             {
-                if (_bools.TryGetValue(key, out var value)) EditorPrefs.SetBool(key, value);
-                else EditorPrefs.DeleteKey(key);
+                if (_bools.TryGetValue(key, out var value)) ProjectPrefs.SetBool(key, value);
+                else ProjectPrefs.DeleteKey(key);
             }
 
             // The in-memory allowlist was replaced by ResetForTests; drop it so the next read loads the restored pref.
-            typeof(SkillsModeManager).GetField("_allowlist", BindingFlags.NonPublic | BindingFlags.Static)?.SetValue(null, null);
+            SkillsModeManager.ReloadPreferencesForTests();
             SkillsModeManager.CompleteTestPreferenceRecovery();
         }
     }

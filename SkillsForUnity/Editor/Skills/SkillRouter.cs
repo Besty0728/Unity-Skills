@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEditor;
+using UnitySkills.Internal;
 using UnityEngine;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -156,9 +157,10 @@ namespace UnitySkills
         private static int? _summaryPageSize;
 
         /// <summary>
-        /// Raised after either summary preference is changed through this class. EditorPrefs and
-        /// all subscribers are expected to run on Unity's main thread; HTTP worker threads only
-        /// enqueue requests and never access these properties directly.
+        /// Raised after either summary preference is changed through this class. Both are
+        /// per-project settings (<see cref="ProjectPrefs"/>, falling back to the pre-3.0 machine-wide
+        /// EditorPrefs value); the store and all subscribers are expected to run on Unity's main
+        /// thread; HTTP worker threads only enqueue requests and never access these properties directly.
         /// </summary>
         public static event Action SummarySettingsChanged;
 
@@ -174,15 +176,15 @@ namespace UnitySkills
             {
                 if (!_summaryAutoTruncate.HasValue)
                 {
-                    if (EditorPrefs.HasKey(PrefKeySummaryAutoTruncate))
-                        _summaryAutoTruncate = EditorPrefs.GetBool(PrefKeySummaryAutoTruncate, false);
+                    if (ProjectPrefs.HasKey(PrefKeySummaryAutoTruncate))
+                        _summaryAutoTruncate = ProjectPrefs.GetBool(PrefKeySummaryAutoTruncate, false);
                     else
                     {
-                        // Keep this list in lockstep with PermissionUiHelpers.IsExistingInstall
-                        // and SkillsModeManager.IsExistingInstall. The internal helper also lets
-                        // EditMode tests simulate an upgrade without creating machine prefs.
+                        // The shared upgrade probe (SkillsModeManager.IsExistingInstall) decides the
+                        // default. The internal helper also lets EditMode tests simulate an upgrade
+                        // without creating machine prefs.
                         _summaryAutoTruncate = !SkillsModeManager.IsExistingInstallForDefaults();
-                        EditorPrefs.SetBool(PrefKeySummaryAutoTruncate, _summaryAutoTruncate.Value);
+                        ProjectPrefs.SetBool(PrefKeySummaryAutoTruncate, _summaryAutoTruncate.Value);
                     }
                 }
                 return _summaryAutoTruncate.Value;
@@ -191,7 +193,7 @@ namespace UnitySkills
             {
                 bool changed = !_summaryAutoTruncate.HasValue || _summaryAutoTruncate.Value != value;
                 _summaryAutoTruncate = value;
-                EditorPrefs.SetBool(PrefKeySummaryAutoTruncate, value);
+                ProjectPrefs.SetBool(PrefKeySummaryAutoTruncate, value);
                 if (changed) RaiseSummarySettingsChanged();
             }
         }
@@ -208,14 +210,14 @@ namespace UnitySkills
             {
                 if (!_summaryPageSize.HasValue)
                 {
-                    if (!EditorPrefs.HasKey(PrefKeySummaryPageSize))
+                    if (!ProjectPrefs.HasKey(PrefKeySummaryPageSize))
                     {
                         _summaryPageSize = DefaultSummaryPageSize;
-                        EditorPrefs.SetInt(PrefKeySummaryPageSize, DefaultSummaryPageSize);
+                        ProjectPrefs.SetInt(PrefKeySummaryPageSize, DefaultSummaryPageSize);
                     }
                     else
                     {
-                        int stored = EditorPrefs.GetInt(PrefKeySummaryPageSize, DefaultSummaryPageSize);
+                        int stored = ProjectPrefs.GetInt(PrefKeySummaryPageSize, DefaultSummaryPageSize);
                         _summaryPageSize = stored > 0 ? stored : DefaultSummaryPageSize;
                     }
                 }
@@ -226,7 +228,7 @@ namespace UnitySkills
                 int normalized = value > 0 ? value : DefaultSummaryPageSize;
                 bool changed = !_summaryPageSize.HasValue || _summaryPageSize.Value != normalized;
                 _summaryPageSize = normalized;
-                EditorPrefs.SetInt(PrefKeySummaryPageSize, normalized);
+                ProjectPrefs.SetInt(PrefKeySummaryPageSize, normalized);
                 if (changed) RaiseSummarySettingsChanged();
             }
         }

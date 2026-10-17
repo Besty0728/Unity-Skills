@@ -252,7 +252,8 @@ namespace UnitySkills
 
     /// <summary>
     /// Persistent auto-cleanup configuration for workflow history and the file store.
-    /// Stored under the "UnitySkills.Workflow.*" EditorPrefs keys.
+    /// Stored per project under the "UnitySkills.Workflow.*" keys of <see cref="ProjectPrefs"/>
+    /// (UserSettings/UnitySkills/settings.json; a project without its own value reads the pre-3.0 global EditorPrefs value).
     /// </summary>
     public static class WorkflowAutoCleanConfig
     {
@@ -267,38 +268,38 @@ namespace UnitySkills
 
         public static bool Enabled
         {
-            get => EditorPrefs.GetBool(KeyEnabled, true);
-            set => EditorPrefs.SetBool(KeyEnabled, value);
+            get => ProjectPrefs.GetBool(KeyEnabled, true);
+            set => ProjectPrefs.SetBool(KeyEnabled, value);
         }
 
         public static int MaxTasks
         {
-            get => EditorPrefs.GetInt(KeyMaxTasks, 200);
-            set => EditorPrefs.SetInt(KeyMaxTasks, value);
+            get => ProjectPrefs.GetInt(KeyMaxTasks, 200);
+            set => ProjectPrefs.SetInt(KeyMaxTasks, value);
         }
 
         public static int MaxHistoryMB
         {
-            get => EditorPrefs.GetInt(KeyMaxHistoryMB, 32);
-            set => EditorPrefs.SetInt(KeyMaxHistoryMB, value);
+            get => ProjectPrefs.GetInt(KeyMaxHistoryMB, 32);
+            set => ProjectPrefs.SetInt(KeyMaxHistoryMB, value);
         }
 
         public static int MaxTaskAgeDays
         {
-            get => EditorPrefs.GetInt(KeyMaxTaskAgeDays, 30);
-            set => EditorPrefs.SetInt(KeyMaxTaskAgeDays, value);
+            get => ProjectPrefs.GetInt(KeyMaxTaskAgeDays, 30);
+            set => ProjectPrefs.SetInt(KeyMaxTaskAgeDays, value);
         }
 
         public static int MaxStoreMB
         {
-            get => EditorPrefs.GetInt(KeyMaxStoreMB, 512);
-            set => EditorPrefs.SetInt(KeyMaxStoreMB, value);
+            get => ProjectPrefs.GetInt(KeyMaxStoreMB, 512);
+            set => ProjectPrefs.SetInt(KeyMaxStoreMB, value);
         }
 
         public static int StoreMaxAgeDays
         {
-            get => EditorPrefs.GetInt(KeyStoreMaxAgeDays, 7);
-            set => EditorPrefs.SetInt(KeyStoreMaxAgeDays, value);
+            get => ProjectPrefs.GetInt(KeyStoreMaxAgeDays, 7);
+            set => ProjectPrefs.SetInt(KeyStoreMaxAgeDays, value);
         }
 
         /// <summary>

@@ -589,7 +589,7 @@ pid_alive(pid):
 ### 4.2 写入纪律与不得存储的内容
 
 - 所有 `.json` 原子写：同目录 `<name>.tmp-<pid>-<6hex>` → flush + fsync → `os.replace`。Windows 上 `os.replace` 遇 `PermissionError` 重试 5 次、间隔 100 ms（杀毒软件、读者句柄）。
-- C# 读取：`new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)`；`IOException` 或 JSON 解析失败重试 3 次、间隔 50 ms。面板不得写 runner 状态文件，只写 `panel/<cmdId>.json`、专用工程标识与 EditorPrefs。
+- C# 读取：`new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)`；`IOException` 或 JSON 解析失败重试 3 次、间隔 50 ms。面板不得写 runner 状态文件，只写 `panel/<cmdId>.json`、专用工程标识、EditorPrefs（Python 路径）与本工程的设置文件 `UserSettings/UnitySkills/settings.json`（面板配置、模式与恢复键，WP17）。
 - JSONL（ledger、runner.log、journal 与 telemetry 副本）：一次 `write` 写完整一行；读方忽略末尾不完整的行。ledger 只追加，从不改写。
 - 读到 `schema` 缺失或不是 int → `STATE_CORRUPT`；大于 1 → `SCHEMA_UNSUPPORTED`。
 - **不得存储**（任何 runner 文件、日志、IO 目录）：角色标签（decoy/target/expected 一类，lint 黑名单见 §5.2）、期望集合与期望值、参考答案、私有 verify 源码及其中间推导结果（`result.json` 中 verify 自己写下的 `expected/actual/hint` 除外，那是该题结束后的诊断）、宿主日志的内容字段（只存数字与白名单字段，§8.4）、私有包的下载内容。只读发现题的 C0 只存摘要（§5.2）。
@@ -1227,10 +1227,10 @@ private static void RegisterLifecycleFlush()
 
 ### 7.5 模式切换与条件恢复
 
-- 模式是整机共享的 EditorPrefs：键 `UnitySkills_OperatingMode`，值为枚举名 `Approval/Auto/Bypass`（`SkillsModeManager.cs:75,163-181`；`SkillModeEnum.cs:5`），wire 值为小写（`:601-602`）。非 Bypass 下 NeverInSemi 技能被拦（`SkillRouter.Gates.cs:133-136`），而 fixture 清理（`asset_delete`）与 dev 赛道（编译、Play）都需要它们。runner 只检查，从不改模式。
-- 面板"切到 Bypass（会话结束后恢复）"：当前不是 Bypass 时，先写 EditorPrefs `UnitySkills_EvalRestoreMode` = JSON 字符串 `{"schema":1,"previousMode":"auto","armedAt":"<iso>","projectPath":"<abs>","sessionId":null}`，再设 `SkillsModeManager.CurrentMode = Bypass`；已经是 Bypass 则不写键。
+- 模式按工程保存（WP17）：`ProjectPrefs` 键 `UnitySkills_OperatingMode`，存于本工程的 `UserSettings/UnitySkills/settings.json`（工程还没有自己的值时读 3.0 以前留在整机 EditorPrefs 的旧值，写入只进工程文件），值为枚举名 `Approval/Auto/Bypass`（`SkillsModeManager.cs:78,169-187`；`SkillModeEnum.cs:5`），wire 值为小写（`:607-608`）。非 Bypass 下 NeverInSemi 技能被拦（`SkillRouter.Gates.cs:133-136`），而 fixture 清理（`asset_delete`）与 dev 赛道（编译、Play）都需要它们。runner 只检查，从不改模式。
+- 面板"切到 Bypass（会话结束后恢复）"：当前不是 Bypass 时，先在本工程的设置（`ProjectPrefs`）写键 `UnitySkills_EvalRestoreMode` = JSON 字符串 `{"schema":1,"previousMode":"auto","armedAt":"<iso>","sessionId":null}`，再设 `SkillsModeManager.CurrentMode = Bypass`；已经是 Bypass 则不写键。键与模式在同一个工程的设置文件里，别的工程看不到，所以不记录工程路径；它从未作为整机 EditorPrefs 发布过，没有旧值回退。
 - 绑定：面板观察到本工程 `current.json` 出现 `createdAt ≥ armedAt` 的会话时，把它的 `sessionId` 写进键。
-- 恢复条件（全部满足）：键存在；`projectPath` 等于本工程；`current.json` 没有 active 会话；键已绑定且该会话已 completed/aborted，或用户点了"立即恢复"。恢复动作：`CurrentMode == Bypass` 时设回 `previousMode` 并删键；否则（用户已手动改过）只删键。
+- 恢复条件（全部满足）：键存在；`current.json` 没有 active 会话；键已绑定且该会话已 completed/aborted，或用户点了"立即恢复"。恢复动作：`CurrentMode == Bypass` 时设回 `previousMode` 并删键；否则（用户已手动改过）只删键。
 - 检查时机：Evaluation tab controller 创建时、tab 激活时、轮询中观察到会话进入终态时、面板发起的 abort / report 完成时。不得用 `InitializeOnLoad` 扫描（启动策略）。键存在期间 tab 显示"模式将在会话结束后恢复"。
 
 ### 7.6 Evaluation tab ↔ runner
@@ -1408,7 +1408,7 @@ private static void RegisterLifecycleFlush()
 12. 文件截断计数用平铺字段 `omitted / importedTotal / deletedTotal / movedTotal`，`count` 语义不变 —— 只新增，便于 grep。
 13. 重父级记录额外加 `scenePath` —— scope 身份表补丁要按场景判断位置。
 14. journal 在 `quitting` 时也刷防抖属性 —— 退出前最后的修改不丢。
-15. 模式恢复键是绑定 `projectPath` 与 `sessionId` 的 JSON，只在当前仍是 Bypass 时恢复、否则只删键，不用 InitializeOnLoad —— EditorPrefs 整机共享，不能让别的工程触发恢复；尊重用户手动改过的模式；遵守启动策略。
+15. 模式恢复键是绑定 `sessionId` 的 JSON，与按工程保存的模式存在同一个工程的设置文件里（WP17），别的工程既看不到也触发不了恢复，因此不记录 `projectPath`；只在当前仍是 Bypass 时恢复、否则只删键，不用 InitializeOnLoad —— 尊重用户手动改过的模式；遵守启动策略。
 16. 面板结果文件 = 信封 + `exitCode / finishedAt / cmdId`，并新增 `--cmd-id` —— domain reload 后面板拿不到进程退出码。
 17. 期望 instanceId 用 registry 条目自身的 `path`（Unity 视角）计算，先用 realpath 比对工程 —— v1 用本地 realpath 计算，经符号链接打开的工程会误报不匹配。
 18. surfaceProfile 必须是 full（阻断），dryRunPolicy、tokenLevel 不是参考值时只给 notice —— guide 等档位会隐藏写技能，题目无法完成；后两者只影响可比性。

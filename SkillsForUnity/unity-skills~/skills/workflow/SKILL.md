@@ -303,7 +303,7 @@ Undo/redo return per-snapshot detail (`TaskUndoResult`: `total` / `succeeded` / 
 
 ### Auto-clean
 
-`WorkflowAutoCleanConfig` (EditorPrefs keys `UnitySkills.Workflow.*`) trims history and the file store after `EndTask` and after `LoadHistory`. Defaults: `MaxTasks=200`, `MaxHistoryMB=32`, `MaxTaskAgeDays=30`, `MaxStoreMB=512`, `StoreMaxAgeDays=7`. Store age/size pruning never removes a blob referenced by retained history. A value of `0` disables that individual limit.
+`WorkflowAutoCleanConfig` (per-project settings `UnitySkills.Workflow.*` in `UserSettings/UnitySkills/settings.json`) trims history and the file store after `EndTask` and after `LoadHistory`. Defaults: `MaxTasks=200`, `MaxHistoryMB=32`, `MaxTaskAgeDays=30`, `MaxStoreMB=512`, `StoreMaxAgeDays=7`. Store age/size pruning never removes a blob referenced by retained history. A value of `0` disables that individual limit.
 
 ### Settings are now truly revertible
 

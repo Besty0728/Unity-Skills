@@ -40,10 +40,9 @@ namespace UnitySkills.Tests.Core
         private SkillsOperatingMode _savedMode;
 
         /// <summary>
-        /// UnitySkills_SurfaceProfile is an EditorPrefs key, meaning it's "shared machine-wide
-        /// per Unity version" rather than per-project: leaving a profile set here would silently
-        /// change the visible scope for every other fixture in this run (and the developer's next
-        /// editor session). Hence it's backed up and restored here.
+        /// UnitySkills_SurfaceProfile is a per-project setting shared by every fixture of a run (they all use the
+        /// in-memory store ProjectPrefsTestIsolation installs): leaving a profile set here would silently change the
+        /// visible scope for every later fixture. Hence it's backed up and restored here.
         /// </summary>
         [SetUp]
         public void SetUp()

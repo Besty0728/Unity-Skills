@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using UnityEditor;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -25,7 +25,7 @@ namespace UnitySkills
 
     /// <summary>
     /// The user's presentation policy for the skill surface: which skills get offered at all.
-    /// Persisted as a wire string in EditorPrefs, reported on <c>/health</c> as
+    /// Persisted per project as a wire string (<see cref="UnitySkills.Internal.ProjectPrefs"/>), reported on <c>/health</c> as
     /// <c>surfaceProfile</c>, and enforced by <see cref="SkillRouter"/> at both discovery and execution.
     ///
     /// This is not a permission mode. <see cref="SkillsModeManager"/> answers "can this skill
@@ -60,9 +60,11 @@ namespace UnitySkills
         /// </summary>
         public static event Action OnChanged;
 
-        // EditorPrefs is only accessible on the main thread, and building the manifest string
-        // has to check visibility filtering for every skill, so the resolved result is memoized
-        // here. Both the setter and the first read write it, and both happen on the main thread.
+        // The profile is a per-project setting (ProjectPrefs: UserSettings/UnitySkills/settings.json,
+        // falling back to the pre-3.0 machine-wide EditorPrefs value). It is only accessible on the
+        // main thread, and building the manifest string has to check visibility filtering for every
+        // skill, so the resolved result is memoized here. Both the setter and the first read write
+        // it, and both happen on the main thread.
         private static SurfaceProfileKind? _current;
 
         public static SurfaceProfileKind Current
@@ -77,7 +79,7 @@ namespace UnitySkills
             {
                 if (Current == value) return;
                 _current = value;
-                EditorPrefs.SetString(PrefKeyProfile, ToWire(value));
+                ProjectPrefs.SetString(PrefKeyProfile, ToWire(value));
                 RaiseChanged();
             }
         }
@@ -420,16 +422,18 @@ namespace UnitySkills
         /// <see cref="SurfaceProfileKind.Guide"/>. The migration is read-only — the old key is
         /// left as-is, and once a profile has been written it no longer has any effect, so
         /// downgrading to an older version of the plugin still finds its own toggle intact.
+        /// Both keys resolve through <see cref="ProjectPrefs"/>: this project's value first, then
+        /// the machine-wide value an older version left in EditorPrefs.
         /// </summary>
         private static SurfaceProfileKind Load()
         {
             try
             {
-                if (EditorPrefs.HasKey(PrefKeyProfile) &&
-                    TryParseWire(EditorPrefs.GetString(PrefKeyProfile, null), out var stored))
+                if (ProjectPrefs.HasKey(PrefKeyProfile) &&
+                    TryParseWire(ProjectPrefs.GetString(PrefKeyProfile, null), out var stored))
                     return stored;
 
-                return EditorPrefs.GetBool(PrefKeyLegacyGuideMode, false)
+                return ProjectPrefs.GetBool(PrefKeyLegacyGuideMode, false)
                     ? SurfaceProfileKind.Guide
                     : SurfaceProfileKind.Full;
             }
@@ -449,6 +453,16 @@ namespace UnitySkills
         /// user just withdrew, with the only clue being a console warning. Cache invalidation is a
         /// security invariant here, and can't depend on unrelated subscribers behaving.
         /// </summary>
+        /// <summary>
+        /// Test-only: drops the memoized profile after a test switched the settings store, and notifies
+        /// subscribers so caches built under the previous store's profile are rebuilt.
+        /// </summary>
+        internal static void ReloadForTests()
+        {
+            _current = null;
+            RaiseChanged();
+        }
+
         private static void RaiseChanged()
         {
             var handlers = OnChanged;

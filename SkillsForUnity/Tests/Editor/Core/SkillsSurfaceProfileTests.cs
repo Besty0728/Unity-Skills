@@ -19,8 +19,9 @@ namespace UnitySkills.Tests.Core
     /// 2. Only structural fields are asserted (errorCode / details.manualDoc / details.surfaceProfile /
     ///    retryStrategy / authorization.blockedBy) and key substrings of doc paths. The hint is natural-language prose meant for an agent to read; its wording is free to change.
     ///
-    /// EditorPrefs hygiene: <c>UnitySkills_SurfaceProfile</c> is shared globally per Unity version, not
-    /// per project, so setup saves the original value and teardown restores it; each test explicitly sets the profile and mode it needs.
+    /// Settings hygiene: <c>UnitySkills_SurfaceProfile</c> is a per-project setting, and during a test run it lives in the
+    /// in-memory store <see cref="ProjectPrefsTestIsolation"/> installs; setup still saves the original value and teardown
+    /// restores it so fixtures do not leak into each other, and each test explicitly sets the profile and mode it needs.
     /// </summary>
     [TestFixture]
     public class SkillsSurfaceProfileTests

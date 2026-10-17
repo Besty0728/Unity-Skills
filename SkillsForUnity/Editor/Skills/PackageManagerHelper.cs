@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
+using UnitySkills.Internal;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -46,10 +47,11 @@ namespace UnitySkills
             _isRefreshing;
         public static string CurrentOperation => _currentOperation;
         public static string CurrentPackageId => _currentPackageId;
+        /// <summary>Per project (<see cref="ProjectPrefs"/>); off by default.</summary>
         public static bool AutoInstallPackagesOnStartup
         {
-            get => EditorPrefs.GetBool(PrefKeyAutoInstallPackagesOnStartup, false);
-            set => EditorPrefs.SetBool(PrefKeyAutoInstallPackagesOnStartup, value);
+            get => ProjectPrefs.GetBool(PrefKeyAutoInstallPackagesOnStartup, false);
+            set => ProjectPrefs.SetBool(PrefKeyAutoInstallPackagesOnStartup, value);
         }
 
         static PackageManagerHelper()

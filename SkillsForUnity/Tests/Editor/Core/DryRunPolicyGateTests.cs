@@ -8,13 +8,14 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnitySkills.Internal;
 
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// Shared plumbing for the dryRun policy fixtures. The machine-wide permission prefs these tests move (mode, panel
-    /// approval, Allowlist) are saved once and restored exactly, as SkillsModeManagerTests does; the policy and
-    /// RequireConfirmation only ever go through their test seams, never real EditorPrefs. Every test starts in Bypass mode
+    /// Shared plumbing for the dryRun policy fixtures. The per-project permission settings these tests move (mode, panel
+    /// approval, Allowlist) are saved once and restored exactly; the policy and RequireConfirmation only ever go through
+    /// their test seams, never a real preference. Every test starts in Bypass mode
     /// on an empty scene with the full surface profile, so the only gate in play is the one under test.
     /// </summary>
     internal sealed class DryRunPolicyTestHarness
@@ -34,13 +35,13 @@ namespace UnitySkills.Tests.Core
         {
             for (int i = 0; i < StringPrefKeys.Length; i++)
             {
-                _hadString[i] = EditorPrefs.HasKey(StringPrefKeys[i]);
-                _savedString[i] = EditorPrefs.GetString(StringPrefKeys[i], string.Empty);
+                _hadString[i] = ProjectPrefs.HasKey(StringPrefKeys[i]);
+                _savedString[i] = ProjectPrefs.GetString(StringPrefKeys[i], string.Empty);
             }
             for (int i = 0; i < BoolPrefKeys.Length; i++)
             {
-                _hadBool[i] = EditorPrefs.HasKey(BoolPrefKeys[i]);
-                _savedBool[i] = EditorPrefs.GetBool(BoolPrefKeys[i], false);
+                _hadBool[i] = ProjectPrefs.HasKey(BoolPrefKeys[i]);
+                _savedBool[i] = ProjectPrefs.GetBool(BoolPrefKeys[i], false);
             }
         }
 
@@ -48,13 +49,13 @@ namespace UnitySkills.Tests.Core
         {
             for (int i = 0; i < StringPrefKeys.Length; i++)
             {
-                if (_hadString[i]) EditorPrefs.SetString(StringPrefKeys[i], _savedString[i]);
-                else EditorPrefs.DeleteKey(StringPrefKeys[i]);
+                if (_hadString[i]) ProjectPrefs.SetString(StringPrefKeys[i], _savedString[i]);
+                else ProjectPrefs.DeleteKey(StringPrefKeys[i]);
             }
             for (int i = 0; i < BoolPrefKeys.Length; i++)
             {
-                if (_hadBool[i]) EditorPrefs.SetBool(BoolPrefKeys[i], _savedBool[i]);
-                else EditorPrefs.DeleteKey(BoolPrefKeys[i]);
+                if (_hadBool[i]) ProjectPrefs.SetBool(BoolPrefKeys[i], _savedBool[i]);
+                else ProjectPrefs.DeleteKey(BoolPrefKeys[i]);
             }
             SkillsModeManager.ExistingInstallOverrideForTests = null;
             // The allowlist is cached in memory; drop the cache so the next read sees the restored pref.

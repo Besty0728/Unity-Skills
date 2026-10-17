@@ -6,6 +6,7 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using UnityEditor;
+using UnitySkills.Internal;
 using UnityEditor.Compilation;
 using UnityEngine;
 using Newtonsoft.Json;
@@ -267,25 +268,26 @@ namespace UnitySkills
         private const string PrefKeyPreferredPort = "UnitySkills_PreferredPort";
 
         /// <summary>
-        /// Preferred server port. 0 = automatic (scans 8090-8100), otherwise uses the specified port.
+        /// Preferred server port, per project (<see cref="ProjectPrefs"/>). 0 = automatic (scans 8090-8100), otherwise
+        /// uses the specified port.
         /// </summary>
         public static int PreferredPort
         {
-            get => EditorPrefs.GetInt(PrefKeyPreferredPort, 0);
-            set => EditorPrefs.SetInt(PrefKeyPreferredPort, value);
+            get => ProjectPrefs.GetInt(PrefKeyPreferredPort, 0);
+            set => ProjectPrefs.SetInt(PrefKeyPreferredPort, value);
         }
 
         private const string PrefKeyRequestTimeout = "UnitySkills_RequestTimeoutMinutes";
 
         /// <summary>
-        /// Request timeout (minutes). Defaults to 15 minutes, minimum 1 minute.
+        /// Request timeout (minutes), per project (<see cref="ProjectPrefs"/>). Defaults to 15 minutes, minimum 1 minute.
         /// </summary>
         public static int RequestTimeoutMinutes
         {
-            get => Mathf.Max(1, EditorPrefs.GetInt(PrefKeyRequestTimeout, 15));
+            get => Mathf.Max(1, ProjectPrefs.GetInt(PrefKeyRequestTimeout, 15));
             set
             {
-                EditorPrefs.SetInt(PrefKeyRequestTimeout, Mathf.Max(1, value));
+                ProjectPrefs.SetInt(PrefKeyRequestTimeout, Mathf.Max(1, value));
                 RefreshTimeoutCache();
             }
         }

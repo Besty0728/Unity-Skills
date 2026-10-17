@@ -35,7 +35,8 @@ namespace UnitySkills
         private static readonly string[] Hosts = { "", "claude-code", "codex", "cursor", "other" };
         private static readonly string[] ModelOutcomes = { "pass", "partial", "fail" };
 
-        private sealed class PanelConfig
+        /// <summary>The remembered run configuration: a per-project setting (ProjectPrefs), prompt language excepted.</summary>
+        internal sealed class PanelConfig
         {
             public string Track = "ops";
             public string Tier = "basic";
@@ -413,39 +414,44 @@ namespace UnitySkills
 
         // ===== Configuration persistence =====
 
-        private void LoadConfig()
+        private void LoadConfig() => _config = ReadPanelConfig();
+
+        private void SaveConfig() => WritePanelConfig(_config);
+
+        internal static PanelConfig ReadPanelConfig()
         {
-            _config = new PanelConfig();
-            var json = EditorPrefs.GetString(ConfigPrefKey, string.Empty);
-            if (string.IsNullOrEmpty(json)) return;
+            var config = new PanelConfig();
+            var json = ProjectPrefs.GetString(ConfigPrefKey, string.Empty);
+            if (string.IsNullOrEmpty(json)) return config;
             try
             {
                 var value = EvaluationState.ParseObject(json);
-                _config.Track = Pick(Tracks, value.Value<string>("track"), _config.Track);
-                _config.Tier = Pick(Tiers, value.Value<string>("tier"), _config.Tier);
-                _config.RunMode = Pick(RunModes, value.Value<string>("mode"), _config.RunMode);
-                _config.Host = Pick(Hosts, value.Value<string>("host"), _config.Host);
-                _config.Model = value.Value<string>("model") ?? string.Empty;
-                _config.Effort = value.Value<string>("effort") ?? string.Empty;
-                _config.UsageReading = value["usageReading"]?.Type != JTokenType.Boolean || value.Value<bool>("usageReading");
+                config.Track = Pick(Tracks, value.Value<string>("track"), config.Track);
+                config.Tier = Pick(Tiers, value.Value<string>("tier"), config.Tier);
+                config.RunMode = Pick(RunModes, value.Value<string>("mode"), config.RunMode);
+                config.Host = Pick(Hosts, value.Value<string>("host"), config.Host);
+                config.Model = value.Value<string>("model") ?? string.Empty;
+                config.Effort = value.Value<string>("effort") ?? string.Empty;
+                config.UsageReading = value["usageReading"]?.Type != JTokenType.Boolean || value.Value<bool>("usageReading");
+                return config;
             }
             catch (Exception ex) when (ex is JsonException || ex is FormatException || ex is InvalidCastException)
             {
-                _config = new PanelConfig();
+                return new PanelConfig();
             }
         }
 
-        private void SaveConfig()
+        internal static void WritePanelConfig(PanelConfig config)
         {
-            EditorPrefs.SetString(ConfigPrefKey, new JObject
+            ProjectPrefs.SetString(ConfigPrefKey, new JObject
             {
-                ["track"] = _config.Track,
-                ["tier"] = _config.Tier,
-                ["mode"] = _config.RunMode,
-                ["host"] = _config.Host,
-                ["model"] = _config.Model,
-                ["effort"] = _config.Effort,
-                ["usageReading"] = _config.UsageReading,
+                ["track"] = config.Track,
+                ["tier"] = config.Tier,
+                ["mode"] = config.RunMode,
+                ["host"] = config.Host,
+                ["model"] = config.Model,
+                ["effort"] = config.Effort,
+                ["usageReading"] = config.UsageReading,
             }.ToString(Formatting.None));
         }
 
@@ -540,14 +546,14 @@ namespace UnitySkills
         private void SwitchToBypass()
         {
             _modeNote = ModeNote.None;
-            EvaluationModeGuard.Arm(EvaluationModeGuard.Editor, _projectRoot, DateTime.UtcNow);
+            EvaluationModeGuard.Arm(EvaluationModeGuard.Editor, DateTime.UtcNow);
             RenderMode();
         }
 
         /// <summary>Contract 7.5 check points: creation, activation, a session ending, finished commands, "restore now".</summary>
         private void CheckModeRestore(bool userForced)
         {
-            var pending = EvaluationModeGuard.PendingFor(EvaluationModeGuard.Editor, _projectRoot);
+            var pending = EvaluationModeGuard.Pending(EvaluationModeGuard.Editor);
             switch (EvaluationModeGuard.Check(EvaluationModeGuard.Editor, _projectRoot, userForced))
             {
                 case EvaluationModeGuard.CheckResult.Restored:
@@ -920,7 +926,7 @@ namespace UnitySkills
                 : SkillsLocalization.Get("tab_eval_mode_needs_bypass", ModeName(mode)));
             SetState(_modeValue, bypass ? "ok" : "warn");
 
-            var pending = EvaluationModeGuard.PendingFor(EvaluationModeGuard.Editor, _projectRoot);
+            var pending = EvaluationModeGuard.Pending(EvaluationModeGuard.Editor);
             bool active = _session?.Status == "active";
             _modeSwitchBtn.SetVisible(!bypass);
             _modeRestoreBtn.SetVisible(pending != null);

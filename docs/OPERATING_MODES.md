@@ -21,6 +21,10 @@ UnitySkills ships with a true server-side permission system aligned with Claude 
 
 The plugin detects legacy `UnitySkills_*` EditorPrefs keys and keeps **Bypass** as the default, preserving the previous Full-Auto behavior with no action required. New installations default to **Auto** — FullAuto skills run directly, only NeverInSemi (Delete / MayEnterPlayMode / MayTriggerReload / high-risk) operations are blocked. Switch to **Approval** from the ⚙ Settings drawer's Server section if you need per-skill manual gating.
 
+### Settings are per project (v3.0+)
+
+The operating mode, panel approval, Allowlist and Require Confirmation — together with the token level sources (surface profile, summary auto-truncation and page size), the preferred port, request timeout, telemetry, package auto-install on startup, the workflow history limits and the Evaluation tab configuration — are saved per project and per user in `UserSettings/UnitySkills/settings.json`. Unity's standard `.gitignore` excludes `UserSettings/`, so they are not shared through version control, and changing one in a project no longer changes it in your other projects. Upgrading changes nothing: a project without its own value keeps reading the value the previous version stored machine-wide (EditorPrefs) until you change it in that project, and the old machine-wide values are never modified. The UI language, log level, update checks and the Python path used for evaluations stay machine-wide.
+
 ### Audit log
 
 `Library/UnitySkillsAudit.jsonl` (per-project, jsonl, auto-rolls at 1MB, keeps 3 files) records every grant / revoke / restricted hit / call. Open it from the ⚙ Settings drawer → **View Audit Log** (or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>) to browse, filter, delete individual entries (✕), or wipe everything (🗑 Clear All) — deletions themselves are appended as `audit_deleted` / `audit_cleared` events so the log stays auditable.

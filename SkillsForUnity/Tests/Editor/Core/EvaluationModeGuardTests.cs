@@ -1,12 +1,14 @@
 ﻿using System;
 using System.IO;
 using NUnit.Framework;
+using UnitySkills.Internal;
 
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
     /// Mode switch and conditional restore (contract 7.5) through the guard's store seam: the key and the mode live in
-    /// a fake, so the machine-wide EditorPrefs mode is never touched; runner state is written into a temp project.
+    /// a fake, so no settings store is touched; runner state is written into a temp project. The real store is checked
+    /// against two temp projects' per-project settings at the end.
     /// </summary>
     [TestFixture]
     public class EvaluationModeGuardTests
@@ -43,14 +45,14 @@ namespace UnitySkills.Tests.Core
         public void Arm_WritesTheKeyThenSwitchesToBypass()
         {
             var now = new DateTime(2026, 10, 17, 2, 59, 0, DateTimeKind.Utc);
-            Assert.That(EvaluationModeGuard.Arm(_store, _project, now), Is.EqualTo(EvaluationModeGuard.ArmResult.Armed));
+            Assert.That(EvaluationModeGuard.Arm(_store, now), Is.EqualTo(EvaluationModeGuard.ArmResult.Armed));
 
             Assert.That(_store.Mode, Is.EqualTo(SkillsOperatingMode.Bypass));
             var key = EvaluationState.ParseObject(_store.Key);
             Assert.That(key.Value<int>("schema"), Is.EqualTo(1));
             Assert.That(key.Value<string>("previousMode"), Is.EqualTo("auto"));
             Assert.That(key.Value<string>("armedAt"), Is.EqualTo("2026-10-17T02:59:00.000Z"));
-            Assert.That(key.Value<string>("projectPath"), Is.EqualTo(_project));
+            Assert.That(key["projectPath"], Is.Null, "the key lives in the project's own settings; no path is recorded");
             Assert.That(key["sessionId"].Type, Is.EqualTo(Newtonsoft.Json.Linq.JTokenType.Null));
         }
 
@@ -58,7 +60,7 @@ namespace UnitySkills.Tests.Core
         public void Arm_WhenAlreadyBypass_WritesNothing()
         {
             _store.Mode = SkillsOperatingMode.Bypass;
-            Assert.That(EvaluationModeGuard.Arm(_store, _project, DateTime.UtcNow), Is.EqualTo(EvaluationModeGuard.ArmResult.AlreadyBypass));
+            Assert.That(EvaluationModeGuard.Arm(_store, DateTime.UtcNow), Is.EqualTo(EvaluationModeGuard.ArmResult.AlreadyBypass));
             Assert.That(_store.Key, Is.Null);
         }
 
@@ -111,16 +113,44 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void Check_KeyOfAnotherProject_IsLeftAlone()
+        public void EditorStore_KeepsTheKeyAndTheModeInThisProjectsSettings()
         {
-            ArmAt("2026-10-17T02:59:00.000Z");
-            WriteRunnerState("completed", "2026-10-17T03:00:00.000Z");
-            var key = _store.Key;
-            var other = Path.Combine(_project, "Other");
+            var projectA = Path.Combine(_project, "A");
+            var projectB = Path.Combine(_project, "B");
+            SkillsModeManager.ExistingInstallOverrideForTests = false;
+            try
+            {
+                using (ProjectPrefsTestScope.AtRoot(projectA))
+                {
+                    SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
+                    Assert.That(EvaluationModeGuard.Arm(EvaluationModeGuard.Editor, DateTime.UtcNow),
+                        Is.EqualTo(EvaluationModeGuard.ArmResult.Armed));
+                    Assert.That(SkillsModeManager.CurrentMode, Is.EqualTo(SkillsOperatingMode.Bypass));
+                    Assert.That(ProjectPrefs.HasKey(EvaluationModeGuard.PrefKey), Is.True);
+                }
 
-            Assert.That(EvaluationModeGuard.Check(_store, other, true), Is.EqualTo(EvaluationModeGuard.CheckResult.None));
-            Assert.That(_store.Key, Is.EqualTo(key));
-            Assert.That(_store.Mode, Is.EqualTo(SkillsOperatingMode.Bypass));
+                using (ProjectPrefsTestScope.AtRoot(projectB))
+                {
+                    Assert.That(EvaluationModeGuard.Pending(EvaluationModeGuard.Editor), Is.Null);
+                    Assert.That(EvaluationModeGuard.Check(EvaluationModeGuard.Editor, projectB, true),
+                        Is.EqualTo(EvaluationModeGuard.CheckResult.None));
+                    Assert.That(SkillsModeManager.CurrentMode, Is.EqualTo(SkillsOperatingMode.Auto), "B keeps its own mode");
+                }
+
+                using (ProjectPrefsTestScope.AtRoot(projectA))
+                {
+                    Assert.That(EvaluationModeGuard.Pending(EvaluationModeGuard.Editor)?.PreviousMode, Is.EqualTo("approval"));
+                    // No runner session in A: "Restore now" puts the mode back.
+                    Assert.That(EvaluationModeGuard.Check(EvaluationModeGuard.Editor, projectA, true),
+                        Is.EqualTo(EvaluationModeGuard.CheckResult.Restored));
+                    Assert.That(SkillsModeManager.CurrentMode, Is.EqualTo(SkillsOperatingMode.Approval));
+                    Assert.That(ProjectPrefs.HasKey(EvaluationModeGuard.PrefKey), Is.False);
+                }
+            }
+            finally
+            {
+                SkillsModeManager.ExistingInstallOverrideForTests = null;
+            }
         }
 
         [Test]
@@ -145,8 +175,9 @@ namespace UnitySkills.Tests.Core
         }
 
         [TestCase("{not json")]
-        [TestCase("{\"schema\":1,\"previousMode\":\"2\",\"armedAt\":\"2026-10-17T02:59:00.000Z\",\"projectPath\":\"/p\",\"sessionId\":null}")]
-        [TestCase("{\"schema\":1,\"previousMode\":\"auto\",\"armedAt\":\"later\",\"projectPath\":\"/p\",\"sessionId\":null}")]
+        [TestCase("{\"schema\":1,\"previousMode\":\"2\",\"armedAt\":\"2026-10-17T02:59:00.000Z\",\"sessionId\":null}")]
+        [TestCase("{\"schema\":1,\"previousMode\":\"auto\",\"armedAt\":\"later\",\"sessionId\":null}")]
+        [TestCase("{\"schema\":2,\"previousMode\":\"auto\",\"armedAt\":\"2026-10-17T02:59:00.000Z\",\"sessionId\":null}")]
         public void Check_UnreadableKey_IsDiscardedWithoutTouchingTheMode(string json)
         {
             _store.Key = json;
@@ -167,7 +198,7 @@ namespace UnitySkills.Tests.Core
 
         private void ArmAt(string armedAt)
         {
-            Assert.That(EvaluationModeGuard.Arm(_store, _project, DateTime.Parse(armedAt, null,
+            Assert.That(EvaluationModeGuard.Arm(_store, DateTime.Parse(armedAt, null,
                 System.Globalization.DateTimeStyles.AdjustToUniversal)), Is.EqualTo(EvaluationModeGuard.ArmResult.Armed));
         }
 

@@ -1,8 +1,12 @@
-﻿using System.Linq;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEditor;
+using UnitySkills.Internal;
 
 namespace UnitySkills.Tests.Core
 {
@@ -11,18 +15,18 @@ namespace UnitySkills.Tests.Core
     ///
     /// Covers the three operating modes (Approval / Auto / Bypass), the two approval channels
     /// (Dialog / Panel), automatic NeverInSemi determination, the grant token lifecycle,
-    /// EditorPrefs persistence, and the upgrade compatibility rule (old install → Bypass).
+    /// per-project persistence, and the upgrade compatibility rule (old install → Bypass).
     ///
     /// Also covers:
     /// - The Allowlist channel (AddToAllowlist / RemoveFromAllowlist / ClearAllowlist / IsInAllowlist)
     /// - Allowlist taking priority over IsForbiddenInSemi
     /// - Single-use grants: TryGrant no longer writes the allowlist permanently
     /// - TryGrantAndReturnArgs (Plan B: one-step execution) + ConsumeOneShotBypass
-    /// - Idempotent migration from the old GrantedSkills EditorPrefs key to the new AllowlistSkills key
+    /// - Idempotent migration from the old GrantedSkills key to the new AllowlistSkills key
     ///
-    /// Permission-related EditorPrefs are backed up at the start of the fixture and restored at
-    /// the end. "Old install" behavior is simulated with a test-only override, so it never
-    /// touches unrelated UnitySkills EditorPrefs (language, port, logging, etc.).
+    /// The settings live in a temp project's UserSettings/UnitySkills/settings.json for the whole fixture, so the
+    /// real project and the machine-wide EditorPrefs are never touched; a dictionary stands in for the pre-3.0
+    /// global EditorPrefs values. "Old install" behavior is simulated with a test-only override.
     /// </summary>
     [TestFixture]
     public class SkillsModeManagerTests
@@ -33,48 +37,34 @@ namespace UnitySkills.Tests.Core
         private const string PrefKeyMigrationDone = "UnitySkills_AllowlistMigratedFromGranted";
         private const string PrefKeyLegacyGranted = "UnitySkills_GrantedSkills";
 
-        private bool _hadMode;
-        private string _savedMode;
-        private bool _hadPanelApproval;
-        private bool _savedPanelApproval;
-        private bool _hadAllowlist;
-        private string _savedAllowlist;
-        private bool _hadMigrationDone;
-        private bool _savedMigrationDone;
-        private bool _hadLegacyGranted;
-        private string _savedLegacyGranted;
+        private const string RecoveryActiveSessionKey = "UnitySkills.Tests.PreferenceRecovery.Active";
+
+        private string _settingsRoot;
+        private Dictionary<string, object> _legacy;
+        private ProjectPrefsTestScope _settings;
 
         [OneTimeSetUp]
         public void OneTimeSetUp()
         {
-            _hadMode = EditorPrefs.HasKey(PrefKeyMode);
-            _savedMode = EditorPrefs.GetString(PrefKeyMode, string.Empty);
-            _hadPanelApproval = EditorPrefs.HasKey(PrefKeyPanelApproval);
-            _savedPanelApproval = EditorPrefs.GetBool(PrefKeyPanelApproval, false);
-            _hadAllowlist = EditorPrefs.HasKey(PrefKeyAllowlist);
-            _savedAllowlist = EditorPrefs.GetString(PrefKeyAllowlist, string.Empty);
-            _hadMigrationDone = EditorPrefs.HasKey(PrefKeyMigrationDone);
-            _savedMigrationDone = EditorPrefs.GetBool(PrefKeyMigrationDone, false);
-            _hadLegacyGranted = EditorPrefs.HasKey(PrefKeyLegacyGranted);
-            _savedLegacyGranted = EditorPrefs.GetString(PrefKeyLegacyGranted, string.Empty);
+            // File-backed, because ResetForTests' domain-reload recovery only covers a store that outlives a reload.
+            _settingsRoot = Path.Combine(Path.GetTempPath(), "unityskills-mode-tests-" + Guid.NewGuid().ToString("N"));
+            _legacy = new Dictionary<string, object>();
+            _settings = ProjectPrefsTestScope.AtRoot(_settingsRoot, _legacy);
         }
 
         [OneTimeTearDown]
         public void OneTimeTearDown()
         {
-            RestoreString(PrefKeyMode, _hadMode, _savedMode);
-            RestoreBool(PrefKeyPanelApproval, _hadPanelApproval, _savedPanelApproval);
-            RestoreString(PrefKeyAllowlist, _hadAllowlist, _savedAllowlist);
-            RestoreBool(PrefKeyMigrationDone, _hadMigrationDone, _savedMigrationDone);
-            RestoreString(PrefKeyLegacyGranted, _hadLegacyGranted, _savedLegacyGranted);
             SkillsModeManager.ExistingInstallOverrideForTests = null;
-            ForceAllowlistReload();
             SkillsModeManager.CompleteTestPreferenceRecovery();
+            _settings.Dispose();
+            if (Directory.Exists(_settingsRoot)) Directory.Delete(_settingsRoot, true);
         }
 
         [SetUp]
         public void SetUp()
         {
+            _legacy.Clear();
             SkillsModeManager.ResetForTests();
             SkillsModeManager.ExistingInstallOverrideForTests = false;
             SkillsAuditLog.ResetForTests();
@@ -85,19 +75,8 @@ namespace UnitySkills.Tests.Core
         {
             SkillsModeManager.ResetForTests();
             SkillsModeManager.ExistingInstallOverrideForTests = null;
+            SkillsModeManager.InstallEraPrefsForTests = null;
             SkillsAuditLog.ResetForTests();
-        }
-
-        private static void RestoreString(string key, bool existed, string value)
-        {
-            if (existed) EditorPrefs.SetString(key, value);
-            else EditorPrefs.DeleteKey(key);
-        }
-
-        private static void RestoreBool(string key, bool existed, bool value)
-        {
-            if (existed) EditorPrefs.SetBool(key, value);
-            else EditorPrefs.DeleteKey(key);
         }
 
         /// <summary>
@@ -332,19 +311,32 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void CurrentMode_Setter_PersistsToEditorPrefs_AndGetterReadsIt()
+        public void CurrentMode_Setter_PersistsToTheProjectSettings_AndGetterReadsIt()
         {
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Auto;
 
-            // Directly checks EditorPrefs: confirms the setter really wrote to PrefKeyMode.
-            Assert.IsTrue(EditorPrefs.HasKey(PrefKeyMode));
-            Assert.AreEqual("Auto", EditorPrefs.GetString(PrefKeyMode));
+            // Directly checks the store and its file: confirms the setter really wrote PrefKeyMode.
+            Assert.IsTrue(ProjectPrefs.HasKey(PrefKeyMode));
+            Assert.AreEqual("Auto", ProjectPrefs.GetString(PrefKeyMode));
             Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
 
             // Switching modes overwrites the value rather than appending.
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
-            Assert.AreEqual("Approval", EditorPrefs.GetString(PrefKeyMode));
+            Assert.AreEqual("Approval", ProjectPrefs.GetString(PrefKeyMode));
             Assert.AreEqual(SkillsOperatingMode.Approval, SkillsModeManager.CurrentMode);
+            var file = JObject.Parse(File.ReadAllText(ProjectPrefs.SettingsFileFor(_settingsRoot)));
+            Assert.AreEqual("Approval", file["values"]?[PrefKeyMode]?.ToString());
+        }
+
+        [Test]
+        public void CurrentMode_LegacyGlobalValue_AppliesUntilThisProjectChoosesItsOwn()
+        {
+            _legacy[PrefKeyMode] = "Approval";
+            Assert.AreEqual(SkillsOperatingMode.Approval, SkillsModeManager.CurrentMode);
+
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
+            Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode);
+            Assert.AreEqual("Approval", _legacy[PrefKeyMode], "the global value is never written");
         }
 
         [Test]
@@ -408,7 +400,7 @@ namespace UnitySkills.Tests.Core
 
             Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode);
             // The getter must never write PrefKeyMode as a side effect — once it's written, the next upgrade can no longer re-determine the default value.
-            Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
+            Assert.IsFalse(ProjectPrefs.HasKey(PrefKeyMode));
         }
 
         [Test]
@@ -416,7 +408,70 @@ namespace UnitySkills.Tests.Core
         {
             // No UnitySkills_* keys should remain after SetUp.
             Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
-            Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
+            Assert.IsFalse(ProjectPrefs.HasKey(PrefKeyMode));
+        }
+
+        [Test]
+        public void InstallEra_FreshMachine_LaterSettingsNeverFlipTheModeDefault()
+        {
+            // A machine without any pre-v1.9 key: the first evaluation decides "fresh" and stores it.
+            var machine = new Dictionary<string, string>();
+            SkillsModeManager.InstallEraPrefsForTests = machine;
+            SkillsModeManager.ExistingInstallOverrideForTests = null;
+
+            Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode);
+            Assert.AreEqual("fresh", machine["UnitySkills_InstallEra"]);
+
+            // The user then changes a machine-wide setting and a per-project one.
+            machine["UnitySkills_Language"] = "English";
+            machine["UnitySkills_LogLevel"] = "3";
+            ProjectPrefs.SetInt("UnitySkills_PreferredPort", 8095);
+            ProjectPrefs.SetBool("UnitySkills_TelemetryEnabled", false);
+
+            Assert.AreEqual(SkillsOperatingMode.Auto, SkillsModeManager.CurrentMode,
+                "a project that never chose a mode must not fall back to Bypass");
+            Assert.IsFalse(SkillsModeManager.IsExistingInstallForDefaults());
+            ProjectPrefs.DeleteKey("UnitySkills_SummaryAutoTruncate");
+            SkillRouter.ResetSummaryPreferencesForTests();
+            Assert.IsTrue(SkillRouter.SummaryAutoTruncate, "the one-shot truncation default stays the fresh one");
+            Assert.IsFalse(ProjectPrefs.HasKey(PrefKeyMode), "the default is never written");
+        }
+
+        [Test]
+        public void InstallEra_ExistingMachine_StaysExisting()
+        {
+            var machine = new Dictionary<string, string>
+            {
+                ["UnitySkills_PreferredPort"] = "8090",
+            };
+            SkillsModeManager.InstallEraPrefsForTests = machine;
+            SkillsModeManager.ExistingInstallOverrideForTests = null;
+
+            Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode);
+            Assert.AreEqual("existing", machine["UnitySkills_InstallEra"]);
+
+            machine.Remove("UnitySkills_PreferredPort");
+            Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode, "the stored verdict is kept");
+            Assert.IsTrue(SkillsModeManager.IsExistingInstallForDefaults());
+        }
+
+        [Test]
+        public void InstallEra_StoredVerdict_WinsOverTheProbe_AndProjectValuesNeverCount()
+        {
+            var machine = new Dictionary<string, string>
+            {
+                ["UnitySkills_InstallEra"] = "fresh",
+                ["UnitySkills_KeepAliveIntervalSeconds"] = "10",
+            };
+            SkillsModeManager.InstallEraPrefsForTests = machine;
+            SkillsModeManager.ExistingInstallOverrideForTests = null;
+            Assert.IsFalse(SkillsModeManager.IsExistingInstallForDefaults());
+
+            // Undecided machine whose only trace is a v3 per-project value: still a fresh install.
+            machine.Clear();
+            ProjectPrefs.SetBool("UnitySkills_RequireConfirmation", true);
+            Assert.IsFalse(SkillsModeManager.IsExistingInstallForDefaults());
+            Assert.AreEqual("fresh", machine["UnitySkills_InstallEra"]);
         }
 
         [Test]
@@ -426,12 +481,50 @@ namespace UnitySkills.Tests.Core
             SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
 
             SkillsModeManager.ResetForTests();
-            Assert.IsFalse(EditorPrefs.HasKey(PrefKeyMode));
+            Assert.IsFalse(ProjectPrefs.HasKey(PrefKeyMode));
 
             SkillsModeManager.RestorePreferencesAfterTestDomainReload();
 
-            Assert.IsTrue(EditorPrefs.HasKey(PrefKeyMode));
+            Assert.IsTrue(ProjectPrefs.HasKey(PrefKeyMode));
             Assert.AreEqual(SkillsOperatingMode.Bypass, SkillsModeManager.CurrentMode);
+        }
+
+        [Test]
+        public void ResetForTests_DomainReloadRecovery_NeverRestoresIntoAnotherSettingsStore()
+        {
+            SkillsModeManager.CompleteTestPreferenceRecovery();
+            SkillsModeManager.CurrentMode = SkillsOperatingMode.Bypass;
+            SkillsModeManager.ResetForTests();
+            Assert.IsTrue(SessionState.GetBool(RecoveryActiveSessionKey, false));
+
+            var otherRoot = _settingsRoot + "-other";
+            try
+            {
+                using (ProjectPrefsTestScope.AtRoot(otherRoot))
+                {
+                    // What the static constructor does after a reload, with a different project's store in use.
+                    SkillsModeManager.RestorePreferencesAfterTestDomainReload();
+                    Assert.IsFalse(ProjectPrefs.HasKey(PrefKeyMode), "values captured elsewhere are not written here");
+                    Assert.IsFalse(SessionState.GetBool(RecoveryActiveSessionKey, false), "the recovery data is dropped");
+                }
+            }
+            finally
+            {
+                if (Directory.Exists(otherRoot)) Directory.Delete(otherRoot, true);
+            }
+        }
+
+        [Test]
+        public void ResetForTests_InMemoryStore_IsNotCapturedForRecovery()
+        {
+            SkillsModeManager.CompleteTestPreferenceRecovery();
+            using (ProjectPrefsTestScope.InMemory())
+            {
+                SkillsModeManager.CurrentMode = SkillsOperatingMode.Approval;
+                SkillsModeManager.ResetForTests();
+                Assert.IsFalse(SessionState.GetBool(RecoveryActiveSessionKey, false),
+                    "an in-memory store does not outlive a reload, so there is nothing to recover");
+            }
         }
 
         [Test]
@@ -584,10 +677,10 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void Migration_LegacyGrantedToAllowlist_MigratesEntriesAndSetsDoneFlag()
         {
-            // 1) Simulate an old install: write legacy granted, clear the migration marker and the new allowlist.
-            EditorPrefs.SetString(PrefKeyLegacyGranted, "[\"alpha\",\"beta\",\"gamma\"]");
-            EditorPrefs.DeleteKey(PrefKeyMigrationDone);
-            EditorPrefs.DeleteKey(PrefKeyAllowlist);
+            // 1) Simulate an old install: the machine-wide legacy granted list, no migration marker, no new allowlist.
+            _legacy[PrefKeyLegacyGranted] = "[\"alpha\",\"beta\",\"gamma\"]";
+            ProjectPrefs.DeleteKey(PrefKeyMigrationDone);
+            ProjectPrefs.DeleteKey(PrefKeyAllowlist);
             ForceAllowlistReload();
 
             // 2) The first access triggers the migration
@@ -595,15 +688,15 @@ namespace UnitySkills.Tests.Core
             CollectionAssert.AreEquivalent(new[] { "alpha", "beta", "gamma" }, snapshot);
 
             // 3) The migration-done marker has been written
-            Assert.IsTrue(EditorPrefs.GetBool(PrefKeyMigrationDone, false),
+            Assert.IsTrue(ProjectPrefs.GetBool(PrefKeyMigrationDone, false),
                 "Migration must set the done flag after running");
 
             // 4) The legacy key is deliberately kept (as a rollback marker)
-            Assert.IsTrue(EditorPrefs.HasKey(PrefKeyLegacyGranted),
+            Assert.IsTrue(_legacy.ContainsKey(PrefKeyLegacyGranted),
                 "Legacy granted key must be preserved as rollback marker");
 
             // 5) The new allowlist has been persisted
-            Assert.IsTrue(EditorPrefs.HasKey(PrefKeyAllowlist),
+            Assert.IsTrue(ProjectPrefs.HasKey(PrefKeyAllowlist),
                 "Allowlist pref must be persisted after migration");
 
             // 6) An audit event has been written
@@ -619,12 +712,12 @@ namespace UnitySkills.Tests.Core
         public void Migration_RepeatLoad_IsIdempotent_NoDuplicateAuditEvent()
         {
             // First: run the migration
-            EditorPrefs.SetString(PrefKeyLegacyGranted, "[\"alpha\"]");
-            EditorPrefs.DeleteKey(PrefKeyMigrationDone);
-            EditorPrefs.DeleteKey(PrefKeyAllowlist);
+            _legacy[PrefKeyLegacyGranted] = "[\"alpha\"]";
+            ProjectPrefs.DeleteKey(PrefKeyMigrationDone);
+            ProjectPrefs.DeleteKey(PrefKeyAllowlist);
             ForceAllowlistReload();
             var _first = SkillsModeManager.AllowlistSkills;
-            Assert.IsTrue(EditorPrefs.GetBool(PrefKeyMigrationDone, false));
+            Assert.IsTrue(ProjectPrefs.GetBool(PrefKeyMigrationDone, false));
 
             // Clear the audit log, then "restart" once more (the done flag is still set)
             SkillsAuditLog.ResetForTests();
@@ -648,14 +741,15 @@ namespace UnitySkills.Tests.Core
         public void Migration_NoLegacyData_StillSetsDoneFlag_FreshInstall()
         {
             // Fresh install: no legacy data of any kind
-            EditorPrefs.DeleteKey(PrefKeyLegacyGranted);
-            EditorPrefs.DeleteKey(PrefKeyMigrationDone);
-            EditorPrefs.DeleteKey(PrefKeyAllowlist);
+            _legacy.Remove(PrefKeyLegacyGranted);
+            ProjectPrefs.DeleteKey(PrefKeyLegacyGranted);
+            ProjectPrefs.DeleteKey(PrefKeyMigrationDone);
+            ProjectPrefs.DeleteKey(PrefKeyAllowlist);
             ForceAllowlistReload();
 
             var snapshot = SkillsModeManager.AllowlistSkills;
             CollectionAssert.IsEmpty(snapshot);
-            Assert.IsTrue(EditorPrefs.GetBool(PrefKeyMigrationDone, false),
+            Assert.IsTrue(ProjectPrefs.GetBool(PrefKeyMigrationDone, false),
                 "Done flag must still be set on fresh install so future reads skip migration");
         }
 

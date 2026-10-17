@@ -21,6 +21,10 @@ UnitySkills 引入真正的服务端权限系统，对齐 Claude Code permission
 
 插件检测旧版 `UnitySkills_*` EditorPrefs key 自动识别老安装，默认保持 **Bypass**，行为与原 Full-Auto 完全一致，无需任何操作。新安装默认 **Auto** —— FullAuto skill 直接执行，仅 NeverInSemi（Delete / MayEnterPlayMode / MayTriggerReload / 高危）操作会被服务端拦截。若需要按 skill 手动审批，在 ⚙ 设置抽屉的 Server 区切到 **Approval**。
 
+### 设置按工程保存（v3.0+）
+
+操作模式、面板审批、Allowlist、Require Confirmation，以及 token 等级的来源设置（surface profile、摘要自动截断与每页条数）、首选端口、请求超时、遥测、启动时自动安装包、工作流历史上限和 Evaluation 页的配置，都按工程、按用户保存在 `UserSettings/UnitySkills/settings.json`。Unity 标准 `.gitignore` 会排除 `UserSettings/`，所以这些设置不会进入版本控制；在一个工程里修改，也不再影响你的其他工程。升级时行为不变：工程还没有自己的值时，继续读取旧版本保存在本机（EditorPrefs）的值，直到你在该工程里修改；旧的本机值不会被改动。界面语言、日志级别、更新检查和评测用的 Python 路径仍是本机共享。
+
 ### 审计日志
 
 `Library/UnitySkillsAudit.jsonl`（per-project，jsonl，1MB 滚动，保留 3 份），记录每次 grant / revoke / 被拒命中 / 调用。从 ⚙ 设置抽屉 → **查看审计日志**（或快捷键 <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>）打开浏览器，可浏览、过滤、单条删除（✕）或整体清空（🗑 Clear All）—— 删除动作本身会写 `audit_deleted` / `audit_cleared` 追踪事件，日志依然可审计。

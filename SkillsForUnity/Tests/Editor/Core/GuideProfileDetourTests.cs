@@ -28,8 +28,9 @@ namespace UnitySkills.Tests.Core
     /// noSceneAuthoring turns them off via rule 4 (MutatesScene ⇒ hidden); what guide withdraws is the
     /// category, not this flag, so only an execution-time check remains to turn them off. This is exactly the check pinned down here: guide refuses, full runs unchanged, nsa still hides them entirely.
     ///
-    /// EditorPrefs hygiene: <c>UnitySkills_SurfaceProfile</c> and the operating mode are both machine-level
-    /// keys shared globally per Unity version, not per project, so setup saves the original value and teardown restores it; each test sets its own profile explicitly.
+    /// Settings hygiene: <c>UnitySkills_SurfaceProfile</c> and the operating mode are per-project settings that, during a
+    /// test run, live in the in-memory store <see cref="ProjectPrefsTestIsolation"/> installs; setup still saves the original
+    /// value and teardown restores it so fixtures do not leak into each other; each test sets its own profile explicitly.
     /// Workflow history and batch tokens are both redirected to a temp directory / deleted when done; tests never write into the user's real history.
     /// </summary>
     [TestFixture]

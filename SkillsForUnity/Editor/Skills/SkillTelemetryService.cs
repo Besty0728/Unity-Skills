@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEditor;
+using UnitySkills.Internal;
 using UnityEngine;
 
 namespace UnitySkills
@@ -105,17 +106,18 @@ namespace UnitySkills
         public static event Action OnChanged;
 
         /// <summary>
-        /// Master switch (EditorPrefs, on by default). When off, <see cref="Record"/> returns immediately.
-        /// The getter reads EditorPrefs, so it must be called on the main thread — every Record
-        /// call site satisfies this (skill execution already runs on the main thread).
+        /// Master switch, per project (<see cref="ProjectPrefs"/>, on by default). When off, <see cref="Record"/> returns
+        /// immediately. The getter reads the settings store (and possibly EditorPrefs for the pre-3.0 global value), so it
+        /// must be called on the main thread — every Record call site satisfies this (skill execution already runs on the
+        /// main thread).
         /// </summary>
         public static bool Enabled
         {
-            get => EditorPrefs.GetBool(PrefEnabled, true);
+            get => ProjectPrefs.GetBool(PrefEnabled, true);
             set
             {
-                if (EditorPrefs.GetBool(PrefEnabled, true) == value) return;
-                EditorPrefs.SetBool(PrefEnabled, value);
+                if (ProjectPrefs.GetBool(PrefEnabled, true) == value) return;
+                ProjectPrefs.SetBool(PrefEnabled, value);
                 OnChanged?.Invoke();
             }
         }

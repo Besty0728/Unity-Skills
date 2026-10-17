@@ -1,28 +1,26 @@
-﻿using NUnit.Framework;
-using UnityEditor;
+﻿using System.Collections.Generic;
+using NUnit.Framework;
+using UnitySkills.Internal;
 
 namespace UnitySkills.Tests.Core
 {
-    /// <summary>Pure derivation and one-shot default migration coverage for token levels.</summary>
+    /// <summary>
+    /// Pure derivation and one-shot default migration coverage for token levels. Each test gets a fresh in-memory
+    /// per-project store whose stand-in for the pre-3.0 global EditorPrefs starts empty.
+    /// </summary>
     [TestFixture]
     public class SkillsTokenLevelTests
     {
         private const string TruncateKey = "UnitySkills_SummaryAutoTruncate";
         private const string PageSizeKey = "UnitySkills_SummaryPageSize";
-        private bool _hadTruncate;
-        private bool _savedTruncate;
-        private bool _hadPageSize;
-        private int _savedPageSize;
-        private SurfaceProfileKind _savedProfile;
+        private Dictionary<string, object> _legacy;
+        private ProjectPrefsTestScope _settings;
 
         [SetUp]
         public void SetUp()
         {
-            _hadTruncate = EditorPrefs.HasKey(TruncateKey);
-            _savedTruncate = EditorPrefs.GetBool(TruncateKey, false);
-            _hadPageSize = EditorPrefs.HasKey(PageSizeKey);
-            _savedPageSize = EditorPrefs.GetInt(PageSizeKey, SkillsTokenLevel.DefaultSummaryPageSize);
-            _savedProfile = SkillsSurfaceProfile.Current;
+            _legacy = new Dictionary<string, object>();
+            _settings = ProjectPrefsTestScope.InMemory(_legacy);
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
             SkillsModeManager.ExistingInstallOverrideForTests = false;
             SkillRouter.ResetSummaryPreferencesForTests();
@@ -31,13 +29,8 @@ namespace UnitySkills.Tests.Core
         [TearDown]
         public void TearDown()
         {
-            if (_hadTruncate) EditorPrefs.SetBool(TruncateKey, _savedTruncate);
-            else EditorPrefs.DeleteKey(TruncateKey);
-            if (_hadPageSize) EditorPrefs.SetInt(PageSizeKey, _savedPageSize);
-            else EditorPrefs.DeleteKey(PageSizeKey);
-            SkillRouter.ResetSummaryPreferencesForTests();
             SkillsModeManager.ExistingInstallOverrideForTests = null;
-            SkillsSurfaceProfile.Current = _savedProfile;
+            _settings.Dispose();
         }
 
         [Test]
@@ -54,28 +47,47 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void FreshInstall_MigratesToTruncationOnAndDefaultPage()
         {
-            EditorPrefs.DeleteKey(TruncateKey);
-            EditorPrefs.DeleteKey(PageSizeKey);
+            ProjectPrefs.DeleteKey(TruncateKey);
+            ProjectPrefs.DeleteKey(PageSizeKey);
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Guide;
             SkillRouter.ResetSummaryPreferencesForTests();
 
             Assert.That(SkillRouter.SummaryAutoTruncate, Is.True);
             Assert.That(SkillRouter.SummaryPageSize, Is.EqualTo(10));
-            Assert.That(EditorPrefs.GetBool(TruncateKey, false), Is.True);
-            Assert.That(EditorPrefs.GetInt(PageSizeKey, 0), Is.EqualTo(10));
+            Assert.That(ProjectPrefs.GetBool(TruncateKey, false), Is.True);
+            Assert.That(ProjectPrefs.GetInt(PageSizeKey, 0), Is.EqualTo(10));
             Assert.That(SkillsTokenLevel.Current, Is.EqualTo(TokenLevel.Standard));
         }
 
         [Test]
         public void ExistingInstall_MigratesToHistoricTruncationOff()
         {
-            EditorPrefs.DeleteKey(TruncateKey);
+            ProjectPrefs.DeleteKey(TruncateKey);
             SkillRouter.ResetSummaryPreferencesForTests();
             SkillsModeManager.ExistingInstallOverrideForTests = true;
 
             Assert.That(SkillRouter.SummaryAutoTruncate, Is.False);
-            Assert.That(EditorPrefs.GetBool(TruncateKey, true), Is.False);
+            Assert.That(ProjectPrefs.GetBool(TruncateKey, true), Is.False);
             Assert.That(SkillsTokenLevel.Current, Is.EqualTo(TokenLevel.Maximum));
+        }
+
+        [Test]
+        public void LegacyGlobalSettings_AreReadAsTheyAre_WithoutAOneShotDefault()
+        {
+            // An upgraded machine: the pre-3.0 global values decide the level until this project changes them.
+            _legacy[TruncateKey] = false;
+            _legacy[PageSizeKey] = 20;
+            _legacy["UnitySkills_SurfaceProfile"] = "full";
+            SkillsSurfaceProfile.ReloadForTests();
+            SkillRouter.ResetSummaryPreferencesForTests();
+
+            Assert.That(SkillRouter.SummaryAutoTruncate, Is.False);
+            Assert.That(SkillRouter.SummaryPageSize, Is.EqualTo(20));
+            Assert.That(SkillsTokenLevel.Current, Is.EqualTo(TokenLevel.Maximum));
+
+            SkillsTokenLevel.TryApplyPreset(TokenLevel.Full);
+            Assert.That(SkillsTokenLevel.Current, Is.EqualTo(TokenLevel.Full));
+            Assert.That(_legacy[TruncateKey], Is.EqualTo(false), "the global value is never written");
         }
 
         [Test]
