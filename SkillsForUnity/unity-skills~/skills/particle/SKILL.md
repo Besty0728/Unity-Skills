@@ -8,6 +8,7 @@ description: Create, inspect, configure and diagnose built-in Unity Particle Sys
 ## Triggers
 - Creating or tuning particle effects: fire, smoke, sparks, rain, snow, explosions, dust
 - Changing emission rate, lifetime, size, colour or shape of a ParticleSystem; bursts; renderer material and sorting
+- Adding motion or variation: forces, speed limit and drag, spin, orbiting, inherited emitter velocity, size / colour / rotation by speed, per-particle custom data for shaders
 - Batch-editing many particle systems (lower the cost of all rain emitters, switch smoke to world space)
 - Chaining systems with sub emitters (firework: rocket -> explosion -> sparks); finding why particles are invisible, pink or expensive
 - 创建或调整粒子特效（火焰、烟雾、火花、雨雪、爆炸），修改发射率、生命周期、大小、颜色、形状、爆发与渲染器材质；子发射器；诊断粒子看不见或显示粉色的原因
@@ -30,7 +31,7 @@ Built-in `ParticleSystem` (Shuriken) components in open scenes and prefab instan
 - `particle_set_emission_rate` / `particle_set_color` / `particle_set_size` do not exist → one `particle_configure` call patches any modules at once.
 - Do not send module fields as top-level parameters → they go inside `configJson.modules.<module>`.
 - Do not guess field names, units or ranges → `particle_get_capabilities` (with `module=main`, `renderer`, ...) lists them; `particle_get_module` shows the current values in the exact input shape.
-- `startRotation*` are **radians**; `shape.rotation` and `shape.angle`/`arc` are **degrees**; `gravityModifier` is a multiplier of the project gravity, not a vector.
+- `main.startRotation*` are **radians**; `rotationOverLifetime.*` and `rotationBySpeed.*` are **radians per second** (the Inspector shows degrees for all of these); `velocityOverLifetime.orbitalX/Y/Z` are **radians per second** (shown as is); `shape.rotation`, `shape.angle`, `shape.arc` and `noise.rotationAmount` (per second) are **degrees**; `gravityModifier` is a multiplier of the project gravity, not a vector.
 - `component_set_property` on a ParticleSystem module is not a substitute: module structs are native proxies and that path has no curve/gradient contract or validation.
 
 **Routing**:
@@ -76,9 +77,9 @@ Built-in `ParticleSystem` (Shuriken) components in open scenes and prefab instan
 - Omitted fields keep their value; `false` and `0` are applied. A curve, gradient, vector, colour or asset value replaces that property whole.
 - Unknown modules/fields, duplicate keys, wrong JSON types, non-finite numbers, out-of-range values and illegal enum names reject the **whole** call with every problem listed under its JSON path (`configJson.modules.main.startLifetime.min`, `items[2].configJson...`); nothing is written.
 - Writes never enable a module: values of a disabled module are stored and reported with `enabled: false` and a warning.
-- Axis flags decide which fields apply: `startSize3D` (startSize vs startSizeX/Y/Z), `startRotation3D`, `sizeOverLifetime.separateAxes`, `noise.separateAxes`; X/Y/Z triplets share one curve mode.
+- Axis flags decide which fields apply: `startSize3D` (startSize vs startSizeX/Y/Z), `startRotation3D`, and `separateAxes` of `noise`, `sizeOverLifetime`, `sizeBySpeed`, `limitVelocityOverLifetime` (limit vs limitX/Y/Z) and the rotation modules (x and y only: z, the Inspector's "Angular Velocity", always applies). X/Y/Z triplets (also orbital, orbital offset and force) share one curve mode.
 - Writes need Edit Mode and a **stopped** system: a playing or paused system (including the Scene view preview of a selected one) is refused, never stopped implicitly. Reads always answer.
-- `main.stopAction` accepts only `None`; `simulationSpace` Custom, mesh/sprite shapes and the remaining P1 modules (collision, trails, lights, ...) are readable but not writable yet. The sub-emitter list is replaced with `particle_set_sub_emitters`; `modules.subEmitters.enabled` is a normal configure field.
+- `main.stopAction` accepts only `None`; `simulationSpace` Custom, mesh/sprite shapes and every module `particle_get_capabilities` lists as not configurable are readable but not writable yet. The sub-emitter list is replaced with `particle_set_sub_emitters`; `modules.subEmitters.enabled` is a normal configure field. `externalForces` does not write its force-field list or influence mask yet.
 
 Value shapes, field tables, references and recipes: [REFERENCE.md](./REFERENCE.md).
 
@@ -109,7 +110,7 @@ Every supported field of one module in the exact shape `configJson` accepts.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `entityId` | string | No* | null | Target (or `name` / `path` / `instanceId`) |
-| `module` | string | Yes | - | `main`, `emission`, `shape`, `velocityOverLifetime`, `colorOverLifetime`, `sizeOverLifetime`, `noise`, `system`, `renderer`, or a P1 module |
+| `module` | string | Yes | - | A module id from `particle_get_capabilities` (`main`, `shape`, `noise`, `system`, `renderer`, ...) |
 
 ### particle_create
 | Parameter | Type | Required | Default | Description |

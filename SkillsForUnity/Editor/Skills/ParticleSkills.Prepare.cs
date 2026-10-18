@@ -228,8 +228,10 @@ namespace UnitySkills
                 }
                 else if (flag == false)
                 {
+                    // A group can have no uniform field (rotation: z is always active), then there is nothing else to suggest.
+                    var alternative = group.Uniform.Length > 0 ? $", or use {string.Join("/", group.Uniform)}" : "";
                     foreach (var field in axes)
-                        check.Error(field, $"{check.PathOf(field)} applies only while {group.Flag} is true (it is false{flagNote}); send \"{group.Flag}\": true in the same patch, or use {string.Join("/", group.Uniform)}.");
+                        check.Error(field, $"{check.PathOf(field)} applies only while {group.Flag} is true (it is false{flagNote}); send \"{group.Flag}\": true in the same patch{alternative}.");
                 }
                 else if (uniform.Count > 0 && axes.Count > 0)
                 {
@@ -258,7 +260,7 @@ namespace UnitySkills
                     continue;
 
                 var blame = group.Fields.FirstOrDefault(check.Has) ?? group.WhenFlag;
-                check.Error(blame, $"{string.Join(", ", group.Fields)} must share one curve mode (Unity evaluates them as one triplet): " +
+                check.Error(blame, $"{string.Join(", ", group.Fields)} must share one curve mode (the Inspector edits them as one triplet with a single mode selector): " +
                     string.Join(", ", modes.Select(entry => $"{entry.field} is {entry.mode}")) +
                     ". Send all of them with the same mode in this patch.");
             }

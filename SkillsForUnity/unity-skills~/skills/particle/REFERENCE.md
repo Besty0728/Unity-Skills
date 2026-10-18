@@ -36,7 +36,7 @@ Detail behind [SKILL.md](./SKILL.md): payload shapes, value types, references, l
 | Curve | `{"mode": "Curve", "multiplier": 1, "curve": AnimationCurve}` |
 | TwoCurves | `{"mode": "TwoCurves", "multiplier": 1, "minCurve": AnimationCurve, "maxCurve": AnimationCurve}` |
 
-A field's min/max apply to the constants; curve key values are any finite number scaled by `multiplier`. Some fields accept fewer modes, as the Inspector does: `main.startDelay` constants only, `sizeOverLifetime` curves only.
+A field's min/max apply to the constants; curve key values are any finite number scaled by `multiplier`. Some fields accept fewer modes, as the Inspector does: `main.startDelay` constants only, `sizeOverLifetime` and `sizeBySpeed` curves only, `shape.arcSpeed` / `radiusSpeed` Constant or Curve.
 
 ### AnimationCurve and Keyframe
 
@@ -46,7 +46,7 @@ A field's min/max apply to the constants; curve key values are any finite number
            "weightedMode": "None", "leftTangentMode": "Free", "rightTangentMode": "Free", "broken": false}]}
 ```
 
-- 1-64 keys, sorted by time (unsorted input is sorted), no two keys at one time. Key times are normalized 0-1 for every P0 field (lifetime, duration or noise input; `keyTime` in capabilities says which).
+- 1-64 keys, sorted by time (unsorted input is sorted), no two keys at one time. Key times are normalized 0-1 for every field (particle lifetime, system duration, speed mapped over a module's `range`, or noise input; `keyTime` in capabilities says which).
 - Defaults when omitted: tangents 0, weights 1/3, `weightedMode` None, tangent modes Free, `broken` false; wrap modes ClampForever.
 - A `Free` side uses the given tangent. `Auto`, `ClampedAuto` and `Linear` sides are recomputed by Unity from the neighbouring keys. A `Constant` side is a step: its tangent is infinite, so it carries **no** tangent value (omit it). Unity marks a key `broken` when either side is Linear or Constant.
 - Readback is the canonical form above and can be sent back unchanged.
@@ -69,7 +69,7 @@ A field's min/max apply to the constants; curve key values are any finite number
 
 - `mode`: Blend, Fixed or PerceptualBlend. 1-8 colour keys and 1-8 alpha keys (Unity's limit), times 0-1, no repeats.
 - Colour keys have **no alpha** (Unity discards it); opacity goes in `alphaKeys`. Unity stores key times in steps of 1/65535, so a time reads back within 0.00002.
-- `colorOverLifetime.color` accepts Gradient and TwoGradients only.
+- `colorOverLifetime.color` and `colorBySpeed.color` accept Gradient and TwoGradients only; the `customData` colours accept Color, TwoColors, Gradient and TwoGradients (as the Inspector offers them).
 
 ### Color, Vector
 
@@ -112,7 +112,14 @@ A field's min/max apply to the constants; curve key values are any finite number
 | durations, lifetimes, delays, burst times | seconds |
 | `main.startRotation*` | **radians** (the Inspector shows degrees) |
 | `shape.angle`, `shape.arc`, `shape.rotation` | **degrees** |
+| `rotationOverLifetime.*`, `rotationBySpeed.*` | **radians/second** (the Inspector shows degrees/second) |
+| `velocityOverLifetime.orbitalX/Y/Z` | **radians/second** around the system centre; `orbitalOffsetX/Y/Z` are units (the centre of the orbit) |
 | `noise.rotationAmount` | degrees/second |
+| `shape.arcSpeed` | turns per second: 1 = 360 degrees/second, wrapping within the arc |
+| `shape.radiusSpeed` | 2 units/second per unit of speed along a SingleSidedEdge, whatever its radius |
+| `forceOverLifetime.*` | units/second squared (an acceleration) |
+| `limitVelocityOverLifetime.limit*` | units/second; `dampen` is a 0-1 ratio of the excess removed per step |
+| `range` of the by-speed modules and Lifetime by Emitter Speed | units/second (the speed that maps to curve / gradient position 0 and 1) |
 | sizes, radii, positions, speeds | Unity units (per second for speeds) |
 | `main.gravityModifier` | multiplier of the project gravity (Physics or Physics2D per `gravitySource`), not a vector |
 | `renderer.minParticleSize` / `maxParticleSize` | fraction of the viewport |
@@ -137,6 +144,9 @@ These are starting points, not finished art: the look also depends on texture, s
 **Explosion**: main `loop` false, `duration` 1, `startLifetime` TwoConstants 0.3-0.8, `startSpeed` TwoConstants 4-10; emission `rateOverTime` 0 with `particle_set_bursts` `[{"time": 0, "count": {"mode": "TwoConstants", "min": 40, "max": 60}}]`; shape Sphere radius 0.2.
 
 **Firework** (rocket -> explosion -> sparks): `particle_create` the rocket (main `startSpeed` 15, `startLifetime` 1, emission `rateOverTime` 1), then the explosion and the sparks as its children (`parentEntityId`), each with `particle_set_bursts` `[{"time": 0, "count": 40}]` and main `loop` false; `particle_set_sub_emitters_batch` with items `{rocket: [{system: explosion, type: Death, properties: ["InheritColor"]}]}` and `{explosion: [{system: sparks, type: Death}]}`; enable `modules.subEmitters` on the rocket and the explosion with `particle_configure_batch`.
+**Tumbling debris**: main `gravityModifier` 1, `startSpeed` TwoConstants 3-7; `rotationOverLifetime` `separateAxes` true with `x`, `y` and `z` TwoConstants -6.28..6.28 (radians/second, one mode for all three); `limitVelocityOverLifetime` `limit` 8, `dampen` 0.1 (a new module has dampen 0, which disables the limit), `drag` 0.3.
+
+**Wind-driven ash**: main `simulationSpace` World; `forceOverLifetime` `space` World, `x` TwoConstants 0.5-1.5 with `y` and `z` TwoConstants 0..0 (the axes share one mode); `noise` enabled strength 0.3; `sizeBySpeed` Curve 1 -> 0.5 over `range` 0..3 to shrink fast particles.
 
 **Lower the cost of every rain emitter**: `particle_find_all` (root = the weather group) -> `particle_configure_batch` items setting `main.maxParticles` and `emission.rateOverTime` -> dryRun -> execute; any invalid item rejects the whole batch.
 
@@ -149,6 +159,9 @@ These are starting points, not finished art: the look also depends on texture, s
 | `startSizeY` refused | Send `"startSize3D": true` in the same patch; with it off only `startSize` applies. |
 | "must share one curve mode" | Velocity x/y/z (and other X/Y/Z triplets) take one mode together; send all three. |
 | A value came back different | See `adjustments`: Unity clamped it; the `state` shows what it kept. |
+| Speed limit does nothing | `limitVelocityOverLifetime.dampen` is 0 in a new system, which disables the limit; raise it (1 clamps hard). Drag works regardless. |
+| Inherit Velocity does nothing | It acts only in World simulation space (`main.simulationSpace`), and `main.emitterVelocityMode` decides where the velocity comes from. |
+| Spin is far too fast or slow | Rotation over lifetime / by speed are radians per second: 6.28 is one turn per second, 1 is about 57 degrees per second. |
 | Pink / magenta particles | The material's shader does not match the render pipeline (`particle_analyze` reports `SHADER_PIPELINE_MISMATCH` / `SHADER_ERROR` with a fix); pick a pipeline particle shader with the `material` module. |
 | Sub emitter never fires | `modules.subEmitters.enabled`; Collision / Trigger types need their module; Manual needs a script; the parent must emit and its particles must die (Death) or collide. |
 
@@ -182,7 +195,7 @@ Static, read-only checks of the configuration; no frame times, GPU cost or overd
 
 Snapshot of `particle_get_capabilities` (schemaVersion 1, Unity 6000.3 and 2022.3 report the same table). Ranges are
 inclusive unless marked `>`; a MinMaxCurve's range applies to its constants. Modules marked read-only report their
-`enabled` flag only and refuse writes until P1.
+`enabled` flag only and refuse writes (they arrive with the later P1 packages).
 
 ### Module `system`
 
