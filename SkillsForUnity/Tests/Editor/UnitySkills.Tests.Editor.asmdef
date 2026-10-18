@@ -33,6 +33,11 @@
             "name": "com.unity.ugui",
             "expression": "[1.0,3.0)",
             "define": "UGUI"
+        },
+        {
+            "name": "com.unity.modules.particlesystem",
+            "expression": "",
+            "define": "COM_UNITY_MODULES_PARTICLESYSTEM"
         }
     ],
     "noEngineReferences": false
