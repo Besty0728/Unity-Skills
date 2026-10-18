@@ -217,10 +217,12 @@ def _issue_new(rt, session, task_id):
             lines = prompts.parse_prompt(handle.read())
     except (OSError, ValueError) as exc:
         raise ProblemError(problem("PACK_INVALID", detail="%s: %s" % (os.path.basename(prompt_path), exc)))
-    # N1: same editor checks as `check`, after waiting for a busy editor like `start`
+    # N1: same editor checks as `check`, after waiting for a busy editor like `start`; the TextMesh Pro resources are a
+    # project file check that costs nothing and would otherwise fail inside the build or the agent's first UI call
     client = rt.client()
     health = S.settle(rt, client, client.health(), S.BUSY_WAIT_S)
     found, _notices, _info = S.editor_checks(rt, client, health, [meta["requires"]])
+    found += S.tmp_problems(rt, [meta])
     if found:
         raise ProblemError(found)
     host = _capture_host(rt)

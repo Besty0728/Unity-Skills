@@ -232,6 +232,24 @@ def scene_checks(scenes, active_root=None):
     return problems, summary
 
 
+def tmp_problems(rt, metas, installed=None):
+    """TMP_RESOURCES_MISSING (contract 3.1) when a task of `metas` builds on uGUI (requires com.unity.ugui), the project
+    carries TextMesh Pro and no TMP Settings asset exists. The UI skills add TextMesh Pro text wherever it is present,
+    and TextMesh Pro then opens its importer window: a batchmode or -nographics editor logs errors for it and again on
+    every Play Mode entry. Read from the project files, like the PACKAGE_MISSING check; `installed` is the lock."""
+    tasks = [m["id"] for m in metas if E.UGUI_PACKAGE in (m["requires"].get("packages") or ())]
+    if not tasks:
+        return []
+    installed = packages_lock(rt.project) if installed is None else installed
+    carriers = E.tmp_packages(rt.project, installed)
+    if not carriers or E.tmp_settings_asset(rt.project):
+        return []
+    package = E.tmp_essentials_package(rt.project, installed)
+    shown = package or "<%s folder>/Package Resources/%s" % (carriers[0], E.TMP_ESSENTIALS_FILE)
+    detail = "%s carries TextMesh Pro, but no \"%s\" lies in a Resources folder" % (carriers[0], E.TMP_SETTINGS_FILE)
+    return [problem("TMP_RESOURCES_MISSING", [", ".join(tasks), rt.project, shown], detail=detail)]
+
+
 def residue_problems(rt, active_run_id):
     owned, _foreign = F.residue(rt.paths.eval_assets, active_run_id)
     if owned:
@@ -343,6 +361,7 @@ def run_checks(rt, opts, busy_wait_s=0.0):
         for name in meta["requires"].get("packages") or []:
             if name not in installed:
                 problems.append(problem("PACKAGE_MISSING", [name, meta["id"]]))
+    problems.extend(tmp_problems(rt, metas, installed))
 
     owned, found = residue_problems(rt, run_id)
     data["residue"] = owned

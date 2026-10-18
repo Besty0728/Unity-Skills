@@ -33,12 +33,15 @@ def _button(ctx, parent="MenuCanvas", width=320, height=80, anchor=(0.5, 0)):
     return button
 
 
-def _event_system(ctx, parent=None):
+def _event_system(ctx, parent=None, module=None):
+    """An EventSystem under `parent` (default R/UI) with the input module the prompt names (the handles carry it);
+    `module` is another module's name, or False for none."""
     c = ctx.c
     system = V.object_id(c.write("gameobject_create", name="EventSystem",
                                  **V.address(parent if parent is not None else ctx.handles["ui"], "parent")))
     c.write("component_add", componentType="EventSystem", **V.address(system))
-    c.write("component_add", componentType="StandaloneInputModule", **V.address(system))
+    if module is not False:
+        c.write("component_add", componentType=module or ctx.handles["inputModule"], **V.address(system))
     return system
 
 
@@ -64,10 +67,10 @@ def _answer(ctx, button, system):
 
 
 def _solve(ctx, menu=None, order=("menu", "start"), active=False, state="RuntimeOnly", parent="MenuCanvas",
-           width=320, height=80, anchor=(0.5, 0)):
+           width=320, height=80, anchor=(0.5, 0), module=None):
     fixture = _fixture(ctx)
     button = _button(ctx, parent, width, height, anchor)
-    system = _event_system(ctx)
+    system = _event_system(ctx, module=module)
     for step in order:
         if step == "menu":
             _menu_call(ctx, button, menu if menu is not None else ctx.private.finish_menu(fixture, ctx.handles),
@@ -103,6 +106,18 @@ def order_swapped(ctx):
 
 def set_active_true(ctx):
     return _solve(ctx, active=True)
+
+
+def no_input_module(ctx):
+    return _solve(ctx, module=False)
+
+
+def other_input_module(ctx):
+    """The input module the project does not need. Whether it also logs errors in Play Mode depends on the project's
+    Active Input Handling, so the offline tests of each setting use it and it is not in the shared NEGATIVES."""
+    fits = ctx.handles["inputModule"]
+    return _solve(ctx, module="StandaloneInputModule" if fits == "InputSystemUIInputModule"
+                  else "InputSystemUIInputModule")
 
 
 def two_event_systems(ctx):
@@ -199,7 +214,8 @@ def serialized_calls(ctx):
     return _answer(ctx, button, system)
 
 
-def later_matching_tmp(ctx):
+def later_matching_label(ctx):
+    """The first label is emptied and a later one, made by ui_create_text, carries the text."""
     answer = reference(ctx)
     first = V.object_id(ctx.probe.children(answer["buttonInstanceId"])[0])
     ctx.c.write("ui_set_text", text="", **V.address(first))
@@ -219,6 +235,7 @@ NEGATIVES = [
     Negative("order_swapped", order_swapped, {"D8", "D9"}),
     Negative("set_active_true", set_active_true, {"D8", "D14"}),
     Negative("two_event_systems", two_event_systems, {"D6"}),
+    Negative("no_input_module", no_input_module, {"D6"}, "an EventSystem without any input module"),
     Negative("no_image", no_image, {"D2"}),
     Negative("default_size", default_size, {"D5"}),
     Negative("centre_anchors", centre_anchors, {"D4"}),
@@ -232,7 +249,7 @@ NEGATIVES = [
     Negative("wrong_report", wrong_report, {"D13"}),
 ]
 
-ALTERNATIVES = [("serialized_calls", serialized_calls), ("later_matching_tmp", later_matching_tmp),
+ALTERNATIVES = [("serialized_calls", serialized_calls), ("later_matching_label", later_matching_label),
                 ("save_run_scene", save_run_scene)]
 
 # Producer:Betsy

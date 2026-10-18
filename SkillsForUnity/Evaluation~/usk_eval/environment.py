@@ -4,9 +4,11 @@ import hashlib
 import json
 import os
 import platform
+import re
 import sys
 
 from . import store
+from .paths import packages_lock
 
 HEALTH_KEYS = ("version", "unityVersion", "instanceId", "projectName", "currentMode", "tokenLevel", "surfaceProfile",
                "dryRunPolicy", "summaryAutoTruncate", "summaryPageSize", "panelApprovalRequired", "allowlistCount")
@@ -18,6 +20,13 @@ REFERENCE_TOKEN_LEVEL = "maximum"
 MARKER_KIND = "UnitySkillsEvaluationProject"
 PROJECT_DOC_ROOTS = (".claude", ".agents", ".cursor", ".opencode", ".kimi-code")
 AGENT_CONFIG = "scripts/agent_config.json"
+UGUI_PACKAGE = "com.unity.ugui"
+TMP_PACKAGE = "com.unity.textmeshpro"
+TMP_SETTINGS_FILE = "TMP Settings.asset"
+TMP_SETTINGS_DEFAULT = "Assets/TextMesh Pro/Resources/" + TMP_SETTINGS_FILE
+TMP_ESSENTIALS_FILE = "TMP Essential Resources.unitypackage"
+_VERSION_HEAD = re.compile(r"^\s*(\d+)\.")
+INPUT_HANDLER = re.compile(r"^\s*activeInputHandler:\s*(\d+)\s*$", re.M)
 
 
 def snapshot(client, instance_pid, health=None):
@@ -182,6 +191,104 @@ def skill_docs(project, environ):
         out.append({"path": directory, "agentId": config.get("agentId"), "version": config.get("version"),
                     "treeHash": tree})
     return out
+
+
+# ---------------------------------------------------------------- TextMesh Pro essentials (contract 2.4, 3.1)
+
+
+def _package_json(directory):
+    try:
+        with open(os.path.join(directory, "package.json"), "r", encoding="utf-8-sig") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _mtime_ns(path):
+    try:
+        return os.stat(path).st_mtime_ns
+    except OSError:
+        return 0
+
+
+def package_dirs(project, name, version=None):
+    """Folders of package `name` in the project: the embedded ones under Packages/, then the Library/PackageCache/
+    <name>@* copies, the one whose package.json version is `version` first and the newest of the rest after it."""
+    root = glob.escape(project)
+    embedded = [os.path.dirname(path) for path in sorted(glob.glob(os.path.join(root, "Packages", "*", "package.json")))
+                if _package_json(os.path.dirname(path)).get("name") == name]
+    cached = [d for d in glob.glob(os.path.join(root, "Library", "PackageCache", glob.escape(name) + "@*"))
+              if _package_json(d).get("name") == name]
+    cached.sort(key=lambda d: (_package_json(d).get("version") != version,
+                               -_mtime_ns(os.path.join(d, "package.json"))))
+    return embedded + cached
+
+
+def package_major(project, name, entry):
+    """Major version of an installed package. The lock entry carries it for registry and built-in packages; embedded,
+    local and git packages have a path or URL there, so the package's own package.json is read; 0 when unknown."""
+    version = entry.get("version") if isinstance(entry, dict) else None
+    found = _VERSION_HEAD.match(version) if isinstance(version, str) else None
+    for directory in [] if found else package_dirs(project, name):
+        found = _VERSION_HEAD.match(str(_package_json(directory).get("version") or ""))
+        if found:
+            break
+    return int(found.group(1)) if found else 0
+
+
+def tmp_packages(project, installed):
+    """Installed packages that carry TextMesh Pro: com.unity.textmeshpro, and com.unity.ugui from version 2 on (Unity 6
+    ships TextMesh Pro inside it). The UI skills add TextMeshProUGUI wherever that assembly is loaded."""
+    names = [TMP_PACKAGE] if TMP_PACKAGE in installed else []
+    if UGUI_PACKAGE in installed and package_major(project, UGUI_PACKAGE, installed[UGUI_PACKAGE]) >= 2:
+        names.append(UGUI_PACKAGE)
+    return names
+
+
+def has_text_mesh_pro(project):
+    """True when the project carries TextMesh Pro (tmp_packages), i.e. when the UI skills give a label TextMeshProUGUI
+    and not UnityEngine.UI.Text. Pack tasks read this through usk_eval.verifylib."""
+    return bool(tmp_packages(project, packages_lock(project)))
+
+
+def active_input_handler(project):
+    """The project's Active Input Handling from ProjectSettings/ProjectSettings.asset: 0 Input Manager (Old), 1 Input
+    System Package (New), 2 Both. A project whose file has no such key (or none) uses the Input Manager."""
+    try:
+        with open(os.path.join(project, "ProjectSettings", "ProjectSettings.asset"), "r", encoding="utf-8",
+                  errors="replace") as handle:
+            found = INPUT_HANDLER.search(handle.read())
+    except OSError:
+        return 0
+    return int(found.group(1)) if found else 0
+
+
+def tmp_settings_asset(project):
+    """Project-relative path of a "TMP Settings.asset" that Resources.Load("TMP Settings") can reach, i.e. one lying
+    directly in a Resources folder of Assets/ or of an embedded package; None when there is none. Importing the
+    Essential Resources creates it at Assets/TextMesh Pro/Resources, which is looked at first."""
+    if os.path.isfile(os.path.join(project, *TMP_SETTINGS_DEFAULT.split("/"))):
+        return TMP_SETTINGS_DEFAULT
+    for top in ("Assets", "Packages"):
+        for base, dirs, files in os.walk(os.path.join(project, top)):
+            dirs[:] = sorted(d for d in dirs if imported_by_unity(d))
+            if os.path.basename(base).lower() == "resources" and TMP_SETTINGS_FILE in files:
+                return os.path.relpath(os.path.join(base, TMP_SETTINGS_FILE), project).replace(os.sep, "/")
+    return None
+
+
+def tmp_essentials_package(project, installed):
+    """Absolute path of "TMP Essential Resources.unitypackage" in the project's copy of the package that carries
+    TextMesh Pro (Library/PackageCache, or an embedded package); None when the package is not resolved there."""
+    for name in tmp_packages(project, installed):
+        entry = installed.get(name)
+        version = entry.get("version") if isinstance(entry, dict) else None
+        for directory in package_dirs(project, name, version):
+            candidate = os.path.join(directory, "Package Resources", TMP_ESSENTIALS_FILE)
+            if os.path.isfile(candidate):
+                return candidate
+    return None
 
 
 # ---------------------------------------------------------------- gate inputs (contract 9)

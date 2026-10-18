@@ -248,4 +248,35 @@ class RuleTests(LintCase):
         self.edit(self.file("private", "S08"), "PATTERN = ", "# note\nPATTERN = ", rebuild=False)
         self.assert_only((None, 8))
 
+
+    def test_rule_9_task_calls_a_ui_skill_without_ugui(self):
+        self.edit(self.file("public", "S01"), "        c, rng = ctx.c, ctx.rng\n",
+                  "        c, rng = ctx.c, ctx.rng\n        c.write(\"ui_create_canvas\", name=\"Overlay\")\n")
+        self.assert_only(("S01", 9))
+        messages = [f.message for f in self.findings() if f.rule == 9]
+        self.assertEqual(len(messages), 1, messages)
+        self.assertIn("task.py calls ui_create_canvas", messages[0])
+        self.assertIn("does not list com.unity.ugui", messages[0])
+
+    def test_rule_9_solutions_call_a_ui_skill_without_ugui(self):
+        self.edit(self.file("solutions", "S01"), "def reference(ctx):\n",
+                  "def reference(ctx):\n    ctx.c.batch([{\"skill\": \"ui_create_button\", \"args\": {}}])\n",
+                  rebuild=False)
+        self.assert_only(("S01", 9))
+        self.assertIn("solutions S01.py calls ui_create_button", [f.message for f in self.findings()
+                                                                   if f.rule == 9][0])
+
+    def test_rule_9_a_task_that_lists_ugui_may_call_ui_skills(self):
+        self.assert_only()                                                    # T2, DB5, DC5 and OC5 call them
+        self.edit(self.file("public", "T2"), '"packages": ["com.unity.ugui"]', '"packages": []')
+        found = [f for f in self.findings() if f.level == "error"]
+        self.assertEqual({(f.task, f.rule) for f in found}, {("T2", 9)})
+        self.assertEqual(len(found), 2, [f.line() for f in found])            # its task.py and its solutions
+
+    def test_rule_9_comments_and_prose_are_not_calls(self):
+        self.edit(self.file("public", "S01"), "TINT = (", "# ui_create_text would add a label\nTINT = (")
+        self.edit(self.file("solutions", "S01"), "def reference(ctx):\n",
+                  "def reference(ctx):\n    note = \"calls ui_create_text later\"\n", rebuild=False)
+        self.assert_only()
+
 # Producer:Betsy

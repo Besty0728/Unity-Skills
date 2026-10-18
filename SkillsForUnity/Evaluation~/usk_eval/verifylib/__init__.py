@@ -2,7 +2,9 @@
 
     from usk_eval import verifylib as V
 
-The library reads the editor only through Probe (read-only skills) and the disk; nothing in it writes.
+The library reads the editor only through Probe (read-only skills) and the disk; nothing in it writes. The facts a task
+needs about the project's own files (installed packages, TextMesh Pro, Active Input Handling) come from the runner's
+environment module, so a task and the runner's checks cannot disagree about them.
 """
 from . import uyaml
 from .checks import (REF_RE, address, answer, as_int, close_tuple, floats, go_state, identity_rotation, local_trs,
@@ -11,6 +13,8 @@ from .checks import (REF_RE, address, answer, as_int, close_tuple, floats, go_st
 from .probe import Probe
 from .scorecard import Scorecard
 from .snapshot import asset_listing, canonical_digest, fingerprint, hierarchy_signature, structure
+from ..environment import active_input_handler, has_text_mesh_pro
+from ..paths import packages_lock as installed_packages
 from ..scope import adopted_paths, scope_violations, under
 
 __all__ = [
@@ -20,6 +24,7 @@ __all__ = [
     "identity_rotation", "answer", "as_int", "norm_path", "world_from_local", "object_id", "same_id", "address",
     "canonical_digest", "structure", "hierarchy_signature", "asset_listing", "fingerprint",
     "scope_violations", "adopted_paths", "under",
+    "installed_packages", "has_text_mesh_pro", "active_input_handler",
 ]
 
 # Producer:Betsy

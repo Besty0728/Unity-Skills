@@ -1290,6 +1290,7 @@
   "tab_eval_problem_pipeline_unsupported": "Use a project created from the Universal 3D (URP) template.",
   "tab_eval_problem_project_not_dedicated": "Mark an empty URP project as the dedicated evaluation project in the Evaluation tab, or choose the basic tier.",
   "tab_eval_problem_package_missing": "Install the package {0} required by task {1}, or choose other tasks.",
+  "tab_eval_problem_tmp_resources_missing": "Import the TMP Essential Resources: in Unity choose Window > TextMeshPro > Import TMP Essential Resources and click Import, or with the editor closed run Unity -batchmode -projectPath \"{1}\" -importPackage \"{2}\" -quit. Tasks {0} create TextMesh Pro text; without the resources TextMesh Pro opens its importer window and logs errors.",
   "tab_eval_problem_scene_dirty": "Save or discard the unsaved changes in {0}, then retry.",
   "tab_eval_problem_scene_untitled": "Open or save a scene that has a file path, then retry.",
   "tab_eval_problem_residue_found": "Leftover evaluation data found ({0}); click Clean up in the Evaluation tab or run cleanup --stale.",

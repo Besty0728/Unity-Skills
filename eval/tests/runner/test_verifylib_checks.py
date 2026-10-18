@@ -306,7 +306,8 @@ class PublicSurfaceTests(unittest.TestCase):
              "parse_ref", "REF_RE", "go_state", "material_state", "material_color", "close_tuple", "same",
              "new_children", "local_trs", "identity_rotation", "answer", "as_int", "norm_path", "world_from_local",
              "uyaml", "canonical_digest", "structure", "hierarchy_signature", "asset_listing", "fingerprint",
-             "scope_violations", "adopted_paths", "under", "object_id", "same_id", "address"]
+             "scope_violations", "adopted_paths", "under", "object_id", "same_id", "address",
+             "installed_packages", "has_text_mesh_pro", "active_input_handler"]
 
     def test_contract_5_8_names_are_exported(self):
         for name in self.NAMES:

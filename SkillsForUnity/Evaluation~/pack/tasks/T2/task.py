@@ -3,7 +3,11 @@
 Fixture: the GameController_<k> script (k = seeded word + run id), compiled at build and added to
 R/Systems/GameController; R/UI with DebugCanvas (created first) and MenuCanvas; R/Archive/MenuCanvas, a plain object
 without a Canvas component; three Menu objects created in a seeded order, one under each of DebugCanvas, MenuCanvas
-and Archive/MenuCanvas, tagged Untagged, Finish and Player respectively; no EventSystem.
+and Archive/MenuCanvas, tagged Untagged, Finish and Player respectively; no EventSystem. Two project facts are read
+from the project files at build and named in the prompt: the UI input module that fits the project's Active Input
+Handling (StandaloneInputModule on Input Manager (Old) or Both, InputSystemUIInputModule when only the Input System
+package is active) and the text component of a button label (TextMeshProUGUI where TextMesh Pro is installed,
+UnityEngine.UI.Text otherwise).
 """
 import json
 import os
@@ -13,6 +17,7 @@ from usk_eval.task_api import PublicTask, address
 
 WORDS = ("Aster", "Brine", "Cobalt", "Delta", "Fjord", "Garnet")
 MENU_TAGS = (("MenuCanvas", "Finish"), ("DebugCanvas", None), ("Archive", "Player"))
+INPUT_PACKAGE = "com.unity.inputsystem"
 
 CONTROLLER_SRC = """using UnityEngine;
 
@@ -30,6 +35,25 @@ public class {cls} : MonoBehaviour
 
 def class_name(script_path):
     return os.path.basename(script_path)[:-len(".cs")]
+
+
+def input_module(project_path):
+    """Name of the UI input module the project's Active Input Handling needs on an EventSystem: StandaloneInputModule
+    reads the Input Manager, InputSystemUIInputModule (package com.unity.inputsystem) the Input System package. With
+    only the Input System package active, the Input Manager module throws on every frame in Play Mode."""
+    if V.active_input_handler(project_path) != 1:
+        return "StandaloneInputModule"
+    if INPUT_PACKAGE not in V.installed_packages(project_path):
+        raise RuntimeError("Active Input Handling is Input System Package (New), but %s is not installed"
+                           % INPUT_PACKAGE)
+    return "InputSystemUIInputModule"
+
+
+def label_component(project_path):
+    """The text component the UI skills give a button label: TextMeshProUGUI where the project carries TextMesh Pro
+    (always on Unity 6, where it ships inside uGUI 2.x), UnityEngine.UI.Text otherwise. The runner's own check of
+    TextMesh Pro's Essential Resources uses the same detection."""
+    return "TextMeshProUGUI" if V.has_text_mesh_pro(project_path) else "UnityEngine.UI.Text"
 
 
 def fixed_state(probe, ref, children=True, local=True):
@@ -56,6 +80,7 @@ class T2(PublicTask):
 
     def build(self, ctx):
         c, rng = ctx.c, ctx.rng
+        module, label = input_module(ctx.project_path), label_component(ctx.project_path)
 
         def make(name, parent):
             return V.object_id(c.write("gameobject_create", name=name, **address(parent, "parent")))
@@ -89,7 +114,8 @@ class T2(PublicTask):
                 "controllerPath": ctx.path("Systems", "GameController"),
                 "controllerScript": ctx.asset("Scripts", cls + ".cs"), "ui": ui,
                 "canvases": [parents["DebugCanvas"], parents["MenuCanvas"]], "archive": archive,
-                "archiveCanvas": parents["Archive"], "menus": menus, "controller": controller}
+                "archiveCanvas": parents["Archive"], "menus": menus, "controller": controller,
+                "inputModule": module, "labelComponent": label}
 
     def snapshot(self, ctx):
         p, h = ctx.probe, ctx.handles
@@ -105,7 +131,8 @@ class T2(PublicTask):
     def prompt_vars(self, ctx):
         h = ctx.handles
         return {"canvas": h["menuCanvasPath"], "ui": h["uiPath"], "gc": h["controllerPath"],
-                "cls": class_name(h["controllerScript"])}
+                "cls": class_name(h["controllerScript"]), "input_module": h["inputModule"],
+                "label_component": h["labelComponent"]}
 
     def answer_schema(self):
         return {

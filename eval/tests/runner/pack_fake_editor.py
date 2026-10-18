@@ -69,6 +69,11 @@ RECT_ARGS = (("anchorMinX", "anchorMinY", "m_AnchorMin"), ("anchorMaxX", "anchor
              ("pivotX", "pivotY", "m_Pivot"), ("anchoredPosX", "anchoredPosY", "m_AnchoredPosition"),
              ("sizeDeltaX", "sizeDeltaY", "m_SizeDelta"))
 CANVAS_CENTER = (480.0, 270.0, 0.0)
+INPUT_PACKAGE = "com.unity.inputsystem"
+UGUI_PACKAGE = "com.unity.ugui"
+TMP_PACKAGE = "com.unity.textmeshpro"
+INPUT_MODULE_ERROR = ("InvalidOperationException: You are trying to read Input using the UnityEngine.Input class, but "
+                      "you have switched active Input handling to Input System package in Player Settings.")
 
 
 # ---------------------------------------------------------------- vector and rotation math (Unity conventions)
@@ -171,11 +176,78 @@ class FakeEditor(object):
         self.component_ids = {}
         self._next_component = 0
         self.playing = False
+        # Active Input Handling: 0 Input Manager (Old), 1 Input System Package (New), 2 Both
+        self.input_handler = 0
+        self.extra_components = set()   # component types of installed packages (InputSystemUIInputModule)
+        # TextMesh Pro installed: the UI skills give labels TextMeshProUGUI, else UnityEngine.UI.Text (set_text_setup)
+        self.text_mesh_pro = True
         os.makedirs(os.path.join(project, "Assets", "Scenes"), exist_ok=True)
         self._write_file(self.scene_path, "%YAML 1.1\n")
 
     def client(self, agent):
         return FakeClient(self, agent)
+
+    def _lock_dependencies(self, change):
+        """Applies change(dependencies) to the project's Packages/packages-lock.json and writes it back."""
+        lock_path = os.path.join(self.project, "Packages", "packages-lock.json")
+        lock = {"dependencies": {}}
+        if os.path.isfile(lock_path):
+            with open(lock_path, "r", encoding="utf-8") as handle:
+                lock = json.load(handle)
+        change(lock["dependencies"])
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        with open(lock_path, "w", encoding="utf-8") as handle:
+            json.dump(lock, handle)
+
+    def set_input_setup(self, handler, package=True):
+        """The project's Active Input Handling and the Input System package, as the project files carry them
+        (ProjectSettings.asset and packages-lock.json) and as the model reacts to them: InputSystemUIInputModule can be
+        added when the package is installed, and with only the Input System package active (1) the
+        StandaloneInputModule of an active EventSystem throws on every Play Mode frame."""
+        self.input_handler = handler
+        settings = os.path.join(self.project, "ProjectSettings", "ProjectSettings.asset")
+        lines = []
+        if os.path.isfile(settings):
+            with open(settings, "r", encoding="utf-8") as handle:
+                lines = [line for line in handle.read().splitlines() if "activeInputHandler" not in line]
+        lines = lines or ["PlayerSettings:"]
+        os.makedirs(os.path.dirname(settings), exist_ok=True)
+        with open(settings, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(lines + ["  activeInputHandler: %d" % handler]) + "\n")
+        if package:
+            self._lock_dependencies(lambda deps: deps.update(
+                {INPUT_PACKAGE: {"version": "1.14.0", "depth": 0, "source": "registry"}}))
+            self.extra_components.add("InputSystemUIInputModule")
+        else:
+            self._lock_dependencies(lambda deps: deps.pop(INPUT_PACKAGE, None))
+            self.extra_components.discard("InputSystemUIInputModule")
+
+    def set_text_setup(self, carrier="ugui", settings=False):
+        """TextMesh Pro as the project files and the UI skills carry it. carrier "ugui": uGUI 2.x, which ships it (Unity
+        6); "package": com.unity.textmeshpro next to uGUI 1.0.0 (Unity 2022); None: uGUI 1.0.0 alone, so the UI skills
+        give labels UnityEngine.UI.Text. `settings` also puts the imported Essential Resources (TMP Settings.asset)
+        in the project, as the runner's TextMesh Pro check wants them."""
+        self.text_mesh_pro = carrier is not None
+
+        def change(deps):
+            deps[UGUI_PACKAGE] = {"version": "2.0.0" if carrier == "ugui" else "1.0.0", "depth": 0,
+                                  "source": "builtin"}
+            if carrier == "package":
+                deps[TMP_PACKAGE] = {"version": "3.0.7", "depth": 0, "source": "registry"}
+            else:
+                deps.pop(TMP_PACKAGE, None)
+
+        self._lock_dependencies(change)
+        if settings and carrier is not None:
+            self._write_file("Assets/TextMesh Pro/Resources/TMP Settings.asset", "%YAML 1.1\n")
+
+    def play_mode_errors(self):
+        """What Play Mode would log as errors."""
+        if self.input_handler != 1:
+            return []
+        return [{"type": "Exception", "message": INPUT_MODULE_ERROR, "object": self.path(obj)}
+                for obj in self.walk()
+                if self.active_in_hierarchy(obj) and self.component(obj, "StandaloneInputModule")]
 
     # ------------------------------------------------------------ journal
 
@@ -561,7 +633,7 @@ class FakeEditor(object):
     def _skill_component_add(self, agent, args):
         obj = self.find(args)
         kind = args["componentType"]
-        if kind not in BUILTIN_COMPONENTS and kind not in self.classes:
+        if kind not in BUILTIN_COMPONENTS and kind not in self.classes and kind not in self.extra_components:
             raise _fail("COMPONENT_TYPE_NOT_FOUND", "Component type not found: %s" % kind)
         obj.components.append([kind, True if kind in ENABLEABLE or kind in self.classes else None])
         if kind in self.classes:
@@ -611,6 +683,8 @@ class FakeEditor(object):
             return {"m_Mesh": "1:UnityEngine.Mesh:%s" % obj.mesh}
         if kind.lower() == "button" and self.component(obj, "Button"):
             return self._button_serialized(obj)
+        if kind == "UnityEngine.UI.Text" and "Text" in obj.fields and self.component(obj, "Text"):
+            return {name: self.format_value(value) for name, value in obj.fields["Text"].items()}
         if kind in obj.fields and self.component(obj, kind):
             return {name: self.format_value(value) for name, value in obj.fields[kind].items()}
         raise _fail("COMPONENT_NOT_FOUND", "component not found: %s" % kind)
@@ -1043,8 +1117,10 @@ class FakeEditor(object):
         return obj
 
     def _label(self, agent, name, parent, text, **rect):
-        label = self._ui(agent, name, parent, [["CanvasRenderer", None], ["TextMeshProUGUI", True]], **rect)
-        label.fields["TextMeshProUGUI"] = {"m_text": text}
+        """A UI skill's text object: TextMeshProUGUI, or UnityEngine.UI.Text in a project without TextMesh Pro."""
+        kind, field = ("TextMeshProUGUI", "m_text") if self.text_mesh_pro else ("Text", "m_Text")
+        label = self._ui(agent, name, parent, [["CanvasRenderer", None], [kind, True]], **rect)
+        label.fields[kind] = {field: text}
         return label
 
     def _canvas_for(self, agent, parent_name):
@@ -1082,16 +1158,18 @@ class FakeEditor(object):
         label = self._label(agent, args.get("name") or "Text", holder, args.get("text") or "New Text",
                             m_SizeDelta=(200.0, 50.0))
         return {"success": True, "name": label.name, "entityId": label.eid, "instanceId": label.iid,
-                "parent": holder.name, "usingTMP": True}
+                "parent": holder.name, "usingTMP": self.text_mesh_pro}
 
     def _skill_ui_set_text(self, agent, args):
         obj = self.find(args)
-        if not self.component(obj, "TextMeshProUGUI"):
+        kind, field = next(((k, f) for k, f in (("TextMeshProUGUI", "m_text"), ("Text", "m_Text"))
+                            if self.component(obj, k) and k in obj.fields), (None, None))
+        if kind is None:
             raise _fail("NO_TEXT", "No Text component found (checked both TMP and Legacy UI)")
-        before, obj.fields["TextMeshProUGUI"]["m_text"] = obj.fields["TextMeshProUGUI"]["m_text"], args.get("text")
-        self._change(agent, self._identity(obj, kind="property_changed", targetType="TextMeshProUGUI",
-                                           property="m_text", previousValue=before, value=str(args.get("text"))))
-        return {"success": True, "name": obj.name, "text": args.get("text"), "usingTMP": True}
+        before, obj.fields[kind][field] = obj.fields[kind][field], args.get("text")
+        self._change(agent, self._identity(obj, kind="property_changed", targetType=kind, property=field,
+                                           previousValue=before, value=str(args.get("text"))))
+        return {"success": True, "name": obj.name, "text": args.get("text"), "usingTMP": kind == "TextMeshProUGUI"}
 
     def _skill_ui_set_rect_transform(self, agent, args):
         obj = self.find(args)
@@ -1204,11 +1282,13 @@ class FakeEditor(object):
 
     def run_scenario(self, spec, agent=RUNNER):
         """editor_run_scenario's job result, run on this model: steps in order, the first failed step or assert ends
-        it, `passed` needs every assert to pass (the model logs no errors). Play Mode is a flag, the plain field
-        assignments of Awake() run when it starts, and the scene is put back afterwards, as leaving Play Mode does."""
+        it, `passed` needs every assert to pass and no error to be logged (play_mode_errors). Play Mode is a flag, the
+        plain field assignments of Awake() run when it starts, and the scene is put back afterwards, as leaving Play
+        Mode does."""
         steps, records, passed, error, last = spec.get("steps") or [], [], True, None, None
         saved = copy.deepcopy((self.objects, self.roots))
         self.playing = spec.get("executionMode", "play") == "play"
+        logged = self.play_mode_errors() if self.playing else []
         if self.playing:
             for obj in self.objects.values():
                 for cls, values in obj.fields.items():
@@ -1245,9 +1325,11 @@ class FakeEditor(object):
         finally:
             self.playing = False
             self.objects, self.roots = saved
+        if passed and logged:
+            passed, error = False, "Runtime error logs were captured."
         return {"status": "completed" if passed else "failed", "passed": passed, "error": error,
                 "interrupted": False, "executionUncertain": False, "steps": records, "compilation": None,
-                "logWindow": {"complete": True, "entries": []}}
+                "logWindow": {"complete": True, "entries": logged}}
 
     # ------------------------------------------------------------ queries
 

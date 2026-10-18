@@ -5,10 +5,14 @@ What the task probes: DebugCanvas is created first, so ui_create_button without 
 R/Archive/MenuCanvas has the name of the canvas asked for but no Canvas; three objects are named Menu and only the
 Finish-tagged one (found from the C0 tags) is the first listener's target, while the top-most Menu, which a target
 given by name binds, is never that one; listener order, the bool argument and the RuntimeOnly call state; no
-EventSystem exists yet. D3 is existential over every TextMeshProUGUI below the button (eval/design/t2-verifier-fix:
-a later matching label counts, an empty first one does not hide it). The controller class carries a seeded token plus
-the run id, so a run never meets a type compiled by an earlier run. The runtime part enters Play Mode, clicks the
-button through Button.Press and reads the three menus and startCount back.
+EventSystem exists yet. D3 is existential over every label component below the button (eval/design/t2-verifier-fix:
+a later matching label counts, an empty first one does not hide it); which component that is, TextMeshProUGUI or
+UnityEngine.UI.Text in a project without TextMesh Pro, build recorded in the handles (labelComponent). D6 wants the
+input module that fits the project's Active Input Handling, which build recorded too (inputModule):
+StandaloneInputModule reads the Input Manager and throws on every frame when only the Input System package is active,
+InputSystemUIInputModule is the module of that package. The controller class carries a seeded token plus the run id,
+so a run never meets a type compiled by an earlier run. The runtime part enters Play Mode, clicks the button through
+Button.Press and reads the three menus and startCount back.
 """
 import os
 import re
@@ -26,10 +30,12 @@ BUTTON_TYPE = "UnityEngine.UI.Button"
 ASSERTIONS = [
     ("D1", 1.0, False, ["R1", "R5"], "exactly one Button in the scene: StartButton directly under R/UI/MenuCanvas"),
     ("D2", 0.5, False, ["R1"], "StartButton has RectTransform, Image and Button"),
-    ("D3", 0.5, False, ["R1"], "a TextMeshProUGUI below the button reads \"Start Game\""),
+    ("D3", 0.5, False, ["R1"], "a label component below the button, of the type the project's UI skills use "
+                               "(TextMeshProUGUI, or UnityEngine.UI.Text without TextMesh Pro), reads \"Start Game\""),
     ("D4", 0.75, False, ["R2"], "anchorMin = anchorMax = (0.5, 0), pivot (0.5, 0)"),
     ("D5", 0.75, False, ["R2"], "anchoredPosition (0, 120), size 320 x 80"),
-    ("D6", 1.0, False, ["R3"], "exactly one EventSystem in the scene, at R/UI/EventSystem with StandaloneInputModule"),
+    ("D6", 1.0, False, ["R3"], "exactly one EventSystem in the scene, at R/UI/EventSystem, with the input module that "
+                               "fits the project's Active Input Handling"),
     ("D7", 0.5, False, ["R4"], "onClick has exactly two persistent calls"),
     ("D8", 1.25, False, ["R4"], "call 0: GameObject.SetActive(false) on the Finish-tagged Menu"),
     ("D9", 1.0, False, ["R4"], "call 1: GameController_<k>.StartGame() on R/Systems/GameController, no-argument mode"),
@@ -49,14 +55,21 @@ HINTS = {
                  "ui_create_button without a parent may land elsewhere, and the same-name object under R/Archive is "
                  "not a Canvas."},
     "D2": {"zh-CN": "按钮需要 RectTransform、Image 和 Button 组件。", "en": "The button needs RectTransform, Image and Button."},
-    "D3": {"zh-CN": "按钮之下要有一个 TextMeshProUGUI，文字为 Start Game。",
-           "en": "A TextMeshProUGUI below the button must read Start Game."},
+    "D3": {"zh-CN": "按钮之下要有一个提示里点名的文字组件（工程带 TextMesh Pro 时是 TextMeshProUGUI，否则是 "
+                    "UnityEngine.UI.Text），文字为 Start Game。",
+           "en": "A text component of the type the prompt names (TextMeshProUGUI where TextMesh Pro is installed, "
+                 "UnityEngine.UI.Text otherwise) below the button must read Start Game."},
     "D4": {"zh-CN": "anchorMin、anchorMax 和 pivot 都应为 (0.5, 0)。",
            "en": "anchorMin, anchorMax and pivot must all be (0.5, 0)."},
     "D5": {"zh-CN": "anchoredPosition 应为 (0, 120)，sizeDelta 应为 (320, 80)。",
            "en": "anchoredPosition must be (0, 120) and sizeDelta (320, 80)."},
-    "D6": {"zh-CN": "在 R/UI 下建一个 EventSystem 对象，挂 EventSystem 和 StandaloneInputModule，且全场景只有这一个。",
-           "en": "Create one EventSystem object under R/UI with EventSystem and StandaloneInputModule, and no other."},
+    "D6": {"zh-CN": "在 R/UI 下建一个 EventSystem 对象，挂 EventSystem 和与工程 Active Input Handling 相匹配的输入模块"
+                    "（Input Manager 或 Both 用 StandaloneInputModule，只启用 Input System 包时用 InputSystemUIInputModule），"
+                    "且全场景只有这一个 EventSystem。",
+           "en": "Create one EventSystem object under R/UI with the EventSystem component and the input module that "
+                 "fits the project's Active Input Handling (StandaloneInputModule for Input Manager or Both, "
+                 "InputSystemUIInputModule when only the Input System package is active), and no other "
+                 "EventSystem."},
     "D7": {"zh-CN": "onClick 恰好要有两条持久监听。", "en": "onClick needs exactly two persistent listeners."},
     "D8": {"zh-CN": "第一条监听要指向标签为 Finish 的 Menu（三个 Menu 同名，按名字找会找到别的），调用 SetActive，参数为 false。",
            "en": "The first listener must target the Menu tagged Finish (three Menus share the name, so a lookup by "
@@ -131,15 +144,20 @@ def graded_button(ctx, c0, buttons=None):
     return next((ref for ref in buttons if (p.go(ref) or {}).get("name") == "StartButton"), None)
 
 
-def tmp_texts(probe, ref, depth=0):
-    """m_text of every TextMeshProUGUI at or below `ref`, in hierarchy order."""
+# label component -> (its name in a components list, its serialized text property)
+LABELS = {"TextMeshProUGUI": ("TextMeshProUGUI", "m_text"), "UnityEngine.UI.Text": ("Text", "m_Text")}
+
+
+def label_texts(probe, ref, component, depth=0):
+    """The text of every `component` (a key of LABELS) at or below `ref`, in hierarchy order."""
+    name, field = LABELS[component]
     info = probe.go(ref) or {}
     out = []
-    if "TextMeshProUGUI" in (info.get("components") or []):
-        out.append((probe.ser(ref, "TextMeshProUGUI") or {}).get("m_text"))
+    if name in (info.get("components") or []):
+        out.append((probe.ser(ref, component) or {}).get(field))
     if depth < 32:
         for child in info.get("children") or []:
-            out += tmp_texts(probe, V.object_id(child), depth + 1)
+            out += label_texts(probe, V.object_id(child), component, depth + 1)
     return out
 
 
@@ -161,8 +179,9 @@ def verify(ctx, card):
                actual={"buttons": [(p.go(ref) or {}).get("path") for ref in buttons]})
     comps = ((p.go(button) or {}) if button is not None else {}).get("components") or []
     card.check("D2", all(kind in comps for kind in ("RectTransform", "Image", "Button")), actual=comps)
-    texts = tmp_texts(p, button) if button is not None else []
-    card.check("D3", "Start Game" in texts, expected="Start Game", actual=texts)
+    label = h.get("labelComponent")
+    texts = label_texts(p, button, label) if button is not None and label in LABELS else []
+    card.check("D3", "Start Game" in texts, expected={"component": label, "text": "Start Game"}, actual=texts)
 
     rect = (p.ser(button, "RectTransform") or {}) if button is not None else {}
     card.check("D4", all(V.close_tuple(rect.get(key), (0.5, 0)) for key in ("m_AnchorMin", "m_AnchorMax", "m_Pivot")),
@@ -174,9 +193,10 @@ def verify(ctx, card):
 
     systems = find_all(ctx, "EventSystem")
     system = p.go(systems[0]) if len(systems) == 1 else None
-    card.check("D6", bool(system) and system.get("path") == h["uiPath"] + "/EventSystem" and
-               "StandaloneInputModule" in (system.get("components") or []),
-               expected=h["uiPath"] + "/EventSystem",
+    module = h.get("inputModule")
+    card.check("D6", bool(system) and system.get("path") == h["uiPath"] + "/EventSystem" and bool(module) and
+               module in (system.get("components") or []),
+               expected={"path": h["uiPath"] + "/EventSystem", "inputModule": module},
                actual={"eventSystems": [(p.go(ref) or {}).get("path") for ref in systems],
                        "components": (system or {}).get("components")})
 

@@ -38,6 +38,13 @@ BLOCKING = {
                               "or choose the basic tier."),
     "PACKAGE_MISSING": (2, "A package required by a selected task is not installed",
                         "Install the package {0} required by task {1}, or choose other tasks."),
+    "TMP_RESOURCES_MISSING": (2, "TextMesh Pro is installed but its Essential Resources were never imported",
+                              "Import the TMP Essential Resources: in the Unity editor choose Window > TextMeshPro > "
+                              "Import TMP Essential Resources and click Import; or, with the editor closed, run "
+                              "Unity -batchmode -projectPath \"{1}\" -importPackage \"{2}\" -quit. The selected tasks "
+                              "({0}) build uGUI, whose UI skills create TextMesh Pro text; without the resources "
+                              "TextMesh Pro then opens its importer window, a batchmode or -nographics editor logs "
+                              "errors for it, and it logs them again on every Play Mode entry."),
     "SCENE_DIRTY": (2, "A loaded scene has unsaved changes", "Save or discard the unsaved changes in {0}, then retry."),
     "SCENE_UNTITLED": (2, "The active scene has no file path",
                        "Open or save a scene that has a file path, then retry."),

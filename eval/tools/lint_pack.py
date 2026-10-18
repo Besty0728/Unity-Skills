@@ -16,6 +16,8 @@ Every finding names the rule it breaks:
      private verifier
   7  solutions: reference(), at least 5 negatives with known expected-failure sets, at least 1 alternative
   8  check_eval_pack: the manifest matches the public files and the private verifiers
+  9  a task or solution that calls a ui_* skill lists com.unity.ugui in requires.packages (the runner checks
+     TextMesh Pro's Essential Resources, and the package itself, only for the tasks that list it)
 Exit 0 without errors (warnings allowed), 1 with errors, 2 when the lint cannot run.
 """
 import argparse
@@ -63,6 +65,8 @@ PROHIBITION_ZH = ("不要", "不得", "不能", "禁止", "不允许", "保持�
 PROHIBITION_EN = ("do not", "don't", "must not", "never", "may not", "unchanged", "read-only", "no other")
 REQ_RE = re.compile(r"^[RG][1-9][0-9]*$")
 NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?")
+UI_SKILL_RE = re.compile(r"^ui_[a-z0-9_]+$")
+UGUI_PACKAGE = "com.unity.ugui"
 REQ_LINE_RE = re.compile(r"^R(\d+)\. ")
 G_LINE_RE = re.compile(r"^G(\d+) ")
 CONTINUATION = "   "
@@ -551,6 +555,30 @@ def _natural(text):
     return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", text)]
 
 
+# ---------------------------------------------------------------- uGUI requirement (rule 9)
+
+
+def ui_skill_calls(tree):
+    """(skill, line) of every string in the module that names a ui_* skill, in line order: the skill argument of a
+    write or read call, or the "skill" value of a batch or scenario step."""
+    found = {(node.value, node.lineno) for node in ast.walk(tree)
+             if isinstance(node, ast.Constant) and isinstance(node.value, str) and UI_SKILL_RE.match(node.value)}
+    return sorted(found, key=lambda item: (item[1], item[0]))
+
+
+def check_ui_requirement(found, requires, modules):
+    """Rule 9. `modules` is [(label, tree)]: task.py and the solutions. The UI skills add TextMesh Pro text wherever it
+    is installed, and the runner checks that package and its Essential Resources only for tasks that list
+    com.unity.ugui, so a task that reaches a ui_* skill without listing it would fail late and silently."""
+    if UGUI_PACKAGE in ((requires or {}).get("packages") or ()):
+        return
+    for label, tree in modules:
+        calls = ui_skill_calls(tree)
+        if calls:
+            found.error(9, "%s calls %s (line %d), but requires.packages does not list %s" % (
+                label, ", ".join(sorted({skill for skill, _line in calls})), calls[0][1], UGUI_PACKAGE))
+
+
 # ---------------------------------------------------------------- one task
 
 
@@ -593,14 +621,19 @@ def lint_task(task_id, pack_root, private_root, solutions_root, private_file=Non
     if declared["zh-CN"] != declared["en"]:
         found.error(5, "only the %s prompt declares the task read-only" % ("zh-CN" if declared["zh-CN"] else "en"))
     read_only = any(declared.values())
+    trees = []
     try:
         source = _source(task_path)
-        check_public(found, source, ast.parse(source, task_path), read_only)
+        tree = ast.parse(source, task_path)
+        check_public(found, source, tree, read_only)
+        trees.append(("task.py", tree))
     except (OSError, SyntaxError) as exc:
         found.error(6, "task.py cannot be read: %s" % type(exc).__name__)
     solutions_path = os.path.join(solutions_root, task_id + ".py")
     try:
-        check_solutions_imports(found, ast.parse(_source(solutions_path), solutions_path), private_file)
+        solutions_tree = ast.parse(_source(solutions_path), solutions_path)
+        check_solutions_imports(found, solutions_tree, private_file)
+        trees.append(("solutions %s.py" % task_id, solutions_tree))
         solutions = _load("usk_lint_solutions_" + task_id, solutions_path)
     except (OSError, SyntaxError) as exc:
         found.error(7, "solutions %s.py cannot be read: %s" % (task_id, type(exc).__name__))
@@ -608,6 +641,8 @@ def lint_task(task_id, pack_root, private_root, solutions_root, private_file=Non
         found.error(7, "solutions %s.py fail to import: %s: %s" % (task_id, type(exc).__name__, exc))
     else:
         check_solutions(found, solutions, {row[0] for row in rows} if private is not None else None)
+    if task is not None:
+        check_ui_requirement(found, pack.normalize_requires(task.requires), trees)
     return found.findings
 
 
@@ -627,7 +662,7 @@ def _task_ids(pack_root, manifest):
 
 def lint(pack_root=None, private_root=None, solutions_root=None, manifest_path=None, tasks=None,
          package_version=None):
-    """Every finding for the pack (rule 8 first, then rules 1-7 per task); `tasks` limits the per-task rules."""
+    """Every finding for the pack (rule 8 first, then rules 1-7 and 9 per task); `tasks` limits the per-task rules."""
     pack_root = os.path.abspath(pack_root or DEFAULT_PACK_ROOT)
     private_root = os.path.abspath(private_root or DEFAULT_PRIVATE_ROOT)
     solutions_root = os.path.abspath(solutions_root or DEFAULT_SOLUTIONS_ROOT)

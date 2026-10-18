@@ -40,7 +40,7 @@ namespace UnitySkills.Tests.Core
             "PYTHON_TOO_OLD", "PROJECT_NOT_FOUND", "PROJECT_AMBIGUOUS", "PACKAGE_NOT_FOUND", "RUNNER_NOT_FOUND",
             "INSTANCE_NOT_RUNNING", "INSTANCE_MISMATCH", "VERSION_MISMATCH", "EDITOR_BUSY", "PLAY_MODE_ACTIVE",
             "MODE_NOT_BYPASS", "SURFACE_NOT_FULL", "PIPELINE_UNSUPPORTED", "PROJECT_NOT_DEDICATED", "PACKAGE_MISSING",
-            "SCENE_DIRTY", "SCENE_UNTITLED", "RESIDUE_FOUND", "PRIVATE_PACK_UNREACHABLE", "PRIVATE_PACK_TLS", "VERIFICATION_PENDING",
+            "TMP_RESOURCES_MISSING", "SCENE_DIRTY", "SCENE_UNTITLED", "RESIDUE_FOUND", "PRIVATE_PACK_UNREACHABLE", "PRIVATE_PACK_TLS", "VERIFICATION_PENDING",
             "PACK_PLUGIN_RANGE", "CLEANUP_NEEDS_SCENE", "BAD_ARGUMENTS", "SESSION_ACTIVE", "NO_ACTIVE_SESSION",
             "SESSION_NOT_FOUND", "SESSION_NOT_FINISHED", "ATTEMPT_NOT_FOUND", "ATTEMPT_NOT_ACTIVE", "ATTEMPT_NOT_READY",
             "ANSWER_NOT_FOUND", "RETRY_NOT_APPLICABLE", "STRICT_NEEDS_NEW_SESSION", "TASKS_INVALID", "REST_UNREACHABLE",
@@ -158,6 +158,30 @@ namespace UnitySkills.Tests.Core
             StringAssert.Contains("9.8.7", text);
             StringAssert.DoesNotContain("{0}", text);
             StringAssert.DoesNotContain("{1}", text);
+        }
+
+        [Test]
+        public void LocalizeProblem_FillsTheTmpResourcesProblemInEveryLanguage()
+        {
+            var problem = EvaluationProblem.Local("TMP_RESOURCES_MISSING", "DB5, T2", "/work/Proj",
+                "/work/Proj/Library/PackageCache/com.unity.ugui@8aa876c215ef/Package Resources/TMP Essential Resources.unitypackage");
+            foreach (var language in new[]
+                     {
+                         SkillsLocalization.Language.English,
+                         SkillsLocalization.Language.Chinese,
+                         SkillsLocalization.Language.Russian
+                     })
+            {
+                SkillsLocalization.Current = language;
+                var text = EvaluationTabController.LocalizeProblem(problem);
+
+                StringAssert.Contains("DB5, T2", text, language.ToString());
+                StringAssert.Contains("-projectPath \"/work/Proj\"", text, language.ToString());
+                StringAssert.Contains("-importPackage \"/work/Proj/Library/PackageCache/com.unity.ugui@8aa876c215ef/", text, language.ToString());
+                StringAssert.Contains("Window > TextMeshPro > Import TMP Essential Resources", text, language.ToString());
+                StringAssert.DoesNotContain("{0}", text, language.ToString());
+                StringAssert.DoesNotContain("{2}", text, language.ToString());
+            }
         }
 
         [Test]

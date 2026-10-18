@@ -26,6 +26,31 @@ dependency on this repository's `SkillsForUnity`), its editor open with the Unit
 Bypass and skill surface Full; Python 3.9+ (Codex batch runs need 3.11+). Pass the project with `--project` or set
 `UNITYSKILLS_EVAL_PROJECT`. One maintainer tool drives an editor at a time (`Library/UnitySkills/driver.lock`).
 
+Tasks that build uGUI (`requires.packages` lists `com.unity.ugui`: DB5, T2, DC5, OC5) also need TextMesh Pro's Essential
+Resources when the project has TextMesh Pro: always on Unity 6, where it ships inside `com.unity.ugui` 2.x, and on 2022
+when `com.unity.textmeshpro` is installed. The UI skills create TMP text there; without a `TMP Settings.asset` in a
+`Resources` folder TextMesh Pro opens its importer window instead, a batchmode or `-nographics` editor logs errors for
+it, and every later Play Mode entry logs them again, so every runtime scenario fails with "Runtime error logs were
+captured." even for tasks without UI. The runner reads the project files and reports `TMP_RESOURCES_MISSING` from
+`check`, `start` and `next` before any task is built. Fix it once per project, in the editor with Window > TextMeshPro >
+Import TMP Essential Resources, or with the editor closed:
+
+```bash
+Unity -batchmode -projectPath <project> -importPackage "<project>/Library/PackageCache/<TMP package>/Package Resources/TMP Essential Resources.unitypackage" -quit
+```
+
+`<TMP package>` is `com.unity.ugui@<fingerprint>` on Unity 6 and `com.unity.textmeshpro@<version>` on 2022; the problem's
+fix text names the exact file.
+
+T2 reads two facts from the project files and names them in its prompt: the UI input module that fits the Active
+Input Handling (`StandaloneInputModule` for Input Manager (Old) or Both, `InputSystemUIInputModule` when only the Input
+System package is active, which needs `com.unity.inputsystem`) and the label component of a button
+(`TextMeshProUGUI` where the project has TextMesh Pro, `UnityEngine.UI.Text` otherwise, e.g. Unity 2022 without
+`com.unity.textmeshpro`). A new Unity 6 URP project works as it is. The task reads them through
+`usk_eval.verifylib` (`active_input_handler`, `has_text_mesh_pro`, `installed_packages`), the same code the TextMesh Pro
+check above uses. `tools/lint_pack.py` rule 9 keeps that check complete: a task or solution that calls a `ui_*` skill
+must list `com.unity.ugui` in `requires.packages`.
+
 ### Gate
 
 ```bash

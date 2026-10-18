@@ -1290,6 +1290,7 @@
   "tab_eval_problem_pipeline_unsupported": "请使用以 Universal 3D (URP) 模板创建的工程。",
   "tab_eval_problem_project_not_dedicated": "请在评测页把一个空的 URP 工程标记为评测工程，或改选 basic 等级。",
   "tab_eval_problem_package_missing": "请安装题目 {1} 需要的包 {0}，或改选其他题目。",
+  "tab_eval_problem_tmp_resources_missing": "请先导入 TMP Essential Resources：在 Unity 中选择 Window > TextMeshPro > Import TMP Essential Resources 并点击 Import；也可以在关闭编辑器后运行 Unity -batchmode -projectPath \"{1}\" -importPackage \"{2}\" -quit。题目 {0} 会创建 TextMesh Pro 文本，缺少这些资源时 TMP 会打开导入窗口并记录错误。",
   "tab_eval_problem_scene_dirty": "请保存或放弃 {0} 中未保存的修改，再重试。",
   "tab_eval_problem_scene_untitled": "请打开或保存一个有文件路径的场景，再重试。",
   "tab_eval_problem_residue_found": "发现之前评测留下的数据（{0}）；请在评测页点击清理旧数据，或运行 cleanup --stale。",

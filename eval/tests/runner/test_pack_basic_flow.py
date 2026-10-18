@@ -59,11 +59,15 @@ class RunnerFlowTests(unittest.TestCase):
         RS.READ_ONLY = set(READ_SKILLS)
         return bench
 
-    def attempt(self, bench, task_id, solver, lang="zh-CN"):
+    def attempt(self, bench, task_id, solver, lang="zh-CN", tmp="ugui"):
+        """start, next, the solver, submit. A task that requires uGUI runs in a project with TextMesh Pro as `tmp`
+        says (see FakeEditor.set_text_setup), its Essential Resources imported."""
         task = modules(task_id)[0]
         if task.requires.get("dedicated"):
             with open(os.path.join(bench.project, "ProjectSettings", "UnitySkillsEvaluation.json"), "w") as handle:
                 json.dump({"schema": 1, "kind": "UnitySkillsEvaluationProject"}, handle)
+        if "com.unity.ugui" in (task.requires.get("packages") or ()):
+            bench.unity.model.set_text_setup(tmp, settings=True)
         lock_path = os.path.join(bench.project, "Packages", "packages-lock.json")
         with open(lock_path, encoding="utf-8") as handle:
             lock = json.load(handle)
@@ -126,6 +130,55 @@ class RunnerFlowTests(unittest.TestCase):
                 bench = self.bench("URP")
                 result, _state = self.attempt(bench, task_id, negative.apply, lang="en")
                 self.assertEqual(self.failed(result), negative.expect_failed, result.get("score"))
+
+    def test_t2_on_a_project_with_only_the_input_system(self):
+        """The prompt names InputSystemUIInputModule; its Standalone counterpart fails D6 and the Play Mode run."""
+        _task, _private, solutions = modules("T2")
+        for case, solver, status, failed in (("reference", solutions.reference, "pass", set()),
+                                             ("other_module", solutions.other_input_module, None, {"D6", "D14"})):
+            with self.subTest(case=case):
+                bench = self.bench("URP")
+                bench.unity.model.set_input_setup(1)
+                result, state = self.attempt(bench, "T2", solver, lang="en")
+                self.assertEqual(state["handles"]["inputModule"], "InputSystemUIInputModule")
+                with open(os.path.join(bench.paths.attempt_dir(state["sessionId"], state["attemptId"]),
+                                       "prompt.md"), encoding="utf-8-sig") as handle:
+                    prompt = handle.read()
+                self.assertIn("`InputSystemUIInputModule` component", prompt)
+                self.assertNotIn("StandaloneInputModule", prompt)
+                scenario = result["evidence"]["scenario"]
+                self.assertEqual(self.failed(result), failed, result.get("score"))
+                if status:
+                    self.assertEqual((result["status"], scenario["passed"]), (status, True), result)
+                else:
+                    self.assertEqual((scenario["passed"], scenario["error"]),
+                                     (False, "Runtime error logs were captured."))
+
+    def test_t2_label_component_follows_text_mesh_pro(self):
+        """The prompt names TextMeshProUGUI where the project carries TextMesh Pro (uGUI 2.x, or its package on 2022)
+        and UnityEngine.UI.Text where it does not; the reference passes in each, the other component's text fails D3,
+        and a project that has TextMesh Pro without its Essential Resources is stopped before the task is built."""
+        _task, _private, solutions = modules("T2")
+        for tmp, component, other in (("ugui", "TextMeshProUGUI", "UnityEngine.UI.Text"),
+                                      ("package", "TextMeshProUGUI", "UnityEngine.UI.Text"),
+                                      (None, "UnityEngine.UI.Text", "TextMeshProUGUI")):
+            with self.subTest(tmp=tmp):
+                bench = self.bench("URP")
+                result, state = self.attempt(bench, "T2", solutions.reference, lang="en", tmp=tmp)
+                self.assertEqual(state["handles"]["labelComponent"], component)
+                with open(os.path.join(bench.paths.attempt_dir(state["sessionId"], state["attemptId"]),
+                                       "prompt.md"), encoding="utf-8-sig") as handle:
+                    prompt = handle.read()
+                self.assertIn("its text is a `%s` component" % component, prompt)
+                self.assertNotIn(other, prompt)
+                self.assertEqual((result["status"], self.failed(result)), ("pass", set()), result.get("score"))
+        bench = self.bench("URP")
+        bench.unity.model.set_text_setup("ugui", settings=False)
+        with open(os.path.join(bench.project, "ProjectSettings", "UnitySkillsEvaluation.json"), "w") as handle:
+            json.dump({"schema": 1, "kind": "UnitySkillsEvaluationProject"}, handle)
+        code, env = bench.run("check", "--track", "dev", "--tier", "standard", "--tasks", "T2", "--private-dir",
+                              PRIVATE_ROOT)
+        self.assertEqual((code, [p["code"] for p in env["problems"]]), (2, ["TMP_RESOURCES_MISSING"]))
 
     def test_urp_reference(self):
         for task_id in ("S01", "S06"):

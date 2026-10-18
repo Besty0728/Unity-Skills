@@ -1290,6 +1290,7 @@
   "tab_eval_problem_pipeline_unsupported": "Используйте проект, созданный из шаблона Universal 3D (URP).",
   "tab_eval_problem_project_not_dedicated": "Отметьте пустой проект URP как проект для оценки на вкладке «Оценка» или выберите уровень basic.",
   "tab_eval_problem_package_missing": "Установите пакет {0}, нужный заданию {1}, или выберите другие задания.",
+  "tab_eval_problem_tmp_resources_missing": "Импортируйте TMP Essential Resources: в Unity выберите Window > TextMeshPro > Import TMP Essential Resources и нажмите Import, либо при закрытом редакторе выполните Unity -batchmode -projectPath \"{1}\" -importPackage \"{2}\" -quit. Задания {0} создают текст TextMesh Pro; без этих ресурсов TMP открывает окно импорта и пишет ошибки.",
   "tab_eval_problem_scene_dirty": "Сохраните или отмените несохранённые изменения в {0} и повторите.",
   "tab_eval_problem_scene_untitled": "Откройте или сохраните сцену с путём к файлу и повторите.",
   "tab_eval_problem_residue_found": "Найдены остатки прошлой оценки ({0}); нажмите «Очистить старые запуски» на вкладке «Оценка» или выполните cleanup --stale.",

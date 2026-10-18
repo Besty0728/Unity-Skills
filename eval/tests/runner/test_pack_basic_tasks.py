@@ -56,14 +56,22 @@ def keys(value, out=None):
 class Offline(object):
     """One attempt the way the runner runs it: run folder, scene and root (N4), build (N5), C0 (N6), then a solver,
     the submit-time refresh (S3), the private verify on the flattened journal (S8) and, for dev tasks, the SCENARIO
-    on the model followed by verify_runtime (S9)."""
+    on the model followed by verify_runtime (S9). `input_handler` (0, 1 or 2) gives the project that Active Input
+    Handling, with the Input System package installed unless `input_package` is false; left out, the project files
+    carry no such setting, as before. A task that requires com.unity.ugui gets a project with TextMesh Pro as `tmp`
+    says ("ugui": uGUI 2.x ships it, "package": com.unity.textmeshpro on uGUI 1.0.0, None: neither)."""
 
-    def __init__(self, test, task_id, seed=None, pipeline="BuiltIn", entity_mode="legacy", lang="en"):
+    def __init__(self, test, task_id, seed=None, pipeline="BuiltIn", entity_mode="legacy", lang="en",
+                 input_handler=None, input_package=True, tmp="ugui"):
         self.tmp = tempfile.mkdtemp(prefix="usk-pack-test-")
         test.addCleanup(remove_tree, self.tmp)
         self.project = os.path.join(self.tmp, "Proj")
         self.editor = FakeEditor(self.project, pipeline, entity_mode)
+        if input_handler is not None:
+            self.editor.set_input_setup(input_handler, input_package)
         self.task, self.private, self.solutions = modules(task_id)
+        if "com.unity.ugui" in (self.task.requires.get("packages") or ()):
+            self.editor.set_text_setup(tmp)
         self.seed = SEEDS[task_id] if seed is None else seed
         self.lang = lang
         self.scope = fixture.Scope(fixture.new_run_id())
