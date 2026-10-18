@@ -366,7 +366,7 @@ def attempt_violations(view, session_id, attempt_id):
     scope = state["scope"]
     path = os.path.join(view.paths.attempt_dir(session_id, attempt_id), "journal.jsonl")
     records = runner_journal.flatten(runner_journal.load_entries(path), state["journal"].get("refreshWindow"))
-    records = runner_journal.split_package_reimports(records, (state.get("packageTree") or {}).get("atSubmit"))[0]
+    records = runner_journal.split_reimports(records, state)[0]
     records = [r for r in records if not r.get("isPlaying")
                and not (r.get("agent") == runner_rest.RUNNER_AGENT and r.get("origin") == "attempt")]
     return runner_scope.scope_violations(records, scope["objectRoot"], scope["assetRoot"], scope["scenePath"])

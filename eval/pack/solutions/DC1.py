@@ -290,17 +290,6 @@ def compile_error(ctx):
                                          "        if (count <= 0) return 0; {\n        int left = count;\n", 1))
 
 
-def recreated(ctx):
-    """Deletes the script and creates a fixed one under the same name: a new GUID, the scene component goes missing."""
-    h = ctx.handles
-    text = _current(ctx)
-    start, end = text.index(BLOCK_START), text.index(BLOCK_END)
-    _wait(ctx, ctx.c.write("script_delete", scriptPath=h["script"]))
-    _wait(ctx, ctx.c.write("script_create", scriptName=_cls(ctx), folder=os.path.dirname(h["script"]),
-                           content=text[:start] + methods() + text[end:]))
-    return _answer(ctx)
-
-
 def extra_script(ctx):
     answer = reference(ctx)
     name = "StackHelper_" + _cls(ctx).split("_", 1)[1]
@@ -327,6 +316,9 @@ def direct_file(ctx):
     return answer
 
 
+# There is no delete-and-create negative: Unity gives a script created again at the path of the one just deleted the
+# GUID the old file had, within the same session, so the component stays attached and nothing breaks (the live gate on
+# 6000.3 passed it). DC3's delete_recreate creates the file at another path, which is a new asset with a new GUID.
 NEGATIVES = [
     Negative("overflow_merge", overflow_merge, {"K6"}, "merging into the first stack ignores maxStack"),
     Negative("negative_add", negative_add, {"K6"}, "a negative Add drains a stack"),
@@ -339,7 +331,6 @@ NEGATIVES = [
     Negative("watcher_edited", watcher_edited, {"K4"}, "the watcher script edited"),
     Negative("scene_values_changed", scene_values_changed, {"K5", "K6"}, "maxStack in the scene set to 10"),
     Negative("compile_error", compile_error, {"K3", "K6", "K7"}, "the edit does not compile"),
-    Negative("recreated", recreated, {"K1", "K5", "K6", "K7"}, "delete + create: new GUID, component missing"),
     Negative("extra_script", extra_script, {"K4"}),
     Negative("wrong_report", wrong_report, {"K8"}),
     Negative("outside_root", outside_root, {"K9"}),

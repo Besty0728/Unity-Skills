@@ -2,12 +2,12 @@
 
 pack_fake_editor "compiles" scripts by parsing their public fields; FakeEditorDC adds what the four tasks touch:
 [SerializeField] private fields, script_read / script_list / script_analyze (the public surface of compiled classes),
-script_create_batch, GUID-keeping moves (asset_move, script_move, script_rename) and a fresh GUID for a path that
-was deleted and created again, UGUI panels and buttons with persistent onClick listeners, Button.OnSubmit and the
-static Time.timeScale accessors through component_invoke_method, and a Play Mode stand-in for editor_run_scenario
-whose changes are put back afterwards. Each task subclass models the behaviour its prompt asks for; a
-`// usk-fake: <variant>` comment in a script selects a wrong behaviour the solutions' negatives describe (a real
-editor ignores the comment). This models the solutions, not C#.
+script_create_batch, GUID-keeping moves (asset_move, script_move, script_rename) and the same GUID for a path that
+was deleted and created again (Unity hands it back within the session; another path is a new asset), UGUI panels and
+buttons with persistent onClick listeners, Button.OnSubmit and the static Time.timeScale accessors through
+component_invoke_method, and a Play Mode stand-in for editor_run_scenario whose changes are put back afterwards. Each
+task subclass models the behaviour its prompt asks for; a `// usk-fake: <variant>` comment in a script selects a wrong
+behaviour the solutions' negatives describe (a real editor ignores the comment). This models the solutions, not C#.
 """
 import copy
 import hashlib
@@ -61,7 +61,7 @@ class FakeEditorDC(OpsFakeEditor):
 
     def __init__(self, *args, **kwargs):
         self.guids = {}
-        self.generations = {}
+        self.released = {}           # path -> GUID of the file deleted there, which Unity hands back to the next one
         OpsFakeEditor.__init__(self, *args, **kwargs)
         self.listeners = {}
         self.time_scale = 1.0
@@ -72,9 +72,11 @@ class FakeEditorDC(OpsFakeEditor):
     # ------------------------------------------------------------ guids and dispatch
 
     def _guid(self, asset_path):
+        """The GUID of a path. A file created again at the path of a deleted one gets the GUID the deleted file had, as
+        Unity hands it back within the session (the live gate on 6000.3); a path nothing was deleted from is new."""
         if asset_path not in self.guids:
-            seed = "%s#%d" % (asset_path, self.generations.get(asset_path, 0))
-            self.guids[asset_path] = hashlib.md5(seed.encode("utf-8")).hexdigest()
+            self.guids[asset_path] = self.released.pop(asset_path, None) or \
+                hashlib.md5(("%s#0" % asset_path).encode("utf-8")).hexdigest()
         return self.guids[asset_path]
 
     def short(self, kind):
@@ -283,8 +285,9 @@ class FakeEditorDC(OpsFakeEditor):
         if os.path.exists(self.disk(path) + ".meta"):
             os.remove(self.disk(path) + ".meta")
         self.known.discard(path)
-        self.guids.pop(path, None)
-        self.generations[path] = self.generations.get(path, 0) + 1
+        guid = self.guids.pop(path, None)
+        if guid:
+            self.released[path] = guid
         self.publish("file_changes", agent, {"imported": [], "deleted": [path], "moved": [], "count": 1,
                                              "omitted": 0}, source="editor")
         self._compile()

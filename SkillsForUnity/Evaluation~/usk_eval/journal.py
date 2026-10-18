@@ -9,6 +9,7 @@ import os
 import time
 
 from . import PACKAGE_NAME, store
+from .rest import RUNNER_AGENT
 
 SEGMENTS = 10
 PACKAGE_PREFIX = "Packages/" + PACKAGE_NAME      # Unity's path of the plugin package, wherever it is on disk
@@ -225,6 +226,42 @@ def split_package_reimports(records, judged):
         path = package_path(rec)
         (reimports if path is not None and path not in absent else kept).append(rec)
     return kept, reimports
+
+
+def asset_reimport_path(rec, asset_root):
+    """Path relative to the run's asset folder A of the file that an import record of the editor or of the runner's own
+    calls names, '.meta' dropped; None for every other record. An import made by the agent's own REST call is never
+    judged this way: it is its write, whatever the bytes."""
+    if rec.get("kind") != "imported" or (rec.get("source") == "rest" and rec.get("agent") != RUNNER_AGENT):
+        return None
+    prefix = str(asset_root or "").replace("\\", "/").rstrip("/") + "/"
+    path = str(rec.get("assetPath") or "").replace("\\", "/")
+    if path.endswith(".meta"):
+        path = path[:-5]
+    return path[len(prefix):] if len(prefix) > 1 and path.startswith(prefix) and len(path) > len(prefix) else None
+
+
+def split_asset_reimports(records, judged, asset_root):
+    """(kept, reimports) of flattened records. `judged` is state.assetTree.atSubmit (S6): imports by the editor or the
+    runner of files under A that existed at issue and have the same bytes at submit are Unity importing again what
+    depends on a change (a script whose type changed re-imports the prefabs that use it), no write by anyone. Created,
+    changed, deleted and moved files, and every record that names no such file, are kept."""
+    unchanged = set((judged or {}).get("unchanged") or ())
+    if not unchanged:
+        return list(records), []
+    kept, reimports = [], []
+    for rec in records:
+        (reimports if asset_reimport_path(rec, asset_root) in unchanged else kept).append(rec)
+    return kept, reimports
+
+
+def split_reimports(records, state):
+    """(kept, package_reimports, asset_reimports): flattened records minus the re-imports that the S6 judgments in
+    state.json (packageTree, assetTree) found to be no evidence (contract 2.9, 5.7)."""
+    kept, package = split_package_reimports(records, (state.get("packageTree") or {}).get("atSubmit"))
+    kept, assets = split_asset_reimports(kept, (state.get("assetTree") or {}).get("atSubmit"),
+                                         (state.get("scope") or {}).get("assetRoot"))
+    return kept, package, assets
 
 
 def agents(events):

@@ -51,6 +51,14 @@ System package is active, which needs `com.unity.inputsystem`) and the label com
 check above uses. `tools/lint_pack.py` rule 9 keeps that check complete: a task or solution that calls a `ui_*` skill
 must list `com.unity.ugui` in `requires.packages`.
 
+Re-imports are not writes. Unity imports a prefab again when a script it uses changes type (DC3 moves and renames one),
+which the plugin's journal records as an `imported` file of the editor. The runner hashes the files under the run's
+asset folder (`.meta` included) when the task is issued and, for the imported paths only, again at submit: an import by
+the editor, or by the runner's own refresh, of a file that existed at issue with the same bytes is dropped from the
+records the verifiers see and counted in `evidence.journal.unchangedReimports`. Created, changed, deleted and moved
+files, a changed `.meta` and the agent's own REST imports still count; so does everything when Unity rewrites the
+file itself.
+
 ### Gate
 
 ```bash

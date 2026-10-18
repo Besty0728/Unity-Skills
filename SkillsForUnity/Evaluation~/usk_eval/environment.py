@@ -27,6 +27,7 @@ TMP_SETTINGS_DEFAULT = "Assets/TextMesh Pro/Resources/" + TMP_SETTINGS_FILE
 TMP_ESSENTIALS_FILE = "TMP Essential Resources.unitypackage"
 _VERSION_HEAD = re.compile(r"^\s*(\d+)\.")
 INPUT_HANDLER = re.compile(r"^\s*activeInputHandler:\s*(\d+)\s*$", re.M)
+ASSET_TREE_LIMIT = 20000          # files of the run's asset folder hashed at issue; more and no import is explained
 
 
 def snapshot(client, instance_pid, health=None):
@@ -110,6 +111,38 @@ def tree_hash(root, exclude=()):
 def imported_by_unity(name):
     """Unity skips hidden assets: names starting with '.' or ending with '~' (Evaluation~, unity-skills~, Tests~)."""
     return not name.startswith(".") and not name.endswith("~")
+
+
+def sha256_file(path):
+    """sha256 of the file's bytes as they are (assets are binary as often as text: no line-ending normalisation)."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def asset_hashes(directory, limit=ASSET_TREE_LIMIT):
+    """{path relative to `directory`, '/'-separated: sha256 of the file's bytes} for every file below it, .meta files
+    included (the run's asset folder A, contract 2.8 N8/S6). Unlike package_tree nothing is skipped as hidden: Unity
+    does not import a name starting with '.' or ending with '~', but a file the attempt finds there is still its own.
+    None when the folder cannot be walked or holds more than `limit` files; a file that cannot be read is left out, so
+    an import naming it is never explained."""
+    directory = os.path.abspath(directory)
+    if not os.path.isdir(directory):
+        return None
+    out = {}
+    for base, dirs, files in os.walk(directory):
+        dirs.sort()
+        for name in sorted(files):
+            if len(out) >= limit:
+                return None
+            path = os.path.join(base, name)
+            try:
+                out[os.path.relpath(path, directory).replace(os.sep, "/")] = sha256_file(path)
+            except OSError:
+                continue
+    return out
 
 
 def package_tree(root):

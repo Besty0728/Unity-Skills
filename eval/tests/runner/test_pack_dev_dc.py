@@ -4,6 +4,8 @@ the private SCENARIO played on the model followed by verify_runtime as the runne
 follows the seed. The live selftest on a URP editor remains the gate: the model only knows the behaviour the tasks
 ask for and the wrong variants the negatives mark."""
 import json
+import os
+import re
 import unittest
 
 from .fake_dev_dc import FakeEditorDC1, FakeEditorDC3, FakeEditorDC5, FakeEditorDC7
@@ -114,6 +116,41 @@ class DC1Tests(DevChallengeTests, unittest.TestCase):
     SEED = 7001
     MINUTES = 30
     FAILS_UNTOUCHED = {"K6", "K7", "K8"}
+
+    def test_a_script_created_again_at_its_path_keeps_its_guid(self):
+        """The live gate on 6000.3: Unity hands the old GUID back to a script created again at the path of the one just
+        deleted, so the scene component stays attached and nothing breaks. DC1 therefore has no delete-and-create
+        negative, and the model must not hand out a fresh GUID there; a script created at another path is new."""
+        solutions = load_modules("DC1")[2]
+        run = self.run_for()
+        script = run.handles["script"]
+
+        def guid(path):
+            with open(run.editor.disk(path) + ".meta", "r", encoding="utf-8") as handle:
+                return re.search(r"guid:\s*(\w+)", handle.read()).group(1)
+
+        before = guid(script)
+
+        def recreate(ctx):
+            text = solutions._current(ctx)
+            start, end = text.index(solutions.BLOCK_START), text.index(solutions.BLOCK_END)
+            solutions._wait(ctx, ctx.c.write("script_delete", scriptPath=script))
+            solutions._wait(ctx, ctx.c.write("script_create", scriptName=solutions._cls(ctx),
+                                             folder=os.path.dirname(script),
+                                             content=text[:start] + solutions.methods() + text[end:]))
+            return solutions._answer(ctx)
+
+        card = run.verify(run.solve(recreate))
+        self.assertEqual(guid(script), before)
+        self.assertTrue(card.strict, card.as_dict())
+        other = os.path.dirname(script) + "/Other.cs"
+        run.solve(lambda ctx: solutions._wait(ctx, ctx.c.write("script_create", scriptName="Other",
+                                                               folder=os.path.dirname(script),
+                                                               content="public class Other {}\n")))
+        self.assertNotEqual(guid(other), before)
+
+    def test_there_is_no_delete_and_create_negative(self):
+        self.assertNotIn("recreated", [negative.name for negative in load_modules("DC1")[2].NEGATIVES])
 
     def test_private_spec_matches_public(self):
         public = __import__(load_modules("DC1")[0].__class__.__module__, fromlist=["spec"])

@@ -29,6 +29,7 @@ from .task_api import BuildContext, VerifyContext, context_args
 HANDLE_KEY_RE = re.compile(r"(?i)expected|target|decoy|inactive|answer|correct|wrong|trap|truth|solution|reference|"
                            r"legacy")
 JOBS_BUDGET_S = 300.0
+MAX_LISTED_PATHS = 200          # changed paths listed in state.assetTree.atSubmit; the unchanged ones are all kept
 TELEMETRY_SETTLE_S = 1.0
 IDLE_TIMEOUT_S = 900.0
 SCENARIO_GRACE_S = 120.0
@@ -201,6 +202,7 @@ def _new_state(rt, session, task_id, meta, rerun_of, resting):
         "answer": {"path": None, "present": False, "sha256": None, "error": None, "schemaErrors": []},
         "submittedBy": None, "reissues": 0, "duplicateSubmits": 0,
         "evalTreeHash": {"atIssue": None, "atSubmit": None}, "packageTree": {"atIssue": None, "atSubmit": None},
+        "assetTree": {"atIssue": None, "atSubmit": None},
         "private": None, "timings": {"buildSeconds": None, "verifySeconds": None}, "teardown": None,
         "track": meta.get("track") or selection.get("track"), "tier": meta.get("tier") or selection.get("tier"),
         "minutes": meta.get("minutes"),
@@ -313,6 +315,8 @@ def _build(rt, session, state, task, lines, client, env0, host, host_sid):
     _persist(rt, state)
     # N8: prompt, cursor0, received0, host, t0
     _write_prompt(rt, session, state, task, ctx, lines, env0)
+    client.wait_idle(timeout_s=IDLE_TIMEOUT_S)                 # nothing left to import, so the files are as they stay
+    state["assetTree"]["atIssue"] = _asset_fingerprint(rt, state)
     state["journal"]["cursor0"] = J.current_cursor(client)
     health = client.health()
     state["http"]["received0"] = (health.get("queueStats") or {}).get("totalReceived")
@@ -653,6 +657,7 @@ def _freeze(rt, session, state):
     journal_state["cursorEnd"] = cursor_end
     _freeze_journal(rt, state, journal_state.get("cursor0") or 0, cursor_end)   # S6
     _judge_package_imports(rt, state)
+    _judge_asset_imports(rt, state)
     _freeze_telemetry(rt, state, state["submittedAt"])
     state["env"]["atSubmit"] = E.snapshot(client, rt.registry_pid())
     state["evalTreeHash"]["atSubmit"] = E.tree_hash(RUNNER_DIR)
@@ -689,14 +694,62 @@ def _judge_package_imports(rt, state):
         state["attemptId"], len(paths), "unchanged" if unchanged else "changed or unreadable"))
 
 
+def _asset_fingerprint(rt, state):
+    """{root, files} of the run's asset folder A: every file below it, .meta included, with the sha256 of its bytes
+    (N8). It lets S6 tell Unity importing a file again from a file being written; None when the folder cannot be read
+    (or holds more than E.ASSET_TREE_LIMIT files), and then no import of an existing file is explained."""
+    root = state["scope"]["assetRoot"]
+    files = E.asset_hashes(rt.paths.asset_dir(root), E.ASSET_TREE_LIMIT)
+    if files is None:
+        rt.log.warn("attempt %s: the run's asset folder cannot be hashed" % state["attemptId"])
+        return None
+    return {"root": root, "files": files}
+
+
+def _same_bytes(base, rel, files):
+    """True when `rel` and its .meta under `base` are, byte for byte, what the issue tree `files` says: present with
+    the same hash, a .meta that was absent at issue still absent. A file that is not in the issue tree was created."""
+    for name in (rel, rel + ".meta"):
+        path = os.path.join(base, *name.split("/"))
+        if name in files:
+            try:
+                if E.sha256_file(path) != files[name]:
+                    return False
+            except OSError:
+                return False
+        elif name == rel or os.path.exists(path):
+            return False
+    return True
+
+
+def _judge_asset_imports(rt, state):
+    """S6: an import of a file under A by the editor, or by the runner's own calls, is Unity importing it again and no
+    write when the file existed at issue and its bytes (and its .meta's) are still those of the issue. Only the files
+    the frozen journal names are hashed again."""
+    tree = state.setdefault("assetTree", {"atIssue": None, "atSubmit": None})
+    root = state["scope"]["assetRoot"]
+    paths = sorted({p for p in (J.asset_reimport_path(rec, root) for rec in _journal_records(rt, state))
+                    if p is not None})
+    if not paths or not tree.get("atIssue"):
+        tree["atSubmit"] = None
+        return
+    base, files = rt.paths.asset_dir(root), tree["atIssue"].get("files") or {}
+    unchanged = [rel for rel in paths if _same_bytes(base, rel, files)]
+    same = set(unchanged)
+    changed = [rel for rel in paths if rel not in same]
+    tree["atSubmit"] = {"checked": len(paths), "unchanged": unchanged, "changed": changed[:MAX_LISTED_PATHS]}
+    rt.log.info("attempt %s: %d imported path(s) under the asset folder, %d unchanged since issue" % (
+        state["attemptId"], len(paths), len(unchanged)))
+
+
 def _journal_records(rt, state):
     return J.flatten(J.load_entries(_file(rt, state, "journal.jsonl")), state["journal"].get("refreshWindow"))
 
 
 def _frozen_records(rt, state):
-    """(records, reimports): the frozen journal's records minus the re-imports of unchanged plugin files judged at S6,
-    which are no evidence of anything (contract 5.7)."""
-    return J.split_package_reimports(_journal_records(rt, state), (state.get("packageTree") or {}).get("atSubmit"))
+    """(records, package_reimports, asset_reimports): the frozen journal's records minus the re-imports that S6 found
+    to be no evidence of anything: unchanged plugin files and unchanged files under A (contract 2.9, 5.7)."""
+    return J.split_reimports(_journal_records(rt, state), state)
 
 
 # ---------------------------------------------------------------- S7-S10 verify
@@ -904,6 +957,7 @@ def _over_budget(wall, minutes):
 def _write_result(rt, session, state, status, reasons, score=None, verifier=None, scenario=None, non_rest=0,
                   direct_writes=0, teardown=None):
     entries = J.load_entries(_file(rt, state, "journal.jsonl"))
+    frozen = _frozen_records(rt, state)
     journal_state = state["journal"]
     http = state["http"]
     numbers = (http.get("received0"), http.get("received1"), http.get("runnerCalls"))
@@ -932,7 +986,8 @@ def _write_result(rt, session, state, status, reasons, score=None, verifier=None
                         "records": len(J.flatten(entries, journal_state.get("refreshWindow"))), "nonRest": non_rest,
                         "agents": J.agents(entries), "refreshWindow": journal_state.get("refreshWindow"),
                         "forcedPlayModeExit": bool(journal_state.get("forcedPlayModeExit")),
-                        "directWrites": direct_writes, "packageReimports": len(_frozen_records(rt, state)[1])},
+                        "directWrites": direct_writes, "packageReimports": len(frozen[1]),
+                        "unchangedReimports": len(frozen[2])},
             "telemetry": state["telemetry"].get("summary") or T.summarize([], []),
             "httpApprox": approx,
             "freeze": {"inflightJobs": (state.get("freeze") or {}).get("inflightJobs") or 0},

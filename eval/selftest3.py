@@ -442,6 +442,7 @@ class Selftest(object):
                 scope = state["scope"]
                 path = os.path.join(self.agent.state.paths.attempt_dir(row["session"], row["attempt"]), "journal.jsonl")
                 flat = runner_journal.flatten(runner_journal.load_entries(path), state["journal"].get("refreshWindow"))
+                flat = runner_journal.split_reimports(flat, state)[0]           # as the verifiers see the journal
                 records += runner_scope.non_rest(flat, scope["assetRoot"], scope["scenePath"])
         except (OSError, KeyError, store.StoreError):
             return []
