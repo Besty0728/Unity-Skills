@@ -49,7 +49,8 @@
     "T2",
     "T9",
     "DS1",
-    "DS3"
+    "DS3",
+    "DS2"
    ],
    "challenge": [
     "DC5",
@@ -874,6 +875,31 @@
     "file": "DS3.py",
     "sha256": "db97e1d42f10854d58ee434a718dcb8ce2c7157d63a08dda89a74809f7887c39",
     "bytes": 16470
+   }
+  },
+  "DS2": {
+   "track": "dev",
+   "tier": "standard",
+   "caseVersion": 1,
+   "minutes": 30,
+   "seeds": [
+    10435
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "489874ce345f30a791d83e46fd2543e7d47796224cc6453fe92bfaf45ec35098",
+    "prompt.zh-CN.md": "09ac8813677f8fa95ec8783931a83f0c92555695037d471652f5371128715c03",
+    "prompt.en.md": "c60b1c16035a709fc5b41480430fda2fd128986d81c039a442dc3352a3fa3b6c"
+   },
+   "private": {
+    "file": "DS2.py",
+    "sha256": "aad9cf703b09fb91dd0dae020be0d6c5bd10d945e3414b6c671d38c5837e852e",
+    "bytes": 21686
    }
   },
   "DC5": {
