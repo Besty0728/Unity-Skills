@@ -47,7 +47,10 @@
     "DS3"
    ],
    "challenge": [
-    "DC5"
+    "DC5",
+    "DC1",
+    "DC3",
+    "DC7"
    ]
   }
  },
@@ -593,17 +596,19 @@
     ],
     "mode": "bypass",
     "dedicated": false,
-    "packages": []
+    "packages": [
+     "com.unity.ugui"
+    ]
    },
    "public": {
-    "task.py": "b3e709faf7eefdbf6813e8e27a5cd3fc767f01562499c4748c9f5ed3533d0fa7",
+    "task.py": "a986f00975c95cfd9fc9f325521ac6950b88a101c267f06aa5ba27ff21a19690",
     "prompt.zh-CN.md": "f1aaf2d220451c07cae4fb3f67a433e46b7036b552b27001a91500ed846b4214",
     "prompt.en.md": "845f410cba59c38473663f197d85311083a13a2a84ad1bbcdc2a47804dad4321"
    },
    "private": {
     "file": "DB5.py",
-    "sha256": "81eb6dffe67b2f73664415c9598ffbaa3d4a989e8abbce3e15a856b8ac0721d3",
-    "bytes": 13732
+    "sha256": "59762cbbde1ec358979781aa771a36ca52a2bfe32fea7fed03e409d91c3659dc",
+    "bytes": 13991
    }
   },
   "T1": {
@@ -758,6 +763,81 @@
     "file": "DC5.py",
     "sha256": "623c506c75802183a910e0fcf92d768c1f00ccf6c2387f08f4146f35372b72e6",
     "bytes": 19578
+   }
+  },
+  "DC1": {
+   "track": "dev",
+   "tier": "challenge",
+   "caseVersion": 1,
+   "minutes": 30,
+   "seeds": [
+    9728
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "e331591d87fccdf68d0fd84b69f46b1ff34cccd4c47d757db7f2b3cb7841df2a",
+    "prompt.zh-CN.md": "bc7094e0940111f17ab37cf0d3c1df5c90a2b48d9ae6ea114293ea6a2fb0fdf3",
+    "prompt.en.md": "c6be086d2a4eb5d298d774596fac3d633d5dab97a411af304c9876eaa6795321"
+   },
+   "private": {
+    "file": "DC1.py",
+    "sha256": "68bef8ca2650e0c35b2c67a8f090f85ddcb21a36311186933e9388732ec4bb2d",
+    "bytes": 21363
+   }
+  },
+  "DC3": {
+   "track": "dev",
+   "tier": "challenge",
+   "caseVersion": 1,
+   "minutes": 45,
+   "seeds": [
+    12354
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "109599797fc75bc922eb5663c72d018de7be22e60493461a0dbffe9a52dd1e36",
+    "prompt.zh-CN.md": "7c1c83f74e95dce045d523088459c42b265cef0c3781d29e51a89a2747513f34",
+    "prompt.en.md": "5912bfe63915a2088c1c86c39c57d5b6edcb0726a001fcfd0b51dd8b7cef5448"
+   },
+   "private": {
+    "file": "DC3.py",
+    "sha256": "45caa5c55a0c20c37cee3da78b4b21f39e1adf3a826ddfd5170e1da50da0a598",
+    "bytes": 19096
+   }
+  },
+  "DC7": {
+   "track": "dev",
+   "tier": "challenge",
+   "caseVersion": 1,
+   "minutes": 40,
+   "seeds": [
+    9829
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "7d7bd244583cec1ba9cc1c1034cccdcaf3a58bf88a173fcd28c336019065c71c",
+    "prompt.zh-CN.md": "255447cfa24305e2c05a3e2478dc8226a9ef7cabfed09ae8390b9e4d3232c517",
+    "prompt.en.md": "cf3d55d82278c377c32709abedc2d6c0ab78858f2bed5b8bccdd91f681d6c48e"
+   },
+   "private": {
+    "file": "DC7.py",
+    "sha256": "a4e825678878750810fd2916e79be27c5bb81811732e76fb1a84f5809d82786d",
+    "bytes": 17208
    }
   }
  },

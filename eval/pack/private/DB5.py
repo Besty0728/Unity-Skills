@@ -16,6 +16,7 @@ FIELD = "label"
 METHOD = "OnClick"
 ACTIVE_STATES = ("RuntimeOnly", "EditorAndRuntime")
 TEXT_TYPE = "UnityEngine.UI.Text"
+BUTTON_TYPE = "UnityEngine.UI.Button"
 SCRIPT_RE = re.compile(r"\.cs(\.meta)?$")
 
 ASSERTIONS = [
@@ -41,9 +42,9 @@ HINTS = {
                  "UnityEngine.UI.Text field and OnClick() is public and parameterless."},
     "E2": {"zh-CN": "等编译完成并确认没有错误后再挂组件和接线。",
            "en": "Wait until compilation finishes without errors before attaching and wiring the component."},
-    "E3": {"zh-CN": "只挂一个组件到题目给出的按钮；label 要指向标签对象上的 Text 组件（objectType=Text），不是 GameObject。",
+    "E3": {"zh-CN": "只挂一个组件到题目给出的按钮；label 要指向标签对象上的 Text 组件（objectType=UnityEngine.UI.Text），不是 GameObject。",
            "en": "Attach one component to the given button only; label must reference the Text component of the label "
-                 "object (objectType=Text), not the GameObject."},
+                 "object (objectType=UnityEngine.UI.Text), not the GameObject."},
     "E4": {"zh-CN": "用 event_add_listener 给 Button.onClick 加持久监听：目标是同一按钮上的该组件、方法 OnClick、mode 为 RuntimeOnly 或 EditorAndRuntime；运行时 AddListener 不算。",
            "en": "Add the persistent listener with event_add_listener on Button.onClick: the component on the same "
                  "button, method OnClick, mode RuntimeOnly or EditorAndRuntime; a runtime AddListener does not count."},
@@ -129,7 +130,7 @@ def listeners(ctx, button_path):
 
 
 def label_text(probe, ref):
-    return (probe.ser(ref, "Text") or {}).get("m_Text")
+    return (probe.ser(ref, TEXT_TYPE) or {}).get("m_Text")
 
 
 def other_states(ctx, holder):
@@ -208,10 +209,14 @@ def verify(ctx, card):
 
 
 def SCENARIO(ctx):
-    """Play Mode: Button.OnSubmit twice (the pointer-free click path, which fires onClick), then the label's text."""
+    """Play Mode: Button.OnSubmit twice (the pointer-free click path, which fires onClick), then the label's text.
+
+    The types are namespace-qualified: component_invoke_method looks a type name up in every loaded assembly, where a
+    bare Button also names UnityEngine.UIElements.Button.
+    """
     h = ctx.handles
     click = {"kind": "invoke", "skill": "component_invoke_method",
-             "args": dict({"componentType": "Button", "methodName": "OnSubmit", "arguments": "[null]"},
+             "args": dict({"componentType": BUTTON_TYPE, "methodName": "OnSubmit", "arguments": "[null]"},
                           **V.address(h["button"]))}
     return {"executionMode": "play", "timeoutSeconds": 90, "steps": [
         {"kind": "wait_frames", "frames": 2},
@@ -219,7 +224,7 @@ def SCENARIO(ctx):
         dict(click),
         {"kind": "wait_frames", "frames": 1},
         {"kind": "read", "skill": "component_get_serialized_properties",
-         "args": dict({"componentType": "Text"}, **V.address(h["label"]))},
+         "args": dict({"componentType": TEXT_TYPE}, **V.address(h["label"]))},
         {"kind": "assert", "skill": "editor_get_state", "select": "isPlaying", "expected": True},
     ]}
 

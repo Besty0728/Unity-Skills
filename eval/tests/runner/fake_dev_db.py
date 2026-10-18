@@ -1,13 +1,17 @@
 ﻿"""In-memory editor for the DB1/DB3/DB5 offline tests: pack_fake_editor plus what the three dev/basic tasks touch.
 
-Added to the base model: UGUI creation (ui_create_canvas / button / text with a Text child), persistent UnityEvent
-listeners (event_add_listener / get_listeners / get_listener_count), script_read, Button.OnSubmit through
-component_invoke_method, Light / Text / Button serialized reads, and a simulated clock: during the scenario stand-in
-wait_frames and wait_seconds advance game time and the agent's components behave as their scripts say. A script
-without a marker behaves as the task asks (rotation by speed x Time.deltaTime about local Y, a Light toggle every
-interval starting one interval in, a click counted into the referenced Text); a `// usk-fake: <variant>` comment in
-the source selects a wrong behaviour the solutions' negatives describe (per_frame, world_axis, toggle_on_start,
-half_period, runtime_listener, no_text_write). This models the solutions, not C#.
+Added to the base model: UGUI creation (ui_create_canvas; ui_create_button with a TextMeshProUGUI child, which the
+plugin adds wherever TextMeshPro is present, as ui_create_text in the base model does), a UnityEngine.UI.Text added by
+component_add and written by component_set_property (text, fontSize), persistent UnityEvent listeners
+(event_add_listener / get_listeners / get_listener_count), script_read, Button.OnSubmit through component_invoke_method
+under the namespace-qualified UnityEngine.UI.Button only (a bare Button also names UnityEngine.UIElements.Button, and a
+plugin that does not prefer components for instance calls refuses it as ambiguous), Light / Text / Button serialized
+reads, and a simulated clock: during the scenario stand-in wait_frames and wait_seconds advance game time and the
+agent's components behave as their scripts say. A script without a marker behaves as the task asks (rotation by speed
+x Time.deltaTime about local Y, a Light toggle every interval starting one interval in, a click counted into the
+referenced Text); a `// usk-fake: <variant>` comment in the source selects a wrong behaviour the solutions' negatives
+describe (per_frame, world_axis, toggle_on_start, half_period, runtime_listener, no_text_write). This models the
+solutions, not C#.
 """
 import math
 import re
@@ -18,7 +22,10 @@ from .pack_offline import OpsFakeEditor
 FPS = 60.0
 MARKER_RE = re.compile(r"//\s*usk-fake:\s*([\w-]+)")
 TEXT_KINDS = ("Text", "UnityEngine.UI.Text")
-UI_ENABLED = ("Image", "Button", "Text")
+TEXT_TYPE = "UnityEngine.UI.Text"
+BUTTON_TYPE = "UnityEngine.UI.Button"
+UI_ENABLED = ("Image", "Button", "Text", "TextMeshProUGUI")
+TEXT_FONT_SIZE = 14
 
 
 class FakeEditorDB(OpsFakeEditor):
@@ -29,6 +36,7 @@ class FakeEditorDB(OpsFakeEditor):
         self.clock = 0.0
         self.listeners = {}          # (eid, component, event) -> [listener rows]
         self.texts = {}              # eid -> Text.text
+        self.font_sizes = {}         # eid -> Text.fontSize
         self.counts = {}             # (eid, class) -> clicks counted at runtime
         self.runtime_error = False
 
@@ -60,16 +68,55 @@ class FakeEditorDB(OpsFakeEditor):
     # ------------------------------------------------------------ components
 
     def _skill_component_add(self, agent, args):
+        if args.get("componentType") in TEXT_KINDS:
+            return self._add_text(agent, self.find(args))
         res = super(FakeEditorDB, self)._skill_component_add(agent, args)
         if args["componentType"] == "Light":
             self.component(self.find(args), "Light")[1] = True
         return res
 
+    def _add_text(self, agent, obj):
+        """UnityEngine.UI.Text as Undo.AddComponent adds it: the RectTransform it requires replaces the Transform, a
+        CanvasRenderer comes along and the text starts empty."""
+        found = {"gameObject": obj.name, "entityId": obj.eid, "instanceId": obj.iid, "component": "Text",
+                 "fullTypeName": TEXT_TYPE}
+        if self.component(obj, "Text"):
+            return dict(found, warning="Component Text already exists on %s" % obj.name, alreadyPresent=True)
+        if obj.components[0][0] == "Transform":
+            obj.components[0] = ["RectTransform", None]
+        if not self.component(obj, "CanvasRenderer"):
+            obj.components.append(["CanvasRenderer", None])
+        obj.components.append(["Text", True])
+        self.owners[self.text_id(obj)] = obj.eid
+        self.texts[obj.eid] = ""
+        self._change(agent, self._identity(obj, kind="components_changed"))
+        return dict(found, success=True)
+
+    def _skill_component_set_property(self, agent, args):
+        if args.get("componentType") not in TEXT_KINDS:
+            return super(FakeEditorDB, self)._skill_component_set_property(agent, args)
+        obj = self.find(args)
+        if not self.component(obj, "Text"):
+            raise _fail("TARGET_NOT_FOUND", "Component not found: %s" % args["componentType"])
+        member, value = str(args.get("propertyName") or ""), args.get("value")
+        if member.lower() == "text":
+            store, path, now = self.texts, "m_Text", "" if value is None else str(value)
+        elif member.lower() == "fontsize":
+            store, path, now = self.font_sizes, "m_FontData.m_FontSize", int(value)
+        else:
+            raise _fail("PROPERTY_NOT_FOUND", "Text.%s is not modelled" % member)
+        before, store[obj.eid] = store.get(obj.eid), now
+        self._change(agent, self._identity(obj, kind="property_changed", targetType="Text", property=path,
+                                           previousValue="" if before is None else str(before), value=str(now)))
+        return {"success": True, "gameObject": obj.name, "component": "Text", "property": member,
+                "valueSet": str(now), "fullTypeName": TEXT_TYPE}
+
     def _serialized(self, obj, kind):
         if kind == "Light" and self.component(obj, "Light"):
             return {"m_Enabled": "True" if self.component(obj, "Light")[1] else "False", "m_Type": "2"}
-        if kind == "Text" and self.component(obj, "Text"):
-            return {"m_Text": self.texts.get(obj.eid, ""), "m_FontSize": "14"}
+        if kind in TEXT_KINDS and self.component(obj, "Text"):
+            return {"m_Text": self.texts.get(obj.eid, ""),
+                    "m_FontData.m_FontSize": str(self.font_sizes.get(obj.eid, TEXT_FONT_SIZE))}
         if kind == "Button" and self.component(obj, "Button"):
             key = (obj.eid, "Button", "onClick")
             return {"m_Interactable": "True",
@@ -104,15 +151,9 @@ class FakeEditorDB(OpsFakeEditor):
     def _skill_ui_create_button(self, agent, args):
         parent = self._parent_canvas(args)
         obj = self._ui_object(agent, args.get("name") or "Button", parent, ("Image", "Button"))
-        self._ui_object(agent, "Text", obj, ("Text",), text=args.get("text") or "Button")
+        self._ui_object(agent, "Text", obj, ("TextMeshProUGUI",))
         return {"success": True, "name": obj.name, "entityId": obj.eid, "instanceId": obj.iid, "parent": parent.name,
                 "text": args.get("text") or "Button"}
-
-    def _skill_ui_create_text(self, agent, args):
-        parent = self._parent_canvas(args)
-        obj = self._ui_object(agent, args.get("name") or "Text", parent, ("Text",), text=args.get("text") or "New Text")
-        return {"success": True, "name": obj.name, "entityId": obj.eid, "instanceId": obj.iid, "parent": parent.name,
-                "usingTMP": False}
 
     # ------------------------------------------------------------ events and scripts
 
@@ -160,12 +201,14 @@ class FakeEditorDB(OpsFakeEditor):
 
     def _skill_component_invoke_method(self, agent, args):
         obj = self.find(args)
-        if args.get("componentType") == "Button" and args.get("methodName") == "OnSubmit":
+        if args.get("componentType") == "Button":
+            raise _fail("SEMANTIC_INVALID", "Ambiguous type; use an assembly-qualified name: Button")
+        if args.get("componentType") == BUTTON_TYPE and args.get("methodName") == "OnSubmit":
             if not self.component(obj, "Button"):
                 raise _fail("COMPONENT_NOT_FOUND", "no Button on %s" % obj.name)
             self._click(obj)
             return {"success": True, "status": "completed", "returnValue": None}
-        raise _fail("TARGET_NOT_FOUND", "the model invokes Button.OnSubmit only")
+        raise _fail("TARGET_NOT_FOUND", "the model invokes %s.OnSubmit only" % BUTTON_TYPE)
 
     # ------------------------------------------------------------ behaviour models
 

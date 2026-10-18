@@ -101,4 +101,18 @@ class DB5Tests(DevTaskTests, unittest.TestCase):
     SEED = 7809
     FAILS_UNTOUCHED = {"E1", "E2", "E3", "E4", "E6", "E7"}
 
+    def test_label_is_a_ugui_text_showing_0(self):
+        """ui_create_text gives a TextMeshProUGUI wherever TextMeshPro is present (the model too), which a Text field
+        cannot point at, so the fixture adds the UnityEngine.UI.Text itself; the task needs uGUI installed."""
+        for ids in ("legacy", "6000.4"):
+            with self.subTest(ids=ids):
+                run = self.run_for(entity_mode=ids)
+                label = run.editor.find(verifylib.address(run.handles["label"]))
+                self.assertEqual([kind for kind, _enabled in label.components],
+                                 ["RectTransform", "CanvasRenderer", "Text"])
+                self.assertEqual(run.editor.font_sizes.get(label.eid), 32)
+                self.assertEqual(run.snap["data"]["labelText"], "0")
+        requires = pack.normalize_requires(load_modules(self.TASK_ID)[0].requires)
+        self.assertEqual(requires["packages"], ["com.unity.ugui"])
+
 # Producer:Betsy

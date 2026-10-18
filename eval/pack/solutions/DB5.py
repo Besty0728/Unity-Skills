@@ -73,7 +73,8 @@ def _attach(ctx, ref, field="label", with_label=True):
     ctx.c.write("component_add", componentType=cls, **V.address(ref))
     if with_label:
         ctx.c.write("component_set_serialized_property", componentType=cls, propertyPath=field,
-                    referencePath=_path(ctx, ctx.handles["label"]), objectType="Text", **V.address(ref))
+                    referencePath=_path(ctx, ctx.handles["label"]), objectType="UnityEngine.UI.Text",
+                    **V.address(ref))
 
 
 def _wire(ctx, button, target=None, method="OnClick", mode="RuntimeOnly"):

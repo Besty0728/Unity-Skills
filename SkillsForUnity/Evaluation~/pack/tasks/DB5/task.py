@@ -1,7 +1,7 @@
 ﻿"""DB5: a ClickCounter script wired to a Button through a persistent onClick listener (dev, basic).
 
-Fixture: R/Canvas_<a> (Screen Space Overlay) with two buttons, Btn_<b> and Btn_<c>, and a Text label Count_<d>
-showing 0; the component goes on one of the buttons.
+Fixture: R/Canvas_<a> (Screen Space Overlay) with a UnityEngine.UI.Text label Count_<d> showing 0 and two buttons,
+Btn_<b> and Btn_<c>; the component goes on one of the buttons.
 """
 import os
 
@@ -10,6 +10,7 @@ from usk_eval.task_api import PublicTask, address
 
 WORDS = ("Kestrel", "Talon", "Vortex", "Ember", "Quill", "Harrow", "Juniper", "Marlow")
 ROWS = (80.0, 0.0, -80.0)
+TEXT_TYPE = "UnityEngine.UI.Text"
 
 
 def class_name(script_path):
@@ -42,7 +43,7 @@ def listener_count(ctx, button_path):
 
 
 def label_text(probe, ref):
-    return (probe.ser(ref, "Text") or {}).get("m_Text")
+    return (probe.ser(ref, TEXT_TYPE) or {}).get("m_Text")
 
 
 class DB5(PublicTask):
@@ -51,7 +52,7 @@ class DB5(PublicTask):
     tier = "basic"
     case_version = 1
     minutes = 15
-    requires = {"pipeline": ["URP", "BuiltIn"], "mode": "bypass", "dedicated": False, "packages": []}
+    requires = {"pipeline": ["URP", "BuiltIn"], "mode": "bypass", "dedicated": False, "packages": ["com.unity.ugui"]}
     needs_focus = True
 
     def build(self, ctx):
@@ -61,8 +62,15 @@ class DB5(PublicTask):
         canvas_name = "Canvas_" + words[1]
         canvas = V.object_id(c.write("ui_create_canvas", name=canvas_name, renderMode="ScreenSpaceOverlay"))
         c.write("gameobject_set_parent", **dict(address(canvas, "child"), **address(ctx.root, "parent")))
-        label = V.object_id(c.write("ui_create_text", name="Count_" + words[4], parent=canvas_name, text="0",
-                                    fontSize=32))
+        # ui_create_text adds a TextMeshProUGUI wherever TextMeshPro is present (always from Unity 6), so the label is
+        # an empty object given a UnityEngine.UI.Text, which brings its RectTransform and CanvasRenderer along.
+        label = V.object_id(c.write("gameobject_create", name="Count_" + words[4], **address(canvas, "parent")))
+        added = c.write("component_add", componentType=TEXT_TYPE, **address(label))
+        if added.get("fullTypeName") != TEXT_TYPE:
+            raise RuntimeError("DB5 fixture: the label got %r instead of %s" % (added.get("fullTypeName"), TEXT_TYPE))
+        c.write("component_set_property", componentType=TEXT_TYPE, propertyName="text", value="0", **address(label))
+        c.write("component_set_property", componentType=TEXT_TYPE, propertyName="fontSize", value="32",
+                **address(label))
         c.write("gameobject_set_transform", localPosY=ROWS[0], **address(label))
         buttons = []
         for index, word in enumerate(words[2:4]):
