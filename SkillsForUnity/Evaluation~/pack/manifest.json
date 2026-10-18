@@ -31,7 +31,8 @@
     "OC4",
     "OC5",
     "OC7",
-    "OC6"
+    "OC6",
+    "OC8"
    ]
   },
   "dev": {
@@ -39,7 +40,8 @@
     "DB1",
     "DB3",
     "DB5",
-    "DB2"
+    "DB2",
+    "DB6"
    ],
    "standard": [
     "T1",
@@ -552,6 +554,31 @@
     "bytes": 10815
    }
   },
+  "OC8": {
+   "track": "ops",
+   "tier": "challenge",
+   "caseVersion": 1,
+   "minutes": 25,
+   "seeds": [
+    10132
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "921e2564842e97417633f9e77a10f1162633cd85dd4dd449e648a6de33800a24",
+    "prompt.zh-CN.md": "8d30d803d7514a3940dafedf16b35d8d2820d76591a60e6b7e22fd196bd14124",
+    "prompt.en.md": "0ceb31c8134142ae77fc5aa51490f59e8d711b9e0a911ae110056c66d6885413"
+   },
+   "private": {
+    "file": "OC8.py",
+    "sha256": "cb71d8203ddb97d5681788f3549f14fa7e35f949788bf1be4ccff18f8fe8f329",
+    "bytes": 8163
+   }
+  },
   "DB1": {
    "track": "dev",
    "tier": "basic",
@@ -664,6 +691,34 @@
     "file": "DB2.py",
     "sha256": "7d4b7078a9579ede9834d07b6bf6de48d0db22026c64d28825f1835c7cd50ed4",
     "bytes": 16222
+   }
+  },
+  "DB6": {
+   "track": "dev",
+   "tier": "basic",
+   "caseVersion": 1,
+   "minutes": 15,
+   "seeds": [
+    10233
+   ],
+   "requires": {
+    "pipeline": [
+     "URP",
+     "BuiltIn"
+    ],
+    "mode": "bypass",
+    "dedicated": false,
+    "packages": []
+   },
+   "public": {
+    "task.py": "e628381f73accaa5b799a168dc374bd0a86f0cec69bde9f995064daf8f8718a6",
+    "prompt.zh-CN.md": "47526c5cf32e584d4749d8e15ede3b2d2bd61539dbd77c012694f89f58e51deb",
+    "prompt.en.md": "65da24c1cee5f14af43b752b583863ceb6a0ebf65643fa172ae910698e87b7cb"
+   },
+   "private": {
+    "file": "DB6.py",
+    "sha256": "355427ce86213346b7decfb84de9022e6a6de5905db46380511476f5a7d34453",
+    "bytes": 18961
    }
   },
   "T1": {
