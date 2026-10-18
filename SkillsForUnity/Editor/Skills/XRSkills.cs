@@ -456,12 +456,12 @@ namespace UnitySkills
             string name = null, int instanceId = 0, string path = null,
             float maxDistance = 30f,
             string lineType = "StraightLine",
-            bool addLineVisual = true)
+            bool addLineVisual = true, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             Undo.RecordObject(go, "Add XRRayInteractor");
@@ -517,12 +517,12 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
         public static object XRAddDirectInteractor(
             string name = null, int instanceId = 0, string path = null,
-            float radius = 0.1f)
+            float radius = 0.1f, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             Undo.RecordObject(go, "Add XRDirectInteractor");
@@ -563,12 +563,12 @@ namespace UnitySkills
         public static object XRAddSocketInteractor(
             string name = null, int instanceId = 0, string path = null,
             bool showHoverMesh = true,
-            float recycleDelay = 1f)
+            float recycleDelay = 1f, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             Undo.RecordObject(go, "Add XRSocketInteractor");
@@ -669,12 +669,12 @@ namespace UnitySkills
             float smoothRotationAmount = 5f,
             bool useGravity = true,
             bool isKinematic = false,
-            string attachTransformOffset = null)
+            string attachTransformOffset = null, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             // Both checked before anything is added: a malformed offset used to skip the custom attach point, and an
@@ -769,12 +769,12 @@ namespace UnitySkills
             Outputs = new[] { "name", "instanceId", "interactableType" },
             RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
         public static object XRAddSimpleInteractable(
-            string name = null, int instanceId = 0, string path = null)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             Undo.RecordObject(go, "Add XRSimpleInteractable");
@@ -818,12 +818,12 @@ namespace UnitySkills
             float? smoothPositionAmount = null,
             float? smoothRotationAmount = null,
             bool? trackPosition = null,
-            bool? trackRotation = null)
+            bool? trackRotation = null, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var comp = XRReflectionHelper.GetXRComponent(go, "XRGrabInteractable")
@@ -946,14 +946,14 @@ namespace UnitySkills
             Tags = new[] { "xr", "teleportation", "locomotion", "provider" },
             Outputs = new[] { "name", "instanceId", "providerType" }, MutatesScene = true)]
         public static object XRSetupTeleportation(
-            string name = null, int instanceId = 0, string path = null)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
             // Locate the XR Origin
             GameObject go;
-            if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path))
+            if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path) && !UnityObjectIdUtility.IsGivenEntityId(entityId))
             {
                 var origin = XRReflectionHelper.FindFirstOfXRType("XROrigin");
                 if (origin == null)
@@ -962,7 +962,7 @@ namespace UnitySkills
             }
             else
             {
-                var (found, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+                var (found, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
                 if (findErr != null) return findErr;
                 go = found;
             }
@@ -995,12 +995,12 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
         public static object XRAddTeleportArea(
             string name = null, int instanceId = 0, string path = null,
-            string matchOrientation = "WorldSpaceUp")
+            string matchOrientation = "WorldSpaceUp", string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             Undo.RecordObject(go, "Add TeleportationArea");
@@ -1117,14 +1117,14 @@ namespace UnitySkills
             string name = null, int instanceId = 0, string path = null,
             float moveSpeed = 2f,
             bool enableStrafe = true,
-            bool enableFly = false)
+            bool enableFly = false, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
             // Locate the XR Origin
             GameObject go;
-            if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path))
+            if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path) && !UnityObjectIdUtility.IsGivenEntityId(entityId))
             {
                 var origin = XRReflectionHelper.FindFirstOfXRType("XROrigin");
                 if (origin == null)
@@ -1133,7 +1133,7 @@ namespace UnitySkills
             }
             else
             {
-                var (found, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+                var (found, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
                 if (findErr != null) return findErr;
                 go = found;
             }
@@ -1177,14 +1177,14 @@ namespace UnitySkills
             string name = null, int instanceId = 0, string path = null,
             string turnType = "Snap",
             float turnAmount = 45f,
-            float turnSpeed = 90f)
+            float turnSpeed = 90f, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
             // Locate the XR Origin
             GameObject go;
-            if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path))
+            if (string.IsNullOrEmpty(name) && instanceId == 0 && string.IsNullOrEmpty(path) && !UnityObjectIdUtility.IsGivenEntityId(entityId))
             {
                 var origin = XRReflectionHelper.FindFirstOfXRType("XROrigin");
                 if (origin == null)
@@ -1193,7 +1193,7 @@ namespace UnitySkills
             }
             else
             {
-                var (found, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+                var (found, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
                 if (findErr != null) return findErr;
                 go = found;
             }
@@ -1248,12 +1248,12 @@ namespace UnitySkills
             Outputs = new[] { "name", "instanceId", "removedStandardRaycaster", "addedTrackedDeviceRaycaster", "renderMode" },
             RequiresInput = new[] { "gameObject" }, MutatesScene = true)]
         public static object XRSetupUICanvas(
-            string name = null, int instanceId = 0, string path = null)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var canvas = go.GetComponent<Canvas>();
@@ -1311,12 +1311,12 @@ namespace UnitySkills
             float selectIntensity = 0.5f,
             float selectDuration = 0.1f,
             float hoverIntensity = 0.1f,
-            float hoverDuration = 0.05f)
+            float hoverDuration = 0.05f, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var comp = XRReflectionHelper.GetXRComponent(go, "XRRayInteractor")
@@ -1372,7 +1372,7 @@ namespace UnitySkills
             string name = null, int instanceId = 0, string path = null,
             string eventType = "selectEntered",
             string targetName = null,
-            string targetMethod = null)
+            string targetMethod = null, string entityId = null)
         {
 #if !XRI
             return NoXRI();
@@ -1380,7 +1380,7 @@ namespace UnitySkills
             if (Validate.Required(targetName, "targetName") is object err1) return err1;
             if (Validate.Required(targetMethod, "targetMethod") is object err2) return err2;
 
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var comp = XRReflectionHelper.GetXRComponent(go, "XRGrabInteractable")
@@ -1463,12 +1463,12 @@ namespace UnitySkills
         public static object XRConfigureInteractionLayers(
             string name = null, int instanceId = 0, string path = null,
             string layers = "Default",
-            bool isInteractor = true)
+            bool isInteractor = true, string entityId = null)
         {
 #if !XRI
             return NoXRI();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             Component comp;

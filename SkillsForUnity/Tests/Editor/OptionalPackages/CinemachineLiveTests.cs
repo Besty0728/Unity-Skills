@@ -261,6 +261,23 @@ namespace UnitySkills.Tests.OptionalPackages
             return ((Transform)Member(cm2FreeLook, "m_Follow"), (Transform)Member(cm2FreeLook, "m_LookAt"));
         }
 
+        [Test]
+        public void SetVCamProperty_LensShortcut_EntityId_ReachesTheSecondOfTwoSameNameVCams()
+        {
+            var first = Ok(Run("cinemachine_create_vcam", new JObject { ["name"] = "R6Twin" }))["entityId"]?.ToString();
+            var second = Ok(Run("cinemachine_create_vcam", new JObject { ["name"] = "R6Twin" }))["entityId"]?.ToString();
+            var firstFov = Ok(Run("cinemachine_inspect_vcam", new JObject { ["entityId"] = first }))["lens"]?["FieldOfView"]?.Value<float>();
+            Assert.That(firstFov, Is.Not.EqualTo(33.5f).Within(1e-3f));
+
+            // fov without propertyName is routed to cinemachine_set_lens, which has to receive the entityId as well.
+            Ok(Run("cinemachine_set_vcam_property", new JObject { ["entityId"] = second, ["fov"] = 33.5 }));
+
+            var secondInfo = Ok(Run("cinemachine_inspect_vcam", new JObject { ["entityId"] = second }));
+            Assert.That(secondInfo["lens"]?["FieldOfView"]?.Value<float>(), Is.EqualTo(33.5f).Within(1e-3f), secondInfo.ToString());
+            var firstInfo = Ok(Run("cinemachine_inspect_vcam", new JObject { ["entityId"] = first }));
+            Assert.That(firstInfo["lens"]?["FieldOfView"]?.Value<float>(), Is.EqualTo(firstFov).Within(1e-3f), firstInfo.ToString());
+        }
+
         /// <summary>
         /// Reads a member whose name differs between Cinemachine 3.x (PascalCase, e.g. DefaultBlend/Style)
         /// and 2.x (the historical m_-prefixed field, e.g. m_DefaultBlend/m_Style). Existence is probed with

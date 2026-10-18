@@ -64,13 +64,13 @@ Use this module for Unity UI Toolkit only: `UXML` for structure, `USS` for styli
 
 | Skill | Use | Key parameters |
 |-------|-----|----------------|
-| `uitk_create_document` | Create `UIDocument` GameObject | `name`, `uxmlPath?`, `panelSettingsPath?`, `sortOrder?`, `parentName?`/`parentInstanceId?`/`parentPath?` |
-| `uitk_set_document` | Change UIDocument asset bindings | `name`/`instanceId`, `uxmlPath?`, `panelSettingsPath?` |
+| `uitk_create_document` | Create `UIDocument` GameObject | `name`, `uxmlPath?`, `panelSettingsPath?`, `sortOrder?`, `parentName?`/`parentEntityId?`/`parentInstanceId?`/`parentPath?` |
+| `uitk_set_document` | Change UIDocument asset bindings | `name`/`entityId`/`instanceId`, `uxmlPath?`, `panelSettingsPath?` |
 | `uitk_create_panel_settings` | Create PanelSettings asset | `savePath`, `scaleMode`, `referenceResolutionX/Y`, Unity 6 world-space options |
 | `uitk_get_panel_settings` | Read PanelSettings values | `assetPath` |
 | `uitk_set_panel_settings` | Update PanelSettings selectively | `assetPath`, changed fields only |
 | `uitk_list_documents` | List scene UIDocuments | none |
-| `uitk_inspect_document` | Inspect live VisualElement tree | `name`/`instanceId`/`path`, `depth` |
+| `uitk_inspect_document` | Inspect live VisualElement tree | `name`/`entityId`/`instanceId`/`path`, `depth` |
 
 > **Version-gated `PanelSettings` parameters — rejected by name, never silently dropped.** On both `uitk_create_panel_settings` and `uitk_set_panel_settings`, `renderMode`, `forceGammaRendering`, `bindingLogLevel`, `colliderUpdateMode`, `colliderIsTrigger` and `vertexBudget` require **Unity 6.0+**, and `textureSlotCount` requires **Unity 6000.3+**. Passing one on an older editor returns `SEMANTIC_INVALID` naming the parameter rather than ignoring it, so a value you sent either took effect or came back as an error — it is never quietly discarded. Both skills also resolve every enum and asset path **before** the first write, so a rejected call leaves the asset byte-identical; there is no partial application to clean up.
 
@@ -114,7 +114,7 @@ editor first and returns a structured `SEMANTIC_INVALID` error carrying `require
 | `uitk_runtime_binding_list` | none (read-only) | List bindings + data sources declared in a UXML file | `filePath` |
 | `uitk_uxml_upgrade` | 6000.3 (not all builds — see below) | Run registered UXML upgraders over assets | `filePath?`, `folder?`, `upgraderNames?`, `listOnly?`, `limit?` |
 | `uitk_worldspace_panel_create` | 6000.2 | Create a world-space UI panel GameObject | `name`, `uxmlPath?`, `panelSettingsPath?`, `sizeMode?`, `worldSpaceSizeX/Y?`, `pivot?`, `pivotReferenceSize?`, `setPanelRenderMode?` |
-| `uitk_worldspace_panel_get` | 6000.2 | Read a world-space panel's configuration | `name`/`instanceId`/`path` |
+| `uitk_worldspace_panel_get` | 6000.2 | Read a world-space panel's configuration | `name`/`entityId`/`instanceId`/`path` |
 | `uitk_element_reference_get` | none (read-only) | List `authoring-id` values and nested authoring-id paths | `filePath`, `maxTemplateDepth?` |
 
 #### Runtime data binding

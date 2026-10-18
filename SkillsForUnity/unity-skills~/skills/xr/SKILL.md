@@ -59,6 +59,8 @@ Use this module for XR Interaction Toolkit setup and configuration. All `xr_*` s
 
 ## Skills
 
+Skills that act on an existing GameObject locate it by `name`, `entityId` (preferred; the only id on Unity 6000.4+), `instanceId` or `path`.
+
 ### Setup and Diagnostics
 
 | Skill | Use | Key parameters |

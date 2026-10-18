@@ -361,11 +361,10 @@ namespace UnitySkills
             // find_objects_by_name: `name` is the documented alias of `nameContains`.
             ["nameContains|name"] = new[] { "nameContains", "name" },
             // behavior_blackboard_list: accepts either a graph asset path *or* an agent locator. entityId belongs here
-            // (this skill accepts instanceId + name + path, so the synthesized locator works for it) - omitting it would
-            // stack another "provide one of ..." on top of an entityId that simply failed to resolve. find_objects_by_name
-            // above omits entityId for the mirror-image reason: it has no instanceId, so the synthesized locator isn't
-            // available, and a candidate accepted by no declaring skill reads like a cover that doesn't actually exist
-            // (SkillMetadataGuardTests.RequiredInputGroups_NameOnlyRealParameters).
+            // (the skill declares it next to name + path + instanceId) - omitting it would stack another "provide one of
+            // ..." on top of an entityId that simply failed to resolve. find_objects_by_name above omits entityId for the
+            // mirror-image reason: it accepts no entityId, and a candidate accepted by no declaring skill reads like a
+            // cover that doesn't actually exist (SkillMetadataGuardTests.RequiredInputGroups_NameOnlyRealParameters).
             ["gameObject|graphAssetPath"] = new[] { "name", "path", "instanceId", "entityId", "graphAssetPath" },
             // model_get_mesh_info: locate by scene GameObject (mesh on a MeshFilter/SkinnedMeshRenderer) or by
             // asset path (mesh imported from a model file) - the only compound token that was never registered
@@ -389,14 +388,14 @@ namespace UnitySkills
             // ApplyRequiredInputGroups: reusing a group whose candidates the skill only partially accepts can
             // silently narrow "provide one of several" down to "provide exactly this one".
             ["vcam"] = new[] { "vcamName", "instanceId", "path", "entityId" },
-            ["camera"] = new[] { "cameraName", "cameraInstanceId", "cameraPath" },
-            ["source"] = new[] { "sourceName", "sourceInstanceId", "sourcePath" },
+            ["camera"] = new[] { "cameraName", "cameraInstanceId", "cameraPath", "cameraEntityId" },
+            ["source"] = new[] { "sourceName", "sourceInstanceId", "sourcePath", "sourceEntityId" },
             ["sequencer"] = new[] { "sequencerName", "sequencerInstanceId", "sequencerPath", "sequencerEntityId" },
-            ["splineContainer"] = new[] { "splineName", "splineInstanceId", "splinePath" },
-            // cinemachine_set_spline's vcam half uses vcamName/vcamInstanceId/vcamPath, not the plain
-            // vcamName/instanceId/path shape the "vcam" group above covers - reusing "vcam" here would leave only
+            ["splineContainer"] = new[] { "splineName", "splineInstanceId", "splinePath", "splineEntityId" },
+            // cinemachine_set_spline's vcam half uses vcamName/vcamInstanceId/vcamPath/vcamEntityId, not the plain
+            // vcamName/instanceId/path/entityId shape the "vcam" group above covers - reusing "vcam" here would leave only
             // {vcamName} in the intersection and reject a legitimate vcamInstanceId-only or vcamPath-only call.
-            ["vcamName|vcamInstanceId|vcamPath"] = new[] { "vcamName", "vcamInstanceId", "vcamPath" },
+            ["vcamName|vcamInstanceId|vcamPath|vcamEntityId"] = new[] { "vcamName", "vcamInstanceId", "vcamPath", "vcamEntityId" },
             // cinemachine_mixing_camera_set_weight juggles two different locators (the mixer, and the child vcam
             // being weighted) under two different real parameter prefixes - neither matches "vcam"/"gameObject".
             ["mixerName|mixerInstanceId|mixerPath|mixerEntityId"] = new[] { "mixerName", "mixerInstanceId", "mixerPath", "mixerEntityId" },
@@ -407,9 +406,9 @@ namespace UnitySkills
             ["cameraName|cameraInstanceId|cameraPath|cameraEntityId"] = new[] { "cameraName", "cameraInstanceId", "cameraPath", "cameraEntityId" },
             ["childCameraName|childInstanceId|childPath|childEntityId"] = new[] { "childCameraName", "childInstanceId", "childPath", "childEntityId" },
             // cinemachine_target_group_add_member/remove_member: "groupName..." locates the TargetGroup,
-            // "targetName..." locates the member being added/removed - neither is the generic name/path/instanceId shape.
-            ["groupName|groupInstanceId|groupPath"] = new[] { "groupName", "groupInstanceId", "groupPath" },
-            ["targetName|targetInstanceId|targetPath"] = new[] { "targetName", "targetInstanceId", "targetPath" },
+            // "targetName..." locates the member being added/removed - neither is the generic name/path/instanceId/entityId shape.
+            ["groupName|groupInstanceId|groupPath|groupEntityId"] = new[] { "groupName", "groupInstanceId", "groupPath", "groupEntityId" },
+            ["targetName|targetInstanceId|targetPath|targetEntityId"] = new[] { "targetName", "targetInstanceId", "targetPath", "targetEntityId" },
             // event_add_listener / event_set_listener: the listener's target GameObject is named by any one of these. The name
             // parameter differs per skill, hence one key each; an entityId or path tells same-name objects apart, so none of the
             // four can be wire-required (a literal RequiresInput entry would make it so).

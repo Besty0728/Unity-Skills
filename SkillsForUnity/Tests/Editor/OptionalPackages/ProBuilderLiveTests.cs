@@ -107,6 +107,21 @@ namespace UnitySkills.Tests.OptionalPackages
             var result = Ok(Run("probuilder_get_vertices", new JObject { ["name"] = "R6Cube", ["vertexIndexes"] = "0,1" }));
             Assert.That(((JArray)result["vertices"]).Count, Is.EqualTo(2), result.ToString());
         }
+
+        [Test]
+        public void ExtrudeFaces_EntityId_ReachesTheSecondOfTwoSameNameMeshes()
+        {
+            var first = Ok(Run("probuilder_create_shape", new JObject { ["shape"] = "Cube", ["name"] = "R6Twin" }))["entityId"]?.ToString();
+            var second = Ok(Run("probuilder_create_shape", new JObject { ["shape"] = "Cube", ["name"] = "R6Twin" }))["entityId"]?.ToString();
+            Assert.That(second, Is.Not.Null.And.Not.EqualTo(first));
+
+            Ok(Run("probuilder_extrude_faces", new JObject { ["entityId"] = second, ["faceIndexes"] = "0", ["distance"] = 0.5 }));
+
+            var secondInfo = Ok(Run("probuilder_get_info", new JObject { ["entityId"] = second }));
+            Assert.That(secondInfo["faceCount"]?.Value<int>(), Is.EqualTo(10), secondInfo.ToString());
+            var firstInfo = Ok(Run("probuilder_get_info", new JObject { ["entityId"] = first }));
+            Assert.That(firstInfo["faceCount"]?.Value<int>(), Is.EqualTo(6), firstInfo.ToString());
+        }
     }
 }
 

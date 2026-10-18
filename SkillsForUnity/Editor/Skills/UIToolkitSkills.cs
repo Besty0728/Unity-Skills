@@ -232,17 +232,17 @@ namespace UnitySkills
             int sortOrder = 0,
             string parentName = null,
             int parentInstanceId = 0,
-            string parentPath = null)
+            string parentPath = null, string parentEntityId = null)
         {
             var go = new GameObject(name);
 
-            if (!string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
+            if (!string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath) || UnityObjectIdUtility.IsGivenEntityId(parentEntityId))
             {
-                var parent = GameObjectFinder.Find(parentName, parentInstanceId, parentPath);
+                var parent = GameObjectFinder.Find(parentName, parentInstanceId, parentPath, entityId: parentEntityId);
                 if (parent == null)
                 {
                     UnityEngine.Object.DestroyImmediate(go);
-                    return new { error = $"Parent not found: {parentName ?? parentPath}" };
+                    return new { error = $"Parent not found: {parentName ?? parentPath ?? parentEntityId}" };
                 }
                 go.transform.SetParent(parent.transform, false);
             }
@@ -309,11 +309,11 @@ namespace UnitySkills
             string path = null,
             string uxmlPath = null,
             string panelSettingsPath = null,
-            int? sortOrder = null)
+            int? sortOrder = null, string entityId = null)
         {
-            var go = GameObjectFinder.Find(name, instanceId, path);
+            var go = GameObjectFinder.Find(name, instanceId, path, entityId: entityId);
             if (go == null)
-                return new { error = $"GameObject not found: {name ?? path}" };
+                return new { error = $"GameObject not found: {name ?? path ?? entityId}" };
 
             var doc = go.GetComponent<UIDocument>() ?? go.AddComponent<UIDocument>();
             Undo.RecordObject(doc, "Set UIDocument");
@@ -1953,11 +1953,11 @@ public class {className} : MonoBehaviour
             Mode = SkillMode.SemiAuto)]
         public static object UitkInspectDocument(
             string name = null, int instanceId = 0, string path = null,
-            int depth = 5)
+            int depth = 5, string entityId = null)
         {
-            var go = GameObjectFinder.Find(name, instanceId, path);
+            var go = GameObjectFinder.Find(name, instanceId, path, entityId: entityId);
             if (go == null)
-                return new { error = $"GameObject not found: {name ?? path}" };
+                return new { error = $"GameObject not found: {name ?? path ?? entityId}" };
 
             var doc = go.GetComponent<UIDocument>();
             if (doc == null)
@@ -2337,7 +2337,7 @@ public class {className} : MonoBehaviour
             bool setPanelRenderMode = true,
             string parentName = null,
             int parentInstanceId = 0,
-            string parentPath = null)
+            string parentPath = null, string parentEntityId = null)
         {
 #if !UNITY_6000_2_OR_NEWER
             return RequiresUnity("6000.2", "world-space UI Toolkit panels", new[] { "uitk_create_document" });
@@ -2359,11 +2359,11 @@ public class {className} : MonoBehaviour
             }
 
             GameObject parent = null;
-            if (!string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath))
+            if (!string.IsNullOrEmpty(parentName) || parentInstanceId != 0 || !string.IsNullOrEmpty(parentPath) || UnityObjectIdUtility.IsGivenEntityId(parentEntityId))
             {
-                parent = GameObjectFinder.Find(parentName, parentInstanceId, parentPath);
+                parent = GameObjectFinder.Find(parentName, parentInstanceId, parentPath, entityId: parentEntityId);
                 if (parent == null)
-                    return new { error = $"Parent not found: {parentName ?? parentPath}" };
+                    return new { error = $"Parent not found: {parentName ?? parentPath ?? parentEntityId}" };
             }
 
             var go = new GameObject(name);
@@ -2443,14 +2443,14 @@ public class {className} : MonoBehaviour
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object UitkWorldspacePanelGet(string name = null, int instanceId = 0, string path = null)
+        public static object UitkWorldspacePanelGet(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !UNITY_6000_2_OR_NEWER
             return RequiresUnity("6000.2", "world-space UI Toolkit panels", new[] { "uitk_list_documents" });
 #else
-            var go = GameObjectFinder.Find(name, instanceId, path);
+            var go = GameObjectFinder.Find(name, instanceId, path, entityId: entityId);
             if (go == null)
-                return new { error = $"GameObject not found: {name ?? path}" };
+                return new { error = $"GameObject not found: {name ?? path ?? entityId}" };
 
             Component panel = null;
             string componentUsed = null;

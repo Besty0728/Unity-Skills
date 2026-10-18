@@ -1170,7 +1170,7 @@ namespace UnitySkills
             MutatesScene = true,
             RequiresPackages = new[] { PackageId })]
         public static object BehaviorAgentAdd(string name = null, int instanceId = 0, string path = null,
-            string graphAssetPath = null)
+            string graphAssetPath = null, string entityId = null)
         {
             if (!BehaviorReflectionHelper.IsInstalled) return BehaviorReflectionHelper.NotInstalled();
 
@@ -1178,7 +1178,7 @@ namespace UnitySkills
             if (agentType == null)
                 return BehaviorReflectionHelper.ApiMismatch("type Unity.Behavior.BehaviorGraphAgent was not found");
 
-            var (go, findError) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findError) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findError != null) return findError;
 
             // Resolve the graph before touching the scene, so a bad path doesn't leave behind a half-configured agent.
@@ -1240,11 +1240,11 @@ namespace UnitySkills
             ReadOnly = true,
             RequiresPackages = new[] { PackageId },
             Mode = SkillMode.SemiAuto)]
-        public static object BehaviorAgentGet(string name = null, int instanceId = 0, string path = null)
+        public static object BehaviorAgentGet(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
             if (!BehaviorReflectionHelper.IsInstalled) return BehaviorReflectionHelper.NotInstalled();
 
-            var (agent, agentError) = FindAgentOrError(name, instanceId, path);
+            var (agent, agentError) = FindAgentOrError(name, instanceId, path, entityId);
             if (agentError != null) return agentError;
 
             var graph = BehaviorReflectionHelper.GetMemberOrNull(agent, "Graph") as UnityEngine.Object;
@@ -1287,12 +1287,12 @@ namespace UnitySkills
             RequiresPackages = new[] { PackageId },
             RiskLevel = "medium")]
         public static object BehaviorAgentSetGraph(string graphAssetPath, string name = null, int instanceId = 0,
-            string path = null)
+            string path = null, string entityId = null)
         {
             if (!BehaviorReflectionHelper.IsInstalled) return BehaviorReflectionHelper.NotInstalled();
             if (Validate.Required(graphAssetPath, "graphAssetPath") is object requiredError) return requiredError;
 
-            var (agent, agentError) = FindAgentOrError(name, instanceId, path);
+            var (agent, agentError) = FindAgentOrError(name, instanceId, path, entityId);
             if (agentError != null) return agentError;
 
             var resolveError = ResolveRuntimeGraph(graphAssetPath, out var runtimeGraph);
@@ -1308,6 +1308,7 @@ namespace UnitySkills
             {
                 success = true,
                 gameObject = agent.gameObject.name,
+                entityId = UnityObjectIdUtility.GetEntityId(agent.gameObject),
                 instanceId = UnityObjectIdUtility.GetObjectId(agent.gameObject),
                 graphAssetPath,
                 graphName = graph != null ? graph.name : null
@@ -1378,7 +1379,7 @@ namespace UnitySkills
             // This is a genuine either/or: a graph asset path reads authoring defaults, a GameObject locator
             // reads a specific agent's runtime variables. Declaring only "gameObject" would wrongly reject
             // a valid {graphAssetPath: …} request body, so this token names both sides, which
-            // SkillPlanningService._requiredInputGroups maps to {name, path, instanceId, graphAssetPath} —
+            // SkillPlanningService._requiredInputGroups maps to {name, path, instanceId, entityId, graphAssetPath} —
             // an empty request body gets rejected right at the entry point, rather than running all the way
             // to the hand-written "Provide either …" error.
             RequiresInput = new[] { "gameObject|graphAssetPath" },
@@ -1386,16 +1387,17 @@ namespace UnitySkills
             RequiresPackages = new[] { PackageId },
             Mode = SkillMode.SemiAuto)]
         public static object BehaviorBlackboardList(string graphAssetPath = null, string name = null,
-            int instanceId = 0, string path = null)
+            int instanceId = 0, string path = null, string entityId = null)
         {
             if (!BehaviorReflectionHelper.IsInstalled) return BehaviorReflectionHelper.NotInstalled();
 
-            var hasGameObject = !string.IsNullOrWhiteSpace(name) || instanceId != 0 || !string.IsNullOrWhiteSpace(path);
+            var hasGameObject = !string.IsNullOrWhiteSpace(name) || instanceId != 0 || !string.IsNullOrWhiteSpace(path) ||
+                UnityObjectIdUtility.IsGivenEntityId(entityId);
             if (!hasGameObject && string.IsNullOrWhiteSpace(graphAssetPath))
             {
                 return new
                 {
-                    error = "Provide either graphAssetPath (asset defaults) or a GameObject locator (name/instanceId/path) for an agent.",
+                    error = "Provide either graphAssetPath (asset defaults) or a GameObject locator (name/entityId/instanceId/path) for an agent.",
                     suggestedFixes = new[]
                     {
                         "behavior_graph_list returns the graphAssetPath values in this project.",
@@ -1406,7 +1408,7 @@ namespace UnitySkills
 
             if (hasGameObject)
             {
-                var (agent, agentError) = FindAgentOrError(name, instanceId, path);
+                var (agent, agentError) = FindAgentOrError(name, instanceId, path, entityId);
                 if (agentError != null) return agentError;
 
                 var graph = BehaviorReflectionHelper.GetMemberOrNull(agent, "Graph") as UnityEngine.Object;
@@ -1477,17 +1479,18 @@ namespace UnitySkills
             RequiresPackages = new[] { PackageId },
             RiskLevel = "medium")]
         public static object BehaviorBlackboardSet(string variable, object value = null, string graphAssetPath = null,
-            string name = null, int instanceId = 0, string path = null)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
             if (!BehaviorReflectionHelper.IsInstalled) return BehaviorReflectionHelper.NotInstalled();
             if (Validate.Required(variable, "variable") is object requiredError) return requiredError;
 
-            var hasGameObject = !string.IsNullOrWhiteSpace(name) || instanceId != 0 || !string.IsNullOrWhiteSpace(path);
+            var hasGameObject = !string.IsNullOrWhiteSpace(name) || instanceId != 0 || !string.IsNullOrWhiteSpace(path) ||
+                UnityObjectIdUtility.IsGivenEntityId(entityId);
             if (!hasGameObject && string.IsNullOrWhiteSpace(graphAssetPath))
             {
                 return new
                 {
-                    error = "Provide either a GameObject locator (name/instanceId/path) to set an agent override, " +
+                    error = "Provide either a GameObject locator (name/entityId/instanceId/path) to set an agent override, " +
                             "or graphAssetPath to set the graph asset default.",
                     suggestedFixes = new[]
                     {
@@ -1498,7 +1501,7 @@ namespace UnitySkills
             }
 
             return hasGameObject
-                ? SetAgentBlackboardVariable(variable, value, name, instanceId, path)
+                ? SetAgentBlackboardVariable(variable, value, name, instanceId, path, entityId)
                 : SetAssetBlackboardVariable(variable, value, graphAssetPath);
         }
 
@@ -1507,9 +1510,9 @@ namespace UnitySkills
         // ==================================================================================
 
         private static object SetAgentBlackboardVariable(string variableName, object value, string name,
-            int instanceId, string path)
+            int instanceId, string path, string entityId)
         {
-            var (agent, agentError) = FindAgentOrError(name, instanceId, path);
+            var (agent, agentError) = FindAgentOrError(name, instanceId, path, entityId);
             if (agentError != null) return agentError;
 
             var graph = BehaviorReflectionHelper.GetMemberOrNull(agent, "Graph") as UnityEngine.Object;
@@ -1599,6 +1602,7 @@ namespace UnitySkills
                 success = true,
                 target = "agent",
                 gameObject = agent.gameObject.name,
+                entityId = UnityObjectIdUtility.GetEntityId(agent.gameObject),
                 instanceId = UnityObjectIdUtility.GetObjectId(agent.gameObject),
                 graphName = graph.name,
                 variable = variableName,
@@ -1704,13 +1708,13 @@ namespace UnitySkills
         }
 
         /// <summary>Locates the GameObject and requires that it has a BehaviorGraphAgent attached.</summary>
-        private static (Component agent, object error) FindAgentOrError(string name, int instanceId, string path)
+        private static (Component agent, object error) FindAgentOrError(string name, int instanceId, string path, string entityId)
         {
             var agentType = BehaviorReflectionHelper.AgentType;
             if (agentType == null)
                 return (null, BehaviorReflectionHelper.ApiMismatch("type Unity.Behavior.BehaviorGraphAgent was not found"));
 
-            var (go, findError) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findError) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findError != null) return (null, findError);
 
             var agent = go.GetComponent(agentType);

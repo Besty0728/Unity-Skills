@@ -538,12 +538,12 @@ namespace UnitySkills
             bool? activeSceneSynchronization = null,
             bool? spawnWithObservers = null,
             bool? dontDestroyWithOwner = null,
-            bool? autoObjectParentSync = null)
+            bool? autoObjectParentSync = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var existing = go.GetComponent<NetworkObject>();
@@ -589,12 +589,12 @@ namespace UnitySkills
             bool? sceneMigrationSynchronization = null,
             bool? spawnWithObservers = null,
             bool? dontDestroyWithOwner = null,
-            bool? autoObjectParentSync = null)
+            bool? autoObjectParentSync = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
             var no = go.GetComponent<NetworkObject>();
             if (no == null) return new { error = $"'{go.name}' has no NetworkObject component. Use netcode_add_network_object first." };
@@ -622,12 +622,12 @@ namespace UnitySkills
             Tags = new[] { "netcode", "ngo", "networkobject" },
             Outputs = new[] { "success" },
             MutatesScene = true, RiskLevel = "medium", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
-        public static object RemoveNetworkObject(string name = null, int instanceId = 0, string path = null)
+        public static object RemoveNetworkObject(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
             var no = go.GetComponent<NetworkObject>();
             if (no == null) return new { error = $"'{go.name}' has no NetworkObject component." };
@@ -682,12 +682,12 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object GetNetworkObjectInfo(string name = null, int instanceId = 0, string path = null)
+        public static object GetNetworkObjectInfo(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return new { found = false, error = SkillResultHelper.TryGetError(findErr, out var message) ? message : "GameObject not found." };
             var no = go.GetComponent<NetworkObject>();
             if (no == null) return new { found = false, error = $"'{go.name}' has no NetworkObject." };
@@ -976,12 +976,12 @@ namespace UnitySkills
             bool? useHalfFloatPrecision = null,
             bool? useQuaternionSynchronization = null,
             bool? useQuaternionCompression = null,
-            bool? slerpPosition = null)
+            bool? slerpPosition = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
             if (go.GetComponent<NetworkObject>() == null)
                 return new { error = $"'{go.name}' lacks a NetworkObject component. Add one first (NetworkTransform requires NetworkBehaviour's NetworkObject)." };
@@ -1023,12 +1023,12 @@ namespace UnitySkills
             bool? slerpPosition = null,
             float? positionThreshold = null,
             float? rotAngleThreshold = null,
-            float? scaleThreshold = null)
+            float? scaleThreshold = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
             var nt = go.GetComponent<NetworkTransform>();
             if (nt == null) return new { error = $"'{go.name}' has no NetworkTransform." };
@@ -1091,12 +1091,12 @@ namespace UnitySkills
             int instanceId = 0,
             string path = null,
             bool useRigidbody2D = false,
-            bool? useRigidBodyForMotion = null)
+            bool? useRigidBodyForMotion = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
             if (go.GetComponent<NetworkObject>() == null)
                 return new { error = $"'{go.name}' lacks a NetworkObject component. Add one first." };
@@ -1146,12 +1146,12 @@ namespace UnitySkills
             Tags = new[] { "netcode", "ngo", "networkanimator", "animation" },
             Outputs = new[] { "success" },
             MutatesScene = true, RiskLevel = "low", RequiresPackages = new[] { "com.unity.netcode.gameobjects" })]
-        public static object AddNetworkAnimator(string name = null, int instanceId = 0, string path = null)
+        public static object AddNetworkAnimator(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
             if (go.GetComponent<NetworkObject>() == null)
                 return new { error = $"'{go.name}' lacks a NetworkObject component." };
@@ -1712,14 +1712,14 @@ namespace UnitySkills
             string name = null,
             int instanceId = 0,
             string path = null,
-            string autoDetach = null)
+            string autoDetach = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
             if (!Has25Features()) return No25Features("netcode_attachable_add");
 
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var abType = ResolveAttachableBehaviourType();
@@ -1788,14 +1788,14 @@ namespace UnitySkills
             string name = null,
             int instanceId = 0,
             string path = null,
-            bool? detachOnDespawn = null)
+            bool? detachOnDespawn = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
             if (!Has25Features()) return No25Features("netcode_attachable_node_add");
 
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var anType = ResolveAttachableNodeType();
@@ -1833,14 +1833,14 @@ namespace UnitySkills
             string name = null,
             int instanceId = 0,
             string path = null,
-            bool startEnabled = true)
+            bool startEnabled = true, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
             if (!Has25Features()) return No25Features("netcode_component_controller_add");
 
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var ccType = ResolveComponentControllerType();
@@ -1880,14 +1880,14 @@ namespace UnitySkills
             string path = null,
             string[] targetPaths = null,
             bool clearExisting = false,
-            bool? startEnabled = null)
+            bool? startEnabled = null, string entityId = null)
         {
 #if !NETCODE_GAMEOBJECTS
             return NoNetcode();
 #else
             if (!Has25Features()) return No25Features("netcode_component_controller_configure");
 
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var ccType = ResolveComponentControllerType();

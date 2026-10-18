@@ -143,6 +143,6 @@ Create one detailed template, then duplicate it:
 ```python
 for i, (x, z) in enumerate(seat_positions):
     copy = unity_skills.call_skill("gameobject_duplicate", name="Chair_Template")
-    unity_skills.call_skill("gameobject_rename", instanceId=copy["copyInstanceId"], newName=f"Chair_{i}")
-    unity_skills.call_skill("gameobject_set_transform", instanceId=copy["copyInstanceId"], posX=x, posZ=z)
+    unity_skills.call_skill("gameobject_rename", entityId=copy["copyEntityId"], newName=f"Chair_{i}")
+    unity_skills.call_skill("gameobject_set_transform", entityId=copy["copyEntityId"], posX=x, posZ=z)
 ```

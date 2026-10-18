@@ -81,6 +81,8 @@ dotween_generate_sequence_script className=ButtonPop targetKind=Transform stepsJ
 
 ## Pro Skills
 
+Single-target Pro skills locate the GameObject by `targetEntityId` (preferred; the only id on Unity 6000.4+), `targetInstanceId`, `targetPath` or `target` (name).
+
 ### `dotween_pro_add_animation`
 Add one DOTweenAnimation to a GameObject and configure all core fields.
 **Parameters:** `target` / `animationType` / `endValueV3?` / `endValueFloat?` / `endValueColor?` / `endValueV2?` / `endValueString?` / `endValueRect?` / `duration=1` / `ease="OutQuad"` / `loops=1` / `loopType="Yoyo"` / `delay=0` / `isRelative=false` / `isFrom=false` / `autoPlay=true` / `autoKill=true` / `id?`

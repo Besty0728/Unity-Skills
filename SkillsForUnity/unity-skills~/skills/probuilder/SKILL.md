@@ -42,10 +42,11 @@ Use this module for editable ProBuilder meshes, not regular primitive GameObject
 
 Most edit/query skills accept one of:
 - `name`
+- `entityId`
 - `instanceId`
 - `path`
 
-Prefer `instanceId` when multiple scene objects share the same name.
+Prefer `entityId` (the only id on Unity 6000.4+) when multiple scene objects share the same name.
 
 ## Skills
 

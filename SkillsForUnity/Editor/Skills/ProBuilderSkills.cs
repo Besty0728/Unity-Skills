@@ -97,12 +97,12 @@ namespace UnitySkills
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null,
             float distance = 0.5f,
-            string method = "FaceNormal")
+            string method = "FaceNormal", string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             if (!Enum.TryParse<ExtrudeMethod>(method, true, out var extrudeMethod))
@@ -157,12 +157,12 @@ namespace UnitySkills
             RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderDeleteFaces(
             string name = null, int instanceId = 0, string path = null,
-            string faceIndexes = null)
+            string faceIndexes = null, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             if (string.IsNullOrEmpty(faceIndexes))
@@ -207,12 +207,12 @@ namespace UnitySkills
             RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderMergeFaces(
             string name = null, int instanceId = 0, string path = null,
-            string faceIndexes = null)
+            string faceIndexes = null, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             var faces = SelectFaces(pbMesh, faceIndexes);
@@ -250,12 +250,12 @@ namespace UnitySkills
             RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderFlipNormals(
             string name = null, int instanceId = 0, string path = null,
-            string faceIndexes = null)
+            string faceIndexes = null, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             var faces = SelectFaces(pbMesh, faceIndexes);
@@ -291,12 +291,12 @@ namespace UnitySkills
         public static object ProBuilderDetachFaces(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null,
-            bool deleteSourceFaces = false)
+            bool deleteSourceFaces = false, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             var faces = SelectFaces(pbMesh, faceIndexes);
@@ -355,12 +355,12 @@ namespace UnitySkills
         public static object ProBuilderBevelEdges(
             string name = null, int instanceId = 0, string path = null,
             string edgeIndexes = null,
-            float amount = 0.2f)
+            float amount = 0.2f, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             if (amount <= 0f || amount > 1f)
@@ -417,12 +417,12 @@ namespace UnitySkills
             string edgeIndexes = null,
             float distance = 0.5f,
             bool extrudeAsGroup = true,
-            bool enableManifoldExtrude = false)
+            bool enableManifoldExtrude = false, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             if (string.IsNullOrEmpty(edgeIndexes))
@@ -486,12 +486,12 @@ namespace UnitySkills
             string name = null, int instanceId = 0, string path = null,
             string edgeA = null,
             string edgeB = null,
-            bool allowNonManifold = false)
+            bool allowNonManifold = false, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             if (string.IsNullOrEmpty(edgeA) || string.IsNullOrEmpty(edgeB))
@@ -537,12 +537,12 @@ namespace UnitySkills
             RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderSubdivide(
             string name = null, int instanceId = 0, string path = null,
-            string faceIndexes = null)
+            string faceIndexes = null, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             if (!string.IsNullOrEmpty(faceIndexes))
@@ -588,12 +588,12 @@ namespace UnitySkills
             RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderConformNormals(
             string name = null, int instanceId = 0, string path = null,
-            string faceIndexes = null)
+            string faceIndexes = null, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             var faces = SelectFaces(pbMesh, faceIndexes);
@@ -630,12 +630,12 @@ namespace UnitySkills
         public static object ProBuilderWeldVertices(
             string name = null, int instanceId = 0, string path = null,
             string vertexIndexes = null,
-            float radius = 0.01f)
+            float radius = 0.01f, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             if (string.IsNullOrEmpty(vertexIndexes))
@@ -703,12 +703,12 @@ namespace UnitySkills
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null,
             string materialPath = null,
-            int submeshIndex = -1)
+            int submeshIndex = -1, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             var faces = SelectFaces(pbMesh, faceIndexes);
@@ -789,12 +789,12 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto,
             RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderGetInfo(
-            string name = null, int instanceId = 0, string path = null)
+            string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             var go = pbMesh.gameObject;
@@ -840,12 +840,12 @@ namespace UnitySkills
             RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderCenterPivot(
             string name = null, int instanceId = 0, string path = null,
-            float? worldX = null, float? worldY = null, float? worldZ = null)
+            float? worldX = null, float? worldY = null, float? worldZ = null, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             Undo.RecordObject(pbMesh.transform, "Center Pivot");
@@ -891,12 +891,12 @@ namespace UnitySkills
         public static object ProBuilderProjectUV(
             string name = null, int instanceId = 0, string path = null,
             string faceIndexes = null,
-            int channel = 0)
+            int channel = 0, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             var faces = SelectFaces(pbMesh, faceIndexes);
@@ -1131,12 +1131,12 @@ namespace UnitySkills
         public static object ProBuilderMoveVertices(
             string name = null, int instanceId = 0, string path = null,
             string vertexIndexes = null,
-            float deltaX = 0, float deltaY = 0, float deltaZ = 0)
+            float deltaX = 0, float deltaY = 0, float deltaZ = 0, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             if (string.IsNullOrEmpty(vertexIndexes))
@@ -1188,12 +1188,12 @@ namespace UnitySkills
             RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderSetVertices(
             string name = null, int instanceId = 0, string path = null,
-            string vertices = null)
+            string vertices = null, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             if (Validate.RequiredJsonArray(vertices, "vertices") is object jsonErr) return jsonErr;
@@ -1276,12 +1276,12 @@ namespace UnitySkills
             RequiresPackages = new[] { "com.unity.probuilder" })]
         public static object ProBuilderGetVertices(
             string name = null, int instanceId = 0, string path = null,
-            string vertexIndexes = null, bool verbose = true)
+            string vertexIndexes = null, bool verbose = true, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             var positions = pbMesh.positions;
@@ -1331,7 +1331,7 @@ namespace UnitySkills
             Tags = new[] { "probuilder", "combine", "merge", "optimization" },
             Outputs = new[] { "success", "combinedCount", "vertexCount", "faceCount" },
             // The real accepted param is "names" (a comma-separated list, or the literal string "selected") -
-            // not the generic name/instanceId/path locator shape every other ProBuilder skill here uses.
+            // not the generic name/entityId/instanceId/path locator shape every other ProBuilder skill here uses.
             RequiresInput = new[] { "names" },
             RiskLevel = "medium", MutatesScene = true,
             RequiresPackages = new[] { "com.unity.probuilder" })]
@@ -1404,12 +1404,12 @@ namespace UnitySkills
         public static object ProBuilderSetMaterial(
             string name = null, int instanceId = 0, string path = null,
             string materialPath = null,
-            float? r = null, float? g = null, float? b = null, float? a = null)
+            float? r = null, float? g = null, float? b = null, float? a = null, string entityId = null)
         {
 #if !PROBUILDER
             return NoProBuilder();
 #else
-            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path);
+            var (pbMesh, err) = FindProBuilderMesh(name, instanceId, path, entityId);
             if (err != null) return err;
 
             var renderer = pbMesh.GetComponent<MeshRenderer>();
@@ -1472,9 +1472,9 @@ namespace UnitySkills
         }
 
 #if PROBUILDER
-        private static (ProBuilderMesh mesh, object error) FindProBuilderMesh(string name, int instanceId, string path)
+        private static (ProBuilderMesh mesh, object error) FindProBuilderMesh(string name, int instanceId, string path, string entityId)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (findErr != null) return (null, findErr);
 
             var pbMesh = go.GetComponent<ProBuilderMesh>();

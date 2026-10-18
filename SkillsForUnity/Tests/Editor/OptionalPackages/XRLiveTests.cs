@@ -163,6 +163,30 @@ namespace UnitySkills.Tests.OptionalPackages
             Assert.That(result["summary"]?["origins"]?.Value<int>(), Is.EqualTo(1), result.ToString());
             Assert.That(result["summary"]?["interactionManagers"]?.Value<int>(), Is.EqualTo(1), result.ToString());
         }
+
+        [Test]
+        public void AddSimpleInteractable_EntityId_ReachesTheSecondOfTwoSameNameCubes()
+        {
+            var first = NewCube("R6Twin");
+            var second = NewCube("R6Twin");
+
+            Ok(Run("xr_add_simple_interactable", new JObject { ["entityId"] = UnityObjectIdUtility.GetEntityId(second) }));
+
+            Assert.That(ComponentNamed(second, "XRSimpleInteractable"), Is.Not.Null);
+            Assert.That(ComponentNamed(first, "XRSimpleInteractable"), Is.Null);
+        }
+
+        [Test]
+        public void SetupTurnProvider_EntityIdAlone_TargetsThatObjectInsteadOfTheOrigin()
+        {
+            // With no name/instanceId/path the locomotion setup skills fall back to the scene's XR Origin (an error when
+            // there is none); an entityId alone names a target too and must not take that fallback.
+            var host = NewCube("R6TurnHost");
+
+            var result = Ok(Run("xr_setup_turn_provider", new JObject { ["entityId"] = UnityObjectIdUtility.GetEntityId(host) }));
+
+            Assert.That(ComponentNamed(host, result["providerType"]?.ToString()), Is.Not.Null, result.ToString());
+        }
     }
 }
 

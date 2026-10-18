@@ -328,7 +328,7 @@ namespace UnitySkills
             bool isFrom = false,
             bool autoPlay = true,
             bool autoKill = true,
-            string id = null)
+            string id = null, string targetEntityId = null)
         {
             if (!DOTweenReflectionHelper.IsDOTweenInstalled) return NoDOTween();
             if (!DOTweenReflectionHelper.IsDOTweenProInstalled) return NoDOTweenPro();
@@ -336,7 +336,7 @@ namespace UnitySkills
             if (ValidateAnimationSpec(animationType, ease, loopType, duration, loops, delay) is object specErr)
                 return specErr;
 
-            var (go, err) = GameObjectFinder.FindOrError(name: target, instanceId: targetInstanceId, path: targetPath);
+            var (go, err) = GameObjectFinder.FindOrError(name: target, instanceId: targetInstanceId, path: targetPath, entityId: targetEntityId);
             if (err != null) return err;
 
             var result = AddAnimationCore(go, animationType, endValueV3, endValueFloat, endValueColor,
@@ -469,7 +469,7 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true, RiskLevel = "low")]
         public static object DOTweenProSetDuration(
             string target = null, int targetInstanceId = 0, string targetPath = null,
-            int animationIndex = 0, float? duration = null)
+            int animationIndex = 0, float? duration = null, string targetEntityId = null)
         {
             // Validate the parameter domain before resolving the target: an invalid value is unrelated to
             // whether Pro is installed, so checking here lets this rejection be observed even without the
@@ -479,7 +479,7 @@ namespace UnitySkills
             if (Validate.Required(duration, "duration") is object missing) return missing;
             if (InvalidPositiveError(duration.Value, "duration") is object invalid) return invalid;
 
-            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
+            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex, targetEntityId);
             if (err != null) return err;
 
             Undo.RecordObject(comp, "DOTween set duration");
@@ -507,7 +507,7 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true, RiskLevel = "low")]
         public static object DOTweenProSetEase(
             string target = null, int targetInstanceId = 0, string targetPath = null,
-            int animationIndex = 0, string ease = "OutQuad", string easeCurveJson = null)
+            int animationIndex = 0, string ease = "OutQuad", string easeCurveJson = null, string targetEntityId = null)
         {
             // An easeCurveJson that is sent but fails to parse must be rejected before touching the component:
             // otherwise it would fall into the branch that sets ease by name, install OutQuad, and still report
@@ -523,7 +523,7 @@ namespace UnitySkills
                 });
             }
 
-            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
+            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex, targetEntityId);
             if (err != null) return err;
 
             // The ease name must be validated against the enum this DOTween version actually declares, and this
@@ -567,7 +567,7 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true, RiskLevel = "low")]
         public static object DOTweenProSetLoops(
             string target = null, int targetInstanceId = 0, string targetPath = null,
-            int animationIndex = 0, int? loops = null, string loopType = null)
+            int animationIndex = 0, int? loops = null, string loopType = null, string targetEntityId = null)
         {
             // Both parameters must be nullable/optional: this setter covers two unrelated halves — if it were
             // declared as int loops = 1, a call sending only loopType would silently turn infinite looping into
@@ -576,7 +576,7 @@ namespace UnitySkills
                 return MissingEitherError("loops", "loopType");
             if (loops.HasValue && InvalidLoopsError(loops.Value) is object invalidLoops) return invalidLoops;
 
-            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
+            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex, targetEntityId);
             if (err != null) return err;
 
             // Must validate before the first write: writing loops first and then rejecting loopType would leave
@@ -628,7 +628,7 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true, RiskLevel = "low")]
         public static object DOTweenProSetAnimationField(
             string target = null, int targetInstanceId = 0, string targetPath = null,
-            int animationIndex = 0, string fieldName = null, string fieldValue = null)
+            int animationIndex = 0, string fieldName = null, string fieldValue = null, string targetEntityId = null)
         {
             if (Validate.Required(fieldName, "fieldName") is object missingName) return missingName;
             if (DOTweenReflectionHelper.ReservedByDedicatedSkills.Contains(fieldName))
@@ -647,7 +647,7 @@ namespace UnitySkills
             if (fieldValue == null)
                 return MissingFieldValueError(fieldName);
 
-            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
+            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex, targetEntityId);
             if (err != null) return err;
 
             // "field doesn't exist" and "value doesn't convert" must be reported separately: merging them into
@@ -683,9 +683,9 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object DOTweenProGetAnimation(
             string target = null, int targetInstanceId = 0, string targetPath = null,
-            int animationIndex = 0)
+            int animationIndex = 0, string targetEntityId = null)
         {
-            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
+            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex, targetEntityId);
             if (err != null) return err;
 
             var fields = DOTweenReflectionHelper.DumpAllFields(comp);
@@ -706,7 +706,7 @@ namespace UnitySkills
             Mode = SkillMode.SemiAuto)]
         public static object DOTweenProListAnimations(
             string target = null, int targetInstanceId = 0, string targetPath = null,
-            bool recursive = false)
+            bool recursive = false, string targetEntityId = null)
         {
             if (!DOTweenReflectionHelper.IsDOTweenProInstalled) return NoDOTweenPro();
 
@@ -714,9 +714,9 @@ namespace UnitySkills
             if (type == null) return NoDOTweenPro();
 
             Component[] comps;
-            if (!string.IsNullOrEmpty(target) || targetInstanceId != 0 || !string.IsNullOrEmpty(targetPath))
+            if (!string.IsNullOrEmpty(target) || targetInstanceId != 0 || !string.IsNullOrEmpty(targetPath) || UnityObjectIdUtility.IsGivenEntityId(targetEntityId))
             {
-                var (go, err) = GameObjectFinder.FindOrError(name: target, instanceId: targetInstanceId, path: targetPath);
+                var (go, err) = GameObjectFinder.FindOrError(name: target, instanceId: targetInstanceId, path: targetPath, entityId: targetEntityId);
                 if (err != null) return err;
                 comps = recursive
                     ? go.GetComponentsInChildren(type, includeInactive: true)
@@ -794,9 +794,9 @@ namespace UnitySkills
             TracksWorkflow = true, MutatesScene = true, RiskLevel = "low")]
         public static object DOTweenProRemoveAnimation(
             string target = null, int targetInstanceId = 0, string targetPath = null,
-            int animationIndex = 0)
+            int animationIndex = 0, string targetEntityId = null)
         {
-            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex);
+            var (comp, err) = ResolveAnimationComponent(target, targetInstanceId, targetPath, animationIndex, targetEntityId);
             if (err != null) return err;
 
             if (!WorkflowManager.DeleteSceneObject(comp))
@@ -1708,11 +1708,11 @@ namespace UnitySkills
         };
 
         private static (Component comp, object error) ResolveAnimationComponent(
-            string target, int targetInstanceId, string targetPath, int animationIndex)
+            string target, int targetInstanceId, string targetPath, int animationIndex, string targetEntityId = null)
         {
             if (!DOTweenReflectionHelper.IsDOTweenProInstalled) return (null, NoDOTweenPro());
 
-            var (go, err) = GameObjectFinder.FindOrError(name: target, instanceId: targetInstanceId, path: targetPath);
+            var (go, err) = GameObjectFinder.FindOrError(name: target, instanceId: targetInstanceId, path: targetPath, entityId: targetEntityId);
             if (err != null) return (null, err);
 
             var type = DOTweenReflectionHelper.FindTypeInAssemblies(DOTweenReflectionHelper.DOTweenAnimationTypeName);

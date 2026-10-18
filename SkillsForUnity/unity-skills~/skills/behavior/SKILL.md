@@ -72,7 +72,7 @@ Structure summary for one graph asset: node count with a per-type breakdown, ind
 Create an empty `BehaviorAuthoringGraph` at `savePath` and force a reimport so Unity bakes the blackboard, the runtime `BehaviorGraph` sub-asset, the debug info sub-asset, and the mandatory `Start` root. Returns `hasRuntimeGraph`; a `warning` is returned when baking did not happen and the graph must be opened once in the editor window.
 
 ### `behavior_agent_add`
-Add a `BehaviorGraphAgent` to a GameObject (`name` / `instanceId` / `path`), optionally binding `graphAssetPath` in the same call. The graph is resolved and validated **before** the component is added, so a bad path never leaves a half-configured agent. Idempotent — an existing agent is reused and reported via `componentAdded: false`.
+Add a `BehaviorGraphAgent` to a GameObject (`name` / `entityId` / `instanceId` / `path`), optionally binding `graphAssetPath` in the same call. The graph is resolved and validated **before** the component is added, so a bad path never leaves a half-configured agent. Idempotent — an existing agent is reused and reported via `componentAdded: false`.
 
 ### `behavior_agent_get`
 Read one agent: bound graph name and asset path, `isInitialised` / `isStarted` / `isRunning`, the graph's blackboard variables, and the agent-level overrides.
@@ -93,7 +93,7 @@ Set one variable value.
 |-----------|---------|
 | `variable` | Variable name, case-sensitive. Required. |
 | `value` | New value. Accepted shapes depend on the declared type (see below). |
-| `name` / `instanceId` / `path` | GameObject locator — writes the **agent-level override**. |
+| `name` / `entityId` / `instanceId` / `path` | GameObject locator — writes the **agent-level override**. |
 | `graphAssetPath` | Writes the **graph asset default** and rebakes the runtime blackboard; if a rebake step fails the response carries `warning`. |
 
 Provide either the GameObject locator or `graphAssetPath`; the GameObject wins if both are given.

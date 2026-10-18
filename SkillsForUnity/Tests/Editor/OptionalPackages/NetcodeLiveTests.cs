@@ -1,5 +1,6 @@
 ﻿using Newtonsoft.Json.Linq;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace UnitySkills.Tests.OptionalPackages
 {
@@ -116,6 +117,19 @@ namespace UnitySkills.Tests.OptionalPackages
             var result = Ok(Run("netcode_add_network_animator", new JObject { ["name"] = "R6NetAnim" }));
             Assert.That(result["success"]?.Value<bool>(), Is.True, result.ToString());
             Assert.That(ComponentNamed(Find("R6NetAnim"), "NetworkAnimator"), Is.Not.Null);
+        }
+
+        [Test]
+        public void AddNetworkObject_EntityId_ReachesTheSecondOfTwoSameNameObjects()
+        {
+            var first = new GameObject("R6NetTwin");
+            var second = new GameObject("R6NetTwin");
+            GameObjectFinder.InvalidateCache();
+
+            Ok(Run("netcode_add_network_object", new JObject { ["entityId"] = UnityObjectIdUtility.GetEntityId(second) }));
+
+            Assert.That(ComponentNamed(second, "NetworkObject"), Is.Not.Null);
+            Assert.That(ComponentNamed(first, "NetworkObject"), Is.Null);
         }
     }
 }

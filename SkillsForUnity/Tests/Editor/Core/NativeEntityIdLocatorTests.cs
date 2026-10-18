@@ -247,6 +247,30 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void UitkSetDocument_ReachesTheSecondOfTwoSameNameSiblings()
+        {
+            var (first, second) = CreateTwins();
+            var firstDocument = first.AddComponent<UnityEngine.UIElements.UIDocument>();
+            var secondDocument = second.AddComponent<UnityEngine.UIElements.UIDocument>();
+
+            AssertSuccess(Execute("uitk_set_document", new JObject { ["entityId"] = Id(second), ["sortOrder"] = 7 }));
+
+            Assert.That(secondDocument.sortingOrder, Is.EqualTo(7f));
+            Assert.That(firstDocument.sortingOrder, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void UitkCreateDocument_ParentEntityId_PicksThatParent()
+        {
+            var (first, second) = CreateTwins();
+
+            AssertSuccess(Execute("uitk_create_document", new JObject { ["name"] = "DocumentProbe", ["parentEntityId"] = Id(second) }));
+
+            Assert.That(second.transform.Find("DocumentProbe"), Is.Not.Null);
+            Assert.That(first.transform.Find("DocumentProbe"), Is.Null);
+        }
+
+        [Test]
         public void EntityId_OutranksAConflictingNameAndPath()
         {
             var target = Create("Solo", Create("B"));

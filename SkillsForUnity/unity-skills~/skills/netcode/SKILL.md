@@ -50,10 +50,11 @@ Automation for Netcode for GameObjects (NGO) multiplayer setup and operations. E
 
 `netcode_add_*` / `netcode_configure_*` skills use the usual target parameters:
 - `name` — scene object name
+- `entityId` — Unity EntityId (exact; the only id on Unity 6000.4+)
 - `instanceId` — Unity InstanceID (exact)
 - `path` — hierarchy path `Parent/Child`
 
-Prefer `instanceId` when there is a chance of duplicate names.
+Prefer `entityId` when there is a chance of duplicate names.
 
 ## Skills
 
@@ -77,7 +78,7 @@ Prefer `instanceId` when there is a chance of duplicate names.
 ### NetworkObject
 | Skill | Purpose | Key Parameters |
 |-------|---------|----------------|
-| `netcode_add_network_object` | Attach NetworkObject to a GameObject | `name/instanceId/path` + NetworkObject fields |
+| `netcode_add_network_object` | Attach NetworkObject to a GameObject | `name/entityId/instanceId/path` + NetworkObject fields |
 | `netcode_configure_network_object` | Modify fields on an existing NetworkObject | same as above |
 | `netcode_remove_network_object` | Remove a NetworkObject (must not be currently spawned) | same as above |
 | `netcode_list_network_objects` | List all NetworkObjects in scene (including runtime state) | `includeInactive?` |

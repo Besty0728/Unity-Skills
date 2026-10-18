@@ -70,12 +70,12 @@ namespace UnitySkills
             RequiresInput = new[] { "vcam" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object CinemachineInspectVCam(string vcamName = null, int instanceId = 0, string path = null)
+        public static object CinemachineInspectVCam(string vcamName = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(name: vcamName, instanceId: instanceId, path: path);
+            var (go, err) = GameObjectFinder.FindOrError(name: vcamName, instanceId: instanceId, path: path, entityId: entityId);
             if (err != null) return err;
 
             var vcam = CinemachineAdapter.GetVCam(go);
@@ -265,7 +265,7 @@ namespace UnitySkills
             float? fov = null,
             float? nearClip = null,
             float? farClip = null,
-            float? orthoSize = null)
+            float? orthoSize = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
@@ -273,10 +273,10 @@ namespace UnitySkills
             if (string.IsNullOrWhiteSpace(propertyName) && value == null &&
                 (fov.HasValue || nearClip.HasValue || farClip.HasValue || orthoSize.HasValue))
             {
-                return CinemachineSetLens(vcamName, instanceId, path, fov, nearClip, farClip, orthoSize);
+                return CinemachineSetLens(vcamName, instanceId, path, fov, nearClip, farClip, orthoSize, entityId: entityId);
             }
 
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             var vcam = CinemachineAdapter.GetVCam(go);
@@ -352,12 +352,12 @@ namespace UnitySkills
             Outputs = new[] { "success" },
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" }, MutatesScene = true)]
-        public static object CinemachineSetTargets(string vcamName = null, int instanceId = 0, string path = null, string followName = null, string lookAtName = null)
+        public static object CinemachineSetTargets(string vcamName = null, int instanceId = 0, string path = null, string followName = null, string lookAtName = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             var vcam = CinemachineAdapter.GetVCam(go);
@@ -402,12 +402,12 @@ namespace UnitySkills
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" }, MutatesScene = true)]
-        public static object CinemachineAddComponent(string vcamName = null, int instanceId = 0, string path = null, string componentType = null)
+        public static object CinemachineAddComponent(string vcamName = null, int instanceId = 0, string path = null, string componentType = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             var type = FindCinemachineType(componentType);
@@ -455,12 +455,12 @@ namespace UnitySkills
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" }, MutatesScene = true)]
-        public static object CinemachineSetLens(string vcamName = null, int instanceId = 0, string path = null, float? fov = null, float? nearClip = null, float? farClip = null, float? orthoSize = null, string mode = null)
+        public static object CinemachineSetLens(string vcamName = null, int instanceId = 0, string path = null, float? fov = null, float? nearClip = null, float? farClip = null, float? orthoSize = null, string mode = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             var vcam = CinemachineAdapter.GetVCam(go);
@@ -531,10 +531,10 @@ namespace UnitySkills
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" },
             RiskLevel = "medium", MutatesScene = true)]
-        public static object CinemachineSetComponent(string vcamName = null, int instanceId = 0, string path = null, string stage = null, string componentType = null)
+        public static object CinemachineSetComponent(string vcamName = null, int instanceId = 0, string path = null, string stage = null, string componentType = null, string entityId = null)
         {
 #if CINEMACHINE_2 || CINEMACHINE_3
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
             var vcam = CinemachineAdapter.GetVCam(go);
             if (CinemachineAdapter.VCamOrError(vcam) is object vcamErr) return vcamErr;
@@ -657,12 +657,12 @@ namespace UnitySkills
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" }, MutatesScene = true)]
-        public static object CinemachineSetActive(string vcamName = null, int instanceId = 0, string path = null)
+        public static object CinemachineSetActive(string vcamName = null, int instanceId = 0, string path = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             var vcam = CinemachineAdapter.GetVCam(go);
@@ -683,12 +683,12 @@ namespace UnitySkills
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" }, MutatesScene = true)]
-        public static object CinemachineSetNoise(string vcamName = null, int instanceId = 0, string path = null, float amplitudeGain = 1f, float frequencyGain = 1f)
+        public static object CinemachineSetNoise(string vcamName = null, int instanceId = 0, string path = null, float amplitudeGain = 1f, float frequencyGain = 1f, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             var vcam = CinemachineAdapter.GetVCam(go);
@@ -867,19 +867,19 @@ namespace UnitySkills
             // Real names: groupName/groupInstanceId/groupPath (the group) and targetName/targetInstanceId/targetPath
             // (the member) - neither matches the generic "gameObject" group's {name,path,instanceId,entityId}
             // candidates, which is why the old "targetGroup"/"gameObject" tokens enforced nothing.
-            RequiresInput = new[] { "groupName|groupInstanceId|groupPath", "targetName|targetInstanceId|targetPath" },
+            RequiresInput = new[] { "groupName|groupInstanceId|groupPath|groupEntityId", "targetName|targetInstanceId|targetPath|targetEntityId" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" }, MutatesScene = true)]
-        public static object CinemachineTargetGroupAddMember(string groupName = null, int groupInstanceId = 0, string groupPath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, float weight = 1f, float radius = 1f)
+        public static object CinemachineTargetGroupAddMember(string groupName = null, int groupInstanceId = 0, string groupPath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, float weight = 1f, float radius = 1f, string groupEntityId = null, string targetEntityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
              return NoCinemachine();
 #else
-             var (groupGo, groupErr) = GameObjectFinder.FindOrError(groupName, groupInstanceId, groupPath);
+             var (groupGo, groupErr) = GameObjectFinder.FindOrError(groupName, groupInstanceId, groupPath, entityId: groupEntityId);
              if (groupErr != null) return groupErr;
              var group = groupGo.GetComponent<CinemachineTargetGroup>();
              if (group == null) return new { error = "GameObject is not a CinemachineTargetGroup" };
 
-             var (targetGo, targetErr) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath);
+             var (targetGo, targetErr) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath, entityId: targetEntityId);
              if (targetErr != null) return targetErr;
 
              WorkflowManager.SnapshotObject(group);
@@ -895,20 +895,20 @@ namespace UnitySkills
             Category = SkillCategory.Cinemachine, Operation = SkillOperation.Modify | SkillOperation.Delete,
             Tags = new[] { "camera", "targetGroup", "member", "remove", "cinemachine" },
             Outputs = new[] { "success", "message" },
-            RequiresInput = new[] { "groupName|groupInstanceId|groupPath", "targetName|targetInstanceId|targetPath" },
+            RequiresInput = new[] { "groupName|groupInstanceId|groupPath|groupEntityId", "targetName|targetInstanceId|targetPath|targetEntityId" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" },
             RiskLevel = "medium", MutatesScene = true)]
-        public static object CinemachineTargetGroupRemoveMember(string groupName = null, int groupInstanceId = 0, string groupPath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null)
+        public static object CinemachineTargetGroupRemoveMember(string groupName = null, int groupInstanceId = 0, string groupPath = null, string targetName = null, int targetInstanceId = 0, string targetPath = null, string groupEntityId = null, string targetEntityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
              return NoCinemachine();
 #else
-             var (groupGo, groupErr) = GameObjectFinder.FindOrError(groupName, groupInstanceId, groupPath);
+             var (groupGo, groupErr) = GameObjectFinder.FindOrError(groupName, groupInstanceId, groupPath, entityId: groupEntityId);
              if (groupErr != null) return groupErr;
              var group = groupGo.GetComponent<CinemachineTargetGroup>();
              if (group == null) return new { error = "GameObject is not a CinemachineTargetGroup" };
 
-             var (targetGo, targetErr) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath);
+             var (targetGo, targetErr) = GameObjectFinder.FindOrError(targetName, targetInstanceId, targetPath, entityId: targetEntityId);
              if (targetErr != null) return targetErr;
 
              WorkflowManager.SnapshotObject(group);
@@ -925,9 +925,9 @@ namespace UnitySkills
             Outputs = new[] { "success", "message" },
             // This skill's vcam half uses vcamName/vcamInstanceId/vcamPath (not the generic vcamName/instanceId/path
             // shape most other Cinemachine skills share), so it needs its own compound rather than the shared "vcam" group.
-            RequiresInput = new[] { "vcamName|vcamInstanceId|vcamPath", "splineContainer" },
+            RequiresInput = new[] { "vcamName|vcamInstanceId|vcamPath|vcamEntityId", "splineContainer" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine", "com.unity.splines" }, MutatesScene = true)]
-        public static object CinemachineSetSpline(string vcamName = null, int vcamInstanceId = 0, string vcamPath = null, string splineName = null, int splineInstanceId = 0, string splinePath = null)
+        public static object CinemachineSetSpline(string vcamName = null, int vcamInstanceId = 0, string vcamPath = null, string splineName = null, int splineInstanceId = 0, string splinePath = null, string vcamEntityId = null, string splineEntityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
@@ -936,7 +936,7 @@ namespace UnitySkills
 #elif !SPLINES_2
             return new { error = "cinemachine_set_spline requires com.unity.splines 2.x ([2.0,3.0)). No compatible version is installed in this project — it is either missing, or 1.x / 3.x is installed instead. Install the 2.x Splines package via Package Manager." };
 #else
-            var (vcamGo, vcamErr) = GameObjectFinder.FindOrError(vcamName, vcamInstanceId, vcamPath);
+            var (vcamGo, vcamErr) = GameObjectFinder.FindOrError(vcamName, vcamInstanceId, vcamPath, entityId: vcamEntityId);
             if (vcamErr != null) return vcamErr;
             var vcam = vcamGo.GetComponent<CinemachineCamera>();
             if (vcam == null) return new { error = "Not a CinemachineCamera" };
@@ -947,7 +947,7 @@ namespace UnitySkills
                 return new { error = "VCam does not have a CinemachineSplineDolly component on Body stage. Use cinemachine_set_component first." };
             }
 
-            var (splineGo, splineErr) = GameObjectFinder.FindOrError(splineName, splineInstanceId, splinePath);
+            var (splineGo, splineErr) = GameObjectFinder.FindOrError(splineName, splineInstanceId, splinePath, entityId: splineEntityId);
             if (splineErr != null) return splineErr;
             var container = splineGo.GetComponent<SplineContainer>();
             if (container == null) return new { error = "GameObject does not have a SplineContainer" };
@@ -965,12 +965,12 @@ namespace UnitySkills
             Outputs = new[] { "success", "message" },
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" }, MutatesScene = true)]
-        public static object CinemachineAddExtension(string vcamName = null, int instanceId = 0, string path = null, string extensionName = null)
+        public static object CinemachineAddExtension(string vcamName = null, int instanceId = 0, string path = null, string extensionName = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
              return NoCinemachine();
 #else
-             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
              if (err != null) return err;
 
              var vcam = CinemachineAdapter.GetVCam(go);
@@ -996,12 +996,12 @@ namespace UnitySkills
             RequiresInput = new[] { "vcam" },
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" },
             RiskLevel = "medium")]
-        public static object CinemachineRemoveExtension(string vcamName = null, int instanceId = 0, string path = null, string extensionName = null)
+        public static object CinemachineRemoveExtension(string vcamName = null, int instanceId = 0, string path = null, string extensionName = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
              return NoCinemachine();
 #else
-             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+             var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
              if (err != null) return err;
 
              var type = FindCinemachineType(extensionName);
@@ -1252,12 +1252,12 @@ namespace UnitySkills
             TracksWorkflow = true, SkipAutoPresnapshot = true, RequiresPackages = new[] { "com.unity.cinemachine" }, MutatesScene = true)]
         public static object CinemachineSetPriority(
             string vcamName = null, int instanceId = 0, string path = null,
-            int priority = 10)
+            int priority = 10, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             var vcam = CinemachineAdapter.GetVCam(go);
@@ -1474,12 +1474,12 @@ namespace UnitySkills
             string defaultBlendStyle = null,
             float? defaultBlendTime = null,
             // Sequencer
-            bool? loop = null)
+            bool? loop = null, string cameraEntityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(cameraName, cameraInstanceId, cameraPath);
+            var (go, err) = GameObjectFinder.FindOrError(cameraName, cameraInstanceId, cameraPath, entityId: cameraEntityId);
             if (err != null) return err;
 
             var clearShot = go.GetComponent<CinemachineClearShot>();
@@ -1628,12 +1628,12 @@ namespace UnitySkills
             // PositionComposer / FramingTransposer
             float? cameraDistance = null,
             float? screenX = null, float? screenY = null,
-            float? deadZoneWidth = null, float? deadZoneHeight = null)
+            float? deadZoneWidth = null, float? deadZoneHeight = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             var body = CinemachineAdapter.GetPipelineComponent(go, "Body");
@@ -1826,12 +1826,12 @@ namespace UnitySkills
             string referenceFrame = null,
             float? panValue = null, float? tiltValue = null,
             // Target offset
-            float? targetOffsetX = null, float? targetOffsetY = null, float? targetOffsetZ = null)
+            float? targetOffsetX = null, float? targetOffsetY = null, float? targetOffsetZ = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             var aim = CinemachineAdapter.GetPipelineComponent(go, "Aim");
@@ -1968,12 +1968,12 @@ namespace UnitySkills
             // GroupFraming
             string framingMode = null,
             float? framingSize = null,
-            string sizeAdjustment = null)
+            string sizeAdjustment = null, string entityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
-            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(vcamName, instanceId, path, entityId: entityId);
             if (err != null) return err;
 
             // An unresolved extensionName used to fall back to the first extension, configuring a different one.
@@ -2122,15 +2122,15 @@ namespace UnitySkills
             float? frequencyGain = null,
             float? impactRadius = null,
             float? duration = null,
-            float? dissipationRate = null)
+            float? dissipationRate = null, string sourceEntityId = null)
         {
 #if !CINEMACHINE_2 && !CINEMACHINE_3
             return NoCinemachine();
 #else
             MonoBehaviour source = null;
-            if (!string.IsNullOrEmpty(sourceName) || sourceInstanceId != 0 || !string.IsNullOrEmpty(sourcePath))
+            if (!string.IsNullOrEmpty(sourceName) || sourceInstanceId != 0 || !string.IsNullOrEmpty(sourcePath) || UnityObjectIdUtility.IsGivenEntityId(sourceEntityId))
             {
-                var (go, err) = GameObjectFinder.FindOrError(sourceName, sourceInstanceId, sourcePath);
+                var (go, err) = GameObjectFinder.FindOrError(sourceName, sourceInstanceId, sourcePath, entityId: sourceEntityId);
                 if (err != null) return err;
                 source = go.GetComponent<CinemachineImpulseSource>();
             }

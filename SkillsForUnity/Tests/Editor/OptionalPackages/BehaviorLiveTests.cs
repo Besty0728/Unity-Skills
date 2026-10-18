@@ -5,6 +5,7 @@ using System.Reflection;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEditor;
+using UnityEngine;
 
 namespace UnitySkills.Tests.OptionalPackages
 {
@@ -109,6 +110,24 @@ namespace UnitySkills.Tests.OptionalPackages
             var listed = Ok(Run("behavior_graph_list", new JObject { ["folder"] = ProbeFolder }));
             Assert.That(listed["count"]?.Value<int>(), Is.GreaterThanOrEqualTo(1), listed.ToString());
             Assert.That(((JArray)listed["graphs"]).Any(g => g["path"]?.ToString() == path), Is.True, listed.ToString());
+        }
+
+        [Test]
+        public void AgentAdd_EntityId_ReachesTheSecondOfTwoSameNameObjects()
+        {
+            var path = CreateGraph("R6TwinGraph");
+            var first = new GameObject("R6BehaviorTwin");
+            var second = new GameObject("R6BehaviorTwin");
+            GameObjectFinder.InvalidateCache();
+
+            var added = Ok(Run("behavior_agent_add", new JObject
+            {
+                ["entityId"] = UnityObjectIdUtility.GetEntityId(second), ["graphAssetPath"] = path,
+            }));
+            Assert.That(added["componentAdded"]?.Value<bool>(), Is.True, added.ToString());
+
+            Assert.That(ComponentNamed(second, "BehaviorGraphAgent"), Is.Not.Null);
+            Assert.That(ComponentNamed(first, "BehaviorGraphAgent"), Is.Null);
         }
     }
 }
