@@ -56,7 +56,8 @@
     "DC5",
     "DC1",
     "DC3",
-    "DC7"
+    "DC7",
+    "DC4"
    ]
   }
  },
@@ -1002,6 +1003,31 @@
     "file": "DC7.py",
     "sha256": "a4e825678878750810fd2916e79be27c5bb81811732e76fb1a84f5809d82786d",
     "bytes": 17208
+   }
+  },
+  "DC4": {
+   "track": "dev",
+   "tier": "challenge",
+   "caseVersion": 1,
+   "minutes": 45,
+   "seeds": [
+    9930
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": []
+   },
+   "public": {
+    "task.py": "5847ad17d06af3eea38f2b5e86760b4792c4b55b7483b74e4ce8c0100c9ad54d",
+    "prompt.zh-CN.md": "a51b00992d8a99cae468274c0fd5dcfbb012123872613a838f80f4eef36be9c9",
+    "prompt.en.md": "a1053ec641e72533a3d2737b11fa0f58b382e66bec61a3ab3912dbc70f84ae7c"
+   },
+   "private": {
+    "file": "DC4.py",
+    "sha256": "36b991a38eff107a0ddaa934da5d4f1c8e57f036114d6c46a99dd2ee720828f1",
+    "bytes": 22493
    }
   }
  },
