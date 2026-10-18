@@ -312,7 +312,11 @@ namespace UnitySkills
 
             _currentTask.EnsureSnapshotIndex();
 
-            bool shouldDeduplicate = WorkflowTask.ShouldDeduplicate(snap);
+            // An object of a scene that was never saved has no GlobalObjectId: all of them read the same null id
+            // ("GlobalObjectId_V1-0-..."), so deduplicating by it would drop the snapshot of every such object but the
+            // first of the task (a ParticleSystem and its renderer, say). Two snapshots of one object are harmless: undo
+            // restores them newest first, so the oldest state still wins.
+            bool shouldDeduplicate = WorkflowTask.ShouldDeduplicate(snap) && !IsNullGlobalObjectId(snap.globalObjectId);
             if (shouldDeduplicate && _currentTask.HasSnapshot(snap.globalObjectId, snap.type))
             {
                 if (!upgradeExisting)
@@ -329,6 +333,13 @@ namespace UnitySkills
                 _currentTask.TryRegisterSnapshot(snap.globalObjectId, snap.type);
             return snap;
         }
+
+        /// <summary>
+        /// "GlobalObjectId_V1-0-...": identifier type 0, which is what an object of a never-saved scene gets. Matched on the
+        /// text because GlobalObjectId.TryParse does not accept the null id.
+        /// </summary>
+        private static bool IsNullGlobalObjectId(string globalObjectId) =>
+            globalObjectId != null && globalObjectId.StartsWith("GlobalObjectId_V1-0-", StringComparison.Ordinal);
 
         /// <summary>
         /// Captures an object's/component's state before it's modified.

@@ -144,6 +144,9 @@ namespace UnitySkills
             {
                 try
                 {
+                    // items arrives as a native array or as a JSON string holding one; both name the same targets.
+                    if (itemsToken.Type == JTokenType.String)
+                        itemsToken = JToken.Parse(itemsToken.Value<string>());
                     var items = itemsToken.ToObject<List<Dictionary<string, object>>>();
                     if (items != null)
                     {
