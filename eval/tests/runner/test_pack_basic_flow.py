@@ -28,10 +28,15 @@ class PackUnity(RS.FakeUnity):
             if name == "editor_run_scenario":
                 return self.scenario(args)
             try:
-                return self.model.call(name, args, agent)
+                result = self.model.call(name, args, agent)
             except SkillError as exc:
                 payload = exc.payload or {}
                 raise RS.SkillFailure(payload.get("errorCode") or "ERROR", payload.get("error") or str(exc))
+            if isinstance(result, dict) and result.get("jobId"):
+                # The model finishes script jobs at once (a fixture's script_create is awaited through /jobs).
+                self.jobs[result["jobId"]] = {"jobId": result["jobId"], "kind": name, "status": "completed",
+                                              "resultData": {}}
+            return result
 
     def scenario(self, args):
         """editor_run_scenario as a finished job: runs the steps on the model, /jobs/<id> answers the result."""
@@ -59,6 +64,13 @@ class RunnerFlowTests(unittest.TestCase):
         if task.requires.get("dedicated"):
             with open(os.path.join(bench.project, "ProjectSettings", "UnitySkillsEvaluation.json"), "w") as handle:
                 json.dump({"schema": 1, "kind": "UnitySkillsEvaluationProject"}, handle)
+        lock_path = os.path.join(bench.project, "Packages", "packages-lock.json")
+        with open(lock_path, encoding="utf-8") as handle:
+            lock = json.load(handle)
+        for name in task.requires.get("packages") or ():
+            lock["dependencies"].setdefault(name, {"version": "1.0.0", "depth": 0, "source": "builtin"})
+        with open(lock_path, "w", encoding="utf-8") as handle:
+            json.dump(lock, handle)
         code, env = bench.run("start", "--lang", lang, "--track", task.track, "--tier", task.tier, "--tasks",
                               task_id, "--private-dir", PRIVATE_ROOT)
         self.assertEqual(code, 0, env)
@@ -99,18 +111,21 @@ class RunnerFlowTests(unittest.TestCase):
                 failed_rows = [r for r in result["score"]["assertions"] if not r["pass"]]
                 self.assertTrue(all(r["hint"] for r in failed_rows), failed_rows)
 
-    def test_dev_task_through_the_runner_scenario(self):
-        _task, _private, solutions = modules("T1")
-        bench = self.bench("URP")
-        result, state = self.attempt(bench, "T1", solutions.reference)
-        self.assertEqual(result["status"], "pass", result)
-        self.assertEqual(result["evidence"]["scenario"]["passed"], True, result["evidence"]["scenario"])
-        self.assertTrue(os.path.isfile(os.path.join(bench.paths.attempt_dir(state["sessionId"], state["attemptId"]),
-                                                    "scenario.json")))
-        negative = next(n for n in solutions.NEGATIVES if n.name == "turnspeed_unset")
-        bench = self.bench("URP")
-        result, _state = self.attempt(bench, "T1", negative.apply, lang="en")
-        self.assertEqual(self.failed(result), negative.expect_failed, result.get("score"))
+    def test_dev_tasks_through_the_runner_scenario(self):
+        for task_id, runtime_negative in (("T1", "turnspeed_unset"), ("T2", "wrong_menu"), ("T9", "awake_reset")):
+            _task, _private, solutions = modules(task_id)
+            with self.subTest(task=task_id, case="reference"):
+                bench = self.bench("URP")
+                result, state = self.attempt(bench, task_id, solutions.reference)
+                self.assertEqual(result["status"], "pass", result)
+                self.assertEqual(result["evidence"]["scenario"]["passed"], True, result["evidence"]["scenario"])
+                self.assertTrue(os.path.isfile(os.path.join(
+                    bench.paths.attempt_dir(state["sessionId"], state["attemptId"]), "scenario.json")))
+            negative = next(n for n in solutions.NEGATIVES if n.name == runtime_negative)
+            with self.subTest(task=task_id, case=negative.name):
+                bench = self.bench("URP")
+                result, _state = self.attempt(bench, task_id, negative.apply, lang="en")
+                self.assertEqual(self.failed(result), negative.expect_failed, result.get("score"))
 
     def test_urp_reference(self):
         for task_id in ("S01", "S06"):

@@ -5,7 +5,11 @@ scaled parents, primitives with their components and meshes, materials per shade
 with the plugin's colour-property resolution, asset files on disk, the query skills, and journal entries shaped like
 EditorChangeTrackerService's (gameobject_created, property_changed with previousValue, gameobject_reparented, ...).
 refresh() plays the runner's submit-time asset_refresh: files under Assets/ that no skill wrote are imported then.
+For the dev tasks it adds scripts that "compile" by parsing their public fields and simple methods, ScriptableObjects,
+prefabs, UGUI canvases, buttons and TextMeshPro labels, persistent onClick listeners, and a Play Mode stand-in for
+editor_run_scenario whose changes are reverted afterwards.
 """
+import copy
 import hashlib
 import json
 import math
@@ -46,13 +50,25 @@ READ_SKILLS = frozenset((
     "project_get_render_pipeline", "scene_get_info", "scene_get_loaded", "editor_get_state", "editor_get_changes",
     "debug_check_compilation", "script_get_compile_feedback", "scriptableobject_get_serialized_properties",
     "editor_playmode_inspect"))
-BUILTIN_COMPONENTS = ENABLEABLE + ("MeshFilter", "Rigidbody", "Light", "Camera")
+BUILTIN_COMPONENTS = ENABLEABLE + ("MeshFilter", "Rigidbody", "Light", "Camera", "EventSystem", "StandaloneInputModule")
 CLASS_RE = re.compile(r"public\s+(?:static\s+)?class\s+(\w+)\s*(?::\s*([\w.]+))?")
 FIELD_RE = re.compile(r"((?:\[[^\]]*\]\s*)*)public\s+([\w.]+)\s+(\w+)\s*(?:=\s*([^;\n]+))?;")
 FORMERLY_RE = re.compile(r"FormerlySerializedAs(?:Attribute)?\s*\(\s*\"(\w+)\"\s*\)")
 UNTERMINATED_RE = re.compile(r"^\s*public\s+[\w.]+\s+\w+\s*=\s*[^;{}\n]+$", re.M)
+METHOD_RE = re.compile(r"public\s+void\s+(\w+)\s*\(\s*\)\s*\{([^{}]*)\}")
+INCREMENT_RE = re.compile(r"(\w+)\s*\+\+\s*;")
+AWAKE_RE = re.compile(r"void\s+Awake\s*\(\s*\)\s*\{([^{}]*)\}")
+ASSIGN_RE = re.compile(r"(\w+)\s*=\s*([^;]+);")
 SCALARS = {"float": float, "int": int, "bool": lambda text: text.strip().lower() == "true", "string": str}
 RUNNER = "UnitySkillsEval"
+CALLS = "m_OnClick.m_PersistentCalls.m_Calls"
+CALL_STATES = {"Off": "0", "EditorAndRuntime": "1", "RuntimeOnly": "2"}
+RECT_DEFAULT = {"m_AnchorMin": (0.5, 0.5), "m_AnchorMax": (0.5, 0.5), "m_AnchoredPosition": (0.0, 0.0),
+                "m_SizeDelta": (100.0, 100.0), "m_Pivot": (0.5, 0.5)}
+RECT_ARGS = (("anchorMinX", "anchorMinY", "m_AnchorMin"), ("anchorMaxX", "anchorMaxY", "m_AnchorMax"),
+             ("pivotX", "pivotY", "m_Pivot"), ("anchoredPosX", "anchoredPosY", "m_AnchoredPosition"),
+             ("sizeDeltaX", "sizeDeltaY", "m_SizeDelta"))
+CANVAS_CENTER = (480.0, 270.0, 0.0)
 
 
 # ---------------------------------------------------------------- vector and rotation math (Unity conventions)
@@ -126,6 +142,7 @@ class Obj(object):
         self.mesh = None
         self.materials = []
         self.tag, self.layer = "Untagged", "Default"
+        self.calls = []
 
 
 class FakeEditor(object):
@@ -151,6 +168,8 @@ class FakeEditor(object):
         self.sos = {}
         self.prefabs = {}
         self.owners = {}
+        self.component_ids = {}
+        self._next_component = 0
         self.playing = False
         os.makedirs(os.path.join(project, "Assets", "Scenes"), exist_ok=True)
         self._write_file(self.scene_path, "%YAML 1.1\n")
@@ -550,6 +569,15 @@ class FakeEditor(object):
         self._change(agent, self._identity(obj, kind="components_changed"))
         return {"success": True, "gameObject": obj.name, "component": kind}
 
+    def _skill_component_remove(self, agent, args):
+        obj = self.find(args)
+        comp = self.component(obj, args["componentType"])
+        if comp is None or comp[0] in ("Transform", "RectTransform"):
+            raise _fail("COMPONENT_NOT_FOUND", "component not found: %s" % args["componentType"])
+        obj.components.remove(comp)
+        self._change(agent, self._identity(obj, kind="components_changed"))
+        return {"success": True, "gameObject": obj.name, "removed": comp[0], "remainingOfType": 0}
+
     def _skill_component_set_enabled(self, agent, args):
         obj = self.find(args)
         comp = self.component(obj, args["componentType"])
@@ -581,6 +609,8 @@ class FakeEditor(object):
             return out
         if kind.lower() == "meshfilter" and obj.mesh:
             return {"m_Mesh": "1:UnityEngine.Mesh:%s" % obj.mesh}
+        if kind.lower() == "button" and self.component(obj, "Button"):
+            return self._button_serialized(obj)
         if kind in obj.fields and self.component(obj, kind):
             return {name: self.format_value(value) for name, value in obj.fields[kind].items()}
         raise _fail("COMPONENT_NOT_FOUND", "component not found: %s" % kind)
@@ -622,6 +652,12 @@ class FakeEditor(object):
     def _skill_component_set_serialized_property(self, agent, args):
         obj = self.find(args)
         path = args["propertyPath"]
+        if args["componentType"].lower() == "button" and path.startswith(CALLS + ".Array.") and \
+                self.component(obj, "Button"):
+            self._set_call(obj, path[len(CALLS + ".Array."):], args)
+            self._change(agent, self._identity(obj, kind="property_changed", targetType="Button", property=path,
+                                               previousValue="", value=str(args.get("value"))))
+            return {"success": True}
         if args["componentType"] in obj.fields:
             self.set_field(obj, args["componentType"], path, args)
             self._change(agent, self._identity(obj, kind="property_changed", targetType=args["componentType"],
@@ -778,6 +814,17 @@ class FakeEditor(object):
             return str(int(obj.eid) + 1)
         return str(obj.iid - 1)
 
+    def component_id(self, obj, kind):
+        """Id of a component other than the Transform; find() resolves it to its GameObject."""
+        key = (obj.eid, kind)
+        if key not in self.component_ids:
+            self._next_component += 1
+            cid = (str(2 ** 34 + self._next_component) if self.entity_mode == "6000.4" else
+                   str(-(5000000 + self._next_component)))
+            self.component_ids[key] = cid
+            self.owners[cid] = obj.eid
+        return self.component_ids[key]
+
     def asset_id(self, path):
         return str(int(self._guid(path)[:7], 16))
 
@@ -792,10 +839,12 @@ class FakeEditor(object):
             path = value[1]
             kind = self.sos[path]["type"] if path in self.sos else "UnityEngine.GameObject"
             return "%s:%s:%s" % (self.asset_id(path), kind, os.path.splitext(os.path.basename(path))[0])
-        if isinstance(value, tuple) and value and value[0] == "object":
+        if isinstance(value, tuple) and value and value[0] in ("object", "component"):
             obj = self.objects.get(value[1])
             if obj is None:
                 return "null"
+            if value[0] == "component":
+                return "%s:%s:%s" % (self.component_id(obj, value[2]), value[2], obj.name)
             if value[2] == "Transform":
                 return "%s:UnityEngine.Transform:%s" % (self.transform_id(obj), obj.name)
             return "%s:UnityEngine.GameObject:%s" % (obj.eid, obj.name)
@@ -818,8 +867,10 @@ class FakeEditor(object):
             if args["assetPath"] not in self.sos and args["assetPath"] not in self.prefabs:
                 raise _fail("ASSET_NOT_FOUND", "Asset not found: %s" % args["assetPath"])
             value = ("asset", args["assetPath"])
-        elif args.get("referenceInstanceId") not in (None, 0) or args.get("referencePath"):
-            target = self.find({"instanceId": args.get("referenceInstanceId"), "path": args.get("referencePath")})
+        elif args.get("referenceEntityId") or args.get("referenceInstanceId") not in (None, 0) or \
+                args.get("referencePath"):
+            target = self.find({"entityId": args.get("referenceEntityId"), "instanceId": args.get("referenceInstanceId"),
+                                "path": args.get("referencePath")})
             value = ("object", target.eid, "Transform" if kind == "Transform" or
                      args.get("objectType") == "Transform" else "GameObject")
         else:
@@ -836,6 +887,8 @@ class FakeEditor(object):
             return
         classes = {}
         for path, source in sorted(self.scripts.items()):
+            methods = {name: INCREMENT_RE.findall(body) for name, body in METHOD_RE.findall(source)}
+            awake = AWAKE_RE.search(source)
             for match in CLASS_RE.finditer(source):
                 fields = []
                 for attrs, kind, name, default in FIELD_RE.findall(source[match.end():]):
@@ -844,7 +897,8 @@ class FakeEditor(object):
                         self._parse_value(kind, "0") if kind in ("float", "int") else
                         (False if kind == "bool" else None))
                     fields.append((kind, name, value, old.group(1) if old else None))
-                classes[match.group(1)] = {"base": match.group(2), "fields": fields, "path": path}
+                classes[match.group(1)] = {"base": match.group(2), "fields": fields, "path": path, "methods": methods,
+                                           "awake": ASSIGN_RE.findall(awake.group(1)) if awake else []}
         for obj in self.objects.values():
             for cls, values in list(obj.fields.items()):
                 spec = classes.get(cls)
@@ -980,11 +1034,187 @@ class FakeEditor(object):
                 out["component"] = {"error": "Component not found: %s" % cls}
         return out
 
+    # ------------------------------------------------------------ dev track: UGUI, persistent listeners, Play Mode
+
+    def _ui(self, agent, name, parent, components, **rect):
+        obj = self._create(agent, {"name": name}, parent)
+        obj.components = [["RectTransform", None]] + components
+        obj.fields["RectTransform"] = dict(RECT_DEFAULT, **rect)
+        return obj
+
+    def _label(self, agent, name, parent, text, **rect):
+        label = self._ui(agent, name, parent, [["CanvasRenderer", None], ["TextMeshProUGUI", True]], **rect)
+        label.fields["TextMeshProUGUI"] = {"m_text": text}
+        return label
+
+    def _canvas_for(self, agent, parent_name):
+        """UISkills.FindOrCreateCanvas: the object named `parent_name` (top-most first), else the first Canvas."""
+        if parent_name:
+            found = next((obj for obj in self.walk() if obj.name == parent_name), None)
+            if found is not None:
+                return found
+        found = next((obj for obj in self.walk() if self.component(obj, "Canvas")), None)
+        return found or self._new_canvas(agent, "Canvas")
+
+    def _new_canvas(self, agent, name):
+        canvas = self._ui(agent, name, None, [["Canvas", True], ["CanvasScaler", True], ["GraphicRaycaster", True]])
+        canvas.pos = CANVAS_CENTER
+        return canvas
+
+    def _skill_ui_create_canvas(self, agent, args):
+        canvas = self._new_canvas(agent, args.get("name") or "Canvas")
+        return {"success": True, "name": canvas.name, "entityId": canvas.eid, "instanceId": canvas.iid,
+                "renderMode": args.get("renderMode") or "ScreenSpaceOverlay"}
+
+    def _skill_ui_create_button(self, agent, args):
+        holder = self._canvas_for(agent, args.get("parent"))
+        size = (float(args.get("width", 160)), float(args.get("height", 30)))
+        button = self._ui(agent, args.get("name") or "Button", holder,
+                          [["CanvasRenderer", None], ["Image", True], ["Button", True]], m_SizeDelta=size)
+        text = args.get("text") or "Button"
+        self._label(agent, "Text", button, text, m_AnchorMin=(0.0, 0.0), m_AnchorMax=(1.0, 1.0),
+                    m_SizeDelta=(0.0, 0.0))
+        return {"success": True, "name": button.name, "entityId": button.eid, "instanceId": button.iid,
+                "parent": holder.name, "text": text}
+
+    def _skill_ui_create_text(self, agent, args):
+        holder = self._canvas_for(agent, args.get("parent"))
+        label = self._label(agent, args.get("name") or "Text", holder, args.get("text") or "New Text",
+                            m_SizeDelta=(200.0, 50.0))
+        return {"success": True, "name": label.name, "entityId": label.eid, "instanceId": label.iid,
+                "parent": holder.name, "usingTMP": True}
+
+    def _skill_ui_set_text(self, agent, args):
+        obj = self.find(args)
+        if not self.component(obj, "TextMeshProUGUI"):
+            raise _fail("NO_TEXT", "No Text component found (checked both TMP and Legacy UI)")
+        before, obj.fields["TextMeshProUGUI"]["m_text"] = obj.fields["TextMeshProUGUI"]["m_text"], args.get("text")
+        self._change(agent, self._identity(obj, kind="property_changed", targetType="TextMeshProUGUI",
+                                           property="m_text", previousValue=before, value=str(args.get("text"))))
+        return {"success": True, "name": obj.name, "text": args.get("text"), "usingTMP": True}
+
+    def _skill_ui_set_rect_transform(self, agent, args):
+        obj = self.find(args)
+        rect = obj.fields.get("RectTransform")
+        if rect is None:
+            raise _fail("NO_RECT_TRANSFORM", "No RectTransform on %s" % obj.name)
+        for x_key, y_key, prop in RECT_ARGS:
+            if args.get(x_key) is not None or args.get(y_key) is not None:
+                old = rect[prop]
+                rect[prop] = (float(args[x_key]) if args.get(x_key) is not None else old[0],
+                              float(args[y_key]) if args.get(y_key) is not None else old[1])
+        self._change(agent, self._identity(obj, kind="property_changed", targetType="RectTransform",
+                                           property="m_AnchoredPosition", previousValue="", value=""))
+        return {"success": True, "name": obj.name}
+
+    def _bind_call(self, target, component, method, arg_type):
+        """A persistent call to `method` on `target` (the GameObject itself, or a compiled class on it)."""
+        if component in (None, "", "GameObject"):
+            if method != "SetActive" or arg_type != "bool":
+                raise _fail("METHOD_NOT_FOUND", "GameObject.%s(%s) is not modelled" % (method, arg_type))
+            return {"target": ("object", target.eid, "GameObject"), "method": method, "mode": "6",
+                    "assembly": "UnityEngine.GameObject, UnityEngine.CoreModule"}
+        spec = self.classes.get(component)
+        if spec is None or not self.component(target, component) or method not in spec["methods"] or \
+                arg_type != "void":
+            raise _fail("METHOD_NOT_FOUND", "%s.%s(%s) not found on %s" % (component, method, arg_type, target.name))
+        return {"target": ("component", target.eid, component), "method": method, "mode": "0",
+                "assembly": "%s, Assembly-CSharp" % component}
+
+    def _skill_event_add_listener(self, agent, args):
+        source = self.find(args)
+        if args.get("componentName") != "Button" or args.get("eventName") != "onClick" or \
+                not self.component(source, "Button"):
+            raise _fail("EVENT_NOT_FOUND", "only Button.onClick is modelled")
+        target = self.find({"entityId": args.get("targetEntityId"), "instanceId": args.get("targetInstanceId"),
+                            "path": args.get("targetPath"), "name": args.get("targetObjectName")})
+        call = self._bind_call(target, args.get("targetComponentName"), args.get("methodName"),
+                               args.get("argType") or "void")
+        call.update(state=CALL_STATES[args.get("mode") or "RuntimeOnly"], boolArg=bool(args.get("boolArg")))
+        source.calls.append(call)
+        self._change(agent, self._identity(source, kind="property_changed", targetType="Button",
+                                           property="m_OnClick", previousValue="", value=""))
+        return {"success": True, "index": len(source.calls) - 1, "mode": args.get("mode") or "RuntimeOnly",
+                "target": target.name, "targetEntityId": target.eid, "targetInstanceId": target.iid,
+                "targetPath": self.path(target), "method": call["method"], "argType": args.get("argType") or "void"}
+
+    def _button_serialized(self, obj):
+        out = {"m_Interactable": "True", CALLS + ".Array.size": str(len(obj.calls))}
+        for index, call in enumerate(obj.calls):
+            prefix = "%s.Array.data[%d]." % (CALLS, index)
+            out[prefix + "m_Target"] = self.format_value(call.get("target"))
+            out[prefix + "m_TargetAssemblyTypeName"] = call.get("assembly") or ""
+            out[prefix + "m_MethodName"] = call.get("method") or ""
+            out[prefix + "m_Mode"] = str(call.get("mode", "1"))
+            out[prefix + "m_Arguments.m_BoolArgument"] = "True" if call.get("boolArg") else "False"
+            out[prefix + "m_CallState"] = str(call.get("state", "2"))
+        return out
+
+    def _set_call(self, obj, rest, args):
+        """component_set_serialized_property on m_OnClick.m_PersistentCalls.m_Calls.Array.<rest>."""
+        if rest == "size":
+            size = int(args.get("value"))
+            obj.calls = obj.calls[:size] + [{"target": None, "assembly": "", "method": "", "mode": "1",
+                                             "boolArg": False, "state": "2"} for _ in range(size - len(obj.calls))]
+            return
+        match = re.match(r"^data\[(\d+)\]\.(.+)$", rest)
+        if not match or int(match.group(1)) >= len(obj.calls):
+            raise _fail("PROPERTY_NOT_FOUND", "%s is not modelled" % rest)
+        call, key = obj.calls[int(match.group(1))], match.group(2)
+        if key == "m_Target":
+            target = self.find({"instanceId": args.get("referenceInstanceId"), "path": args.get("referencePath"),
+                                "name": args.get("referenceName")})
+            kind = args.get("objectType")
+            call["target"] = ("component", target.eid, kind) if kind in self.classes and \
+                self.component(target, kind) else ("object", target.eid, "GameObject")
+        elif key == "m_Arguments.m_BoolArgument":
+            call["boolArg"] = SCALARS["bool"](str(args.get("value")))
+        else:
+            field = {"m_TargetAssemblyTypeName": "assembly", "m_MethodName": "method", "m_Mode": "mode",
+                     "m_CallState": "state"}.get(key)
+            if field is None:
+                raise _fail("PROPERTY_NOT_FOUND", "%s is not modelled" % key)
+            call[field] = str(args.get("value"))
+
+    def _run_call(self, call):
+        """One persistent call as UnityEvent.Invoke runs it; an unbindable call is skipped like Unity skips it."""
+        target = call.get("target")
+        obj = self.objects.get(target[1]) if target else None
+        if obj is None:
+            return
+        if target[2] == "GameObject" and call.get("method") == "SetActive" and str(call.get("mode")) == "6":
+            obj.active = bool(call.get("boolArg"))
+        elif target[0] == "component" and target[2] in obj.fields and str(call.get("mode")) in ("0", "1"):
+            for field in self.classes.get(target[2], {}).get("methods", {}).get(call.get("method"), ()):
+                obj.fields[target[2]][field] = (obj.fields[target[2]].get(field) or 0) + 1
+
+    def _skill_component_invoke_method(self, agent, args):
+        """Only Button.Press in Play Mode: runs onClick's persistent calls whose state is not Off."""
+        if (args.get("executionMode") or "play") == "play" and not self.playing:
+            raise _fail("SEMANTIC_INVALID", "executionMode does not match the current Editor mode")
+        obj = self.find(args)
+        if args.get("componentType") != "UnityEngine.UI.Button" or args.get("methodName") != "Press" or \
+                not self.component(obj, "Button"):
+            raise _fail("SEMANTIC_INVALID", "only UnityEngine.UI.Button.Press is modelled")
+        if self.active_in_hierarchy(obj):
+            for call in list(obj.calls):
+                if str(call.get("state")) != CALL_STATES["Off"]:
+                    self._run_call(call)
+        return {"returnValue": None, "refOut": {}, "signature": "Press()"}
+
     def run_scenario(self, spec, agent=RUNNER):
         """editor_run_scenario's job result, run on this model: steps in order, the first failed step or assert ends
-        it, `passed` needs every assert to pass (the model logs no errors). Play Mode is a flag only."""
+        it, `passed` needs every assert to pass (the model logs no errors). Play Mode is a flag, the plain field
+        assignments of Awake() run when it starts, and the scene is put back afterwards, as leaving Play Mode does."""
         steps, records, passed, error, last = spec.get("steps") or [], [], True, None, None
+        saved = copy.deepcopy((self.objects, self.roots))
         self.playing = spec.get("executionMode", "play") == "play"
+        if self.playing:
+            for obj in self.objects.values():
+                for cls, values in obj.fields.items():
+                    for field, text in self.classes.get(cls, {}).get("awake", ()):
+                        if field in values:
+                            values[field] = self._parse_value(self._field_type(cls, field), text.strip())
         try:
             for index, step in enumerate(steps):
                 kind = step.get("kind")
@@ -1014,6 +1244,7 @@ class FakeEditor(object):
                 last = actual
         finally:
             self.playing = False
+            self.objects, self.roots = saved
         return {"status": "completed" if passed else "failed", "passed": passed, "error": error,
                 "interrupted": False, "executionUncertain": False, "steps": records, "compilation": None,
                 "logWindow": {"complete": True, "entries": []}}

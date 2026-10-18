@@ -57,7 +57,7 @@ def _wire(ctx, turret, config_path, target, turn_speed=90):
     c.write("component_set_serialized_property", componentType=ai_class, propertyPath="config",
             assetPath=config_path, **at)
     c.write("component_set_serialized_property", componentType=ai_class, propertyPath="target",
-            referenceInstanceId=_number(target), objectType="Transform", **at)
+            objectType="Transform", **dict(at, **V.address(target, "reference")))
     if turn_speed is not None:
         c.write("component_set_property", componentType=ai_class, propertyName="turnSpeed", value=str(turn_speed),
                 **at)
@@ -184,7 +184,7 @@ def property_setters(ctx):
     c.write("component_add", componentType=ai_class, **at)
     c.write("component_set_property", componentType=ai_class, propertyName="config", assetPath=path, **at)
     c.write("component_set_serialized_property", componentType=ai_class, propertyPath="target",
-            referenceInstanceId=_number(target), objectType="Transform", **at)
+            objectType="Transform", **dict(at, **V.address(target, "reference")))
     c.write("component_set_serialized_property", componentType=ai_class, propertyPath="turnSpeed", value="90", **at)
     return _answer(ctx, scripts, path, turret, target)
 
