@@ -559,6 +559,7 @@ namespace UnitySkills
             PlayCaptureService.NotifyCancelled(job);
             ComponentInvocationService.NotifyCancelled(job);
             RuntimeScenarioService.NotifyCancelled(job);
+            ParticleSkills.NotifySimulateJobCancelled(job);
 
             job.status = "cancelled";
             job.currentStage = "cancelled";
@@ -762,6 +763,9 @@ namespace UnitySkills
                         break;
                     case "play_capture":
                         PlayCaptureService.Process(job);
+                        break;
+                    case ParticleSkills.SimulateJobKind:
+                        ParticleSkills.ProcessSimulateJob(job);
                         break;
                 }
             }

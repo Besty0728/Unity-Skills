@@ -128,7 +128,7 @@ A field's min/max apply to the constants; curve key values are any finite number
 
 - Writes run in Edit Mode on objects of open scenes (prefab instances get instance overrides; prefab assets and Prefab Mode objects are refused) and need a stopped system. A selected system plays in the Scene view preview: press Stop in the Particle Effect overlay or deselect it.
 - One write = one Undo step (`editor_undo` / Ctrl+Z restores it) and one workflow task: `workflow_undo_task` restores every field, curve, gradient, burst and the renderer material, also after a scene reload. `particle_create` registers the created object; `particle_add_system` registers both the system and the renderer Unity adds with it.
-- Batches validate every item before writing anything; if an item fails while applying, every item already applied is rolled back (`rolledBack: true`). Inside `POST /skills/batch?mode=transactional` a later failing step rolls back particle steps the same way.
+- Batches validate every item before writing anything; if an item fails while applying, every item already applied is rolled back (`rolledBack: true`). Inside `POST /skills/batch?mode=transactional` a later failing step rolls back particle steps the same way; playback steps are refused there (see Playback).
 - `?diff=1` reports the changed ParticleSystem / ParticleSystemRenderer fields.
 
 ## Recipes
@@ -190,6 +190,56 @@ Static, read-only checks of the configuration; no frame times, GPU cost or overd
 | `STOP_ACTION_SIDE_EFFECT` | warning | `stopAction` Disable / Destroy / Callback deactivates or destroys the object, or runs scripts |
 
 `thresholdsJson` keys and defaults: `maxParticlesPerSystem` 10000, `totalMaxParticles` 100000, `maxSystems` 200, `maxLights` 20 (integers >= 1); `minStartSize` 0.0001, `maxStartSize` 1000, `minStartLifetime` 0.01, `maxStartLifetime` 600, `maxEmissionRate` 5000 (numbers > 0). Unknown keys, wrong types and min >= max are rejected. They are judgement calls, not Unity limits: a cap is an upper bound, not a cost.
+
+## Playback
+
+`particle_play`, `particle_pause`, `particle_stop`, `particle_simulate`, `particle_emit` and their batches drive the live state of a system: playback flags, time and particles. None of it is serialized, so:
+
+- Nothing is saved with the scene and nothing reaches the Undo stack or the workflow (`undoable: false`; `TracksWorkflow` is false on purpose); reopening the scene starts every system stopped again. `particle_stop` with `StopEmittingAndClear` brings a system back to stopped and empty.
+- `POST /skills/batch?mode=transactional` refuses a batch with a playback step (`400 SEMANTIC_INVALID`, `details.violations`) before anything runs: a rollback could not undo it. Plain `/skills/batch` runs them.
+- The skills never enter or leave Play Mode. In Edit Mode they drive a preview: Unity advances a playing system only while the Scene view previews it (a selected system), so `particle_play` sets the flags and `particle_simulate` moves time. In Play Mode they drive the running system and your scripts keep running (a script may react to the change).
+- A system selected in the Editor is driven by the Scene view's Particle Effect preview, which can override a call; the result warns about it.
+
+**Results** read every value back from Unity: `playback` `{isPlaying, isPaused, isStopped, isEmitting, particleCount, time, totalTime}` of the target and `systems` with the same for every reached system (target first). Simulate also reports `time`, `totalTime`, `particleCount` and `isPaused` at the top: Unity leaves a simulated system **paused**, not playing.
+
+**Refused in this version** (`SEMANTIC_INVALID`, nothing changes), checked on every system the call reaches and on their sub-emitters:
+
+| Setup | Why | Refused for |
+|---|---|---|
+| `main.stopAction` Disable / Destroy / Callback | When the system stops Unity deactivates or destroys the GameObject, or calls `OnParticleSystemStopped` | play, simulate, emit, stop |
+| `collision.sendCollisionMessages` | `OnParticleCollision` on scripts of the system and of every collider hit | play, simulate, emit |
+| A trigger action set to `Callback` | `OnParticleTrigger` on the system's scripts | play, simulate, emit |
+| A running script implementing `OnParticleUpdateJobScheduled` | Called while the system updates (in Edit Mode only `[ExecuteAlways]` / `[ExecuteInEditMode]` scripts run) | play, simulate, emit |
+
+`particle_pause` runs no user code and is never refused for these. To preview such a system, set `main.stopAction` to `None` with `particle_configure` (`workflow_undo_task` restores it) or change the others in the Inspector.
+
+**`withChildren`** (play, pause, stop, simulate) is `false` by default; `true` adds every ParticleSystem below the target, inactive ones included, in Hierarchy order. A dryRun lists them under `changes.modify`. A batch refuses two items that reach the same system (their order would decide the result).
+
+**Simulate**
+
+- `seconds` rounds to whole steps of `Time.fixedDeltaTime` (`fixedTimeStep=true`, default; 0.02 s unless the project changed it). `fixedTimeStep=false` simulates the exact time, which Unity splits into updates of at most `Time.maximumParticleDeltaTime`; the step budget counts those. `steps` reports the steps taken.
+- `restart=true` starts from time 0; `restart=false` continues from the current state (a paused system goes on where it is), so a long preview can be taken in parts.
+- A fixed random seed (`particle_configure` `system.useAutoRandomSeed: false` + `randomSeed`) and fixed steps repeat the same particles in the same Editor and project; nothing promises identical trajectories across Unity versions, physics settings or render pipelines.
+
+| Limit (product limit, not a Unity limit) | Value | Exceeded |
+|---|---|---|
+| Steps per simulation (one call or item) | 300 | `SEMANTIC_INVALID` on `seconds` |
+| Systems per simulation (target + children) | 10 | `SEMANTIC_INVALID` on `target` |
+| Summed `maxParticles` per call | 100000 | `SEMANTIC_INVALID` |
+| Steps x systems per call | 3000 | `SEMANTIC_INVALID` on `items` |
+| Inline work (steps x summed `maxParticles`) | 3000000 | needs `runAsync=true` |
+| Systems reached by a play / pause / stop item | 50 | `SEMANTIC_INVALID` on `target` |
+| Particles per `particle_emit` / per call | 10000 / 100000 | `SEMANTIC_INVALID` on `count` / `items` |
+
+`particle_get_capabilities` reports them under `limits.playback`. A dryRun of `particle_simulate` reports `steps`, `particleBudget`, `estimatedWork` and `runsAs` under `playback`.
+
+**Simulation jobs** (`runAsync=true`): the call validates everything and answers at once `{status: "accepted", jobId, kind: "particle_simulate", waitUrl, steps, ...}`. The job advances a slice per editor tick (about 10 ms of main-thread time), so `/health` and `/jobs` keep answering. Poll `GET /jobs/{id}` (or `job_status`): when `status` is `completed`, `resultData` holds the result an inline call returns (the batch envelope for `particle_simulate_batch`). It fails honestly, with `doneSteps` / `totalSteps`, when a domain reload or Editor restart ends it (`interrupted`, never resumed), when Play Mode changes, or when something else plays, stops or moves the system between slices. `job_cancel` stops it; the systems stay paused where it stopped. Other playback calls on a system a job still simulates are refused until it ends; the configuration skills refuse it anyway (it is paused).
+
+**Emit**: `count` 1-10000 particles at once with the system's current settings (no per-particle `EmitParams`). `emitted` is what Unity kept (at most `main.maxParticles` alive), `particleCount` the count after. Emitting is not idempotent: after a timeout or a dropped connection the call may have run, so read `particleCount` with `particle_get_info` before sending it again, and never resend a whole `particle_emit_batch`.
+
+**Batches** validate every item through the single skill's checks plus the cross-item ones (overlap, per-call budgets), and run **nothing** when any item is invalid (each valid item reports `executed: false`). Then the items run in order through the standard batch envelope with `atomic: false`: an item that fails at run time is reported failed, the ones that ran stay as they are (`executedCount`, `undoable: false`). Resend only the failed items.
+
+**Preview a fire effect**: `particle_simulate {entityId, seconds: 1}` -> check `particleCount` and the `systems` states -> `particle_get_info` or a screenshot -> `particle_stop {entityId}` before the next `particle_configure`.
 
 ## Field Tables
 

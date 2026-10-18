@@ -292,7 +292,8 @@ namespace UnitySkills.Tests.Core
                     Assert.That(skill.MayEnterPlayMode, Is.False, name);
                 }
             }
-            Assert.That(SkillRouter.GetAllSkillsSnapshotUnfiltered().Count(skill => skill.Category == SkillCategory.Particle), Is.EqualTo(AllSkills.Length));
+            Assert.That(SkillRouter.GetAllSkillsSnapshotUnfiltered().Count(skill => skill.Category == SkillCategory.Particle && !ParticleSkills.IsPlaybackSkill(skill.Name)), Is.EqualTo(AllSkills.Length),
+                "Every configuration particle skill is listed here; the playback skills are covered by ParticleRuntimeTests.");
 
             var saved = SkillsSurfaceProfile.Current;
             try

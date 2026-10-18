@@ -97,6 +97,8 @@ namespace UnitySkills
         /// <summary>The write skills with a semantic planner (reads keep the generic dryRun and answer precisely themselves).</summary>
         internal static bool HasPlanner(string skill)
         {
+            if (IsPlaybackSkill(skill))
+                return true;
             switch (skill)
             {
                 case "particle_create":
@@ -138,6 +140,11 @@ namespace UnitySkills
 #if COM_UNITY_MODULES_PARTICLESYSTEM
         private static void PlanAvailable(string skill, JObject args, Func<JObject, string, PlanTarget> resolve, PlanOutcome outcome)
         {
+            if (IsPlaybackSkill(skill))
+            {
+                PlanPlayback(skill, args, resolve, outcome);
+                return;
+            }
             outcome.Semantic = true;
             bool batch = skill.EndsWith("_batch", StringComparison.Ordinal);
             var single = batch ? skill.Substring(0, skill.Length - "_batch".Length) : skill;

@@ -53,9 +53,10 @@ namespace UnitySkills
         ///   whole sequence in one call. $ref parameters carry no real value during a dry run: they're stripped from
         ///   the validation body and only get a structural check (index range, ordering, the referenced skill's
         ///   declared Outputs); such steps carry refsValidated and findings in validation.warnings. ?mode=plan isn't supported.
-        /// - ?mode=transactional makes the whole batch all-or-nothing: an unknown skill, or a step whose skill
-        ///   declares MayTriggerReload, is rejected up front with 400 (a reload clears the undo stack, breaking the
-        ///   rollback promise), and continueOnError=true is rejected as self-contradictory. If any step fails —
+        /// - ?mode=transactional makes the whole batch all-or-nothing: an unknown skill, a step whose skill
+        ///   declares MayTriggerReload (a reload clears the undo stack, breaking the rollback promise), a runtime call or
+        ///   a particle playback step (nothing undoes them) is rejected up front with 400, and continueOnError=true is
+        ///   rejected as self-contradictory. If any step fails —
         ///   including a grant interruption, whose token is still returned — every executed step is rolled back via
         ///   Undo.RevertAllDownToGroup and re-marked status:"rolled_back" (a MutatesAssets step gets
         ///   rollbackReliability:"partial": AssetDatabase disk writes aren't fully covered by the undo stack). The
@@ -1023,8 +1024,9 @@ namespace UnitySkills
         /// <summary>
         /// A transactional batch relies on the editor's undo stack to promise "all or nothing", so anything that
         /// would break that promise is rejected up front (400 SEMANTIC_INVALID) rather than failing mid-execution:
-        /// unknown/malformed steps, a skill that might trigger a domain reload (wipes the undo stack), and
-        /// continueOnError=true (a transaction is fail-fast by definition). Returns true if the batch was rejected.
+        /// unknown/malformed steps, a skill that might trigger a domain reload (wipes the undo stack), a runtime call or
+        /// particle playback (effects the undo stack never records), and continueOnError=true (a transaction is
+        /// fail-fast by definition). Returns true if the batch was rejected.
         /// </summary>
         internal static bool IsRuntimeInvocationSkill(string name) =>
             name == "component_invoke_method" || name == "component_invoke_method_batch" || name == "editor_run_scenario";
@@ -1054,6 +1056,8 @@ namespace UnitySkills
                     reason = "unknown skill";
                 else if (IsRuntimeInvocationSkill(name))
                     reason = "runtime calls have arbitrary side effects and cannot promise transactional rollback";
+                else if (ParticleSkills.IsPlaybackSkill(name))
+                    reason = "particle playback (play, pause, stop, simulate, emit) is runtime state the undo stack does not record, so a rollback could not undo it; run it outside the transaction";
                 else if (info.MayTriggerReload)
                     reason = "the skill declares MayTriggerReload — a domain reload wipes the editor undo stack, so the transactional rollback promise cannot be kept";
 
