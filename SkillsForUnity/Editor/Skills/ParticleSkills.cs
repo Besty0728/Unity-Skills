@@ -19,7 +19,7 @@ namespace UnitySkills
         internal const float DefaultRotX = -90f;
 
         private const string LocatorNote = "Target ParticleSystem object: entityId (preferred), name, path or instanceId.";
-        private const string ConfigNote = "configJson: {\"schemaVersion\": 1, \"system\"?: {useAutoRandomSeed, randomSeed}, \"modules\"?: {main|emission|shape|velocityOverLifetime|colorOverLifetime|sizeOverLifetime|noise: {field: value}}}; field list, value shapes and ranges: particle_get_capabilities.";
+        private const string ConfigNote = "configJson: {\"schemaVersion\": 1, \"system\"?: {useAutoRandomSeed, randomSeed}, \"modules\"?: {\"<moduleId>\": {field: value}}}; module ids, field list, value shapes and ranges: particle_get_capabilities.";
 
         // ===================== Discovery and reads =====================
 
@@ -29,7 +29,7 @@ namespace UnitySkills
             Outputs = new[] { "available", "schemaVersion", "unityVersion", "modules", "valueTypes", "limits" },
             ReadOnly = true, Mode = SkillMode.SemiAuto)]
         public static object ParticleGetCapabilities(
-            [SkillParam("One module id (system, main, emission, shape, velocityOverLifetime, colorOverLifetime, sizeOverLifetime, noise, renderer, or a P1 module); omit for every module.")]
+            [SkillParam("One module id as listed in the unfiltered answer (e.g. system, main, emission, shape, noise, renderer); omit for every module.")]
             string module = null)
         {
 #if COM_UNITY_MODULES_PARTICLESYSTEM
@@ -98,9 +98,9 @@ namespace UnitySkills
 #endif
         }
 
-        [UnitySkill("particle_get_module", "Read every supported field of one module of a ParticleSystem (name/entityId/instanceId/path) in the same shape configJson accepts: module = main, emission, shape, velocityOverLifetime, colorOverLifetime, sizeOverLifetime, noise, system, renderer, or a P1 module (enabled flag only). Lists such as bursts point to their own skills.",
+        [UnitySkill("particle_get_module", "Read every supported field of one module of a ParticleSystem (name/entityId/instanceId/path) in the same shape configJson accepts: module = a module id from particle_get_capabilities (e.g. main, shape, noise, system, renderer); a module that is not configurable yet reports only its enabled flag. Lists such as bursts point to their own skills.",
             Category = SkillCategory.Particle, Operation = SkillOperation.Query,
-            Tags = new[] { "particle", "particles", "module", "read", "inspect", "main", "emission", "shape", "noise" },
+            Tags = new[] { "particle", "particles", "module", "read", "inspect", "main", "emission", "shape", "noise", "velocity", "force", "rotation", "customdata" },
             Outputs = new[] { "module", "fields" },
             RequiresInput = new[] { "gameObject" },
             RequiredParams = new[] { "module" },
@@ -234,9 +234,9 @@ namespace UnitySkills
 
         // ===================== Configuration =====================
 
-        [UnitySkill("particle_configure", "Configure a built-in ParticleSystem (name/entityId/instanceId/path; Shuriken, not VFX Graph) with a partial configJson patch over system and modules (main, emission, shape, velocityOverLifetime, colorOverLifetime, sizeOverLifetime, noise), applied atomically: omitted fields keep their value, false and 0 are applied, curves and gradients replace the property, any invalid field rejects the whole call. Needs Edit Mode and a stopped system; returns applied paths and the state read back from Unity.",
+        [UnitySkill("particle_configure", "Configure a built-in ParticleSystem (name/entityId/instanceId/path; Shuriken, not VFX Graph) with a partial configJson patch over system and modules (module ids and fields: particle_get_capabilities), applied atomically: omitted fields keep their value, false and 0 are applied, curves and gradients replace the property, any invalid field rejects the whole call. Needs Edit Mode and a stopped system; returns applied paths and the state read back from Unity.",
             Category = SkillCategory.Particle, Operation = SkillOperation.Modify,
-            Tags = new[] { "particle", "particles", "configure", "modules", "main", "emission", "shape", "noise", "curve", "gradient", "shuriken" },
+            Tags = new[] { "particle", "particles", "configure", "modules", "main", "emission", "shape", "noise", "velocity", "force", "rotation", "drag", "orbital", "inherit", "customdata", "curve", "gradient", "shuriken" },
             Outputs = new[] { "name", "entityId", "instanceId", "path", "applied", "state", "warnings" },
             RequiresInput = new[] { "gameObject" },
             RequiredParams = new[] { "configJson" },

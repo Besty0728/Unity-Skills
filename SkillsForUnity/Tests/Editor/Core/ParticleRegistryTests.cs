@@ -89,7 +89,7 @@ namespace UnitySkills.Tests.Core
                     UnityEngine.Object.DestroyImmediate(system.gameObject);
                 }
             }
-            Assert.That(checkedFields, Is.GreaterThan(80), "The sweep found too few writable fields; the registry walk is broken.");
+            Assert.That(checkedFields, Is.GreaterThan(170), "The sweep found too few writable fields; the registry walk is broken.");
             Assert.That(failures, Is.Empty, string.Join("\n", failures));
         }
 
@@ -101,7 +101,13 @@ namespace UnitySkills.Tests.Core
                 case ParticleSkills.FieldKind.Bool:
                     return !(bool)field.Read(binding);
                 case ParticleSkills.FieldKind.Int:
-                    return field.Max.HasValue && field.Max.Value <= 4 ? (int)field.Max.Value : 3;
+                {
+                    var current = (int)field.Read(binding);
+                    var candidates = new List<int> { 3, 2, 1 };
+                    if (field.Max.HasValue && field.Max.Value <= 4)
+                        candidates.Insert(0, (int)field.Max.Value);
+                    return candidates.First(value => value != current && (!field.Max.HasValue || value <= field.Max.Value) && (!field.Min.HasValue || value >= field.Min.Value));
+                }
                 case ParticleSkills.FieldKind.UInt:
                     return 12345;
                 case ParticleSkills.FieldKind.Float:
@@ -157,16 +163,16 @@ namespace UnitySkills.Tests.Core
             foreach (var group in module.AxisGroups)
             {
                 if (group.Axes.Contains(field.Name))
-                {
                     fields[group.Flag] = true;
-                    foreach (var axis in group.Axes.Where(axis => axis != field.Name && module.SameModeGroups.Any(same => same.Fields.Contains(axis) && same.Fields.Contains(field.Name))))
-                        fields[axis] = fields[field.Name].DeepClone();
-                }
                 if (group.Uniform.Contains(field.Name))
                     fields[group.Flag] = false;
             }
-            foreach (var same in module.SameModeGroups.Where(group => group.WhenFlag == null && group.Fields.Contains(field.Name)))
+            // A triplet shares one mode: send the sample for every member. A member may sit outside the axis group (the
+            // rotation modules' z has no uniform twin), so the flag a group depends on is turned on here as well.
+            foreach (var same in module.SameModeGroups.Where(group => group.Fields.Contains(field.Name)))
             {
+                if (same.WhenFlag != null)
+                    fields[same.WhenFlag] = true;
                 foreach (var other in same.Fields.Where(other => other != field.Name))
                     fields[other] = fields[field.Name].DeepClone();
             }
@@ -227,7 +233,12 @@ namespace UnitySkills.Tests.Core
             }
 
             var configurable = ParticleSkills.Registry.ParticleModules.Where(module => module.Configurable).Select(module => module.Id).ToArray();
-            Assert.That(configurable, Is.EquivalentTo(new[] { "main", "emission", "shape", "velocityOverLifetime", "colorOverLifetime", "sizeOverLifetime", "noise" }));
+            Assert.That(configurable, Is.EquivalentTo(new[]
+            {
+                "main", "emission", "shape", "velocityOverLifetime", "limitVelocityOverLifetime", "inheritVelocity", "lifetimeByEmitterSpeed",
+                "forceOverLifetime", "colorOverLifetime", "colorBySpeed", "sizeOverLifetime", "sizeBySpeed", "rotationOverLifetime",
+                "rotationBySpeed", "externalForces", "noise", "customData"
+            }));
             Assert.That(problems, Is.Empty, string.Join("\n", problems));
         }
     }
