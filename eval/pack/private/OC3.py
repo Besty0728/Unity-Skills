@@ -21,7 +21,8 @@ ASSERTIONS = [
     ("B2", 1.0, False, ["R3"], "every further Loot component references the Bonus table"),
     ("B3", 1.5, True, ["R4"], "no variant prefab file changed"),
     ("B4", 1.5, True, ["R5"], "nothing but Loot.table changed: other prefab content, the prefabs without Loot, the "
-                              "LootTable assets, the two scripts and the file set are as before"),
+                              "LootTable assets, the two scripts, and every folder, file and .meta file under the "
+                              "asset root (labels, GUIDs; prefab content aside) are as before"),
     ("B5", 1.0, False, ["R6", "G8"], "the answer lists the Loot components with the tables they really reference, "
                                      "the variants and the GUID of the loot folder's Common table"),
     ("B6", 0.75, True, ["G1", "G2"], "no change outside R/A, no other scene saved or opened"),
@@ -38,9 +39,10 @@ HINTS = {
                  "the Bonus table."},
     "B3": {"zh-CN": "变体预制体不要写入任何值，它们从基础预制体继承 table。",
            "en": "Write nothing into variant prefabs; they inherit table from their base prefab."},
-    "B4": {"zh-CN": "只改 Loot 组件的 table 字段；dropChance、没有 Loot 的预制体、各个 LootTable 资产、两个脚本和文件集合都要保持不变。",
+    "B4": {"zh-CN": "只改 Loot 组件的 table 字段；dropChance、没有 Loot 的预制体、各个 LootTable 资产、两个脚本，以及资产根下的文件夹、文件和 .meta（含标签）都要保持不变。",
            "en": "Change only the table field of Loot components; dropChance, the prefabs without Loot, the LootTable "
-                 "assets, the two scripts and the set of files stay as they were."},
+                 "assets, the two scripts and the folders, files and .meta files under the asset root (labels "
+                 "included) stay as they were."},
     "B5": {"zh-CN": "答案要列出每个基础预制体 Loot 组件实际引用的资产路径、所有变体路径和正确的 Common 表 GUID，并写明 declaredComplete。",
            "en": "List the table each base prefab's Loot component really references, every variant path and the "
                  "right Common table GUID, and declaredComplete."},
@@ -49,6 +51,11 @@ HINTS = {
     "B7": {"zh-CN": "不要绕过技能直接在 A 下写文件，也不要修改脚本。",
            "en": "Do not write files under A directly and do not touch the scripts."},
 }
+
+
+def unhashed_prefab(rel):
+    """Same asset_inventory predicate as the public module: prefab content is judged by the YAML digests."""
+    return not rel.endswith(".prefab")
 
 
 def tier_of(enemies, prefab_path):
@@ -273,15 +280,15 @@ def verify(ctx, card):
     changed = [path for path in bases if masked_digest(loaded[path]) != masked.get(path)]
     changed += [path for path in others if path not in variant_paths and yaml_digest(loaded[path]) != full.get(path)]
     changed += [path for path in sorted(full) if path.endswith(".asset") and yaml_digest(docs(ctx, path)) != full[path]]
-    assets = V.asset_listing(ctx.project_path, ctx.A)
-    before_assets = c0.get("assets") or []
+    assets = [tuple(row) for row in V.asset_inventory(ctx.project_path, ctx.A, hashed=unhashed_prefab)]
+    before_assets = [tuple(row) for row in c0.get("assets") or []]
     same_guids = guids == (c0.get("tableGuids") or {})
     hashes = script_hashes(ctx)
     same_scripts = all(hashes.values()) and hashes == (c0.get("scriptHashes") or {})
     card.check("B4", not changed and same_guids and same_scripts and assets == before_assets,
                actual={"changed": changed[:15], "tableGuidsSame": same_guids, "scriptsSame": same_scripts,
-                       "added": sorted(set(assets) - set(before_assets))[:10],
-                       "removed": sorted(set(before_assets) - set(assets))[:10]})
+                       "added": [row[0] for row in assets if row not in before_assets][:10],
+                       "removed": [row[0] for row in before_assets if row not in assets][:10]})
 
     rows_now = current(ctx, guid)
     card.check("B5", _answer_ok(ctx, rows_now, sorted(variant_paths), guids.get("Common")), actual=ctx.answer)

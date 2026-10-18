@@ -1,22 +1,25 @@
 ﻿"""Canonical state summaries (contract 5.2, 5.8): C0 digests of read-only discovery tasks and the build fingerprint.
 
-structure / hierarchy_signature / asset_listing read through a Probe or the disk; canonical_digest (usk_eval.store)
-turns any of them into the sha256 that goes to state.json, so the run state never stores what a task inventoried.
+structure / hierarchy_signature / asset_listing / asset_inventory / component_values read through a Probe or the
+disk; canonical_digest (usk_eval.store) turns any of them into the sha256 that goes to state.json, so the run state never
+stores what a task inventoried.
 """
 import json
 import os
 
-from ..store import canonical_digest
-from .checks import object_id
+from ..store import canonical_digest, sha256_bytes
+from .checks import local_trs, object_id
 
 RUN_TOKEN = "<RUN>"
 
 
-def structure(probe, root_iids):
+def structure(probe, root_iids, poses=False):
     """Canonical subtree summary, depth first from each root: id (checks.object_id), entityId and instanceId as the
     editor reports them, name, active, tag, layer, path, components as [type, enabled] and the ids of the children in
-    sibling order. A root is an int, an entityId text or a result dict. A missing object keeps its node with empty
-    fields, so a deleted object differs from its snapshot instead of aborting the comparison."""
+    sibling order; with poses=True each node also carries `local`, its local position, rotation and scale
+    (checks.local_trs), so a moved, turned or rescaled node differs too. A root is an int, an entityId text or a result
+    dict. A missing object keeps its node with empty fields, so a deleted object differs from its snapshot instead of
+    aborting the comparison."""
     if isinstance(root_iids, (str, int, dict)):
         root_iids = [root_iids]
     out = []
@@ -31,11 +34,14 @@ def structure(probe, root_iids):
             seen.add(str(ident))
         info = probe.go(ref) or {}
         kids = [object_id(child) for child in info.get("children") or []]
-        out.append({"id": object_id(info) if info else ident, "entityId": info.get("entityId"),
-                    "instanceId": info.get("instanceId"), "name": info.get("name"), "active": info.get("isActive"),
-                    "tag": info.get("tag"), "layer": info.get("layer"), "path": info.get("path"),
-                    "components": [[c.get("type"), c.get("enabled")] for c in probe.components(ref)],
-                    "children": kids})
+        node = {"id": object_id(info) if info else ident, "entityId": info.get("entityId"),
+                "instanceId": info.get("instanceId"), "name": info.get("name"), "active": info.get("isActive"),
+                "tag": info.get("tag"), "layer": info.get("layer"), "path": info.get("path"),
+                "components": [[c.get("type"), c.get("enabled")] for c in probe.components(ref)],
+                "children": kids}
+        if poses:
+            node["local"] = local_trs(probe, ref) if info else None
+        out.append(node)
         stack.extend(reversed([kid for kid in kids if kid is not None]))
     return out
 
@@ -75,6 +81,43 @@ def asset_listing(project_path, asset_root):
                 continue
             out.append(os.path.relpath(os.path.join(base, name), root).replace(os.sep, "/"))
     return sorted(out)
+
+
+def _sha256(path):
+    with open(path, "rb") as handle:
+        return sha256_bytes(handle.read())
+
+
+def asset_inventory(project_path, asset_root, hashed=None):
+    """Every folder and file under the run folder, .meta files included, as sorted [relative path, sha256] rows: a
+    folder's path ends in "/" and carries None, a file the `hashed(rel)` predicate turns down carries None too (a file
+    whose content the task changes on purpose and judges elsewhere). The run scene (Eval_*) and its .meta are left out.
+    Unlike asset_listing it sees an empty folder, a .meta change (labels, GUID, import settings) and an edited file."""
+    root = os.path.join(project_path, asset_root)
+    out = []
+    for base, dirs, files in os.walk(root):
+        dirs.sort()
+        for name in dirs:
+            out.append([os.path.relpath(os.path.join(base, name), root).replace(os.sep, "/") + "/", None])
+        for name in sorted(files):
+            if name.startswith("Eval_"):
+                continue
+            rel = os.path.relpath(os.path.join(base, name), root).replace(os.sep, "/")
+            out.append([rel, _sha256(os.path.join(base, name)) if hashed is None or hashed(rel) else None])
+    return sorted(out)
+
+
+def component_values(probe, ref, types=None, skip=()):
+    """{component type: {propertyPath: value}} of an object, as component_get_serialized_properties reads them: every
+    component type it carries, or only `types`, minus `skip`; a type that occurs twice is read once (the first one).
+    {} for a missing object."""
+    out = {}
+    for comp in probe.components(ref):
+        kind = comp.get("type")
+        if not kind or kind in out or kind in skip or (types is not None and kind not in types):
+            continue
+        out[kind] = probe.ser(ref, kind)
+    return out
 
 
 def _root_ref(ctx):

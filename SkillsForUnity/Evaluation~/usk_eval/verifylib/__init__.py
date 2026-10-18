@@ -12,7 +12,8 @@ from .checks import (REF_RE, address, answer, as_int, close_tuple, floats, go_st
                      quat_close, quat_from_euler, same, same_id, vec_close, world_from_local)
 from .probe import Probe
 from .scorecard import Scorecard
-from .snapshot import asset_listing, canonical_digest, fingerprint, hierarchy_signature, structure
+from .snapshot import (asset_inventory, asset_listing, canonical_digest, component_values, fingerprint,
+                       hierarchy_signature, structure)
 from ..environment import active_input_handler, has_text_mesh_pro
 from ..paths import packages_lock as installed_packages
 from ..scope import adopted_paths, scope_violations, under
@@ -22,7 +23,8 @@ __all__ = [
     "floats", "vec_close", "quat_from_euler", "quat_angle_deg", "quat_close", "parse_ref", "REF_RE",
     "go_state", "material_state", "material_color", "close_tuple", "same", "new_children", "local_trs",
     "identity_rotation", "answer", "as_int", "norm_path", "world_from_local", "object_id", "same_id", "address",
-    "canonical_digest", "structure", "hierarchy_signature", "asset_listing", "fingerprint",
+    "canonical_digest", "structure", "hierarchy_signature", "asset_listing", "asset_inventory", "component_values",
+    "fingerprint",
     "scope_violations", "adopted_paths", "under",
     "installed_packages", "has_text_mesh_pro", "active_input_handler",
 ]

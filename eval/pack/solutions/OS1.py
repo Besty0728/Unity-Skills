@@ -38,8 +38,11 @@ def _aim(light_pos, goal, away=False):
 
 
 def _light_args(spec, role, spot=True, shadows=None, intensity=None, color=None):
+    """light_create arguments for one role; `intensity` is one number for all three lights or a role -> value map."""
     light = spec["lights"][role]
     rgb = color if color is not None else light["color"]
+    if isinstance(intensity, dict):
+        intensity = intensity.get(role)
     args = dict(name=light["name"], lightType=light["type"], r=rgb[0], g=rgb[1], b=rgb[2],
                 intensity=light["intensity"] if intensity is None else intensity, range=spec["range"],
                 shadows=shadows or light["shadows"])
@@ -48,8 +51,9 @@ def _light_args(spec, role, spot=True, shadows=None, intensity=None, color=None)
     return args
 
 
-def _place(ctx, spec, positions, aim=True, away=False, parent=True, **tweaks):
-    """light_create at the world position, then reparent under the rig and aim at the subject."""
+def _place(ctx, spec, positions, aim=True, away=False, parent=True, roll=0, **tweaks):
+    """light_create at the world position, then reparent under the rig and aim at the subject (with `roll` degrees
+    around the forward axis, which R3 leaves free)."""
     goal = _subject(ctx)[0]
     ids = {}
     for role in ROLES:
@@ -60,7 +64,7 @@ def _place(ctx, spec, positions, aim=True, away=False, parent=True, **tweaks):
                                                         **V.address(ctx.handles["rig"], "parent")))
         if aim:
             rot_x, rot_y = _aim(positions[role], goal, away)
-            ctx.c.write("gameobject_set_transform", rotX=rot_x, rotY=rot_y, rotZ=0, **V.address(ids[role]))
+            ctx.c.write("gameobject_set_transform", rotX=rot_x, rotY=rot_y, rotZ=roll, **V.address(ids[role]))
     return ids
 
 
@@ -150,6 +154,41 @@ def save_run_scene(ctx):
     answer = reference(ctx)
     ctx.c.write("scene_save")
     return answer
+
+
+def _intensities(spec, key, offset, of_actual):
+    """Key at `key`; fill and rim `offset` away from their percentage of the specified key (of_actual=False) or of
+    `key` itself (of_actual=True)."""
+    base = key if of_actual else spec["lights"]["key"]["intensity"]
+    return {"key": key, "fill": base * spec["lights"]["fill"]["pct"] / 100.0 + offset,
+            "rim": base * spec["lights"]["rim"]["pct"] / 100.0 + offset}
+
+
+def ratio_of_actual_key(ctx):
+    """The key 0.009 high and fill/rim 0.009 above their percentage of that actual key (inside R4 by either
+    reading)."""
+    spec = _spec(ctx)
+    key = spec["lights"]["key"]["intensity"] + 0.009
+    ids = _place(ctx, spec, _positions(ctx, spec), intensity=_intensities(spec, key, 0.009, True))
+    _switch_off(ctx)
+    return _answer(ctx, ids)
+
+
+def intensity_inside_tolerance(ctx):
+    """The key 0.009 low and fill/rim 0.009 above their percentage of the specified key."""
+    spec = _spec(ctx)
+    key = spec["lights"]["key"]["intensity"] - 0.009
+    ids = _place(ctx, spec, _positions(ctx, spec), intensity=_intensities(spec, key, 0.009, False))
+    _switch_off(ctx)
+    return _answer(ctx, ids)
+
+
+def rolled_aim(ctx):
+    """Aimed as the reference, with a 37 degree roll around the forward axis (R3 leaves roll free)."""
+    spec = _spec(ctx)
+    ids = _place(ctx, spec, _positions(ctx, spec), roll=37)
+    _switch_off(ctx)
+    return _answer(ctx, ids)
 
 
 # ---------------------------------------------------------------- negatives
@@ -247,6 +286,32 @@ def root_lights(ctx):
     return _answer(ctx, ids)
 
 
+def fill_outside_tolerance(ctx):
+    """The key exact, fill and rim 0.011 above their percentage of it: outside R4 by either reading."""
+    spec = _spec(ctx)
+    key = spec["lights"]["key"]["intensity"]
+    ids = _place(ctx, spec, _positions(ctx, spec), intensity=_intensities(spec, key, 0.011, True))
+    _switch_off(ctx)
+    return _answer(ctx, ids)
+
+
+def key_outside_tolerance(ctx):
+    """The key 0.011 high, fill and rim at their percentage of that key: the key misses R4 (fill and rim may still be
+    within 0.01 of their percentage of the specified key; a key out of tolerance is no base for the other reading)."""
+    spec = _spec(ctx)
+    key = spec["lights"]["key"]["intensity"] + 0.011
+    ids = _place(ctx, spec, _positions(ctx, spec), intensity=_intensities(spec, key, 0.0, True))
+    _switch_off(ctx)
+    return _answer(ctx, ids)
+
+
+def old_shadows(ctx):
+    """The reference, then the old lamp's shadows changed (it was switched off as asked)."""
+    answer = reference(ctx)
+    ctx.c.write("light_set_properties", path=ctx.handles["lampPath"], shadows="Hard")
+    return answer
+
+
 def extra_light(ctx):
     answer = reference(ctx)
     extra = V.object_id(ctx.c.write("light_create", name="Bounce", lightType="Point", x=0, y=2, z=0))
@@ -289,9 +354,13 @@ NEGATIVES = [
     Negative("wrong_report", wrong_report, {"L9"}),
     Negative("outside_root", outside_root, {"L10"}),
     Negative("direct_file", direct_file, {"L11"}, "a file written to disk next to the skills"),
+    Negative("fill_outside_tolerance", fill_outside_tolerance, {"L4"}, "fill and rim 0.011 off their percentage"),
+    Negative("key_outside_tolerance", key_outside_tolerance, {"L4"}, "the key 0.011 off its intensity"),
+    Negative("old_shadows", old_shadows, {"L7"}, "the old lamp's shadows changed"),
 ]
 
 ALTERNATIVES = [("deactivate_old", deactivate_old), ("component_route", component_route), ("batch_props", batch_props),
-                ("save_run_scene", save_run_scene)]
+                ("save_run_scene", save_run_scene), ("ratio_of_actual_key", ratio_of_actual_key),
+                ("intensity_inside_tolerance", intensity_inside_tolerance), ("rolled_aim", rolled_aim)]
 
 # Producer:Betsy

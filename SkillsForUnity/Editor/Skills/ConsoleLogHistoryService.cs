@@ -8,6 +8,7 @@ using System.Text;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -26,6 +27,9 @@ namespace UnitySkills
         private const string RelativeLogPath = "Library/UnitySkills/console_log_history.jsonl";
         private const string RelativeStatePath = "Library/UnitySkills/console_log_history_state.json";
         private const long FlushIntervalTicks = TimeSpan.TicksPerSecond;
+        // How far the persisted seq reservation runs ahead of the live counter. A kill can lose at most the records
+        // since the last flush; the next load resumes above the reservation, so none of their seqs is handed out again.
+        internal const long SeqReservationBlock = 10000;
         private const string SessionKeyId = "UnitySkills_ConsoleLogHistorySessionId";
         private const string SessionKeyCaptureStart = "UnitySkills_ConsoleLogHistoryCaptureStart";
         private const string SessionKeyCapturing = "UnitySkills_ConsoleLogHistoryCapturing";
@@ -41,6 +45,14 @@ namespace UnitySkills
         private static long _bytes;
         private static long _dropped;
         private static long _corruptRows;
+        // Rows counted in _corruptRows that are still in the file; the next compaction drops them.
+        private static long _uncompactedCorruptRows;
+        // Records with seq at or below this may be missing (unreadable rows, an unclean stop). Persisted and monotonic.
+        private static long _incompleteThroughSeq;
+        // Persisted upper bound of every seq this writer has handed out; equal to _seq after a final flush.
+        private static long _reservedSeq;
+        // Set by the final flush of a reloading or quitting domain: later records are never served, so they reserve nothing.
+        private static bool _finalFlushDone;
         private static long _generation;
         private static long _captureStartSeq;
         private static bool _capturing;
@@ -53,6 +65,11 @@ namespace UnitySkills
         {
             try
             {
+                // An asset import worker loads this assembly against the same Library folder. Its records are not this
+                // editor's console, and a second writer with its own seq counter tears lines and repeats seqs.
+                if (LibraryStateFile.IsAssetImportWorker)
+                    return;
+
                 // This constructor is run by Unity on the editor thread. The callback below must not
                 // resolve this path or access Application/Editor APIs after it is registered.
                 _logPath = Path.GetFullPath(Path.Combine(Application.dataPath, "..", RelativeLogPath));
@@ -69,7 +86,11 @@ namespace UnitySkills
                 _capturing = SessionState.GetBool(SessionKeyCapturing, false);
                 Application.logMessageReceivedThreaded += OnLogMessageReceivedThreaded;
                 EditorApplication.update += FlushWhenDue;
-                AssemblyReloadEvents.beforeAssemblyReload += FlushNow;
+                // Final flushes: beforeAssemblyReload and quitting end the served history; DomainUnload, the last
+                // managed callback of a reloading domain, also persists what other reload handlers logged after them.
+                AssemblyReloadEvents.beforeAssemblyReload += FinalFlush;
+                EditorApplication.quitting += FinalFlush;
+                AppDomain.CurrentDomain.DomainUnload += OnDomainUnload;
             }
             catch (Exception ex)
             {
@@ -96,6 +117,9 @@ namespace UnitySkills
             public long seq;
             public long dropped;
             public long generation;
+            public long reservedSeq;
+            public long incompleteThroughSeq;
+            public long corruptRows;
         }
 
         internal sealed class ConsoleLogHistoryWindow
@@ -170,6 +194,9 @@ namespace UnitySkills
                 PendingPersistence.Clear();
                 _bytes = 0;
                 _dropped = 0;
+                // The rewrite below holds no rows at all, so no unreadable row survives it.
+                _corruptRows = 0;
+                _uncompactedCorruptRows = 0;
                 _generation++;
                 _captureStartSeq = _seq;
                 SessionState.SetString(SessionKeyCaptureStart, _captureStartSeq.ToString(CultureInfo.InvariantCulture));
@@ -389,7 +416,11 @@ namespace UnitySkills
         private static void AddLocked(ConsoleLogHistoryRecord record, bool persistAppend)
         {
             record.seq = ++_seq;
-            // The callback does not touch SessionState; the durable JSONL seq remains the reload authority.
+            // The callback does not touch SessionState; the durable JSONL seq remains the reload authority. A seq past
+            // the persisted reservation extends it before any reader can see the record (rare: the flush keeps half a
+            // block of headroom), so a kill can never lead to its reuse. CLR-only file I/O, safe on this thread.
+            if (_seq > _reservedSeq && !_finalFlushDone)
+                ReserveSeqLocked();
             record.ApproximateBytes = ApproximateBytes(record);
             Records.Add(record);
             _bytes += record.ApproximateBytes;
@@ -414,34 +445,110 @@ namespace UnitySkills
         {
             lock (SyncRoot)
             {
-                LoadStateLocked();
-                if (string.IsNullOrEmpty(_logPath) || !File.Exists(_logPath)) return;
-                try
+                bool stateReadable = LoadStateLocked();
+                long lastSeq = 0;
+                bool unreadableRowPending = false;
+                bool readComplete = true;
+                if (!string.IsNullOrEmpty(_logPath) && File.Exists(_logPath))
                 {
-                    foreach (var line in File.ReadLines(_logPath))
+                    try
                     {
-                        if (string.IsNullOrWhiteSpace(line)) continue;
-                        try
+                        foreach (var line in File.ReadLines(_logPath))
                         {
-                            var record = JsonConvert.DeserializeObject<ConsoleLogHistoryRecord>(line, SkillsCommon.JsonSettings);
-                            if (record == null || record.seq <= 0) continue;
+                            if (string.IsNullOrWhiteSpace(line)) continue;
+                            ConsoleLogHistoryRecord record;
+                            try
+                            {
+                                record = JsonConvert.DeserializeObject<ConsoleLogHistoryRecord>(line, SkillsCommon.JsonSettings);
+                            }
+                            catch
+                            {
+                                record = null;
+                            }
+
+                            if (record == null || record.seq <= 0)
+                            {
+                                // A torn line (an append a kill cut short) hides a record whose seq lies before the next
+                                // readable one. Keep every other line instead of treating the whole history as corrupt.
+                                CountCorruptRowLocked();
+                                unreadableRowPending = true;
+                                continue;
+                            }
+
+                            if (record.seq <= lastSeq)
+                            {
+                                // A repeated or backwards seq means a second writer; windows reaching back to it are
+                                // ambiguous. Keeping seqs unique and ascending is what cursors rely on.
+                                CountCorruptRowLocked();
+                                MarkIncompleteThroughLocked(lastSeq);
+                                continue;
+                            }
+
+                            if (unreadableRowPending)
+                            {
+                                MarkIncompleteThroughLocked(record.seq - 1);
+                                unreadableRowPending = false;
+                            }
+
                             record.ApproximateBytes = ApproximateBytes(record);
                             Records.Add(record);
                             _bytes += record.ApproximateBytes;
-                            _seq = Math.Max(_seq, record.seq);
+                            lastSeq = record.seq;
                             if (!string.IsNullOrEmpty(record.nativeKey)) NativeKeys.Add(record.nativeKey);
                         }
-                        catch
-                        {
-                            // A torn final JSONL line is expected after an interrupted editor exit. Keep
-                            // every earlier line instead of treating the whole durable history as corrupt.
-                            _corruptRows++;
-                        }
+                    }
+                    catch
+                    {
+                        // A temporary file-system failure leaves the service live for new callbacks; the unread rest of
+                        // the file is not in memory, so nothing before this point can be proven complete.
+                        readComplete = false;
                     }
                 }
-                catch { /* A temporary file-system failure leaves the service live for new callbacks. */ }
-                _needsCompact = TrimLocked();
+
+                _seq = Math.Max(_seq, lastSeq);
+                if (_reservedSeq > _seq || (!stateReadable && lastSeq > 0))
+                {
+                    // The last writer stopped without its final flush (a kill or a crash), or left no readable state:
+                    // it may have handed out seqs that never reached the file. Resume above every one of them.
+                    _seq = Math.Max(_reservedSeq, _seq + (stateReadable ? 0 : SeqReservationBlock));
+                    MarkIncompleteThroughLocked(_seq);
+                }
+                if (unreadableRowPending || !readComplete)
+                    MarkIncompleteThroughLocked(_seq);
+
+                // Compaction rewrites the file from memory, so it drops unreadable rows, but only after a complete read.
+                _needsCompact = TrimLocked() || (readComplete && _uncompactedCorruptRows > 0);
                 _dirty = _needsCompact;
+                _finalFlushDone = false;
+                ReserveSeqLocked();
+            }
+        }
+
+        private static void CountCorruptRowLocked()
+        {
+            _corruptRows++;
+            _uncompactedCorruptRows++;
+        }
+
+        private static void MarkIncompleteThroughLocked(long seq)
+        {
+            if (seq > _incompleteThroughSeq) _incompleteThroughSeq = seq;
+        }
+
+        /// <summary>Persists a reservation a block ahead of the live counter; on failure the next flush retries.</summary>
+        private static void ReserveSeqLocked()
+        {
+            if (string.IsNullOrEmpty(_statePath)) return;
+            _reservedSeq = _seq + SeqReservationBlock;
+            try
+            {
+                WriteStateLocked();
+            }
+            catch
+            {
+                // No logging: this can run inside a log callback.
+                _persistenceFailed = true;
+                _dirty = true;
             }
         }
 
@@ -461,37 +568,71 @@ namespace UnitySkills
 
         private static void FlushWhenDue()
         {
+            if (_finalFlushDone)
+            {
+                // A final flush ran but this domain lives on; take the reservation up again before serving more seqs.
+                lock (SyncRoot)
+                {
+                    _finalFlushDone = false;
+                    ReserveSeqLocked();
+                }
+            }
             if (!_dirty || DateTime.UtcNow.Ticks < _nextFlushUtcTicks) return;
-            FlushNow();
+            FlushNow(final: false);
         }
 
-        private static void FlushNow()
+        private static void FinalFlush() => FlushNow(final: true);
+
+        private static void OnDomainUnload(object sender, EventArgs e) => FlushNow(final: true);
+
+        /// <summary>
+        /// Persists pending records, then the state. A final flush also releases the seq reservation: it is the last
+        /// write of a domain whose history nobody reads any more, so the next domain continues exactly at its seq.
+        /// </summary>
+        private static void FlushNow(bool final)
         {
             lock (SyncRoot)
             {
-                if (!_dirty) return;
+                if (!_dirty && !final) return;
                 try
                 {
-                    if (_needsCompact)
+                    if (_dirty)
                     {
-                        RewritePersistenceLocked();
+                        if (_needsCompact)
+                        {
+                            RewritePersistenceLocked();
+                            _uncompactedCorruptRows = 0;
+                        }
+                        else
+                        {
+                            AppendPendingPersistenceLocked();
+                        }
+                        PendingPersistence.Clear();
+                        _needsCompact = false;
                     }
-                    else
+
+                    if (final)
                     {
-                        AppendPendingPersistenceLocked();
+                        _reservedSeq = _seq;
+                        _finalFlushDone = true;
+                    }
+                    else if (_reservedSeq < _seq + SeqReservationBlock / 2)
+                    {
+                        _reservedSeq = _seq + SeqReservationBlock;
                     }
                     WriteStateLocked();
-                    PendingPersistence.Clear();
-                    _needsCompact = false;
                     _dirty = false;
                     _persistenceFailed = false;
                     _nextFlushUtcTicks = DateTime.UtcNow.Ticks + FlushIntervalTicks;
                 }
                 catch
                 {
-                    // A later editor tick retries. Do not log from here because this can be entered
-                    // while Unity itself is processing a log callback.
+                    // A later editor tick retries. An append may have landed in part, so the retry rewrites the file
+                    // from memory instead of appending the same records twice. Do not log from here because this can
+                    // be entered while Unity itself is processing a log callback.
                     _persistenceFailed = true;
+                    _needsCompact = true;
+                    _dirty = true;
                 }
             }
         }
@@ -499,39 +640,64 @@ namespace UnitySkills
         private static void RewritePersistenceLocked()
         {
             if (string.IsNullOrEmpty(_logPath)) return;
-            string directory = Path.GetDirectoryName(_logPath);
-            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-            File.WriteAllLines(_logPath, Records.Select(record => JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings)), new UTF8Encoding(false));
+            // Temp file + rename: a kill or a reload mid-compaction leaves the previous file, never a truncated one.
+            LibraryStateFile.Write(_logPath, stream =>
+            {
+                using (var writer = new StreamWriter(stream, SkillsCommon.Utf8NoBom, 1 << 16))
+                {
+                    foreach (var record in Records)
+                    {
+                        writer.Write(JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings));
+                        writer.Write(Environment.NewLine);
+                    }
+                }
+            });
         }
 
         private static void AppendPendingPersistenceLocked()
         {
             if (PendingPersistence.Count == 0 || string.IsNullOrEmpty(_logPath)) return;
-            string directory = Path.GetDirectoryName(_logPath);
-            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-            File.AppendAllLines(_logPath, PendingPersistence.Select(record => JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings)), new UTF8Encoding(false));
+            var lines = new StringBuilder();
+            foreach (var record in PendingPersistence)
+                lines.Append(JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings)).Append(Environment.NewLine);
+            LibraryStateFile.AppendLines(_logPath, SkillsCommon.Utf8NoBom.GetBytes(lines.ToString()));
         }
 
-        private static void LoadStateLocked()
+        /// <summary>Returns false when a state file exists but cannot be read.</summary>
+        private static bool LoadStateLocked()
         {
-            if (string.IsNullOrEmpty(_statePath) || !File.Exists(_statePath)) return;
+            if (string.IsNullOrEmpty(_statePath) || !File.Exists(_statePath)) return true;
             try
             {
                 var state = JsonConvert.DeserializeObject<PersistedState>(File.ReadAllText(_statePath), SkillsCommon.JsonSettings);
-                if (state == null) return;
+                if (state == null) return false;
                 _seq = Math.Max(_seq, state.seq);
                 _dropped = Math.Max(0, state.dropped);
                 _generation = Math.Max(0, state.generation);
+                _reservedSeq = Math.Max(0, state.reservedSeq);
+                _incompleteThroughSeq = Math.Max(_incompleteThroughSeq, state.incompleteThroughSeq);
+                _corruptRows = Math.Max(0, state.corruptRows);
+                return true;
             }
-            catch { }
+            catch
+            {
+                return false;
+            }
         }
 
         private static void WriteStateLocked()
         {
             if (string.IsNullOrEmpty(_statePath)) return;
-            string directory = Path.GetDirectoryName(_statePath);
-            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-            File.WriteAllText(_statePath, JsonConvert.SerializeObject(new PersistedState { seq = _seq, dropped = _dropped, generation = _generation }, Formatting.None, SkillsCommon.JsonSettings), new UTF8Encoding(false));
+            LibraryStateFile.WriteAllText(_statePath, JsonConvert.SerializeObject(new PersistedState
+            {
+                seq = _seq,
+                dropped = _dropped,
+                generation = _generation,
+                reservedSeq = _reservedSeq,
+                incompleteThroughSeq = _incompleteThroughSeq,
+                // Rows still in the file are counted again by the next load; persist only those compaction removed.
+                corruptRows = _corruptRows - _uncompactedCorruptRows,
+            }, Formatting.None, SkillsCommon.JsonSettings));
         }
 
         private static bool HasManagedEquivalentLocked(string type, string message)
@@ -594,13 +760,18 @@ namespace UnitySkills
 
         private static object CoverageLocked(long oldest, long snapshot, int unknownTimeCount)
         {
-            return new { oldestSeq = oldest, newestSeq = _seq, snapshotSeq = snapshot, retained = Records.Count, capacity = MaxEntries, maxBytes = MaxBytes, unknownTimeCount, nativeTime = "unknown", nativeMessageMayBeTruncated = true, fullTextGuaranteedFor = "managed", corruptRows = _corruptRows, durabilityIssue = _persistenceFailed, editorLogPath = _editorLogPath, editorLogAvailable = !string.IsNullOrEmpty(_editorLogPath) && File.Exists(_editorLogPath), editorLogSource = "Editor.log is an external fallback; it is not imported into cursor history." };
+            return new { oldestSeq = oldest, newestSeq = _seq, snapshotSeq = snapshot, retained = Records.Count, capacity = MaxEntries, maxBytes = MaxBytes, unknownTimeCount, nativeTime = "unknown", nativeMessageMayBeTruncated = true, fullTextGuaranteedFor = "managed", corruptRows = _corruptRows, incompleteThroughSeq = _incompleteThroughSeq, durabilityIssue = _persistenceFailed, editorLogPath = _editorLogPath, editorLogAvailable = !string.IsNullOrEmpty(_editorLogPath) && File.Exists(_editorLogPath), editorLogSource = "Editor.log is an external fallback; it is not imported into cursor history." };
         }
 
+        /// <summary>
+        /// A window is complete when every record after <paramref name="afterSeq"/> is still retained. Unreadable rows and
+        /// unclean stops only affect windows reaching back to <see cref="_incompleteThroughSeq"/>; a persistence failure
+        /// loses nothing that is still in memory and stays visible as coverage.durabilityIssue.
+        /// </summary>
         private static bool IsCompleteLocked(long afterSeq, IEnumerable<ConsoleLogHistoryRecord> matching)
         {
             long oldest = Records.Count == 0 ? _seq + 1 : Records[0].seq;
-            return afterSeq + 1 >= oldest && _corruptRows == 0 && !_persistenceFailed && !matching.Any(record => !record.timeKnown);
+            return afterSeq + 1 >= oldest && afterSeq >= _incompleteThroughSeq && !matching.Any(record => !record.timeKnown);
         }
 
         private static DateTime? ParseUtcOrNull(string value)
@@ -630,9 +801,19 @@ namespace UnitySkills
                 _logPath = path ?? _logPath;
                 _statePath = string.IsNullOrEmpty(_logPath) ? null : _logPath + ".state";
                 Records.Clear(); NativeKeys.Clear(); PendingPersistence.Clear(); _seq = 0; _bytes = 0; _dropped = 0; _corruptRows = 0; _generation = 0; _captureStartSeq = 0; _capturing = false;
+                _uncompactedCorruptRows = 0; _incompleteThroughSeq = 0; _reservedSeq = 0; _finalFlushDone = false; _persistenceFailed = false;
                 _dirty = false; _needsCompact = false;
-                if (!string.IsNullOrEmpty(_logPath) && File.Exists(_logPath)) File.Delete(_logPath);
-                if (!string.IsNullOrEmpty(_statePath) && File.Exists(_statePath)) File.Delete(_statePath);
+                DeleteTestFiles();
+            }
+        }
+
+        private static void DeleteTestFiles()
+        {
+            foreach (var file in new[] { _logPath, _statePath })
+            {
+                if (string.IsNullOrEmpty(file)) continue;
+                if (File.Exists(file)) File.Delete(file);
+                if (File.Exists(file + LibraryStateFile.TempSuffix)) File.Delete(file + LibraryStateFile.TempSuffix);
             }
         }
 
@@ -651,6 +832,10 @@ namespace UnitySkills
             private readonly long _oldBytes;
             private readonly long _oldDropped;
             private readonly long _oldCorruptRows;
+            private readonly long _oldUncompactedCorruptRows;
+            private readonly long _oldIncompleteThroughSeq;
+            private readonly long _oldReservedSeq;
+            private readonly bool _oldFinalFlushDone;
             private readonly long _oldGeneration;
             private readonly long _oldCaptureStartSeq;
             private readonly bool _oldCapturing;
@@ -668,6 +853,7 @@ namespace UnitySkills
                     _oldRecords = new List<ConsoleLogHistoryRecord>(Records);
                     _oldNativeKeys = new HashSet<string>(NativeKeys, StringComparer.Ordinal);
                     _oldSeq = _seq; _oldBytes = _bytes; _oldDropped = _dropped; _oldCorruptRows = _corruptRows; _oldGeneration = _generation;
+                    _oldUncompactedCorruptRows = _uncompactedCorruptRows; _oldIncompleteThroughSeq = _incompleteThroughSeq; _oldReservedSeq = _reservedSeq; _oldFinalFlushDone = _finalFlushDone;
                     _oldCaptureStartSeq = _captureStartSeq; _oldCapturing = _capturing; _oldDirty = _dirty; _oldNeedsCompact = _needsCompact; _oldPersistenceFailed = _persistenceFailed;
                     _oldPendingPersistence = new List<ConsoleLogHistoryRecord>(PendingPersistence); _oldNextFlushUtcTicks = _nextFlushUtcTicks;
                 }
@@ -681,36 +867,47 @@ namespace UnitySkills
                     // This scope only ever owns the temporary path installed by ResetForTests.
                     // Delete it before restoring the live history path, so editor tests cannot
                     // accumulate artifacts under the system temp directory.
-                    if (!string.IsNullOrEmpty(_logPath) && File.Exists(_logPath)) File.Delete(_logPath);
-                    if (!string.IsNullOrEmpty(_statePath) && File.Exists(_statePath)) File.Delete(_statePath);
+                    DeleteTestFiles();
                     _logPath = _oldPath; _statePath = _oldStatePath;
                     Records.Clear(); Records.AddRange(_oldRecords);
                     NativeKeys.Clear(); foreach (var key in _oldNativeKeys) NativeKeys.Add(key);
                     _seq = _oldSeq; _bytes = _oldBytes; _dropped = _oldDropped; _corruptRows = _oldCorruptRows; _generation = _oldGeneration;
+                    _uncompactedCorruptRows = _oldUncompactedCorruptRows; _incompleteThroughSeq = _oldIncompleteThroughSeq; _reservedSeq = _oldReservedSeq; _finalFlushDone = _oldFinalFlushDone;
                     PendingPersistence.Clear(); PendingPersistence.AddRange(_oldPendingPersistence);
                     _captureStartSeq = _oldCaptureStartSeq; _capturing = _oldCapturing; _dirty = _oldDirty; _needsCompact = _oldNeedsCompact; _persistenceFailed = _oldPersistenceFailed; _nextFlushUtcTicks = _oldNextFlushUtcTicks;
                 }
             }
         }
 
-        internal static void FlushForTests() => FlushNow();
+        internal static void FlushForTests() => FlushNow(final: false);
 
-        internal static void AppendCorruptTailForTests()
+        /// <summary>The flush beforeAssemblyReload runs; records added after it still reach the DomainUnload flush.</summary>
+        internal static void FinalFlushForTests() => FlushNow(final: true);
+
+        internal static void AppendCorruptTailForTests() => AppendRawForTests("{corrupt-tail" + Environment.NewLine);
+
+        /// <summary>Flushes, then appends <paramref name="raw"/> verbatim (no newline added), like a torn or foreign write.</summary>
+        internal static void AppendRawForTests(string raw)
         {
-            FlushNow();
+            FlushNow(final: false);
             lock (SyncRoot)
             {
                 if (!string.IsNullOrEmpty(_logPath))
-                    File.AppendAllText(_logPath, "{corrupt-tail" + Environment.NewLine, new UTF8Encoding(false));
+                    File.AppendAllText(_logPath, raw, new UTF8Encoding(false));
             }
         }
 
-        internal static void ReloadForTests()
+        /// <summary>
+        /// Simulates a domain reload (<paramref name="clean"/>: the final flush runs first) or an editor kill (nothing
+        /// is flushed, so pending records are lost) followed by the next load.
+        /// </summary>
+        internal static void ReloadForTests(bool clean = true)
         {
-            FlushNow();
+            if (clean) FlushNow(final: true);
             lock (SyncRoot)
             {
                 Records.Clear(); NativeKeys.Clear(); PendingPersistence.Clear(); _seq = 0; _bytes = 0; _dropped = 0; _corruptRows = 0; _generation = 0; _dirty = false; _needsCompact = false; _persistenceFailed = false;
+                _uncompactedCorruptRows = 0; _incompleteThroughSeq = 0; _reservedSeq = 0; _finalFlushDone = false;
                 LoadPersistedHistory();
             }
         }

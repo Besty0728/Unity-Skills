@@ -42,6 +42,21 @@ def rig_spec(seed):
     return {"lights": lights, "range": rng.choice((10, 12, 15))}
 
 
+def lamp_values(probe, ref):
+    """The old lamp's Transform and Light serialized values as sorted [type, [[propertyPath, value]]] rows, without
+    the Light's m_Enabled (switching it off is what R7 asks)."""
+    values = V.component_values(probe, ref, types=("Transform", "Light"))
+    return [[kind, sorted([path, value] for path, value in (props or {}).items()
+                          if not (kind == "Light" and path == "m_Enabled"))] for kind, props in sorted(values.items())]
+
+
+def lamp_components(probe, ref):
+    """The old lamp's components as [type, enabled], the Light's enabled flag left out; URP's own
+    UniversalAdditionalLightData (added to lights by the pipeline when it sees them) does not count."""
+    return [[comp.get("type"), None if comp.get("type") == "Light" else comp.get("enabled")]
+            for comp in probe.components(ref) if comp.get("type") != "UniversalAdditionalLightData"]
+
+
 class OS1(PublicTask):
     id = "OS1"
     track = "ops"
@@ -78,7 +93,8 @@ class OS1(PublicTask):
                          "stage": V.go_state(p, h["stage"]),
                          "rig": V.go_state(p, h["rig"]),
                          "lamp": {"state": V.go_state(p, h["lamp"]), "local": V.local_trs(p, h["lamp"]),
-                                  "light": ctx.read("light_get_info", path=h["lampPath"])},
+                                  "light": ctx.read("light_get_info", path=h["lampPath"]),
+                                  "values": lamp_values(p, h["lamp"]), "components": lamp_components(p, h["lamp"])},
                          "lights": [V.object_id(row) for row in lights.get("objects") or []
                                     if V.under(row.get("path"), ctx.R)]},
                 "digests": {}}

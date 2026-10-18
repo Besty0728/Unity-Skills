@@ -4,6 +4,10 @@ What the task probes: prefab asset edits take a root-relative gameObjectPath (Mo
 Muzzle must be an added GameObject on the nested Barrel instance inside Turret.prefab, so adding it to the scene
 instances, into Tank.prefab (which is also where prefab_apply on a Tank instance writes) or into Barrel.prefab leaves
 the wrong asset changed; one Tank instance carries a Barrel rotation override and an added AudioSource that must stay.
+
+"Unchanged" covers values, not only structure: Turret.prefab's other nodes keep their component values (A4), the
+component added on an instance keeps its values (A5), the objects under the container keep their local poses and the
+asset root keeps its folders, files and .meta files byte for byte, prefab files aside (A7; those are A1-A4's).
 """
 import json
 import os
@@ -27,12 +31,14 @@ ASSERTIONS = [
     ("A2", 1.5, False, ["R2"], "Muzzle's local pose in Turret.prefab is the required one and Transform is its only "
                                "component"),
     ("A3", 1.5, True, ["R3"], "Barrel.prefab and Tank.prefab are unchanged"),
-    ("A4", 1.0, False, ["R3"], "Turret.prefab's other nodes are unchanged and Barrel is still its only nested "
-                               "prefab instance"),
-    ("A5", 1.5, False, ["R4"], "every scene instance keeps exactly its previous override list, counts and Barrel "
-                               "pose"),
+    ("A4", 1.0, False, ["R3"], "Turret.prefab's other nodes are unchanged, their component values included, and "
+                               "Barrel is still its only nested prefab instance"),
+    ("A5", 1.5, False, ["R4"], "every scene instance keeps exactly its previous override list, counts, Barrel pose and "
+                               "the values of the component added on it"),
     ("A6", 1.0, False, ["R4"], "each of the three instances shows Barrel/Muzzle with the required local pose"),
-    ("A7", 0.5, True, ["R5"], "nothing else changed under the container and no asset was added or removed"),
+    ("A7", 0.5, True, ["R5"], "nothing else changed under the container (the poses of the container, the bays and "
+                              "the instance roots included) and no folder, file or .meta file under the asset root "
+                              "was added, removed or changed, prefab content aside"),
     ("A8", 0.5, False, ["R6", "G8"], "the answer reports the prefab path, the Muzzle node path, the scene Muzzles, "
                                      "the instance with overrides and its override count"),
     ("A9", 0.25, True, ["G1", "G2"], "no change outside R/A, no other scene saved or opened"),
@@ -48,16 +54,17 @@ HINTS = {
     "A3": {"zh-CN": "Barrel.prefab 与 Tank.prefab 不得改动：在 Tank 实例上 apply 或编辑 Barrel.prefab 都会改错文件。",
            "en": "Barrel.prefab and Tank.prefab must stay as they are: applying a Tank instance or editing Barrel.prefab "
                  "changes the wrong file."},
-    "A4": {"zh-CN": "Turret.prefab 里只允许新增 Muzzle，其他节点和嵌套的 Barrel 实例保持不变。",
-           "en": "Only Muzzle may be added to Turret.prefab; its other nodes and the nested Barrel instance stay as "
-                 "they were."},
-    "A5": {"zh-CN": "每个实例的覆盖列表必须与开始前相同：不要在实例上添加 Muzzle，也不要 revert 或 apply 实例。",
+    "A4": {"zh-CN": "Turret.prefab 里只允许新增 Muzzle，其他节点（包括其组件的取值）和嵌套的 Barrel 实例保持不变。",
+           "en": "Only Muzzle may be added to Turret.prefab; its other nodes (their component values included) and the "
+                 "nested Barrel instance stay as they were."},
+    "A5": {"zh-CN": "每个实例的覆盖列表必须与开始前相同：不要在实例上添加 Muzzle，也不要 revert 或 apply 实例；实例上新增的组件也要保持原值。",
            "en": "Every instance's override list must equal what it was: add no Muzzle on an instance and neither "
-                 "revert nor apply an instance."},
+                 "revert nor apply an instance; the component added on an instance keeps its values."},
     "A6": {"zh-CN": "改好资产后，3 个实例都应在各自的 Barrel 下继承到位姿正确的 Muzzle。",
            "en": "Once the asset is right, all 3 instances inherit a correctly posed Muzzle under their Barrel."},
-    "A7": {"zh-CN": "不要在容器下新增对象，也不要新增或删除资产文件。",
-           "en": "Add no object under the container and neither add nor remove asset files."},
+    "A7": {"zh-CN": "不要在容器下新增或移动对象，也不要新增、删除或修改资产根下的文件夹、文件或 .meta 文件。",
+           "en": "Add or move no object under the container, and add, delete or change no folder, file or .meta file "
+                 "under the asset root."},
     "A8": {"zh-CN": "答案中的路径、id 与覆盖总数要与最终状态一致，并写明 declaredComplete。",
            "en": "Report paths, ids and the override total as they really are, and declaredComplete."},
     "A9": {"zh-CN": "所有修改都必须在 R 与 A 之内，且只能保存本轮场景。",
@@ -116,6 +123,55 @@ def prefab_nodes(ctx, prefab_path):
                          "rot": V.floats(node.get("localEulerAngles")), "scale": V.floats(node.get("localScale"))})
         out.append(item)
     return sorted(out, key=lambda item: item["path"] or "")
+
+
+def unhashed_prefab(rel):
+    """Same asset_inventory predicate as the public module: prefab content is A1-A4's, the rest A7's."""
+    return not rel.endswith(".prefab")
+
+
+def prefab_components(ctx, prefab_path):
+    """Same rows as the public module's prefab_components: [node path, [[type, index, enabled, properties]]] for every
+    node but Muzzle, a Transform without its properties; None when the asset cannot be read."""
+    res = _read(ctx, "prefab_get_hierarchy", prefabPath=prefab_path, limit=500)
+    if res is None:
+        return None
+    out = []
+    for node in res.get("nodes") or []:
+        path = node.get("gameObjectPath") or ""
+        if path.split("/")[-1] == "Muzzle":
+            continue
+        listed = _read(ctx, "prefab_list_components", prefabPath=prefab_path, gameObjectPath=path,
+                       includeProperties=True) or {}
+        comps = []
+        for comp in listed.get("components") or []:
+            if not isinstance(comp, dict):
+                continue
+            kind = str(comp.get("componentType"))
+            props = None if kind.endswith("Transform") else sorted(
+                [prop.get("propertyPath"), prop.get("value")] for prop in comp.get("properties") or []
+                if isinstance(prop, dict))
+            comps.append([kind, comp.get("componentIndex"), comp.get("enabled"), props])
+        out.append([path, comps])
+    return sorted(out, key=lambda row: row[0])
+
+
+def added_values(ctx, instance_path):
+    """Same rows as the public module's added_values: [node path, type, [[propertyPath, value]]] of every component
+    added on the instance; None when unreadable."""
+    res = _read(ctx, "prefab_get_overrides", path=instance_path, includeDetails=True) if instance_path else None
+    if not res:
+        return None
+    out = []
+    for entry in res.get("overrides") or []:
+        if not isinstance(entry, dict) or entry.get("kind") != "addedComponent":
+            continue
+        rel = entry.get("gameObjectPath") or ""
+        node = ctx.probe.go_path(instance_path + ("/" + rel if rel else ""))
+        values = V.component_values(ctx.probe, node, types=(entry.get("component"),)) if node else {}
+        out.append([rel, entry.get("component"), sorted([key, value] for key, value in
+                                                        (values.get(entry.get("component")) or {}).items())])
+    return sorted(out, key=lambda row: (row[0], str(row[1])))
 
 
 def overrides(ctx, instance_path):
@@ -202,6 +258,31 @@ def _without(nodes, name):
     return out
 
 
+def _scene_poses(nodes, roots):
+    """A structure() list whose local poses stay only where the scene owns them: outside the instances and on their
+    roots (an instance root's position and rotation are its own). Inside an instance a pose follows the asset (an
+    asset edit there is A4's), and a change the instance makes there is an override (A5's)."""
+    parent_of = {}
+    for node in nodes:
+        for kid in node.get("children") or []:
+            parent_of[str(kid)] = str(node.get("id"))
+    tops = {str(V.object_id(ref)) for ref in roots}
+    out = []
+    for node in nodes:
+        current, seen, inside = parent_of.get(str(node.get("id"))), set(), False
+        while current is not None and current not in seen:
+            if current in tops:
+                inside = True
+                break
+            seen.add(current)
+            current = parent_of.get(current)
+        copy = dict(node)
+        if inside:
+            copy["local"] = None
+        out.append(copy)
+    return out
+
+
 def _muzzle_rel(ctx, ref):
     h = ctx.handles
     is_tank = any(V.same_id(ref, tank) for tank in h["tanks"])
@@ -263,8 +344,11 @@ def verify(ctx, card):
     instances = V.uyaml.by_type(turret_docs, "PrefabInstance")
     nested_ok = len(instances) == 1 and instances[0].get("m_SourcePrefab", "guid") == c0.get("barrelGuid")
     same_nodes = bool(nodes) and V.canonical_digest(rest) == V.canonical_digest(c0.get("turretNodes") or [])
-    card.check("A4", same_nodes and nested_ok, actual={"otherNodesSame": same_nodes, "nestedInstances": len(instances),
-                                                       "nestedBarrel": nested_ok})
+    components = prefab_components(ctx, h["turret"])
+    same_values, value_diff = V.same(c0.get("turretComponents"), components)
+    card.check("A4", same_nodes and nested_ok and components is not None and same_values,
+               actual={"otherNodesSame": same_nodes, "nestedInstances": len(instances), "nestedBarrel": nested_ok,
+                       "componentValues": value_diff})
 
     diffs, pose_diffs, found, missing = {}, {}, [], []
     carrier_path, carrier_total = None, None
@@ -278,6 +362,10 @@ def verify(ctx, card):
             carrier_total = sum(V.as_int(v) or 0 for v in (now or {}).get("counts", {}).values()) if now else None
         if not now or not was or now["entries"] != was["entries"] or now["counts"] != was["counts"]:
             diffs[key] = {"before": was, "after": now}
+        added = added_values(ctx, info.get("path")) if info else None
+        if added != (c0.get("addedValues") or {}).get(key):
+            diffs.setdefault(key, {})["addedComponentValues"] = {"before": (c0.get("addedValues") or {}).get(key),
+                                                                 "after": added}
         rel = _muzzle_rel(ctx, ref)
         trs = V.local_trs(p, descend(p, ref, rel.split("/")))
         same, diff = V.same((c0.get("barrelPose") or {}).get(key), trs)
@@ -295,14 +383,16 @@ def verify(ctx, card):
                          "localEulerAngles": pose["rotation"], "localScale": want_scale},
                actual={"found": [node.get("path") for node in found], "missing": missing})
 
-    tree = V.structure(p, [h["container"]])
-    same_tree = V.canonical_digest(_without(tree, "Muzzle")) == \
-        V.canonical_digest(_without(c0.get("container") or [], "Muzzle"))
-    assets = V.asset_listing(ctx.project_path, ctx.A)
-    before_assets = c0.get("assets") or []
+    tree = V.structure(p, [h["container"]], poses=True)
+    roots = h["tanks"] + h["turrets"]
+    same_tree, tree_diff = V.same(_scene_poses(_without(c0.get("container") or [], "Muzzle"), roots),
+                                  _scene_poses(_without(tree, "Muzzle"), roots))
+    assets = [tuple(row) for row in V.asset_inventory(ctx.project_path, ctx.A, hashed=unhashed_prefab)]
+    before_assets = [tuple(row) for row in c0.get("assets") or []]
     card.check("A7", same_tree and assets == before_assets,
-               actual={"treeSame": same_tree, "added": sorted(set(assets) - set(before_assets))[:10],
-                       "removed": sorted(set(before_assets) - set(assets))[:10]})
+               actual={"treeSame": same_tree, "treeDiff": tree_diff,
+                       "added": [row[0] for row in assets if row not in before_assets][:10],
+                       "removed": [row[0] for row in before_assets if row not in assets][:10]})
     present = [node for ref in h["tanks"] + h["turrets"] for node in muzzles_under(p, ref)]
     card.check("A8", _answer_ok(ctx, node_path, present, carrier_path, carrier_total), actual=ctx.answer)
     bad = ctx.violations()

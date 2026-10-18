@@ -4,8 +4,10 @@ What the task probes: the azimuth/elevation/distance are relative to the subject
 under a rotated parent, so its local yaw (or the world axes) gives the wrong positions; every light must be aimed
 with a world rotation whose forward (+Z) hits the subject (there is no look-at skill: rotY = atan2(dx, dz),
 rotX = -asin(dy / distance)); light_create puts the light at the scene root, so it has to be reparented under the
-rig; a Spot needs its spotAngle and a Point has none; fill and rim intensities are percentages of the key; the old
-lamp is switched off (light disabled or object inactive) but neither deleted nor otherwise changed.
+rig; a Spot needs its spotAngle and a Point has none; fill and rim intensities are percentages of the key (of its
+specified intensity or of the one it ends up with, R4 allows both); the old lamp is switched off (light disabled or
+object inactive) but neither deleted nor otherwise changed: every light_get_info value, the Transform and Light
+serialized values and the component list stay, the Light's enabled flag and the object's active state aside.
 
 The rig is recomputed from the seed exactly as the public module does (rig_spec is copied verbatim); the subject's
 pose comes from C0, so moving the subject afterwards does not move the goal.
@@ -22,16 +24,18 @@ AIM_TOL = 1.0            # R3, degrees
 VALUE_TOL = 0.01         # R4 intensity, R5 colour, R6 range
 ANGLE_TOL = 0.1          # R6 spotAngle
 LOCAL_TOL = 1e-4         # R7 the old lamp's transform
+LAMP_INFO = ("lightType", "color", "intensity", "range", "spotAngle", "shadows", "cullingMask", "bounceIntensity")
 
 ASSERTIONS = [
     ("L1", 1.0, False, ["R1"], "one light per name, each a direct child of the rig with the requested light type"),
     ("L2", 1.5, False, ["R2"], "each light sits at the position given in the subject's world frame (fraction)"),
     ("L3", 1.5, False, ["R3"], "each light's forward axis points at the subject (fraction)"),
-    ("L4", 1.0, False, ["R4"], "intensities: the key's value, fill and rim as percentages of it (fraction)"),
+    ("L4", 1.0, False, ["R4"], "intensities: the key's value, fill and rim as percentages of it, of the specified "
+                               "or of the actual key intensity (fraction)"),
     ("L5", 1.0, False, ["R5"], "colours (fraction)"),
     ("L6", 1.0, False, ["R6"], "shadows, range and the spots' cone angles (fraction)"),
-    ("L7", 1.0, False, ["R7"], "the old lamp is switched off but still there, with its other properties and its "
-                               "transform unchanged"),
+    ("L7", 1.0, False, ["R7"], "the old lamp is switched off but still there; its light properties, serialized "
+                               "Transform and Light values, components and transform unchanged"),
     ("L8", 0.75, False, ["R8"], "no other light under R, nothing else under the rig, the subject, stage and rig "
                                 "unchanged"),
     ("L9", 0.5, False, ["R9", "G8"], "the answer reports the three lights' paths"),
@@ -49,15 +53,15 @@ HINTS = {
     "L3": {"zh-CN": "没有 look-at 技能：令 v = Subject − 灯，rotY = atan2(v.x, v.z)，rotX = −asin(v.y/|v|)，用 gameobject_set_transform 写世界欧拉角。",
            "en": "There is no look-at skill: with v = Subject - light, rotY = atan2(v.x, v.z) and "
                  "rotX = -asin(v.y/|v|), written as world euler angles with gameobject_set_transform."},
-    "L4": {"zh-CN": "fill 和 rim 的强度是 key 强度的百分比，要换算后写入。",
-           "en": "Fill and rim intensities are percentages of the key's; compute them before writing."},
+    "L4": {"zh-CN": "fill 和 rim 的强度是 key 强度的百分比，要换算后写入；每项误差 0.01。",
+           "en": "Fill and rim intensities are percentages of the key's; compute them before writing (0.01 each)."},
     "L5": {"zh-CN": "颜色分量是 0 到 1 的浮点数，按提示给的 RGB 写入 r/g/b。",
            "en": "Colour channels are floats from 0 to 1; write the given RGB into r/g/b."},
     "L6": {"zh-CN": "阴影用 None/Hard/Soft；两盏 Spot 要写 spotAngle；三盏灯的 range 都要设置。",
            "en": "Shadows are None/Hard/Soft; both Spots need their spotAngle; set the range on all three."},
-    "L7": {"zh-CN": "旧灯用 light_set_enabled(false) 或 gameobject_set_active(false) 停用，不要删除，也不要改它的属性或变换。",
+    "L7": {"zh-CN": "旧灯用 light_set_enabled(false) 或 gameobject_set_active(false) 停用，不要删除，也不要改它的任何其他属性（阴影、强度等）、组件或变换。",
            "en": "Switch the old lamp off with light_set_enabled(false) or gameobject_set_active(false); do not delete "
-                 "it or change its properties or transform."},
+                 "it or change any other property (shadows, intensity...), component or its transform."},
     "L8": {"zh-CN": "不要新建多余的灯，不要动 Subject、Stage 和 rig 本身。",
            "en": "Create no extra light and leave the Subject, the stage and the rig themselves alone."},
     "L9": {"zh-CN": "答案里报告三盏灯的实际完整路径，并写明 declaredComplete。",
@@ -179,6 +183,33 @@ def _close(actual, wanted, tol):
     return len(values) == 1 and abs(values[0] - wanted) <= tol
 
 
+def intensity_ok(spec, role, value, key_value):
+    """R4 for one light: the key within VALUE_TOL of its intensity; fill and rim within VALUE_TOL of their percentage
+    of the specified key intensity, or, when the key itself is within tolerance, of the key's actual intensity."""
+    light = spec["lights"][role]
+    if role == "key":
+        return _close(value, light["intensity"], VALUE_TOL)
+    if _close(value, light["intensity"], VALUE_TOL):
+        return True
+    key = V.floats(key_value)
+    return len(key) == 1 and _close(key_value, spec["lights"]["key"]["intensity"], VALUE_TOL) and \
+        _close(value, key[0] * light["pct"] / 100.0, VALUE_TOL)
+
+
+def lamp_values(probe, ref):
+    """Same rows as the public module's lamp_values: Transform and Light serialized values, Light m_Enabled aside."""
+    values = V.component_values(probe, ref, types=("Transform", "Light"))
+    return [[kind, sorted([path, value] for path, value in (props or {}).items()
+                          if not (kind == "Light" and path == "m_Enabled"))] for kind, props in sorted(values.items())]
+
+
+def lamp_components(probe, ref):
+    """Same rows as the public module's lamp_components: [type, enabled], the Light's flag aside, without URP's
+    UniversalAdditionalLightData."""
+    return [[comp.get("type"), None if comp.get("type") == "Light" else comp.get("enabled")]
+            for comp in probe.components(ref) if comp.get("type") != "UniversalAdditionalLightData"]
+
+
 def verify(ctx, card):
     p, h, c0 = ctx.probe, ctx.handles, ctx.c0
     spec = rig_spec(ctx.seed)
@@ -203,8 +234,8 @@ def verify(ctx, card):
     aimed = [role for role in ROLES if errors[role] is not None and errors[role] <= AIM_TOL]
     card.fraction("L3", len(aimed) / float(len(ROLES)), expected="<= %g deg" % AIM_TOL, actual=errors)
 
-    bright = [role for role in ROLES if _close(lights[role][2].get("intensity"), spec["lights"][role]["intensity"],
-                                               VALUE_TOL)]
+    key_value = lights["key"][2].get("intensity")
+    bright = [role for role in ROLES if intensity_ok(spec, role, lights[role][2].get("intensity"), key_value)]
     card.fraction("L4", len(bright) / float(len(ROLES)),
                   expected={role: spec["lights"][role]["intensity"] for role in ROLES},
                   actual={role: lights[role][2].get("intensity") for role in ROLES})
@@ -232,15 +263,20 @@ def verify(ctx, card):
     lamp_light = _read(ctx, "light_get_info", path=lamp.get("path")) if lamp.get("path") else None
     before = c0.get("lamp") or {}
     was = before.get("light") or {}
+    info_same, info_diff = V.same({key: was.get(key) for key in LAMP_INFO},
+                                  {key: (lamp_light or {}).get(key) for key in LAMP_INFO}, VALUE_TOL)
+    values_same, values_diff = V.same(before.get("values"), lamp_values(p, h["lamp"]) if lamp else None)
+    components_same = lamp_components(p, h["lamp"]) == before.get("components") if lamp else False
     same_lamp = bool(lamp) and bool(lamp_light) and \
-        all(lamp.get(field) == (before.get("state") or {}).get(field) for field in ("name", "parentPath")) and \
-        V.same(before.get("local"), V.local_trs(p, h["lamp"]), LOCAL_TOL)[0] and \
-        lamp_light.get("lightType") == was.get("lightType") and \
-        all(V.close_tuple(lamp_light.get(key), was.get(key), VALUE_TOL) for key in ("color", "intensity", "range"))
+        all(lamp.get(field) == (before.get("state") or {}).get(field) for field in ("name", "parentPath", "tag",
+                                                                                   "layer")) and \
+        V.same(before.get("local"), V.local_trs(p, h["lamp"]), LOCAL_TOL)[0] and info_same and values_same and \
+        components_same
     off = lamp_light is not None and (lamp_light.get("enabled") is False or lamp.get("isActive") is False)
     card.check("L7", same_lamp and off, expected={"enabled": False, "light": was},
                actual={"present": bool(lamp), "enabled": (lamp_light or {}).get("enabled"),
-                       "isActive": lamp.get("isActive"), "light": lamp_light})
+                       "isActive": lamp.get("isActive"), "light": lamp_light, "lightDiff": info_diff,
+                       "serializedDiff": values_diff, "componentsSame": components_same})
 
     found = {_key(lights[role][1]) for role in ROLES if lights[role][1]}
     found.discard(None)

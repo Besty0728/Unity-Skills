@@ -2,9 +2,9 @@
 
 OC7 runs end to end against YardFakeEditor (pack_fake_editor plus tags, parent batches and tag queries): builds,
 prompts, one seed one fingerprint, seed-driven structure, and the reference, every negative and every alternative
-through the private verifier. OC5 edits prefab assets, which the fake editor does not model, so its layout derivation
-(copied into the private verifier), prompt rendering and start values are checked on their own. The live selftest
-against a real editor remains the gate.
+through the private verifier. OC5's layout derivation (copied into the private verifier), prompt rendering and start
+values are checked here over many seeds; its end-to-end run against the prefab model is in
+test_pack_challenge_prefabs. The live selftest against a real editor remains the gate.
 """
 import json
 import random
@@ -112,8 +112,17 @@ class OC7Tests(OpsTaskTests, unittest.TestCase):
         self.assertNotEqual(set(run.handles["containers"]), set(other.handles["containers"]))
         self.assertNotEqual(os.path.basename(run.handles["loosePath"]), os.path.basename(other.handles["loosePath"]))
 
+    def test_world_scale_tolerance_is_relative(self):
+        """R5 states a relative 0.001: 0.5 accepts 0.50049 and rejects 0.5009, 2 accepts 2.0019 and rejects 2.0021."""
+        private = load_modules(self.TASK_ID)[1]
+        self.assertTrue(private._close_scale([0.50049, 1.0, 2.0], [0.5, 1.0, 2.0]))
+        self.assertFalse(private._close_scale([0.5009, 1.0, 2.0], [0.5, 1.0, 2.0]))
+        self.assertTrue(private._close_scale([0.5, 1.0, 2.0019], [0.5, 1.0, 2.0]))
+        self.assertFalse(private._close_scale([0.5, 1.0, 2.0021], [0.5, 1.0, 2.0]))
+        self.assertFalse(private._close_scale([0.5, 1.0], [0.5, 1.0, 2.0]))
 
-class OC5Tests(unittest.TestCase):
+
+class OC5LayoutTests(unittest.TestCase):
     SEEDS = range(7001, 7301)
 
     def modules(self):

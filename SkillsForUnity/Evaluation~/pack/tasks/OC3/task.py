@@ -105,6 +105,12 @@ def _residue(ctx):
     return [item for item in found if item]
 
 
+def unhashed_prefab(rel):
+    """asset_inventory predicate: a prefab's content is judged by B1-B4's YAML digests, everything else (folders,
+    .meta files with their labels and GUIDs, tables, scripts) byte for byte."""
+    return not rel.endswith(".prefab")
+
+
 def _script_guids(docs):
     return [d.get("m_Script", "guid") for d in V.uyaml.by_type(docs, "MonoBehaviour")]
 
@@ -253,7 +259,8 @@ class OC3(PublicTask):
                 counts[path] = loot_count(docs, loot_guid)
         return {"data": {"full": full, "masked": masked, "lootCounts": counts,
                          "tableGuids": {tier: p.guid(path) for tier, path in h["tables"].items()},
-                         "lootGuid": loot_guid, "assets": listing,
+                         "lootGuid": loot_guid,
+                         "assets": V.asset_inventory(ctx.project_path, ctx.A, hashed=unhashed_prefab),
                          "scriptHashes": {h[key]: script_hash(ctx, h[key]) for key in ("lootScript", "tableScript")}},
                 "digests": {}}
 

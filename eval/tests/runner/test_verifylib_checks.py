@@ -305,7 +305,8 @@ class PublicSurfaceTests(unittest.TestCase):
     NAMES = ["Scorecard", "Probe", "floats", "vec_close", "quat_from_euler", "quat_angle_deg", "quat_close",
              "parse_ref", "REF_RE", "go_state", "material_state", "material_color", "close_tuple", "same",
              "new_children", "local_trs", "identity_rotation", "answer", "as_int", "norm_path", "world_from_local",
-             "uyaml", "canonical_digest", "structure", "hierarchy_signature", "asset_listing", "fingerprint",
+             "uyaml", "canonical_digest", "structure", "hierarchy_signature", "asset_listing", "asset_inventory",
+             "component_values", "fingerprint",
              "scope_violations", "adopted_paths", "under", "object_id", "same_id", "address",
              "installed_packages", "has_text_mesh_pro", "active_input_handler"]
 

@@ -153,6 +153,20 @@ def direct_file(ctx):
     return answer
 
 
+def table_labels(ctx):
+    """The reference, then a label set on the Common table (it lives in the asset's .meta file)."""
+    answer = reference(ctx)
+    ctx.c.write("asset_set_labels", assetPath=ctx.handles["tables"]["Common"], labels="Loot")
+    return answer
+
+
+def extra_empty_folder(ctx):
+    """The reference plus an empty folder under the asset root."""
+    answer = reference(ctx)
+    ctx.c.write("asset_create_folder", folderPath=ctx.asset("Spare"))
+    return answer
+
+
 def single_calls(ctx):
     for item in _items(_rows(ctx)):
         ctx.c.write("prefab_set_serialized_property", **item)
@@ -188,6 +202,8 @@ NEGATIVES = [
     Negative("wrong_report", wrong_report, {"B5"}),
     Negative("outside_root", outside_root, {"B6"}),
     Negative("direct_file", direct_file, {"B4", "B7"}, "a file written to disk next to the skills"),
+    Negative("table_labels", table_labels, {"B4"}, "a label added to a LootTable asset"),
+    Negative("extra_empty_folder", extra_empty_folder, {"B4"}, "an empty folder created under the asset root"),
 ]
 
 ALTERNATIVES = [("single_calls", single_calls), ("legacy_mixed", legacy_mixed), ("save_run_scene", save_run_scene)]

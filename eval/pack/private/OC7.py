@@ -37,8 +37,8 @@ ASSERTIONS = [
     ("H7", 0.5, False, ["R2", "R8"], "the untagged objects, the containers and the folders are unchanged"),
     ("H8", 0.5, False, ["R5"], "scaleNotPreserved lists exactly the moved objects whose rotation differs from their "
                                "container"),
-    ("H9", 0.5, False, ["R3"], "no object created, destroyed, renamed, retagged or (de)activated; no object "
-                               "reparented to more than one place"),
+    ("H9", 0.5, False, ["R3", "R8"], "no object created or destroyed anywhere under R, none renamed, retagged or "
+                                     "(de)activated; no object reparented to more than one place"),
     ("H10", 0.25, False, ["R9", "G8"], "movedCount is the number of objects that had to move; declaredComplete is "
                                        "a boolean"),
     ("H11", 0.5, True, ["G1", "G2"], "no change outside R/A, no other scene saved or opened"),
@@ -73,9 +73,10 @@ HINTS = {
                     "其他对象不要列。",
            "en": "Objects whose world rotation differs from their container cannot keep their world scale under a "
                  "non-uniformly scaled parent; list exactly those in scaleNotPreserved (paths after the move)."},
-    "H9": {"zh-CN": "移动对象本身，不要删除或重建，不要改名、改标签或改激活状态，也不要把同一对象移到两个地方。",
-           "en": "Move the objects themselves: no delete and recreate, no rename, retag or active change, and no object "
-                 "moved to two places."},
+    "H9": {"zh-CN": "移动对象本身：不要在 R 下新建或删除任何对象（Yard 之外也不行），不要改名、改标签或改激活状态，"
+                    "也不要把同一对象移到两个地方。",
+           "en": "Move the objects themselves: create or delete no object anywhere under R (outside the yard "
+                 "included), no rename, retag or active change, and no object moved to two places."},
     "H10": {"zh-CN": "movedCount 是父物体发生改变的对象数，并写明 declaredComplete。",
             "en": "movedCount is the number of objects whose parent changed; set declaredComplete."},
     "H11": {"zh-CN": "所有修改都必须在 R 与 A 之内，且只能保存本轮场景。",
@@ -131,8 +132,9 @@ def layout(c0):
 
 
 def _close_scale(actual, wanted):
+    """Per axis within SCALE_TOL of the wanted value, relative (R5): 0.5 accepts 0.5 +- 0.0005."""
     a, b = V.floats(actual), V.floats(wanted)
-    return len(a) == 3 and len(b) == 3 and all(abs(x - y) <= SCALE_TOL * max(1.0, abs(y)) for x, y in zip(a, b))
+    return len(a) == 3 and len(b) == 3 and all(abs(x - y) <= SCALE_TOL * abs(y) for x, y in zip(a, b))
 
 
 def _mentions(records, key, path):
@@ -241,9 +243,8 @@ def verify(ctx, card):
         if not info or any(info.get(field) != state.get(field) for field in ("name", "tag")) or \
                 info.get("isActive") != state.get("active"):
             identity.append({"name": state.get("name"), "now": {k: info.get(k) for k in ("name", "tag", "isActive")}})
-    yard = ctx.handles.get("yardPath")
     births = [rec for rec in ctx.records if rec.get("kind") in ("gameobject_created", "gameobject_destroyed") and
-              (V.under(rec.get("path"), yard) or _key(rec) in objects)]
+              (V.under(rec.get("path"), ctx.R) or _key(rec) in objects)]
     places = {}
     for rec in ctx.records:
         if rec.get("kind") == "gameobject_reparented" and _key(rec) is not None:

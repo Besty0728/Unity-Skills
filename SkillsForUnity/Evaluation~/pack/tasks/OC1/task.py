@@ -1,8 +1,9 @@
 ﻿"""OC1: a Muzzle node added inside Turret.prefab under its nested Barrel instance (ops, challenge).
 
 Fixture: A/<folder>/{Barrel,Turret,Tank}.prefab, nested Barrel -> Turret -> Tank with seeded holder nodes; R/<container>
-holds three bays with two Tank instances and one Turret instance; one Tank instance carries a Barrel rotation override
-and an added AudioSource.
+holds three bays with two Tank instances and one Turret instance, each at its asset root's local position (an instance
+root placed elsewhere would carry a position override); one Tank instance carries a Barrel rotation override and an
+added AudioSource.
 """
 import json
 import os
@@ -62,6 +63,48 @@ def prefab_nodes(ctx, prefab_path):
     return sorted(out, key=lambda item: item["path"] or "")
 
 
+def unhashed_prefab(rel):
+    """asset_inventory predicate: the prefab files' content is judged by A1-A4, everything else (.meta files, folders,
+    other files) by A7."""
+    return not rel.endswith(".prefab")
+
+
+def prefab_components(ctx, prefab_path):
+    """The components of every node of a prefab asset but Muzzle, with their serialized values: sorted
+    [node path, [[type, index, enabled, properties]]] rows. A Transform keeps only its type (its pose is in
+    prefab_nodes, and its child list grows with Muzzle)."""
+    res = ctx.read("prefab_get_hierarchy", prefabPath=prefab_path, limit=500)
+    out = []
+    for node in res.get("nodes") or []:
+        path = node.get("gameObjectPath") or ""
+        if path.split("/")[-1] == "Muzzle":
+            continue
+        listed = ctx.read("prefab_list_components", prefabPath=prefab_path, gameObjectPath=path, includeProperties=True)
+        comps = []
+        for comp in listed.get("components") or []:
+            kind = str(comp.get("componentType"))
+            props = None if kind.endswith("Transform") else sorted(
+                [prop.get("propertyPath"), prop.get("value")] for prop in comp.get("properties") or [])
+            comps.append([kind, comp.get("componentIndex"), comp.get("enabled"), props])
+        out.append([path, comps])
+    return sorted(out, key=lambda row: row[0])
+
+
+def added_values(ctx, instance_path):
+    """Serialized values of the components added on an instance: sorted [node path, type, [[propertyPath, value]]]."""
+    res = ctx.read("prefab_get_overrides", path=instance_path, includeDetails=True)
+    out = []
+    for entry in res.get("overrides") or []:
+        if entry.get("kind") != "addedComponent":
+            continue
+        rel = entry.get("gameObjectPath") or ""
+        node = ctx.probe.go_path(instance_path + ("/" + rel if rel else ""))
+        values = V.component_values(ctx.probe, node, types=(entry.get("component"),)) if node else {}
+        out.append([rel, entry.get("component"), sorted([key, value] for key, value in
+                                                        (values.get(entry.get("component")) or {}).items())])
+    return sorted(out, key=lambda row: (row[0], str(row[1])))
+
+
 def overrides(ctx, instance_path):
     """Counts and entries of prefab_get_overrides for the instance at instance_path, without the values."""
     res = ctx.read("prefab_get_overrides", path=instance_path, includeDetails=True)
@@ -119,7 +162,8 @@ class OC1(PublicTask):
         tank = make("Tank", ctx.root)
         hull = make("Hull", tank, y=0.6)
         make("Chassis", hull, primitiveType="Cube", scaleX=2, scaleY=0.6, scaleZ=3)
-        turret = make("Turret", hull if turret_holder else tank, y=0.3 if turret_holder else 0.9)
+        turret_y = 0.3 if turret_holder else 0.9
+        turret = make("Turret", hull if turret_holder else tank, y=turret_y)
         make("Dome", turret, primitiveType="Sphere", scaleX=0.8, scaleY=0.8, scaleZ=0.8)
         mount = make("Mount", turret, y=0.2) if barrel_holder else turret
         barrel = make("Barrel", mount, y=0.1 if barrel_holder else 0.3, z=0.6)
@@ -134,8 +178,9 @@ class OC1(PublicTask):
 
         container = make(container_name, ctx.root)
         bay_ids = [make(bay, container, x=spot[0], z=spot[1]) for bay, spot in zip(bays, spots)]
-        items = [dict({"prefabPath": paths[kind], "name": name}, **address(bay, "parent"))
-                 for (kind, name), bay in zip(specs, bay_ids)]
+        # Each instance root sits where its asset root does (Tank at 0, Turret at turret_y): no root position override.
+        items = [dict({"prefabPath": paths[kind], "name": name, "y": turret_y if kind == "turret" else 0},
+                      **address(bay, "parent")) for (kind, name), bay in zip(specs, bay_ids)]
         res = c.write("prefab_instantiate_batch", items=json.dumps(items))
         ids = [V.object_id(row) for row in res.get("results") or []]
         tank_ids = [ref for (kind, _name), ref in zip(specs, ids) if kind == "tank"]
@@ -151,20 +196,23 @@ class OC1(PublicTask):
 
     def snapshot(self, ctx):
         p, h = ctx.probe, ctx.handles
-        instance_overrides, barrel_pose = {}, {}
+        instance_overrides, barrel_pose, added = {}, {}, {}
         for ref in h["tanks"] + h["turrets"]:
             key = str(V.object_id(ref))
             info = p.go(ref) or {}
             instance_overrides[key] = overrides(ctx, info.get("path"))
+            added[key] = added_values(ctx, info.get("path"))
             rel = (h["turretNode"] + "/" if ref in h["tanks"] else "") + h["barrelNode"]
             barrel_pose[key] = V.local_trs(p, descend(p, ref, rel.split("/")))
         return {"data": {"prefabDocs": {h[name]: yaml_digest(ctx, h[name]) for name in PREFAB_NAMES},
                          "turretNodes": prefab_nodes(ctx, h["turret"]),
+                         "turretComponents": prefab_components(ctx, h["turret"]),
                          "barrelGuid": p.guid(h["barrel"]),
                          "overrides": instance_overrides,
+                         "addedValues": added,
                          "barrelPose": barrel_pose,
-                         "container": V.structure(p, [h["container"]]),
-                         "assets": V.asset_listing(ctx.project_path, ctx.A)},
+                         "container": V.structure(p, [h["container"]], poses=True),
+                         "assets": V.asset_inventory(ctx.project_path, ctx.A, hashed=unhashed_prefab)},
                 "digests": {}}
 
     def prompt_vars(self, ctx):

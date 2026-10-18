@@ -12,18 +12,13 @@ def _spec(ctx):
     return ctx.private.layout_spec(ctx.seed)
 
 
-def _rect_args(rect, local=False):
-    """prefab_set_transform / ui_set_rect_transform fields for one element; `local` writes the position as
-    posX/posY (localPosition) instead of anchoredPosX/Y."""
-    args = {"anchorMinX": rect["anchorMin"][0], "anchorMinY": rect["anchorMin"][1],
+def _rect_args(rect):
+    """prefab_set_transform / ui_set_rect_transform fields for one element."""
+    return {"anchorMinX": rect["anchorMin"][0], "anchorMinY": rect["anchorMin"][1],
             "anchorMaxX": rect["anchorMax"][0], "anchorMaxY": rect["anchorMax"][1],
             "pivotX": rect["pivot"][0], "pivotY": rect["pivot"][1],
-            "sizeDeltaX": rect["sizeDelta"][0], "sizeDeltaY": rect["sizeDelta"][1]}
-    if local:
-        args.update({"posX": rect["anchoredPosition"][0], "posY": rect["anchoredPosition"][1]})
-    else:
-        args.update({"anchoredPosX": rect["anchoredPosition"][0], "anchoredPosY": rect["anchoredPosition"][1]})
-    return args
+            "sizeDeltaX": rect["sizeDelta"][0], "sizeDeltaY": rect["sizeDelta"][1],
+            "anchoredPosX": rect["anchoredPosition"][0], "anchoredPosY": rect["anchoredPosition"][1]}
 
 
 def _group_items(ctx, spec):
@@ -36,6 +31,11 @@ def _answer(ctx, order):
     return {"prefabPath": ctx.handles["prefabPath"], "childOrder": list(order), "declaredComplete": True}
 
 
+def _asset_order_now(ctx):
+    """The prefab root's children as the asset holds them after the solver acted (what an honest report says)."""
+    return ctx.private._root_children(ctx.private.asset_state(ctx, ctx.handles["prefabPath"]))
+
+
 def _write_file(ctx, asset_path, data):
     """Writes a file under A on disk, bypassing the skills (the runner's refresh imports it at submit)."""
     target = os.path.join(ctx.project_path, *asset_path.split("/"))
@@ -44,10 +44,11 @@ def _write_file(ctx, asset_path, data):
         handle.write(data)
 
 
-def _asset_rects(ctx, spec, local=False):
+def _asset_rects(ctx, spec, rects=None):
     pp = ctx.handles["prefabPath"]
+    rects = rects or spec["rects"]
     ctx.c.write("prefab_set_transform_batch", items=json.dumps(
-        [dict(_rect_args(spec["rects"][name], local), prefabPath=pp, gameObjectPath=name) for name in ELEMENTS]))
+        [dict(_rect_args(rects[name]), prefabPath=pp, gameObjectPath=name) for name in ELEMENTS]))
 
 
 def _asset_order(ctx, order):
@@ -130,13 +131,41 @@ def save_run_scene(ctx):
     return answer
 
 
+def _nudged(value):
+    """A requested number moved by 0.0004 towards the inside of 0..1 (anchors and pivots stay in range)."""
+    return value - 0.0004 if value >= 0.5 else value + 0.0004
+
+
+def within_tolerance(ctx):
+    """Every requested RectTransform value off by 0.0004, inside P1's 0.001."""
+    spec = _spec(ctx)
+    rects = {name: {field: tuple(_nudged(v) for v in values) for field, values in rect.items()}
+             for name, rect in spec["rects"].items()}
+    _asset_rects(ctx, spec, rects)
+    _asset_order(ctx, spec["order"])
+    _asset_active(ctx)
+    _asset_group(ctx, spec)
+    return _answer(ctx, spec["order"])
+
+
 # ---------------------------------------------------------------- negatives
 
 
 def local_position(ctx):
-    """posX/posY (localPosition) instead of anchoredPosX/Y."""
+    """Anchors, pivots and sizes first, then the positions as posX/posY (localPosition) instead of anchoredPosX/Y.
+    (In one prefab_set_transform call posX/posY would land before the anchors, under the centred start anchors, where
+    localPosition and anchoredPosition coincide.)"""
     spec = _spec(ctx)
-    _asset_rects(ctx, spec, local=True)
+    pp = ctx.handles["prefabPath"]
+    layout = []
+    for name in ELEMENTS:
+        args = _rect_args(spec["rects"][name])
+        del args["anchoredPosX"], args["anchoredPosY"]
+        layout.append(dict(args, prefabPath=pp, gameObjectPath=name))
+    ctx.c.write("prefab_set_transform_batch", items=json.dumps(layout))
+    ctx.c.write("prefab_set_transform_batch", items=json.dumps(
+        [{"prefabPath": pp, "gameObjectPath": name, "posX": spec["rects"][name]["anchoredPosition"][0],
+          "posY": spec["rects"][name]["anchoredPosition"][1]} for name in ELEMENTS]))
     _asset_order(ctx, spec["order"])
     _asset_active(ctx)
     _asset_group(ctx, spec)
@@ -144,16 +173,18 @@ def local_position(ctx):
 
 
 def instance_only(ctx):
+    """The values written on the scene instance; the report gives the order the asset really has."""
     spec = _spec(ctx)
     _instance_edits(ctx, spec)
-    return _answer(ctx, spec["order"])
+    return _answer(ctx, _asset_order_now(ctx))
 
 
 def instance_then_apply(ctx):
+    """The values written on the scene instance, then prefab_apply; the report gives the asset's real order."""
     spec = _spec(ctx)
     _instance_edits(ctx, spec)
     ctx.c.write("prefab_apply", path=ctx.handles["hudPath"])
-    return _answer(ctx, spec["order"])
+    return _answer(ctx, _asset_order_now(ctx))
 
 
 def wrong_order(ctx):
@@ -192,8 +223,25 @@ def revert_instance(ctx):
 
 
 def edit_root(ctx):
+    """The prefab root resized in the asset. The size of a RectTransform instance root is a default override, so the
+    scene instance keeps 1280 and now differs from its asset: a new override (P5) besides the changed root (P6)."""
     answer = reference(ctx)
     ctx.c.write("prefab_set_transform", prefabPath=ctx.handles["prefabPath"], gameObjectPath="", sizeDeltaX=1000)
+    return answer
+
+
+def asset_depth(ctx):
+    """The reference, then one element's local Z moved in the asset (posZ; X/Y and anchoredPosition untouched)."""
+    answer = reference(ctx)
+    ctx.c.write("prefab_set_transform", prefabPath=ctx.handles["prefabPath"], gameObjectPath="Ammo", posZ=123)
+    return answer
+
+
+def canvas_sort_order(ctx):
+    """The reference, then the scene Canvas the instance sits on gets another sorting order."""
+    answer = reference(ctx)
+    ctx.c.write("component_set_property", path=ctx.handles["canvasPath"], componentType="Canvas",
+                propertyName="sortingOrder", value="123")
     return answer
 
 
@@ -235,13 +283,16 @@ NEGATIVES = [
     Negative("activate_instance", activate_instance, {"P3", "P5"}, "Notice activated on the instance"),
     Negative("spacing_only", spacing_only, {"P4"}, "padding left at its old values"),
     Negative("revert_instance", revert_instance, {"P5"}, "the instance's own override reverted"),
-    Negative("edit_root", edit_root, {"P6"}, "the prefab root resized"),
+    Negative("edit_root", edit_root, {"P5", "P6"}, "the prefab root resized; the instance root keeps its size"),
+    Negative("asset_depth", asset_depth, {"P6"}, "an element's local Z changed in the asset"),
+    Negative("canvas_sort_order", canvas_sort_order, {"P6"}, "the scene Canvas's sorting order changed"),
     Negative("replace_asset", replace_asset, {"P5", "P6", "P10"}, "the asset deleted and recreated"),
     Negative("wrong_report", wrong_report, {"P7"}),
     Negative("outside_root", outside_root, {"P8"}),
     Negative("direct_file", direct_file, {"P9"}, "a file written to disk next to the skills"),
 ]
 
-ALTERNATIVES = [("edit_batch", edit_batch), ("serialized_fields", serialized_fields), ("save_run_scene", save_run_scene)]
+ALTERNATIVES = [("edit_batch", edit_batch), ("serialized_fields", serialized_fields), ("save_run_scene", save_run_scene),
+                ("within_tolerance", within_tolerance)]
 
 # Producer:Betsy

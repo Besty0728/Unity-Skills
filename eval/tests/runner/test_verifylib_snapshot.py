@@ -1,4 +1,5 @@
-﻿"""usk_eval.verifylib.snapshot: digests, subtree structure, hierarchy signature, asset listing, fingerprint."""
+﻿"""usk_eval.verifylib.snapshot: digests, subtree structure, hierarchy signature, asset listing and inventory, component
+values, fingerprint."""
 import hashlib
 import json
 import os
@@ -119,6 +120,39 @@ class StructureTests(unittest.TestCase):
         ids = [n["id"] for n in V.structure(self.probe, [100])]
         self.assertEqual(ids, [100, 101, 102, 103])
 
+    def pose(self, iid, position="0,0,0", rotation="0,0,0,1", scale="1,1,1"):
+        self.editor.serialized[(iid, "Transform")] = {"m_LocalPosition": position, "m_LocalRotation": rotation,
+                                                      "m_LocalScale": scale}
+
+    def test_poses_add_the_local_pose_of_every_node(self):
+        for iid in (100, 101, 103):
+            self.pose(iid)
+        self.pose(102, position="0,0.5,0", scale="2,1,1")
+        nodes = V.structure(self.probe, [100], poses=True)
+        self.assertEqual(list(nodes[2])[-1], "local")
+        self.assertEqual(nodes[2]["local"], {"position": [0.0, 0.5, 0.0], "rotation": [0.0, 0.0, 0.0, 1.0],
+                                             "scale": [2.0, 1.0, 1.0]})
+        self.assertNotIn("local", V.structure(self.probe, [100])[2])
+        json.dumps(nodes, allow_nan=False)
+
+    def test_with_poses_a_move_turn_or_rescale_changes_the_digest(self):
+        for iid in (100, 101, 102, 103):
+            self.pose(iid)
+        base = V.canonical_digest(V.structure(self.probe, [100], poses=True))
+        self.assertEqual(V.canonical_digest(V.structure(self.probe, [100])),
+                         V.canonical_digest(V.structure(Probe(support.sample_scene()), [100])))
+        for label, values in (("move", {"position": "0,0,1"}), ("turn", {"rotation": "0,0.7071068,0,0.7071068"}),
+                              ("rescale", {"scale": "1,1,0.5"})):
+            with self.subTest(edit=label):
+                self.pose(102, **values)
+                self.assertNotEqual(V.canonical_digest(V.structure(self.probe, [100], poses=True)), base)
+                self.pose(102)
+
+    def test_with_poses_a_missing_object_has_no_pose(self):
+        nodes = V.structure(self.probe, [999], poses=True)
+        self.assertIsNone(nodes[0]["local"])
+        self.assertIsNone(nodes[0]["name"])
+
 
 class HierarchySignatureTests(unittest.TestCase):
     def test_signature_has_names_order_and_values_but_no_ids(self):
@@ -194,6 +228,100 @@ class AssetListingTests(unittest.TestCase):
     def test_a_missing_folder_lists_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(V.asset_listing(tmp, "Assets/Nope"), [])
+
+
+class AssetInventoryTests(unittest.TestCase):
+    ROOT = "Assets/__UnitySkillsEval/r1"
+
+    def make(self, tmp, files, folders=()):
+        root = os.path.join(tmp, *self.ROOT.split("/"))
+        for rel, text in files.items():
+            path = os.path.join(root, *rel.split("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as handle:
+                handle.write(text)
+        for rel in folders:
+            os.makedirs(os.path.join(root, *rel.split("/")), exist_ok=True)
+        return root
+
+    @staticmethod
+    def sha(text):
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    def test_folders_files_and_meta_files_with_their_hashes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make(tmp, {"a.mat": "m", "a.mat.meta": "guid: 1", "Sub.meta": "folderAsset: yes",
+                            "Sub/z.txt": "z", "Eval_r1.unity": "s", "Eval_r1.unity.meta": "guid: 2"},
+                      folders=("Empty",))
+            self.assertEqual(V.asset_inventory(tmp, self.ROOT),
+                             [["Empty/", None], ["Sub.meta", self.sha("folderAsset: yes")], ["Sub/", None],
+                              ["Sub/z.txt", self.sha("z")], ["a.mat", self.sha("m")],
+                              ["a.mat.meta", self.sha("guid: 1")]])
+
+    def test_an_empty_folder_a_meta_edit_and_a_content_edit_all_show(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.make(tmp, {"T.asset": "tier: 1", "T.asset.meta": "guid: 1\nlabels: []"})
+            base = V.asset_inventory(tmp, self.ROOT)
+            self.assertEqual(V.asset_listing(tmp, self.ROOT), ["T.asset"])
+            os.makedirs(os.path.join(root, "Spare"))
+            self.assertNotEqual(V.asset_inventory(tmp, self.ROOT), base)
+            self.assertEqual(V.asset_listing(tmp, self.ROOT), ["T.asset"])
+            os.rmdir(os.path.join(root, "Spare"))
+            self.assertEqual(V.asset_inventory(tmp, self.ROOT), base)
+            for rel, text in (("T.asset.meta", "guid: 1\nlabels:\n- Loot"), ("T.asset", "tier: 2")):
+                with self.subTest(edit=rel):
+                    with open(os.path.join(root, rel), "r") as handle:
+                        before = handle.read()
+                    with open(os.path.join(root, rel), "w") as handle:
+                        handle.write(text)
+                    self.assertNotEqual(V.asset_inventory(tmp, self.ROOT), base)
+                    with open(os.path.join(root, rel), "w") as handle:
+                        handle.write(before)
+            self.assertEqual(V.asset_inventory(tmp, self.ROOT), base)
+
+    def test_a_file_the_predicate_turns_down_keeps_its_row_without_a_hash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.make(tmp, {"P.prefab": "a", "P.prefab.meta": "guid: 3"})
+            keep = V.asset_inventory(tmp, self.ROOT, hashed=lambda rel: not rel.endswith(".prefab"))
+            self.assertEqual(keep, [["P.prefab", None], ["P.prefab.meta", self.sha("guid: 3")]])
+            with open(os.path.join(root, "P.prefab"), "w") as handle:
+                handle.write("b")
+            self.assertEqual(V.asset_inventory(tmp, self.ROOT, hashed=lambda rel: not rel.endswith(".prefab")), keep)
+            os.remove(os.path.join(root, "P.prefab"))
+            self.assertNotEqual(V.asset_inventory(tmp, self.ROOT, hashed=lambda rel: not rel.endswith(".prefab")),
+                                keep)
+
+    def test_a_missing_folder_lists_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(V.asset_inventory(tmp, "Assets/Nope"), [])
+
+
+class ComponentValuesTests(unittest.TestCase):
+    def setUp(self):
+        self.editor = support.sample_scene()
+        self.probe = Probe(self.editor)
+        self.editor.serialized[(102, "Transform")] = {"m_LocalPosition": "0,0.5,0"}
+        self.editor.serialized[(102, "BoxCollider")] = {"m_Size": "1,1,1", "m_IsTrigger": "False"}
+
+    def test_every_component_type_with_its_values(self):
+        self.assertEqual(V.component_values(self.probe, 102),
+                         {"Transform": {"m_LocalPosition": "0,0.5,0"},
+                          "BoxCollider": {"m_Size": "1,1,1", "m_IsTrigger": "False"}})
+
+    def test_types_and_skip_narrow_the_set(self):
+        self.assertEqual(V.component_values(self.probe, 102, types=("BoxCollider",)),
+                         {"BoxCollider": {"m_Size": "1,1,1", "m_IsTrigger": "False"}})
+        self.assertEqual(V.component_values(self.probe, 102, skip=("Transform",)),
+                         {"BoxCollider": {"m_Size": "1,1,1", "m_IsTrigger": "False"}})
+
+    def test_a_value_change_shows_and_an_unreadable_component_is_none(self):
+        before = V.component_values(self.probe, 102)
+        self.editor.serialized[(102, "BoxCollider")]["m_IsTrigger"] = "True"
+        self.assertNotEqual(V.component_values(self.probe, 102), before)
+        self.assertEqual(V.component_values(self.probe, 103), {"Transform": None, "Light": None})
+
+    def test_a_missing_object_has_no_values(self):
+        self.assertEqual(V.component_values(self.probe, 999), {})
 
 
 class FingerprintTests(unittest.TestCase):

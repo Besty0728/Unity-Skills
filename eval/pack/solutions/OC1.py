@@ -209,6 +209,51 @@ def save_run_scene(ctx):
     return answer
 
 
+def serialized_transform(ctx):
+    """Muzzle created, then its pose written as the Transform's serialized fields (rotation as a quaternion)."""
+    h, pose = ctx.handles, _pose(ctx)
+    carrier = _carrier(ctx)
+    ctx.c.write("prefab_create_gameobject", prefabPath=h["turret"], name="Muzzle", parentPath=h["barrelNode"])
+    rotation = V.quat_from_euler(*pose["rotation"])
+    for prop, values in (("m_LocalPosition", pose["position"]), ("m_LocalRotation", rotation),
+                         ("m_LocalScale", (pose["scale"],) * 3)):
+        ctx.c.write("prefab_set_serialized_property", prefabPath=h["turret"], gameObjectPath=_node_path(ctx),
+                    componentType="Transform", propertyPath=prop, value=",".join("%.9g" % v for v in values))
+    return _answer(ctx, carrier)
+
+
+def dome_radius(ctx):
+    """The reference, then the Dome's SphereCollider radius changed inside Turret.prefab."""
+    answer = reference(ctx)
+    ctx.c.write("prefab_set_serialized_property", prefabPath=ctx.handles["turret"], gameObjectPath="Dome",
+                componentType="SphereCollider", propertyPath="m_Radius", value="0.75")
+    return answer
+
+
+def move_bay(ctx):
+    """The reference, then one bay under the container moved (its instance moves with it, no override changes)."""
+    answer = reference(ctx)
+    bay = (ctx.probe.go(ctx.handles["container"]) or {}).get("children")[0]
+    ctx.c.write("gameobject_set_transform", localPosX=-9, localPosY=0, localPosZ=9, **V.address(bay))
+    return answer
+
+
+def added_audio_volume(ctx):
+    """The reference, then the volume of the AudioSource added on the carrier changed (its override list stays)."""
+    carrier = _carrier(ctx)
+    answer = reference(ctx)
+    ctx.c.write("component_set_property", path=carrier + "/" + ctx.handles["turretNode"], componentType="AudioSource",
+                propertyName="volume", value="0.25")
+    return answer
+
+
+def extra_empty_folder(ctx):
+    """The reference plus an empty folder under the asset root."""
+    answer = reference(ctx)
+    ctx.c.write("asset_create_folder", folderPath=ctx.asset("Prefabs", "Spare"))
+    return answer
+
+
 NEGATIVES = [
     Negative("scene_instances", scene_instances, {"A1", "A2", "A5"},
              "Muzzle added on each scene instance instead of in the asset"),
@@ -225,9 +270,13 @@ NEGATIVES = [
     Negative("wrong_report", wrong_report, {"A8"}),
     Negative("outside_root", outside_root, {"A9"}),
     Negative("direct_file", direct_file, {"A7", "A10"}, "a file written to disk next to the skills"),
+    Negative("dome_radius", dome_radius, {"A4"}, "a component value of another Turret.prefab node changed"),
+    Negative("move_bay", move_bay, {"A7"}, "a bay under the container moved"),
+    Negative("added_audio_volume", added_audio_volume, {"A5"}, "the added AudioSource's volume changed"),
+    Negative("extra_empty_folder", extra_empty_folder, {"A7"}, "an empty folder created under the asset root"),
 ]
 
 ALTERNATIVES = [("edit_batch", edit_batch), ("apply_turret_instance", apply_turret_instance),
-                ("save_run_scene", save_run_scene)]
+                ("save_run_scene", save_run_scene), ("serialized_transform", serialized_transform)]
 
 # Producer:Betsy

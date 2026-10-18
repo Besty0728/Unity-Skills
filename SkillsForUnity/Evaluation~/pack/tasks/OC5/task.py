@@ -130,7 +130,7 @@ class OC5(PublicTask):
                                       "components": hud.get("components"),
                                       "prefabPath": overrides.get("prefabPath")},
                          "asset": asset_state(ctx, h["prefabPath"]),
-                         "canvas": {"state": V.go_state(p, h["canvas"]), "rect": p.ser(h["canvas"], "RectTransform")}},
+                         "canvas": {"state": V.go_state(p, h["canvas"]), "values": value_rows(p, h["canvas"])}},
                 "digests": {}}
 
     def prompt_vars(self, ctx):
@@ -164,6 +164,13 @@ def override_rows(overrides):
                                                                      "objectReference", "target")},
                                    sort_keys=True))
     return sorted(rows)
+
+
+def value_rows(probe, ref):
+    """The object's component values as sorted [type, [[propertyPath, value], ...]] rows (Unity's property names, such
+    as m_TargetDisplay, stay out of C0's keys)."""
+    return [[kind, sorted([path, value] for path, value in (props or {}).items())]
+            for kind, props in sorted(V.component_values(probe, ref).items())]
 
 
 def asset_state(ctx, prefab_path):

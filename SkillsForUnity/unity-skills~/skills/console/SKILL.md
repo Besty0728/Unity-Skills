@@ -175,7 +175,7 @@ unity_skills.call_skill("console_stop_capture")
 
 1. Start with collapsed error groups, then request `collapse:false` and a `groupId` or time range only when individual occurrences matter.
 2. Follow `nextCursor` until `hasMore:false`; preserve the first page's fixed snapshot and reject a result when `complete:false`.
-3. Treat `dropped`, `coverage.corruptRows`, or `coverage.durabilityIssue` as incomplete evidence. Retention is limited to 50,000 records and 64 MiB.
+3. `complete:false` is the incompleteness signal. Records with seq at or below `coverage.incompleteThroughSeq` may be missing (unreadable rows, an editor kill), so only a window whose `afterSeq` is at or above it can be complete; `coverage.corruptRows` counts those rows and `coverage.durabilityIssue` flags a failing disk write. Retention is limited to 50,000 records and 64 MiB.
 4. Use `console_start_capture` only to bracket a compatibility session; automatic managed capture is already running and capture start never clears history.
 5. Use the `coverage.editorLogPath` fallback only for manual investigation. It is not timestamp-normalized or merged into this API.
 

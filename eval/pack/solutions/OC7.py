@@ -190,6 +190,26 @@ def save_run_scene(ctx):
     return answer
 
 
+def _rescale_one(ctx, factor):
+    """The reference, then the world X scale of the moved, aligned object with the smallest one is multiplied by
+    `factor` (through its local scale; the container's scale is unchanged)."""
+    study = Study(ctx)
+    _move(ctx, study, study.plan)
+    _order(ctx, study)
+    keepers = sorted(study.keepers, key=lambda key: (V.floats(study.objects[key].get("scale"))[0]
+                                                     * study.lossy(study.objects[key].get("parentPath"))[0], key))
+    key = keepers[0]
+    local = V.floats((ctx.probe.go(study.ident[key]) or {}).get("scale"))
+    ctx.c.write("gameobject_set_transform", scaleX=local[0] * factor, scaleY=local[1], scaleZ=local[2],
+                **study.address(key))
+    return study.answer()
+
+
+def scale_within_tolerance(ctx):
+    """One kept world scale off by 0.098 percent, inside R5's relative 0.001 (0.5 becomes 0.50049)."""
+    return _rescale_one(ctx, 1.00098)
+
+
 # ---------------------------------------------------------------- negatives
 
 
@@ -324,6 +344,20 @@ def direct_file(ctx):
     return answer
 
 
+def relative_scale_over_limit(ctx):
+    """One kept world scale off by 0.18 percent: under 0.001 in absolute terms for a scale of 0.5 (0.5009), over
+    R5's relative 0.001."""
+    return _rescale_one(ctx, 1.0018)
+
+
+def extra_outside_yard(ctx):
+    """The reference plus a new object under R next to the yard."""
+    answer = reference(ctx)
+    ctx.c.write("gameobject_create", name="Spare_1_%s" % ctx.private.suffix(sorted(ctx.handles["containers"])[0]),
+                **V.address(ctx.root, "parent"))
+    return answer
+
+
 NEGATIVES = [
     Negative("lexicographic", lexicographic, {"H5"}, "Crate_12 sorted before Crate_7"),
     Negative("restore_scale", restore_scale, {"H4"}, "the old scale numbers written as local scale"),
@@ -339,8 +373,12 @@ NEGATIVES = [
     Negative("wrong_count", wrong_count, {"H10"}),
     Negative("outside_root", outside_root, {"H11"}),
     Negative("direct_file", direct_file, {"H12"}, "a file written to disk next to the skills"),
+    Negative("relative_scale_over_limit", relative_scale_over_limit, {"H4"},
+             "a world scale 0.18 percent off, within 0.001 absolute"),
+    Negative("extra_outside_yard", extra_outside_yard, {"H9"}, "an object created under R outside the yard"),
 ]
 
-ALTERNATIVES = [("single_calls", single_calls), ("explicit_local", explicit_local), ("save_run_scene", save_run_scene)]
+ALTERNATIVES = [("single_calls", single_calls), ("explicit_local", explicit_local), ("save_run_scene", save_run_scene),
+                ("scale_within_tolerance", scale_within_tolerance)]
 
 # Producer:Betsy

@@ -8,6 +8,7 @@ using UnityEditor.SceneManagement;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -66,6 +67,11 @@ namespace UnitySkills
         {
             try
             {
+                // An asset import worker loads this assembly too, but the job table belongs to the main editor: a
+                // worker that resumed jobs would drive them a second time and save its stale copy over batch_state.json.
+                if (LibraryStateFile.IsAssetImportWorker)
+                    return;
+
                 BatchPersistence.EnsureLoaded();
                 RecoverTestCallbacksAfterReload();
                 EditorApplication.update += ProcessJobs;

@@ -3,7 +3,8 @@
 It extends pack_fake_editor.FakeEditor (through pack_offline.OpsFakeEditor) with light_create (a new object at the
 scene root carrying a Light), light_set_properties and its batch (colour channels, intensity, range for Point/Spot,
 spotAngle for Spot, shadows None/Hard/Soft), light_set_enabled and its batch, light_get_info / light_get_properties,
-light_find_all, component_add Light and component_set_property Light.type.
+light_find_all, component_add Light, component_set_property Light.type, and the Light's serialized properties
+(component_get_serialized_properties: m_Enabled, m_Type and m_Shadows.m_Type as enum indexes, colour, intensity...).
 """
 import json
 
@@ -12,6 +13,8 @@ from .pack_offline import OpsFakeEditor
 
 LIGHT_TYPES = {name.lower(): name for name in ("Directional", "Point", "Spot", "Area", "Disc")}
 SHADOWS = {name.lower(): name for name in ("None", "Hard", "Soft")}
+TYPE_INDEX = {"Spot": 0, "Directional": 1, "Point": 2, "Area": 3, "Disc": 4}     # UnityEngine.LightType
+SHADOW_INDEX = {"None": 0, "Hard": 1, "Soft": 2}                                 # UnityEngine.LightShadows
 
 
 class FakeEditorOS1(OpsFakeEditor):
@@ -44,6 +47,18 @@ class FakeEditorOS1(OpsFakeEditor):
                 "intensity": light["intensity"], "range": light["range"], "spotAngle": light["spotAngle"],
                 "shadows": light["shadows"], "enabled": bool(self.component(obj, "Light")[1]),
                 "cullingMask": -1, "bounceIntensity": 1.0}
+
+    def _serialized(self, obj, kind):
+        """component_get_serialized_properties of a Light, as DescribeValue spells it."""
+        entry = self.component(obj, "Light")
+        if str(kind).lower() != "light" or entry is None or getattr(obj, "light", None) is None:
+            return OpsFakeEditor._serialized(self, obj, kind)
+        light = obj.light
+        return {"m_Enabled": "True" if entry[1] else "False", "m_Type": str(TYPE_INDEX[light["type"]]),
+                "m_Color": ",".join("%.9g" % c for c in light["color"]), "m_Intensity": "%.9g" % light["intensity"],
+                "m_Range": "%.9g" % light["range"], "m_SpotAngle": "%.9g" % light["spotAngle"], "m_Shadows": "Generic",
+                "m_Shadows.m_Type": str(SHADOW_INDEX[light["shadows"]]), "m_CullingMask": "-1",
+                "m_BounceIntensity": "1"}
 
     def _apply(self, agent, obj, args):
         light = self._light(obj)

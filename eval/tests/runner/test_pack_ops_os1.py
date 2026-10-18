@@ -37,6 +37,33 @@ class OS1Tests(OpsTaskTests, unittest.TestCase):
             seen.add(json.dumps(spec, sort_keys=True))
         self.assertGreater(len(seen), 100)
 
+    def test_intensity_tolerance_by_either_reading_of_the_percentages(self):
+        """R4: a percentage of the specified key or of the key's actual intensity; 0.01 each, nothing accumulates."""
+        private = load_modules(self.TASK_ID)[1]
+        spec = private.rig_spec(self.SEED)
+        key, fill, rim = (spec["lights"][role] for role in ("key", "fill", "rim"))
+        self.assertEqual((key["intensity"], fill["pct"], rim["pct"]), (3.0, 50, 80))
+
+        def ok(role, value, key_value):
+            return private.intensity_ok(spec, role, value, key_value)
+
+        self.assertTrue(ok("key", 3.009, 3.009))                    # the review's example, all inside
+        self.assertTrue(ok("fill", 1.5135, 3.009))
+        self.assertTrue(ok("rim", 2.4162, 3.009))
+        self.assertTrue(ok("fill", 1.509, 2.991))                   # nominal reading, key low but inside
+        self.assertFalse(ok("key", 3.011, 3.011))
+        self.assertFalse(ok("fill", 1.511, 3.0))                    # outside both readings
+        self.assertFalse(ok("rim", 2.4162, 3.011))                  # the actual key is no base once it is out
+        self.assertFalse(ok("fill", None, 3.0))
+
+    def test_old_lamp_snapshot_covers_light_values_and_components(self):
+        run = self.run_for()
+        lamp = run.snap["data"]["lamp"]
+        self.assertEqual([row[0] for row in lamp["values"]], ["Light", "Transform"])
+        self.assertNotIn("m_Enabled", [path for path, _value in dict(lamp["values"])["Light"]])
+        self.assertIn(["m_Shadows.m_Type", "0"], dict(lamp["values"])["Light"])
+        self.assertEqual(lamp["components"], [["Transform", None], ["Light", None]])
+
     def test_subject_frame_differs_from_the_world_axes(self):
         run = self.run_for()
         subject, stage = run.snap["data"]["subject"], run.snap["data"]["stage"]

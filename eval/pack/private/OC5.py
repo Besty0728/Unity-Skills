@@ -4,13 +4,16 @@ What the task probes: the values must land in the prefab asset (prefab_set_trans
 prefab_set_active / prefab_set_serialized_property, or prefab_edit_batch), not on the scene instance: editing the
 instance leaves the asset untouched and adds overrides, and prefab_apply afterwards pushes the instance's own colour
 override into the asset and wipes the override the task says to keep; the child order can only be set in the asset;
-posX/posY write localPosition, which differs from anchoredPosition for every corner-anchored child of a 1280 x 720
-root; Notice is inactive in the asset and must be activated there; spacing and padding live on the TopBar layout group
-as m_Spacing and m_Padding.m_Left/Right/Top/Bottom; the asset must be edited in place (same GUID).
+posX/posY write localPosition, which is not anchoredPosition for a corner-anchored child of the 1280 x 720 root once
+its anchors are in place (prefab_set_transform writes the position before the anchors, so it only coincides while the
+start anchors are centred); Notice is inactive in the asset and must be activated there; spacing and padding live on
+the TopBar layout group as m_Spacing and m_Padding.m_Left/Right/Top/Bottom; the asset must be edited in place (same
+GUID).
 
 The layout is recomputed from the seed exactly as the public module does (layout_spec is copied verbatim); the
 "everything else unchanged" assertion compares the asset's nodes and serialized values with C0 minus the fields the
-task changes.
+task changes (the six elements' local Z stays compared, only X/Y follow the requested layout), and the scene Canvas
+with every component value it carries.
 """
 import json
 import random
@@ -22,9 +25,10 @@ CORNERS = (((0, 1), "TopLeft"), ((1, 1), "TopRight"), ((0, 0), "BottomLeft"), ((
 RECT_FIELDS = ("anchorMin", "anchorMax", "pivot", "anchoredPosition", "sizeDelta")
 RECT_TOL = 1e-3
 LAYOUT_GROUP = "HorizontalLayoutGroup"
-# Serialized paths the task changes (prefix match): the six elements' RectTransform values and the derived local
-# position, and the TopBar layout group's spacing and padding.
-RECT_PROPS = ("m_AnchorMin", "m_AnchorMax", "m_Pivot", "m_AnchoredPosition", "m_SizeDelta", "m_LocalPosition")
+# Serialized paths the task changes (prefix match): the six elements' RectTransform values and the TopBar layout
+# group's spacing and padding; of the elements' derived local position only X and Y change (LOCAL_XY), Z must not.
+RECT_PROPS = ("m_AnchorMin", "m_AnchorMax", "m_Pivot", "m_AnchoredPosition", "m_SizeDelta")
+LOCAL_XY = ("m_LocalPosition.x", "m_LocalPosition.y")
 GROUP_PROPS = ("m_Spacing", "m_Padding")
 NODE_FIELDS = ("gameObject", "parentPath", "layer", "tag", "localEulerAngles", "localScale", "childCount",
                "prefabAssetType")
@@ -38,8 +42,9 @@ ASSERTIONS = [
     ("P4", 1.0, False, ["R5"], "TopBar's HorizontalLayoutGroup in the asset has the requested spacing and padding"),
     ("P5", 1.5, False, ["R6"], "the scene object is still the same connected instance of the prefab and its "
                                "overrides are exactly the ones it had"),
-    ("P6", 1.0, False, ["R7"], "nothing else changed: the asset's nodes, components and other serialized values, "
-                               "and the scene Canvas"),
+    ("P6", 1.0, False, ["R7"], "nothing else changed: the asset's nodes (the elements' local Z included), "
+                               "components and other serialized values, and the scene Canvas with its component "
+                               "values"),
     ("P7", 0.5, False, ["R8", "G8"], "the answer reports the prefab path and the final child order"),
     ("P8", 0.5, True, ["G1", "G2"], "no change outside R/A, no other scene saved or opened"),
     ("P9", 0.5, False, ["G4"], "no file under A was written around the skills"),
@@ -64,9 +69,9 @@ HINTS = {
     "P5": {"zh-CN": "不要修改场景实例，也不要 apply 或 revert 它的覆盖：prefab_apply 会把实例自己的颜色覆盖写进资产并清空覆盖。",
            "en": "Leave the scene instance alone and neither apply nor revert its overrides: prefab_apply pushes the "
                  "instance's own colour override into the asset and clears the overrides."},
-    "P6": {"zh-CN": "除要求的字段外，资产的节点、组件和其他属性以及场景 Canvas 都要保持不变。",
-           "en": "Apart from the requested fields, the asset's nodes, components and other values and the scene "
-                 "Canvas must stay as they were."},
+    "P6": {"zh-CN": "除要求的字段外，资产的节点、组件和其他属性（包括六个元素的本地 Z）以及场景 Canvas 及其组件取值都要保持不变。",
+           "en": "Apart from the requested fields, the asset's nodes, components and other values (the six elements' "
+                 "local Z included) and the scene Canvas with its component values must stay as they were."},
     "P7": {"zh-CN": "答案里报告 prefab 资产路径和修改后根节点子节点的名称顺序，并写明 declaredComplete。",
            "en": "Report the prefab asset path and the root's final child order, and declaredComplete."},
     "P8": {"zh-CN": "所有修改都必须在 R 与 A 之内，且只能保存本轮场景。",
@@ -134,6 +139,12 @@ def override_rows(overrides):
     return sorted(rows)
 
 
+def value_rows(probe, ref):
+    """Same rows as the public module's value_rows: [type, [[propertyPath, value], ...]], sorted."""
+    return [[kind, sorted([path, value] for path, value in (props or {}).items())]
+            for kind, props in sorted(V.component_values(probe, ref).items())]
+
+
 def asset_state(ctx, prefab_path):
     """Every node of the prefab asset with its components and serialized values, keyed by root-relative path; None
     when the asset cannot be read."""
@@ -159,6 +170,24 @@ def _excluded(path, prefixes):
     return any(path == prefix or str(path).startswith(prefix + ".") for prefix in prefixes)
 
 
+def _depth(value):
+    """The Z of a localPosition (an {x, y, z} dict or an "x,y,z" text), or the value itself when it has no three
+    numbers."""
+    numbers = V.floats(value)
+    return numbers[2] if len(numbers) == 3 else value
+
+
+def _element_rect(pairs):
+    """An element's RectTransform properties without the ones the layout sets: the five RectTransform values and the
+    X/Y of the local position; its local Z stays (as the composite's third number when the reader lists no leaves)."""
+    out = []
+    for path, value in pairs:
+        if _excluded(path, RECT_PROPS) or path in LOCAL_XY:
+            continue
+        out.append(["m_LocalPosition(z)", _depth(value)] if path == "m_LocalPosition" else [path, value])
+    return out
+
+
 def _trimmed(state, root_children):
     """The asset state without the fields the task changes, for the unchanged comparison."""
     nodes, components = {}, {}
@@ -170,17 +199,19 @@ def _trimmed(state, root_children):
             kept["siblingIndex"] = node.get("siblingIndex")
         if path not in ELEMENTS:
             kept.update({field: node.get(field) for field in NODE_RECT_FIELDS})
+        else:
+            kept["localPositionZ"] = _depth(node.get("localPosition"))
         nodes[path] = kept
     for path, comps in (state or {}).get("components", {}).items():
         trimmed = []
         for comp in comps:
-            drop = ()
+            props = comp.get("props") or []
             if path in ELEMENTS and str(comp.get("type")).endswith("RectTransform"):
-                drop = RECT_PROPS
+                props = _element_rect(props)
             elif path == "TopBar" and str(comp.get("type")).endswith(LAYOUT_GROUP):
-                drop = GROUP_PROPS
+                props = [pair for pair in props if not _excluded(pair[0], GROUP_PROPS)]
             trimmed.append({"type": comp.get("type"), "index": comp.get("index"), "enabled": comp.get("enabled"),
-                            "props": [pair for pair in comp.get("props") or [] if not _excluded(pair[0], drop)]})
+                            "props": props})
         components[path] = trimmed
     return {"nodes": nodes, "components": components}
 
@@ -241,9 +272,9 @@ def verify(ctx, card):
     ok_asset, diff_asset = V.same(_trimmed(c0.get("asset"), root_children), _trimmed(state, root_children), RECT_TOL)
     canvas = c0.get("canvas") or {}
     ok_canvas, diff_canvas = V.same(canvas.get("state"), V.go_state(p, h["canvas"]), RECT_TOL)
-    ok_rect, diff_rect = V.same(canvas.get("rect"), p.ser(h["canvas"], "RectTransform"), RECT_TOL)
-    card.check("P6", state is not None and ok_asset and ok_canvas and ok_rect,
-               actual={"asset": diff_asset, "canvas": diff_canvas, "canvasRect": diff_rect})
+    ok_values, diff_values = V.same(canvas.get("values"), value_rows(p, h["canvas"]), RECT_TOL)
+    card.check("P6", state is not None and ok_asset and ok_canvas and ok_values,
+               actual={"asset": diff_asset, "canvas": diff_canvas, "canvasValues": diff_values})
 
     reported = V.answer(ctx, "childOrder")
     card.check("P7", V.norm_path(V.answer(ctx, "prefabPath")) == prefab_path and isinstance(reported, list) and

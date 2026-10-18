@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using UnityEditor;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -36,6 +37,11 @@ namespace UnitySkills
         {
             try
             {
+                // An asset import worker loads this assembly too; resuming batch jobs there would re-run their edits
+                // in a second process (see AsyncJobService).
+                if (LibraryStateFile.IsAssetImportWorker)
+                    return;
+
                 BatchPersistence.EnsureLoaded();
                 ResumeJobs();
                 EditorApplication.update += ProcessQueuedJobs;
