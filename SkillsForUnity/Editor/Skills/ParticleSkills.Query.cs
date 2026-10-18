@@ -52,7 +52,8 @@ namespace UnitySkills
                     ["maxBursts"] = MaxBursts,
                     ["maxBatchItems"] = MaxBatchItems,
                     ["findAllMaxLimit"] = FindAllMaxLimit,
-                    ["gradientKeyTimeStep"] = "1/65535 (Unity quantizes gradient key times)"
+                    ["gradientKeyTimeStep"] = "1/65535 (Unity quantizes gradient key times)",
+                    ["playback"] = PlaybackLimits()
                 }
             };
         }

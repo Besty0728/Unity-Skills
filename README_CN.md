@@ -257,7 +257,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 | **Debug** | 11 | 错误日志/编译检查/堆栈/程序集/定义符号/内存信息/编辑器健康诊断 |
 | **Event** | 11 | UnityEvent监听器管理/批量添加/复制/状态控制/列举 |
 | **Light** | 11 | 灯光创建/类型配置/强度颜色/批量开关/探针组/反射探针/光照贴图 |
-| **Particle** | 17 | 内置粒子系统（Shuriken）创建/查询/配置：模块类型化补丁（Main/Emission/Shape/速度/颜色/大小/Noise）、渲染器、爆发、原子批处理、dryRun（不含 VFX Graph） |
+| **Particle** | 17 | 内置粒子系统（Shuriken）创建/查询/配置：模块类型化补丁（Main/Emission/Shape/速度/颜色/大小/Noise）、渲染器、爆发、原子批处理、dryRun；播放控制（播放/暂停/停止/模拟/发射，分片模拟任务）（不含 VFX Graph） |
 | **Model** | 10 | 模型导入设置/Mesh信息/材质映射/动画/骨骼/批量 |
 | **NavMesh** | 10 | 烘焙/路径计算/Agent/Obstacle/采样/区域代价 |
 | **Optimization** | 10 | 纹理压缩/网格压缩/音频压缩/场景分析/静态标记/LOD/重复材质/过度绘制 |

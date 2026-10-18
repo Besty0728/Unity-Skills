@@ -257,7 +257,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Debug** | 11 | Error logs/Compile check/Stack trace/Assemblies/Define symbols/Memory info/Editor health diagnose |
 | **Event** | 11 | UnityEvent listener management/Batch add/Copy/State control/List |
 | **Light** | 11 | Light create/Type config/Intensity-Color/Batch toggle/Probe groups/Reflection probes/Lightmaps |
-| **Particle** | 17 | Built-in ParticleSystem (Shuriken) create/inspect/configure: typed module patches (Main/Emission/Shape/Velocity/Color/Size/Noise), renderer, bursts, atomic batches, dryRun (not VFX Graph) |
+| **Particle** | 17 | Built-in ParticleSystem (Shuriken) create/inspect/configure: typed module patches (Main/Emission/Shape/Velocity/Color/Size/Noise), renderer, bursts, atomic batches, dryRun; playback control (play/pause/stop/simulate/emit, sliced simulation jobs) (not VFX Graph) |
 | **Model** | 10 | Model import settings/Mesh info/Material mapping/Animation/Skeleton/Batch |
 | **NavMesh** | 10 | Bake/Path calculation/Agent/Obstacle/Sampling/Area cost |
 | **Optimization** | 10 | Texture compression/Mesh compression/Audio compression/Scene analysis/Static flags/LOD/Duplicate materials/Overdraw |

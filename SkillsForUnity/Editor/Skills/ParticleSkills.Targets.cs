@@ -81,10 +81,13 @@ namespace UnitySkills
             if (system != null && (system.isPlaying || system.isPaused))
             {
                 var state = system.isPaused ? "paused" : "playing";
-                problems.Add(path, $"ParticleSystem '{GameObjectFinder.GetPath(system.gameObject)}' is {state}; particle writes need a stopped system and never stop it implicitly. " +
-                    "Stop it first: press Stop in the Scene view's Particle Effect overlay (an edit-mode preview of a selected system plays it), or deselect it.");
+                problems.Add(path, $"ParticleSystem '{GameObjectFinder.GetPath(system.gameObject)}' is {state}; {NotStoppedTag} and never stop it implicitly. " +
+                    "Stop it first: particle_stop (stopBehavior StopEmittingAndClear), or press Stop in the Scene view's Particle Effect overlay (an edit-mode preview of a selected system plays it), or deselect it.");
             }
         }
+
+        /// <summary>The words that mark CheckWritable's playing/paused problem, so <see cref="ProblemsError"/> can point at particle_stop.</summary>
+        private const string NotStoppedTag = "particle writes need a stopped system";
 
         internal static bool IsInOpenScene(GameObject go)
         {
@@ -187,7 +190,13 @@ namespace UnitySkills
                 fixes.Add(Fix("find_target", "particle_find_all", "List the particle systems in the open scenes and retry with an entityId it returns."));
             else
                 fixes.Add(Fix("fix_param", "particle_get_capabilities", "Look up the accepted fields, value shapes, ranges and enum values."));
-            return Error(code, message, fixes: fixes.ToArray(), problems: problems.ToJson());
+            string[] related = null;
+            if (problems.Items.Any(problem => problem.Message.Contains(NotStoppedTag)))
+            {
+                fixes.Insert(0, Fix("fix_param", "particle_stop", "Stop the system first (stopBehavior StopEmittingAndClear leaves it stopped and empty), then resend."));
+                related = new[] { "particle_stop" };
+            }
+            return Error(code, message, fixes: fixes.ToArray(), related: related, problems: problems.ToJson());
         }
 
         /// <summary>A failure while applying an already validated write; everything this call did has been reverted.</summary>

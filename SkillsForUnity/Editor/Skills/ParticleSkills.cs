@@ -397,6 +397,276 @@ namespace UnitySkills
 
             [JsonIgnore] internal Locator Locator => new Locator(name, instanceId, path, entityId);
         }
+
+        // ===== P2: playback =====
+        // Runtime control: playback state and live particles are not serialized, so nothing here reaches the Undo stack or
+        // the workflow. TracksWorkflow=false is the deliberate boundary of a transient Execute (not a missing snapshot);
+        // batches validate every item first and then run without a rollback; transactional /skills/batch refuses these
+        // skills (ParticleSkills.IsPlaybackSkill). SkipAutoPresnapshot: a manual workflow task would otherwise store the
+        // whole system (about 90 KB) per call with nothing to restore. Nothing enters Play Mode.
+
+        private const string PlaybackNote = "Runtime state only: not saved, not undoable; never enters Play Mode.";
+
+        [UnitySkill("particle_play", "Play a built-in ParticleSystem (name/entityId/instanceId/path), with its child systems when withChildren=true, and return the playback state read back from Unity. " + PlaybackNote + " In Edit Mode Unity advances a playing system only while the Scene view previews it, so use particle_simulate to move it by an exact time. Refused when a reached system has a stopAction other than None, sends collision or trigger messages, or has a script implementing OnParticleUpdateJobScheduled.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "play", "playback", "preview", "runtime", "effect", "shuriken" },
+            Outputs = new[] { "name", "entityId", "instanceId", "path", "action", "withChildren", "playback", "systems", "undoable", "warnings" },
+            RequiresInput = new[] { "gameObject" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticlePlay(string name = null, int instanceId = 0,
+            [SkillParam(LocatorNote)] string path = null,
+            [SkillParam("Also play every child ParticleSystem (Unity's withChildren); a dryRun lists the systems it reaches.")]
+            bool withChildren = false,
+            string entityId = null)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_play") ?? ParticleSkills.PlaybackCore("particle_play", new Locator(name, instanceId, path, entityId),
+                new PlaybackRequest { Op = PlaybackOp.Play, WithChildren = withChildren });
+#else
+            return ParticleSkills.MissingModuleError("particle_play");
+#endif
+        }
+
+        [UnitySkill("particle_play_batch", "particle_play for several systems: every item is validated first and nothing runs if any item is invalid; then the items run in order and each result reports what happened (not atomic: an item that ran stays played when a later one fails). items: JSON array of {name|entityId|instanceId|path, withChildren?}.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "play", "playback", "batch", "runtime" },
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "items" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticlePlayBatch(
+            [SkillParam("JSON array of {name|entityId|instanceId|path, withChildren?}; at most 100 items, unknown keys rejected, no two items reaching the same system.")]
+            string items)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_play_batch") ?? ParticleSkills.PlaybackBatchCore<BatchParticlePlaybackItem>(items, "particle_play_batch", PlaybackOp.Play);
+#else
+            return ParticleSkills.MissingModuleError("particle_play_batch");
+#endif
+        }
+
+        [UnitySkill("particle_pause", "Pause a ParticleSystem (name/entityId/instanceId/path), with its child systems when withChildren=true, at its current time keeping its particles, and return the state read back; particle_play resumes it. " + PlaybackNote,
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "pause", "playback", "preview", "runtime" },
+            Outputs = new[] { "name", "entityId", "instanceId", "path", "action", "withChildren", "playback", "systems", "undoable", "warnings" },
+            RequiresInput = new[] { "gameObject" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticlePause(string name = null, int instanceId = 0,
+            [SkillParam(LocatorNote)] string path = null,
+            [SkillParam("Also pause every child ParticleSystem (Unity's withChildren).")]
+            bool withChildren = false,
+            string entityId = null)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_pause") ?? ParticleSkills.PlaybackCore("particle_pause", new Locator(name, instanceId, path, entityId),
+                new PlaybackRequest { Op = PlaybackOp.Pause, WithChildren = withChildren });
+#else
+            return ParticleSkills.MissingModuleError("particle_pause");
+#endif
+        }
+
+        [UnitySkill("particle_pause_batch", "particle_pause for several systems: every item is validated first and nothing runs if any item is invalid; then the items run in order, each result reporting what happened (not atomic). items: JSON array of {name|entityId|instanceId|path, withChildren?}.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "pause", "playback", "batch", "runtime" },
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "items" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticlePauseBatch(
+            [SkillParam("JSON array of {name|entityId|instanceId|path, withChildren?}; at most 100 items, no two items reaching the same system.")]
+            string items)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_pause_batch") ?? ParticleSkills.PlaybackBatchCore<BatchParticlePlaybackItem>(items, "particle_pause_batch", PlaybackOp.Pause);
+#else
+            return ParticleSkills.MissingModuleError("particle_pause_batch");
+#endif
+        }
+
+        [UnitySkill("particle_stop", "Stop a ParticleSystem (name/entityId/instanceId/path), with its child systems when withChildren=true, and return the state read back. stopBehavior StopEmittingAndClear (default) removes every particle and leaves the system stopped, which the configuration skills need; StopEmitting only stops emission and lets live particles finish. " + PlaybackNote + " Refused when a stopped system has a stopAction other than None.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "stop", "clear", "playback", "runtime" },
+            Outputs = new[] { "name", "entityId", "instanceId", "path", "action", "withChildren", "stopBehavior", "playback", "systems", "undoable", "warnings" },
+            RequiresInput = new[] { "gameObject" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticleStop(string name = null, int instanceId = 0,
+            [SkillParam(LocatorNote)] string path = null,
+            [SkillParam("Also stop every child ParticleSystem (Unity's withChildren).")]
+            bool withChildren = false,
+            [SkillParam("StopEmittingAndClear (default): remove every particle, the system is stopped at once. StopEmitting: stop emission, live particles finish their lifetime.")]
+            string stopBehavior = DefaultStopBehaviorName,
+            string entityId = null)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_stop") ?? ParticleSkills.PlaybackCore("particle_stop", new Locator(name, instanceId, path, entityId),
+                new PlaybackRequest { Op = PlaybackOp.Stop, WithChildren = withChildren, StopBehavior = stopBehavior });
+#else
+            return ParticleSkills.MissingModuleError("particle_stop");
+#endif
+        }
+
+        [UnitySkill("particle_stop_batch", "particle_stop for several systems: every item is validated first and nothing runs if any item is invalid; then the items run in order, each result reporting what happened (not atomic). items: JSON array of {name|entityId|instanceId|path, withChildren?, stopBehavior?}.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "stop", "clear", "batch", "runtime" },
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "items" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticleStopBatch(
+            [SkillParam("JSON array of {name|entityId|instanceId|path, withChildren?, stopBehavior?}; at most 100 items, no two items reaching the same system.")]
+            string items)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_stop_batch") ?? ParticleSkills.PlaybackBatchCore<BatchParticleStopItem>(items, "particle_stop_batch", PlaybackOp.Stop);
+#else
+            return ParticleSkills.MissingModuleError("particle_stop_batch");
+#endif
+        }
+
+        [UnitySkill("particle_simulate", "Fast-forward a ParticleSystem (name/entityId/instanceId/path) by seconds of simulated time, in whole steps of Time.fixedDeltaTime (fixedTimeStep=false: variable steps), from the start (restart=true) or from its current state (restart=false), with its child systems when withChildren=true; Unity leaves it paused. Inline it returns status completed with time, totalTime, particleCount and isPaused read back; runAsync=true returns status accepted with a jobId (poll GET /jobs/{id}, the same result arrives in resultData). Budgets: 300 steps and 10 systems per simulation, 100000 summed maxParticles per call; a run over the inline work limit needs runAsync=true. " + PlaybackNote,
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "simulate", "preview", "fast-forward", "warmup", "playback", "runtime" },
+            Outputs = new[] { "status", "name", "entityId", "instanceId", "path", "steps", "systems", "undoable", "warnings" },
+            RequiresInput = new[] { "gameObject" },
+            RequiredParams = new[] { "seconds" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticleSimulate(string name = null, int instanceId = 0,
+            [SkillParam(LocatorNote)] string path = null,
+            [SkillParam("Simulated time in seconds (> 0), rounded to whole steps; at most 300 steps per simulation.")]
+            float seconds = 0f,
+            [SkillParam("true (default): start from time 0; false: continue from the current state (a paused system goes on where it is).")]
+            bool restart = true,
+            [SkillParam("Also simulate every child ParticleSystem (Unity's withChildren); a dryRun lists the systems it reaches.")]
+            bool withChildren = false,
+            [SkillParam("true (default): steps of Time.fixedDeltaTime, repeatable with a fixed random seed in the same Editor; false: variable steps.")]
+            bool fixedTimeStep = true,
+            [SkillParam("false (default): run inline (refused above the inline work limit); true: run as a sliced main-thread job and return a jobId at once.")]
+            bool runAsync = false,
+            string entityId = null)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_simulate") ?? ParticleSkills.SimulateCore(new Locator(name, instanceId, path, entityId),
+                new PlaybackRequest { Op = PlaybackOp.Simulate, Seconds = seconds, Restart = restart, WithChildren = withChildren, FixedTimeStep = fixedTimeStep, RunAsync = runAsync });
+#else
+            return ParticleSkills.MissingModuleError("particle_simulate");
+#endif
+        }
+
+        [UnitySkill("particle_simulate_batch", "particle_simulate for several systems: every item is validated first (budgets per item and for the whole call) and nothing runs if any item is invalid; then the items run in order without a rollback. Inline it returns the batch envelope with status completed; runAsync=true returns status accepted with a jobId whose resultData is that envelope. items: JSON array of {name|entityId|instanceId|path, seconds, restart?, withChildren?, fixedTimeStep?}.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "simulate", "preview", "batch", "runtime" },
+            Outputs = new[] { "status", "totalItems" },
+            RequiresInput = new[] { "items" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticleSimulateBatch(
+            [SkillParam("JSON array of {name|entityId|instanceId|path, seconds, restart?, withChildren?, fixedTimeStep?}; at most 100 items, no two items reaching the same system.")]
+            string items,
+            [SkillParam("false (default): run inline (refused above the inline work limit); true: run as a sliced main-thread job and return a jobId at once.")]
+            bool runAsync = false)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_simulate_batch") ?? ParticleSkills.SimulateBatchCore(items, runAsync);
+#else
+            return ParticleSkills.MissingModuleError("particle_simulate_batch");
+#endif
+        }
+
+        [UnitySkill("particle_emit", "Emit count particles (1-10000) from a ParticleSystem (name/entityId/instanceId/path) at once with its current settings, and return requested, emitted (Unity keeps at most maxParticles) and particleCount read back. Not idempotent: a retry after a timeout emits again, so read particleCount (particle_get_info) before retrying. " + PlaybackNote + " Refused when the system has a stopAction other than None, sends collision or trigger messages, or has a script implementing OnParticleUpdateJobScheduled.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "emit", "spawn", "burst", "runtime" },
+            Outputs = new[] { "name", "entityId", "instanceId", "path", "action", "requested", "emitted", "particleCount", "playback", "systems", "undoable", "warnings" },
+            RequiresInput = new[] { "gameObject" },
+            RequiredParams = new[] { "count" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticleEmit(string name = null, int instanceId = 0,
+            [SkillParam(LocatorNote)] string path = null,
+            [SkillParam("Particles to emit now, 1-10000 (per-particle EmitParams are not offered).")]
+            int count = 0,
+            string entityId = null)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_emit") ?? ParticleSkills.PlaybackCore("particle_emit", new Locator(name, instanceId, path, entityId),
+                new PlaybackRequest { Op = PlaybackOp.Emit, Count = count });
+#else
+            return ParticleSkills.MissingModuleError("particle_emit");
+#endif
+        }
+
+        [UnitySkill("particle_emit_batch", "particle_emit for several systems: every item is validated first (at most 100000 particles per call) and nothing runs if any item is invalid; then the items run in order without a rollback. Not idempotent: never resend the whole batch after a timeout. items: JSON array of {name|entityId|instanceId|path, count}.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Execute,
+            Tags = new[] { "particle", "particles", "emit", "spawn", "batch", "runtime" },
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "items" },
+            MutatesScene = true, SkipAutoPresnapshot = true, RiskLevel = "low")]
+        public static object ParticleEmitBatch(
+            [SkillParam("JSON array of {name|entityId|instanceId|path, count}; at most 100 items, one item per system.")]
+            string items)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_emit_batch") ?? ParticleSkills.PlaybackBatchCore<BatchParticleEmitItem>(items, "particle_emit_batch", PlaybackOp.Emit);
+#else
+            return ParticleSkills.MissingModuleError("particle_emit_batch");
+#endif
+        }
+
+        private sealed class BatchParticlePlaybackItem : IPlaybackItem
+        {
+            public string name { get; set; }
+            public string entityId { get; set; }
+            public int instanceId { get; set; }
+            public string path { get; set; }
+            public bool? withChildren { get; set; }
+
+            [JsonIgnore] public Locator Locator => new Locator(name, instanceId, path, entityId);
+            public void Fill(PlaybackRequest request) => request.WithChildren = withChildren ?? false;
+        }
+
+        private sealed class BatchParticleStopItem : IPlaybackItem
+        {
+            public string name { get; set; }
+            public string entityId { get; set; }
+            public int instanceId { get; set; }
+            public string path { get; set; }
+            public bool? withChildren { get; set; }
+            public string stopBehavior { get; set; }
+
+            [JsonIgnore] public Locator Locator => new Locator(name, instanceId, path, entityId);
+            public void Fill(PlaybackRequest request)
+            {
+                request.WithChildren = withChildren ?? false;
+                request.StopBehavior = stopBehavior;
+            }
+        }
+
+        private sealed class BatchParticleSimulateItem : IPlaybackItem
+        {
+            public string name { get; set; }
+            public string entityId { get; set; }
+            public int instanceId { get; set; }
+            public string path { get; set; }
+            public float? seconds { get; set; }
+            public bool? restart { get; set; }
+            public bool? withChildren { get; set; }
+            public bool? fixedTimeStep { get; set; }
+
+            [JsonIgnore] public Locator Locator => new Locator(name, instanceId, path, entityId);
+            public void Fill(PlaybackRequest request)
+            {
+                request.Seconds = seconds;
+                request.Restart = restart ?? true;
+                request.WithChildren = withChildren ?? false;
+                request.FixedTimeStep = fixedTimeStep ?? true;
+            }
+        }
+
+        private sealed class BatchParticleEmitItem : IPlaybackItem
+        {
+            public string name { get; set; }
+            public string entityId { get; set; }
+            public int instanceId { get; set; }
+            public string path { get; set; }
+            public int? count { get; set; }
+
+            [JsonIgnore] public Locator Locator => new Locator(name, instanceId, path, entityId);
+            public void Fill(PlaybackRequest request) => request.Count = count;
+        }
     }
 }
 

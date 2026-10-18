@@ -201,6 +201,42 @@ namespace UnitySkills
         internal static object RunBatch<TItem>(string itemsJson, string skill, string[] itemKeys, bool atomic,
             Action<TItem, BatchPrep> prepare, Func<TItem, string> describe) where TItem : class
         {
+            var rejected = ValidateBatch(itemsJson, skill, itemKeys, prepare, out var preps);
+            if (rejected != null)
+                return rejected;
+
+            bool anyInvalid = preps.Any(prep => !prep.Ok);
+            int index = 0;
+            return BatchExecutor.Execute<TItem>(itemsJson, item =>
+            {
+                var prep = preps[index++];
+                if (prep.Failure != null)
+                    return Stamp(AsDictionary(prep.Failure), prep.Target, false);
+                if (prep.Problems.Any)
+                    return Stamp(ProblemsError(prep.Target, prep.Problems), prep.Target, false);
+                if (atomic && anyInvalid)
+                {
+                    return new Dictionary<string, object>
+                    {
+                        ["target"] = prep.Target,
+                        ["success"] = true,
+                        ["validated"] = true,
+                        ["applied"] = false
+                    };
+                }
+                return Stamp(prep.Run(), prep.Target, null);
+            }, describe, atomic: atomic);
+        }
+
+        /// <summary>
+        /// The validation half of every particle batch: parses the items strictly, runs <paramref name="prepare"/> on each
+        /// one and refuses two items on one target. Returns the error of a structurally invalid list (nothing to report
+        /// per item), otherwise null with one <see cref="BatchPrep"/> per item, valid or not.
+        /// </summary>
+        internal static object ValidateBatch<TItem>(string itemsJson, string skill, string[] itemKeys,
+            Action<TItem, BatchPrep> prepare, out List<BatchPrep> preps) where TItem : class
+        {
+            preps = null;
             if (string.IsNullOrWhiteSpace(itemsJson))
                 return Error(CodeMissingParam, "items is required: a JSON array of item objects.", parameter: "items");
 
@@ -216,12 +252,12 @@ namespace UnitySkills
                 return Error(CodeSemantic, $"items holds {array.Count} items; one call takes at most {MaxBatchItems}. Split the batch.", parameter: "items");
 
             var serializer = JsonSerializer.Create(SkillsCommon.JsonSettings);
-            var preps = new List<BatchPrep>();
+            var prepared = new List<BatchPrep>();
             for (int i = 0; i < array.Count; i++)
             {
                 var itemPath = Codec.Index("items", i);
                 var prep = new BatchPrep { Index = i, Target = itemPath };
-                preps.Add(prep);
+                prepared.Add(prep);
                 if (!(array[i] is JObject obj))
                 {
                     structural.Add(itemPath, $"{itemPath} must be an object, got {Codec.Describe(array[i])}.", CodeTypeMismatch);
@@ -246,7 +282,7 @@ namespace UnitySkills
                 return ProblemsError(skill, structural);
 
             var firstByTarget = new Dictionary<string, int>(StringComparer.Ordinal);
-            foreach (var prep in preps.Where(candidate => candidate.Ok && candidate.TargetKey != null))
+            foreach (var prep in prepared.Where(candidate => candidate.Ok && candidate.TargetKey != null))
             {
                 if (firstByTarget.TryGetValue(prep.TargetKey, out var first))
                     prep.Problems.Add(Codec.Index("items", prep.Index), $"items[{prep.Index}] targets the same object as items[{first}] ({prep.Target}); merge them into one item, since their order would decide the result.");
@@ -254,27 +290,8 @@ namespace UnitySkills
                     firstByTarget[prep.TargetKey] = prep.Index;
             }
 
-            bool anyInvalid = preps.Any(prep => !prep.Ok);
-            int index = 0;
-            return BatchExecutor.Execute<TItem>(itemsJson, item =>
-            {
-                var prep = preps[index++];
-                if (prep.Failure != null)
-                    return Stamp(AsDictionary(prep.Failure), prep.Target, false);
-                if (prep.Problems.Any)
-                    return Stamp(ProblemsError(prep.Target, prep.Problems), prep.Target, false);
-                if (atomic && anyInvalid)
-                {
-                    return new Dictionary<string, object>
-                    {
-                        ["target"] = prep.Target,
-                        ["success"] = true,
-                        ["validated"] = true,
-                        ["applied"] = false
-                    };
-                }
-                return Stamp(prep.Run(), prep.Target, null);
-            }, describe, atomic: atomic);
+            preps = prepared;
+            return null;
         }
 
         /// <summary>Puts the item's target first in its result; <paramref name="success"/> overrides the result's own flag when given.</summary>
