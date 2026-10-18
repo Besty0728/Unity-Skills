@@ -694,16 +694,7 @@ def _journal_records(rt, state):
 def _frozen_records(rt, state):
     """(records, reimports): the frozen journal's records minus the re-imports of unchanged plugin files judged at S6,
     which are no evidence of anything (contract 5.7)."""
-    records = _journal_records(rt, state)
-    judged = (state.get("packageTree") or {}).get("atSubmit") or {}
-    if not judged.get("unchanged"):
-        return records, []
-    absent = set(judged.get("absent") or [])
-    kept, reimports = [], []
-    for rec in records:
-        path = J.package_path(rec)
-        (reimports if path is not None and path not in absent else kept).append(rec)
-    return kept, reimports
+    return J.split_package_reimports(_journal_records(rt, state), (state.get("packageTree") or {}).get("atSubmit"))
 
 
 # ---------------------------------------------------------------- S7-S10 verify

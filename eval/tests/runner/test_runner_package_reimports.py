@@ -4,6 +4,7 @@ evidence, any change to the package keeps them counted, and truncated or unknown
 import json
 import os
 import shutil
+import sys
 import unittest
 from unittest import mock
 
@@ -101,6 +102,15 @@ class PackageReimportTests(unittest.TestCase):
         self.assertEqual(issue["root"], self.pkg)
         self.assertEqual({k: judged[k] for k in issue}, issue)
         self.assertEqual((judged["unchanged"], judged["absent"]), (True, []))
+
+    def test_selftest_explains_red_cases_without_them(self):
+        """solver_driver.attempt_violations, selftest3's account of a red case, drops them as the verifiers do."""
+        eval_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        if eval_dir not in sys.path:
+            sys.path.insert(0, eval_dir)
+        from harness import solver_driver
+        state, _result = self.attempt(self.REBUILD)
+        self.assertEqual(solver_driver.attempt_violations(self.b, state["sessionId"], state["attemptId"]), [])
 
     def test_a_changed_package_keeps_counting_them(self):
         state, result = self.attempt(["Editor/Skills/A.cs", "Runtime/B.cs"],

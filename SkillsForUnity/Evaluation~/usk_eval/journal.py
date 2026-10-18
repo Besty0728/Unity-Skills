@@ -213,6 +213,20 @@ def package_path(rec):
     return path[len(PACKAGE_PREFIX) + 1:] if path.startswith(PACKAGE_PREFIX + "/") else None
 
 
+def split_package_reimports(records, judged):
+    """(kept, reimports) of flattened records. `judged` is state.packageTree.atSubmit (S6): when it found the plugin
+    package unchanged since issue, imports of its files that still exist are Unity rebuilding the plugin and no evidence
+    of anything (contract 5.7); otherwise every record is kept."""
+    if not (judged or {}).get("unchanged"):
+        return list(records), []
+    absent = set(judged.get("absent") or [])
+    kept, reimports = [], []
+    for rec in records:
+        path = package_path(rec)
+        (reimports if path is not None and path not in absent else kept).append(rec)
+    return kept, reimports
+
+
 def agents(events):
     return sorted({e.get("agent") for e in events if isinstance(e.get("agent"), str)})
 
