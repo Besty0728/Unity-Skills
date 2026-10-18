@@ -22,7 +22,8 @@
     "T5",
     "T7",
     "T10",
-    "OS1"
+    "OS1",
+    "OS2"
    ],
    "challenge": [
     "OC1",
@@ -375,6 +376,33 @@
     "file": "OS1.py",
     "sha256": "4b78c222cbe6324efad8232d2272a61941af6b07a0c2d40aec40a94128474225",
     "bytes": 19192
+   }
+  },
+  "OS2": {
+   "track": "ops",
+   "tier": "standard",
+   "caseVersion": 1,
+   "minutes": 20,
+   "seeds": [
+    10334
+   ],
+   "requires": {
+    "pipeline": "URP",
+    "mode": "bypass",
+    "dedicated": true,
+    "packages": [
+     "com.unity.ugui"
+    ]
+   },
+   "public": {
+    "task.py": "a3f0b6d7196132477c5933ccd5d901c25b9f5ad2806cd5185eb533c35208dac7",
+    "prompt.zh-CN.md": "63d0d12427d2f63648403da41faad4fa70ccdcd081ca783ccf727f7f473eeca0",
+    "prompt.en.md": "6810761f149ec96e59beadd36362fc6fbdadac43ba5edd8b134f31a67426e369"
+   },
+   "private": {
+    "file": "OS2.py",
+    "sha256": "1e45b32f7707b8f0f730800a7632ed54f309652a2f4b5aa7ef45a7401f73989c",
+    "bytes": 15223
    }
   },
   "OC1": {
