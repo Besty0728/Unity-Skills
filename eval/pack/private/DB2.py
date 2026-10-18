@@ -1,4 +1,11 @@
-﻿"""DB2 private verification and Play-mode scenario (Health MonoBehaviour with TakeDamage, Heal, and death event)."""
+﻿"""DB2 private verification and Play-mode scenario (Health MonoBehaviour with TakeDamage, Heal, and death event).
+
+The script is read with comments and string literals removed. Fields are found by a declaration parser (attributes,
+modifiers, type, comma-separated declarators), so `public int currentHealth, deathCount;` and
+`[SerializeField, Min(1)] private int maxHealth = 100;` count like their one-per-line forms. The death event cannot be
+observed in Play Mode (scenario invoke steps only call component methods, and onDied has no listener), so H1 checks
+that the class invokes onDied at all; the runtime check of the transition itself goes through deathCount (H6).
+"""
 import json
 import os
 import random
@@ -9,9 +16,17 @@ from usk_eval import verifylib as V
 MAX_HEALTHS = (80, 120, 150)
 SPEC_SALT = 0xDB02
 SCRIPT_RE = re.compile(r"\.cs(\.meta)?$")
+# Comments and string/char literals (verbatim strings included), removed before any static check.
+CODE_RE = re.compile(r"//[^\n]*|/\*.*?\*/|@\"(?:\"\"|[^\"])*\"|\"(?:\\.|[^\"\\\n])*\"|'(?:\\.|[^'\\\n])+'", re.S)
+# A field declaration: attributes, modifiers, type, then one or more declarators (each with an optional initialiser).
+DECL_RE = re.compile(r"((?:\[[^\[\]]*\]\s*)*)((?:(?:public|private|protected|internal|static|readonly|const|new|volatile)\s+)*)"
+                     r"([A-Za-z_][\w.]*(?:<[^<>;{}]*>)?(?:\[\s*\])?)\s+"
+                     r"([A-Za-z_]\w*\s*(?:=[^;{}]*)?(?:,\s*[A-Za-z_]\w*\s*(?:=[^;{}]*)?)*);")
+INVOKE_RE = re.compile(r"\bonDied\s*(?:\?\s*)?\.\s*Invoke\s*\(")
+TYPE_ALIASES = {"Int32": "int", "System.Int32": "int"}
 
 ASSERTIONS = [
-    ("H1", 1.5, False, ["R1"], "script exists at the requested path, declares the MonoBehaviour class with serialized maxHealth (default 100), currentHealth, deathCount, onDied, and public TakeDamage(int)/Heal(int)"),
+    ("H1", 1.5, False, ["R1", "R3"], "script exists at the requested path, declares the MonoBehaviour class with serialized maxHealth (default 100), currentHealth, deathCount, onDied, and public TakeDamage(int)/Heal(int), and invokes onDied"),
     ("H2", 0.75, False, ["R1"], "script and project compile without errors"),
     ("H3", 1.5, False, ["R5"], "exactly one Health component is attached to the target unit and its serialized maxHealth matches the requested value"),
     ("H4", 0.75, True, ["R6"], "no other C# file was added under Assets"),
@@ -24,8 +39,8 @@ ASSERTIONS = [
 
 HINTS = {
     "H1": {
-        "zh-CN": "脚本路径、类名、基类 MonoBehaviour、序列化字段 maxHealth（默认值 100）/currentHealth/deathCount/onDied 或公共方法 TakeDamage(int)/Heal(int) 不符合 R1–R4。",
-        "en": "Script path, class name, base class MonoBehaviour, serialized fields maxHealth (default 100)/currentHealth/deathCount/onDied, or public methods TakeDamage(int)/Heal(int) do not match R1–R4.",
+        "zh-CN": "脚本路径、类名、基类 MonoBehaviour、序列化字段 maxHealth（默认值 100）/currentHealth/deathCount/onDied、公共方法 TakeDamage(int)/Heal(int)，或死亡时调用 onDied?.Invoke() 不符合 R1–R4。",
+        "en": "Script path, class name, base class MonoBehaviour, serialized fields maxHealth (default 100)/currentHealth/deathCount/onDied, public methods TakeDamage(int)/Heal(int), or the onDied?.Invoke() call on death do not match R1–R4.",
     },
     "H2": {
         "zh-CN": "脚本仍在编译或存在编译错误。",
@@ -98,9 +113,47 @@ def _cs_files(project_path):
     return sorted(out)
 
 
-def _strip_comments(source):
-    text = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
-    return re.sub(r"//[^\n]*", "", text)
+def code_of(source):
+    """The source with comments and string/char literals blanked out."""
+    return CODE_RE.sub(" ", source)
+
+
+def _declarators(text):
+    """Comma-separated declarators split at depth 0 (initialisers may hold commas inside brackets)."""
+    out, depth, cur = [], 0, []
+    for ch in text:
+        if ch in "([{<":
+            depth += 1
+        elif ch in ")]}>":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    out.append("".join(cur))
+    return [part.strip() for part in out if part.strip()]
+
+
+def fields(code):
+    """{name: (type, serialized, initialiser text or None)} of the field declarations in comment- and string-free
+    code. Serialized as Unity serializes a field: public or [SerializeField], and neither static, const, readonly nor
+    [NonSerialized]. The first declaration of a name wins."""
+    out = {}
+    for attrs, mods, kind, declarators in DECL_RE.findall(code):
+        words = mods.split()
+        serialized = ("public" in words or re.search(r"\bSerializeField\b", attrs) is not None) and \
+            not {"static", "const", "readonly"} & set(words) and re.search(r"\bNonSerialized\b", attrs) is None
+        kind = TYPE_ALIASES.get(kind, kind)
+        for part in _declarators(declarators):
+            name, _eq, init = part.partition("=")
+            out.setdefault(name.strip(), (kind, serialized, init.strip() or None))
+    return out
+
+
+def _serialized_field(declared, name, kinds):
+    entry = declared.get(name)
+    return entry if entry is not None and entry[1] and entry[0] in kinds else None
 
 
 def _read(ctx, skill, **args):
@@ -117,32 +170,22 @@ def _check_script(ctx, path, cls, default_max):
     content = res.get("content") if isinstance(res, dict) else None
     if not isinstance(content, str):
         return False, None
-    code = _strip_comments(content)
+    code = code_of(content)
     if re.search(r"^\s*namespace\s+[\w.]+", code, flags=re.M):
         return False, {"reason": "declared inside a namespace"}
-    class_ok = bool(re.search(r"\bpublic\s+class\s+%s\s*:\s*(?:UnityEngine\.)?MonoBehaviour\b" % re.escape(cls), code))
-    max_match = re.search(
-        r"(?:\[SerializeField\]\s*(?:private|protected|public)?\s*|public\s+)int\s+maxHealth\s*"
-        r"(?:=\s*([-+]?\d+(?:\.\d+)?)f?)?\s*;",
-        code,
-    )
-    max_ok = bool(max_match and max_match.group(1) is not None and V.as_int(max_match.group(1)) == default_max)
-    cur_ok = bool(
-        re.search(r"(?:\[SerializeField\]\s*(?:private|protected|public)?\s*|public\s+)int\s+currentHealth\b", code)
-    )
-    death_ok = bool(
-        re.search(r"(?:\[SerializeField\]\s*(?:private|protected|public)?\s*|public\s+)int\s+deathCount\b", code)
-    )
-    event_ok = bool(
-        re.search(
-            r"(?:\[SerializeField\]\s*(?:private|protected|public)?\s*|public\s+)"
-            r"(?:UnityEngine\.Events\.)?UnityEvent\s+onDied\b",
-            code,
-        )
-    )
-    td_ok = bool(re.search(r"\bpublic\s+int\s+TakeDamage\s*\(\s*int\s+\w+\s*\)", code))
-    heal_ok = bool(re.search(r"\bpublic\s+int\s+Heal\s*\(\s*int\s+\w+\s*\)", code))
-    ok = class_ok and max_ok and cur_ok and death_ok and event_ok and td_ok and heal_ok
+    class_ok = bool(re.search(r"\bpublic\s+(?:(?:sealed|partial)\s+)*class\s+%s\s*:\s*(?:UnityEngine\.)?MonoBehaviour\b"
+                              % re.escape(cls), code))
+    declared = fields(code)
+    max_field = _serialized_field(declared, "maxHealth", ("int",))
+    max_ok = bool(max_field and max_field[2] is not None and re.match(r"^[+]?\d+$", max_field[2]) and
+                  V.as_int(max_field[2]) == default_max)
+    cur_ok = _serialized_field(declared, "currentHealth", ("int",)) is not None
+    death_ok = _serialized_field(declared, "deathCount", ("int",)) is not None
+    event_ok = _serialized_field(declared, "onDied", ("UnityEvent", "UnityEngine.Events.UnityEvent")) is not None
+    td_ok = bool(re.search(r"\bpublic\s+(?:virtual\s+)?int\s+TakeDamage\s*\(\s*int\s+\w+\s*\)", code))
+    heal_ok = bool(re.search(r"\bpublic\s+(?:virtual\s+)?int\s+Heal\s*\(\s*int\s+\w+\s*\)", code))
+    invokes = INVOKE_RE.search(code) is not None
+    ok = class_ok and max_ok and cur_ok and death_ok and event_ok and td_ok and heal_ok and invokes
     return ok, {
         "classOk": class_ok,
         "maxHealthDefaultOk": max_ok,
@@ -151,6 +194,7 @@ def _check_script(ctx, path, cls, default_max):
         "onDiedFieldOk": event_ok,
         "takeDamageSigOk": td_ok,
         "healSigOk": heal_ok,
+        "invokesOnDied": invokes,
     }
 
 

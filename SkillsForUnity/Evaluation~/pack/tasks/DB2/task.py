@@ -1,8 +1,8 @@
 ﻿"""DB2: Health MonoBehaviour with TakeDamage, Heal, and a one-shot Died event (dev, basic).
 
-Fixture: R/<Zone>/<Unit_a> and R/<Zone>/<Unit_b> (capsule units, one with a child prop) plus an optional bystander
-prop; which unit is named by the prompt, the order of the children, the names and the numeric parameters come from
-the seed.
+Fixture: R/<Zone>/<Unit_a> (x = -3) and R/<Zone>/<Unit_b> (x = 3), capsule units that each carry a Shield child
+cube, plus an optional bystander prop; which unit the prompt names, the names, whether the prop exists and maxHealth
+come from the seed.
 """
 import os
 import random

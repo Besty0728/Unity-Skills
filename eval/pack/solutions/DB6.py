@@ -92,6 +92,8 @@ def _source(ctx, def_interval=None, def_count=None, variant=None):
         spawn_stmt = "Instantiate(prefab, transform);"
     elif variant == "keep_world_pos":
         spawn_stmt = "Instantiate(prefab, Vector3.zero, Quaternion.identity).transform.SetParent(container, true);"
+    elif variant == "renamed_clones":
+        spawn_stmt = "Instantiate(prefab, container).name = prefab.name + \"_\" + (_spawned + 1);"
     marker = "\n    // usk-fake: %s" % variant if variant else ""
     return SPAWNER_SRC.format(cls=_cls(ctx), def_interval=di, def_count=dc, marker=marker,
                               start=start, limit=limit, spawn_stmt=spawn_stmt)
@@ -196,6 +198,25 @@ def keep_world_pos(ctx):
     return _solve(ctx, source=_source(ctx, variant="keep_world_pos"))
 
 
+def renamed_clones(ctx):
+    """Every instance renamed <prefab>_<n> after Instantiate (R5 asks for the name Instantiate gives)."""
+    return _solve(ctx, source=_source(ctx, variant="renamed_clones"))
+
+
+def scene_copy_prefab(ctx):
+    """The prefab instantiated into the scene under R and that scene object wired as `prefab`: its clones look right
+    at runtime, but the component references a scene object instead of the prefab asset."""
+    h, values = ctx.handles, ctx.private.spec(ctx.seed)
+    copy = ctx.c.write("prefab_instantiate", prefabPath=h["prefab"], **V.address(ctx.root, "parent"))
+    _create_script(ctx, _cls(ctx), _source(ctx))
+    _attach(ctx, h["emitter"], container_path=h["containerPath"], interval=values["interval"],
+            max_count=values["maxCount"])
+    ctx.c.write("component_set_serialized_property", componentType=_cls(ctx), propertyPath="prefab",
+                referencePath=copy.get("path") or ctx.path(ctx.private._asset_name(h["prefab"])),
+                **V.address(h["emitter"]))
+    return _answer(ctx, h["emitter"])
+
+
 def wrong_default(ctx):
     return _solve(ctx, source=_source(ctx, def_interval=1.5, def_count=3))
 
@@ -261,6 +282,9 @@ NEGATIVES = [
     Negative("off_by_one", off_by_one, {"F6"}, "spawning stops at maxCount - 1"),
     Negative("parent_emitter", parent_emitter, {"F6"}, "instances are parented to the emitter instead of the container"),
     Negative("keep_world_pos", keep_world_pos, {"F6"}, "instances keep world origin instead of container local origin"),
+    Negative("renamed_clones", renamed_clones, {"F6"}, "the instances are renamed after Instantiate"),
+    Negative("scene_copy_prefab", scene_copy_prefab, {"F3"}, "a scene instance of the prefab is referenced, not the "
+                                                             "asset"),
     Negative("wrong_default", wrong_default, {"F1"}, "the code defaults differ from the required defaults"),
     Negative("compile_error", compile_error, {"F2", "F3", "F6", "F7"}, "the script does not compile"),
     Negative("extra_script", extra_script, {"F4"}, "an extra C# script was added"),

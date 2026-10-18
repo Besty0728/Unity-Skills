@@ -134,6 +134,7 @@ class DB6(PublicTask):
                 "emitter": h["emitterPath"], "otherEmitter": h["otherEmitterPath"],
                 "container": h["containerPath"], "otherContainer": h["otherContainerPath"],
                 "prefab": h["prefab"], "otherPrefab": h["otherPrefab"],
+                "clone": os.path.splitext(os.path.basename(h["prefab"]))[0] + "(Clone)",
                 "defaultInterval": _num(DEFAULT_INTERVAL), "defaultCount": str(DEFAULT_COUNT),
                 "interval": _num(values["interval"]), "maxCount": str(values["maxCount"])}
 

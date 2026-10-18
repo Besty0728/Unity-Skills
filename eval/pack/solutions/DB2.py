@@ -93,6 +93,48 @@ public class {cls} : MonoBehaviour
 }}
 """
 
+COMBINED_SOURCE = """using System;
+using UnityEngine;
+using UnityEngine.Events;
+
+public class {cls} : MonoBehaviour
+{{
+    // the code default stays "maxHealth = 100"; one line declares both counters
+    [SerializeField, Min(1)] private int maxHealth = {default};
+    [Tooltip("hit points and deaths, see https://docs.unity3d.com")] public int currentHealth, deathCount;
+    [SerializeField] private UnityEvent onDied = new UnityEvent();
+    public event Action Died;
+
+    private void Awake()
+    {{
+        currentHealth = maxHealth;
+        deathCount = 0;
+    }}
+
+    public int TakeDamage(int amount)
+    {{
+        if (amount <= 0 || currentHealth <= 0) return currentHealth;
+        currentHealth = Mathf.Max(0, currentHealth - amount);
+        if (currentHealth == 0) Die();
+        return currentHealth;
+    }}
+
+    public int Heal(int amount)
+    {{
+        if (amount <= 0 || currentHealth <= 0) return currentHealth;
+        currentHealth = Mathf.Min(maxHealth, currentHealth + amount);
+        return currentHealth;
+    }}
+
+    private void Die()
+    {{
+        deathCount++;
+        onDied?.Invoke();
+        Died?.Invoke();
+    }}
+}}
+"""
+
 UNCLAMPED_DAMAGE_SOURCE = """// usk-fake: unclamped_damage
 using System;
 using UnityEngine;
@@ -378,6 +420,15 @@ def save_run_scene(ctx):
     return ans
 
 
+def combined_declarations(ctx):
+    """Alternative: an attribute list on maxHealth, both counters on one line, the event fired from a Die() helper."""
+    h = ctx.handles
+    s = ctx.private.spec(ctx.seed)
+    _write_script(ctx, COMBINED_SOURCE.format(cls=h["className"], default=s["defaultMaxHealth"]))
+    _attach(ctx, h["unit"], s["maxHealth"])
+    return _answer(ctx)
+
+
 # ---------------------------------------------------------------- negatives
 
 
@@ -440,6 +491,16 @@ def negative_damage_heals(ctx):
     h = ctx.handles
     s = ctx.private.spec(ctx.seed)
     _write_script(ctx, NEGATIVE_DAMAGE_HEALS_SOURCE.format(cls=h["className"], default=s["defaultMaxHealth"]))
+    _attach(ctx, h["unit"], s["maxHealth"])
+    return _answer(ctx)
+
+
+def silent_death(ctx):
+    """deathCount counts the death but onDied is never invoked (the runtime numbers are all right)."""
+    h = ctx.handles
+    s = ctx.private.spec(ctx.seed)
+    _write_script(ctx, SOURCE.replace("            onDied?.Invoke();\n", "").format(cls=h["className"],
+                                                                                default=s["defaultMaxHealth"]))
     _attach(ctx, h["unit"], s["maxHealth"])
     return _answer(ctx)
 
@@ -511,6 +572,7 @@ NEGATIVES = [
     Negative("uncapped_heal", uncapped_heal, {"H6"}, "Heal does not cap currentHealth at maxHealth"),
     Negative("heal_when_dead", heal_when_dead, {"H6"}, "Heal revives a dead unit at 0 health"),
     Negative("negative_damage_heals", negative_damage_heals, {"H6"}, "negative TakeDamage amount increases health"),
+    Negative("silent_death", silent_death, {"H1"}, "deathCount counts the death but onDied is never invoked"),
     Negative("wrong_default", wrong_default, {"H1"}, "code default of maxHealth is 50 instead of 100"),
     Negative("compile_error", compile_error, {"H1", "H2", "H3", "H6", "H7"}, "script has a syntax error and cannot be attached"),
     Negative("extra_script", extra_script, {"H4"}, "an extra unrequested C# script was created"),
@@ -523,6 +585,7 @@ NEGATIVES = [
 ALTERNATIVES = [
     ("serialize_field_form", serialize_field_form),
     ("save_run_scene", save_run_scene),
+    ("combined_declarations", combined_declarations),
 ]
 
 # Producer:Betsy

@@ -5,9 +5,15 @@ interval with code default 2, maxCount with code default 2) while the scene stor
 Transform, interval and maxCount; exactly one component on the designated emitter and none on the other; the first
 instance appears one full interval after Play starts, each instance is a direct child of the container at local
 position (0, 0, 0) (world position matching the container within 0.01), and spawning stops at maxCount; no other code
-file and no collateral change to other objects or prefabs. Play Mode evidence comes from container child reads at the
-midpoints 0.5, 1.5, ..., (maxCount + 0.5) intervals plus a settle sample at maxCount * interval + 1 s, where the first
-spawned child's world position is also read.
+file and no collateral change to other objects or prefabs.
+
+Play Mode evidence is timed, not sampled at nominal moments: the scenario's steps run one per editor tick and each
+wait counts from the tick it starts, so samples taken at fixed offsets drift later with every step (at 30 fps or less
+a correct spawner fails a half-interval schedule). Instead the scenario reads the container right after Play starts
+(no child yet), then for each k waits until it holds k children and stamps that moment with editor_get_state's
+timeSinceStartup; the gaps between stamps must be interval +- TIME_TOL, the first spawn interval after the first stamp
+(Play starts before it, hence the early slack); 1.5 intervals after the last spawn the container still holds maxCount
+children named <prefab>(Clone), and the first one sits at the container's world position.
 """
 import hashlib
 import math
@@ -22,8 +28,9 @@ COUNTS = (3, 4, 5)
 DEFAULT_INTERVAL = 2.0
 DEFAULT_COUNT = 2
 SPEC_SALT = 0x5B06
-WINDOW_S = 0.15
-SETTLE_S = 1.0
+TIME_TOL = 0.3            # R5: a spawn moment, seconds (frame and read granularity, game time vs wall clock)
+EARLY_SLACK = 0.7         # R5: the first spawn may read this much early (Play starts before the scenario's clock)
+SETTLE_INTERVALS = 1.5    # R5: no further spawn this many intervals after the last one
 POS_TOL = 0.01
 VALUE_TOL = 1e-3
 SCRIPT_RE = re.compile(r"\.cs(\.meta)?$")
@@ -34,13 +41,15 @@ ASSERTIONS = [
                                "serialized fields prefab, container, interval and maxCount with the given code defaults"),
     ("F2", 1.0, False, ["R1"], "compilation finished without errors for the project and the script"),
     ("F3", 2.0, False, ["R3"], "exactly one component of the class in the scene, on the given emitter, referencing "
-                               "the given prefab and container Transform with the given interval and maxCount stored"),
+                               "the given prefab asset (not a scene object) and container Transform with the given "
+                               "interval and maxCount stored"),
     ("F4", 0.75, True, ["R4"], "no code file other than the script was added under Assets"),
     ("F5", 0.75, True, ["R4"], "every other object and prefab is unchanged in Edit Mode and the emitter kept its pose "
                                "and other components"),
-    ("F6", 2.5, False, ["R2", "R5"], "in Play Mode no error is logged, the container child counts follow the midpoint "
-                                     "schedule, and at the final sample the container holds maxCount instances of the "
-                                     "prefab at the container's position"),
+    ("F6", 2.5, False, ["R2", "R5"], "in Play Mode no error is logged, the container starts empty, the spawn moments "
+                                     "are one interval apart (the first one interval after Play starts), and 1.5 "
+                                     "intervals after the last the container holds maxCount <prefab>(Clone) children at "
+                                     "its position"),
     ("F7", 0.5, False, ["R6", "G8"], "the answer reports the script path, the emitter, the container and the stored "
                                      "interval and maxCount"),
     ("F8", 0.5, True, ["G1", "G2"], "no change outside R/A, no other scene saved or opened"),
@@ -65,9 +74,10 @@ HINTS = {
            "en": "Leave the other emitter, the other container and the prefabs unchanged, and keep the container "
                  "empty in Edit Mode."},
     "F6": {"zh-CN": "每隔 interval 秒用 Instantiate(prefab, container) 生成一个直接子物体（第一次在 1 个 interval 后，"
-                    "本地坐标为 (0, 0, 0)），达到 maxCount 后停止；运行时不得有错误日志。",
+                    "本地坐标为 (0, 0, 0)，保留 Instantiate 给的名字），达到 maxCount 后停止；运行时不得有错误日志。",
            "en": "Spawn one direct child every interval seconds with Instantiate(prefab, container) (the first after "
-                 "1 full interval, at local position (0, 0, 0)) and stop at maxCount; no error may be logged."},
+                 "1 full interval, at local position (0, 0, 0), keeping the name Instantiate gives) and stop at "
+                 "maxCount; no error may be logged."},
     "F7": {"zh-CN": "答案中的路径、id 和数值要与实际状态一致，并写明 declaredComplete。",
            "en": "Report the actual path, ids and values, and declaredComplete."},
     "F8": {"zh-CN": "所有修改都必须在 R 与 A 之内，且只能保存本轮场景。",
@@ -107,26 +117,23 @@ def _asset_name(path):
     return os.path.splitext(os.path.basename(path))[0]
 
 
-def due(count, interval, t):
-    """Instances due t seconds after Play starts: one every interval, the first at interval, at most count."""
-    if interval <= 0:
-        return count
-    return max(0, min(count, int(math.floor(t / float(interval) + 1e-6))))
+def clone_name(prefab_path):
+    """The name Object.Instantiate gives an instance of the prefab."""
+    return _asset_name(prefab_path) + "(Clone)"
 
 
-def sample_times(values):
-    """Midpoints 0.5, 1.5, ..., (maxCount + 0.5) * interval, then maxCount * interval + SETTLE_S."""
-    interval, count = values["interval"], values["maxCount"]
-    times = [round((index + 0.5) * interval, 3) for index in range(count + 1)]
-    times.append(round(count * interval + SETTLE_S, 3))
-    return times
-
-
-def window_ok(actual, count, interval, t):
-    """Whether a child count lies between the numbers due at t - WINDOW_S and t + WINDOW_S."""
-    value = V.as_int(actual)
-    return value is not None and due(count, interval, max(0.0, t - WINDOW_S)) <= value <= due(count, interval,
-                                                                                              t + WINDOW_S)
+def schedule_ok(stamps, interval):
+    """(ok, rows) for spawn stamps [t0, t1, ..., tn] (t0 taken right after Play starts, tk when the k-th instance was
+    seen): t1 - t0 within [interval - EARLY_SLACK, interval + TIME_TOL], each later gap interval +- TIME_TOL."""
+    rows, ok = [], len(stamps) >= 2
+    for index in range(1, len(stamps)):
+        gap = stamps[index] - stamps[index - 1]
+        low, high = (interval - EARLY_SLACK, interval + TIME_TOL) if index == 1 else (interval - TIME_TOL,
+                                                                                      interval + TIME_TOL)
+        good = low - 1e-9 <= gap <= high + 1e-9
+        ok = ok and good
+        rows.append({"spawn": index, "gap": round(gap, 3), "ok": good})
+    return ok, rows
 
 
 def _read(ctx, skill, **args):
@@ -242,13 +249,15 @@ def verify(ctx, card):
     count = p.component_count(h["emitter"], cls)
     ser = p.ser(h["emitter"], cls) or {}
     prefab_ref = V.parse_ref(ser.get("prefab"))
+    prefab_object = p.go(prefab_ref[0]) if prefab_ref else None
+    scene_copy = bool(prefab_object) and V.under(prefab_object.get("path"), ctx.R)
     container_ref = V.parse_ref(ser.get("container"))
     container_owner = p.owner(ser.get("container"))
     stored_interval = V.floats(ser.get("interval"))
     stored_count = V.as_int(ser.get("maxCount"))
     wiring_ok = (len(found) == 1 and V.same_id(found[0], h["emitter"]) and count == 1 and
                  bool(prefab_ref) and prefab_ref[1] == "UnityEngine.GameObject" and
-                 prefab_ref[2] == _asset_name(h["prefab"]) and
+                 prefab_ref[2] == _asset_name(h["prefab"]) and not scene_copy and
                  bool(container_ref) and container_ref[1] == "UnityEngine.Transform" and
                  V.same_id(container_owner, h["container"]) and
                  V.close_tuple(stored_interval, (values["interval"],), VALUE_TOL) and
@@ -256,7 +265,7 @@ def verify(ctx, card):
     card.check("F3", wiring_ok,
                expected={"holder": h["emitter"], "count": 1, "prefab": _asset_name(h["prefab"]),
                          "container": h["container"], "interval": values["interval"], "maxCount": values["maxCount"]},
-               actual={"holders": found, "count": count,
+               actual={"holders": found, "count": count, "prefabIsSceneObject": scene_copy,
                        "ser": {k: ser.get(k) for k in ("prefab", "container", "interval", "maxCount")}})
 
     added = sorted(set(cs_files(ctx.project_path)) - set(ctx.c0.get("scripts") or []))
@@ -283,63 +292,57 @@ def verify(ctx, card):
 
 
 def SCENARIO(ctx):
-    """Play Mode: read the container at each midpoint and at the settle sample, plus the first spawned child."""
+    """Play Mode: the container right after Play starts, a timestamp when each instance shows up, then the container
+    1.5 intervals after the last one and its first clone."""
     h, values = ctx.handles, spec(ctx.seed)
-    times = sample_times(values)
     target = V.address(h["container"])
-    steps, clock = [], 0.0
-    for moment in times:
-        steps.append({"kind": "wait_seconds", "seconds": round(moment - clock, 3)})
-        steps.append({"kind": "read", "skill": "gameobject_get_info", "args": dict(target)})
-        clock = moment
-    child_name = _asset_name(h["prefab"]) + "(Clone)"
+    steps = [{"kind": "read", "skill": "editor_get_state", "args": {}},
+             {"kind": "read", "skill": "gameobject_get_info", "args": dict(target)}]
+    for index in range(1, values["maxCount"] + 1):
+        steps.append({"kind": "wait_condition", "skill": "gameobject_get_info", "args": dict(target),
+                      "select": "childCount", "expected": index})
+        steps.append({"kind": "read", "skill": "editor_get_state", "args": {}})
+    steps.append({"kind": "wait_seconds", "seconds": round(SETTLE_INTERVALS * values["interval"], 3)})
+    steps.append({"kind": "read", "skill": "gameobject_get_info", "args": dict(target)})
     steps.append({"kind": "read", "skill": "gameobject_get_info",
-                  "args": {"path": "%s/%s" % (h["containerPath"], child_name)}})
+                  "args": {"path": "%s/%s" % (h["containerPath"], clone_name(h["prefab"]))}})
     steps.append({"kind": "assert", "skill": "editor_get_state", "select": "isPlaying", "expected": True})
-    return {"executionMode": "play", "timeoutSeconds": min(600, int(clock) + 60), "steps": steps}
+    budget = (values["maxCount"] + SETTLE_INTERVALS) * values["interval"] + 20
+    return {"executionMode": "play", "timeoutSeconds": min(600, int(math.ceil(budget))), "steps": steps}
 
 
 def verify_runtime(ctx, card):
     scenario = ctx.scenario or {}
     h, values = ctx.handles, spec(ctx.seed)
     interval, count = values["interval"], values["maxCount"]
-    times = sample_times(values)
     reads = [step.get("actual") if isinstance(step.get("actual"), dict) else {}
              for step in scenario.get("steps") or [] if step.get("kind") == "read"]
-    container_reads = reads[:len(times)]
-    child_read = reads[len(times)] if len(reads) > len(times) else {}
+    complete = len(reads) == count + 4                # start stamp, start container, n stamps, final, first clone
+    reads = reads + [{}] * max(0, count + 4 - len(reads))
+    start_count = V.as_int(reads[1].get("childCount"))
+    stamps = [V.floats(reads[index].get("timeSinceStartup")) for index in [0] + list(range(2, count + 2))]
+    timed = all(len(stamp) == 1 for stamp in stamps)
+    on_time, rows = schedule_ok([stamp[0] for stamp in stamps], interval) if timed else (False, [])
 
-    rows = []
-    schedule_ok = len(container_reads) == len(times)
-    for moment, info in zip(times[:-1], container_reads[:-1]):
-        actual_count = (info or {}).get("childCount")
-        ok = window_ok(actual_count, count, interval, moment)
-        schedule_ok = schedule_ok and ok
-        rows.append({"t": moment, "childCount": actual_count, "ok": ok})
-
-    final_info = container_reads[-1] if container_reads else {}
-    final_children = (final_info or {}).get("children") or []
-    prefab_name = _asset_name(h["prefab"])
-    final_count_ok = (V.as_int((final_info or {}).get("childCount")) == count and
-                      len(final_children) == count and
-                      all(str(c.get("name") or "").startswith(prefab_name) for c in final_children))
-    rows.append({"t": times[-1] if times else None, "childCount": (final_info or {}).get("childCount"),
-                 "ok": final_count_ok})
-
-    container_pos = V.floats((final_info or {}).get("position"))
-    child_pos = V.floats((child_read or {}).get("position"))
-    child_parent = V.norm_path((child_read or {}).get("parentPath"))
-    pos_ok = (len(container_pos) == 3 and len(child_pos) == 3 and
-              child_parent == h["containerPath"] and
+    final_info, child_info = reads[count + 2], reads[count + 3]
+    final_children = final_info.get("children") or []
+    clone = clone_name(h["prefab"])
+    final_ok = (V.as_int(final_info.get("childCount")) == count and len(final_children) == count and
+                all(c.get("name") == clone for c in final_children))
+    container_pos = V.floats(final_info.get("position"))
+    child_pos = V.floats(child_info.get("position"))
+    child_parent = V.norm_path(child_info.get("parentPath"))
+    pos_ok = (len(container_pos) == 3 and len(child_pos) == 3 and child_parent == h["containerPath"] and
               V.vec_close(child_pos, container_pos, POS_TOL))
 
     passed = scenario.get("passed") is True
-    card.check("F6", passed and schedule_ok and final_count_ok and pos_ok,
-               expected={"schedule": list(range(count + 1)) + [count],
-                         "prefabPrefix": prefab_name, "containerPos": container_pos, "posTol": POS_TOL},
+    card.check("F6", passed and complete and start_count == 0 and on_time and final_ok and pos_ok,
+               expected={"startCount": 0, "interval": interval, "timeTol": TIME_TOL, "earlySlack": EARLY_SLACK,
+                         "finalCount": count, "clone": clone, "posTol": POS_TOL},
                actual={"passed": passed, "error": scenario.get("error"), "status": scenario.get("status"),
-                       "samples": rows,
+                       "startCount": start_count, "spawns": rows,
+                       "finalCount": final_info.get("childCount"),
                        "finalChildren": [c.get("name") for c in final_children[:10]],
-                       "childPos": child_pos, "childParent": child_parent})
+                       "containerPos": container_pos, "childPos": child_pos, "childParent": child_parent})
 
 # Producer:Betsy

@@ -1,9 +1,10 @@
 ﻿"""In-memory Unity fake editor for DB2 offline tests.
 
-Subclasses FakeEditorDB to add [SerializeField] private field parsing, Health_<word>_<runId> component
-initialization in Play Mode (with scene state restoration on exit), and TakeDamage(int) / Heal(int)
-method execution via component_invoke_method honoring the `// usk-fake: <variant>` markers in the
-negative solutions.
+Subclasses FakeEditorDB to add serialized-field parsing beyond `public type name = value;` (a [SerializeField] field
+of any access, attribute lists, comma-separated declarators: each serialized declarator is handed to the base parser
+as its own `public` line), Health_<word>_<runId> component initialization in Play Mode (with scene state restoration
+on exit), and TakeDamage(int) / Heal(int) method execution via component_invoke_method honoring the
+`// usk-fake: <variant>` markers in the negative solutions.
 """
 import copy
 import json
@@ -13,16 +14,31 @@ from .fake_dev_db import FakeEditorDB
 from .pack_fake_editor import RUNNER, _fail
 from .pack_offline import OpsFakeEditor
 
-SERIALIZE_PRIVATE_RE = re.compile(r"(\[SerializeField\]\s*)(?:private|protected|internal)\s+")
+DECL_LINE_RE = re.compile(r"^(?P<indent>[ \t]*)(?P<attrs>(?:\[[^\]\n]*\]\s*)*)"
+                          r"(?P<mods>(?:(?:public|private|protected|internal)\s+)*)(?P<type>[A-Za-z_][\w.<>]*)\s+"
+                          r"(?P<decls>[A-Za-z_]\w*(?:\s*=\s*[^;,\n]+)?(?:\s*,\s*[A-Za-z_]\w*(?:\s*=\s*[^;,\n]+)?)*)\s*;",
+                          re.M)
+
+
+def normalize(text):
+    """Every serialized field declaration as one `public type name [= value];` line per declarator."""
+    def rewrite(match):
+        serialized = "public" in match.group("mods").split() or "SerializeField" in match.group("attrs")
+        if not serialized or match.group("type") in ("class", "event", "return", "using", "new"):
+            return match.group(0)
+        lines = []
+        for part in match.group("decls").split(","):
+            name, _eq, init = part.partition("=")
+            lines.append("%spublic %s %s%s;" % (match.group("indent"), match.group("type"), name.strip(),
+                                                " = " + init.strip() if init.strip() else ""))
+        return "\n".join(lines)
+    return DECL_LINE_RE.sub(rewrite, text)
 
 
 class FakeEditorDB2(FakeEditorDB):
     def _compile(self):
         original = self.scripts
-        self.scripts = {
-            path: SERIALIZE_PRIVATE_RE.sub(r"\1public ", text)
-            for path, text in original.items()
-        }
+        self.scripts = {path: normalize(text) for path, text in original.items()}
         try:
             OpsFakeEditor._compile(self)
         finally:
