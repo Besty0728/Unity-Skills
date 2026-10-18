@@ -4,11 +4,12 @@ using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnitySkills.Tests.Fixtures;
 
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// The core modules declare entityId themselves, so an id reaches exactly the object it names on every Unity version.
+    /// Built-in skills declare entityId themselves, so an id reaches exactly the object it names on every Unity version.
     /// Same-name siblings share a name and a path, and only the id tells them apart; the router's synthetic entityId had to
     /// refuse them on Unity 6000.4+, where there is no legacy instanceId to forward. Each case acts on the second of two
     /// same-name objects and checks that the first stayed as it was. Secondary locators (component_copy's source and
@@ -225,6 +226,24 @@ namespace UnitySkills.Tests.Core
 
             Assert.That(response["status"]?.ToString(), Is.EqualTo("error"), response.ToString(Formatting.None));
             Assert.That(canvas.transform.childCount, Is.EqualTo(0), "A stale parent id must not fall back to the first Canvas.");
+        }
+
+        [Test]
+        public void EventAddListener_SourceEntityId_PicksTheSecondOfTwoSameNameEmitters()
+        {
+            var (first, second) = CreateTwins();
+            var firstProbe = first.AddComponent<EventProbe>();
+            var secondProbe = second.AddComponent<EventProbe>();
+            var receiver = Create("Receiver").AddComponent<EventProbe>();
+
+            AssertSuccess(Execute("event_add_listener", new JObject
+            {
+                ["entityId"] = Id(second), ["componentName"] = nameof(EventProbe), ["eventName"] = nameof(EventProbe.onFire),
+                ["targetEntityId"] = Id(receiver), ["targetComponentName"] = nameof(EventProbe), ["methodName"] = nameof(EventProbe.Ping)
+            }));
+
+            Assert.That(secondProbe.onFire.GetPersistentEventCount(), Is.EqualTo(1));
+            Assert.That(firstProbe.onFire.GetPersistentEventCount(), Is.EqualTo(0));
         }
 
         [Test]

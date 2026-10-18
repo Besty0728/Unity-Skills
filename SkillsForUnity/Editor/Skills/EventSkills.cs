@@ -20,9 +20,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject", "componentName", "eventName" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object EventGetListeners(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
+        public static object EventGetListeners(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, string entityId = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var component = FindComponentOnGameObject(go, componentName);
@@ -104,7 +104,7 @@ namespace UnitySkills
             [SkillParam("Project path of an asset to pass as the Object argument; when given, the scene locators objectArgName / objectArgInstanceId / objectArgEntityId / objectArgPath are ignored.")]
             string objectArgAssetPath = null,
             [SkillParam("Type bound for the Object argument: a scene reference is the GameObject unless this names a component (Transform, Rigidbody...), whose own id then binds that exact component; for objectArgAssetPath an asset type (Material...).")]
-            string objectArgType = null)
+            string objectArgType = null, string entityId = null)
         {
             // mode must be strictly parsed up front: comparing it with two string.Equals calls would
             // let an unrecognized value fall through to RuntimeOnly after the listener is already
@@ -113,7 +113,7 @@ namespace UnitySkills
                 return modeError;
             if (Validate.Required(methodName, "methodName") is object methodErr) return methodErr;
 
-            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (goErr != null) return goErr;
 
             var component = FindComponentOnGameObject(go, componentName);
@@ -225,9 +225,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject", "componentName", "eventName" },
             MutatesScene = true,
             RiskLevel = "medium")]
-        public static object EventRemoveListener(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, int index = 0)
+        public static object EventRemoveListener(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, int index = 0, string entityId = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var component = FindComponentOnGameObject(go, componentName);
@@ -261,9 +261,9 @@ namespace UnitySkills
             // the scene, with no snapshot and no way to undo it.
             // Only by declaring this a scene mutation does the surface profile's "no scene edits" guarantee hold up.
             MutatesScene = true)]
-        public static object EventInvoke(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
+        public static object EventInvoke(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, string entityId = null)
         {
-             var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+             var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (goErr != null) return goErr;
 
             var component = FindComponentOnGameObject(go, componentName);
@@ -295,9 +295,9 @@ namespace UnitySkills
             return new { success = true, message = "Event invoked" };
         }
 
-        private static (UnityEventBase evt, Component comp, object error) FindEvent(string name, int instanceId, string path, string componentName, string eventName)
+        private static (UnityEventBase evt, Component comp, object error) FindEvent(string name, int instanceId, string path, string componentName, string eventName, string entityId = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return (null, null, findErr);
             var component = FindComponentOnGameObject(go, componentName);
             if (component == null) return (null, null, new { error = $"Component not found: {componentName}" });
@@ -706,9 +706,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject", "componentName", "eventName" },
             MutatesScene = true,
             RiskLevel = "medium")]
-        public static object EventClearListeners(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
+        public static object EventClearListeners(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, string entityId = null)
         {
-            var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);
+            var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName, entityId);
             if (err != null) return err;
             WorkflowManager.SnapshotObject(comp);
             Undo.RecordObject(comp, "Clear Listeners");
@@ -724,9 +724,9 @@ namespace UnitySkills
             Outputs = new[] { "index", "state" },
             RequiresInput = new[] { "gameObject", "componentName", "eventName" },
             MutatesScene = true)]
-        public static object EventSetListenerState(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, int index = 0, string state = null)
+        public static object EventSetListenerState(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, int index = 0, string state = null, string entityId = null)
         {
-            var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);
+            var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName, entityId);
             if (err != null) return err;
             if (index < 0 || index >= evt.GetPersistentEventCount()) return new { error = "Index out of range" };
             if (!SkillParamUtil.TryParseRequiredEnum<UnityEventCallState>(state, "state", out var callState, out var stateError)) return stateError;
@@ -756,9 +756,9 @@ namespace UnitySkills
             [SkillParam("Entity id of the target: a GameObject, one of its components (targetComponentName naming its type then binds that exact component) or an asset such as a ScriptableObject. The first target locator given decides, in this order: targetEntityId, targetInstanceId, targetPath, targetName; one that finds nothing is an error, never a fallback to the next.")]
             string targetEntityId = null,
             [SkillParam("Entity id of the scene object passed as the Object argument (a component's id with objectType naming its type binds that exact component); used when objectAssetPath is empty, and an id that names nothing is an error.")]
-            string objectReferenceEntityId = null)
+            string objectReferenceEntityId = null, string entityId = null)
         {
-            var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);
+            var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName, entityId);
             if (err != null) return err;
             if (index < 0 || index >= evt.GetPersistentEventCount()) return new { error = "Index out of range" };
             if (Validate.Required(methodName, "methodName") is object methodErr) return methodErr;
@@ -857,9 +857,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject", "componentName" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object EventListEvents(string name = null, int instanceId = 0, string path = null, string componentName = null)
+        public static object EventListEvents(string name = null, int instanceId = 0, string path = null, string componentName = null, string entityId = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
             var component = FindComponentOnGameObject(go, componentName);
             if (component == null) return new { error = $"Component not found: {componentName}" };
@@ -879,7 +879,7 @@ namespace UnitySkills
             MutatesScene = true)]
         public static object EventAddListenerBatch(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null,
             [SkillParam("JSON array of {targetObjectName|targetEntityId|targetInstanceId|targetPath, targetComponentName?, methodName, mode? (default RuntimeOnly), argType? (default void), floatArg?, intArg?, stringArg?, boolArg?, objectArgName|objectArgEntityId|objectArgInstanceId|objectArgPath|objectArgAssetPath?, objectArgType?}, each as in event_add_listener.")]
-            string items = null)
+            string items = null, string entityId = null)
         {
             var list = Newtonsoft.Json.JsonConvert.DeserializeObject<List<BatchListenerItem>>(items);
             if (list == null || list.Count == 0) return new { error = "No items provided" };
@@ -901,7 +901,8 @@ namespace UnitySkills
                     item.floatArg, item.intArg, item.stringArg, item.boolArg,
                     targetInstanceId: item.targetInstanceId, targetEntityId: item.targetEntityId, targetPath: item.targetPath,
                     objectArgName: item.objectArgName, objectArgInstanceId: item.objectArgInstanceId, objectArgEntityId: item.objectArgEntityId,
-                    objectArgPath: item.objectArgPath, objectArgAssetPath: item.objectArgAssetPath, objectArgType: item.objectArgType);
+                    objectArgPath: item.objectArgPath, objectArgAssetPath: item.objectArgAssetPath, objectArgType: item.objectArgType,
+                    entityId: entityId);
 
                 var label = item.targetObjectName ?? item.targetPath ?? item.targetEntityId ?? (item.targetInstanceId != 0 ? item.targetInstanceId.ToString() : null);
                 if (SkillResultHelper.TryGetError(result, out var itemError))
@@ -1059,9 +1060,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject", "componentName", "eventName" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object EventGetListenerCount(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null)
+        public static object EventGetListenerCount(string name = null, int instanceId = 0, string path = null, string componentName = null, string eventName = null, string entityId = null)
         {
-            var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName);
+            var (evt, comp, err) = FindEvent(name, instanceId, path, componentName, eventName, entityId);
             if (err != null) return err;
             return new { success = true, count = evt.GetPersistentEventCount() };
         }

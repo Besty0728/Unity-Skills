@@ -373,15 +373,15 @@ namespace UnitySkills
             return new { success = true, path };
         }
 
-        [UnitySkill("physics_set_material", "Set PhysicMaterial on a collider (supports name/instanceId/path). Automatically uses `PhysicsMaterial` on Unity 6+, `PhysicMaterial` on earlier versions.", TracksWorkflow = true,
+        [UnitySkill("physics_set_material", "Set PhysicMaterial on a collider (supports name/entityId/instanceId/path). Automatically uses `PhysicsMaterial` on Unity 6+, `PhysicMaterial` on earlier versions.", TracksWorkflow = true,
             Category = SkillCategory.Physics, Operation = SkillOperation.Modify,
             Tags = new[] { "material", "collider", "friction", "bounciness" },
             Outputs = new[] { "success", "gameObject", "material", "collider" },
             RequiresInput = new[] { "gameObject", "materialPath" }, MutatesScene = true)]
         public static object PhysicsSetMaterial(
-            string materialPath, string name = null, int instanceId = 0, string path = null)
+            string materialPath, string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path);
+            var (go, err) = GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId);
             if (err != null) return err;
             var collider = go.GetComponent<Collider>();
             if (collider == null) return new { error = $"No Collider on {go.name}" };

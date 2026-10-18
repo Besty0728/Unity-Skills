@@ -21,12 +21,12 @@ namespace UnitySkills
             MutatesScene = true, MutatesAssets = true, RiskLevel = "medium")]
         public static object PrefabCreate(string name = null, int instanceId = 0, string path = null,
             [SkillParam("Asset path under Assets/ (or a writable package); '.prefab' is appended when missing. An existing prefab there is overwritten.")]
-            string savePath = null)
+            string savePath = null, string entityId = null)
         {
             if (Validate.Required(savePath, "savePath") is object reqErr) return reqErr;
             if (Validate.SafePath(savePath, "savePath") is object pathErr) return pathErr;
 
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
 
             savePath = WithPrefabExtension(savePath);
@@ -198,9 +198,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true,
             MutatesScene = true, MutatesAssets = true, RiskLevel = "medium")]
-        public static object PrefabApply(string name = null, int instanceId = 0, string path = null)
+        public static object PrefabApply(string name = null, int instanceId = 0, string path = null, string entityId = null)
         {
-            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (goErr != null) return goErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
@@ -222,9 +222,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true,
             MutatesScene = true, RiskLevel = "medium")]
-        public static object PrefabUnpack(string name = null, int instanceId = 0, string path = null, bool completely = false)
+        public static object PrefabUnpack(string name = null, int instanceId = 0, string path = null, bool completely = false, string entityId = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
 
             WorkflowManager.SnapshotObject(go);
@@ -247,9 +247,9 @@ namespace UnitySkills
             [SkillParam("false (default): counts only. true: also returns overrides, one entry per property override, added or removed component and added GameObject: kind, gameObjectPath (relative to the instance root, empty = the root), component, componentIndex, property, value.")]
             bool includeDetails = false,
             [SkillParam("With includeDetails: max overrides listed, property overrides first, then added components, removed components and added GameObjects. count is how many came back, totalMatched every override, truncated=true means limit cut the list, so raise it to see the rest.")]
-            int limit = 50)
+            int limit = 50, string entityId = null)
         {
-            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (goErr != null) return goErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
@@ -462,9 +462,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" }, TracksWorkflow = true, MutatesScene = true)]
         public static object PrefabRevertOverrides(string name = null, int instanceId = 0,
             [SkillParam("Hierarchy path of the prefab instance (or any object inside it), e.g. Level/Enemy; picks one of several same-name instances.")]
-            string path = null)
+            string path = null, string entityId = null)
         {
-            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, findErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (findErr != null) return findErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);
@@ -485,9 +485,9 @@ namespace UnitySkills
             RequiresInput = new[] { "gameObject" }, MutatesAssets = true)]
         public static object PrefabApplyOverrides(string name = null, int instanceId = 0,
             [SkillParam("Hierarchy path of the prefab instance (or any object inside it), e.g. Level/Enemy; picks one of several same-name instances.")]
-            string path = null)
+            string path = null, string entityId = null)
         {
-            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path);
+            var (go, goErr) = GameObjectFinder.FindOrError(name: name, instanceId: instanceId, path: path, entityId: entityId);
             if (goErr != null) return goErr;
 
             var prefabRoot = PrefabUtility.GetOutermostPrefabInstanceRoot(go);

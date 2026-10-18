@@ -142,12 +142,13 @@ Create a PhysicMaterial asset.
 **Returns:** `{ success, path }` — `path` is `<savePath>/<name>.physicMaterial`; a name already taken there gets a numeric suffix (`<name> 1.physicMaterial`).
 
 ### `physics_set_material`
-Set PhysicMaterial on a collider (supports name/instanceId/path).
+Set PhysicMaterial on a collider (supports name/entityId/instanceId/path).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | materialPath | string | Yes | - | Asset path of the PhysicMaterial |
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 

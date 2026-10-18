@@ -40,6 +40,7 @@ Get persistent listeners of a UnityEvent.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Component name |
@@ -57,6 +58,7 @@ Add a persistent listener to a UnityEvent (Editor time).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Component owning the event |
@@ -92,6 +94,7 @@ Remove a persistent listener by index.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Component name |
@@ -106,6 +109,7 @@ Invoke a UnityEvent explicitly (Runtime only).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Component name |
@@ -119,6 +123,7 @@ Remove all persistent listeners from a UnityEvent.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Component name |
@@ -132,6 +137,7 @@ Set a listener's call state (Off, RuntimeOnly, EditorAndRuntime).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Component name |
@@ -147,6 +153,7 @@ Replace a persistent listener at a specific index.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Source component name |
@@ -179,6 +186,7 @@ List all UnityEvent fields on a component.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Component name |
@@ -191,6 +199,7 @@ Add multiple listeners at once. items: JSON array of {targetObjectName, targetCo
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Component name |
@@ -219,6 +228,7 @@ Get the number of persistent listeners on a UnityEvent.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | name | string | No | null | GameObject name |
+| entityId | string | No | null | GameObject entity ID (preferred; the only id on Unity 6000.4+) |
 | instanceId | int | No | 0 | GameObject instance ID |
 | path | string | No | null | GameObject hierarchy path |
 | componentName | string | Yes | - | Component name |

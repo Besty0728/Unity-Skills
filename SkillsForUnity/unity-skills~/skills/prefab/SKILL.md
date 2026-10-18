@@ -21,7 +21,7 @@ description: Manage Prefabs and variants
 Read APIs (`prefab_get_overrides`, `prefab_find_instances` and the four asset query APIs) are SemiAuto. Writes are FullAuto. Component/node deletion and `prefab_edit_batch` are NeverInSemi through Delete/high metadata. Auto / Bypass execute directly; Approval uses the framework grants/allowlist. See [asset editing](ASSET_EDITING.md) for targeting, batching and Undo semantics.
 
 **DO NOT** (common hallucinations):
-- `prefab_create_from_object` does not exist → use `prefab_create` (takes scene object name/instanceId and savePath)
+- `prefab_create_from_object` does not exist → use `prefab_create` (takes scene object name/entityId/instanceId/path and savePath)
 - `prefab_spawn` does not exist → use `prefab_instantiate`
 - `prefab_edit` / `prefab_modify` do not exist → use `prefab_edit_batch` for ordered direct asset edits.
 - `prefab_save` does not exist → use `prefab_apply` (applies instance changes to source prefab)
@@ -83,7 +83,8 @@ Create a prefab from a scene GameObject.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Source object name |
-| `instanceId` | int | No* | Instance ID (preferred) |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
+| `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Object path |
 | `savePath` | string | Yes | Prefab save path; `.prefab` is appended when missing |
 
@@ -131,7 +132,8 @@ Apply instance changes back to the prefab asset.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Prefab instance name |
-| `instanceId` | int | No* | Instance ID (preferred) |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
+| `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Object path |
 
 *At least one identifier required.
@@ -144,7 +146,8 @@ Unpack a prefab instance (break prefab connection).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | - | Prefab instance name |
-| `instanceId` | int | No* | - | Instance ID (preferred) |
+| `entityId` | string | No* | - | Entity ID (preferred; the only id on Unity 6000.4+) |
+| `instanceId` | int | No* | - | Instance ID |
 | `path` | string | No* | - | Object path |
 | `completely` | bool | No | false | Unpack all nested prefabs |
 
@@ -158,6 +161,7 @@ Count the overrides on a prefab instance; `includeDetails: true` also lists each
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `name` | string | No* | null | Prefab instance name |
+| `entityId` | string | No* | null | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | 0 | Instance ID |
 | `path` | string | No* | null | Hierarchy path of the instance (or any object inside it); picks one of several same-name instances |
 | `includeDetails` | bool | No | false | Also return `overrides`, one entry per override |
@@ -173,6 +177,7 @@ Revert all overrides on a prefab instance back to prefab values.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Prefab instance name |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path of the instance (or any object inside it); picks one of several same-name instances |
 
@@ -184,6 +189,7 @@ Apply all overrides from instance to source prefab asset.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | No* | Prefab instance name |
+| `entityId` | string | No* | Entity ID (preferred; the only id on Unity 6000.4+) |
 | `instanceId` | int | No* | Instance ID |
 | `path` | string | No* | Hierarchy path of the instance (or any object inside it); picks one of several same-name instances |
 
