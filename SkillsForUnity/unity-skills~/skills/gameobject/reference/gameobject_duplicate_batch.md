@@ -11,7 +11,7 @@ Duplicate several GameObjects in one call; each copy is a sibling named `<name>_
 
 ```python
 unity_skills.call_skill("gameobject_duplicate_batch", items=[
-    {"instanceId": 12345},
-    {"instanceId": 12346}
+    {"entityId": tree_id},
+    {"entityId": rock_id}
 ])
 ```

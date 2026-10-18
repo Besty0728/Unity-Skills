@@ -319,7 +319,7 @@ namespace UnitySkills
             }
         }
 
-        [UnitySkill("gameobject_rename", "Rename a GameObject (supports name/instanceId/path). Returns, read back from the renamed object: {success, oldName, newName, entityId, instanceId, path}",
+        [UnitySkill("gameobject_rename", "Rename a GameObject (supports name/entityId/instanceId/path). Returns, read back from the renamed object: {success, oldName, newName, entityId, instanceId, path}",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "rename", "name", "identity" },
             Outputs = new[] { "oldName", "newName", "instanceId", "path" },
@@ -384,7 +384,7 @@ namespace UnitySkills
             public string newName { get; set; }
         }
 
-        [UnitySkill("gameobject_delete", "Delete a GameObject (supports name/instanceId/path)",
+        [UnitySkill("gameobject_delete", "Delete a GameObject (supports name/entityId/instanceId/path)",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Delete,
             Tags = new[] { "destroy", "remove", "hierarchy" },
             Outputs = new[] { "deleted" },
@@ -613,7 +613,7 @@ namespace UnitySkills
             return page;
         }
 
-        [UnitySkill("gameobject_set_transform", "Set transform properties (supports name/instanceId/path). posX/Y/Z = world position, rotX/Y/Z = world euler angles, scaleX/Y/Z = localScale, localPosX/Y/Z = local position (applied after posX/Y/Z, so it wins on the same axis); omitted axes keep their current value. UI/RectTransform also takes anchoredPosX/Y, anchorMinX/Y, anchorMaxX/Y, pivotX/Y, sizeDeltaX/Y, width/height. Returns the read-back position (world), localPosition, rotation (world euler) and scale (local), plus the RectTransform values for UI.",
+        [UnitySkill("gameobject_set_transform", "Set transform properties (supports name/entityId/instanceId/path). posX/Y/Z = world position, rotX/Y/Z = world euler angles, scaleX/Y/Z = localScale, localPosX/Y/Z = local position (applied after posX/Y/Z, so it wins on the same axis); omitted axes keep their current value. UI/RectTransform also takes anchoredPosX/Y, anchorMinX/Y, anchorMaxX/Y, pivotX/Y, sizeDeltaX/Y, width/height. Returns the read-back position (world), localPosition, rotation (world euler) and scale (local), plus the RectTransform values for UI.",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "transform", "position", "rotation", "scale", "rectTransform" },
             Outputs = new[] { "instanceId", "position", "rotation", "scale" },
@@ -864,10 +864,10 @@ namespace UnitySkills
             return true;
         }
 
-        [UnitySkill("gameobject_duplicate", "Duplicate a GameObject (supports name/instanceId/path) as a sibling named <name>_Copy. Returns, read back from the copy: originalName, copyName, copyEntityId, copyInstanceId, copyPath, copyParentPath",
+        [UnitySkill("gameobject_duplicate", "Duplicate a GameObject (supports name/entityId/instanceId/path) as a sibling named <name>_Copy. Returns, read back from the copy: originalName, copyName, copyEntityId, copyInstanceId, copyPath, copyParentPath",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Create,
             Tags = new[] { "duplicate", "copy", "clone", "hierarchy" },
-            Outputs = new[] { "copyName", "copyInstanceId", "copyPath", "copyParentPath" },
+            Outputs = new[] { "copyName", "copyEntityId", "copyInstanceId", "copyPath", "copyParentPath" },
             RequiresInput = new[] { "gameObject" },
             TracksWorkflow = true, MutatesScene = true)]
         public static object GameObjectDuplicate(string name = null, int instanceId = 0, string path = null, string entityId = null)
@@ -932,7 +932,7 @@ namespace UnitySkills
             public string path { get; set; }
         }
 
-        [UnitySkill("gameobject_set_parent", "Set the parent of a GameObject (supports name/instanceId/path)",
+        [UnitySkill("gameobject_set_parent", "Set the parent of a GameObject (supports name/entityId/instanceId/path)",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "parent", "hierarchy", "reparent" },
             Outputs = new[] { "child", "parent", "newPath", "parentPath", "position", "localPosition" },
@@ -1039,7 +1039,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("gameobject_get_info", "Get detailed info about a GameObject (supports name/instanceId/path)",
+        [UnitySkill("gameobject_get_info", "Get detailed info about a GameObject (supports name/entityId/instanceId/path)",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Query,
             Tags = new[] { "inspect", "info", "details", "components" },
             Outputs = new[] { "name", "entityId", "instanceId", "path", "tag", "layer", "isActive",
@@ -1097,7 +1097,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("gameobject_set_sibling_index", "Set a GameObject's sibling index — its position among the children of its parent, or among the scene's root objects when it has no parent (supports name/instanceId/path). index is clamped into the valid range and the response reports clamped=true when that happened.",
+        [UnitySkill("gameobject_set_sibling_index", "Set a GameObject's sibling index — its position among the children of its parent, or among the scene's root objects when it has no parent (supports name/entityId/instanceId/path). index is clamped into the valid range and the response reports clamped=true when that happened.",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "sibling", "order", "reorder", "hierarchy" },
             Outputs = new[] { "name", "index", "previousIndex", "clamped" },
@@ -1130,7 +1130,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("gameobject_set_active", "Enable or disable a GameObject (supports name/instanceId/path)",
+        [UnitySkill("gameobject_set_active", "Enable or disable a GameObject (supports name/entityId/instanceId/path)",
             Category = SkillCategory.GameObject, Operation = SkillOperation.Modify,
             Tags = new[] { "active", "enable", "disable", "visibility" },
             Outputs = new[] { "name", "active", "activeInHierarchy" },

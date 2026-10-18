@@ -132,7 +132,7 @@ Get full editor context including selection, assets, and scene info.
 | `includeChildren` | bool | No | false | Include children info |
 
 **Returns**:
-- `selectedGameObjects`: Objects in Hierarchy (instanceId, path, tag, layer)
+- `selectedGameObjects`: `{count, objects}`, the objects selected in the Hierarchy (entityId, instanceId, path, tag, layer)
 - `selectedAssets`: Assets in Project window (GUID, path, type, isFolder)
 - `activeScene`: Current scene info (name, path, isDirty)
 - `focusedWindow`: Name of focused editor window
@@ -220,8 +220,8 @@ last_cursor = changes["cursor"]
 
 # Get full context (useful for understanding current state)
 context = unity_skills.call_skill("editor_get_context", includeComponents=True)
-for obj in context['selectedGameObjects']:
-    print(f"Selected: {obj['name']} (ID: {obj['instanceId']})")
+for obj in context['selectedGameObjects']['objects']:
+    print(f"Selected: {obj['name']} (entityId: {obj['entityId']})")
 
 # Select and operate on object
 unity_skills.call_skill("editor_select", name="Player")
@@ -265,7 +265,7 @@ print(step_status["details"]["frameCount"], step_status["details"]["isPaused"])
 2. Don't modify scene during play mode (changes lost)
 3. Use undo for safe experimentation
 4. On resume, call `editor_get_changes` before reading scene files
-5. Use `editor_get_context` to get instanceId for batch operations
+5. Use `editor_get_context` to get entityId for batch operations
 6. Menu commands must match exact paths
 
 ## Exact Signatures

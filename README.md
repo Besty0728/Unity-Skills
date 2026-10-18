@@ -298,7 +298,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       │   ├── SkillRouter.cs      # Request Routing & Reflection-based Skill Discovery
 │       │   ├── WorkflowManager.cs  # Persistent Workflow (Task/Session/Snapshot)
 │       │   ├── RegistryService.cs  # Global Registry (Multi-instance Discovery)
-│       │   ├── GameObjectFinder.cs # Unified GO Finder (name/instanceId/path)
+│       │   ├── GameObjectFinder.cs # Unified GO Finder (name/entityId/instanceId/path)
 │       │   ├── BatchExecutor.cs    # Generic Batch Processing Framework
 │       │   ├── Localization.cs     # Multi-Language Localization Engine
 │       │   └── ...                 # 839 Skills source code

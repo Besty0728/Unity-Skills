@@ -298,7 +298,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │       │   ├── SkillRouter.cs      # 请求路由 & 反射发现 Skills
 │       │   ├── WorkflowManager.cs  # 持久化工作流 (Task/Session/Snapshot)
 │       │   ├── RegistryService.cs  # 全局注册表 (多实例发现)
-│       │   ├── GameObjectFinder.cs # 统一 GO 查找器 (name/instanceId/path)
+│       │   ├── GameObjectFinder.cs # 统一 GO 查找器 (name/entityId/instanceId/path)
 │       │   ├── BatchExecutor.cs    # 泛型批处理框架
 │       │   ├── Localization.cs     # 多语言本地化管理引擎
 │       │   └── ...                 # 839 Skills 源码

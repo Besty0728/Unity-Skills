@@ -27,7 +27,7 @@ During a domain reload the port answers 503 or refuses for seconds while its `~/
 Every skill is `POST /skill/<name>` with JSON args:
 `curl -s "http://localhost:<port>/skill/gameobject_set_transform?expectProject=<project>" -d '{"name":"Crate","posX":4,"posY":1.5,"posZ":-2}'`
 
-Target objects by `name` or the exact `path`/`instanceId` (likewise `parentPath`, `childPath`); skip lookup calls — a wrong name fails the call and returns candidates.
+Target objects by `name` or the exact `path`/`entityId` (likewise `parentPath`, `childPath`); skip lookup calls — a wrong name fails the call and returns candidates.
 
 | Call |
 |---|
@@ -51,7 +51,7 @@ Target objects by `name` or the exact `path`/`instanceId` (likewise `parentPath`
 
 ## Execute
 
-Several steps, one call: `POST /skills/batch?expectProject=<project>` `{"steps":[{"skill":"gameobject_create","args":{"name":"Rig"}},{"skill":"gameobject_create","args":{"name":"Arm","parentName":"Rig"}}]}` — ≤50 steps; a step may name objects earlier steps created, or use `{"$ref":"$0.instanceId"}`; the first failure skips the rest unless `continueOnError:true`; `?mode=transactional` = all-or-nothing → [batch](skills/batch/SKILL.md).
+Several steps, one call: `POST /skills/batch?expectProject=<project>` `{"steps":[{"skill":"gameobject_create","args":{"name":"Rig"}},{"skill":"gameobject_create","args":{"name":"Arm","parentName":"Rig"}}]}` — ≤50 steps; a step may name objects earlier steps created, or use `{"$ref":"$0.entityId"}`; the first failure skips the rest unless `continueOnError:true`; `?mode=transactional` = all-or-nothing → [batch](skills/batch/SKILL.md).
 
 **dryRun.** If this table, recommend or schema gave you the signature this session, execute directly: a failed validation runs nothing and returns the dryRun report (all `validation` buckets, parameter list). DryRun first (`?mode=dryRun&wire=v2`) for deletes, `riskLevel` high, `mayTriggerReload`/`mayEnterPlayMode`, approval mode, non-transactional multi-step batches, or when unsure; under a `dryRunPolicy`, execute with the returned `?dryRunToken=`. `valid:true` = no validation errors (`warnings` never block; the target may still be missing); `authorization` previews the permission gate.
 

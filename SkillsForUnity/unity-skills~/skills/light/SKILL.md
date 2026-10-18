@@ -116,7 +116,7 @@ Configure multiple lights. Each item accepts: `name`/`entityId`/`instanceId`/`pa
 ```python
 unity_skills.call_skill("light_set_properties_batch", items=[
     {"name": "Light1", "intensity": 2.0, "r": 1, "g": 0.9, "b": 0.8},
-    {"instanceId": 12345, "intensity": 1.5, "shadows": "soft"},
+    {"entityId": light2_id, "intensity": 1.5, "shadows": "soft"},
     {"name": "Light3", "intensity": 2.0}
 ])
 ```

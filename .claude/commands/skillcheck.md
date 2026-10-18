@@ -100,7 +100,7 @@
 
 > 参数比对时注意：C# 方法可能有 `= null`、`= 0`、`= false` 等默认值，这些对应文档中 `Required = No` 的参数。
 
-**Batch Skill 特殊处理**：对 `*_batch` Skill，不比对方法签名（固定为 `string items`），而是比对 `BatchXxxItem` 类的属性列表与文档中 `**Item properties**` 列出的属性名。规则同上：文档多出 → 高风险，C# 多出 → 中风险。同时检查 batch item 属性与对应单个 Skill 的参数是否一致（如单体 `component_add` 接受路由合成的 `entityId`，而 `BatchAddComponentItem` 只有 `name/instanceId/path/componentType`，这种差异应标注但不算错误）。
+**Batch Skill 特殊处理**：对 `*_batch` Skill，不比对方法签名（固定为 `string items`），而是比对 `BatchXxxItem` 类的属性列表与文档中 `**Item properties**` 列出的属性名。规则同上：文档多出 → 高风险，C# 多出 → 中风险。同时检查 batch item 属性与对应单个 Skill 的参数是否一致：定位字段必须一致（单体接受 `entityId` / `<p>EntityId` 的，item 也接受；`EntityIdCoverageGuardTests` 拦下有 `instanceId` 却没有 `entityId` 的 item），其他字段的差异（如 `script_create_batch` 的 item 多一个别名 `namespace`）应标注但不算错误。
 
 ### 3c. 元数据完整性检查
 
@@ -128,7 +128,7 @@
 3. **文档 Returns vs C# 实际返回值（直接比对）**：把文档 `**Returns**: {field1, field2, ...}` 与方法体 `return new { ... }` 的字段名直接对照，**不经 Outputs 中转**——这是唯一能抓出"Outputs 和 Returns 一起漂移、彼此表面仍然对齐"这类案例的手段
 4. 任一边不一致标记为 🟡 中等（AI 依赖返回值做下一步决策，但不如参数不一致严重）
 
-> **豁免 `entityId`**：`entityId` 由 `SkillRouter.GetEffectiveOutputs / GetSkillParameters / GetEffectiveDescription` 在 `/skills` manifest 层对所有含 `instanceId` 的 skill **自动注入**，因此**不需要在静态 `Outputs` 元数据中显式声明**。校验时遇到「C# `return new { ... entityId ... }` 含 `entityId`」或「文档 Returns 出现 `entityId`」而 `Outputs` 未声明的情况，**一律不算不一致**，跳过该字段（同理适用于 `parentEntityId` / `childEntityId` 等定位入参）。
+> **豁免 `entityId`**：`Outputs` 含 `instanceId` 的 skill，`SkillRouter.GetEffectiveOutputs` 在 `/skills` manifest 层**自动补上** `entityId`，因此**不需要在静态 `Outputs` 元数据中显式声明**。校验时遇到「C# `return new { ... entityId ... }` 含 `entityId`」或「文档 Returns 出现 `entityId`」而 `Outputs` 未声明的情况，**一律不算不一致**，跳过该字段（同理适用于回显的 `parentEntityId` / `childEntityId` 等定位字段）。这条只管 Outputs：内置技能的 `entityId` / `<p>EntityId` 入参是方法自己声明的真实参数，按普通参数比对（每个 `<p>InstanceId` 都要有对应的 `<p>EntityId`，见 `EntityIdCoverageGuardTests`）；路由合成的 `entityId` 入参（`GetEffectiveParameterNames` / `BuildParameterSchema` / `GetEffectiveDescription`）只出现在有 `instanceId` 却没有自带 `entityId` 的自定义技能上。
 
 ### 3f. DO NOT 列表验证（反向幽灵检查）
 
@@ -397,7 +397,7 @@
 - **审计部分（步骤 1–3）是只读的**；唯一允许修改文件的是步骤 4 的数量同步（且仅限 AGENTS.md / README.md / README_CN.md / unity-skills~/SKILL.md 四个文件中的数量引用），不修改 C# 代码，不自动 `git commit`，只提示用户审阅后提交
 - 如果审计通过且数量一致，输出 `✅ 所有 Skill 定义与文档一致，数量已同步（{N} Skills），无问题发现`
 - 对于 batch 类 Skill（如 `gameobject_create_batch`），参数通常是 `string items`（JSON 数组），文档中以 `items` + Item properties 形式描述，这种情况视为一致。**真正的参数比对**应在 `BatchXxxItem` 类属性与文档 Item properties 之间进行
-- `*_batch` 的 Item properties 与对应单个 Skill 的参数应保持一致，可作为额外检查项。但 batch 版本可能与单个版本字段不同（如 `component_*_batch` 的 item 没有单体可用的合成 `entityId`，`script_create_batch` 的 item 多一个别名 `namespace`），这种差异标注但不算错误
+- `*_batch` 的 Item properties 与对应单个 Skill 的参数应保持一致，可作为额外检查项。定位字段（`entityId`、`<p>EntityId`）必须一致；其他字段可能不同（如 `script_create_batch` 的 item 多一个别名 `namespace`），这种差异标注但不算错误
 - 大型审计可能需要读取大量文件，优先使用 Grep 批量提取而非逐文件读取
 - **入口/reference 拆分**：试点模块文档是 `SKILL.md`（入口：跨技能共享事实与守则、技能列表、`## Exact Signatures`，不链接相邻模块文档）+ `reference/<skill_name>.md`（每技能一个文件：参数表在前，然后 Item properties、Returns、陷阱与示例）；其他模块仍可用单文件或 `REFERENCE.md`。扫描一律覆盖模块目录下所有 `.md` 与 `reference/` 一层；**不得**要求技能必须定义在入口，也不得因为入口没有 `###` 就判定为 advisory。相关测试：`SkillDocumentationConsistencyTests` 的 `SkillDocModules_ShouldMapToCategoriesOrBeRegisteredAdvisory`、`PilotSkillDocs_ShouldDocumentEverySkillOfTheirModule`、`PilotReferenceFiles_ShouldEachDefineTheSkillTheyAreNamedAfter`、`SkillDocLinks_ShouldResolve`、`PilotSkillDoc_ShouldStayWithinByteBudget`
 - **条件编译 Skill**：位于 `#if` 块内的 Skill 在报告中单独标注其依赖宏（如 `[需要 PROBUILDER]`），与无条件 Skill 区分展示。这些 Skill 在特定环境下可能不可用，但只要 SKILL.md 有对应文档就不算"未文档化"

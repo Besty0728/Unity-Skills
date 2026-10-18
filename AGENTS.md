@@ -60,7 +60,7 @@ public static object SkillName(string name, float x = 0f) { ... }
 ### Shared helpers — do not reimplement
 | Need | Use | Not |
 |------|-----|-----|
-| Find GameObject | `GameObjectFinder.FindOrError(name, instanceId, path)` | `GameObject.Find` |
+| Find GameObject | `GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId)`; every `instanceId` / `xInstanceId` parameter or batch-item field has its `entityId` / `xEntityId` twin (`EntityIdCoverageGuardTests`) | `GameObject.Find` |
 | Validate params | `Validate.Required` / `Validate.RequiredJsonArray` | hand-written if-chains |
 | Batch | `BatchExecutor.Execute<T>` | manual loops |
 | JSON | `SkillsCommon.JsonSettings` (Newtonsoft) | `JsonUtility`, ad-hoc settings |

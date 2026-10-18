@@ -13,10 +13,10 @@ Delete several GameObjects in one call.
 # By names
 unity_skills.call_skill("gameobject_delete_batch", items=["Cube1", "Cube2", "Cube3"])
 
-# By instanceId (preferred for precision)
+# By entityId (exact on every Unity version; gameobject_find and gameobject_create return it)
 unity_skills.call_skill("gameobject_delete_batch", items=[
-    {"instanceId": 12345},
-    {"instanceId": 12346}
+    {"entityId": crate["entityId"]},
+    {"entityId": barrel["entityId"]}
 ])
 
 # By path

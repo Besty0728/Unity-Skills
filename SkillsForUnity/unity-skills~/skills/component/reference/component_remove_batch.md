@@ -11,7 +11,7 @@ Remove components from several GameObjects in one call.
 
 ```python
 unity_skills.call_skill("component_remove_batch", items=[
-    {"instanceId": 12345, "componentType": "BoxCollider"},
-    {"instanceId": 12346, "componentType": "BoxCollider"}
+    {"entityId": wall_a_id, "componentType": "BoxCollider"},
+    {"entityId": wall_b_id, "componentType": "BoxCollider"}
 ])
 ```

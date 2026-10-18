@@ -16,7 +16,7 @@ Set transforms for several objects in one call, with the spaces and order of `ga
 ```python
 unity_skills.call_skill("gameobject_set_transform_batch", items=[
     {"name": "Cube1", "posX": 0, "posY": 1},
-    {"instanceId": 12345, "posX": 2, "posY": 1},
+    {"entityId": cube2_id, "posX": 2, "posY": 1},
     {"path": "Env/Cube3", "posX": 4, "posY": 1}
 ])
 ```

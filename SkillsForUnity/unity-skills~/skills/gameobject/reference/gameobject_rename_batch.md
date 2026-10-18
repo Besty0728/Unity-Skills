@@ -11,7 +11,7 @@ Rename several GameObjects in one call.
 
 ```python
 unity_skills.call_skill("gameobject_rename_batch", items=[
-    {"instanceId": 12345, "newName": "Enemy_01"},
-    {"instanceId": 12346, "newName": "Enemy_02"}
+    {"entityId": enemy_a_id, "newName": "Enemy_01"},
+    {"entityId": enemy_b_id, "newName": "Enemy_02"}
 ])
 ```

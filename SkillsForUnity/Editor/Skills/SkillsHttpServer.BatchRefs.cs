@@ -233,7 +233,7 @@ namespace UnitySkills
 
             if (string.IsNullOrEmpty(refString) || refString[0] != '$')
             {
-                parseError = "the $ref value must be a string like \"$0\", \"$0.instanceId\" or \"$1.items[0].path\"";
+                parseError = "the $ref value must be a string like \"$0\", \"$0.entityId\" or \"$1.items[0].path\"";
                 return false;
             }
 

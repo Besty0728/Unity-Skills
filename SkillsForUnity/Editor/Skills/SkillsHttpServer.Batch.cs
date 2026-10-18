@@ -43,7 +43,7 @@ namespace UnitySkills
         ///   other, never both ({"$param":..,"$ref":..} is SEMANTIC_INVALID). Any $ref left after substitution is
         ///   handled by the $ref stage below.
         /// - Cross-step references: at any depth within a step's structured args, an object whose only key is "$ref"
-        ///   (e.g. {"$ref":"$0.instanceId"}) is substituted before that step executes. "$N" is the 0-based index of
+        ///   (e.g. {"$ref":"$0.entityId"}) is substituted before that step executes. "$N" is the 0-based index of
         ///   an earlier, successful step; after the dot is a Newtonsoft SelectToken path into that step's unwrapped
         ///   result (bare "$0" = whole result, "$1.items[0].path" reaches into arrays).
         ///   An unresolvable reference (malformed / out-of-range / forward reference / referenced step didn't

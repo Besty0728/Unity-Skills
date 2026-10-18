@@ -67,7 +67,7 @@ public static object MyGreet(
 Only the **public** surface is available to project code. Use:
 
 - `Validate.Required(x, "x")` — returns an error object to return early: `if (Validate.Required(x, "x") is object err) return err;`
-- `GameObjectFinder.FindOrError(name, instanceId, path)` — never `GameObject.Find`.
+- `GameObjectFinder.FindOrError(name, instanceId, path, entityId: entityId)` with a trailing `string entityId = null` parameter — never `GameObject.Find`. Declare `entityId` yourself: on Unity 6000.4+ `instanceId` is 0, and the `entityId` the router adds to a skill that has `instanceId` but no `entityId` can reach an object only through a path no other object shares.
 - `SkillErrorResponse.Build(SkillErrorCode.X, message, ...)` for business errors (do `throw` only for truly unknown framework errors). `SkillErrorCodeExtensions` is internal — do not try to call it.
 - Writers that mutate scene state should register `Undo` and call `WorkflowManager.SnapshotXxx(...)` when `TracksWorkflow = true`; batch with `BatchExecutor.Execute<TItem>(items, perItem, idFn)`.
 - Return a structured object (anonymous or a DTO) — it is serialized with `SkillsCommon.JsonSettings`.

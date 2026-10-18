@@ -285,7 +285,7 @@ namespace UnitySkills
             Category = SkillCategory.Timeline, Operation = SkillOperation.Modify,
             Tags = new[] { "timeline", "binding", "track", "assign" },
             Outputs = new[] { "success", "trackName", "boundTo" },
-            // "director" dropped as redundant: "gameObject" already covers the same name/instanceId/path locator.
+            // "director" dropped as redundant: "gameObject" already covers the same name/entityId/instanceId/path locator.
             // The binding target is genuinely required (the body resolves it via GameObjectFinder with no fallback), by
             // either bindingObjectName or bindingEntityId; the compound token lets either one satisfy it.
             RequiresInput = new[] { "gameObject", "trackName", "bindingObjectName|bindingEntityId" },
