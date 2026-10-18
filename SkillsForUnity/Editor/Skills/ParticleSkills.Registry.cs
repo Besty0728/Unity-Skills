@@ -56,7 +56,7 @@ namespace UnitySkills
                 registry.Modules.Add(BuildNoise());
                 registry.Modules.Add(Planned("collision", "CollisionModule", b => b.System.collision.enabled, "Collision: world/planes, bounce, dampen, lifetime loss."));
                 registry.Modules.Add(Planned("trigger", "TriggerModule", b => b.System.trigger.enabled, "Triggers: collider list and enter/exit behaviour."));
-                registry.Modules.Add(Planned("subEmitters", "SubEmittersModule", b => b.System.subEmitters.enabled, "Sub Emitters: child systems spawned on events (particle_get_sub_emitters in P1)."));
+                registry.Modules.Add(BuildSubEmitters());
                 registry.Modules.Add(Planned("textureSheetAnimation", "TextureSheetAnimationModule", b => b.System.textureSheetAnimation.enabled, "Texture Sheet Animation: grid/sprites and frame curves."));
                 registry.Modules.Add(Planned("lights", "LightsModule", b => b.System.lights.enabled, "Lights: light reference, ratio, range and intensity."));
                 registry.Modules.Add(Planned("trails", "TrailModule", b => b.System.trails.enabled, "Trails: mode, ratio, lifetime, width and colour."));
@@ -669,6 +669,25 @@ namespace UnitySkills
                             check.Error(check.Has("minParticleSize") ? "minParticleSize" : "maxParticleSize",
                                 $"minParticleSize ({min}) must be <= maxParticleSize ({max}).");
                     });
+                return b.Module;
+            }
+
+            // ===================== subEmitters (P1) =====================
+
+            /// <summary>The module's own toggle; the list is a collection with its own skills, like the bursts of emission.</summary>
+            private static ModuleAdapter BuildSubEmitters()
+            {
+                var b = ParticleModule("subEmitters", "SubEmittersModule", "Sub Emitters: other systems spawned at each particle's birth, collision, death, trigger or manually. The list is read and replaced with its own skills.")
+                    .Bool("enabled", p => p.System.subEmitters.enabled, (p, v) => { var m = p.System.subEmitters; m.enabled = v; }, "Whether the module is enabled.")
+                    .Default(false)
+                    .ReadOnlyInt("subEmittersCount", p => StoredSubEmitterCount(p.System), "The list is written with particle_set_sub_emitters.", "Number of sub-emitter entries, broken ones included (as the Inspector lists them).")
+                    .Collection("subEmitters", "particle_get_sub_emitters", "particle_set_sub_emitters", p => StoredSubEmitterCount(p.System))
+                    .Rule(check =>
+                    {
+                        if (check.Requested("enabled", out var enabled) && enabled is bool on && on && check.Binding != null && StoredSubEmitterCount(check.Binding.System) == 0)
+                            check.Warn($"{check.PathOf("enabled")}: the module is enabled with an empty list; set the list with particle_set_sub_emitters.");
+                    });
+                b.Module.Phase = "P1";
                 return b.Module;
             }
         }

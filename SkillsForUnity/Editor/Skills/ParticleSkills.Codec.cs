@@ -58,7 +58,8 @@ namespace UnitySkills
                 }
                 catch (JsonReaderException ex)
                 {
-                    var inner = string.IsNullOrEmpty(ex.Path) ? path : path + "." + ex.Path;
+                    // The reader's path is relative to the value: "modules.main.duration" or, below an array, "[0].type".
+                    var inner = string.IsNullOrEmpty(ex.Path) ? path : path + (ex.Path.StartsWith("[", StringComparison.Ordinal) ? "" : ".") + ex.Path;
                     var message = ex.Message.IndexOf("already exists", StringComparison.OrdinalIgnoreCase) >= 0
                         ? $"Duplicate key in {path}: {ex.Message} Every key may appear once; merge the duplicates."
                         : $"{path} is not valid JSON: {ex.Message}";

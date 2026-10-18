@@ -24,7 +24,8 @@ namespace UnitySkills.Tests.Core
             "particle_get_capabilities", "particle_find_all", "particle_get_info", "particle_get_info_batch", "particle_get_module",
             "particle_get_renderer", "particle_get_bursts", "particle_create", "particle_create_batch", "particle_add_system",
             "particle_add_system_batch", "particle_configure", "particle_configure_batch", "particle_set_renderer",
-            "particle_set_renderer_batch", "particle_set_bursts", "particle_set_bursts_batch"
+            "particle_set_renderer_batch", "particle_set_bursts", "particle_set_bursts_batch",
+            "particle_get_sub_emitters", "particle_set_sub_emitters", "particle_set_sub_emitters_batch", "particle_analyze"
         };
 
         private static JObject ConfigObject(JObject modules) => JObject.Parse(Config(modules));

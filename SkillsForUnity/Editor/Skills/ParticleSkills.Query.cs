@@ -50,6 +50,7 @@ namespace UnitySkills
                     ["maxGradientColorKeys"] = MaxGradientKeys,
                     ["maxGradientAlphaKeys"] = MaxGradientKeys,
                     ["maxBursts"] = MaxBursts,
+                    ["maxSubEmitters"] = MaxSubEmitters,
                     ["maxBatchItems"] = MaxBatchItems,
                     ["findAllMaxLimit"] = FindAllMaxLimit,
                     ["gradientKeyTimeStep"] = "1/65535 (Unity quantizes gradient key times)"
@@ -187,6 +188,8 @@ namespace UnitySkills
             ["particle_add_system.configJson"] = "same shape as particle_configure, optional; may be empty",
             ["particle_set_renderer.configJson"] = "{\"schemaVersion\": 1, \"renderer\": {field: value}} (at least one field)",
             ["particle_set_bursts.burstsJson"] = "[Burst, ...] the complete list, at most " + MaxBursts + "; [] clears it",
+            ["particle_set_sub_emitters.subEmittersJson"] = "[SubEmitter, ...] the complete list, at most " + MaxSubEmitters + "; [] clears it",
+            ["particle_analyze.thresholdsJson"] = "{maxParticlesPerSystem?, totalMaxParticles?, maxSystems?, maxLights? (integers >= 1), minStartSize?, maxStartSize?, minStartLifetime?, maxStartLifetime?, maxEmissionRate? (numbers > 0)}; omitted keys keep their defaults",
             ["batchItems"] = "items is a JSON array of objects carrying each single skill's parameters; unknown item keys are rejected"
         };
 
@@ -220,7 +223,8 @@ namespace UnitySkills
             ["Vector3"] = "{\"x\", \"y\", \"z\"} all required",
             ["Vector2"] = "{\"x\", \"y\"} all required",
             ["AssetReference"] = "\"Assets/.../X.mat\", {\"assetPath\"}, {\"guid\"}, plus \"name\" to pick a sub-asset; built-in assets: {\"assetPath\": \"Resources/unity_builtin_extra\" | \"Library/unity default resources\", \"name\": ...}; null clears a nullable field",
-            ["Burst"] = "{\"time\" (s, >= 0), \"count\": MinMaxCurve (>= 0), \"cycleCount\"?: 1 (0 repeats forever), \"repeatInterval\"?: 0.01 (s, > 0), \"probability\"?: 1 (0-1)}"
+            ["Burst"] = "{\"time\" (s, >= 0), \"count\": MinMaxCurve (>= 0), \"cycleCount\"?: 1 (0 repeats forever), \"repeatInterval\"?: 0.01 (s, > 0), \"probability\"?: 1 (0-1)}",
+            ["SubEmitter"] = "{\"system\": {entityId|name|path|instanceId} of a ParticleSystem in the parent's scene (or a path/name string), \"type\": Birth|Collision|Death|Trigger|Manual, \"properties\"?: [InheritColor|InheritSize|InheritRotation|InheritLifetime|InheritDuration] ([] inherits nothing), \"emitProbability\"?: 1 (0-1)}; readback adds missing:true for a broken reference"
         };
 
         // ===================== particle_find_all =====================

@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-856-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-860-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -58,7 +58,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **856 REST Skills Toolkit**: 57 source files across 55 categories, plus 30 advisory design modules, with Batch operations.
+- 🛠️ **860 REST Skills Toolkit**: 57 source files across 55 categories, plus 30 advisory design modules, with Batch operations.
 - ⚡ **UnityCLI Support**: Bind UnityCLI to cold-start the bound project — no need to launch Unity Hub.
 - 🔐 **Three-Tier Permission Modes**: Approval / Auto / Bypass with dual approval channels, aligned with Claude Code permission modes.
 - 🤖 **6 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code — one-click install and use.
@@ -212,7 +212,7 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><b>📦 Skills Category Overview (856)</b></summary>
+<summary><b>📦 Skills Category Overview (860)</b></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
@@ -257,7 +257,7 @@ If you're using other tools that support Skills, install according to the Skills
 | **Debug** | 11 | Error logs/Compile check/Stack trace/Assemblies/Define symbols/Memory info/Editor health diagnose |
 | **Event** | 11 | UnityEvent listener management/Batch add/Copy/State control/List |
 | **Light** | 11 | Light create/Type config/Intensity-Color/Batch toggle/Probe groups/Reflection probes/Lightmaps |
-| **Particle** | 17 | Built-in ParticleSystem (Shuriken) create/inspect/configure: typed module patches (Main/Emission/Shape/Velocity/Color/Size/Noise), renderer, bursts, atomic batches, dryRun (not VFX Graph) |
+| **Particle** | 21 | Built-in ParticleSystem (Shuriken) create/inspect/configure: typed module patches (Main/Emission/Shape/Velocity/Color/Size/Noise), renderer, bursts, sub emitters, static analysis, atomic batches, dryRun (not VFX Graph) |
 | **Model** | 10 | Model import settings/Mesh info/Material mapping/Animation/Skeleton/Batch |
 | **NavMesh** | 10 | Bake/Path calculation/Agent/Obstacle/Sampling/Area cost |
 | **Optimization** | 10 | Texture compression/Mesh compression/Audio compression/Scene analysis/Static flags/LOD/Duplicate materials/Overdraw |
@@ -294,7 +294,7 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   └── references/             # Unity Development References
 │   └── Editor/
 │       ├── Locales/                # Decoupled JSON Localization Assets (en.json, zh-CN.json, ru.json)
-│       ├── Skills/                 # Core Skill Logic (57 *Skills.cs files → 55 SkillCategory categories, 856 Skills)
+│       ├── Skills/                 # Core Skill Logic (57 *Skills.cs files → 55 SkillCategory categories, 860 Skills)
 │       │   ├── SkillsHttpServer.cs # HTTP Server Core (Producer-Consumer)
 │       │   ├── SkillRouter.cs      # Request Routing & Reflection-based Skill Discovery
 │       │   ├── WorkflowManager.cs  # Persistent Workflow (Task/Session/Snapshot)
@@ -302,7 +302,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       │   ├── GameObjectFinder.cs # Unified GO Finder (name/entityId/instanceId/path)
 │       │   ├── BatchExecutor.cs    # Generic Batch Processing Framework
 │       │   ├── Localization.cs     # Multi-Language Localization Engine
-│       │   └── ...                 # 856 Skills source code
+│       │   └── ...                 # 860 Skills source code
 │       └── UI/                     # UI Toolkit Windows & Controllers
 │           ├── UnitySkillsWindow.{cs,uxml,uss} # Main Dashboard Window
 │           ├── UnityCliWindow.{cs,uxml,uss}    # Unity CLI Configuration Panel

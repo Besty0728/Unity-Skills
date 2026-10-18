@@ -397,6 +397,99 @@ namespace UnitySkills
 
             [JsonIgnore] internal Locator Locator => new Locator(name, instanceId, path, entityId);
         }
+
+        // ===================== P1: sub emitters and static analysis =====================
+
+        [UnitySkill("particle_get_sub_emitters", "Read the sub-emitter list of a ParticleSystem (name/entityId/instanceId/path): each entry's system (name/entityId/path, or missing:true for a broken reference), type (Birth/Collision/Death/Trigger/Manual), inherited properties and emitProbability, and whether the Sub Emitters module is enabled.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Query,
+            Tags = new[] { "particle", "particles", "subemitter", "sub-emitter", "subemitters", "read", "firework" },
+            Outputs = new[] { "name", "entityId", "instanceId", "path", "enabled", "count", "subEmitters", "warnings" },
+            RequiresInput = new[] { "gameObject" },
+            ReadOnly = true, Mode = SkillMode.SemiAuto)]
+        public static object ParticleGetSubEmitters(string name = null, int instanceId = 0,
+            [SkillParam(LocatorNote)] string path = null, string entityId = null)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_get_sub_emitters") ?? ParticleSkills.GetSubEmittersCore(new Locator(name, instanceId, path, entityId));
+#else
+            return ParticleSkills.MissingModuleError("particle_get_sub_emitters");
+#endif
+        }
+
+        [UnitySkill("particle_set_sub_emitters", "Replace the whole sub-emitter list of a ParticleSystem (name/entityId/instanceId/path). subEmittersJson: JSON array of at most 16 {system (entityId/name/path of an existing ParticleSystem in the same scene), type (Birth|Collision|Death|Trigger|Manual), properties? (InheritColor/InheritSize/InheritRotation/InheritLifetime/InheritDuration; [] inherits nothing), emitProbability? (0-1, default 1)}; [] clears it. Self references and cycles are refused; nothing is created, reparented or enabled. Atomic, stopped system and Edit Mode only; returns the list read back from Unity.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Modify,
+            Tags = new[] { "particle", "particles", "subemitter", "sub-emitter", "subemitters", "firework", "explosion", "chain" },
+            Outputs = new[] { "name", "entityId", "instanceId", "path", "enabled", "count", "subEmitters", "warnings" },
+            RequiresInput = new[] { "gameObject" },
+            RequiredParams = new[] { "subEmittersJson" },
+            TracksWorkflow = true, MutatesScene = true, RiskLevel = "medium")]
+        public static object ParticleSetSubEmitters(string name = null, int instanceId = 0,
+            [SkillParam(LocatorNote)] string path = null,
+            [SkillParam("The complete sub-emitter list as a JSON array (not a patch); [] clears it. Omitting it is an error.")]
+            string subEmittersJson = null,
+            string entityId = null)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_set_sub_emitters") ?? ParticleSkills.SetSubEmittersCore(new Locator(name, instanceId, path, entityId), subEmittersJson);
+#else
+            return ParticleSkills.MissingModuleError("particle_set_sub_emitters");
+#endif
+        }
+
+        [UnitySkill("particle_set_sub_emitters_batch", "particle_set_sub_emitters for several systems in one all-or-nothing call; cycles are checked across the whole batch, so a rocket -> explosion -> sparks chain can be set in one call. items: JSON array of {name|entityId|instanceId|path, subEmittersJson}, one item per system.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Modify,
+            Tags = new[] { "particle", "particles", "subemitter", "subemitters", "batch" },
+            Outputs = new[] { "totalItems", "successCount", "failCount", "results" },
+            RequiresInput = new[] { "items" },
+            TracksWorkflow = true, MutatesScene = true, RiskLevel = "medium")]
+        public static object ParticleSetSubEmittersBatch(
+            [SkillParam("JSON array of {name|entityId|instanceId|path, subEmittersJson}; at most 100 items, one item per system.")]
+            string items)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_set_sub_emitters_batch") ?? ParticleSkills.SetSubEmittersBatchCore(items);
+#else
+            return ParticleSkills.MissingModuleError("particle_set_sub_emitters_batch");
+#endif
+        }
+
+        [UnitySkill("particle_analyze", "Read-only static diagnosis of built-in ParticleSystems: one system (name/entityId/instanceId/path), every system under a root (rootName/rootEntityId/rootInstanceId/rootPath), or every system in the open scenes. Reports missing or pipeline-mismatched materials and shaders, disabled renderer or emission, systems that never emit, invisible colours, odd start size or lifetime, high particle caps, collision/light/trail cost, missing references and side-effect stop actions; each finding has code, severity, evidence and a suggested skill. thresholdsJson overrides the limits. No frame times or GPU cost; nothing is changed.",
+            Category = SkillCategory.Particle, Operation = SkillOperation.Analyze,
+            Tags = new[] { "particle", "particles", "analyze", "diagnose", "lint", "check", "performance", "invisible", "pink" },
+            Outputs = new[] { "scope", "systemsAnalyzed", "totalMaxParticles", "findingCount", "counts", "findings", "truncated", "thresholds" },
+            ReadOnly = true, Mode = SkillMode.SemiAuto)]
+        public static object ParticleAnalyze(string name = null, int instanceId = 0,
+            [SkillParam("One system to analyze: entityId (preferred), name, path or instanceId. Omit it and every root* parameter to analyze the open scenes.")]
+            string path = null,
+            string rootName = null, int rootInstanceId = 0,
+            [SkillParam("Analyze every system under this object (itself included); not combinable with a single system.")]
+            string rootPath = null,
+            [SkillParam("Include systems on inactive objects.")]
+            bool includeInactive = true,
+            [SkillParam("Most findings returned, 1-500, most severe first.")]
+            int limit = 100,
+            [SkillParam("Optional JSON object overriding thresholds: maxParticlesPerSystem, totalMaxParticles, maxSystems, maxLights (integers), minStartSize, maxStartSize, minStartLifetime, maxStartLifetime, maxEmissionRate (numbers > 0).")]
+            string thresholdsJson = null,
+            string entityId = null, string rootEntityId = null)
+        {
+#if COM_UNITY_MODULES_PARTICLESYSTEM
+            return ParticleSkills.Gate("particle_analyze") ?? ParticleSkills.AnalyzeCore(new Locator(name, instanceId, path, entityId),
+                new Locator(rootName, rootInstanceId, rootPath, rootEntityId), includeInactive, limit, thresholdsJson);
+#else
+            return ParticleSkills.MissingModuleError("particle_analyze");
+#endif
+        }
+
+        private sealed class BatchParticleSubEmittersItem
+        {
+            public string name { get; set; }
+            public string entityId { get; set; }
+            public int instanceId { get; set; }
+            public string path { get; set; }
+            public JToken subEmittersJson { get; set; }
+
+            [JsonIgnore] internal Locator Locator => new Locator(name, instanceId, path, entityId);
+        }
     }
 }
 

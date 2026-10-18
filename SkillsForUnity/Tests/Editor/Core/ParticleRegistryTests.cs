@@ -227,7 +227,7 @@ namespace UnitySkills.Tests.Core
             }
 
             var configurable = ParticleSkills.Registry.ParticleModules.Where(module => module.Configurable).Select(module => module.Id).ToArray();
-            Assert.That(configurable, Is.EquivalentTo(new[] { "main", "emission", "shape", "velocityOverLifetime", "colorOverLifetime", "sizeOverLifetime", "noise" }));
+            Assert.That(configurable, Is.EquivalentTo(new[] { "main", "emission", "shape", "velocityOverLifetime", "colorOverLifetime", "sizeOverLifetime", "noise", "subEmitters" }));
             Assert.That(problems, Is.Empty, string.Join("\n", problems));
         }
     }

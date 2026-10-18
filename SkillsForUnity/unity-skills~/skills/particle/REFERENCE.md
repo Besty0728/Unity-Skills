@@ -9,6 +9,8 @@ Detail behind [SKILL.md](./SKILL.md): payload shapes, value types, references, l
 | `particle_configure`, `particle_create`, `particle_add_system` | `configJson` | `{"schemaVersion": 1, "system"?: {field: value}, "modules"?: {"<module>": {field: value}}}` |
 | `particle_set_renderer` | `configJson` | `{"schemaVersion": 1, "renderer": {field: value}}` |
 | `particle_set_bursts` | `burstsJson` | `[Burst, ...]`, the complete list (at most 8); `[]` clears it |
+| `particle_set_sub_emitters` | `subEmittersJson` | `[SubEmitter, ...]`, the complete list (at most 16); `[]` clears it |
+| `particle_analyze` | `thresholdsJson` | `{threshold: number}` overrides, see [Diagnosis](#diagnosis-particle_analyze) |
 | `*_batch` | `items` | `[{...the single skill's parameters...}]`, at most 100 items, one item per target, unknown item keys rejected |
 
 - `schemaVersion` is required and must be `1`. An empty `particle_configure` / `particle_set_renderer` patch is rejected; `particle_create` / `particle_add_system` may omit `configJson`.
@@ -87,6 +89,22 @@ A field's min/max apply to the constants; curve key values are any finite number
 
 - `time` seconds >= 0 (a burst after the duration never fires and is warned about); `count` >= 0 particles per cycle; `cycleCount` >= 0 where **0 repeats forever** (Unity's encoding), default 1; `repeatInterval` > 0 seconds, default 0.01; `probability` 0-1, default 1.
 
+### SubEmitter
+
+`{"system": {"entityId": "..."}, "type": "Death", "properties": ["InheritColor"], "emitProbability": 1}`
+
+- `system`: a locator object (`entityId`, `name`, `path`, `instanceId`) or a path/name string, naming an existing ParticleSystem in the parent's scene. Readback gives `{name, entityId, instanceId, path}`, which is accepted back; a broken reference reads `"system": null, "missing": true` and must be fixed or removed before the list is sent back.
+- `type`: `Birth` (while each particle lives), `Collision` (needs the Collision module), `Death`, `Trigger` (needs the Triggers module), `Manual` (fires only from `ParticleSystem.TriggerSubEmitter` in a script).
+- `properties`: what spawned systems take from the particle: `InheritColor`, `InheritSize`, `InheritRotation`, `InheritLifetime`, `InheritDuration`. `[]` (default) inherits nothing; `["InheritEverything"]` is all five. Readback lists the individual flags.
+- `emitProbability`: 0-1, default 1.
+
+## Sub Emitters
+
+- `particle_set_sub_emitters` replaces the whole list; `particle_get_sub_emitters` reads it. `modules.subEmitters` holds only `enabled` (written by `particle_configure`) and the read-only `subEmittersCount`; a list on a disabled module is stored and warned about.
+- Refused, with the path of the entry: the system itself, an object without a ParticleSystem, a system in another scene or outside the open scenes, the same system twice with the same type, more than 16 entries, and any entry that closes a cycle (A -> B -> A, also indirect). Cycles are judged on the graph the call leaves behind: in `particle_set_sub_emitters_batch` every item's new list counts, so a chain built in one call is fine and a loop that only the whole batch closes is refused (dryRun reports it too).
+- Warned about, never changed: a sub emitter that is not a child of the parent (Unity's Inspector expects children; use `gameobject_set_parent` to move it), Collision / Trigger entries while that module is disabled, Manual entries.
+- Nothing is created, reparented or enabled. Undo and `workflow_undo_task` restore the previous list with its references, also after the scene is saved and reopened.
+
 ## Units
 
 | Quantity | Unit |
@@ -118,18 +136,47 @@ These are starting points, not finished art: the look also depends on texture, s
 
 **Explosion**: main `loop` false, `duration` 1, `startLifetime` TwoConstants 0.3-0.8, `startSpeed` TwoConstants 4-10; emission `rateOverTime` 0 with `particle_set_bursts` `[{"time": 0, "count": {"mode": "TwoConstants", "min": 40, "max": 60}}]`; shape Sphere radius 0.2.
 
+**Firework** (rocket -> explosion -> sparks): `particle_create` the rocket (main `startSpeed` 15, `startLifetime` 1, emission `rateOverTime` 1), then the explosion and the sparks as its children (`parentEntityId`), each with `particle_set_bursts` `[{"time": 0, "count": 40}]` and main `loop` false; `particle_set_sub_emitters_batch` with items `{rocket: [{system: explosion, type: Death, properties: ["InheritColor"]}]}` and `{explosion: [{system: sparks, type: Death}]}`; enable `modules.subEmitters` on the rocket and the explosion with `particle_configure_batch`.
+
 **Lower the cost of every rain emitter**: `particle_find_all` (root = the weather group) -> `particle_configure_batch` items setting `main.maxParticles` and `emission.rateOverTime` -> dryRun -> execute; any invalid item rejects the whole batch.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| Nothing visible | `renderer.enabled`, a `material` (null renders nothing), `emission.enabled` and a rate or burst, `startSize` / `startLifetime` > 0, alpha of `startColor` / colour over lifetime, the camera's culling mask. |
+| Nothing visible | Run `particle_analyze` on it. By hand: `renderer.enabled`, a `material` (null renders nothing), `emission.enabled` and a rate or burst, `startSize` / `startLifetime` > 0, alpha of `startColor` / colour over lifetime, the camera's culling mask. |
 | Write refused "is playing" | The system plays (Scene view preview of a selected system, or a script). Stop it there or deselect it; writes never stop it themselves. |
 | `startSizeY` refused | Send `"startSize3D": true` in the same patch; with it off only `startSize` applies. |
 | "must share one curve mode" | Velocity x/y/z (and other X/Y/Z triplets) take one mode together; send all three. |
 | A value came back different | See `adjustments`: Unity clamped it; the `state` shows what it kept. |
-| Pink / magenta particles | The material's shader does not match the render pipeline; pick a pipeline particle shader with the `material` module. |
+| Pink / magenta particles | The material's shader does not match the render pipeline (`particle_analyze` reports `SHADER_PIPELINE_MISMATCH` / `SHADER_ERROR` with a fix); pick a pipeline particle shader with the `material` module. |
+| Sub emitter never fires | `modules.subEmitters.enabled`; Collision / Trigger types need their module; Manual needs a script; the parent must emit and its particles must die (Death) or collide. |
+
+## Diagnosis (particle_analyze)
+
+Static, read-only checks of the configuration; no frame times, GPU cost or overdraw. Scope: one system (`entityId` / `name` / `path` / `instanceId`), every system under a root (`root*`), or the open scenes. Each finding is `{code, severity, system, field, message, evidence?, fix?}`; `fix` names a skill and, where one call fixes it, its `args`. Findings come most severe first; `limit` pages them, `counts` and `findingCount` cover all.
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `MATERIAL_MISSING`, `MESH_MISSING`, `TRAIL_MATERIAL_MISSING` | error | Nothing (or no trail) is drawn |
+| `SHADER_ERROR` | error | The material's shader is broken: drawn magenta |
+| `SHADER_UNSUPPORTED`, `SHADER_PIPELINE_MISMATCH` | warning | Shader not supported on this device / built for another render pipeline (named by its shader family) |
+| `NO_RENDERER`, `RENDERER_DISABLED` | warning | Simulated but never drawn |
+| `EMISSION_DISABLED`, `NO_EMISSION` | warning (info for a system used as a sub emitter) | Never emits: module off, or no rate and no burst within the duration |
+| `INVISIBLE_START_COLOR`, `INVISIBLE_COLOR_OVER_LIFETIME` | warning | Alpha is 0 everywhere |
+| `START_SIZE_TINY`, `START_LIFETIME_SHORT` | warning | Below `minStartSize` / `minStartLifetime` |
+| `START_SIZE_HUGE`, `START_LIFETIME_LONG` | info | Above `maxStartSize` / `maxStartLifetime` |
+| `MAX_PARTICLES_HIGH`, `EMISSION_RATE_HIGH`, `LIGHTS_COST` | info | Above `maxParticlesPerSystem` / `maxEmissionRate` / `maxLights` |
+| `TOTAL_MAX_PARTICLES_HIGH` | warning | The scope's summed caps exceed `totalMaxParticles` (no single system) |
+| `SYSTEM_COUNT_HIGH` | info | More systems than `maxSystems` in scope |
+| `COLLISION_WORLD_COST`, `TRAILS_COST` | info | Modules that cost per particle |
+| `COLLISION_NO_PLANES`, `TRIGGER_NO_COLLIDERS`, `SUB_EMITTERS_EMPTY` | warning / info | The module is on but has nothing to work with |
+| `SCRIPT_CALLBACKS` | info | Collision messages or trigger Callback actions run scripts |
+| `CUSTOM_SPACE_MISSING`, `SHAPE_REFERENCE_MISSING`, `LIGHT_MISSING`, `SUB_EMITTER_MISSING`, `TRIGGER_COLLIDER_MISSING` | error | A required reference is empty or broken |
+| `SUB_EMITTER_NOT_CHILD`, `BURST_AFTER_DURATION`, `PREWARM_WITHOUT_LOOP` | info | Configured but without effect, or against Unity's layout |
+| `STOP_ACTION_SIDE_EFFECT` | warning | `stopAction` Disable / Destroy / Callback deactivates or destroys the object, or runs scripts |
+
+`thresholdsJson` keys and defaults: `maxParticlesPerSystem` 10000, `totalMaxParticles` 100000, `maxSystems` 200, `maxLights` 20 (integers >= 1); `minStartSize` 0.0001, `maxStartSize` 1000, `minStartLifetime` 0.01, `maxStartLifetime` 600, `maxEmissionRate` 5000 (numbers > 0). Unknown keys, wrong types and min >= max are rejected. They are judgement calls, not Unity limits: a cap is an upper bound, not a cost.
 
 ## Field Tables
 
@@ -342,9 +389,14 @@ One curve mode for `remapX`, `remapY`, `remapZ` (when `separateAxes` is true).
 
 `modules.trigger` - Triggers: collider list and enter/exit behaviour.
 
-### Module `subEmitters` (read-only, P1)
+### Module `subEmitters`
 
-`modules.subEmitters` - Sub Emitters: child systems spawned on events (particle_get_sub_emitters in P1).
+`modules.subEmitters` - Sub Emitters: other systems spawned at each particle's birth, collision, death, trigger or manually. The list is read and replaced with its own skills.
+
+| Field | Type | Unit | Range | Notes |
+|---|---|---|---|---|
+| `enabled` | bool |  |  | Whether the module is enabled. |
+| `subEmittersCount` | int |  |  | **read-only**: The list is written with particle_set_sub_emitters. Number of sub-emitter entries, broken ones included (as the Inspector lists them). |
 
 ### Module `textureSheetAnimation` (read-only, P1)
 

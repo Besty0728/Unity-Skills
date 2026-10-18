@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-856-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-860-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
@@ -58,7 +58,7 @@
 
 ## 🚀 核心特性
 
-- 🛠️ **856 REST Skills 全能库**：57 个源文件、55 个分类，另有 30 个 advisory 设计模块，支持 Batch 批处理。
+- 🛠️ **860 REST Skills 全能库**：57 个源文件、55 个分类，另有 30 个 advisory 设计模块，支持 Batch 批处理。
 - ⚡ **支持UnityCLI**：支持绑定UnityCLI，对应项目冷启动，不用开启UnityHub
 - 🔐 **三档权限模式**：Approval / Auto / Bypass + 双轨审批，对齐 Claude Code permission modes。
 - 🤖 **6 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code，一键安装即用。
@@ -212,7 +212,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ---
 
 <details>
-<summary><b>📦 Skills 分类概要 (856)</b></summary>
+<summary><b>📦 Skills 分类概要 (860)</b></summary>
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -257,7 +257,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 | **Debug** | 11 | 错误日志/编译检查/堆栈/程序集/定义符号/内存信息/编辑器健康诊断 |
 | **Event** | 11 | UnityEvent监听器管理/批量添加/复制/状态控制/列举 |
 | **Light** | 11 | 灯光创建/类型配置/强度颜色/批量开关/探针组/反射探针/光照贴图 |
-| **Particle** | 17 | 内置粒子系统（Shuriken）创建/查询/配置：模块类型化补丁（Main/Emission/Shape/速度/颜色/大小/Noise）、渲染器、爆发、原子批处理、dryRun（不含 VFX Graph） |
+| **Particle** | 21 | 内置粒子系统（Shuriken）创建/查询/配置：模块类型化补丁（Main/Emission/Shape/速度/颜色/大小/Noise）、渲染器、爆发、子发射器、静态诊断、原子批处理、dryRun（不含 VFX Graph） |
 | **Model** | 10 | 模型导入设置/Mesh信息/材质映射/动画/骨骼/批量 |
 | **NavMesh** | 10 | 烘焙/路径计算/Agent/Obstacle/采样/区域代价 |
 | **Optimization** | 10 | 纹理压缩/网格压缩/音频压缩/场景分析/静态标记/LOD/重复材质/过度绘制 |
@@ -294,7 +294,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │   │   └── references/             # Unity 开发参考文档
 │   └── Editor/
 │       ├── Locales/                # 独立多语言 JSON 资产 (en.json, zh-CN.json, ru.json)
-│       ├── Skills/                 # 核心 Skill 逻辑 (57 个 *Skills.cs → 55 个 SkillCategory 分类，共 856 Skills)
+│       ├── Skills/                 # 核心 Skill 逻辑 (57 个 *Skills.cs → 55 个 SkillCategory 分类，共 860 Skills)
 │       │   ├── SkillsHttpServer.cs # HTTP 服务器核心 (Producer-Consumer)
 │       │   ├── SkillRouter.cs      # 请求路由 & 反射发现 Skills
 │       │   ├── WorkflowManager.cs  # 持久化工作流 (Task/Session/Snapshot)
@@ -302,7 +302,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │       │   ├── GameObjectFinder.cs # 统一 GO 查找器 (name/entityId/instanceId/path)
 │       │   ├── BatchExecutor.cs    # 泛型批处理框架
 │       │   ├── Localization.cs     # 多语言本地化管理引擎
-│       │   └── ...                 # 856 Skills 源码
+│       │   └── ...                 # 860 Skills 源码
 │       └── UI/                     # UI Toolkit 窗口与控制器
 │           ├── UnitySkillsWindow.{cs,uxml,uss} # 主控制面板窗口
 │           ├── UnityCliWindow.{cs,uxml,uss}    # Unity CLI 配置面板

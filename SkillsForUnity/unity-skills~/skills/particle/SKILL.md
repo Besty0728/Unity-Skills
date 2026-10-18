@@ -1,6 +1,6 @@
 ---
 name: unity-particle
-description: Create, inspect and configure built-in Unity Particle Systems (Shuriken) - typed module patches, renderer, bursts, batch and rollback. Not VFX Graph.
+description: Create, inspect, configure and diagnose built-in Unity Particle Systems (Shuriken) - typed module patches, renderer, bursts, sub emitters, static analysis, batch and rollback. Not VFX Graph.
 ---
 
 > **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
@@ -9,7 +9,8 @@ description: Create, inspect and configure built-in Unity Particle Systems (Shur
 - Creating or tuning particle effects: fire, smoke, sparks, rain, snow, explosions, dust
 - Changing emission rate, lifetime, size, colour or shape of a ParticleSystem; bursts; renderer material and sorting
 - Batch-editing many particle systems (lower the cost of all rain emitters, switch smoke to world space)
-- 创建或调整粒子特效（火焰、烟雾、火花、雨雪、爆炸），修改发射率、生命周期、大小、颜色、形状、爆发与渲染器材质
+- Chaining systems with sub emitters (firework: rocket -> explosion -> sparks); finding why particles are invisible, pink or expensive
+- 创建或调整粒子特效（火焰、烟雾、火花、雨雪、爆炸），修改发射率、生命周期、大小、颜色、形状、爆发与渲染器材质；子发射器；诊断粒子看不见或显示粉色的原因
 
 # Unity Particle Skills
 
@@ -19,8 +20,8 @@ Built-in `ParticleSystem` (Shuriken) components in open scenes and prefab instan
 
 ## Operating Mode
 
-- Reads (`particle_get_capabilities`, `particle_find_all`, `particle_get_info`, `particle_get_info_batch`, `particle_get_module`, `particle_get_renderer`, `particle_get_bursts`) are `SemiAuto`: they run in all three modes without a grant.
-- Writes (`particle_create*`, `particle_add_system*`, `particle_configure*`, `particle_set_renderer*`, `particle_set_bursts*`) are `FullAuto`, risk `medium`, workflow-tracked: Approval needs a grant; Auto / Bypass run them directly.
+- Reads (`particle_get_capabilities`, `particle_find_all`, `particle_get_info`, `particle_get_info_batch`, `particle_get_module`, `particle_get_renderer`, `particle_get_bursts`, `particle_get_sub_emitters`, `particle_analyze`) are `SemiAuto`: they run in all three modes without a grant.
+- Writes (`particle_create*`, `particle_add_system*`, `particle_configure*`, `particle_set_renderer*`, `particle_set_bursts*`, `particle_set_sub_emitters*`) are `FullAuto`, risk `medium`, workflow-tracked: Approval needs a grant; Auto / Bypass run them directly.
 - No skill here enters Play Mode, plays, simulates or deletes. Playback control is a later phase; to remove a system use `component_remove` (componentType `ParticleSystem`) or `gameobject_delete`.
 
 ## Guardrails
@@ -49,8 +50,9 @@ Built-in `ParticleSystem` (Shuriken) components in open scenes and prefab instan
 | `particle_configure` | `particle_configure_batch` | Atomic partial patch of `system` and `modules` |
 | `particle_set_renderer` | `particle_set_renderer_batch` | Renderer mode, material, mesh, sorting, alignment, display fields |
 | `particle_set_bursts` | `particle_set_bursts_batch` | Replace the complete burst list |
+| `particle_set_sub_emitters` | `particle_set_sub_emitters_batch` | Replace the complete sub-emitter list (cycles refused, also across a batch) |
 
-**No batch needed**: `particle_get_capabilities` (contract of this Editor), `particle_find_all` (scene listing with paging), `particle_get_module` (one module, every field), `particle_get_renderer`, `particle_get_bursts`.
+**No batch needed**: `particle_get_capabilities` (contract of this Editor), `particle_find_all` (scene listing with paging), `particle_get_module` (one module, every field), `particle_get_renderer`, `particle_get_bursts`, `particle_get_sub_emitters`, `particle_analyze` (static diagnosis of one system, a root or the open scenes).
 
 ## Workflow
 
@@ -58,6 +60,7 @@ Built-in `ParticleSystem` (Shuriken) components in open scenes and prefab instan
 2. Create or find: `particle_create` (new object, stopped, `playOnAwake=false`, pipeline default particle material, `rotX=-90` so the cone emits upwards) or `particle_find_all` / `particle_add_system`.
 3. Configure with one `particle_configure` call (dryRun first under Approval), then `particle_set_renderer` and `particle_set_bursts`.
 4. Verify with the returned `state` (read back from Unity) or `particle_get_module`; `adjustments` lists any value Unity clamped.
+5. Chain systems with `particle_set_sub_emitters` (enable `modules.subEmitters` with `particle_configure`), and run `particle_analyze` when something is invisible, pink or expensive.
 
 ```json
 {"name": "FireFX", "configJson": {"schemaVersion": 1, "modules": {
@@ -75,7 +78,7 @@ Built-in `ParticleSystem` (Shuriken) components in open scenes and prefab instan
 - Writes never enable a module: values of a disabled module are stored and reported with `enabled: false` and a warning.
 - Axis flags decide which fields apply: `startSize3D` (startSize vs startSizeX/Y/Z), `startRotation3D`, `sizeOverLifetime.separateAxes`, `noise.separateAxes`; X/Y/Z triplets share one curve mode.
 - Writes need Edit Mode and a **stopped** system: a playing or paused system (including the Scene view preview of a selected one) is refused, never stopped implicitly. Reads always answer.
-- `main.stopAction` accepts only `None`; `simulationSpace` Custom, mesh/sprite shapes and P1 modules (collision, trails, sub emitters, ...) are readable but not writable yet.
+- `main.stopAction` accepts only `None`; `simulationSpace` Custom, mesh/sprite shapes and the remaining P1 modules (collision, trails, lights, ...) are readable but not writable yet. The sub-emitter list is replaced with `particle_set_sub_emitters`; `modules.subEmitters.enabled` is a normal configure field.
 
 Value shapes, field tables, references and recipes: [REFERENCE.md](./REFERENCE.md).
 
@@ -151,6 +154,36 @@ Every supported field of one module in the exact shape `configJson` accepts.
 
 `cycleCount` 0 repeats forever (Unity's encoding); `count` is a MinMaxCurve or a number.
 
+### particle_get_sub_emitters
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `entityId` | string | No* | null | Target (or `name` / `path` / `instanceId`) |
+
+**Returns**: `{name, entityId, instanceId, path, enabled, count, subEmitters: [{system: {name, entityId, instanceId, path} | null, type, properties, emitProbability, missing?}], warnings}`
+
+### particle_set_sub_emitters
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `entityId` | string | No* | null | Target (or `name` / `path` / `instanceId`) |
+| `subEmittersJson` | string | Yes | - | Complete list, at most 16: `[{system, type, properties?, emitProbability?}]`; `[]` clears |
+
+`system` is `{entityId}` (or `name` / `path` / `instanceId`, or a path/name string) of a ParticleSystem in the parent's scene; `type` is `Birth`, `Collision`, `Death`, `Trigger` or `Manual`; `properties` lists `InheritColor`, `InheritSize`, `InheritRotation`, `InheritLifetime`, `InheritDuration` (`[]` inherits nothing, `["InheritEverything"]` all five). The system itself, cycles (judged on the graph the whole call or batch leaves behind) and a repeated system+type are refused; a sub emitter outside the parent's hierarchy is only warned about, never reparented.
+
+**Returns**: `{name, entityId, instanceId, path, enabled, count, subEmitters, warnings}`
+
+### particle_analyze
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `entityId` | string | No | null | One system (or `name` / `path` / `instanceId`) |
+| `rootEntityId` | string | No | null | Every system under this object (also `rootName` / `rootPath` / `rootInstanceId`); not with a single system |
+| `includeInactive` | bool | No | true | Include inactive objects |
+| `limit` | int | No | 100 | Findings returned, 1-500, most severe first |
+| `thresholdsJson` | string | No | null | Overrides, e.g. `{"maxParticlesPerSystem": 5000}` |
+
+Omit every locator to analyze the open scenes. Static checks only (no frame times, GPU cost or overdraw); nothing is changed.
+
+**Returns**: `{scope, systemsAnalyzed, totalMaxParticles, findingCount, counts: {error, warning, info}, findings: [{code, severity, system, field, message, evidence?, fix?: {skill, reason, args?}}], truncated, thresholds}`
+
 ## Exact Signatures
 
 Exact names, parameters, defaults and returns are defined by `GET /skills/schema?category=Particle` (or `unity_skills.get_skill_schema()`), not by this file; field-level contracts come from `particle_get_capabilities`.
@@ -159,9 +192,9 @@ Exact names, parameters, defaults and returns are defined by `GET /skills/schema
 
 | Error | Trigger | Fix |
 |---|---|---|
-| `SEMANTIC_INVALID` | An invalid field value, unknown field, axis-flag conflict, mixed curve modes in a triplet, a playing/paused system, or Play Mode. `problems` lists every path. | Fix each listed path (capabilities give ranges and enums); stop the system (Scene view Particle Effect overlay > Stop, or deselect it); exit Play Mode. |
+| `SEMANTIC_INVALID` | An invalid field value, unknown field, axis-flag conflict, mixed curve modes in a triplet, a sub-emitter cycle or self reference, a playing/paused system, or Play Mode. `problems` lists every path. | Fix each listed path (capabilities give ranges and enums); stop the system (Scene view Particle Effect overlay > Stop, or deselect it); exit Play Mode. |
 | `TYPE_MISMATCH` | A JSON value of the wrong type (`"5"` for a number, `1` for an enum name). | Send the type capabilities name. |
-| `INVALID_JSON` | Malformed configJson / burstsJson / items text, or a repeated key. | Send one well-formed JSON value with unique keys. |
-| `TARGET_NOT_FOUND` | No such object, no ParticleSystem on it, or an asset reference that resolves to nothing. | `particle_find_all`, then retry with its `entityId`; `particle_add_system` first; check the asset path. |
+| `INVALID_JSON` | Malformed configJson / burstsJson / subEmittersJson / thresholdsJson / items text, or a repeated key. | Send one well-formed JSON value with unique keys. |
+| `TARGET_NOT_FOUND` | No such object, no ParticleSystem on it, a sub-emitter `system` that names nothing, or an asset reference that resolves to nothing. | `particle_find_all`, then retry with its `entityId`; `particle_add_system` first; check the asset path. |
 | `MISSING_PACKAGE` | The project disabled the built-in Particle System module (`com.unity.modules.particlesystem`). | Enable it in Package Manager > Built-in (or `package_install` that id), wait for the reload, retry. |
 | `INTERNAL` | Unity threw while applying an already validated write; the call was rolled back. | Report it; nothing was changed. |

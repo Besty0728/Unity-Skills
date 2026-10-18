@@ -109,6 +109,8 @@ namespace UnitySkills
                 case "particle_set_renderer_batch":
                 case "particle_set_bursts":
                 case "particle_set_bursts_batch":
+                case "particle_set_sub_emitters":
+                case "particle_set_sub_emitters_batch":
                     return true;
                 default:
                     return false;
@@ -169,8 +171,10 @@ namespace UnitySkills
 
             var itemKeys = single == "particle_create" ? BatchItemKeys.Create
                 : single == "particle_set_bursts" ? BatchItemKeys.TargetBursts
+                : single == "particle_set_sub_emitters" ? SubEmitterKeys.BatchItem
                 : BatchItemKeys.TargetConfig;
             var previews = new List<object>();
+            var subEmitterItems = new List<(int index, SubEmitterPlan plan, Dictionary<string, object> preview)>();
             var firstByTarget = new Dictionary<string, int>(StringComparer.Ordinal);
             for (int i = 0; i < items.Count; i++)
             {
@@ -197,13 +201,33 @@ namespace UnitySkills
                 }
 
                 var itemErrors = outcome.Errors.Skip(errorsBefore).Select(error => error.Value).ToArray();
-                previews.Add(new Dictionary<string, object>
+                var preview = new Dictionary<string, object>
                 {
                     ["index"] = i,
                     ["target"] = itemPlan.Target,
                     ["valid"] = itemErrors.Length == 0 && !keyProblems.Any,
                     ["errors"] = keyProblems.Items.Select(problem => problem.Message).Concat(itemErrors).ToArray()
-                });
+                };
+                previews.Add(preview);
+                if (itemPlan.SubEmitters != null && itemErrors.Length == 0)
+                    subEmitterItems.Add((i, itemPlan.SubEmitters, preview));
+            }
+
+            // Cycles span items: judge the graph the whole batch leaves behind, as the executing batch does.
+            if (subEmitterItems.Count > 0)
+            {
+                var checks = subEmitterItems.Select(item => (item.plan, problems: new Problems())).ToList();
+                CheckSubEmitterCycles(checks);
+                for (int i = 0; i < checks.Count; i++)
+                {
+                    if (!checks[i].problems.Any)
+                        continue;
+                    foreach (var problem in checks[i].problems.Items)
+                        outcome.Error(problem.Path, problem.Message);
+                    var preview = subEmitterItems[i].preview;
+                    preview["valid"] = false;
+                    preview["errors"] = ((string[])preview["errors"]).Concat(checks[i].problems.Items.Select(problem => problem.Message)).ToArray();
+                }
             }
 
             outcome.Steps.Add(new Dictionary<string, object>
@@ -224,6 +248,8 @@ namespace UnitySkills
         {
             public string Target;
             public string TargetKey;
+            /// <summary>A valid sub-emitter list of this item, for the batch-wide cycle check.</summary>
+            public SubEmitterPlan SubEmitters;
         }
 
         private static string StepAction(string skill)
@@ -234,6 +260,7 @@ namespace UnitySkills
                 case "particle_add_system": return "Add ParticleSystem (Unity adds its ParticleSystemRenderer)";
                 case "particle_configure": return "Configure ParticleSystem modules";
                 case "particle_set_renderer": return "Configure ParticleSystemRenderer";
+                case "particle_set_sub_emitters": return "Replace ParticleSystem sub emitters";
                 default: return "Replace ParticleSystem bursts";
             }
         }
@@ -347,6 +374,27 @@ namespace UnitySkills
                     Report(problems, warnings, outcome);
                     if (!problems.Any)
                         outcome.Modify.AddRange(PreviewModify(patch, binding, plan.Target));
+                    break;
+                }
+                case "particle_set_sub_emitters":
+                {
+                    // Nested system locators resolve like the target does, pending objects of a /skills/batch dry run included.
+                    var subPlan = PrepareSubEmitterList(binding, args["subEmittersJson"], prefix, locator => resolve(locator, ""), problems, warnings);
+                    if (!problems.Any && string.IsNullOrEmpty(prefix))
+                        CheckSubEmitterCycles(new[] { (subPlan, problems) });
+                    Report(problems, warnings, outcome);
+                    if (!problems.Any)
+                    {
+                        plan.SubEmitters = subPlan;
+                        outcome.Modify.Add(new Dictionary<string, object>
+                        {
+                            ["target"] = plan.Target,
+                            ["component"] = "ParticleSystem",
+                            ["field"] = SubEmittersPath,
+                            ["before"] = binding != null ? (JToken)ReadSubEmitters(binding.System) : null,
+                            ["after"] = PlannedSubEmittersToJson(subPlan)
+                        });
+                    }
                     break;
                 }
                 default:

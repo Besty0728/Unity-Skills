@@ -196,10 +196,11 @@ namespace UnitySkills
         /// Prepare path the single skill uses, refuse two items on one target, and only then run them through
         /// <see cref="BatchExecutor"/>. With <paramref name="atomic"/>, one invalid item means no item is applied (the
         /// valid ones are reported as reverted, which is what BatchExecutor's all-or-nothing envelope says), and a
-        /// failure while applying reverts every item already applied.
+        /// failure while applying reverts every item already applied. <paramref name="validateAll"/>, when given, runs
+        /// after every item passed its own checks, for rules that span items (sub-emitter cycles across the batch).
         /// </summary>
         internal static object RunBatch<TItem>(string itemsJson, string skill, string[] itemKeys, bool atomic,
-            Action<TItem, BatchPrep> prepare, Func<TItem, string> describe) where TItem : class
+            Action<TItem, BatchPrep> prepare, Func<TItem, string> describe, Action<IReadOnlyList<BatchPrep>> validateAll = null) where TItem : class
         {
             if (string.IsNullOrWhiteSpace(itemsJson))
                 return Error(CodeMissingParam, "items is required: a JSON array of item objects.", parameter: "items");
@@ -253,6 +254,7 @@ namespace UnitySkills
                 else
                     firstByTarget[prep.TargetKey] = prep.Index;
             }
+            validateAll?.Invoke(preps);
 
             bool anyInvalid = preps.Any(prep => !prep.Ok);
             int index = 0;
