@@ -1170,8 +1170,9 @@ If any command returns a non-empty problems list, pass each fix on to the user v
 |---|---|---|---|
 | 条目顶层（`seq, type, source` 之后、`tsUtc` 之前） | `agent` | string \| null | `source == "rest"`：REST 调用方的 agent id；同一个 REST 深度窗口内出现多个不同调用方时为 `"mixed"`；没有请求上下文时为 `"unknown"`。`source == "editor"`：null |
 | 条目顶层 | `isPlaying` | bool | 发布时的 `EditorApplication.isPlaying` |
-| `file_changes.payload` | `omitted` | int | 因 200 条上限（`:707-711`）丢掉的路径数（三类合计） |
-| `file_changes.payload` | `importedTotal`、`deletedTotal`、`movedTotal` | int | 截断前、去重后的数量；`count` 保持截断后的语义（`:152-158`） |
+| `file_changes.payload` | `omitted` | int | 只计数不列出的路径数（三类合计）：一次回调先拆成每类至多 200 条的连续条目，超过每次 10,000 条（`MaxChangesPerFlush`）的部分才计入最后一条的 `omitted`；`scene_changes` 同理 |
+| `file_changes.payload` | `importedTotal`、`deletedTotal`、`movedTotal` | int | 本条目负责的去重后数量（列出的加 `omitted` 计入的）；`count` 为本条目列出的数量 |
+| `file_changes` / `scene_changes` 的 payload | `part`、`parts` | int | 仅在一次回调/一次 flush 被拆成多条时出现：第几条、共几条（从 1 起） |
 | `gameobject_reparented` | `entityId`、`instanceId`、`scenePath` | string、int、string | 取值方式同 `AddGameObjectIdentity`（`:610-617`） |
 | `gameobject_destroyed`（catalog 已知） | `entityId`、`instanceId` | string、int | `CatalogEntry` 增加 `InstanceId`，在 `UpsertCatalog`（`:547-560`）时记录 |
 | `gameobject_destroyed`（catalog 未知，`:445`） | `instanceId` | int | 6000.4 以下为 `int.Parse(entityId)`，6000.4+ 为 0 |

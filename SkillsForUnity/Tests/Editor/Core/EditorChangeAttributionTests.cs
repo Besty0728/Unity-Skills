@@ -173,7 +173,7 @@ namespace UnitySkills.Tests.Core
         // ===== file_changes totals =====
 
         [Test]
-        public void FileChanges_ReportTotalsAndOmittedWhenTheListsAreCapped()
+        public void FileChanges_LongListsAreSplitIntoConsecutiveEntriesWithNothingOmitted()
         {
             var imported = Enumerable.Range(0, 250).Select(i => "Assets/F" + i + ".txt")
                 .Concat(new[] { "ASSETS/F0.TXT", "", null, "  " }).ToArray(); // duplicates and blanks are not counted
@@ -182,16 +182,37 @@ namespace UnitySkills.Tests.Core
             var movedFrom = Enumerable.Range(0, 205).Select(i => "Assets/From/M" + i + ".txt").ToArray();
 
             EditorChangeTrackerService.RecordFileChanges(imported, deleted, moved, movedFrom);
-            var payload = ReadEntries()[0]["payload"];
+            var entries = ReadEntries();
 
-            Assert.AreEqual(200, ((JArray)payload["imported"]).Count);
-            Assert.AreEqual(3, ((JArray)payload["deleted"]).Count);
-            Assert.AreEqual(200, ((JArray)payload["moved"]).Count);
-            Assert.AreEqual(403, payload.Value<int>("count"), "count keeps its post-cap meaning");
-            Assert.AreEqual(250, payload.Value<int>("importedTotal"));
-            Assert.AreEqual(3, payload.Value<int>("deletedTotal"));
-            Assert.AreEqual(205, payload.Value<int>("movedTotal"));
-            Assert.AreEqual(55, payload.Value<int>("omitted"));
+            Assert.AreEqual(2, entries.Length, "one entry per 200 paths of the longest list");
+            var first = entries[0]["payload"];
+            var second = entries[1]["payload"];
+            Assert.AreEqual(entries[0].Value<long>("seq") + 1, entries[1].Value<long>("seq"), "the parts are consecutive");
+            Assert.AreEqual(new[] { 200, 3, 200 }, Lengths(first));
+            Assert.AreEqual(new[] { 50, 0, 5 }, Lengths(second));
+            Assert.AreEqual("Assets/F200.txt", second["imported"][0].Value<string>());
+            Assert.AreEqual("Assets/From/M200.txt", second["moved"][0].Value<string>("from"));
+            Assert.AreEqual(new[] { 403, 0, 200, 3, 200, 1, 2 }, Counts(first));
+            Assert.AreEqual(new[] { 55, 0, 50, 0, 5, 2, 2 }, Counts(second));
+        }
+
+        [Test]
+        public void FileChanges_PastTheFlushBoundOnlyTheLastEntryCountsTheRest()
+        {
+            int total = EditorChangeTrackerService.MaxChangesPerFlush + 7;
+            var imported = Enumerable.Range(0, total).Select(i => "Assets/Bulk/F" + i + ".txt").ToArray();
+
+            EditorChangeTrackerService.RecordFileChanges(imported, null, null, null);
+            var entries = ReadEntries();
+
+            Assert.AreEqual(EditorChangeTrackerService.MaxEventsPerFlush, entries.Length);
+            Assert.IsTrue(entries.Take(entries.Length - 1).All(e => e["payload"].Value<int>("omitted") == 0));
+            var last = entries.Last()["payload"];
+            Assert.AreEqual(EditorChangeTrackerService.MaxChangesPerEvent, ((JArray)last["imported"]).Count);
+            Assert.AreEqual(7, last.Value<int>("omitted"));
+            Assert.AreEqual(EditorChangeTrackerService.MaxChangesPerEvent + 7, last.Value<int>("importedTotal"));
+            Assert.AreEqual(total, entries.Sum(e => e["payload"].Value<int>("importedTotal")),
+                "the totals of the parts add up to the callback's");
         }
 
         [Test]
@@ -344,6 +365,35 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void DebouncedProperties_ManyChangesAreSplitIntoConsecutiveEntries()
+        {
+            var go = new GameObject("EctPropertyMany");
+            try
+            {
+                using (SkillsAuditLog.BeginRequestContext(3, "BulkAgent", true))
+                    EditorChangeTrackerService.BeginRestExecution();
+                EditorChangeTrackerService.OnPostprocessModifications(Enumerable.Range(0, 450)
+                    .Select(i => Modification(go.transform, "m_Bulk" + i, "0", "1")).ToArray());
+                EditorChangeTrackerService.EndRestExecutionNowForTests();
+                EditorChangeTrackerService.FlushPendingProperties();
+
+                var entries = PropertyEntries();
+
+                Assert.AreEqual(new[] { 200, 200, 50 }, entries.Select(e => ((JArray)e["payload"]["changes"]).Count).ToArray());
+                Assert.IsTrue(entries.All(e => e["payload"].Value<int>("omitted") == 0), "nothing is dropped below the flush bound");
+                Assert.AreEqual(new[] { 1, 2, 3 }, entries.Select(e => e["payload"].Value<int>("part")).ToArray());
+                Assert.IsTrue(entries.All(e => e["payload"].Value<int>("parts") == 3));
+                Assert.IsTrue(entries.All(e => e.Value<string>("agent") == "BulkAgent"), "every part keeps the attribution");
+                Assert.AreEqual(450, entries.SelectMany(e => e["payload"]["changes"])
+                    .Select(c => c.Value<string>("property")).Distinct().Count());
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
         public void DebouncedProperty_ChangedByTwoCallersInOneDebounceIsMixed()
         {
             var go = new GameObject("EctPropertyMixed");
@@ -409,6 +459,15 @@ namespace UnitySkills.Tests.Core
                 previousValue = new PropertyModification { target = target, propertyPath = propertyPath, value = previous },
                 currentValue = new PropertyModification { target = target, propertyPath = propertyPath, value = current }
             };
+
+        /// <summary>Listed imported, deleted and moved entries of a file_changes payload.</summary>
+        private static int[] Lengths(JToken payload) =>
+            new[] { ((JArray)payload["imported"]).Count, ((JArray)payload["deleted"]).Count, ((JArray)payload["moved"]).Count };
+
+        /// <summary>count, omitted, importedTotal, deletedTotal, movedTotal, part, parts of a file_changes payload.</summary>
+        private static int[] Counts(JToken payload) =>
+            new[] { "count", "omitted", "importedTotal", "deletedTotal", "movedTotal", "part", "parts" }
+                .Select(name => payload.Value<int>(name)).ToArray();
 
         private static string Describe(JToken entry)
         {

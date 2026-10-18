@@ -37,7 +37,21 @@ namespace UnitySkills
         internal const string AgentUnknown = "unknown";
 
         private const double PropertyDebounceSeconds = 0.25;
-        private const int MaxChangesPerEvent = 200;
+
+        /// <summary>Changes per scene_changes entry, and paths per list of a file_changes entry.</summary>
+        internal const int MaxChangesPerEvent = 200;
+
+        /// <summary>
+        /// Safety bound of one flush (an ObjectChangeEvents batch, a debounced property flush, an asset postprocess callback).
+        /// A flush goes out as consecutive entries of at most <see cref="MaxChangesPerEvent"/>, so nothing is dropped until it
+        /// would take more than this many entries: only then does its last entry count the rest in <c>omitted</c>. The bound
+        /// keeps one huge operation from pushing everything else out of the in-memory ring and the rotated files.
+        /// </summary>
+        internal const int MaxEventsPerFlush = 50;
+
+        /// <summary>Changes one flush lists (per list for file_changes) before the rest is only counted.</summary>
+        internal const int MaxChangesPerFlush = MaxChangesPerEvent * MaxEventsPerFlush;
+
         private const int MaxValueChars = 300;
         private const string RelativeLogPath = "Library/UnitySkills/editor_changes.jsonl";
 
@@ -198,6 +212,12 @@ namespace UnitySkills
             };
         }
 
+        /// <summary>
+        /// One asset postprocess callback as consecutive file_changes entries listing at most <see cref="MaxChangesPerEvent"/>
+        /// paths per list. Each entry's <c>importedTotal</c> / <c>deletedTotal</c> / <c>movedTotal</c> count the paths it
+        /// accounts for: the listed ones, plus on the last entry those past <see cref="MaxChangesPerFlush"/>, which only
+        /// <c>omitted</c> counts. A split callback numbers its entries with <c>part</c> / <c>parts</c>.
+        /// </summary>
         internal static void RecordFileChanges(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
         {
             var importedPaths = CleanPaths(imported, out int importedTotal);
@@ -207,30 +227,50 @@ namespace UnitySkills
             if (importedPaths.Length == 0 && deletedPaths.Length == 0 && movedPaths.Length == 0 && movedFromPaths.Length == 0)
                 return;
 
-            var movePairs = new JArray();
+            var movePairs = new List<JObject>();
             int pairCount = Math.Min(movedPaths.Length, movedFromPaths.Length);
             for (int i = 0; i < pairCount; i++)
                 movePairs.Add(new JObject { ["from"] = movedFromPaths[i], ["to"] = movedPaths[i] });
 
             int movedTotal = Math.Min(movedToTotal, movedFromTotal);
-            Publish("file_changes", CurrentSource(), new JObject
+            int longest = Math.Max(importedPaths.Length, Math.Max(deletedPaths.Length, pairCount));
+            int parts = Math.Max(1, (longest + MaxChangesPerEvent - 1) / MaxChangesPerEvent);
+            string source = CurrentSource();
+            for (int part = 0; part < parts; part++)
             {
-                ["imported"] = JArray.FromObject(importedPaths),
-                ["deleted"] = JArray.FromObject(deletedPaths),
-                ["moved"] = movePairs,
-                ["count"] = importedPaths.Length + deletedPaths.Length + pairCount,
-                ["omitted"] = (importedTotal - importedPaths.Length) + (deletedTotal - deletedPaths.Length) + (movedTotal - pairCount),
-                ["importedTotal"] = importedTotal,
-                ["deletedTotal"] = deletedTotal,
-                ["movedTotal"] = movedTotal
-            });
+                bool last = part == parts - 1;
+                var importedChunk = importedPaths.Skip(part * MaxChangesPerEvent).Take(MaxChangesPerEvent).ToArray();
+                var deletedChunk = deletedPaths.Skip(part * MaxChangesPerEvent).Take(MaxChangesPerEvent).ToArray();
+                var movedChunk = movePairs.Skip(part * MaxChangesPerEvent).Take(MaxChangesPerEvent).ToArray();
+                int importedCounted = importedChunk.Length + (last ? importedTotal - importedPaths.Length : 0);
+                int deletedCounted = deletedChunk.Length + (last ? deletedTotal - deletedPaths.Length : 0);
+                int movedCounted = movedChunk.Length + (last ? movedTotal - pairCount : 0);
+                int listed = importedChunk.Length + deletedChunk.Length + movedChunk.Length;
+                var payload = new JObject
+                {
+                    ["imported"] = JArray.FromObject(importedChunk),
+                    ["deleted"] = JArray.FromObject(deletedChunk),
+                    ["moved"] = new JArray(movedChunk),
+                    ["count"] = listed,
+                    ["omitted"] = importedCounted + deletedCounted + movedCounted - listed,
+                    ["importedTotal"] = importedCounted,
+                    ["deletedTotal"] = deletedCounted,
+                    ["movedTotal"] = movedCounted
+                };
+                if (parts > 1)
+                {
+                    payload["part"] = part + 1;
+                    payload["parts"] = parts;
+                }
+                Publish("file_changes", source, payload);
+            }
         }
 
         private static void OnChangesPublished(ref ObjectChangeEventStream stream)
         {
             try
             {
-                var changes = new JArray();
+                var changes = new List<JObject>();
                 int omitted = 0;
 
                 for (int i = 0; i < stream.length; i++)
@@ -316,21 +356,14 @@ namespace UnitySkills
 
                     if (change == null)
                         continue;
-                    if (changes.Count < MaxChangesPerEvent)
+                    if (changes.Count < MaxChangesPerFlush)
                         changes.Add(change);
                     else
                         omitted++;
                 }
 
                 if (changes.Count > 0)
-                {
-                    Publish("scene_changes", CurrentSource(), new JObject
-                    {
-                        ["count"] = changes.Count + omitted,
-                        ["omitted"] = omitted,
-                        ["changes"] = changes
-                    });
-                }
+                    PublishSceneChanges(changes, omitted, CurrentSource());
             }
             catch (Exception ex)
             {
@@ -465,16 +498,39 @@ namespace UnitySkills
             // change, not whatever is current now.
             foreach (var group in PendingProperties.Values.GroupBy(p => new { p.Source, p.Agent, p.IsPlaying }))
             {
-                var changes = new JArray(group.Take(MaxChangesPerEvent).Select(p => p.Change));
-                int total = group.Count();
-                Publish("scene_changes", group.Key.Source, new JObject
-                {
-                    ["count"] = total,
-                    ["omitted"] = Math.Max(0, total - changes.Count),
-                    ["changes"] = changes
-                }, group.Key.Agent, group.Key.IsPlaying);
+                var changes = group.Take(MaxChangesPerFlush).Select(p => p.Change).ToList();
+                PublishSceneChanges(changes, group.Count() - changes.Count, group.Key.Source, group.Key.Agent,
+                    group.Key.IsPlaying);
             }
             PendingProperties.Clear();
+        }
+
+        /// <summary>
+        /// One flush of scene changes as consecutive scene_changes entries of at most <see cref="MaxChangesPerEvent"/> changes
+        /// each. <paramref name="omitted"/> (the changes past <see cref="MaxChangesPerFlush"/>) is counted on the last entry;
+        /// a split flush numbers its entries with <c>part</c> / <c>parts</c>.
+        /// </summary>
+        private static void PublishSceneChanges(IList<JObject> changes, int omitted, string source, string agent = null,
+            bool? isPlaying = null)
+        {
+            int parts = Math.Max(1, (changes.Count + MaxChangesPerEvent - 1) / MaxChangesPerEvent);
+            for (int part = 0; part < parts; part++)
+            {
+                var chunk = new JArray(changes.Skip(part * MaxChangesPerEvent).Take(MaxChangesPerEvent));
+                int chunkOmitted = part == parts - 1 ? omitted : 0;
+                var payload = new JObject
+                {
+                    ["count"] = chunk.Count + chunkOmitted,
+                    ["omitted"] = chunkOmitted,
+                    ["changes"] = chunk
+                };
+                if (parts > 1)
+                {
+                    payload["part"] = part + 1;
+                    payload["parts"] = parts;
+                }
+                Publish("scene_changes", source, payload, agent, isPlaying);
+            }
         }
 
         private static void OnUndoRedoPerformed()
@@ -917,7 +973,7 @@ namespace UnitySkills
 #endif
         }
 
-        /// <param name="total">Distinct non-blank paths before the per-event cap.</param>
+        /// <param name="total">Distinct non-blank paths before the per-flush bound.</param>
         private static string[] CleanPaths(string[] paths, out int total)
         {
             var distinct = (paths ?? Array.Empty<string>())
@@ -925,7 +981,7 @@ namespace UnitySkills
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             total = distinct.Length;
-            return total <= MaxChangesPerEvent ? distinct : distinct.Take(MaxChangesPerEvent).ToArray();
+            return total <= MaxChangesPerFlush ? distinct : distinct.Take(MaxChangesPerFlush).ToArray();
         }
 
         private static string Truncate(string value, int maxChars)

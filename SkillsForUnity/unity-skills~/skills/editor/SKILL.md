@@ -155,7 +155,8 @@ On disk the journal is up to 11 files: the active `editor_changes.jsonl` plus ro
 **Entry fields:** `seq`, `type`, `source`, `agent`, `isPlaying`, `tsUtc`, `payload`. Entries written by older versions lack `agent` and `isPlaying`.
 - `agent`: for `source:"rest"` the caller's agent id; `"mixed"` when callers with different ids overlapped in one REST window (calls in quick succession can share a window); `"unknown"` when the call carried no identity; `null` for `source:"editor"`. It is attribution evidence, not proof.
 - `isPlaying`: `EditorApplication.isPlaying` when the entry was written (Play Mode changes are transient).
-- `file_changes` payload: `count` is the number of listed paths; `importedTotal` / `deletedTotal` / `movedTotal` count them before the 200-per-list cap, and `omitted` is how many the cap dropped.
+- Large changes are split, not cut: one asset callback or scene-change flush becomes consecutive entries of at most 200 changes (per list for `file_changes`), numbered `part` / `parts` when split. Only past 10,000 per flush does the last entry stop listing and count the rest in `omitted`.
+- `file_changes` payload: `count` is the number of listed paths; `importedTotal` / `deletedTotal` / `movedTotal` count the paths the entry accounts for (listed plus `omitted`).
 - `gameobject_reparented` carries `entityId`, `instanceId`, `scenePath`; `gameobject_destroyed` carries `entityId`, `instanceId`. `instanceId` is always `0` on Unity 6000.4+, so compare objects by `entityId`.
 
 ### editor_undo
