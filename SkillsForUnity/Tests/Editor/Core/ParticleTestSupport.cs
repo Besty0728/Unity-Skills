@@ -1,6 +1,7 @@
 ﻿#if COM_UNITY_MODULES_PARTICLESYSTEM
 using System;
 using System.IO;
+using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
@@ -18,6 +19,10 @@ namespace UnitySkills.Tests.Core
     public abstract class ParticleTestBase
     {
         protected const string AssetRoot = "Assets/Temp/ParticleSkillsTests";
+        private const string TempFolder = "Assets/Temp";
+
+        /// <summary>Set when <see cref="EnsureAssetRoot"/> had to create Assets/Temp, so TearDown removes it again.</summary>
+        private static bool _createdTempFolder;
 
         private ModePreferenceSnapshot _modePreferences;
         private SurfaceProfileKind _savedProfile;
@@ -64,6 +69,10 @@ namespace UnitySkills.Tests.Core
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             if (AssetDatabase.IsValidFolder(AssetRoot))
                 AssetDatabase.DeleteAsset(AssetRoot);
+            // Assets/Temp goes only when this fixture made it and nothing else was put there.
+            if (_createdTempFolder && AssetDatabase.IsValidFolder(TempFolder) && !Directory.EnumerateFileSystemEntries(TempFolder).Any())
+                AssetDatabase.DeleteAsset(TempFolder);
+            _createdTempFolder = false;
             SkillsSurfaceProfile.Current = _savedProfile;
             SkillsModeManager.ResetForTests();
             SkillsModeManager.ExistingInstallOverrideForTests = null;
@@ -128,13 +137,19 @@ namespace UnitySkills.Tests.Core
             return json["fields"]?[field];
         }
 
-        /// <summary>Creates <see cref="AssetRoot"/> (removed again in TearDown) for scenes, prefabs and materials a test saves.</summary>
+        /// <summary>
+        /// Creates <see cref="AssetRoot"/> for scenes, prefabs and materials a test saves. TearDown removes it, and also
+        /// Assets/Temp when this call created that folder.
+        /// </summary>
         protected static void EnsureAssetRoot()
         {
-            if (!AssetDatabase.IsValidFolder("Assets/Temp"))
+            if (!AssetDatabase.IsValidFolder(TempFolder))
+            {
                 AssetDatabase.CreateFolder("Assets", "Temp");
+                _createdTempFolder = true;
+            }
             if (!AssetDatabase.IsValidFolder(AssetRoot))
-                AssetDatabase.CreateFolder("Assets/Temp", "ParticleSkillsTests");
+                AssetDatabase.CreateFolder(TempFolder, "ParticleSkillsTests");
         }
 
         protected static Material CreateMaterialAsset(string name)
