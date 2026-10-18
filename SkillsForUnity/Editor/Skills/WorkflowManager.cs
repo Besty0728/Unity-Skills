@@ -312,7 +312,11 @@ namespace UnitySkills
 
             _currentTask.EnsureSnapshotIndex();
 
-            bool shouldDeduplicate = WorkflowTask.ShouldDeduplicate(snap);
+            // An object of a scene that was never saved has no GlobalObjectId: all of them read the same null id
+            // ("GlobalObjectId_V1-0-..."), so deduplicating by it would drop the snapshot of every such object but the
+            // first of the task (a ParticleSystem and its renderer, say). Two snapshots of one object are harmless: undo
+            // restores them newest first, so the oldest state still wins.
+            bool shouldDeduplicate = WorkflowTask.ShouldDeduplicate(snap) && !IsNullGlobalObjectId(snap.globalObjectId);
             if (shouldDeduplicate && _currentTask.HasSnapshot(snap.globalObjectId, snap.type))
             {
                 if (!upgradeExisting)
@@ -329,6 +333,13 @@ namespace UnitySkills
                 _currentTask.TryRegisterSnapshot(snap.globalObjectId, snap.type);
             return snap;
         }
+
+        /// <summary>
+        /// "GlobalObjectId_V1-0-...": identifier type 0, which is what an object of a never-saved scene gets. Matched on the
+        /// text because GlobalObjectId.TryParse does not accept the null id.
+        /// </summary>
+        private static bool IsNullGlobalObjectId(string globalObjectId) =>
+            globalObjectId != null && globalObjectId.StartsWith("GlobalObjectId_V1-0-", StringComparison.Ordinal);
 
         /// <summary>
         /// Captures an object's/component's state before it's modified.
@@ -1382,7 +1393,12 @@ namespace UnitySkills
                 var componentType = Type.GetType(snapshot.componentTypeName) ?? ComponentSkills.FindComponentType(snapshot.componentTypeName);
                 if (parent == null || componentType == null) return false;
 
-                var restored = Undo.AddComponent(parent, componentType);
+                // Restoring a ParticleSystem already brought its ParticleSystemRenderer back; restore onto that one.
+                var restored = ReuseAutoAddedCompanion(parent, componentType);
+                if (restored != null)
+                    Undo.RecordObject(restored, "Restore Workflow Component");
+                else
+                    restored = Undo.AddComponent(parent, componentType);
                 if (restored == null) return false;
                 if (!string.IsNullOrEmpty(snapshot.originalJson))
                 {
@@ -1743,7 +1759,9 @@ namespace UnitySkills
                 {
                     var componentType = Type.GetType(componentData.typeName) ?? ComponentSkills.FindComponentType(componentData.typeName);
                     if (componentType == null || !typeof(Component).IsAssignableFrom(componentType)) continue;
-                    var component = Undo.AddComponent(go, componentType);
+                    // A companion Unity added with an earlier component (a ParticleSystem's renderer) is reused, so its
+                    // JSON is restored instead of being dropped when a second AddComponent is refused.
+                    var component = ReuseAutoAddedCompanion(go, componentType, restoredComponents.Values) ?? Undo.AddComponent(go, componentType);
                     if (component == null) continue;
                     NotifyComponentTopologyChanged(go, componentType);
                     restoredComponents[componentData] = component;
@@ -1764,6 +1782,21 @@ namespace UnitySkills
                     componentData.objectReferences, null, restoredObjects);
             }
             return restored[0];
+        }
+
+        /// <summary>
+        /// The instance of a component Unity adds on its own (see <see cref="ParticleSkills.IsAutoAddedCompanion"/>) when
+        /// restoring its owner already re-created it, and it is not yet claimed by another restored entry; otherwise null,
+        /// and the caller adds the component as usual.
+        /// </summary>
+        private static Component ReuseAutoAddedCompanion(GameObject go, Type componentType, IEnumerable<Component> claimed = null)
+        {
+            if (go == null || !ParticleSkills.IsAutoAddedCompanion(componentType))
+                return null;
+            var existing = go.GetComponent(componentType);
+            if (existing == null || (claimed != null && claimed.Contains(existing)))
+                return null;
+            return existing;
         }
 
         private static void SnapshotCreatedInverse(GameObject go, WorkflowTask inverseTask)

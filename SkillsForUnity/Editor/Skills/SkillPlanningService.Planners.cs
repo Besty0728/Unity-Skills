@@ -60,6 +60,9 @@ namespace UnitySkills
             if (SkillsHttpServer.IsRuntimeInvocationSkill(skill.Name))
                 AnalyzeRuntimeExecution(skill.Name, validation, plan);
 
+            if (ParticleSkills.HasPlanner(skill.Name))
+                AnalyzeParticleSkill(skill, validation, plan);
+
             switch (skill.Name)
             {
                 case "camera_set_properties":

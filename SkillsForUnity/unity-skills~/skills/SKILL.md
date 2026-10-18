@@ -33,6 +33,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 | [component](./component/SKILL.md) | Mixed* | Component add/remove/configure | Yes |
 | [material](./material/SKILL.md) | FA | Material property edits | Yes |
 | [light](./light/SKILL.md) | FA | Light create/configure | Yes |
+| [particle](./particle/SKILL.md) | Mixed | Built-in ParticleSystem (Shuriken) create/configure: typed module patches, renderer, bursts, sub emitters, static diagnosis (not VFX Graph) | Yes |
 | [prefab](./prefab/SKILL.md) | Mixed* | Prefab create/apply/spawn, asset queries, component/node edits and atomic batches | Yes |
 | [asset](./asset/SKILL.md) | SA* | Asset refresh/find/info | Yes |
 | [batch](./batch/SKILL.md) | SA | Batch and async jobs | Built-in |

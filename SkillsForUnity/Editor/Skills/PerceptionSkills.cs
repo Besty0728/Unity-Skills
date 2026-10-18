@@ -1191,7 +1191,9 @@ namespace UnitySkills
                 else if (component is UnityEngine.UI.Button) hasButton = true;
                 else if (component is Animator) hasAnimator = true;
                 else if (component is AudioSource) hasAudioSource = true;
+#if COM_UNITY_MODULES_PARTICLESYSTEM
                 else if (component is ParticleSystem) hasParticleSystem = true;
+#endif
                 else if (component is Collider || component is Collider2D) hasCollider = true;
                 else if (component is Rigidbody || component is Rigidbody2D) hasRigidbody = true;
                 else if (component is SkinnedMeshRenderer) hasSkinnedMeshRenderer = true;
@@ -1224,7 +1226,9 @@ namespace UnitySkills
             if (t.GetComponent<UnityEngine.UI.Button>()) return " 🔘";
             if (t.GetComponent<Animator>()) return " 🎬";
             if (t.GetComponent<AudioSource>()) return " 🔊";
+#if COM_UNITY_MODULES_PARTICLESYSTEM
             if (t.GetComponent<ParticleSystem>()) return " ✨";
+#endif
             if (t.GetComponent<Collider>() || t.GetComponent<Collider2D>()) return " 🧱";
             if (t.GetComponent<Rigidbody>() || t.GetComponent<Rigidbody2D>()) return " ⚙";
             if (t.GetComponent<SkinnedMeshRenderer>()) return " 🦴";
@@ -2829,11 +2833,13 @@ namespace UnitySkills
                 hints.Add(new { priority = 3, category = "Materials", issue = $"{duplicateCount} duplicate material references",
                     suggestion = "Consolidate materials", fixSkill = "optimize_find_duplicate_materials" });
 
-            // 5. Particle systems
+            // 5. Particle systems (a project without the built-in Particle System module has none to count)
+#if COM_UNITY_MODULES_PARTICLESYSTEM
             var particles = FindHelper.FindAll<ParticleSystem>();
             if (particles.Length > 20)
                 hints.Add(new { priority = 3, category = "Particles", issue = $"{particles.Length} particle systems",
                     suggestion = "Consider reducing or pooling particle systems", fixSkill = (string)null });
+#endif
 
             if (hints.Count == 0)
                 hints.Add(new { priority = 0, category = "OK", issue = "No obvious performance issues",

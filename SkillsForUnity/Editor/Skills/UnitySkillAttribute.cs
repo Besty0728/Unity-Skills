@@ -61,7 +61,8 @@ namespace UnitySkills
         Behavior,
         HybridCLR,
         Addressables,
-        QFramework
+        QFramework,
+        Particle
     }
 
     /// <summary>

@@ -16,7 +16,8 @@ namespace UnitySkills
         {
             var validation = new ParameterValidationResult
             {
-                Args = string.IsNullOrEmpty(json) ? new JObject() : JObject.Parse(json)
+                Args = string.IsNullOrEmpty(json) ? new JObject() : JObject.Parse(json),
+                RawJson = json
             };
 
             var ps = skill.Parameters;
