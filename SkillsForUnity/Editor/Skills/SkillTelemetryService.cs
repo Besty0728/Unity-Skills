@@ -248,6 +248,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterLifecycleFlush()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             AssemblyReloadEvents.beforeAssemblyReload += FlushSync;
             EditorApplication.quitting += FlushSync;
         }

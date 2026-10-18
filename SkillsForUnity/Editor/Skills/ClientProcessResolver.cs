@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using UnityEditor;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -65,6 +66,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void WarmEnabledCache()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             try { _enabledCache = EditorPrefs.GetBool(PrefEnabled, true); }
             catch { _enabledCache = true; }
         }

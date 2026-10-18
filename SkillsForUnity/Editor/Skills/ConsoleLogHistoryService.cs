@@ -67,7 +67,7 @@ namespace UnitySkills
             {
                 // An asset import worker loads this assembly against the same Library folder. Its records are not this
                 // editor's console, and a second writer with its own seq counter tears lines and repeats seqs.
-                if (LibraryStateFile.IsAssetImportWorker)
+                if (ImportWorkerGate.IsWorkerProcess)
                     return;
 
                 // This constructor is run by Unity on the editor thread. The callback below must not

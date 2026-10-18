@@ -130,6 +130,21 @@ namespace UnitySkills.Tests.Core
             Assert.That(ReadSelf(), Is.Null);
         }
 
+        [Test]
+        public void Unregister_LeavesAnEntryOwnedByAnotherProcess()
+        {
+            // An import worker or a batchmode run of the same project exiting must not take the live editor out of discovery.
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            WriteRegistry(new Dictionary<string, RegistryService.InstanceInfo>
+            {
+                [RegistryService.ProjectPath] = Entry("OwningEditor", DeadPid, now, RegistryService.StatusRunning, now),
+            });
+
+            RegistryService.Unregister();
+
+            Assert.That(ReadSelf()?.id, Is.EqualTo("OwningEditor"));
+        }
+
         // ---------- pruning through Register ----------
 
         [Test]

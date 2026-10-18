@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -29,6 +30,8 @@ namespace UnitySkills
 
         static UISkillsFont()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             EditorApplication.delayCall += ReapplyToOpenWindows;
         }
 

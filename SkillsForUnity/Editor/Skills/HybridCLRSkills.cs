@@ -8,6 +8,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -349,6 +350,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             WorkflowSettingRestorerRegistry.Register(SettingsKey, CaptureSettingsJson, ApplySettingsJson);
             // Generated source files and DLL file sets have no meaningful "read current value" form — sampling
             // for redo would mean re-running the backup — so both are registered with the restore-only overload.

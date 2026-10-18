@@ -7,6 +7,7 @@ using UnityEditor;
 using UnityEditor.Compilation;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -59,6 +60,8 @@ namespace UnitySkills
 
         static CompilationResultService()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             DomainLoadedUtcTicks = DateTime.UtcNow.Ticks;
             CompilationStartCount = SessionState.GetInt(CycleKey, 0);
             CompilationPipeline.compilationStarted += OnCompilationStarted;

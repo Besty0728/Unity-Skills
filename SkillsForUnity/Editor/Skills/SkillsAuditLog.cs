@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -296,6 +297,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterLifecycleFlush()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             AssemblyReloadEvents.beforeAssemblyReload += FlushSync;
             EditorApplication.quitting += FlushSync;
         }

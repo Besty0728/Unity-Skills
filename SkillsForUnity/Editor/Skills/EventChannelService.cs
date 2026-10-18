@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -63,6 +64,8 @@ namespace UnitySkills
 
         static EventChannelService()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             try
             {
                 // Restores the seq counter so a client's cursor across a domain reload never sees seq go

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using UnitySkills.Internal;
 
 #if YOO_ASSET
 using YooAsset;
@@ -1968,6 +1969,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RestoreRuntimeValidationJobsAfterReload()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             try
             {
                 RestoreRuntimeValidationJobs();

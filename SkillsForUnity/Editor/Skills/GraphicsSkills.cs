@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Newtonsoft.Json;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -31,6 +32,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             WorkflowSettingRestorerRegistry.Register("graphics.qualityLevel",
                 () => JsonConvert.SerializeObject(QualitySettings.GetQualityLevel()),
                 json =>

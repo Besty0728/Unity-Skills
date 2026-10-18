@@ -76,6 +76,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterHooks()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             AssemblyReloadEvents.beforeAssemblyReload += CancelActiveRequest;
             EditorApplication.quitting += CancelActiveRequest;
             EditorApplication.delayCall += CheckDoneMarker;

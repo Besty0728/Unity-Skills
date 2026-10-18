@@ -39,7 +39,7 @@ namespace UnitySkills
             {
                 // An asset import worker loads this assembly too; resuming batch jobs there would re-run their edits
                 // in a second process (see AsyncJobService).
-                if (LibraryStateFile.IsAssetImportWorker)
+                if (ImportWorkerGate.IsWorkerProcess)
                     return;
 
                 BatchPersistence.EnsureLoaded();

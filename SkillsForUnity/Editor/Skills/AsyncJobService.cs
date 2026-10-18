@@ -69,7 +69,7 @@ namespace UnitySkills
             {
                 // An asset import worker loads this assembly too, but the job table belongs to the main editor: a
                 // worker that resumed jobs would drive them a second time and save its stale copy over batch_state.json.
-                if (LibraryStateFile.IsAssetImportWorker)
+                if (ImportWorkerGate.IsWorkerProcess)
                     return;
 
                 BatchPersistence.EnsureLoaded();

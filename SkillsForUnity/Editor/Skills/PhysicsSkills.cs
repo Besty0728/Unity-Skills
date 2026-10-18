@@ -2,6 +2,7 @@
 using UnityEditor;
 using System.Linq;
 using Newtonsoft.Json;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -23,6 +24,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             WorkflowSettingRestorerRegistry.Register("physics.gravity",
                 () => JsonConvert.SerializeObject(new GravityValue { x = Physics.gravity.x, y = Physics.gravity.y, z = Physics.gravity.z }),
                 json =>

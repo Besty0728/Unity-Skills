@@ -6,6 +6,7 @@ using System.Reflection;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -186,6 +187,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             WorkflowSettingRestorerRegistry.Register("qframework.simulationMode",
                 () => JsonConvert.SerializeObject(GetSimulationMode()),
                 json => SetSimulationModeRaw(JsonConvert.DeserializeObject<bool>(json)));

@@ -4,6 +4,7 @@ using System.IO;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -84,6 +85,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void InitializeOnLoad()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             try
             {
                 if (!ShouldSyncNow(Application.isBatchMode))

@@ -167,6 +167,8 @@ namespace UnitySkills
 
         static SkillsModeManager()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             RestorePreferencesAfterTestDomainReload();
         }
 

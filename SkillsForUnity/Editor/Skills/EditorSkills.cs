@@ -4,6 +4,7 @@ using UnityEditorInternal;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -15,6 +16,8 @@ namespace UnitySkills
     {
         static EditorSkills()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             RecoverStalePlaymodeStepJobs();
         }
 

@@ -316,6 +316,8 @@ namespace UnitySkills
         /// </summary>
         static SkillsHttpServer()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             try
             {
                 // Register editor lifecycle events

@@ -20,6 +20,8 @@ namespace UnitySkills.Internal
         [InitializeOnLoadMethod]
         private static void Initialize()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             Records.Clear();
             Records.AddRange(Resources.FindObjectsOfTypeAll<PrefabAssetUndo>());
             foreach (var record in Records) { record.appliedBytes = record.fileBytes; record.appliedMeta = record.metaBytes; }

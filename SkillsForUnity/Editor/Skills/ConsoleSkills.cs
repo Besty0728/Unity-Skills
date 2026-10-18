@@ -2,6 +2,7 @@
 using UnityEditor;
 using System.Linq;
 using Newtonsoft.Json;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -22,6 +23,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             WorkflowSettingRestorerRegistry.Register("console.pauseOnError",
                 () => JsonConvert.SerializeObject(GetConsoleFlagValue(FlagErrorPause, "DeveloperMode_ErrorPause")),
                 json => { ConsoleSetPauseOnError(JsonConvert.DeserializeObject<bool>(json)); return true; });

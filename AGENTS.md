@@ -68,12 +68,14 @@ public static object SkillName(string name, float x = 0f) { ... }
 | Async | `AsyncJobService` / `BatchJobService` | own Task/Thread |
 | Scene-wide find | `FindHelper.FindAll<T>()` | `FindObjectsOfType` |
 | Periodic UI | `EditorUiScheduler.RepeatSafe` | bare scheduler / `EditorApplication.update` |
+| Rewrite a `Library/UnitySkills` state file | `LibraryStateFile.Write` / `WriteAllText` (temp file + rename) / `AppendLines` | `File.WriteAllText` / `WriteAllLines` over the live file |
 
 ### Constants, logging, prefs, compatibility
 - Version comes only from `SkillsLogger.Version`; never hardcode a version literal. Bump versions only through `/updateversion`.
 - Log only via `SkillsLogger.{Log,LogWarning,LogError,LogVerbose,LogAgent}` with `PREFIX_*` colors; never `Debug.Log*`.
 - Startup policy (owner decision): a normal editor launch / domain reload prints exactly one Info line. New startup diagnostics are Verbose; a startup Warning must correspond to a real failed action (e.g. port fallback), never a pre-emptive scan.
 - EditorPrefs keys are prefixed `UnitySkills_`.
+- Every editor entry point (`[InitializeOnLoad]` static constructor, `[InitializeOnLoadMethod]`, `AssetPostprocessor` callback) starts with `if (ImportWorkerGate.IsWorkerProcess) return;` (RegistryService computes its pure identity fields first). Unity's AssetImportWorker processes load the editor assemblies and share `Library/`: ungated, they read state files mid-rewrite, append to our JSONL logs under their own seq counters, save stale job tables, resume jobs, and write prefs, manifests and defines. `ImportWorkerGateTests` scans for entry points; one that must run in a worker goes on its allowlist with the reason. Gated workers stay silent (startup-log policy).
 - Wrap Unity 6 APIs in `#if UNITY_6000_0_OR_NEWER` / `#else` (see `FindHelper`); prefer 2022.2+ non-obsolete events. Namespaces: `UnitySkills` for features, `UnitySkills.Internal` for helpers.
 
 ### Localization and font atlas

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEditor;
 using UnityEditor.PackageManager;
 using UnityEditor.PackageManager.Requests;
@@ -56,6 +56,8 @@ namespace UnitySkills
 
         static PackageManagerHelper()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             try
             {
                 EnsureTestable();

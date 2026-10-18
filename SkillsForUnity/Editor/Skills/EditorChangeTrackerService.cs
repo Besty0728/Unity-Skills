@@ -9,6 +9,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -98,6 +99,8 @@ namespace UnitySkills
 
         static EditorChangeTrackerService()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             try
             {
                 EnsureLoaded();
@@ -881,14 +884,9 @@ namespace UnitySkills
         {
             try
             {
-                string path = LogPath;
-                string directory = Path.GetDirectoryName(path);
-                if (!string.IsNullOrEmpty(directory))
-                    Directory.CreateDirectory(directory);
-
                 byte[] bytes = SkillsCommon.Utf8NoBom.GetBytes(entry.ToString(Formatting.None) + Environment.NewLine);
-                using (var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
-                    stream.Write(bytes, 0, bytes.Length);
+                // A kill can cut a write short; the append starts a new line after such a tail, so it costs one row, not two.
+                LibraryStateFile.AppendLines(LogPath, bytes);
                 _activeEntries++;
                 _activeBytes += bytes.Length;
             }
@@ -1095,6 +1093,8 @@ namespace UnitySkills
         private static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets,
             string[] movedAssets, string[] movedFromAssetPaths)
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             ScriptDomainImportCapture.Record(importedAssets, deletedAssets, movedAssets, movedFromAssetPaths);
             EditorChangeTrackerService.RecordFileChanges(
                 importedAssets, deletedAssets, movedAssets, movedFromAssetPaths);

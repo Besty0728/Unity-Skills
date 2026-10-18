@@ -5,6 +5,7 @@ using UnityEngine.Rendering;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -20,6 +21,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             WorkflowSettingRestorerRegistry.Register("project.tags",
                 CaptureTags,
                 ApplyTags);

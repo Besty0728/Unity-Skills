@@ -719,6 +719,8 @@ namespace UnitySkills
 
             static PipelineCacheInvalidator()
             {
+                if (ImportWorkerGate.IsWorkerProcess) return;
+
                 WorkflowManager.ComponentTopologyChanged += OnComponentTopologyChanged;
                 UnityEditor.Undo.undoRedoPerformed += ScheduleInvalidation;
                 UnityEditor.ObjectChangeEvents.changesPublished += OnChangesPublished;

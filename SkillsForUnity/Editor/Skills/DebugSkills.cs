@@ -7,6 +7,7 @@ using System.Linq;
 using System.Collections.Generic;
 using System.Reflection;
 using Newtonsoft.Json;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -39,6 +40,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void RegisterSettingRestorers()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             WorkflowSettingRestorerRegistry.Register("debug.scriptingDefines",
                 CaptureDefinesValue,
                 ApplyDefinesValue);

@@ -4,6 +4,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using Newtonsoft.Json;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -30,6 +31,8 @@ namespace UnitySkills
 
         static SkillsLocalization()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             EnsureLoaded();
         }
 

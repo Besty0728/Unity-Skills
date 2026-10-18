@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Compilation;
 using UnityEngine;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -28,6 +29,8 @@ namespace UnitySkills
         [InitializeOnLoadMethod]
         private static void Synchronize()
         {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
             if (SessionState.GetBool(SessionDoneKey, false))
                 return;
 

@@ -76,6 +76,8 @@ namespace UnitySkills.Tests.Core
             Assert.IsTrue(IsMethod(quitting, typeof(SkillsAuditLog), "FlushSync"), "audit flush on quit");
             Assert.IsTrue(IsMethod(beforeReload, typeof(EditorChangeTrackerService), "FlushPendingProperties"), "journal property flush before domain reload");
             Assert.IsTrue(IsMethod(quitting, typeof(EditorChangeTrackerService), "FlushPendingProperties"), "journal property flush on quit");
+            Assert.IsTrue(IsMethod(beforeReload, typeof(ConsoleLogHistoryService), "FinalFlush"), "console history final flush before domain reload");
+            Assert.IsTrue(IsMethod(quitting, typeof(ConsoleLogHistoryService), "FinalFlush"), "console history final flush on quit");
         }
 
         /// <summary>
