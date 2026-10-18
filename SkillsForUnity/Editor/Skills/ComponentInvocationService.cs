@@ -60,7 +60,11 @@ namespace UnitySkills
             details: exception is AmbiguousCallException ambiguous ? new JObject { ["candidates"] = ambiguous.Candidates } : null,
             retryStrategy: SkillErrorResponse.Abort));
 
-        internal static Type ResolveType(string name)
+        internal static Type ResolveType(string name) => ResolveType(name, null);
+
+        /// <param name="prefer">When several types match, keep the ones this accepts if there are any: an instance call
+        /// passes "is a Component", so <c>Button</c> names UnityEngine.UI.Button, not UnityEngine.UIElements.Button.</param>
+        internal static Type ResolveType(string name, Func<Type, bool> prefer)
         {
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("componentType/type name is required.");
             var exact = Type.GetType(name, false);
@@ -82,6 +86,8 @@ namespace UnitySkills
                 }
             types = types.Distinct().ToList();
             if (types.Count == 0) throw new ArgumentException("Type not found: " + name);
+            if (types.Count > 1 && prefer != null && types.Any(prefer))
+                types = types.Where(prefer).ToList();
             if (types.Count > 1) throw new AmbiguousCallException("Ambiguous type; use an assembly-qualified name: " + name,
                 new JArray(types.Take(50).Select(t => new JObject { ["type"] = TypeName(t), ["assembly"] = t.Assembly.GetName().Name })));
             return types[0];
@@ -120,7 +126,8 @@ namespace UnitySkills
 
         internal static BoundCall Bind(Request request)
         {
-            var type = ResolveType(string.IsNullOrWhiteSpace(request.assembly) ? request.componentType : request.componentType + ", " + request.assembly);
+            Func<Type, bool> prefer = request.isStatic ? null : (Func<Type, bool>)(t => typeof(Component).IsAssignableFrom(t));
+            var type = ResolveType(string.IsNullOrWhiteSpace(request.assembly) ? request.componentType : request.componentType + ", " + request.assembly, prefer);
             if (string.IsNullOrWhiteSpace(request.methodName)) throw new ArgumentException("methodName is required.");
             var generics = ParseTypes(request.genericTypeArguments);
             var requestedTypes = request.parameterTypes == null ? null : ParseTypes(request.parameterTypes);

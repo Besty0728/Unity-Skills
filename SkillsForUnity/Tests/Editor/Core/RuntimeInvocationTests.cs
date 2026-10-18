@@ -183,6 +183,21 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void InstanceCallsReadASharedShortNameAsTheComponentType()
+        {
+            _target = new GameObject("InvocationFixture_" + Guid.NewGuid().ToString("N"));
+            _target.AddComponent<ShortNameShared>();
+            GameObjectFinder.InvalidateCache();
+            var request = new ComponentInvocationService.Request { componentType = nameof(ShortNameShared),
+                methodName = "Answer", path = _target.name, executionMode = "edit" };
+            var call = ComponentInvocationService.Bind(request);
+            Assert.That(call.Method.Invoke(call.Target, call.Arguments), Is.EqualTo(42));
+            Assert.Throws<ComponentInvocationService.AmbiguousCallException>(
+                () => ComponentInvocationService.ResolveType(nameof(ShortNameShared)),
+                "without an instance target the short name stays ambiguous");
+        }
+
+        [Test]
         public void GenericMethodRequiresAndBindsClosedTypeArguments()
         {
             var request = Request("Echo", "[17]");
@@ -464,6 +479,20 @@ namespace UnitySkills.Tests.Core
         protected int ProtectedDouble(int value) => value * 2;
     }
     public sealed class InvocationComponentFixture : InvocationComponentBase { }
+
+    /// <summary>Shares its short name with a plain class, like UnityEngine.UI.Button and UnityEngine.UIElements.Button.</summary>
+    public sealed class ShortNameShared : MonoBehaviour
+    {
+        public int Answer() => 42;
+    }
+}
+
+namespace UnitySkills.Tests.Core.ShortNameTwin
+{
+    public sealed class ShortNameShared
+    {
+        public int Answer() => 7;
+    }
 }
 
 // Producer:Betsy
