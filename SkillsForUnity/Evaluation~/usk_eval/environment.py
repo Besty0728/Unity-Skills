@@ -98,6 +98,31 @@ def tree_hash(root, exclude=()):
     return hash_files(tree_files(root, exclude))
 
 
+def imported_by_unity(name):
+    """Unity skips hidden assets: names starting with '.' or ending with '~' (Evaluation~, unity-skills~, Tests~)."""
+    return not name.startswith(".") and not name.endswith("~")
+
+
+def package_tree(root):
+    """The plugin package as Unity imports it (contract 2.8 N7/S6): {hash, newestMtimeNs, paths}. hash is the tree rule
+    over its importable files, newestMtimeNs their newest modification time, paths the package-relative paths of
+    those files and folders ('' is the package folder itself). OSError when the tree cannot be read."""
+    root = os.path.abspath(root)
+    entries, paths, newest = [], {""}, 0
+    for base, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if imported_by_unity(d))
+        rel = os.path.relpath(base, root).replace(os.sep, "/")
+        prefix = "" if rel == "." else rel + "/"
+        paths.update(prefix + d for d in dirs)
+        for name in sorted(files):
+            if imported_by_unity(name):
+                path = os.path.join(base, name)
+                newest = max(newest, os.stat(path).st_mtime_ns)
+                entries.append((prefix + name, path))
+                paths.add(prefix + name)
+    return {"hash": hash_files(entries), "newestMtimeNs": newest, "paths": paths}
+
+
 # ---------------------------------------------------------------- dedicated marker
 
 

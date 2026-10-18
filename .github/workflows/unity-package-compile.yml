@@ -89,6 +89,8 @@ jobs:
           - windows-latest
         python-version:
           - '3.9'
+          # 3.12 inlines comprehensions (PEP 709): a name a comprehension shadows behaves differently there.
+          - '3.12'
           - '3.x'
     steps:
       - uses: actions/checkout@v4

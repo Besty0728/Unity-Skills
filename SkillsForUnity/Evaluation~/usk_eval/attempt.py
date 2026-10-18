@@ -21,7 +21,7 @@ from . import session as S
 from . import store
 from . import telemetry as T
 from .focus import FocusKeeper
-from .paths import EVAL_ASSET_ROOT
+from .paths import EVAL_ASSET_ROOT, resolve_package_root
 from .problems import Outcome, ProblemError, notice, problem
 from .rest import REQUESTS, TERMINAL_JOB_STATES, RestError, SkillError, WriteUncertain
 from .task_api import BuildContext, VerifyContext, context_args
@@ -200,7 +200,7 @@ def _new_state(rt, session, task_id, meta, rerun_of, resting):
         "prompt": {"lang": session["lang"], "sha256": None, "archive": None, "ioFile": None},
         "answer": {"path": None, "present": False, "sha256": None, "error": None, "schemaErrors": []},
         "submittedBy": None, "reissues": 0, "duplicateSubmits": 0,
-        "evalTreeHash": {"atIssue": None, "atSubmit": None},
+        "evalTreeHash": {"atIssue": None, "atSubmit": None}, "packageTree": {"atIssue": None, "atSubmit": None},
         "private": None, "timings": {"buildSeconds": None, "verifySeconds": None}, "teardown": None,
         "track": meta.get("track") or selection.get("track"), "tier": meta.get("tier") or selection.get("tier"),
         "minutes": meta.get("minutes"),
@@ -306,6 +306,7 @@ def _build(rt, session, state, task, lines, client, env0, host, host_sid):
     _persist(rt, state)
     # N7: evaluation tree and environment at issue
     state["evalTreeHash"]["atIssue"] = E.tree_hash(RUNNER_DIR)
+    state["packageTree"]["atIssue"] = _package_fingerprint(rt)[0]
     state["env"]["atIssue"] = E.snapshot(client, rt.registry_pid())
     _persist(rt, state)
     # N8: prompt, cursor0, received0, host, t0
@@ -649,11 +650,60 @@ def _freeze(rt, session, state):
     cursor_end = J.current_cursor(client)                      # S5
     journal_state["cursorEnd"] = cursor_end
     _freeze_journal(rt, state, journal_state.get("cursor0") or 0, cursor_end)   # S6
+    _judge_package_imports(rt, state)
     _freeze_telemetry(rt, state, state["submittedAt"])
     state["env"]["atSubmit"] = E.snapshot(client, rt.registry_pid())
     state["evalTreeHash"]["atSubmit"] = E.tree_hash(RUNNER_DIR)
     state["phase"] = "verifying"
     _persist(rt, state)
+
+
+def _package_fingerprint(rt):
+    """({root, hash, newestMtimeNs}, paths) of the plugin package; (None, None) when it cannot be read."""
+    try:
+        root = resolve_package_root(rt.project)["root"]
+        tree = E.package_tree(root)
+    except (ProblemError, OSError) as exc:
+        rt.log.warn("plugin package tree unreadable: %s" % type(exc).__name__)
+        return None, None
+    return {"root": root, "hash": tree["hash"], "newestMtimeNs": tree["newestMtimeNs"]}, tree["paths"]
+
+
+def _judge_package_imports(rt, state):
+    """S6: imports of plugin package files are Unity rebuilding the plugin's assemblies when the package is the one of
+    the issue (same root, content hash and newest file time) and the file still exists. The tree is hashed again only
+    when the frozen journal has such imports."""
+    tree = state.setdefault("packageTree", {"atIssue": None, "atSubmit": None})
+    paths = sorted({p for p in map(J.package_path, _journal_records(rt, state)) if p is not None})
+    if not paths:
+        tree["atSubmit"] = None
+        return
+    issue = tree.get("atIssue")
+    now, present = _package_fingerprint(rt)
+    unchanged = bool(issue and now and all(now[k] == issue.get(k) for k in ("root", "hash", "newestMtimeNs")))
+    tree["atSubmit"] = dict(now or {"root": None, "hash": None, "newestMtimeNs": None}, unchanged=unchanged,
+                            absent=[p for p in paths if p not in present] if unchanged else [])
+    rt.log.info("attempt %s: %d plugin package path(s) imported, package %s" % (
+        state["attemptId"], len(paths), "unchanged" if unchanged else "changed or unreadable"))
+
+
+def _journal_records(rt, state):
+    return J.flatten(J.load_entries(_file(rt, state, "journal.jsonl")), state["journal"].get("refreshWindow"))
+
+
+def _frozen_records(rt, state):
+    """(records, reimports): the frozen journal's records minus the re-imports of unchanged plugin files judged at S6,
+    which are no evidence of anything (contract 5.7)."""
+    records = _journal_records(rt, state)
+    judged = (state.get("packageTree") or {}).get("atSubmit") or {}
+    if not judged.get("unchanged"):
+        return records, []
+    absent = set(judged.get("absent") or [])
+    kept, reimports = [], []
+    for rec in records:
+        path = J.package_path(rec)
+        (reimports if path is not None and path not in absent else kept).append(rec)
+    return kept, reimports
 
 
 # ---------------------------------------------------------------- S7-S10 verify
@@ -668,7 +718,7 @@ def _verify_context(rt, session, state, task, client, module):
         except (OSError, ValueError):
             answer = None
     journal_state = state["journal"]
-    records = J.flatten(J.load_entries(_file(rt, state, "journal.jsonl")), journal_state.get("refreshWindow"))
+    records = _frozen_records(rt, state)[0]
     return VerifyContext(
         client, *context_args(session, state, task, rt.project), handles=state.get("handles"), log=None,
         c0=state["c0"].get("data"), c0_digests=state["c0"].get("digests"), answer=answer,
@@ -889,7 +939,7 @@ def _write_result(rt, session, state, status, reasons, score=None, verifier=None
                         "records": len(J.flatten(entries, journal_state.get("refreshWindow"))), "nonRest": non_rest,
                         "agents": J.agents(entries), "refreshWindow": journal_state.get("refreshWindow"),
                         "forcedPlayModeExit": bool(journal_state.get("forcedPlayModeExit")),
-                        "directWrites": direct_writes},
+                        "directWrites": direct_writes, "packageReimports": len(_frozen_records(rt, state)[1])},
             "telemetry": state["telemetry"].get("summary") or T.summarize([], []),
             "httpApprox": approx,
             "freeze": {"inflightJobs": (state.get("freeze") or {}).get("inflightJobs") or 0},

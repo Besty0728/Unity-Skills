@@ -103,7 +103,8 @@ class SelftestTests(unittest.TestCase):
                                             "E01", cli.GATE_INPUTS)
         self.assertEqual(entry, {"taskId": "E01", "caseVersion": 1, "unityMajor": "6000",
                                  "pluginVersion": package_version(), "pipeline": "URP", "gateInputsHash": inputs,
-                                 "green": True, "cases": 9, "failing": [], "recordedAt": entry["recordedAt"]})
+                                 "green": True, "cases": 9, "failing": [], "recordedAt": entry["recordedAt"],
+                                 "buildIdentity": "unavailable", "packageRoot": None, "assembliesLoadedAtUtc": None})
         self.assertEqual(key, store.canonical_digest({
             "taskId": "E01", "caseVersion": 1, "unityMajor": "6000", "pluginVersion": package_version(),
             "pipeline": "URP", "gateInputsHash": inputs}))

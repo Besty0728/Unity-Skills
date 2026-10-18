@@ -13,6 +13,11 @@ Any case that ends invalid or contaminated, or whose inputs change while it runs
 fails is never run again: a gate passes in one go (the one repeat is for a case that could not start because the
 editor was compiling or importing).
 
+A gate vouches for the plugin build that ran the cases: /health must report this checkout's SkillsForUnity as the
+loaded package (--allow-other-package records it anyway, marked) and no .cs/.asmdef in it may be newer than the
+editor's assembliesLoadedAtUtc, at the start and when each task is recorded. Each entry records packageRoot,
+assembliesLoadedAtUtc and buildIdentity (verified, override, or unavailable when the editor predates those fields).
+
 The gate record (default eval/runs/selftest/gate.json) is keyed by canonical_digest of
 {taskId, caseVersion, unityMajor, pluginVersion, pipeline, gateInputsHash}. `pipeline` is the render pipeline the runs
 used (the runner's own snapshot at issue, state.env.atIssue.pipelineType): tasks that accept several pipelines are gated
@@ -50,6 +55,7 @@ from usk_eval.rest import RestError  # noqa: E402
 
 REPO = D.REPO
 GATE_SCHEMA = 1
+PACKAGE_DIR = os.path.join(REPO, "SkillsForUnity")
 DEFAULT_PRIVATE_DIR = os.path.join(REPO, "eval", "pack", "private")
 DEFAULT_SOLUTIONS_DIR = os.path.join(REPO, "eval", "pack", "solutions")
 DEFAULT_RUNS_DIR = os.path.join(REPO, "eval", "runs", "selftest")
@@ -58,6 +64,7 @@ MIN_REPEAT = 2
 MIN_NEGATIVES = 5
 MIN_ALTERNATIVES = 1
 ENVIRONMENT_EXIT = 2
+BUILD_SOURCES = (".cs", ".asmdef")
 
 
 class SelftestError(Exception):
@@ -181,9 +188,10 @@ def gate_status(gate, packs, task_id, unity_version, plugin_version, pipeline, g
 
 
 def record_gate(gate, task_id, case_version, unity_version, plugin_version, pipeline, inputs_hash, green, cases,
-                failing):
+                failing, build=None):
     """Writes the entry for this exact input set and drops the entries it supersedes (same task, case version, Unity
-    major, plugin version and pipeline under another inputs hash); other pipelines keep their entries."""
+    major, plugin version and pipeline under another inputs hash); other pipelines keep their entries. `build` is
+    build_identity()'s record of the plugin build that ran the cases; it is not part of the key."""
     key = gate_key(task_id, case_version, unity_version, plugin_version, pipeline, inputs_hash)
     major = unity_major(unity_version)
     for other, entry in list(gate["gates"].items()):
@@ -195,7 +203,65 @@ def record_gate(gate, task_id, case_version, unity_version, plugin_version, pipe
                           "pluginVersion": plugin_version, "pipeline": pipeline, "gateInputsHash": inputs_hash,
                           "green": bool(green), "cases": cases, "failing": list(failing),
                           "recordedAt": store.now_iso()}
+    gate["gates"][key].update(build or UNAVAILABLE_BUILD)
     return key
+
+
+# ---------------------------------------------------------------- the plugin build behind a gate
+
+UNAVAILABLE_BUILD = {"buildIdentity": "unavailable", "packageRoot": None, "assembliesLoadedAtUtc": None}
+
+
+def same_folder(left, right):
+    return os.path.normcase(os.path.realpath(left)) == os.path.normcase(os.path.realpath(right))
+
+
+def newest_build_source(package_root):
+    """(mtime, relpath) of the newest .cs/.asmdef Unity compiles from the package (hidden and '~' names skipped)."""
+    newest = (0.0, None)
+    for base, dirs, files in os.walk(package_root):
+        dirs[:] = [d for d in dirs if runner_environment.imported_by_unity(d)]
+        for name in files:
+            if name.endswith(BUILD_SOURCES) and runner_environment.imported_by_unity(name):
+                path = os.path.join(base, name)
+                try:
+                    mtime = os.stat(path).st_mtime
+                except OSError:
+                    continue
+                if mtime > newest[0]:
+                    newest = (mtime, os.path.relpath(path, package_root).replace(os.sep, "/"))
+    return newest
+
+
+def stale_source(build):
+    """Why the build no longer matches its sources: a .cs/.asmdef newer than the loaded assemblies; None if none."""
+    if build["buildIdentity"] == "unavailable":
+        return None
+    mtime, rel = newest_build_source(build["packageRoot"])
+    if mtime > store.epoch(build["assembliesLoadedAtUtc"]):
+        return "%s changed after the editor loaded its assemblies (%s); let Unity compile it, then run again" % (
+            rel, build["assembliesLoadedAtUtc"])
+    return None
+
+
+def build_identity(health, package_dir, allow_other_package=False):
+    """(build, problem) from /health: the entry's buildIdentity, packageRoot and assembliesLoadedAtUtc, and why no
+    gate may be recorded on this build (None when one may). Without the two fields (an editor older than them) the
+    build is unavailable: nothing is checked."""
+    root, loaded = health.get("packageRoot"), health.get("assembliesLoadedAtUtc")
+    try:
+        loaded_ok = isinstance(loaded, str) and store.epoch(loaded) > 0      # DateTime ticks 0 = never loaded
+    except ValueError:
+        loaded_ok = False
+    if not (isinstance(root, str) and root and loaded_ok):
+        return dict(UNAVAILABLE_BUILD), None
+    build = {"buildIdentity": "verified", "packageRoot": root, "assembliesLoadedAtUtc": loaded}
+    if not same_folder(root, package_dir):
+        if not allow_other_package:
+            return build, ("the editor loads UnitySkills from %s, not from this checkout's %s; open a project that "
+                           "uses this checkout, or pass --allow-other-package" % (root, package_dir))
+        build["buildIdentity"] = "override"
+    return build, stale_source(build)
 
 
 # ---------------------------------------------------------------- the selftest
@@ -211,7 +277,7 @@ class Selftest(object):
                  record=True, gate_file=DEFAULT_GATE_FILE, runs_dir=DEFAULT_RUNS_DIR, gate_inputs=(),
                  min_negatives=MIN_NEGATIVES, min_alternatives=MIN_ALTERNATIVES, abort_active=False,
                  cleanup_stale=False, quiet_wait_s=900.0, lease_wait_s=0.0, lang="en", repo_root=None,
-                 busy_waits=20):
+                 busy_waits=20, allow_other_package=False, package_dir=None):
         self.runner, self.packs, self.tasks, self.out = runner, packs, list(tasks), out or echo
         self.repeat, self.extra_seeds, self.case_filter = repeat, list(extra_seeds), list(case_filter)
         self.record = record and not case_filter
@@ -221,9 +287,11 @@ class Selftest(object):
         self.quiet_wait_s, self.lease_wait_s, self.lang = quiet_wait_s, lease_wait_s, lang
         self.busy_waits = busy_waits
         self.repo_root = repo_root or REPO
+        self.allow_other_package, self.package_dir = allow_other_package, package_dir or PACKAGE_DIR
         self.agent = D.ScriptedAgent(runner, packs, with_private=True, log=self.say)
         self.rows = []
         self.unity_version = self.plugin_version = self.pipeline = None
+        self.build, self.unrecorded = dict(UNAVAILABLE_BUILD), []
 
     # ------------------------------------------------------------------ output
 
@@ -265,6 +333,18 @@ class Selftest(object):
         self.unity_version, self.plugin_version = health.get("unityVersion"), health.get("version")
         self.say("editor: Unity %s, UnitySkills %s, mode %s, instance %s" % (
             self.unity_version, self.plugin_version, health.get("currentMode"), health.get("instanceId")))
+        self.build, problem = build_identity(health, self.package_dir, self.allow_other_package)
+        if self.build["buildIdentity"] == "unavailable":
+            self.say("warning: the editor reports no packageRoot/assembliesLoadedAtUtc, so the build behind the gate "
+                     "is not checked (buildIdentity unavailable)")
+        else:
+            self.say("build: %s, assemblies loaded %s (%s)" % (self.build["packageRoot"],
+                                                                self.build["assembliesLoadedAtUtc"],
+                                                                self.build["buildIdentity"]))
+        if problem and self.record:
+            raise SelftestError("no gate can be recorded: %s" % problem)
+        if problem:
+            self.say("warning: %s" % problem)
         if self.cleanup_stale:
             cleaned = self.runner.run("cleanup", "--stale", session=False)
             self.say("cleanup --stale: %s" % (cleaned.describe() if not cleaned.ok else "removed %s" % (
@@ -508,6 +588,8 @@ class Selftest(object):
         self.say("selftest3: %d/%d ok" % (len(self.rows) - len(bad), len(self.rows)))
         if not self.record:
             self.say("gate not recorded (%s)" % ("case filter" if self.case_filter else "--no-gate"))
+        if self.unrecorded:
+            return ENVIRONMENT_EXIT
         return 1 if bad else 0
 
     def record_task(self, task_id, rows, inputs):
@@ -515,12 +597,17 @@ class Selftest(object):
         if self.pipeline is None:
             self.say("gate %s not recorded: no attempt was issued, so the render pipeline is unknown" % task_id)
             return
+        stale = stale_source(self.build)
+        if stale:
+            self.unrecorded.append(task_id)
+            self.say("gate %s not recorded: %s" % (task_id, stale))
+            return
         meta = self.packs.meta(task_id)
         failing = [row["case"] for row in rows if not row["ok"]]
         with gate_lock(self.gate_file):
             gate = load_gate(self.gate_file)
             key = record_gate(gate, task_id, meta["caseVersion"], self.unity_version, self.plugin_version,
-                              self.pipeline, inputs, not failing, len(rows), failing)
+                              self.pipeline, inputs, not failing, len(rows), failing, build=self.build)
             save_gate(self.gate_file, gate)
         self.say("gate %s %s (Unity %s, %s, %s)" % (task_id, "GREEN" if not failing else "RED", self.unity_version,
                                                     self.pipeline, key[:12]))
@@ -608,7 +695,8 @@ def run_from_args(args, gate_inputs, out=echo, environ=None, inproc=False):
                         runs_dir=os.path.dirname(os.path.abspath(args.gate_file)) if args.gate_file
                         else DEFAULT_RUNS_DIR, gate_inputs=gate_inputs, abort_active=args.abort_active,
                         cleanup_stale=args.cleanup_stale, quiet_wait_s=args.wait_quiet,
-                        lease_wait_s=args.wait_lease, lang=args.lang)
+                        lease_wait_s=args.wait_lease, lang=args.lang,
+                        allow_other_package=bool(getattr(args, "allow_other_package", False)))
         return test.run()
     except SelftestError as exc:
         out("selftest3: %s" % exc)

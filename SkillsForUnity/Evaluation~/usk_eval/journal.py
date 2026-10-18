@@ -8,9 +8,10 @@ import json
 import os
 import time
 
-from . import store
+from . import PACKAGE_NAME, store
 
 SEGMENTS = 10
+PACKAGE_PREFIX = "Packages/" + PACKAGE_NAME      # Unity's path of the plugin package, wherever it is on disk
 RETRIES = 3
 RETRY_DELAY_S = 0.5
 ACTIVE = "editor_changes.jsonl"
@@ -199,6 +200,17 @@ def flatten(events, refresh_window=None):
             rec.update(payload)
             out.append(rec)
     return out
+
+
+def package_path(rec):
+    """Package-relative path of an import record under Packages/com.besty.unity-skills ('' for the package folder);
+    None for any other record."""
+    if rec.get("kind") != "imported":
+        return None
+    path = str(rec.get("assetPath") or "").replace("\\", "/")
+    if path == PACKAGE_PREFIX:
+        return ""
+    return path[len(PACKAGE_PREFIX) + 1:] if path.startswith(PACKAGE_PREFIX + "/") else None
 
 
 def agents(events):

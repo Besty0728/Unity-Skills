@@ -38,6 +38,9 @@ A task is gated per Unity major, render pipeline and plugin version, keyed by th
 task files, private verifier, solutions, `GATE_INPUTS` in `cli.py`); any change to those files needs a new run.
 Basic tasks accept URP and the Built-in pipeline and are gated on 2022 and 6000 in both; standard and challenge tasks
 are URP only. `selftest3` reads the private verifiers from `pack/private` (`--private-dir` to change it).
+A gate vouches for the plugin build that ran it: the editor must load this checkout's `SkillsForUnity` (`/health`
+`packageRoot`; `--allow-other-package` records anyway, marked `override`) and must have compiled every `.cs`/`.asmdef`
+in it (none newer than `assembliesLoadedAtUtc`), otherwise no gate is recorded. `--task` may be repeated.
 
 ### Batch suite
 

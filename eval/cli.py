@@ -403,7 +403,7 @@ def cmd_suite3(args):
 
 def _add_v3_pack_options(p):
     p.add_argument("--project", default=argparse.SUPPRESS)
-    p.add_argument("--task", nargs="*")
+    p.add_argument("--task", nargs="*", action="extend", help="task ids (repeat or comma-separate; default all)")
     p.add_argument("--private-dir", help="verifier folder (default eval/pack/private); public tasks come from the package")
     p.add_argument("--pack-dir", help="self-contained pack folder (manifest.json, tasks/, private/, solutions/)")
     p.add_argument("--solutions-dir", help="solution modules (default eval/pack/solutions, or <pack-dir>/solutions)")
@@ -466,6 +466,9 @@ def main(argv=None):
     p.add_argument("--wait-lease", type=float, default=0.0, help="seconds to wait for another selftest/E2E run")
     p.add_argument("--lang", choices=("zh-CN", "en"), default="en")
     p.add_argument("--dry-run", action="store_true", help="check pack and solutions, list the cases, no editor")
+    p.add_argument("--allow-other-package", action="store_true",
+                   help="record the gate although the editor loads UnitySkills from another folder than this "
+                        "checkout's SkillsForUnity (the entry says buildIdentity override)")
     p.set_defaults(func=cmd_selftest3)
     p = sub.add_parser("gate3", help="is the recorded v3 gate green for the current inputs?")
     _add_v3_pack_options(p)

@@ -445,7 +445,7 @@ pid_alive(pid):
 4. N4 层碰撞快照（任务 `layer_pairs`，v1 `fixture.py:101-107`）；`asset_create_folder` 建 `Assets/__UnitySkillsEval`（不存在时）与 run 目录；`scene_create(scenePath)`（`SceneSkills.cs:19-46`：以 Single 模式新建并保存）；确认活动场景就是 run 场景；`gameobject_create(name=objectRoot)` 得 `rootInstanceId`（同 v1 `fixture.py:72-87`）。
 5. N5 `task.build(ctx)` → handles（写入 state）；`wait_idle`；活动场景是 run 场景时 `scene_save`。
 6. N6 `task.snapshot(ctx)` → C0；计算 fingerprint（§5.8）。
-7. N7 记 `evalTreeHash.atIssue`（`<pkg>/Evaluation~` 整棵树，规则同 v1 `env.py:26-42`）与 `env.atIssue`（漂移键 + registry pid）。
+7. N7 记 `evalTreeHash.atIssue`（`<pkg>/Evaluation~` 整棵树，规则同 v1 `env.py:26-42`）与 `env.atIssue`（漂移键 + registry pid）。同时记 `packageTree.atIssue = {root, hash, newestMtimeNs}`：插件包按 §1.5 解析出的物理根目录（git 安装时在 `Library/PackageCache/` 下），对 Unity 会导入的全部文件（名字不以 `.` 开头、不以 `~` 结尾的文件与目录，所以 `Evaluation~`、`unity-skills~` 不在内）按同一树规则求 hash，并取这些文件中最新的修改时间（纳秒）；读不到时为 null。
 8. N8 渲染提示，写状态目录 `attempts/<aid>/prompt.md` 与 IO 目录 `<io>/<sid>/<aid>/prompt.md`（UTF-8 带 BOM）；读 `cursor0`（`editor_get_changes since=0 limit=1` 的 `cursor`）与 `received0`（`/health.queueStats.totalReceived`）；记宿主会话 id 与 cwd；最后记 `t0 = now`，phase → `ready`。
 9. N9 返回出题数据。
 
@@ -456,7 +456,7 @@ pid_alive(pid):
 3. S3 读 cursor 记为 `refreshWindow.from`；调 `asset_refresh`（`AssetSkills.cs:452-500`），返回 `jobId` 时等作业结束；`wait_idle`；再读 cursor 记为 `refreshWindow.to`。窗口内的文件导入视为 Agent 直接写盘的结果，不算 runner 写入。
 4. S4 `editor_get_state.isPlaying` 为真时调 `editor_stop`（`EditorSkills.cs:57-68`），记 `forcedPlayModeExit:true`，`wait_idle`。
 5. S5 `editor_get_changes since=0 limit=1`：该调用先刷出防抖中的属性变更（`EditorChangeTrackerService.cs:98`），返回的 `cursor` 记为 `cursorEnd`。`cursorEnd < cursor0` → journal 不完整（`seq_reset`）。
-6. S6 按 §7.1 从磁盘读 (cursor0, cursorEnd]，证明 seq 连续，写 `attempts/<aid>/journal.jsonl`。等到 `now ≥ t1 + 1 s` 后读 telemetry：`Library/UnitySkillsTelemetry.jsonl` 与 `UnitySkillsTelemetry.1.jsonl`…`.3.jsonl`（`SkillTelemetryService.cs:35-37,527-531`；v1 只读主文件，`metrics.py:386-388`），按"主文件 → .1 → .2 → .3"顺序读、跨文件按整行去重，保留 `t0 < ts <= t1` 且 `agent != "UnitySkillsEval"` 的记录，写 `attempts/<aid>/telemetry.jsonl`。记 `env.atSubmit` 与 `evalTreeHash.atSubmit`。phase → `verifying`。
+6. S6 按 §7.1 从磁盘读 (cursor0, cursorEnd]，证明 seq 连续，写 `attempts/<aid>/journal.jsonl`。等到 `now ≥ t1 + 1 s` 后读 telemetry：`Library/UnitySkillsTelemetry.jsonl` 与 `UnitySkillsTelemetry.1.jsonl`…`.3.jsonl`（`SkillTelemetryService.cs:35-37,527-531`；v1 只读主文件，`metrics.py:386-388`），按"主文件 → .1 → .2 → .3"顺序读、跨文件按整行去重，保留 `t0 < ts <= t1` 且 `agent != "UnitySkillsEval"` 的记录，写 `attempts/<aid>/telemetry.jsonl`。冻结的 journal 中有路径在 `Packages/com.besty.unity-skills/` 下（或等于该目录）的 `imported` 记录时，再求一次插件包树，记 `packageTree.atSubmit = {root, hash, newestMtimeNs, unchanged, absent}`：`unchanged` 要求 root、hash、newestMtimeNs 三者都与出题时相同，`absent` 是这些导入路径中当前已不在树里的那些；没有这类记录时为 null，不重新求 hash。记 `env.atSubmit` 与 `evalTreeHash.atSubmit`。phase → `verifying`。
 7. S7 获取私有 verify（§5.9）；失败 → `pending_verification` 并返回。
 8. S8 构造 `VerifyContext` 与 `Scorecard(ASSERTIONS)`；调 `verify(ctx, card)`（只读 Probe，沿用 v1 `rest.py:121-126` 的只读守卫）。
 9. S9 dev 题且定义了 `SCENARIO`：确认未编译、不在 Play；调 `editor_run_scenario`（`EditorSkills.cs:21-28`）→ 用 `GET /jobs/{id}?wait=30` 轮询至终态（上限 `timeoutSeconds + 120 s`）→ 填 `ctx.scenario`；调 `verify_runtime(ctx, card)`。`cursorEnd` 之后的 journal 一律不读。
@@ -478,7 +478,7 @@ pid_alive(pid):
 | 4 | `pass` / `partial` / `fail` | `card.strict` → pass；`card.score > 0` → partial（追加 `failed: A1,A2`）；否则 fail（同 v1 `classify.py:71-75`） |
 | 后置 | `invalid` | teardown 失败时把 pass/partial/fail 改判（`teardown_failed: …`） |
 
-- `non_rest_changes` = 窗口内 `source == "editor"` 的记录，**排除**：`isPlaying == true`；文件记录（imported/deleted/moved）且路径（去掉 `.meta`）在 A 下（视为 Agent 直接写盘，交给 verify 的 G4 断言）；`scene_saved`/`scene_opened` 且 path 等于 run 场景；`allowed_change(ctx, rec)` 为真。其余 editor 来源的记录（用户手工改场景、用户 Undo 等）都计入。
+- `non_rest_changes` = 窗口内 `source == "editor"` 的记录，**排除**：`isPlaying == true`；文件记录（imported/deleted/moved）且路径（去掉 `.meta`）在 A 下（视为 Agent 直接写盘，交给 verify 的 G4 断言）；`scene_saved`/`scene_opened` 且 path 等于 run 场景；`allowed_change(ctx, rec)` 为真。其余 editor 来源的记录（用户手工改场景、用户 Undo 等）都计入。插件包未变时（S6 的 `packageTree.atSubmit.unchanged`），插件包内仍存在的文件或目录的 `imported` 记录是 Unity 重建插件程序集时的重新导入，不是证据：它们不进入 verify 的 `records`，因而也不计入 `non_rest_changes`、违规、`direct_writes`、`write_records`，只计数到 `evidence.journal.packageReimports`。插件包变了（内容、最新修改时间或根目录任一不同，包括改了又改回）、出题时读不到、或路径已不存在时照常计入；`omitted` 记录（插件每个事件最多列 200 条路径）始终照常计入。
 - 只做标记、不改 status 的 reason（追加在 `reasons` 尾部）：`over_budget`、`forced_play_mode_exit`、`inflight_jobs: <n>`、`isolation_unverified`、`verified_late`。
 - `critical` 断言失败不单独改判，只列在 `score.criticalFailed`（与 v1 一致）。
 
@@ -663,6 +663,7 @@ pid_alive(pid):
 | `submittedBy` | `agent` \| `panel` \| `driver` \| null | Y | |
 | `reissues`、`duplicateSubmits` | int | Y | |
 | `evalTreeHash` | object | Y | `{atIssue: hex\|null, atSubmit: hex\|null}` |
+| `packageTree` | object | N | `{atIssue: {root, hash, newestMtimeNs}\|null, atSubmit: {root, hash, newestMtimeNs, unchanged: bool, absent: [path]}\|null}`（§2.8 N7、S6）；旧状态没有该字段时按 null 处理 |
 | `private` | object \| null | Y | `{kind, file, sha256, attempts: [{via, error}]}`，不含内容 |
 | `timings` | object | Y | `{buildSeconds: number\|null, verifySeconds: number\|null}` |
 | `teardown` | object \| null | Y | `{ok: bool, actions: [string], error: string\|null}` |
@@ -699,7 +700,7 @@ pid_alive(pid):
 evidence = {
   journal:   { complete: bool, gaps: [[int, int]], segments: [string], records: int, nonRest: int,
                agents: [string], refreshWindow: { from: int, to: int } | null,
-               forcedPlayModeExit: bool, directWrites: int },
+               forcedPlayModeExit: bool, directWrites: int, packageReimports: int },
   telemetry: { available: bool, files: [string], skillCalls: int, bySkill: { [skill]: int },
                errors: { [errorCode]: int }, agents: { [agent]: int }, modes: { [mode]: int } },
   httpApprox: int | null,
@@ -976,7 +977,7 @@ ALTERNATIVES = [("root_then_move", root_then_move)]                      # >= 1;
 | `wait_idle()`、`wait_job(jobId)` | ✓ | — | ✓ |
 | `log(msg)` | ✓ | ✓（空操作，不写 runner.log：私有 verify 的推导不得落盘，§4.2） | ✓ |
 
-- `records` 每条 = v1 `flatten` 的结果（`eval/harness/journal.py:70-104`）加上 `agent`、`isPlaying`、`tsUtc`、`origin`（seq ∈ refreshWindow 为 `"refresh"`，否则 `"attempt"`）。
+- `records` 每条 = v1 `flatten` 的结果（`eval/harness/journal.py:70-104`）加上 `agent`、`isPlaying`、`tsUtc`、`origin`（seq ∈ refreshWindow 为 `"refresh"`，否则 `"attempt"`）。插件包未变时，不含插件包文件的重新导入记录（§2.9 `non_rest_changes` 末尾）。
 - `violations()`：`scope.scope_violations(records, R, A, scene, allowed)`；先剔除 `isPlaying` 记录，以及 agent 为 runner 且 origin 为 attempt 的记录（runner 自己的 `editor_stop` 等）；包含身份表补丁（`eval/design/scope-verifier-fix`，它依赖 §7.1 新增的身份字段）。
 - `direct_writes()`：A 下的文件记录中 `origin == "refresh"` 或 `source == "editor"` 的那些，即 Agent 绕过技能直接写盘的证据（供 ops 的 G4 断言）。
 - `violations()`、`direct_writes()`、`write_records()` 返回的记录里，agent 为 runner 且 origin 为 refresh 的（S3 的 `asset_refresh` 导入的文件）是带 `importedAtSubmit: true` 的副本；照样计入，`records` 本身不变。
@@ -1370,8 +1371,9 @@ private static void RegisterLifecycleFlush()
   - `SkillsForUnity/Evaluation~/pack/tasks/<ID>/**`；
   - `eval/pack/private/<ID>.py`、`eval/pack/solutions/<ID>.py`；
   - `eval/cli.py` 与 WP12 的 selftest 驱动模块（WP12 在 `eval/cli.py` 中把清单写成常量 `GATE_INPUTS`）。
+- 门禁只为实际跑用例的插件构建作证（`selftest3`）：开跑前读 `/health` 的 `packageRoot`（Unity 解析出的插件包目录）与 `assembliesLoadedAtUtc`（本次 domain 加载程序集的时间）。`packageRoot` 必须是运行 selftest3 的这个检出的 `SkillsForUnity`，否则拒绝记录门禁（`--allow-other-package` 时照记，`buildIdentity: "override"`）；`packageRoot` 下任一 `.cs`/`.asmdef`（跳过以 `.` 开头或以 `~` 结尾的名字）比 `assembliesLoadedAtUtc` 新，说明编辑器还没编译它，也拒绝记录。每题记录门禁前用开跑时的加载时间再查一次源文件，运行中改过插件源码的题不记录，selftest3 以 2 退出。只跑部分用例（`--case`）或 `--no-gate` 时只打印警告。编辑器不报这两个字段（早于该版本的插件）时打印警告，条目记 `buildIdentity: "unavailable"`。`--task` 可重复给出，也可用逗号分隔，全部累加。
 - 插件 C# 不进 hash，靠 `pluginVersion` 进键：开发中途改插件不会自动让门禁失效，所以 `/release` 的 `check_eval_pack` 步骤必须对候选版本重跑门禁（草案 P7）。
-- 门禁记录 `eval/runs/selftest/gate.json`：`{"schema":1,"gates":{"<gateKey>":{"taskId","caseVersion","unityMajor","pluginVersion","pipeline","gateInputsHash","green":bool,"cases":int,"failing":[case],"recordedAt"}}}`。同一 (taskId, caseVersion, unityMajor, pluginVersion, pipeline) 下 `gateInputsHash` 变化时，新条目取代旧条目；其余条目保留。`gate3` 逐行打印 Unity 大版本与管线。
+- 门禁记录 `eval/runs/selftest/gate.json`：`{"schema":1,"gates":{"<gateKey>":{"taskId","caseVersion","unityMajor","pluginVersion","pipeline","gateInputsHash","green":bool,"cases":int,"failing":[case],"recordedAt","buildIdentity":"verified"|"override"|"unavailable","packageRoot":string|null,"assembliesLoadedAtUtc":iso|null}}}`（后三项记录跑用例的插件构建，不进门禁键）。同一 (taskId, caseVersion, unityMajor, pluginVersion, pipeline) 下 `gateInputsHash` 变化时，新条目取代旧条目；其余条目保留。`gate3` 逐行打印 Unity 大版本与管线。
 - `gateKey` 只有一个实现：`eval/selftest3.py` 的 `gate_key(...)`（含 `pipeline`）。`usk_eval` 不提供门禁键，只提供 `environment.gate_inputs_hash`（默认布局下与 `selftest3.gate_inputs_hash` 结果相同，有测试守住）。发布检查（`check_eval_pack`）要核对门禁时用 `selftest3.gate_key`。
 
 **批量（`eval/cli.py suite3`，`eval/suite3.py`，WP16）**

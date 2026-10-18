@@ -93,6 +93,7 @@ class FakeUnity(object):
         self.spoil = {}               # path -> ["empty" (200, no body) | "garbled" (no status line), both not run |
                                       #          "cut" (run, half the body)], applied to that path's answers in turn
         self.delete_fails = False
+        self.health_extra = {}        # further /health fields, e.g. packageRoot and assembliesLoadedAtUtc
         self.collision = {}
         self.journal_path = os.path.join(project, "Library", "UnitySkills", "editor_changes.jsonl")
         self.telemetry_path = os.path.join(project, "Library", "UnitySkillsTelemetry.jsonl")
@@ -215,7 +216,7 @@ class FakeUnity(object):
                     "summaryAutoTruncate": True, "summaryPageSize": 50, "panelApprovalRequired": False,
                     "allowlistCount": 0, "domainReloadPending": False, "port": self.port,
                     "compilation": {"isCompiling": self.compiling, "isUpdating": False, "domainReloadPending": False},
-                    "queueStats": {"queued": 0, "totalReceived": self.received}}
+                    "queueStats": {"queued": 0, "totalReceived": self.received}, **self.health_extra}
 
     # ------------------------------------------------------------------ editor model
 
