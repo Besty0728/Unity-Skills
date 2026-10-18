@@ -57,7 +57,12 @@ asset folder (`.meta` included) when the task is issued and, for the imported pa
 the editor, or by the runner's own refresh, of a file that existed at issue with the same bytes is dropped from the
 records the verifiers see and counted in `evidence.journal.unchangedReimports`. Created, changed, deleted and moved
 files, a changed `.meta` and the agent's own REST imports still count; so does everything when Unity rewrites the
-file itself.
+file itself. The editor also imports on its own time the files that a skill of the agent wrote or moved: a moved
+script some seconds after the move, the prefabs that use a script once the compile after its change is done (which
+can be earlier than the skill that edits them, as in DC3's `rename_and_reset`). Such an import of the editor is
+dropped as well, and counted in `evidence.journal.skillImports`, when the agent's own REST calls in the same attempt
+produced a record of that file (an import, a move to that path or a property change on that asset), whichever came
+first. A file written to disk directly has no such record and still counts.
 
 ### Gate
 

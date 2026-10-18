@@ -747,8 +747,10 @@ def _journal_records(rt, state):
 
 
 def _frozen_records(rt, state):
-    """(records, package_reimports, asset_reimports): the frozen journal's records minus the re-imports that S6 found
-    to be no evidence of anything: unchanged plugin files and unchanged files under A (contract 2.9, 5.7)."""
+    """(records, package_reimports, asset_reimports, skill_imports): the frozen journal's records minus the imports
+    that are no evidence of a write around the skills: re-imports of unchanged plugin files and of unchanged files
+    under A (judged at S6), and the editor's imports of files the agent's own skills wrote or moved (contract
+    2.9, 5.7)."""
     return J.split_reimports(_journal_records(rt, state), state)
 
 
@@ -987,7 +989,7 @@ def _write_result(rt, session, state, status, reasons, score=None, verifier=None
                         "agents": J.agents(entries), "refreshWindow": journal_state.get("refreshWindow"),
                         "forcedPlayModeExit": bool(journal_state.get("forcedPlayModeExit")),
                         "directWrites": direct_writes, "packageReimports": len(frozen[1]),
-                        "unchangedReimports": len(frozen[2])},
+                        "unchangedReimports": len(frozen[2]), "skillImports": len(frozen[3])},
             "telemetry": state["telemetry"].get("summary") or T.summarize([], []),
             "httpApprox": approx,
             "freeze": {"inflightJobs": (state.get("freeze") or {}).get("inflightJobs") or 0},

@@ -228,17 +228,22 @@ def split_package_reimports(records, judged):
     return kept, reimports
 
 
+def asset_relative(path, asset_root):
+    """`path` relative to the run's asset folder A, '/'-separated and without '.meta'; None when it is not below A."""
+    prefix = str(asset_root or "").replace("\\", "/").rstrip("/") + "/"
+    path = str(path or "").replace("\\", "/")
+    if path.endswith(".meta"):
+        path = path[:-5]
+    return path[len(prefix):] if len(prefix) > 1 and path.startswith(prefix) and len(path) > len(prefix) else None
+
+
 def asset_reimport_path(rec, asset_root):
     """Path relative to the run's asset folder A of the file that an import record of the editor or of the runner's own
     calls names, '.meta' dropped; None for every other record. An import made by the agent's own REST call is never
     judged this way: it is its write, whatever the bytes."""
     if rec.get("kind") != "imported" or (rec.get("source") == "rest" and rec.get("agent") != RUNNER_AGENT):
         return None
-    prefix = str(asset_root or "").replace("\\", "/").rstrip("/") + "/"
-    path = str(rec.get("assetPath") or "").replace("\\", "/")
-    if path.endswith(".meta"):
-        path = path[:-5]
-    return path[len(prefix):] if len(prefix) > 1 and path.startswith(prefix) and len(path) > len(prefix) else None
+    return asset_relative(rec.get("assetPath"), asset_root)
 
 
 def split_asset_reimports(records, judged, asset_root):
@@ -255,13 +260,45 @@ def split_asset_reimports(records, judged, asset_root):
     return kept, reimports
 
 
+def skill_path(rec, asset_root):
+    """Path relative to A of the file that a record of the agent's own REST calls shows a skill wrote: an import, the
+    destination of a move, the asset a property was changed on. None for any other record: a deletion writes
+    nothing; the runner's own calls and the records of its refresh window are not the agent's skills (the refresh
+    imports exactly the files written around them); "mixed" and "unknown" only say that several callers or none
+    were identified in the window, so they still count as REST."""
+    if rec.get("source") != "rest" or rec.get("agent") == RUNNER_AGENT or rec.get("origin") == "refresh" \
+            or rec.get("kind") == "deleted":
+        return None
+    return asset_relative(rec.get("assetPath"), asset_root)
+
+
+def split_skill_imports(records, asset_root):
+    """(kept, explained) of flattened records. An import record of the editor for a file under A that the agent's own
+    skills wrote or moved in the same attempt is Unity processing that file on its own time, not a write around the
+    skills: the editor imports a moved file some seconds after the move, and after the compile that follows a script
+    change it imports the prefabs that use the script, before the skill that edits them is called (live, DC3
+    rename_and_reset: 5 s earlier). Which of the two records came first is therefore no evidence and is not looked
+    at. A file nobody touched with a skill, written to disk directly and imported when Unity noticed it or when the
+    runner refreshed, has no such record and is kept."""
+    written = {skill_path(rec, asset_root) for rec in records} - {None}
+    kept, explained = [], []
+    for rec in records:
+        rel = asset_relative(rec.get("assetPath"), asset_root) \
+            if rec.get("kind") == "imported" and rec.get("source") == "editor" else None
+        (explained if rel in written else kept).append(rec)
+    return kept, explained
+
+
 def split_reimports(records, state):
-    """(kept, package_reimports, asset_reimports): flattened records minus the re-imports that the S6 judgments in
-    state.json (packageTree, assetTree) found to be no evidence (contract 2.9, 5.7)."""
+    """(kept, package_reimports, asset_reimports, skill_imports): flattened records minus the imports that are no
+    evidence of a write around the skills (contract 2.9, 5.7): re-imports of unchanged plugin files and of unchanged
+    files under A, judged at S6 and kept in state.json (packageTree, assetTree), and the editor's imports of files
+    the agent's own skills wrote or moved, which the journal alone shows."""
     kept, package = split_package_reimports(records, (state.get("packageTree") or {}).get("atSubmit"))
-    kept, assets = split_asset_reimports(kept, (state.get("assetTree") or {}).get("atSubmit"),
-                                         (state.get("scope") or {}).get("assetRoot"))
-    return kept, package, assets
+    root = (state.get("scope") or {}).get("assetRoot")
+    kept, assets = split_asset_reimports(kept, (state.get("assetTree") or {}).get("atSubmit"), root)
+    kept, skills = split_skill_imports(kept, root)
+    return kept, package, assets, skills
 
 
 def agents(events):
