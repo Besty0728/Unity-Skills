@@ -76,6 +76,7 @@ namespace UnitySkills
             {
                 var targets = SkillRouter.CollectTargetsFromArgs(args) ?? new List<UnityEngine.Object>();
                 AppendComponentTarget(args, targets);
+                ParticleSkills.AppendComponentTargets(targets);
                 foreach (var obj in targets)
                 {
                     if (obj == null) continue;
@@ -226,6 +227,9 @@ namespace UnitySkills
             {
                 var targets = SkillRouter.CollectTargetsFromArgs(args) ?? new List<UnityEngine.Object>();
                 AppendComponentTarget(args, targets);
+                // A particle write changes the ParticleSystem / ParticleSystemRenderer, which the GameObject + Transform
+                // capture above never sees: without them a successful particle_configure would diff as empty.
+                ParticleSkills.AppendComponentTargets(targets);
 
                 foreach (var obj in targets)
                 {

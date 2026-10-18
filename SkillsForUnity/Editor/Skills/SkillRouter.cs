@@ -28,6 +28,9 @@ namespace UnitySkills
         internal sealed class ParameterValidationResult
         {
             public JObject Args { get; set; }
+            /// <summary>The request body as received. Args is already parsed, and parsing keeps only the last of two equal keys;
+            /// a planner that must refuse duplicate keys (the particle configs) scans this text instead.</summary>
+            public string RawJson { get; set; }
             public object[] InvokeArgs { get; set; }
             public List<string> MissingParams { get; } = new List<string>();
             public List<object> UnknownParams { get; } = new List<object>();
@@ -390,6 +393,13 @@ namespace UnitySkills
             {"rb", new[]{"rigidbody"}}, {"col", new[]{"collider"}},
             {"cam", new[]{"camera"}}, {"img", new[]{"texture","image"}},
             {"fx", new[]{"particle","effect"}}, {"vfx", new[]{"particle","effect"}},
+            // Built-in particle systems (Shuriken). English effect words (smoke, fire, rain) are particle_* tags, not synonyms:
+            // as synonyms they would also expand "run smoke test" or "fire an event" into particle intents.
+            {"shuriken", new[]{"particle"}},
+            {"粒子", new[]{"particle"}}, {"特效", new[]{"particle","effect"}},
+            {"发射", new[]{"emission","particle"}}, {"爆发", new[]{"burst","particle"}},
+            {"烟雾", new[]{"smoke","particle"}}, {"火焰", new[]{"fire","particle"}},
+            {"雨雪", new[]{"rain","snow","particle"}}, {"下雨", new[]{"rain","particle"}}, {"下雪", new[]{"snow","particle"}},
         };
 
         private static readonly Dictionary<string, SkillOperation> _operationKeywords = new Dictionary<string, SkillOperation>(StringComparer.OrdinalIgnoreCase)
@@ -441,6 +451,8 @@ namespace UnitySkills
             {"cinemachine", SkillCategory.Cinemachine},
             {"probuilder", SkillCategory.ProBuilder},
             {"xr", SkillCategory.XR},
+            {"particle", SkillCategory.Particle}, {"particles", SkillCategory.Particle}, {"shuriken", SkillCategory.Particle},
+            {"particlesystem", SkillCategory.Particle}, {"粒子", SkillCategory.Particle},
         };
 
         // Words that carry no routing information; they never earn name/tag/description credit. Operation verbs are not

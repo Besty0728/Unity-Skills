@@ -564,6 +564,7 @@ namespace UnitySkills
             SkillCategory.NavMesh,
             SkillCategory.Audio,
             SkillCategory.PrimeTween,
+            SkillCategory.Particle,
             // Same reasoning as _guideHidden: Sample's write operations produce scene content.
             SkillCategory.Sample,
         };
