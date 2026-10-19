@@ -21,7 +21,7 @@ public class {cls} : MonoBehaviour
     {{
         if (target == null || {muzzle_field} == null || {prefab_field} == null) return null;
         Vector3 origin = {muzzle_field}.position;
-        GameObject shell = Instantiate({prefab_field}, origin, Quaternion.identity);
+        GameObject shell = Instantiate({prefab_field}, {spawn_at}, Quaternion.identity);
         Rigidbody rb = shell.GetComponent<Rigidbody>();
         if (rb == null) return shell;
 {body}
@@ -31,7 +31,11 @@ public class {cls} : MonoBehaviour
 """
 
 SOLVE_BODY_VELOCITY_CHANGE = """        float dt = Time.fixedDeltaTime > 0f ? Time.fixedDeltaTime : 0.02f;
+#if UNITY_6000_0_OR_NEWER
+        float drag = rb.linearDamping;
+#else
         float drag = rb.drag;
+#endif
         float factor = Mathf.Clamp01(1f - drag * dt);
         int steps = 60;
         float sumF = 0f;
@@ -50,7 +54,11 @@ SOLVE_BODY_VELOCITY_CHANGE = """        float dt = Time.fixedDeltaTime > 0f ? Ti
         rb.AddForce(v0, ForceMode.VelocityChange);"""
 
 SOLVE_BODY_IMPULSE_MASS = """        float dt = Time.fixedDeltaTime > 0f ? Time.fixedDeltaTime : 0.02f;
+#if UNITY_6000_0_OR_NEWER
+        float drag = rb.linearDamping;
+#else
         float drag = rb.drag;
+#endif
         float factor = 1f / (1f + drag * dt);
         int steps = 65;
         float sumF = 0f;
@@ -74,7 +82,11 @@ SOLVE_BODY_NO_DRAG = """        float t = 1.2f;
         rb.AddForce(v0, ForceMode.VelocityChange);"""
 
 SOLVE_BODY_WRONG_FORCEMODE = """        float dt = Time.fixedDeltaTime > 0f ? Time.fixedDeltaTime : 0.02f;
+#if UNITY_6000_0_OR_NEWER
+        float drag = rb.linearDamping;
+#else
         float drag = rb.drag;
+#endif
         float factor = Mathf.Clamp01(1f - drag * dt);
         int steps = 60;
         float sumF = 0f;
@@ -93,7 +105,11 @@ SOLVE_BODY_WRONG_FORCEMODE = """        float dt = Time.fixedDeltaTime > 0f ? Ti
         rb.AddForce(v0, ForceMode.Force);"""
 
 SOLVE_BODY_WRONG_GRAVITY = """        float dt = Time.fixedDeltaTime > 0f ? Time.fixedDeltaTime : 0.02f;
+#if UNITY_6000_0_OR_NEWER
+        float drag = rb.linearDamping;
+#else
         float drag = rb.drag;
+#endif
         float factor = Mathf.Clamp01(1f - drag * dt);
         int steps = 60;
         float sumF = 0f;
@@ -116,7 +132,11 @@ SOLVE_BODY_FIXED_ANGLE = """        Vector3 dir = (muzzle.forward + Vector3.up *
 
 SOLVE_BODY_FIRST_TARGET = """        if (_cachedGoal == Vector3.zero) _cachedGoal = target.position;
         float dt = Time.fixedDeltaTime > 0f ? Time.fixedDeltaTime : 0.02f;
+#if UNITY_6000_0_OR_NEWER
+        float drag = rb.linearDamping;
+#else
         float drag = rb.drag;
+#endif
         float factor = Mathf.Clamp01(1f - drag * dt);
         int steps = 60;
         float sumF = 0f;
@@ -136,7 +156,11 @@ SOLVE_BODY_FIRST_TARGET = """        if (_cachedGoal == Vector3.zero) _cachedGoa
 
 SOLVE_BODY_LOCAL_SPACE = """        Vector3 localDisp = muzzle.InverseTransformPoint(target.position);
         float dt = Time.fixedDeltaTime > 0f ? Time.fixedDeltaTime : 0.02f;
+#if UNITY_6000_0_OR_NEWER
+        float drag = rb.linearDamping;
+#else
         float drag = rb.drag;
+#endif
         float factor = Mathf.Clamp01(1f - drag * dt);
         int steps = 60;
         float sumF = 0f;
@@ -155,7 +179,11 @@ SOLVE_BODY_LOCAL_SPACE = """        Vector3 localDisp = muzzle.InverseTransformP
         rb.AddForce(v0, ForceMode.VelocityChange);"""
 
 SOLVE_BODY_STRIP_RIGIDBODY = """        rb.mass = 1f;
+#if UNITY_6000_0_OR_NEWER
+        rb.linearDamping = 0f;
+#else
         rb.drag = 0f;
+#endif
         float t = 1.2f;
         Vector3 disp = target.position - origin;
         Vector3 v0 = (disp - 0.5f * Physics.gravity * t * t) / t;
@@ -199,6 +227,7 @@ def _source(cls, variant=None, serialize_private=False, muzzle_field="muzzle", p
         muzzle_field=muzzle_field,
         prefab_field=prefab_field,
         extra_fields=extra,
+        spawn_at="target.position" if variant == "spawn-at-pad" else "origin",
         body=body,
     )
 
@@ -247,6 +276,12 @@ def _solve(ctx, variant=None, serialize_private=False, holder_ref=None, muzzle_p
         h["prefab"],
     )
     return _answer(ctx, holder_ref=holder_ref)
+
+
+def _wait(ctx, res):
+    if isinstance(res, dict) and res.get("jobId"):
+        ctx.wait_job(res["jobId"])
+    ctx.wait_idle()
 
 
 def _write_file(ctx, asset_path, data):
@@ -311,6 +346,19 @@ def local_space_muzzle(ctx):
 def strip_rigidbody_values(ctx):
     """Overwrites the spawned Rigidbody's mass to 1 and drag to 0 instead of keeping the prefab's Rigidbody values."""
     return _solve(ctx, variant="strip-rigidbody")
+
+
+def spawn_at_pad(ctx):
+    """Instantiates the projectile at the target's position instead of the muzzle."""
+    return _solve(ctx, variant="spawn-at-pad")
+
+
+def edit_gauge(ctx):
+    """Rewrites the fixture's gauge script so that it reports a zero closest approach."""
+    answer = reference(ctx)
+    _wait(ctx, ctx.c.write("script_replace", scriptPath=ctx.handles["gaugeScript"],
+                           find="closest = Mathf.Min(closest, Segment(before, now, here));", replace="closest = 0f;"))
+    return answer
 
 
 def on_decoy_stand(ctx):
@@ -383,7 +431,7 @@ def direct_file(ctx):
 
 NEGATIVES = [
     Negative("no_drag", no_drag, {"D10"}, "closed-form vacuum parabola ignores Rigidbody linear drag"),
-    Negative("wrong_forcemode", wrong_forcemode, {"D9", "D10"},
+    Negative("wrong_forcemode", wrong_forcemode, {"D10"},
              "ForceMode.Force instead of VelocityChange or mass-scaled Impulse"),
     Negative("wrong_gravity", wrong_gravity, {"D10"}, "launch computed for -9.81 instead of active Physics.gravity"),
     Negative("fixed_angle", fixed_angle, {"D10"}, "fires at a fixed angle and speed"),
@@ -392,10 +440,12 @@ NEGATIVES = [
              "solves in the rotated muzzle's local space without transforming back to world space"),
     Negative("strip_rigidbody_values", strip_rigidbody_values, {"D9", "D10"},
              "overwrites the spawned Rigidbody mass and drag instead of keeping the prefab's values"),
+    Negative("spawn_at_pad", spawn_at_pad, {"D9", "D10"}, "projectile instantiated at the target instead of the muzzle"),
+    Negative("edit_gauge", edit_gauge, {"D5", "D9", "D10"}, "the fixture's gauge script rewritten to report a hit"),
     Negative("on_decoy_stand", on_decoy_stand, {"D3", "D9", "D10"},
              "component attached to the decoy Stand rig instead of Battery"),
-    Negative("field_renamed", field_renamed, {"D1", "D3", "D9", "D10"}, "serialized field muzzle renamed to barrel"),
-    Negative("modified_gravity", modified_gravity, {"D4", "D9", "D10"}, "project gravity modified in Edit Mode"),
+    Negative("field_renamed", field_renamed, {"D1", "D3"}, "serialized field muzzle renamed to barrel"),
+    Negative("modified_gravity", modified_gravity, {"D4", "D6", "D9", "D10"}, "project gravity modified in Edit Mode"),
     Negative("compile_error", compile_error, {"D2", "D3", "D9", "D10"}, "script has a syntax error"),
     Negative("extra_script", extra_script, {"D5"}, "an extra C# file added under Assets"),
     Negative("wrong_report", wrong_report, {"D8"}, "answer reports the wrong launcher path"),

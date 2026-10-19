@@ -6,8 +6,9 @@ Fixture: R/<Range> (seeded position and yaw) > <Battery> (seeded position and ya
 pitch and yaw); R/<Range>/<Deck> (seeded position and yaw) > three cylindrical landing pads at distinct world heights
 and distances; R/<Range>/<Stand> (a second rig in the range); A/Prefabs/<Shell>_<k>.prefab (a Sphere with a Rigidbody
 whose mass and linear drag are set on the prefab asset, plus an IsTrigger=false SphereCollider); and a seeded project
-gravity vector set via physics_set_gravity. Class name, object names, prefab parameters, gravity and pad coordinates
-come from the seed.
+gravity vector set via physics_set_gravity. The pads carry no collider; each pad holds a flight gauge component
+(a fixture script) that records the closest approach of every Rigidbody to the pad. Class names, object names, prefab
+parameters, gravity and pad coordinates come from the seed.
 """
 import hashlib
 import os
@@ -24,6 +25,70 @@ RIG_NAMES = (
 )
 YAWS = (25, 40, 55, 70, 115, 145, -35, -60)
 PITCHES = (-12, -8, 10, 14, 18)
+GAUGE_NAMES = ("RangeGauge", "FlightMeter", "PassRecorder")
+GAUGE_SRC = """using System.Collections.Generic;
+using UnityEngine;
+
+public class @CLS@ : MonoBehaviour
+{
+    public Vector3 origin;
+    public float mass;
+    public float damping;
+    public float closest = 1000f;
+    public int bodies;
+    public int altered;
+    public int offOrigin;
+
+    readonly Dictionary<Rigidbody, Vector3> last = new Dictionary<Rigidbody, Vector3>();
+    readonly HashSet<Rigidbody> changed = new HashSet<Rigidbody>();
+
+    void FixedUpdate()
+    {
+#if UNITY_6000_4_OR_NEWER
+        var found = Object.FindObjectsByType<Rigidbody>(FindObjectsInactive.Exclude);
+#else
+        var found = Object.FindObjectsByType<Rigidbody>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+#endif
+        var here = transform.position;
+        foreach (var body in found)
+        {
+            var now = body.position;
+            if (!last.TryGetValue(body, out var before))
+            {
+                before = now;
+                bodies++;
+                if (Vector3.Distance(now, origin) > 0.15f) offOrigin++;
+            }
+            last[body] = now;
+            closest = Mathf.Min(closest, Segment(before, now, here));
+            if (!changed.Contains(body) && !Intact(body))
+            {
+                changed.Add(body);
+                altered++;
+            }
+        }
+    }
+
+    bool Intact(Rigidbody body)
+    {
+#if UNITY_6000_0_OR_NEWER
+        float d = body.linearDamping;
+#else
+        float d = body.drag;
+#endif
+        return !body.isKinematic && body.useGravity && Mathf.Abs(body.mass - mass) < 0.001f && Mathf.Abs(d - damping) < 0.001f;
+    }
+
+    static float Segment(Vector3 a, Vector3 b, Vector3 p)
+    {
+        var ab = b - a;
+        float len = ab.sqrMagnitude;
+        float t = len > 0f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / len) : 0f;
+        return Vector3.Distance(a + ab * t, p);
+    }
+}
+"""
+GAUGE_FIELDS = ("origin", "mass", "damping")
 
 
 def launcher_spec(seed):
@@ -43,6 +108,13 @@ def cs_files(project_path):
         out += [os.path.relpath(os.path.join(base, name), project_path).replace(os.sep, "/")
                 for name in sorted(files) if name.endswith(".cs")]
     return sorted(out)
+
+
+def gauge_settings(props):
+    """The fixed settings of a gauge component from its serialized properties, as numbers."""
+    props = props or {}
+    return {"origin": V.floats(props.get("origin")), "mass": V.floats(props.get("mass")),
+            "damping": V.floats(props.get("damping"))}
 
 
 def file_sha(project_path, asset_path):
@@ -137,7 +209,25 @@ class DC4(PublicTask):
             pad = make("%s_%d" % (pad_prefix, index + 1), deck, primitiveType="Cylinder",
                        x=round(muzzle_pos[0] + dx, 2), y=round(muzzle_pos[1] + hy, 2),
                        z=round(muzzle_pos[2] + dz, 2), scaleX=1.2, scaleY=0.1, scaleZ=1.2, space="world")
+            c.write("component_remove", componentType="CapsuleCollider", **address(pad))
             pads.append(pad)
+
+        gauge = "%s_%s" % (rng.choice(GAUGE_NAMES), k)
+        gauge_script = ctx.asset("Scripts", gauge + ".cs")
+        res = c.write("script_create", scriptName=gauge, folder=ctx.asset("Scripts"),
+                      content=GAUGE_SRC.replace("@CLS@", gauge))
+        if isinstance(res, dict) and res.get("jobId"):
+            ctx.wait_job(res["jobId"])
+        ctx.wait_idle()
+        if not ctx.probe.guid(gauge_script):
+            raise RuntimeError("DC4 fixture: the gauge script was not imported: %s" % gauge_script)
+        settings = {"origin": ",".join("%.6g" % v for v in muzzle_pos), "mass": str(spec["mass"]),
+                    "damping": str(spec["drag"])}
+        for pad in pads:
+            c.write("component_add", componentType=gauge, **address(pad))
+            for name in GAUGE_FIELDS:
+                c.write("component_set_serialized_property", componentType=gauge, propertyPath=name,
+                        value=settings[name], **address(pad))
 
         return {
             "arena": arena,
@@ -155,6 +245,8 @@ class DC4(PublicTask):
             "padPaths": [ctx.path(range_name, deck_name, "%s_%d" % (pad_prefix, i + 1)) for i in range(3)],
             "prefab": prefab_path,
             "script": ctx.asset("Scripts", cls + ".cs"),
+            "gaugeScript": gauge_script,
+            "gauge": gauge,
             "prevGravity": [gx_before, gy_before, gz_before],
         }
 
@@ -171,6 +263,8 @@ class DC4(PublicTask):
                 "pads": [[ref, V.go_state(p, ref)] for ref in h["pads"]],
                 "prefab": {"sha": file_sha(ctx.project_path, h["prefab"]), "guid": p.guid(h["prefab"])},
                 "gravity": ctx.read("physics_get_gravity"),
+                "gaugeSha": file_sha(ctx.project_path, h["gaugeScript"]),
+                "gaugeSettings": [[ref, gauge_settings(p.ser(ref, h["gauge"]))] for ref in h["pads"]],
                 "scripts": cs_files(ctx.project_path),
             },
             "digests": {},

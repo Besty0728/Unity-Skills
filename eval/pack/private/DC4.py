@@ -1,6 +1,11 @@
 ﻿"""DC4 private verifier: a ballistic launcher that spawns a Rigidbody projectile from a rotated muzzle and launches it
 through Unity physics (accounting for mass, linear drag, project gravity and fixedDeltaTime) so that each of three
-shots reaches its hidden target pad within 0.25 m.
+shots passes within 0.25 m of its hidden target pad.
+
+Flight is measured in Play Mode by a fixture-owned gauge component on each pad (a script that records the closest
+approach of every Rigidbody to the pad and flags bodies that were spawned away from the muzzle or whose Rigidbody
+settings differ from the prefab's). The scenario reads each pad's gauge before and after its shot; the pads have no
+colliders, so projectiles fly through them.
 
 What the task probes:
   * Closed-form vacuum trajectory ignores Rigidbody linear drag (~0.35-0.55) and falls 1.5-3.0 m short.
@@ -17,7 +22,6 @@ What the task probes:
 """
 import hashlib
 import json
-import math
 import os
 import random
 import re
@@ -28,8 +32,6 @@ COMMENT_RE = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
 SCRIPT_RE = re.compile(r"\.cs(\.meta)?$")
 HIT_TOL = 0.25
 VALUE_TOL = 1e-3
-FLIGHT_WINDOW_S = 2.5
-FIXED_DT = 0.02
 
 ASSERTIONS = [
     ("D1", 0.75, False, ["R1"], "the script declares the class, the serialized fields muzzle and projectilePrefab, "
@@ -43,11 +45,11 @@ ASSERTIONS = [
     ("D7", 0.25, False, ["G4"], "no file other than C# scripts was written under A around the skills"),
     ("D8", 0.5, False, ["R7", "G8"], "the answer reports the script path, the launcher's hierarchy path and the "
                                      "projectile prefab path"),
-    ("D9", 1.25, False, ["R2", "R6"], "in Play Mode each Fire(target) returns a newly spawned projectile at the "
-                                      "muzzle keeping the prefab's non-kinematic Rigidbody mass, drag and useGravity"),
-    ("D10", 3.75, False, ["R2", "R6"], "in Play Mode all 3 shots follow a free-flight ballistic trajectory under "
-                                       "active gravity and drag and reach their target within 0.25 m (fraction of 3 "
-                                       "shots) with no error logged"),
+    ("D9", 1.25, False, ["R2", "R6"], "in Play Mode each Fire(target) spawns exactly one projectile at the muzzle "
+                                      "keeping the prefab's non-kinematic Rigidbody mass, drag and useGravity, "
+                                      "returns it, and the gauges and project gravity are untouched"),
+    ("D10", 3.75, False, ["R2", "R6"], "in Play Mode the free flight of each of the 3 projectiles passes within "
+                                       "0.25 m of its target pad (fraction of 3 shots) with no error logged"),
 ]
 
 HINTS = {
@@ -61,21 +63,23 @@ HINTS = {
     "D3": {"zh-CN": "组件只挂在指定的发射架对象上，并在场景中把 muzzle 指向对应的发射口 Transform、projectilePrefab 指向弹丸预制体。",
            "en": "Attach the component only to the specified battery object, and set muzzle to its muzzle Transform "
                  "and projectilePrefab to the projectile prefab in the scene."},
-    "D4": {"zh-CN": "不要改动弹丸预制体、Physics.gravity 或场景中已有的对象与变换。",
-           "en": "Do not modify the projectile prefab, Physics.gravity, or existing scene objects and transforms."},
-    "D5": {"zh-CN": "除该发射器脚本外，不要新增或改动任何其他代码文件。",
-           "en": "Do not add or modify any code file other than the launcher script."},
+    "D4": {"zh-CN": "不要改动弹丸预制体、Physics.gravity、场景中已有的对象与变换，以及目标台上已有的组件与设置。",
+           "en": "Do not modify the projectile prefab, Physics.gravity, existing scene objects and transforms, or the "
+                 "components and settings already on the pads."},
+    "D5": {"zh-CN": "除该发射器脚本外，不要新增或改动任何其他代码文件（包括已有脚本）。",
+           "en": "Do not add or modify any code file other than the launcher script, existing scripts included."},
     "D6": {"zh-CN": "所有修改都必须在 R 与 A 之内，且只能保存本轮场景。",
            "en": "Keep every change inside R and A, and save no scene but this run's."},
     "D7": {"zh-CN": "除 C# 脚本外，不要绕过技能直接在 A 下写文件。",
            "en": "Apart from C# scripts, do not write files under A directly; use the skills."},
     "D8": {"zh-CN": "在答案中如实填写 scriptPath、launcherPath、projectilePrefabPath 以及 declaredComplete。",
            "en": "Report the actual scriptPath, launcherPath, projectilePrefabPath and declaredComplete in the answer."},
-    "D9": {"zh-CN": "Fire(target) 必须在 muzzle 的世界位置实例化 projectilePrefab 并返回该实例，保留预制体 Rigidbody 的 "
-                    "mass、drag 与 useGravity（非 kinematic），不要把弹丸直接瞬移或改写其刚体属性。",
-           "en": "Fire(target) must instantiate projectilePrefab at muzzle.position and return that instance with the "
-                 "prefab Rigidbody's mass, drag and useGravity intact (non-kinematic); do not teleport it or overwrite "
-                 "its Rigidbody settings."},
+    "D9": {"zh-CN": "每次 Fire(target) 必须恰好在 muzzle 的世界位置实例化一个 projectilePrefab 并返回该实例，保留预制体 "
+                    "Rigidbody 的 mass、drag 与 useGravity（非 kinematic），不要把弹丸直接瞬移或改写其刚体属性，也不要改动 "
+                    "Physics.gravity。",
+           "en": "Each Fire(target) must instantiate exactly one projectilePrefab at muzzle.position and return that "
+                 "instance with the prefab Rigidbody's mass, drag and useGravity intact (non-kinematic); do not "
+                 "teleport it, overwrite its Rigidbody settings or change Physics.gravity."},
     "D10": {"zh-CN": "发射初速度需同时考虑当前 Physics.gravity、Rigidbody 的线性阻力（drag/linearDamping）、质量（若使用 "
                      "ForceMode.Impulse 需乘以 mass，或使用 ForceMode.VelocityChange）以及 Time.fixedDeltaTime，在世界坐标系下求解每个目标的弹道。",
             "en": "Compute the launch in world space for each target accounting for the active Physics.gravity, the "
@@ -92,6 +96,12 @@ def launcher_spec(seed):
         "drag": rng.choice((0.35, 0.45, 0.55)),
         "gravityY": rng.choice((-12.0, -14.0, -15.0, -16.0)),
     }
+
+
+def gauge_settings(props):
+    props = props or {}
+    return {"origin": V.floats(props.get("origin")), "mass": V.floats(props.get("mass")),
+            "damping": V.floats(props.get("damping"))}
 
 
 def class_name(handles):
@@ -176,60 +186,6 @@ def _cheating_source(code):
     return False
 
 
-# ---------------------------------------------------------------- reference physics math
-
-
-def _dist(a, b):
-    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
-
-
-def simulate_trajectory(origin, velocity, gravity_y, drag, steps=130, dt=FIXED_DT):
-    """Discrete Symplectic Euler trajectory matching PhysX with linear drag under FixedUpdate step dt:
-    each step applies gravity v += g * dt, damping v *= 1 / (1 + drag * dt) (or clamp(1 - drag * dt)),
-    and position integration p += v * dt. Returns list of (t, (x, y, z), (vx, vy, vz)) for both PhysX
-    damping conventions so a small solver difference between 1/(1+d*dt) and (1-d*dt) is accepted."""
-    trajectories = []
-    for mode in ("linear", "reciprocal"):
-        px, py, pz = float(origin[0]), float(origin[1]), float(origin[2])
-        vx, vy, vz = float(velocity[0]), float(velocity[1]), float(velocity[2])
-        points = [(0.0, (px, py, pz), (vx, vy, vz))]
-        for step in range(1, steps + 1):
-            vy += float(gravity_y) * dt
-            factor = max(0.0, 1.0 - float(drag) * dt) if mode == "linear" else 1.0 / (1.0 + float(drag) * dt)
-            vx *= factor
-            vy *= factor
-            vz *= factor
-            px += vx * dt
-            py += vy * dt
-            pz += vz * dt
-            points.append((round(step * dt, 4), (px, py, pz), (vx, vy, vz)))
-        trajectories.append(points)
-    return trajectories
-
-
-def solve_launch_velocity(origin, goal, gravity_y, drag, flight_steps=60, dt=FIXED_DT, mode="linear"):
-    """Exact discrete inverse for initial velocity v0 so that after `flight_steps` FixedUpdate steps of length `dt`
-    the projectile starting at `origin` lands exactly at `goal`."""
-    factor = max(0.0, 1.0 - float(drag) * dt) if mode == "linear" else 1.0 / (1.0 + float(drag) * dt)
-    sum_f = 0.0
-    grav_y = 0.0
-    cur_f = 1.0
-    vy_g = 0.0
-    for _ in range(flight_steps):
-        cur_f *= factor
-        sum_f += cur_f * dt
-        vy_g = (vy_g + float(gravity_y) * dt) * factor
-        grav_y += vy_g * dt
-    dx = float(goal[0]) - float(origin[0])
-    dy = float(goal[1]) - float(origin[1])
-    dz = float(goal[2]) - float(origin[2])
-    return (dx / sum_f, (dy - grav_y) / sum_f, dz / sum_f)
-
-
-def min_distance_to_goal(points, goal):
-    return min(_dist(pos, goal) for _t, pos, _vel in points)
-
-
 # ---------------------------------------------------------------- static verification
 
 
@@ -279,7 +235,7 @@ def verify(ctx, card):
         diffs["gravity"] = now_grav
     for key in ("arena", "battery", "muzzle", "stand", "standMuzzle", "deck"):
         before, now = dict(c0.get(key) or {}), dict(V.go_state(p, h[key]) or {})
-        if key == "battery":
+        if key in ("battery", "stand"):
             before.pop("components", None)
             now.pop("components", None)
         ok, diff = V.same(before, now)
@@ -289,10 +245,16 @@ def verify(ctx, card):
         ok, diff = V.same(state, V.go_state(p, ref))
         if not ok:
             diffs["pad_%s" % str(ref)] = diff
+    for ref, state in c0.get("gaugeSettings") or []:
+        ok, diff = V.same(state, gauge_settings(p.ser(ref, h["gauge"])))
+        if not ok:
+            diffs["gauge_%s" % str(ref)] = diff
     card.check("D4", not diffs, actual=diffs)
 
     added = sorted(set(cs_files(ctx.project_path)) - set(c0.get("scripts") or []))
-    card.check("D5", set(added) <= {h["script"]}, expected=[h["script"]], actual=added)
+    gauge_sha = _sha(ctx, h["gaugeScript"])
+    card.check("D5", set(added) <= {h["script"]} and gauge_sha == c0.get("gaugeSha"), expected=[h["script"]],
+               actual={"added": added, "gaugeSha": gauge_sha})
 
     bad = ctx.violations()
     card.check("D6", not bad, actual={"violations": bad[:10]})
@@ -311,9 +273,14 @@ def verify(ctx, card):
                actual=ctx.answer)
 
 
+def _gauge_step(ctx, pad):
+    return {"kind": "read", "skill": "component_get_serialized_properties",
+            "args": dict({"componentType": ctx.handles["gauge"]}, **V.address(pad))}
+
+
 def SCENARIO(ctx):
-    """Play Mode: invokes Fire(pad) on the launcher component for each of the 3 target pads, waiting 2.6 s after each
-    shot so the projectile completes its flight, and ends with an isPlaying assert."""
+    """Play Mode: for each of the 3 target pads, reads its gauge, invokes Fire(pad) on the launcher component, waits
+    2.6 s for the flight and reads the gauge again; ends with a gravity read and an isPlaying assert."""
     check = {"kind": "assert", "skill": "editor_get_state", "select": "isPlaying", "expected": True}
     if not compiled(ctx):
         return {"executionMode": "edit", "timeoutSeconds": 30, "steps": [check]}
@@ -325,7 +292,7 @@ def SCENARIO(ctx):
     where = V.address(target_holder)
     steps = [{"kind": "wait_frames", "frames": 2}]
     for pad in ctx.handles["pads"]:
-        arg_ref = V.address(pad, "reference")
+        steps.append(_gauge_step(ctx, pad))
         steps.append({
             "kind": "invoke",
             "skill": "component_invoke_method",
@@ -333,97 +300,71 @@ def SCENARIO(ctx):
                 "componentType": cls,
                 "methodName": "Fire",
                 "parameterTypes": json.dumps(["UnityEngine.Transform"]),
-                "arguments": json.dumps([arg_ref]),
+                "arguments": json.dumps([V.address(pad, "reference")]),
             }, **where),
         })
         steps.append({"kind": "wait_seconds", "seconds": 2.6})
+        steps.append(_gauge_step(ctx, pad))
     steps.append({"kind": "read", "skill": "physics_get_gravity", "args": {}})
     steps.append(check)
     return {"executionMode": "play", "timeoutSeconds": 180, "steps": steps}
 
 
-def _extract_shot_metrics(ret_val, c0_muzzle_pos, pad_pos, spec):
-    """Evaluates a single Fire(pad) invocation return dict. In the offline model (and live runner when extended with
-    spawned-object inspection or trajectory telemetry), returnValue holds the returned GameObject descriptor and may
-    carry the spawned Rigidbody state and impact / trajectory summary."""
-    if not isinstance(ret_val, dict):
-        return {"spawned": False, "rbOk": False, "hit": False, "minDist": None}
-    obj_id = V.object_id(ret_val)
-    obj_name = str(ret_val.get("name") or "")
-    if obj_id is None and not obj_name:
-        return {"spawned": False, "rbOk": False, "hit": False, "minDist": None}
-    rb = ret_val.get("rigidbody") if isinstance(ret_val.get("rigidbody"), dict) else {}
-    spawn_pos = V.floats(ret_val.get("spawnPosition") or c0_muzzle_pos)
-    at_muzzle = len(spawn_pos) == 3 and _dist(spawn_pos, c0_muzzle_pos) <= 0.15
-    mass_ok = V.close_tuple(rb.get("mass", spec["mass"]), (spec["mass"],), 1e-2)
-    drag_ok = V.close_tuple(rb.get("drag", spec["drag"]), (spec["drag"],), 1e-2)
-    grav_ok = rb.get("useGravity", True) is True and rb.get("isKinematic", False) is False
-    vel = V.floats(ret_val.get("launchVelocity") or [])
-    speed_ok = len(vel) == 3 and math.sqrt(sum(v * v for v in vel)) >= 1.0
-    rb_ok = at_muzzle and mass_ok and drag_ok and grav_ok and speed_ok
-
-    min_dist = ret_val.get("minDistance")
-    if isinstance(min_dist, (int, float)):
-        min_dist = float(min_dist)
-    elif len(vel) == 3 and len(spawn_pos) == 3:
-        sim_grav = float(ret_val.get("gravityY", spec["gravityY"]))
-        sim_drag = float(rb.get("drag", spec["drag"]))
-        trajs = simulate_trajectory(spawn_pos, vel, sim_grav, sim_drag)
-        min_dist = min(min_distance_to_goal(pts, pad_pos) for pts in trajs)
-    else:
-        min_dist = None
-    hit = min_dist is not None and min_dist <= HIT_TOL and rb_ok
-    return {
-        "id": obj_id,
-        "name": obj_name,
-        "spawned": True,
-        "rbOk": rb_ok,
-        "hit": hit,
-        "minDist": round(min_dist, 4) if min_dist is not None else None,
-    }
+def _reading(step):
+    """Gauge counters of a read step, or None when the step is missing or carries no readable gauge."""
+    actual = step.get("actual") if isinstance(step, dict) else None
+    props = actual.get("properties") if isinstance(actual, dict) else None
+    values = {row.get("propertyPath"): row.get("value") for row in props or [] if isinstance(row, dict)}
+    closest = V.floats(values.get("closest"))
+    counters = {name: V.as_int(values.get(name)) for name in ("bodies", "altered", "offOrigin")}
+    if len(closest) != 1 or any(count is None for count in counters.values()):
+        return None
+    return dict(counters, closest=closest[0], settings=gauge_settings(values))
 
 
 def verify_runtime(ctx, card):
     scenario = ctx.scenario or {}
     passed = scenario.get("passed") is True
     spec = launcher_spec(ctx.seed)
-    code = COMMENT_RE.sub("", _text(ctx, ctx.handles["script"]) or "")
+    h = ctx.handles
+    code = COMMENT_RE.sub("", _text(ctx, h["script"]) or "")
     cheating = _cheating_source(code)
+    steps = [step for step in scenario.get("steps") or [] if isinstance(step, dict)]
+    invokes = [step for step in steps if step.get("kind") == "invoke"]
+    gauge_reads = [step for step in steps if step.get("kind") == "read" and
+                   step.get("skill") == "component_get_serialized_properties"]
+    grav_reads = [step for step in steps if step.get("kind") == "read" and step.get("skill") == "physics_get_gravity"]
+    shots = len(h["pads"])
 
-    c0_muzzle_pos = V.floats((ctx.c0.get("muzzle") or {}).get("position"))
-    pad_positions = [V.floats((state or {}).get("position")) for _ref, state in ctx.c0.get("pads") or []]
-    invokes = [step for step in scenario.get("steps") or []
-               if isinstance(step, dict) and step.get("kind") == "invoke"]
-    grav_reads = [step for step in scenario.get("steps") or []
-                  if isinstance(step, dict) and step.get("kind") == "read" and
-                  step.get("skill") == "physics_get_gravity"]
-    grav_ok = True
-    if grav_reads:
-        actual_grav = grav_reads[-1].get("actual") or {}
-        grav_ok = V.close_tuple(actual_grav.get("y"), (spec["gravityY"],), VALUE_TOL)
+    grav = (grav_reads[-1].get("actual") or {}) if grav_reads else {}
+    grav_ok = bool(grav_reads) and V.close_tuple(grav.get("y"), (spec["gravityY"],), VALUE_TOL)
 
-    shots = []
-    seen_ids = set()
-    for index, pad_pos in enumerate(pad_positions):
-        step = invokes[index] if index < len(invokes) else {}
-        actual = step.get("actual") if isinstance(step.get("actual"), dict) else {}
-        ret_val = actual.get("returnValue") if isinstance(actual, dict) else None
-        metrics = _extract_shot_metrics(ret_val, c0_muzzle_pos, pad_pos, spec)
-        distinct = metrics["id"] is None or metrics["id"] not in seen_ids
-        if metrics["id"] is not None:
-            seen_ids.add(metrics["id"])
-        metrics["distinct"] = distinct
-        shots.append(metrics)
+    readings = [_reading(step) for step in gauge_reads]
+    complete = len(readings) == 2 * shots and all(reading is not None for reading in readings)
+    before = readings[0::2] if complete else []
+    after = readings[1::2] if complete else []
+    c0_settings = [state for _ref, state in ctx.c0.get("gaugeSettings") or []]
+    settings_ok = complete and len(c0_settings) == shots and all(
+        V.same(c0_settings[i], before[i]["settings"])[0] for i in range(shots))
+    gauge_ok = _sha(ctx, h["gaugeScript"]) == ctx.c0.get("gaugeSha") and settings_ok
 
-    d9_ok = (passed and not cheating and grav_ok and len(shots) == 3 and
-             all(s["spawned"] and s["rbOk"] and s["distinct"] for s in shots))
-    card.check("D9", d9_ok, actual={"passed": passed, "cheating": cheating, "gravityOk": grav_ok, "shots": shots})
+    ids = [V.object_id((step.get("actual") or {}).get("returnValue")) if isinstance(step.get("actual"), dict) else None
+           for step in invokes]
+    spawned = len(ids) == shots and all(ident is not None for ident in ids) and len({str(i) for i in ids}) == shots
+    base = passed and grav_ok and not cheating and gauge_ok
+    clean = complete and after[-1]["bodies"] == shots and after[-1]["altered"] == 0 and after[-1]["offOrigin"] == 0
+    card.check("D9", base and spawned and clean,
+               actual={"passed": passed, "cheating": cheating, "gravityOk": grav_ok, "gaugeOk": gauge_ok,
+                       "returned": ids, "gauges": after})
 
-    hits = sum(1 for s in shots if s["hit"] and s["distinct"]) if (passed and not cheating and grav_ok) else 0
-    fraction = hits / 3.0 if len(pad_positions) == 3 else 0.0
-    card.fraction("D10", fraction,
-                  expected={"hits": 3, "tolerance": HIT_TOL},
+    hits = []
+    for index in range(shots):
+        shot = after[index] if complete else None
+        hits.append(bool(base and shot and shot["closest"] <= HIT_TOL and before[index]["closest"] > HIT_TOL and
+                         shot["bodies"] == index + 1 and shot["altered"] == 0 and shot["offOrigin"] == 0))
+    card.fraction("D10", sum(hits) / float(shots),
+                  expected={"hits": shots, "tolerance": HIT_TOL},
                   actual={"passed": passed, "error": scenario.get("error"), "status": scenario.get("status"),
-                          "hits": hits, "shots": shots})
+                          "hits": hits, "before": before, "after": after})
 
 # Producer:Betsy

@@ -1,10 +1,10 @@
 ﻿"""Offline unit tests for DC4 (ballistic launcher) against fake_dc4: runs the pack_offline checklist (prompts, handles,
 fingerprint, untouched fixture, reference/negatives/alternatives with legacy and Unity 6000.4 entity IDs), scenario
-shape checks, multi-seed builds and solutions, and physics trajectory separation between the reference solver and each
-ballistic trap."""
+shape checks, multi-seed builds and solutions, and the flight separation between the reference solver and the
+vacuum-parabola and Earth-gravity launches."""
 import unittest
 
-from .fake_dc4 import FakeEditorDC4
+from .fake_dc4 import FakeEditorDC4, closest_approach, integrate, parabola_velocity, solve_velocity
 from .pack_offline import load_modules
 from .test_pack_dev_dc import DevChallengeTests
 
@@ -32,10 +32,9 @@ class DC4Tests(DevChallengeTests, unittest.TestCase):
         run.teardown()
         self.assertAlmostEqual(run.editor.gravity["y"], -9.81, places=3)
 
-    def test_ballistic_traps_miss_targets_across_seeds(self):
-        """Across seeds, the reference discrete solver lands within 0.05 m of every target pad under both linear and
-        reciprocal damping, whereas the vacuum parabola (no_drag) and Earth-gravity (-9.81) trajectories miss by more
-        than the 0.25 m threshold."""
+    def test_flight_paths_across_seeds(self):
+        """The reference solver passes within 0.05 m of every pad; the vacuum parabola and Earth gravity miss by more
+        than the hit tolerance."""
         private = load_modules("DC4")[1]
         for seed in (7001, 11, 12, 13, 14):
             run = self.run_for(seed=seed)
@@ -43,22 +42,13 @@ class DC4Tests(DevChallengeTests, unittest.TestCase):
             origin = [run.snap["data"]["muzzle"]["position"][k] for k in ("x", "y", "z")]
             for _ref, state in run.snap["data"]["pads"]:
                 goal = [state["position"][k] for k in ("x", "y", "z")]
-                v_ref = private.solve_launch_velocity(origin, goal, spec["gravityY"], spec["drag"], flight_steps=60)
-                trajs_ref = private.simulate_trajectory(origin, v_ref, spec["gravityY"], spec["drag"])
-                best_ref = min(private.min_distance_to_goal(pts, goal) for pts in trajs_ref)
-                self.assertLessEqual(best_ref, 0.05)
-
-                t_vac = 1.2
-                v_vac = ((goal[0] - origin[0]) / t_vac,
-                         (goal[1] - origin[1] - 0.5 * spec["gravityY"] * t_vac * t_vac) / t_vac,
-                         (goal[2] - origin[2]) / t_vac)
-                trajs_vac = private.simulate_trajectory(origin, v_vac, spec["gravityY"], spec["drag"])
-                best_vac = min(private.min_distance_to_goal(pts, goal) for pts in trajs_vac)
-                self.assertGreater(best_vac, private.HIT_TOL)
-
-                v_earth = private.solve_launch_velocity(origin, goal, -9.81, spec["drag"], flight_steps=60)
-                trajs_earth = private.simulate_trajectory(origin, v_earth, spec["gravityY"], spec["drag"])
-                best_earth = min(private.min_distance_to_goal(pts, goal) for pts in trajs_earth)
-                self.assertGreater(best_earth, private.HIT_TOL)
+                reference = solve_velocity(origin, goal, spec["gravityY"], spec["drag"])
+                parabola = parabola_velocity(origin, goal, spec["gravityY"])
+                earth = solve_velocity(origin, goal, -9.81, spec["drag"])
+                with self.subTest(seed=seed, pad=goal):
+                    for velocity, hits in ((reference, True), (parabola, False), (earth, False)):
+                        points = integrate(origin, velocity, spec["gravityY"], spec["drag"])
+                        reach = closest_approach(points, goal)
+                        self.assertLessEqual(reach, 0.05) if hits else self.assertGreater(reach, private.HIT_TOL)
 
 # Producer:Betsy

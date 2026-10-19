@@ -899,8 +899,8 @@
    },
    "private": {
     "file": "DS2.py",
-    "sha256": "aad9cf703b09fb91dd0dae020be0d6c5bd10d945e3414b6c671d38c5837e852e",
-    "bytes": 21686
+    "sha256": "440a5d86d6ee2b1f06816ba34098bc90d2604c52c407e45513748c501b0b5f8b",
+    "bytes": 21617
    }
   },
   "DC5": {
@@ -1020,14 +1020,14 @@
     "packages": []
    },
    "public": {
-    "task.py": "5847ad17d06af3eea38f2b5e86760b4792c4b55b7483b74e4ce8c0100c9ad54d",
-    "prompt.zh-CN.md": "a51b00992d8a99cae468274c0fd5dcfbb012123872613a838f80f4eef36be9c9",
-    "prompt.en.md": "a1053ec641e72533a3d2737b11fa0f58b382e66bec61a3ab3912dbc70f84ae7c"
+    "task.py": "e96763ccb4dd9eba57815676acbb4672937c443dcfdbc1b10eef39c46669c534",
+    "prompt.zh-CN.md": "e1d8edd957bd935117c6a9065e551e08df3ef01e9a71e203c3b7548633395b80",
+    "prompt.en.md": "91d7c510dad3ab2c994ffd79a283fa8fd5c9e1c6e8222d3bf040770374259a7c"
    },
    "private": {
     "file": "DC4.py",
-    "sha256": "36b991a38eff107a0ddaa934da5d4f1c8e57f036114d6c46a99dd2ee720828f1",
-    "bytes": 22493
+    "sha256": "17e29f8dcd0fd7261c5ad2b05ddce1ed69814fcf28e21ca0104a480b1ef7ced8",
+    "bytes": 20600
    }
   }
  },

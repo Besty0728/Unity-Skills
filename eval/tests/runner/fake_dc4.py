@@ -1,273 +1,219 @@
 ﻿"""Offline fake editor for DC4 (ballistic launcher).
 
-Extends FakeEditorDC from fake_dev_dc with:
-  * project gravity state (`physics_get_gravity`, `physics_set_gravity`),
-  * prefab creation capturing the source GameObject's Rigidbody properties (`mass`, `m_Drag`, `useGravity`,
-    `isKinematic`),
-  * Play Mode invocation of `Fire(Transform)` on the compiled launcher component, computing the launched projectile's
-    initial velocity and Rigidbody state according to the C# source / `// usk-fake: <variant>` marker and simulating
-    the discrete FixedUpdate trajectory under the active project gravity and Rigidbody drag.
+FakeEditorDC plus:
+  * project gravity (`physics_get_gravity`, `physics_set_gravity`),
+  * Rigidbody settings kept on the object and copied into the prefab asset,
+  * Play Mode `Fire(Transform)` on the compiled launcher: the launch velocity follows the `// usk-fake: <variant>`
+    marker, the flight is integrated step by step like PhysX does (gravity, then damping, then the move), and every
+    flight gauge on a pad is updated exactly as the gauge script would update it.
 """
-import json
-import math
 import os
 import re
 
-from .fake_dev_dc import COMMENT_RE, FakeEditorDC
-from .fake_dev_ds import _world_position
+from .fake_dev_dc import FakeEditorDC, strip_comments
+from .pack_fake_editor import RUNNER, _fail, q_inv, q_rotate
 
-VARIANT_RE = re.compile(r"//\s*usk-fake:\s*([\w-]+)")
 FIXED_DT = 0.02
+FLIGHT_STEPS = 130
+NUMBER_RE = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+FIRE_RE = re.compile(r"\bpublic\s+(?:UnityEngine\.)?GameObject\s+Fire\s*\(\s*(?:UnityEngine\.)?Transform\s+\w+\s*\)")
+GAUGE_FIELDS = {"origin", "mass", "damping", "closest", "bodies", "altered", "offOrigin"}
+GAUGE_ACCUMULATE = "closest = Mathf.Min(closest, Segment(before, now, here));"
+RIGIDBODY_NAMES = {"mass": "mass", "m_Mass": "mass", "drag": "drag", "m_Drag": "drag", "linearDamping": "drag",
+                   "angularDrag": "angularDrag", "m_AngularDrag": "angularDrag", "useGravity": "useGravity",
+                   "m_UseGravity": "useGravity", "isKinematic": "isKinematic", "m_IsKinematic": "isKinematic"}
 
 
-def _num(val, default=0.0):
-    try:
-        return float(str(val).strip().rstrip("fF"))
-    except (TypeError, ValueError):
-        return default
+def damping_factor(drag, dt=FIXED_DT, reciprocal=False):
+    return 1.0 / (1.0 + drag * dt) if reciprocal else max(0.0, 1.0 - drag * dt)
 
 
-def _solve_discrete_velocity(origin, goal, gravity_y, drag, steps=60, dt=FIXED_DT, reciprocal=False):
-    factor = (1.0 / (1.0 + float(drag) * dt)) if reciprocal else max(0.0, 1.0 - float(drag) * dt)
-    sum_f = 0.0
-    cur_f = 1.0
-    vy_g = 0.0
-    grav_y = 0.0
+def solve_velocity(origin, goal, gravity_y, drag, steps=60, dt=FIXED_DT, reciprocal=False):
+    """Initial velocity that puts a projectile on `goal` after `steps` fixed steps."""
+    factor = damping_factor(drag, dt, reciprocal)
+    reach, fall, speed_g, factor_k = 0.0, 0.0, 0.0, 1.0
     for _ in range(steps):
-        cur_f *= factor
-        sum_f += cur_f * dt
-        vy_g = (vy_g + float(gravity_y) * dt) * factor
-        grav_y += vy_g * dt
-    return (
-        (float(goal[0]) - float(origin[0])) / sum_f,
-        (float(goal[1]) - float(origin[1]) - grav_y) / sum_f,
-        (float(goal[2]) - float(origin[2])) / sum_f,
-    )
+        factor_k *= factor
+        reach += factor_k * dt
+        speed_g = (speed_g + gravity_y * dt) * factor
+        fall += speed_g * dt
+    return ((goal[0] - origin[0]) / reach, (goal[1] - origin[1] - fall) / reach, (goal[2] - origin[2]) / reach)
 
 
-def _inverse_transform_point(origin_obj, editor_objects, world_pt):
-    """Computes origin_obj.transform.InverseTransformPoint(world_pt) using the ancestor yaw/pitch chain."""
-    ox, oy, oz = _world_position(editor_objects, origin_obj)
-    dx, dy, dz = float(world_pt[0]) - ox, float(world_pt[1]) - oy, float(world_pt[2]) - oz
-    chain = []
-    cur = origin_obj
-    while cur is not None:
-        chain.append(cur)
-        pid = cur.get("parent")
-        cur = editor_objects.get(pid) if pid else None
-    for node in reversed(chain):
-        rot = node.get("rotation") or {"x": 0.0, "y": 0.0, "z": 0.0}
-        yaw = -math.radians(float(rot.get("y") or 0.0))
-        cy, sy = math.cos(yaw), math.sin(yaw)
-        dx, dz = dx * cy + dz * sy, -dx * sy + dz * cy
-        pitch = -math.radians(float(rot.get("x") or 0.0))
-        cp, sp = math.cos(pitch), math.sin(pitch)
-        dy, dz = dy * cp - dz * sp, dy * sp + dz * cp
-    return (dx, dy, dz)
+def parabola_velocity(origin, goal, gravity_y, seconds=1.2):
+    """The vacuum parabola that ignores drag."""
+    return ((goal[0] - origin[0]) / seconds, (goal[1] - origin[1] - 0.5 * gravity_y * seconds * seconds) / seconds,
+            (goal[2] - origin[2]) / seconds)
 
 
-def _forward_vector(origin_obj, editor_objects):
-    """World-space forward vector of origin_obj."""
-    chain = []
-    cur = origin_obj
-    while cur is not None:
-        chain.append(cur)
-        pid = cur.get("parent")
-        cur = editor_objects.get(pid) if pid else None
-    fx, fy, fz = 0.0, 0.0, 1.0
-    for node in chain:
-        rot = node.get("rotation") or {"x": 0.0, "y": 0.0, "z": 0.0}
-        pitch = math.radians(float(rot.get("x") or 0.0))
-        cp, sp = math.cos(pitch), math.sin(pitch)
-        fy, fz = fy * cp - fz * sp, fy * sp + fz * cp
-        yaw = math.radians(float(rot.get("y") or 0.0))
-        cy, sy = math.cos(yaw), math.sin(yaw)
-        fx, fz = fx * cy + fz * sy, -fx * sy + fz * cy
-    return (fx, fy, fz)
+def integrate(origin, velocity, gravity_y, drag, steps=FLIGHT_STEPS, dt=FIXED_DT):
+    """Positions of a free-flying body at the start of each fixed step, then after the last one."""
+    factor = damping_factor(drag, dt)
+    pos, vel = list(origin), list(velocity)
+    points = [tuple(pos)]
+    for _ in range(steps):
+        vel[1] += gravity_y * dt
+        vel = [v * factor for v in vel]
+        pos = [p + v * dt for p, v in zip(pos, vel)]
+        points.append(tuple(pos))
+    return points
+
+
+def segment_distance(a, b, p):
+    ab = [y - x for x, y in zip(a, b)]
+    length = sum(v * v for v in ab)
+    t = 0.0 if length <= 0.0 else max(0.0, min(1.0, sum((q - x) * v for q, x, v in zip(p, a, ab)) / length))
+    return sum((x + v * t - q) ** 2 for x, v, q in zip(a, ab, p)) ** 0.5
+
+
+def closest_approach(points, p):
+    return min(segment_distance(a, b, p) for a, b in zip(points, points[1:]))
+
+
+def numbers(value):
+    return [float(m) for m in NUMBER_RE.findall(str(value))]
 
 
 class FakeEditorDC4(FakeEditorDC):
-    def __init__(self, project_path, **kwargs):
-        super().__init__(project_path, **kwargs)
+    extra_reads = FakeEditorDC.extra_reads | frozenset(("physics_get_gravity",))
+
+    def __init__(self, *args, **kwargs):
         self.gravity = {"x": 0.0, "y": -9.81, "z": 0.0}
-        self._cached_first_goal = {}
-        self._spawn_counter = 0
+        self.first_goal = {}
+        FakeEditorDC.__init__(self, *args, **kwargs)
 
-    def _dispatch(self, skill, args, agent):
-        if skill == "physics_get_gravity":
-            return True, dict(self.gravity), []
-        if skill == "physics_set_gravity":
-            self.gravity = {
-                "x": float(args.get("x", 0.0)),
-                "y": float(args.get("y", -9.81)),
-                "z": float(args.get("z", 0.0)),
-            }
-            return True, {"success": True, "gravity": dict(self.gravity)}, []
-        if skill == "prefab_create":
-            src = self._find(args)
-            res = super()._dispatch(skill, args, agent)
-            save_path = args.get("savePath") or args.get("prefabPath") or ""
-            if src is not None and save_path in self.prefabs:
-                rb = self._comp(src, "Rigidbody") or {}
-                props = dict(rb.get("props") or {})
-                ser = dict(rb.get("ser") or {})
-                self.prefabs[save_path]["rigidbody"] = {
-                    "mass": float(_num(props.get("mass"), 1.0)),
-                    "drag": float(_num(ser.get("m_Drag", props.get("drag")), 0.0)),
-                    "angularDrag": float(_num(ser.get("m_AngularDrag", props.get("angularDrag")), 0.05)),
-                    "useGravity": str(props.get("useGravity", "true")).lower() != "false",
-                    "isKinematic": str(props.get("isKinematic", "false")).lower() == "true",
-                }
-            return res
-        return super()._dispatch(skill, args, agent)
+    def _skill_physics_get_gravity(self, agent, args):
+        return dict(self.gravity, success=True)
 
-    def _compile_script(self, path, raw):
-        ok = super()._compile_script(path, raw)
-        if not ok:
-            return False
-        cls = os.path.basename(path)[:-len(".cs")]
-        info = self.scripts.get(cls)
-        if info is not None:
-            m = VARIANT_RE.search(raw or "")
-            info["variant"] = m.group(1) if m else None
-            clean = COMMENT_RE.sub("", raw or "")
-            info["hasFire"] = bool(re.search(
-                r"\bpublic\s+(?:UnityEngine\.)?GameObject\s+Fire\s*\(\s*(?:UnityEngine\.)?Transform\s+\w+\s*\)",
-                clean))
-        return True
+    def _skill_physics_set_gravity(self, agent, args):
+        before = self.gravity["y"]
+        self.gravity = {axis: float(args.get(axis, self.gravity[axis])) for axis in ("x", "y", "z")}
+        if agent != RUNNER and self.gravity["y"] != before:
+            self._change(agent, {"kind": "property_changed", "targetType": "PhysicsManager", "property": "m_Gravity.y",
+                                 "assetPath": "ProjectSettings/DynamicsManager.asset",
+                                 "previousValue": "%.9g" % before, "value": "%.9g" % self.gravity["y"]})
+        return dict(self.gravity, success=True)
 
-    def _resolve_transform_arg(self, arg):
-        if not isinstance(arg, dict):
-            return None
-        probe_args = {}
-        if "referenceEntityId" in arg:
-            probe_args["entityId"] = arg["referenceEntityId"]
-        if "referenceInstanceId" in arg:
-            probe_args["instanceId"] = arg["referenceInstanceId"]
-        if "referencePath" in arg:
-            probe_args["path"] = arg["referencePath"]
-        if "referenceName" in arg:
-            probe_args["name"] = arg["referenceName"]
-        return self._find(probe_args)
+    # ------------------------------------------------------------ Rigidbody and prefab
 
-    def _resolve_muzzle_obj(self, ser_val):
-        if not ser_val:
-            return None
-        text = str(ser_val)
-        m = re.match(r"^([^:]+):UnityEngine\.Transform:", text)
-        if m:
-            token = m.group(1)
-            for obj in self.objects.values():
-                if str(obj["id"]) == token or self._eid(obj["id"]) == token:
-                    return obj
-        return None
+    def _rigidbody(self, obj):
+        return obj.fields.setdefault("Rigidbody", {"mass": 1.0, "drag": 0.0, "angularDrag": 0.05, "useGravity": True,
+                                                   "isKinematic": False})
 
-    def _resolve_prefab_info(self, ser_val):
-        if not ser_val:
-            return None
-        text = str(ser_val)
-        for path, info in self.prefabs.items():
-            base = os.path.basename(path)[:-len(".prefab")]
-            if base in text or path in text:
-                return info
-        return None
+    def _skill_component_set_property(self, agent, args):
+        if args["componentType"].lower() == "rigidbody":
+            return self._set_rigidbody(args, args["propertyName"])
+        return FakeEditorDC._skill_component_set_property(self, agent, args)
 
-    def _invoke(self, args):
-        obj = self._find(args)
-        ctype = self._short(args.get("componentType") or "")
-        method = args.get("methodName") or ""
-        comp = self._comp(obj, ctype) if obj is not None else None
-        if obj is None or comp is None:
-            return False, {"status": "error", "error": "component %s not found" % ctype}, []
-        info = self.scripts.get(ctype) or {}
-        if method != "Fire" or not info.get("hasFire"):
-            return False, {"status": "error", "error": "method %s not found on %s" % (method, ctype)}, []
+    def _skill_component_set_serialized_property(self, agent, args):
+        if args["componentType"].lower() == "rigidbody":
+            return self._set_rigidbody(args, args["propertyPath"])
+        return FakeEditorDC._skill_component_set_serialized_property(self, agent, args)
 
-        try:
-            call_args = json.loads(args.get("arguments") or "[]")
-        except ValueError:
-            call_args = []
-        target_obj = self._resolve_transform_arg(call_args[0]) if call_args else None
-        if target_obj is None:
-            return True, {"success": True, "returnValue": None}, []
+    def _set_rigidbody(self, args, name):
+        obj = self.find(args)
+        if not self.component(obj, "Rigidbody"):
+            raise _fail("COMPONENT_NOT_FOUND", "no Rigidbody on %s" % obj.name)
+        key = RIGIDBODY_NAMES.get(name)
+        if key is None:
+            raise _fail("PROPERTY_NOT_FOUND", "Rigidbody.%s is not modelled" % name)
+        text = str(args.get("value")).strip().lower()
+        self._rigidbody(obj)[key] = text in ("true", "1") if key in ("useGravity", "isKinematic") else \
+            float(text.rstrip("f"))
+        return {"success": True}
 
-        ser = comp.get("ser") or {}
-        muzzle_obj = self._resolve_muzzle_obj(ser.get("muzzle"))
-        prefab_info = self._resolve_prefab_info(ser.get("projectilePrefab"))
-        if muzzle_obj is None or prefab_info is None:
-            return True, {"success": True, "returnValue": None}, []
+    def _skill_prefab_create(self, agent, args):
+        obj = self.find(args)
+        out = FakeEditorDC._skill_prefab_create(self, agent, args)
+        self.prefabs[args["savePath"]]["rigidbody"] = dict(self._rigidbody(obj)) if self.component(obj, "Rigidbody") \
+            else None
+        return out
 
-        origin = _world_position(self.objects, muzzle_obj)
-        goal = _world_position(self.objects, target_obj)
-        rb_template = dict(prefab_info.get("rigidbody") or {
-            "mass": 2.0, "drag": 0.45, "useGravity": True, "isKinematic": False
-        })
-        mass = float(rb_template.get("mass", 2.0))
-        drag = float(rb_template.get("drag", 0.45))
-        grav_y = float(self.gravity.get("y", -9.81))
-        variant = info.get("variant")
+    def _parse_value(self, kind, text):
+        if kind == "Vector3":
+            return ",".join("%.9g" % v for v in numbers(text)[:3])
+        return FakeEditorDC._parse_value(self, kind, text)
 
-        spawn_rb = {
-            "mass": mass,
-            "drag": drag,
-            "useGravity": bool(rb_template.get("useGravity", True)),
-            "isKinematic": bool(rb_template.get("isKinematic", False)),
-        }
+    # ------------------------------------------------------------ Play Mode
 
-        if variant == "impulse-mass":
-            v0 = _solve_discrete_velocity(origin, goal, grav_y, drag, steps=65, dt=FIXED_DT, reciprocal=True)
-        elif variant == "no-drag":
-            t = 1.2
-            v0 = (
-                (goal[0] - origin[0]) / t,
-                (goal[1] - origin[1] - 0.5 * grav_y * t * t) / t,
-                (goal[2] - origin[2]) / t,
-            )
-        elif variant == "wrong-forcemode":
-            raw_v = _solve_discrete_velocity(origin, goal, grav_y, drag, steps=60, dt=FIXED_DT)
-            scale = FIXED_DT / mass
-            v0 = (raw_v[0] * scale, raw_v[1] * scale, raw_v[2] * scale)
-        elif variant == "wrong-gravity":
-            v0 = _solve_discrete_velocity(origin, goal, -9.81, drag, steps=60, dt=FIXED_DT)
-        elif variant == "fixed-angle":
-            fx, fy, fz = _forward_vector(muzzle_obj, self.objects)
-            ux, uy, uz = fx, fy + 0.5, fz
-            norm = math.sqrt(ux * ux + uy * uy + uz * uz) or 1.0
-            v0 = (12.0 * ux / norm, 12.0 * uy / norm, 12.0 * uz / norm)
-        elif variant == "first-target":
-            holder_id = obj["id"]
-            if holder_id not in self._cached_first_goal:
-                self._cached_first_goal[holder_id] = goal
-            cached = self._cached_first_goal[holder_id]
-            v0 = _solve_discrete_velocity(origin, cached, grav_y, drag, steps=60, dt=FIXED_DT)
-        elif variant == "local-space":
-            local_disp = _inverse_transform_point(muzzle_obj, self.objects, goal)
-            fake_goal = (origin[0] + local_disp[0], origin[1] + local_disp[1], origin[2] + local_disp[2])
-            v0 = _solve_discrete_velocity(origin, fake_goal, grav_y, drag, steps=60, dt=FIXED_DT)
-        elif variant == "strip-rigidbody":
-            spawn_rb["mass"] = 1.0
-            spawn_rb["drag"] = 0.0
-            t = 1.2
-            v0 = (
-                (goal[0] - origin[0]) / t,
-                (goal[1] - origin[1] - 0.5 * grav_y * t * t) / t,
-                (goal[2] - origin[2]) / t,
-            )
+    def enter_play(self):
+        self.first_goal = {}
+
+    def _gauges(self):
+        """(object, component class) of every flight gauge component in the scene."""
+        return [(obj, cls) for obj in self.walk() for cls, _enabled in obj.components
+                if cls in self.classes and GAUGE_FIELDS <= set(obj.fields.get(cls, {}))]
+
+    def _gauge_reports(self, cls):
+        source = strip_comments(self.compiled_sources.get(self.classes[cls]["path"], ""))
+        return GAUGE_ACCUMULATE in source
+
+    def _launch(self, variants, muzzle, goal, holder_id, rigid):
+        """(spawn position, initial velocity, Rigidbody the projectile ends up with) of one Fire call."""
+        mass, drag, gravity_y = rigid["mass"], rigid["drag"], self.gravity["y"]
+        origin, rotation, scale = self.world(muzzle)
+        spawn = tuple(goal) if "spawn-at-pad" in variants else tuple(origin)
+        body = dict(rigid)
+        if "impulse-mass" in variants:
+            velocity = solve_velocity(origin, goal, gravity_y, drag, steps=65, reciprocal=True)
+        elif "no-drag" in variants:
+            velocity = parabola_velocity(origin, goal, gravity_y)
+        elif "wrong-forcemode" in variants:
+            velocity = [v * FIXED_DT / mass for v in solve_velocity(origin, goal, gravity_y, drag)]
+        elif "wrong-gravity" in variants:
+            velocity = solve_velocity(origin, goal, -9.81, drag)
+        elif "fixed-angle" in variants:
+            forward = q_rotate(rotation, (0.0, 0.0, 1.0))
+            direction = (forward[0], forward[1] + 0.5, forward[2])
+            norm = sum(v * v for v in direction) ** 0.5
+            velocity = [12.0 * v / norm for v in direction]
+        elif "first-target" in variants:
+            velocity = solve_velocity(origin, self.first_goal.setdefault(holder_id, goal), gravity_y, drag)
+        elif "local-space" in variants:
+            local = [v / s for v, s in zip(q_rotate(q_inv(rotation), [g - o for g, o in zip(goal, origin)]), scale)]
+            velocity = solve_velocity(origin, [o + v for o, v in zip(origin, local)], gravity_y, drag)
+        elif "strip-rigidbody" in variants:
+            body.update(mass=1.0, drag=0.0)
+            velocity = parabola_velocity(origin, goal, gravity_y)
         else:
-            v0 = _solve_discrete_velocity(origin, goal, grav_y, drag, steps=60, dt=FIXED_DT)
+            velocity = solve_velocity(origin, goal, gravity_y, drag)
+        return spawn, velocity, body
 
-        self._spawn_counter += 1
-        spawn_id = 90000 + self._spawn_counter
-        ret = {
-            "instanceId": spawn_id,
-            "entityId": self._eid(spawn_id),
-            "name": "%s(Clone)" % os.path.basename(prefab_info.get("path", "Shell"))[:-len(".prefab")],
-            "type": "UnityEngine.GameObject",
-            "spawnPosition": {"x": round(origin[0], 4), "y": round(origin[1], 4), "z": round(origin[2], 4)},
-            "launchVelocity": {"x": round(v0[0], 4), "y": round(v0[1], 4), "z": round(v0[2], 4)},
-            "rigidbody": spawn_rb,
-            "gravityY": grav_y,
-        }
-        return True, {"success": True, "returnValue": ret}, []
+    def _observe(self, obj, cls, points, body):
+        """What the gauge script does while it watches one new Rigidbody fly along `points`."""
+        values = obj.fields[cls]
+        values["bodies"] += 1
+        if sum((a - b) ** 2 for a, b in zip(points[0], numbers(values["origin"]))) ** 0.5 > 0.15:
+            values["offOrigin"] += 1
+        reach = closest_approach(points, self.world(obj)[0]) if self._gauge_reports(cls) else 0.0
+        values["closest"] = min(values["closest"], reach)
+        intact = (not body["isKinematic"] and body["useGravity"] and abs(body["mass"] - float(values["mass"])) < 1e-3
+                  and abs(body["drag"] - float(values["damping"])) < 1e-3)
+        if not intact:
+            values["altered"] += 1
+
+    def invoke_model(self, obj, cls, method, arguments, parameter_types=None):
+        if not cls.startswith("BallisticLauncher_"):
+            return FakeEditorDC.invoke_model(self, obj, cls, method, arguments, parameter_types)
+        source = strip_comments(self.compiled_sources.get(self.classes[cls]["path"], ""))
+        if method != "Fire" or not FIRE_RE.search(source):
+            raise _fail("SEMANTIC_INVALID", "No method %s on %s" % (method, cls))
+        goal_obj = self.find(arguments[0], "reference") if arguments and isinstance(arguments[0], dict) else None
+        values = obj.fields[cls]
+        refs = [v for v in values.values() if isinstance(v, tuple) and v]
+        muzzle_ref = next((v for v in refs if v[0] == "object" and v[2:] == ("Transform",)), None)
+        prefab_ref = next((v for v in refs if v[0] == "asset"), None)
+        muzzle = self.objects.get(muzzle_ref[1]) if muzzle_ref else None
+        prefab = self.prefabs.get(prefab_ref[1]) if prefab_ref else None
+        if goal_obj is None or muzzle is None or prefab is None or not prefab.get("rigidbody"):
+            return None
+        goal = self.world(goal_obj)[0]
+        spawn, velocity, body = self._launch(self.variants(cls), muzzle, goal, obj.eid, prefab["rigidbody"])
+        points = integrate(spawn, velocity, self.gravity["y"], body["drag"])
+        for gauge_obj, gauge_cls in self._gauges():
+            self._observe(gauge_obj, gauge_cls, points, body)
+        eid, iid = self._new_ids()
+        name = os.path.splitext(os.path.basename(prefab_ref[1]))[0]
+        return {"instanceId": iid, "entityId": eid, "name": "%s(Clone)" % name, "type": "UnityEngine.GameObject"}
 
 # Producer:Betsy

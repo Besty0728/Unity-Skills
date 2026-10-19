@@ -1,37 +1,24 @@
-# 当前接力状态（2026-10-18，UTC）
+# 当前接力状态（2026-10-19，UTC）
 
 这是当前状态的优先说明；下方较早内容是历史会话材料，若有冲突以本节为准。
 
 ## 从哪里继续
 
-- 仓库：`/data/home/from-local/Unity-Skills`
-- 当前分支：`beta`
-- 继续开发：直接在 `beta` 上工作；开始前执行 `git pull --ff-only origin beta`
-- 远端目标：只保留 `beta` 与 `main`
-- 最后一个已推送快照（本文件提交前）：`6fc867e5`
+- 仓库：`/Users/betsy/CodeSpace/Unity-Skills`，分支 `beta`（开始前 `git pull --ff-only origin beta`）；`main` 只在正式发布流程中更新。
+- 测试工程（包引用均已改指本仓库 `SkillsForUnity`）：`~/UnityProject/TestSkills`（6000.3.9f1，Built-in）、`~/UnityProject/skill`（2022.3.62f2，Built-in）、`~/UnityProject/UnitySkillsEval2022`（2022.3.62f2，URP，已标记 dedicated）。一次只开一个编辑器；Unity CLI 在 `~/.unity/bin/unity`。
 
-## 本次已完成
+## 已完成（2026-10-18 至 19）
 
-- 停止了所有 Unity 编辑器、评测、pytest 和代理任务；没有启动新的工作。
-- 将 `eval-v3` 的全部已提交成果快进合入 `beta`。
-- 将粒子模块三个并行快照合入 `beta`：P0/P1 分析与子发射器、普通模块、运行时控制。
-- 将 Codex 的 DC4 题稿、私有解法、fake、测试和意图材料合入 `beta`。
-- 封存并合入评测持久化修复：`33cbbc64`。
-- 合并粒子冲突时保留了两侧的实现、测试、文档和本地化键；README 的 Particle 计数暂按 31 个接口更新。
+- 修复粒子 P1/P2 合并遗留：`validateAll` 调用位置（原 CS0103 编译失败）、新建系统自带的 (Birth, None) 子发射器槽、固定步长分片模拟多走步数、batch/SKILL.md 字节预算；技能总数同步为 870；两个可疑 meta GUID 换成 uuid4。
+- EditMode 全绿：6000.3.9f1 2356/2264/0/92，2022.3.62f2 2357/2257/0/100（包更新后首次启动会读到旧 locale 缓存，导致 4 个本地化测试失败，重跑即过；属已知小问题，见下）。
+- DC4 重做为实机可评分：fixture 生成传感器脚本挂在靶台上（逐物理帧记录最近距离、刚体数、改动与离枪口计数），靶台去掉碰撞体；fake 与测试按真实 API 重写；删除 DS2 私有评分里的死代码。DC4 门禁在 2022.3.62f2 URP 上 GREEN 22/22，参考解实机命中距离约 1e-6 m。
+- Python 测试：3.13 与 3.9 各 1665 个全过；lint / check / manifest 通过（37 题）。
 
-## 验证边界
+## 下一阶段（等用户开启）
 
-- 本次最终合并后没有运行 Unity、EditMode、题包门禁或完整 Python 测试。
-- 只做了静态检查：locale JSON 可解析，Git 冲突标记已清除。
-- 因此粒子 P1/P2、DC4 和持久化修复应视为“已保存的开发快照”，后续需要在 `beta` 上先做 `/skillcheck`、`/metacheck`，再按单 Unity 编辑器规则编译和测试。
-- `SESSION-HANDOFF.md` 本身属于接力材料，已纳入本次 `beta` 提交；不要把新的会话日志、凭证或临时工程提交进仓库。
-
-## 建议的下一步
-
-1. 在 `beta` 上运行题包/技能计数检查，确认 Particle 计数和 manifest 一致。
-2. 只启动一个 Unity 编辑器，先跑编译与 EditMode 基线，再按版本和管线排队跑门禁。
-3. 检查 DC4 的 manifest、private、solution 与 runner 测试；确认后再把题包作为完成项发布。
-4. 任何新成果继续直接提交并推送 `beta`；`main` 只在正式发布流程中更新。
+1. 门禁矩阵：本机此前没有任何门禁记录（`eval/runs/` 不入库）。基础题需要 2022 与 6000 × URP 与 Built-in，标准题和挑战题需要 URP；缺一个 6000 URP 的 dedicated 工程，需要新建。
+2. 用 `suite3`（`claude -p`，便宜模型）对一两道题做开发期冒烟，不计入正式成绩；正式真实模型评测仍等用户指令。
+3. 已知小问题：插件包更新后的第一次 domain reload 会把旧版 locale 资源读进 `SkillsLocalization` 缓存，新加的文案键要到下一次 reload 才生效。
 
 ---
 

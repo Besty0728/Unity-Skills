@@ -156,10 +156,6 @@ def door_spec(seed):
     return {"ox": ox, "oy": oy, "oz": oz, "speed": rng.choice((6.0, 7.5, 9.0))}
 
 
-def sample_times():
-    return [row[0] for row in SAMPLE_SCHEDULE]
-
-
 def class_name(handles):
     return os.path.basename(handles["script"])[:-len(".cs")]
 

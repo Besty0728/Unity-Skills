@@ -4,5 +4,5 @@ R2. `Fire(Transform target)` 的行为：在 Play 模式下传入非空 `target`
 R3. 把 `{cls}` 挂到 `{battery}` 上（场景中只有这一个该组件），并在场景中设置：`muzzle` = `{muzzle}` 的 Transform，`projectilePrefab` = `{prefab}`。
 R4. 不要修改 `{prefab}`、工程的 `Physics.gravity`、`Time.fixedDeltaTime`，也不要修改 `{battery}`、`{muzzle}` 或其他现有场景对象与资产的变换和名称。
 R5. 除 `{cls}.cs` 外，不要新增或修改任何代码文件（包括编辑器脚本）。
-R6. 验收会进入 Play 模式并调用 `Fire(Transform)` 共 3 次，每次传入 3 个处于不同世界位置与高度的隐藏目标 Transform 之一：每次调用返回的 GameObject 都必须是新生成的 `{prefab}` 实例，带有非运动学 Rigidbody（`useGravity == true`，保持原有的质量与阻力），从 `{muzzle}` 处以不低于 1.0 m/s 的初速度发射，且在发射后 2.5 s 内其首次碰撞位置（或自由飞行物理弹道上的最近点）与当次 `target.position` 的距离不超过 0.25 m；运行期间不得出现错误或异常日志。
+R6. 验收会进入 Play 模式并调用 `Fire(Transform)` 共 3 次，每次传入 3 个处于不同世界位置与高度的隐藏目标 Transform 之一（它们没有碰撞体，弹丸会直接穿过）：每次调用必须恰好生成一个弹丸，即新生成的 `{prefab}` 实例，带有非运动学 Rigidbody（`useGravity == true`，保持原有的质量与阻力），从 `{muzzle}` 处发射，且在发射后 2.5 s 内其自由飞行轨迹必须经过当次 `target.position` 0.25 m 以内；返回的 GameObject 即该弹丸；运行期间不得出现错误或异常日志。
 R7. 在答案中报告脚本的资产路径、`{battery}` 的完整层级路径，以及 `{prefab}` 的资产路径。
