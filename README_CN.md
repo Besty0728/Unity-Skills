@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-860-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-870-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README.md"><img src="https://img.shields.io/badge/README-English-blue?style=for-the-badge" alt="English"></a>
 </p>
@@ -58,7 +58,7 @@
 
 ## 🚀 核心特性
 
-- 🛠️ **860 REST Skills 全能库**：57 个源文件、55 个分类，另有 30 个 advisory 设计模块，支持 Batch 批处理。
+- 🛠️ **870 REST Skills 全能库**：57 个源文件、55 个分类，另有 30 个 advisory 设计模块，支持 Batch 批处理。
 - ⚡ **支持UnityCLI**：支持绑定UnityCLI，对应项目冷启动，不用开启UnityHub
 - 🔐 **三档权限模式**：Approval / Auto / Bypass + 双轨审批，对齐 Claude Code permission modes。
 - 🤖 **6 大 IDE 原生支持**：Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code，一键安装即用。
@@ -212,7 +212,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ---
 
 <details>
-<summary><b>📦 Skills 分类概要 (860)</b></summary>
+<summary><b>📦 Skills 分类概要 (870)</b></summary>
 
 | 分类 | 数量 | 核心功能 |
 | :--- | :---: | :--- |
@@ -294,7 +294,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │   │   └── references/             # Unity 开发参考文档
 │   └── Editor/
 │       ├── Locales/                # 独立多语言 JSON 资产 (en.json, zh-CN.json, ru.json)
-│       ├── Skills/                 # 核心 Skill 逻辑 (57 个 *Skills.cs → 55 个 SkillCategory 分类，共 860 Skills)
+│       ├── Skills/                 # 核心 Skill 逻辑 (57 个 *Skills.cs → 55 个 SkillCategory 分类，共 870 Skills)
 │       │   ├── SkillsHttpServer.cs # HTTP 服务器核心 (Producer-Consumer)
 │       │   ├── SkillRouter.cs      # 请求路由 & 反射发现 Skills
 │       │   ├── WorkflowManager.cs  # 持久化工作流 (Task/Session/Snapshot)
@@ -302,7 +302,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 │       │   ├── GameObjectFinder.cs # 统一 GO 查找器 (name/entityId/instanceId/path)
 │       │   ├── BatchExecutor.cs    # 泛型批处理框架
 │       │   ├── Localization.cs     # 多语言本地化管理引擎
-│       │   └── ...                 # 860 Skills 源码
+│       │   └── ...                 # 870 Skills 源码
 │       └── UI/                     # UI Toolkit 窗口与控制器
 │           ├── UnitySkillsWindow.{cs,uxml,uss} # 主控制面板窗口
 │           ├── UnityCliWindow.{cs,uxml,uss}    # Unity CLI 配置面板

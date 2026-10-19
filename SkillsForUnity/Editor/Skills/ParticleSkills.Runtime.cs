@@ -673,15 +673,16 @@ namespace UnitySkills
 
         /// <summary>
         /// The simulated seconds of a slice of <paramref name="steps"/> steps. Fixed steps ask for half a step more than
-        /// the whole steps: Unity counts fixed steps by subtracting the step size in floating point and drops what is
-        /// left, so an exact multiple can lose its last step (0.5 s gave 24 steps of 0.02 s). Variable steps ask for the
-        /// exact time; the last slice takes what remains of seconds.
+        /// the whole steps in the first slice only: Unity counts fixed steps by subtracting the step size in floating
+        /// point, so an exact multiple can lose its last step (0.5 s gave 24 steps of 0.02 s), and it carries the part of
+        /// a step left over into the next Simulate call, so a half step on every slice adds steps. Variable steps ask for
+        /// the exact time; the last slice takes what remains of seconds.
         /// </summary>
         private static float SliceSeconds(SimulateProgress progress, int steps)
         {
             var item = progress.Item;
             if (item.Request.FixedTimeStep)
-                return (steps + 0.5f) * item.StepSeconds;
+                return (steps + (progress.Started ? 0f : 0.5f)) * item.StepSeconds;
             if (progress.Done + steps >= item.Steps)
                 return Math.Max(0f, item.Request.Seconds.Value - progress.Done * item.StepSeconds);
             return steps * item.StepSeconds;

@@ -411,7 +411,8 @@ namespace UnitySkills
         /// <summary>
         /// The stored list, broken entries included. Unity's API skips an entry whose system was destroyed
         /// (subEmittersCount drops it) while the serialized list keeps it and the Inspector shows it as None, so the
-        /// readback, the replace and the analysis read the serialized list. Falls back to the API if the layout changes.
+        /// readback, the replace and the analysis read the serialized list. An entry that never named a system is skipped
+        /// like the API skips it: every new ParticleSystem stores one (Birth, None). Falls back to the API if the layout changes.
         /// </summary>
         internal static List<StoredSubEmitter> ReadStoredSubEmitters(ParticleSystem system)
         {
@@ -430,6 +431,8 @@ namespace UnitySkills
                         var probability = element.FindPropertyRelative("emitProbability");
                         if (emitter == null || type == null || properties == null || probability == null)
                             return ReadApiSubEmitters(system);
+                        if (emitter.objectReferenceValue == null && !UnityObjectIdUtility.HasMissingObjectReference(emitter))
+                            continue;
                         list.Add(new StoredSubEmitter
                         {
                             System = emitter.objectReferenceValue as ParticleSystem,

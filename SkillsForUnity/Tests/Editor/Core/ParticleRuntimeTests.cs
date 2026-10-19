@@ -615,10 +615,14 @@ namespace UnitySkills.Tests.Core
         {
             var a = Fx("DryA");
             var b = Fx("DryB");
-            var dry = DryRun("particle_pause_batch", new JObject { ["items"] = new JArray(Target(a), Target(b, new JObject { ["withChildren"] = true })) });
+            var args = new JObject { ["items"] = new JArray(Target(a), Target(b, new JObject { ["withChildren"] = true })) };
+            var dry = DryRun("particle_pause_batch", args);
             Assert.That(dry["valid"]?.Value<bool>(), Is.True, dry.ToString(Formatting.None));
-            var preview = dry["batchPreview"];
-            Assert.That(preview, Is.Not.Null, dry.ToString(Formatting.None));
+            Assert.That(dry["changes"]["modify"].Select(entry => entry["target"]?.ToString()), Is.EqualTo(new[] { "DryA", "DryB" }));
+            // dryRun embeds only steps and changes; the planner's batchPreview is part of the full plan.
+            var plan = JObject.Parse(SkillRouter.Plan("particle_pause_batch", args.ToString(Formatting.None)));
+            var preview = plan["batchPreview"];
+            Assert.That(preview, Is.Not.Null, plan.ToString(Formatting.None));
             Assert.That(preview["atomic"]?.Value<bool>(), Is.False);
             Assert.That(preview["runsOnlyWhenAllValid"]?.Value<bool>(), Is.True);
             Assert.That(preview["items"][1]["systems"]?.Values<string>(), Is.EqualTo(new[] { "DryB" }));

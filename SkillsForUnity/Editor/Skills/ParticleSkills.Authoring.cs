@@ -205,6 +205,7 @@ namespace UnitySkills
             var rejected = ValidateBatch(itemsJson, skill, itemKeys, prepare, out var preps);
             if (rejected != null)
                 return rejected;
+            validateAll?.Invoke(preps);
 
             bool anyInvalid = preps.Any(prep => !prep.Ok);
             int index = 0;
@@ -290,7 +291,6 @@ namespace UnitySkills
                 else
                     firstByTarget[prep.TargetKey] = prep.Index;
             }
-            validateAll?.Invoke(preps);
 
             preps = prepared;
             return null;
