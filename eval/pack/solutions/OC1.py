@@ -136,7 +136,7 @@ def wrong_pose(ctx):
 def with_component(ctx):
     answer = reference(ctx)
     ctx.c.write("prefab_add_component", prefabPath=ctx.handles["turret"], gameObjectPath=_node_path(ctx),
-                componentType="Light")
+                componentType="BoxCollider")
     return answer
 
 

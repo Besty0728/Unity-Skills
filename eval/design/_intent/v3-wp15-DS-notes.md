@@ -34,3 +34,8 @@ negatives：runtime_instance {D10,D11}、defaults_unset {D3,D10,D11}、spawn_at_
 
 ## 预估
 DS1：15–25 分钟，通过率 50–75%（主要丢分：局部坐标、起步停顿、未设置场景值）。DS3：20–30 分钟，通过率 45–70%（主要丢分：资产值未设、首次生成时刻、运行时新建配置）。
+
+## 2026-10-21 修订（2022.3 URP 实机门禁）
+- **DS1 改为按事件计时**。实机上参考解 D9 只有 0.2：scenario 每步至少占一个编辑器 tick，`wait_seconds` 从开始那个 tick 起算，10 个名义采样点累计偏出 1 秒以上，±0.3 秒窗口必然不过。现在先打一次 `timeSinceStartup` 戳，再依次 `wait_condition` 守卫站上 W2、W3、W4、W1、W2（`gameobject_get_info` 的 `position`，逐分量容差 0.1），每次到达后打戳；检查 5 个到达间隔（第一个 [行进 − 0.7, 行进 + 0.8]，其余 [停留 + 行进 − 0.3, + 0.5]）和一整圈总时长（同 −0.3/+0.5），容差取自 DB3。D9 fraction = （通过的间隔 + 圈长 + scenario 完成）/ 7，日志里有 Error/Exception/Assert 时为 0。公开 R4 同步改写。离线 fake 增加 `wait_condition` 逐帧轮询、`step_cost` 与 `timeSinceStartup`，`SlowEditorDS1`（20 fps、Play 提前 0.3 秒）下所有用例判定不变。
+- **DS3 参考解死循环**：模板 while 条件复用了提前返回的 `|| _spawned >= count`，生成数到上限后在同一帧里无限 `Instantiate`，实机编辑器卡死。改为单独的 `guard`（`&& _spawned < config.count`），同 DB6。
+- **DS3 也改为按事件计时**（同日实机：死循环修好后，参考解 D10 只有 0.55，计数比名义采样时刻超前约 0.3 秒）。第一步读 containerA（A 的间隔至少 0.8 秒，一帧最多 1/3 秒游戏时间，参考解此时必为空，`spawn_at_zero` 已有 1 个），然后打 `timeSinceStartup` 戳，按时间顺序对每次生成 `wait_condition` 该 container 的 `childCount` 至少为 k（`expected = k + 1000`、`tolerance = 1000`，轮询偶尔落后也不会错过），每次后打戳；最后一次生成 1 秒后读两个 container。D10 fraction =（A 起始为空 + 每个 container 的各次间隔、总时长、已停止 + scenario 完成）/ 总项数，容差同 DB3/DS1；D11 不变。公开 R5 同步改写。

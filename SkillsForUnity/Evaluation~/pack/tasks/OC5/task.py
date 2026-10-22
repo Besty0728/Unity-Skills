@@ -167,10 +167,16 @@ def override_rows(overrides):
 
 
 def value_rows(probe, ref):
-    """The object's component values as sorted [type, [[propertyPath, value], ...]] rows (Unity's property names, such
-    as m_TargetDisplay, stay out of C0's keys)."""
-    return [[kind, sorted([path, value] for path, value in (props or {}).items())]
-            for kind, props in sorted(V.component_values(probe, ref).items())]
+    """The object's component values as sorted [type, [[propertyPath, value], ...]] rows, hidden properties included:
+    Canvas keeps m_SortingOrder, m_SortingLayerID and m_TargetDisplay out of the visible list (Unity's property names
+    stay out of C0's keys)."""
+    rows = []
+    for kind in sorted({comp.get("type") for comp in probe.components(ref) if comp.get("type")}):
+        res = probe.c.read("component_get_serialized_properties", componentType=kind, includeHidden=True, limit=5000,
+                           **V.address(ref))
+        rows.append([kind, sorted([prop.get("propertyPath"), prop.get("value")]
+                                  for prop in res.get("properties") or [] if isinstance(prop, dict))])
+    return rows
 
 
 def asset_state(ctx, prefab_path):

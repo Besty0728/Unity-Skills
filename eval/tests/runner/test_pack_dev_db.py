@@ -90,10 +90,61 @@ class DB1Tests(DevTaskTests, unittest.TestCase):
     FAILS_UNTOUCHED = {"C1", "C2", "C3", "C6", "C7"}
 
 
+class SlowEditorDB(FakeEditorDB):
+    """Play Mode at 20 fps with RuntimeScenarioService's pacing, and Play starting 0.3 s before the first step."""
+    step_cost = 1.0 / 20
+
+    def _enter_play(self):
+        FakeEditorDB._enter_play(self)
+        self._tick(0.3)
+
+
 class DB3Tests(DevTaskTests, unittest.TestCase):
     TASK_ID = "DB3"
     SEED = 7708
     FAILS_UNTOUCHED = {"D1", "D2", "D3", "D6", "D7"}
+
+    def test_scenario_stamps_each_toggle(self):
+        run = self.run_for()
+        private = load_modules(self.TASK_ID)[1]
+        steps = private.SCENARIO(run.build_ctx)["steps"]
+        self.assertEqual([step["kind"] for step in steps],
+                         ["read", "wait_frames", "read"] + ["wait_condition", "read"] * 3 + ["assert"])
+        waits = [step for step in steps if step["kind"] == "wait_condition"]
+        self.assertEqual([step["expected"] for step in waits], [False, True, False])
+        self.assertEqual({(step["skill"], step["select"]) for step in waits}, {("component_list", private.LIGHT)})
+        self.assertEqual({step["skill"] for step in steps if step["kind"] == "read"},
+                         {"editor_get_state", "component_list"})
+
+    def test_toggle_tolerances(self):
+        private = load_modules(self.TASK_ID)[1]
+        ok = lambda stamps: private.toggles_ok(stamps, 0.8)[0]    # noqa: E731
+        self.assertTrue(ok([10.0, 10.8, 11.6, 12.4]))
+        self.assertTrue(ok([10.0, 10.1, 10.9, 11.7]))              # Play started 0.7 s before the first stamp
+        self.assertTrue(ok([10.0, 11.1, 11.8, 12.9]))              # 0.3 late, gaps 0.7 and 1.1
+        self.assertFalse(ok([10.0, 10.05, 10.85, 11.65]))          # 0.75 s early: a toggle at Play start
+        self.assertTrue(ok([10.0, 11.6, 12.4, 13.2]))              # first toggle 0.8 late: slow first Play frames
+        self.assertFalse(ok([10.0, 11.7, 12.5, 13.3]))             # 0.9 late
+        self.assertTrue(ok([10.0, 10.73, 11.84, 12.64]))           # a hitch lengthens the second gap by 0.31
+        self.assertFalse(ok([10.0, 10.8, 12.15, 12.95]))           # a gap 0.55 long: beyond the hitch allowance
+        self.assertFalse(ok([10.0, 10.4, 10.8, 11.2]))             # every half interval
+        self.assertFalse(ok([10.0, 10.5, 11.0, 11.5]))             # the 0.5 s code default: gaps pass, the span not
+        self.assertFalse(ok([10.0, 10.8, 11.6]))
+
+    def test_verdicts_hold_at_20_fps_with_a_late_first_step(self):
+        """Every case keeps its verdict when each step costs a 20 fps tick and Play starts 0.3 s early, for the
+        default seed and the tightest spec (interval 0.8): the pacing that broke the fixed sampling schedule live."""
+        private, solutions = load_modules(self.TASK_ID)[1:]
+        seeds = [self.SEED] + [seed for seed in range(7001, 7400) if private.spec(seed)["interval"] == 0.8][:1]
+        for seed in seeds:
+            cases = [("reference", solutions.reference, set())] + \
+                [(name, fn, set()) for name, fn in solutions.ALTERNATIVES] + \
+                [(negative.name, negative.apply, negative.expect_failed) for negative in solutions.NEGATIVES]
+            for name, fn, failed in cases:
+                with self.subTest(seed=seed, case=name):
+                    run = self.run_for(seed=seed)
+                    run.editor.__class__ = SlowEditorDB
+                    self.assertEqual(set(run.verify(run.solve(fn)).failed()), failed)
 
 
 class DB5Tests(DevTaskTests, unittest.TestCase):

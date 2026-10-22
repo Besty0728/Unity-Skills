@@ -371,10 +371,15 @@ def _write_script(ctx, content, name=None):
     return res
 
 
-def _attach(ctx, target_iid, max_health=None):
+def _attach(ctx, target_iid, max_health=None, private_field=False):
+    """component_set_property reaches public members only; a [SerializeField] private field takes the serialized
+    property path."""
     cls = ctx.handles["className"]
     ctx.c.write("component_add", componentType=cls, **address(target_iid))
-    if max_health is not None:
+    if max_health is not None and private_field:
+        ctx.c.write("component_set_serialized_property", componentType=cls, propertyPath="maxHealth",
+                    value=str(max_health), **address(target_iid))
+    elif max_health is not None:
         ctx.c.write(
             "component_set_property",
             componentType=cls,
@@ -409,7 +414,7 @@ def serialize_field_form(ctx):
     h = ctx.handles
     s = ctx.private.spec(ctx.seed)
     _write_script(ctx, SERIALIZE_FIELD_SOURCE.format(cls=h["className"], default=s["defaultMaxHealth"]))
-    _attach(ctx, h["unit"], s["maxHealth"])
+    _attach(ctx, h["unit"], s["maxHealth"], private_field=True)
     return _answer(ctx)
 
 
@@ -425,7 +430,7 @@ def combined_declarations(ctx):
     h = ctx.handles
     s = ctx.private.spec(ctx.seed)
     _write_script(ctx, COMBINED_SOURCE.format(cls=h["className"], default=s["defaultMaxHealth"]))
-    _attach(ctx, h["unit"], s["maxHealth"])
+    _attach(ctx, h["unit"], s["maxHealth"], private_field=True)
     return _answer(ctx)
 
 

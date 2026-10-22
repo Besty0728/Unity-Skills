@@ -158,8 +158,11 @@ def extra_script(ctx):
 
 
 def two_components(ctx):
+    """A copy of the component (same interval) toggles in the same frame: the light never changes. A second
+    component_add + component_set_property would leave the copy at the code default (the setter reaches the first)."""
     answer = reference(ctx)
-    _attach(ctx, ctx.handles["lamp"], ctx.private.spec(ctx.seed)["interval"])
+    lamp = ctx.handles["lamp"]
+    ctx.c.write("component_copy", componentType=_cls(ctx), **dict(V.address(lamp, "source"), **V.address(lamp, "target")))
     return answer
 
 

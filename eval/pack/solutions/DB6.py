@@ -24,7 +24,7 @@ public class {cls} : MonoBehaviour
     {{
         if (prefab == null || container == null{limit}) return;
         _elapsed += Time.deltaTime;
-        while (_elapsed >= interval{limit})
+        while (_elapsed >= interval{guard})
         {{
             _elapsed -= interval;
             {spawn_stmt}
@@ -80,14 +80,14 @@ def _source(ctx, def_interval=None, def_count=None, variant=None):
     di = ctx.private.DEFAULT_INTERVAL if def_interval is None else def_interval
     dc = ctx.private.DEFAULT_COUNT if def_count is None else def_count
     start = ""
-    limit = " || _spawned >= maxCount"
+    stop = "maxCount"
     spawn_stmt = "Instantiate(prefab, container);"
     if variant == "spawn_on_start":
         start = "\n        _elapsed = interval;"
     elif variant == "no_stop":
-        limit = ""
+        stop = None
     elif variant == "off_by_one":
-        limit = " || _spawned >= maxCount - 1"
+        stop = "maxCount - 1"
     elif variant == "parent_emitter":
         spawn_stmt = "Instantiate(prefab, transform);"
     elif variant == "keep_world_pos":
@@ -96,7 +96,8 @@ def _source(ctx, def_interval=None, def_count=None, variant=None):
         spawn_stmt = "Instantiate(prefab, container).name = prefab.name + \"_\" + (_spawned + 1);"
     marker = "\n    // usk-fake: %s" % variant if variant else ""
     return SPAWNER_SRC.format(cls=_cls(ctx), def_interval=di, def_count=dc, marker=marker,
-                              start=start, limit=limit, spawn_stmt=spawn_stmt)
+                              start=start, limit=" || _spawned >= %s" % stop if stop else "",
+                              guard=" && _spawned < %s" % stop if stop else "", spawn_stmt=spawn_stmt)
 
 
 def _create_script(ctx, name, content, folder=None):

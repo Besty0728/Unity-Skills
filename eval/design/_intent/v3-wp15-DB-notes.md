@@ -42,13 +42,18 @@ Fixture: `R/Hall/Lamp_<a|b>`, two point lights (gameobject_create + component_ad
 seeded. `spec(seed)`: interval 0.8/1.0/1.2 s; code default fixed 0.5.
 Assertions D1..D9 mirror DB1 (D5 also checks both lights still enabled). Runtime: the Light's `enabled` flag as
 `component_list` reports it (the serialized `m_Enabled` is hidden from `NextVisible`, so the serialized reader is not
-used), sampled right after start and at 0.5, 1.5, 2.5, 3.5 intervals → on, on, off, on, off (tolerant to roughly a
-third of an interval of scheduling drift).
+used). Timed by events like DB6: a `timeSinceStartup` stamp right after Play starts, the Light read on two frames in,
+then a stamp each time a `wait_condition` on `components[1].enabled` sees off, on, off; the first toggle within
+[I - 0.7, I + 0.8] of the start stamp (live 2022.3 the first toggle read 0.3-0.5 s late: the first Play frames are
+slow and deltaTime is capped), later gaps and the off-on-off span at most 0.3 s short or 0.5 s long (a frame over
+Time.maximumDeltaTime loses game time, so a hitch only delays; DB6 uses the same windows). (The first design sampled at
+0.5, 1.5, 2.5, 3.5 intervals; live, with two editors sharing the machine, the step overhead piled up past half an
+interval by the last sample, and four cases failed D6 at random.)
 Negatives: wrong_lamp {D3,D5,D6}; default_only {D3,D6}; toggle_on_start {D6}; half_period {D6}; wrong_default {D1};
 compile_error {D2,D3,D6,D7}; extra_script {D4}; two_components (toggles cancel) {D3,D6}; wrong_report {D7};
 outside_root {D8}; direct_file {D9}. Alternatives: invoke_repeating, save_run_scene.
-Live uncertainties: `wait_seconds` uses wall-clock ticks while the script uses game time (equal at timeScale 1); the
-first read lands two frames after Play starts.
+Live uncertainties: the stamps are wall-clock while the script uses game time (equal at timeScale 1 without frame
+hitches over Time.maximumDeltaTime).
 
 ## DB5 — ClickCounter
 Fixture: `R/Canvas_<a>` (ui_create_canvas, reparented under R) with `Btn_<b>`, `Btn_<c>` (ui_create_button) and
@@ -76,3 +81,7 @@ writes every assigned Text field, an unassigned one flags a runtime error like U
 negatives' sources carry a `// usk-fake: <variant>` comment the model reads (per_frame, world_axis, toggle_on_start,
 half_period, runtime_listener, no_text_write) — the same convention wp15-oc-b uses for DS1/DS3. It models the
 solutions, not C#.
+
+2026-10-21: DB3's public R5 now describes the event-timed check the private verifier already ran (start on, toggles
+off/on/off one interval apart; first toggle -0.7/+0.8 s, later gaps and the span -0.3/+0.5 s) instead of the old
+fixed sampling moments, which no longer matched the grading.

@@ -3,9 +3,12 @@
 What the task probes: the script must compile with the given class and field names and keep the code default while
 the scene stores the seeded interval (a default-only component blinks at the wrong rate); exactly one component on
 the given lamp and none on the other; the first toggle comes one interval after Play starts (toggling at Start or
-every half interval breaks the sampled pattern); no other code file and no other object change. Play Mode evidence
-comes from Light reads sampled midway between the expected toggles.
+every half interval breaks the toggle schedule); no other code file and no other object change. Play Mode evidence
+is timed by events, as DB6 does: a timeSinceStartup stamp right after Play starts, the Light read on, then a stamp each
+time a wait_condition sees the next toggle (off, on, off). The stamps share the editor's wall clock, so the step
+overhead of the scenario does not pile up the way a fixed sampling schedule does.
 """
+import math
 import os
 import random
 import re
@@ -16,7 +19,14 @@ INTERVALS = (0.8, 1.0, 1.2)
 DEFAULT_INTERVAL = 0.5
 SPEC_SALT = 0x5B03
 FIELD = "interval"
-PATTERN = (True, True, False, True, False)      # at ~0, 0.5, 1.5, 2.5 and 3.5 intervals
+TOGGLES = (False, True, False)   # R5: the Light states the scenario waits for, one interval apart
+TIME_TOL = 0.3                   # R5: a toggle moment, seconds (frame and read granularity, game time vs wall clock)
+EARLY_SLACK = 0.7                # R5: the first toggle may read this much early (Play starts before the first stamp)
+LATE_SLACK = 0.8                 # R5: or this much late (the first Play frames are slow and deltaTime is capped; live
+                                 # 2022.3: 0.3-0.5 s)
+LATE_TOL = 0.5                   # R5: a later toggle may read this much late: a frame over Time.maximumDeltaTime loses
+                                 # game time, so a hitch only lengthens a gap (DB6 live 2022.3: up to 0.31 s)
+LIGHT = "components[1].enabled"  # component_list: the lamp's Transform, then the fixture's Light
 SCRIPT_RE = re.compile(r"\.cs(\.meta)?$")
 
 ASSERTIONS = [
@@ -28,8 +38,8 @@ ASSERTIONS = [
     ("D4", 0.75, True, ["R4"], "no code file other than the script was added under Assets"),
     ("D5", 0.75, True, ["R4"], "every other object is unchanged, both lights still enabled, and the lamp kept its "
                                "other components"),
-    ("D6", 2.5, False, ["R2", "R5"], "in Play Mode no error is logged and the lamp reads on, on, off, on, off at "
-                                     "the sampled times"),
+    ("D6", 2.5, False, ["R2", "R5"], "in Play Mode no error is logged, the lamp starts on and toggles off, on, off "
+                                     "one interval apart, the first one interval after Play starts"),
     ("D7", 0.5, False, ["R6", "G8"], "the answer reports the script path, the carrying object and the stored interval"),
     ("D8", 0.5, True, ["G1", "G2"], "no change outside R/A, no other scene saved or opened"),
     ("D9", 0.5, False, ["G4"], "no file other than C# scripts was written under A around the skills"),
@@ -193,29 +203,56 @@ def verify(ctx, card):
     card.check("D9", not direct, actual={"directWrites": direct[:10]})
 
 
+def toggles_ok(stamps, interval):
+    """(ok, rows) for stamps [t0, t1, t2, t3] (t0 taken right after Play starts, tk when the k-th toggle was seen):
+    t1 - t0 within [interval - EARLY_SLACK, interval + LATE_SLACK], each later gap and t3 - t1 (two intervals) at most
+    TIME_TOL short or LATE_TOL long (a toggle every half interval or at the code default cannot pass on the span)."""
+    rows, ok = [], len(stamps) == len(TOGGLES) + 1
+    for index in range(1, len(stamps)):
+        gap = stamps[index] - stamps[index - 1]
+        low, high = (interval - EARLY_SLACK, interval + LATE_SLACK) if index == 1 else (interval - TIME_TOL,
+                                                                                        interval + LATE_TOL)
+        good = low - 1e-9 <= gap <= high + 1e-9
+        ok = ok and good
+        rows.append({"toggle": index, "gap": round(gap, 3), "ok": good})
+    if ok:
+        span = stamps[-1] - stamps[1]
+        expected = (len(stamps) - 2) * interval
+        ok = expected - TIME_TOL - 1e-9 <= span <= expected + LATE_TOL + 1e-9
+        rows.append({"span": round(span, 3), "ok": ok})
+    return ok, rows
+
+
 def SCENARIO(ctx):
-    """Play Mode: the lamp's Light sampled right after start and midway through the next four intervals."""
+    """Play Mode: a stamp right after start, the lamp's components two frames in, then a stamp at each toggle."""
     interval = spec(ctx.seed)["interval"]
-    read = {"kind": "read", "skill": "component_list", "args": V.address(ctx.handles["lamp"])}
-    steps = [{"kind": "wait_frames", "frames": 2}, dict(read), {"kind": "wait_seconds", "seconds": 0.5 * interval}]
-    for _ in range(3):
-        steps += [dict(read), {"kind": "wait_seconds", "seconds": interval}]
-    steps += [dict(read), {"kind": "assert", "skill": "editor_get_state", "select": "isPlaying", "expected": True}]
-    return {"executionMode": "play", "timeoutSeconds": 60, "steps": steps}
-
-
-def _enabled(step):
-    rows = ((step or {}).get("actual") or {}).get("components") or []
-    row = next((row for row in rows if isinstance(row, dict) and row.get("type") == "Light"), None)
-    return as_bool(row.get("enabled")) if row else None
+    lamp = V.address(ctx.handles["lamp"])
+    stamp = {"kind": "read", "skill": "editor_get_state", "args": {}}
+    steps = [dict(stamp), {"kind": "wait_frames", "frames": 2},
+             {"kind": "read", "skill": "component_list", "args": dict(lamp)}]
+    for state in TOGGLES:
+        steps += [{"kind": "wait_condition", "skill": "component_list", "args": dict(lamp), "select": LIGHT,
+                   "expected": state}, dict(stamp)]
+    steps.append({"kind": "assert", "skill": "editor_get_state", "select": "isPlaying", "expected": True})
+    return {"executionMode": "play", "timeoutSeconds": int(math.ceil(len(TOGGLES) * interval)) + 30, "steps": steps}
 
 
 def verify_runtime(ctx, card):
     scenario = ctx.scenario or {}
-    samples = [_enabled(step) for step in scenario.get("steps") or [] if step.get("kind") == "read"]
-    card.check("D6", scenario.get("passed") is True and tuple(samples) == PATTERN,
-               expected={"pattern": list(PATTERN)},
+    interval = spec(ctx.seed)["interval"]
+    reads = [step.get("actual") if isinstance(step.get("actual"), dict) else {}
+             for step in scenario.get("steps") or [] if step.get("kind") == "read"]
+    reads += [{}] * max(0, len(TOGGLES) + 2 - len(reads))      # start stamp, start components, a stamp per toggle
+    rows = reads[1].get("components") or []
+    light = rows[1] if len(rows) > 1 and isinstance(rows[1], dict) else {}
+    start_on = light.get("type") == "Light" and as_bool(light.get("enabled")) is True
+    stamps = [V.floats(reads[index].get("timeSinceStartup")) for index in [0] + list(range(2, len(TOGGLES) + 2))]
+    timed = all(len(stamp) == 1 for stamp in stamps)
+    on_time, toggles = toggles_ok([stamp[0] for stamp in stamps], interval) if timed else (False, [])
+    card.check("D6", scenario.get("passed") is True and start_on and on_time,
+               expected={"start": True, "interval": interval, "timeTol": TIME_TOL, "earlySlack": EARLY_SLACK,
+                         "lateSlack": LATE_SLACK, "lateTol": LATE_TOL},
                actual={"passed": scenario.get("passed"), "error": scenario.get("error"),
-                       "status": scenario.get("status"), "samples": samples})
+                       "status": scenario.get("status"), "startLight": light, "toggles": toggles})
 
 # Producer:Betsy

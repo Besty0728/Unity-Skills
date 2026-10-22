@@ -20,6 +20,7 @@ from .pack_fake_editor import RUNNER, _fail, _matches, _select, q_from_euler, q_
 from .pack_offline import OpsFakeEditor
 
 FPS = 60.0
+TIME_BASE = 1000.0               # editor_get_state timeSinceStartup when the scenario's Play Mode starts
 MARKER_RE = re.compile(r"//\s*usk-fake:\s*([\w-]+)")
 TEXT_KINDS = ("Text", "UnityEngine.UI.Text")
 TEXT_TYPE = "UnityEngine.UI.Text"
@@ -30,6 +31,7 @@ TEXT_FONT_SIZE = 14
 
 class FakeEditorDB(OpsFakeEditor):
     extra_reads = frozenset(("script_read", "event_get_listeners", "event_get_listener_count"))
+    step_cost = 0.0              # game seconds one executed step (or the start of a wait) costs; Unity: one editor tick
 
     def __init__(self, *args, **kwargs):
         super(FakeEditorDB, self).__init__(*args, **kwargs)
@@ -255,6 +257,24 @@ class FakeEditorDB(OpsFakeEditor):
                 continue
             self.texts[value[1]] = str(self.counts[key])
 
+    def _skill_component_copy(self, agent, args):
+        """CopyComponent + PasteComponentAsNew: one more component of the type with the source's values (the model
+        keeps one value set per type and object, so a copy onto its own object shares it)."""
+        src, dst, kind = self.find(args, "source"), self.find(args, "target"), args["componentType"]
+        comp = self.component(src, kind)
+        if comp is None:
+            raise _fail("COMPONENT_NOT_FOUND", "No %s on %s" % (kind, src.name))
+        dst.components.append([kind, comp[1]])
+        if dst is not src and kind in src.fields:
+            dst.fields[kind] = dict(src.fields[kind])
+        self._change(agent, self._identity(dst, kind="components_changed"))
+        return {"success": True, "source": src.name, "target": dst.name, "componentType": kind, "pasted": True}
+
+    def _skill_editor_get_state(self, agent, args):
+        out = super(FakeEditorDB, self)._skill_editor_get_state(agent, args)
+        out["timeSinceStartup"] = TIME_BASE + self.clock
+        return out
+
     def _enter_play(self):
         self.clock = 0.0
         self.counts = {}
@@ -294,21 +314,31 @@ class FakeEditorDB(OpsFakeEditor):
     # ------------------------------------------------------------ scenario stand-in with time
 
     def run_scenario(self, spec, agent=RUNNER):
+        """Steps on the game clock: waits advance it, a wait_condition re-reads once per frame until it matches or the
+        scenario's timeout passes, and with `step_cost` every executed step and every wait start costs one editor
+        tick, as RuntimeScenarioService paces them."""
         steps, records, passed, error, last = spec.get("steps") or [], [], True, None, None
+        deadline = float(spec.get("timeoutSeconds") or 60)
         self.playing = spec.get("executionMode", "play") == "play"
         self._enter_play()
         try:
             for index, step in enumerate(steps):
                 kind = step.get("kind")
                 if kind in ("wait_frames", "wait_seconds"):
-                    self._tick(float(step.get("seconds") or 0) if kind == "wait_seconds"
-                               else int(step.get("frames") or 0) / FPS)
+                    self._tick(self.step_cost + (float(step.get("seconds") or 0) if kind == "wait_seconds"
+                                                 else int(step.get("frames") or 0) / FPS))
                     records.append({"index": index, "kind": kind, "passed": True, "actual": None})
                     continue
                 actual = last
                 if kind in ("read", "invoke", "wait_condition") or (kind == "assert" and step.get("skill")):
+                    self._tick(self.step_cost)
                     try:
                         actual = self.call(step["skill"], dict(step.get("args") or {}), agent)
+                        while kind == "wait_condition" and self.clock <= deadline and not _matches(
+                                _select(actual, step.get("select")), step.get("expected"),
+                                float(step.get("tolerance") or 0)):
+                            self._tick(max(1.0 / FPS, self.step_cost))
+                            actual = self.call(step["skill"], dict(step.get("args") or {}), agent)
                     except Exception as exc:                 # SkillError payloads, like the plugin's refusals
                         payload = getattr(exc, "payload", None) or {"error": str(exc)}
                         records.append({"index": index, "kind": kind, "skill": step.get("skill"),
@@ -318,6 +348,9 @@ class FakeEditorDB(OpsFakeEditor):
                 if kind in ("assert", "wait_condition"):
                     selected = _select(actual, step.get("select"))
                     ok = _matches(selected, step.get("expected"), float(step.get("tolerance") or 0))
+                    if not ok and kind == "wait_condition":
+                        passed, error = False, "Scenario timeout; steps will not be replayed."
+                        break
                     records.append({"index": index, "kind": kind, "skill": step.get("skill"),
                                     "expected": step.get("expected"), "actual": selected, "passed": ok})
                     if not ok:

@@ -286,7 +286,8 @@ NEGATIVES = [
     Negative("edit_root", edit_root, {"P5", "P6"}, "the prefab root resized; the instance root keeps its size"),
     Negative("asset_depth", asset_depth, {"P6"}, "an element's local Z changed in the asset"),
     Negative("canvas_sort_order", canvas_sort_order, {"P6"}, "the scene Canvas's sorting order changed"),
-    Negative("replace_asset", replace_asset, {"P5", "P6", "P10"}, "the asset deleted and recreated"),
+    Negative("replace_asset", replace_asset, {"P5", "P6"}, "the asset deleted and recreated at its path; Unity "
+                                                           "hands the new file the old GUID, so P10 holds"),
     Negative("wrong_report", wrong_report, {"P7"}),
     Negative("outside_root", outside_root, {"P8"}),
     Negative("direct_file", direct_file, {"P9"}, "a file written to disk next to the skills"),

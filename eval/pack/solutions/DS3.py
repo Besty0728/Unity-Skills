@@ -38,7 +38,7 @@ public class {cls} : MonoBehaviour
     {{
         if (config == null || prefab == null || container == null{limit}) return;
         _elapsed += Time.deltaTime;
-        while (_elapsed >= config.interval{limit})
+        while (_elapsed >= config.interval{guard})
         {{
             _elapsed -= config.interval;
             Instantiate(prefab, {parent});
@@ -85,13 +85,14 @@ public static class {cls}
 
 def _spawner_source(cls, cfg, variant=None):
     parts = {"marker": "// usk-fake: %s" % variant if variant else "", "cls": cls, "cfg": cfg,
-             "start": "", "limit": " || _spawned >= config.count", "parent": "container"}
+             "start": "", "limit": " || _spawned >= config.count", "guard": " && _spawned < config.count",
+             "parent": "container"}
     if variant == "runtime-instance":
         parts["start"] = "config = ScriptableObject.CreateInstance<%s>();" % cfg
     elif variant == "spawn-at-zero":
         parts["start"] = "if (config != null) _elapsed = config.interval;"
     elif variant == "no-limit":
-        parts["limit"] = ""
+        parts["limit"] = parts["guard"] = ""
     elif variant == "wrong-container":
         parts["parent"] = "transform"
     return SPAWNER_SRC.format(**parts)

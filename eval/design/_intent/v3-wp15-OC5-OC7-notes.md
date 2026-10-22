@@ -15,17 +15,18 @@
 2. `posX/posY` 写的是 localPosition：根是 1280×720、锚点在角落时与 anchoredPosition 差 640/360（P1）。Crosshair 居中锚点恰好相等，所以该 negative 只让 P1 的 fraction 降到 1/6。
 3. Notice 必须在资产里激活（`prefab_set_active`），实例上 set_active 只是覆盖（P3+P5）。
 4. spacing/padding 是 `m_Spacing`、`m_Padding.m_Left/...`（P4）。
-5. GUID 不变：删掉重建会丢 GUID、丢覆盖、把颜色写进资产（P10+P5+P6）。
+5. GUID 不变：删掉重建会丢覆盖、把颜色写进资产（P5+P6）；同一路径删除重建时 Unity 2022.3 实机沿用原 GUID，P10 只能抓换了 GUID 的替换。
 6. 禁止 revert 实例覆盖（P5）。
 
 ### 断言与 negatives
 P1 2.5 / P2 1 / P3 1 / P4 1 / P5 1.5 / P6 1 / P7 0.5 / P8 0.5 critical(G1,G2) / P9 0.5 / P10 0.5。
-negatives：local_position {P1}、instance_only {P1–P5}、instance_then_apply {P2,P5,P6}、wrong_order {P2}、activate_instance {P3,P5}、spacing_only {P4}、revert_instance {P5}、edit_root {P6}、replace_asset {P5,P6,P10}、wrong_report {P7}、outside_root {P8}、direct_file {P9}。alternatives：edit_batch（单个 prefab_edit_batch 事务）、serialized_fields（m_AnchorMin 等 Vector2 逐项写）、save_run_scene。
+negatives：local_position {P1}、instance_only {P1–P5}、instance_then_apply {P2,P5,P6}、wrong_order {P2}、activate_instance {P3,P5}、spacing_only {P4}、revert_instance {P5}、edit_root {P5,P6}、asset_depth {P6}、canvas_sort_order {P6}、replace_asset {P5,P6}、wrong_report {P7}、outside_root {P8}、direct_file {P9}。alternatives：edit_batch（单个 prefab_edit_batch 事务）、serialized_fields（m_AnchorMin 等 Vector2 逐项写）、save_run_scene。
 
 ### 离线无法验证的点（实机门禁要看）
 - `prefab_get_overrides` 的幻影条目过滤依赖 DataEquals：资产被重新保存后，根 RectTransform 的 m_LocalPosition 等若序列化出 −0 之类差异，会凭空多出覆盖条目让 P5 误伤。C0 与终态用同一归一化比较，但数值漂移无法离线排除。
 - `ui_create_canvas` WorldSpace 下 Canvas RectTransform 不被驱动、`component_add Canvas` 在带 Image 的面板上可行、`prefab_create` 返回 `connected:true`——按源码推断，未实跑。
-- `replace_asset` negative 依赖 `asset_delete` 后实例变为 missing prefab 仍保留对象，再 `prefab_create` 能重连；若 Unity 行为不同，该 negative 的失败集可能变化。
+- `replace_asset` negative 依赖 `asset_delete` 后实例变为 missing prefab 仍保留对象，再 `prefab_create` 能重连。2022.3 URP 实机（2026-10-20）：重连成立，但新文件拿回原 GUID，P10 通过，失败集改为 {P5,P6}；fake 已按同路径重建保留 GUID 建模。
+- Canvas 的 m_SortingOrder、m_SortingLayerID、m_TargetDisplay、m_Enabled 不在可见属性里：P6 的场景 Canvas 取值（C0 与终态两侧）用 `includeHidden=True` 读，否则 `canvas_sort_order` 漏判（2022.3 实机首跑即如此）。fake 的 `component_get_serialized_properties` 不带 includeHidden 时同样隐藏这四项。
 - P6 把 6 个元素的 RectTransform 字段、Notice 的 activeSelf、根子节点的 siblingIndex、TopBar 布局组的 m_Spacing/m_Padding 排除后比较整个资产（节点 + 组件序列化值）。TopBar 没有子物体，所以没有布局驱动值漂移的问题；若 Unity 在保存时改写其他字段（例如 m_LocalEulerAnglesHint），门禁会暴露。
 - 偏差来源还有 `prefab_list_components(includeProperties)` 的 ObjectReference 值：目前全部为 null，若某组件引用了资产内对象，其 entityId 文本会随重载变化。
 

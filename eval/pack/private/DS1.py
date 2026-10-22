@@ -3,9 +3,11 @@
 What the task probes: the waypoints and the guard sit under rotated, offset parents, so localPosition on either side
 walks the wrong path; the pause must be timed (deltaTime accumulation or a coroutine), the first leg starts without a
 pause and the route loops; speed and pauseSeconds are serialized fields set in the scene, not code defaults; the
-component goes on the guard alone; no code beyond the one script. The runtime part samples the guard's world position
-at seeded moments (mid-leg, mid-pause, into the second lap) and accepts a position the ideal schedule passes through
-within +-WINDOW_S of the sample time.
+component goes on the guard alone; no code beyond the one script. The runtime part is timed by events, as DB3 and DB6
+are: a timeSinceStartup stamp right after Play starts, then a stamp each time a wait_condition sees the guard on the
+next of ARRIVALS (one lap and the first leg of the next). The gaps between stamps are checked against R2's travel and
+pause times; the stamps share the editor's wall clock, so the step overhead of the scenario does not pile up the way
+a fixed sampling schedule does (10-21 live 2022.3: nominal sampling drifted past 1 s over ten samples).
 
 The speed and pause are recomputed from the seed exactly as the public module does (patrol_spec is copied verbatim);
 the waypoints' world positions come from C0.
@@ -17,9 +19,13 @@ import random
 from usk_eval import verifylib as V
 
 FIELDS = ("route", "speed", "pauseSeconds")
-POSITION_TOL = 0.1      # R4: distance to the ideal path
-WINDOW_S = 0.3          # R4: time slack on each side of a sample
-WINDOW_STEP = 0.02
+POSITION_TOL = 0.1          # R4: per-axis distance at which the guard counts as standing on a waypoint
+ARRIVALS = (1, 2, 3, 0, 1)  # R4: waypoints waited for in order: W2, W3, W4, W1, then W2 again
+TIME_TOL = 0.3              # R4: a later gap or the lap may read this much short (frame and read granularity)
+LATE_TOL = 0.5              # R4: or this much long: a frame over Time.maximumDeltaTime loses game time
+EARLY_SLACK = 0.7           # R4: the first arrival may read this much early (Play starts before the first stamp)
+LATE_SLACK = 0.8            # R4: or this much late (the first Play frames are slow and deltaTime is capped)
+LOG_FAILURES = ("error", "exception", "assert")
 VALUE_TOL = 1e-3
 
 ASSERTIONS = [
@@ -33,8 +39,8 @@ ASSERTIONS = [
     ("D6", 0.5, True, ["G1", "G2"], "no change outside R/A, no other scene saved or opened"),
     ("D7", 0.25, False, ["G4"], "no file other than C# scripts was written under A around the skills"),
     ("D8", 0.5, False, ["R7", "G8"], "the answer reports the script path and the guard's path"),
-    ("D9", 4.75, False, ["R2", "R4"], "in Play Mode the guard is on the ideal path at every sample (fraction) and no "
-                                      "error is logged"),
+    ("D9", 4.75, False, ["R2", "R4"], "in Play Mode no error is logged and the guard reaches W2, W3, W4, W1 and W2 "
+                                      "again at gaps of travel (+ pause) time (fraction)"),
 ]
 
 HINTS = {
@@ -86,53 +92,42 @@ def legs(waypoints, speed, pause):
     return out
 
 
-def lap_seconds(waypoints, speed, pause):
-    return sum(travel + pause for _start, _end, travel in legs(waypoints, speed, pause))
-
-
-def position_at(waypoints, speed, pause, t):
-    """Where the ideal patrol is t seconds after Play starts: moving from W1 at once, pausing after each leg,
-    looping."""
+def expected_gaps(waypoints, speed, pause):
+    """Seconds between consecutive ARRIVALS by R2, the first counted from Play start: the W1->W2 travel at once, then
+    pause plus the leg's travel for each later arrival."""
     lap = legs(waypoints, speed, pause)
-    total = lap_seconds(waypoints, speed, pause)
-    if total <= 0:
-        return tuple(waypoints[0])
-    t = t % total
-    for start, end, travel in lap:
-        if t <= travel:
-            share = t / travel if travel > 0 else 1.0
-            return tuple(s + (e - s) * share for s, e in zip(start, end))
-        t -= travel
-        if t <= pause:
-            return tuple(end)
-        t -= pause
-    return tuple(waypoints[0])
+    return [lap[0][2]] + [pause + lap[(index - 1) % len(lap)][2] for index in ARRIVALS[1:]]
 
 
-def sample_times(waypoints, speed, pause):
-    """Mid-leg and mid-pause moments of the first lap, then the first leg and pause of the second lap."""
-    out, clock = [], 0.0
-    for _start, _end, travel in legs(waypoints, speed, pause):
-        out.append(clock + travel / 2.0)
-        clock += travel
-        out.append(clock + pause / 2.0)
-        clock += pause
-    first = legs(waypoints, speed, pause)[0]
-    out.append(clock + first[2] / 2.0)
-    out.append(clock + first[2] + pause / 2.0)
-    return [round(value, 3) for value in out]
+def arrivals_ok(stamps, expected):
+    """(passed, total, rows) for stamps [t0, t1, ...] (t0 right after Play starts, tk when the k-th arrival was seen):
+    the first gap within [expected - EARLY_SLACK, expected + LATE_SLACK], each later gap and the lap from the first
+    arrival to the last at most TIME_TOL short or LATE_TOL long. A gap whose stamp is missing (its wait timed out)
+    fails."""
+    rows, passed = [], 0
+    for index, want in enumerate(expected):
+        gap = stamps[index + 1] - stamps[index] if index + 1 < len(stamps) else None
+        low, high = (want - EARLY_SLACK, want + LATE_SLACK) if index == 0 else (want - TIME_TOL, want + LATE_TOL)
+        good = gap is not None and low - 1e-9 <= gap <= high + 1e-9
+        passed += good
+        rows.append({"arrival": index + 1, "expected": round(want, 3),
+                     "gap": round(gap, 3) if gap is not None else None, "ok": good})
+    lap = sum(expected[1:])
+    span = stamps[len(expected)] - stamps[1] if len(stamps) > len(expected) else None
+    good = span is not None and lap - TIME_TOL - 1e-9 <= span <= lap + LATE_TOL + 1e-9
+    passed += good
+    rows.append({"lap": round(lap, 3), "span": round(span, 3) if span is not None else None, "ok": good})
+    return passed, len(expected) + 1, rows
 
 
-def on_path(actual, waypoints, speed, pause, t):
-    """Whether `actual` is within POSITION_TOL of the ideal position at some moment in [t - WINDOW_S, t + WINDOW_S]."""
-    point = V.floats(actual)
-    if len(point) != 3:
-        return False
-    moment = max(0.0, t - WINDOW_S)
-    while moment <= t + WINDOW_S + 1e-9:
-        if _distance(point, position_at(waypoints, speed, pause, moment)) <= POSITION_TOL:
-            return True
-        moment += WINDOW_STEP
+def logged_failures(node):
+    """Whether the scenario's log window holds an error, exception or assert entry, as RuntimeScenarioService counts
+    them (any type/logType/severity field at any depth)."""
+    if isinstance(node, dict):
+        return any(str(node.get(key) or "").lower() in LOG_FAILURES for key in ("type", "logType", "severity")) or \
+            any(logged_failures(value) for value in node.values())
+    if isinstance(node, list):
+        return any(logged_failures(value) for value in node)
     return False
 
 
@@ -235,34 +230,45 @@ def verify(ctx, card):
 
 
 def SCENARIO(ctx):
-    """Play Mode: the guard's world position at the seeded sample moments, then one assert that Play is still on."""
+    """Play Mode: a stamp right after start, then for each of ARRIVALS a wait until the guard stands on that waypoint
+    and a stamp, then one assert that Play is still on."""
     spec = patrol_spec(ctx.seed)
-    times = sample_times(waypoints_of(ctx.c0), spec["speed"], spec["pause"])
-    steps, clock = [], 0.0
-    for moment in times:
-        steps.append({"kind": "wait_seconds", "seconds": round(moment - clock, 3)})
-        steps.append({"kind": "read", "skill": "gameobject_get_info", "args": V.address(ctx.handles["guard"])})
-        clock = moment
+    waypoints = waypoints_of(ctx.c0)
+    guard = V.address(ctx.handles["guard"])
+    stamp = {"kind": "read", "skill": "editor_get_state", "args": {}}
+    steps = [dict(stamp)]
+    for index in ARRIVALS:
+        x, y, z = waypoints[index]
+        steps += [{"kind": "wait_condition", "skill": "gameobject_get_info", "args": dict(guard), "select": "position",
+                   "expected": {"x": x, "y": y, "z": z}, "tolerance": POSITION_TOL}, dict(stamp)]
     steps.append({"kind": "assert", "skill": "editor_get_state", "select": "isPlaying", "expected": True})
-    return {"executionMode": "play", "timeoutSeconds": min(600, int(clock) + 60), "steps": steps}
+    total = sum(expected_gaps(waypoints, spec["speed"], spec["pause"]))
+    return {"executionMode": "play", "timeoutSeconds": int(math.ceil(total)) + 30, "steps": steps}
 
 
 def verify_runtime(ctx, card):
+    """D9: one check per arrival gap, one for the lap and one for a completed scenario; no credit when an error is
+    logged."""
     scenario = ctx.scenario or {}
     spec = patrol_spec(ctx.seed)
-    waypoints = waypoints_of(ctx.c0)
-    times = sample_times(waypoints, spec["speed"], spec["pause"])
-    reads = [step for step in scenario.get("steps") or [] if step.get("kind") == "read"]
-    results = []
-    for moment, step in zip(times, reads):
-        actual = (step.get("actual") or {}).get("position") if isinstance(step.get("actual"), dict) else None
-        results.append({"t": moment, "position": actual, "ok": on_path(actual, waypoints, spec["speed"], spec["pause"],
-                                                                        moment)})
-    good = sum(1 for row in results if row["ok"])
-    fraction = good / float(len(times)) if scenario.get("passed") is True and times else 0.0
-    card.fraction("D9", fraction, expected={"samples": len(times), "ideal": [position_at(waypoints, spec["speed"],
-                                                                                        spec["pause"], t) for t in times]},
-                  actual={"passed": scenario.get("passed"), "error": scenario.get("error"), "status": scenario.get("status"),
-                          "samples": results})
+    expected = expected_gaps(waypoints_of(ctx.c0), spec["speed"], spec["pause"])
+    stamps = []
+    for step in scenario.get("steps") or []:
+        if step.get("kind") != "read":
+            continue
+        value = V.floats(step["actual"].get("timeSinceStartup")) if isinstance(step.get("actual"), dict) else []
+        if len(value) != 1:
+            break
+        stamps.append(value[0])
+    passed, total, rows = arrivals_ok(stamps, expected)
+    completed = scenario.get("passed") is True
+    errors = logged_failures(scenario.get("logWindow"))
+    fraction = 0.0 if errors or not stamps else (passed + completed) / float(total + 1)
+    card.fraction("D9", fraction,
+                  expected={"gaps": [round(gap, 3) for gap in expected], "lap": round(sum(expected[1:]), 3),
+                            "positionTol": POSITION_TOL, "timeTol": TIME_TOL, "lateTol": LATE_TOL,
+                            "earlySlack": EARLY_SLACK, "lateSlack": LATE_SLACK},
+                  actual={"passed": scenario.get("passed"), "error": scenario.get("error"),
+                          "status": scenario.get("status"), "errorsLogged": errors, "arrivals": rows})
 
 # Producer:Betsy

@@ -3,9 +3,12 @@
 What the task probes: the two spawners share one script but reference different assets, so hard-coded numbers or a
 config created at runtime (CreateInstance, code defaults) cannot satisfy both; the asset values must be set (the code
 defaults differ from both assets); the first spawn comes one interval after Play starts and spawning stops at count;
-instances must be direct children of the referenced container; no code beyond the two scripts. The runtime part reads
-both containers at moments halfway between spawns (where a +-WINDOW_S slack never spans a spawn) and once after the
-last spawn.
+instances must be direct children of the referenced container; no code beyond the two scripts. The runtime part is
+timed by events, as DB3 and DS1 are: container A read on the first step (empty: its first spawn is at least 0.8 s in),
+a timeSinceStartup stamp, then for each spawn in time order a wait until its container holds that many children and a
+stamp; the gaps are checked against R3's intervals and both containers are read SETTLE_S after the last spawn. The
+stamps share the editor's wall clock, so the step overhead of the scenario does not pile up the way a fixed sampling
+schedule does (10-21 live 2022.3: the counts ran 0.3 s ahead of nominal samples).
 
 The counts and intervals are recomputed from the seed exactly as the public module does (wave_spec is copied verbatim).
 """
@@ -16,9 +19,15 @@ import random
 
 from usk_eval import verifylib as V
 
-WINDOW_S = 0.15          # R5: time slack on each side of a sample
 VALUE_TOL = 1e-3
-SETTLE_S = 1.0           # R5: the final sample this long after the last spawn
+TIME_TOL = 0.3           # R5: a later gap or the span may read this much short (frame and read granularity)
+LATE_TOL = 0.5           # R5: or this much long: a frame over Time.maximumDeltaTime loses game time
+EARLY_SLACK = 0.7        # R5: a first spawn may read this much early (Play starts before the first stamp)
+LATE_SLACK = 0.8         # R5: or this much late (the first Play frames are slow and deltaTime is capped)
+SETTLE_S = 1.0           # R5: the final read this long after the last spawn
+AT_LEAST = 1000          # a wait matches |childCount - (k + AT_LEAST)| <= AT_LEAST, i.e. at least k children
+LOG_FAILURES = ("error", "exception", "assert")
+CONTAINERS = (("a", "containerA"), ("b", "containerB"))
 
 ASSERTIONS = [
     ("D1", 1.0, False, ["R1"], "both scripts exist at A/Scripts/<Class>.cs, compiled without errors and both classes "
@@ -32,8 +41,8 @@ ASSERTIONS = [
     ("D7", 0.5, True, ["G1", "G2"], "no change outside R/A, no other scene saved or opened"),
     ("D8", 0.25, False, ["G4"], "no file other than C# scripts was written under A around the skills"),
     ("D9", 0.5, False, ["R8", "G8"], "the answer reports the scripts, the assets and the Spawner objects"),
-    ("D10", 2.5, False, ["R3", "R5"], "in Play Mode both containers hold the due number of children at every sample "
-                                      "(fraction)"),
+    ("D10", 2.5, False, ["R3", "R5"], "in Play Mode container A starts empty, each spawn comes one interval after the "
+                                      "previous (the first one interval in) and spawning stops at count (fraction)"),
     ("D11", 1.25, False, ["R3", "R5"], "after the last spawn each container holds exactly count children, all "
                                        "instances of the prefab, and no error was logged"),
 ]
@@ -78,31 +87,48 @@ def wave_spec(seed):
 # ---------------------------------------------------------------- the ideal schedule (R3)
 
 
-def due(count, interval, t):
-    """Instances due t seconds after Play starts: one every interval, the first at interval, at most count."""
-    if interval <= 0:
-        return count
-    return max(0, min(count, int(math.floor(t / float(interval) + 1e-6))))
+def spawn_events(spec):
+    """[(moment, key, k)] of every spawn by R3 in time order (A first on a tie): the k-th one k intervals in."""
+    return sorted((round(spec[key]["interval"] * k, 3), key, k) for key, _handle in CONTAINERS
+                  for k in range(1, spec[key]["count"] + 1))
 
 
-def sample_times(spec):
-    """Moments halfway between spawns of either spawner (and after its last one), then a settle sample."""
-    out = set()
-    end = 0.0
-    for key in ("a", "b"):
-        count, interval = spec[key]["count"], spec[key]["interval"]
-        for index in range(count + 1):
-            out.add(round(interval * (index + 0.5), 3))
-        end = max(end, count * interval)
-    out.add(round(end + SETTLE_S, 3))
-    return sorted(out)
+def spawns_ok(t0, stamps, count, interval):
+    """(passed, total, rows) for one container's spawn stamps (a timed-out wait leaves the rest missing): the first
+    within [interval - EARLY_SLACK, interval + LATE_SLACK] of t0, each later gap and the span from the first to the
+    last at most TIME_TOL short or LATE_TOL long."""
+    rows, passed, previous = [], 0, t0
+    for k in range(1, count + 1):
+        stamp = stamps[k - 1] if k - 1 < len(stamps) else None
+        gap = stamp - previous if stamp is not None and previous is not None else None
+        low, high = (interval - EARLY_SLACK, interval + LATE_SLACK) if k == 1 else (interval - TIME_TOL,
+                                                                                    interval + LATE_TOL)
+        good = gap is not None and low - 1e-9 <= gap <= high + 1e-9
+        passed += good
+        rows.append({"spawn": k, "gap": round(gap, 3) if gap is not None else None, "ok": good})
+        previous = stamp
+    want = (count - 1) * interval
+    span = stamps[count - 1] - stamps[0] if len(stamps) >= count else None
+    good = span is not None and want - TIME_TOL - 1e-9 <= span <= want + LATE_TOL + 1e-9
+    passed += good
+    rows.append({"span": round(span, 3) if span is not None else None, "expected": round(want, 3), "ok": good})
+    return passed, count + 1, rows
 
 
-def window_ok(actual, count, interval, t):
-    """Whether a child count lies between the numbers due at t - WINDOW_S and t + WINDOW_S."""
-    value = V.as_int(actual)
-    return value is not None and due(count, interval, max(0.0, t - WINDOW_S)) <= value <= due(count, interval,
-                                                                                              t + WINDOW_S)
+def logged_failures(node):
+    """Whether the scenario's log window holds an error, exception or assert entry, as RuntimeScenarioService counts
+    them (any type/logType/severity field at any depth)."""
+    if isinstance(node, dict):
+        return any(str(node.get(key) or "").lower() in LOG_FAILURES for key in ("type", "logType", "severity")) or \
+            any(logged_failures(value) for value in node.values())
+    if isinstance(node, list):
+        return any(logged_failures(value) for value in node)
+    return False
+
+
+def _stamp(info):
+    value = V.floats((info or {}).get("timeSinceStartup"))
+    return value[0] if len(value) == 1 else None
 
 
 # ---------------------------------------------------------------- reading
@@ -240,48 +266,67 @@ def verify(ctx, card):
 
 
 def SCENARIO(ctx):
-    """Play Mode: both containers at every sample moment, then one assert that Play is still on."""
-    h = ctx.handles
-    steps, clock = [], 0.0
-    for moment in sample_times(wave_spec(ctx.seed)):
-        steps.append({"kind": "wait_seconds", "seconds": round(moment - clock, 3)})
-        for key in ("containerA", "containerB"):
-            steps.append({"kind": "read", "skill": "gameobject_get_info", "args": V.address(h[key])})
-        clock = moment
+    """Play Mode: container A on the first step, a stamp, then for each spawn in time order a wait until its container
+    holds that many children and a stamp; both containers SETTLE_S after the last spawn, then one assert that Play is
+    still on."""
+    h, spec = ctx.handles, wave_spec(ctx.seed)
+    handles = dict(CONTAINERS)
+    stamp = {"kind": "read", "skill": "editor_get_state", "args": {}}
+    steps = [{"kind": "read", "skill": "gameobject_get_info", "args": V.address(h["containerA"])}, dict(stamp)]
+    events = spawn_events(spec)
+    for _moment, key, k in events:
+        steps += [{"kind": "wait_condition", "skill": "gameobject_get_info", "args": V.address(h[handles[key]]),
+                   "select": "childCount", "expected": k + AT_LEAST, "tolerance": AT_LEAST}, dict(stamp)]
+    steps.append({"kind": "wait_seconds", "seconds": SETTLE_S})
+    steps += [{"kind": "read", "skill": "gameobject_get_info", "args": V.address(h[handle])}
+              for _key, handle in CONTAINERS]
     steps.append({"kind": "assert", "skill": "editor_get_state", "select": "isPlaying", "expected": True})
-    return {"executionMode": "play", "timeoutSeconds": min(600, int(clock) + 60), "steps": steps}
+    return {"executionMode": "play", "timeoutSeconds": int(math.ceil(events[-1][0] + SETTLE_S)) + 30, "steps": steps}
 
 
 def verify_runtime(ctx, card):
+    """D10: container A empty at start, each container's spawn gaps, span and stop, and a completed scenario; no credit
+    when an error is logged. D11: the final read holds exactly count prefab instances in each container."""
     scenario = ctx.scenario or {}
     spec = wave_spec(ctx.seed)
-    times = sample_times(spec)
+    events = spawn_events(spec)
     reads = [step.get("actual") if isinstance(step.get("actual"), dict) else {}
              for step in scenario.get("steps") or [] if step.get("kind") == "read"]
-    pairs = [reads[index:index + 2] for index in range(0, len(reads), 2)]
-    rows, good = [], 0
-    for moment, pair in zip(times, pairs):
-        counts = [(info or {}).get("childCount") for info in (pair + [{}, {}])[:2]]
-        ok = window_ok(counts[0], spec["a"]["count"], spec["a"]["interval"], moment) and \
-            window_ok(counts[1], spec["b"]["count"], spec["b"]["interval"], moment)
-        good += 1 if ok else 0
-        rows.append({"t": moment, "counts": counts, "ok": ok})
-    passed = scenario.get("passed") is True
-    card.fraction("D10", good / float(len(times)) if passed and times else 0.0,
-                  expected={"samples": len(times), "spec": spec},
-                  actual={"passed": passed, "error": scenario.get("error"), "status": scenario.get("status"),
-                          "samples": rows})
-    final = pairs[-1] if pairs and len(pairs[-1]) == 2 else [{}, {}]
+    start = V.as_int((reads[0] if reads else {}).get("childCount"))
+    t0 = _stamp(reads[1]) if len(reads) > 1 else None
+    seen = {key: [] for key, _handle in CONTAINERS}
+    for (_moment, key, _k), info in zip(events, reads[2:2 + len(events)]):
+        if _stamp(info) is None:
+            break
+        seen[key].append(_stamp(info))
+    final = reads[2 + len(events):4 + len(events)]
+    final = final if len(final) == 2 else [{}, {}]
+    passed, total, rows = int(start == 0), 1, {"startA": start}
+    for (key, _handle), info in zip(CONTAINERS, final):
+        count, interval = spec[key]["count"], spec[key]["interval"]
+        good, checks, spawns = spawns_ok(t0, seen[key], count, interval)
+        stopped = V.as_int((info or {}).get("childCount")) == count
+        passed, total = passed + good + stopped, total + checks + 1
+        rows[key] = {"spawns": spawns, "final": (info or {}).get("childCount"), "stopped": stopped}
+    completed = scenario.get("passed") is True
+    errors = logged_failures(scenario.get("logWindow"))
+    fraction = 0.0 if errors or t0 is None else (passed + completed) / float(total + 1)
+    card.fraction("D10", fraction,
+                  expected={"spec": spec, "timeTol": TIME_TOL, "lateTol": LATE_TOL, "earlySlack": EARLY_SLACK,
+                            "lateSlack": LATE_SLACK, "settle": SETTLE_S},
+                  actual={"passed": scenario.get("passed"), "error": scenario.get("error"),
+                          "status": scenario.get("status"), "errorsLogged": errors, "containers": rows})
     prefab_name = _asset_name(ctx.handles["prefab"])
     exact = []
     for info, want in zip(final, (spec["a"], spec["b"])):
         children = (info or {}).get("children") or []
         exact.append(V.as_int((info or {}).get("childCount")) == want["count"] and len(children) == want["count"] and
                      all(str(child.get("name") or "").startswith(prefab_name) for child in children))
-    card.check("D11", passed and all(exact),
+    card.check("D11", completed and all(exact),
                expected={"countA": spec["a"]["count"], "countB": spec["b"]["count"], "prefix": prefab_name},
-               actual={"passed": passed, "final": [{"childCount": (info or {}).get("childCount"),
-                                                    "children": [c.get("name") for c in (info or {}).get("children")
-                                                                 or []][:10]} for info in final]})
+               actual={"passed": scenario.get("passed"), "final": [{"childCount": (info or {}).get("childCount"),
+                                                                     "children": [c.get("name") for c in
+                                                                                  (info or {}).get("children")
+                                                                                  or []][:10]} for info in final]})
 
 # Producer:Betsy

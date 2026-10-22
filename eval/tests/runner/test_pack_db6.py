@@ -5,6 +5,8 @@ their exact expected-failure sets, and all alternatives on URP, BuiltIn, and Uni
 seed agreement, the timed scenario's shape and tolerances, the verdicts under the editor's real step pacing (one tick
 per step at 20 fps, Play starting 0.3 s before the first step), and multi-seed rearrangement checks.
 """
+import re
+import types
 import unittest
 
 from .fake_db6 import FakeEditorDB6
@@ -57,10 +59,24 @@ class DB6Tests(DevTaskTests, unittest.TestCase):
         self.assertTrue(ok([10.0, 10.1, 10.9, 11.7]))              # Play started 0.7 s before the first stamp
         self.assertFalse(ok([10.0, 10.05, 10.85, 11.65]))          # 0.75 s early: a spawn at Play start
         self.assertTrue(ok([10.0, 11.1, 11.8, 12.9]))              # 0.3 late, gaps 0.7 and 1.1
-        self.assertFalse(ok([10.0, 11.2, 12.0]))                   # first spawn 0.4 late
+        self.assertTrue(ok([10.0, 11.6, 12.4, 13.2]))              # first spawn 0.8 late: slow first Play frames
+        self.assertFalse(ok([10.0, 11.7, 12.5, 13.3]))             # 0.9 late
+        self.assertTrue(ok([10.0, 10.73, 11.84, 12.64]))           # live: a hitch lengthens the second gap by 0.31
+        self.assertFalse(ok([10.0, 10.8, 12.15, 12.95]))           # a gap 0.55 long: beyond the hitch allowance
         self.assertFalse(ok([10.0, 10.8, 11.2, 11.6]))             # every half interval
         self.assertFalse(ok([10.0, 10.8, 12.4]))                   # one spawn skipped
         self.assertFalse(ok([10.0]))
+
+    def test_spawn_loops_end_at_max_count(self):
+        """The fake does not run C#: a `|| _spawned >= maxCount` in the while condition never ends once maxCount
+        instances exist, and froze Unity in the live gate."""
+        private, solutions = load_modules(self.TASK_ID)[1:]
+        ctx = types.SimpleNamespace(private=private, handles={"script": "Assets/A/Scripts/TimedSpawner_Kite.cs"})
+        for variant in (None, "spawn_on_start", "no_stop", "off_by_one", "parent_emitter", "keep_world_pos",
+                        "renamed_clones"):
+            loop = re.search(r"while \((.*)\)", solutions._source(ctx, variant=variant)).group(1)
+            self.assertNotIn("||", loop, variant)
+            self.assertEqual("_spawned <" in loop, variant != "no_stop", variant)
 
     def test_verdicts_hold_at_20_fps_with_a_late_first_step(self):
         """Every case keeps its verdict when each step costs a 20 fps tick and Play starts 0.3 s early, for the

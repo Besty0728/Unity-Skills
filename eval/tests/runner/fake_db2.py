@@ -61,6 +61,16 @@ class FakeEditorDB2(FakeEditorDB):
         finally:
             self.objects, self.roots = saved
 
+    def _skill_component_set_property(self, agent, args):
+        """Like the plugin's reflection, reaches public members only: a [SerializeField] private field is not found."""
+        cls, name = str(args.get("componentType") or ""), str(args.get("propertyName") or "")
+        text = next((text for path, text in self.scripts.items() if path.endswith("/%s.cs" % cls)), "")
+        for match in DECL_LINE_RE.finditer(text):
+            names = [part.partition("=")[0].strip() for part in match.group("decls").split(",")]
+            if name in names and "public" not in match.group("mods").split():
+                raise _fail("SEMANTIC_INVALID", "Property/field not found: %s" % name)
+        return super(FakeEditorDB2, self)._skill_component_set_property(agent, args)
+
     def _skill_component_invoke_method(self, agent, args):
         ctype = str(args.get("componentType") or "")
         method = str(args.get("methodName") or "")

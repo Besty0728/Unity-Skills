@@ -52,7 +52,7 @@ not twice.
 | apply_tank | Muzzle on the carrier instance then `prefab_apply`: Tank changed (A3), carrier overrides applied away (A5), other Tank gains AudioSource (A7), Turret instance shows none (A6), A1/A2 |
 | wrong_parent | Muzzle under the Turret root: A1, A2 (no node at Barrel/Muzzle), A6 |
 | wrong_pose | swapped position, scale+1: A2, A6 |
-| with_component | a Light on Muzzle: A2 |
+| with_component | a BoxCollider on Muzzle: A2 (a Light would make URP add UniversalAdditionalLightData to every instance: A5, A8) |
 | revert_overrides | `prefab_revert_overrides` on the carrier: A5 (lists, Barrel pose) and A7 (AudioSource gone from the structure) |
 | extra_object | a Spare object under the container: A7 |
 | move_dome | another Turret node moved in the asset: A4 |
@@ -70,6 +70,10 @@ the standalone Turret instance, then `prefab_apply` of that instance, which has 
 - `apply_tank`: `prefab_apply` first pushes genuine property overrides into source objects, then
   `ApplyPrefabInstance`; the predicted end state (Tank.prefab changed, carrier clean, other Tank gains the
   AudioSource) is what the set {A1,A2,A3,A5,A6,A7} assumes. If Unity refuses part of it, the set changes.
+  Live 2022.3 URP (2026-10-20): as predicted, plus A9 from a plugin bug: the journal recorded the Barrel pose written
+  into Tank.prefab as a property change with no scene and no assetPath, which the scope check could not place under A
+  (OC2's apply_scene_pollutes_base hit the same, as A7). EditorChangeTrackerService now adds assetPath to property
+  changes of objects inside an asset.
 - `apply_turret_instance`: assumes Unity does not apply the instance root name; A4 tolerates root name/pose changes.
 - `m_LocalEulerAnglesHint` entries may or may not appear in the carrier's override list; C0 and the final read come
   from the same editor, so equality holds either way.

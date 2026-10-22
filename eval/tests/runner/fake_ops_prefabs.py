@@ -35,6 +35,8 @@ LAYERS = {"Default": 0, "TransparentFX": 1, "Ignore Raycast": 2, "Water": 4, "UI
 RECT_FIELDS = ("m_AnchorMin", "m_AnchorMax", "m_AnchoredPosition", "m_SizeDelta", "m_Pivot")
 TRANSFORMS = ("Transform", "RectTransform")
 ENUMS = {"m_RenderMode": {"ScreenSpaceOverlay": 0, "ScreenSpaceCamera": 1, "WorldSpace": 2}}
+# What Unity's visible-property walk skips (live 2022.3): component_get_serialized_properties lists it only with includeHidden.
+HIDDEN = {"Canvas": ("m_Enabled", "m_SortingLayerID", "m_SortingOrder", "m_TargetDisplay")}
 SCHEMA = {
     "MeshFilter": [("m_Mesh", R, None)],
     "MeshRenderer": [("m_Enabled", B, True), ("m_CastShadows", E, 1), ("m_ReceiveShadows", B, True),
@@ -149,17 +151,17 @@ class PrefabFakeEditor(OpsFakeEditor):
         "asset_get_labels"))
 
     def __init__(self, *args, **kwargs):
-        self.guids, self.generations, self.labels = {}, {}, {}
+        self.guids, self.labels = {}, {}
         self.assets, self.namespaces = {}, {}
         OpsFakeEditor.__init__(self, *args, **kwargs)
 
     # ------------------------------------------------------------ GUIDs, .meta files and labels
 
     def _guid(self, asset_path):
-        """A GUID per asset; deleting the asset and creating it anew gives a new one, as in Unity."""
+        """A GUID per asset path; deleting the asset and creating it anew at the same path in the same session gives
+        the old GUID back, as Unity 2022.3 does live."""
         if asset_path not in self.guids:
-            seed = "%s#%d" % (asset_path, self.generations.get(asset_path, 0))
-            self.guids[asset_path] = hashlib.md5(seed.encode("utf-8")).hexdigest()
+            self.guids[asset_path] = hashlib.md5(("%s#0" % asset_path).encode("utf-8")).hexdigest()
         return self.guids[asset_path]
 
     def _write_meta(self, asset_path):
@@ -213,10 +215,8 @@ class PrefabFakeEditor(OpsFakeEditor):
                     for comp in node.components:
                         comp.src = None
         res = OpsFakeEditor._skill_asset_delete(self, agent, args)
-        for gone in [known for known in list(self.guids) if known == path or known.startswith(path + "/")]:
-            self.generations[gone] = self.generations.get(gone, 0) + 1
-            del self.guids[gone]
-            self.labels.pop(gone, None)
+        for gone in [known for known in list(self.labels) if known == path or known.startswith(path + "/")]:
+            del self.labels[gone]
         return res
 
     # ------------------------------------------------------------ component model
@@ -443,9 +443,10 @@ class PrefabFakeEditor(OpsFakeEditor):
             return ""
         return "" if value is None else str(value)
 
-    def _props(self, node, comp):
+    def _props(self, node, comp, include_hidden=True):
         """ListProperties of one component: composite entries, then their leaves."""
         out = []
+        hidden = () if include_hidden else HIDDEN.get(comp[0], ())
 
         def add(path, text):
             out.append({"propertyPath": path, "value": text})
@@ -459,11 +460,11 @@ class PrefabFakeEditor(OpsFakeEditor):
                 for axis, item in zip("xyzw", value):
                     add("%s.%s" % (name, axis), _yf(item))
             return out
-        if comp[1] is not None:
+        if comp[1] is not None and "m_Enabled" not in hidden:
             add("m_Enabled", "True" if comp[1] else "False")
         parents = set()
         for name, kind, _default in self._schema(comp[0]):
-            if name == "m_Enabled":
+            if name == "m_Enabled" or name in hidden:
                 continue
             value = comp.values.get(name)
             if ".Array.data[" in name:
@@ -624,7 +625,8 @@ class PrefabFakeEditor(OpsFakeEditor):
     def _skill_component_get_serialized_properties(self, agent, args):
         obj = self.find(args)
         comp = self._find_comp(obj, args["componentType"], args.get("componentIndex", 0))
-        return {"success": True, "componentType": self._full(comp[0]), "properties": self._props(obj, comp)}
+        return {"success": True, "componentType": self._full(comp[0]),
+                "properties": self._props(obj, comp, bool(args.get("includeHidden")))}
 
     def _skill_component_set_serialized_property(self, agent, args):
         obj = self.find(args)

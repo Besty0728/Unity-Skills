@@ -5,8 +5,10 @@ pack_fake_editor "compiles" scripts by parsing their public fields and cannot ru
 behaviour the task asks for from the serialized field values: a patrol (route, speed, pauseSeconds) walks its object
 along the route's children, a spawner (config, prefab, container) fills its container on schedule. A script that
 carries a `// usk-fake: <variant>` comment is modelled with that wrong behaviour instead (the solutions' negative
-variants carry one; a real editor ignores the comment). wait_seconds / wait_frames advance the clock, every other step
-sees the state at the current clock.
+variants carry one; a real editor ignores the comment). wait_seconds / wait_frames advance the clock, a wait_condition
+re-reads once per frame until it matches or the scenario's timeout passes, every other step sees the state at the
+current clock; with `step_cost` every executed step and every wait start costs one editor tick, as
+RuntimeScenarioService paces them, and editor_get_state stamps timeSinceStartup on the same clock.
 """
 import math
 import re
@@ -17,6 +19,7 @@ from usk_eval.rest import SkillError  # noqa: E402
 
 MARKER_RE = re.compile(r"//\s*usk-fake:\s*([\w-]+)")
 FRAME_S = 1.0 / 60.0
+TIME_BASE = 1000.0               # editor_get_state timeSinceStartup when the scenario's Play Mode starts
 
 
 def _distance(a, b):
@@ -29,6 +32,8 @@ def _lerp(a, b, share):
 
 class DevFakeEditor(OpsFakeEditor):
     extra_reads = frozenset()
+    step_cost = 0.0              # seconds one executed step (or the start of a wait) costs; Unity: one editor tick
+    play_lead = 0.0              # seconds Play runs before the first step
 
     def __init__(self, *args, **kwargs):
         OpsFakeEditor.__init__(self, *args, **kwargs)
@@ -75,27 +80,43 @@ class DevFakeEditor(OpsFakeEditor):
     def simulate(self):
         """Brings the modelled objects to the state they have at self.clock."""
 
+    def _skill_editor_get_state(self, agent, args):
+        out = super(DevFakeEditor, self)._skill_editor_get_state(agent, args)
+        out["timeSinceStartup"] = TIME_BASE + self.clock
+        return out
+
+    def _tick(self, seconds):
+        self.clock += seconds
+        self.simulate()
+
     def run_scenario(self, spec, agent=RUNNER):
-        """editor_run_scenario's job result on this model: waits advance the virtual clock and the first failed step
-        or assert ends the run; `passed` needs every assert to pass (the model logs no errors)."""
+        """editor_run_scenario's job result on this model: waits advance the virtual clock, a wait_condition polls
+        once per frame up to the timeout, and the first failed step or assert ends the run; `passed` needs every assert
+        to pass (the model logs no errors)."""
         steps, records, passed, error, last = spec.get("steps") or [], [], True, None, None
+        deadline = self.play_lead + float(spec.get("timeoutSeconds") or 60)
         self.playing = spec.get("executionMode", "play") == "play"
         self.clock = 0.0
         self.play_start()
-        self.simulate()
+        self._tick(self.play_lead)
         try:
             for index, step in enumerate(steps):
                 kind = step.get("kind")
                 if kind in ("wait_frames", "wait_seconds"):
-                    self.clock += float(step.get("seconds") or 0) if kind == "wait_seconds" \
-                        else int(step.get("frames") or 0) * FRAME_S
-                    self.simulate()
+                    self._tick(self.step_cost + (float(step.get("seconds") or 0) if kind == "wait_seconds"
+                                                 else int(step.get("frames") or 0) * FRAME_S))
                     records.append({"index": index, "kind": kind, "passed": True, "actual": None})
                     continue
                 actual = last
                 if kind in ("read", "invoke", "wait_condition") or (kind == "assert" and step.get("skill")):
+                    self._tick(self.step_cost)
                     try:
                         actual = self.call(step["skill"], dict(step.get("args") or {}), agent)
+                        while kind == "wait_condition" and self.clock <= deadline and not _matches(
+                                _select(actual, step.get("select")), step.get("expected"),
+                                float(step.get("tolerance") or 0)):
+                            self._tick(max(FRAME_S, self.step_cost))
+                            actual = self.call(step["skill"], dict(step.get("args") or {}), agent)
                     except SkillError as exc:
                         records.append({"index": index, "kind": kind, "skill": step.get("skill"),
                                         "actual": exc.payload, "passed": False})

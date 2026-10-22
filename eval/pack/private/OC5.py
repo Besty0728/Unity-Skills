@@ -139,10 +139,16 @@ def override_rows(overrides):
     return sorted(rows)
 
 
-def value_rows(probe, ref):
-    """Same rows as the public module's value_rows: [type, [[propertyPath, value], ...]], sorted."""
-    return [[kind, sorted([path, value] for path, value in (props or {}).items())]
-            for kind, props in sorted(V.component_values(probe, ref).items())]
+def value_rows(ctx, ref):
+    """Same rows as the public module's value_rows: [type, [[propertyPath, value], ...]], sorted, hidden properties
+    included; a component that cannot be read gives an empty row."""
+    rows = []
+    for kind in sorted({comp.get("type") for comp in ctx.probe.components(ref) if comp.get("type")}):
+        res = _read(ctx, "component_get_serialized_properties", componentType=kind, includeHidden=True, limit=5000,
+                    **V.address(ref)) or {}
+        rows.append([kind, sorted([prop.get("propertyPath"), prop.get("value")]
+                                  for prop in res.get("properties") or [] if isinstance(prop, dict))])
+    return rows
 
 
 def asset_state(ctx, prefab_path):
@@ -272,7 +278,7 @@ def verify(ctx, card):
     ok_asset, diff_asset = V.same(_trimmed(c0.get("asset"), root_children), _trimmed(state, root_children), RECT_TOL)
     canvas = c0.get("canvas") or {}
     ok_canvas, diff_canvas = V.same(canvas.get("state"), V.go_state(p, h["canvas"]), RECT_TOL)
-    ok_values, diff_values = V.same(canvas.get("values"), value_rows(p, h["canvas"]), RECT_TOL)
+    ok_values, diff_values = V.same(canvas.get("values"), value_rows(ctx, h["canvas"]), RECT_TOL)
     card.check("P6", state is not None and ok_asset and ok_canvas and ok_values,
                actual={"asset": diff_asset, "canvas": diff_canvas, "canvasValues": diff_values})
 

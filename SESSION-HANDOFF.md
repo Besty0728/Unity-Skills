@@ -1,24 +1,202 @@
-# 当前接力状态（2026-10-19，UTC）
+# 当前接力状态（2026-10-21 19:45 JST）
 
-这是当前状态的优先说明；下方较早内容是历史会话材料，若有冲突以本节为准。
+这是当前状态的优先说明；下方较早内容是历史会话材料，若有冲突以本节为准。本机时区是 JST（UTC+9），runner、门禁记录和会话目录名里的时间是 UTC。
 
-## 从哪里继续
+## 新会话怎么开始
 
-- 仓库：`/Users/betsy/CodeSpace/Unity-Skills`，分支 `beta`（开始前 `git pull --ff-only origin beta`）；`main` 只在正式发布流程中更新。
-- 测试工程（包引用均已改指本仓库 `SkillsForUnity`）：`~/UnityProject/TestSkills`（6000.3.9f1，Built-in）、`~/UnityProject/skill`（2022.3.62f2，Built-in）、`~/UnityProject/UnitySkillsEval2022`（2022.3.62f2，URP，已标记 dedicated）。一次只开一个编辑器；Unity CLI 在 `~/.unity/bin/unity`。
+把下面这段贴给新会话：
 
-## 已完成（2026-10-18 至 19）
+```
+@SESSION-HANDOFF.md @eval/runs/pending-20261021/gate3-result.md 按"当前接力状态"继续：先做"下一步"，遇到"等用户决定"的事先问我。Unity 可用 Unity CLI 自行唤起，最多同时开两个编辑器（16 GB 内存）。
+```
 
-- 修复粒子 P1/P2 合并遗留：`validateAll` 调用位置（原 CS0103 编译失败）、新建系统自带的 (Birth, None) 子发射器槽、固定步长分片模拟多走步数、batch/SKILL.md 字节预算；技能总数同步为 870；两个可疑 meta GUID 换成 uuid4。
-- EditMode 全绿：6000.3.9f1 2356/2264/0/92，2022.3.62f2 2357/2257/0/100（包更新后首次启动会读到旧 locale 缓存，导致 4 个本地化测试失败，重跑即过；属已知小问题，见下）。
-- DC4 重做为实机可评分：fixture 生成传感器脚本挂在靶台上（逐物理帧记录最近距离、刚体数、改动与离枪口计数），靶台去掉碰撞体；fake 与测试按真实 API 重写；删除 DS2 私有评分里的死代码。DC4 门禁在 2022.3.62f2 URP 上 GREEN 22/22，参考解实机命中距离约 1e-6 m。
-- Python 测试：3.13 与 3.9 各 1665 个全过；lint / check / manifest 通过（37 题）。
+`gate3-result.md` 由后台脚本在本轮门禁跑完后自动生成；还没生成说明门禁还在跑。
 
-## 下一阶段（等用户开启）
+## 现场
 
-1. 门禁矩阵：本机此前没有任何门禁记录（`eval/runs/` 不入库）。基础题需要 2022 与 6000 × URP 与 Built-in，标准题和挑战题需要 URP；缺一个 6000 URP 的 dedicated 工程，需要新建。
-2. 用 `suite3`（`claude -p`，便宜模型）对一两道题做开发期冒烟，不计入正式成绩；正式真实模型评测仍等用户指令。
-3. 已知小问题：插件包更新后的第一次 domain reload 会把旧版 locale 资源读进 `SkillsLocalization` 缓存，新加的文案键要到下一次 reload 才生效。
+- 仓库 `/Users/betsy/CodeSpace/Unity-Skills`，分支 `beta`，HEAD `038d4b7b`。**上一轮和本轮的改动都还没提交**，清单见"已落盘的改动"。
+- 两个 2022.3.62f2 URP 工程（端口每次启动可能互换，本轮原工程 8091、2022b 8090）：
+  - `~/UnityProject/UnitySkillsEval2022`：原工程。
+  - `~/UnityProject/UnitySkillsEval2022b`：为并行门禁复制的第二个工程。
+    - 只复制了 Assets、Packages、ProjectSettings，没复制 Library；dedicated 标记和 `cli_config.json` 已一并带过来。
+    - productName 和原工程相同，所以 `/health` 和实例注册表显示的名字也相同；runner 按工程路径找编辑器，不受影响。
+    - 第一次打开停在 Untitled 场景，runner 会报 `SCENE_UNTITLED`，要先 `scene_load Assets/Scenes/SampleScene.unity`。
+- **19:38 起两台编辑器并行跑 URP 剩余 16 题**，全部是独立后台进程，不依赖 Claude Code 会话，外面套了 `caffeinate` 防休眠（合上笔记本盖子仍会睡眠）。脚本和日志在 `eval/runs/pending-20261021/gate3/`：
+  - `queue`：共享题队列，顺序 OC5 DB1 DB3 DB5 DB2 DB6 T1 T2 T9 DS1 DS3 DS2 DC5 DC1 DC3 DC7。
+  - `worker.sh <名> <工程> <端口>`：A 端原工程、B 端 2022b，各取一题跑一题；每题结束后清一次本端撤销历史；退出码 2（环境问题）时把题放回队列并停下。日志 `a.log`、`b.log`。
+  - `report.py`：两个 worker 都退出后，写 `eval/runs/pending-20261021/gate3-result.md`，向两台编辑器发 SIGTERM，并弹系统通知。
+- 编辑器被 SIGTERM 结束后，重开必须带 `-unityskills-coldstart`：`~/.unity/bin/unity open <工程> --args -unityskills-coldstart`。
+- skill 工程（Built-in，2022）已关闭；TestSkills（6000）本轮没开。
+
+## 本轮进展（23:10）
+
+- **第 3 轮（gate3）跑完**，结果见 `eval/runs/pending-20261021/gate3-result.md`：GREEN OC5 DB1 DB3 DB5 DB2 DB6 T1 T2 T9 DS2 DC5 DC1 DC3 DC7；RED DS1、DS3，都是按名义时刻采样的偏差（DS3 的死循环已修好，修好后计数比名义时刻超前约 0.3 秒）。
+- **DS1、DS3 已改为按事件计时**（用户批准的计划，见 `~/.claude/plans/valiant-painting-hinton.md`），已在主工作区生效：
+  - DS1 等守卫依次到达 W2、W3、W4、W1、W2；DS3 第一步读 containerA（必须为空），再按时间顺序等每次生成（`childCount` 至少为 k），最后一次生成 1 秒后读两个 container。都打 `timeSinceStartup` 戳检查间隔，容差同 DB3。
+  - 公开题面 DS1 R4、DS3 R5 同步改写；DB3 R5 也改成和它现有的按事件计时评分一致。
+  - 离线 fake 支持 `wait_condition` 逐帧轮询、`step_cost`、`timeSinceStartup`；`_matches` 支持对象和数组带容差比较。
+  - manifest、lint、check 通过，离线全量 3.13 与 3.9 各 1675 个全过（含两道题在 20 fps 慢编辑器上判定不变的测试）。
+- **第 4 轮（gate4）23:07 起在跑**，全部独立后台：`eval/runs/pending-20261021/gate4/`。
+  - URP 两台并行跑 DS1、DS3、DB3（A 原工程 8091，B 2022b 8090），`console_guard.py` 在两题之间清控制台历史。
+  - `chain.sh`：两台 URP 跑完后关掉它们，打开 skill 工程（Built-in）跑 DB3，关掉它，生成 `eval/runs/pending-20261021/gate4-result.md` 并弹通知。
+  - 这一轮全绿，2022 两格就收尾了。
+- **第 4 轮之后自动接着跑 3.0 插件修复的合并验证**（`eval/runs/pending-20261021/verify3/verify3.py`，独立后台，等 gate4 的 `chain.sh` 退出后开始）：
+  - 先用未改的代码打开 skill 工程，再 `git apply --3way` 应用 `v3fixes.patch` 和 `fix65.patch`（只改工作区，不提交）；`asset_refresh` 触发编译，3 分钟内没编译就 `debug_force_recompile`。
+  - 编译通过后，用 `test_run_by_name` 跑 ConsoleLogHistoryServiceTests、NewCapabilitiesTests、ReadBackAndBatchReliabilityTests、SkillErrorClassifierTests、InstanceExpectationTests、SkillDocumentationConsistencyTests、LifecycleFlushTests、EditorChangeAttributionTests；再跑离线全量 3.13 与 3.9 和 Built-in 的 S01 冒烟；最后关掉编辑器。
+  - 结果写在 `eval/runs/pending-20261021/verify3-result.md`，日志 `verify3/verify3.log`。若补丁应用失败或编译失败，工作区里留着已应用的部分，按结果文档处理（`git apply -R` 可撤回）。
+- **3.0 Workflow 改造与效率优化的决定**（用户 10-21 通过 AskUserQuestion 拍板）见 `eval/runs/pending-20261021/decisions-3.0-workflow-efficiency.md`：Workflow P0–P3 全进 3.0；回退先做"回到状态"；检查点自动加 AI 主动，可关闭、默认开启；手动改动作为冲突由 AI 询问用户；3.0 全部落地后统一跑一轮门禁；效率目标为成功率 > token > 时延；模块文档先拿 3–5 个试点分层；2022 门禁收尾后跑真实模型小样本基线。
+- **Issue #65 正在拖慢门禁**：三个工程的 `console_log_history.jsonl` 都满 5 万条，每 1–2 秒整份重写一次。`gate3/console_guard.py`（独立后台）占住队列锁，在两题之间对每台编辑器调 `console_clear`，题目进行中不发调用；日志 `gate3/console_guard.log`。
+- **Issue #65 修复已备好**（用户 10-21 决定随 3.0 发布）：`eval/runs/pending-20261021/fix65.patch`，基于 beta，改 `ConsoleLogHistoryService.cs` 和它的测试文件；worktree 在旧会话 scratchpad 的 `fix65/`（合并后 `git worktree remove`）。
+  - 历史满后只追加：挤掉的行留在文件里，累计到 1/4 上限（条数或字节）才压缩；Play Mode 下等满一整轮才压缩（`FlushWhenDue` 在主线程读 `isPlayingOrWillChangePlaymode` 传进 `FlushNow`）。持久化的 `dropped` 扣掉还留在文件里的行，与 `corruptRows` 同一做法，避免重载时重复计数。
+  - 新增 4 个测试（追加不重写、1/4 后压缩、Play Mode 延后、重载只计一次 dropped）。已用 Unity 自带 csc 按 URP、Built-in 两套参数离线编译，0 错误、改动文件 0 警告；补丁能干净应用到当前工作区，与 v3fixes 不冲突。EditMode 测试还没跑，和 v3fixes 一起在门禁结束后跑（`ConsoleLogHistoryServiceTests` 全部 14 个）。
+  - GitHub 回复已起草（英文），等用户确认后用 `gh issue comment 65` 发出。
+- 性能调查结论写在 `eval/runs/pending-20261021/perf-findings.md`（#65、撤销历史整份重写、OC4 批量每项 0.23 秒），都要改插件 C#，等门禁结束后由用户决定。
+
+## 门禁矩阵（2022.3.62f2）
+
+| 格 | 状态 |
+|---|---|
+| Built-in（11 道基础题） | **全绿**。DB3、DB6 是本会话补跑的 |
+| URP（37 题） | GREEN 21 题：上一轮的 14 题，加 OC1 OC2 OC3 OC7 OC6 OC4 OC8（OC4、OC8 是 10-21 夜里重跑的，结果见 `eval/runs/pending-20261021/night-gate-result.md`）。OC5 上次 RED，修复已应用，本轮重跑。**本轮在跑**：OC5 和 DB1 DB3 DB5 DB2 DB6 T1 T2 T9 DS1 DS3 DS2 DC5 DC1 DC3 DC7 |
+| 6000 URP / 6000 Built-in | 未开始，用户已推迟 |
+
+看进度：`grep -hE '^gate |^=== ' eval/runs/pending-20261021/gate3/*.log`；门禁记录在 `eval/runs/selftest/gate.json`。
+
+## 下一步（按顺序）
+
+1. **看本轮结果**：读 `gate3-result.md`。RED 的题按老办法排查：看 `<工程>/Library/UnitySkills/eval/sessions/<会话>/attempts/*/result.json` 里 `score.assertions` 的 `actual`，修完只重跑那道题（`python3 -B eval/cli.py selftest3 --project <工程> --task <题> --abort-active`）。
+   - DS1、DS2、DS3 仍然按名义时间采样，窗口 ±0.3 秒；如果失败，按 DB3 的思路改成按事件计时。
+   - 修题前确认没有 selftest3 在跑（`pgrep -f "eval/cli.py selftest3"`）。
+2. **URP 格全绿后**：更新本文，请用户确认后再提交并推送 `beta`。
+3. **合并 3.0 插件三项修复**（见"待合并"）。
+   - 在主工作区运行 `git apply --3way eval/runs/pending-20261021/v3fixes.patch`。这份补丁基于 beta，改 13 个文件。
+   - 确认两台 URP 编辑器已关，用 `~/.unity/bin/unity open ~/UnityProject/skill --args -unityskills-coldstart` 打开 skill 工程并编译。补丁 10-21 已用 Unity 自带 csc 按两个工程的编译参数离线编译过（URP、Built-in 的 Editor 和 Tests.Editor 程序集都 0 错误、补丁文件 0 警告，脚本在旧会话 scratchpad 的 `csc/compile.py`），也确认能干净应用到当前工作区；EditMode 测试还没跑。
+   - 用 `test_run_by_name` 跑 `NewCapabilitiesTests`、`ReadBackAndBatchReliabilityTests`、`SkillErrorClassifierTests`、`InstanceExpectationTests`、`SkillDocumentationConsistencyTests`；再跑离线测试；再跑 selftest S01 冒烟。
+   - 全部通过后请用户确认提交。
+   - 清理：`git worktree remove` 掉 `.claude/worktrees/agent-*` 两个（基于 main，已被补丁取代）和旧会话 scratchpad 里的 `v3fixes`，再删掉 `worktree-agent-*` 两个分支。
+4. 然后停下，等用户开 6000 两格。
+
+## 已落盘的改动（主工作区，未提交）
+
+- **上一轮的改动**（DB6 解法死循环、DB3/DB6 事件计时评分、DB2 用 serialized 属性设值、OC1 反例、离线 fake 与测试、设计笔记、manifest）：本会话开头跑离线全量 3.13 与 3.9 各 1669 个，全过；lint、check、manifest 也都通过。
+- **OC5 题目修复**（10-21 19:30 应用，只动 eval 侧）：
+  - Canvas 的 `m_SortingOrder` 是隐藏属性，评分默认读不到，所以 `canvas_sort_order` 反例漏判。公开 `task.py` 和私有评分改为读取时带 `includeHidden=True`。
+  - 真机上同一路径删除后重建预制体，Unity 会沿用原来的 GUID，所以 `replace_asset` 反例的预期失败集改为 {P5, P6}。
+  - 离线 fake 改成和真机一致。应用后 manifest、lint、check 通过，离线全量 3.13 与 3.9 各 1669 个全过；lint 多出一条 "P10 没有反例" 的警告，可接受。
+- **C# 补丁：变更日志补写 assetPath**：`EditorChangeTrackerService.cs` 改了，`EditorChangeAttributionTests` 新增一条用例，21/21 通过。真机上 OC1、OC2 之前多失败的 A9、A7 已经消失。
+
+## 10-22 00:10 状态（用户 5 小时额度将满，暂停）
+
+- **gate4**：4 题全部 GREEN。2022 URP 37/37、Built-in 11/11，结果见 `gate4-result.md`。
+- **verify3**：v3fixes 和 fix65 已应用到主工作区（未提交）。编译通过，8 个 EditMode 测试类共 171 个全过，离线 3.13 和 3.9 通过，S01 冒烟 GREEN，结果见 `verify3-result.md`。
+- **进度页**：`page/unityskills-3.0-progress.html`，用 `python3 eval/runs/pending-20261021/page/build.py` 重新生成。
+- **小样本基线（A 臂）的参数已定，但还没启动**：
+  - 参数：sonnet、运维基础 6 题加 T4、每题 3 次、verify3 结束后跑。
+  - 没启动的原因：`claude -p` 会占用同一个订阅额度。等额度恢复、用户说开始之后再跑。
+  - 启动步骤：打开 UnitySkillsEval2022，`console_clear`，然后先加 `--dry-run` 看一遍，再正式跑：
+    - `python3 -B eval/cli.py --project ~/UnityProject/UnitySkillsEval2022 suite3 --suite base-a-1022 --host claude --models sonnet --track ops --tier basic --reps 3`
+    - 同一个 suite 名，改成 `--tier standard --task T4`
+  - 还没核实的一点：同一个 suite 能否跨两个 tier。cohort 绑定可能会拒绝，`--dry-run` 能看出来。
+  - B 臂换一个新的 suite 名，因为 suite 绑定了 frozen docs。
+- **等用户确认提交**：eval 侧改动、插件修复各一个提交；docs3 等 A/B 结束后再提交。
+- **verify4**（00:20 起，后台独立运行，不消耗 Claude 额度）：`verify4/verify4.py`，日志 `verify4/verify4.log`，完成后写 `verify4-result.md` 并弹通知。依次做四件事：
+  1. skill 工程跑全量 EditMode；
+  2. 临时应用 docs3，跑文档测试，然后撤回并核对工作区逐字节一致；
+  3. 两台 URP 编辑器跑回归门禁 T7、OC3、OC7、OC8、T10、D01；
+  4. URP 工程跑全量 EditMode。
+  - 预计约 1.5 小时。
+- **10-22 01:00 夜间安排（用户去睡觉，Claude Code 可关闭）**：
+  - **verify4**：后台跑，完成后写 `verify4-result.md`。
+    - 全量 EditMode 里有 2 个 token level 测试失败：`PerProjectSettingsTests.TokenLevelSources_FallBackToTheOldGlobalValues` 和 `SkillsTokenLevelTests.LegacyGlobalSettings_AreReadAsTheyAre_WithoutAOneShotDefault`。
+    - 和补丁无关：v3fixes 对 `SkillsModeManager` 只是把一个方法从 private 改成 internal。怀疑是执行顺序或本机旧全局设置的影响，`next5` 会单独重跑这两个类。
+  - **`night/commit.py`**：等 verify4 结果，6 道回归门禁全绿时做两个本地提交（eval 侧、插件修复，用户已同意，不推送），结果写到 `commit-result.md`。
+    - 门禁不全绿，或工作区有计划外的改动，就不提交。
+    - 注意：verify3 用 `git apply --3way` 打补丁，v3fixes 和 fix65 的文件已经在暂存区。提交脚本用 `git commit -- <paths>` 按路径分开提交。
+  - **`baseline/next5.py`**：verify4 结束后运行：
+    1. 单独重跑那两个测试类；
+    2. 跑 sonnet 基线 A 臂：运维基础 6 题和 T4，每题 3 次；
+    3. 写出 `baseline-a-result.md`，原始记录在 `eval/runs/suite3/base-a-1022/`。
+  - **Workflow**：
+    - 设计稿已定稿，见 `workflow-design.md` 顶部的 owner 决定。
+    - P0 由会话内的 opus 成员在 scratchpad 的 `p0/` worktree 里实现（基于 HEAD + v3fixes + fix65 + `tracker.patch`）。关掉 Claude Code 它就会中断，改到一半的内容留在 worktree 里，下次用 `git -C <p0> diff` 接着做。
+    - 补丁导出要以 HEAD + 这三个补丁为基线（`docs3.patch` 也是同样做法）。
+    - P0 不改根 SKILL.md，根文档那一行跟 docs3 一起处理。
+- **01:30 用户额度不够，暂停**：
+  - **P0 已写完（成员在停止前完成）**：补丁在 `eval/runs/pending-20261021/workflow-p0.patch`。
+    - 基线：HEAD + v3fixes + fix65 + `tracker.patch`。已验证在基线上重放后，和 worktree 逐字节一致。
+    - 规模：改了 18 个文件，新增 `WorkflowHotPathTests.cs`（含 .meta），共 15 个测试。
+    - 离线编译：四个程序集 0 错误，用的是 `csc/csc_extra.py`，它会把 rsp 里没有的新文件也一起编译。
+    - 还没做：
+      - 我对补丁的审查；
+      - 在 Unity 里跑 WorkflowHotPathTests，以及回归 WorkflowPersistenceTests、WorkflowBackupResilienceTests、GuideProfileDetourTests、ImportWorkerGateTests、SkillDocumentationConsistencyTests、UISkillsFontTests。
+    - 根 SKILL.md 的 P0 行（181 B）：**Undo your own writes**: `workflow_list` → `workflow_undo_task {"taskId":"s<n>"}`, newest first; an older task restores over later edits → [workflow](skills/workflow/SKILL.md).
+    - 推迟到 P3：全局只有一个"当前任务"；事务批放在手动任务里回滚后快照残留；异步批每个分块各存一次盘。
+    - 推迟到 P1：空闲间隔扣除编译和重载时间；归并 curl、Python 这类泛化 agent 标识。
+  - **基线链 `next5.py` 已停**，因为 `claude -p` 会耗用户额度。
+    - 一次 claude 运行都还没开始，token level 两个测试类的单独重跑也还没做。
+    - **用户纠正（01:55）：用户不在时，不自动跑任何会消耗 Claude 额度的任务。** 基线等用户下次对话时再手动启动：`python3.13 -B eval/runs/pending-20261021/baseline/next5.py 1`。不耗额度的那部分已经拆成 `baseline/tokentests.py`，等 verify4 结束后自动跑，结果写到 `tokentests-result.md`。
+  - **照常运行**：verify4（不耗额度）、`night/commit.py`（门禁全绿才提交）。
+
+## 待合并（不在主工作区，等门禁收尾）
+
+- **3.0 插件三项修复**（`eval/runs/pending-20261021/v3fixes.patch`）：用户 2026-10-21 下令，随 3.0 发布。原计划文件已被后续计划覆盖，要点以本节和 memory 为准，memory 见 `telemetry-upload-reserved` 和 `v3-fixes-analytics-telemetry-target`。
+  1. `GET /analytics?agent=` 过滤：原来根本没读这个参数。agent 值按现有规则规范化，`(unknown)` 匹配没有 agent 的记录，带过滤时回显 `agent`，缓存键改成 window 加 agent。
+  2. 遥测只在失败的行里加 `err`（错误文本，160 字符以内）和 `target`（参数摘要，120 字符以内），先做路径脱敏、再截断：工程根目录写成 `<project>`，用户主目录写成 `~`。`DeleteWindow` 重写日志时保留这两个字段；`recentErrors` 也带上；顺带修了 errorCode 会误取嵌套值的问题。上传功能只预留设计，不写代码。
+  3. TARGET_NOT_FOUND 的响应带 `instance`，写成 `"<productName>@<port>"`，文件夹名和 productName 不同时在括号里补文件夹名。只加在这一个错误码上，控制 token；`*_batch` 有任一项未命中时，在顶层加一次。
+- **skill 文档整治**（`eval/runs/pending-20261021/docs3.patch`，120 个文件）：处理审查出的问题 1–6，属于 3.0 P0 的文档部分；计划见 `~/.claude/plans/valiant-painting-hinton.md`。
+  - **基线**：补丁基于 HEAD + v3fixes + fix65，必须在这两个补丁之后应用。已在新 worktree 上重放验证，结果和 docs3 完全一致。
+  - **应用时机**：先跑完小样本基线（A 臂，用现在的文档），再应用补丁跑 B 臂做配对对比。成功率下降就先回滚根文档的改动，再逐项定位（9-25 那次根文档瘦身就是这样被回滚的，见 3ef753a5）。
+  - **根 SKILL.md**：8185 B → 7937 B。
+    - description 从 520 字符缩到 339 字符，纯英文，Unity 设计问答也会触发。
+    - 删掉计数行；Python 助手那行并进 Windows 链接行。
+    - 新增撤销路由：`workflow_list` → `workflow_undo_task`。
+    - 其余句子都没动。
+  - **references/**：
+    - 删掉 `SKILL_FULL.md`。别处没有的三条规则已经迁走：`INVALID_MODE` 迁到 error-codes，`?diff=1` 迁到 observability，`search_skills` 迁到 discovery。
+    - `README`、`index` 补上链接，`windows.md` 按当前根文档重写。
+    - 现在 references/ 下每个文件都能从根文档链接到达。
+  - **拆分试点**：material、editor、cinemachine、particle 拆成入口加 `reference/<skill>.md`，共 103 个文件。
+    - 入口大小分别为 6276、4939、6177、13507 B。
+    - particle 补写了 15 个技能的文档，签名和代码逐项核对过。
+    - 测试里加了 PilotModules 和预算（入口大小加约 4%）。
+  - **规则同步**：`/skillcheck` 和 AGENTS.md 不再把计数同步到根 SKILL.md，试点从 4 个改成 8 个，并新增 references 可达性检查。
+  - **已通过的验证**：
+    - 离线一致性脚本 `eval/runs/pending-20261021/docs3/docs3_check.py <树>` 通过；
+    - csc 离线编译 URP 和 Built-in 都是 0 错误；
+    - 离线全量 3.13 和 3.9 各 1665 个全过。
+  - **还没做的验证**：EditMode `SkillDocumentationConsistencyTests`、B 臂配对对比，以及用无头 `claude -p` 实测触发（3 条中文、2 条英文、1 条非 Unity）。
+  - **应用后**：在面板里重装 Claude Code（全局）副本，或改成只装工程级，等用户决定。
+  - **后续**：试点验证有效后，扩展到其余大于 15 KB 的模块；P0 代码落地后再改撤销路由那一行。
+
+## 本轮发现
+
+- **真正的瓶颈是 `workflow_history.json` 膨胀**：
+  - 原工程开工前清空过，跑了约 1 小时 OC 题就涨回 17.4 MB（5936 条快照）。插件每次写操作都要整份重写这个文件，OC4 搭建 fixture 的时间因此从 4 分钟涨到 17 分钟。
+  - 两台编辑器同时跑对速度影响很小：同一批量调用每次只慢约 15%。
+  - 结论：两台并行是值得的，但每隔几题就要清一次历史，而且只能在两题之间清——用例进行中外部发来的 REST 调用会被记进该例的遥测。本轮 `gate3/worker.sh` 已改成每题结束后自动清。
+- **Mac 会闲置睡眠**：10-21 05:09–07:37 门禁因此停了约 2.5 小时。无人值守时必须套 `caffeinate -is`。
+- **OC4 的 `component_set_serialized_property_batch` 每次调用约 34 秒**：怀疑每一项都调了 `WorkflowManager.SnapshotObject`，进而调 `GlobalObjectId.GetGlobalObjectIdSlow`，还没实测确认。
+- **复制出来的工程**第一次打开停在 Untitled 场景，runner 会报 `SCENE_UNTITLED`，要先 `scene_load Assets/Scenes/SampleScene.unity`。
+- **用户反馈的 3 个插件问题**已核实，修复就在上面的 v3fixes 里。
+
+## 注意事项
+
+- 门禁运行中不要重建 manifest，也不要改公开题包文件：runner 会比对 manifest 哈希，报 PACK_INVALID。不要改正在跑的那道题的私有评分和解法文件，否则记为 `inputs_changed`。
+- C# 改动会让开着的编辑器都重编译，只能在没有用例在跑时做。
+- 用 `kill` 结束编辑器后，重开必须带 `-unityskills-coldstart`，工程里还要有 `cli_config.json`。
+
+## 已知问题
+
+- `workflow_history.json` 的性能问题，见"本轮发现"，现在有实测证据了。
+- 插件包更新后第一次 domain reload 会读到旧的 locale 缓存：4 个本地化测试首次运行失败，重跑即过。
+
+## 等用户决定
+
+- workflow_history 的性能问题是否本轮修（建议修：门禁一跑几小时就会拖慢）。
+- 门禁结束后 `UnitySkillsEval2022b` 是保留作第二台 URP 门禁工程，还是删掉。
+- 6000 两格何时跑，以及是否新建 6000 URP dedicated 工程。
+- DB4、DC2、DC6、DC8（规划了但没入包）是补齐，还是按 37 题发布。
+- suite3 冒烟、真实模型评测与校准的时机。
 
 ---
 

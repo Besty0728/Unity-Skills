@@ -12,7 +12,8 @@ wait counts from the tick it starts, so samples taken at fixed offsets drift lat
 a correct spawner fails a half-interval schedule). Instead the scenario reads the container right after Play starts
 (no child yet), then for each k waits until it holds k children and stamps that moment with editor_get_state's
 timeSinceStartup; the gaps between stamps must be interval +- TIME_TOL, the first spawn interval after the first stamp
-(Play starts before it, hence the early slack); 1.5 intervals after the last spawn the container still holds maxCount
+(Play starts before it, hence the early slack; the first Play frames are slow and deltaTime is capped, hence the late
+slack); 1.5 intervals after the last spawn the container still holds maxCount
 children named <prefab>(Clone), and the first one sits at the container's world position.
 """
 import hashlib
@@ -30,6 +31,9 @@ DEFAULT_COUNT = 2
 SPEC_SALT = 0x5B06
 TIME_TOL = 0.3            # R5: a spawn moment, seconds (frame and read granularity, game time vs wall clock)
 EARLY_SLACK = 0.7         # R5: the first spawn may read this much early (Play starts before the scenario's clock)
+LATE_SLACK = 0.8          # R5: or this much late (slow first Play frames, deltaTime capped; live 2022.3: 0.3-0.5 s)
+LATE_TOL = 0.5            # R5: a later spawn may read this much late: a frame over Time.maximumDeltaTime loses game
+                          # time, so a hitch only lengthens a gap (live 2022.3: up to 0.31 s)
 SETTLE_INTERVALS = 1.5    # R5: no further spawn this many intervals after the last one
 POS_TOL = 0.01
 VALUE_TOL = 1e-3
@@ -124,12 +128,13 @@ def clone_name(prefab_path):
 
 def schedule_ok(stamps, interval):
     """(ok, rows) for spawn stamps [t0, t1, ..., tn] (t0 taken right after Play starts, tk when the k-th instance was
-    seen): t1 - t0 within [interval - EARLY_SLACK, interval + TIME_TOL], each later gap interval +- TIME_TOL."""
+    seen): t1 - t0 within [interval - EARLY_SLACK, interval + LATE_SLACK], each later gap within
+    [interval - TIME_TOL, interval + LATE_TOL]."""
     rows, ok = [], len(stamps) >= 2
     for index in range(1, len(stamps)):
         gap = stamps[index] - stamps[index - 1]
-        low, high = (interval - EARLY_SLACK, interval + TIME_TOL) if index == 1 else (interval - TIME_TOL,
-                                                                                      interval + TIME_TOL)
+        low, high = (interval - EARLY_SLACK, interval + LATE_SLACK) if index == 1 else (interval - TIME_TOL,
+                                                                                        interval + LATE_TOL)
         good = low - 1e-9 <= gap <= high + 1e-9
         ok = ok and good
         rows.append({"spawn": index, "gap": round(gap, 3), "ok": good})
@@ -338,7 +343,7 @@ def verify_runtime(ctx, card):
     passed = scenario.get("passed") is True
     card.check("F6", passed and complete and start_count == 0 and on_time and final_ok and pos_ok,
                expected={"startCount": 0, "interval": interval, "timeTol": TIME_TOL, "earlySlack": EARLY_SLACK,
-                         "finalCount": count, "clone": clone, "posTol": POS_TOL},
+                         "lateSlack": LATE_SLACK, "lateTol": LATE_TOL, "finalCount": count, "clone": clone, "posTol": POS_TOL},
                actual={"passed": passed, "error": scenario.get("error"), "status": scenario.get("status"),
                        "startCount": start_count, "spawns": rows,
                        "finalCount": final_info.get("childCount"),

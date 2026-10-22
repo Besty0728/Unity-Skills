@@ -1396,6 +1396,12 @@ def _matches(actual, expected, tolerance):
     numbers = (int, float)
     if isinstance(actual, numbers) and isinstance(expected, numbers) and not isinstance(actual, bool):
         return abs(float(actual) - float(expected)) <= tolerance
+    # RuntimeScenarioService.Matches: arrays item by item, objects key by key (same key count), each with tolerance.
+    if isinstance(actual, list) and isinstance(expected, list):
+        return len(actual) == len(expected) and all(_matches(a, b, tolerance) for a, b in zip(actual, expected))
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        return len(actual) == len(expected) and all(_matches(actual.get(key), value, tolerance)
+                                                    for key, value in expected.items())
     return actual == expected
 
 
