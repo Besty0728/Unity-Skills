@@ -1,4 +1,5 @@
-﻿using NUnit.Framework;
+﻿using System.Collections.Generic;
+using NUnit.Framework;
 
 namespace UnitySkills.Tests.Core
 {
@@ -44,6 +45,53 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(
                 SkillErrorCode.TargetNotFound,
                 SkillErrorClassifier.Classify("Group 'g' not found in package 'p'").Code);
+        }
+
+        [Test]
+        public void InstanceLabel_FolderMatchingProductName_IsJustNameAndPort()
+        {
+            Assert.AreEqual("UnitySkillsEval2022@8091",
+                SkillErrorResponse.InstanceLabel("UnitySkillsEval2022", "/Users/dev/UnitySkillsEval2022", 8091));
+            Assert.AreEqual("UnitySkillsEval2022@8091",
+                SkillErrorResponse.InstanceLabel("UnitySkillsEval2022", "/Users/dev/unityskillseval2022/", 8091));
+        }
+
+        [Test]
+        public void InstanceLabel_FolderDiffersFromProductName_NamesTheFolderInParentheses()
+        {
+            Assert.AreEqual("UnitySkillsEval2022 (UnitySkillsEval2022b)@8091",
+                SkillErrorResponse.InstanceLabel("UnitySkillsEval2022", "/Users/dev/UnitySkillsEval2022b", 8091));
+        }
+
+        [TestCase(null)]
+        [TestCase("")]
+        public void InstanceLabel_NoProjectPath_IsJustNameAndPort(string projectPath)
+        {
+            Assert.AreEqual("My Game@8092", SkillErrorResponse.InstanceLabel("My Game", projectPath, 8092));
+        }
+
+        [Test]
+        public void WithTargetNotFoundInstance_AddsLabelOnlyForTargetNotFound_WithoutMutatingTheSource()
+        {
+            var skillExtra = new Dictionary<string, object> { ["candidates"] = 2 };
+
+            var added = SkillErrorResponse.WithTargetNotFoundInstance(SkillErrorCode.TargetNotFound, skillExtra, "Game@8091");
+            Assert.AreEqual("Game@8091", added["instance"]);
+            Assert.AreEqual(2, added["candidates"]);
+            Assert.IsFalse(skillExtra.ContainsKey("instance"), "The skill's own dictionary must not be mutated.");
+
+            var untouched = SkillErrorResponse.WithTargetNotFoundInstance(SkillErrorCode.MissingParam, skillExtra, "Game@8091");
+            Assert.AreSame(skillExtra, untouched);
+        }
+
+        [Test]
+        public void WithTargetNotFoundInstance_SkillDeclaredInstance_Wins()
+        {
+            var skillExtra = new Dictionary<string, object> { ["instance"] = "Declared@1" };
+
+            var result = SkillErrorResponse.WithTargetNotFoundInstance(SkillErrorCode.TargetNotFound, skillExtra, "Game@8091");
+
+            Assert.AreEqual("Declared@1", result["instance"]);
         }
     }
 }

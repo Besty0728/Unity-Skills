@@ -23,6 +23,10 @@ namespace UnitySkills
         internal const long MaxBytes = 64L * 1024L * 1024L;
         internal const int DefaultReadLimit = 100;
         internal const int MaxReadLimit = 1000;
+        // A full history evicts on every add. Evicted rows stay in the file until this many have piled up, so the file
+        // is rewritten once per quarter turnover instead of on every flush (issue #65: a 50,000-row rewrite each second).
+        internal const int CompactEvictionCount = MaxEntries / 4;
+        internal const long CompactEvictionBytes = MaxBytes / 4;
 
         private const string RelativeLogPath = "Library/UnitySkills/console_log_history.jsonl";
         private const string RelativeStatePath = "Library/UnitySkills/console_log_history_state.json";
@@ -58,6 +62,9 @@ namespace UnitySkills
         private static bool _capturing;
         private static bool _dirty;
         private static bool _needsCompact;
+        // Evicted from memory since the last rewrite but still in the file; the next load trims them again.
+        private static long _evictedSinceCompact;
+        private static long _evictedBytesSinceCompact;
         private static bool _persistenceFailed;
         private static long _nextFlushUtcTicks;
 
@@ -197,6 +204,8 @@ namespace UnitySkills
                 // The rewrite below holds no rows at all, so no unreadable row survives it.
                 _corruptRows = 0;
                 _uncompactedCorruptRows = 0;
+                _evictedSinceCompact = 0;
+                _evictedBytesSinceCompact = 0;
                 _generation++;
                 _captureStartSeq = _seq;
                 SessionState.SetString(SessionKeyCaptureStart, _captureStartSeq.ToString(CultureInfo.InvariantCulture));
@@ -424,20 +433,19 @@ namespace UnitySkills
             record.ApproximateBytes = ApproximateBytes(record);
             Records.Add(record);
             _bytes += record.ApproximateBytes;
-            bool evicted = false;
             while (Records.Count > MaxEntries || _bytes > MaxBytes)
             {
                 var removed = Records[0];
                 Records.RemoveAt(0);
                 _bytes -= removed.ApproximateBytes;
                 _dropped++;
-                evicted = true;
+                _evictedSinceCompact++;
+                _evictedBytesSinceCompact += removed.ApproximateBytes;
             }
             if (persistAppend)
             {
                 _dirty = true;
                 PendingPersistence.Add(record);
-                _needsCompact |= evicted;
             }
         }
 
@@ -517,7 +525,10 @@ namespace UnitySkills
                     MarkIncompleteThroughLocked(_seq);
 
                 // Compaction rewrites the file from memory, so it drops unreadable rows, but only after a complete read.
-                _needsCompact = TrimLocked() || (readComplete && _uncompactedCorruptRows > 0);
+                long droppedBeforeTrim = _dropped;
+                bool trimmed = TrimLocked();
+                _evictedSinceCompact = _dropped - droppedBeforeTrim;
+                _needsCompact = trimmed || (readComplete && _uncompactedCorruptRows > 0);
                 _dirty = _needsCompact;
                 _finalFlushDone = false;
                 ReserveSeqLocked();
@@ -578,7 +589,7 @@ namespace UnitySkills
                 }
             }
             if (!_dirty || DateTime.UtcNow.Ticks < _nextFlushUtcTicks) return;
-            FlushNow(final: false);
+            FlushNow(final: false, deferCompaction: EditorApplication.isPlayingOrWillChangePlaymode);
         }
 
         private static void FinalFlush() => FlushNow(final: true);
@@ -589,7 +600,7 @@ namespace UnitySkills
         /// Persists pending records, then the state. A final flush also releases the seq reservation: it is the last
         /// write of a domain whose history nobody reads any more, so the next domain continues exactly at its seq.
         /// </summary>
-        private static void FlushNow(bool final)
+        private static void FlushNow(bool final, bool deferCompaction = false)
         {
             lock (SyncRoot)
             {
@@ -598,10 +609,12 @@ namespace UnitySkills
                 {
                     if (_dirty)
                     {
-                        if (_needsCompact)
+                        if (_needsCompact || CompactionDueLocked(deferCompaction))
                         {
                             RewritePersistenceLocked();
                             _uncompactedCorruptRows = 0;
+                            _evictedSinceCompact = 0;
+                            _evictedBytesSinceCompact = 0;
                         }
                         else
                         {
@@ -635,6 +648,16 @@ namespace UnitySkills
                     _dirty = true;
                 }
             }
+        }
+
+        /// <summary>
+        /// Whether enough evicted rows have piled up in the file to rewrite it. Play Mode (<paramref name="defer"/>) waits
+        /// for a full turnover, which bounds the file at about twice the cap; the next load trims and compacts it anyway.
+        /// </summary>
+        private static bool CompactionDueLocked(bool defer)
+        {
+            if (_evictedSinceCompact >= MaxEntries || _evictedBytesSinceCompact >= MaxBytes) return true;
+            return !defer && (_evictedSinceCompact >= CompactEvictionCount || _evictedBytesSinceCompact >= CompactEvictionBytes);
         }
 
         private static void RewritePersistenceLocked()
@@ -691,7 +714,8 @@ namespace UnitySkills
             LibraryStateFile.WriteAllText(_statePath, JsonConvert.SerializeObject(new PersistedState
             {
                 seq = _seq,
-                dropped = _dropped,
+                // Evicted rows still in the file are counted again when the next load trims them.
+                dropped = Math.Max(0, _dropped - _evictedSinceCompact),
                 generation = _generation,
                 reservedSeq = _reservedSeq,
                 incompleteThroughSeq = _incompleteThroughSeq,
@@ -802,7 +826,7 @@ namespace UnitySkills
                 _statePath = string.IsNullOrEmpty(_logPath) ? null : _logPath + ".state";
                 Records.Clear(); NativeKeys.Clear(); PendingPersistence.Clear(); _seq = 0; _bytes = 0; _dropped = 0; _corruptRows = 0; _generation = 0; _captureStartSeq = 0; _capturing = false;
                 _uncompactedCorruptRows = 0; _incompleteThroughSeq = 0; _reservedSeq = 0; _finalFlushDone = false; _persistenceFailed = false;
-                _dirty = false; _needsCompact = false;
+                _dirty = false; _needsCompact = false; _evictedSinceCompact = 0; _evictedBytesSinceCompact = 0;
                 DeleteTestFiles();
             }
         }
@@ -841,6 +865,8 @@ namespace UnitySkills
             private readonly bool _oldCapturing;
             private readonly bool _oldDirty;
             private readonly bool _oldNeedsCompact;
+            private readonly long _oldEvictedSinceCompact;
+            private readonly long _oldEvictedBytesSinceCompact;
             private readonly bool _oldPersistenceFailed;
             private readonly List<ConsoleLogHistoryRecord> _oldPendingPersistence;
             private readonly long _oldNextFlushUtcTicks;
@@ -855,6 +881,7 @@ namespace UnitySkills
                     _oldSeq = _seq; _oldBytes = _bytes; _oldDropped = _dropped; _oldCorruptRows = _corruptRows; _oldGeneration = _generation;
                     _oldUncompactedCorruptRows = _uncompactedCorruptRows; _oldIncompleteThroughSeq = _incompleteThroughSeq; _oldReservedSeq = _reservedSeq; _oldFinalFlushDone = _finalFlushDone;
                     _oldCaptureStartSeq = _captureStartSeq; _oldCapturing = _capturing; _oldDirty = _dirty; _oldNeedsCompact = _needsCompact; _oldPersistenceFailed = _persistenceFailed;
+                    _oldEvictedSinceCompact = _evictedSinceCompact; _oldEvictedBytesSinceCompact = _evictedBytesSinceCompact;
                     _oldPendingPersistence = new List<ConsoleLogHistoryRecord>(PendingPersistence); _oldNextFlushUtcTicks = _nextFlushUtcTicks;
                 }
                 ResetForTests(path);
@@ -875,11 +902,13 @@ namespace UnitySkills
                     _uncompactedCorruptRows = _oldUncompactedCorruptRows; _incompleteThroughSeq = _oldIncompleteThroughSeq; _reservedSeq = _oldReservedSeq; _finalFlushDone = _oldFinalFlushDone;
                     PendingPersistence.Clear(); PendingPersistence.AddRange(_oldPendingPersistence);
                     _captureStartSeq = _oldCaptureStartSeq; _capturing = _oldCapturing; _dirty = _oldDirty; _needsCompact = _oldNeedsCompact; _persistenceFailed = _oldPersistenceFailed; _nextFlushUtcTicks = _oldNextFlushUtcTicks;
+                    _evictedSinceCompact = _oldEvictedSinceCompact; _evictedBytesSinceCompact = _oldEvictedBytesSinceCompact;
                 }
             }
         }
 
-        internal static void FlushForTests() => FlushNow(final: false);
+        /// <summary>The periodic flush; <paramref name="inPlayMode"/> stands for EditorApplication.isPlayingOrWillChangePlaymode.</summary>
+        internal static void FlushForTests(bool inPlayMode = false) => FlushNow(final: false, deferCompaction: inPlayMode);
 
         /// <summary>The flush beforeAssemblyReload runs; records added after it still reach the DomainUnload flush.</summary>
         internal static void FinalFlushForTests() => FlushNow(final: true);
@@ -907,7 +936,7 @@ namespace UnitySkills
             lock (SyncRoot)
             {
                 Records.Clear(); NativeKeys.Clear(); PendingPersistence.Clear(); _seq = 0; _bytes = 0; _dropped = 0; _corruptRows = 0; _generation = 0; _dirty = false; _needsCompact = false; _persistenceFailed = false;
-                _uncompactedCorruptRows = 0; _incompleteThroughSeq = 0; _reservedSeq = 0; _finalFlushDone = false;
+                _uncompactedCorruptRows = 0; _incompleteThroughSeq = 0; _reservedSeq = 0; _finalFlushDone = false; _evictedSinceCompact = 0; _evictedBytesSinceCompact = 0;
                 LoadPersistedHistory();
             }
         }

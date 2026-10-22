@@ -176,6 +176,292 @@ namespace UnitySkills.Tests.Core
             }
         }
 
+        private static readonly DateTime AnalyticsNowUtc = new DateTime(2026, 10, 21, 10, 30, 0, DateTimeKind.Utc);
+
+        private static SkillTelemetryService.TelemetryRecord TelemetryRow(string skill, string agent, bool ok, string err = null, string target = null) =>
+            new SkillTelemetryService.TelemetryRecord
+            {
+                Ts = "2026-10-21T10:00:00.000Z",
+                Skill = skill,
+                Agent = agent,
+                Mode = "execute",
+                Ok = ok,
+                ErrorCode = ok ? null : "SKILL_ERROR",
+                Err = err,
+                Target = target,
+                Ms = 5,
+            };
+
+        private static JObject ReadLastTelemetryLine(string skill)
+        {
+            JObject found = null;
+            foreach (var line in File.ReadAllLines(SkillTelemetryService.GetLogPath()))
+            {
+                if (line.Length == 0) continue;
+                var entry = JObject.Parse(line);
+                if (string.Equals(entry["skill"]?.ToString(), skill, StringComparison.Ordinal))
+                    found = entry;
+            }
+            return found;
+        }
+
+        [TestCase("claude-code", "ClaudeCode")]
+        [TestCase("  cursor  ", "Cursor")]
+        [TestCase("", null)]
+        [TestCase(null, null)]
+        public void Analytics_NormalizeAgentFilter_CanonicalizesOrDropsFilter(string input, string expected)
+        {
+            Assert.That(SkillTelemetryService.NormalizeAgentFilter(input), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Analytics_AgentFilter_CountsOnlyMatchingRecords()
+        {
+            var rows = new[]
+            {
+                TelemetryRow("a", "ClaudeCode", ok: true),
+                TelemetryRow("b", "ClaudeCode", ok: false),
+                TelemetryRow("c", "Cursor", ok: true),
+                TelemetryRow("d", null, ok: true),
+            };
+
+            var json = JObject.Parse(SkillTelemetryService.AggregateAnalytics(rows, "all", "claude-code", AnalyticsNowUtc));
+
+            Assert.That(json["agent"]?.ToString(), Is.EqualTo("ClaudeCode"));
+            Assert.That(json["summary"]?["totalCalls"]?.Value<int>(), Is.EqualTo(2));
+            Assert.That(json["summary"]?["errorCalls"]?.Value<int>(), Is.EqualTo(1));
+            var byAgent = (JArray)json["byAgent"];
+            Assert.That(byAgent.Count, Is.EqualTo(1));
+            Assert.That(byAgent[0]["agent"]?.ToString(), Is.EqualTo("ClaudeCode"));
+            Assert.That(((JArray)json["recentErrors"]).Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Analytics_UnknownLabel_MatchesRecordsWithoutAgent()
+        {
+            var rows = new[]
+            {
+                TelemetryRow("a", null, ok: true),
+                TelemetryRow("b", "Cursor", ok: true),
+            };
+
+            var json = JObject.Parse(SkillTelemetryService.AggregateAnalytics(rows, "all", "(unknown)", AnalyticsNowUtc));
+
+            Assert.That(json["summary"]?["totalCalls"]?.Value<int>(), Is.EqualTo(1));
+            Assert.That(((JArray)json["byAgent"])[0]["agent"]?.ToString(), Is.EqualTo("(unknown)"));
+        }
+
+        [Test]
+        public void Analytics_UnknownAgent_YieldsEmptyStatsWithEcho()
+        {
+            var rows = new[] { TelemetryRow("a", "ClaudeCode", ok: true) };
+
+            var json = JObject.Parse(SkillTelemetryService.AggregateAnalytics(rows, "all", "Nobody", AnalyticsNowUtc));
+
+            Assert.That(json["agent"]?.ToString(), Is.EqualTo("Nobody"));
+            Assert.That(json["summary"]?["totalCalls"]?.Value<int>(), Is.EqualTo(0));
+            Assert.That(((JArray)json["topSkills"]).Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Analytics_Unfiltered_HasNoAgentFieldAndCountsEverything()
+        {
+            var rows = new[]
+            {
+                TelemetryRow("a", "ClaudeCode", ok: true),
+                TelemetryRow("b", null, ok: true),
+            };
+
+            var json = JObject.Parse(SkillTelemetryService.AggregateAnalytics(rows, "all", null, AnalyticsNowUtc));
+
+            Assert.That(json.Property("agent"), Is.Null);
+            Assert.That(json["summary"]?["totalCalls"]?.Value<int>(), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Analytics_RecentErrors_CarryErrAndTargetOnlyWhenPresent()
+        {
+            var rows = new[]
+            {
+                TelemetryRow("a", "x", ok: false, err: "boom", target: "path=~/a"),
+                TelemetryRow("b", "x", ok: false),
+            };
+
+            var json = JObject.Parse(SkillTelemetryService.AggregateAnalytics(rows, "all", null, AnalyticsNowUtc));
+
+            var recent = (JArray)json["recentErrors"];
+            Assert.That(recent[0]["err"], Is.Null);
+            Assert.That(((JObject)recent[0]).Property("target"), Is.Null);
+            Assert.That(recent[1]["err"]?.ToString(), Is.EqualTo("boom"));
+            Assert.That(recent[1]["target"]?.ToString(), Is.EqualTo("path=~/a"));
+        }
+
+        [Test]
+        public void Analytics_BuildAnalyticsJson_CacheKeepsFilteredAndUnfilteredApart()
+        {
+            bool prevEnabled = SkillTelemetryService.Enabled;
+            SkillTelemetryService.Enabled = true;
+            SkillTelemetryService.ResetForTests();
+            try
+            {
+                SkillTelemetryService.Record("telemetry_cache_probe", "tests", "execute", true, null, 1);
+                SkillTelemetryService.FlushSync();
+
+                var unfiltered = JObject.Parse(SkillTelemetryService.BuildAnalyticsJson("all"));
+                var filtered = JObject.Parse(SkillTelemetryService.BuildAnalyticsJson("all", "claude-code"));
+                var unfilteredAgain = JObject.Parse(SkillTelemetryService.BuildAnalyticsJson("all"));
+
+                Assert.That(unfiltered.Property("agent"), Is.Null);
+                Assert.That(unfiltered["summary"]?["totalCalls"]?.Value<int>(), Is.GreaterThanOrEqualTo(1));
+                Assert.That(filtered["agent"]?.ToString(), Is.EqualTo("ClaudeCode"));
+                Assert.That(filtered["summary"]?["totalCalls"]?.Value<int>(), Is.EqualTo(0));
+                Assert.That(unfilteredAgain.Property("agent"), Is.Null);
+                Assert.That(unfilteredAgain["summary"]?["totalCalls"]?.Value<int>(),
+                    Is.EqualTo(unfiltered["summary"]?["totalCalls"]?.Value<int>()));
+            }
+            finally
+            {
+                SkillTelemetryService.ResetForTests();
+                SkillTelemetryService.Enabled = prevEnabled;
+            }
+        }
+
+        [Test]
+        public void Telemetry_FailedLine_CarriesRedactedErrAndTarget_SuccessLineDoesNot()
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (string.IsNullOrEmpty(home)) Assert.Ignore("No user profile folder on this machine.");
+
+            bool prevEnabled = SkillTelemetryService.Enabled;
+            SkillTelemetryService.Enabled = true;
+            SkillTelemetryService.ResetForTests();
+            try
+            {
+                var err = SkillTelemetryService.SanitizeError("could not open " + home + "/Art/hero.png");
+                var target = SkillTelemetryService.SanitizeTarget(new JObject { ["path"] = home + "/Art/hero.png" }.ToString());
+
+                SkillTelemetryService.Record("telemetry_detail_probe", "tests", "execute", false, "SKILL_ERROR", 2, error: err, target: target);
+                SkillTelemetryService.Record("telemetry_detail_ok_probe", "tests", "execute", true, null, 2, error: err, target: target);
+                SkillTelemetryService.FlushSync();
+
+                var failed = ReadLastTelemetryLine("telemetry_detail_probe");
+                var succeeded = ReadLastTelemetryLine("telemetry_detail_ok_probe");
+
+                Assert.That(failed["errorCode"]?.ToString(), Is.EqualTo("SKILL_ERROR"));
+                Assert.That(failed["err"]?.ToString(), Does.StartWith("could not open ~/Art/hero.png"));
+                Assert.That(failed["err"]?.ToString(), Does.Not.Contain(home));
+                Assert.That(failed["target"]?.ToString(), Does.Not.Contain(home));
+                Assert.That(succeeded["err"], Is.Null);
+                Assert.That(succeeded["target"], Is.Null);
+            }
+            finally
+            {
+                SkillTelemetryService.ResetForTests();
+                SkillTelemetryService.Enabled = prevEnabled;
+            }
+        }
+
+        [Test]
+        public void Telemetry_DeleteWindow_KeepsErrAndTargetOnSurvivingFailedLine()
+        {
+            bool prevEnabled = SkillTelemetryService.Enabled;
+            SkillTelemetryService.Enabled = true;
+            SkillTelemetryService.ResetForTests();
+            try
+            {
+                // An old failure, written straight into the log so it lies outside the 1h window.
+                const string oldLine = "{\"ts\":\"2020-01-01T00:00:00.000Z\",\"skill\":\"telemetry_old_failure_probe\",\"agent\":\"tests\",\"mode\":\"execute\",\"ok\":false,\"errorCode\":\"SKILL_ERROR\",\"err\":\"old failure\",\"target\":\"x=1\",\"ms\":1}";
+                File.AppendAllText(SkillTelemetryService.GetLogPath(), oldLine + "\n");
+                SkillTelemetryService.Record("telemetry_recent_failure_probe", "tests", "execute", false, "SKILL_ERROR", 2, error: "recent failure", target: "y=2");
+                SkillTelemetryService.FlushSync();
+
+                var result = JObject.FromObject(SkillTelemetryService.DeleteWindow("1h"));
+                Assert.That(result["removed"]?.Value<int>(), Is.EqualTo(1));
+
+                var kept = ReadLastTelemetryLine("telemetry_old_failure_probe");
+                Assert.That(kept, Is.Not.Null);
+                Assert.That(kept["err"]?.ToString(), Is.EqualTo("old failure"));
+                Assert.That(kept["target"]?.ToString(), Is.EqualTo("x=1"));
+                Assert.That(ReadLastTelemetryLine("telemetry_recent_failure_probe"), Is.Null);
+            }
+            finally
+            {
+                SkillTelemetryService.ResetForTests();
+                SkillTelemetryService.Enabled = prevEnabled;
+            }
+        }
+
+        [Test]
+        public void Telemetry_ReadFailureEnvelope_UsesTopLevelErrorCodeNotNestedOne()
+        {
+            const string json = "{\"status\":\"error\",\"errorCode\":\"SKILL_ERROR\",\"error\":\"boom\",\"details\":{\"errorCode\":\"NESTED_CODE\"}}";
+
+            SkillTelemetryService.ReadFailureEnvelope(json, out var code, out var message);
+
+            Assert.That(code, Is.EqualTo("SKILL_ERROR"));
+            Assert.That(message, Is.EqualTo("boom"));
+        }
+
+        [Test]
+        public void Telemetry_ReadFailureEnvelope_NestedOnlyErrorCodeIsIgnoredAndBadJsonYieldsNulls()
+        {
+            const string nestedOnly = "{\"status\":\"error\",\"error\":\"boom\",\"details\":{\"errorCode\":\"NESTED_CODE\"}}";
+
+            SkillTelemetryService.ReadFailureEnvelope(nestedOnly, out var code, out var message);
+            Assert.That(code, Is.Null);
+            Assert.That(message, Is.EqualTo("boom"));
+
+            SkillTelemetryService.ReadFailureEnvelope("not json", out var badCode, out var badMessage);
+            Assert.That(badCode, Is.Null);
+            Assert.That(badMessage, Is.Null);
+        }
+
+        [Test]
+        public void Telemetry_RedactPaths_ReplacesProjectThenHomeAndRespectsNameBoundaries()
+        {
+            Assert.That(SkillTelemetryService.RedactPaths("at /Users/me/Game/Assets/a.cs", "/Users/me/Game", "/Users/me"),
+                Is.EqualTo("at <project>/Assets/a.cs"));
+            Assert.That(SkillTelemetryService.RedactPaths(@"C:\Users\me\Docs\x.txt", null, @"C:\Users\me"),
+                Is.EqualTo(@"~\Docs\x.txt"));
+            Assert.That(SkillTelemetryService.RedactPaths("/Users/meghan/x", null, "/Users/me"),
+                Is.EqualTo("/Users/meghan/x"));
+        }
+
+        [Test]
+        public void Telemetry_SanitizeTarget_RedactsLongHomeBeforeTruncating()
+        {
+            const string home = "/Users/a_very_long_user_name_for_redaction_tests";
+            var args = new JObject { ["path"] = home + "/Projects/Foo/Assets/X.prefab" }.ToString();
+
+            var target = SkillTelemetryService.SanitizeTarget(args, null, home);
+
+            Assert.That(target, Does.Contain("~/Projects/Foo/Assets/X.prefab"));
+            Assert.That(target, Does.Not.Contain("Users"));
+            Assert.That(target, Does.Not.Contain("a_very"));
+            Assert.That(target, Does.Not.Contain("user_name"));
+            Assert.That(target, Does.Not.Contain("redaction"));
+        }
+
+        [Test]
+        public void Telemetry_SanitizeTarget_ProjectValueBecomesProjectPlaceholder()
+        {
+            var args = new JObject { ["path"] = "/Users/dev/Game/Assets/X.prefab" }.ToString();
+
+            var target = SkillTelemetryService.SanitizeTarget(args, "/Users/dev/Game", "/Users/dev");
+
+            Assert.That(target, Is.EqualTo("path=<project>/Assets/X.prefab"));
+        }
+
+        [Test]
+        public void Telemetry_SanitizeError_RedactsLongHomeWithInjectedRoot()
+        {
+            const string home = "/Users/a_very_long_user_name_for_redaction_tests";
+
+            var error = SkillTelemetryService.SanitizeError("could not open " + home + "/Art/hero.png", null, home);
+
+            Assert.That(error, Is.EqualTo("could not open ~/Art/hero.png"));
+        }
+
         [Test]
         public void BatchDiff_CreateThenModify_ReportsOnlyFinalAddedObject()
         {

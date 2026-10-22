@@ -445,6 +445,35 @@ namespace UnitySkills.Tests.Core
             }
         }
 
+        [Test]
+        public void Property_OfAnObjectInsideAPrefabAssetCarriesTheAssetPath()
+        {
+            const string folder = "Assets/Temp/EditorChangeAttributionTests";
+            if (!AssetDatabase.IsValidFolder("Assets/Temp"))
+                AssetDatabase.CreateFolder("Assets", "Temp");
+            if (!AssetDatabase.IsValidFolder(folder))
+                AssetDatabase.CreateFolder("Assets/Temp", "EditorChangeAttributionTests");
+            var source = new GameObject("EctPrefabAsset");
+            new GameObject("Child").transform.SetParent(source.transform);
+            try
+            {
+                var prefab = PrefabUtility.SaveAsPrefabAsset(source, folder + "/Probe.prefab");
+                var child = prefab.transform.Find("Child");
+                EditorChangeTrackerService.OnPostprocessModifications(new[] { Modification(child, "m_LocalPosition.x", "0", "2") });
+                EditorChangeTrackerService.FlushPendingProperties();
+
+                var change = PropertyEntries().Single()["payload"]["changes"][0];
+
+                Assert.AreEqual(folder + "/Probe.prefab", change.Value<string>("assetPath"));
+                StringAssert.EndsWith("/Child", change.Value<string>("path"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(source);
+                AssetDatabase.DeleteAsset(folder);
+            }
+        }
+
         // ===== helpers =====
 
         private static SkillsAuditLog.AmbientContext Context(int port, string fallback, bool explicitId) =>

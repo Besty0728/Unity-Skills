@@ -934,7 +934,7 @@ namespace UnitySkills
         /// Generates a short, readable args summary for the panel and audit log.
         /// Keeps top-level scalar key=value pairs; nested objects are always replaced with "{...}".
         /// </summary>
-        private static string SummarizeArgs(string argsJson)
+        internal static string SummarizeArgs(string argsJson)
         {
             if (string.IsNullOrWhiteSpace(argsJson)) return string.Empty;
             try

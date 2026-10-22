@@ -476,6 +476,59 @@ namespace UnitySkills.Tests.Core
                 json.ToString(Formatting.None));
         }
 
+        // ---------- TARGET_NOT_FOUND names the answering editor ----------
+
+        [Test]
+        public void Router_TargetNotFound_CarriesInstanceLabelOfTheAnsweringEditor()
+        {
+            var json = JObject.Parse(SkillRouter.Execute("gameobject_set_transform", "{\"name\":\"UnitySkills_NoSuchObject_Instance\"}"));
+
+            Assert.That(json["errorCode"]?.ToString(), Is.EqualTo("TARGET_NOT_FOUND"), json.ToString(Formatting.None));
+            StringAssert.Contains("@" + SkillsHttpServer.Port, json["instance"]?.ToString(), json.ToString(Formatting.None));
+        }
+
+        [Test]
+        public void Router_OtherErrorCodes_CarryNoInstanceField()
+        {
+            // gameobject_rename declares newName as required and checks it with Validate.Required before touching the scene.
+            var json = JObject.Parse(SkillRouter.Execute("gameobject_rename", "{\"name\":\"UnitySkills_NoSuchObject_Instance\"}"));
+
+            Assert.That(json["errorCode"]?.ToString(), Is.EqualTo("MISSING_PARAM"), json.ToString(Formatting.None));
+            Assert.That(json["instance"], Is.Null, json.ToString(Formatting.None));
+        }
+
+        [Test]
+        public void BatchExecutor_MessageOnlyNotFoundItem_IsClassifiedAsTargetNotFound()
+        {
+            // Most *_batch processors return only { error = message }; the classifier reads "not found" as TARGET_NOT_FOUND.
+            var json = ToJson(BatchExecutor.Execute<ProbeItem>("[{\"value\":1}]",
+                item => new { error = "GameObject not found: UnitySkills_NoSuchObject_Instance" }));
+
+            Assert.That(json["failCount"]?.Value<int>(), Is.EqualTo(1), json.ToString(Formatting.None));
+            StringAssert.Contains("@" + SkillsHttpServer.Port, json["instance"]?.ToString(), json.ToString(Formatting.None));
+        }
+
+        [Test]
+        public void BatchExecutor_TargetNotFoundItem_AddsTopLevelInstance()
+        {
+            var json = ToJson(BatchExecutor.Execute<ProbeItem>("[{\"value\":1},{\"value\":2}]", item => item.value == 2
+                ? (object)new { error = "missing", errorCode = "TARGET_NOT_FOUND" }
+                : new { success = true }));
+
+            Assert.That(json["failCount"]?.Value<int>(), Is.EqualTo(1), json.ToString(Formatting.None));
+            StringAssert.Contains("@" + SkillsHttpServer.Port, json["instance"]?.ToString(), json.ToString(Formatting.None));
+        }
+
+        [Test]
+        public void BatchExecutor_OtherItemErrors_CarryNoInstanceField()
+        {
+            var json = ToJson(BatchExecutor.Execute<ProbeItem>("[{\"value\":1}]",
+                item => new { error = "bad", errorCode = "MISSING_PARAM" }));
+
+            Assert.That(json["failCount"]?.Value<int>(), Is.EqualTo(1), json.ToString(Formatting.None));
+            Assert.That(json["instance"], Is.Null, json.ToString(Formatting.None));
+        }
+
         // ---------- helpers ----------
 
         private static JObject ToJson(object result) => JObject.Parse(JsonConvert.SerializeObject(result));

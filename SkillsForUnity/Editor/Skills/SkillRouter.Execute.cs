@@ -328,14 +328,20 @@ namespace UnitySkills
                         ? SkillErrorClassifier.ForCode(errorContext.Code.Value, errorContext.Message)
                         : SkillErrorClassifier.Classify(errorContext.Message);
 
+                    var finalCode = errorContext.Code ?? classified.Code;
+                    // TARGET_NOT_FOUND names the answering editor, so a call that reached the wrong one of several running editors is visible.
+                    var extra = finalCode == SkillErrorCode.TargetNotFound
+                        ? SkillErrorResponse.WithTargetNotFoundInstance(finalCode, errorContext.Extra, SkillErrorResponse.CurrentInstanceLabel())
+                        : errorContext.Extra;
+
                     return SkillErrorResponse.Build(
-                        errorContext.Code ?? classified.Code,
+                        finalCode,
                         errorContext.Message,
                         skill: name,
                         suggestedFixes: errorContext.SuggestedFixes ?? classified.SuggestedFixes,
                         relatedSkills: errorContext.RelatedSkills ?? classified.RelatedSkills,
                         retryStrategy: errorContext.RetryStrategy ?? classified.RetryStrategy,
-                        extra: WithResolutionNotes(errorContext.Extra, resolutionNotes));
+                        extra: WithResolutionNotes(extra, resolutionNotes));
                 }
 
                 // ========== Automatic workflow wrap-up ==========

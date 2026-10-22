@@ -1,4 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -103,6 +106,44 @@ namespace UnitySkills
             }
 
             return JsonConvert.SerializeObject(payload, _jsonSettings);
+        }
+
+        /// <summary>Envelope field naming the editor that answered, so an agent can tell which of several running editors it reached.</summary>
+        internal const string InstanceField = "instance";
+
+        /// <summary>
+        /// Short "productName@port" label; the folder name follows the product in parentheses only when it differs from it.
+        /// </summary>
+        internal static string InstanceLabel(string productName, string projectPath, int port)
+        {
+            var name = string.IsNullOrEmpty(productName) ? "unknown" : productName;
+            var label = name;
+            var folder = string.IsNullOrEmpty(projectPath)
+                ? string.Empty
+                : Path.GetFileName(projectPath.TrimEnd('/', '\\'));
+            if (!string.IsNullOrEmpty(folder) && !string.Equals(folder, name, StringComparison.OrdinalIgnoreCase))
+                label = $"{name} ({folder})";
+            return $"{label}@{port}";
+        }
+
+        /// <summary>The label of the editor serving this request. Main thread only: reads Unity-backed registry state.</summary>
+        internal static string CurrentInstanceLabel() =>
+            InstanceLabel(RegistryService.ProjectName, RegistryService.ProjectPath, SkillsHttpServer.Port);
+
+        /// <summary>
+        /// Adds <see cref="InstanceField"/> to a TARGET_NOT_FOUND extra dictionary. Returns a copy so the skill's own dictionary is
+        /// never mutated, and leaves the dictionary alone when the skill already declared its own <c>instance</c> value.
+        /// </summary>
+        internal static IDictionary<string, object> WithTargetNotFoundInstance(SkillErrorCode code, IDictionary<string, object> extra, string instance)
+        {
+            if (code != SkillErrorCode.TargetNotFound || string.IsNullOrEmpty(instance))
+                return extra;
+            if (extra != null && extra.Keys.Any(key => string.Equals(key, InstanceField, StringComparison.OrdinalIgnoreCase)))
+                return extra;
+
+            var merged = extra != null ? new Dictionary<string, object>(extra) : new Dictionary<string, object>();
+            merged[InstanceField] = instance;
+            return merged;
         }
 
         /// <summary>Skill name lookup missed; may attach candidate suggestions from a fuzzy match.</summary>

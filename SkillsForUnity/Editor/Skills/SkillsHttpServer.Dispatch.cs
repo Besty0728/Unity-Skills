@@ -253,8 +253,9 @@ namespace UnitySkills
             {
                 var analyticsQs = SkillRouter.ParseQueryString(job.QueryString);
                 string window = analyticsQs.TryGetValue("window", out var windowVal) ? windowVal : "24h";
+                string agent = analyticsQs.TryGetValue("agent", out var agentVal) ? agentVal : null;
                 job.StatusCode = 200;
-                job.ResponseJson = SkillTelemetryService.BuildAnalyticsJson(window);
+                job.ResponseJson = SkillTelemetryService.BuildAnalyticsJson(window, agent);
                 return;
             }
 
@@ -407,7 +408,7 @@ namespace UnitySkills
                 // a known-stale one; DryRun/Plan never ran the skill, so nothing to log here for them.
                 if (mode == SkillRouter.RequestMode.Execute)
                     SkillsLogger.LogAgent(job.AgentId, skillName);
-                RecordSkillTelemetry(mode, skillName, job.AgentId, job.ResponseJson, skillSw.ElapsedMilliseconds, job.RemotePort, job.AgentIdIsExplicit);
+                RecordSkillTelemetry(mode, skillName, job.AgentId, job.ResponseJson, job.Body, skillSw.ElapsedMilliseconds, job.RemotePort, job.AgentIdIsExplicit);
                 return;
             }
 
@@ -463,7 +464,7 @@ namespace UnitySkills
                         "GET /health",
                         "GET /compile/status",
                         "GET /events",
-                        "GET /analytics",
+                        "GET /analytics?window=&agent=",
                         "GET /permission/status",
                         "POST /permission/grant",
                         "POST /permission/approve",
@@ -519,11 +520,11 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Records the result of a POST /skill/{name} call into <see cref="SkillTelemetryService"/>. Determines ok
-        /// and extracts errorCode with a lightweight string probe (not JObject.Parse — this is the single-skill hot path).
-        /// Fully isolated: a telemetry failure must never alter the business response already computed by the caller.
+        /// Records the result of a POST /skill/{name} call into <see cref="SkillTelemetryService"/>. Determines ok with a
+        /// lightweight string probe; only a failed call is parsed (top-level errorCode/error), and its args are summarized
+        /// for the target field. Fully isolated: a telemetry failure must never alter the business response already computed by the caller.
         /// </summary>
-        private static void RecordSkillTelemetry(SkillRouter.RequestMode mode, string skillName, string agentId, string responseJson, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false)
+        private static void RecordSkillTelemetry(SkillRouter.RequestMode mode, string skillName, string agentId, string responseJson, string argsJson, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false)
         {
             try
             {
@@ -531,10 +532,19 @@ namespace UnitySkills
                                : mode == SkillRouter.RequestMode.Plan ? "plan"
                                : "execute";
                 ProbeOutcome(responseJson, mode == SkillRouter.RequestMode.DryRun, out bool ok, out string errorCode);
+                string error = null, target = null;
+                if (!ok)
+                {
+                    // The top-level errorCode wins over the probe's DRYRUN_INVALID; nested details are never read.
+                    SkillTelemetryService.ReadFailureEnvelope(responseJson, out string envelopeCode, out string message);
+                    errorCode = envelopeCode ?? errorCode;
+                    error = SkillTelemetryService.SanitizeError(message);
+                    target = SkillTelemetryService.SanitizeTarget(argsJson);
+                }
                 // agentId here is only the fallback (whatever RefineAgentId's early, possibly-too-soon check
                 // produced) -- SkillTelemetryService re-checks ClientProcessResolver again at flush time,
                 // ~200ms later, which is what actually catches most single-digit-ms skill calls.
-                SkillTelemetryService.Record(skillName, agentId, modeStr, ok, errorCode, durationMs, remotePort, agentIdIsExplicit);
+                SkillTelemetryService.Record(skillName, agentId, modeStr, ok, errorCode, durationMs, remotePort, agentIdIsExplicit, error, target);
             }
             catch { /* telemetry is best-effort — never surface to the caller */ }
         }
@@ -546,15 +556,22 @@ namespace UnitySkills
         /// remotePort/agentIdIsExplicit are forwarded to SkillTelemetryService.Record for the same flush-time
         /// late-binding as the single-skill path (see RecordSkillTelemetry).
         /// </summary>
-        private static void RecordBatchStep(string skillName, string agentId, bool dryRun, bool ok, string errorCode, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false)
+        private static void RecordBatchStep(string skillName, string agentId, bool dryRun, bool ok, string errorCode, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false, string argsJson = null, JToken failure = null)
         {
             try
             {
+                string error = null, target = null;
+                if (!ok)
+                {
+                    // failure is the step's "error" payload (an object with an "error" message), when the step has one.
+                    error = SkillTelemetryService.SanitizeError(SkillTelemetryService.ErrorMessageOf(failure));
+                    target = SkillTelemetryService.SanitizeTarget(argsJson);
+                }
                 SkillTelemetryService.Record(
                     string.IsNullOrWhiteSpace(skillName) ? "(malformed)" : skillName,
                     agentId,
                     dryRun ? "batch_step_dryRun" : "batch_step",
-                    ok, errorCode, durationMs, remotePort, agentIdIsExplicit);
+                    ok, errorCode, durationMs, remotePort, agentIdIsExplicit, error, target);
             }
             catch { /* telemetry is best-effort */ }
         }
@@ -564,6 +581,8 @@ namespace UnitySkills
         /// of nested content. An error envelope (<c>"status":"error"</c>) counts as a failure, its <c>"errorCode"</c> is extracted.
         /// For a dryRun preview, a <c>"valid":false</c> verdict counts as a failure and reports DRYRUN_INVALID
         /// (a dryRun against an unknown skill returns an error envelope, caught by the first check).
+        /// An error envelope's errorCode is not probed here: the caller reads the top-level field with
+        /// <see cref="SkillTelemetryService.ReadFailureEnvelope"/>, so a nested errorCode can never be picked up.
         /// </summary>
         private static void ProbeOutcome(string json, bool isDryRun, out bool ok, out string errorCode)
         {
@@ -575,7 +594,6 @@ namespace UnitySkills
             if (json.IndexOf("\"status\":\"error\"", StringComparison.Ordinal) >= 0)
             {
                 ok = false;
-                errorCode = ExtractErrorCode(json);
                 return;
             }
 
@@ -586,20 +604,6 @@ namespace UnitySkills
             }
         }
 
-        /// <summary>
-        /// Extracts the value of the first <c>"errorCode":"..."</c> field. Returns null when the field is missing
-        /// or is JSON null (<c>"errorCode":null</c> doesn't match the quoted probe pattern), so the telemetry row
-        /// records a null errorCode rather than a wrong value.
-        /// </summary>
-        private static string ExtractErrorCode(string json)
-        {
-            const string key = "\"errorCode\":\"";
-            int idx = json.IndexOf(key, StringComparison.Ordinal);
-            if (idx < 0) return null;
-            int start = idx + key.Length;
-            int end = json.IndexOf('"', start);
-            return end > start ? json.Substring(start, end - start) : null;
-        }
     }
 }
 

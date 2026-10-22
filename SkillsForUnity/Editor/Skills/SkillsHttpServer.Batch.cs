@@ -306,18 +306,19 @@ namespace UnitySkills
                 if (!(steps[i] is JObject step) || string.IsNullOrWhiteSpace(stepSkillName))
                 {
                     failedCount++;
+                    var stepFailure = BuildErrorPayload(SkillErrorResponse.Build(
+                        SkillErrorCode.MissingParam,
+                        $"steps[{i}] must be an object with a non-empty 'skill' field.",
+                        retryStrategy: SkillErrorResponse.RetryFixAndRetry));
                     results.Add(new JObject
                     {
                         ["index"] = i,
                         ["skill"] = stepSkillName,
                         ["status"] = "error",
-                        ["error"] = BuildErrorPayload(SkillErrorResponse.Build(
-                            SkillErrorCode.MissingParam,
-                            $"steps[{i}] must be an object with a non-empty 'skill' field.",
-                            retryStrategy: SkillErrorResponse.RetryFixAndRetry)),
+                        ["error"] = stepFailure,
                     });
                     if (!continueOnError && !dryRun) halted = true;
-                    RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, "MISSING_PARAM", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
+                    RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, "MISSING_PARAM", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit, null, stepFailure);
                     continue;
                 }
 
@@ -381,15 +382,16 @@ namespace UnitySkills
                         if (paramErrorJson != null)
                         {
                             failedCount++;
+                            var stepFailure = BuildErrorPayload(paramErrorJson);
                             results.Add(new JObject
                             {
                                 ["index"] = i,
                                 ["skill"] = stepSkillName,
                                 ["status"] = "error",
-                                ["error"] = BuildErrorPayload(paramErrorJson),
+                                ["error"] = stepFailure,
                             });
                             if (!continueOnError && !dryRun) halted = true;
-                            RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, "SEMANTIC_INVALID", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
+                            RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, "SEMANTIC_INVALID", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit, argsJson, stepFailure);
                             continue;
                         }
                     }
@@ -465,15 +467,16 @@ namespace UnitySkills
                             if (refErrorJson != null)
                             {
                                 failedCount++;
+                                var stepFailure = BuildErrorPayload(refErrorJson);
                                 results.Add(new JObject
                                 {
                                     ["index"] = i,
                                     ["skill"] = stepSkillName,
                                     ["status"] = "error",
-                                    ["error"] = BuildErrorPayload(refErrorJson),
+                                    ["error"] = stepFailure,
                                 });
                                 if (!continueOnError) halted = true;
-                                RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, "SEMANTIC_INVALID", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
+                                RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, "SEMANTIC_INVALID", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit, argsJson, stepFailure);
                                 continue;
                             }
                             argsJson = argsClone.ToString(Formatting.None);
@@ -549,7 +552,7 @@ namespace UnitySkills
                         failedCount++;
                         results.Add(new JObject { ["index"] = i, ["skill"] = stepSkillName, ["status"] = "error", ["error"] = stepPayload });
                     }
-                    RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, stepValid, stepValid ? null : "DRYRUN_INVALID", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
+                    RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, stepValid, stepValid ? null : "DRYRUN_INVALID", stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit, argsJson, stepPayload);
                     continue;
                 }
 
@@ -568,7 +571,7 @@ namespace UnitySkills
 
                     if (authorizationRequired || !continueOnError)
                         halted = true;
-                    RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, errorCode, stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
+                    RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, false, errorCode, stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit, argsJson, stepPayload);
                     continue;
                 }
 

@@ -16,7 +16,7 @@ Instead of hammering `/compile/status` in a loop, subscribe to a 500-entry in-me
 
 ## `GET /analytics` — execution telemetry
 
-Aggregates how skills have been performing. Query `?window=1h|24h|7d|all` (default `24h`). The same local data feeds `/skills/recommend`: at least 5 valid calls are required before a high failure rate applies a bounded 1–3 point penalty; slow skills are warned but not penalized. Client/permission errors are ignored, and telemetry disabled means recommendation order remains semantic-only. The answer is cached for 30 s, so count from the files below when you need exact, current numbers.
+Aggregates how skills have been performing. Query `?window=1h|24h|7d|all` (default `24h`) and optional `?agent=` to count only one client: canonical names such as `ClaudeCode` or `Codex` (`claude-code` is folded to `ClaudeCode`), or `(unknown)` for calls with no agent identity. When the filter is set, the response echoes it as `"agent"` next to `window`; without it the response has no `agent` field. Failed records in `recentErrors` may carry `err` (path-redacted message) and `target` (short argument summary). The same local data feeds `/skills/recommend`: at least 5 valid calls are required before a high failure rate applies a bounded 1–3 point penalty; slow skills are warned but not penalized. Client/permission errors are ignored, and telemetry disabled means recommendation order remains semantic-only. The answer is cached for 30 s, so count from the files below when you need exact, current numbers.
 
 ## Change journal and log files
 
@@ -26,7 +26,7 @@ Aggregates how skills have been performing. Query `?window=1h|24h|7d|all` (defau
 
 Entry layout: `seq, type, source, agent, isPlaying, tsUtc, payload`. `agent` (REST caller id, `"mixed"`, `"unknown"`, or `null` for manual edits) and `isPlaying` are newer fields; entries written by older plugin versions lack them. The per-type additions are listed under `editor_get_changes` in the editor module doc.
 
-The telemetry file (`Library/UnitySkillsTelemetry.jsonl`, rotated to `UnitySkillsTelemetry.1.jsonl` to `.3.jsonl` at 1 MB) and the audit log are written about 200 ms after a call so the client identity can resolve first. Both are also flushed straight away before a Domain Reload and when the Editor quits, so a record queued just before either survives.
+The telemetry file (`Library/UnitySkillsTelemetry.jsonl`, rotated to `UnitySkillsTelemetry.1.jsonl` to `.3.jsonl` at 1 MB; one line per call: `ts, skill, agent, mode, ok, ms`, plus `errorCode`, `err` and `target` on failed calls only, with the project root shown as `<project>` and the home folder as `~`) and the audit log are written about 200 ms after a call so the client identity can resolve first. Both are also flushed straight away before a Domain Reload and when the Editor quits, so a record queued just before either survives.
 
 ## Compilation proof and recovery
 

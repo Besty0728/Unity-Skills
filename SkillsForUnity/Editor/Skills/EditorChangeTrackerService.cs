@@ -430,7 +430,9 @@ namespace UnitySkills
             {
                 AddGameObjectIdentity(change, go);
             }
-            else
+
+            // An object inside a prefab asset has no scene: its asset path is what places it (prefab_apply writes there).
+            if (!string.IsNullOrEmpty(assetPath))
             {
                 change["assetPath"] = assetPath;
             }

@@ -315,6 +315,69 @@ namespace UnitySkills.Tests.Core
             Assert.IsFalse(window.complete);
             Assert.AreEqual(2L, window.logs[0].seq);
         }
+
+        [Test]
+        public void FullHistory_AFewEvictionsAppendInsteadOfRewritingTheFile()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            Fill(10, "late-");
+            ConsoleLogHistoryService.FlushForTests();
+
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries + 10, FileRows());
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, ConsoleLogHistoryService.SnapshotAll(false, out _, out _).Count);
+        }
+
+        [Test]
+        public void EvictionsPastAQuarterOfTheCap_CompactTheFileBackToTheCap()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            Fill(ConsoleLogHistoryService.CompactEvictionCount, "late-");
+            ConsoleLogHistoryService.FlushForTests();
+
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, FileRows());
+        }
+
+        [Test]
+        public void PlayMode_DefersCompactionUntilAFullTurnover()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            Fill(ConsoleLogHistoryService.CompactEvictionCount, "play-");
+            ConsoleLogHistoryService.FlushForTests(inPlayMode: true);
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries + ConsoleLogHistoryService.CompactEvictionCount, FileRows());
+
+            Fill(ConsoleLogHistoryService.MaxEntries - ConsoleLogHistoryService.CompactEvictionCount, "turnover-");
+            ConsoleLogHistoryService.FlushForTests(inPlayMode: true);
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, FileRows());
+        }
+
+        [Test]
+        public void AppendOnlyOverflow_ReloadKeepsTheNewestRowsAndCountsEachDropOnce()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            Fill(10, "late-");
+            ConsoleLogHistoryService.FlushForTests();
+
+            ConsoleLogHistoryService.ReloadForTests();
+            var all = ConsoleLogHistoryService.SnapshotAll(false, out var dropped, out _);
+
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, all.Count);
+            Assert.AreEqual("late-9", all.Last().message);
+            Assert.AreEqual(10L, dropped);
+            ConsoleLogHistoryService.FlushForTests();
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, FileRows());
+        }
+
+        private static void Fill(int count, string prefix = "row-")
+        {
+            for (int i = 0; i < count; i++)
+                ConsoleLogHistoryService.RecordForTests(prefix + i);
+        }
+
+        private int FileRows() => File.ReadLines(_path).Count(line => !string.IsNullOrWhiteSpace(line));
     }
 }
 

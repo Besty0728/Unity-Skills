@@ -33,6 +33,18 @@ namespace UnitySkills
                 t.GetProperty("error") != null || t.GetField("error") != null);
         }
 
+        /// <summary>
+        /// Reads a failed item the way the router reads a skill error: its declared errorCode, else the classifier's verdict on its message.
+        /// Items that only carry an error message (most *_batch processors) are covered by the classifier.
+        /// </summary>
+        private static bool IsTargetNotFoundResult(object result)
+        {
+            if (!SkillResultHelper.TryGetErrorContext(result, out var context))
+                return false;
+            var code = context.Code ?? SkillErrorClassifier.Classify(context.Message).Code;
+            return code == SkillErrorCode.TargetNotFound;
+        }
+
         private static bool IsErrorResult(object result)
         {
             if (result == null)
@@ -135,6 +147,8 @@ namespace UnitySkills
             int failCount = failedIndexes.Count;
             int successCount = succeededIndexes.Count;
             bool rolledBack = atomic && failCount > 0;
+            // Per-item results skip the router's error assembly, so the envelope names the answering editor itself.
+            bool anyTargetNotFound = failedIndexes.Any(index => IsTargetNotFoundResult(results[index]));
             if (rolledBack)
             {
                 Undo.FlushUndoRecordObjects();
@@ -177,6 +191,8 @@ namespace UnitySkills
                 envelope["rolledBack"] = true;
                 envelope["revertedCount"] = succeededIndexes.Count;
             }
+            if (anyTargetNotFound)
+                envelope[SkillErrorResponse.InstanceField] = SkillErrorResponse.CurrentInstanceLabel();
             if (warnings.Count > 0)
                 envelope["warnings"] = warnings;
             envelope["results"] = results;
