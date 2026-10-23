@@ -17,9 +17,9 @@ namespace UnitySkills
     /// Library/UnitySkills/install_sync.json (per-project, not committed to git), not to EditorPrefs — the
     /// latter is stored globally per machine, so having two projects open on the same machine would overwrite each other's record.
     ///
-    /// Overwrite semantics are identical to manually clicking "Install" in the panel: the existing install
-    /// mechanism has no content manifest to tell whether the user hand-edited a copy, and this service doesn't
-    /// build a separate hash-check scheme — it just overwrites. Only targets detected as already installed are
+    /// Overwrite semantics are identical to manually clicking "Install" in the panel: template files are
+    /// overwritten whether or not the user edited them, and files the template no longer ships are removed unless
+    /// they changed since they were installed (see SkillInstaller's install manifest). Only targets detected as already installed are
     /// refreshed; new targets are never auto-installed. Everything runs on the main thread with no modal
     /// dialogs; a single target's failure only skips that target.
     ///
