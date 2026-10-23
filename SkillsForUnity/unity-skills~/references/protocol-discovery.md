@@ -44,4 +44,4 @@ All layers are server-cached with ETag / `304`; send `Accept-Encoding: gzip`. Th
 
 ## Python client
 
-`unity_skills.find_skills(intent, top_n=3, include_schema=True, wire="v2")` is the root doc's default call (the function's own defaults are `top_n=10`, `include_schema=False`, v1). `unity_skills.get_skill_schema()` fetches the **full** schema; prefer recommend or a scoped `GET /skills/schema`. `unity_skills.get_meta()` caches `/skills/meta` for the session.
+`unity_skills.find_skills(intent, top_n=3, include_schema=True, wire="v2")` is the root doc's default call (the function's own defaults are `top_n=10`, `include_schema=False`, v1). `unity_skills.get_skill_schema()` fetches the **full** schema; prefer recommend or a scoped `GET /skills/schema`. `unity_skills.get_meta()` caches `/skills/meta` for the session. `unity_skills.search_skills("keyword")` greps the cached summary locally and returns only the matching `{name, category, description}` entries, so the ~180 KB summary stays out of your context. These are client functions, not skills: sending a helper name to `POST /skill/<name>` answers `SKILL_NOT_FOUND`.

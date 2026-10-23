@@ -92,7 +92,7 @@ public static object SkillName(string name, float x = 0f) { ... }
 
 ## Workflow and commands
 Commands are prompt files under `.claude/commands/`; agents without slash commands read the file and follow it.
-- `/skillcheck` (`.claude/commands/skillcheck.md`) — C# ↔ `skills/*/SKILL.md` consistency audit and skill-count sync across `AGENTS.md`, README×2 and the root `SKILL.md`. Run after adding, renaming or removing any skill.
+- `/skillcheck` (`.claude/commands/skillcheck.md`) — C# ↔ `skills/*/SKILL.md` consistency audit and skill-count sync across `AGENTS.md` and README×2 (the root `SKILL.md` carries no counts). Run after adding, renaming or removing any skill.
 - `/metacheck` (`.claude/commands/metacheck.md`) — `.meta` GUID audit; run after adding assets or `.meta` files.
 - `/updateversion <MAJOR.MINOR.PATCH>` (`.claude/commands/updateversion.md`) — bumps the declared version anchors and writes the CHANGELOG entry; verifies with `.github/scripts/check_project_version.py`. Never search-and-replace version numbers globally.
 - `/release [version]` (`.claude/commands/release.md`) — candidate matrix → beta/main sync → tag → stable GitHub Release. Develop on `beta`; `main` is linear, no merge commits. `beta` and `main` run parallel: Star History chart commits land on `main` only, never sync them into `beta`; `/release` drops them when it moves `main`. Never move or re-publish a released tag: users install by `#vX.Y.Z`, so fix forward with a new number.

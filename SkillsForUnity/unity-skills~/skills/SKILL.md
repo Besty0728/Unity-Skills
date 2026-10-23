@@ -15,7 +15,7 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 
 > **Multi-instance**: For version-specific projects, call `unity_skills.set_unity_version(...)` first.
 > **Schema-first**: Exact signatures come from the root quick reference, from `GET /skills/recommend?intent=<words>&includeSchema=true&topN=3&wire=v2` (`unity_skills.find_skills(intent, top_n=3, include_schema=True, wire="v2")`), or from `GET /skills/schema?names=a,b&wire=v2` when the name is known; the full `GET /skills/schema` (`unity_skills.get_skill_schema()`) is ~707 KB. Load module docs for workflow guidance and guardrails.
-> **Split modules**: `gameobject`, `component`, `batch` and `script` keep their shared rules and skill list in `SKILL.md` and each skill's parameter table, item fields and return shape in `reference/<skill_name>.md` (one small file per skill), rarely needed once the schema's parameter notes are in hand.
+> **Split modules**: `gameobject`, `component`, `batch`, `script`, `material`, `editor`, `cinemachine` and `particle` keep their shared rules and skill list in `SKILL.md` and each skill's parameter table, item fields and return shape in `reference/<skill_name>.md` (one small file per skill), rarely needed once the schema's parameter notes are in hand.
 
 ## Modules
 
@@ -89,21 +89,23 @@ Module docs. Start with [../SKILL.md](../SKILL.md) for mode switching and schema
 
 Documentation only — these modules define no REST skills.
 
+Official Unity manual URLs for a topic, to fetch or hand to the user: [references](../references/README.md) — grep one `##` section, never read a whole index file.
+
 | Module | Description |
 |--------|-------------|
-| [project-scout](./project-scout/SKILL.md) | Inspect existing project |
-| [architecture](./architecture/SKILL.md) | Plan system boundaries |
-| [adr](./adr/SKILL.md) | Record tradeoffs |
-| [performance](./performance/SKILL.md) | Review hot paths |
-| [asmdef](./asmdef/SKILL.md) | Plan asmdef deps |
-| [blueprints](./blueprints/SKILL.md) | Small-game blueprints |
-| [script-roles](./script-roles/SKILL.md) | Assign class roles |
-| [scene-contracts](./scene-contracts/SKILL.md) | Define scene wiring |
-| [testability](./testability/SKILL.md) | Extract testable logic |
-| [patterns](./patterns/SKILL.md) | Choose patterns |
-| [async](./async/SKILL.md) | Choose async model |
-| [inspector](./inspector/SKILL.md) | Design authoring UX |
-| [scriptdesign](./scriptdesign/SKILL.md) | Review script structure |
+| [project-scout](./project-scout/SKILL.md) | Before proposing changes in an existing project: check Unity version, packages, asmdef, folders, coding patterns |
+| [architecture](./architecture/SKILL.md) | Module boundaries, scene design, SOLID structure, decoupling, refactor direction |
+| [adr](./adr/SKILL.md) | Comparing options, choosing among approaches, locking in a design decision |
+| [performance](./performance/SKILL.md) | Performance review, frame drops, Update/allocation/pooling/physics optimization |
+| [asmdef](./asmdef/SKILL.md) | Module boundaries, faster compiles, clearer dependencies, editor/runtime/test split |
+| [blueprints](./blueprints/SKILL.md) | Starter structure for a small game (platformer, shooter, runner, puzzle, tower-defense, clicker, card) |
+| [script-roles](./script-roles/SKILL.md) | Whether a class should be a MonoBehaviour, ScriptableObject, plain C# service, or installer |
+| [scene-contracts](./scene-contracts/SKILL.md) | Required scene objects, component dependencies, bootstrap logic, reference wiring |
+| [testability](./testability/SKILL.md) | Isolating logic out of MonoBehaviour, planning EditMode/PlayMode tests |
+| [patterns](./patterns/SKILL.md) | Choosing among ScriptableObject / event / state-machine / object-pool / observer designs |
+| [async](./async/SKILL.md) | Choosing among Update / coroutine / UniTask / timers; cleanup and cancellation |
+| [inspector](./inspector/SKILL.md) | SerializeField usage, Tooltip/Header organization, validation, Inspector UX |
+| [scriptdesign](./scriptdesign/SKILL.md) | Code review, reducing coupling, improving maintainability, refactoring scripts |
 | [netcode-design](./netcode-design/SKILL.md) | Netcode source-anchored rules (lifecycle/ownership/RPC/variables/spawn/scene/transport/pitfalls) |
 | [yooasset-design](./yooasset-design/SKILL.md) | YooAsset v2.3.18 source-anchored rules (init/default-package shortcuts/playmode/handles/loading/update/filesystem/build/pitfalls) |
 | [addressables-design](./addressables-design/SKILL.md) | Addressables dual-version (1.22.3 Unity 2022 / 2.9.1 Unity 6) source-anchored rules (init/handles/loading/scene/update/download/assetref/pitfalls) with migration table |

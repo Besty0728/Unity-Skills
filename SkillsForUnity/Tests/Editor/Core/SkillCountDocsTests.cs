@@ -9,7 +9,7 @@ using UnityEditor.PackageManager;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// The skill counts quoted in AGENTS.md, both READMEs and the root SKILL.md, checked against the live registry
+    /// The skill counts quoted in AGENTS.md and both READMEs (the root SKILL.md carries none), checked against the live registry
     /// so a stale count goes red here instead of waiting for someone to run /skillcheck. Counting follows /skillcheck
     /// step 4: one per unique skill name (the #if/#else package stubs never coexist in one build), categories by
     /// SkillCategory (Batch and Diagnose fold into Workflow, Validation and Debug), source files as
@@ -46,8 +46,6 @@ namespace UnitySkills.Tests.Core
             Make("README_CN.md", @"\((\d+) 个 \*Skills\.cs → (\d+) 个 SkillCategory 分类，共 (\d+) Skills\)",
                 Quantity.SourceFiles, Quantity.Categories, Quantity.Skills),
             Make("README_CN.md", @"# (\d+) Skills 源码", Quantity.Skills),
-            Make("SkillsForUnity/unity-skills~/SKILL.md", @"`(\d+)` REST skills, `(\d+)` source files, `(\d+)` categories",
-                Quantity.Skills, Quantity.SourceFiles, Quantity.Categories),
         };
 
         /// <summary>A category-table row in either README: <c>| **Name** | 12 | ...</c>.</summary>

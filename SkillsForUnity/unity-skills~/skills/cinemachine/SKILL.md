@@ -3,8 +3,6 @@ name: unity-cinemachine
 description: Set up Cinemachine Virtual Cameras
 ---
 
-> **Before calling any skill in this module:** if you are about to call a skill with parameters guessed from its name or description, STOP — read this file (or fetch its schema via `GET /skills/recommend?includeSchema=true`) first. If you already have the parameter definitions from recommend/schema, you may proceed straight to dryRun.
-
 ## Triggers
 - Creating or tuning Cinemachine cameras
 - Configuring follow/look-at/noise
@@ -13,425 +11,57 @@ description: Set up Cinemachine Virtual Cameras
 
 # Cinemachine Skills
 
-Control Cinemachine Virtual Cameras and brain settings. Works with Cinemachine **2.x and 3.x** through a runtime reflection adapter (`CinemachineAdapter` / `CinemachineSkills`).
+Create and tune Cinemachine Virtual Cameras, camera managers, target groups, extensions, impulse and the brain. Parameters come from the schema (recommend `includeSchema=true` or `/skills/schema?names=`), which notes the non-obvious ones — never from a skill's name. Execution, dryRun and verification rules: root [SKILL.md](../../SKILL.md).
 
 ## Operating Mode
+`cinemachine_inspect_vcam`, `cinemachine_list_components` and `cinemachine_get_brain_info` are `SemiAuto` (read-only) and run directly under Approval; every other skill (create, set, configure, ...) is `FullAuto` and needs a user grant, after which the server runs it in one step and returns the result. Under Auto / Bypass, skills not on the forbidden list run directly.
 
-- **Approval**：查询类 skill（`cinemachine_inspect_vcam` / `cinemachine_list_components` / `cinemachine_get_brain_info`，源码标 `SkillMode.SemiAuto`）直接执行；其余配置/创建类（`cinemachine_create_vcam` / `cinemachine_set_targets` / `cinemachine_set_lens` / `cinemachine_configure_body` / `cinemachine_configure_aim` 等，标 `SkillMode.FullAuto`）需用户 grant，grant 后服务端一步执行返结果。
-- **Auto / Bypass**：未被禁列表拦截的 skill 直接执行。
-- 本模块**含 Delete 类 skill**：`cinemachine_set_component`（替换/移除 pipeline component）、`cinemachine_target_group_remove_member`、`cinemachine_remove_extension` 标记为 `SkillOperation.Delete`，被 `IsForbiddenInSemi` 静态拦截 —— 仅 **Bypass** 模式或加入 **Allowlist** 才能调用。
-- **包依赖**：必须安装 `com.unity.cinemachine` 包（CM 2.x 或 3.x）。未安装时所有 skill 返回 `{ error = "Cinemachine is not installed. Install Cinemachine 2.x or 3.x via Package Manager." }` 的 stub —— 调用方应先用 `package_*` 系列 skill 确认安装状态。
-- **反射脆弱性**：CM2 ↔ CM3 之间 API 名变化大（`CinemachineVirtualCamera` → `CinemachineCamera`，`CinemachineComponentBase` 改名等）。本模块通过 `CinemachineAdapter` 反射桥接，遇 CM 早期预览版（< `3.0.0-pre.5`）可能因 API 漂移返回失败 —— 优先用 `cinemachine_inspect_vcam` 探测当前可用字段，再决定 `propertyName`。
+`cinemachine_set_component` (replaces or removes a pipeline component), `cinemachine_target_group_remove_member` and `cinemachine_remove_extension` are `Operation.Delete`, hence NeverInSemi: `MODE_FORBIDDEN` under Approval/Auto, run only under Bypass or an Allowlist hit → [operating mode](../../references/protocol-operating-mode.md).
+
+## Shared rules
+
+- **Package**: needs `com.unity.cinemachine` (CM 2.x or 3.x). Without it every skill returns the stub `{ error = "Cinemachine is not installed. Install Cinemachine 2.x or 3.x via Package Manager." }` (`MISSING_PACKAGE`); check the install state with the `package_*` skills first.
+- **2.x vs 3.x**: a runtime reflection adapter (`CinemachineAdapter` / `CinemachineSkills`) bridges the two APIs, so skills work on both. CM2 uses `CinemachineVirtualCamera`, CM3 `CinemachineCamera` (and `CinemachineComponentBase` was renamed); skills handle this automatically. CM3 previews before `3.0.0-pre.5` changed core camera APIs significantly, are outside the support baseline and may fail from API drift. When writing compatibility code, CM3 priority access should use `Priority.Value` as the lowest common API.
+- **Probe before setting**: because of that fragility, run `cinemachine_inspect_vcam` first to see the fields the installed version exposes, then pick `propertyName`; `cinemachine_list_components` lists the available component names.
+- **VCam targeting**: VCam skills take `vcamName`, `instanceId`, `path` or `entityId` (preferred; the only id on Unity 6000.4+); give at least one. Skills that address several objects prefix each identifier set (`group*`, `target*`, `vcam*`, `spline*`, `mixer*`, `child*`, `camera*`, `sequencer*`, `source*`).
+- **Brain**: `CinemachineBrain` is added to the Main Camera automatically on the first VCam creation — there is no add-brain skill.
+- **Priority**: higher priority wins activation; `cinemachine_set_active` forces SOLO by setting the highest priority.
+- **Pipeline stages**: Body / Aim / Noise components are switched with `cinemachine_set_component`; `cinemachine_configure_body` and `cinemachine_configure_aim` apply only the fields matching the active component and fail with `warnings` listing the rest when none matches.
+
+## Skills Overview
+
+- VCam lifecycle and state: `cinemachine_create_vcam`, `cinemachine_create_freelook`, `cinemachine_inspect_vcam`, `cinemachine_list_components`, `cinemachine_set_active`, `cinemachine_set_priority`, `cinemachine_set_targets` (Follow and LookAt together).
+- Properties and pipeline: `cinemachine_set_vcam_property`, `cinemachine_set_component`, `cinemachine_add_component` (deprecated), `cinemachine_set_lens`, `cinemachine_set_noise`, `cinemachine_set_spline`, `cinemachine_configure_body`, `cinemachine_configure_aim`.
+- Extensions and impulse: `cinemachine_add_extension`, `cinemachine_remove_extension`, `cinemachine_configure_extension`, `cinemachine_impulse_generate`, `cinemachine_configure_impulse_source`.
+- Brain: `cinemachine_get_brain_info`, `cinemachine_set_blend`, `cinemachine_set_brain`.
+- Target groups: `cinemachine_create_target_group`, `cinemachine_target_group_add_member`, `cinemachine_target_group_remove_member`.
+- Camera managers: `cinemachine_create_mixing_camera`, `cinemachine_mixing_camera_set_weight`, `cinemachine_create_clear_shot`, `cinemachine_create_state_driven_camera`, `cinemachine_state_driven_camera_add_instruction`, `cinemachine_create_sequencer`, `cinemachine_sequencer_add_instruction`, `cinemachine_configure_camera_manager`.
+
+No batch variants exist in this module.
+
+Per-skill tables, item fields and return shapes: `reference/<skill_name>.md` — rarely needed, the schema notes the parameters.
 
 **DO NOT** (common hallucinations):
 - `cinemachine_create` does not exist → use `cinemachine_create_vcam` for virtual cameras
 - `cinemachine_set_target` / `cinemachine_set_follow` / `cinemachine_set_lookat` do not exist → use `cinemachine_set_targets` (sets both Follow and LookAt in one call)
 - `cinemachine_add_brain` does not exist → CinemachineBrain is auto-added to Main Camera on first VCam creation
-- Cinemachine 2.x uses `CinemachineVirtualCamera`; Cinemachine 3.x uses `CinemachineCamera` — skills handle this automatically
-
-Additional compatibility notes:
-- CM3 priority access should use `Priority.Value` as the lowest common API when writing compatibility code.
-- Early CM3 previews before `3.0.0-pre.5` changed core camera APIs significantly and are outside the current support baseline.
+- `CinemachineVirtualCamera` (2.x) vs `CinemachineCamera` (3.x) → do not pick by version; skills handle this automatically
 
 **Routing**:
-- For basic Game Camera operations → use `camera` module
-- For Scene View camera → use `camera` module's `camera_set_transform`/`camera_look_at`
-- For camera animation sequences → use `timeline` module with Cinemachine track
-
-## Skills
-
-### `cinemachine_create_vcam`
-Create a new Virtual Camera.
-**Parameters:**
-- `name` (string): Name of the VCam GameObject.
-- `folder` (string): Parent folder path (default: "Assets/Settings").
-
-### `cinemachine_inspect_vcam`
-Deeply inspect a VCam, returning fields and tooltips.
-**Parameters:**
-- `vcamName` (string, optional): Name of the VCam GameObject.
-- `instanceId` (int, optional): VCam instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-
-### `cinemachine_set_vcam_property`
-Set any property on VCam or its pipeline components.
-**Parameters:**
-- `vcamName` (string): Name of the VCam.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `componentType` (string): "Main" (VCam itself), "Lens", or Component name (e.g. "OrbitalFollow").
-- `propertyName` (string): Field or property name.
-- `value` (object): New value.
-- `fov` (float, optional): Lens FOV shortcut. When supplied without `propertyName`, routes to `cinemachine_set_lens`.
-- `nearClip` (float, optional): Lens near clip shortcut.
-- `farClip` (float, optional): Lens far clip shortcut.
-- `orthoSize` (float, optional): Lens orthographic size shortcut.
-
-### `cinemachine_set_targets`
-Set Follow and LookAt targets.
-**Parameters:**
-- `vcamName` (string): Name of the VCam.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `followName` (string, optional): GameObject name to follow.
-- `lookAtName` (string, optional): GameObject name to look at.
-
-### `cinemachine_set_component`
-Switch VCam pipeline component (Body/Aim/Noise).
-**Parameters:**
-- `vcamName` (string): Name of the VCam.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `stage` (string): "Body", "Aim", or "Noise".
-- `componentType` (string): Type name (e.g. "OrbitalFollow", "Composer") or "None" to remove.
-
-### `cinemachine_add_component`
-> **DEPRECATED** — Use `cinemachine_set_component` instead for proper pipeline control (Body/Aim/Noise stages).
-Add a Cinemachine component (legacy, supports CM2 and CM3).
-**Parameters:**
-- `vcamName` (string): Name of the VCam.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `componentType` (string): Type name (e.g., "OrbitalFollow").
-
-### `cinemachine_set_lens`
-Quickly configure Lens settings (FOV, Near, Far, OrthoSize) and the projection ModeOverride.
-**Parameters:**
-- `vcamName` (string): Name of the VCam.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `fov` (float, optional): Field of View.
-- `nearClip` (float, optional): Near Clip Plane.
-- `farClip` (float, optional): Far Clip Plane.
-- `orthoSize` (float, optional): Orthographic Size.
-- `mode` (string, optional): Writes the lens `ModeOverride`, i.e. the projection mode this VCam pushes to the Unity Camera when it goes live. Case-insensitive; valid values are `None` (leave the Camera's own projection alone), `Orthographic`, `Perspective` and `Physical`. Omitting it leaves the existing `ModeOverride` untouched.
-
-At least one of `fov` / `nearClip` / `farClip` / `orthoSize` / `mode` must be supplied; passing none returns `No values provided to update.` An invalid `mode` rejects the whole call with `SEMANTIC_INVALID` + `validValues` before anything is written, so the other parameters are not applied either.
-
-### `cinemachine_list_components`
-List all available Cinemachine component names.
-**Parameters:**
-- None.
-
-### `cinemachine_impulse_generate`
-Trigger an Impulse at location or via Source.
-**Parameters:**
-- `sourceParams` (string, optional): JSON string for parameters, e.g., `{"velocity": {"x": 0, "y": -1, "z": 0}}`.
-
-### `cinemachine_get_brain_info`
-Get info about the Active Camera and Blend.
-**Parameters:**
-- None.
-
-### `cinemachine_create_target_group`
-Create a CinemachineTargetGroup.
-**Parameters:**
-- `name` (string): Name of the new TargetGroup GameObject.
-
-### `cinemachine_target_group_add_member`
-Add or update a member in a TargetGroup.
-**Parameters:**
-- `groupName` (string): Name of the TargetGroup.
-- `groupInstanceId` (int, optional): TargetGroup instance ID.
-- `groupPath` (string, optional): TargetGroup hierarchy path.
-- `groupEntityId` (string, optional): TargetGroup entity ID (preferred; the only id on Unity 6000.4+).
-- `targetName` (string): Name of the member GameObject.
-- `targetInstanceId` (int, optional): Member GameObject instance ID.
-- `targetPath` (string, optional): Member GameObject hierarchy path.
-- `targetEntityId` (string, optional): Member GameObject entity ID (preferred; the only id on Unity 6000.4+).
-- `weight` (float): Member weight (default 1).
-- `radius` (float): Member radius (default 1).
-
-### `cinemachine_target_group_remove_member`
-Remove a member from a TargetGroup.
-**Parameters:**
-- `groupName` (string): Name of the TargetGroup.
-- `groupInstanceId` (int, optional): TargetGroup instance ID.
-- `groupPath` (string, optional): TargetGroup hierarchy path.
-- `groupEntityId` (string, optional): TargetGroup entity ID (preferred; the only id on Unity 6000.4+).
-- `targetName` (string): Name of the member GameObject.
-- `targetInstanceId` (int, optional): Member GameObject instance ID.
-- `targetPath` (string, optional): Member GameObject hierarchy path.
-- `targetEntityId` (string, optional): Member GameObject entity ID (preferred; the only id on Unity 6000.4+).
-
-### `cinemachine_set_spline`
-Assign a SplineContainer to a VCam's SplineDolly component (Body stage).
-**Parameters:**
-- `vcamName` (string): Name of the VCam.
-- `vcamInstanceId` (int, optional): VCam instance ID.
-- `vcamPath` (string, optional): VCam hierarchy path.
-- `vcamEntityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `splineName` (string): Name of the GameObject with SplineContainer.
-- `splineInstanceId` (int, optional): SplineContainer GameObject instance ID.
-- `splinePath` (string, optional): SplineContainer GameObject hierarchy path.
-- `splineEntityId` (string, optional): SplineContainer GameObject entity ID (preferred; the only id on Unity 6000.4+).
-
-### `cinemachine_add_extension`
-Add a CinemachineExtension to a VCam.
-**Parameters:**
-- `vcamName` (string): Name of the VCam.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `extensionName` (string): Type name of the extension (e.g., "CinemachineStoryboard", "CinemachineImpulseListener").
-
-### `cinemachine_remove_extension`
-Remove a CinemachineExtension from a VCam.
-**Parameters:**
-- `vcamName` (string): Name of the VCam.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `extensionName` (string): Type name of the extension.
-
-### `cinemachine_set_active`
-Force activation of a VCam (SOLO) by setting highest priority.
-**Parameters:**
-- `vcamName` (string): Name of the VCam to activate.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-
-### `cinemachine_create_mixing_camera`
-Create a Cinemachine Mixing Camera.
-**Parameters:**
-- `name` (string): Name of the new GameObject.
-
-### `cinemachine_mixing_camera_set_weight`
-Set the weight of a child camera within a Mixing Camera.
-**Parameters:**
-- `mixerName` (string, optional): Name of the Mixing Camera.
-- `mixerInstanceId` (int, optional): Mixing Camera instance ID.
-- `mixerPath` (string, optional): Mixing Camera hierarchy path.
-- `mixerEntityId` (string, optional): Mixing Camera entity ID (preferred; the only id on Unity 6000.4+).
-- `childName` (string, optional): Name of the child VCam.
-- `childInstanceId` (int, optional): Child VCam instance ID.
-- `childPath` (string, optional): Child VCam hierarchy path.
-- `childEntityId` (string, optional): Child VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `weight` (float): Weight value, usually 0.0–1.0 (default 1).
-
-### `cinemachine_create_clear_shot`
-Create a Cinemachine Clear Shot Camera.
-**Parameters:**
-- `name` (string): Name of the new GameObject.
-
-### `cinemachine_create_state_driven_camera`
-Create a Cinemachine State Driven Camera.
-**Parameters:**
-- `name` (string): Name of the new GameObject.
-- `targetAnimatorName` (string, optional): Name of the GameObject with the Animator to bind.
-
-### `cinemachine_state_driven_camera_add_instruction`
-Add a state mapping instruction to a State Driven Camera.
-**Parameters:**
-- `cameraName` (string, optional): Name of the State Driven Camera.
-- `cameraInstanceId` (int, optional): State Driven Camera instance ID.
-- `cameraPath` (string, optional): State Driven Camera hierarchy path.
-- `cameraEntityId` (string, optional): State Driven Camera entity ID (preferred; the only id on Unity 6000.4+).
-- `stateName` (string): Name of the animation state (e.g., "Run").
-- `childCameraName` (string, optional): Name of the child VCam to activate for this state.
-- `childInstanceId` (int, optional): Child VCam instance ID.
-- `childPath` (string, optional): Child VCam hierarchy path.
-- `childEntityId` (string, optional): Child VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `minDuration` (float, optional): Minimum duration in seconds (default 0).
-- `activateAfter` (float, optional): Delay in seconds before activation (default 0).
-
-### `cinemachine_set_noise`
-Configure Noise settings (Basic Multi Channel Perlin).
-**Parameters:**
-- `vcamName` (string): Name of the VCam.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `amplitudeGain` (float): Noise Amplitude.
-- `frequencyGain` (float): Noise Frequency.
-
-### `cinemachine_set_priority`
-Set explicit priority value for a Virtual Camera. Higher priority wins activation.
-**Parameters:**
-- `vcamName` (string, optional): VCam name. Provide one of name/entityId/instanceId/path.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `priority` (int): Priority value (default 10).
-
-### `cinemachine_set_blend`
-Set default blend or per-camera-pair blend on the CinemachineBrain. Leave `fromCamera`/`toCamera` empty for default blend.
-**Parameters:**
-- `style` (string): Blend style — `Cut`/`EaseInOut`/`EaseIn`/`EaseOut`/`HardIn`/`HardOut`/`Linear` (default `EaseInOut`).
-- `time` (float): Blend duration in seconds (default `2`).
-- `fromCamera` (string, optional): Source VCam name for per-pair blend.
-- `toCamera` (string, optional): Destination VCam name for per-pair blend.
-
-### `cinemachine_set_brain`
-Configure CinemachineBrain properties: update method, default blend, debug display.
-**Parameters:**
-- `updateMethod` (string, optional): `FixedUpdate`/`LateUpdate`/`SmartUpdate`/`ManualUpdate`.
-- `blendUpdateMethod` (string, optional): `FixedUpdate`/`LateUpdate`.
-- `defaultBlendStyle` (string, optional): Blend style name (see `cinemachine_set_blend`).
-- `defaultBlendTime` (float, optional): Default blend duration in seconds.
-- `showDebugText` (bool, optional): Show Cinemachine debug text overlay.
-- `showCameraFrustum` (bool, optional): Draw active camera frustum gizmo.
-- `ignoreTimeScale` (bool, optional): Ignore `Time.timeScale` for blends.
-
-### `cinemachine_create_sequencer`
-Create a Sequencer camera (CM3) or BlendList camera (CM2) that plays child cameras in sequence.
-**Parameters:**
-- `name` (string): Name of the new GameObject.
-- `loop` (bool): Whether to loop the sequence (default `false`).
-
-### `cinemachine_sequencer_add_instruction`
-Add a child camera instruction to a Sequencer/BlendList camera.
-**Parameters:**
-- `sequencerName` (string, optional): Sequencer camera name.
-- `sequencerInstanceId` (int, optional): Sequencer Instance ID.
-- `sequencerPath` (string, optional): Sequencer hierarchy path.
-- `sequencerEntityId` (string, optional): Sequencer entity ID (preferred; the only id on Unity 6000.4+).
-- `childCameraName` (string, optional): Child VCam name.
-- `childInstanceId` (int, optional): Child VCam Instance ID.
-- `childPath` (string, optional): Child VCam hierarchy path.
-- `childEntityId` (string, optional): Child VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `hold` (float): Duration to hold on this child in seconds (default `2`).
-- `blendStyle` (string): Blend style to use entering this child (default `EaseInOut`).
-- `blendTime` (float): Blend duration in seconds (default `2`).
-
-Provide at least one identifier for each of sequencer and child camera.
-
-### `cinemachine_create_freelook`
-Create a FreeLook camera. CM2 uses `CinemachineFreeLook`; CM3 builds `CinemachineCamera` + `OrbitalFollow(ThreeRing)` + `RotationComposer`.
-**Parameters:**
-- `name` (string): Name of the new GameObject.
-- `followName` (string, optional): GameObject to follow.
-- `lookAtName` (string, optional): GameObject to look at.
-
-### `cinemachine_configure_camera_manager`
-Configure ClearShot/StateDriven/Sequencer camera manager properties in one call. A parameter for a manager type the target lacks, an unresolved `animatorName` (or one without an Animator) and an unknown blend style are rejected before anything is written.
-**Parameters:**
-- `cameraName` (string, optional): Camera manager name. Provide one of name/entityId/instanceId/path.
-- `cameraInstanceId` (int, optional): Camera manager Instance ID.
-- `cameraPath` (string, optional): Camera manager hierarchy path.
-- `cameraEntityId` (string, optional): Camera manager entity ID (preferred; the only id on Unity 6000.4+).
-- `activateAfter` (float, optional): ClearShot — delay before activation.
-- `minDuration` (float, optional): ClearShot — minimum duration on a shot.
-- `randomizeChoice` (bool, optional): ClearShot — randomize shot selection.
-- `animatorName` (string, optional): StateDriven — name of the GameObject carrying the Animator.
-- `layerIndex` (int, optional): StateDriven — Animator layer index.
-- `defaultBlendStyle` (string, optional): Default blend style (shared by ClearShot/StateDriven).
-- `defaultBlendTime` (float, optional): Default blend duration in seconds.
-- `loop` (bool, optional): Sequencer — loop playback.
-
-### `cinemachine_configure_body`
-Configure the Body stage component (Follow, OrbitalFollow, ThirdPersonFollow, PositionComposer, FramingTransposer, etc.) in one call. Only fields matching the active component are applied; when none is, the call fails and `warnings` lists the fields that could not be written.
-**Parameters:**
-- `vcamName` (string, optional): VCam name. Provide one of name/entityId/instanceId/path.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-
-Follow / Transposer:
-- `offsetX` / `offsetY` / `offsetZ` (float, optional): Follow offset vector.
-- `bindingMode` (string, optional): Binding/target attachment mode (e.g. `LockToTarget`, `WorldSpace`).
-- `dampingX` / `dampingY` / `dampingZ` (float, optional): Positional damping.
-
-OrbitalFollow / OrbitalTransposer:
-- `orbitStyle` (string, optional): `Sphere` or `ThreeRing`.
-- `radius` (float, optional): Sphere orbit radius.
-- `topHeight` / `topRadius` (float, optional): Top ring parameters.
-- `midHeight` / `midRadius` (float, optional): Middle ring parameters.
-- `bottomHeight` / `bottomRadius` (float, optional): Bottom ring parameters.
-
-ThirdPersonFollow:
-- `shoulderX` / `shoulderY` / `shoulderZ` (float, optional): Shoulder offset.
-- `verticalArmLength` (float, optional): Vertical arm length.
-- `cameraSide` (float, optional): 0 = left, 1 = right.
-
-PositionComposer / FramingTransposer:
-- `cameraDistance` (float, optional): Distance between camera and target.
-- `screenX` / `screenY` (float, optional): On-screen target position (0–1).
-- `deadZoneWidth` / `deadZoneHeight` (float, optional): Dead zone size (0–1).
-
-### `cinemachine_configure_aim`
-Configure the Aim stage component (RotationComposer, Composer, PanTilt, POV, etc.) in one call. Only fields matching the active component are applied; when none is, the call fails and `warnings` lists the fields that could not be written.
-**Parameters:**
-- `vcamName` (string, optional): VCam name. Provide one of name/entityId/instanceId/path.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-
-Composer / RotationComposer:
-- `screenX` / `screenY` (float, optional): Target on-screen position.
-- `deadZoneWidth` / `deadZoneHeight` (float, optional): Dead zone size.
-- `softZoneWidth` / `softZoneHeight` (float, optional): Soft zone size.
-- `horizontalDamping` / `verticalDamping` (float, optional): Composition damping.
-- `lookaheadTime` / `lookaheadSmoothing` (float, optional): Target lookahead tuning.
-- `centerOnActivate` (bool, optional): Re-center on activation.
-
-PanTilt / POV:
-- `referenceFrame` (string, optional): Reference frame for pan/tilt axes.
-- `panValue` / `tiltValue` (float, optional): Explicit pan/tilt values.
-
-Target offset:
-- `targetOffsetX` / `targetOffsetY` / `targetOffsetZ` (float, optional): Offset from target pivot.
-
-### `cinemachine_configure_extension`
-Configure a Cinemachine extension (`CinemachineConfiner`, `CinemachineDeoccluder`/`Collider`, `CinemachineFollowZoom`, `CinemachineGroupFraming`, etc.). If `extensionName` is omitted, the first extension on the VCam is used; an `extensionName` the VCam does not carry and an unresolved `boundingShapeName` are rejected. Settings that could not be written are listed in `warnings`.
-**Parameters:**
-- `vcamName` (string, optional): VCam name. Provide one of name/entityId/instanceId/path.
-- `instanceId` (int, optional): VCam Instance ID.
-- `path` (string, optional): VCam hierarchy path.
-- `entityId` (string, optional): VCam entity ID (preferred; the only id on Unity 6000.4+).
-- `extensionName` (string, optional): Extension type name (e.g. `CinemachineConfiner`).
-
-Confiner:
-- `boundingShapeName` (string, optional): Name of the bounding shape GameObject.
-- `damping` (float, optional): Damping applied when confining.
-- `slowingDistance` (float, optional): Slow-down distance inside the bounding shape.
-
-Deoccluder / Collider:
-- `cameraRadius` (float, optional): Camera collision radius.
-- `strategy` (string, optional): Deocclusion strategy name.
-- `maximumEffort` (int, optional): Maximum raycast iterations.
-- `smoothingTime` (float, optional): Smoothing time for occlusion changes.
-
-FollowZoom:
-- `width` (float, optional): Target width in world units.
-- `fovMin` / `fovMax` (float, optional): FOV clamp range.
-
-GroupFraming:
-- `framingMode` (string, optional): Framing mode name.
-- `framingSize` (float, optional): Desired framing size.
-- `sizeAdjustment` (string, optional): Size adjustment strategy name.
-
-### `cinemachine_configure_impulse_source`
-Configure `CinemachineImpulseSource` definition (shape, duration, gains). If no source is specified, the first `CinemachineImpulseSource` in the scene is used.
-**Parameters:**
-- `sourceName` (string, optional): Source name. Provide one of name/entityId/instanceId/path; omit all to pick the first source.
-- `sourceInstanceId` (int, optional): Source Instance ID.
-- `sourcePath` (string, optional): Source hierarchy path.
-- `sourceEntityId` (string, optional): Source entity ID (preferred; the only id on Unity 6000.4+).
-- `amplitudeGain` (float, optional): Amplitude gain multiplier.
-- `frequencyGain` (float, optional): Frequency gain multiplier.
-- `impactRadius` (float, optional): Impact radius in world units.
-- `duration` (float, optional): Signal duration in seconds.
-- `dissipationRate` (float, optional): Dissipation rate over distance.
-
----
-## Minimal Example
-
-```python
-import unity_skills
-
-# Create a vcam that follows and looks at the player
-unity_skills.call_skill("cinemachine_create_vcam", name="PlayerCam")
-unity_skills.call_skill("cinemachine_set_targets", vcamName="PlayerCam", followName="Player", lookAtName="Player")
-```
+- Basic Game Camera operations → `camera` module
+- Scene View camera → `camera` module's `camera_set_transform` / `camera_look_at`
+- Camera animation sequences → `timeline` module with a Cinemachine track
 
 ## Exact Signatures
 
-Exact names, parameters, defaults, and returns are defined by `GET /skills/schema` or `unity_skills.get_skill_schema()`, not by this file.
+Names, parameters, defaults and required flags come from `GET /skills/schema?category=Cinemachine` (or `?names=a,b`), not this file.
+
+## Common Errors
+
+| Error | Trigger → fix |
+|---|---|
+| `MISSING_PACKAGE` | Cinemachine not installed → install 2.x or 3.x via `package_*`. |
+| `MODE_FORBIDDEN` | A Delete-class skill under Approval/Auto → needs Bypass or an Allowlist hit. |
+| `SEMANTIC_INVALID` | Invalid `mode` / blend style / unresolved animator or bounding shape → fix per `validValues` / the message; nothing was written. |
+
+Transport codes (`COMPILING`, `RATE_LIMIT`, ...) → [error codes](../../references/protocol-error-codes.md).

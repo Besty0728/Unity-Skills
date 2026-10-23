@@ -1,7 +1,7 @@
 ---
 name: unity-skills
-description: Automate the Unity Editor through a local REST API — scripts, scenes, prefabs, assets, materials, lighting, tests and hundreds of other Editor operations. Use when the user wants to actually operate the Unity Editor from chat — create, modify or batch-edit GameObjects/scripts/scenes/assets, or run Editor automation — in any language. Not needed for conceptual Unity Q&A that touches no Editor state — read the matching advisory doc under skills/ instead. 当用户要从对话里实际操作 Unity 编辑器（创建/修改/批量编辑/运行测试）时使用，任何语言均可触发；纯概念问答无需本协议。
-compatibility: Requires Unity Editor 2022.3+/6000.x with the UnitySkills package (local REST server on localhost:8090-8100); Python 3 for the bundled client
+description: Operate the Unity Editor through a local REST API — create, edit and batch-edit GameObjects, components, scripts, scenes, prefabs, assets and materials, run tests — and answer Unity design questions (architecture, script design, patterns) from bundled advisory docs. Use for any Unity Editor task or Unity design question, in any language.
+compatibility: Unity 2022.3+/6000.x with the UnitySkills package (REST on localhost:8090-8100); Python 3 for the optional client
 ---
 
 # Unity Skills
@@ -57,6 +57,8 @@ Several steps, one call: `POST /skills/batch?expectProject=<project>` `{"steps":
 
 Never invent skill or parameter names: use this table, recommend or schema. On failure read `suggestedFixes`; open a module doc only when a response names one.
 
+**Undo your own writes**: `workflow_list` (tasks, newest last) → `workflow_undo_task {taskId}`, newest first — an older task restores over later edits → [workflow](skills/workflow/SKILL.md).
+
 ## Verify from the read-back
 
 A successful write returns the state read back from the Editor (e.g. world `position`, `valueSet`) — that is the verification; `resolutionNotes` flags a non-exact name match. Use `*_get_info` only for async results or missing fields. Script writes, and `asset_refresh` after you write a `.cs` yourself (`compileTriggered:true`), return `waitUrl`: one GET waits out compile+reload → `status:"completed"`, or `failed` with errors in `resultData.compilation`. One command:
@@ -76,6 +78,4 @@ A successful write returns the state read back from the Editor (e.g. world `posi
 
 Compile status, events, analytics → [observability](references/protocol-observability.md); closed Editor + opt-in Unity CLI → [unity-cli](references/protocol-unity-cli.md).
 
-Current snapshot: `870` REST skills, `57` source files, `55` categories, `85` module doc directories (`55` REST/module docs + `30` advisory docs), Unity `2022.3+`, default timeout `15 minutes`.
-
-Python helper: `unity-skills/scripts/unity_skills.py`
+Windows (PowerShell / Git Bash): [windows](references/windows.md) rewrites these calls; or use `scripts/unity_skills.py`.

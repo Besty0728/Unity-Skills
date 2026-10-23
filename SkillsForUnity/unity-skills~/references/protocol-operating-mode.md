@@ -161,7 +161,7 @@ Mode authorization (persistent, per-skill) and `ConfirmationToken` (single-shot,
 
 ## Skill Mode Annotation
 
-The REST surface (`839` skills) is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
+The REST surface is partitioned by `[UnitySkill]` `Mode` and runtime metadata. Use schema endpoints for the canonical list:
 
 | Annotation | Count | Source |
 |---|---|---|

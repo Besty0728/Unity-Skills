@@ -195,6 +195,10 @@ namespace UnitySkills.Tests.Core
             ("component", skill => skill.Attribute.Category == SkillCategory.Component),
             ("batch", skill => skill.Method.DeclaringType?.Name == "BatchSkills"),
             ("script", skill => skill.Attribute.Category == SkillCategory.Script),
+            ("material", skill => skill.Attribute.Category == SkillCategory.Material),
+            ("editor", skill => skill.Attribute.Category == SkillCategory.Editor),
+            ("cinemachine", skill => skill.Attribute.Category == SkillCategory.Cinemachine),
+            ("particle", skill => skill.Attribute.Category == SkillCategory.Particle),
         };
 
         /// <summary>
@@ -212,7 +216,12 @@ namespace UnitySkills.Tests.Core
             { "gameobject", 5120 },
             { "component", 6208 },
             { "batch", 8448 },
-            { "script", 5184 }
+            { "script", 5184 },
+            // 3.0 split pilots: entry size at the split plus ~4% headroom, rounded up to 64 bytes.
+            { "material", 6528 },
+            { "editor", 5056 },
+            { "cinemachine", 6464 },
+            { "particle", 14080 }
         };
 
         private static readonly HashSet<string> ExactSignatureOptionalModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -901,7 +910,7 @@ namespace UnitySkills.Tests.Core
             Assert.That(actual, Is.LessThanOrEqualTo(budgetBytes),
                 $"顶层 SKILL.md 为 {actual} 字节，超出 {budgetBytes} 字节预算 {actual - budgetBytes} 字节。" +
                 "这份文档每次会话都全量入上下文；要加内容请先把等量内容下沉到 references/ " +
-                "（见 references/SKILL_FULL.md 与 references/README.md），不要抬预算。");
+                "或模块文档（见 references/README.md），不要抬预算。");
         }
 
         private static void CompareParameters(string skillName, CodeSkill codeSkill, DocSkill docSkill, List<string> issues)

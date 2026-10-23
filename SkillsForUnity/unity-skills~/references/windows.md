@@ -1,82 +1,93 @@
 # Windows shells: PowerShell and Git Bash
 
-The REST API is the same on every OS; only the client shell changes. This page gives the root doc's calls in PowerShell and lists the traps that silently break them. Replace `8090` with your instance's port.
+The REST API is the same on every OS; only the client shell changes. This page gives the root doc's calls in PowerShell and lists the traps that silently break them.
 
 ## Which shell you are in
 
 - **Git Bash** (Claude Code on Windows runs its commands there): the root doc's `curl` one-liners work unchanged.
-- **PowerShell** (the default in many other hosts): use `Invoke-RestMethod` as below. Check the version with `$PSVersionTable.PSVersion` — Windows PowerShell 5.1 and PowerShell 7 differ in the traps.
+- **PowerShell** (the default in many other hosts): use `Invoke-RestMethod` as below. Check `$PSVersionTable.PSVersion`: Windows PowerShell 5.1 and PowerShell 7 differ in the traps.
 
 ## Traps
 
-1. **`curl` is not curl in Windows PowerShell 5.1.** It is an alias of `Invoke-WebRequest` with different parameters; call `curl.exe` explicitly. PowerShell 7 has no such alias.
-2. **JSON in arguments to native programs** (`curl.exe`, `python`): Windows PowerShell 5.1 does not escape embedded double quotes for the program, so `curl.exe -d '{"name":"A"}'` arrives as `{name:A}`; there you must write `\"` inside the body. PowerShell 7.3+ passes the quotes as written, and the same `\"` then breaks the JSON. Avoid the difference: use `Invoke-RestMethod` (a cmdlet, no native argument passing), `curl.exe -d "@body.json"`, or the Python CLI's `--params-file`.
-3. **Body encoding.** Without a charset, `Invoke-RestMethod` does not send the body as UTF-8 before PowerShell 7.4 (7.4+ defaults to UTF-8), so non-ASCII names such as `"name":"箱子"` are mangled. Always pass `-ContentType 'application/json; charset=utf-8'`.
-4. **BOM.** Windows PowerShell 5.1 `Set-Content -Encoding UTF8` writes a UTF-8 BOM (PowerShell 7 `utf8` does not). The server and the Python CLI (`--params-file`, `--batch`) accept both.
-5. **Asset paths always use `/`** (`Assets/Scenes/Main.unity`), on every OS. `Join-Path` and `Resolve-Path` produce `\`; convert before sending.
+1. **`curl` is not curl in Windows PowerShell 5.1.** It is an alias of `Invoke-WebRequest`; call `curl.exe`. PowerShell 7 has no alias.
+2. **JSON in arguments to native programs** (`curl.exe`, `python`): Windows PowerShell 5.1 drops the embedded double quotes (`{"name":"A"}` arrives as `{name:A}`), PowerShell 7.3+ keeps them, so no one quoting works on both. Use `Invoke-RestMethod` (a cmdlet, no native argument passing), `curl.exe -d "@body.json"`, or the Python CLI's `--params-file`.
+3. **Body encoding.** Send the body as UTF-8 bytes (the helper below does): before PowerShell 7.4 a string body is not reliably UTF-8, so `"name":"箱子"` can arrive mangled. Keep `charset=utf-8` in the `-ContentType` too.
+4. **`$` in double quotes expands.** `$ref` values such as `$0.entityId` must be single-quoted (or the whole JSON body in single quotes).
+5. **BOM.** Windows PowerShell 5.1 `Set-Content -Encoding UTF8` writes a BOM (PowerShell 7 does not). The server and the Python CLI accept both.
+6. **Asset paths use `/`** (`Assets/Scenes/Main.unity`) on every OS; `Join-Path` and `Resolve-Path` produce `\`, so convert.
 
-## PowerShell equivalents
+## PowerShell equivalents of the root doc
 
-Probe the server:
+Setup once per session: the port from `/health` probing (`8090`-`8100`) and the project name go in every write's `expectProject`.
 
 ```powershell
 $u = 'http://localhost:8090'
-Invoke-RestMethod "$u/health"
+$q = '?expectProject=' + [uri]::EscapeDataString('MyProject')
+function Invoke-Skill($path, $body) {
+    $json = if ($body -is [string]) { $body } else { $body | ConvertTo-Json -Depth 10 -Compress }
+    Invoke-RestMethod -Method Post -Uri "$u$path" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($json))
+}
+Invoke-RestMethod "$u/health"   # currentMode, surfaceProfile, dryRunPolicy, instanceId
 ```
 
-One call:
+One call, targeting by `name` (or the exact `path` / `entityId`):
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "$u/skill/gameobject_create" -ContentType 'application/json; charset=utf-8' -Body '{"name":"Crate","primitiveType":"Cube","x":1}'
+Invoke-Skill "/skill/gameobject_set_transform$q" @{ name = 'Crate'; posX = 4; posY = 1.5; posZ = -2 }
 ```
 
-DryRun first (deletes, high risk, reloads — see the root doc):
+DryRun first (deletes, high risk, reloads, approval mode; see the root doc):
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri "$u/skill/gameobject_delete?mode=dryRun&wire=v2" -ContentType 'application/json; charset=utf-8' -Body '{"name":"Crate"}'
+Invoke-Skill "/skill/gameobject_delete$q&mode=dryRun&wire=v2" @{ name = 'Crate' }
 ```
 
-Batch (one request, `$ref` works as in the root doc):
+Batch, up to 50 steps in one request; `@{ '$ref' = '$0.entityId' }` reads step 0's result. `-Depth` must cover `steps` > step > `args` (the default 2 silently flattens it):
 
 ```powershell
-$steps = '{"steps":[{"skill":"gameobject_create","args":{"name":"Crate","primitiveType":"Cube"}},{"skill":"component_add","args":{"name":"Crate","componentType":"Rigidbody"}}]}'
-Invoke-RestMethod -Method Post -Uri "$u/skills/batch" -ContentType 'application/json; charset=utf-8' -Body $steps
+$steps = @{ steps = @(
+    @{ skill = 'gameobject_create'; args = @{ name = 'Rig' } },
+    @{ skill = 'component_add'; args = @{ entityId = @{ '$ref' = '$0.entityId' }; componentType = 'Rigidbody' } }
+) }
+Invoke-Skill "/skills/batch$q" $steps
 ```
 
-A script you wrote yourself, then refresh and wait out compile and domain reload. The server is briefly unreachable during the reload, so retry the wait:
+Add `&mode=dryRun&wire=v2` to preview, `&mode=transactional` for all-or-nothing.
+
+A script: dryRun, create, then one GET that waits out compile and domain reload. During the reload the port refuses or answers 503, so the wait is retried:
 
 ```powershell
-Set-Content -Path 'Assets/Scripts/Spin.cs' -Value $source -Encoding UTF8
-$r = Invoke-RestMethod -Method Post -Uri "$u/skill/asset_refresh" -ContentType 'application/json; charset=utf-8' -Body '{}'
-if ($r.result.compileTriggered) {
+$source = @'
+using UnityEngine;
+public class Spin : MonoBehaviour { public float speed = 9f; void Update() { transform.Rotate(0, speed * Time.deltaTime, 0); } }
+'@
+$body = @{ scriptName = 'Spin'; content = $source }
+if ((Invoke-Skill "/skill/script_create$q&mode=dryRun" $body | ConvertTo-Json -Depth 10 -Compress) -match '"valid":true') {
+    $r = Invoke-Skill "/skill/script_create$q" $body
+    $wait = [regex]::Match(($r | ConvertTo-Json -Depth 10 -Compress), '/jobs/[^"]*=90').Value
     for ($i = 0; $i -lt 30; $i++) {
-        try { $job = Invoke-RestMethod "$u$($r.result.waitUrl)" -TimeoutSec 150; break } catch { Start-Sleep -Seconds 2 }
+        try { $job = Invoke-RestMethod "$u$wait" -TimeoutSec 150; if (-not $job.waitTimedOut) { break } }
+        catch { Start-Sleep -Seconds 2 }
     }
     $job.status   # completed, or failed with errors in resultData.compilation
 }
 ```
 
-Responses are objects: read `$r.status`, `$r.result.<field>`, `$r.errorCode` directly instead of piping through `ConvertFrom-Json`.
+For a `.cs` you wrote with your own file tools, run `Invoke-Skill "/skill/asset_refresh$q" '{}'` and wait on its `waitUrl` the same way when `compileTriggered` is true.
 
-`curl.exe` in Windows PowerShell 5.1 only, quotes escaped as trap 2 describes:
-
-```powershell
-curl.exe -s -X POST "http://localhost:8090/skill/gameobject_find" -d '{\"name\":\"Crate\"}'
-```
+Responses are objects: read `$r.status`, `$r.errorCode`, `$r.suggestedFixes` directly instead of piping through `ConvertFrom-Json`.
 
 ## Python CLI with a parameter file
-
-Write the parameters with any tool (encoding with or without BOM), then call; `key=value` arguments override keys from the file:
 
 ```powershell
 Set-Content -Path params.json -Value '{"name":"Crate","primitiveType":"Cube"}' -Encoding UTF8
 python unity_skills.py --params-file params.json gameobject_create
-python unity_skills.py --params-file params.json gameobject_create name=Crate2
 ```
+
+`key=value` arguments after the skill name override keys from the file.
 
 ## Sources
 
-- `curl` alias in Windows PowerShell 5.1: [curl on Windows](https://learn.microsoft.com/windows/curl/)
-- Native argument passing, `$PSNativeCommandArgumentPassing` (7.3+): [about_Parsing](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_parsing#passing-arguments-that-contain-quote-characters)
-- Request body encoding: [Invoke-RestMethod (5.1) `-ContentType`](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/invoke-restmethod?view=powershell-5.1), [Invoke-RestMethod (7.x): UTF-8 default from 7.4](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/invoke-restmethod)
-- BOM from `-Encoding UTF8`: [about_Character_Encoding](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding)
+- `curl` alias: [curl on Windows](https://learn.microsoft.com/windows/curl/); native argument quoting: [about_Parsing](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_parsing#passing-arguments-that-contain-quote-characters)
+- Body encoding: [Invoke-RestMethod (5.1)](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/invoke-restmethod?view=powershell-5.1), [Invoke-RestMethod (7.x)](https://learn.microsoft.com/powershell/module/microsoft.powershell.utility/invoke-restmethod)
+- BOM: [about_Character_Encoding](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_character_encoding)
