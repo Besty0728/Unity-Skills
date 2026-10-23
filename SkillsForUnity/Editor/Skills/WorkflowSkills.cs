@@ -274,28 +274,101 @@ namespace UnitySkills
             return new { success = true, objectName = target.name, type = target.GetType().Name };
         }
 
-        [UnitySkill("workflow_list", "List persistent workflow history",
+        private const int DefaultWorkflowListRows = 30;
+        private const int MaxWorkflowListRows = 200;
+
+        [UnitySkill("workflow_list", "List recorded workflow tasks newest first as compact rows 'id time skill target (changes) [@agent]'; pass a row's s<seq> id to workflow_undo_task. Params: limit (default 30), agent ('all', 'self' or an agent id), before (an s<seq> id, for the next page), format ('objects' returns the legacy object list).",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
             Tags = new[] { "workflow", "history", "list", "task" },
-            Outputs = new[] { "count", "history" },
+            Outputs = new[] { "count", "agent", "rows", "more", "history" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object WorkflowList()
+        public static object WorkflowList(int limit = 0, string agent = "all", string before = null, string format = "rows")
         {
-            var history = WorkflowManager.History;
-            var list = history.tasks.Select(t => new
-            {
-                id = t.id,
-                tag = t.tag,
-                description = t.description,
-                time = t.GetFormattedTime(),
-                changes = t.snapshots.Count
-            }).ToList<object>(); // Converted to an object list for JSON serialization
+            bool objects = string.Equals(format, "objects", StringComparison.OrdinalIgnoreCase);
+            if (!objects && !string.IsNullOrEmpty(format) && !string.Equals(format, "rows", StringComparison.OrdinalIgnoreCase))
+                return InvalidListArgument($"format must be 'rows' or 'objects', got '{format}'");
+            if (limit < 0 || limit > MaxWorkflowListRows)
+                return InvalidListArgument($"limit must be between 1 and {MaxWorkflowListRows} (0 = default)");
 
-            return new { success = true, count = list.Count, history = list };
+            long beforeSeq = long.MaxValue;
+            if (!string.IsNullOrEmpty(before) &&
+                !long.TryParse(before.TrimStart('s', 'S'), out beforeSeq))
+                return InvalidListArgument($"before must be an s<seq> id from a previous page, got '{before}'");
+
+            string caller = WorkflowManager.ResolveCallerAgent();
+            string agentFilter = string.IsNullOrEmpty(agent) || string.Equals(agent, "all", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : string.Equals(agent, "self", StringComparison.OrdinalIgnoreCase)
+                    ? caller
+                    : WorkflowManager.NormalizeAgent(ClientProcessResolver.CanonicalizeExplicitAgentId(agent.Trim()));
+
+            var history = WorkflowManager.History;
+            WorkflowManager.BindPendingAgents();
+            // A redo puts a task back at the end of the list under its old seq, so the list is ordered by seq before paging.
+            var tasks = history.tasks
+                .Where(t => agentFilter == null || string.Equals(WorkflowManager.NormalizeAgent(t.agent), agentFilter, StringComparison.Ordinal))
+                .OrderBy(t => t.seq)
+                .ToList();
+            var page = tasks.Where(t => t.seq < beforeSeq).ToList();
+
+            if (objects)
+            {
+                // The pre-3.0 shape, oldest first and unpaged unless a limit is given, for scripts that parse it.
+                var selected = limit > 0 ? page.Skip(Math.Max(0, page.Count - limit)) : page;
+                var list = selected.Select(t => new
+                {
+                    id = t.id,
+                    tag = t.tag,
+                    description = t.description,
+                    time = t.GetFormattedTime(),
+                    changes = t.snapshots.Count,
+                    seq = t.DisplayId,
+                    agent = t.agent,
+                    group = t.group
+                }).ToList<object>(); // Converted to an object list for JSON serialization
+                return new { success = true, count = list.Count, history = list };
+            }
+
+            int take = limit > 0 ? limit : DefaultWorkflowListRows;
+            int skip = Math.Max(0, page.Count - take);
+
+            var rows = new List<string>();
+            for (int i = page.Count - 1; i >= skip; i--)
+                rows.Add(FormatTaskRow(page[i], caller));
+
+            if (skip > 0)
+                return new { success = true, count = tasks.Count, agent = caller, rows, more = page[skip].DisplayId };
+            return new { success = true, count = tasks.Count, agent = caller, rows };
         }
 
-        [UnitySkill("workflow_undo_task", "Undo changes from a specific task (restore to previous state)",
+        private static object InvalidListArgument(string message) => new
+        {
+            error = message,
+            errorCode = SkillErrorCode.SemanticInvalid.ToWireString()
+        };
+
+        private static string FormatTaskRow(WorkflowTask task, string caller)
+        {
+            var row = new System.Text.StringBuilder(task.DisplayId).Append(' ').Append(task.GetFormattedTime()).Append(' ').Append(task.tag);
+            if (!string.IsNullOrEmpty(task.target))
+                row.Append(' ').Append(task.target);
+            row.Append(" (").Append(task.snapshots?.Count ?? 0).Append(')');
+            AppendAgent(row, task.agent, caller);
+            return row.ToString();
+        }
+
+        // Rows name the agent only when it is not the caller, so a single-agent history carries no agent column at all.
+        private static void AppendAgent(System.Text.StringBuilder row, string agent, string caller)
+        {
+            if (string.IsNullOrEmpty(agent))
+                return;
+            agent = WorkflowManager.NormalizeAgent(agent);
+            if (!string.Equals(agent, caller, StringComparison.Ordinal))
+                row.Append(" @").Append(agent);
+        }
+
+        [UnitySkill("workflow_undo_task", "Undo changes from a specific task (restore to previous state); taskId is the s<seq> id from workflow_list or the task UUID.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "undo", "task", "revert", "restore" },
             Outputs = new[] { "success", "taskId", "total", "succeeded", "failed", "details", "error" },
@@ -306,7 +379,7 @@ namespace UnitySkills
         public static object WorkflowUndoTask(string taskId)
         {
             var withdrawn = SurfaceRejectionForTasks("workflow_undo_task", "restoring this task's snapshots",
-                WorkflowManager.History.tasks.Where(t => t.id == taskId));
+                WorkflowManager.History.tasks.Where(t => WorkflowManager.MatchesTaskId(t, taskId)));
             if (withdrawn != null)
                 return withdrawn;
 
@@ -323,7 +396,7 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("workflow_redo_task", "Redo a previously undone task (restore changes)",
+        [UnitySkill("workflow_redo_task", "Redo a previously undone task (restore changes); taskId is an s<seq> id or UUID from workflow_undone_list, omitted = the most recently undone task.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "redo", "task", "restore", "changes" },
             Outputs = new[] { "success", "taskId", "total", "succeeded", "failed", "details", "error" },
@@ -340,7 +413,7 @@ namespace UnitySkills
             }
 
             var withdrawn = SurfaceRejectionForTasks("workflow_redo_task", "re-applying this task's snapshots",
-                WorkflowManager.GetUndoneStack().Where(t => t.id == taskId));
+                WorkflowManager.GetUndoneStack().Where(t => WorkflowManager.MatchesTaskId(t, taskId)));
             if (withdrawn != null)
                 return withdrawn;
 
@@ -372,7 +445,8 @@ namespace UnitySkills
                 tag = t.tag,
                 description = t.description,
                 time = t.GetFormattedTime(),
-                changes = t.snapshots.Count
+                changes = t.snapshots.Count,
+                seq = t.DisplayId
             }).ToList<object>();
 
             return new { success = true, count = list.Count, undoneStack = list };
@@ -389,7 +463,7 @@ namespace UnitySkills
             // Query using this skill's own name rather than handing it off to the delegate: the agent called workflow_revert_task, but if the rejection message shows
             // workflow_undo_task instead, it reads like "the alias is fine, the target is the problem," which would only bait a pointless retry.
             var withdrawn = SurfaceRejectionForTasks("workflow_revert_task", "restoring this task's snapshots",
-                WorkflowManager.History.tasks.Where(t => t.id == taskId));
+                WorkflowManager.History.tasks.Where(t => WorkflowManager.MatchesTaskId(t, taskId)));
             if (withdrawn != null)
                 return withdrawn;
 
@@ -425,7 +499,7 @@ namespace UnitySkills
             return new { success = true, objectName = target.name, type = target.GetType().Name };
         }
 
-        [UnitySkill("workflow_delete_task", "Delete a task from history (does not revert changes)",
+        [UnitySkill("workflow_delete_task", "Delete a task from history (does not revert changes); taskId is an s<seq> id or UUID.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Delete,
             Tags = new[] { "task", "delete", "history", "cleanup" },
             Outputs = new[] { "deletedId" },

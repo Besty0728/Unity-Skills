@@ -30,7 +30,7 @@ Append `?diff=1` (or `true`) to `POST /skill/<name>` or `POST /skills/batch`. A 
 
 Entry layout: `seq, type, source, agent, isPlaying, tsUtc, payload`. `agent` (REST caller id, `"mixed"`, `"unknown"`, or `null` for manual edits) and `isPlaying` are newer fields; entries written by older plugin versions lack them. The per-type additions are listed under `editor_get_changes` in the editor module doc.
 
-The telemetry file (`Library/UnitySkillsTelemetry.jsonl`, rotated to `UnitySkillsTelemetry.1.jsonl` to `.3.jsonl` at 1 MB; one line per call: `ts, skill, agent, mode, ok, ms`, plus `errorCode`, `err` and `target` on failed calls only, with the project root shown as `<project>` and the home folder as `~`) and the audit log are written about 200 ms after a call so the client identity can resolve first. Both are also flushed straight away before a Domain Reload and when the Editor quits, so a record queued just before either survives.
+The telemetry file (`Library/UnitySkillsTelemetry.jsonl`, rotated to `UnitySkillsTelemetry.1.jsonl` to `.3.jsonl` at 1 MB; one line per call: `ts, skill, agent, mode, ok, ms`, plus `errorCode`, `err` and `target` on failed calls only and `wfMs` (the workflow history bookkeeping time) on writes that recorded an undo task, with the project root shown as `<project>` and the home folder as `~`) and the audit log are written about 200 ms after a call so the client identity can resolve first. Both are also flushed straight away before a Domain Reload and when the Editor quits, so a record queued just before either survives.
 
 ## Compilation proof and recovery
 

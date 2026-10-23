@@ -112,7 +112,12 @@ namespace UnitySkills.Tests.Core
                 ["UnitySkills_SummaryPageSize"] = 10,
             });
             Assert.That(SkillsTokenLevel.Current, Is.EqualTo(TokenLevel.Standard));
-            Assert.That(ProjectPrefs.SettingsFilePath, Does.Not.Exist, "reading the global values writes nothing");
+            // Only the token level sources are checked: an open UnitySkills window reads the allowlist when the store is
+            // opened, which writes its one-time migration marker here.
+            Assert.That(ProjectValueNames().Intersect(new[]
+            {
+                "UnitySkills_SurfaceProfile", "UnitySkills_SummaryAutoTruncate", "UnitySkills_SummaryPageSize",
+            }), Is.Empty, "reading the global values writes none of them here");
 
             // The pre-2.7 guide toggle still migrates when no profile was ever chosen.
             Open("B", new Dictionary<string, object> { ["UnitySkills_GuideMode"] = true });
@@ -376,6 +381,14 @@ namespace UnitySkills.Tests.Core
                 "UnitySkills.Workflow.MaxTaskAgeDays", "UnitySkills.Workflow.MaxStoreMB",
                 "UnitySkills.Workflow.StoreMaxAgeDays",
             }));
+        }
+
+        /// <summary>The keys the open project's settings file holds; none when it has no file.</summary>
+        private static string[] ProjectValueNames()
+        {
+            var path = ProjectPrefs.SettingsFilePath;
+            if (!File.Exists(path)) return Array.Empty<string>();
+            return ((JObject)JObject.Parse(File.ReadAllText(path))["values"]).Properties().Select(p => p.Name).ToArray();
         }
 
         private static string GlobalPref(string key)

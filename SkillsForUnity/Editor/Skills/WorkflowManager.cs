@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
 using UnitySkills.Internal;
@@ -20,6 +21,55 @@ namespace UnitySkills
         // volatile: SkillsHttpServer's /health fast path reads IsHistoryRecoveryMode on the HTTP thread,
         // while writes always happen on the main thread (LoadHistory / ClearHistory).
         private static volatile bool _historyRecoveryMode;
+
+        // Trim/GC walks the whole history and enumerates the file store several times, so it runs deferred and at most
+        // once per interval instead of inside every EndTask. The generation drops a deferred run after a reset or clear.
+        private const double TrimIntervalSeconds = 60;
+        private static bool _trimScheduled;
+        private static DateTime _lastTrimUtc = DateTime.MinValue;
+        private static int _trimGeneration;
+        internal static int TrimRunsForTests;
+
+        // The deferred trim runs only when a cheap check finds a limit exceeded by more than 10%. Sizes come from the last
+        // saved file; a run that cannot bring it under the limit raises the size gate by another 10%, so a history the
+        // trim's own estimate finds small enough is not walked again every minute.
+        private const double TrimGateFactor = 1.1;
+        private static long _lastSavedHistoryChars;
+        private static long _sizeGateChars;
+
+        // GlobalObjectId of a persistent asset is fixed by its GUID and file id, so it is computed once per session.
+        // Cleared whenever assets are deleted or moved, and bounded so a long session cannot grow it without limit.
+        private const int MaxPersistentGidCacheEntries = 4096;
+        private static readonly Dictionary<string, string> _persistentGidCache = new Dictionary<string, string>(StringComparer.Ordinal);
+        internal static int GlobalObjectIdComputationsForTests;
+
+        // A new run of writes starts when an agent's next tracked write comes this long after its previous call.
+        internal const int AutoGroupIdleGapSeconds = 30;
+        private const string AgentActivitySessionKey = "UnitySkills_WorkflowAgentActivity";
+        private const string IdSessionKey = "UnitySkills_WorkflowIdSession";
+        private static Dictionary<string, AgentActivity> _agentActivity;
+        private static string _idSession;
+        internal static Func<long> NowUnixMsForTests;
+        internal static EditorChangeTrackerService.AgentLookup AgentLookupForTests;
+
+        // Tasks that ended before the process resolver answered for their connection; bound at the next save or list. The
+        // resolver keeps an answer for 60 s, so one that turns up later could only belong to a reused port.
+        private static readonly List<WorkflowTask> _pendingAgentTasks = new List<WorkflowTask>();
+        private const long PendingAgentWindowMs = 60_000;
+
+        // Set by ResetStateForTests: from then on the activity map lives in memory only, so tests never erase or overwrite
+        // the editor's real SessionState value, which is read again after the next domain reload.
+        private static bool _agentActivityDetached;
+
+        private sealed class AgentActivity
+        {
+            public long lastCallMs;
+            public string group;
+        }
+
+        // Instance and entity ids are only meaningful in the editor session that issued them; restoring a task captured in
+        // an earlier session resolves objects by GlobalObjectId alone, so a recycled id can never select an unrelated object.
+        private static bool _sessionIdFallbackAllowed = true;
 
         // Path where the history file is stored (persists in the Library directory, but local to this machine only)
         internal static string OverrideHistoryFilePathForTests;
@@ -72,6 +122,8 @@ namespace UnitySkills
             string backupPath = HistoryFilePath + ".bak";
             _history = null;
             _historyRecoveryMode = false;
+            _lastSavedHistoryChars = 0;
+            _sizeGateChars = 0;
             bool recoveredFromBackup = false;
 
             if (File.Exists(HistoryFilePath))
@@ -130,6 +182,7 @@ namespace UnitySkills
                 }
 
                 _history = data;
+                _lastSavedHistoryChars = json.Length;
                 _history.EnsureDefaults();
                 SanitizeHistory();
                 return true;
@@ -170,25 +223,14 @@ namespace UnitySkills
         {
             try
             {
-                string dir = Path.GetDirectoryName(HistoryFilePath);
-                if (!Directory.Exists(dir))
-                    Directory.CreateDirectory(dir);
-
                 _history ??= new WorkflowHistoryData();
                 _history.EnsureDefaults();
-                string json = JsonUtility.ToJson(_history, true);
-                string tmpPath = HistoryFilePath + ".tmp";
-                string backupPath = HistoryFilePath + ".bak";
-                File.WriteAllText(tmpPath, json, SkillsCommon.Utf8NoBom);
-                if (File.Exists(HistoryFilePath))
-                {
-                    // The file being replaced is kept as .bak: if the main file becomes unreadable, LoadHistory falls back to it.
-                    File.Replace(tmpPath, HistoryFilePath, backupPath);
-                }
-                else
-                {
-                    File.Move(tmpPath, HistoryFilePath);
-                }
+                BindPendingAgents();
+                // Compact: indentation made up a large share of the file that every tracked write rewrites.
+                string json = JsonUtility.ToJson(_history, false);
+                // The file being replaced is kept as .bak: if the main file becomes unreadable, LoadHistory falls back to it.
+                LibraryStateFile.WriteAllText(HistoryFilePath, json, HistoryFilePath + ".bak");
+                _lastSavedHistoryChars = json.Length;
             }
             catch (Exception e)
             {
@@ -251,11 +293,25 @@ namespace UnitySkills
                 tag = tag,
                 description = description,
                 timestamp = DateTimeOffset.Now.ToUnixTimeSeconds(),
+                idSession = CurrentIdSession(),
+                startedUnixMs = NowUnixMs(),
                 snapshots = new List<ObjectSnapshot>()
             };
             _currentTask.EnsureSnapshotIndex();
 
             return _currentTask;
+        }
+
+        /// <summary>
+        /// The router's one-call task. Unlike an explicit task, it continues its agent's current group unless the agent
+        /// was idle for <see cref="AutoGroupIdleGapSeconds"/> before the call.
+        /// </summary>
+        internal static WorkflowTask BeginAutoTask(string tag, string description, string target)
+        {
+            var task = BeginTask(tag, description);
+            task.autoStarted = true;
+            task.target = target;
+            return task;
         }
 
         public static void EndTask()
@@ -273,12 +329,247 @@ namespace UnitySkills
 
             if (_history == null) LoadHistory();
 
+            AttributeTask(_currentTask);
             _history.tasks.Add(_currentTask);
             _history.undoneStack.Clear();
             _currentTask = null;
 
-            TrimHistoryIfNeeded();
+            ScheduleTrim();
             SaveHistory();
+        }
+
+        /// <summary>
+        /// Gives a finished task its seq, its agent and its group. The agent is resolved now unless the caller preset it (an
+        /// async batch job's chunk); when the process resolver has not answered for the connection yet, the task is bound
+        /// later by <see cref="BindPendingAgents"/>. A preset group (the job's) leaves the agent's runs alone; an explicit
+        /// task is a run of its own, closed when it ends; a router task opens a run only after an idle gap.
+        /// </summary>
+        private static void AttributeTask(WorkflowTask task)
+        {
+            task.seq = _history.AllocateSeq();
+            if (string.IsNullOrEmpty(task.agent))
+            {
+                task.agent = ResolveCallerAgent(out int pendingPort);
+                if (pendingPort > 0)
+                {
+                    task.pendingAgentPort = pendingPort;
+                    task.pendingAgentSinceMs = NowUnixMs();
+                    _pendingAgentTasks.Add(task);
+                }
+            }
+            if (!string.IsNullOrEmpty(task.group))
+                return;
+
+            var activity = GetAgentActivity(task.agent);
+            if (!task.autoStarted)
+            {
+                task.group = "g" + task.seq;
+                activity.group = null;
+            }
+            else
+            {
+                long startedMs = task.startedUnixMs > 0 ? task.startedUnixMs : task.timestamp * 1000L;
+                if (activity.group == null || startedMs - activity.lastCallMs >= AutoGroupIdleGapSeconds * 1000L)
+                    activity.group = "g" + task.seq;
+                task.group = activity.group;
+            }
+            SaveAgentActivity();
+        }
+
+        /// <summary>
+        /// Records that the current caller just finished a call (read or write). The router calls this once per execution;
+        /// the idle gap before the caller's next tracked write is measured from here.
+        /// </summary>
+        internal static void NoteAgentCall()
+        {
+            try
+            {
+                GetAgentActivity(ResolveCallerAgent()).lastCallMs = NowUnixMs();
+                SaveAgentActivity();
+            }
+            catch (Exception ex)
+            {
+                // Grouping is bookkeeping; it must never fail the call that triggered it.
+                SkillsLogger.LogVerbose($"Workflow agent activity update failed: {ex.Message}");
+            }
+        }
+
+        internal static string ResolveCallerAgent() => ResolveCallerAgent(out _);
+
+        /// <summary>
+        /// The calling agent, as the change journal attributes it, folded by <see cref="NormalizeAgent"/>.
+        /// <paramref name="pendingPort"/> is the connection's port when the process resolver has not answered for it yet
+        /// (the id may still change), otherwise 0.
+        /// </summary>
+        internal static string ResolveCallerAgent(out int pendingPort)
+        {
+            var context = SkillsAuditLog.CaptureRequestContext();
+            var lookup = AgentLookup;
+            pendingPort = context.Active && !context.AgentIdIsExplicit && context.RemotePort > 0 &&
+                          !lookup(context.RemotePort, out _)
+                ? context.RemotePort
+                : 0;
+            return NormalizeAgent(EditorChangeTrackerService.ResolveRestAgent(context, lookup));
+        }
+
+        private static EditorChangeTrackerService.AgentLookup AgentLookup =>
+            AgentLookupForTests ?? ClientProcessResolver.TryGetAgentId;
+
+        /// <summary>
+        /// One key per agent for the workflow history. The generic header guesses a request carries before the process
+        /// resolver answers ("curl", "Python", "Unknown", "Unknown(...)") all fold into "unknown", so one agent never shows
+        /// under two keys just because one of its calls was attributed before the resolver landed.
+        /// </summary>
+        internal static string NormalizeAgent(string agent)
+        {
+            if (string.IsNullOrEmpty(agent) ||
+                string.Equals(agent, "curl", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(agent, "Python", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(agent, "Unknown", StringComparison.OrdinalIgnoreCase) ||
+                agent.StartsWith("Unknown(", StringComparison.OrdinalIgnoreCase))
+                return EditorChangeTrackerService.AgentUnknown;
+            return agent;
+        }
+
+        /// <summary>
+        /// Binds the agent of every task that ended before the process resolver answered for its connection, the way
+        /// telemetry does at flush time. Runs before each save and each list; a task still unanswered after the resolver's
+        /// cache lifetime keeps the agent it was recorded with.
+        /// </summary>
+        internal static void BindPendingAgents()
+        {
+            if (_pendingAgentTasks.Count == 0)
+                return;
+
+            long now = NowUnixMs();
+            _pendingAgentTasks.RemoveAll(task =>
+            {
+                if (TryResolvePendingAgent(task.pendingAgentPort, out string agent))
+                    task.agent = agent;
+                else if (now - task.pendingAgentSinceMs <= PendingAgentWindowMs)
+                    return false;
+                task.pendingAgentPort = 0;
+                return true;
+            });
+        }
+
+        /// <summary>The process resolver's answer for <paramref name="remotePort"/>, folded, once it has one.</summary>
+        internal static bool TryResolvePendingAgent(int remotePort, out string agent)
+        {
+            agent = null;
+            if (remotePort <= 0 || !AgentLookup(remotePort, out string resolved) || string.IsNullOrEmpty(resolved))
+                return false;
+            agent = NormalizeAgent(resolved);
+            return true;
+        }
+
+        private static long NowUnixMs() => NowUnixMsForTests?.Invoke() ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        private static AgentActivity GetAgentActivity(string agent)
+        {
+            if (_agentActivity == null && !_agentActivityDetached)
+            {
+                // SessionState survives a domain reload but not an editor restart, so a restart always opens a new group.
+                try
+                {
+                    _agentActivity = JsonConvert.DeserializeObject<Dictionary<string, AgentActivity>>(
+                        SessionState.GetString(AgentActivitySessionKey, string.Empty), SkillsCommon.JsonSettings);
+                }
+                catch (Exception ex)
+                {
+                    SkillsLogger.LogVerbose($"Workflow agent activity could not be restored: {ex.Message}");
+                }
+            }
+            _agentActivity ??= new Dictionary<string, AgentActivity>(StringComparer.Ordinal);
+
+            if (!_agentActivity.TryGetValue(agent, out var activity))
+                _agentActivity[agent] = activity = new AgentActivity();
+            return activity;
+        }
+
+        private static void SaveAgentActivity()
+        {
+            if (_agentActivityDetached)
+                return;
+
+            try
+            {
+                SessionState.SetString(AgentActivitySessionKey,
+                    JsonConvert.SerializeObject(_agentActivity, Formatting.None, SkillsCommon.JsonSettings));
+            }
+            catch (Exception ex)
+            {
+                SkillsLogger.LogVerbose($"Workflow agent activity could not be saved: {ex.Message}");
+            }
+        }
+
+        private static string CurrentIdSession()
+        {
+            if (_idSession != null)
+                return _idSession;
+
+            _idSession = SessionState.GetString(IdSessionKey, string.Empty);
+            if (string.IsNullOrEmpty(_idSession))
+            {
+                _idSession = Guid.NewGuid().ToString("N");
+                SessionState.SetString(IdSessionKey, _idSession);
+            }
+            return _idSession;
+        }
+
+        /// <summary>
+        /// Queues one deferred trim if none is pending and the last one ran more than <see cref="TrimIntervalSeconds"/> ago;
+        /// it trims only when <see cref="ExceedsTrimGate"/> holds. A deferred run that outlives a reset, a clear or a switch
+        /// of history file does nothing.
+        /// </summary>
+        private static void ScheduleTrim()
+        {
+            if (_trimScheduled || (DateTime.UtcNow - _lastTrimUtc).TotalSeconds < TrimIntervalSeconds)
+                return;
+
+            _trimScheduled = true;
+            int generation = _trimGeneration;
+            string historyPath = HistoryFilePath;
+            EditorApplication.delayCall += () =>
+            {
+                // A reset or clear has already released the slot (and may have queued a newer run).
+                if (generation != _trimGeneration)
+                    return;
+
+                _trimScheduled = false;
+                if (_history == null || historyPath != HistoryFilePath || !ExceedsTrimGate())
+                    return;
+
+                _lastTrimUtc = DateTime.UtcNow;
+                if (TrimHistoryIfNeeded().removedTasks > 0)
+                    SaveHistory();
+                _sizeGateChars = (long)(_lastSavedHistoryChars * TrimGateFactor);
+            };
+        }
+
+        /// <summary>
+        /// The deferred trim's cheap pre-check: the task count, the age of the oldest task or the size of the last saved
+        /// file is more than 10% past its limit. Nothing here walks the snapshots or the file store; the file store is
+        /// pruned by the trim this lets through and by the one every history load runs.
+        /// </summary>
+        internal static bool ExceedsTrimGate()
+        {
+            if (_history == null || _historyRecoveryMode || !WorkflowAutoCleanConfig.Enabled)
+                return false;
+
+            int maxTasks = WorkflowAutoCleanConfig.MaxTasks;
+            if (maxTasks > 0 && Math.Max(_history.tasks.Count, _history.undoneStack.Count) > maxTasks * TrimGateFactor)
+                return true;
+
+            long maxHistoryBytes = WorkflowAutoCleanConfig.MaxHistoryMB * 1024L * 1024L;
+            if (maxHistoryBytes > 0 && _lastSavedHistoryChars > Math.Max(maxHistoryBytes * TrimGateFactor, _sizeGateChars))
+                return true;
+
+            int maxAgeDays = WorkflowAutoCleanConfig.MaxTaskAgeDays;
+            if (maxAgeDays <= 0)
+                return false;
+            long cutoff = DateTimeOffset.Now.AddDays(-maxAgeDays * TrimGateFactor).ToUnixTimeSeconds();
+            return _history.tasks.Any(t => t?.timestamp < cutoff) || _history.undoneStack.Any(t => t?.timestamp < cutoff);
         }
 
         public static void AbortTask()
@@ -295,6 +586,108 @@ namespace UnitySkills
             _currentTask.InvalidateSnapshotIndex();
         }
 
+        /// <summary>The seq the next recorded task will get.</summary>
+        internal static long NextTaskSeq => History.nextSeq;
+
+        /// <summary>Where the workflow history stood when a transactional batch began; see <see cref="RollBackBatch"/>.</summary>
+        internal sealed class BatchMark
+        {
+            internal long FirstSeq;
+            internal long StartedUnixMs;
+            internal WorkflowTask OpenTask;
+            internal int OpenTaskSnapshotCount;
+            internal List<WorkflowTask> UndoneStack;
+        }
+
+        internal static BatchMark MarkBatchStart() => new BatchMark
+        {
+            FirstSeq = History.nextSeq,
+            StartedUnixMs = NowUnixMs(),
+            OpenTask = _currentTask,
+            OpenTaskSnapshotCount = _currentTask?.snapshots?.Count ?? 0,
+            UndoneStack = new List<WorkflowTask>(History.undoneStack)
+        };
+
+        /// <summary>
+        /// After Unity's Undo rolled a transactional batch back: removes the scene snapshots the batch recorded, from the
+        /// tasks it started and from the task that was already open when it began (an explicit task or session). Left
+        /// behind, they would offer an undo of changes that no longer exist, which fails on the first created object and
+        /// blocks the rest of that undo. Asset and setting snapshots stay: the disk and the settings are not on Unity's undo
+        /// stack, so they are the only way back. When nothing of the batch is left and <paramref name="restoreRedoStack"/>
+        /// holds (no step touched the workflow stacks itself), the redo stack the steps' EndTask cleared comes back.
+        /// Returns how many snapshots were removed.
+        /// </summary>
+        internal static int RollBackBatch(BatchMark mark, bool restoreRedoStack)
+        {
+            if (mark == null || _history == null)
+                return 0;
+
+            int removed = 0;
+            bool kept = false;
+            if (mark.OpenTask?.snapshots != null && mark.OpenTask.snapshots.Count > mark.OpenTaskSnapshotCount)
+            {
+                var added = mark.OpenTask.snapshots.GetRange(mark.OpenTaskSnapshotCount,
+                    mark.OpenTask.snapshots.Count - mark.OpenTaskSnapshotCount);
+                removed += added.RemoveAll(IsRevertedByUnityUndo);
+                kept |= added.Count > 0;
+                mark.OpenTask.snapshots.RemoveRange(mark.OpenTaskSnapshotCount,
+                    mark.OpenTask.snapshots.Count - mark.OpenTaskSnapshotCount);
+                mark.OpenTask.snapshots.AddRange(added);
+                mark.OpenTask.InvalidateSnapshotIndex();
+                if (mark.OpenTask.snapshots.Count == 0)
+                    _history.tasks.Remove(mark.OpenTask);
+            }
+
+            foreach (var task in _history.tasks.ToList())
+            {
+                if (task == mark.OpenTask || task.seq < mark.FirstSeq || task.startedUnixMs < mark.StartedUnixMs)
+                    continue;
+                removed += task.snapshots.RemoveAll(IsRevertedByUnityUndo);
+                task.InvalidateSnapshotIndex();
+                if (task.snapshots.Count == 0)
+                    _history.tasks.Remove(task);
+                else
+                    kept = true;
+            }
+
+            bool restoredRedo = false;
+            if (restoreRedoStack && !kept && _history.undoneStack.Count == 0 && mark.UndoneStack.Count > 0)
+            {
+                _history.undoneStack.AddRange(mark.UndoneStack);
+                restoredRedo = true;
+            }
+            if (removed > 0 || restoredRedo)
+                SaveHistory();
+            return removed;
+        }
+
+        // A scene object's snapshot: Unity's Undo already put the object back. A snapshot with an asset path covers a disk
+        // write, and a setting snapshot a value Undo may not track; both outlive the rollback.
+        private static bool IsRevertedByUnityUndo(ObjectSnapshot snapshot) =>
+            snapshot != null && string.IsNullOrEmpty(snapshot.assetPath) && snapshot.type != SnapshotType.Setting;
+
+        /// <summary>
+        /// Takes the open task (an explicit task or session) off the recorder, untouched, so an async batch chunk can record
+        /// into a task of its own; <see cref="ResumeTask"/> puts it back.
+        /// </summary>
+        internal static WorkflowTask SuspendTask()
+        {
+            var task = _currentTask;
+            _currentTask = null;
+            return task;
+        }
+
+        internal static void ResumeTask(WorkflowTask task)
+        {
+            if (task == null)
+                return;
+            if (_currentTask != null)
+                EndTask();
+            _currentTask = task;
+        }
+
+        internal static string NewSessionId() => Guid.NewGuid().ToString();
+
         /// <summary>
         /// Registers a snapshot on the current task, deduplicating by globalObjectId.
         /// When upgradeExisting is true, replaces any snapshot already registered under the same id.
@@ -307,16 +700,17 @@ namespace UnitySkills
             if (string.IsNullOrEmpty(snap.globalObjectId))
             {
                 _currentTask.snapshots.Add(snap);
+                _currentTask.RegisterEntitySnapshot(snap);
                 return snap;
             }
 
             _currentTask.EnsureSnapshotIndex();
 
-            // An object of a scene that was never saved has no GlobalObjectId: all of them read the same null id
-            // ("GlobalObjectId_V1-0-..."), so deduplicating by it would drop the snapshot of every such object but the
-            // first of the task (a ParticleSystem and its renderer, say). Two snapshots of one object are harmless: undo
-            // restores them newest first, so the oldest state still wins.
-            bool shouldDeduplicate = WorkflowTask.ShouldDeduplicate(snap) && !IsNullGlobalObjectId(snap.globalObjectId);
+            // An object of a scene that was never saved has no usable GlobalObjectId (see IsUnsavedSceneGlobalObjectId), so
+            // deduplicating by it could drop the snapshot of every such object but the first of the task (a ParticleSystem
+            // and its renderer, say). Two snapshots of one object are harmless: undo restores them newest first, so the
+            // oldest state still wins.
+            bool shouldDeduplicate = WorkflowTask.ShouldDeduplicate(snap) && !IsUnsavedSceneGlobalObjectId(snap.globalObjectId);
             if (shouldDeduplicate && _currentTask.HasSnapshot(snap.globalObjectId, snap.type))
             {
                 if (!upgradeExisting)
@@ -331,15 +725,32 @@ namespace UnitySkills
             _currentTask.snapshots.Add(snap);
             if (shouldDeduplicate)
                 _currentTask.TryRegisterSnapshot(snap.globalObjectId, snap.type);
+            _currentTask.RegisterEntitySnapshot(snap);
             return snap;
         }
 
         /// <summary>
-        /// "GlobalObjectId_V1-0-...": identifier type 0, which is what an object of a never-saved scene gets. Matched on the
-        /// text because GlobalObjectId.TryParse does not accept the null id.
+        /// An id with an all-zero asset GUID: what an object of a never-saved scene gets ("GlobalObjectId_V1-0-0000...-0-0"
+        /// on 6000.x, "GlobalObjectId_V1-2-0000...-&lt;localId&gt;-0" on 2022.3). It names no scene, so it is neither
+        /// unique nor resolvable by GlobalObjectId. Matched on the text because GlobalObjectId.TryParse rejects the type-0 form.
         /// </summary>
-        private static bool IsNullGlobalObjectId(string globalObjectId) =>
-            globalObjectId != null && globalObjectId.StartsWith("GlobalObjectId_V1-0-", StringComparison.Ordinal);
+        internal static bool IsUnsavedSceneGlobalObjectId(string globalObjectId)
+        {
+            const string prefix = "GlobalObjectId_V1-";
+            const int guidLength = 32;
+            if (globalObjectId == null || !globalObjectId.StartsWith(prefix, StringComparison.Ordinal))
+                return false;
+
+            int guidStart = globalObjectId.IndexOf('-', prefix.Length) + 1;
+            if (guidStart <= 0 || globalObjectId.Length < guidStart + guidLength)
+                return false;
+            for (int i = guidStart; i < guidStart + guidLength; i++)
+            {
+                if (globalObjectId[i] != '0')
+                    return false;
+            }
+            return globalObjectId.Length == guidStart + guidLength || globalObjectId[guidStart + guidLength] == '-';
+        }
 
         /// <summary>
         /// Captures an object's/component's state before it's modified.
@@ -356,6 +767,12 @@ namespace UnitySkills
                 return;
             }
 
+            // A repeat snapshot of the same object in one task is dropped anyway (the oldest state wins), so it is
+            // detected by entity id before paying for the GlobalObjectId, JSON, file hash and reference walk below.
+            string entityId = UnityObjectIdUtility.GetEntityId(obj);
+            if (WorkflowTask.ShouldDeduplicate(type) && _currentTask.HasEntitySnapshot(entityId, type))
+                return;
+
             // Cap the number of snapshots per task, to avoid unbounded memory growth
             const int MaxSnapshotsPerTask = 500;
             if (_currentTask.snapshots.Count >= MaxSnapshotsPerTask)
@@ -364,7 +781,7 @@ namespace UnitySkills
                 return;
             }
 
-            string gid = GlobalObjectId.GetGlobalObjectIdSlow(obj).ToString();
+            string gid = GetGlobalObjectIdString(obj);
 
             string json = "";
             string assetPath = "";
@@ -393,6 +810,7 @@ namespace UnitySkills
             {
                 globalObjectId = gid,
                 objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(obj),
+                entityId = entityId,
                 originalJson = json,
                 objectReferencesCaptured = objectReferencesCaptured,
                 objectReferences = objectReferences,
@@ -413,20 +831,26 @@ namespace UnitySkills
         {
             if (_currentTask == null || comp == null) return;
 
-            string gid = GlobalObjectId.GetGlobalObjectIdSlow(comp).ToString();
-            string parentGid = GlobalObjectId.GetGlobalObjectIdSlow(comp.gameObject).ToString();
+            string entityId = UnityObjectIdUtility.GetEntityId(comp);
+            if (_currentTask.HasEntitySnapshot(entityId, SnapshotType.Created))
+                return;
+
+            string gid = GetGlobalObjectIdString(comp);
+            string parentGid = GetGlobalObjectIdString(comp.gameObject);
 
             AddSnapshot(new ObjectSnapshot
             {
                 globalObjectId = gid,
                 objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
+                entityId = entityId,
                 originalJson = "",  // A newly-created object needs no original state
                 objectName = comp.name,
                 typeName = comp.GetType().Name,
                 type = SnapshotType.Created,
                 componentTypeName = comp.GetType().FullName,
                 parentGameObjectId = parentGid,
-                parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp.gameObject)
+                parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp.gameObject),
+                parentGameObjectEntityId = UnityObjectIdUtility.GetEntityId(comp.gameObject)
             });
         }
 
@@ -438,14 +862,19 @@ namespace UnitySkills
         {
             if (_currentTask == null || asset == null) return;
 
+            string entityId = UnityObjectIdUtility.GetEntityId(asset);
+            if (_currentTask.HasEntitySnapshot(entityId, SnapshotType.Created))
+                return;
+
             string assetPath = AssetDatabase.GetAssetPath(asset);
             if (string.IsNullOrEmpty(assetPath)) return;
 
-            string gid = GlobalObjectId.GetGlobalObjectIdSlow(asset).ToString();
+            string gid = GetGlobalObjectIdString(asset);
 
             AddSnapshot(new ObjectSnapshot
             {
                 globalObjectId = gid,
+                entityId = entityId,
                 objectName = asset.name,
                 typeName = asset.GetType().Name,
                 type = SnapshotType.Created,
@@ -487,13 +916,19 @@ namespace UnitySkills
         {
             if (_currentTask == null || go == null) return;
 
-            string gid = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString();
+            // The hierarchy capture below is the costliest of all; a repeat registration is caught before it.
+            string entityId = UnityObjectIdUtility.GetEntityId(go);
+            if (_currentTask.HasEntitySnapshot(entityId, SnapshotType.Created))
+                return;
+
+            string gid = GetGlobalObjectIdString(go);
 
             var t = go.transform;
             var snapshot = new ObjectSnapshot
             {
                 globalObjectId = gid,
                 objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
+                entityId = entityId,
                 originalJson = EditorJsonUtility.ToJson(go),
                 objectName = go.name,
                 typeName = "GameObject",
@@ -516,8 +951,9 @@ namespace UnitySkills
                     {
                         typeName = comp.GetType().AssemblyQualifiedName,
                         json = EditorJsonUtility.ToJson(comp),
-                        globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(comp).ToString(),
+                        globalObjectId = GetGlobalObjectIdString(comp),
                         objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
+                        entityId = UnityObjectIdUtility.GetEntityId(comp),
                         objectReferencesCaptured = objectReferencesCaptured,
                         objectReferences = objectReferences
                     });
@@ -543,7 +979,7 @@ namespace UnitySkills
             }
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(sourcePath);
-            string gid = asset != null ? GlobalObjectId.GetGlobalObjectIdSlow(asset).ToString() : "";
+            string gid = asset != null ? GetGlobalObjectIdString(asset) : "";
             string objectName = asset != null ? asset.name : Path.GetFileNameWithoutExtension(sourcePath);
             string typeName = asset != null ? asset.GetType().Name : "DefaultAsset";
 
@@ -574,7 +1010,7 @@ namespace UnitySkills
             }
 
             var folderAsset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(folderPath);
-            string gid = folderAsset != null ? GlobalObjectId.GetGlobalObjectIdSlow(folderAsset).ToString() : "";
+            string gid = folderAsset != null ? GetGlobalObjectIdString(folderAsset) : "";
 
             var snap = new ObjectSnapshot
             {
@@ -608,7 +1044,7 @@ namespace UnitySkills
                 return false;
 
             var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
-            string gid = asset != null ? GlobalObjectId.GetGlobalObjectIdSlow(asset).ToString() : "";
+            string gid = asset != null ? GetGlobalObjectIdString(asset) : "";
             string objectName = asset != null ? asset.name : Path.GetFileNameWithoutExtension(assetPath);
             string typeName = asset != null ? asset.GetType().Name : "DefaultAsset";
             bool isFolder = Directory.Exists(fullPath);
@@ -679,8 +1115,9 @@ namespace UnitySkills
             {
                 var snapshot = new ObjectSnapshot
                 {
-                    globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString(),
+                    globalObjectId = GetGlobalObjectIdString(go),
                     objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
+                    entityId = UnityObjectIdUtility.GetEntityId(go),
                     objectName = go.name,
                     typeName = "GameObject",
                     type = SnapshotType.Deleted,
@@ -700,8 +1137,9 @@ namespace UnitySkills
                 var objectReferences = CaptureObjectReferences(component, out bool objectReferencesCaptured);
                 var snapshot = new ObjectSnapshot
                 {
-                    globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(component).ToString(),
+                    globalObjectId = GetGlobalObjectIdString(component),
                     objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(component),
+                    entityId = UnityObjectIdUtility.GetEntityId(component),
                     originalJson = EditorJsonUtility.ToJson(component),
                     objectReferencesCaptured = objectReferencesCaptured,
                     objectReferences = objectReferences,
@@ -709,8 +1147,9 @@ namespace UnitySkills
                     typeName = component.GetType().Name,
                     type = SnapshotType.Deleted,
                     componentTypeName = component.GetType().AssemblyQualifiedName,
-                    parentGameObjectId = GlobalObjectId.GetGlobalObjectIdSlow(component.gameObject).ToString(),
-                    parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(component.gameObject)
+                    parentGameObjectId = GetGlobalObjectIdString(component.gameObject),
+                    parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(component.gameObject),
+                    parentGameObjectEntityId = UnityObjectIdUtility.GetEntityId(component.gameObject)
                 };
                 Undo.DestroyObjectImmediate(component);
                 if (component != null)
@@ -802,7 +1241,7 @@ namespace UnitySkills
         /// </summary>
         public static TaskUndoResult UndoTask(string taskId)
         {
-            var task = History.tasks.FirstOrDefault(t => t.id == taskId);
+            var task = History.tasks.FirstOrDefault(t => MatchesTaskId(t, taskId));
             if (task == null)
             {
                 return new TaskUndoResult { error = "Task not found" };
@@ -816,13 +1255,24 @@ namespace UnitySkills
         /// </summary>
         public static TaskUndoResult RedoTask(string taskId)
         {
-            var task = History.undoneStack.FirstOrDefault(t => t.id == taskId);
+            var task = History.undoneStack.FirstOrDefault(t => MatchesTaskId(t, taskId));
             if (task == null)
             {
                 return new TaskUndoResult { error = "Task not found in undone stack" };
             }
 
             return TransitionTask(task, _history.undoneStack, _history.tasks, $"Redo Task: {task.tag}");
+        }
+
+        /// <summary>A task is addressed by its UUID or by the short s&lt;seq&gt; id the compact list shows.</summary>
+        internal static bool MatchesTaskId(WorkflowTask task, string taskId)
+        {
+            if (task == null || string.IsNullOrEmpty(taskId))
+                return false;
+            if (task.id == taskId)
+                return true;
+            return taskId.Length > 1 && (taskId[0] == 's' || taskId[0] == 'S') && task.seq > 0 &&
+                   long.TryParse(taskId.Substring(1), out long seq) && seq == task.seq;
         }
 
         private static TaskUndoResult TransitionTask(WorkflowTask sourceTask, List<WorkflowTask> sourceStack,
@@ -840,19 +1290,40 @@ namespace UnitySkills
             Undo.SetCurrentGroupName(undoGroupName);
             int undoGroup = Undo.GetCurrentGroup();
 
-            for (int i = sourceTask.snapshots.Count - 1; i >= 0; i--)
+            // An inverse lands on a task that may come from an earlier editor session (the other half of a partially undone
+            // task), so a snapshot carries its own idSession whenever it differs from its task's.
+            string currentIdSession = CurrentIdSession();
+            bool stampInverses = destinationTask.idSession != currentIdSession;
+            try
             {
-                var detail = UndoSnapshot(sourceTask.snapshots[i], destinationTask);
-                result.details.Add(detail);
-                if (!detail.success)
+                for (int i = sourceTask.snapshots.Count - 1; i >= 0; i--)
                 {
-                    result.failed++;
-                    break;
-                }
+                    var snapshot = sourceTask.snapshots[i];
+                    // A snapshot from before idSession existed keeps the old fallback behavior.
+                    string capturedIn = string.IsNullOrEmpty(snapshot.idSession) ? sourceTask.idSession : snapshot.idSession;
+                    _sessionIdFallbackAllowed = string.IsNullOrEmpty(capturedIn) || capturedIn == currentIdSession;
+                    int inversesBefore = destinationTask.snapshots.Count;
+                    var detail = UndoSnapshot(snapshot, destinationTask);
+                    if (stampInverses)
+                    {
+                        for (int j = inversesBefore; j < destinationTask.snapshots.Count; j++)
+                            destinationTask.snapshots[j].idSession = currentIdSession;
+                    }
+                    result.details.Add(detail);
+                    if (!detail.success)
+                    {
+                        result.failed++;
+                        break;
+                    }
 
-                result.succeeded++;
-                sourceTask.snapshots.RemoveAt(i);
-                sourceTask.InvalidateSnapshotIndex();
+                    result.succeeded++;
+                    sourceTask.snapshots.RemoveAt(i);
+                    sourceTask.InvalidateSnapshotIndex();
+                }
+            }
+            finally
+            {
+                _sessionIdFallbackAllowed = true;
             }
 
             result.total = result.details.Count;
@@ -877,6 +1348,12 @@ namespace UnitySkills
                 description = task.description,
                 timestamp = task.timestamp,
                 sessionId = task.sessionId,
+                seq = task.seq,
+                agent = task.agent,
+                group = task.group,
+                target = task.target,
+                // The clone receives inverse snapshots captured right now.
+                idSession = CurrentIdSession(),
                 snapshots = new List<ObjectSnapshot>()
             };
         }
@@ -912,7 +1389,7 @@ namespace UnitySkills
         public static void DeleteTask(string taskId)
         {
             if (_history == null) LoadHistory();
-            var task = _history.tasks.FirstOrDefault(t => t.id == taskId);
+            var task = _history.tasks.FirstOrDefault(t => MatchesTaskId(t, taskId));
             if (task != null)
             {
                 _history.tasks.Remove(task);
@@ -922,7 +1399,7 @@ namespace UnitySkills
                 // A task that's already been undone lives in undoneStack, not in tasks. Leaving it there
                 // after a "delete" would make workflow_redo_task's default behavior (take the last item in
                 // undoneStack) resurrect an object the caller believes is already gone.
-                var undoneTask = _history.undoneStack.FirstOrDefault(t => t.id == taskId);
+                var undoneTask = _history.undoneStack.FirstOrDefault(t => MatchesTaskId(t, taskId));
                 if (undoneTask != null)
                     _history.undoneStack.Remove(undoneTask);
             }
@@ -954,7 +1431,7 @@ namespace UnitySkills
             BeginTask(sessionTag ?? "Session", $"Session started at {DateTime.Now:HH:mm:ss}");
             _currentTask.sessionId = _currentSessionId;
 
-            Debug.Log($"{SkillsLogger.PREFIX_WORKFLOW} Session started: <b>{_currentSessionId}</b>");
+            SkillsLogger.LogWorkflow($"Session started: {_currentSessionId}");
             return _currentSessionId;
         }
 
@@ -971,7 +1448,7 @@ namespace UnitySkills
                 EndTask();
             }
 
-            Debug.Log($"{SkillsLogger.PREFIX_WORKFLOW} Session ended: <b>{_currentSessionId}</b>");
+            SkillsLogger.LogWorkflow($"Session ended: {_currentSessionId}");
             _currentSessionId = null;
         }
 
@@ -989,7 +1466,7 @@ namespace UnitySkills
 
             var sessionTasks = History.tasks
                 .Where(t => t.sessionId == sessionId)
-                .OrderByDescending(t => t.timestamp)
+                .OrderByDescending(t => t.seq)
                 .ToList();
 
             if (sessionTasks.Count == 0)
@@ -1164,19 +1641,20 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(snapshot.componentTypeName) &&
                 !string.IsNullOrEmpty(snapshot.parentGameObjectId))
             {
-                if (TryResolveObject(snapshot.parentGameObjectId, snapshot.parentGameObjectInstanceId) is GameObject go)
+                if (TryResolveObject(snapshot.parentGameObjectId, snapshot.parentGameObjectEntityId, snapshot.parentGameObjectInstanceId) is GameObject go)
                 {
                     var compType = Type.GetType(snapshot.componentTypeName) ??
                                    ComponentSkills.FindComponentType(snapshot.componentTypeName);
                     if (compType != null)
                     {
-                        var comp = TryResolveObject(snapshot.globalObjectId, snapshot.objectInstanceId) as Component;
+                        var comp = TryResolveObject(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId) as Component;
                         if (comp != null && (comp.gameObject != go || !compType.IsInstanceOfType(comp)))
                             comp = null;
 
                         // A legacy snapshot with no object identity can only fall back to a type-based lookup.
                         // For a snapshot that does have an identity, failing is safer than deleting a different component of the same type.
-                        if (comp == null && string.IsNullOrEmpty(snapshot.globalObjectId) && snapshot.objectInstanceId == 0)
+                        if (comp == null && string.IsNullOrEmpty(snapshot.globalObjectId) && snapshot.objectInstanceId == 0 &&
+                            string.IsNullOrEmpty(snapshot.entityId))
                             comp = go.GetComponent(compType);
                         if (comp != null)
                         {
@@ -1185,6 +1663,7 @@ namespace UnitySkills
                             {
                                 globalObjectId = snapshot.globalObjectId,
                                 objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
+                                entityId = UnityObjectIdUtility.GetEntityId(comp),
                                 originalJson = EditorJsonUtility.ToJson(comp),
                                 objectReferencesCaptured = objectReferencesCaptured,
                                 objectReferences = objectReferences,
@@ -1193,7 +1672,8 @@ namespace UnitySkills
                                 type = SnapshotType.Deleted,
                                 componentTypeName = snapshot.componentTypeName,
                                 parentGameObjectId = snapshot.parentGameObjectId,
-                                parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go)
+                                parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
+                                parentGameObjectEntityId = UnityObjectIdUtility.GetEntityId(go)
                             });
                             Undo.DestroyObjectImmediate(comp);
                             NotifyComponentTopologyChanged(go, compType);
@@ -1207,7 +1687,7 @@ namespace UnitySkills
             // Undo "create GameObject"
             if (snapshot.typeName == "GameObject")
             {
-                var obj = TryResolveObject(snapshot.globalObjectId, snapshot.objectInstanceId);
+                var obj = TryResolveObject(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId);
                 if (!(obj is GameObject go))
                     return false;
 
@@ -1251,10 +1731,7 @@ namespace UnitySkills
             }
 
             // Undo "create generic object"
-            if (!GlobalObjectId.TryParse(snapshot.globalObjectId, out GlobalObjectId genericGid))
-                return false;
-
-            var genericObj = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(genericGid);
+            var genericObj = TryResolveObject(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId);
             if (genericObj == null) return false;
 
             if (genericObj is GameObject go2) Undo.DestroyObjectImmediate(go2);
@@ -1269,7 +1746,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(snapshot.componentTypeName) &&
                 !string.IsNullOrEmpty(snapshot.parentGameObjectId))
             {
-                if (TryResolveObject(snapshot.parentGameObjectId, snapshot.parentGameObjectInstanceId) is GameObject go)
+                if (TryResolveObject(snapshot.parentGameObjectId, snapshot.parentGameObjectEntityId, snapshot.parentGameObjectInstanceId) is GameObject go)
                 {
                     var compType = Type.GetType(snapshot.componentTypeName) ??
                                    ComponentSkills.FindComponentType(snapshot.componentTypeName);
@@ -1285,15 +1762,17 @@ namespace UnitySkills
 
                         newTask.snapshots.Add(new ObjectSnapshot
                         {
-                            globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(comp).ToString(),
+                            globalObjectId = GetGlobalObjectIdString(comp),
                             objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
+                            entityId = UnityObjectIdUtility.GetEntityId(comp),
                             originalJson = "",
                             objectName = snapshot.objectName,
                             typeName = snapshot.typeName,
                             type = SnapshotType.Created,
                             componentTypeName = snapshot.componentTypeName,
                             parentGameObjectId = snapshot.parentGameObjectId,
-                            parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go)
+                            parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
+                            parentGameObjectEntityId = UnityObjectIdUtility.GetEntityId(go)
                         });
                         NotifyComponentTopologyChanged(go, compType);
                         return true;
@@ -1310,7 +1789,7 @@ namespace UnitySkills
                 if (newGo == null) return false;
                 newTask.snapshots.Add(CaptureGameObjectState(newGo, new ObjectSnapshot
                 {
-                    globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(newGo).ToString(),
+                    globalObjectId = GetGlobalObjectIdString(newGo),
                     originalJson = EditorJsonUtility.ToJson(newGo),
                     objectName = newGo.name,
                     typeName = "GameObject",
@@ -1388,7 +1867,7 @@ namespace UnitySkills
             if (!string.IsNullOrEmpty(snapshot.componentTypeName) &&
                 !string.IsNullOrEmpty(snapshot.parentGameObjectId))
             {
-                var parent = TryResolveObject(snapshot.parentGameObjectId,
+                var parent = TryResolveObject(snapshot.parentGameObjectId, snapshot.parentGameObjectEntityId,
                     snapshot.parentGameObjectInstanceId) as GameObject;
                 var componentType = Type.GetType(snapshot.componentTypeName) ?? ComponentSkills.FindComponentType(snapshot.componentTypeName);
                 if (parent == null || componentType == null) return false;
@@ -1408,14 +1887,16 @@ namespace UnitySkills
                 }
                 redoTask.snapshots.Add(new ObjectSnapshot
                 {
-                    globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(restored).ToString(),
+                    globalObjectId = GetGlobalObjectIdString(restored),
                     objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(restored),
+                    entityId = UnityObjectIdUtility.GetEntityId(restored),
                     objectName = restored.name,
                     typeName = restored.GetType().Name,
                     type = SnapshotType.Created,
                     componentTypeName = restored.GetType().AssemblyQualifiedName,
                     parentGameObjectId = snapshot.parentGameObjectId,
-                    parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(parent)
+                    parentGameObjectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(parent),
+                    parentGameObjectEntityId = UnityObjectIdUtility.GetEntityId(parent)
                 });
                 NotifyComponentTopologyChanged(parent, componentType);
                 return true;
@@ -1619,6 +2100,7 @@ namespace UnitySkills
             {
                 globalObjectId = baseSnapshot.globalObjectId,
                 objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
                 originalJson = baseSnapshot.originalJson,
                 objectReferencesCaptured = baseSnapshot.objectReferencesCaptured,
                 objectReferences = baseSnapshot.objectReferences ?? new List<ObjectReferenceData>(),
@@ -1649,8 +2131,9 @@ namespace UnitySkills
                     {
                         typeName = comp.GetType().AssemblyQualifiedName,
                         json = EditorJsonUtility.ToJson(comp),
-                        globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(comp).ToString(),
+                        globalObjectId = GetGlobalObjectIdString(comp),
                         objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(comp),
+                        entityId = UnityObjectIdUtility.GetEntityId(comp),
                         objectReferencesCaptured = objectReferencesCaptured,
                         objectReferences = objectReferences
                     });
@@ -1674,10 +2157,12 @@ namespace UnitySkills
             var transform = go.transform;
             var data = new GameObjectSnapshotData
             {
-                globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString(),
+                globalObjectId = GetGlobalObjectIdString(go),
                 objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
-                transformGlobalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(transform).ToString(),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
+                transformGlobalObjectId = GetGlobalObjectIdString(transform),
                 transformInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(transform),
+                transformEntityId = UnityObjectIdUtility.GetEntityId(transform),
                 name = go.name,
                 parentIndex = parentIndex,
                 activeSelf = go.activeSelf,
@@ -1685,11 +2170,14 @@ namespace UnitySkills
                 tag = go.tag,
                 siblingIndex = transform.GetSiblingIndex(),
                 externalParentGlobalObjectId = parentIndex < 0 && transform.parent != null
-                    ? GlobalObjectId.GetGlobalObjectIdSlow(transform.parent.gameObject).ToString()
+                    ? GetGlobalObjectIdString(transform.parent.gameObject)
                     : null,
                 externalParentInstanceId = parentIndex < 0 && transform.parent != null
                     ? UnityObjectIdUtility.GetLegacyInstanceId(transform.parent.gameObject)
                     : 0,
+                externalParentEntityId = parentIndex < 0 && transform.parent != null
+                    ? UnityObjectIdUtility.GetEntityId(transform.parent.gameObject)
+                    : null,
                 posX = transform.localPosition.x,
                 posY = transform.localPosition.y,
                 posZ = transform.localPosition.z,
@@ -1714,8 +2202,9 @@ namespace UnitySkills
                     {
                         typeName = component.GetType().AssemblyQualifiedName,
                         json = EditorJsonUtility.ToJson(component),
-                        globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(component).ToString(),
+                        globalObjectId = GetGlobalObjectIdString(component),
                         objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(component),
+                        entityId = UnityObjectIdUtility.GetEntityId(component),
                         objectReferencesCaptured = objectReferencesCaptured,
                         objectReferences = objectReferences
                     });
@@ -1739,7 +2228,7 @@ namespace UnitySkills
                 var data = nodes[i];
                 Transform parent = data.parentIndex >= 0 && data.parentIndex < restored.Count
                     ? restored[data.parentIndex].transform
-                    : (TryResolveObject(data.externalParentGlobalObjectId, data.externalParentInstanceId) as GameObject)?.transform;
+                    : (TryResolveObject(data.externalParentGlobalObjectId, data.externalParentEntityId, data.externalParentInstanceId) as GameObject)?.transform;
 
                 var go = new GameObject(data.name);
                 if (i == 0) Undo.RegisterCreatedObjectUndo(go, "Restore Workflow GameObject");
@@ -1752,8 +2241,8 @@ namespace UnitySkills
                 go.SetActive(data.activeSelf);
                 go.transform.SetSiblingIndex(Mathf.Max(0, data.siblingIndex));
                 restored.Add(go);
-                restoredObjects.Add(data.globalObjectId, data.objectInstanceId, go);
-                restoredObjects.Add(data.transformGlobalObjectId, data.transformInstanceId, go.transform);
+                restoredObjects.Add(data.globalObjectId, data.entityId, data.objectInstanceId, go);
+                restoredObjects.Add(data.transformGlobalObjectId, data.transformEntityId, data.transformInstanceId, go.transform);
 
                 foreach (var componentData in data.components ?? new List<ComponentData>())
                 {
@@ -1765,7 +2254,7 @@ namespace UnitySkills
                     if (component == null) continue;
                     NotifyComponentTopologyChanged(go, componentType);
                     restoredComponents[componentData] = component;
-                    restoredObjects.Add(componentData.globalObjectId,
+                    restoredObjects.Add(componentData.globalObjectId, componentData.entityId,
                         componentData.objectInstanceId, component);
                 }
             }
@@ -1803,8 +2292,9 @@ namespace UnitySkills
         {
             inverseTask.snapshots.Add(new ObjectSnapshot
             {
-                globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(go).ToString(),
+                globalObjectId = GetGlobalObjectIdString(go),
                 objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(go),
+                entityId = UnityObjectIdUtility.GetEntityId(go),
                 originalJson = EditorJsonUtility.ToJson(go),
                 objectName = go.name,
                 typeName = "GameObject",
@@ -1850,16 +2340,51 @@ namespace UnitySkills
             }
         }
 
-        private static UnityEngine.Object TryResolveObject(string globalObjectId, int instanceId)
+        private static UnityEngine.Object TryResolveObject(string globalObjectId, string entityId, int instanceId)
         {
-            if (!string.IsNullOrEmpty(globalObjectId) &&
+            if (!string.IsNullOrEmpty(globalObjectId) && !IsUnsavedSceneGlobalObjectId(globalObjectId) &&
                 GlobalObjectId.TryParse(globalObjectId, out GlobalObjectId gid))
             {
                 var persisted = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid);
                 if (persisted != null) return persisted;
             }
 
+            if (!_sessionIdFallbackAllowed)
+                return null;
+
+            // An object of a never-saved scene has no usable GlobalObjectId; the entity id is the fallback that also works
+            // on 6000.4+, where the legacy instance id is always 0.
+            var byEntity = string.IsNullOrEmpty(entityId) ? null : UnityObjectIdUtility.EntityIdToObject(entityId);
+            if (byEntity != null) return byEntity;
             return instanceId != 0 ? UnityObjectIdUtility.ObjectIdToObject(instanceId) : null;
+        }
+
+        /// <summary>
+        /// GlobalObjectId as a string. A persistent asset's id is cached for the session (it is fixed by GUID and file id), so
+        /// the material slots every snapshot's reference walk visits cost one lookup each instead of one per snapshot. Scene
+        /// objects are always computed: a scene's first save changes the ids of everything in it.
+        /// </summary>
+        private static string GetGlobalObjectIdString(UnityEngine.Object obj)
+        {
+            string cacheKey = EditorUtility.IsPersistent(obj) ? UnityObjectIdUtility.GetEntityId(obj) : null;
+            if (cacheKey != null && _persistentGidCache.TryGetValue(cacheKey, out string cached))
+                return cached;
+
+            GlobalObjectIdComputationsForTests++;
+            string gid = GlobalObjectId.GetGlobalObjectIdSlow(obj).ToString();
+            if (cacheKey != null)
+            {
+                if (_persistentGidCache.Count >= MaxPersistentGidCacheEntries)
+                    _persistentGidCache.Clear();
+                _persistentGidCache[cacheKey] = gid;
+            }
+            return gid;
+        }
+
+        /// <summary>Drops every cached asset GlobalObjectId; called when assets are deleted or moved.</summary>
+        internal static void InvalidateGlobalObjectIdCache()
+        {
+            _persistentGidCache.Clear();
         }
 
         // Budget cap for CaptureObjectReferences' traversal. For assets whose serialized data is a
@@ -1929,9 +2454,10 @@ namespace UnitySkills
                     {
                         propertyPath = iterator.propertyPath,
                         globalObjectId = referencedObject != null
-                            ? GlobalObjectId.GetGlobalObjectIdSlow(referencedObject).ToString()
+                            ? GetGlobalObjectIdString(referencedObject)
                             : string.Empty,
-                        objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(referencedObject)
+                        objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(referencedObject),
+                        entityId = UnityObjectIdUtility.GetEntityId(referencedObject)
                     });
                 }
 
@@ -1986,8 +2512,8 @@ namespace UnitySkills
                     continue;
                 var property = serializedObject.FindProperty(reference.propertyPath);
                 if (property == null || property.propertyType != SerializedPropertyType.ObjectReference) continue;
-                property.objectReferenceValue = restoredObjects?.Resolve(reference.globalObjectId,
-                    reference.objectInstanceId) ?? TryResolveObject(reference.globalObjectId,
+                property.objectReferenceValue = restoredObjects?.Resolve(reference.globalObjectId, reference.entityId,
+                    reference.objectInstanceId) ?? TryResolveObject(reference.globalObjectId, reference.entityId,
                         reference.objectInstanceId);
                 changed = true;
             }
@@ -2002,19 +2528,26 @@ namespace UnitySkills
                 new Dictionary<string, UnityEngine.Object>(StringComparer.Ordinal);
             private readonly Dictionary<int, UnityEngine.Object> _byInstanceId =
                 new Dictionary<int, UnityEngine.Object>();
+            private readonly Dictionary<string, UnityEngine.Object> _byEntityId =
+                new Dictionary<string, UnityEngine.Object>(StringComparer.Ordinal);
 
-            public void Add(string globalObjectId, int instanceId, UnityEngine.Object obj)
+            public void Add(string globalObjectId, string entityId, int instanceId, UnityEngine.Object obj)
             {
                 if (obj == null) return;
-                if (!string.IsNullOrEmpty(globalObjectId)) _byGlobalId[globalObjectId] = obj;
+                // The GlobalObjectId of a never-saved scene's object identifies none of them.
+                if (!string.IsNullOrEmpty(globalObjectId) && !IsUnsavedSceneGlobalObjectId(globalObjectId)) _byGlobalId[globalObjectId] = obj;
+                if (!string.IsNullOrEmpty(entityId)) _byEntityId[entityId] = obj;
                 if (instanceId != 0) _byInstanceId[instanceId] = obj;
             }
 
-            public UnityEngine.Object Resolve(string globalObjectId, int instanceId)
+            public UnityEngine.Object Resolve(string globalObjectId, string entityId, int instanceId)
             {
                 if (instanceId != 0 && _byInstanceId.TryGetValue(instanceId, out var byInstance) &&
                     byInstance != null)
                     return byInstance;
+                if (!string.IsNullOrEmpty(entityId) && _byEntityId.TryGetValue(entityId, out var byEntity) &&
+                    byEntity != null)
+                    return byEntity;
                 if (!string.IsNullOrEmpty(globalObjectId) &&
                     _byGlobalId.TryGetValue(globalObjectId, out var byGlobal) && byGlobal != null)
                     return byGlobal;
@@ -2030,7 +2563,7 @@ namespace UnitySkills
             bool removeFromStore, string undoLabel)
         {
             UnityEngine.Object obj = null;
-            obj = TryResolveObject(snapshot.globalObjectId, snapshot.objectInstanceId);
+            obj = TryResolveObject(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId);
 
             // A legacy deletion snapshot got recorded as Modified. At this point the object no longer
             // resolves, but the bytes stored are enough to restore it and produce the correct inverse operation.
@@ -2088,6 +2621,7 @@ namespace UnitySkills
             {
                 globalObjectId = snapshot.globalObjectId,
                 objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(obj),
+                entityId = UnityObjectIdUtility.GetEntityId(obj),
                 originalJson = EditorJsonUtility.ToJson(obj),
                 objectReferencesCaptured = objectReferencesCaptured,
                 objectReferences = objectReferences,
@@ -2255,6 +2789,7 @@ namespace UnitySkills
         {
             var report = new WorkflowTrimReport();
             if (_history == null) LoadHistory();
+            TrimRunsForTests++;
             if (!force && !WorkflowAutoCleanConfig.Enabled)
                 return report;
 
@@ -2463,7 +2998,12 @@ namespace UnitySkills
 
         public static void ClearHistory()
         {
-            _history = new WorkflowHistoryData();
+            // Ids keep counting: an s<seq> an agent still holds must never name a task recorded after the clear.
+            _history = new WorkflowHistoryData { nextSeq = History.nextSeq };
+            _trimGeneration++;
+            _trimScheduled = false;
+            _sizeGateChars = 0;
+            _pendingAgentTasks.Clear();
             // The blob for the task still being recorded is preserved: it was never part of the history the
             // user asked to clear in the first place.
             // Everything else gets cleaned out — this skill promises to clear the file store, so the
@@ -2495,6 +3035,30 @@ namespace UnitySkills
             _currentTask = null;
             _currentSessionId = null;
             _historyRecoveryMode = false;
+            _trimGeneration++;
+            _trimScheduled = false;
+            _lastTrimUtc = DateTime.MinValue;
+            _lastSavedHistoryChars = 0;
+            _sizeGateChars = 0;
+            _agentActivityDetached = true;
+            _agentActivity = new Dictionary<string, AgentActivity>(StringComparer.Ordinal);
+            _pendingAgentTasks.Clear();
+            _persistentGidCache.Clear();
+            NowUnixMsForTests = null;
+            AgentLookupForTests = null;
+        }
+    }
+
+    /// <summary>Keeps <see cref="WorkflowManager"/>'s asset GlobalObjectId cache from outliving a deleted or moved asset.</summary>
+    internal sealed class WorkflowAssetPostprocessor : AssetPostprocessor
+    {
+        private static void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets,
+            string[] movedAssets, string[] movedFromAssetPaths)
+        {
+            if (ImportWorkerGate.IsWorkerProcess) return;
+
+            if ((deletedAssets?.Length ?? 0) > 0 || (movedAssets?.Length ?? 0) > 0)
+                WorkflowManager.InvalidateGlobalObjectIdCache();
         }
     }
 }

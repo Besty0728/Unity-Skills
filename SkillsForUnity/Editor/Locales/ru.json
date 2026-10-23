@@ -226,7 +226,7 @@
   "history_undone_format": "Отменённые ({0})",
   "history_no_active": "Нет активных задач.",
   "history_no_undone": "Нет отменённых задач.",
-  "history_clear_all": "Очистить все отменённые",
+  "history_clear_all": "Очистить историю",
   "history_changes_suffix": "изменений",
   "autoclean_title": "Авто-очистка",
   "autoclean_enabled": "Включено",

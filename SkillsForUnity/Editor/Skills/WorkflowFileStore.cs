@@ -31,6 +31,15 @@ namespace UnitySkills
         /// <summary>Extension used for blobs whose content no longer matches their own hash.</summary>
         private const string CorruptSuffix = ".corrupt";
 
+        // Content hash of a source asset by (path, length, last write time), so snapshotting the same unchanged texture again
+        // costs one stat instead of a full read. A file written within the last RacyWindow is never cached: a second write
+        // inside the timestamp's resolution could keep both length and time.
+        private static readonly TimeSpan RacyWindow = TimeSpan.FromSeconds(2);
+        private const int MaxFileHashCacheEntries = 1024;
+        private static readonly Dictionary<string, (long length, DateTime lastWriteUtc, string hash)> _fileHashCache =
+            new Dictionary<string, (long, DateTime, string)>(StringComparer.Ordinal);
+        internal static int FileHashComputationsForTests;
+
         /// <summary>
         /// Stores an asset file in the content-addressed store, optionally deleting the source file.
         /// The companion .meta file is addressed independently by its own content.
@@ -55,7 +64,7 @@ namespace UnitySkills
             if (!File.Exists(fullPath))
                 return null;
 
-            string hash = ComputeFileHash(fullPath);
+            string hash = ComputeSourceFileHash(fullPath);
             if (string.IsNullOrEmpty(hash))
                 return null;
 
@@ -68,7 +77,7 @@ namespace UnitySkills
 
                 if (File.Exists(metaSourcePath))
                 {
-                    metaHash = ComputeFileHash(metaSourcePath);
+                    metaHash = ComputeSourceFileHash(metaSourcePath);
                     if (string.IsNullOrEmpty(metaHash) || !StoreBlob(metaSourcePath, metaHash))
                         return null;
                 }
@@ -76,6 +85,7 @@ namespace UnitySkills
                 // Only delete the source file after all required blobs have been persisted.
                 if (move)
                 {
+                    ForgetSourceFileHash(fullPath);
                     SafeDelete(fullPath);
                     if (File.Exists(metaSourcePath))
                         SafeDelete(metaSourcePath);
@@ -124,6 +134,7 @@ namespace UnitySkills
             try
             {
                 EnsureDirectoryExists(fullPath);
+                ForgetSourceFileHash(fullPath);
 
                 if (File.Exists(fullPath))
                     SafeDelete(fullPath);
@@ -322,10 +333,46 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// <see cref="ComputeFileHash"/> for a source asset about to be stored, through the (path, length, last write time)
+        /// cache. Blob integrity checks never use it: they must read the bytes.
+        /// </summary>
+        private static string ComputeSourceFileHash(string fullPath)
+        {
+            FileInfo info;
+            try
+            {
+                info = new FileInfo(fullPath);
+                if (_fileHashCache.TryGetValue(fullPath, out var cached) &&
+                    cached.length == info.Length && cached.lastWriteUtc == info.LastWriteTimeUtc)
+                    return cached.hash;
+            }
+            catch (Exception)
+            {
+                return ComputeFileHash(fullPath);
+            }
+
+            string hash = ComputeFileHash(fullPath);
+            if (hash != null && DateTime.UtcNow - info.LastWriteTimeUtc > RacyWindow)
+            {
+                if (_fileHashCache.Count >= MaxFileHashCacheEntries)
+                    _fileHashCache.Clear();
+                _fileHashCache[fullPath] = (info.Length, info.LastWriteTimeUtc, hash);
+            }
+            return hash;
+        }
+
+        private static void ForgetSourceFileHash(string fullPath)
+        {
+            _fileHashCache.Remove(fullPath);
+            _fileHashCache.Remove(fullPath + ".meta");
+        }
+
+        /// <summary>
         /// Computes the SHA1 hash of a file's content.
         /// </summary>
         public static string ComputeFileHash(string fullPath)
         {
+            FileHashComputationsForTests++;
             try
             {
                 using (var sha1 = SHA1.Create())

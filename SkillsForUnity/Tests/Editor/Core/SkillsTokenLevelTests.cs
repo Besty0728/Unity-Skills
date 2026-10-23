@@ -45,18 +45,17 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void FreshInstall_MigratesToTruncationOnAndDefaultPage()
+        public void FreshInstall_MigratesToTruncationOnAndFullPage()
         {
             ProjectPrefs.DeleteKey(TruncateKey);
             ProjectPrefs.DeleteKey(PageSizeKey);
-            SkillsSurfaceProfile.Current = SurfaceProfileKind.Guide;
             SkillRouter.ResetSummaryPreferencesForTests();
 
             Assert.That(SkillRouter.SummaryAutoTruncate, Is.True);
-            Assert.That(SkillRouter.SummaryPageSize, Is.EqualTo(10));
+            Assert.That(SkillRouter.SummaryPageSize, Is.EqualTo(20));
             Assert.That(ProjectPrefs.GetBool(TruncateKey, false), Is.True);
-            Assert.That(ProjectPrefs.GetInt(PageSizeKey, 0), Is.EqualTo(10));
-            Assert.That(SkillsTokenLevel.Current, Is.EqualTo(TokenLevel.Standard));
+            Assert.That(ProjectPrefs.GetInt(PageSizeKey, 0), Is.EqualTo(20));
+            Assert.That(SkillsTokenLevel.Current, Is.EqualTo(TokenLevel.Full));
         }
 
         [Test]
@@ -74,12 +73,14 @@ namespace UnitySkills.Tests.Core
         [Test]
         public void LegacyGlobalSettings_AreReadAsTheyAre_WithoutAOneShotDefault()
         {
-            // An upgraded machine: the pre-3.0 global values decide the level until this project changes them.
+            // An upgraded machine: the pre-3.0 global values decide the level until this project changes them. They exist
+            // before the store is opened, as in the editor: opening a store raises the owners' change events, and a live
+            // subscriber (an open UnitySkills window) reads the level then, persisting the one-shot defaults if none exist.
             _legacy[TruncateKey] = false;
             _legacy[PageSizeKey] = 20;
             _legacy["UnitySkills_SurfaceProfile"] = "full";
-            SkillsSurfaceProfile.ReloadForTests();
-            SkillRouter.ResetSummaryPreferencesForTests();
+            _settings.Dispose();
+            _settings = ProjectPrefsTestScope.InMemory(_legacy);
 
             Assert.That(SkillRouter.SummaryAutoTruncate, Is.False);
             Assert.That(SkillRouter.SummaryPageSize, Is.EqualTo(20));

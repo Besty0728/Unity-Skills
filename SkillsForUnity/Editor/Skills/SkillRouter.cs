@@ -97,6 +97,8 @@ namespace UnitySkills
         // when there are no new snapshots since the last save.
         private static string _lastSavedTaskId;
         private static int _lastSavedSnapshotCount = -1;
+        // The last Execute's auto-workflow EndTask cost; the HTTP layer moves it into the telemetry row (never the response).
+        private static long? _lastWorkflowEndMs;
         // These four all have to be volatile: they form the read side of the GET fast-path double-
         // checked lock -- the HTTP thread reads them outside _initLock (TryGetCachedGetResponse)
         // while the main thread publishes inside the lock. Without volatile, the read side could hold a stale copy hoisted out of a loop after a profile switch invalidated it.
@@ -155,7 +157,8 @@ namespace UnitySkills
 
         private const string PrefKeySummaryAutoTruncate = "UnitySkills_SummaryAutoTruncate";
         private const string PrefKeySummaryPageSize = "UnitySkills_SummaryPageSize";
-        public const int DefaultSummaryPageSize = 10;
+        // Full's page size, so a fresh install (Full profile, truncation on) resolves to TokenLevel.Full, not Custom.
+        public const int DefaultSummaryPageSize = SkillsTokenLevel.FullPageSize;
         private static bool? _summaryAutoTruncate;
         private static int? _summaryPageSize;
 

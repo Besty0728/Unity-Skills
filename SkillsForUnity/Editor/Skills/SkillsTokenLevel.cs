@@ -63,7 +63,7 @@ namespace UnitySkills
         public const int MinimalPageSize = 5;
         public const int StandardPageSize = 10;
         public const int FullPageSize = 20;
-        public const int DefaultSummaryPageSize = 10;
+        public const int DefaultSummaryPageSize = SkillRouter.DefaultSummaryPageSize;
 
         /// <summary>Raised after a source setting changes through either backing service.</summary>
         public static event Action OnChanged;

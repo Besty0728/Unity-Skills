@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEditor;
 using UnitySkills.Internal;
@@ -11,6 +12,8 @@ namespace UnitySkills.Internal
     {
         public string globalObjectId; // String representation of the Unity GlobalObjectId
         public int objectInstanceId;  // Fallback identifier within the same session, for objects in a scene that was never saved
+        public string entityId;       // Same-session fallback that still works on 6000.4+, where objectInstanceId is always 0
+        public string idSession;      // Set only when captured in another editor session than its task's (an inverse appended later)
         public string originalJson;   // JSON state captured by EditorJsonUtility
         public bool objectReferencesCaptured;
         public List<ObjectReferenceData> objectReferences = new List<ObjectReferenceData>();
@@ -40,6 +43,7 @@ namespace UnitySkills.Internal
         public string componentTypeName;   // The component's fully qualified type name (e.g. "UnityEngine.Rigidbody")
         public string parentGameObjectId;  // The parent GameObject's GlobalObjectId
         public int parentGameObjectInstanceId;
+        public string parentGameObjectEntityId;
 
         // For redoing a Created-type GameObject: info needed to recreate it
         public string primitiveType;       // The PrimitiveType name (Cube, Sphere, etc.), or an empty string for an empty GameObject
@@ -70,8 +74,10 @@ namespace UnitySkills.Internal
     {
         public string globalObjectId;
         public int objectInstanceId;
+        public string entityId;
         public string transformGlobalObjectId;
         public int transformInstanceId;
+        public string transformEntityId;
         public string name;
         public int parentIndex = -1;
         public bool activeSelf;
@@ -80,6 +86,7 @@ namespace UnitySkills.Internal
         public int siblingIndex;
         public string externalParentGlobalObjectId;
         public int externalParentInstanceId;
+        public string externalParentEntityId;
         public float posX, posY, posZ;
         public float rotX, rotY, rotZ, rotW;
         public float scaleX = 1, scaleY = 1, scaleZ = 1;
@@ -96,6 +103,7 @@ namespace UnitySkills
         public int schemaVersion = CurrentSchemaVersion;
         public List<WorkflowTask> tasks = new List<WorkflowTask>();
         public List<WorkflowTask> undoneStack = new List<WorkflowTask>(); // Stack of undone tasks, for redo
+        public long nextSeq = 1; // Next short task id (s<seq>); never reused within one history
 
         public void EnsureDefaults()
         {
@@ -109,6 +117,37 @@ namespace UnitySkills
                 task?.EnsureSnapshotIndex();
             foreach (var task in undoneStack)
                 task?.EnsureSnapshotIndex();
+
+            AssignMissingSeqs();
+        }
+
+        internal long AllocateSeq() => nextSeq++;
+
+        /// <summary>
+        /// Tasks recorded before seq existed get one in recording order, so every task has an s&lt;seq&gt; id. A task that
+        /// is partially undone sits on both stacks under one id and gets one seq.
+        /// </summary>
+        private void AssignMissingSeqs()
+        {
+            var all = tasks.Concat(undoneStack).ToList();
+            long max = all.Count == 0 ? 0 : all.Max(task => task.seq);
+            if (nextSeq <= max)
+                nextSeq = max + 1;
+
+            var assigned = new Dictionary<string, long>(StringComparer.Ordinal);
+            foreach (var task in all.Where(task => task.seq > 0 && task.id != null))
+                assigned[task.id] = task.seq;
+            foreach (var task in all.Where(task => task.seq <= 0).OrderBy(task => task.timestamp))
+            {
+                if (task.id != null && assigned.TryGetValue(task.id, out long seq))
+                {
+                    task.seq = seq;
+                    continue;
+                }
+                task.seq = AllocateSeq();
+                if (task.id != null)
+                    assigned[task.id] = task.seq;
+            }
         }
     }
 
@@ -120,8 +159,22 @@ namespace UnitySkills
         public string description;
         public long timestamp;
         public string sessionId;  // Groups tasks from the same conversation/session together
+        public long seq;          // Short id, shown as s<seq>; assigned when the task is recorded
+        public string agent;      // Caller the task is attributed to when it ends ("unknown" without a REST identity)
+        public string group;      // g<seq of its first task> for one agent's run of writes, j<jobId> for an async batch job's chunks
+        public string target;     // Main target named by the call's arguments, for the compact list
+        public string idSession;  // Editor session the snapshots were captured in; instance/entity ids are only valid there
         public List<ObjectSnapshot> snapshots = new List<ObjectSnapshot>();
         [NonSerialized] private HashSet<string> _snapshotKeys;
+        [NonSerialized] private HashSet<string> _entityKeys;
+        [NonSerialized] internal bool autoStarted;
+        [NonSerialized] internal long startedUnixMs;
+        // The connection whose process-resolver answer was still pending when the task ended (0 once settled); the agent
+        // is bound late from it, as telemetry does. Never set for an explicit X-Agent-Id.
+        [NonSerialized] internal int pendingAgentPort;
+        [NonSerialized] internal long pendingAgentSinceMs;
+
+        public string DisplayId => seq > 0 ? "s" + seq : id;
 
         public string GetFormattedTime()
         {
@@ -134,6 +187,7 @@ namespace UnitySkills
                 return;
 
             _snapshotKeys = new HashSet<string>(StringComparer.Ordinal);
+            _entityKeys = new HashSet<string>(StringComparer.Ordinal);
             if (snapshots == null)
             {
                 snapshots = new List<ObjectSnapshot>();
@@ -145,7 +199,28 @@ namespace UnitySkills
             {
                 if (ShouldDeduplicate(snapshot) && !string.IsNullOrEmpty(snapshot.globalObjectId))
                     _snapshotKeys.Add(GetSnapshotKey(snapshot.globalObjectId, snapshot.type));
+                if (ShouldDeduplicate(snapshot) && !string.IsNullOrEmpty(snapshot.entityId))
+                    _entityKeys.Add(GetSnapshotKey(snapshot.entityId, snapshot.type));
             }
+        }
+
+        internal void RegisterEntitySnapshot(ObjectSnapshot snapshot)
+        {
+            if (!ShouldDeduplicate(snapshot) || string.IsNullOrEmpty(snapshot.entityId))
+                return;
+
+            EnsureSnapshotIndex();
+            _entityKeys.Add(GetSnapshotKey(snapshot.entityId, snapshot.type));
+        }
+
+        /// <summary>Whether this task already holds a snapshot of the live object with this entity id, checked before any capture work.</summary>
+        internal bool HasEntitySnapshot(string entityId, SnapshotType type)
+        {
+            if (string.IsNullOrEmpty(entityId))
+                return false;
+
+            EnsureSnapshotIndex();
+            return _entityKeys.Contains(GetSnapshotKey(entityId, type));
         }
 
         internal bool TryRegisterSnapshot(string globalObjectId, SnapshotType type)
@@ -169,14 +244,19 @@ namespace UnitySkills
         internal void InvalidateSnapshotIndex()
         {
             _snapshotKeys = null;
+            _entityKeys = null;
         }
 
         internal static bool ShouldDeduplicate(ObjectSnapshot snapshot)
         {
-            if (snapshot == null) return false;
-            return snapshot.type == SnapshotType.Modified ||
-                   snapshot.type == SnapshotType.Created ||
-                   snapshot.type == SnapshotType.Setting;
+            return snapshot != null && ShouldDeduplicate(snapshot.type);
+        }
+
+        internal static bool ShouldDeduplicate(SnapshotType type)
+        {
+            return type == SnapshotType.Modified ||
+                   type == SnapshotType.Created ||
+                   type == SnapshotType.Setting;
         }
 
         private static string GetSnapshotKey(string globalObjectId, SnapshotType type)
@@ -201,6 +281,7 @@ namespace UnitySkills
         public string json;          // Serialized component data
         public string globalObjectId;
         public int objectInstanceId;
+        public string entityId;
         public bool objectReferencesCaptured;
         public List<ObjectReferenceData> objectReferences = new List<ObjectReferenceData>();
     }
@@ -211,6 +292,7 @@ namespace UnitySkills
         public string propertyPath;
         public string globalObjectId;
         public int objectInstanceId;
+        public string entityId;
     }
 
     /// <summary>

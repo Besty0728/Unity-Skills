@@ -58,7 +58,7 @@ namespace UnitySkills
         /// <see cref="ClientProcessResolver"/> at flush time (see <see cref="BuildLine"/>), not at enqueue
         /// time, since flush happens well after the resolver has had a chance to finish.
         /// </summary>
-        private sealed class PendingRecord
+        internal sealed class PendingRecord
         {
             public string Ts;
             public string Skill;
@@ -71,6 +71,7 @@ namespace UnitySkills
             public string Error;
             public string Target;
             public long DurationMs;
+            public long? WorkflowMs;
         }
 
         private const int MaxErrorChars = 160;
@@ -144,8 +145,10 @@ namespace UnitySkills
         ///
         /// <paramref name="error"/>/<paramref name="target"/> are written only for failed (<paramref name="ok"/>=false)
         /// lines. Callers pass them already path-redacted and truncated (see <see cref="SanitizeError"/>/<see cref="SanitizeTarget"/>).
+        ///
+        /// <paramref name="workflowMs"/> is the workflow history bookkeeping time of a tracked write (written as wfMs when present).
         /// </summary>
-        public static void Record(string skill, string agentId, string mode, bool ok, string errorCode, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false, string error = null, string target = null)
+        public static void Record(string skill, string agentId, string mode, bool ok, string errorCode, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false, string error = null, string target = null, long? workflowMs = null)
         {
             try
             {
@@ -166,6 +169,7 @@ namespace UnitySkills
                     Error = error,
                     Target = target,
                     DurationMs = durationMs,
+                    WorkflowMs = workflowMs,
                 });
                 ScheduleFlush();
             }
@@ -574,6 +578,7 @@ namespace UnitySkills
                         if (!string.IsNullOrEmpty(r.Target)) payload["target"] = r.Target;
                     }
                     payload["ms"] = r.Ms;
+                    if (r.WfMs.HasValue) payload["wfMs"] = r.WfMs.Value;
                     writer.WriteLine(JsonConvert.SerializeObject(payload, Formatting.None, SkillsCommon.JsonSettings));
                 }
             }
@@ -595,7 +600,7 @@ namespace UnitySkills
 
         // ===== Write path =====
 
-        private static string BuildLine(PendingRecord record)
+        internal static string BuildLine(PendingRecord record)
         {
             // Late-bound agent identity: resolved right now (at flush time), not when Record() was called.
             // ClientProcessResolver.TryGetAgentId is a pure, thread-safe dictionary lookup -- safe to call from
@@ -624,6 +629,7 @@ namespace UnitySkills
                 if (!string.IsNullOrEmpty(record.Target)) payload["target"] = record.Target;
             }
             payload["ms"] = record.DurationMs;
+            if (record.WorkflowMs.HasValue) payload["wfMs"] = record.WorkflowMs.Value;
             return JsonConvert.SerializeObject(payload, Formatting.None, SkillsCommon.JsonSettings);
         }
 
@@ -752,6 +758,7 @@ namespace UnitySkills
             [JsonProperty("err")] public string Err;
             [JsonProperty("target")] public string Target;
             [JsonProperty("ms")] public long Ms;
+            [JsonProperty("wfMs")] public long? WfMs;
         }
 
         private static Dictionary<string, RecommendationHealth> BuildRecommendationHealth(

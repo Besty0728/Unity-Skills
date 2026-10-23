@@ -258,7 +258,7 @@ namespace UnitySkills
             };
         }
 
-        private static string SerializeSuccessResponse(object result, JToken sceneDiff = null, long? workflowEndMs = null, List<string> resolutionNotes = null)
+        private static string SerializeSuccessResponse(object result, JToken sceneDiff = null, List<string> resolutionNotes = null)
         {
             var jsonResult = NormalizeSuccessResult(result);
 
@@ -274,19 +274,20 @@ namespace UnitySkills
                         if (notice != null)
                         {
                             obj["serverAvailability"] = JToken.FromObject(notice);
-                            return BuildSuccessEnvelope(obj, sceneDiff, workflowEndMs, resolutionNotes);
+                            return BuildSuccessEnvelope(obj, sceneDiff, resolutionNotes);
                         }
                     }
                 }
                 catch { }
             }
 
-            return BuildSuccessEnvelope(jsonResult, sceneDiff, workflowEndMs, resolutionNotes);
+            return BuildSuccessEnvelope(jsonResult, sceneDiff, resolutionNotes);
         }
 
-        // Serializes the success envelope. sceneDiff (?diff=1), workflowEndMs (the auto-workflow EndTask persistence
-        // time, in milliseconds) and resolutionNotes are only appended as top-level fields when present; when none exists, output is byte-for-byte identical to before diff was introduced.
-        private static string BuildSuccessEnvelope(JToken result, JToken sceneDiff, long? workflowEndMs = null, List<string> resolutionNotes = null)
+        // Serializes the success envelope. sceneDiff (?diff=1) and resolutionNotes are only appended as top-level fields when
+        // present; when neither exists, output is byte-for-byte identical to before diff was introduced. The workflow
+        // bookkeeping time is deliberately not here: it goes to telemetry (wfMs), so tracked writes cost no extra tokens.
+        private static string BuildSuccessEnvelope(JToken result, JToken sceneDiff, List<string> resolutionNotes = null)
         {
             if (resolutionNotes != null && resolutionNotes.Count > 0)
             {
@@ -298,17 +299,11 @@ namespace UnitySkills
                 };
                 if (sceneDiff != null)
                     envelope["sceneDiff"] = sceneDiff;
-                if (workflowEndMs != null)
-                    envelope["workflowEndMs"] = workflowEndMs.Value;
                 return JsonConvert.SerializeObject(envelope, _jsonSettings);
             }
-            if (sceneDiff == null && workflowEndMs == null)
-                return JsonConvert.SerializeObject(new { status = "success", result }, _jsonSettings);
-            if (workflowEndMs == null)
-                return JsonConvert.SerializeObject(new { status = "success", result, sceneDiff }, _jsonSettings);
             if (sceneDiff == null)
-                return JsonConvert.SerializeObject(new { status = "success", result, workflowEndMs = workflowEndMs.Value }, _jsonSettings);
-            return JsonConvert.SerializeObject(new { status = "success", result, sceneDiff, workflowEndMs = workflowEndMs.Value }, _jsonSettings);
+                return JsonConvert.SerializeObject(new { status = "success", result }, _jsonSettings);
+            return JsonConvert.SerializeObject(new { status = "success", result, sceneDiff }, _jsonSettings);
         }
 
         // Builds the sceneDiff payload for a successful ?diff=1 execution. A read-only skill just gets a note (nothing to diff);

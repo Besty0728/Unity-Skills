@@ -226,18 +226,34 @@ Record a newly created object for undo tracking. Requires an active task (call w
 **Returns:** `{ success, objectName, type }`
 
 ### `workflow_list`
-List persistent workflow history.
+List recorded tasks, newest first, as compact text rows. Each tracked write is one task with a short id `s<seq>`.
 
-No parameters.
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | int | No | 0 | Rows of tasks to return; `0` = 30 (rows) or all (objects); max 200 |
+| agent | string | No | all | `all`, `self` (the calling agent), `unknown`, or an agent id such as `Codex` |
+| before | string | No | null | An `s<seq>` id: list only older tasks (pass the previous answer's `more`) |
+| format | string | No | rows | `rows`, or `objects` for the legacy object list (oldest first) |
 
-**Returns:** `{ success, count, history: [{ id, tag, description, time, changes }] }`
+**Returns (rows):** `{ success, count, agent, rows, more? }`: `agent` is the caller; `more` is present when older tasks remain.
+
+```
+s344 14:36:10 light_set_properties Sun (2)
+s343 14:35:58 light_create Sun (1)
+s342 14:31:02 material_set_color Floor (1) @Codex
+s341 14:28:11 gameobject_create_batch x12 (12)
+```
+
+A task row is `id time skill target (changes)`, plus `@agent` when another agent made it; `xN` counts an `items` batch. A caller the server could not identify yet (a bare `curl` or Python client) is `unknown` until the process lookup answers. Undo a row with `workflow_undo_task {"taskId":"s344"}`, newest first: undoing an older task restores its objects over any later edit to them.
+
+**Returns (objects):** `{ success, count, history: [{ id, tag, description, time, changes, seq, agent, group }] }`. `group` is `g<seq>` for one agent's run of writes without a 30 s pause (an explicit `workflow_task_start`..`end` task is a run of its own) and `j<jobId>` for the chunks of one async batch job.
 
 ### `workflow_undo_task`
 Undo changes from a specific task (restore to previous state). The undone task is saved and can be redone later.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| taskId | string | Yes | - | The UUID of the task to undo |
+| taskId | string | Yes | - | The task's `s<seq>` id from `workflow_list`, or its UUID |
 
 **Returns:** `{ success, taskId }`
 
@@ -246,7 +262,7 @@ Redo a previously undone task (restore changes).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| taskId | string | No | null | The UUID of the task to redo. If not provided, redoes the most recently undone task |
+| taskId | string | No | null | The `s<seq>` id or UUID of the task to redo. If not provided, redoes the most recently undone task |
 
 **Returns:** `{ success, taskId }`
 
@@ -255,7 +271,7 @@ List all undone tasks that can be redone.
 
 No parameters.
 
-**Returns:** `{ success, count, undoneStack: [{ id, tag, description, time, changes }] }`
+**Returns:** `{ success, count, undoneStack: [{ id, tag, description, time, changes, seq }] }`
 
 ### `workflow_revert_task`
 **(deprecated)** Alias for `workflow_undo_task`. Use `workflow_undo_task` instead.
@@ -271,7 +287,7 @@ Delete a task from history (does not revert changes, just removes the record).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| taskId | string | Yes | - | The UUID of the task to delete |
+| taskId | string | Yes | - | The `s<seq>` id or UUID of the task to delete |
 
 **Returns:** `{ success, deletedId }`
 
@@ -303,7 +319,7 @@ Undo/redo return per-snapshot detail (`TaskUndoResult`: `total` / `succeeded` / 
 
 ### Auto-clean
 
-`WorkflowAutoCleanConfig` (per-project settings `UnitySkills.Workflow.*` in `UserSettings/UnitySkills/settings.json`) trims history and the file store after `EndTask` and after `LoadHistory`. Defaults: `MaxTasks=200`, `MaxHistoryMB=32`, `MaxTaskAgeDays=30`, `MaxStoreMB=512`, `StoreMaxAgeDays=7`. Store age/size pruning never removes a blob referenced by retained history. A value of `0` disables that individual limit.
+`WorkflowAutoCleanConfig` (per-project settings `UnitySkills.Workflow.*` in `UserSettings/UnitySkills/settings.json`) trims history and the file store when the history loads, and at most once a minute after a task is recorded once the task count, the history file size or the oldest task's age is more than 10% past its limit (deferred, never inside the write itself). Defaults: `MaxTasks=200`, `MaxHistoryMB=32`, `MaxTaskAgeDays=30`, `MaxStoreMB=512`, `StoreMaxAgeDays=7`. Store age/size pruning never removes a blob referenced by retained history. A value of `0` disables that individual limit.
 
 ### Settings are now truly revertible
 

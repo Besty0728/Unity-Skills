@@ -32,6 +32,8 @@ namespace UnitySkills
         /// </summary>
         internal static string Execute(string name, string json, bool captureDiff, DryRunGateContext dryRunGate)
         {
+            // Cleared before any return, so an early one (SKILL_NOT_FOUND) never hands the previous call's time to telemetry.
+            _lastWorkflowEndMs = null;
             Initialize();
             if (!_skills.TryGetValue(name, out var skill))
             {
@@ -39,9 +41,6 @@ namespace UnitySkills
             }
 
             bool autoStartedWorkflow = false;
-            // The persistence cost of EndTask() on the auto-workflow path, attached to the success envelope as workflowEndMs.
-            // Always null on every other path, to keep output byte-for-byte unchanged.
-            long? workflowEndMs = null;
             var wrapWithUndoTransaction = !skill.ReadOnly && !_transactionlessSkills.Contains(name);
             int undoGroup = -1;
             int workflowSnapshotCountBefore = WorkflowManager.CurrentTask?.snapshots?.Count ?? 0;
@@ -195,7 +194,7 @@ namespace UnitySkills
                 if (skill.TracksWorkflow && !WorkflowManager.IsRecording)
                 {
                     var desc = $"{name} - {(json?.Length > 80 ? json.Substring(0, 80) + "..." : json ?? "")}";
-                    WorkflowManager.BeginTask(name, desc);
+                    WorkflowManager.BeginAutoTask(name, desc, DescribeWorkflowTarget(args));
                     autoStartedWorkflow = true;
                 }
 
@@ -348,11 +347,11 @@ namespace UnitySkills
                 if (autoStartedWorkflow)
                 {
                     // On the auto-workflow path, persistence is entirely EndTask's responsibility (it calls SaveHistory internally).
-                    // The cost is measured here for observability.
+                    // The cost is measured here and reaches the telemetry row through ConsumeLastWorkflowEndMs.
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     WorkflowManager.EndTask();
                     sw.Stop();
-                    workflowEndMs = sw.ElapsedMilliseconds;
+                    _lastWorkflowEndMs = sw.ElapsedMilliseconds;
                 }
                 else if (WorkflowManager.IsRecording)
                 {
@@ -391,7 +390,7 @@ namespace UnitySkills
                     {
                         // Returning everything without a word would read as the page that was asked for.
                         unpageable["pagingIgnored"] = DescribeUnpageableResult(unpageable, skill);
-                        return SerializeSuccessResponse(unpageable, sceneDiff, workflowEndMs, resolutionNotes);
+                        return SerializeSuccessResponse(unpageable, sceneDiff, resolutionNotes);
                     }
                     // Read once: a single main-thread EditorPrefs-backed property access, reused below as both the
                     // auto-truncation trigger and the default page size, so the two can never disagree with each other.
@@ -421,9 +420,9 @@ namespace UnitySkills
                                 preserved[arrayProperty] = new JArray();
                                 foreach (var property in emptyWrapper.Properties().Where(property => property.Name != "items"))
                                     preserved[property.Name] = property.Value;
-                                return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs, resolutionNotes);
+                                return SerializeSuccessResponse(preserved, sceneDiff, resolutionNotes);
                             }
-                            return SerializeSuccessResponse(emptyWrapper, sceneDiff, workflowEndMs, resolutionNotes);
+                            return SerializeSuccessResponse(emptyWrapper, sceneDiff, resolutionNotes);
                         }
 
                         int endIndex = (int)Math.Min((long)startIndex + pageSize, arr.Count);
@@ -465,15 +464,15 @@ namespace UnitySkills
                             preserved[arrayProperty] = paginatedItems;
                             foreach (var property in wrapper.Properties().Where(property => property.Name != "items"))
                                 preserved[property.Name] = property.Value;
-                            return SerializeSuccessResponse(preserved, sceneDiff, workflowEndMs, resolutionNotes);
+                            return SerializeSuccessResponse(preserved, sceneDiff, resolutionNotes);
                         }
 
-                        return SerializeSuccessResponse(wrapper, sceneDiff, workflowEndMs, resolutionNotes);
+                        return SerializeSuccessResponse(wrapper, sceneDiff, resolutionNotes);
                     }
                 }
 
                 // Full mode (verbose=true without paging keys, or the result is already small): return as-is
-                return SerializeSuccessResponse(result, sceneDiff, workflowEndMs, resolutionNotes);
+                return SerializeSuccessResponse(result, sceneDiff, resolutionNotes);
             }
             catch (TargetInvocationException ex)
             {
@@ -537,7 +536,19 @@ namespace UnitySkills
                 // Whatever is left was recorded after the response was decided (entityId enrichment); never carry it over.
                 GameObjectFinder.DrainResolutionNotes();
                 EditorChangeTrackerService.EndRestExecution();
+                WorkflowManager.NoteAgentCall();
             }
+        }
+
+        /// <summary>
+        /// The auto-workflow EndTask cost of the Execute that just returned on this thread, or null when it recorded no task;
+        /// cleared by the read so a later call that records nothing never reports a stale value.
+        /// </summary>
+        internal static long? ConsumeLastWorkflowEndMs()
+        {
+            var value = _lastWorkflowEndMs;
+            _lastWorkflowEndMs = null;
+            return value;
         }
 
         public static string DryRun(string name, string json) => DryRun(name, json, WireV1);

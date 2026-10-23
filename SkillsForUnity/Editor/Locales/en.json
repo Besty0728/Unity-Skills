@@ -226,7 +226,7 @@
   "history_undone_format": "Undone ({0})",
   "history_no_active": "No active tasks.",
   "history_no_undone": "No undone tasks.",
-  "history_clear_all": "Clear All Undone",
+  "history_clear_all": "Clear History",
   "history_changes_suffix": "changes",
   "autoclean_title": "Auto Clean",
   "autoclean_enabled": "Enabled",

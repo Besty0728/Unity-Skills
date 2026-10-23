@@ -26,8 +26,9 @@ namespace UnitySkills
         private sealed class RuntimeJobContext
         {
             public BatchJobRecord Job;
-            public bool StartedWorkflowSession;
             public List<BatchPreviewItem> ExecutableItems;
+            // The batch_execute connection while the process resolver has not answered for it; 0 once the agent is settled.
+            public int PendingAgentPort;
         }
 
         private static readonly Dictionary<string, RuntimeJobContext> RuntimeJobs =
@@ -68,7 +69,9 @@ namespace UnitySkills
                 chunkSize = Math.Max(1, chunkSize),
                 progressGranularity = Math.Max(1, progressGranularity),
                 totalItems = preview.items.Count(item => item.valid && item.willChange),
-                preview = preview
+                preview = preview,
+                // Resolved here, inside the request: chunks run later from the editor loop or another caller's job_wait.
+                agentId = WorkflowManager.ResolveCallerAgent(out int pendingAgentPort)
             };
 
             job.logs.Add(new BatchJobLogEntry
@@ -80,6 +83,7 @@ namespace UnitySkills
             });
 
             var context = CreateContext(job);
+            context.PendingAgentPort = pendingAgentPort;
             RuntimeJobs[job.jobId] = context;
             BatchPersistence.UpsertJob(job);
             return job;
@@ -241,31 +245,40 @@ namespace UnitySkills
 
                 var granularity = Math.Max(1, job.progressGranularity);
                 var budgetDeadline = ChunkBudgetDeadline();
-                foreach (var item in chunkItems)
+                var suspendedTask = BeginChunkTask(context);
+                try
                 {
-                    var result = BatchSkills.ExecutePreviewItem(job.preview, item, chunkIndex);
-                    job.items.Add(result);
-                    job.processedItems++;
-
-                    if (job.processedItems % granularity == 0 || job.processedItems == job.totalItems)
+                    foreach (var item in chunkItems)
                     {
-                        var pct = job.totalItems <= 0 ? 100 : (int)Math.Round(job.processedItems * 100.0 / job.totalItems);
-                        job.progress = pct;
-                        job.progressEvents.Add(new BatchJobProgressEvent
-                        {
-                            timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                            progress = pct,
-                            stage = job.currentStage,
-                            description = $"{job.processedItems}/{job.totalItems}"
-                        });
-                    }
+                        var result = BatchSkills.ExecutePreviewItem(job.preview, item, chunkIndex);
+                        job.items.Add(result);
+                        job.processedItems++;
 
-                    // Double gate: item count (chunkSize, controlled by .Take above) and time
-                    // budget. The check happens after at least one item has been processed, so
-                    // a slow item can't stall progress entirely — it just hands the rest of the
-                    // chunk to the next frame instead of freezing the current one.
-                    if (IsChunkBudgetExpired(budgetDeadline))
-                        break;
+                        if (job.processedItems % granularity == 0 || job.processedItems == job.totalItems)
+                        {
+                            var pct = job.totalItems <= 0 ? 100 : (int)Math.Round(job.processedItems * 100.0 / job.totalItems);
+                            job.progress = pct;
+                            job.progressEvents.Add(new BatchJobProgressEvent
+                            {
+                                timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                                progress = pct,
+                                stage = job.currentStage,
+                                description = $"{job.processedItems}/{job.totalItems}"
+                            });
+                        }
+
+                        // Double gate: item count (chunkSize, controlled by .Take above) and time
+                        // budget. The check happens after at least one item has been processed, so
+                        // a slow item can't stall progress entirely — it just hands the rest of the
+                        // chunk to the next frame instead of freezing the current one.
+                        if (IsChunkBudgetExpired(budgetDeadline))
+                            break;
+                    }
+                }
+                finally
+                {
+                    WorkflowManager.EndTask();
+                    WorkflowManager.ResumeTask(suspendedTask);
                 }
 
                 job.progress = job.totalItems <= 0 ? 100 : (int)Math.Round(job.processedItems * 100.0 / job.totalItems);
@@ -287,7 +300,6 @@ namespace UnitySkills
                 AddLog(job, "error", "failed", ex.Message);
                 BatchPersistence.UpsertJob(job);
                 BatchPersistence.FlushIfDirty();
-                EndWorkflowSession(context);
                 FinalizeRuntimeContext(context);
                 EventChannelService.Publish("job_failed", new
                 {
@@ -299,21 +311,44 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// Gives the job its workflow id (the session id its chunk tasks share, which workflow_session_undo rolls back): the
+        /// caller's explicit session when one is open, otherwise a fresh id. No task stays open between frames, so a call
+        /// another agent makes while the job runs is recorded as its own task instead of being absorbed into the job's.
+        /// </summary>
         private static void EnsureWorkflowSession(RuntimeJobContext context)
         {
-            if (!string.IsNullOrEmpty(context.Job.relatedWorkflowId) && WorkflowManager.HasActiveSession)
+            if (!string.IsNullOrEmpty(context.Job.relatedWorkflowId))
                 return;
 
-            if (WorkflowManager.HasActiveSession)
+            context.Job.relatedWorkflowId = WorkflowManager.HasActiveSession
+                ? WorkflowManager.CurrentSessionId
+                : WorkflowManager.NewSessionId();
+            context.Job.updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            AddLog(context.Job, "info", "workflow", $"Workflow session: {context.Job.relatedWorkflowId}");
+        }
+
+        /// <summary>
+        /// Opens the task one chunk records into: the job's workflow id (so workflow_session_undo with it rolls the job back),
+        /// its caller and a group shared by all of its chunks. A task already open (an explicit session or
+        /// workflow_task_start) is suspended untouched and returned, for the caller to resume once the chunk's task ends;
+        /// recording the chunk into it would leave the job's workflow id with nothing to undo.
+        /// </summary>
+        private static WorkflowTask BeginChunkTask(RuntimeJobContext context)
+        {
+            var job = context.Job;
+            if (context.PendingAgentPort > 0 && WorkflowManager.TryResolvePendingAgent(context.PendingAgentPort, out string agent))
             {
-                context.Job.relatedWorkflowId = WorkflowManager.CurrentSessionId;
-                return;
+                job.agentId = agent;
+                context.PendingAgentPort = 0;
             }
 
-            context.Job.relatedWorkflowId = WorkflowManager.BeginSession($"Batch:{context.Job.kind}");
-            context.StartedWorkflowSession = true;
-            context.Job.updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            AddLog(context.Job, "info", "workflow", $"Workflow session started: {context.Job.relatedWorkflowId}");
+            var suspended = WorkflowManager.SuspendTask();
+            var task = WorkflowManager.BeginTask($"Batch:{job.kind}", $"Batch job {job.jobId}");
+            task.sessionId = job.relatedWorkflowId;
+            task.agent = job.agentId;
+            task.group = "j" + job.jobId;
+            return suspended;
         }
 
         private static void FinishCompletedJob(RuntimeJobContext context)
@@ -330,7 +365,6 @@ namespace UnitySkills
             AddLog(job, "info", "completed", report.summary);
             BatchPersistence.UpsertJob(job);
             BatchPersistence.FlushIfDirty();
-            EndWorkflowSession(context);
             FinalizeRuntimeContext(context);
             EventChannelService.Publish("job_completed", new
             {
@@ -346,22 +380,7 @@ namespace UnitySkills
             job.updatedAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             BatchPersistence.UpsertJob(job);
             BatchPersistence.FlushIfDirty();
-            EndWorkflowSession(context);
             FinalizeRuntimeContext(context);
-        }
-
-        private static void EndWorkflowSession(RuntimeJobContext context)
-        {
-            if (!context.StartedWorkflowSession)
-                return;
-
-            if (WorkflowManager.HasActiveSession &&
-                string.Equals(WorkflowManager.CurrentSessionId, context.Job.relatedWorkflowId, StringComparison.OrdinalIgnoreCase))
-            {
-                WorkflowManager.EndSession();
-            }
-
-            context.StartedWorkflowSession = false;
         }
 
         private static void FinalizeRuntimeContext(RuntimeJobContext context)

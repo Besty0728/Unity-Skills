@@ -43,7 +43,7 @@ namespace UnitySkills
             var uxml = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(TabUxmlPath);
             if (uxml == null)
             {
-                Debug.LogError($"[UnitySkills] Failed to load HistoryTab UXML: {TabUxmlPath}");
+                SkillsLogger.LogError($"Failed to load HistoryTab UXML: {TabUxmlPath}");
                 return;
             }
             uxml.CloneTree(_root);
@@ -176,7 +176,8 @@ namespace UnitySkills
 
         private void RefreshHistory()
         {
-            WorkflowManager.LoadHistory();
+            // The in-memory history is authoritative (every change is saved as it happens); re-reading the whole file
+            // here only cost a full parse and trim per click.
             RebuildHistoryList();
             UpdateAutoCleanUsage();
         }
@@ -196,11 +197,6 @@ namespace UnitySkills
         private void RebuildHistoryList()
         {
             var history = WorkflowManager.History;
-            if (history == null)
-            {
-                WorkflowManager.LoadHistory();
-                history = WorkflowManager.History;
-            }
 
             BuildSection(_activeContainer, _activeTitle, history?.tasks,
                 isActive: true,
@@ -377,7 +373,7 @@ namespace UnitySkills
                 foreach (var detail in result.details)
                 {
                     if (!detail.success)
-                        Debug.LogWarning($"{SkillsLogger.PREFIX_WARNING} {operation} failed for {detail.objectName}: {detail.error}");
+                        SkillsLogger.LogWarning($"{operation} failed for {detail.objectName}: {detail.error}");
                 }
             }
         }

@@ -51,6 +51,54 @@ namespace UnitySkills
             }
         }
 
+        // Argument names that name a call's main target, in the order the compact workflow list prefers them.
+        private static readonly string[] WorkflowTargetParameters =
+        {
+            "name", "path", "childName", "objectName", "gameObjectName", "targetName", "assetPath", "materialPath",
+            "prefabPath", "scriptName", "sceneName", "scenePath", "folder", "folderPath", "sourcePath", "controllerPath"
+        };
+
+        private const int MaxWorkflowTargetChars = 32;
+
+        /// <summary>
+        /// A short label for the task list: the first target-naming argument, and "xN" for an items[] batch. Never throws;
+        /// null when the arguments name nothing (the list then shows the skill alone).
+        /// </summary>
+        internal static string DescribeWorkflowTarget(JObject args)
+        {
+            if (args == null)
+                return null;
+
+            string target = null;
+            foreach (var key in WorkflowTargetParameters)
+            {
+                if (args.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token) &&
+                    token.Type == JTokenType.String && !string.IsNullOrWhiteSpace(token.Value<string>()))
+                {
+                    target = token.Value<string>().Trim().Replace('\n', ' ').Replace('\r', ' ');
+                    break;
+                }
+            }
+            if (target != null && target.Length > MaxWorkflowTargetChars)
+                target = target.Substring(0, MaxWorkflowTargetChars - 3) + "...";
+
+            int itemCount = 0;
+            if (args.TryGetValue("items", StringComparison.OrdinalIgnoreCase, out var itemsToken))
+            {
+                try
+                {
+                    if (itemsToken.Type == JTokenType.String)
+                        itemsToken = JToken.Parse(itemsToken.Value<string>());
+                    itemCount = (itemsToken as JArray)?.Count ?? 0;
+                }
+                catch { /* A malformed items payload just leaves the count out */ }
+            }
+
+            if (itemCount > 0)
+                return target == null ? "x" + itemCount : target + " x" + itemCount;
+            return target;
+        }
+
         /// <summary>
         /// Locates the UnityEngine.Object a skill parameter points to -- the shared low-level primitive behind both the
         /// automatic workflow snapshot (<see cref="TrySnapshotTargetsFromArgs"/>) and the semantic diff's

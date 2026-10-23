@@ -12,7 +12,7 @@
             <ui:Label name="history-title" class="bold-label" text="Workflow History" />
             <ui:VisualElement style="flex-grow: 1;" />
             <ui:Button name="refresh-btn" class="mini-btn" tooltip="Refresh" />
-            <ui:Button name="clear-btn" class="mini-btn danger" text="Clear All Undone" />
+            <ui:Button name="clear-btn" class="mini-btn danger" text="Clear History" />
         </ui:VisualElement>
 
         <!-- Cache warning -->

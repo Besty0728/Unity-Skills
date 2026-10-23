@@ -226,7 +226,7 @@
   "history_undone_format": "已撤销 ({0})",
   "history_no_active": "无活动任务。",
   "history_no_undone": "无已撤销任务。",
-  "history_clear_all": "清空已撤销",
+  "history_clear_all": "清除历史",
   "history_changes_suffix": "项修改",
   "autoclean_title": "自动清理",
   "autoclean_enabled": "启用",

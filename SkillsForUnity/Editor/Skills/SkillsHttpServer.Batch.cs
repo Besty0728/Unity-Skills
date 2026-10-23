@@ -264,12 +264,16 @@ namespace UnitySkills
             int remotePort = -1, bool agentIdIsExplicit = false, int wire = 1)
         {
             int txStartGroup = -1;
+            WorkflowManager.BatchMark txWorkflowMark = null;
             if (transactional)
             {
                 // Plants a fence on the undo timeline for the whole batch. Each step still opens (and collapses)
                 // its own undo group inside Execute; on failure, everything above this fence is rolled back at once.
                 Undo.IncrementCurrentGroup();
                 txStartGroup = Undo.GetCurrentGroup();
+                // A dry run records no workflow history, so it has none to roll back.
+                if (!dryRun)
+                    txWorkflowMark = WorkflowManager.MarkBatchStart();
             }
 
             var results = new List<JObject>(steps.Count);
@@ -485,6 +489,7 @@ namespace UnitySkills
                 }
 
                 string stepJson;
+                long? stepWorkflowMs = null;
                 try
                 {
                     if (dryRun)
@@ -499,6 +504,7 @@ namespace UnitySkills
                             catch { batchDiff.HadWritableSteps = true; }
                         }
                         stepJson = SkillRouter.Execute(stepSkillName, argsJson);
+                        stepWorkflowMs = SkillRouter.ConsumeLastWorkflowEndMs();
                         // Every step shares the same POST job, so the per-request cache invalidation in ProcessJobQueue doesn't run
                         // between steps — without this line, a step couldn't find an object created earlier in the same batch.
                         // A ReadOnly step is side-effect-free by contract and can't stale the cache, so it's skipped; every other
@@ -589,7 +595,7 @@ namespace UnitySkills
                     ["status"] = "success",
                     ["result"] = unwrappedResult,
                 });
-                RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, true, null, stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit);
+                RecordBatchStep(stepSkillName, effectiveAgentId, dryRun, true, null, stepSw.ElapsedMilliseconds, remotePort, agentIdIsExplicit, workflowMs: stepWorkflowMs);
             }
 
             bool rolledBack = false;
@@ -600,6 +606,16 @@ namespace UnitySkills
                 Undo.RevertAllDownToGroup(txStartGroup);
                 GameObjectFinder.InvalidateCache();
                 rolledBack = true;
+                // The workflow history must not offer an undo of what the revert just put back. The redo stack the steps
+                // cleared comes back only when no step ran a workflow skill, which could have moved tasks between the stacks.
+                if (txWorkflowMark != null)
+                {
+                    bool ranWorkflowSkill = results.Any(entry =>
+                        !string.Equals(entry["status"]?.ToString(), "skipped", StringComparison.Ordinal) &&
+                        SkillRouter.TryGetSkill(entry["skill"]?.ToString() ?? string.Empty, out var entrySkill) &&
+                        entrySkill.Category == SkillCategory.Workflow);
+                    WorkflowManager.RollBackBatch(txWorkflowMark, restoreRedoStack: !ranWorkflowSkill);
+                }
 
                 int revertedSteps = 0;
                 foreach (var entry in results)

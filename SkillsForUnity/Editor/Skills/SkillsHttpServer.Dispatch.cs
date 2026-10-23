@@ -356,6 +356,7 @@ namespace UnitySkills
                     return;
 
                 var skillSw = System.Diagnostics.Stopwatch.StartNew();
+                long? workflowMs = null;
                 // Early check: BeginResolve fired back at accept time, but if the main thread dequeued this job
                 // almost instantly the background worker's ~8ms coalescing window + syscall round may not have
                 // finished yet. A second, guaranteed-fresh check happens right before RecordSkillTelemetry below.
@@ -381,6 +382,7 @@ namespace UnitySkills
                                 skillQs.TryGetValue(DryRunPolicyService.TokenQueryKey, out var dryRunToken) ? dryRunToken : null,
                                 QueryWithout(job.QueryString, DryRunPolicyService.TokenQueryKey));
                             job.ResponseJson = SkillRouter.Execute(skillName, job.Body, captureDiff, dryRunGate);
+                            workflowMs = SkillRouter.ConsumeLastWorkflowEndMs();
                             break;
                     }
                 }
@@ -408,7 +410,7 @@ namespace UnitySkills
                 // a known-stale one; DryRun/Plan never ran the skill, so nothing to log here for them.
                 if (mode == SkillRouter.RequestMode.Execute)
                     SkillsLogger.LogAgent(job.AgentId, skillName);
-                RecordSkillTelemetry(mode, skillName, job.AgentId, job.ResponseJson, job.Body, skillSw.ElapsedMilliseconds, job.RemotePort, job.AgentIdIsExplicit);
+                RecordSkillTelemetry(mode, skillName, job.AgentId, job.ResponseJson, job.Body, skillSw.ElapsedMilliseconds, job.RemotePort, job.AgentIdIsExplicit, workflowMs);
                 return;
             }
 
@@ -524,7 +526,7 @@ namespace UnitySkills
         /// lightweight string probe; only a failed call is parsed (top-level errorCode/error), and its args are summarized
         /// for the target field. Fully isolated: a telemetry failure must never alter the business response already computed by the caller.
         /// </summary>
-        private static void RecordSkillTelemetry(SkillRouter.RequestMode mode, string skillName, string agentId, string responseJson, string argsJson, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false)
+        private static void RecordSkillTelemetry(SkillRouter.RequestMode mode, string skillName, string agentId, string responseJson, string argsJson, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false, long? workflowMs = null)
         {
             try
             {
@@ -544,7 +546,7 @@ namespace UnitySkills
                 // agentId here is only the fallback (whatever RefineAgentId's early, possibly-too-soon check
                 // produced) -- SkillTelemetryService re-checks ClientProcessResolver again at flush time,
                 // ~200ms later, which is what actually catches most single-digit-ms skill calls.
-                SkillTelemetryService.Record(skillName, agentId, modeStr, ok, errorCode, durationMs, remotePort, agentIdIsExplicit, error, target);
+                SkillTelemetryService.Record(skillName, agentId, modeStr, ok, errorCode, durationMs, remotePort, agentIdIsExplicit, error, target, workflowMs);
             }
             catch { /* telemetry is best-effort — never surface to the caller */ }
         }
@@ -556,7 +558,7 @@ namespace UnitySkills
         /// remotePort/agentIdIsExplicit are forwarded to SkillTelemetryService.Record for the same flush-time
         /// late-binding as the single-skill path (see RecordSkillTelemetry).
         /// </summary>
-        private static void RecordBatchStep(string skillName, string agentId, bool dryRun, bool ok, string errorCode, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false, string argsJson = null, JToken failure = null)
+        private static void RecordBatchStep(string skillName, string agentId, bool dryRun, bool ok, string errorCode, long durationMs, int remotePort = -1, bool agentIdIsExplicit = false, string argsJson = null, JToken failure = null, long? workflowMs = null)
         {
             try
             {
@@ -571,7 +573,7 @@ namespace UnitySkills
                     string.IsNullOrWhiteSpace(skillName) ? "(malformed)" : skillName,
                     agentId,
                     dryRun ? "batch_step_dryRun" : "batch_step",
-                    ok, errorCode, durationMs, remotePort, agentIdIsExplicit, error, target);
+                    ok, errorCode, durationMs, remotePort, agentIdIsExplicit, error, target, workflowMs);
             }
             catch { /* telemetry is best-effort */ }
         }
