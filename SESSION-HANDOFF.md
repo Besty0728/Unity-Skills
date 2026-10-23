@@ -2,6 +2,31 @@
 
 这是当前状态的优先说明；下方较早内容是历史会话材料，若有冲突以本节为准。本机时区是 JST（UTC+9），runner、门禁记录和会话目录名里的时间是 UTC。
 
+## 10-23 21:00 状态（最新，优先于下方所有小节）
+
+- **21:40 更新**：beta 上未推送的提交现在是 f56e6510、5ebc2adc、`2dafb3c5`（docs3，已并入 SkillCountDocsTests 修复）、`c3fcf133`（P0 + tokenfix + pagesize）。
+  - 已合并的 worktree 和 agent 分支都已清理，skill-p0 的插件引用改为指向主工作区。
+  - **安装器清理退役文件**（三档，方案见 `~/.claude/plans/buzzing-discovering-lovelace.md`，用户已批准）：已实现，**未提交**。
+    - 改了 `SkillInstaller.cs`、`SkillInstallSyncService.cs`（只改注释），新增 `SkillInstallerRetireTests.cs`（含 .meta）。
+    - 验证：新测试 8/8、Uninstall 3/3、Sync 30/30；skill 工程全量 2424 个，0 失败；用 10-23 的旧全局副本备份实装一次，`SKILL_FULL.md` 被清掉，和模板逐项一致。
+    - 等用户确认提交。
+  - 下面几条是 21:00 时的记录，其中"下一步"的 1、2 已完成。
+- **HEAD `bb2d00d2`（docs3，本地提交，未推送）**。beta 上未推送的提交：f56e6510、5ebc2adc、bb2d00d2。
+- **B 臂已完成**，结果见 `eval/runs/pending-20261021/baseline-b-result.md`：两臂都是 21/21，各题平均 token 加总 B/A 为 0.97。
+  - 宿主从 2.1.302 升到 2.1.308，cohort 不允许续跑 base-b-1022，改用 `base-b-1023` / `base-b-1023-t4`。
+  - D01（1.34）和 S06（1.17）偏高，都是单次多走几步造成的，两臂都没有读 skill 文档。
+- **docs3 触发实测 6/6 符合预期**，见 `trigger-result.md`：5 条 Unity 请求都加载了 unity-skills，设计问答还会读 architecture 等建议文档；非 Unity 请求没有误触发。
+- **Claude Code 全局副本已重装**（通过 2022b 工程里的临时 MenuItem 调用 `SkillInstaller.InstallClaude(true)`，之后已删除临时脚本）。旧模板残留的 `references/SKILL_FULL.md` 是手动删掉的，备份在旧会话 scratchpad 的 `backup/`。
+  - **发现**：安装器只覆盖、不删除，模板里删掉的文件会一直留在用户已装的副本里（SKILL_FULL.md 就是这样）。要不要处理，等用户决定。
+- **主工作区已应用但未提交**：tokenfix、workflow-p0、pagesize，以及 `SkillCountDocsTests` 的修复。
+  - pagesize：`SkillRouter.DefaultSummaryPageSize` 改为 `SkillsTokenLevel.FullPageSize`（20），新安装解析为 Full。用户 10-23 批准。
+  - `SkillCountDocsTests` 修复：删掉根 SKILL.md 的计数检查。docs3 删了那行计数，但漏改了这个测试。
+- **全量 EditMode**（`apply3-result.md`）：Built-in 和 URP 各 2416 个，唯一的失败就是上面那个计数测试。修复后单独重跑 SkillCountDocsTests 3/3、SkillDocumentationConsistencyTests 16/16。两个 token level 的老失败已经消失。
+- **下一步**：
+  1. 等用户确认后提交。建议分两个提交：计数测试修复并入 docs3（fixup），P0、tokenfix、pagesize 单独一个。
+  2. 清理已合并的 worktree：旧会话 scratchpad 的 docs3、fix65、p0、tokenfix、v3fixes，以及 `.claude/worktrees/agent-*` 两个和对应分支。注意 skill-p0 工程的插件引用指向 p0 worktree。
+  3. Workflow P3 → P1 → P2（三档，进 PlanMode）。
+
 ## 新会话怎么开始
 
 把下面这段贴给新会话：
@@ -84,6 +109,38 @@
   - 真机上同一路径删除后重建预制体，Unity 会沿用原来的 GUID，所以 `replace_asset` 反例的预期失败集改为 {P5, P6}。
   - 离线 fake 改成和真机一致。应用后 manifest、lint、check 通过，离线全量 3.13 与 3.9 各 1669 个全过；lint 多出一条 "P10 没有反例" 的警告，可接受。
 - **C# 补丁：变更日志补写 assetPath**：`EditorChangeTrackerService.cs` 改了，`EditorChangeAttributionTests` 新增一条用例，21/21 通过。真机上 OC1、OC2 之前多失败的 A9、A7 已经消失。
+
+## 10-22 20:40 状态（最新，用户要求代码编写到此停下）
+
+- **基线 A 臂**：21/21 通过，结果见 `baseline-a-result.md`。suite 是 base-a-1022（运维基础 6 题 × 3 次）和 base-a-1022-t4（T4 × 3 次）。同一个 suite 不能跨难度档，所以 T4 单独一个 suite。
+- **docs3**：20:36 已应用到主工作区，**未提交**；根 SKILL.md 现在是 7937 B。
+- **B 臂（20:45 用户要求只挂无需 Claude 的测试，已中止）**：只开了第一个 slot 就停了，留下了 `eval/runs/suite3/base-b-1022`。下次接着跑同名 suite 会自动续上那一槽，开跑前先用 `--dry-run` 看看。原计划：20:36 启动，跑 `baseline/b_arm.py`，suite 是 base-b-1022 和 base-b-1022-t4。它会消耗 Claude 额度。跑完写 `baseline-b-result.md`，内含 A/B 逐题对比（通过数、平均 processed token、B/A 比值）。
+- **判据**：成功率不降，再看 token。
+  - 有回退：先 `git apply -R docs3.patch` 撤回根文档改动，再逐项定位。
+  - 通过：单独提交 docs3。
+- **P0 已就绪**：`workflow-p0.patch` 经过审查和一轮修复；在 skill-p0 实测 WorkflowHotPathTests 25/25，全量 2416 个测试只有那 2 个已知失败。B 臂结束后再应用。
+- **tokenfix 已就绪**：`tokenfix.patch` 只改测试，已在 skill-p0 验证通过（5/5、13/13）。B 臂结束后应用。
+- **等用户决定**：新安装的 TokenLevel 现在解析成 Custom（Full + 截断开 + 每页 10），建议把每页默认值改成 20，落在 Full 档。
+- **用户规则**：AgentTeam 按难度分派 haiku/sonnet/opus，不要全用 opus；用户不在时不自动跑消耗 Claude 额度的任务。
+
+## 10-22 19:50 状态
+
+- **已提交到本地 beta，未推送**：
+  - `f56e6510`：eval 侧改动；
+  - `5ebc2adc`：插件修复（v3fixes、#65、tracker）。
+  - 夜间自动提交没做成，因为 `commit.py` 把输出 `strip()` 后吃掉了第一行开头的空格，路径解析出错；改为手动提交。
+- **verify4**：回归门禁 6/6 GREEN，OC8 一题跑了 4.5 小时（31 个用例）。docs3 临时验证 16/16 通过，撤回后工作区逐字节一致。
+- **全量 EditMode**：两个工程各 2391 个测试，都是同样 2 个 token level 失败，单独重跑也失败。
+  - 和补丁无关：读取旧全局设置时会写入默认值，和测试约定的行为不符，HEAD 上就有这个问题。
+  - 已派 `token-fix` 成员查根因，补丁输出到 `tokenfix.patch`。
+- **基线 A 臂**：19:45 启动，跑 `baseline/next5.py`，预计 4–5 小时，结果写到 `baseline-a-result.md`。
+- **P0**：
+  - 在 `~/UnityProject/skill-p0` 实测：这是 skill 工程的副本，插件引用指向 p0 worktree，脚本是 `p0test/p0test.py`，结果写到 `p0test-result.md`。
+  - 独立审查由 `p0-review` 成员进行。
+- **后续顺序**：
+  1. A 臂跑完后应用 docs3，跑 B 臂；
+  2. P0 审查和实测都通过后应用 P0；
+  3. 然后做 P3、P1、P2。
 
 ## 10-22 00:10 状态（用户 5 小时额度将满，暂停）
 
