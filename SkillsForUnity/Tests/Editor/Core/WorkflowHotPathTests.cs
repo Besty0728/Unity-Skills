@@ -25,6 +25,7 @@ namespace UnitySkills.Tests.Core
         private const string AssetRoot = "Assets/Temp/WorkflowHotPathTests";
         private string _tempRoot;
         private bool _autoCleanEnabled;
+        private bool _autoCheckpoints;
         private SurfaceProfileKind _savedProfile;
         private SkillsOperatingMode _savedMode;
 
@@ -33,6 +34,9 @@ namespace UnitySkills.Tests.Core
         {
             _autoCleanEnabled = WorkflowAutoCleanConfig.Enabled;
             WorkflowAutoCleanConfig.Enabled = false;
+            // Checkpoint rows are covered by WorkflowCheckpointApiTests; these tests pin the step rows and the byte budget.
+            _autoCheckpoints = WorkflowCheckpointConfig.AutoCheckpoints;
+            WorkflowCheckpointConfig.AutoCheckpoints = false;
             _savedProfile = SkillsSurfaceProfile.Current;
             _savedMode = SkillsModeManager.CurrentMode;
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Full;
@@ -62,6 +66,7 @@ namespace UnitySkills.Tests.Core
             try { if (Directory.Exists(_tempRoot)) Directory.Delete(_tempRoot, true); } catch { }
 
             WorkflowAutoCleanConfig.Enabled = _autoCleanEnabled;
+            WorkflowCheckpointConfig.AutoCheckpoints = _autoCheckpoints;
             SkillsSurfaceProfile.Current = _savedProfile;
             SkillsModeManager.CurrentMode = _savedMode;
         }

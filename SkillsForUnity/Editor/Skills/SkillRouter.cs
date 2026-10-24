@@ -142,14 +142,18 @@ namespace UnitySkills
             "limit",
             "pageOffset",
             "pageLimit",
-            "_confirm"
+            "_confirm",
+            CheckpointParameterName
         };
 
-        /// <summary>Envelope-level body keys every skill accepts (paging, verbose, _confirm), case-insensitive.</summary>
+        /// <summary>Envelope-level body keys every skill accepts (paging, verbose, _confirm, _checkpoint), case-insensitive.</summary>
         internal static bool IsReservedBodyParameter(string name) =>
             !string.IsNullOrEmpty(name) && _reservedBodyParameters.Contains(name);
 
         private const string EntityIdParameterName = "entityId";
+
+        /// <summary>Envelope key that asks for an explicit checkpoint with this label before the call's first recorded step.</summary>
+        internal const string CheckpointParameterName = "_checkpoint";
 
         private const string PrefKeySummaryAutoTruncate = "UnitySkills_SummaryAutoTruncate";
         private const string PrefKeySummaryPageSize = "UnitySkills_SummaryPageSize";

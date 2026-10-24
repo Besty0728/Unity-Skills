@@ -213,17 +213,46 @@ namespace UnitySkills
         [UnitySkill("workflow_task_start", "Start a new persistent workflow task to track changes for undo. Call workflow_task_end when done.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "task", "undo", "tracking", "transaction" },
-            Outputs = new[] { "taskId", "message" },
+            Outputs = new[] { "taskId", "checkpoint", "message" },
             RequiresInput = new[] { "tag" })]
         public static object WorkflowTaskStart(string tag, string description = "")
         {
             var task = WorkflowManager.BeginTask(tag, description);
+            string checkpoint = WorkflowManager.AddCheckpoint(null, WorkflowCheckpoint.KindTask, tag);
             return new
             {
                 success = true,
                 taskId = task.id,
+                checkpoint,
                 message = $"Started task: {tag}"
             };
+        }
+
+        [UnitySkill("workflow_checkpoint", "Name a point in the undo history. Without 'at' it adds a checkpoint before the caller's next recorded step; with 'at' (a c<n> id from workflow_list) it renames that checkpoint. Undo back to it later with its id or label.",
+            Category = SkillCategory.Workflow, Operation = SkillOperation.Create,
+            Tags = new[] { "checkpoint", "undo", "label" },
+            Outputs = new[] { "id", "label" },
+            RiskLevel = "low",
+            RequiresInput = new[] { "label" })]
+        public static object WorkflowCheckpointMark(string label, string at = null)
+        {
+            if (Validate.Required(label, "label") is object err) return err;
+            return string.IsNullOrEmpty(at) ? AddLabelledCheckpoint(label) : RenameCheckpoint(at, label);
+        }
+
+        private static object AddLabelledCheckpoint(string label) =>
+            new { id = WorkflowManager.AddCheckpoint(null, WorkflowCheckpoint.KindExplicit, label), label };
+
+        private static object RenameCheckpoint(string id, string label)
+        {
+            if (!WorkflowManager.RenameCheckpoint(id, label))
+                return new
+                {
+                    error = $"Checkpoint not found: {id}. Use a c<n> id from workflow_list.",
+                    errorCode = SkillErrorCode.NotFound.ToWireString(),
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry
+                };
+            return new { id, label };
         }
 
         [UnitySkill("workflow_task_end", "End the current workflow task and save it. Requires an active task (call workflow_task_start first).",
@@ -277,24 +306,26 @@ namespace UnitySkills
         private const int DefaultWorkflowListRows = 30;
         private const int MaxWorkflowListRows = 200;
 
-        [UnitySkill("workflow_list", "List recorded workflow tasks newest first as compact rows 'id time skill target (changes) [@agent]'; pass a row's s<seq> id to workflow_undo_task. Params: limit (default 30), agent ('all', 'self' or an agent id), before (an s<seq> id, for the next page), format ('objects' returns the legacy object list).",
+        [UnitySkill("workflow_list", "List recorded workflow steps and checkpoints newest first as compact rows ('s<seq> time skill target (changes) [@agent] [(undone)]', 'c<n> time \"label\"|auto [@agent]'); pass a row's s<seq> or c<n> id to workflow_undo_task or workflow_checkpoint. Params: limit (default 30, counts all rows), agent ('all', 'self' or an agent id), before (an s<seq> or c<n> id, for the next page), view ('all' default, or 'checkpoints' for one row per checkpoint with the steps it covers), format ('objects' returns the legacy object list).",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
-            Tags = new[] { "workflow", "history", "list", "task" },
+            Tags = new[] { "workflow", "history", "list", "task", "checkpoint" },
             Outputs = new[] { "count", "agent", "rows", "more", "history" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
-        public static object WorkflowList(int limit = 0, string agent = "all", string before = null, string format = "rows")
+        public static object WorkflowList(int limit = 0, string agent = "all", string before = null, string format = "rows", string view = "all")
         {
             bool objects = string.Equals(format, "objects", StringComparison.OrdinalIgnoreCase);
             if (!objects && !string.IsNullOrEmpty(format) && !string.Equals(format, "rows", StringComparison.OrdinalIgnoreCase))
                 return InvalidListArgument($"format must be 'rows' or 'objects', got '{format}'");
+            bool checkpointsOnly = string.Equals(view, "checkpoints", StringComparison.OrdinalIgnoreCase);
+            if (!checkpointsOnly && !string.IsNullOrEmpty(view) && !string.Equals(view, "all", StringComparison.OrdinalIgnoreCase))
+                return InvalidListArgument($"view must be 'all' or 'checkpoints', got '{view}'");
             if (limit < 0 || limit > MaxWorkflowListRows)
                 return InvalidListArgument($"limit must be between 1 and {MaxWorkflowListRows} (0 = default)");
 
-            long beforeSeq = long.MaxValue;
-            if (!string.IsNullOrEmpty(before) &&
-                !long.TryParse(before.TrimStart('s', 'S'), out beforeSeq))
-                return InvalidListArgument($"before must be an s<seq> id from a previous page, got '{before}'");
+            long cutoff = long.MaxValue;
+            if (!string.IsNullOrEmpty(before) && !TryParseListCursor(before, out cutoff))
+                return InvalidListArgument($"before must be an s<seq> or c<n> id from a previous page, got '{before}'");
 
             string caller = WorkflowManager.ResolveCallerAgent();
             string agentFilter = string.IsNullOrEmpty(agent) || string.Equals(agent, "all", StringComparison.OrdinalIgnoreCase)
@@ -310,11 +341,11 @@ namespace UnitySkills
                 .Where(t => agentFilter == null || string.Equals(WorkflowManager.NormalizeAgent(t.agent), agentFilter, StringComparison.Ordinal))
                 .OrderBy(t => t.seq)
                 .ToList();
-            var page = tasks.Where(t => t.seq < beforeSeq).ToList();
 
             if (objects)
             {
                 // The pre-3.0 shape, oldest first and unpaged unless a limit is given, for scripts that parse it.
+                var page = tasks.Where(t => ListKeyForStep(t.seq) < cutoff).ToList();
                 var selected = limit > 0 ? page.Skip(Math.Max(0, page.Count - limit)) : page;
                 var list = selected.Select(t => new
                 {
@@ -330,17 +361,133 @@ namespace UnitySkills
                 return new { success = true, count = list.Count, history = list };
             }
 
+            var checkpoints = history.checkpoints
+                .Where(c => agentFilter == null || string.Equals(WorkflowManager.NormalizeAgent(c.agent), agentFilter, StringComparison.Ordinal))
+                .OrderBy(c => c.seq)
+                .ToList();
+            var entries = new List<ListEntry>();
+            if (!checkpointsOnly)
+                entries.AddRange(tasks.Select(t => new ListEntry(ListKeyForStep(t.seq), t, null)));
+            entries.AddRange(checkpoints.Select(c => new ListEntry(ListKeyForCheckpoint(c.seq), null, c)));
+            entries = entries.Where(e => e.Key < cutoff).OrderByDescending(e => e.Key).ToList();
+
             int take = limit > 0 ? limit : DefaultWorkflowListRows;
-            int skip = Math.Max(0, page.Count - take);
+            var shown = entries.Take(take).ToList();
+            var undone = UndoneSteps(history.restores);
+            var rows = shown.Select(e => e.Checkpoint != null
+                ? (checkpointsOnly
+                    ? FormatCheckpointSummaryRow(e.Checkpoint, caller, checkpoints, tasks)
+                    : FormatCheckpointRow(e.Checkpoint, caller))
+                : FormatTaskRow(e.Task, caller, undone.Contains(e.Task.seq))).ToList();
 
-            var rows = new List<string>();
-            for (int i = page.Count - 1; i >= skip; i--)
-                rows.Add(FormatTaskRow(page[i], caller));
-
-            if (skip > 0)
-                return new { success = true, count = tasks.Count, agent = caller, rows, more = page[skip].DisplayId };
-            return new { success = true, count = tasks.Count, agent = caller, rows };
+            int total = checkpointsOnly ? checkpoints.Count : tasks.Count;
+            if (entries.Count > shown.Count)
+                return new { success = true, count = total, agent = caller, rows, more = ListEntryId(shown[shown.Count - 1]) };
+            return new { success = true, count = total, agent = caller, rows };
         }
+
+        /// <summary>
+        /// One row of the merged list. A step <c>s&lt;seq&gt;</c> sorts above the checkpoint at its own position, which marks
+        /// the state before that step; a checkpoint with no step yet at its position (the next seq) sorts above every step.
+        /// </summary>
+        private sealed class ListEntry
+        {
+            public readonly long Key;
+            public readonly WorkflowTask Task;
+            public readonly WorkflowCheckpoint Checkpoint;
+
+            public ListEntry(long key, WorkflowTask task, WorkflowCheckpoint checkpoint)
+            {
+                Key = key;
+                Task = task;
+                Checkpoint = checkpoint;
+            }
+        }
+
+        private static long ListKeyForStep(long seq) => 2 * seq + 1;
+        private static long ListKeyForCheckpoint(long position) => 2 * position;
+        private static string ListEntryId(ListEntry entry) => entry.Checkpoint != null ? entry.Checkpoint.id : entry.Task.DisplayId;
+
+        /// <summary>Reads a list cursor: <c>s&lt;seq&gt;</c> or a bare seq name a step, <c>c&lt;n&gt;</c> a checkpoint. Rows above it are shown.</summary>
+        private static bool TryParseListCursor(string cursor, out long cutoff)
+        {
+            cutoff = 0;
+            if (cursor.Length < 1)
+                return false;
+            char prefix = char.ToLowerInvariant(cursor[0]);
+            bool checkpoint = prefix == 'c';
+            string digits = prefix == 's' || checkpoint ? cursor.Substring(1) : cursor;
+            if (!long.TryParse(digits, out long seq))
+                return false;
+            cutoff = checkpoint ? ListKeyForCheckpoint(seq) : ListKeyForStep(seq);
+            return true;
+        }
+
+        /// <summary>
+        /// The seqs of steps a restore undid: every step of a restore that no later restore undid itself. A restore whose own
+        /// step a later restore lists is itself reverted, so its steps are live again.
+        /// </summary>
+        private static HashSet<long> UndoneSteps(IList<WorkflowRestoreRecord> restores)
+        {
+            var undone = new HashSet<long>();
+            for (int i = 0; i < restores.Count; i++)
+            {
+                if (RestoreRevertedLater(restores, i))
+                    continue;
+                foreach (long step in restores[i].steps)
+                    undone.Add(step);
+            }
+            return undone;
+        }
+
+        private static bool RestoreRevertedLater(IList<WorkflowRestoreRecord> restores, int index)
+        {
+            for (int j = index + 1; j < restores.Count; j++)
+            {
+                if (restores[j].steps.Contains(restores[index].seq))
+                    return true;
+            }
+            return false;
+        }
+
+        private const int CheckpointLabelRowChars = 40;
+        private const int CheckpointSummaryCount = 2;
+
+        private static string FormatCheckpointRow(WorkflowCheckpoint checkpoint, string caller)
+        {
+            var row = new System.Text.StringBuilder(checkpoint.id).Append(' ').Append(FormatCheckpointTime(checkpoint)).Append(' ');
+            row.Append(CheckpointRowLabel(checkpoint));
+            AppendAgent(row, checkpoint.agent, caller);
+            return row.ToString();
+        }
+
+        /// <summary>The <c>view:"checkpoints"</c> row: the checkpoint, then the steps it covers up to the next newer checkpoint.</summary>
+        private static string FormatCheckpointSummaryRow(WorkflowCheckpoint checkpoint, string caller,
+            IList<WorkflowCheckpoint> checkpoints, IList<WorkflowTask> tasks)
+        {
+            int index = checkpoints.IndexOf(checkpoint);
+            long upper = index + 1 < checkpoints.Count ? checkpoints[index + 1].seq : long.MaxValue;
+            var covered = tasks.Where(t => t.seq >= checkpoint.seq && t.seq < upper).ToList();
+
+            var row = new System.Text.StringBuilder(FormatCheckpointRow(checkpoint, caller)).Append(": ");
+            row.Append(string.Join(", ", covered.Take(CheckpointSummaryCount).Select(t =>
+                string.IsNullOrEmpty(t.target) ? t.tag : t.tag + " " + t.target)));
+            row.Append(" (").Append(covered.Count).Append(')');
+            return row.ToString();
+        }
+
+        private static string CheckpointRowLabel(WorkflowCheckpoint checkpoint)
+        {
+            if (string.IsNullOrEmpty(checkpoint.label))
+                return checkpoint.kind ?? WorkflowCheckpoint.KindAuto;
+            string label = checkpoint.label.Replace('\n', ' ').Replace('\r', ' ');
+            if (label.Length > CheckpointLabelRowChars)
+                label = label.Substring(0, CheckpointLabelRowChars);
+            return "\"" + label + "\"";
+        }
+
+        private static string FormatCheckpointTime(WorkflowCheckpoint checkpoint) =>
+            DateTimeOffset.FromUnixTimeMilliseconds(checkpoint.timestampMs).ToLocalTime().ToString("HH:mm:ss");
 
         private static object InvalidListArgument(string message) => new
         {
@@ -348,13 +495,15 @@ namespace UnitySkills
             errorCode = SkillErrorCode.SemanticInvalid.ToWireString()
         };
 
-        private static string FormatTaskRow(WorkflowTask task, string caller)
+        private static string FormatTaskRow(WorkflowTask task, string caller, bool undone)
         {
             var row = new System.Text.StringBuilder(task.DisplayId).Append(' ').Append(task.GetFormattedTime()).Append(' ').Append(task.tag);
             if (!string.IsNullOrEmpty(task.target))
                 row.Append(' ').Append(task.target);
             row.Append(" (").Append(task.snapshots?.Count ?? 0).Append(')');
             AppendAgent(row, task.agent, caller);
+            if (undone)
+                row.Append(" (undone)");
             return row.ToString();
         }
 
@@ -367,6 +516,7 @@ namespace UnitySkills
             if (!string.Equals(agent, caller, StringComparison.Ordinal))
                 row.Append(" @").Append(agent);
         }
+
 
         [UnitySkill("workflow_undo_task", "Undo changes from a specific task (restore to previous state); taskId is the s<seq> id from workflow_list or the task UUID.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
@@ -553,14 +703,16 @@ namespace UnitySkills
         [UnitySkill("workflow_session_start", "Start a new session (conversation-level). All changes will be tracked and can be undone together.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "session", "conversation", "tracking", "start" },
-            Outputs = new[] { "sessionId", "message" })]
+            Outputs = new[] { "sessionId", "checkpoint", "message" })]
         public static object WorkflowSessionStart(string tag = null)
         {
             string sessionId = WorkflowManager.BeginSession(tag);
+            string checkpoint = WorkflowManager.AddCheckpoint(null, WorkflowCheckpoint.KindSession, string.IsNullOrEmpty(tag) ? "Session" : tag);
             return new
             {
                 success = true,
                 sessionId = sessionId,
+                checkpoint,
                 message = "Session started. All changes will be tracked for undo."
             };
         }

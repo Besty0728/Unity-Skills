@@ -15,6 +15,13 @@ namespace UnitySkills
         private static WorkflowTask _currentTask;
         private static string _currentSessionId;
 
+        // The label the next non-empty task records as an explicit checkpoint at its seq; cleared by that task, or by an empty one.
+        private static string _pendingCheckpointLabel;
+
+        // While a batch runs, its recorded tasks share one group, named by the first of them (see BeginBatchGroup).
+        private static bool _batchGroupOpen;
+        private static string _batchGroup;
+
         // Set when a log segment cannot be read, or its blob references rebuilt. In that state, the history in hand
         // references fewer blobs than the store actually holds, so reclaiming "unreferenced" entries would delete live
         // backups; better to leak than to pay that cost.
@@ -139,6 +146,7 @@ namespace UnitySkills
             if (_currentTask.snapshots.Count == 0)
             {
                 _currentTask = null;
+                _pendingCheckpointLabel = null;
                 return;
             }
 
@@ -149,6 +157,8 @@ namespace UnitySkills
             task.cursorEnd = EditorChangeTrackerService.CurrentCursor;
             StampAssetFingerprints(task);
             bool startsRun = AttributeTask(task);
+            string checkpointLabel = _pendingCheckpointLabel;
+            _pendingCheckpointLabel = null;
             var batch = new LogBatch();
             // The checkpoint sits at this step's position, so it is written before the step in the same batch.
             if (startsRun && WorkflowCheckpointConfig.AutoCheckpoints)
@@ -160,6 +170,20 @@ namespace UnitySkills
                     timestampMs = NowUnixMs(),
                     agent = task.agent,
                     kind = WorkflowCheckpoint.KindAuto,
+                    cursor = task.cursorStart
+                });
+            }
+            // Written after the auto one, so an explicit label upgrades it at the same position (see MergeCheckpoint).
+            if (checkpointLabel != null)
+            {
+                AddCheckpointRecord(batch, new WorkflowCheckpoint
+                {
+                    id = CheckpointIdFor(task.seq),
+                    seq = task.seq,
+                    timestampMs = NowUnixMs(),
+                    agent = task.agent,
+                    kind = WorkflowCheckpoint.KindExplicit,
+                    label = checkpointLabel,
                     cursor = task.cursorStart
                 });
             }
@@ -217,6 +241,12 @@ namespace UnitySkills
             }
             if (!string.IsNullOrEmpty(task.group))
                 return false;
+            // Only the batch's first task can open a run; the rest continue the batch's group.
+            if (_batchGroup != null)
+            {
+                task.group = _batchGroup;
+                return false;
+            }
 
             var activity = GetAgentActivity(task.agent);
             bool startsRun = false;
@@ -234,6 +264,12 @@ namespace UnitySkills
                 if (startsRun)
                     activity.group = "g" + task.seq;
                 task.group = activity.group;
+            }
+            if (_batchGroupOpen)
+            {
+                _batchGroup = "b" + task.seq;
+                task.group = _batchGroup;
+                activity.group = _batchGroup;
             }
             SaveAgentActivity();
             return startsRun;

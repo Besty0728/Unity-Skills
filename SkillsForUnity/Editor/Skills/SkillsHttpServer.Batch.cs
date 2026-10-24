@@ -137,6 +137,20 @@ namespace UnitySkills
                 return;
             }
 
+            // The label of the explicit checkpoint before the batch's first recorded step; a preview records nothing, so it is ignored there.
+            string checkpointLabel = null;
+            if (body.TryGetValue(SkillRouter.CheckpointParameterName, StringComparison.OrdinalIgnoreCase, out var checkpointToken)
+                && checkpointToken.Type != JTokenType.Null)
+            {
+                if (checkpointToken.Type != JTokenType.String)
+                {
+                    WriteBatchTypeMismatch(job, SkillRouter.CheckpointParameterName, checkpointToken,
+                        "Use a JSON string label, for example \"_checkpoint\": \"before lighting\".");
+                    return;
+                }
+                checkpointLabel = checkpointToken.Value<string>();
+            }
+
             // The request-body-level "params" fills $param slots in step args (static, independent of mode).
             JObject batchParams = null;
             if (body.TryGetValue("params", StringComparison.OrdinalIgnoreCase, out var paramsToken) && paramsToken is JObject paramsObj)
@@ -153,17 +167,33 @@ namespace UnitySkills
                 RejectWithoutBatchDryRunToken(job, qs, steps, batchParams, continueOnError, gatedSteps, batchHash))
                 return;
 
+            // A preview records nothing, so only a real batch opens a workflow group (and must not clear a label of another call).
+            bool recording = !dryRun;
+            if (recording)
+            {
+                WorkflowManager.BeginBatchGroup();
+                WorkflowManager.SetPendingCheckpointLabel(checkpointLabel);
+            }
             // agentIdRefiner re-checks ClientProcessResolver's cache before every step's telemetry write (see
             // RefineAgentId) -- a whole batch shares one accepted connection, so the same idempotent recheck
             // that /skill/{name} does once is worth repeating per step here: an early step may run before the
             // background resolver has landed a result, while a later one in the same batch won't. remotePort/
             // agentIdIsExplicit are also forwarded so SkillTelemetryService can do its own flush-time
             // late-binding (the real fix -- see SkillTelemetryService.Record) regardless of how this recheck lands.
-            var response = ExecuteBatchCore(steps, batchParams, continueOnError, dryRun, transactional, job.AgentId, captureDiff,
-                agentIdRefiner: () => { RefineAgentId(job); return job.AgentId; },
-                remotePort: job.RemotePort,
-                agentIdIsExplicit: job.AgentIdIsExplicit,
-                wire: SkillRouter.ResolveWireVersion(job.QueryString));
+            JObject response;
+            try
+            {
+                response = ExecuteBatchCore(steps, batchParams, continueOnError, dryRun, transactional, job.AgentId, captureDiff,
+                    agentIdRefiner: () => { RefineAgentId(job); return job.AgentId; },
+                    remotePort: job.RemotePort,
+                    agentIdIsExplicit: job.AgentIdIsExplicit,
+                    wire: SkillRouter.ResolveWireVersion(job.QueryString));
+            }
+            finally
+            {
+                if (recording)
+                    WorkflowManager.EndBatchGroup();
+            }
             if (gatedSteps != null && dryRun)
                 response.Property("dryRun")?.AddAfterSelf(new JProperty(DryRunPolicyService.TokenQueryKey,
                     DryRunPolicyService.IssueToken(DryRunPolicyService.BatchScope, batchHash)));

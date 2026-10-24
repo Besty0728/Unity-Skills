@@ -878,7 +878,7 @@ namespace UnitySkills
         /// Anything else is rejected rather than ignored: a silently-dropped key is exactly what causes an agent
         /// to believe it requested a preview, or requested async execution, and got neither.
         /// </summary>
-        private static readonly string[] BatchBodyParams = { "steps", "params", "continueOnError", "dryRun", "mode" };
+        private static readonly string[] BatchBodyParams = { "steps", "params", "continueOnError", "dryRun", "mode", SkillRouter.CheckpointParameterName };
     }
 }
 

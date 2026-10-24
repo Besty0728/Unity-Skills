@@ -46,6 +46,31 @@ namespace UnitySkills
             return true;
         }
 
+        /// <summary>
+        /// Labels the explicit checkpoint the next non-empty task records at its seq (an empty label clears it). The router
+        /// calls this only after a successful call, so a failed call leaves no label behind.
+        /// </summary>
+        internal static void SetPendingCheckpointLabel(string label) =>
+            _pendingCheckpointLabel = string.IsNullOrEmpty(label) ? null : label;
+
+        /// <summary>
+        /// Opens a batch: until <see cref="EndBatchGroup"/>, every task it records joins one group named by the first of them,
+        /// and only that first task can open an agent run (so the rest get no automatic checkpoint).
+        /// </summary>
+        internal static void BeginBatchGroup()
+        {
+            _batchGroupOpen = true;
+            _batchGroup = null;
+        }
+
+        /// <summary>Closes the batch and drops any label it left unconsumed, so it cannot reach an unrelated later call.</summary>
+        internal static void EndBatchGroup()
+        {
+            _batchGroupOpen = false;
+            _batchGroup = null;
+            _pendingCheckpointLabel = null;
+        }
+
         public static IReadOnlyList<WorkflowCheckpoint> GetCheckpoints() => History.checkpoints;
 
         /// <summary>

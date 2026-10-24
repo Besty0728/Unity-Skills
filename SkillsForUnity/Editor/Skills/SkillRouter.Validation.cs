@@ -93,7 +93,7 @@ namespace UnitySkills
 
         /// <summary>
         /// dryRun-time counterpart to the reserved-body-parameter parsing Execute performs just before invoking
-        /// the skill (verbose bool coercion; offset/limit/pageOffset/pageLimit integer + range checks): without
+        /// the skill (verbose bool coercion, _checkpoint string check, offset/limit/pageOffset/pageLimit integer + range checks): without
         /// this, POST /skill/xxx?mode=dryRun with e.g. <c>{"offset":"abc"}</c> reported valid:true, and the same
         /// body without ?mode=dryRun failed with TYPE_MISMATCH -- dryRun is supposed to preview exactly that
         /// failure, not miss it. Skipped whenever the skill itself declares a same-named parameter (its own
@@ -115,6 +115,17 @@ namespace UnitySkills
                     parameter = "verbose",
                     expectedType = "boolean",
                     error = $"Parameter 'verbose' must be a boolean (true/false), got: {verboseToken.ToString(Formatting.None)}"
+                });
+            }
+
+            if (args.TryGetValue(CheckpointParameterName, StringComparison.OrdinalIgnoreCase, out var checkpointToken) &&
+                checkpointToken.Type != JTokenType.String && checkpointToken.Type != JTokenType.Null)
+            {
+                validation.TypeErrors.Add(new
+                {
+                    parameter = CheckpointParameterName,
+                    expectedType = "string",
+                    error = $"Parameter '{CheckpointParameterName}' must be a string label, got: {checkpointToken.ToString(Formatting.None)}"
                 });
             }
 

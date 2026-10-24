@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Unity-2022.3%2B-black?style=for-the-badge&logo=unity" alt="Unity">
-  <img src="https://img.shields.io/badge/Skills-870-green?style=for-the-badge" alt="Skills">
+  <img src="https://img.shields.io/badge/Skills-871-green?style=for-the-badge" alt="Skills">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-orange?style=for-the-badge" alt="License"></a>
   <a href="README_CN.md"><img src="https://img.shields.io/badge/README-中文-blue?style=for-the-badge" alt="中文"></a>
 </p>
@@ -58,7 +58,7 @@ This project is a deep refactoring and feature extension based on the excellent 
 
 ## 🚀 Core Features
 
-- 🛠️ **870 REST Skills Toolkit**: 57 source files across 55 categories, plus 30 advisory design modules, with Batch operations.
+- 🛠️ **871 REST Skills Toolkit**: 57 source files across 55 categories, plus 30 advisory design modules, with Batch operations.
 - ⚡ **UnityCLI Support**: Bind UnityCLI to cold-start the bound project — no need to launch Unity Hub.
 - 🔐 **Three-Tier Permission Modes**: Approval / Auto / Bypass with dual approval channels, aligned with Claude Code permission modes.
 - 🤖 **6 Major IDEs Native Support**: Claude Code / Antigravity / Codex / Cursor / OpenCode / Kimi Code — one-click install and use.
@@ -212,14 +212,14 @@ If you're using other tools that support Skills, install according to the Skills
 ---
 
 <details>
-<summary><b>📦 Skills Category Overview (870)</b></summary>
+<summary><b>📦 Skills Category Overview (871)</b></summary>
 
 | Category | Count | Core Functions |
 | :--- | :---: | :--- |
 | **YooAsset** | 40 | Hot-update bundle builds/Collector full CRUD/BuildReport asset and dependency analysis/PlayMode runtime validation/Reporter-Debugger-AssetArtScanner tools |
 | **Behavior** | 10 | Unity Behavior graph assets/agents/blackboard variables (com.unity.behavior, reflection-based) |
 | **HybridCLR** | 12 | HybridCLR hot-update settings/codegen/DLL compile & copy pipeline (com.code-philosophy.hybridclr, reflection-based) |
-| **Workflow** | 40 | Persistent history/Tiered task snapshots/Content-addressed file store/Auto-clean/Session-level undo/Rollback/Clear history/Bookmarks/Batch query-preview-execute jobs |
+| **Workflow** | 41 | Persistent history/Tiered task snapshots/Content-addressed file store/Auto-clean/Session-level undo/Rollback/Clear history/Bookmarks/Batch query-preview-execute jobs |
 | **Cinemachine** | 34 | 2.x/3.x dual version auto-install/MixingCamera/ClearShot/TargetGroup/Spline |
 | **Netcode** | 39 | Netcode for GameObjects setup/prefabs/lifecycle/host-server-client workflows/NGO 2.5+ attachable & component-controller helpers |
 | **UI** | 29 | Canvas/Button/Text/InputField/Dropdown/ScrollView/Layout/Alignment/Image and selectable utilities |
@@ -294,7 +294,7 @@ If you're using other tools that support Skills, install according to the Skills
 │   │   └── references/             # Unity Development References
 │   └── Editor/
 │       ├── Locales/                # Decoupled JSON Localization Assets (en.json, zh-CN.json, ru.json)
-│       ├── Skills/                 # Core Skill Logic (57 *Skills.cs files → 55 SkillCategory categories, 870 Skills)
+│       ├── Skills/                 # Core Skill Logic (57 *Skills.cs files → 55 SkillCategory categories, 871 Skills)
 │       │   ├── SkillsHttpServer.cs # HTTP Server Core (Producer-Consumer)
 │       │   ├── SkillRouter.cs      # Request Routing & Reflection-based Skill Discovery
 │       │   ├── WorkflowManager.cs  # Persistent Workflow (Task/Session/Snapshot)
@@ -302,7 +302,7 @@ If you're using other tools that support Skills, install according to the Skills
 │       │   ├── GameObjectFinder.cs # Unified GO Finder (name/entityId/instanceId/path)
 │       │   ├── BatchExecutor.cs    # Generic Batch Processing Framework
 │       │   ├── Localization.cs     # Multi-Language Localization Engine
-│       │   └── ...                 # 870 Skills source code
+│       │   └── ...                 # 871 Skills source code
 │       └── UI/                     # UI Toolkit Windows & Controllers
 │           ├── UnitySkillsWindow.{cs,uxml,uss} # Main Dashboard Window
 │           ├── UnityCliWindow.{cs,uxml,uss}    # Unity CLI Configuration Panel

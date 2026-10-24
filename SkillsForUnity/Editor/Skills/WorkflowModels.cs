@@ -142,6 +142,9 @@ namespace UnitySkills
     public class WorkflowCheckpoint
     {
         internal const string KindAuto = "auto";
+        internal const string KindExplicit = "explicit";
+        internal const string KindTask = "task";
+        internal const string KindSession = "session";
 
         public string id;
         public long seq;          // Position: the seq the step after the checkpoint got (or will get)

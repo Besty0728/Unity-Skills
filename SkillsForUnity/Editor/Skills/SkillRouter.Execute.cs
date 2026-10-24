@@ -343,6 +343,10 @@ namespace UnitySkills
                         extra: WithResolutionNotes(extra, resolutionNotes));
                 }
 
+                // The label waits for the task this call records. Only a call that got here succeeded: a failed one returned above.
+                if (skill.TracksWorkflow && TryReadCheckpointLabel(args, out var checkpointLabel))
+                    WorkflowManager.SetPendingCheckpointLabel(checkpointLabel);
+
                 // ========== Automatic workflow wrap-up ==========
                 // A manual task or session records nothing here: its task reaches the log when it ends.
                 if (autoStartedWorkflow)

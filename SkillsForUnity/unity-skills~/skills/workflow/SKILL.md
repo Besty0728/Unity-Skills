@@ -194,7 +194,19 @@ Start a new persistent workflow task to track changes for undo. Call workflow_ta
 | tag | string | Yes | - | Short label for the task (e.g., "Create NPC") |
 | description | string | No | "" | Detailed description or prompt |
 
-**Returns:** `{ success, taskId, message }`
+**Returns:** `{ success, taskId, checkpoint, message }`. `checkpoint` is the task's checkpoint id (`c<n>`), labelled with the tag.
+
+### `workflow_checkpoint`
+Names a point in the undo history. Without `at` it adds a checkpoint before the caller's next recorded step; with `at` it renames an existing checkpoint.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| label | string | Yes | - | The name, e.g. `"before lighting"` |
+| at | string | No | null | A `c<n>` id from `workflow_list` to rename instead of adding one |
+
+**Returns:** `{ id, label }`. An unknown `at` returns `NOT_FOUND`.
+
+Any write skill also takes a `_checkpoint` body key (`{"_checkpoint":"before lighting", ...}`), which names the checkpoint before that call's step. A failed call leaves no checkpoint. A `/skills/batch` body takes the same key for its first recorded step.
 
 ### `workflow_task_end`
 End the current workflow task and save it. Requires an active task (call workflow_task_start first).
@@ -232,10 +244,11 @@ List recorded tasks, newest first, as compact text rows. Each tracked write is o
 |-----------|------|----------|---------|-------------|
 | limit | int | No | 0 | Rows of tasks to return; `0` = 30 (rows) or all (objects); max 200 |
 | agent | string | No | all | `all`, `self` (the calling agent), `unknown`, or an agent id such as `Codex` |
-| before | string | No | null | An `s<seq>` id: list only older tasks (pass the previous answer's `more`) |
+| before | string | No | null | An `s<seq>` or `c<n>` id: list only rows above it (pass the previous answer's `more`) |
+| view | string | No | all | `all`, or `checkpoints` for one row per checkpoint with the steps it covers |
 | format | string | No | rows | `rows`, or `objects` for the legacy object list (oldest first) |
 
-**Returns (rows):** `{ success, count, agent, rows, more? }`: `agent` is the caller; `more` is present when older tasks remain.
+**Returns (rows):** `{ success, count, agent, rows, more? }`: `agent` is the caller; `more` is present when older rows remain. Checkpoint rows (`c<n> time auto` or `c<n> time "label"`) sit among the steps; a `(undone)` step was reverted by a restore.
 
 ```
 s344 14:36:10 light_set_properties Sun (2)

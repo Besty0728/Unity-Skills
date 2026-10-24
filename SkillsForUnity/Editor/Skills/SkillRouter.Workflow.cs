@@ -31,6 +31,16 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>The envelope's <c>_checkpoint</c> label; false when absent, null or empty (a non-string is rejected by validation).</summary>
+        private static bool TryReadCheckpointLabel(JObject args, out string label)
+        {
+            label = null;
+            if (args.TryGetValue(CheckpointParameterName, StringComparison.OrdinalIgnoreCase, out var token) &&
+                token.Type == JTokenType.String)
+                label = token.Value<string>();
+            return !string.IsNullOrEmpty(label);
+        }
+
         // Argument names that name a call's main target, in the order the compact workflow list prefers them.
         private static readonly string[] WorkflowTargetParameters =
         {
