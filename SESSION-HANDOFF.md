@@ -2,7 +2,21 @@
 
 这是当前状态的优先说明；下方较早内容是历史会话材料，若有冲突以本节为准。本机时区是 JST（UTC+9），runner、门禁记录和会话目录名里的时间是 UTC。
 
-## 10-23 21:00 状态（最新，优先于下方所有小节）
+## 10-24 21:50 状态（最新，优先于下方所有小节）
+
+- HEAD `a2c56cec`。beta 上未推送的本地提交：f56e6510、5ebc2adc、2dafb3c5、c3fcf133、f05deb79（安装器修复）、a2c56cec（交接文档）。
+- **Workflow P3 已实现，未提交，等用户确认**。方案见 `~/.claude/plans/buzzing-discovering-lovelace.md`。
+  - **拆分**：`WorkflowManager` 拆成 4 个 partial（纯移动）。拆分后的原样快照在旧会话 scratchpad 的 `p3split/`，blob 已用 `git hash-object -w` 写入对象库，可以据此单独生成第一个提交。
+  - **存储**：新增 `WorkflowStore.cs`。`Library/UnitySkills/workflow/` 下是 `log.jsonl`、封存段及其 `.refs`、`head.json`、`blobs/`，记录为任务状态记录（task/drop/clear/agent）。旧历史移到 `workflow_legacy/`，14 天后自动删除。
+  - **设置与界面**：`CapacityMB`（512）和 `MaxAgeDays`（30）两个新键；History 页从 5 个字段减到 2 个，新增旧备份行和删除按钮；三语文案、workflow 文档已同步；死代码已清理。
+  - **验证**：
+    - Built-in 和 URP 全量 EditMode 各 2436 个，0 失败；UISkillsFontTests 8/8。
+    - 实测结果见 `eval/runs/pending-20261021/p3-bench-result.md`：40 MB 日志下写操作 wfMs p95 = 0，和空历史一样。
+    - 6 万任务的全量重放耗时 1.0–2.5 s，折合每 1 万任务 160–420 ms，处在 300 ms 目标的临界线上。
+  - **成员分工**：p3-store（opus）因额度中断，lead 收尾；p3-ui、p3-cleanup 是 haiku。lead 纠正过两处：新 UI 行的内联样式改成 USS 类；两个 `.meta` 改为兄弟文件的完整格式。
+- **下一步**：用户确认后提交 P3（拆分一个、存储加界面一个），然后做 P1。用户规则：探查和改文件的成员一律用 haiku，lead 负责纠错。
+
+## 10-23 21:00 状态
 
 - **21:40 更新**：beta 上未推送的提交现在是 f56e6510、5ebc2adc、`2dafb3c5`（docs3，已并入 SkillCountDocsTests 修复）、`c3fcf133`（P0 + tokenfix + pagesize）。
   - 已合并的 worktree 和 agent 分支都已清理，skill-p0 的插件引用改为指向主工作区。
