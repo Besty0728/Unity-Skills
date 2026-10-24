@@ -21,7 +21,19 @@ namespace UnitySkills.Tests.OptionalPackages
         {
             var result = Ok(Run("cinemachine_create_vcam", new JObject { ["name"] = "R6VCam" }));
             Assert.That(result["gameObjectName"]?.ToString(), Is.EqualTo("R6VCam"), result.ToString());
+#if UNITY_6000_4_OR_NEWER
+            // WHY: Unity 6000.4+ removed legacy instance ids, so the skill's instanceId field is always 0
+            // there (UnityObjectIdUtility.GetObjectId -> GetLegacyInstanceId returns 0 under this symbol) —
+            // asserting it non-zero is unsatisfiable on 6000.4+. The skill also returns a valid modern
+            // identifier via entityId, which is what a caller actually uses to re-locate the VCam on 6000.4+.
+            // Assert that path is populated and is a positive ulong, so the test still proves the created VCam
+            // is inspectable and carries a usable object identifier.
+            Assert.That(result["entityId"]?.ToString(), Is.Not.Null.And.Not.Empty, result.ToString());
+            Assert.That(ulong.TryParse(result["entityId"]?.ToString(), out var rawEntityId) && rawEntityId > 0,
+                Is.True, $"entityId must parse to a positive ulong on Unity 6000.4+: {result}");
+#else
             Assert.That(result["instanceId"]?.Value<int>(), Is.Not.EqualTo(0), result.ToString());
+#endif
 
             var info = Ok(Run("cinemachine_inspect_vcam", new JObject { ["vcamName"] = "R6VCam" }));
             Assert.That(info["name"]?.ToString(), Is.EqualTo("R6VCam"), info.ToString());

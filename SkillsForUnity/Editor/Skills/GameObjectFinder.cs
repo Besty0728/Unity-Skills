@@ -462,15 +462,42 @@ namespace UnitySkills
 
         private static IEnumerable<GameObject> GetLoadedSceneRoots()
         {
+#if UNITY_6000_4_OR_NEWER
+            // WHY: On Unity 6000.4+ (6.5) a scene freshly created via EditorSceneManager.NewScene can be the
+            // active, on-screen scene yet be intermittently skipped by the sceneCount/GetSceneAt() scan below
+            // (it reports isLoaded == false there). That made SceneSummarize under-count the objects in that
+            // scene (e.g. the default Camera + Light on a NewSceneSetup.DefaultGameObjects, failing
+            // PerceptionSkillsTests.SceneSummarize_CountsObjectsCorrectly, whose >= 4 floor is still correct —
+            // Unity still adds a camera + light to a default scene on 6000.5/6000.6). The active scene's
+            // objects exist by definition, so enumerate it explicitly as a fallback. This is additive and never
+            // double counts: when the scan does see the active scene (healthy engines / older versions) the
+            // flag below is already set and the fallback is skipped.
+            var activeScene = SceneManager.GetActiveScene();
+            bool activeSceneEnumerated = false;
+#endif
+
             for (int sceneIndex = 0; sceneIndex < SceneManager.sceneCount; sceneIndex++)
             {
                 var scene = SceneManager.GetSceneAt(sceneIndex);
                 if (!scene.IsValid() || !scene.isLoaded)
                     continue;
 
+#if UNITY_6000_4_OR_NEWER
+                if (scene == activeScene)
+                    activeSceneEnumerated = true;
+#endif
+
                 foreach (var root in scene.GetRootGameObjects())
                     yield return root;
             }
+
+#if UNITY_6000_4_OR_NEWER
+            if (!activeSceneEnumerated && activeScene.IsValid())
+            {
+                foreach (var root in activeScene.GetRootGameObjects())
+                    yield return root;
+            }
+#endif
 
             foreach (var root in GetDontDestroyOnLoadRoots())
                 yield return root;
