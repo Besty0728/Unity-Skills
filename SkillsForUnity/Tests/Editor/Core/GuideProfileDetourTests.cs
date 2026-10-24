@@ -58,9 +58,7 @@ namespace UnitySkills.Tests.Core
             // All of it is redirected to a temp file and deleted when done — the user's real history is never touched by this file.
             _tempRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsGuideDetour_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempRoot);
-            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(_tempRoot, "workflow_history.json");
-            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(_tempRoot, "workflow_files");
-            WorkflowManager.ResetStateForTests();
+            WorkflowManager.OverrideRootForTests(Path.Combine(_tempRoot, "workflow"));
 
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             GameObjectFinder.InvalidateCache();
@@ -81,9 +79,7 @@ namespace UnitySkills.Tests.Core
             }
 
             WorkflowManager.AbortTask();
-            WorkflowManager.ResetStateForTests();
-            WorkflowManager.OverrideHistoryFilePathForTests = null;
-            WorkflowFileStore.OverrideStoreRootForTests = null;
+            WorkflowManager.OverrideRootForTests(null);
             try { if (Directory.Exists(_tempRoot)) Directory.Delete(_tempRoot, true); } catch { }
 
             SkillsSurfaceProfile.Current = _savedProfile;

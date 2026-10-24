@@ -256,27 +256,18 @@ namespace UnitySkills.Tests.Core
         {
             Open("A");
             WorkflowAutoCleanConfig.Enabled = false;
-            WorkflowAutoCleanConfig.MaxTasks = 11;
-            WorkflowAutoCleanConfig.MaxHistoryMB = 12;
-            WorkflowAutoCleanConfig.MaxTaskAgeDays = 13;
-            WorkflowAutoCleanConfig.MaxStoreMB = 14;
-            WorkflowAutoCleanConfig.StoreMaxAgeDays = 15;
+            WorkflowAutoCleanConfig.CapacityMB = 11;
+            WorkflowAutoCleanConfig.MaxAgeDays = 12;
 
             Open("B");
             Assert.That(WorkflowAutoCleanConfig.Enabled, Is.True);
-            Assert.That(WorkflowAutoCleanConfig.MaxTasks, Is.EqualTo(200));
-            Assert.That(WorkflowAutoCleanConfig.MaxHistoryMB, Is.EqualTo(32));
-            Assert.That(WorkflowAutoCleanConfig.MaxTaskAgeDays, Is.EqualTo(30));
-            Assert.That(WorkflowAutoCleanConfig.MaxStoreMB, Is.EqualTo(512));
-            Assert.That(WorkflowAutoCleanConfig.StoreMaxAgeDays, Is.EqualTo(7));
+            Assert.That(WorkflowAutoCleanConfig.CapacityMB, Is.EqualTo(512));
+            Assert.That(WorkflowAutoCleanConfig.MaxAgeDays, Is.EqualTo(30));
 
             Open("A");
             Assert.That(WorkflowAutoCleanConfig.Enabled, Is.False);
-            Assert.That(WorkflowAutoCleanConfig.MaxTasks, Is.EqualTo(11));
-            Assert.That(WorkflowAutoCleanConfig.MaxHistoryMB, Is.EqualTo(12));
-            Assert.That(WorkflowAutoCleanConfig.MaxTaskAgeDays, Is.EqualTo(13));
-            Assert.That(WorkflowAutoCleanConfig.MaxStoreMB, Is.EqualTo(14));
-            Assert.That(WorkflowAutoCleanConfig.StoreMaxAgeDays, Is.EqualTo(15));
+            Assert.That(WorkflowAutoCleanConfig.CapacityMB, Is.EqualTo(11));
+            Assert.That(WorkflowAutoCleanConfig.MaxAgeDays, Is.EqualTo(12));
         }
 
         [Test]
@@ -336,9 +327,7 @@ namespace UnitySkills.Tests.Core
                 "UnitySkills_RequireConfirmation", "UnitySkills_PreferredPort", "UnitySkills_RequestTimeoutMinutes",
                 "UnitySkills_TelemetryEnabled", "UnitySkills_AutoInstallPackagesOnStartup", "UnitySkills_EvalPanelConfig",
                 EvaluationModeGuard.PrefKey,
-                "UnitySkills.Workflow.Enabled", "UnitySkills.Workflow.MaxTasks", "UnitySkills.Workflow.MaxHistoryMB",
-                "UnitySkills.Workflow.MaxTaskAgeDays", "UnitySkills.Workflow.MaxStoreMB",
-                "UnitySkills.Workflow.StoreMaxAgeDays",
+                "UnitySkills.Workflow.Enabled", "UnitySkills.Workflow.CapacityMB", "UnitySkills.Workflow.MaxAgeDays",
             };
             var before = keys.Select(GlobalPref).ToArray();
 
@@ -360,11 +349,8 @@ namespace UnitySkills.Tests.Core
             SkillTelemetryService.Enabled = !SkillTelemetryService.Enabled;
             PackageManagerHelper.AutoInstallPackagesOnStartup = false;
             WorkflowAutoCleanConfig.Enabled = !WorkflowAutoCleanConfig.Enabled;
-            WorkflowAutoCleanConfig.MaxTasks = WorkflowAutoCleanConfig.MaxTasks == 201 ? 202 : 201;
-            WorkflowAutoCleanConfig.MaxHistoryMB = WorkflowAutoCleanConfig.MaxHistoryMB == 33 ? 34 : 33;
-            WorkflowAutoCleanConfig.MaxTaskAgeDays = WorkflowAutoCleanConfig.MaxTaskAgeDays == 31 ? 32 : 31;
-            WorkflowAutoCleanConfig.MaxStoreMB = WorkflowAutoCleanConfig.MaxStoreMB == 513 ? 514 : 513;
-            WorkflowAutoCleanConfig.StoreMaxAgeDays = WorkflowAutoCleanConfig.StoreMaxAgeDays == 8 ? 9 : 8;
+            WorkflowAutoCleanConfig.CapacityMB = WorkflowAutoCleanConfig.CapacityMB == 513 ? 514 : 513;
+            WorkflowAutoCleanConfig.MaxAgeDays = WorkflowAutoCleanConfig.MaxAgeDays == 31 ? 32 : 31;
             EvaluationTabController.WritePanelConfig(new EvaluationTabController.PanelConfig { Model = Guid.NewGuid().ToString("N") });
             _scope.Dispose();
             _scope = null;
@@ -377,9 +363,7 @@ namespace UnitySkills.Tests.Core
                 "UnitySkills_OperatingMode", "UnitySkills_PanelApprovalRequired", "UnitySkills_AllowlistSkills",
                 "UnitySkills_RequireConfirmation", "UnitySkills_PreferredPort", "UnitySkills_RequestTimeoutMinutes",
                 "UnitySkills_TelemetryEnabled", "UnitySkills_AutoInstallPackagesOnStartup", "UnitySkills_EvalPanelConfig",
-                "UnitySkills.Workflow.Enabled", "UnitySkills.Workflow.MaxTasks", "UnitySkills.Workflow.MaxHistoryMB",
-                "UnitySkills.Workflow.MaxTaskAgeDays", "UnitySkills.Workflow.MaxStoreMB",
-                "UnitySkills.Workflow.StoreMaxAgeDays",
+                "UnitySkills.Workflow.Enabled", "UnitySkills.Workflow.CapacityMB", "UnitySkills.Workflow.MaxAgeDays",
             }));
         }
 

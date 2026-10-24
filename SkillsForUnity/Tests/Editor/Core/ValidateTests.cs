@@ -1,4 +1,5 @@
-﻿using NUnit.Framework;
+﻿using System.Collections.Generic;
+using NUnit.Framework;
 
 namespace UnitySkills.Tests.Core
 {
@@ -306,21 +307,20 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void WorkflowHistoryData_EnsureDefaults_PreservesSchemaAndInitializesCollections()
+        public void WorkflowHistoryData_EnsureDefaults_InitializesCollectionsAndKeepsSeqAhead()
         {
             var history = new WorkflowHistoryData
             {
-                schemaVersion = 0,
                 tasks = null,
-                undoneStack = null
+                undoneStack = new List<WorkflowTask> { null, new WorkflowTask { id = "u", seq = 7 } },
+                nextSeq = 3
             };
 
             history.EnsureDefaults();
 
-            Assert.AreEqual(0, history.schemaVersion,
-                "Schema changes require transactional blob migration and must not happen in EnsureDefaults.");
             Assert.IsNotNull(history.tasks);
-            Assert.IsNotNull(history.undoneStack);
+            Assert.AreEqual(1, history.undoneStack.Count);
+            Assert.AreEqual(8, history.nextSeq, "A seq already in use is never handed out again.");
         }
     }
 }

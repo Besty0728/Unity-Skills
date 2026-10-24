@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using UnityEditor;
@@ -15,27 +14,20 @@ namespace UnitySkills
         private static WorkflowTask _currentTask;
         private static string _currentSessionId;
 
-        // Set when the history file fails to load. In that state, the history in hand references fewer
-        // blobs than the store actually holds, so reclaiming "unreferenced" entries would delete live
+        // Set when a log segment cannot be read, or its blob references rebuilt. In that state, the history in hand
+        // references fewer blobs than the store actually holds, so reclaiming "unreferenced" entries would delete live
         // backups; better to leak than to pay that cost.
         // volatile: SkillsHttpServer's /health fast path reads IsHistoryRecoveryMode on the HTTP thread,
-        // while writes always happen on the main thread (LoadHistory / ClearHistory).
+        // while writes always happen on the main thread (LoadHistory / ClearHistory / maintenance).
         private static volatile bool _historyRecoveryMode;
 
-        // Trim/GC walks the whole history and enumerates the file store several times, so it runs deferred and at most
-        // once per interval instead of inside every EndTask. The generation drops a deferred run after a reset or clear.
-        private const double TrimIntervalSeconds = 60;
-        private static bool _trimScheduled;
-        private static DateTime _lastTrimUtc = DateTime.MinValue;
-        private static int _trimGeneration;
-        internal static int TrimRunsForTests;
-
-        // The deferred trim runs only when a cheap check finds a limit exceeded by more than 10%. Sizes come from the last
-        // saved file; a run that cannot bring it under the limit raises the size gate by another 10%, so a history the
-        // trim's own estimate finds small enough is not walked again every minute.
-        private const double TrimGateFactor = 1.1;
-        private static long _lastSavedHistoryChars;
-        private static long _sizeGateChars;
+        // Sealing, eviction and GC read whole segments and enumerate the blob store, so they run in one deferred
+        // maintenance pass, never inside a write. The generation drops a pass queued before a reset or a clear.
+        private static bool _maintenanceScheduled;
+        private static bool _maintenanceSizeCheck;
+        private static int _maintenanceGeneration;
+        internal static int CleanupRunsForTests;
+        internal static long CapacityBytesForTests;
 
         // GlobalObjectId of a persistent asset is fixed by its GUID and file id, so it is computed once per session.
         // Cleared whenever assets are deleted or moved, and bounded so a long session cannot grow it without limit.
@@ -71,10 +63,15 @@ namespace UnitySkills
         // an earlier session resolves objects by GlobalObjectId alone, so a recycled id can never select an unrelated object.
         private static bool _sessionIdFallbackAllowed = true;
 
-        // Path where the history file is stored (persists in the Library directory, but local to this machine only)
-        internal static string OverrideHistoryFilePathForTests;
-        private static string HistoryFilePath => OverrideHistoryFilePathForTests ??
-            Path.Combine(Application.dataPath, "../Library/UnitySkills/workflow_history.json");
+        /// <summary>
+        /// Points the whole store (log, head and blobs, with the legacy files beside it) at <paramref name="root"/>, null =
+        /// the project's Library/UnitySkills/workflow, and resets the in-memory state.
+        /// </summary>
+        internal static void OverrideRootForTests(string root)
+        {
+            WorkflowStore.SetRootOverrideForTests(root);
+            ResetStateForTests();
+        }
 
         public static WorkflowHistoryData History
         {
@@ -92,7 +89,7 @@ namespace UnitySkills
         public static bool HasActiveSession => !string.IsNullOrEmpty(_currentSessionId);
 
         /// <summary>
-        /// True when this session's history file failed to load, suspending file-store cleanup as a
+        /// True when a history log segment failed to load this session, suspending eviction and blob GC as a
         /// result. Cleared by ClearHistory.
         /// </summary>
         public static bool IsHistoryRecoveryMode => _historyRecoveryMode;
@@ -144,15 +141,25 @@ namespace UnitySkills
                 return;
             }
 
-            if (_history == null) LoadHistory();
-
-            AttributeTask(_currentTask);
-            _history.tasks.Add(_currentTask);
-            _history.undoneStack.Clear();
+            // One append, with the payloads it names stored first. A history not loaded yet stays unloaded: the log is the
+            // only source of truth, and the next load replays this record with the rest.
+            var task = _currentTask;
             _currentTask = null;
-
-            ScheduleTrim();
-            SaveHistory();
+            AttributeTask(task);
+            var batch = new LogBatch();
+            AddTaskRecord(batch, WorkflowStore.TasksStack, task, isNew: true);
+            if (_history != null)
+            {
+                _history.tasks.Add(task);
+                _history.undoneStack.Clear();
+            }
+            if (!Commit(batch) && _history == null)
+            {
+                // Not persisted: keep it for this session at least, as an unsaved history file used to.
+                LoadHistory();
+                _history.tasks.Add(task);
+                _history.undoneStack.Clear();
+            }
         }
 
         /// <summary>
@@ -163,7 +170,7 @@ namespace UnitySkills
         /// </summary>
         private static void AttributeTask(WorkflowTask task)
         {
-            task.seq = _history.AllocateSeq();
+            task.seq = _history == null && WorkflowStore.TryAllocateSeqWithoutReplay(out long seq) ? seq : History.AllocateSeq();
             if (string.IsNullOrEmpty(task.agent))
             {
                 task.agent = ResolveCallerAgent(out int pendingPort);
@@ -250,10 +257,17 @@ namespace UnitySkills
 
         /// <summary>
         /// Binds the agent of every task that ended before the process resolver answered for its connection, the way
-        /// telemetry does at flush time. Runs before each save and each list; a task still unanswered after the resolver's
-        /// cache lifetime keeps the agent it was recorded with.
+        /// telemetry does at flush time. Runs with each history write and each list; a task still unanswered after the
+        /// resolver's cache lifetime keeps the agent it was recorded with.
         /// </summary>
         internal static void BindPendingAgents()
+        {
+            if (_pendingAgentTasks.Count > 0)
+                Commit(new LogBatch());
+        }
+
+        /// <summary>Binds what it can (see <see cref="BindPendingAgents"/>), adding an agent record for each to <paramref name="batch"/>.</summary>
+        private static void AddPendingAgentRecords(LogBatch batch)
         {
             if (_pendingAgentTasks.Count == 0)
                 return;
@@ -262,12 +276,30 @@ namespace UnitySkills
             _pendingAgentTasks.RemoveAll(task =>
             {
                 if (TryResolvePendingAgent(task.pendingAgentPort, out string agent))
+                {
                     task.agent = agent;
+                    string stack = StackHolding(task);
+                    if (stack != null)
+                        batch.Lines.Add(WorkflowStore.BuildAgentLine(stack, task.id, agent));
+                }
                 else if (now - task.pendingAgentSinceMs <= PendingAgentWindowMs)
                     return false;
                 task.pendingAgentPort = 0;
                 return true;
             });
+        }
+
+        /// <summary>
+        /// The stack holding this very task object, so an agent record names the copy it changed; null for a detached copy
+        /// (fully moved to the other stack, or deleted). With the history unloaded, only EndTask can have logged it, into "t".
+        /// </summary>
+        private static string StackHolding(WorkflowTask task)
+        {
+            if (_history == null)
+                return WorkflowStore.TasksStack;
+            if (_history.tasks.Contains(task))
+                return WorkflowStore.TasksStack;
+            return _history.undoneStack.Contains(task) ? WorkflowStore.UndoneStack : null;
         }
 
         /// <summary>The process resolver's answer for <paramref name="remotePort"/>, folded, once it has one.</summary>
@@ -386,40 +418,44 @@ namespace UnitySkills
 
             int removed = 0;
             bool kept = false;
+            var batch = new LogBatch();
             if (mark.OpenTask?.snapshots != null && mark.OpenTask.snapshots.Count > mark.OpenTaskSnapshotCount)
             {
                 var added = mark.OpenTask.snapshots.GetRange(mark.OpenTaskSnapshotCount,
                     mark.OpenTask.snapshots.Count - mark.OpenTaskSnapshotCount);
-                removed += added.RemoveAll(IsRevertedByUnityUndo);
+                int openRemoved = added.RemoveAll(IsRevertedByUnityUndo);
+                removed += openRemoved;
                 kept |= added.Count > 0;
                 mark.OpenTask.snapshots.RemoveRange(mark.OpenTaskSnapshotCount,
                     mark.OpenTask.snapshots.Count - mark.OpenTaskSnapshotCount);
                 mark.OpenTask.snapshots.AddRange(added);
                 mark.OpenTask.InvalidateSnapshotIndex();
-                if (mark.OpenTask.snapshots.Count == 0)
-                    _history.tasks.Remove(mark.OpenTask);
+                // A step may have ended the open task into the history; only then is it on the log.
+                if (openRemoved > 0 && _history.tasks.Contains(mark.OpenTask))
+                    AddStateRecord(batch, WorkflowStore.TasksStack, _history.tasks, mark.OpenTask);
             }
 
             foreach (var task in _history.tasks.ToList())
             {
                 if (task == mark.OpenTask || task.seq < mark.FirstSeq || task.startedUnixMs < mark.StartedUnixMs)
                     continue;
-                removed += task.snapshots.RemoveAll(IsRevertedByUnityUndo);
+                int taskRemoved = task.snapshots.RemoveAll(IsRevertedByUnityUndo);
+                removed += taskRemoved;
                 task.InvalidateSnapshotIndex();
-                if (task.snapshots.Count == 0)
-                    _history.tasks.Remove(task);
-                else
+                if (task.snapshots.Count > 0)
                     kept = true;
+                if (taskRemoved > 0 || task.snapshots.Count == 0)
+                    AddStateRecord(batch, WorkflowStore.TasksStack, _history.tasks, task);
             }
 
-            bool restoredRedo = false;
             if (restoreRedoStack && !kept && _history.undoneStack.Count == 0 && mark.UndoneStack.Count > 0)
             {
                 _history.undoneStack.AddRange(mark.UndoneStack);
-                restoredRedo = true;
+                foreach (var task in mark.UndoneStack)
+                    AddTaskRecord(batch, WorkflowStore.UndoneStack, task);
             }
-            if (removed > 0 || restoredRedo)
-                SaveHistory();
+            if (batch.Lines.Count > 0 || batch.Failed)
+                Commit(batch);
             return removed;
         }
 
@@ -571,11 +607,11 @@ namespace UnitySkills
             _currentTask = null;
             _currentSessionId = null;
             _historyRecoveryMode = false;
-            _trimGeneration++;
-            _trimScheduled = false;
-            _lastTrimUtc = DateTime.MinValue;
-            _lastSavedHistoryChars = 0;
-            _sizeGateChars = 0;
+            _maintenanceGeneration++;
+            _maintenanceScheduled = false;
+            _maintenanceSizeCheck = false;
+            CapacityBytesForTests = 0;
+            WorkflowStore.ResetState();
             _agentActivityDetached = true;
             _agentActivity = new Dictionary<string, AgentActivity>(StringComparer.Ordinal);
             _pendingAgentTasks.Clear();

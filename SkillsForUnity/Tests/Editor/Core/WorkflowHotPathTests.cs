@@ -13,9 +13,9 @@ using UnitySkills.Internal;
 namespace UnitySkills.Tests.Core
 {
     /// <summary>
-    /// The 3.0 P0 workflow changes: no trim/GC inside EndTask (and a deferred trim behind a cheap gate), compact history
-    /// file, dedupe before capture, the session caches of asset GlobalObjectIds and source file hashes, entity ids in
-    /// snapshots (the only same-session id on 6000.4+), agent attribution with late binding, per-agent idle-gap groups,
+    /// The 3.0 P0 workflow changes: no cleanup inside EndTask (which only appends to the history log), dedupe before
+    /// capture, the session caches of asset GlobalObjectIds and source file hashes, entity ids in snapshots (the only
+    /// same-session id on 6000.4+), agent attribution with late binding, per-agent idle-gap groups,
     /// the compact workflow_list, the bookkeeping time moved from the response to telemetry, and the batch fixes (a
     /// transactional rollback removes what Undo put back; an async job records each chunk as its own task).
     /// </summary>
@@ -40,9 +40,7 @@ namespace UnitySkills.Tests.Core
 
             _tempRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsWorkflowHotPath_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempRoot);
-            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(_tempRoot, "workflow_history.json");
-            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(_tempRoot, "workflow_files");
-            WorkflowManager.ResetStateForTests();
+            WorkflowManager.OverrideRootForTests(Path.Combine(_tempRoot, "workflow"));
 
             if (!AssetDatabase.IsValidFolder("Assets/Temp"))
                 AssetDatabase.CreateFolder("Assets", "Temp");
@@ -57,9 +55,7 @@ namespace UnitySkills.Tests.Core
         public void TearDown()
         {
             WorkflowManager.AbortTask();
-            WorkflowManager.ResetStateForTests();
-            WorkflowManager.OverrideHistoryFilePathForTests = null;
-            WorkflowFileStore.OverrideStoreRootForTests = null;
+            WorkflowManager.OverrideRootForTests(null);
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             if (AssetDatabase.IsValidFolder(AssetRoot)) AssetDatabase.DeleteAsset(AssetRoot);
             AssetDatabase.Refresh();
@@ -71,48 +67,27 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void EndTask_NeverTrimsInline_AndWritesCompactJson()
+        public void EndTask_OnlyAppends_NeverCleansUpInline()
         {
-            var go = new GameObject("HotPathTrimProbe");
-            // Loading the history trims once by design; only the writes after it are under test.
-            Assert.That(WorkflowManager.History, Is.Not.Null);
-            int trimsBefore = WorkflowManager.TrimRunsForTests;
+            var go = new GameObject("HotPathAppendProbe");
+            int cleanupsBefore = WorkflowManager.CleanupRunsForTests;
+            string log = Path.Combine(_tempRoot, "workflow", "log.jsonl");
+            string previous = string.Empty;
 
             for (int i = 0; i < 3; i++)
             {
-                WorkflowManager.BeginTask("trim-probe", "test");
+                WorkflowManager.BeginTask("append-probe", "test");
                 WorkflowManager.SnapshotObject(go.transform);
                 WorkflowManager.EndTask();
+                string current = File.ReadAllText(log);
+                Assert.That(current, Does.StartWith(previous), "A write only appends; it never rewrites what the log holds.");
+                previous = current;
             }
 
-            Assert.That(WorkflowManager.TrimRunsForTests, Is.EqualTo(trimsBefore),
-                "Trim/GC walks the whole history and the file store; it must run deferred, never inside EndTask.");
-            string json = File.ReadAllText(WorkflowManager.OverrideHistoryFilePathForTests);
-            Assert.That(json, Does.Contain("trim-probe"));
-            Assert.That(json, Does.Not.Contain("\n"), "The history file is written without indentation.");
-        }
-
-        [Test]
-        public void DeferredTrim_IsGatedAtTenPercentPastTheTaskLimit()
-        {
-            int savedMaxTasks = WorkflowAutoCleanConfig.MaxTasks;
-            WorkflowAutoCleanConfig.Enabled = true;
-            WorkflowAutoCleanConfig.MaxTasks = 10;
-            try
-            {
-                var go = new GameObject("HotPathGateProbe");
-                for (int i = 0; i < 11; i++)
-                    RecordExplicit("gate-probe", go);
-                Assert.That(WorkflowManager.ExceedsTrimGate(), Is.False, "11 tasks are within 10% of a 10-task limit.");
-
-                RecordExplicit("gate-probe", go);
-                Assert.That(WorkflowManager.ExceedsTrimGate(), Is.True);
-            }
-            finally
-            {
-                WorkflowAutoCleanConfig.MaxTasks = savedMaxTasks;
-                WorkflowAutoCleanConfig.Enabled = false;
-            }
+            Assert.That(previous.Split('\n').Count(line => line.Length > 0), Is.EqualTo(3), "One record per task.");
+            Assert.That(previous, Does.Contain("append-probe"));
+            Assert.That(WorkflowManager.CleanupRunsForTests, Is.EqualTo(cleanupsBefore),
+                "Eviction and GC read whole segments and the blob store; they run deferred, never inside EndTask.");
         }
 
         [Test]

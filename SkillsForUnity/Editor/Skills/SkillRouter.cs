@@ -93,10 +93,6 @@ namespace UnitySkills
         // One-time subscription to SkillsSurfaceProfile.OnChanged, wired up in Initialize().
         private static bool _surfaceHookInstalled;
 
-        // Dirty marker for the manually-recorded session (workflow_begin_task): the (taskId, snapshotCount) recorded at the last SaveHistory. Lets a tracked skill skip a redundant save
-        // when there are no new snapshots since the last save.
-        private static string _lastSavedTaskId;
-        private static int _lastSavedSnapshotCount = -1;
         // The last Execute's auto-workflow EndTask cost; the HTTP layer moves it into the telemetry row (never the response).
         private static long? _lastWorkflowEndMs;
         // These four all have to be volatile: they form the read side of the GET fast-path double-

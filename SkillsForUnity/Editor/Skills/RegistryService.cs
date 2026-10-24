@@ -18,7 +18,7 @@ namespace UnitySkills
     public static class RegistryService
     {
         private static readonly string GlobalConfigDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".unity_skills");
-        // Test hook (same idiom as WorkflowManager.OverrideHistoryFilePathForTests); volatile because GetLiveInstances reads it off the main thread.
+        // Test hook (same idiom as WorkflowManager.OverrideRootForTests); volatile because GetLiveInstances reads it off the main thread.
         internal static volatile string OverrideRegistryFilePathForTests;
         private static string RegistryFile => OverrideRegistryFilePathForTests ?? Path.Combine(GlobalConfigDir, "registry.json");
 

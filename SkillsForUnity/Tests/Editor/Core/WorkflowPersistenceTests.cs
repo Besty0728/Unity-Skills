@@ -15,28 +15,20 @@ namespace UnitySkills.Tests.Core
         private const string AssetRoot = "Assets/Temp/WorkflowPersistenceTests";
         private string _tempRoot;
         private bool _autoCleanEnabled;
-        private int _maxTasks;
-        private int _maxHistoryMb;
-        private int _maxTaskAgeDays;
-        private int _maxStoreMb;
-        private int _storeMaxAgeDays;
+        private int _capacityMb;
+        private int _maxAgeDays;
 
         [SetUp]
         public void SetUp()
         {
             _autoCleanEnabled = WorkflowAutoCleanConfig.Enabled;
-            _maxTasks = WorkflowAutoCleanConfig.MaxTasks;
-            _maxHistoryMb = WorkflowAutoCleanConfig.MaxHistoryMB;
-            _maxTaskAgeDays = WorkflowAutoCleanConfig.MaxTaskAgeDays;
-            _maxStoreMb = WorkflowAutoCleanConfig.MaxStoreMB;
-            _storeMaxAgeDays = WorkflowAutoCleanConfig.StoreMaxAgeDays;
+            _capacityMb = WorkflowAutoCleanConfig.CapacityMB;
+            _maxAgeDays = WorkflowAutoCleanConfig.MaxAgeDays;
             WorkflowAutoCleanConfig.Enabled = false;
 
             _tempRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsWorkflowTests_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempRoot);
-            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(_tempRoot, "workflow_history.json");
-            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(_tempRoot, "workflow_files");
-            WorkflowManager.ResetStateForTests();
+            WorkflowManager.OverrideRootForTests(Path.Combine(_tempRoot, "workflow"));
 
             EnsureAssetFolder();
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -47,9 +39,7 @@ namespace UnitySkills.Tests.Core
         public void TearDown()
         {
             WorkflowManager.AbortTask();
-            WorkflowManager.ResetStateForTests();
-            WorkflowManager.OverrideHistoryFilePathForTests = null;
-            WorkflowFileStore.OverrideStoreRootForTests = null;
+            WorkflowManager.OverrideRootForTests(null);
             // While Unity Test Framework is winding down Undo state, the asset folder holding the currently
             // active scene can't be deleted; there must always be a valid target scene throughout teardown.
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -58,11 +48,8 @@ namespace UnitySkills.Tests.Core
             try { if (Directory.Exists(_tempRoot)) Directory.Delete(_tempRoot, true); } catch { }
 
             WorkflowAutoCleanConfig.Enabled = _autoCleanEnabled;
-            WorkflowAutoCleanConfig.MaxTasks = _maxTasks;
-            WorkflowAutoCleanConfig.MaxHistoryMB = _maxHistoryMb;
-            WorkflowAutoCleanConfig.MaxTaskAgeDays = _maxTaskAgeDays;
-            WorkflowAutoCleanConfig.MaxStoreMB = _maxStoreMb;
-            WorkflowAutoCleanConfig.StoreMaxAgeDays = _storeMaxAgeDays;
+            WorkflowAutoCleanConfig.CapacityMB = _capacityMb;
+            WorkflowAutoCleanConfig.MaxAgeDays = _maxAgeDays;
         }
 
         [Test]
@@ -278,121 +265,89 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void LegacyBase64_LoadMigratesBlobAndClearsInlinePayload()
+        public void PreThreeZeroHistory_IsMovedToTheLegacyBackup_NotMigrated()
         {
-            byte[] bytes = { 1, 2, 3, 4 };
-            var legacy = new WorkflowHistoryData { schemaVersion = 2 };
-            legacy.tasks.Add(new WorkflowTask
-            {
-                id = "legacy",
-                snapshots =
-                {
-                    new UnitySkills.Internal.ObjectSnapshot
-                    {
-                        assetPath = AssetRoot + "/Legacy.bin",
-                        assetBytesBase64 = Convert.ToBase64String(bytes),
-                        type = SnapshotType.Modified
-                    }
-                }
-            });
-            File.WriteAllText(WorkflowManager.OverrideHistoryFilePathForTests, JsonUtility.ToJson(legacy, true));
+            // The pre-3.0 layout beside the store: the history file, its backup and a quarantined copy, and its blobs.
+            string[] files = { "workflow_history.json", "workflow_history.json.bak", "workflow_history.corrupt.20261001000000.json" };
+            foreach (string name in files)
+                File.WriteAllText(Path.Combine(_tempRoot, name), "{\"tasks\":[{\"id\":\"legacy-task\"}]}");
+            Directory.CreateDirectory(Path.Combine(_tempRoot, "workflow_files"));
+            File.WriteAllText(Path.Combine(_tempRoot, "workflow_files", "ABCDEF"), "old blob");
             WorkflowManager.ResetStateForTests();
 
-            var migrated = WorkflowManager.History;
-
-            Assert.That(migrated.schemaVersion, Is.EqualTo(WorkflowHistoryData.CurrentSchemaVersion));
-            Assert.That(migrated.tasks[0].snapshots[0].assetBytesBase64, Is.Null.Or.Empty);
-            Assert.That(WorkflowFileStore.BlobExists(migrated.tasks[0].snapshots[0].fileHash), Is.True);
-            StringAssert.DoesNotContain(Convert.ToBase64String(bytes), File.ReadAllText(WorkflowManager.OverrideHistoryFilePathForTests));
-        }
-
-        [Test]
-        public void Schema3_LoadMigratesLegacyMetaSidecarToIndependentBlob()
-        {
-            byte[] assetBytes = { 9, 8, 7 };
-            byte[] metaBytes = System.Text.Encoding.UTF8.GetBytes(
-                "fileFormatVersion: 2\nguid: 33333333333333333333333333333333\n");
-            string fileHash = WorkflowFileStore.StoreBytes(assetBytes);
-            Directory.CreateDirectory(WorkflowFileStore.StoreRoot);
-            File.WriteAllBytes(Path.Combine(WorkflowFileStore.StoreRoot, fileHash + ".meta"), metaBytes);
-
-            var legacy = new WorkflowHistoryData { schemaVersion = 3 };
-            legacy.tasks.Add(new WorkflowTask
+            Assert.That(WorkflowManager.History.tasks, Is.Empty, "Old tasks are not migrated.");
+            string legacy = Path.Combine(_tempRoot, "workflow_legacy");
+            foreach (string name in files)
             {
-                id = "legacy-meta",
-                snapshots =
-                {
-                    new UnitySkills.Internal.ObjectSnapshot
-                    {
-                        assetPath = AssetRoot + "/LegacyMeta.bin",
-                        fileHash = fileHash,
-                        type = SnapshotType.Deleted
-                    }
-                }
-            });
-            File.WriteAllText(WorkflowManager.OverrideHistoryFilePathForTests, JsonUtility.ToJson(legacy, true));
-            WorkflowManager.ResetStateForTests();
+                Assert.That(File.Exists(Path.Combine(_tempRoot, name)), Is.False, name);
+                Assert.That(File.Exists(Path.Combine(legacy, name)), Is.True, name);
+            }
+            Assert.That(Directory.Exists(Path.Combine(_tempRoot, "workflow_files")), Is.False);
+            Assert.That(File.ReadAllText(Path.Combine(legacy, "workflow_files", "ABCDEF")), Is.EqualTo("old blob"));
 
-            var snapshot = WorkflowManager.History.tasks[0].snapshots[0];
+            var backup = WorkflowManager.GetLegacyBackupInfo();
+            Assert.That(backup, Is.Not.Null);
+            Assert.That(backup.TotalBytes, Is.GreaterThan(0));
+            Assert.That(backup.MovedAtUtc, Is.EqualTo(DateTime.UtcNow).Within(TimeSpan.FromMinutes(5)));
+            Assert.That(WorkflowManager.UndoTask("legacy-task").error, Is.EqualTo("Task not found"),
+                "The old task ids retire with the old history.");
 
-            Assert.That(WorkflowManager.History.schemaVersion, Is.EqualTo(WorkflowHistoryData.CurrentSchemaVersion));
-            Assert.That(snapshot.metaFileHash, Is.Not.Null.And.Not.Empty);
-            Assert.That(snapshot.metaFileHash, Is.Not.EqualTo(snapshot.fileHash));
-            Assert.That(WorkflowFileStore.BlobExists(snapshot.metaFileHash), Is.True);
-            Assert.That(WorkflowFileStore.RestoreFile(snapshot.fileHash, snapshot.metaFileHash,
-                snapshot.assetPath, false), Is.True);
-            CollectionAssert.AreEqual(metaBytes, File.ReadAllBytes(snapshot.assetPath + ".meta"));
-        }
-
-        [Test]
-        public void AutoClean_ZeroLimitsDoNotDeleteReferencedBlob()
-        {
-            string path = AssetRoot + "/Protected.txt";
-            File.WriteAllText(path, "protected");
-            AssetDatabase.ImportAsset(path);
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
-            WorkflowManager.BeginTask("protected", "test");
-            WorkflowManager.SnapshotObject(asset);
+            // The new store records next to the backup, and a reload finds the move already done.
+            var go = new GameObject("WorkflowLegacyNeighbour");
+            WorkflowManager.BeginTask("after-legacy", "test");
+            WorkflowManager.SnapshotObject(go.transform);
             WorkflowManager.EndTask();
-            string hash = WorkflowManager.History.tasks.Last().snapshots[0].fileHash;
+            WorkflowManager.ResetStateForTests();
+            Assert.That(WorkflowManager.History.tasks.Select(t => t.tag), Is.EqualTo(new[] { "after-legacy" }));
+            Assert.That(WorkflowManager.GetLegacyBackupInfo().MovedAtUtc, Is.EqualTo(backup.MovedAtUtc));
+        }
+
+        [Test]
+        public void Cleanup_WithoutLimits_KeepsAnOldReferencedBlob()
+        {
+            string hash = RecordTextAssetSnapshot("Protected.txt", "protected");
+            File.SetLastWriteTimeUtc(Path.Combine(WorkflowFileStore.StoreRoot, hash), DateTime.UtcNow.AddDays(-10));
 
             WorkflowAutoCleanConfig.Enabled = true;
-            WorkflowAutoCleanConfig.MaxTasks = 0;
-            WorkflowAutoCleanConfig.MaxHistoryMB = 0;
-            WorkflowAutoCleanConfig.MaxTaskAgeDays = 0;
-            WorkflowAutoCleanConfig.MaxStoreMB = 0;
-            WorkflowAutoCleanConfig.StoreMaxAgeDays = 0;
+            WorkflowAutoCleanConfig.CapacityMB = 0;
+            WorkflowAutoCleanConfig.MaxAgeDays = 0;
             WorkflowManager.TrimHistoryIfNeeded(force: true);
 
             Assert.That(WorkflowFileStore.BlobExists(hash), Is.True);
         }
 
         [Test]
-        public void AutoClean_AgeLimitDoesNotDeleteOldReferencedBlob()
+        public void Cleanup_KeepsAnOldReferencedBlob_AndReclaimsAnOldOrphan()
         {
-            string path = AssetRoot + "/AgeProtected.txt";
-            File.WriteAllText(path, "protected by history");
-            AssetDatabase.ImportAsset(path);
-            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
-            WorkflowManager.BeginTask("age-protected", "test");
-            WorkflowManager.SnapshotObject(asset);
-            WorkflowManager.EndTask();
-            string hash = WorkflowManager.History.tasks.Last().snapshots[0].fileHash;
+            string hash = RecordTextAssetSnapshot("AgeProtected.txt", "protected by history");
             string orphanHash = WorkflowFileStore.StoreBytes(new byte[] { 5, 4, 3, 2, 1 });
             DateTime old = DateTime.UtcNow.AddDays(-10);
             File.SetLastWriteTimeUtc(Path.Combine(WorkflowFileStore.StoreRoot, hash), old);
             File.SetLastWriteTimeUtc(Path.Combine(WorkflowFileStore.StoreRoot, orphanHash), old);
 
             WorkflowAutoCleanConfig.Enabled = true;
-            WorkflowAutoCleanConfig.MaxTasks = 0;
-            WorkflowAutoCleanConfig.MaxHistoryMB = 0;
-            WorkflowAutoCleanConfig.MaxTaskAgeDays = 0;
-            WorkflowAutoCleanConfig.MaxStoreMB = 0;
-            WorkflowAutoCleanConfig.StoreMaxAgeDays = 1;
-            WorkflowManager.TrimHistoryIfNeeded(force: true);
+            WorkflowAutoCleanConfig.CapacityMB = 0;
+            WorkflowAutoCleanConfig.MaxAgeDays = 1;
+            var report = WorkflowManager.TrimHistoryIfNeeded(force: true);
 
-            Assert.That(WorkflowFileStore.BlobExists(hash), Is.True);
+            Assert.That(WorkflowFileStore.BlobExists(hash), Is.True, "The active segment names it, and is never evicted.");
             Assert.That(WorkflowFileStore.BlobExists(orphanHash), Is.False);
+            Assert.That(report.reclaimedFileEntries, Is.GreaterThanOrEqualTo(1));
+            Assert.That(report.removedTasks, Is.Zero);
+        }
+
+        private static string RecordTextAssetSnapshot(string fileName, string contents)
+        {
+            string path = AssetRoot + "/" + fileName;
+            File.WriteAllText(path, contents);
+            AssetDatabase.ImportAsset(path);
+            var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path);
+            WorkflowManager.BeginTask("protected", "test");
+            WorkflowManager.SnapshotObject(asset);
+            WorkflowManager.EndTask();
+            string hash = WorkflowManager.History.tasks.Last().snapshots[0].fileHash;
+            Assert.That(hash, Is.Not.Null.And.Not.Empty, "Precondition: the asset bytes are backed up.");
+            return hash;
         }
 
         [Test]

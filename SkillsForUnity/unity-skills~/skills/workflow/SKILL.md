@@ -303,7 +303,7 @@ Marked `SkillOperation.Delete` + `RiskLevel="high"`, so it is `NeverInSemi` (ret
 
 ## Snapshot Mechanism
 
-History is persisted to `workflow_history.json` (`schemaVersion` 5). Asset and `.meta` bytes are independently content-addressed in `Library/UnitySkills/workflow_files/<sha1>`; history keeps `fileHash` / `metaFileHash` references. Schema 2/3 histories are migrated atomically: legacy blobs are made durable before inline base64 is removed.
+History is an append-only log under `Library/UnitySkills/workflow/`: `log.jsonl` plus sealed segments `log.NNNNNN.jsonl` (a segment seals at 4 MB or 5000 lines). Each record states one task's current state in the undo or redo stack, so replaying the log in order rebuilds both stacks. Snapshot payloads and asset / `.meta` bytes are content-addressed blobs under `workflow/blobs/`, written before the record that names them. Pre-3.0 history is moved to `Library/UnitySkills/workflow_legacy/` and deleted automatically 14 days later.
 
 Snapshots are tiered by `SnapshotType`:
 
@@ -319,7 +319,7 @@ Undo/redo return per-snapshot detail (`TaskUndoResult`: `total` / `succeeded` / 
 
 ### Auto-clean
 
-`WorkflowAutoCleanConfig` (per-project settings `UnitySkills.Workflow.*` in `UserSettings/UnitySkills/settings.json`) trims history and the file store when the history loads, and at most once a minute after a task is recorded once the task count, the history file size or the oldest task's age is more than 10% past its limit (deferred, never inside the write itself). Defaults: `MaxTasks=200`, `MaxHistoryMB=32`, `MaxTaskAgeDays=30`, `MaxStoreMB=512`, `StoreMaxAgeDays=7`. Store age/size pruning never removes a blob referenced by retained history. A value of `0` disables that individual limit.
+`WorkflowAutoCleanConfig` (per-project settings `UnitySkills.Workflow.*`) has an `Enabled` toggle and two limits. `CapacityMB` (default 512) caps the log segments plus blobs together; `MaxAgeDays` (default 30) removes sealed segments whose newest record is older than that. Eviction removes whole segments, oldest first; `0` disables a limit. A blob is kept while any retained segment names it or it was written within the last 10 minutes. `workflow_delete_task` removes the task from history, but its disk space is freed only when its segment is evicted. Cleanup runs deferred, never inside a write: after the history loads, when a segment seals or the log grows past its size check, and on the History tab's Clean Now.
 
 ### Settings are now truly revertible
 

@@ -176,9 +176,7 @@ namespace UnitySkills.Tests.Core
         {
             var workflowRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsPhysicsMaterialTests_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(workflowRoot);
-            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(workflowRoot, "workflow_history.json");
-            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(workflowRoot, "workflow_files");
-            WorkflowManager.ResetStateForTests();
+            WorkflowManager.OverrideRootForTests(Path.Combine(workflowRoot, "workflow"));
             try
             {
                 WorkflowManager.BeginTask("physics-material", "test");
@@ -192,9 +190,7 @@ namespace UnitySkills.Tests.Core
             finally
             {
                 WorkflowManager.AbortTask();
-                WorkflowManager.ResetStateForTests();
-                WorkflowManager.OverrideHistoryFilePathForTests = null;
-                WorkflowFileStore.OverrideStoreRootForTests = null;
+                WorkflowManager.OverrideRootForTests(null);
                 try { if (Directory.Exists(workflowRoot)) Directory.Delete(workflowRoot, true); } catch { }
             }
         }
@@ -204,9 +200,7 @@ namespace UnitySkills.Tests.Core
         {
             var workflowRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsPhysicsMaterialTests_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(workflowRoot);
-            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(workflowRoot, "workflow_history.json");
-            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(workflowRoot, "workflow_files");
-            WorkflowManager.ResetStateForTests();
+            WorkflowManager.OverrideRootForTests(Path.Combine(workflowRoot, "workflow"));
             try
             {
                 WorkflowManager.BeginTask("physics-material-refused", "test");
@@ -218,9 +212,7 @@ namespace UnitySkills.Tests.Core
             finally
             {
                 WorkflowManager.AbortTask();
-                WorkflowManager.ResetStateForTests();
-                WorkflowManager.OverrideHistoryFilePathForTests = null;
-                WorkflowFileStore.OverrideStoreRootForTests = null;
+                WorkflowManager.OverrideRootForTests(null);
                 try { if (Directory.Exists(workflowRoot)) Directory.Delete(workflowRoot, true); } catch { }
             }
         }

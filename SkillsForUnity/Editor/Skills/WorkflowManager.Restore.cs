@@ -67,6 +67,7 @@ namespace UnitySkills
         {
             var result = new TaskUndoResult();
             var destinationTask = destinationStack.FirstOrDefault(t => t.id == sourceTask.id);
+            bool destinationLogged = destinationTask != null;
             if (destinationTask == null)
             {
                 destinationTask = CloneTaskMetadata(sourceTask);
@@ -117,12 +118,21 @@ namespace UnitySkills
             result.success = result.failed == 0 && sourceTask.snapshots.Count == 0;
             Undo.CollapseUndoOperations(undoGroup);
 
-            if (sourceTask.snapshots.Count == 0)
-                sourceStack.Remove(sourceTask);
+            // Each stack's copy of the task is logged in its new state; a transition that moved nothing changed nothing.
+            var batch = new LogBatch();
+            if (result.succeeded > 0 || sourceTask.snapshots.Count == 0)
+                AddStateRecord(batch, StackKey(sourceStack), sourceStack, sourceTask);
             if (destinationTask.snapshots.Count == 0)
+            {
                 destinationStack.Remove(destinationTask);
-
-            SaveHistory();
+                if (destinationLogged && result.succeeded > 0)
+                    batch.Lines.Add(WorkflowStore.BuildDropLine(StackKey(destinationStack), destinationTask.id));
+            }
+            else if (result.succeeded > 0)
+            {
+                AddTaskRecord(batch, StackKey(destinationStack), destinationTask);
+            }
+            Commit(batch);
             return result;
         }
 
@@ -168,6 +178,11 @@ namespace UnitySkills
 
             int inverseCountBefore = redoTask.snapshots.Count;
             WorkflowFileStore.ClearLastIntegrityError();
+            if (!TryHydrate(snapshot, out string hydrateError))
+            {
+                result.error = hydrateError;
+                return result;
+            }
             try
             {
                 switch (snapshot.type)
@@ -223,6 +238,11 @@ namespace UnitySkills
             };
 
             WorkflowFileStore.ClearLastIntegrityError();
+            if (!TryHydrate(snapshot, out string hydrateError))
+            {
+                result.error = hydrateError;
+                return result;
+            }
             try
             {
                 switch (snapshot.type)
@@ -941,7 +961,7 @@ namespace UnitySkills
 
         /// <summary>
         /// Captures a modified object's current state into targetTask, then restores the snapshot data
-        /// (via one of three paths: file-store restore, a legacy base64 blob, or a JSON overwrite).
+        /// (via one of two paths: file-store restore, or a JSON overwrite).
         /// </summary>
         private static bool RestoreModifiedSnapshot(ObjectSnapshot snapshot, WorkflowTask targetTask,
             bool removeFromStore, string undoLabel)
@@ -949,31 +969,16 @@ namespace UnitySkills
             UnityEngine.Object obj = null;
             obj = TryResolveObject(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId);
 
-            // A legacy deletion snapshot got recorded as Modified. At this point the object no longer
-            // resolves, but the bytes stored are enough to restore it and produce the correct inverse operation.
-            if (obj == null && !string.IsNullOrEmpty(snapshot.assetPath) &&
-                (!string.IsNullOrEmpty(snapshot.fileHash) || !string.IsNullOrEmpty(snapshot.assetBytesBase64)))
+            // An asset deleted after it was snapshotted as Modified: the object no longer resolves, but the bytes
+            // stored are enough to restore it and produce the correct inverse operation.
+            if (obj == null && !string.IsNullOrEmpty(snapshot.assetPath) && !string.IsNullOrEmpty(snapshot.fileHash))
             {
                 if (!WorkflowFileStore.TryGetSafeAssetFullPath(snapshot.assetPath, out string missingFullPath) ||
                     File.Exists(missingFullPath))
                     return false;
 
-                bool restored;
-                if (!string.IsNullOrEmpty(snapshot.assetBytesBase64))
-                {
-                    string parentDirectory = Path.GetDirectoryName(missingFullPath);
-                    if (!string.IsNullOrEmpty(parentDirectory)) Directory.CreateDirectory(parentDirectory);
-                    File.WriteAllBytes(missingFullPath, Convert.FromBase64String(snapshot.assetBytesBase64));
-                    AssetDatabase.ImportAsset(snapshot.assetPath, ImportAssetOptions.ForceUpdate);
-                    restored = true;
-                }
-                else
-                {
-                    restored = WorkflowFileStore.RestoreFile(snapshot.fileHash, snapshot.metaFileHash,
-                        snapshot.assetPath, removeFromStore);
-                }
-
-                if (!restored) return false;
+                if (!WorkflowFileStore.RestoreFile(snapshot.fileHash, snapshot.metaFileHash, snapshot.assetPath, removeFromStore))
+                    return false;
                 targetTask.snapshots.Add(new ObjectSnapshot
                 {
                     globalObjectId = snapshot.globalObjectId,
@@ -1016,20 +1021,6 @@ namespace UnitySkills
                 fileHash = currentFileHash,
                 metaFileHash = currentMetaHash
             });
-
-            // Prefer a legacy base64 backup when one exists (old history data)
-            if (!string.IsNullOrEmpty(snapshot.assetBytesBase64) && !string.IsNullOrEmpty(snapshot.assetPath))
-            {
-                if (!WorkflowFileStore.TryGetSafeAssetFullPath(snapshot.assetPath, out string fullPath))
-                {
-                    SkillsLogger.LogWarning($"{SkillsLogger.PREFIX_WARNING} Skipping unsafe workflow restore path: {snapshot.assetPath}");
-                    return false;
-                }
-
-                File.WriteAllBytes(fullPath, Convert.FromBase64String(snapshot.assetBytesBase64));
-                AssetDatabase.ImportAsset(snapshot.assetPath);
-                return true;
-            }
 
             // Restore from the content-addressed file store
             if (!string.IsNullOrEmpty(snapshot.fileHash) && !string.IsNullOrEmpty(snapshot.assetPath))

@@ -35,18 +35,14 @@ namespace UnitySkills.Tests.Core
             // real history, matching WorkflowPersistenceTests/CinemachineSkillsTests.
             _tempRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsAnimatorGuardTests_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_tempRoot);
-            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(_tempRoot, "workflow_history.json");
-            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(_tempRoot, "workflow_files");
-            WorkflowManager.ResetStateForTests();
+            WorkflowManager.OverrideRootForTests(Path.Combine(_tempRoot, "workflow"));
         }
 
         [TearDown]
         public void TearDown()
         {
             WorkflowManager.AbortTask();
-            WorkflowManager.ResetStateForTests();
-            WorkflowManager.OverrideHistoryFilePathForTests = null;
-            WorkflowFileStore.OverrideStoreRootForTests = null;
+            WorkflowManager.OverrideRootForTests(null);
             try { if (Directory.Exists(_tempRoot)) Directory.Delete(_tempRoot, true); } catch { }
 
             if (AssetDatabase.IsValidFolder(ProbeFolder))

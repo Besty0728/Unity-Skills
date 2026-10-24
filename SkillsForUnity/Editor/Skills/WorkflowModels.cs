@@ -21,7 +21,6 @@ namespace UnitySkills.Internal
         public string typeName;       // e.g. "GameObject", "Transform"
         public SnapshotType type = SnapshotType.Modified;
         public string assetPath;      // For assets: the in-project path (e.g. "Assets/Materials/Red.mat")
-        public string assetBytesBase64; // Base64-encoded asset file backup (legacy field, kept for backward compatibility with old history)
 
         // Hash into the content-addressed file store, used by Modified/Deleted asset snapshots.
         public string fileHash;
@@ -58,6 +57,13 @@ namespace UnitySkills.Internal
 
         // Flattened hierarchy data for a deleted/recreated scene GameObject.
         public List<GameObjectSnapshotData> gameObjectHierarchy = new List<GameObjectSnapshotData>();
+
+        // The stored payload (this object as JSON) once a record names it. A stub read back from the log, or a recorded
+        // snapshot whose payload was released, holds only its header until WorkflowManager hydrates it; fileRefs then
+        // keeps the hashes of its directory entries.
+        [NonSerialized] internal string payloadHash;
+        [NonSerialized] internal bool payloadReleased;
+        [NonSerialized] internal List<string> fileRefs;
     }
 
     [Serializable]
@@ -96,11 +102,10 @@ namespace UnitySkills.Internal
 
 namespace UnitySkills
 {
+    /// <summary>The two stacks as replayed from <see cref="WorkflowStore"/>'s log; never serialized as a whole.</summary>
     [Serializable]
     public class WorkflowHistoryData
     {
-        public const int CurrentSchemaVersion = 5;
-        public int schemaVersion = CurrentSchemaVersion;
         public List<WorkflowTask> tasks = new List<WorkflowTask>();
         public List<WorkflowTask> undoneStack = new List<WorkflowTask>(); // Stack of undone tasks, for redo
         public long nextSeq = 1; // Next short task id (s<seq>); never reused within one history
@@ -113,42 +118,12 @@ namespace UnitySkills
             tasks.RemoveAll(task => task == null);
             undoneStack.RemoveAll(task => task == null);
 
-            foreach (var task in tasks)
-                task?.EnsureSnapshotIndex();
-            foreach (var task in undoneStack)
-                task?.EnsureSnapshotIndex();
-
-            AssignMissingSeqs();
+            long max = tasks.Concat(undoneStack).Select(task => task.seq).DefaultIfEmpty(0).Max();
+            if (nextSeq <= max)
+                nextSeq = max + 1;
         }
 
         internal long AllocateSeq() => nextSeq++;
-
-        /// <summary>
-        /// Tasks recorded before seq existed get one in recording order, so every task has an s&lt;seq&gt; id. A task that
-        /// is partially undone sits on both stacks under one id and gets one seq.
-        /// </summary>
-        private void AssignMissingSeqs()
-        {
-            var all = tasks.Concat(undoneStack).ToList();
-            long max = all.Count == 0 ? 0 : all.Max(task => task.seq);
-            if (nextSeq <= max)
-                nextSeq = max + 1;
-
-            var assigned = new Dictionary<string, long>(StringComparer.Ordinal);
-            foreach (var task in all.Where(task => task.seq > 0 && task.id != null))
-                assigned[task.id] = task.seq;
-            foreach (var task in all.Where(task => task.seq <= 0).OrderBy(task => task.timestamp))
-            {
-                if (task.id != null && assigned.TryGetValue(task.id, out long seq))
-                {
-                    task.seq = seq;
-                    continue;
-                }
-                task.seq = AllocateSeq();
-                if (task.id != null)
-                    assigned[task.id] = task.seq;
-            }
-        }
     }
 
     [Serializable]
@@ -328,25 +303,40 @@ namespace UnitySkills
     public class WorkflowTrimReport
     {
         public int removedTasks;
+        public int removedSegments;
         public int reclaimedFileEntries;
         public long reclaimedBytes;
     }
 
+    /// <summary>The pre-3.0 history moved aside into workflow_legacy/ (it is not migrated).</summary>
+    public sealed class WorkflowLegacyBackupInfo
+    {
+        public long TotalBytes { get; }
+        public DateTime MovedAtUtc { get; }
+
+        public WorkflowLegacyBackupInfo(long totalBytes, DateTime movedAtUtc)
+        {
+            TotalBytes = totalBytes;
+            MovedAtUtc = movedAtUtc;
+        }
+    }
+
     /// <summary>
-    /// Persistent auto-cleanup configuration for workflow history and the file store.
+    /// Persistent auto-cleanup configuration for the workflow history (log segments plus blobs).
     /// Stored per project under the "UnitySkills.Workflow.*" keys of <see cref="ProjectPrefs"/>
-    /// (UserSettings/UnitySkills/settings.json; a project without its own value reads the pre-3.0 global EditorPrefs value).
+    /// (UserSettings/UnitySkills/settings.json). CapacityMB and MaxAgeDays are new in 3.0, under new keys, so a pre-3.0
+    /// history JSON limit is never read as the total budget; only Enabled falls back to the pre-3.0 global value.
     /// </summary>
     public static class WorkflowAutoCleanConfig
     {
         private const string Prefix = "UnitySkills.Workflow.";
 
         private const string KeyEnabled = Prefix + "Enabled";
-        private const string KeyMaxTasks = Prefix + "MaxTasks";
-        private const string KeyMaxHistoryMB = Prefix + "MaxHistoryMB";
-        private const string KeyMaxTaskAgeDays = Prefix + "MaxTaskAgeDays";
-        private const string KeyMaxStoreMB = Prefix + "MaxStoreMB";
-        private const string KeyStoreMaxAgeDays = Prefix + "StoreMaxAgeDays";
+        private const string KeyCapacityMB = Prefix + "CapacityMB";
+        private const string KeyMaxAgeDays = Prefix + "MaxAgeDays";
+
+        internal const int DefaultCapacityMB = 512;
+        internal const int DefaultMaxAgeDays = 30;
 
         public static bool Enabled
         {
@@ -354,34 +344,18 @@ namespace UnitySkills
             set => ProjectPrefs.SetBool(KeyEnabled, value);
         }
 
-        public static int MaxTasks
+        /// <summary>Budget for the log segments plus the blobs, in MB; 0 = unlimited.</summary>
+        public static int CapacityMB
         {
-            get => ProjectPrefs.GetInt(KeyMaxTasks, 200);
-            set => ProjectPrefs.SetInt(KeyMaxTasks, value);
+            get => ProjectPrefs.GetInt(KeyCapacityMB, DefaultCapacityMB);
+            set => ProjectPrefs.SetInt(KeyCapacityMB, value);
         }
 
-        public static int MaxHistoryMB
+        /// <summary>A sealed log segment whose newest record is older than this is evicted; 0 = no age limit.</summary>
+        public static int MaxAgeDays
         {
-            get => ProjectPrefs.GetInt(KeyMaxHistoryMB, 32);
-            set => ProjectPrefs.SetInt(KeyMaxHistoryMB, value);
-        }
-
-        public static int MaxTaskAgeDays
-        {
-            get => ProjectPrefs.GetInt(KeyMaxTaskAgeDays, 30);
-            set => ProjectPrefs.SetInt(KeyMaxTaskAgeDays, value);
-        }
-
-        public static int MaxStoreMB
-        {
-            get => ProjectPrefs.GetInt(KeyMaxStoreMB, 512);
-            set => ProjectPrefs.SetInt(KeyMaxStoreMB, value);
-        }
-
-        public static int StoreMaxAgeDays
-        {
-            get => ProjectPrefs.GetInt(KeyStoreMaxAgeDays, 7);
-            set => ProjectPrefs.SetInt(KeyStoreMaxAgeDays, value);
+            get => ProjectPrefs.GetInt(KeyMaxAgeDays, DefaultMaxAgeDays);
+            set => ProjectPrefs.SetInt(KeyMaxAgeDays, value);
         }
 
         /// <summary>
@@ -390,11 +364,8 @@ namespace UnitySkills
         public static void ResetToDefaults()
         {
             Enabled = true;
-            MaxTasks = 200;
-            MaxHistoryMB = 32;
-            MaxTaskAgeDays = 30;
-            MaxStoreMB = 512;
-            StoreMaxAgeDays = 7;
+            CapacityMB = DefaultCapacityMB;
+            MaxAgeDays = DefaultMaxAgeDays;
         }
     }
 

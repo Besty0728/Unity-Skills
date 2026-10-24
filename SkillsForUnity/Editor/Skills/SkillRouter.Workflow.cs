@@ -18,26 +18,6 @@ namespace UnitySkills
         /// Target location is delegated to <see cref="CollectTargetsFromArgs"/>,
         /// so the semantic diff's pre-capture reuses exactly the same object set, order, and best-effort semantics.
         /// </summary>
-        /// <summary>
-        /// Whether the current manually-recorded session (workflow_begin_task) has anything new to persist since the last SaveHistory --
-        /// i.e. a different task is now active, or the active task gained new snapshots. Every time it returns true, it advances the saved marker,
-        /// so the next call compares against this save point. Best-effort: defaults to saving on any anomaly (a null task),
-        /// to guarantee history is never silently dropped.
-        /// </summary>
-        private static bool ManualSessionIsDirty(WorkflowTask currentTask)
-        {
-            if (currentTask == null)
-                return true; // shouldn't happen while IsRecording; save defensively
-
-            int count = currentTask.snapshots?.Count ?? 0;
-            if (currentTask.id == _lastSavedTaskId && count == _lastSavedSnapshotCount)
-                return false;
-
-            _lastSavedTaskId = currentTask.id;
-            _lastSavedSnapshotCount = count;
-            return true;
-        }
-
         private static void TrySnapshotTargetsFromArgs(JObject args)
         {
             try

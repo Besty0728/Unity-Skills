@@ -45,9 +45,7 @@ namespace UnitySkills.Tests.Core
 
             _workflowRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsParticleTests_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_workflowRoot);
-            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(_workflowRoot, "workflow_history.json");
-            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(_workflowRoot, "workflow_files");
-            WorkflowManager.ResetStateForTests();
+            WorkflowManager.OverrideRootForTests(Path.Combine(_workflowRoot, "workflow"));
 
             ParticleSkills.SimulateMissingModuleForTests = false;
             ParticleSkills.AfterWriteHookForTests = null;
@@ -61,9 +59,7 @@ namespace UnitySkills.Tests.Core
             ParticleSkills.SimulateMissingModuleForTests = false;
             ParticleSkills.AfterWriteHookForTests = null;
             WorkflowManager.AbortTask();
-            WorkflowManager.ResetStateForTests();
-            WorkflowManager.OverrideHistoryFilePathForTests = null;
-            WorkflowFileStore.OverrideStoreRootForTests = null;
+            WorkflowManager.OverrideRootForTests(null);
             try { if (Directory.Exists(_workflowRoot)) Directory.Delete(_workflowRoot, true); } catch { }
 
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);

@@ -1235,6 +1235,16 @@
     color: var(--color-accent);
 }
 
+.autoclean-legacy-row {
+    flex-direction: row;
+    align-items: center;
+    margin-top: 4px;
+}
+
+.autoclean-legacy-row > .muted-label {
+    flex-grow: 1;
+}
+
 .task-card {
     background-color: var(--color-card-bg);
     border-width: 1px;

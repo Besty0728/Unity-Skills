@@ -57,13 +57,8 @@ namespace UnitySkills.Internal
             "UnitySkills_RequestTimeoutMinutes",
             "UnitySkills_TelemetryEnabled",
             "UnitySkills_AutoInstallPackagesOnStartup",
-            // Workflow history limits (WorkflowAutoCleanConfig).
+            // Workflow auto-cleanup switch (WorkflowAutoCleanConfig); its 3.0 limits use new keys with no global value.
             "UnitySkills.Workflow.Enabled",
-            "UnitySkills.Workflow.MaxTasks",
-            "UnitySkills.Workflow.MaxHistoryMB",
-            "UnitySkills.Workflow.MaxTaskAgeDays",
-            "UnitySkills.Workflow.MaxStoreMB",
-            "UnitySkills.Workflow.StoreMaxAgeDays",
             // Evaluation tab configuration.
             "UnitySkills_EvalPanelConfig",
         };

@@ -47,9 +47,7 @@ namespace UnitySkills.Tests.Core
             // Workflow snapshots (and the file-store blobs they write) stay out of the project's real history.
             _workflowRoot = Path.Combine(Path.GetTempPath(), "UnitySkillsEventBindingTests_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_workflowRoot);
-            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(_workflowRoot, "workflow_history.json");
-            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(_workflowRoot, "workflow_files");
-            WorkflowManager.ResetStateForTests();
+            WorkflowManager.OverrideRootForTests(Path.Combine(_workflowRoot, "workflow"));
 
             _emitter = new GameObject(Emitter).AddComponent<EventProbe>();
             _left = CreateTwin("LeftRoot");
@@ -61,9 +59,7 @@ namespace UnitySkills.Tests.Core
         public void TearDown()
         {
             WorkflowManager.AbortTask();
-            WorkflowManager.ResetStateForTests();
-            WorkflowManager.OverrideHistoryFilePathForTests = null;
-            WorkflowFileStore.OverrideStoreRootForTests = null;
+            WorkflowManager.OverrideRootForTests(null);
             try { if (Directory.Exists(_workflowRoot)) Directory.Delete(_workflowRoot, true); } catch { }
 
             SkillsModeManager.CurrentMode = _savedMode;

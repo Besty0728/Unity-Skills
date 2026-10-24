@@ -344,21 +344,15 @@ namespace UnitySkills
                 }
 
                 // ========== Automatic workflow wrap-up ==========
+                // A manual task or session records nothing here: its task reaches the log when it ends.
                 if (autoStartedWorkflow)
                 {
-                    // On the auto-workflow path, persistence is entirely EndTask's responsibility (it calls SaveHistory internally).
+                    // On the auto-workflow path, persistence is entirely EndTask's responsibility (it appends the task's record).
                     // The cost is measured here and reaches the telemetry row through ConsumeLastWorkflowEndMs.
                     var sw = System.Diagnostics.Stopwatch.StartNew();
                     WorkflowManager.EndTask();
                     sw.Stop();
                     _lastWorkflowEndMs = sw.ElapsedMilliseconds;
-                }
-                else if (WorkflowManager.IsRecording)
-                {
-                    // Manual session (workflow_begin_task): otherwise every tracked skill would save on every single call.
-                    // Skips the save when the current task has had no new snapshots since the last save.
-                    if (ManualSessionIsDirty(WorkflowManager.CurrentTask))
-                        WorkflowManager.SaveHistory();
                 }
                 // ========================================
 

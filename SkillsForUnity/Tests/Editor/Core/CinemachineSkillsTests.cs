@@ -31,9 +31,7 @@ namespace UnitySkills.Tests.Core
             _workflowTempRoot = Path.Combine(
                 Path.GetTempPath(), "UnitySkillsCinemachineWorkflowTests_" + System.Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_workflowTempRoot);
-            WorkflowManager.OverrideHistoryFilePathForTests = Path.Combine(_workflowTempRoot, "workflow_history.json");
-            WorkflowFileStore.OverrideStoreRootForTests = Path.Combine(_workflowTempRoot, "workflow_files");
-            WorkflowManager.ResetStateForTests();
+            WorkflowManager.OverrideRootForTests(Path.Combine(_workflowTempRoot, "workflow"));
 #endif
         }
 
@@ -42,9 +40,7 @@ namespace UnitySkills.Tests.Core
         {
 #if CINEMACHINE_2
             WorkflowManager.AbortTask();
-            WorkflowManager.ResetStateForTests();
-            WorkflowManager.OverrideHistoryFilePathForTests = null;
-            WorkflowFileStore.OverrideStoreRootForTests = null;
+            WorkflowManager.OverrideRootForTests(null);
 #endif
             if (_vcamGo != null)
             {
