@@ -170,17 +170,152 @@ namespace UnitySkills
 
         private static string Serialize(Record record) => JsonConvert.SerializeObject(record, Formatting.None, RecordSettings);
 
+        /// <summary>
+        /// Reads one log line by hand: Newtonsoft's reflection-based deserializer is several times slower on Unity's Mono
+        /// runtime, and parsing dominated replay. Unknown properties are skipped, so newer records still load; a line that
+        /// is not one JSON object, is truncated or has trailing content is rejected, as is one without a kind.
+        /// </summary>
         private static Record Parse(string line)
         {
             try
             {
-                var record = JsonConvert.DeserializeObject<Record>(line, RecordSettings);
-                return string.IsNullOrEmpty(record?.Kind) ? null : record;
+                using (var reader = new JsonTextReader(new StringReader(line)) { DateParseHandling = DateParseHandling.None })
+                {
+                    if (!reader.Read() || reader.TokenType != JsonToken.StartObject)
+                        return null;
+                    var record = ReadRecord(reader);
+                    if (reader.Read() && reader.TokenType != JsonToken.Comment)
+                        return null;
+                    return string.IsNullOrEmpty(record.Kind) ? null : record;
+                }
             }
             catch (Exception)
             {
                 return null;
             }
+        }
+
+        /// <summary>Reads a record object; the reader sits on its StartObject and leaves on its EndObject.</summary>
+        private static Record ReadRecord(JsonTextReader reader)
+        {
+            var record = new Record();
+            while (true)
+            {
+                ReadRequired(reader);
+                if (reader.TokenType == JsonToken.EndObject)
+                    return record;
+                switch (ReadPropertyName(reader))
+                {
+                    case "r": record.Kind = reader.ReadAsString(); break;
+                    case "st": record.Stack = reader.ReadAsString(); break;
+                    case "new": record.IsNew = reader.ReadAsInt32() ?? 0; break;
+                    case "id": record.Id = reader.ReadAsString(); break;
+                    case "s": record.Seq = ReadLong(reader); break;
+                    case "k": record.Tag = reader.ReadAsString(); break;
+                    case "d": record.Description = reader.ReadAsString(); break;
+                    case "ts": record.Timestamp = ReadLong(reader); break;
+                    case "ss": record.SessionId = reader.ReadAsString(); break;
+                    case "a": record.Agent = reader.ReadAsString(); break;
+                    case "g": record.Group = reader.ReadAsString(); break;
+                    case "tg": record.Target = reader.ReadAsString(); break;
+                    case "is": record.IdSession = reader.ReadAsString(); break;
+                    case "c": record.Changes = ReadChanges(reader); break;
+                    default: reader.Skip(); break;
+                }
+            }
+        }
+
+        /// <summary>Reads the "c" array (or null) of a record; the reader sits on the property name.</summary>
+        private static List<Change> ReadChanges(JsonTextReader reader)
+        {
+            ReadRequired(reader);
+            if (reader.TokenType == JsonToken.Null)
+                return null;
+            if (reader.TokenType != JsonToken.StartArray)
+                throw new JsonReaderException("A workflow record's changes must be an array.");
+
+            var changes = new List<Change>();
+            while (true)
+            {
+                ReadRequired(reader);
+                if (reader.TokenType == JsonToken.EndArray)
+                    return changes;
+                changes.Add(reader.TokenType == JsonToken.Null ? null : ReadChange(reader));
+            }
+        }
+
+        /// <summary>Reads one change object; the reader sits on its StartObject and leaves on its EndObject.</summary>
+        private static Change ReadChange(JsonTextReader reader)
+        {
+            if (reader.TokenType != JsonToken.StartObject)
+                throw new JsonReaderException("A workflow change must be an object.");
+
+            var change = new Change();
+            while (true)
+            {
+                ReadRequired(reader);
+                if (reader.TokenType == JsonToken.EndObject)
+                    return change;
+                switch (ReadPropertyName(reader))
+                {
+                    case "t": change.Type = reader.ReadAsInt32() ?? 0; break;
+                    case "g": change.GlobalObjectId = reader.ReadAsString(); break;
+                    case "e": change.EntityId = reader.ReadAsString(); break;
+                    case "i": change.InstanceId = reader.ReadAsInt32() ?? 0; break;
+                    case "n": change.Name = reader.ReadAsString(); break;
+                    case "tn": change.TypeName = reader.ReadAsString(); break;
+                    case "a": change.AssetPath = reader.ReadAsString(); break;
+                    case "is": change.IdSession = reader.ReadAsString(); break;
+                    case "p": change.Payload = reader.ReadAsString(); break;
+                    case "fh": change.FileHash = reader.ReadAsString(); break;
+                    case "mh": change.MetaFileHash = reader.ReadAsString(); break;
+                    case "f": change.Files = ReadHashes(reader); break;
+                    default: reader.Skip(); break;
+                }
+            }
+        }
+
+        /// <summary>Reads the "f" array (or null) of a change; the reader sits on the property name.</summary>
+        private static List<string> ReadHashes(JsonTextReader reader)
+        {
+            ReadRequired(reader);
+            if (reader.TokenType == JsonToken.Null)
+                return null;
+            if (reader.TokenType != JsonToken.StartArray)
+                throw new JsonReaderException("A workflow change's files must be an array.");
+
+            var hashes = new List<string>();
+            while (true)
+            {
+                ReadRequired(reader);
+                if (reader.TokenType == JsonToken.EndArray)
+                    return hashes;
+                if (reader.TokenType == JsonToken.Null)
+                    hashes.Add(null);
+                else if (reader.TokenType == JsonToken.String)
+                    hashes.Add((string)reader.Value);
+                else if (reader.TokenType is JsonToken.StartObject or JsonToken.StartArray)
+                    throw new JsonReaderException("A workflow file hash must be a string.");
+                else
+                    hashes.Add(Convert.ToString(reader.Value, CultureInfo.InvariantCulture));
+            }
+        }
+
+        /// <summary>Reads an integral value as a long; decimal holds every integer a record writes exactly.</summary>
+        private static long ReadLong(JsonTextReader reader) => (long)(reader.ReadAsDecimal() ?? 0);
+
+        private static string ReadPropertyName(JsonTextReader reader)
+        {
+            if (reader.TokenType != JsonToken.PropertyName)
+                throw new JsonReaderException("A workflow record property name was expected.");
+            return (string)reader.Value;
+        }
+
+        /// <summary>Reads the next token, which a truncated line does not have.</summary>
+        private static void ReadRequired(JsonTextReader reader)
+        {
+            if (!reader.Read())
+                throw new JsonReaderException("A workflow record ended before its closing brace.");
         }
 
         private static bool EnsurePayloadStored(ObjectSnapshot snapshot)

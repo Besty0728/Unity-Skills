@@ -314,6 +314,84 @@ namespace UnitySkills.Tests.Core
             Assert.That(WorkflowStore.LastReplaySkippedLines, Is.Zero);
         }
 
+        [Test]
+        public void ParsedLines_RoundTripEveryRecordKind_AndSkipOnlyBrokenLines()
+        {
+            var first = new WorkflowTask
+            {
+                id = "id-1", seq = 7, tag = "k1", description = "2024-05-01", timestamp = 1761000000123, sessionId = "ss-1",
+                agent = "Codex", group = "g-1", target = "tg-1", idSession = "is-1",
+                snapshots = new List<ObjectSnapshot>
+                {
+                    new ObjectSnapshot
+                    {
+                        type = SnapshotType.Modified, globalObjectId = "gid-1", entityId = "eid-1", objectInstanceId = -5,
+                        objectName = "n-1", typeName = "tn-1", assetPath = "Assets/a.prefab", idSession = "sid-1",
+                        payloadHash = "payload-1", fileHash = "file-1", metaFileHash = "meta-1", payloadReleased = true,
+                        fileRefs = new List<string> { "ref-1", "ref-2" }
+                    }
+                }
+            };
+            var second = new WorkflowTask { id = "id-2", seq = 8, tag = "k2", snapshots = new List<ObjectSnapshot>() };
+            var third = new WorkflowTask { id = "id-3", seq = 9, tag = "k3", snapshots = new List<ObjectSnapshot>() };
+            var fourth = new WorkflowTask { id = "id-4", seq = 10, tag = "k4", snapshots = new List<ObjectSnapshot>() };
+            var sixth = new WorkflowTask { id = "id-6", seq = 12, tag = "k6", snapshots = new List<ObjectSnapshot>() };
+            string truncated = WorkflowStore.BuildTaskLine("t", sixth, false);
+            Directory.CreateDirectory(_root);
+            File.WriteAllLines(ActiveLogPath, new[]
+            {
+                WorkflowStore.BuildTaskLine("t", first, true),
+                WorkflowStore.BuildTaskLine("t", second, false),
+                WorkflowStore.BuildDropLine("t", "id-2"),
+                WorkflowStore.BuildAgentLine("t", "id-1", "Claude"),
+                WorkflowStore.BuildTaskLine("u", third, false),
+                WorkflowStore.BuildClearLine("u"),
+                WorkflowStore.BuildTaskLine("u", fourth, false),
+                "{\"r\":\"task\",\"st\":\"t\",\"id\":\"id-5\",\"s\":11,\"k\":\"k5\",\"d\":\"future\",\"future\":{\"nested\":[1,{\"x\":null}]},\"c\":[{\"t\":0,\"n\":\"n5\",\"unknown\":true}]}",
+                truncated.Substring(0, truncated.Length / 2),
+                "{\"st\":\"t\",\"id\":\"id-7\",\"s\":13}",
+                WorkflowStore.BuildClearLine("t") + " {}"
+            });
+            WorkflowManager.ResetStateForTests();
+
+            var history = WorkflowManager.History;
+
+            Assert.That(WorkflowStore.LastReplaySkippedLines, Is.EqualTo(3), "The truncated, kind-less and trailing-content lines.");
+            Assert.That(history.tasks.Select(t => t.id), Is.EqualTo(new[] { "id-1", "id-5" }));
+            Assert.That(history.undoneStack.Select(t => t.id), Is.EqualTo(new[] { "id-4" }));
+
+            var replayed = history.tasks[0];
+            Assert.That(replayed.seq, Is.EqualTo(7));
+            Assert.That(replayed.tag, Is.EqualTo("k1"));
+            Assert.That(replayed.description, Is.EqualTo("2024-05-01"));
+            Assert.That(replayed.timestamp, Is.EqualTo(1761000000123));
+            Assert.That(replayed.sessionId, Is.EqualTo("ss-1"));
+            Assert.That(replayed.agent, Is.EqualTo("Claude"), "The agent record rebinds the task.");
+            Assert.That(replayed.group, Is.EqualTo("g-1"));
+            Assert.That(replayed.target, Is.EqualTo("tg-1"));
+            Assert.That(replayed.idSession, Is.EqualTo("is-1"));
+            Assert.That(replayed.snapshots, Has.Count.EqualTo(1));
+            var snapshot = replayed.snapshots[0];
+            Assert.That(snapshot.type, Is.EqualTo(SnapshotType.Modified));
+            Assert.That(snapshot.globalObjectId, Is.EqualTo("gid-1"));
+            Assert.That(snapshot.entityId, Is.EqualTo("eid-1"));
+            Assert.That(snapshot.objectInstanceId, Is.EqualTo(-5));
+            Assert.That(snapshot.objectName, Is.EqualTo("n-1"));
+            Assert.That(snapshot.typeName, Is.EqualTo("tn-1"));
+            Assert.That(snapshot.assetPath, Is.EqualTo("Assets/a.prefab"));
+            Assert.That(snapshot.idSession, Is.EqualTo("sid-1"));
+            Assert.That(snapshot.payloadHash, Is.EqualTo("payload-1"));
+            Assert.That(snapshot.fileHash, Is.EqualTo("file-1"));
+            Assert.That(snapshot.metaFileHash, Is.EqualTo("meta-1"));
+            Assert.That(snapshot.fileRefs, Is.EqualTo(new[] { "ref-1", "ref-2" }));
+
+            var future = history.tasks[1];
+            Assert.That(future.seq, Is.EqualTo(11));
+            Assert.That(future.tag, Is.EqualTo("k5"));
+            Assert.That(future.description, Is.EqualTo("future"));
+            Assert.That(future.snapshots[0].objectName, Is.EqualTo("n5"));
+        }
+
         private static WorkflowTask Move(string tag, params GameObject[] targets)
         {
             var task = WorkflowManager.BeginTask(tag, tag);
