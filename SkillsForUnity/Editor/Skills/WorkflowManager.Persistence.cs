@@ -79,6 +79,23 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// Adds a checkpoint's record to the batch and merges it into the in-memory history when that is loaded. The merge is the
+        /// one replay applies (<see cref="WorkflowStore.MergeCheckpoint"/>), so a position holds one checkpoint either way.
+        /// </summary>
+        private static void AddCheckpointRecord(LogBatch batch, WorkflowCheckpoint checkpoint)
+        {
+            batch.Lines.Add(WorkflowStore.BuildCheckpointLine(checkpoint));
+            if (_history == null)
+                return;
+
+            int index = _history.checkpoints.FindIndex(existing => existing.id == checkpoint.id);
+            if (index < 0)
+                _history.checkpoints.Add(checkpoint);
+            else
+                _history.checkpoints[index] = WorkflowStore.MergeCheckpoint(_history.checkpoints[index], checkpoint);
+        }
+
         private static string StackKey(List<WorkflowTask> stack) =>
             _history != null && ReferenceEquals(stack, _history.undoneStack) ? WorkflowStore.UndoneStack : WorkflowStore.TasksStack;
 

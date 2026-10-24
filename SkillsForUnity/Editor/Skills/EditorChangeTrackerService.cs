@@ -172,6 +172,17 @@ namespace UnitySkills
             return string.IsNullOrEmpty(agent) ? AgentUnknown : agent;
         }
 
+        /// <summary>The seq of the newest journal entry, after pending property changes are flushed; a workflow step records it as its cursor.</summary>
+        internal static long CurrentCursor
+        {
+            get
+            {
+                FlushPendingProperties();
+                EnsureLoaded();
+                return _seq;
+            }
+        }
+
         public static object ReadChanges(long since = 0, string types = null, string source = "all", int limit = DefaultReadLimit)
         {
             EnsureLoaded();

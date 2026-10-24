@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using UnityEditor;
@@ -35,8 +36,7 @@ namespace UnitySkills
         private static readonly Dictionary<string, string> _persistentGidCache = new Dictionary<string, string>(StringComparer.Ordinal);
         internal static int GlobalObjectIdComputationsForTests;
 
-        // A new run of writes starts when an agent's next tracked write comes this long after its previous call.
-        internal const int AutoGroupIdleGapSeconds = 30;
+        // A new run of writes starts when an agent's next tracked write comes after its idle gap (WorkflowCheckpointConfig).
         private const string AgentActivitySessionKey = "UnitySkills_WorkflowAgentActivity";
         private const string IdSessionKey = "UnitySkills_WorkflowIdSession";
         private static Dictionary<string, AgentActivity> _agentActivity;
@@ -109,6 +109,7 @@ namespace UnitySkills
                 timestamp = DateTimeOffset.Now.ToUnixTimeSeconds(),
                 idSession = CurrentIdSession(),
                 startedUnixMs = NowUnixMs(),
+                cursorStart = EditorChangeTrackerService.CurrentCursor,
                 snapshots = new List<ObjectSnapshot>()
             };
             _currentTask.EnsureSnapshotIndex();
@@ -118,7 +119,7 @@ namespace UnitySkills
 
         /// <summary>
         /// The router's one-call task. Unlike an explicit task, it continues its agent's current group unless the agent
-        /// was idle for <see cref="AutoGroupIdleGapSeconds"/> before the call.
+        /// was idle for the configured gap (<see cref="WorkflowCheckpointConfig.IdleGapSeconds"/>) before the call.
         /// </summary>
         internal static WorkflowTask BeginAutoTask(string tag, string description, string target)
         {
@@ -145,8 +146,23 @@ namespace UnitySkills
             // only source of truth, and the next load replays this record with the rest.
             var task = _currentTask;
             _currentTask = null;
-            AttributeTask(task);
+            task.cursorEnd = EditorChangeTrackerService.CurrentCursor;
+            StampAssetFingerprints(task);
+            bool startsRun = AttributeTask(task);
             var batch = new LogBatch();
+            // The checkpoint sits at this step's position, so it is written before the step in the same batch.
+            if (startsRun && WorkflowCheckpointConfig.AutoCheckpoints)
+            {
+                AddCheckpointRecord(batch, new WorkflowCheckpoint
+                {
+                    id = CheckpointIdFor(task.seq),
+                    seq = task.seq,
+                    timestampMs = NowUnixMs(),
+                    agent = task.agent,
+                    kind = WorkflowCheckpoint.KindAuto,
+                    cursor = task.cursorStart
+                });
+            }
             AddTaskRecord(batch, WorkflowStore.TasksStack, task, isNew: true);
             if (_history != null)
             {
@@ -163,12 +179,30 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// Stamps each asset snapshot whose file exists with its fingerprint ("length:ticks" of the write time), so a later
+        /// reader can tell whether the file still holds this write. Folders and missing files stay null.
+        /// </summary>
+        private static void StampAssetFingerprints(WorkflowTask task)
+        {
+            foreach (var snapshot in task.snapshots)
+            {
+                if (snapshot == null || string.IsNullOrEmpty(snapshot.assetPath) ||
+                    !WorkflowFileStore.TryGetSafeAssetFullPath(snapshot.assetPath, out string fullPath))
+                    continue;
+                var file = new FileInfo(fullPath);
+                if (file.Exists)
+                    snapshot.assetFingerprint = file.Length + ":" + file.LastWriteTimeUtc.Ticks;
+            }
+        }
+
+        /// <summary>
         /// Gives a finished task its seq, its agent and its group. The agent is resolved now unless the caller preset it (an
         /// async batch job's chunk); when the process resolver has not answered for the connection yet, the task is bound
         /// later by <see cref="BindPendingAgents"/>. A preset group (the job's) leaves the agent's runs alone; an explicit
-        /// task is a run of its own, closed when it ends; a router task opens a run only after an idle gap.
+        /// task is a run of its own, closed when it ends; a router task opens a run only after an idle gap. Returns whether
+        /// the task opened a run after an idle gap, which is when an automatic checkpoint is due.
         /// </summary>
-        private static void AttributeTask(WorkflowTask task)
+        private static bool AttributeTask(WorkflowTask task)
         {
             task.seq = _history == null && WorkflowStore.TryAllocateSeqWithoutReplay(out long seq) ? seq : History.AllocateSeq();
             if (string.IsNullOrEmpty(task.agent))
@@ -182,9 +216,10 @@ namespace UnitySkills
                 }
             }
             if (!string.IsNullOrEmpty(task.group))
-                return;
+                return false;
 
             var activity = GetAgentActivity(task.agent);
+            bool startsRun = false;
             if (!task.autoStarted)
             {
                 task.group = "g" + task.seq;
@@ -193,11 +228,15 @@ namespace UnitySkills
             else
             {
                 long startedMs = task.startedUnixMs > 0 ? task.startedUnixMs : task.timestamp * 1000L;
-                if (activity.group == null || startedMs - activity.lastCallMs >= AutoGroupIdleGapSeconds * 1000L)
+                // An agent's first tracked write has no run yet (a fresh editor, or a new agent), so it opens one with a checkpoint.
+                startsRun = activity.group == null || WorkflowCheckpointPolicy.IsIdleGap(activity.lastCallMs, startedMs,
+                    WorkflowLifecycle.BusySpans, WorkflowCheckpointConfig.IdleGapSeconds);
+                if (startsRun)
                     activity.group = "g" + task.seq;
                 task.group = activity.group;
             }
             SaveAgentActivity();
+            return startsRun;
         }
 
         /// <summary>

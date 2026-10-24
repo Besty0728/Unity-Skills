@@ -104,6 +104,15 @@ namespace UnitySkills
             [JsonProperty("tg")] public string Target;
             [JsonProperty("is")] public string IdSession;
             [JsonProperty("c")] public List<Change> Changes;
+            [JsonProperty("kd")] public string CheckpointKind;
+            [JsonProperty("l")] public string Label;
+            [JsonProperty("cu")] public long Cursor;
+            [JsonProperty("cs")] public long CursorStart;
+            [JsonProperty("ce")] public long CursorEnd;
+            [JsonProperty("to")] public string To;
+            [JsonProperty("gd")] public string Guard;
+            [JsonProperty("sp")] public List<long> Steps;
+            [JsonProperty("al")] public List<string[]> Aliases;
         }
 
         /// <summary>
@@ -119,6 +128,7 @@ namespace UnitySkills
             [JsonProperty("n")] public string Name;
             [JsonProperty("tn")] public string TypeName;
             [JsonProperty("a")] public string AssetPath;
+            [JsonProperty("ah")] public string AssetFingerprint;
             [JsonProperty("is")] public string IdSession;
             [JsonProperty("p")] public string Payload;
             [JsonProperty("fh")] public string FileHash;
@@ -157,9 +167,24 @@ namespace UnitySkills
             {
                 Kind = "task", Stack = stack, IsNew = isNew ? 1 : 0, Id = task.id, Seq = task.seq, Tag = task.tag,
                 Description = task.description, Timestamp = task.timestamp, SessionId = task.sessionId, Agent = task.agent,
-                Group = task.group, Target = task.target, IdSession = task.idSession, Changes = changes
+                Group = task.group, Target = task.target, IdSession = task.idSession, Changes = changes,
+                CursorStart = task.cursorStart, CursorEnd = task.cursorEnd
             });
         }
+
+        internal static string BuildCheckpointLine(WorkflowCheckpoint checkpoint) => Serialize(new Record
+        {
+            Kind = "cp", Id = checkpoint.id, Seq = checkpoint.seq, Timestamp = checkpoint.timestampMs, Agent = checkpoint.agent,
+            CheckpointKind = checkpoint.kind, Label = checkpoint.label, Cursor = checkpoint.cursor
+        });
+
+        internal static string BuildLabelLine(string id, string label) => Serialize(new Record { Kind = "label", Id = id, Label = label });
+
+        internal static string BuildRestoreLine(WorkflowRestoreRecord restore) => Serialize(new Record
+        {
+            Kind = "restore", Seq = restore.seq, To = restore.to, Guard = restore.guard, Agent = restore.agent,
+            Steps = restore.steps, Aliases = restore.aliases
+        });
 
         internal static string BuildDropLine(string stack, string id) => Serialize(new Record { Kind = "drop", Stack = stack, Id = id });
 
@@ -220,6 +245,15 @@ namespace UnitySkills
                     case "tg": record.Target = reader.ReadAsString(); break;
                     case "is": record.IdSession = reader.ReadAsString(); break;
                     case "c": record.Changes = ReadChanges(reader); break;
+                    case "cs": record.CursorStart = ReadLong(reader); break;
+                    case "ce": record.CursorEnd = ReadLong(reader); break;
+                    case "kd": record.CheckpointKind = reader.ReadAsString(); break;
+                    case "l": record.Label = reader.ReadAsString(); break;
+                    case "cu": record.Cursor = ReadLong(reader); break;
+                    case "to": record.To = reader.ReadAsString(); break;
+                    case "gd": record.Guard = reader.ReadAsString(); break;
+                    case "sp": record.Steps = ReadSeqs(reader); break;
+                    case "al": record.Aliases = ReadAliases(reader); break;
                     default: reader.Skip(); break;
                 }
             }
@@ -265,6 +299,7 @@ namespace UnitySkills
                     case "n": change.Name = reader.ReadAsString(); break;
                     case "tn": change.TypeName = reader.ReadAsString(); break;
                     case "a": change.AssetPath = reader.ReadAsString(); break;
+                    case "ah": change.AssetFingerprint = reader.ReadAsString(); break;
                     case "is": change.IdSession = reader.ReadAsString(); break;
                     case "p": change.Payload = reader.ReadAsString(); break;
                     case "fh": change.FileHash = reader.ReadAsString(); break;
@@ -298,6 +333,67 @@ namespace UnitySkills
                     throw new JsonReaderException("A workflow file hash must be a string.");
                 else
                     hashes.Add(Convert.ToString(reader.Value, CultureInfo.InvariantCulture));
+            }
+        }
+
+        /// <summary>Reads the "sp" array (or null) of a restore record, its steps' seqs; the reader sits on the property name.</summary>
+        private static List<long> ReadSeqs(JsonTextReader reader)
+        {
+            ReadRequired(reader);
+            if (reader.TokenType == JsonToken.Null)
+                return null;
+            if (reader.TokenType != JsonToken.StartArray)
+                throw new JsonReaderException("A workflow restore's steps must be an array.");
+
+            var seqs = new List<long>();
+            while (true)
+            {
+                ReadRequired(reader);
+                if (reader.TokenType == JsonToken.EndArray)
+                    return seqs;
+                if (reader.TokenType != JsonToken.Integer)
+                    throw new JsonReaderException("A workflow step seq must be an integer.");
+                seqs.Add(Convert.ToInt64(reader.Value, CultureInfo.InvariantCulture));
+            }
+        }
+
+        /// <summary>Reads the "al" array (or null) of a restore record, its [old, new] alias pairs; the reader sits on the property name.</summary>
+        private static List<string[]> ReadAliases(JsonTextReader reader)
+        {
+            ReadRequired(reader);
+            if (reader.TokenType == JsonToken.Null)
+                return null;
+            if (reader.TokenType != JsonToken.StartArray)
+                throw new JsonReaderException("A workflow restore's aliases must be an array.");
+
+            var pairs = new List<string[]>();
+            while (true)
+            {
+                ReadRequired(reader);
+                if (reader.TokenType == JsonToken.EndArray)
+                    return pairs;
+                pairs.Add(reader.TokenType == JsonToken.Null ? null : ReadStrings(reader));
+            }
+        }
+
+        /// <summary>Reads one array of strings; the reader sits on its StartArray and leaves on its EndArray.</summary>
+        private static string[] ReadStrings(JsonTextReader reader)
+        {
+            if (reader.TokenType != JsonToken.StartArray)
+                throw new JsonReaderException("A workflow alias pair must be an array.");
+
+            var values = new List<string>();
+            while (true)
+            {
+                ReadRequired(reader);
+                if (reader.TokenType == JsonToken.EndArray)
+                    return values.ToArray();
+                if (reader.TokenType == JsonToken.Null)
+                    values.Add(null);
+                else if (reader.TokenType == JsonToken.String)
+                    values.Add((string)reader.Value);
+                else
+                    throw new JsonReaderException("A workflow alias must be a string.");
             }
         }
 
@@ -338,6 +434,7 @@ namespace UnitySkills
             Name = snapshot.objectName,
             TypeName = snapshot.typeName,
             AssetPath = snapshot.assetPath,
+            AssetFingerprint = snapshot.assetFingerprint,
             IdSession = snapshot.idSession,
             Payload = snapshot.payloadHash,
             FileHash = snapshot.fileHash,
@@ -354,6 +451,7 @@ namespace UnitySkills
             snapshot.objectName = change.Name;
             snapshot.typeName = change.TypeName;
             snapshot.assetPath = change.AssetPath;
+            snapshot.assetFingerprint = change.AssetFingerprint;
             snapshot.idSession = change.IdSession;
             snapshot.payloadHash = change.Payload;
             snapshot.fileHash = change.FileHash;
@@ -707,6 +805,15 @@ namespace UnitySkills
         /// </summary>
         internal static bool TryAllocateSeqWithoutReplay(out long seq)
         {
+            if (!TryPeekSeqWithoutReplay(out seq))
+                return false;
+            _nextSeqWithoutReplay++;
+            return true;
+        }
+
+        /// <summary>The seq <see cref="TryAllocateSeqWithoutReplay"/> would return next, without taking it; false as there.</summary>
+        internal static bool TryPeekSeqWithoutReplay(out long seq)
+        {
             seq = 0;
             EnsureInitialized();
             if (_nextSeqWithoutReplay <= 0)
@@ -715,13 +822,13 @@ namespace UnitySkills
                     return false;
                 _nextSeqWithoutReplay = Math.Max(_head.NextSeq, lastNew + 1);
             }
-            seq = _nextSeqWithoutReplay++;
+            seq = _nextSeqWithoutReplay;
             return true;
         }
 
         /// <summary>
-        /// Seq of the newest "new" record in the active segment, read backwards from its end in growing windows; 0 when
-        /// it holds none (the head then has the answer).
+        /// Seq of the newest "new" task or restore record in the active segment, read backwards from its end in growing
+        /// windows; 0 when it holds none (the head then has the answer).
         /// </summary>
         private static bool TryReadLastNewSeq(out long seq)
         {
@@ -753,7 +860,7 @@ namespace UnitySkills
                         {
                             if (string.IsNullOrWhiteSpace(lines[i])) continue;
                             var record = Parse(lines[i]);
-                            if (record != null && record.Kind == "task" && record.IsNew != 0)
+                            if (record != null && ((record.Kind == "task" && record.IsNew != 0) || record.Kind == "restore"))
                             {
                                 seq = record.Seq;
                                 return true;
@@ -774,6 +881,16 @@ namespace UnitySkills
         #endregion
 
         #region Replay
+
+        /// <summary>Everything one replay builds: both stacks, the checkpoints by id and the restore records.</summary>
+        private sealed class ReplayState
+        {
+            public readonly StackBuilder Tasks = new StackBuilder();
+            public readonly StackBuilder Undone = new StackBuilder();
+            public readonly List<WorkflowCheckpoint> Checkpoints = new List<WorkflowCheckpoint>();
+            public readonly List<WorkflowRestoreRecord> Restores = new List<WorkflowRestoreRecord>();
+            public readonly Dictionary<string, int> CheckpointIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+        }
 
         /// <summary>One stack under construction: records address tasks by id, in O(1), keeping first-seen order.</summary>
         private sealed class StackBuilder
@@ -823,14 +940,13 @@ namespace UnitySkills
             unreadable = false;
             LastReplaySkippedLines = 0;
 
-            var tasks = new StackBuilder();
-            var undone = new StackBuilder();
+            var state = new ReplayState();
             long maxSeq = 0;
             var segments = ListSealedSegments();
             foreach (int n in segments)
             {
                 var refs = File.Exists(RefsPath(n)) ? null : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (!ReplayFile(SegmentPath(n), tasks, undone, refs, ref maxSeq, out _))
+                if (!ReplayFile(SegmentPath(n), state, refs, ref maxSeq, out _))
                 {
                     unreadable = true;
                     continue;
@@ -842,7 +958,7 @@ namespace UnitySkills
             _activeLines = 0;
             if (File.Exists(ActiveLogPath))
             {
-                if (ReplayFile(ActiveLogPath, tasks, undone, null, ref maxSeq, out int lines))
+                if (ReplayFile(ActiveLogPath, state, null, ref maxSeq, out int lines))
                     _activeLines = lines;
                 else
                 {
@@ -853,8 +969,10 @@ namespace UnitySkills
 
             var history = new WorkflowHistoryData
             {
-                tasks = tasks.Build(),
-                undoneStack = undone.Build(),
+                tasks = state.Tasks.Build(),
+                undoneStack = state.Undone.Build(),
+                checkpoints = state.Checkpoints,
+                restores = state.Restores,
                 nextSeq = Math.Max(_head.NextSeq, maxSeq + 1)
             };
 
@@ -869,8 +987,7 @@ namespace UnitySkills
             return history;
         }
 
-        private static bool ReplayFile(string path, StackBuilder tasks, StackBuilder undone, HashSet<string> refs,
-            ref long maxSeq, out int lineCount)
+        private static bool ReplayFile(string path, ReplayState state, HashSet<string> refs, ref long maxSeq, out int lineCount)
         {
             lineCount = 0;
             try
@@ -884,12 +1001,12 @@ namespace UnitySkills
                         continue;
                     lineCount++;
                     var record = Parse(line);
-                    if (record == null || !Apply(record, tasks, undone))
+                    if (record == null || !Apply(record, state))
                     {
                         LastReplaySkippedLines++;
                         continue;
                     }
-                    if (record.Kind != "task")
+                    if (record.Kind != "task" && record.Kind != "restore")
                         continue;
                     maxSeq = Math.Max(maxSeq, record.Seq);
                     if (refs != null)
@@ -906,17 +1023,33 @@ namespace UnitySkills
             }
         }
 
-        private static bool Apply(Record record, StackBuilder tasks, StackBuilder undone)
+        private static bool Apply(Record record, ReplayState state)
         {
-            var stack = record.Stack == TasksStack ? tasks : record.Stack == UndoneStack ? undone : null;
+            var stack = record.Stack == TasksStack ? state.Tasks : record.Stack == UndoneStack ? state.Undone : null;
             switch (record.Kind)
             {
                 case "task":
                     if (stack == null || string.IsNullOrEmpty(record.Id))
                         return false;
                     if (record.IsNew != 0)
-                        undone.Clear();
+                        state.Undone.Clear();
                     stack.Put(ToTask(record));
+                    return true;
+                case "cp":
+                    if (string.IsNullOrEmpty(record.Id))
+                        return false;
+                    PutCheckpoint(state, ToCheckpoint(record));
+                    return true;
+                case "label":
+                    if (string.IsNullOrEmpty(record.Id))
+                        return false;
+                    if (state.CheckpointIndex.TryGetValue(record.Id, out int labelled))
+                        state.Checkpoints[labelled].label = record.Label;
+                    return true;
+                case "restore":
+                    if (record.Seq <= 0)
+                        return false;
+                    state.Restores.Add(ToRestore(record));
                     return true;
                 case "drop":
                     if (stack == null)
@@ -941,6 +1074,58 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// Adds a checkpoint, or merges it into the one with its id (see <see cref="MergeCheckpoint"/>), keeping the list order
+        /// of first appearance.
+        /// </summary>
+        private static void PutCheckpoint(ReplayState state, WorkflowCheckpoint checkpoint)
+        {
+            if (state.CheckpointIndex.TryGetValue(checkpoint.id, out int i))
+            {
+                state.Checkpoints[i] = MergeCheckpoint(state.Checkpoints[i], checkpoint);
+                return;
+            }
+            state.CheckpointIndex[checkpoint.id] = state.Checkpoints.Count;
+            state.Checkpoints.Add(checkpoint);
+        }
+
+        /// <summary>
+        /// The checkpoint an id holds after <paramref name="incoming"/> is recorded at it. An auto checkpoint never replaces an
+        /// existing one, so a position holds one checkpoint and an explicit one is never downgraded. Any other kind replaces it,
+        /// keeping the existing label unless the new one has a label.
+        /// </summary>
+        internal static WorkflowCheckpoint MergeCheckpoint(WorkflowCheckpoint existing, WorkflowCheckpoint incoming)
+        {
+            if (existing == null)
+                return incoming;
+            if (incoming.kind == WorkflowCheckpoint.KindAuto)
+                return existing;
+            if (string.IsNullOrEmpty(incoming.label))
+                incoming.label = existing.label;
+            return incoming;
+        }
+
+        private static WorkflowCheckpoint ToCheckpoint(Record record) => new WorkflowCheckpoint
+        {
+            id = record.Id,
+            seq = record.Seq,
+            timestampMs = record.Timestamp,
+            agent = record.Agent,
+            kind = record.CheckpointKind,
+            label = record.Label,
+            cursor = record.Cursor
+        };
+
+        private static WorkflowRestoreRecord ToRestore(Record record) => new WorkflowRestoreRecord
+        {
+            seq = record.Seq,
+            to = record.To,
+            guard = record.Guard,
+            agent = record.Agent,
+            steps = record.Steps ?? new List<long>(),
+            aliases = record.Aliases ?? new List<string[]>()
+        };
+
         private static WorkflowTask ToTask(Record record)
         {
             var task = new WorkflowTask
@@ -955,6 +1140,8 @@ namespace UnitySkills
                 group = record.Group,
                 target = record.Target,
                 idSession = record.IdSession,
+                cursorStart = record.CursorStart,
+                cursorEnd = record.CursorEnd,
                 snapshots = new List<ObjectSnapshot>(record.Changes?.Count ?? 0)
             };
             if (record.Changes != null)
@@ -979,7 +1166,7 @@ namespace UnitySkills
                     if (string.IsNullOrWhiteSpace(line))
                         continue;
                     var record = Parse(line);
-                    if (record == null || record.Kind != "task")
+                    if (record == null || (record.Kind != "task" && record.Kind != "restore"))
                         continue;
                     maxSeq = Math.Max(maxSeq, record.Seq);
                     AddRecordRefs(record, refs);

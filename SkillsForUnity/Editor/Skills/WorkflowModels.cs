@@ -21,6 +21,7 @@ namespace UnitySkills.Internal
         public string typeName;       // e.g. "GameObject", "Transform"
         public SnapshotType type = SnapshotType.Modified;
         public string assetPath;      // For assets: the in-project path (e.g. "Assets/Materials/Red.mat")
+        public string assetFingerprint; // "<length>:<lastWriteTimeUtc ticks>" of the asset file when its task ended; null for folders
 
         // Hash into the content-addressed file store, used by Modified/Deleted asset snapshots.
         public string fileHash;
@@ -108,22 +109,59 @@ namespace UnitySkills
     {
         public List<WorkflowTask> tasks = new List<WorkflowTask>();
         public List<WorkflowTask> undoneStack = new List<WorkflowTask>(); // Stack of undone tasks, for redo
+        public List<WorkflowCheckpoint> checkpoints = new List<WorkflowCheckpoint>();
+        public List<WorkflowRestoreRecord> restores = new List<WorkflowRestoreRecord>();
         public long nextSeq = 1; // Next short task id (s<seq>); never reused within one history
 
         public void EnsureDefaults()
         {
             if (tasks == null) tasks = new List<WorkflowTask>();
             if (undoneStack == null) undoneStack = new List<WorkflowTask>();
+            if (checkpoints == null) checkpoints = new List<WorkflowCheckpoint>();
+            if (restores == null) restores = new List<WorkflowRestoreRecord>();
 
             tasks.RemoveAll(task => task == null);
             undoneStack.RemoveAll(task => task == null);
+            checkpoints.RemoveAll(checkpoint => checkpoint == null);
+            restores.RemoveAll(restore => restore == null);
 
-            long max = tasks.Concat(undoneStack).Select(task => task.seq).DefaultIfEmpty(0).Max();
+            long max = tasks.Concat(undoneStack).Select(task => task.seq)
+                .Concat(restores.Select(restore => restore.seq)).DefaultIfEmpty(0).Max();
             if (nextSeq <= max)
                 nextSeq = max + 1;
         }
 
         internal long AllocateSeq() => nextSeq++;
+    }
+
+    /// <summary>
+    /// A named position in the history: the state before the step at <see cref="seq"/> (the step that follows it). Its id
+    /// is "c" + seq, so one position holds at most one checkpoint.
+    /// </summary>
+    [Serializable]
+    public class WorkflowCheckpoint
+    {
+        internal const string KindAuto = "auto";
+
+        public string id;
+        public long seq;          // Position: the seq the step after the checkpoint got (or will get)
+        public long timestampMs;
+        public string agent;
+        public string kind;       // auto | explicit | task | session | guard
+        public string label;
+        public long cursor;       // Change journal cursor at the checkpoint
+    }
+
+    /// <summary>One restore (undo or rollback to a checkpoint), as a step of its own: which steps it reverted, and their aliases.</summary>
+    [Serializable]
+    public class WorkflowRestoreRecord
+    {
+        public long seq;          // The restore step's seq
+        public string to;         // The checkpoint or step the restore went back to
+        public string guard;      // The guard checkpoint taken before the restore
+        public string agent;
+        public List<long> steps = new List<long>();
+        public List<string[]> aliases = new List<string[]>(); // [oldGlobalObjectId, newGlobalObjectId]
     }
 
     [Serializable]
@@ -138,6 +176,8 @@ namespace UnitySkills
         public string agent;      // Caller the task is attributed to when it ends ("unknown" without a REST identity)
         public string group;      // g<seq of its first task> for one agent's run of writes, j<jobId> for an async batch job's chunks
         public string target;     // Main target named by the call's arguments, for the compact list
+        public long cursorStart;  // Change journal cursor when the task began, and when it ended (0 = not recorded)
+        public long cursorEnd;
         public string idSession;  // Editor session the snapshots were captured in; instance/entity ids are only valid there
         public List<ObjectSnapshot> snapshots = new List<ObjectSnapshot>();
         [NonSerialized] private HashSet<string> _snapshotKeys;
@@ -366,6 +406,33 @@ namespace UnitySkills
             Enabled = true;
             CapacityMB = DefaultCapacityMB;
             MaxAgeDays = DefaultMaxAgeDays;
+        }
+    }
+
+    /// <summary>
+    /// Automatic checkpoint policy, stored per project under the "UnitySkills.Workflow.*" keys of <see cref="ProjectPrefs"/>.
+    /// Both keys are new in 3.0, so they have no pre-3.0 global value.
+    /// </summary>
+    public static class WorkflowCheckpointConfig
+    {
+        private const string KeyAutoCheckpoints = "UnitySkills.Workflow.AutoCheckpoints";
+        private const string KeyIdleGapSeconds = "UnitySkills.Workflow.IdleGapSeconds";
+
+        internal const int DefaultIdleGapSeconds = 30;
+        internal const int MinIdleGapSeconds = 5;
+
+        /// <summary>Whether a router run that starts after an idle gap gets an automatic checkpoint.</summary>
+        public static bool AutoCheckpoints
+        {
+            get => ProjectPrefs.GetBool(KeyAutoCheckpoints, true);
+            set => ProjectPrefs.SetBool(KeyAutoCheckpoints, value);
+        }
+
+        /// <summary>How long an agent must be idle (busy time such as compiles excluded) before its next write starts a run; at least 5.</summary>
+        public static int IdleGapSeconds
+        {
+            get => Math.Max(MinIdleGapSeconds, ProjectPrefs.GetInt(KeyIdleGapSeconds, DefaultIdleGapSeconds));
+            set => ProjectPrefs.SetInt(KeyIdleGapSeconds, Math.Max(MinIdleGapSeconds, value));
         }
     }
 
