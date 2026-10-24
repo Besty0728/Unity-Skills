@@ -297,6 +297,7 @@ namespace UnitySkills
             "workflow_undo_task",
             "workflow_redo_task",
             "workflow_revert_task",
+            "workflow_restore",
             "workflow_session_undo"
         };
 

@@ -11,7 +11,7 @@ Audience: agents editing this repository. Agents *calling* the REST API read `Sk
 
 ## Architecture
 
-`AI agent → unity_skills.py → HTTP localhost:8090-8100 → SkillsHttpServer (producer-consumer) → SkillRouter (reflects [UnitySkill]) → 57 *Skills.cs / 55 SkillCategory / 871 skills`. `WorkflowManager` = persistent undo/rollback, `RegistryService` = multi-instance discovery. 57 vs 55: `BatchSkills.cs` registers into Workflow + Validation, `DiagnoseSkills.cs` into Debug. The per-category table lives in `README.md`; `/skillcheck` keeps every count in sync — do not hand-edit counts.
+`AI agent → unity_skills.py → HTTP localhost:8090-8100 → SkillsHttpServer (producer-consumer) → SkillRouter (reflects [UnitySkill]) → 57 *Skills.cs / 55 SkillCategory / 872 skills`. `WorkflowManager` = persistent undo/rollback, `RegistryService` = multi-instance discovery. 57 vs 55: `BatchSkills.cs` registers into Workflow + Validation, `DiagnoseSkills.cs` into Debug. The per-category table lives in `README.md`; `/skillcheck` keeps every count in sync — do not hand-edit counts.
 
 - **Threading (hard rule)**: the HTTP thread only enqueues; the Unity main thread drains the queue from `EditorApplication.update`. Zero `UnityEngine.*`/`UnityEditor.*` calls off the main thread.
 - **Every request, including GET `/health` `/jobs/{id}` `/skills`, goes through that main-thread queue** (≤20 per tick). A skill that blocks the main thread also freezes liveness; the Python client polls `GET /jobs/{id}` instead of `job_wait` for this reason.

@@ -208,6 +208,16 @@ Names a point in the undo history. Without `at` it adds a checkpoint before the 
 
 Any write skill also takes a `_checkpoint` body key (`{"_checkpoint":"before lighting", ...}`), which names the checkpoint before that call's step. A failed call leaves no checkpoint. A `/skills/batch` body takes the same key for its first recorded step.
 
+### `workflow_restore`
+Puts the scene and project assets back to a checkpoint. Only the caller's steps from that point on are reverted unless `agents` is `all`.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| to | string | Yes | - | A `c<n>` id, an `s<n>` step, `last` (the caller's newest checkpoint) or a checkpoint label |
+| agents | string | No | `self` | `self` or `all` |
+
+**Returns:** `{ to, guard, restored, deleted, recreated, failed, skipped, undo, compileTriggered }`, plus `failedItems` (up to 20 `name (type): reason` strings) when something failed. `guard` is the checkpoint taken before the restore; `undo` is the call that reverts this restore (`workflow_restore {"to":"<guard>"}`). Ctrl+Z only reverts the scene, not the assets, so use this call to undo a restore. Script changes start a compile job (`jobId`, `waitUrl`). Play Mode returns `SEMANTIC_INVALID`; an unknown position returns `NOT_FOUND` with `recentCheckpoints`.
+
 ### `workflow_task_end`
 End the current workflow task and save it. Requires an active task (call workflow_task_start first).
 

@@ -11,6 +11,11 @@ namespace UnitySkills
 {
     public static partial class WorkflowManager
     {
+        // The objects a checkpoint restore has recreated so far, keyed by their old ids. Set only while a restore runs, so a
+        // later Modified item resolves an object that an earlier Deleted item in the same restore brought back.
+        private static RestoredObjectMap _restoreScopeObjects;
+        // The alias map a restore resolves ids through, so ids captured before an earlier recreate still find the object.
+        private static Dictionary<string, string> _restoreScopeAliases;
 
         private static void NotifyComponentTopologyChanged(GameObject owner, Type componentType)
         {
@@ -534,6 +539,7 @@ namespace UnitySkills
                 else
                     restored = Undo.AddComponent(parent, componentType);
                 if (restored == null) return false;
+                _restoreScopeObjects?.Add(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId, restored);
                 if (!string.IsNullOrEmpty(snapshot.originalJson))
                 {
                     EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, restored);
@@ -746,7 +752,7 @@ namespace UnitySkills
         {
             if (nodes == null || nodes.Count == 0) return null;
             var restored = new List<GameObject>(nodes.Count);
-            var restoredObjects = new RestoredObjectMap();
+            var restoredObjects = _restoreScopeObjects ?? new RestoredObjectMap();
             var restoredComponents = new Dictionary<ComponentData, Component>();
 
             for (int i = 0; i < nodes.Count; i++)
@@ -868,12 +874,25 @@ namespace UnitySkills
 
         private static UnityEngine.Object TryResolveObject(string globalObjectId, string entityId, int instanceId)
         {
+            string requestedGlobalObjectId = globalObjectId;
+            if (_restoreScopeAliases != null)
+                globalObjectId = ResolveGidAlias(_restoreScopeAliases, globalObjectId);
+
             if (!string.IsNullOrEmpty(globalObjectId) && !IsUnsavedSceneGlobalObjectId(globalObjectId) &&
                 GlobalObjectId.TryParse(globalObjectId, out GlobalObjectId gid))
             {
                 var persisted = GlobalObjectId.GlobalObjectIdentifierToObjectSlow(gid);
                 if (persisted != null) return persisted;
             }
+
+            // Ids of objects a restore recreated are looked up in the restore's own map, and the session-local ids only when
+            // this session captured them.
+            string scopeEntityId = _sessionIdFallbackAllowed ? entityId : null;
+            int scopeInstanceId = _sessionIdFallbackAllowed ? instanceId : 0;
+            var restored = _restoreScopeObjects?.Resolve(globalObjectId, scopeEntityId, scopeInstanceId);
+            if (restored == null && requestedGlobalObjectId != globalObjectId)
+                restored = _restoreScopeObjects?.Resolve(requestedGlobalObjectId, scopeEntityId, scopeInstanceId);
+            if (restored != null) return restored;
 
             if (!_sessionIdFallbackAllowed)
                 return null;
@@ -943,6 +962,8 @@ namespace UnitySkills
                 if (!string.IsNullOrEmpty(entityId)) _byEntityId[entityId] = obj;
                 if (instanceId != 0) _byInstanceId[instanceId] = obj;
             }
+
+            public IEnumerable<KeyValuePair<string, UnityEngine.Object>> GlobalIdEntries => _byGlobalId;
 
             public UnityEngine.Object Resolve(string globalObjectId, string entityId, int instanceId)
             {

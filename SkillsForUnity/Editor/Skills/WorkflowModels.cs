@@ -145,6 +145,7 @@ namespace UnitySkills
         internal const string KindExplicit = "explicit";
         internal const string KindTask = "task";
         internal const string KindSession = "session";
+        internal const string KindGuard = "guard";
 
         public string id;
         public long seq;          // Position: the seq the step after the checkpoint got (or will get)

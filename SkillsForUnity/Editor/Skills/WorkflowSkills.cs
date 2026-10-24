@@ -255,6 +255,59 @@ namespace UnitySkills
             return new { id, label };
         }
 
+        [UnitySkill("workflow_restore", "Restore the scene and project assets to a checkpoint. to is a c<n> id, an s<n> step, 'last' (the caller's newest checkpoint) or a checkpoint label; agents is 'self' (default) or 'all'. A guard checkpoint is taken first, so the restore is undone with workflow_restore {\"to\":\"<guard>\"}.",
+            Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
+            Tags = new[] { "workflow", "restore", "undo", "checkpoint" },
+            Outputs = new[] { "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "undo", "compileTriggered" },
+            RequiresInput = new[] { "to" },
+            RiskLevel = "medium", MutatesScene = true, MutatesAssets = true)]
+        public static object WorkflowRestore(string to, string agents = "self")
+        {
+            if (Validate.Required(to, "to") is object err) return err;
+            bool allAgents;
+            if (string.Equals(agents, "all", StringComparison.OrdinalIgnoreCase)) allAgents = true;
+            else if (string.IsNullOrEmpty(agents) || string.Equals(agents, "self", StringComparison.OrdinalIgnoreCase)) allAgents = false;
+            else return new { error = $"agents must be 'self' or 'all', got '{agents}'", errorCode = SkillErrorCode.SemanticInvalid.ToWireString() };
+
+            var outcome = WorkflowManager.RestoreTo(to, allAgents, WorkflowManager.ResolveCallerAgent());
+            if (outcome.error != null)
+                return new
+                {
+                    error = outcome.error,
+                    errorCode = outcome.errorCode.ToWireString(),
+                    recentCheckpoints = outcome.recentCheckpoints,
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry
+                };
+
+            var result = new Dictionary<string, object>
+            {
+                ["to"] = to,
+                ["guard"] = outcome.guard,
+                ["restored"] = outcome.restored,
+                ["deleted"] = outcome.deleted,
+                ["recreated"] = outcome.recreated,
+                ["failed"] = outcome.failed,
+                ["skipped"] = outcome.skipped,
+                ["undo"] = outcome.guard == null ? null : $"workflow_restore {{\"to\":\"{outcome.guard}\"}}",
+                ["compileTriggered"] = outcome.compileTriggered
+            };
+            if (outcome.failedItems.Count > 0)
+                result["failedItems"] = outcome.failedItems;
+            if (!outcome.compileTriggered)
+                return result;
+
+            var job = AsyncJobService.StartRefreshCompileJob(outcome.scriptChanges, outcome.refreshStartedUtcTicks,
+                compilationStartsBefore: outcome.compilationStartsBefore);
+            result["status"] = "accepted";
+            result["jobId"] = job.jobId;
+            result["waitUrl"] = AsyncJobService.BuildWaitUrl(job.jobId);
+            ServerAvailabilityHelper.AttachTransientUnavailableNotice(
+                result,
+                "The restore may trigger a short asset refresh window. The REST server can be briefly unavailable if Unity starts recompiling scripts.",
+                alwaysInclude: true);
+            return result;
+        }
+
         [UnitySkill("workflow_task_end", "End the current workflow task and save it. Requires an active task (call workflow_task_start first).",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "task", "undo", "tracking", "save" },

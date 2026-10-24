@@ -1090,15 +1090,15 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// The checkpoint an id holds after <paramref name="incoming"/> is recorded at it. An auto checkpoint never replaces an
-        /// existing one, so a position holds one checkpoint and an explicit one is never downgraded. Any other kind replaces it,
-        /// keeping the existing label unless the new one has a label.
+        /// The checkpoint an id holds after <paramref name="incoming"/> is recorded at it. An auto or guard checkpoint never replaces
+        /// an existing one, so a position holds one checkpoint and an explicit one is never downgraded or relabelled. Any other kind
+        /// replaces it, keeping the existing label unless the new one has a label.
         /// </summary>
         internal static WorkflowCheckpoint MergeCheckpoint(WorkflowCheckpoint existing, WorkflowCheckpoint incoming)
         {
             if (existing == null)
                 return incoming;
-            if (incoming.kind == WorkflowCheckpoint.KindAuto)
+            if (incoming.kind == WorkflowCheckpoint.KindAuto || incoming.kind == WorkflowCheckpoint.KindGuard)
                 return existing;
             if (string.IsNullOrEmpty(incoming.label))
                 incoming.label = existing.label;
