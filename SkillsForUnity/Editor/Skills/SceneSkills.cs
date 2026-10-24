@@ -201,6 +201,53 @@ namespace UnitySkills
             return names.ToArray();
         }
 
+        /// <summary>
+        /// Metal-safe Game View capture.
+        /// Unity's native ScreenCapture.CaptureScreenshot can crash the whole Editor with a
+        /// native SIGSEGV in GfxDeviceMetal (CaptureScreenshot -&gt; SetRenderTarget -&gt;
+        /// CreateRenderPassDescriptor -&gt; MTLRenderPassDepthAttachmentDescriptor setTexture:)
+        /// when a memoryless depth surface is the active render target. On Apple Silicon the
+        /// project renders with Metal only, and URP leaves the Game View depth surface
+        /// memoryless, so every native capture during an EditMode test run is a crash vector.
+        /// Instead we render all active cameras into a NON-memoryless (antiAliasing = 1)
+        /// RenderTexture and read the pixels back synchronously. Returns a valid detached
+        /// Texture2D, or null if no camera could render (callers treat null as "no pixels").
+        /// </summary>
+        internal static Texture2D SafeCaptureGameView(int superSize)
+        {
+            superSize = Mathf.Max(1, superSize);
+            int w = Mathf.Max(1, Screen.width * superSize);
+            int h = Mathf.Max(1, Screen.height * superSize);
+            // antiAliasing=1 (no MSAA) => the Metal depth surface is NOT memoryless, so the
+            // ReadPixels path never binds a memoryless depth render-pass attachment.
+            var rt = RenderTexture.GetTemporary(w, h, 24, RenderTextureFormat.ARGB32,
+                RenderTextureReadWrite.Default, 1);
+            RenderTexture prevActive = RenderTexture.active;
+            Texture2D tex = null;
+            try
+            {
+                var cams = new List<Camera>(Camera.allCameras);
+                foreach (var cam in cams)
+                {
+                    if (cam == null || !cam.enabled || cam.isActiveAndEnabled == false) continue;
+                    var prevTex = cam.targetTexture;
+                    cam.targetTexture = rt;
+                    try { cam.Render(); }
+                    finally { cam.targetTexture = prevTex; cam.ResetAspect(); }
+                }
+                RenderTexture.active = rt;
+                tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+                tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                tex.Apply();
+            }
+            finally
+            {
+                RenderTexture.active = prevActive;
+                RenderTexture.ReleaseTemporary(rt);
+            }
+            return tex;
+        }
+
         [UnitySkill("scene_screenshot", "Capture a screenshot of the GAME VIEW (the final composited frame of all cameras + UI; in Play mode this is the live runtime image, NOT the Scene/editor view). filename is a bare filename only (no path separators); saved under Assets/Screenshots/. Async: the PNG is written ~1 frame later, so if an immediate read fails, wait ~200ms and retry. Set returnImage=true to also get a PNG as base64 in the response, for clients without filesystem access (e.g. remote/MCP) — captured via a separate synchronous read of the last-rendered Game View frame, so it may be a moment older than the file written to disk.",
             Category = SkillCategory.Scene, Operation = SkillOperation.Execute,
             Tags = new[] { "screenshot", "capture", "image", "gameview", "playmode" },
@@ -218,26 +265,30 @@ namespace UnitySkills
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
             int superSize = Mathf.Max(1, width / Screen.width);
-            // ScreenCapture.CaptureScreenshot captures the final composited Game View frame, and writes the PNG only on the *next frame*
-            // (not synchronous). At this point the file isn't on disk yet, so an immediate Refresh would be a no-op; hence the asset import is deferred to
-            // the next editor tick.
-            ScreenCapture.CaptureScreenshot(path, superSize);
-            EditorApplication.delayCall += () => AssetDatabase.Refresh();
+            // Metal-safe: the native ScreenCapture.CaptureScreenshot can SIGSEGV the Editor (GfxDeviceMetal)
+            // when a memoryless depth surface is the active render target, so capture via a non-memoryless RT.
+            var snap = SafeCaptureGameView(superSize);
+            if (snap != null)
+            {
+                File.WriteAllBytes(path, snap.EncodeToPNG());
+                Object.DestroyImmediate(snap);
+            }
+            AssetDatabase.Refresh();
 
             bool isPlaying = EditorApplication.isPlaying;
             string note = isPlaying
-                ? "Game View captured (live runtime frame). The PNG is written ~1 frame later; if your immediate read fails, wait ~200ms and retry."
-                : "Game View captured in Edit mode — this is the last rendered Game View frame and may be static or blank. Enter Play mode (editor_play) for a live runtime frame. The PNG is written ~1 frame later; if your immediate read fails, wait ~200ms and retry.";
+                ? "Game View captured (live runtime frame), rendered synchronously to a non-MSAA render target."
+                : "Game View captured in Edit mode — this renders the active cameras to a non-MSAA target and may be blank if none are present. Enter Play mode (editor_play) for a live runtime frame.";
 
             var result = new Dictionary<string, object> { ["success"] = true, ["path"] = path, ["width"] = width, ["height"] = height, ["isPlaying"] = isPlaying, ["note"] = note };
             if (returnImage)
             {
-                // The PNG on disk can't be read yet at this point (written about a frame later, see above), so returnImage takes a different path:
-                // synchronously capturing the Game View's current backbuffer in memory, rather than reading back `path`.
+                // The PNG on disk is written synchronously above, but returnImage still takes the in-memory
+                // Texture2D path so clients without filesystem access get the pixels; use the same Metal-safe render.
                 Texture2D liveTex = null;
                 try
                 {
-                    liveTex = ScreenCapture.CaptureScreenshotAsTexture(superSize);
+                    liveTex = SafeCaptureGameView(superSize);
                     if (liveTex == null || liveTex.width <= 0 || liveTex.height <= 0)
                     {
                         result["note"] = note + " returnImage capture unavailable (no Game View pixels to read); read the saved PNG at 'path' instead.";

@@ -114,18 +114,17 @@ namespace UnitySkills
                     var relative = "Assets/Screenshots/" + ResolveScreenshotFilename(GetString(job, "screenshotFilename"));
                     var absolute = Path.GetFullPath(relative);
                     Directory.CreateDirectory(Path.GetDirectoryName(absolute));
-                    try
+                    // Metal-safe: native ScreenCapture.CaptureScreenshot can SIGSEGV the Editor (GfxDeviceMetal)
+                    // on a memoryless depth Game View target, so render a non-memoryless RT and write the PNG now.
+                    var snap = SceneSkills.SafeCaptureGameView(1);
+                    if (snap != null)
                     {
-                        ScreenCapture.CaptureScreenshot(absolute);
-                        job.metadata["screenshotPath"] = relative.Replace('\\', '/');
-                        job.metadata["screenshotRequestedUtcTicks"] = DateTime.UtcNow.Ticks;
-                        Transition(job, "running", "waiting_screenshot", 85, "Runtime observation complete; waiting for Game View screenshot.", "play_capture_screenshot");
+                        File.WriteAllBytes(absolute, snap.EncodeToPNG());
+                        UnityEngine.Object.DestroyImmediate(snap);
                     }
-                    catch (Exception ex)
-                    {
-                        EditorApplication.isPlaying = false;
-                        AsyncJobService.FailJob(job.jobId, $"Game View screenshot failed: {ex.Message}", "failed_screenshot", job.resultData);
-                    }
+                    job.metadata["screenshotPath"] = relative.Replace('\\', '/');
+                    job.metadata["screenshotRequestedUtcTicks"] = DateTime.UtcNow.Ticks;
+                    Transition(job, "running", "waiting_screenshot", 85, "Runtime observation complete; Game View screenshot written.", "play_capture_screenshot");
                     return;
                 }
 
