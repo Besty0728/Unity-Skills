@@ -413,6 +413,8 @@ namespace UnitySkills
             if (MainTabs[index].Id == MainTabId.Analytics) _analyticsController?.OnTabSelected();
             // The Evaluation tab re-reads the runner's state files and consumes finished commands on activation.
             if (MainTabs[index].Id == MainTabId.Evaluation) _evaluationController?.OnTabSelected();
+            // The timeline is rebuilt on activation; history changes while the tab is hidden only mark it dirty.
+            if (MainTabs[index].Id == MainTabId.History) _historyController?.OnTabSelected();
         }
 
         private int GetTabIndex(MainTabId id)

@@ -4,50 +4,57 @@
          editor="UnityEditor.UIElements"
          noNamespaceSchemaLocation="../../../../../../../UIElementsSchema/UIElementsSchema.xsd">
 
-    <ui:VisualElement style="flex-grow: 1; flex-direction: column; min-height: 0;">
+    <ui:VisualElement class="history-root">
 
         <!-- Toolbar -->
-        <ui:VisualElement name="history-toolbar" class="history-toolbar"
-                          style="flex-direction: row; align-items: center; flex-shrink: 0;">
+        <ui:VisualElement name="history-toolbar" class="history-toolbar">
             <ui:Label name="history-title" class="bold-label" text="Workflow History" />
-            <ui:VisualElement style="flex-grow: 1;" />
+            <ui:VisualElement class="history-toolbar__spacer" />
+            <ui:Toggle name="auto-checkpoint-toggle" class="history-toolbar__toggle" />
             <ui:Button name="refresh-btn" class="mini-btn" tooltip="Refresh" />
             <ui:Button name="clear-btn" class="mini-btn danger" text="Clear History" />
         </ui:VisualElement>
 
-        <!-- Cache warning -->
-        <ui:HelpBox name="cache-warning" message-type="Warning"
-                    style="margin: 8px 10px 0 10px;" />
+        <!-- Cache warning, then the result of the last action -->
+        <ui:HelpBox name="cache-warning" message-type="Warning" class="history-cache-warning" />
+        <ui:Button name="undo-restore-btn" class="mini-btn history-undo-btn" />
 
-        <!-- Auto Clean settings -->
-        <ui:Foldout name="autoclean-foldout" value="false"
-                    style="margin: 6px 10px 0 10px; flex-shrink: 0;">
+        <!-- Auto Clean and checkpoint settings -->
+        <ui:Foldout name="autoclean-foldout" value="false" class="history-autoclean">
             <ui:Toggle name="autoclean-enabled" />
             <ui:VisualElement name="autoclean-fields">
                 <ui:IntegerField name="autoclean-capacity-mb" />
                 <ui:IntegerField name="autoclean-max-age" />
             </ui:VisualElement>
-            <ui:Label name="autoclean-usage" class="muted-label"
-                      style="margin-top: 4px; margin-left: 2px;" />
+            <ui:IntegerField name="history-idle-gap" />
+            <ui:Label name="autoclean-usage" class="muted-label autoclean-usage" />
             <ui:VisualElement name="autoclean-legacy-row" class="autoclean-legacy-row">
                 <ui:Label name="autoclean-legacy-label" class="muted-label" />
                 <ui:Button name="autoclean-legacy-delete-btn" class="mini-btn" />
             </ui:VisualElement>
-            <ui:VisualElement style="flex-direction: row; margin-top: 6px;">
+            <ui:VisualElement class="autoclean-actions">
                 <ui:Button name="autoclean-run-btn" class="mini-btn" />
                 <ui:Button name="autoclean-reset-btn" class="mini-btn" />
             </ui:VisualElement>
         </ui:Foldout>
 
-        <!-- Scroll body -->
-        <ui:ScrollView name="history-scroll" class="history-scroll scroll-view"
-                       style="flex-grow: 1; min-height: 0;">
-            <ui:Label name="active-tasks-title" class="history-group-title accent" />
-            <ui:VisualElement name="active-tasks-container" />
+        <!-- Timeline body -->
+        <ui:VisualElement class="history-body">
+            <ui:DropdownField name="history-agent-filter" class="history-agent-filter" />
+            <ui:ListView name="timeline-list" class="timeline-list" />
 
-            <ui:Label name="undone-tasks-title" class="history-group-title"
-                      style="margin-top: 10px;" />
-            <ui:VisualElement name="undone-tasks-container" />
-        </ui:ScrollView>
+            <!-- Restore preview, shown after a checkpoint's Preview button -->
+            <ui:VisualElement name="restore-preview" class="restore-preview">
+                <ui:Label name="summary-label" class="restore-preview__summary" />
+                <ui:Label name="conflicts-title" class="muted-label restore-preview__conflicts-title" />
+                <ui:VisualElement name="conflict-list" class="conflict-list" />
+                <ui:HelpBox name="coverage-warning" message-type="Warning" class="restore-preview__coverage" />
+                <ui:Label name="unresolvable-label" class="muted-label" />
+                <ui:VisualElement class="restore-preview__actions">
+                    <ui:Button name="preview-cancel-btn" class="mini-btn" />
+                    <ui:Button name="preview-restore-btn" class="mini-btn install" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

@@ -90,6 +90,9 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>Raised on the main thread after history records are written, loaded or cleared.</summary>
+        public static event Action HistoryChanged;
+
         public static WorkflowTask CurrentTask => _currentTask;
         public static bool IsRecording => _currentTask != null;
         public static string CurrentSessionId => _currentSessionId;

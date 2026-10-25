@@ -18,6 +18,7 @@ namespace UnitySkills
         {
             ReloadFromLog();
             ScheduleMaintenance(sizeCheck: true);
+            HistoryChanged?.Invoke();
         }
 
         private static void ReloadFromLog()
@@ -126,6 +127,7 @@ namespace UnitySkills
                 ScheduleMaintenance(sizeCheck: false);
             else if (WorkflowAutoCleanConfig.Enabled && WorkflowStore.GrewPastSizeCheck(CapacityBytes))
                 ScheduleMaintenance(sizeCheck: true);
+            HistoryChanged?.Invoke();
             return true;
         }
 
@@ -372,6 +374,7 @@ namespace UnitySkills
             WorkflowStore.Clear(nextSeq, CollectLiveHashes(includeHistory: false));
             _history = new WorkflowHistoryData { nextSeq = nextSeq };
             _historyRecoveryMode = false;
+            HistoryChanged?.Invoke();
         }
 
         /// <summary>

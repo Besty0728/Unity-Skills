@@ -1210,6 +1210,12 @@
 /* ===================================================================
  * 5. HISTORY TAB
  * =================================================================== */
+.history-root {
+    flex-grow: 1;
+    flex-direction: column;
+    min-height: 0;
+}
+
 .history-toolbar {
     height: 32px;
     padding: 5px 10px;
@@ -1218,21 +1224,34 @@
     border-bottom-color: var(--color-card-border);
     flex-direction: row;
     align-items: center;
+    flex-shrink: 0;
 }
 
-.history-scroll {
-    padding: 8px 10px;
+.history-toolbar__spacer {
+    flex-grow: 1;
 }
 
-.history-group-title {
-    font-size: 10px;
-    color: var(--color-muted);
-    -unity-font-style: normal;
-    margin: 4px 0 6px 0;
+.history-toolbar__toggle {
+    margin-right: 6px;
 }
 
-.history-group-title.accent {
-    color: var(--color-accent);
+.history-cache-warning {
+    margin: 8px 10px 0 10px;
+}
+
+.history-undo-btn {
+    align-self: flex-start;
+    margin: 6px 10px 0 10px;
+}
+
+.history-autoclean {
+    margin: 6px 10px 0 10px;
+    flex-shrink: 0;
+}
+
+.autoclean-usage {
+    margin-top: 4px;
+    margin-left: 2px;
 }
 
 .autoclean-legacy-row {
@@ -1243,6 +1262,121 @@
 
 .autoclean-legacy-row > .muted-label {
     flex-grow: 1;
+}
+
+.autoclean-actions {
+    flex-direction: row;
+    margin-top: 6px;
+}
+
+.history-body {
+    flex-grow: 1;
+    min-height: 0;
+    padding: 8px 10px;
+}
+
+.history-agent-filter {
+    flex-shrink: 0;
+    margin-bottom: 6px;
+}
+
+.timeline-list {
+    flex-grow: 1;
+    min-height: 0;
+}
+
+.timeline-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 0 4px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--color-card-border);
+}
+
+.timeline-row--step {
+    padding-left: 24px;
+}
+
+.timeline-row--checkpoint {
+    background-color: var(--color-card-header-bg);
+}
+
+.timeline-row--reverted {
+    opacity: 0.55;
+}
+
+.timeline-row__text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 11px;
+    -unity-font-style: normal;
+    color: var(--color-text);
+}
+
+.timeline-row--auto > .timeline-row__text {
+    color: var(--color-muted);
+}
+
+.timeline-row__preview {
+    flex-shrink: 0;
+    margin-left: 4px;
+}
+
+.restore-preview {
+    flex-shrink: 0;
+    margin-top: 8px;
+    padding: 8px 10px;
+    background-color: var(--color-card-bg);
+    border-width: 1px;
+    border-color: var(--color-card-border);
+    border-radius: 3px;
+}
+
+.restore-preview__summary {
+    font-size: 11px;
+    color: var(--color-text);
+}
+
+.restore-preview__conflicts-title {
+    margin-top: 6px;
+}
+
+.restore-preview__coverage {
+    margin-top: 6px;
+}
+
+.restore-preview__actions {
+    flex-direction: row;
+    justify-content: flex-end;
+    margin-top: 8px;
+}
+
+.restore-preview__actions > .mini-btn {
+    margin-left: 4px;
+}
+
+.conflict-list {
+    margin-top: 4px;
+}
+
+.conflict-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+.conflict-row__target {
+    flex-grow: 1;
+    margin-left: 6px;
+    font-size: 11px;
+    color: var(--color-text);
+}
+
+.conflict-row__at {
+    font-size: 10px;
+    color: var(--color-muted);
 }
 
 .task-card {
@@ -1840,15 +1974,6 @@
     color: var(--color-muted);
     font-size: 11px;
     white-space: normal;
-}
-
-/* Task-history-specific one-off modifiers for .muted-label (see HistoryTabController). */
-.muted-label--indent {
-    margin-left: 6px;
-}
-
-.muted-label--small {
-    font-size: 10px;
 }
 
 .accent-title { color: var(--color-accent); }
