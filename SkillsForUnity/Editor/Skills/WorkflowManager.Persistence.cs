@@ -145,10 +145,18 @@ namespace UnitySkills
             error = null;
             if (snapshot == null || !snapshot.payloadReleased)
                 return true;
+            if (snapshot.payloadError != null)
+            {
+                error = snapshot.payloadError;
+                return false;
+            }
 
             var header = WorkflowStore.CaptureHeader(snapshot);
             if (!WorkflowStore.TryReadPayload(snapshot.payloadHash, out string json, out error))
+            {
+                snapshot.payloadError = error;
                 return false;
+            }
             try
             {
                 JsonUtility.FromJsonOverwrite(json, snapshot);
@@ -160,6 +168,7 @@ namespace UnitySkills
                 snapshot.payloadReleased = false;
                 WorkflowStore.ReleasePayload(snapshot);
                 WorkflowStore.ApplyHeader(header, snapshot);
+                snapshot.payloadError = error;
                 return false;
             }
             WorkflowStore.ApplyHeader(header, snapshot);

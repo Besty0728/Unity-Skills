@@ -197,8 +197,8 @@ namespace UnitySkills
         {
             var result = new TaskUndoResult
             {
-                total = outcome.restored + outcome.deleted + outcome.recreated + outcome.failed + outcome.skipped,
-                succeeded = outcome.restored + outcome.deleted + outcome.recreated,
+                total = outcome.restored + outcome.merged + outcome.deleted + outcome.recreated + outcome.failed + outcome.skipped,
+                succeeded = outcome.restored + outcome.merged + outcome.deleted + outcome.recreated,
                 failed = outcome.failed,
                 error = outcome.error
             };
@@ -1046,6 +1046,46 @@ namespace UnitySkills
         }
 
         /// <summary>
+        /// Adds the inverse of a restore to targetTask: a Modified snapshot of the object's current state, with its file backup when it is an
+        /// asset. False, with nothing added, when the references cannot be captured and the snapshot did not capture them either.
+        /// </summary>
+        private static bool CaptureInverseModified(ObjectSnapshot snapshot, UnityEngine.Object obj, WorkflowTask targetTask,
+            out List<ObjectReferenceData> objectReferences)
+        {
+            // Capture the current state for the target task (including a file-store backup)
+            string currentFileHash = "";
+            string currentMetaHash = "";
+            if (!string.IsNullOrEmpty(snapshot.assetPath))
+            {
+                if (WorkflowFileStore.TryGetSafeAssetFullPath(snapshot.assetPath, out string currentAssetPath) && File.Exists(currentAssetPath))
+                {
+                    currentFileHash = WorkflowFileStore.StoreFile(snapshot.assetPath, move: false, out currentMetaHash);
+                }
+            }
+
+            objectReferences = CaptureObjectReferences(obj, out bool objectReferencesCaptured);
+            if (!snapshot.objectReferencesCaptured && !objectReferencesCaptured)
+                return false;
+            targetTask.snapshots.Add(new ObjectSnapshot
+            {
+                globalObjectId = snapshot.globalObjectId,
+                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(obj),
+                entityId = UnityObjectIdUtility.GetEntityId(obj),
+                originalJson = EditorJsonUtility.ToJson(obj),
+                objectReferencesCaptured = objectReferencesCaptured,
+                objectReferences = objectReferences,
+                objectName = snapshot.objectName,
+                typeName = snapshot.typeName,
+                type = SnapshotType.Modified,
+                assetPath = snapshot.assetPath,
+                fileHash = currentFileHash,
+                metaFileHash = currentMetaHash,
+                liveTarget = obj
+            });
+            return true;
+        }
+
+        /// <summary>
         /// Captures a modified object's current state into targetTask, then restores the snapshot data
         /// (via one of two paths: file-store restore, or a JSON overwrite).
         /// </summary>
@@ -1078,36 +1118,8 @@ namespace UnitySkills
 
             if (obj == null) return false;
 
-            // Capture the current state for the target task (including a file-store backup)
-            string currentFileHash = "";
-            string currentMetaHash = "";
-            if (!string.IsNullOrEmpty(snapshot.assetPath))
-            {
-                if (WorkflowFileStore.TryGetSafeAssetFullPath(snapshot.assetPath, out string currentAssetPath) && File.Exists(currentAssetPath))
-                {
-                    currentFileHash = WorkflowFileStore.StoreFile(snapshot.assetPath, move: false, out currentMetaHash);
-                }
-            }
-
-            var objectReferences = CaptureObjectReferences(obj, out bool objectReferencesCaptured);
-            if (!snapshot.objectReferencesCaptured && !objectReferencesCaptured)
+            if (!CaptureInverseModified(snapshot, obj, targetTask, out var objectReferences))
                 return false;
-            targetTask.snapshots.Add(new ObjectSnapshot
-            {
-                globalObjectId = snapshot.globalObjectId,
-                objectInstanceId = UnityObjectIdUtility.GetLegacyInstanceId(obj),
-                entityId = UnityObjectIdUtility.GetEntityId(obj),
-                originalJson = EditorJsonUtility.ToJson(obj),
-                objectReferencesCaptured = objectReferencesCaptured,
-                objectReferences = objectReferences,
-                objectName = snapshot.objectName,
-                typeName = snapshot.typeName,
-                type = SnapshotType.Modified,
-                assetPath = snapshot.assetPath,
-                fileHash = currentFileHash,
-                metaFileHash = currentMetaHash,
-                liveTarget = obj
-            });
 
             // Restore from the content-addressed file store
             if (!string.IsNullOrEmpty(snapshot.fileHash) && !string.IsNullOrEmpty(snapshot.assetPath))

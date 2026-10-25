@@ -297,6 +297,8 @@ namespace UnitySkills
                 ["undo"] = outcome.guard == null ? null : $"workflow_restore {{\"to\":\"{outcome.guard}\"}}",
                 ["compileTriggered"] = outcome.compileTriggered
             };
+            if (outcome.merged > 0)
+                result["merged"] = outcome.merged;
             if (outcome.failedItems.Count > 0)
                 result["failedItems"] = outcome.failedItems;
             if (outcome.skippedItems.Count > 0)

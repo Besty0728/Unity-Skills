@@ -72,14 +72,14 @@ namespace UnitySkills
             Hash(Normalize(editorJson), ReferencesKey(references));
 
         // An object of a never-saved scene has no usable GlobalObjectId, so its session-local entity id names it instead.
-        private static string ReferenceIdentity(ObjectReferenceData reference)
+        internal static string ReferenceIdentity(ObjectReferenceData reference)
         {
             if (string.IsNullOrEmpty(reference.globalObjectId) || WorkflowManager.IsUnsavedSceneGlobalObjectId(reference.globalObjectId))
                 return "entity:" + reference.entityId;
             return reference.globalObjectId;
         }
 
-        private static void BlankReferenceLeaves(JToken token)
+        internal static void BlankReferenceLeaves(JToken token)
         {
             if (token is JObject obj)
             {

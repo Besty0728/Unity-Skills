@@ -74,6 +74,8 @@ namespace UnitySkills.Internal
         // keeps the hashes of its directory entries.
         [NonSerialized] internal string payloadHash;
         [NonSerialized] internal bool payloadReleased;
+        // Why the payload could not be read back, kept so a second read reports the first reason (a damaged blob is quarantined on the first).
+        [NonSerialized] internal string payloadError;
         [NonSerialized] internal List<string> fileRefs;
     }
 

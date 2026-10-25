@@ -30,6 +30,8 @@ namespace UnitySkills
         [JsonIgnore] internal string TargetKey;
         [JsonIgnore] internal long Seq;
         [JsonIgnore] internal bool IsStep;
+        // A property of a merged object that two changes both touched; its target is the object plus the property path.
+        [JsonIgnore] internal bool IsLeaf;
     }
 
     public static partial class WorkflowManager
@@ -65,6 +67,8 @@ namespace UnitySkills
         {
             public List<RestoreConflict> Conflicts = new List<RestoreConflict>();
             public string Coverage = "unknown";
+            // Targets the journal shows changed by the caller itself (or in a window it may have shared) outside its steps.
+            public HashSet<string> OwnChangeKeys = new HashSet<string>(StringComparer.Ordinal);
         }
 
         /// <summary>
@@ -125,6 +129,7 @@ namespace UnitySkills
             {
                 RestoreTarget target = RestoreWorkTarget(work);
                 work.TargetKey = target?.Key;
+                work.TargetDisplay = target?.Display;
                 if (target != null)
                     targets[target.Key] = target.Display;
             }
@@ -279,11 +284,17 @@ namespace UnitySkills
                 {
                     // A window two callers shared cannot be told apart; the other caller's tracked steps are step conflicts anyway.
                     string agent = entry.Value<string>("agent");
-                    if (agent == EditorChangeTrackerService.AgentMixed)
-                        continue;
                     by = NormalizeAgent(agent);
-                    if (by == NormalizeAgent(callerAgent))
+                    if (agent == EditorChangeTrackerService.AgentMixed || by == NormalizeAgent(callerAgent))
+                    {
+                        // The caller's own untracked writes are what a restore overwrites anyway; remember them for the merge.
+                        foreach (JournalHit own in JournalHits(entry))
+                        {
+                            if (targets.ContainsKey(own.Key))
+                                scan.OwnChangeKeys.Add(own.Key);
+                        }
                         continue;
+                    }
                 }
                 else
                 {
@@ -472,8 +483,9 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// The works that run under a conflict choice. A work runs when every conflict on its target is in the overwrite set; any other
-        /// work is skipped and reported, one entry per target, capped at <see cref="MaxListedSkippedItems"/>.
+        /// The works that run under a conflict choice. A work runs when every target-level conflict on its target is in the overwrite set; any
+        /// other work is skipped and reported, one entry per target, capped at <see cref="MaxListedSkippedItems"/>. A merged work always runs:
+        /// the leaves it keeps are reported instead, and a leaf in the overwrite set is not kept.
         /// </summary>
         private static List<RestoreWork> KeepUnconflictedWorks(List<RestoreWork> works, List<RestoreConflict> conflicts,
             HashSet<string> overwrite, RestoreOutcome outcome)
@@ -483,19 +495,25 @@ namespace UnitySkills
             {
                 var blocking = work.TargetKey == null
                     ? null
-                    : conflicts.Where(conflict => conflict.TargetKey == work.TargetKey && !overwrite.Contains(conflict.id)).ToList();
+                    : conflicts.Where(conflict => conflict.TargetKey == work.TargetKey && !conflict.IsLeaf && !overwrite.Contains(conflict.id)).ToList();
                 if (blocking == null || blocking.Count == 0)
                 {
+                    foreach (var leaf in work.KeptLeaves)
+                        AddSkippedItem(outcome, $"{leaf.target} (kept: {leaf.by} change {leaf.id})");
                     run.Add(work);
                     continue;
                 }
 
                 outcome.skipped++;
-                string item = $"{blocking[0].target} (kept: {blocking[0].by} change {blocking[0].id})";
-                if (outcome.skippedItems.Count < MaxListedSkippedItems && !outcome.skippedItems.Contains(item))
-                    outcome.skippedItems.Add(item);
+                AddSkippedItem(outcome, $"{blocking[0].target} (kept: {blocking[0].by} change {blocking[0].id})");
             }
             return run;
+        }
+
+        private static void AddSkippedItem(RestoreOutcome outcome, string item)
+        {
+            if (outcome.skippedItems.Count < MaxListedSkippedItems && !outcome.skippedItems.Contains(item))
+                outcome.skippedItems.Add(item);
         }
     }
 }

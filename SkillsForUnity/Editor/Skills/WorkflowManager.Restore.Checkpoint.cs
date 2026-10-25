@@ -29,6 +29,7 @@ namespace UnitySkills
         public int matchedSteps;
         public string guard;
         public int restored;
+        public int merged;
         public int deleted;
         public int recreated;
         public int failed;
@@ -84,6 +85,7 @@ namespace UnitySkills
         public int recreate;
         public int move;
         public int settings;
+        public int merge;
     }
 
     /// <summary>A planned change that cannot run: its scene is not open, or its object is gone and nothing brings it back.</summary>
@@ -180,7 +182,7 @@ namespace UnitySkills
             if (steps.Count == 0)
                 return preview;
 
-            var planning = PlanRestore(steps, callerAgent, checkpointCursor);
+            var planning = PlanRestore(steps, callerAgent, checkpointCursor, new HashSet<string>(StringComparer.Ordinal));
             preview.coverage = planning.Scan.Coverage;
             preview.conflicts = planning.Scan.Conflicts;
 
@@ -195,7 +197,7 @@ namespace UnitySkills
                     string reason = UnresolvableReason(work);
                     if (reason != null)
                         preview.unresolvable.Add(new RestoreUnresolvable { target = PreviewName(work), reason = reason });
-                    else if (!IsSkippedWork(work, doomed))
+                    else if (work.Mode != RestoreWorkMode.Already && !IsSkippedWork(work, doomed))
                         runs.Add(work);
                 }
             }
@@ -232,6 +234,12 @@ namespace UnitySkills
         /// <summary>Counts a planned work under the kind of change it makes, and returns the action word the preview shows.</summary>
         private static string CountPlannedWork(RestorePlanCounts counts, RestoreWork work)
         {
+            if (work.Mode == RestoreWorkMode.Merge)
+            {
+                counts.merge++;
+                return work.KeptLeaves.Count > 0 ? $"merge ({work.KeptLeaves.Count} kept)" : "merge";
+            }
+
             switch (work.Item.Snapshot.type)
             {
                 case SnapshotType.Created:
@@ -287,7 +295,8 @@ namespace UnitySkills
             if (steps.Count == 0)
                 return outcome;
 
-            var planning = PlanRestore(steps, callerAgent, checkpointCursor);
+            // A conflict refuses the restore unless conflicts names its ids, so the planning takes the ids the caller passed (none on a refusal).
+            var planning = PlanRestore(steps, callerAgent, checkpointCursor, overwrite ?? new HashSet<string>(StringComparer.Ordinal));
             var gidAliases = planning.GidAliases;
             var works = planning.Works;
 
@@ -484,12 +493,14 @@ namespace UnitySkills
         /// The planning half of a restore, with no side effects: the works in run order and the conflicts they would overwrite.
         /// Shared by a restore and its preview.
         /// </summary>
-        private static RestorePlanning PlanRestore(List<WorkflowTask> steps, string callerAgent, long checkpointCursor)
+        private static RestorePlanning PlanRestore(List<WorkflowTask> steps, string callerAgent, long checkpointCursor, ISet<string> overwriteIds)
         {
             var gidAliases = RestoreGidAliases(History.restores);
             var works = PlanRestoreWork(BuildRestoreChains(steps, gidAliases));
             var scan = ScanRestoreConflicts(steps, works, gidAliases, checkpointCursor, callerAgent);
-            return new RestorePlanning { GidAliases = gidAliases, Works = works, Scan = scan };
+            var planning = new RestorePlanning { GidAliases = gidAliases, Works = works, Scan = scan };
+            AdjudicateWorks(planning, overwriteIds);
+            return planning;
         }
 
         private sealed class RestoreItem
@@ -513,6 +524,14 @@ namespace UnitySkills
             public RestoreItem Item;
             // The key of the live target the work writes, for conflicts; null when the target does not resolve.
             public string TargetKey;
+            // The target as the conflicts and the preview name it.
+            public string TargetDisplay;
+            // How the work runs once its target is judged against its after-state (see AdjudicateWorks).
+            public RestoreWorkMode Mode = RestoreWorkMode.Plain;
+            // A Merge work's result: the JSON and references to apply, and the conflicting leaves it keeps.
+            public string MergedJson;
+            public List<ObjectReferenceData> MergedReferences;
+            public List<RestoreConflict> KeptLeaves = new List<RestoreConflict>();
             // The target's whole chain, for the Deleted item a Modified one may need recreated first.
             public List<RestoreItem> Chain;
             // The asset path the target is at before the restore, when it is not the path its snapshot names.
@@ -769,7 +788,7 @@ namespace UnitySkills
                     continue;
                 }
 
-                if (IsSkippedWork(work, doomed))
+                if (work.Mode == RestoreWorkMode.Already || IsSkippedWork(work, doomed))
                 {
                     outcome.skipped++;
                     continue;
@@ -817,6 +836,12 @@ namespace UnitySkills
 
         private static void RunRestoreWork(RestoreWork work, WorkflowTask restoreTask, RestoreOutcome outcome)
         {
+            if (work.Mode == RestoreWorkMode.Merge)
+            {
+                RunMergeWork(work, restoreTask, outcome);
+                return;
+            }
+
             var item = work.Item;
             if (work.PathOverride != null)
             {

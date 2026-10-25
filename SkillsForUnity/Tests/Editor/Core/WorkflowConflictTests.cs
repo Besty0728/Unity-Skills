@@ -78,7 +78,7 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void UserEdit_KeepSkipsTheConflictingTarget()
+        public void UserEdit_KeepLeavesTheUsersProperty()
         {
             using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
             {
@@ -87,10 +87,12 @@ namespace UnitySkills.Tests.Core
                 Call("gameobject_set_transform", Args(("name", "WcKeep"), ("posX", 5f)));
                 UserEdit("WcKeep", 9f);
 
+                // The user's change is to the position the step also moved: the restore runs and keeps that property, not the target.
                 var kept = RestoreOk("wcKeep", "keep");
 
-                Assert.That(kept.Value<int>("skipped"), Is.GreaterThanOrEqualTo(1), kept.ToString());
-                Assert.That(kept.Value<JArray>("skippedItems").ToString(), Does.Contain("kept: user change k"));
+                Assert.That(kept.Value<int>("merged"), Is.EqualTo(1), kept.ToString());
+                Assert.That(kept.Value<int>("skipped"), Is.EqualTo(0), kept.ToString());
+                Assert.That(kept.Value<JArray>("skippedItems").ToString(), Does.Contain("(kept: user change k"));
             }
             Assert.That(X("WcKeep"), Is.EqualTo(9f).Within(0.001f), "The user's value stays.");
         }
@@ -135,7 +137,7 @@ namespace UnitySkills.Tests.Core
 
             Assert.That(conflicts.Count, Is.EqualTo(1), "The journal entry of the other agent's change is covered by its step.");
             Assert.That(conflicts[0].Value<string>("by"), Is.EqualTo(AgentB));
-            Assert.That(conflicts[0].Value<string>("what"), Does.StartWith("s"));
+            Assert.That(conflicts[0].Value<string>("what"), Does.Contain("m_LocalPosition.x"), "The step's change is a property conflict now.");
             Assert.That(conflicts[0].Value<string>("confidence"), Is.Null, "A step conflict is not a logged one.");
             Assert.That(X("WcB"), Is.EqualTo(7f).Within(0.001f));
         }
@@ -174,7 +176,7 @@ namespace UnitySkills.Tests.Core
                 var conflicts = refused.Value<JArray>("conflicts");
                 Assert.That(conflicts.Count, Is.EqualTo(1), refused.ToString());
                 Assert.That(conflicts[0].Value<string>("by"), Is.EqualTo(AgentA));
-                Assert.That(conflicts[0].Value<string>("what"), Does.StartWith("s"));
+                Assert.That(conflicts[0].Value<string>("what"), Does.Contain("m_LocalPosition.x"), "The step's change is a property conflict now.");
             }
             Assert.That(X("WcMid"), Is.EqualTo(2f).Within(0.001f), "The refused undo changes nothing.");
         }
@@ -262,7 +264,7 @@ namespace UnitySkills.Tests.Core
 
             try
             {
-                // Two callers in one window: the journal attributes the edit to neither of them.
+                // Two callers in one window: the journal cannot tell whose edit it was, so it counts as the caller's own.
                 EditorChangeTrackerService.ResetRestWindowForTests();
                 using (SkillsAuditLog.BeginRequestContext(-1, AgentB, true))
                     EditorChangeTrackerService.BeginRestExecution();
@@ -282,6 +284,30 @@ namespace UnitySkills.Tests.Core
             using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
                 RestoreOk("wcMixed");
             Assert.That(X("WcMixed"), Is.EqualTo(0f).Within(0.001f));
+        }
+
+        [Test]
+        public void ChangeWithNoJournalTrace_IsAConflictByUnknown()
+        {
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("gameobject_create", Args(("name", "WcTrace"), ("x", 0f)));
+                Call("workflow_checkpoint", Args(("label", "wcTrace")));
+                Call("gameobject_set_transform", Args(("name", "WcTrace"), ("posX", 5f)));
+            }
+
+            // A write that bypasses Undo leaves no journal entry; only the state shows it.
+            EditorChangeTrackerService.ResetRestWindowForTests();
+            GameObject.Find("WcTrace").transform.position = new Vector3(7f, 0f, 0f);
+
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                var refused = RestoreRaw("wcTrace");
+                Assert.That(refused.Value<string>("errorCode"), Is.EqualTo(SkillErrorCode.WorkflowConflict.ToWireString()), refused.ToString());
+                Assert.That(refused.Value<JArray>("conflicts")[0].Value<string>("by"), Is.EqualTo("unknown"), refused.ToString());
+                RestoreOk("wcTrace", "keep");
+            }
+            Assert.That(X("WcTrace"), Is.EqualTo(7f).Within(0.001f), "The kept value stays.");
         }
 
         private static void UserEdit(string name, float x)
