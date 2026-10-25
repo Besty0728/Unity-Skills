@@ -407,7 +407,7 @@ namespace UnitySkills.Tests.Core
         private static void Record(string tag, GameObject go)
         {
             WorkflowManager.BeginTask(tag, tag);
-            WorkflowManager.SnapshotObject(go.transform);
+            WorkflowManager.SnapshotObject(go, SnapshotType.Created);
             WorkflowManager.EndTask();
         }
 

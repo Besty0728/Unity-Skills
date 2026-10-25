@@ -354,6 +354,10 @@ namespace UnitySkills
                 EditorChangeTrackerService.EndRestExecution();
             }
             restoreTask.cursorEnd = EditorChangeTrackerService.CurrentCursor;
+            // The restore step is a step like any other: its inverses get the state they left behind, for a later undo of it.
+            StampAfterStates(restoreTask);
+            PruneUnchangedSnapshots(restoreTask);
+            StampAssetFingerprints(restoreTask);
 
             outcome.compileTriggered = outcome.scriptChanges.Length > 0 ||
                                        CompilationResultService.CompilationStartCount != outcome.compilationStartsBefore ||

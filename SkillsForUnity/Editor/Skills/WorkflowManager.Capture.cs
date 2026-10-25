@@ -143,7 +143,8 @@ namespace UnitySkills
                 type = type,
                 assetPath = assetPath,
                 fileHash = fileHash,
-                metaFileHash = metaFileHash
+                metaFileHash = metaFileHash,
+                liveTarget = type == SnapshotType.Modified ? obj : null
             });
         }
 

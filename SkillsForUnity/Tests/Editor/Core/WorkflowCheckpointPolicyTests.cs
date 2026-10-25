@@ -282,6 +282,7 @@ namespace UnitySkills.Tests.Core
             {
                 var task = auto ? WorkflowManager.BeginAutoTask("probe_write", "probe_write", "Probe") : WorkflowManager.BeginTask("probe_write", "probe_write");
                 WorkflowManager.SnapshotObject(go.transform);
+                go.transform.position += Vector3.right; // An unchanged snapshot is pruned, and the step would not be recorded.
                 WorkflowManager.EndTask();
                 WorkflowManager.NoteAgentCall();
                 return task;

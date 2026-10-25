@@ -83,6 +83,7 @@ namespace UnitySkills.Tests.Core
             {
                 WorkflowManager.BeginTask("append-probe", "test");
                 WorkflowManager.SnapshotObject(go.transform);
+                Touch(go.transform);
                 WorkflowManager.EndTask();
                 string current = File.ReadAllText(log);
                 Assert.That(current, Does.StartWith(previous), "A write only appends; it never rewrites what the log holds.");
@@ -316,6 +317,7 @@ namespace UnitySkills.Tests.Core
             {
                 task = WorkflowManager.BeginAutoTask("probe_write", "probe_write", "Probe");
                 WorkflowManager.SnapshotObject(go.transform);
+                Touch(go.transform);
                 WorkflowManager.EndTask();
             }
             Assert.That(task.agent, Is.EqualTo(EditorChangeTrackerService.AgentUnknown),
@@ -646,6 +648,7 @@ namespace UnitySkills.Tests.Core
             {
                 var task = auto ? WorkflowManager.BeginAutoTask(tag, tag, target) : WorkflowManager.BeginTask(tag, tag);
                 WorkflowManager.SnapshotObject(go.transform);
+                Touch(go.transform);
                 WorkflowManager.EndTask();
                 WorkflowManager.NoteAgentCall();
                 return task;
@@ -658,9 +661,16 @@ namespace UnitySkills.Tests.Core
         {
             WorkflowManager.BeginTask(tag, tag);
             foreach (var target in targets)
+            {
                 WorkflowManager.SnapshotObject(target);
+                if (target is Transform transform)
+                    Touch(transform);
+            }
             WorkflowManager.EndTask();
         }
+
+        // A step must change what it snapshots, or the unchanged snapshot is pruned and the step is not recorded at all.
+        private static void Touch(Transform transform) => transform.position += Vector3.right;
 
         private static Material CreateMaterial(string fileName)
         {

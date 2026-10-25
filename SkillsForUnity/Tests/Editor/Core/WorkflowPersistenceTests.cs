@@ -297,6 +297,7 @@ namespace UnitySkills.Tests.Core
             var go = new GameObject("WorkflowLegacyNeighbour");
             WorkflowManager.BeginTask("after-legacy", "test");
             WorkflowManager.SnapshotObject(go.transform);
+            go.transform.position += Vector3.right; // An unchanged snapshot is pruned, and the step would not be recorded.
             WorkflowManager.EndTask();
             WorkflowManager.ResetStateForTests();
             Assert.That(WorkflowManager.History.tasks.Select(t => t.tag), Is.EqualTo(new[] { "after-legacy" }));

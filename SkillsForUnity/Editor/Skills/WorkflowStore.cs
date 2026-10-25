@@ -130,6 +130,7 @@ namespace UnitySkills
             [JsonProperty("a")] public string AssetPath;
             [JsonProperty("pa")] public string PreviousAssetPath;
             [JsonProperty("ah")] public string AssetFingerprint;
+            [JsonProperty("sh")] public string AfterStateHash;
             [JsonProperty("ct")] public string ComponentTypeName;
             [JsonProperty("sk")] public string SettingKey;
             [JsonProperty("pg")] public string ParentGlobalObjectId;
@@ -307,6 +308,7 @@ namespace UnitySkills
                     case "a": change.AssetPath = reader.ReadAsString(); break;
                     case "pa": change.PreviousAssetPath = reader.ReadAsString(); break;
                     case "ah": change.AssetFingerprint = reader.ReadAsString(); break;
+                    case "sh": change.AfterStateHash = reader.ReadAsString(); break;
                     case "ct": change.ComponentTypeName = reader.ReadAsString(); break;
                     case "sk": change.SettingKey = reader.ReadAsString(); break;
                     case "pg": change.ParentGlobalObjectId = reader.ReadAsString(); break;
@@ -448,6 +450,7 @@ namespace UnitySkills
             AssetPath = snapshot.assetPath,
             PreviousAssetPath = snapshot.previousAssetPath,
             AssetFingerprint = snapshot.assetFingerprint,
+            AfterStateHash = snapshot.afterStateHash,
             ComponentTypeName = snapshot.componentTypeName,
             SettingKey = snapshot.settingKey,
             ParentGlobalObjectId = snapshot.parentGameObjectId,
@@ -471,6 +474,7 @@ namespace UnitySkills
             snapshot.assetPath = change.AssetPath;
             snapshot.previousAssetPath = change.PreviousAssetPath;
             snapshot.assetFingerprint = change.AssetFingerprint;
+            snapshot.afterStateHash = change.AfterStateHash;
             snapshot.componentTypeName = change.ComponentTypeName;
             snapshot.settingKey = change.SettingKey;
             snapshot.parentGameObjectId = change.ParentGlobalObjectId;
@@ -528,6 +532,10 @@ namespace UnitySkills
             snapshot.deleteRecursively = false;
             snapshot.directoryEntries = null;
             snapshot.settingOldValueJson = null;
+            snapshot.afterJson = null;
+            snapshot.afterObjectReferencesCaptured = false;
+            snapshot.afterObjectReferences = null;
+            snapshot.settingAfterValueJson = null;
             snapshot.primitiveType = null;
             snapshot.posX = snapshot.posY = snapshot.posZ = 0;
             snapshot.rotX = snapshot.rotY = snapshot.rotZ = snapshot.rotW = 0;

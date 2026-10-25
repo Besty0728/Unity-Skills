@@ -143,21 +143,23 @@ namespace UnitySkills
         {
             if (_currentTask == null) return;
 
+            var task = _currentTask;
+            _currentTask = null;
+            task.cursorEnd = EditorChangeTrackerService.CurrentCursor;
+            StampAfterStates(task);
+            PruneUnchangedSnapshots(task);
+
             // Only tasks that captured at least one snapshot get recorded. If a tracked skill fails or made
             // no changes, there's nothing to undo, and recording it anyway would just leave an empty entry
             // (changes=0) that both pollutes the history and gets in the way of undo/redo navigation.
-            if (_currentTask.snapshots.Count == 0)
+            if (task.snapshots.Count == 0)
             {
-                _currentTask = null;
                 _pendingCheckpointLabel = null;
                 return;
             }
 
             // One append, with the payloads it names stored first. A history not loaded yet stays unloaded: the log is the
             // only source of truth, and the next load replays this record with the rest.
-            var task = _currentTask;
-            _currentTask = null;
-            task.cursorEnd = EditorChangeTrackerService.CurrentCursor;
             StampAssetFingerprints(task);
             bool startsRun = AttributeTask(task);
             string checkpointLabel = _pendingCheckpointLabel;
@@ -200,6 +202,84 @@ namespace UnitySkills
                 _history.tasks.Add(task);
             }
         }
+
+        /// <summary>
+        /// Reads the state each Modified or Setting snapshot has at the end of the step, and its hash. A failed read leaves the
+        /// after-state empty, which only means the step is judged by the rules that predate it.
+        /// </summary>
+        private static void StampAfterStates(WorkflowTask task)
+        {
+            foreach (var snapshot in task.snapshots)
+            {
+                if (snapshot == null)
+                    continue;
+                try
+                {
+                    if (snapshot.type == SnapshotType.Setting)
+                        StampSettingAfterState(snapshot);
+                    else if (snapshot.type == SnapshotType.Modified && !string.IsNullOrEmpty(snapshot.originalJson) && snapshot.liveTarget != null)
+                        StampObjectAfterState(snapshot);
+                }
+                catch (Exception ex)
+                {
+                    ClearAfterState(snapshot);
+                    SkillsLogger.LogVerbose($"After-state capture failed for {snapshot.objectName}: {ex.Message}");
+                }
+                finally
+                {
+                    snapshot.liveTarget = null;
+                }
+            }
+        }
+
+        private static void StampObjectAfterState(ObjectSnapshot snapshot)
+        {
+            string afterJson = EditorJsonUtility.ToJson(snapshot.liveTarget);
+            var afterReferences = CaptureObjectReferences(snapshot.liveTarget, out bool afterReferencesCaptured);
+            snapshot.afterJson = afterJson;
+            snapshot.afterObjectReferences = afterReferences;
+            snapshot.afterObjectReferencesCaptured = afterReferencesCaptured;
+            snapshot.afterStateHash = WorkflowStateHash.StateHash(afterJson, afterReferences);
+        }
+
+        private static void StampSettingAfterState(ObjectSnapshot snapshot)
+        {
+            string afterValueJson = WorkflowSettingRestorerRegistry.TryGetCurrentValue(snapshot.settingKey);
+            if (afterValueJson == null)
+                return;
+            snapshot.settingAfterValueJson = afterValueJson;
+            snapshot.afterStateHash = WorkflowStateHash.StateHash(afterValueJson, null);
+        }
+
+        private static void ClearAfterState(ObjectSnapshot snapshot)
+        {
+            snapshot.afterJson = null;
+            snapshot.afterObjectReferences = null;
+            snapshot.afterObjectReferencesCaptured = false;
+            snapshot.settingAfterValueJson = null;
+            snapshot.afterStateHash = null;
+        }
+
+        /// <summary>
+        /// Drops the Modified snapshots of scene objects and components whose state is the same before and after the step. They
+        /// came along as side captures (a Transform or a material touched on the way), so the step's change count stays honest.
+        /// Asset snapshots are kept: their file backup is what restores them.
+        /// </summary>
+        private static void PruneUnchangedSnapshots(WorkflowTask task)
+        {
+            if (task.snapshots.RemoveAll(IsUnchangedSnapshot) == 0)
+                return;
+            task.InvalidateSnapshotIndex();
+        }
+
+        private static bool IsUnchangedSnapshot(ObjectSnapshot snapshot) =>
+            snapshot != null &&
+            snapshot.type == SnapshotType.Modified &&
+            string.IsNullOrEmpty(snapshot.assetPath) &&
+            snapshot.objectReferencesCaptured &&
+            snapshot.afterObjectReferencesCaptured &&
+            !string.IsNullOrEmpty(snapshot.afterStateHash) &&
+            WorkflowStateHash.StateHash(snapshot.originalJson, snapshot.objectReferences) == snapshot.afterStateHash;
 
         /// <summary>
         /// Stamps each asset snapshot whose file exists with its fingerprint ("length:ticks" of the write time), so a later

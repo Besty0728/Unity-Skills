@@ -1105,7 +1105,8 @@ namespace UnitySkills
                 type = SnapshotType.Modified,
                 assetPath = snapshot.assetPath,
                 fileHash = currentFileHash,
-                metaFileHash = currentMetaHash
+                metaFileHash = currentMetaHash,
+                liveTarget = obj
             });
 
             // Restore from the content-addressed file store

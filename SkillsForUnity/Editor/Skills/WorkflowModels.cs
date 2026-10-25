@@ -39,6 +39,16 @@ namespace UnitySkills.Internal
         public string settingKey;
         public string settingOldValueJson;
 
+        // The state when the step ended (P2). afterStateHash is a header field; the rest is payload, cleared with the payload.
+        public string afterStateHash;      // WorkflowStateHash of the object (or setting value) after the step, null when not captured
+        public string afterJson;           // EditorJsonUtility JSON of the object after the step
+        public List<ObjectReferenceData> afterObjectReferences;
+        public bool afterObjectReferencesCaptured;
+        public string settingAfterValueJson;
+
+        // The live object of a Modified snapshot until the step ends, when its after-state is read; never stored.
+        [NonSerialized] internal UnityEngine.Object liveTarget;
+
         // For undoing a Created-type component: extra info needed for reliable deletion
         public string componentTypeName;   // The component's fully qualified type name (e.g. "UnityEngine.Rigidbody")
         public string parentGameObjectId;  // The parent GameObject's GlobalObjectId

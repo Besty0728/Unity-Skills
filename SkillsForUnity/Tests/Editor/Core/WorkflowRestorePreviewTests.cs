@@ -143,11 +143,11 @@ namespace UnitySkills.Tests.Core
 
                 var dry = DryRunJson("workflow_undo_task", Args(("taskId", "s" + middle.seq)));
 
-                // The step's GameObject and Transform snapshots are both undone.
-                Assert.That(Plan(dry, "modify"), Is.EqualTo(2), dry.ToString());
+                // The step moved the Transform. Its GameObject snapshot is unchanged by the step, so it is pruned.
+                Assert.That(Plan(dry, "modify"), Is.EqualTo(1), dry.ToString());
                 var items = dry["changes"]["items"].Select(item => item.ToString()).ToList();
-                Assert.That(items, Does.Contain("WpMid (GameObject) modify"), dry.ToString());
                 Assert.That(items, Does.Contain("WpMid (Transform) modify"), dry.ToString());
+                Assert.That(items, Does.Not.Contain("WpMid (GameObject) modify"), dry.ToString());
             }
             Assert.That(X("WpMid"), Is.EqualTo(3f).Within(0.001f), "The dryRun leaves the object at its latest value.");
         }
