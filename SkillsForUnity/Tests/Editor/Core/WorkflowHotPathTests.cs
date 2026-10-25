@@ -361,10 +361,12 @@ namespace UnitySkills.Tests.Core
         public void WorkflowList_PagesInSeqOrder_AfterAnUndoAndRedo()
         {
             var go = new GameObject("HotPathRedoOrderProbe");
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 2; i++)
                 Record("AgentA", i * 1000L, go, auto: true, target: "Player");
             Assert.That(WorkflowManager.UndoTask("s2").success, Is.True);
             Assert.That(WorkflowManager.RedoTask("s2").success, Is.True);
+            // Recorded after the undo and the redo: a later step on the same object would be a conflict of the undo.
+            Record("AgentA", 2000L, go, auto: true, target: "Player");
             // Steps sort at 2 * seq + 1 and checkpoints at 2 * position, so the undo and the redo (each with its guard) lead the list.
             var newest = WorkflowManager.History.tasks.Select(task => (Key: 2 * task.seq + 1, Id: task.DisplayId))
                 .Concat(WorkflowManager.History.checkpoints.Select(checkpoint => (Key: 2 * checkpoint.seq, Id: checkpoint.id)))

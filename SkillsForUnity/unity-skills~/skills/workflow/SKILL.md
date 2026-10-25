@@ -167,10 +167,11 @@ Undo all changes made during a specific session (conversation-level undo).
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | sessionId | string | No | null | The UUID of the session to undo. If not provided, undoes the most recent session |
+| conflicts | string | No | null | Omit to refuse on conflicts (`WORKFLOW_CONFLICT` lists them), `"keep"` to skip them, or the conflict ids to overwrite |
 
 Restores the session's steps the same way `workflow_restore` does, so the response is the restore response plus `sessionId`.
 
-**Returns:** `{ sessionId, to, guard, restored, deleted, recreated, failed, skipped, undo, compileTriggered }`
+**Returns:** `{ sessionId, to, guard, restored, deleted, recreated, failed, skipped, coverage, undo, compileTriggered }`
 
 ### `workflow_session_list`
 List all recorded sessions (conversation-level history).
@@ -217,8 +218,11 @@ Puts the scene and project assets back to a checkpoint. Only the caller's steps 
 |-----------|------|----------|---------|-------------|
 | to | string | Yes | - | A `c<n>` id, an `s<n>` step, `last` (the caller's newest checkpoint) or a checkpoint label |
 | agents | string | No | `self` | `self` or `all` |
+| conflicts | string | No | null | Omit to refuse on conflicts (`WORKFLOW_CONFLICT` lists them), `"keep"` to skip them, or the conflict ids to overwrite |
 
-**Returns:** `{ to, guard, restored, deleted, recreated, failed, skipped, undo, compileTriggered }`, plus `failedItems` (up to 20 `name (type): reason` strings) when something failed. `guard` is the checkpoint taken before the restore; `undo` is the call that reverts this restore (`workflow_restore {"to":"<guard>"}`). Ctrl+Z only reverts the scene, not the assets, so use this call to undo a restore. Script changes start a compile job (`jobId`, `waitUrl`). Play Mode returns `SEMANTIC_INVALID`; an unknown position returns `NOT_FOUND` with `recentCheckpoints`.
+**Returns:** `{ to, guard, restored, deleted, recreated, failed, skipped, coverage, undo, compileTriggered }`, plus `failedItems` (up to 20 `name (type): reason` strings) when something failed, and `skippedItems` (up to 20 `target (kept: <by> change <id>)` strings) when a kept conflict skipped work. `guard` is the checkpoint taken before the restore; `undo` is the call that reverts this restore (`workflow_restore {"to":"<guard>"}`). Ctrl+Z only reverts the scene, not the assets, so use this call to undo a restore. Script changes start a compile job (`jobId`, `waitUrl`). Play Mode returns `SEMANTIC_INVALID`; an unknown position returns `NOT_FOUND` with `recentCheckpoints`.
+
+**Conflicts.** A restore refuses to overwrite changes made since the checkpoint that it did not make itself: a person's edit in the Inspector or the scene, or another agent's step on the same target. Such a refusal is `WORKFLOW_CONFLICT`, with top-level `conflicts` (each `{id, target, by, what, at}`, plus `confidence: "logged"` for journal entries) and `coverage` (`full`, `partial` when rotation dropped part of the journal, or `unknown`). Nothing changed and no guard was taken. Protocol: ask the user in one sentence, default to keeping their changes, then retry with `conflicts:"keep"` (every conflicting target is skipped and listed in `skippedItems`), or with the ids the user wants overwritten. A conflict that is not listed is kept. `conflicts` takes effect the same way for `workflow_undo_task`, `workflow_redo_task` and `workflow_session_undo`.
 
 ### `workflow_task_end`
 End the current workflow task and save it. Requires an active task (call workflow_task_start first).
@@ -279,8 +283,9 @@ Undo one step or group: its targets go back to their state before it. Later step
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | taskId | string | Yes | - | `s<seq>` or the task UUID (one step); a group id (`g<n>` / `b<n>`, every step of the group); or `c<n>` (every step of the group of the step at seq n) |
+| conflicts | string | No | null | Omit to refuse on conflicts (`WORKFLOW_CONFLICT` lists them), `"keep"` to skip them, or the conflict ids to overwrite |
 
-**Returns:** `{ taskId, to, guard, restored, deleted, recreated, failed, skipped, undo, compileTriggered }`, plus `failedItems` when something failed. A failed item makes the call report `failed > 0`; nothing is split. Unknown id: `errorCode: NOT_FOUND`.
+**Returns:** `{ taskId, to, guard, restored, deleted, recreated, failed, skipped, coverage, undo, compileTriggered }`, plus `failedItems` when something failed. A failed item makes the call report `failed > 0`; nothing is split. Unknown id: `errorCode: NOT_FOUND`. A later step of your own on the same target is a conflict too, so the undo refuses with `WORKFLOW_CONFLICT` until it is answered (see Conflicts under `workflow_restore`).
 
 ### `workflow_redo_task`
 Undo a restore (from `workflow_restore` or `workflow_undo_task`): only the targets that restore changed go back, and steps after it stay. To go back to the moment before the restore instead, discarding everything since, call `workflow_restore {"to":"<guard>"}`.
@@ -288,8 +293,9 @@ Undo a restore (from `workflow_restore` or `workflow_undo_task`): only the targe
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | taskId | string | No | null | The restore's `s<seq>`, its guard `c<n>`, or a step it reverted. Omitted = your newest undoable restore |
+| conflicts | string | No | null | Omit to refuse on conflicts (`WORKFLOW_CONFLICT` lists them), `"keep"` to skip them, or the conflict ids to overwrite |
 
-**Returns:** `{ to, guard, restored, deleted, recreated, failed, skipped, undo, compileTriggered }`. No undoable restore: `errorCode: NOT_FOUND`.
+**Returns:** `{ to, guard, restored, deleted, recreated, failed, skipped, coverage, undo, compileTriggered }`. No undoable restore: `errorCode: NOT_FOUND`.
 
 ### `workflow_undone_list`
 List restores that can still be undone with `workflow_redo_task`.

@@ -258,6 +258,65 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(2, result.Value<int>("returned"));
         }
 
+        [Test]
+        public void ReadSince_FromTheRing_ReturnsTheLaterEntriesOldestFirst()
+        {
+            Publish(3);
+
+            var entries = EditorChangeTrackerService.ReadSince(1, out string coverage);
+
+            Assert.AreEqual("full", coverage);
+            CollectionAssert.AreEqual(new long[] { 2, 3 }, entries.Select(entry => entry.Value<long>("seq")).ToArray());
+        }
+
+        [Test]
+        public void ReadSince_CursorAheadOfTheJournal_IsUnknownAndEmpty()
+        {
+            Publish(3);
+
+            var entries = EditorChangeTrackerService.ReadSince(10, out string coverage);
+
+            Assert.AreEqual("unknown", coverage);
+            Assert.That(entries, Is.Empty);
+        }
+
+        [Test]
+        public void ReadSince_ZeroCursor_IsUnknownAndReturnsTheRing()
+        {
+            Publish(3);
+
+            var entries = EditorChangeTrackerService.ReadSince(0, out string coverage);
+
+            Assert.AreEqual("unknown", coverage);
+            Assert.AreEqual(3, entries.Count);
+        }
+
+        [Test]
+        public void ReadSince_CursorOlderThanTheRingButInTheSegments_IsFull()
+        {
+            EditorChangeTrackerService.OverrideSegmentMaxEntriesForTests = 100;
+            Publish(1200);
+
+            var entries = EditorChangeTrackerService.ReadSince(300, out string coverage);
+
+            Assert.AreEqual("full", coverage, "The segments reach back to seq 301, which the ring of 500 no longer holds.");
+            Assert.AreEqual(900, entries.Count);
+            Assert.AreEqual(301, entries[0].Value<long>("seq"));
+            Assert.AreEqual(1200, entries[entries.Count - 1].Value<long>("seq"));
+        }
+
+        [Test]
+        public void ReadSince_CursorBeforeTheKeptSegments_IsPartial()
+        {
+            EditorChangeTrackerService.OverrideSegmentMaxEntriesForTests = 100;
+            Publish(1200);
+
+            var entries = EditorChangeTrackerService.ReadSince(50, out string coverage);
+
+            Assert.AreEqual("partial", coverage, "Rotation dropped the segments that held seq 51 to 200.");
+            Assert.AreEqual(201, entries[0].Value<long>("seq"));
+        }
+
         private static void Publish(int count)
         {
             for (int i = 0; i < count; i++)

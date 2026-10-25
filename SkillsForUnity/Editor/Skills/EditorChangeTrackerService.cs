@@ -183,6 +183,71 @@ namespace UnitySkills
             }
         }
 
+        /// <summary>
+        /// The entries with seq above <paramref name="cursor"/>, oldest first. <paramref name="coverage"/> is "full" when nothing
+        /// after the cursor was dropped, "partial" when rotation dropped some of it, and "unknown" when the cursor names no
+        /// position of this journal (0, or past its newest seq after a reset).
+        /// </summary>
+        internal static List<JObject> ReadSince(long cursor, out string coverage)
+        {
+            EnsureLoaded();
+            FlushPendingProperties();
+
+            if (cursor > _seq)
+            {
+                coverage = "unknown";
+                return new List<JObject>();
+            }
+            if (cursor <= 0)
+            {
+                coverage = "unknown";
+                return Buffer.ToList();
+            }
+
+            long bufferOldest = Buffer.Count > 0 ? Buffer.Peek().Value<long>("seq") : _seq + 1;
+            if (bufferOldest <= cursor + 1)
+            {
+                coverage = "full";
+                return Buffer.Where(e => e.Value<long>("seq") > cursor).ToList();
+            }
+
+            // The ring no longer reaches the cursor: scan the segments from the newest, and stop at the one holding the cursor.
+            var found = new List<JObject>();
+            coverage = "partial";
+            foreach (string file in new[] { LogPath }.Concat(Enumerable.Range(1, MaxRotatedSegments).Select(SegmentPath)))
+            {
+                if (!File.Exists(file))
+                    continue;
+                List<JObject> entries;
+                try { entries = ReadSegmentEntries(file); }
+                catch (IOException) { continue; }
+
+                var seqs = entries.Select(e => e.Value<long?>("seq") ?? 0).Where(seq => seq > 0).ToList();
+                if (seqs.Count == 0)
+                    continue;
+                found.AddRange(entries.Where(e => (e.Value<long?>("seq") ?? 0) > cursor));
+                if (seqs.Min() <= cursor + 1)
+                {
+                    coverage = "full";
+                    break;
+                }
+            }
+            return found.OrderBy(e => e.Value<long>("seq")).ToList();
+        }
+
+        private static List<JObject> ReadSegmentEntries(string path)
+        {
+            var entries = new List<JObject>();
+            foreach (string line in ReadLinesShared(path))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+                try { entries.Add(JObject.Parse(line)); }
+                catch (JsonReaderException) { }
+            }
+            return entries;
+        }
+
         public static object ReadChanges(long since = 0, string types = null, string source = "all", int limit = DefaultReadLimit)
         {
             EnsureLoaded();
@@ -1099,6 +1164,13 @@ namespace UnitySkills
 
         /// <summary>Closes one REST depth step at once, standing in for the next-frame tick <see cref="EndRestExecution"/> schedules.</summary>
         internal static void EndRestExecutionNowForTests() => EndRestWindowStep();
+
+        /// <summary>Closes every open REST window at once, so a test can make changes that the journal records as editor changes.</summary>
+        internal static void ResetRestWindowForTests()
+        {
+            _restDepth = 0;
+            _restAgent = null;
+        }
     }
 
     internal sealed class EditorChangeAssetPostprocessor : AssetPostprocessor

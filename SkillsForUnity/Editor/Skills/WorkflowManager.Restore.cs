@@ -31,16 +31,16 @@ namespace UnitySkills
         /// Undoes the steps <paramref name="taskId"/> names (see <see cref="FindStepsForUndo"/>): their targets go back to the state
         /// before the earliest of them, and steps on other targets stay. The restore is recorded, so <see cref="RedoTask"/> can take it back.
         /// </summary>
-        public static TaskUndoResult UndoTask(string taskId)
+        public static TaskUndoResult UndoTask(string taskId, string conflicts = null)
         {
             var steps = FindStepsForUndo(taskId);
             if (steps.Count == 0)
                 return new TaskUndoResult { error = "Task not found" };
-            return ToTaskUndoResult(RestoreSteps(steps, taskId, ResolveCallerAgent()));
+            return ToTaskUndoResult(RestoreSteps(steps, taskId, ResolveCallerAgent(), conflicts));
         }
 
         /// <summary>Undoes a restore's own step (see <see cref="RedoRestore"/>).</summary>
-        public static TaskUndoResult RedoTask(string taskId) => ToTaskUndoResult(RedoRestore(taskId));
+        public static TaskUndoResult RedoTask(string taskId, string conflicts = null) => ToTaskUndoResult(RedoRestore(taskId, conflicts));
 
         /// <summary>A task is addressed by its UUID or by the short s&lt;seq&gt; id the compact list shows.</summary>
         internal static bool MatchesTaskId(WorkflowTask task, string taskId)
@@ -94,16 +94,17 @@ namespace UnitySkills
         }
 
         /// <summary>Undoes every step of a session, the same way <see cref="UndoTask"/> undoes a step.</summary>
-        public static TaskUndoResult UndoSession(string sessionId) => ToTaskUndoResult(RestoreSession(sessionId));
+        public static TaskUndoResult UndoSession(string sessionId, string conflicts = null) =>
+            ToTaskUndoResult(RestoreSession(sessionId, conflicts));
 
-        internal static RestoreOutcome RestoreSession(string sessionId)
+        internal static RestoreOutcome RestoreSession(string sessionId, string conflicts = null)
         {
             if (string.IsNullOrEmpty(sessionId))
                 return RestoreRefused(SkillErrorCode.SemanticInvalid, "sessionId is required");
             var steps = FindStepsForSession(sessionId);
             if (steps.Count == 0)
                 return RestoreRefused(SkillErrorCode.NotFound, $"No tasks found for session: {sessionId}");
-            return RestoreSteps(steps, "session " + sessionId, ResolveCallerAgent());
+            return RestoreSteps(steps, "session " + sessionId, ResolveCallerAgent(), conflicts);
         }
 
         /// <summary>The step <see cref="RedoRestore"/> undoes: the restore step of the restore a taskId names, or none.</summary>
@@ -118,12 +119,12 @@ namespace UnitySkills
         /// Redoes a restore by undoing its own step, the way <see cref="UndoTask"/> undoes any step: only the targets the restore
         /// changed go back, and later steps stay. See <see cref="FindRestoreForRedo"/> for which restore a taskId names.
         /// </summary>
-        internal static RestoreOutcome RedoRestore(string taskId)
+        internal static RestoreOutcome RedoRestore(string taskId, string conflicts = null)
         {
             var steps = FindStepsForRedo(taskId);
             if (steps.Count == 0)
                 return RestoreRefused(SkillErrorCode.NotFound, "No undone tasks to redo");
-            return RestoreSteps(steps, steps[0].DisplayId, ResolveCallerAgent());
+            return RestoreSteps(steps, steps[0].DisplayId, ResolveCallerAgent(), conflicts);
         }
 
         /// <summary>
@@ -204,6 +205,13 @@ namespace UnitySkills
             result.success = result.error == null && result.failed == 0 && outcome.matchedSteps > 0;
             foreach (string item in outcome.failedItems)
                 result.details.Add(new SnapshotUndoResult { success = false, objectName = item, error = item });
+            foreach (var conflict in outcome.conflicts ?? new List<RestoreConflict>())
+                result.details.Add(new SnapshotUndoResult
+                {
+                    success = false,
+                    objectName = conflict.target,
+                    error = $"{conflict.id}: {conflict.by} {conflict.what}"
+                });
             return result;
         }
 

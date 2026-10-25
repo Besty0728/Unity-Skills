@@ -362,7 +362,7 @@ namespace UnitySkills.Tests.Core
 
                 Undo(first);
                 Call("gameobject_set_transform", Args(("name", "WfRb"), ("posY", 5f)));
-                Undo(second);
+                UndoOverwritingConflicts(second);
                 Assert.That(X("WfRb"), Is.EqualTo(0f).Within(0.001f), "Precondition: the second undo reverted WfRb.");
 
                 var redo = Call("workflow_redo_task", Args(("taskId", first)));
@@ -410,6 +410,21 @@ namespace UnitySkills.Tests.Core
 
             Assert.That(GameObject.Find("WfS1"), Is.Null);
             Assert.That(GameObject.Find("WfS2"), Is.Not.Null, "A step outside the session stays.");
+        }
+
+        // Undoes a step whose target a later step of the caller changed: the refusal's conflicts are overwritten by their ids.
+        private static void UndoOverwritingConflicts(string taskId)
+        {
+            var refused = Call("workflow_undo_task", Args(("taskId", taskId)));
+            if (refused.Value<string>("errorCode") != SkillErrorCode.WorkflowConflict.ToWireString())
+            {
+                Assert.That(refused.Value<string>("error"), Is.Null, refused.ToString());
+                return;
+            }
+            string ids = string.Join(",", refused.Value<JArray>("conflicts").Select(conflict => conflict.Value<string>("id")));
+            var response = Call("workflow_undo_task", Args(("taskId", taskId), ("conflicts", ids)));
+            Assert.That(response.Value<string>("error"), Is.Null, response.ToString());
+            Assert.That(response.Value<JObject>("result").Value<int>("failed"), Is.EqualTo(0), response.ToString());
         }
 
         // The success result of workflow_undo_task, failing the test when the call was refused.

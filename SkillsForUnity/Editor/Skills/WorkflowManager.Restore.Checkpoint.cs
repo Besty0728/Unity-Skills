@@ -19,6 +19,10 @@ namespace UnitySkills
         public string error;
         public SkillErrorCode errorCode;
         public List<string> recentCheckpoints;
+        // The changes a restore refused on, when errorCode is WorkflowConflict.
+        public List<RestoreConflict> conflicts;
+        // How far the journal covers the changes since the restore's cursor: full, partial or unknown.
+        public string coverage = "unknown";
         // The position or the step set the restore went back to, as the caller named it.
         public string to;
         // How many steps the restore was asked to cover, whether or not any of them had a snapshot to restore.
@@ -30,6 +34,7 @@ namespace UnitySkills
         public int failed;
         public int skipped;
         public readonly List<string> failedItems = new List<string>();
+        public readonly List<string> skippedItems = new List<string>();
         public string[] scriptChanges = Array.Empty<string>();
         public bool compileTriggered;
         public long refreshStartedUtcTicks;
@@ -48,7 +53,7 @@ namespace UnitySkills
         /// target is restored once from it, in phase order. A failing item is reported and the rest still runs. The inverse
         /// snapshots go into a restore step, which is recorded with its guard checkpoint so the restore can be undone.
         /// </summary>
-        internal static RestoreOutcome RestoreTo(string to, bool allAgents, string callerAgent)
+        internal static RestoreOutcome RestoreTo(string to, bool allAgents, string callerAgent, string conflicts = null)
         {
             var refused = RestoreRefusal();
             if (refused != null)
@@ -66,19 +71,25 @@ namespace UnitySkills
                 .Where(task => task.seq >= position && (allAgents || task.agent == callerAgent))
                 .OrderBy(task => task.seq)
                 .ToList();
-            return RestoreSteps(steps, to, callerAgent);
+            long checkpointCursor = History.checkpoints.FirstOrDefault(checkpoint => checkpoint.seq == position)?.cursor ?? 0;
+            return RestoreSteps(steps, to, callerAgent, conflicts, checkpointCursor);
         }
 
         /// <summary>
         /// Restores the targets of <paramref name="steps"/> (in seq order) to their state before the earliest of them. Each target
         /// gets the earliest state among the steps only, so later steps on other targets stay. The caller's undo of one step and of a
         /// position both come through here.
+        /// <paramref name="conflicts"/> is null (a conflict refuses the restore), "keep" (conflicting targets are skipped), or the
+        /// ids of the conflicts to overwrite. <paramref name="checkpointCursor"/> is the journal cursor of the checkpoint restored to, or 0.
         /// </summary>
-        internal static RestoreOutcome RestoreSteps(List<WorkflowTask> steps, string to, string callerAgent)
+        internal static RestoreOutcome RestoreSteps(List<WorkflowTask> steps, string to, string callerAgent, string conflicts = null,
+            long checkpointCursor = 0)
         {
             var refused = RestoreRefusal();
             if (refused != null)
                 return refused;
+            if (!TryParseConflictsArgument(conflicts, out var overwrite, out string conflictsError))
+                return RestoreRefused(SkillErrorCode.SemanticInvalid, conflictsError);
 
             var history = History;
             var outcome = new RestoreOutcome { to = to, matchedSteps = steps.Count };
@@ -87,6 +98,20 @@ namespace UnitySkills
 
             var gidAliases = RestoreGidAliases(history.restores);
             var works = PlanRestoreWork(BuildRestoreChains(steps, gidAliases));
+
+            var scan = ScanRestoreConflicts(steps, works, gidAliases, checkpointCursor, callerAgent);
+            outcome.coverage = scan.Coverage;
+            if (scan.Conflicts.Count > 0)
+            {
+                if (overwrite == null)
+                {
+                    outcome.error = $"{scan.Conflicts.Count} changes since the checkpoint would be overwritten. Ask the user, then pass conflicts:\"keep\" or the ids to overwrite.";
+                    outcome.errorCode = SkillErrorCode.WorkflowConflict;
+                    outcome.conflicts = scan.Conflicts;
+                    return outcome;
+                }
+                works = KeepUnconflictedWorks(works, scan.Conflicts, overwrite, outcome);
+            }
 
             outcome.guard = AddCheckpoint(callerAgent, WorkflowCheckpoint.KindGuard, "before restore to " + to);
             // The guard took the position the restore step gets, so both share one seq.
@@ -112,6 +137,8 @@ namespace UnitySkills
             Undo.IncrementCurrentGroup();
             Undo.SetCurrentGroupName("Workflow: restore to " + to);
             int undoGroup = Undo.GetCurrentGroup();
+            // The restore's own delayed change events are attributed to its caller, so a later restore does not report them as edits.
+            EditorChangeTrackerService.BeginRestExecution();
             _restoreScopeObjects = scope;
             _restoreScopeAliases = gidAliases;
             try
@@ -132,6 +159,7 @@ namespace UnitySkills
                 _restoreScopeAliases = null;
                 _sessionIdFallbackAllowed = true;
                 Undo.CollapseUndoOperations(undoGroup);
+                EditorChangeTrackerService.EndRestExecution();
             }
             restoreTask.cursorEnd = EditorChangeTrackerService.CurrentCursor;
 
@@ -267,6 +295,8 @@ namespace UnitySkills
         {
             public int Order;
             public RestoreItem Item;
+            // The key of the live target the work writes, for conflicts; null when the target does not resolve.
+            public string TargetKey;
             // The target's whole chain, for the Deleted item a Modified one may need recreated first.
             public List<RestoreItem> Chain;
             // The asset path the target is at before the restore, when it is not the path its snapshot names.

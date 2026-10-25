@@ -206,13 +206,21 @@ namespace UnitySkills
         {
             foreach (var snapshot in task.snapshots)
             {
-                if (snapshot == null || string.IsNullOrEmpty(snapshot.assetPath) ||
-                    !WorkflowFileStore.TryGetSafeAssetFullPath(snapshot.assetPath, out string fullPath))
+                if (snapshot == null || string.IsNullOrEmpty(snapshot.assetPath))
                     continue;
-                var file = new FileInfo(fullPath);
-                if (file.Exists)
-                    snapshot.assetFingerprint = file.Length + ":" + file.LastWriteTimeUtc.Ticks;
+                string fingerprint = AssetFingerprint(snapshot.assetPath);
+                if (fingerprint != null)
+                    snapshot.assetFingerprint = fingerprint;
             }
+        }
+
+        /// <summary>"&lt;length&gt;:&lt;lastWriteTimeUtc ticks&gt;" of an asset file, or null when the path is unsafe or no file is there.</summary>
+        internal static string AssetFingerprint(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath) || !WorkflowFileStore.TryGetSafeAssetFullPath(assetPath, out string fullPath))
+                return null;
+            var file = new FileInfo(fullPath);
+            return file.Exists ? file.Length + ":" + file.LastWriteTimeUtc.Ticks : null;
         }
 
         /// <summary>

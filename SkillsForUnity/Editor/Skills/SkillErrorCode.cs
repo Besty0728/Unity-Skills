@@ -39,6 +39,7 @@ namespace UnitySkills
         InstanceMismatch,
         MethodNotAllowed,
         DryRunRequired,
+        WorkflowConflict,
     }
 
     internal static class SkillErrorCodeExtensions
@@ -75,6 +76,7 @@ namespace UnitySkills
                 case SkillErrorCode.InstanceMismatch:     return "INSTANCE_MISMATCH";
                 case SkillErrorCode.MethodNotAllowed:     return "METHOD_NOT_ALLOWED";
                 case SkillErrorCode.DryRunRequired:       return "DRYRUN_REQUIRED";
+                case SkillErrorCode.WorkflowConflict:     return "WORKFLOW_CONFLICT";
                 default:                                  return "UNKNOWN";
             }
         }

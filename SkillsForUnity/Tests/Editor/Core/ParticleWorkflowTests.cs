@@ -190,7 +190,8 @@ namespace UnitySkills.Tests.Core
                 "The re-added renderer gets its saved configuration back instead of a second AddComponent failing.");
 
             // Undo once more: the redone task removes both components again.
-            Assert.That(WorkflowManager.UndoTask(taskId).success, Is.True);
+            var again = WorkflowManager.UndoTask(taskId);
+            Assert.That(again.success, Is.True, JsonConvert.SerializeObject(again));
             Assert.That(host.GetComponent<ParticleSystemRenderer>(), Is.Null);
         }
     }

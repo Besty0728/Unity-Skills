@@ -417,6 +417,8 @@ namespace UnitySkills
                     return MissingParam();
                 case SkillErrorCode.SemanticInvalid:
                     return SemanticInvalid();
+                case SkillErrorCode.WorkflowConflict:
+                    return WorkflowConflict();
                 default:
                     return Classify(message);
             }
@@ -661,6 +663,20 @@ namespace UnitySkills
                     action = "fix_param",
                     skill = "POST /skill/<name>?mode=dryRun",
                     reason = "The value is rejected, not the parameter name. Read the accepted range/enum in the message, then dryRun the corrected args."
+                },
+            },
+        };
+
+        private static SkillErrorClassification WorkflowConflict() => new SkillErrorClassification
+        {
+            Code = SkillErrorCode.WorkflowConflict,
+            RetryStrategy = SkillErrorResponse.RetryFixAndRetry,
+            SuggestedFixes = new List<SuggestedFix>
+            {
+                new SuggestedFix
+                {
+                    action = "ask_user",
+                    reason = "Ask the user which conflicting changes to keep. Then retry with conflicts:\"keep\" or with the ids to overwrite.",
                 },
             },
         };

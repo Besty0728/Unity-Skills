@@ -255,13 +255,13 @@ namespace UnitySkills
             return new { id, label };
         }
 
-        [UnitySkill("workflow_restore", "Restore the scene and project assets to a checkpoint. to is a c<n> id, an s<n> step, 'last' (the caller's newest checkpoint) or a checkpoint label; agents is 'self' (default) or 'all'. A guard checkpoint is taken first, so the restore is undone with workflow_restore {\"to\":\"<guard>\"}.",
+        [UnitySkill("workflow_restore", "Restore the scene and project assets to a checkpoint. to is a c<n> id, an s<n> step, 'last' (the caller's newest checkpoint) or a checkpoint label; agents is 'self' (default) or 'all'; conflicts: omit to refuse on conflicts (WORKFLOW_CONFLICT lists them), \"keep\" to skip them, or the ids to overwrite. A guard checkpoint is taken first, so the restore is undone with workflow_restore {\"to\":\"<guard>\"}.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "workflow", "restore", "undo", "checkpoint" },
-            Outputs = new[] { "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "undo", "compileTriggered" },
+            Outputs = new[] { "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "coverage", "undo", "compileTriggered" },
             RequiresInput = new[] { "to" },
             RiskLevel = "medium", MutatesScene = true, MutatesAssets = true)]
-        public static object WorkflowRestore(string to, string agents = "self")
+        public static object WorkflowRestore(string to, string agents = "self", string conflicts = null)
         {
             if (Validate.Required(to, "to") is object err) return err;
             bool allAgents;
@@ -269,7 +269,7 @@ namespace UnitySkills
             else if (string.IsNullOrEmpty(agents) || string.Equals(agents, "self", StringComparison.OrdinalIgnoreCase)) allAgents = false;
             else return new { error = $"agents must be 'self' or 'all', got '{agents}'", errorCode = SkillErrorCode.SemanticInvalid.ToWireString() };
 
-            var outcome = WorkflowManager.RestoreTo(to, allAgents, WorkflowManager.ResolveCallerAgent());
+            var outcome = WorkflowManager.RestoreTo(to, allAgents, WorkflowManager.ResolveCallerAgent(), conflicts);
             return outcome.error != null ? RestoreError(outcome) : RestoreResponse(outcome, to);
         }
 
@@ -287,11 +287,14 @@ namespace UnitySkills
                 ["recreated"] = outcome.recreated,
                 ["failed"] = outcome.failed,
                 ["skipped"] = outcome.skipped,
+                ["coverage"] = outcome.coverage,
                 ["undo"] = outcome.guard == null ? null : $"workflow_restore {{\"to\":\"{outcome.guard}\"}}",
                 ["compileTriggered"] = outcome.compileTriggered
             };
             if (outcome.failedItems.Count > 0)
                 result["failedItems"] = outcome.failedItems;
+            if (outcome.skippedItems.Count > 0)
+                result["skippedItems"] = outcome.skippedItems;
             if (!outcome.compileTriggered)
                 return result;
 
@@ -307,13 +310,36 @@ namespace UnitySkills
             return result;
         }
 
-        private static object RestoreError(RestoreOutcome outcome) => new
+        // The router keeps a skill error's top-level members but not its details object, so a conflict's list and coverage sit at the top.
+        private static object RestoreError(RestoreOutcome outcome)
         {
-            error = outcome.error,
-            errorCode = outcome.errorCode.ToWireString(),
-            recentCheckpoints = outcome.recentCheckpoints,
-            retryStrategy = SkillErrorResponse.RetryFixAndRetry
-        };
+            if (outcome.errorCode == SkillErrorCode.WorkflowConflict)
+            {
+                return new
+                {
+                    error = outcome.error,
+                    errorCode = outcome.errorCode.ToWireString(),
+                    conflicts = outcome.conflicts,
+                    coverage = outcome.coverage,
+                    suggestedFixes = new[]
+                    {
+                        new SuggestedFix
+                        {
+                            action = "ask_user",
+                            reason = "Ask the user which conflicting changes to keep. Then retry with conflicts:\"keep\" or with the ids to overwrite."
+                        }
+                    },
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry
+                };
+            }
+            return new
+            {
+                error = outcome.error,
+                errorCode = outcome.errorCode.ToWireString(),
+                recentCheckpoints = outcome.recentCheckpoints,
+                retryStrategy = SkillErrorResponse.RetryFixAndRetry
+            };
+        }
 
         [UnitySkill("workflow_task_end", "End the current workflow task and save it. Requires an active task (call workflow_task_start first).",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
@@ -551,15 +577,15 @@ namespace UnitySkills
         }
 
 
-        [UnitySkill("workflow_undo_task", "Undo one step or group (s<seq>, a group id, c<n> or a task UUID): its targets go back to their state before it; later steps on other targets stay.",
+        [UnitySkill("workflow_undo_task", "Undo one step or group (s<seq>, a group id, c<n> or a task UUID): its targets go back to their state before it; later steps on other targets stay; conflicts: omit to refuse on conflicts (WORKFLOW_CONFLICT lists them), \"keep\" to skip them, or the ids to overwrite.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "undo", "task", "revert", "restore" },
-            Outputs = new[] { "taskId", "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "undo", "compileTriggered" },
+            Outputs = new[] { "taskId", "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "coverage", "undo", "compileTriggered" },
             RequiresInput = new[] { "taskId" },
             // Restoring a snapshot rewrites everything that task touched: scene objects, and --
             // via UndoMovedSnapshot / RedoDeletedSnapshot / RestoreModifiedSnapshot -- project assets.
             MutatesScene = true, MutatesAssets = true)]
-        public static object WorkflowUndoTask(string taskId)
+        public static object WorkflowUndoTask(string taskId, string conflicts = null)
         {
             var steps = WorkflowManager.FindStepsForUndo(taskId);
             var withdrawn = SurfaceRejectionForTasks("workflow_undo_task", "restoring this task's snapshots", steps);
@@ -573,7 +599,7 @@ namespace UnitySkills
                     retryStrategy = SkillErrorResponse.RetryFixAndRetry
                 };
 
-            var outcome = WorkflowManager.RestoreSteps(steps, taskId, WorkflowManager.ResolveCallerAgent());
+            var outcome = WorkflowManager.RestoreSteps(steps, taskId, WorkflowManager.ResolveCallerAgent(), conflicts);
             if (outcome.error != null)
                 return RestoreError(outcome);
             var result = RestoreResponse(outcome, taskId);
@@ -581,19 +607,19 @@ namespace UnitySkills
             return result;
         }
 
-        [UnitySkill("workflow_redo_task", "Undo a restore (from workflow_restore or workflow_undo_task): only the targets it changed go back, later steps stay; taskId is the restore's s<seq>, its guard c<n>, or a step it reverted; omitted = your newest restore.",
+        [UnitySkill("workflow_redo_task", "Undo a restore (from workflow_restore or workflow_undo_task): only the targets it changed go back, later steps stay; taskId is the restore's s<seq>, its guard c<n>, or a step it reverted; omitted = your newest restore; conflicts: omit to refuse on conflicts (WORKFLOW_CONFLICT lists them), \"keep\" to skip them, or the ids to overwrite.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "redo", "task", "restore", "changes" },
-            Outputs = new[] { "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "undo", "compileTriggered" },
+            Outputs = new[] { "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "coverage", "undo", "compileTriggered" },
             MutatesScene = true, MutatesAssets = true)]
-        public static object WorkflowRedoTask(string taskId = null)
+        public static object WorkflowRedoTask(string taskId = null, string conflicts = null)
         {
             var steps = WorkflowManager.FindStepsForRedo(taskId);
             var withdrawn = SurfaceRejectionForTasks("workflow_redo_task", "re-applying this task's snapshots", steps);
             if (withdrawn != null)
                 return withdrawn;
 
-            var outcome = WorkflowManager.RedoRestore(taskId);
+            var outcome = WorkflowManager.RedoRestore(taskId, conflicts);
             return outcome.error != null ? RestoreError(outcome) : RestoreResponse(outcome, outcome.to);
         }
 
@@ -751,12 +777,12 @@ namespace UnitySkills
             };
         }
 
-        [UnitySkill("workflow_session_undo", "Undo all changes made during a specific session (conversation-level undo)",
+        [UnitySkill("workflow_session_undo", "Undo all changes made during a specific session (conversation-level undo); conflicts: omit to refuse on conflicts (WORKFLOW_CONFLICT lists them), \"keep\" to skip them, or the ids to overwrite.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "session", "undo", "conversation", "revert" },
-            Outputs = new[] { "sessionId", "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "undo", "compileTriggered" },
+            Outputs = new[] { "sessionId", "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "coverage", "undo", "compileTriggered" },
             MutatesScene = true, MutatesAssets = true)]
-        public static object WorkflowSessionUndo(string sessionId = null)
+        public static object WorkflowSessionUndo(string sessionId = null, string conflicts = null)
         {
             // When sessionId isn't given, take the most recent session
             if (string.IsNullOrEmpty(sessionId))
@@ -772,7 +798,7 @@ namespace UnitySkills
             if (withdrawn != null)
                 return withdrawn;
 
-            var outcome = WorkflowManager.RestoreSession(sessionId);
+            var outcome = WorkflowManager.RestoreSession(sessionId, conflicts);
             if (outcome.error != null)
                 return RestoreError(outcome);
             var result = RestoreResponse(outcome, outcome.to);
