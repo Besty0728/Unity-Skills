@@ -2,6 +2,62 @@
 
 All notable changes to **UnitySkills** will be documented in this file.
 
+## [3.0.0] - 2026-10-25
+
+> **Workflow 时光机重写 + 用户侧测评集 + 粒子系统模块 + 原生 entityId** —— (1) **Workflow 重写**：历史改为只追加的日志加内容寻址存储，写操作不再整份重写历史文件；新增检查点（空闲 30 秒后自动打点、`_checkpoint` 请求键、`workflow_checkpoint`）和 `workflow_restore`，可以回到任意检查点或某一步之前；撤销、重做、会话撤销统一走同一个回退引擎。回退前会先检查用户和其他 agent 在此之后的改动，有冲突就以 `WORKFLOW_CONFLICT` 停下来询问；撤销单步时按属性三方合并，保留后续改动；`scope` 可以只回退部分目标；所有回退都能 dryRun 预览，History 页改为时间线。(2) **测评集**：面板新增 Evaluation 页，并随包附带 v3 评测器与 37 道公开题；AI 自动搭建测试环境、做题，再按不随包分发的私有评分标准判分。(3) **粒子系统**：新增 Particle 模块，31 个技能覆盖内置粒子系统的创建、模块配置、爆发、子发射器、播放控制与分析。(4) **原生 entityId**：核心模块和可选包模块的技能自己声明 `entityId`，在 Unity 6000.4+ 上也能在同名物体中准确定位；查找按 Hierarchy 顺序，给定的 id 找不到时直接报错，不再退回到同名对象。(5) **按项目保存设置**：令牌档位、运行模式、端口等设置改存到工程的 `UserSettings/UnitySkills/settings.json`，不同工程互不影响。技能 839 → 872（+33），不删除任何技能。
+
+### 本版实测
+
+- **写操作的 Workflow 开销**：2022.3 URP 上，空历史和 40 MB（约 5.8 万步）历史下每次写操作的 workflow 耗时 p95 都是 0 ms；旧格式在 15 MB 历史时每次写入中位 248 ms。6 万步历史的完整重放约 0.8 秒。
+- **文档瘦身前后的配对基线**（Claude Code 无头模式 + Sonnet，2022.3 URP，运维基础 6 题与 T4 各 3 次）：通过数 21/21 → 21/21，处理的 token 总均值 646K → 625K（0.97 倍）。
+- **回归**：2022.3 Built-in 与 URP 两个工程的完整 EditMode 各 2560 个测试，0 失败；真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
+
+### Added
+
+- **检查点与 `workflow_restore`** — 一个 agent 空闲 30 秒以上（不计编译与域重载时间）后的第一次写操作自动打检查点，可在 History 页关闭；任意写请求或 `/skills/batch` 可带 `"_checkpoint":"<标签>"`；`workflow_checkpoint {label, at?}` 给下一步打点或重命名已有检查点。`workflow_restore {to, agents?, conflicts?, scope?}` 回到 `c<n>`、`s<n>`、标签或 `last`，先建守护检查点，返回的 `undo` 调用可以撤销这次回退。
+- **回退冲突检测** — 回退前对照后续步骤和编辑器变更日志，找出用户在 Inspector / 场景中的编辑、其他 agent 的步骤与未追踪写入；有冲突时返回 `WORKFLOW_CONFLICT`，列出每条冲突的 `id`、目标、来源、内容与时间，以及日志覆盖度 `coverage`。`conflicts:"keep"` 跳过全部冲突目标，传 id 列表则只覆盖列出的、保留其余。回退会删除的物体，其组件或子物体被别人改过也算冲突，选"保留"就不删。
+- **属性级三方合并** — 每一步记录改后状态与状态哈希；回退时目标仍停在最后一步留下的状态就干净回退，已回到改前状态就跳过，否则逐属性合并：只改回被回退步骤改过、之后没人动过的属性，双方都改过的属性记为叶子冲突（默认保留）。贴图、脚本、预制体等文件资产按磁盘指纹判断，外部改动算冲突。
+- **`scope` 部分回退** — 逗号分隔的 `entity:<id>`、物体名或层级路径（以 `/` 结尾包含子孙）、`Assets/` 路径（以 `/` 结尾为整个文件夹）、设置键（以 `.` 结尾为前缀）；匹配不到任何目标时返回 `SEMANTIC_INVALID` 并列出可选目标，带 scope 的回退不把步骤标为 `(undone)`。
+- **回退 dryRun 预览** — `workflow_restore`、`workflow_undo_task`、`workflow_redo_task`、`workflow_session_undo` 支持 `?mode=dryRun`，返回计划计数（含 `merge`）、条目、冲突、覆盖度、无法执行的项、`danglingReferences`（会被删除却仍被引用的对象）与 `mayTriggerReload`。
+- **History 页时间线** — 检查点与步骤合并为一条虚拟化时间线，可按 agent 过滤；预览回退时逐条勾选要覆盖的冲突，"回退到此处"后可"撤销这次回退"；工具栏有自动检查点开关与空闲间隔设置，三语本地化。
+- **测评集（Evaluation 页 + v3 评测器）** — Evaluation 页提供环境检查、专用工程标记、Python 检测与覆盖、Bypass 切换与自动恢复、会话配置、提示词复制、进度、提交 / 中止、报告与历史；评测器为随包发布的纯标准库 Python（`Evaluation~`），短命令无常驻进程，状态写在 `Library/UnitySkills/eval/`；公开题包 37 题（运维线 21、开发线 16，分基础 / 标准 / 挑战三档）；新增建议模块 `unity-evaluation` 与 `scripts/unity_eval.py`，复制提示词即可在 agent 里运行。
+- **Particle 模块（31 个技能）** — 内置（Shuriken）粒子系统：`particle_get_capabilities`、`particle_find_all`、`particle_get_info`、`particle_get_module`、`particle_get_renderer`、`particle_get_bursts`、`particle_get_sub_emitters`、`particle_analyze` 只读查询；`particle_create`、`particle_add_system`、`particle_configure`、`particle_set_renderer`、`particle_set_bursts`、`particle_set_sub_emitters` 及播放控制 `particle_play` / `pause` / `stop` / `emit` / `simulate`，写技能与播放控制都有对应的 `_batch`（配置类批量为全有或全无）。字段注册表统一驱动能力描述、严格 JSON 解析、校验、读回与 dryRun；支持全部 MinMaxCurve / MinMaxGradient 模式；没有粒子系统模块的工程返回 `MISSING_PACKAGE`。
+- **按项目保存的设置** — 令牌档位、运行模式、面板审批、允许列表、确认要求、首选端口、请求超时、遥测、启动时装包、Workflow 历史上限与 Evaluation 页配置存到 `UserSettings/UnitySkills/settings.json`；工程没有自己的值时读取旧的全局值，升级后行为不变。
+- **`GET /analytics?agent=`** — 按 agent 过滤分析数据，`(unknown)` 匹配没有 agent 的记录；失败调用的遥测行带脱敏后的错误文本 `err` 与参数摘要 `target`（工程根目录写作 `<project>`，用户主目录写作 `~`）。
+- **`TARGET_NOT_FOUND` 带实例信息** — 响应带 `instance`（`<productName>@<port>`），一眼看出请求打到了哪个编辑器。
+
+### Changed
+
+- **Workflow 历史改为只追加日志** — `Library/UnitySkills/workflow/` 下是 `log.jsonl`（满 4 MB 或 5000 行封存成段）、`head.json` 与按 SHA1 命名的 `blobs/`；每次写操作只追加一行，不再整份重写 `workflow_history.json`。按容量（`CapacityMB`，默认 512）与天数（`MaxAgeDays`，默认 30）整段清理，History 页的五项上限改为这两项。**3.0 之前的历史不迁移**：移到 `workflow_legacy/`，14 天后自动删除，History 页显示备份行并可手动删除。
+- **撤销与重做走回退引擎** — `workflow_undo_task` 接受 `s<seq>`、组 id、`c<n>` 或任务 UUID，只把这些步骤的目标恢复到之前，其他目标上的后续步骤保留；`workflow_redo_task` 改为撤销某次回退本身，不再连带撤掉之后的工作；`workflow_session_undo` 同理。撤销同一目标上的自己后续步骤不再一律冲突，改为按属性合并。
+- **`workflow_list` 返回紧凑文本行** — `s<n> 时间 技能 目标 (改动数)`，其他 agent 的步骤带 `@agent`，批量带 `xN`，被回退的步骤标 `(undone)`；检查点行 `c<n>` 穿插其中；新增 `limit`、`agent`、`before`、`format` 与 `view:"checkpoints"`。
+- **改动数如实** — 一步中实际没有变化的场景对象快照会被剪掉，什么都没改的调用不再留下步骤。
+- **`entityId` 定位更严格** — 场景查找按 Hierarchy 顺序，同名时取最上面的那个，精确大小写的路径优先；给定的 `entityId` 或非零 `instanceId` 单独决定目标，找不到就返回 `TARGET_NOT_FOUND`，不再退回到路径或名称。dryRun 同样校验技能声明的每个 `entityId` / `*EntityId` 参数。
+- **核心与可选包模块原生声明 `entityId`** — Component、Material、Light、Camera、Animator、Audio、UI、Timeline、NavMesh、Optimization、Editor、Model、Volume、Decal、Terrain、Event、Prefab、Physics，以及 Cinemachine、ProBuilder、XR、Netcode、DOTween Pro、Behavior、UI Toolkit 的定位参数都有对应的 `entityId` / `*EntityId`，批量项同样支持；路由的合成 `entityId` 转发只用于没有自己声明的自定义技能。
+- **显式分页** — `pageOffset` / `pageLimit` 在任何详略级别下都生效；技能只声明了一个顶层数组时也能按它分页，否则返回 `pagingIgnored`。
+- **查询结果报告总数与截断** — `gameobject_find`、`scene_find_objects`、`batch_query_*` 返回 `totalMatched` 与 `truncated`；`queryJson.caseSensitive`（默认 `false`）可开启区分大小写的名称匹配。
+- **新装默认 Full 令牌档位** — 新安装的分页默认 20，解析为 Full 档；已有安装保留原设置。
+- **`scene_save` 的撤销** — 场景关闭时恢复磁盘上的 `.unity` 文件；场景正打开时不改写文件，只把场景标脏，保存后生效。
+- **编辑器变更日志** — 轮转成分段文件而不是丢弃旧记录，记录调用的 agent、Play 状态与对象 entity id；单次超过 200 项的变更拆成多条连续记录，不再折叠成 `omitted`；遥测与审计在域重载和退出前落盘。
+- **安装器清理退役文件** — 每次安装写 `scripts/install_manifest.json`；重装与卸载会删除模板已不再提供、且内容未被改动的旧文件，用户自己加的文件不动。
+- **版本号更新** — `SkillsLogger.Version` / `package.json` / Python helper `__version__` / `AGENTS.md` 同步提升到 `3.0.0`。受支持版本表（.github/SECURITY.md）同步到 3.0.x。
+
+### Fixed
+
+- **域重载时的空 200 响应** — 重载开始时排队中的请求以前会收到空的 200，看起来像成功；现在未执行的请求返回带 `Retry-After` 和 `details.executed:false` 的 503，写入后断开的返回 504（结果未知）。Python 客户端不再重发结果未知的写请求。
+- **Console 历史满后每秒整份重写**（Issue #65）— 历史满后改为只追加，累计到上限的四分之一才压缩，Play Mode 下延后压缩。
+- **未存盘的材质 / ScriptableObject 撤销不生效** — 以前只写回文件字节，内存里尚未保存的改动会留下，下次保存又写回去；现在同时把改前状态写回内存对象并保存。
+- **从未保存的场景里的撤销只恢复一个对象** — 这类场景的所有对象共用同一个 GlobalObjectId，快照按 id 去重时只留下第一个；现在不再对其去重。
+- **`component_invoke_method` 短类型名歧义** — 实例调用时 `Button` 这类同时匹配 UI 与 UIElements 的短名，优先取组件类型，不再报歧义。
+- **事件与引用定位、预制体与隐藏属性**（P4–P14）— 事件目标、Object 参数和序列化引用按 entityId / instanceId / 路径 / 名称严格解析，找不到时报错而不退回同名对象；`prefab_get_overrides` 新增 `path`、`includeDetails` 与分页信息；组件、ScriptableObject、预制体的序列化属性读取支持 `includeHidden`；序列化向量与颜色按区域无关的格式输出；`physics_create_material` 先建目录，拒绝只读包路径。
+- **Unity 6000.4+ 兼容**（PR #66）— 活动场景没有出现在已加载场景列表里时，补回它的根物体（仅限确实已加载的场景，不会重复计数）；两个上游自测在新版本上恢复通过。
+
+### Docs
+
+- 根 `SKILL.md` 瘦身到 7,937 字节（英文 description 同时覆盖 Unity 设计问答，去掉计数行，新增撤销路由），删除 `references/SKILL_FULL.md` 并把其独有规则迁到对应参考文档；material、editor、cinemachine、particle、workflow 改为"入口 + `reference/<skill>.md`"结构，入口有字节预算测试。
+- Workflow 模块文档按"检查点优先"重写：回退协议、`workflow_list` 行格式、检查点、回退契约、"撤销单步与 scope"、已知局限。
+- 技能计数与模块数同步到 872 个技能、57 个源文件、55 个类别、85 个模块文档（30 个 advisory）。
+
 ## [2.9.1] - 2026-10-17
 
 > **直接编辑预制体资产 + 运行时方法调用与场景验证 + 持续保存的 Console 日志** —— (1) **预制体资产编辑**：29 个新技能不实例化到场景就能查询和修改 `.prefab` 里的节点、组件、序列化属性与引用；单资产多步操作全部成功才保存，支持原生 Undo 与 Workflow 恢复，保留变体与嵌套预制体连接。(2) **运行时验证**：发现并调用组件或静态 C# 方法，`editor_run_scenario` 把"调用 → 等待 → 断言"组合成一次验证作业，配套 Python 辅助脚本串起编译验证与有界修复。(3) **Console 日志历史**：日志持续收集并持久化，带 UTC 时间、固定快照分页、重复分组与时间窗口。(4) **更稳**：编译结果绑定到具体编译周期，所有 GET 请求统一在主线程处理，Python 客户端轮询作业时锁定原 Editor、不重放结果不明的写操作。(5) 新增赞助商 **Mirasim**。技能 805 → 839（+34），不删除任何技能或参数。
