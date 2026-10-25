@@ -37,7 +37,7 @@
 
 ## 步骤 2：收集 SKILL.md 文档定义
 
-扫描 `SkillsForUnity/unity-skills~/skills/*/*.md` 与 `skills/*/reference/*.md` 中所有记录的 Skill。**范围是每个模块目录下的所有 `.md` 兄弟文件**（入口 `SKILL.md` + `REFERENCE.md` / `*_REFERENCE.md` 等）**加上 `reference/` 子目录一层**（八个试点模块 `gameobject` / `component` / `batch` / `script` / `material` / `editor` / `cinemachine` / `particle` 把逐技能章节拆成 `reference/<skill_name>.md`，每文件恰好一个 `### skill_name` 且文件名 = 技能名），不再往下递归。逐技能细节已经从入口下沉到 reference，只扫 `SKILL.md` 会让这些技能静默脱离比对：
+扫描 `SkillsForUnity/unity-skills~/skills/*/*.md` 与 `skills/*/reference/*.md` 中所有记录的 Skill。**范围是每个模块目录下的所有 `.md` 兄弟文件**（入口 `SKILL.md` + `REFERENCE.md` / `*_REFERENCE.md` 等）**加上 `reference/` 子目录一层**（九个试点模块 `gameobject` / `component` / `batch` / `script` / `material` / `editor` / `cinemachine` / `particle` / `workflow` 把逐技能章节拆成 `reference/<skill_name>.md`，每文件恰好一个 `### skill_name` 且文件名 = 技能名），不再往下递归。逐技能细节已经从入口下沉到 reference，只扫 `SKILL.md` 会让这些技能静默脱离比对：
 
 1. 对每个模块的每个 `.md` 提取：
    - **Skill 名称**（`### skill_name` 标题）
@@ -86,8 +86,8 @@
 **重复定义检查（拆分后新增）**：同一个 skill 名只应被定义一次。
 
 - **模块内重复** → 🔴 严重：同一模块的两个文件（典型是入口和 `reference/<skill>.md` 各留了一份）、或同一文件里出现两次 `### skill_name`。两份参数表会各自漂移且无人比对，这正是拆分最容易引入的缺陷。
-- **跨模块重复** → 🟡 中等：不同模块目录各定义一次。当前已知且属于有意路由冗余的有 9 个，全部是 `workflow/SKILL.md` 重述了 `batch/`、`bookmark/`、`history/` 的技能（`batch_query_assets`、`batch_retry_failed`、`bookmark_set/goto/list/delete`、`history_undo/redo/get_current`）；这 9 个之外的跨模块重复要报出来。
-- **试点模块全覆盖**（`gameobject`、`component`、`batch`、`script`、`material`、`editor`、`cinemachine`、`particle`）：这八个模块的文档技能集合应与代码技能集合**完全相等**（当前 19/14/22/12/21/17/34/31 全等）。任一方向缺项 → 🔴 严重（迁移丢技能）。注意 `batch` 的代码归属是 `BatchSkills.cs` 声明的技能，不是整个 `Workflow`+`Validation` 类目。
+- **跨模块重复** → 🟡 中等：不同模块目录各定义一次。当前已知且属于有意路由冗余的有 7 个，全部是 `workflow/SKILL.md` 重述了 `bookmark/`、`history/` 的技能（`bookmark_set/goto/list/delete`、`history_undo/redo/get_current`）；这 7 个之外的跨模块重复要报出来。
+- **试点模块全覆盖**（`gameobject`、`component`、`batch`、`script`、`material`、`editor`、`cinemachine`、`particle`、`workflow`）：这九个模块的文档技能集合应与代码技能集合**完全相等**（当前 19/14/22/12/21/17/34/31/26 全等）。任一方向缺项或多出 → 🔴 严重（迁移丢技能 / 技能归错模块）。注意 `batch` 的代码归属是 `BatchSkills.cs` 声明的技能，不是整个 `Workflow`+`Validation` 类目；`workflow` 的代码归属是 `WorkflowSkills.cs` 声明的 26 个技能（含 `bookmark_*`、`history_*`），`batch_*` 不在其中。
 - **试点 reference 一一对应**：试点模块的每个 `reference/*.md` 必须恰好定义一个 `### skill_name` 且与文件名相同，模块的每个技能都要有 `reference/<skill_name>.md`（入口只写共享规则与技能列表，靠"细节在 `reference/<skill>.md`"一句寻址，不逐行放链接）→ 任一不符 🔴 严重。专题内容（示例、常用类型表等）并入相关技能的文件，不单独建 topic 文件。
 
 ### 3b. 参数签名比对
@@ -212,7 +212,7 @@
    - `http(s)://` 与 `mailto:` 跳过；**不含 `/`、不以 `.md` 结尾、也不以 `#` 开头的目标不是文档链接**，跳过（例如 ASCII 示意图里的 `[Camera](Overlay)` 是 markdown 语法巧合，不是链接）
    - 本项与测试 `SkillDocLinks_ShouldResolve` 同口径；该测试用 `KnownBrokenDocLinks` 登记了尚未修复的历史断链，审计时应把登记项一并列出并提醒修掉后删除条目
    - **references/ 可达性**：从根 `SKILL.md` 出发沿相对链接递归，`references/*.md` 每个文件都应可达（路径：根 → `references/windows.md`；根 → `skills/SKILL.md` → `references/README.md` → `references/index.md` → 各 URL 索引）→ 不可达 🟡 中等（AI 永远读不到它）
-9. **试点模块入口字节预算**：`gameobject`、`component`、`batch`、`script`、`material`、`editor`、`cinemachine`、`particle` 八个模块的**入口** `SKILL.md` 各有独立上限，数值以测试 `SkillDocumentationConsistencyTests.PilotEntryByteBudgets` 为准（不要在本文件里另抄一份数字）：
+9. **试点模块入口字节预算**：`gameobject`、`component`、`batch`、`script`、`material`、`editor`、`cinemachine`、`particle`、`workflow` 九个模块的**入口** `SKILL.md` 各有独立上限，数值以测试 `SkillDocumentationConsistencyTests.PilotEntryByteBudgets` 为准（不要在本文件里另抄一份数字）：
    - 口径与根 SKILL.md 一致：**LF 归一化后的 UTF-8 字节数，含 frontmatter**（`tr -d '\r' < SKILL.md | wc -c`），不要裸 `wc -c`
    - 超限 🔴 严重。报告给出每个试点的当前字节数与余量
    - 登记值为 `-1` 表示预算尚未拍板，测试会**故意失败**；此时报告如实写"预算待定"，不要把它当成通过，也不要为了让测试变绿去填一个数字

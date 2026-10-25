@@ -57,7 +57,7 @@ Several steps, one call: `POST /skills/batch?expectProject=<project>` `{"steps":
 
 Never invent skill or parameter names: use this table, recommend or schema. On failure read `suggestedFixes`; open a module doc only when a response names one.
 
-**Undo your own writes**: `workflow_list` (tasks, newest last) → `workflow_undo_task {taskId}`, newest first — an older task restores over later edits → [workflow](skills/workflow/SKILL.md).
+**Undo**: `workflow_restore {"to":"last"}` or an id/label from `workflow_list`; `WORKFLOW_CONFLICT` = the user edited since: ask, resend with `conflicts` → [workflow](skills/workflow/SKILL.md).
 
 ## Verify from the read-back
 

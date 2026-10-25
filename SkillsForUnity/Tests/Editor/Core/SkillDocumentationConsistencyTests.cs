@@ -156,15 +156,13 @@ namespace UnitySkills.Tests.Core
 
         /// <summary>
         /// Skills deliberately documented under more than one module directory. Today this is only the Workflow
-        /// module doc re-stating skills that also own a dedicated directory (batch/, bookmark/, history/), which is
+        /// module doc re-stating skills that also own a dedicated directory (bookmark/, history/), which is
         /// routing redundancy rather than drift. Anything not registered here is reported, and a registered name
         /// that is no longer duplicated is reported as stale - the duplicate check is what stops the same skill
         /// from being described two different ways in two files after the entry/reference split.
         /// </summary>
         private static readonly HashSet<string> KnownCrossModuleDuplicates = new HashSet<string>(StringComparer.Ordinal)
         {
-            "batch_query_assets",
-            "batch_retry_failed",
             "bookmark_delete",
             "bookmark_goto",
             "bookmark_list",
@@ -199,6 +197,7 @@ namespace UnitySkills.Tests.Core
             ("editor", skill => skill.Attribute.Category == SkillCategory.Editor),
             ("cinemachine", skill => skill.Attribute.Category == SkillCategory.Cinemachine),
             ("particle", skill => skill.Attribute.Category == SkillCategory.Particle),
+            ("workflow", skill => skill.Method.DeclaringType?.Name == "WorkflowSkills"),
         };
 
         /// <summary>
@@ -221,7 +220,9 @@ namespace UnitySkills.Tests.Core
             { "material", 6528 },
             { "editor", 5056 },
             { "cinemachine", 6464 },
-            { "particle", 14080 }
+            { "particle", 14080 },
+            // 3.0 checkpoint-first rewrite (design cap 6 KB): entry size at the rewrite plus ~4% headroom, rounded up to 64 bytes.
+            { "workflow", 5632 }
         };
 
         private static readonly HashSet<string> ExactSignatureOptionalModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
