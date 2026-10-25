@@ -294,18 +294,18 @@ namespace UnitySkills.Tests.Core
             WorkflowManager.BindPendingAgents();
 
             WorkflowManager.DeleteTask("s2");
-            Assert.That(WorkflowManager.UndoTask("s4").success, Is.False, "Precondition: a partial undo splits s4 across both stacks.");
+            Assert.That(WorkflowManager.UndoTask("s4").success, Is.False, "Precondition: a step whose snapshot cannot be restored fails the undo.");
             Assert.That(WorkflowManager.UndoTask("s3").success, Is.True);
             Assert.That(WorkflowManager.RedoTask("s3").success, Is.True);
             var mark = WorkflowManager.MarkBatchStart();
             Move("rolled-back", f);
-            WorkflowManager.RollBackBatch(mark, restoreRedoStack: true);
+            WorkflowManager.RollBackBatch(mark);
 
             var history = WorkflowManager.History;
-            Assert.That(history.tasks.Select(t => t.seq), Is.EqualTo(new long[] { 1, 4, 3 }));
-            Assert.That(history.undoneStack.Select(t => t.seq), Is.EqualTo(new long[] { 4 }));
-            Assert.That(history.tasks[0].agent, Is.EqualTo("Codex"));
-            Assert.That(history.tasks[2].snapshots, Has.Count.EqualTo(2));
+            Assert.That(history.tasks.Select(t => t.seq).Take(3), Is.EqualTo(new long[] { 1, 3, 4 }), "Undo and redo never move a step.");
+            Assert.That(history.restores.Any(restore => restore.steps.Contains(4)), Is.True, "A failed undo is still recorded as a restore.");
+            Assert.That(history.tasks.Single(t => t.seq == 1).agent, Is.EqualTo("Codex"));
+            Assert.That(history.tasks.Single(t => t.seq == 3).snapshots, Has.Count.EqualTo(2));
             string before = Describe(history);
 
             WorkflowManager.ResetStateForTests();
@@ -358,7 +358,7 @@ namespace UnitySkills.Tests.Core
 
             Assert.That(WorkflowStore.LastReplaySkippedLines, Is.EqualTo(3), "The truncated, kind-less and trailing-content lines.");
             Assert.That(history.tasks.Select(t => t.id), Is.EqualTo(new[] { "id-1", "id-5" }));
-            Assert.That(history.undoneStack.Select(t => t.id), Is.EqualTo(new[] { "id-4" }));
+            Assert.That(history.tasks.Select(t => t.id), Does.Not.Contain("id-4"), "Records of the retired undone stack are ignored on replay.");
 
             var replayed = history.tasks[0];
             Assert.That(replayed.seq, Is.EqualTo(7));
@@ -454,7 +454,10 @@ namespace UnitySkills.Tests.Core
         private static string Describe(WorkflowHistoryData history)
         {
             var text = new StringBuilder("next=").Append(history.nextSeq).Append('\n');
-            foreach (var (stack, tasks) in new[] { ("t", history.tasks), ("u", history.undoneStack) })
+            foreach (var restore in history.restores)
+                text.Append("r s").Append(restore.seq).Append(" to=").Append(restore.to).Append(" guard=").Append(restore.guard)
+                    .Append(" agent=").Append(restore.agent).Append(" steps=").Append(string.Join(",", restore.steps)).Append('\n');
+            foreach (var (stack, tasks) in new[] { ("t", history.tasks) })
             {
                 foreach (var task in tasks)
                 {

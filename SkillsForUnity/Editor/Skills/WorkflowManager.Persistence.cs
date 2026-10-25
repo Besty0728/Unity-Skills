@@ -96,9 +96,6 @@ namespace UnitySkills
                 _history.checkpoints[index] = WorkflowStore.MergeCheckpoint(_history.checkpoints[index], checkpoint);
         }
 
-        private static string StackKey(List<WorkflowTask> stack) =>
-            _history != null && ReferenceEquals(stack, _history.undoneStack) ? WorkflowStore.UndoneStack : WorkflowStore.TasksStack;
-
         /// <summary>
         /// Appends the batch, plus an agent record for each pending agent bound now, in one write, then releases the written
         /// snapshots' payloads from memory. False when nothing was written.
@@ -170,7 +167,7 @@ namespace UnitySkills
 
         private static void SanitizeHistory()
         {
-            foreach (var task in _history.tasks.Concat(_history.undoneStack))
+            foreach (var task in _history.tasks)
             {
                 if (task?.snapshots == null) continue;
                 foreach (var snapshot in task.snapshots)
@@ -203,28 +200,6 @@ namespace UnitySkills
         #endregion
 
         /// <summary>
-        /// Gets the list of tasks available to redo (already undone).
-        /// </summary>
-        public static List<WorkflowTask> GetUndoneStack()
-        {
-            return History.undoneStack;
-        }
-
-        /// <summary>
-        /// Clears the undone stack (called when new changes occur after an undo).
-        /// </summary>
-        public static void ClearUndoneStack()
-        {
-            if (_history == null)
-                return;
-
-            _history.undoneStack.Clear();
-            var batch = new LogBatch();
-            batch.Lines.Add(WorkflowStore.BuildClearLine(WorkflowStore.UndoneStack));
-            Commit(batch);
-        }
-
-        /// <summary>
         /// Removes a task from the history; its blobs are reclaimed when the log segments naming them are evicted.
         /// </summary>
         public static void DeleteTask(string taskId)
@@ -236,18 +211,6 @@ namespace UnitySkills
             {
                 _history.tasks.Remove(task);
                 batch.Lines.Add(WorkflowStore.BuildDropLine(WorkflowStore.TasksStack, task.id));
-            }
-            else
-            {
-                // A task that's already been undone lives in undoneStack, not in tasks. Leaving it there
-                // after a "delete" would make workflow_redo_task's default behavior (take the last item in
-                // undoneStack) resurrect an object the caller believes is already gone.
-                var undoneTask = _history.undoneStack.FirstOrDefault(t => MatchesTaskId(t, taskId));
-                if (undoneTask != null)
-                {
-                    _history.undoneStack.Remove(undoneTask);
-                    batch.Lines.Add(WorkflowStore.BuildDropLine(WorkflowStore.UndoneStack, undoneTask.id));
-                }
             }
 
             Commit(batch);
@@ -265,7 +228,7 @@ namespace UnitySkills
             AddTaskHashes(_currentTask, hashes);
             if (includeHistory && _history != null)
             {
-                foreach (var task in _history.tasks.Concat(_history.undoneStack))
+                foreach (var task in _history.tasks)
                     AddTaskHashes(task, hashes);
             }
             return hashes;
@@ -361,7 +324,7 @@ namespace UnitySkills
         {
             CleanupRunsForTests++;
             var report = new WorkflowTrimReport();
-            int tasksBefore = _history == null ? 0 : _history.tasks.Count + _history.undoneStack.Count;
+            int tasksBefore = _history == null ? 0 : _history.tasks.Count;
 
             var eviction = WorkflowStore.EvictSegments(CapacityBytes, Math.Max(0, WorkflowAutoCleanConfig.MaxAgeDays),
                 CollectLiveHashes(includeHistory: false), force);
@@ -378,7 +341,7 @@ namespace UnitySkills
             if (eviction.RemovedSegments > 0 && _history != null)
             {
                 ReloadFromLog();
-                report.removedTasks = Math.Max(0, tasksBefore - (_history.tasks.Count + _history.undoneStack.Count));
+                report.removedTasks = Math.Max(0, tasksBefore - _history.tasks.Count);
                 if (_historyRecoveryMode)
                     return report;
             }

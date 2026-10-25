@@ -636,16 +636,9 @@ namespace UnitySkills
                 Undo.RevertAllDownToGroup(txStartGroup);
                 GameObjectFinder.InvalidateCache();
                 rolledBack = true;
-                // The workflow history must not offer an undo of what the revert just put back. The redo stack the steps
-                // cleared comes back only when no step ran a workflow skill, which could have moved tasks between the stacks.
+                // The workflow history must not offer an undo of what the revert just put back.
                 if (txWorkflowMark != null)
-                {
-                    bool ranWorkflowSkill = results.Any(entry =>
-                        !string.Equals(entry["status"]?.ToString(), "skipped", StringComparison.Ordinal) &&
-                        SkillRouter.TryGetSkill(entry["skill"]?.ToString() ?? string.Empty, out var entrySkill) &&
-                        entrySkill.Category == SkillCategory.Workflow);
-                    WorkflowManager.RollBackBatch(txWorkflowMark, restoreRedoStack: !ranWorkflowSkill);
-                }
+                    WorkflowManager.RollBackBatch(txWorkflowMark);
 
                 int revertedSteps = 0;
                 foreach (var entry in results)

@@ -189,16 +189,12 @@ namespace UnitySkills
             }
             AddTaskRecord(batch, WorkflowStore.TasksStack, task, isNew: true);
             if (_history != null)
-            {
                 _history.tasks.Add(task);
-                _history.undoneStack.Clear();
-            }
             if (!Commit(batch) && _history == null)
             {
                 // Not persisted: keep it for this session at least, as an unsaved history file used to.
                 LoadHistory();
                 _history.tasks.Add(task);
-                _history.undoneStack.Clear();
             }
         }
 
@@ -366,15 +362,13 @@ namespace UnitySkills
 
         /// <summary>
         /// The stack holding this very task object, so an agent record names the copy it changed; null for a detached copy
-        /// (fully moved to the other stack, or deleted). With the history unloaded, only EndTask can have logged it, into "t".
+        /// (deleted). With the history unloaded, only EndTask can have logged it, into "t".
         /// </summary>
         private static string StackHolding(WorkflowTask task)
         {
-            if (_history == null)
+            if (_history == null || _history.tasks.Contains(task))
                 return WorkflowStore.TasksStack;
-            if (_history.tasks.Contains(task))
-                return WorkflowStore.TasksStack;
-            return _history.undoneStack.Contains(task) ? WorkflowStore.UndoneStack : null;
+            return null;
         }
 
         /// <summary>The process resolver's answer for <paramref name="remotePort"/>, folded, once it has one.</summary>
@@ -465,7 +459,6 @@ namespace UnitySkills
             internal long StartedUnixMs;
             internal WorkflowTask OpenTask;
             internal int OpenTaskSnapshotCount;
-            internal List<WorkflowTask> UndoneStack;
         }
 
         internal static BatchMark MarkBatchStart() => new BatchMark
@@ -473,8 +466,7 @@ namespace UnitySkills
             FirstSeq = History.nextSeq,
             StartedUnixMs = NowUnixMs(),
             OpenTask = _currentTask,
-            OpenTaskSnapshotCount = _currentTask?.snapshots?.Count ?? 0,
-            UndoneStack = new List<WorkflowTask>(History.undoneStack)
+            OpenTaskSnapshotCount = _currentTask?.snapshots?.Count ?? 0
         };
 
         /// <summary>
@@ -482,17 +474,14 @@ namespace UnitySkills
         /// tasks it started and from the task that was already open when it began (an explicit task or session). Left
         /// behind, they would offer an undo of changes that no longer exist, which fails on the first created object and
         /// blocks the rest of that undo. Asset and setting snapshots stay: the disk and the settings are not on Unity's undo
-        /// stack, so they are the only way back. When nothing of the batch is left and <paramref name="restoreRedoStack"/>
-        /// holds (no step touched the workflow stacks itself), the redo stack the steps' EndTask cleared comes back.
-        /// Returns how many snapshots were removed.
+        /// stack, so they are the only way back. Returns how many snapshots were removed.
         /// </summary>
-        internal static int RollBackBatch(BatchMark mark, bool restoreRedoStack)
+        internal static int RollBackBatch(BatchMark mark)
         {
             if (mark == null || _history == null)
                 return 0;
 
             int removed = 0;
-            bool kept = false;
             var batch = new LogBatch();
             if (mark.OpenTask?.snapshots != null && mark.OpenTask.snapshots.Count > mark.OpenTaskSnapshotCount)
             {
@@ -500,7 +489,6 @@ namespace UnitySkills
                     mark.OpenTask.snapshots.Count - mark.OpenTaskSnapshotCount);
                 int openRemoved = added.RemoveAll(IsRevertedByUnityUndo);
                 removed += openRemoved;
-                kept |= added.Count > 0;
                 mark.OpenTask.snapshots.RemoveRange(mark.OpenTaskSnapshotCount,
                     mark.OpenTask.snapshots.Count - mark.OpenTaskSnapshotCount);
                 mark.OpenTask.snapshots.AddRange(added);
@@ -517,18 +505,10 @@ namespace UnitySkills
                 int taskRemoved = task.snapshots.RemoveAll(IsRevertedByUnityUndo);
                 removed += taskRemoved;
                 task.InvalidateSnapshotIndex();
-                if (task.snapshots.Count > 0)
-                    kept = true;
                 if (taskRemoved > 0 || task.snapshots.Count == 0)
                     AddStateRecord(batch, WorkflowStore.TasksStack, _history.tasks, task);
             }
 
-            if (restoreRedoStack && !kept && _history.undoneStack.Count == 0 && mark.UndoneStack.Count > 0)
-            {
-                _history.undoneStack.AddRange(mark.UndoneStack);
-                foreach (var task in mark.UndoneStack)
-                    AddTaskRecord(batch, WorkflowStore.UndoneStack, task);
-            }
             if (batch.Lines.Count > 0 || batch.Failed)
                 Commit(batch);
             return removed;
@@ -598,47 +578,6 @@ namespace UnitySkills
 
             SkillsLogger.LogWorkflow($"Session ended: {_currentSessionId}");
             _currentSessionId = null;
-        }
-
-        /// <summary>
-        /// Undoes every change made during a given session, returning per-snapshot detailed results.
-        /// </summary>
-        public static TaskUndoResult UndoSession(string sessionId)
-        {
-            var result = new TaskUndoResult();
-            if (string.IsNullOrEmpty(sessionId))
-            {
-                result.error = "sessionId is required";
-                return result;
-            }
-
-            var sessionTasks = History.tasks
-                .Where(t => t.sessionId == sessionId)
-                .OrderByDescending(t => t.seq)
-                .ToList();
-
-            if (sessionTasks.Count == 0)
-            {
-                result.error = $"No tasks found for session: {sessionId}";
-                return result;
-            }
-
-            // Undo task by task, newest to oldest. Preserving task boundaries is what keeps operation order
-            // correct when the same object was modified, moved, and deleted at different points in the session.
-            foreach (var task in sessionTasks)
-            {
-                var taskResult = TransitionTask(task, _history.tasks, _history.undoneStack, "Undo Session");
-                result.details.AddRange(taskResult.details);
-                result.succeeded += taskResult.succeeded;
-                result.failed += taskResult.failed;
-                if (!taskResult.success)
-                    break;
-            }
-
-            result.total = result.details.Count;
-            result.success = result.failed == 0 && !_history.tasks.Any(t => t.sessionId == sessionId);
-
-            return result;
         }
 
         /// <summary>

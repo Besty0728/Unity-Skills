@@ -270,7 +270,7 @@ namespace UnitySkills.Tests.Core
             var revertTaskId = SeedTask(SceneSnapshot(probe));
             var sessionId = "guide-detour-session";
             SeedTask(new[] { SceneSnapshot(probe) }, sessionId);
-            var redoTaskId = SeedUndoneTask(SceneSnapshot(probe));
+            var redoTaskId = SeedRestore(SceneSnapshot(probe));
 
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Guide;
 
@@ -523,11 +523,26 @@ namespace UnitySkills.Tests.Core
             return task.id;
         }
 
-        private static string SeedUndoneTask(params ObjectSnapshot[] snapshots)
+        /// <summary>
+        /// Seeds a restore, as workflow_undo_task leaves it: its task holds the snapshots that workflow_redo_task re-applies. Returns
+        /// the restore's s&lt;seq&gt; id, which names it to workflow_redo_task.
+        /// </summary>
+        private static string SeedRestore(params ObjectSnapshot[] snapshots)
         {
-            var task = NewTask(snapshots, null);
-            WorkflowManager.GetUndoneStack().Add(task);
-            return task.id;
+            var history = WorkflowManager.History;
+            var restore = NewTask(snapshots, null);
+            restore.seq = history.AllocateSeq();
+            restore.agent = WorkflowManager.ResolveCallerAgent();
+            history.tasks.Add(restore);
+            history.restores.Add(new WorkflowRestoreRecord
+            {
+                seq = restore.seq,
+                to = "guide-detour",
+                guard = "c" + restore.seq,
+                agent = restore.agent,
+                steps = new List<long>()
+            });
+            return "s" + restore.seq;
         }
 
         private static WorkflowTask NewTask(IEnumerable<ObjectSnapshot> snapshots, string sessionId) => new WorkflowTask

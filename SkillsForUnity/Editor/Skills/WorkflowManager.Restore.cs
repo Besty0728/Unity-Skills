@@ -28,33 +28,19 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// Undoes a given task, returning per-snapshot detailed results.
-        /// Stores the inverse operation into undoneStack for redo.
+        /// Undoes the steps <paramref name="taskId"/> names (see <see cref="FindStepsForUndo"/>): their targets go back to the state
+        /// before the earliest of them, and steps on other targets stay. The restore is recorded, so <see cref="RedoTask"/> can take it back.
         /// </summary>
         public static TaskUndoResult UndoTask(string taskId)
         {
-            var task = History.tasks.FirstOrDefault(t => MatchesTaskId(t, taskId));
-            if (task == null)
-            {
+            var steps = FindStepsForUndo(taskId);
+            if (steps.Count == 0)
                 return new TaskUndoResult { error = "Task not found" };
-            }
-
-            return TransitionTask(task, _history.tasks, _history.undoneStack, $"Undo Task: {task.tag}");
+            return ToTaskUndoResult(RestoreSteps(steps, taskId, ResolveCallerAgent()));
         }
 
-        /// <summary>
-        /// Redoes a previously-undone task, returning per-snapshot detailed results.
-        /// </summary>
-        public static TaskUndoResult RedoTask(string taskId)
-        {
-            var task = History.undoneStack.FirstOrDefault(t => MatchesTaskId(t, taskId));
-            if (task == null)
-            {
-                return new TaskUndoResult { error = "Task not found in undone stack" };
-            }
-
-            return TransitionTask(task, _history.undoneStack, _history.tasks, $"Redo Task: {task.tag}");
-        }
+        /// <summary>Undoes a restore's own step (see <see cref="RedoRestore"/>).</summary>
+        public static TaskUndoResult RedoTask(string taskId) => ToTaskUndoResult(RedoRestore(taskId));
 
         /// <summary>A task is addressed by its UUID or by the short s&lt;seq&gt; id the compact list shows.</summary>
         internal static bool MatchesTaskId(WorkflowTask task, string taskId)
@@ -67,102 +53,161 @@ namespace UnitySkills
                    long.TryParse(taskId.Substring(1), out long seq) && seq == task.seq;
         }
 
-        private static TaskUndoResult TransitionTask(WorkflowTask sourceTask, List<WorkflowTask> sourceStack,
-            List<WorkflowTask> destinationStack, string undoGroupName)
+        /// <summary>
+        /// The steps an undo of <paramref name="taskId"/> covers, in seq order: a step by its s&lt;seq&gt; id or UUID, every step of a
+        /// group by its group id (g&lt;n&gt; or b&lt;n&gt;), or, for c&lt;n&gt;, every step of the group of the step at seq n. Empty when nothing matches.
+        /// </summary>
+        internal static List<WorkflowTask> FindStepsForUndo(string taskId)
         {
-            var result = new TaskUndoResult();
-            var destinationTask = destinationStack.FirstOrDefault(t => t.id == sourceTask.id);
-            bool destinationLogged = destinationTask != null;
-            if (destinationTask == null)
-            {
-                destinationTask = CloneTaskMetadata(sourceTask);
-                destinationStack.Add(destinationTask);
-            }
+            if (string.IsNullOrEmpty(taskId))
+                return new List<WorkflowTask>();
 
-            Undo.IncrementCurrentGroup();
-            Undo.SetCurrentGroupName(undoGroupName);
-            int undoGroup = Undo.GetCurrentGroup();
-
-            // An inverse lands on a task that may come from an earlier editor session (the other half of a partially undone
-            // task), so a snapshot carries its own idSession whenever it differs from its task's.
-            string currentIdSession = CurrentIdSession();
-            bool stampInverses = destinationTask.idSession != currentIdSession;
-            try
+            var tasks = History.tasks;
+            var steps = tasks.Where(task => MatchesTaskId(task, taskId)).ToList();
+            if (steps.Count == 0)
+                steps = tasks.Where(task => task.group == taskId).ToList();
+            if (steps.Count == 0 && TryParseCheckpointSeq(taskId, out long position))
             {
-                for (int i = sourceTask.snapshots.Count - 1; i >= 0; i--)
+                var step = tasks.FirstOrDefault(task => task.seq == position);
+                if (step != null)
                 {
-                    var snapshot = sourceTask.snapshots[i];
-                    // A snapshot from before idSession existed keeps the old fallback behavior.
-                    string capturedIn = string.IsNullOrEmpty(snapshot.idSession) ? sourceTask.idSession : snapshot.idSession;
-                    _sessionIdFallbackAllowed = string.IsNullOrEmpty(capturedIn) || capturedIn == currentIdSession;
-                    int inversesBefore = destinationTask.snapshots.Count;
-                    var detail = UndoSnapshot(snapshot, destinationTask);
-                    if (stampInverses)
-                    {
-                        for (int j = inversesBefore; j < destinationTask.snapshots.Count; j++)
-                            destinationTask.snapshots[j].idSession = currentIdSession;
-                    }
-                    result.details.Add(detail);
-                    if (!detail.success)
-                    {
-                        result.failed++;
-                        break;
-                    }
-
-                    result.succeeded++;
-                    sourceTask.snapshots.RemoveAt(i);
-                    sourceTask.InvalidateSnapshotIndex();
+                    steps = string.IsNullOrEmpty(step.group)
+                        ? new List<WorkflowTask> { step }
+                        : tasks.Where(task => task.group == step.group).ToList();
                 }
             }
-            finally
-            {
-                _sessionIdFallbackAllowed = true;
-            }
-
-            result.total = result.details.Count;
-            result.success = result.failed == 0 && sourceTask.snapshots.Count == 0;
-            Undo.CollapseUndoOperations(undoGroup);
-
-            // Each stack's copy of the task is logged in its new state; a transition that moved nothing changed nothing.
-            var batch = new LogBatch();
-            if (result.succeeded > 0 || sourceTask.snapshots.Count == 0)
-                AddStateRecord(batch, StackKey(sourceStack), sourceStack, sourceTask);
-            if (destinationTask.snapshots.Count == 0)
-            {
-                destinationStack.Remove(destinationTask);
-                if (destinationLogged && result.succeeded > 0)
-                    batch.Lines.Add(WorkflowStore.BuildDropLine(StackKey(destinationStack), destinationTask.id));
-            }
-            else if (result.succeeded > 0)
-            {
-                AddTaskRecord(batch, StackKey(destinationStack), destinationTask);
-            }
-            Commit(batch);
-            return result;
+            return steps.OrderBy(task => task.seq).ToList();
         }
 
-        private static WorkflowTask CloneTaskMetadata(WorkflowTask task)
+        private static bool TryParseCheckpointSeq(string id, out long seq)
         {
-            return new WorkflowTask
-            {
-                id = task.id,
-                tag = task.tag,
-                description = task.description,
-                timestamp = task.timestamp,
-                sessionId = task.sessionId,
-                seq = task.seq,
-                agent = task.agent,
-                group = task.group,
-                target = task.target,
-                // The clone receives inverse snapshots captured right now.
-                idSession = CurrentIdSession(),
-                snapshots = new List<ObjectSnapshot>()
-            };
+            seq = 0;
+            return id.Length > 1 && (id[0] == 'c' || id[0] == 'C') && long.TryParse(id.Substring(1), out seq);
+        }
+
+        /// <summary>The steps of one session, every agent's, in seq order.</summary>
+        internal static List<WorkflowTask> FindStepsForSession(string sessionId)
+        {
+            if (string.IsNullOrEmpty(sessionId))
+                return new List<WorkflowTask>();
+            return History.tasks.Where(task => task.sessionId == sessionId).OrderBy(task => task.seq).ToList();
+        }
+
+        /// <summary>Undoes every step of a session, the same way <see cref="UndoTask"/> undoes a step.</summary>
+        public static TaskUndoResult UndoSession(string sessionId) => ToTaskUndoResult(RestoreSession(sessionId));
+
+        internal static RestoreOutcome RestoreSession(string sessionId)
+        {
+            if (string.IsNullOrEmpty(sessionId))
+                return RestoreRefused(SkillErrorCode.SemanticInvalid, "sessionId is required");
+            var steps = FindStepsForSession(sessionId);
+            if (steps.Count == 0)
+                return RestoreRefused(SkillErrorCode.NotFound, $"No tasks found for session: {sessionId}");
+            return RestoreSteps(steps, "session " + sessionId, ResolveCallerAgent());
+        }
+
+        /// <summary>The step <see cref="RedoRestore"/> undoes: the restore step of the restore a taskId names, or none.</summary>
+        internal static List<WorkflowTask> FindStepsForRedo(string taskId)
+        {
+            var restore = FindRestoreForRedo(taskId, ResolveCallerAgent());
+            var step = restore == null ? null : History.tasks.FirstOrDefault(task => task.seq == restore.seq);
+            return step == null ? new List<WorkflowTask>() : new List<WorkflowTask> { step };
         }
 
         /// <summary>
-        /// An alias for UndoTask (backward compatibility).
+        /// Redoes a restore by undoing its own step, the way <see cref="UndoTask"/> undoes any step: only the targets the restore
+        /// changed go back, and later steps stay. See <see cref="FindRestoreForRedo"/> for which restore a taskId names.
         /// </summary>
+        internal static RestoreOutcome RedoRestore(string taskId)
+        {
+            var steps = FindStepsForRedo(taskId);
+            if (steps.Count == 0)
+                return RestoreRefused(SkillErrorCode.NotFound, "No undone tasks to redo");
+            return RestoreSteps(steps, steps[0].DisplayId, ResolveCallerAgent());
+        }
+
+        /// <summary>
+        /// The restore a redo takes back: with no id, the newest undoable restore of the caller; an s&lt;n&gt; or c&lt;n&gt; id names the
+        /// restore with that seq or guard; any other id is a step, and the newest undoable restore that reverted it is taken.
+        /// </summary>
+        private static WorkflowRestoreRecord FindRestoreForRedo(string taskId, string caller)
+        {
+            var undoable = GetUndoableRestores();
+            if (string.IsNullOrEmpty(taskId))
+                return undoable.FirstOrDefault(restore => restore.agent == caller);
+
+            var named = undoable.FirstOrDefault(restore =>
+                string.Equals(taskId, "s" + restore.seq, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(taskId, restore.guard, StringComparison.OrdinalIgnoreCase));
+            if (named != null)
+                return named;
+
+            var step = History.tasks.FirstOrDefault(task => MatchesTaskId(task, taskId));
+            return step == null ? null : undoable.FirstOrDefault(restore => restore.steps.Contains(step.seq));
+        }
+
+        /// <summary>
+        /// The restores that can still be undone, newest first: every restore with a recorded step that no later restore reverted.
+        /// A restore without a step changed nothing, so there is nothing to undo.
+        /// </summary>
+        internal static List<WorkflowRestoreRecord> GetUndoableRestores()
+        {
+            var history = History;
+            var restores = history.restores;
+            var stepSeqs = new HashSet<long>(history.tasks.Select(task => task.seq));
+            var undoable = new List<WorkflowRestoreRecord>();
+            for (int i = restores.Count - 1; i >= 0; i--)
+            {
+                if (stepSeqs.Contains(restores[i].seq) && !RestoreRevertedLater(restores, i))
+                    undoable.Add(restores[i]);
+            }
+            return undoable;
+        }
+
+        /// <summary>
+        /// The seqs of steps a restore undid: every step of a restore that no later restore undid itself. A restore whose own
+        /// step a later restore lists is itself reverted, so its steps are live again.
+        /// </summary>
+        internal static HashSet<long> UndoneSteps(IList<WorkflowRestoreRecord> restores)
+        {
+            var undone = new HashSet<long>();
+            for (int i = 0; i < restores.Count; i++)
+            {
+                if (RestoreRevertedLater(restores, i))
+                    continue;
+                foreach (long step in restores[i].steps)
+                    undone.Add(step);
+            }
+            return undone;
+        }
+
+        /// <summary>Whether a later restore lists this restore's step, which reverts it.</summary>
+        internal static bool RestoreRevertedLater(IList<WorkflowRestoreRecord> restores, int index)
+        {
+            for (int j = index + 1; j < restores.Count; j++)
+            {
+                if (restores[j].steps.Contains(restores[index].seq))
+                    return true;
+            }
+            return false;
+        }
+
+        private static TaskUndoResult ToTaskUndoResult(RestoreOutcome outcome)
+        {
+            var result = new TaskUndoResult
+            {
+                total = outcome.restored + outcome.deleted + outcome.recreated + outcome.failed + outcome.skipped,
+                succeeded = outcome.restored + outcome.deleted + outcome.recreated,
+                failed = outcome.failed,
+                error = outcome.error
+            };
+            result.success = result.error == null && result.failed == 0 && outcome.matchedSteps > 0;
+            foreach (string item in outcome.failedItems)
+                result.details.Add(new SnapshotUndoResult { success = false, objectName = item, error = item });
+            return result;
+        }
+
+        /// <summary>An alias for UndoTask (backward compatibility).</summary>
         public static TaskUndoResult RevertTask(string taskId)
         {
             return UndoTask(taskId);
@@ -897,6 +942,17 @@ namespace UnitySkills
             if (!_sessionIdFallbackAllowed)
                 return null;
 
+            // A never-saved scene's object that a restore recreated is found through the entity alias the restore recorded.
+            if (_restoreScopeAliases != null && !string.IsNullOrEmpty(entityId))
+            {
+                string aliased = ResolveEntityAlias(_restoreScopeAliases, entityId);
+                if (aliased != entityId)
+                {
+                    entityId = aliased;
+                    instanceId = 0;
+                }
+            }
+
             // An object of a never-saved scene has no usable GlobalObjectId; the entity id is the fallback that also works
             // on 6000.4+, where the legacy instance id is always 0.
             var byEntity = string.IsNullOrEmpty(entityId) ? null : UnityObjectIdUtility.EntityIdToObject(entityId);
@@ -964,6 +1020,7 @@ namespace UnitySkills
             }
 
             public IEnumerable<KeyValuePair<string, UnityEngine.Object>> GlobalIdEntries => _byGlobalId;
+            public IEnumerable<KeyValuePair<string, UnityEngine.Object>> EntityIdEntries => _byEntityId;
 
             public UnityEngine.Object Resolve(string globalObjectId, string entityId, int instanceId)
             {

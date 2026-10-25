@@ -223,7 +223,7 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void UndoPartialFailure_SplitsSucceededAndRetryableSnapshotsAcrossStacks()
+        public void UndoPartialFailure_ReportsFailureAndKeepsTheTaskWhole()
         {
             var created = new GameObject("WorkflowPartialSuccess");
             WorkflowManager.BeginTask("partial", "test");
@@ -242,9 +242,10 @@ namespace UnitySkills.Tests.Core
             Assert.That(result.success, Is.False);
             Assert.That(result.succeeded, Is.EqualTo(1));
             Assert.That(result.failed, Is.EqualTo(1));
+            Assert.That(result.details.Single(d => !d.success).error, Is.Not.Empty);
             Assert.That(GameObject.Find("WorkflowPartialSuccess"), Is.Null);
-            Assert.That(WorkflowManager.History.tasks.Single(t => t.id == taskId).snapshots.Count, Is.EqualTo(1));
-            Assert.That(WorkflowManager.History.undoneStack.Single(t => t.id == taskId).snapshots.Count, Is.EqualTo(1));
+            Assert.That(WorkflowManager.History.tasks.Single(t => t.id == taskId).snapshots.Count, Is.EqualTo(2),
+                "A partial undo does not split the step: it stays whole, and the restore that ran is recorded.");
         }
 
         [Test]

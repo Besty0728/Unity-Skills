@@ -270,15 +270,14 @@ namespace UnitySkills
             else return new { error = $"agents must be 'self' or 'all', got '{agents}'", errorCode = SkillErrorCode.SemanticInvalid.ToWireString() };
 
             var outcome = WorkflowManager.RestoreTo(to, allAgents, WorkflowManager.ResolveCallerAgent());
-            if (outcome.error != null)
-                return new
-                {
-                    error = outcome.error,
-                    errorCode = outcome.errorCode.ToWireString(),
-                    recentCheckpoints = outcome.recentCheckpoints,
-                    retryStrategy = SkillErrorResponse.RetryFixAndRetry
-                };
+            return outcome.error != null ? RestoreError(outcome) : RestoreResponse(outcome, to);
+        }
 
+        /// <summary>
+        /// The success response of a restore. A compile it triggered is reported as an async job the caller can wait on.
+        /// </summary>
+        private static Dictionary<string, object> RestoreResponse(RestoreOutcome outcome, string to)
+        {
             var result = new Dictionary<string, object>
             {
                 ["to"] = to,
@@ -307,6 +306,14 @@ namespace UnitySkills
                 alwaysInclude: true);
             return result;
         }
+
+        private static object RestoreError(RestoreOutcome outcome) => new
+        {
+            error = outcome.error,
+            errorCode = outcome.errorCode.ToWireString(),
+            recentCheckpoints = outcome.recentCheckpoints,
+            retryStrategy = SkillErrorResponse.RetryFixAndRetry
+        };
 
         [UnitySkill("workflow_task_end", "End the current workflow task and save it. Requires an active task (call workflow_task_start first).",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
@@ -426,7 +433,7 @@ namespace UnitySkills
 
             int take = limit > 0 ? limit : DefaultWorkflowListRows;
             var shown = entries.Take(take).ToList();
-            var undone = UndoneSteps(history.restores);
+            var undone = WorkflowManager.UndoneSteps(history.restores);
             var rows = shown.Select(e => e.Checkpoint != null
                 ? (checkpointsOnly
                     ? FormatCheckpointSummaryRow(e.Checkpoint, caller, checkpoints, tasks)
@@ -474,33 +481,6 @@ namespace UnitySkills
                 return false;
             cutoff = checkpoint ? ListKeyForCheckpoint(seq) : ListKeyForStep(seq);
             return true;
-        }
-
-        /// <summary>
-        /// The seqs of steps a restore undid: every step of a restore that no later restore undid itself. A restore whose own
-        /// step a later restore lists is itself reverted, so its steps are live again.
-        /// </summary>
-        private static HashSet<long> UndoneSteps(IList<WorkflowRestoreRecord> restores)
-        {
-            var undone = new HashSet<long>();
-            for (int i = 0; i < restores.Count; i++)
-            {
-                if (RestoreRevertedLater(restores, i))
-                    continue;
-                foreach (long step in restores[i].steps)
-                    undone.Add(step);
-            }
-            return undone;
-        }
-
-        private static bool RestoreRevertedLater(IList<WorkflowRestoreRecord> restores, int index)
-        {
-            for (int j = index + 1; j < restores.Count; j++)
-            {
-                if (restores[j].steps.Contains(restores[index].seq))
-                    return true;
-            }
-            return false;
         }
 
         private const int CheckpointLabelRowChars = 40;
@@ -571,88 +551,70 @@ namespace UnitySkills
         }
 
 
-        [UnitySkill("workflow_undo_task", "Undo changes from a specific task (restore to previous state); taskId is the s<seq> id from workflow_list or the task UUID.",
+        [UnitySkill("workflow_undo_task", "Undo one step or group (s<seq>, a group id, c<n> or a task UUID): its targets go back to their state before it; later steps on other targets stay.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "undo", "task", "revert", "restore" },
-            Outputs = new[] { "success", "taskId", "total", "succeeded", "failed", "details", "error" },
+            Outputs = new[] { "taskId", "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "undo", "compileTriggered" },
             RequiresInput = new[] { "taskId" },
             // Restoring a snapshot rewrites everything that task touched: scene objects, and --
             // via UndoMovedSnapshot / RedoDeletedSnapshot / RestoreModifiedSnapshot -- project assets.
             MutatesScene = true, MutatesAssets = true)]
         public static object WorkflowUndoTask(string taskId)
         {
-            var withdrawn = SurfaceRejectionForTasks("workflow_undo_task", "restoring this task's snapshots",
-                WorkflowManager.History.tasks.Where(t => WorkflowManager.MatchesTaskId(t, taskId)));
+            var steps = WorkflowManager.FindStepsForUndo(taskId);
+            var withdrawn = SurfaceRejectionForTasks("workflow_undo_task", "restoring this task's snapshots", steps);
             if (withdrawn != null)
                 return withdrawn;
+            if (steps.Count == 0)
+                return new
+                {
+                    error = $"Task not found: {taskId}",
+                    errorCode = SkillErrorCode.NotFound.ToWireString(),
+                    retryStrategy = SkillErrorResponse.RetryFixAndRetry
+                };
 
-            var result = WorkflowManager.UndoTask(taskId);
-            return new
-            {
-                success = result.success,
-                taskId = taskId,
-                result.total,
-                result.succeeded,
-                result.failed,
-                details = result.details.Select(d => new { d.globalObjectId, d.objectName, d.success, d.error }).ToList(),
-                error = result.error
-            };
+            var outcome = WorkflowManager.RestoreSteps(steps, taskId, WorkflowManager.ResolveCallerAgent());
+            if (outcome.error != null)
+                return RestoreError(outcome);
+            var result = RestoreResponse(outcome, taskId);
+            result["taskId"] = taskId;
+            return result;
         }
 
-        [UnitySkill("workflow_redo_task", "Redo a previously undone task (restore changes); taskId is an s<seq> id or UUID from workflow_undone_list, omitted = the most recently undone task.",
+        [UnitySkill("workflow_redo_task", "Undo a restore (from workflow_restore or workflow_undo_task): only the targets it changed go back, later steps stay; taskId is the restore's s<seq>, its guard c<n>, or a step it reverted; omitted = your newest restore.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "redo", "task", "restore", "changes" },
-            Outputs = new[] { "success", "taskId", "total", "succeeded", "failed", "details", "error" },
+            Outputs = new[] { "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "undo", "compileTriggered" },
             MutatesScene = true, MutatesAssets = true)]
         public static object WorkflowRedoTask(string taskId = null)
         {
-            // When taskId isn't given, redo the most recently undone task
-            if (string.IsNullOrEmpty(taskId))
-            {
-                var undoneStack = WorkflowManager.GetUndoneStack();
-                if (undoneStack.Count == 0)
-                    return new { success = false, error = "No undone tasks to redo" };
-                taskId = undoneStack[undoneStack.Count - 1].id;
-            }
-
-            var withdrawn = SurfaceRejectionForTasks("workflow_redo_task", "re-applying this task's snapshots",
-                WorkflowManager.GetUndoneStack().Where(t => WorkflowManager.MatchesTaskId(t, taskId)));
+            var steps = WorkflowManager.FindStepsForRedo(taskId);
+            var withdrawn = SurfaceRejectionForTasks("workflow_redo_task", "re-applying this task's snapshots", steps);
             if (withdrawn != null)
                 return withdrawn;
 
-            var result = WorkflowManager.RedoTask(taskId);
-            return new
-            {
-                success = result.success,
-                taskId = taskId,
-                result.total,
-                result.succeeded,
-                result.failed,
-                details = result.details.Select(d => new { d.globalObjectId, d.objectName, d.success, d.error }).ToList(),
-                error = result.error
-            };
+            var outcome = WorkflowManager.RedoRestore(taskId);
+            return outcome.error != null ? RestoreError(outcome) : RestoreResponse(outcome, outcome.to);
         }
 
-        [UnitySkill("workflow_undone_list", "List all undone tasks that can be redone",
+        [UnitySkill("workflow_undone_list", "List restores that can still be undone with workflow_redo_task.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Query,
             Tags = new[] { "undo", "redo", "list", "history" },
-            Outputs = new[] { "count", "undoneStack" },
+            Outputs = new[] { "count", "restores" },
             ReadOnly = true,
             Mode = SkillMode.SemiAuto)]
         public static object WorkflowUndoneList()
         {
-            var undoneStack = WorkflowManager.GetUndoneStack();
-            var list = undoneStack.Select(t => new
+            var restores = WorkflowManager.GetUndoableRestores().Select(restore => new
             {
-                id = t.id,
-                tag = t.tag,
-                description = t.description,
-                time = t.GetFormattedTime(),
-                changes = t.snapshots.Count,
-                seq = t.DisplayId
+                seq = "s" + restore.seq,
+                to = restore.to,
+                guard = restore.guard,
+                agent = restore.agent,
+                steps = restore.steps.Count
             }).ToList<object>();
 
-            return new { success = true, count = list.Count, undoneStack = list };
+            return new { success = true, count = restores.Count, restores };
         }
 
         [UnitySkill("workflow_revert_task", "Alias for workflow_undo_task (deprecated, use workflow_undo_task instead)",
@@ -715,7 +677,7 @@ namespace UnitySkills
         }
 
         [UnitySkill("workflow_clear_history",
-            "Permanently clear ALL workflow history: tasks, the redo (undone) stack, and every backed-up file blob in the content-addressed store. High-risk and irreversible — requires a confirmation token. This ONLY deletes the tracking history; it does NOT undo or revert any change already applied to your project assets, scenes, or settings.",
+            "Permanently clear ALL workflow history: tasks, restore records, and every backed-up file blob in the content-addressed store. High-risk and irreversible — requires a confirmation token. This ONLY deletes the tracking history; it does NOT undo or revert any change already applied to your project assets, scenes, or settings.",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Delete,
             Tags = new[] { "workflow", "history", "clear", "cleanup", "delete" },
             Outputs = new[] { "success", "before", "after", "message" },
@@ -726,7 +688,7 @@ namespace UnitySkills
             var before = new
             {
                 tasks = history.tasks.Count,
-                undoneStack = history.undoneStack.Count,
+                restores = history.restores.Count,
                 historyFileBytes = WorkflowManager.GetHistoryFileSizeBytes(),
                 fileStoreBytes = WorkflowFileStore.GetStoreSizeBytes()
             };
@@ -737,7 +699,7 @@ namespace UnitySkills
             var after = new
             {
                 tasks = afterHistory.tasks.Count,
-                undoneStack = afterHistory.undoneStack.Count,
+                restores = afterHistory.restores.Count,
                 historyFileBytes = WorkflowManager.GetHistoryFileSizeBytes(),
                 fileStoreBytes = WorkflowFileStore.GetStoreSizeBytes()
             };
@@ -792,7 +754,7 @@ namespace UnitySkills
         [UnitySkill("workflow_session_undo", "Undo all changes made during a specific session (conversation-level undo)",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "session", "undo", "conversation", "revert" },
-            Outputs = new[] { "success", "sessionId", "total", "succeeded", "failed", "details", "error", "message" },
+            Outputs = new[] { "sessionId", "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "undo", "compileTriggered" },
             MutatesScene = true, MutatesAssets = true)]
         public static object WorkflowSessionUndo(string sessionId = null)
         {
@@ -806,22 +768,16 @@ namespace UnitySkills
             }
 
             var withdrawn = SurfaceRejectionForTasks("workflow_session_undo", "restoring this session's snapshots",
-                WorkflowManager.History.tasks.Where(t => t.sessionId == sessionId));
+                WorkflowManager.FindStepsForSession(sessionId));
             if (withdrawn != null)
                 return withdrawn;
 
-            var result = WorkflowManager.UndoSession(sessionId);
-            return new
-            {
-                success = result.success,
-                sessionId = sessionId,
-                result.total,
-                result.succeeded,
-                result.failed,
-                details = result.details.Select(d => new { d.globalObjectId, d.objectName, d.success, d.error }).ToList(),
-                error = result.error,
-                message = result.success ? "Session changes undone successfully" : "Failed to undo session"
-            };
+            var outcome = WorkflowManager.RestoreSession(sessionId);
+            if (outcome.error != null)
+                return RestoreError(outcome);
+            var result = RestoreResponse(outcome, outcome.to);
+            result["sessionId"] = sessionId;
+            return result;
         }
 
         [UnitySkill("workflow_session_list", "List all recorded sessions (conversation-level history)",

@@ -60,7 +60,7 @@ namespace UnitySkills
                 workflow = new
                 {
                     activeTaskCount = hist?.tasks?.Count ?? 0,
-                    undoneTaskCount = hist?.undoneStack?.Count ?? 0,
+                    undoableRestoreCount = WorkflowManager.GetUndoableRestores().Count,
                     recentTasks = recent,
                 };
             }

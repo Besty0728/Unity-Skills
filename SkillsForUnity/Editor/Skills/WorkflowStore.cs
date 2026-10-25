@@ -13,10 +13,10 @@ namespace UnitySkills
     /// <summary>
     /// The workflow history on disk: an append-only JSONL log in segments, with snapshot payloads and asset bytes as
     /// content-addressed blobs in <see cref="WorkflowFileStore"/>. A record states one task's whole current state in one
-    /// stack ("t" undoable, "u" undone), drops it, clears a stack or rebinds an agent, so replaying the log in order
-    /// rebuilds both stacks. The log is the only source of truth; memory keeps task headers and snapshot stubs, and a
-    /// payload is read back when its snapshot is restored. Blobs are written before the record naming them, so a crash
-    /// leaves at most an orphan blob. Main thread only.
+    /// stack ("t"), drops it, clears a stack or rebinds an agent, so replaying the log in order rebuilds the tasks. Records
+    /// of the retired "u" (undone) stack are ignored. The log is the only source of truth; memory keeps task headers and
+    /// snapshot stubs, and a payload is read back when its snapshot is restored. Blobs are written before the record naming
+    /// them, so a crash leaves at most an orphan blob. Main thread only.
     /// </summary>
     internal static class WorkflowStore
     {
@@ -116,7 +116,7 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// A snapshot's header: what listing, classification, rollback and GC read without its payload. Restoring the
+        /// A snapshot's header: what listing, classification, restore planning, rollback and GC read without its payload. Restoring the
         /// header after a payload is read back keeps it authoritative over the payload's copy of the same fields.
         /// </summary>
         internal sealed class Change
@@ -128,7 +128,13 @@ namespace UnitySkills
             [JsonProperty("n")] public string Name;
             [JsonProperty("tn")] public string TypeName;
             [JsonProperty("a")] public string AssetPath;
+            [JsonProperty("pa")] public string PreviousAssetPath;
             [JsonProperty("ah")] public string AssetFingerprint;
+            [JsonProperty("ct")] public string ComponentTypeName;
+            [JsonProperty("sk")] public string SettingKey;
+            [JsonProperty("pg")] public string ParentGlobalObjectId;
+            [JsonProperty("pe")] public string ParentEntityId;
+            [JsonProperty("pi")] public int ParentInstanceId;
             [JsonProperty("is")] public string IdSession;
             [JsonProperty("p")] public string Payload;
             [JsonProperty("fh")] public string FileHash;
@@ -146,7 +152,7 @@ namespace UnitySkills
         /// <summary>
         /// The record of <paramref name="task"/>'s current state in <paramref name="stack"/>, storing the payload of every
         /// snapshot that has none yet; null when a payload could not be stored. <paramref name="isNew"/> marks a newly
-        /// recorded task, which clears the undone stack on replay.
+        /// recorded task.
         /// </summary>
         internal static string BuildTaskLine(string stack, WorkflowTask task, bool isNew)
         {
@@ -299,7 +305,13 @@ namespace UnitySkills
                     case "n": change.Name = reader.ReadAsString(); break;
                     case "tn": change.TypeName = reader.ReadAsString(); break;
                     case "a": change.AssetPath = reader.ReadAsString(); break;
+                    case "pa": change.PreviousAssetPath = reader.ReadAsString(); break;
                     case "ah": change.AssetFingerprint = reader.ReadAsString(); break;
+                    case "ct": change.ComponentTypeName = reader.ReadAsString(); break;
+                    case "sk": change.SettingKey = reader.ReadAsString(); break;
+                    case "pg": change.ParentGlobalObjectId = reader.ReadAsString(); break;
+                    case "pe": change.ParentEntityId = reader.ReadAsString(); break;
+                    case "pi": change.ParentInstanceId = reader.ReadAsInt32() ?? 0; break;
                     case "is": change.IdSession = reader.ReadAsString(); break;
                     case "p": change.Payload = reader.ReadAsString(); break;
                     case "fh": change.FileHash = reader.ReadAsString(); break;
@@ -434,7 +446,13 @@ namespace UnitySkills
             Name = snapshot.objectName,
             TypeName = snapshot.typeName,
             AssetPath = snapshot.assetPath,
+            PreviousAssetPath = snapshot.previousAssetPath,
             AssetFingerprint = snapshot.assetFingerprint,
+            ComponentTypeName = snapshot.componentTypeName,
+            SettingKey = snapshot.settingKey,
+            ParentGlobalObjectId = snapshot.parentGameObjectId,
+            ParentEntityId = snapshot.parentGameObjectEntityId,
+            ParentInstanceId = snapshot.parentGameObjectInstanceId,
             IdSession = snapshot.idSession,
             Payload = snapshot.payloadHash,
             FileHash = snapshot.fileHash,
@@ -451,7 +469,13 @@ namespace UnitySkills
             snapshot.objectName = change.Name;
             snapshot.typeName = change.TypeName;
             snapshot.assetPath = change.AssetPath;
+            snapshot.previousAssetPath = change.PreviousAssetPath;
             snapshot.assetFingerprint = change.AssetFingerprint;
+            snapshot.componentTypeName = change.ComponentTypeName;
+            snapshot.settingKey = change.SettingKey;
+            snapshot.parentGameObjectId = change.ParentGlobalObjectId;
+            snapshot.parentGameObjectEntityId = change.ParentEntityId;
+            snapshot.parentGameObjectInstanceId = change.ParentInstanceId;
             snapshot.idSession = change.IdSession;
             snapshot.payloadHash = change.Payload;
             snapshot.fileHash = change.FileHash;
@@ -503,13 +527,7 @@ namespace UnitySkills
             snapshot.isDirectory = false;
             snapshot.deleteRecursively = false;
             snapshot.directoryEntries = null;
-            snapshot.previousAssetPath = null;
-            snapshot.settingKey = null;
             snapshot.settingOldValueJson = null;
-            snapshot.componentTypeName = null;
-            snapshot.parentGameObjectId = null;
-            snapshot.parentGameObjectInstanceId = 0;
-            snapshot.parentGameObjectEntityId = null;
             snapshot.primitiveType = null;
             snapshot.posX = snapshot.posY = snapshot.posZ = 0;
             snapshot.rotX = snapshot.rotY = snapshot.rotZ = snapshot.rotW = 0;
@@ -882,11 +900,10 @@ namespace UnitySkills
 
         #region Replay
 
-        /// <summary>Everything one replay builds: both stacks, the checkpoints by id and the restore records.</summary>
+        /// <summary>Everything one replay builds: the tasks, the checkpoints by id and the restore records.</summary>
         private sealed class ReplayState
         {
             public readonly StackBuilder Tasks = new StackBuilder();
-            public readonly StackBuilder Undone = new StackBuilder();
             public readonly List<WorkflowCheckpoint> Checkpoints = new List<WorkflowCheckpoint>();
             public readonly List<WorkflowRestoreRecord> Restores = new List<WorkflowRestoreRecord>();
             public readonly Dictionary<string, int> CheckpointIndex = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -970,7 +987,6 @@ namespace UnitySkills
             var history = new WorkflowHistoryData
             {
                 tasks = state.Tasks.Build(),
-                undoneStack = state.Undone.Build(),
                 checkpoints = state.Checkpoints,
                 restores = state.Restores,
                 nextSeq = Math.Max(_head.NextSeq, maxSeq + 1)
@@ -1025,14 +1041,15 @@ namespace UnitySkills
 
         private static bool Apply(Record record, ReplayState state)
         {
-            var stack = record.Stack == TasksStack ? state.Tasks : record.Stack == UndoneStack ? state.Undone : null;
+            // The undone stack is retired: its records from earlier versions are read and dropped.
+            if (record.Stack == UndoneStack)
+                return true;
+            var stack = record.Stack == TasksStack ? state.Tasks : null;
             switch (record.Kind)
             {
                 case "task":
                     if (stack == null || string.IsNullOrEmpty(record.Id))
                         return false;
-                    if (record.IsNew != 0)
-                        state.Undone.Clear();
                     stack.Put(ToTask(record));
                     return true;
                 case "cp":

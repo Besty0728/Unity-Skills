@@ -168,7 +168,9 @@ Undo all changes made during a specific session (conversation-level undo).
 |-----------|------|----------|---------|-------------|
 | sessionId | string | No | null | The UUID of the session to undo. If not provided, undoes the most recent session |
 
-**Returns:** `{ success, sessionId, message }`
+Restores the session's steps the same way `workflow_restore` does, so the response is the restore response plus `sessionId`.
+
+**Returns:** `{ sessionId, to, guard, restored, deleted, recreated, failed, skipped, undo, compileTriggered }`
 
 ### `workflow_session_list`
 List all recorded sessions (conversation-level history).
@@ -272,29 +274,29 @@ A task row is `id time skill target (changes)`, plus `@agent` when another agent
 **Returns (objects):** `{ success, count, history: [{ id, tag, description, time, changes, seq, agent, group }] }`. `group` is `g<seq>` for one agent's run of writes without a 30 s pause (an explicit `workflow_task_start`..`end` task is a run of its own) and `j<jobId>` for the chunks of one async batch job.
 
 ### `workflow_undo_task`
-Undo changes from a specific task (restore to previous state). The undone task is saved and can be redone later.
+Undo one step or group: its targets go back to their state before it. Later steps on other targets stay. Each undo is recorded as a restore with a guard checkpoint, so `workflow_redo_task` can take it back.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| taskId | string | Yes | - | The task's `s<seq>` id from `workflow_list`, or its UUID |
+| taskId | string | Yes | - | `s<seq>` or the task UUID (one step); a group id (`g<n>` / `b<n>`, every step of the group); or `c<n>` (every step of the group of the step at seq n) |
 
-**Returns:** `{ success, taskId }`
+**Returns:** `{ taskId, to, guard, restored, deleted, recreated, failed, skipped, undo, compileTriggered }`, plus `failedItems` when something failed. A failed item makes the call report `failed > 0`; nothing is split. Unknown id: `errorCode: NOT_FOUND`.
 
 ### `workflow_redo_task`
-Redo a previously undone task (restore changes).
+Undo a restore (from `workflow_restore` or `workflow_undo_task`): only the targets that restore changed go back, and steps after it stay. To go back to the moment before the restore instead, discarding everything since, call `workflow_restore {"to":"<guard>"}`.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| taskId | string | No | null | The `s<seq>` id or UUID of the task to redo. If not provided, redoes the most recently undone task |
+| taskId | string | No | null | The restore's `s<seq>`, its guard `c<n>`, or a step it reverted. Omitted = your newest undoable restore |
 
-**Returns:** `{ success, taskId }`
+**Returns:** `{ to, guard, restored, deleted, recreated, failed, skipped, undo, compileTriggered }`. No undoable restore: `errorCode: NOT_FOUND`.
 
 ### `workflow_undone_list`
-List all undone tasks that can be redone.
+List restores that can still be undone with `workflow_redo_task`.
 
 No parameters.
 
-**Returns:** `{ success, count, undoneStack: [{ id, tag, description, time, changes, seq }] }`
+**Returns:** `{ success, count, restores: [{ seq, to, guard, agent, steps }] }`; `steps` is the number of steps the restore covered.
 
 ### `workflow_revert_task`
 **(deprecated)** Alias for `workflow_undo_task`. Use `workflow_undo_task` instead.
@@ -315,18 +317,18 @@ Delete a task from history (does not revert changes, just removes the record).
 **Returns:** `{ success, deletedId }`
 
 ### `workflow_clear_history`
-Permanently clear **ALL** workflow history: every task, the redo (undone) stack, and every backed-up file blob in the content-addressed store. High-risk and irreversible.
+Permanently clear **ALL** workflow history: every task, every restore record, and every backed-up file blob in the content-addressed store. High-risk and irreversible.
 **This ONLY deletes tracking history — it does NOT undo or revert any change already applied to your project assets, scenes, or settings.** To roll changes back, use `workflow_undo_task` / `workflow_session_undo` *before* clearing.
 
 Marked `SkillOperation.Delete` + `RiskLevel="high"`, so it is `NeverInSemi` (returns `MODE_FORBIDDEN` in Approval/Auto; only Bypass or an Allowlist hit can call it).
 
 **Parameters:** None
 
-**Returns:** `{ success, before, after, message }` where `before`/`after` each report `{ tasks, undoneStack, historyFileBytes, fileStoreBytes }`.
+**Returns:** `{ success, before, after, message }` where `before`/`after` each report `{ tasks, restores, historyFileBytes, fileStoreBytes }`.
 
 ## Snapshot Mechanism
 
-History is an append-only log under `Library/UnitySkills/workflow/`: `log.jsonl` plus sealed segments `log.NNNNNN.jsonl` (a segment seals at 4 MB or 5000 lines). Each record states one task's current state in the undo or redo stack, so replaying the log in order rebuilds both stacks. Snapshot payloads and asset / `.meta` bytes are content-addressed blobs under `workflow/blobs/`, written before the record that names them. Pre-3.0 history is moved to `Library/UnitySkills/workflow_legacy/` and deleted automatically 14 days later.
+History is an append-only log under `Library/UnitySkills/workflow/`: `log.jsonl` plus sealed segments `log.NNNNNN.jsonl` (a segment seals at 4 MB or 5000 lines). Each record states one task's current state, so replaying the log in order rebuilds the tasks; restore records are logged alongside. Snapshot payloads and asset / `.meta` bytes are content-addressed blobs under `workflow/blobs/`, written before the record that names them. Pre-3.0 history is moved to `Library/UnitySkills/workflow_legacy/` and deleted automatically 14 days later.
 
 Snapshots are tiered by `SnapshotType`:
 

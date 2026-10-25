@@ -291,6 +291,136 @@ namespace UnitySkills.Tests.Core
             }
         }
 
+        [Test]
+        public void Restore_MaterialMovedThenDeleted_ComesBackAtItsOriginalPath()
+        {
+            string matPath = AssetRoot + "/RestoreMoved.mat";
+            string movedPath = AssetRoot + "/RestoreMovedAway.mat";
+            JObject restored;
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("material_create", Args(("name", "RestoreMoved"), ("savePath", matPath)));
+                Call("workflow_checkpoint", Args(("label", "moveCp")));
+                Call("asset_move", Args(("sourcePath", matPath), ("destinationPath", movedPath)));
+                Call("asset_delete", Args(("assetPath", movedPath)));
+
+                restored = Restore("moveCp");
+            }
+
+            Assert.That(restored.Value<int>("failed"), Is.EqualTo(0), restored.ToString());
+            Assert.That(File.Exists(matPath), Is.True, "The material comes back at the path it had at the checkpoint.");
+            Assert.That(File.Exists(movedPath), Is.False);
+        }
+
+        [Test]
+        public void Undo_OfAMiddleStep_LeavesALaterStepOnAnotherObjectIntact()
+        {
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("gameobject_create", Args(("name", "WfU1"), ("x", 0f)));
+                Call("gameobject_create", Args(("name", "WfU2"), ("x", 0f)));
+                Call("gameobject_set_transform", Args(("name", "WfU1"), ("posX", 1f)));
+                string middle = WorkflowManager.History.tasks.Last().DisplayId;
+                Call("gameobject_set_transform", Args(("name", "WfU2"), ("posX", 2f)));
+
+                Undo(middle);
+            }
+
+            Assert.That(X("WfU1"), Is.EqualTo(0f).Within(0.001f));
+            Assert.That(X("WfU2"), Is.EqualTo(2f).Within(0.001f), "A later step on another object stays.");
+        }
+
+        [Test]
+        public void Redo_AfterUndoOfAStep_ReappliesIt()
+        {
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("gameobject_create", Args(("name", "WfRd"), ("x", 0f)));
+                Call("gameobject_set_transform", Args(("name", "WfRd"), ("posX", 3f)));
+                string step = WorkflowManager.History.tasks.Last().DisplayId;
+                Undo(step);
+                Assert.That(X("WfRd"), Is.EqualTo(0f).Within(0.001f));
+
+                var redo = Call("workflow_redo_task", Args(("taskId", step)));
+                Assert.That(redo.Value<string>("error"), Is.Null, redo.ToString());
+            }
+
+            Assert.That(X("WfRd"), Is.EqualTo(3f).Within(0.001f));
+        }
+
+        [Test]
+        public void Redo_OfAnEarlierUndo_LeavesLaterStepsAlone()
+        {
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("gameobject_create", Args(("name", "WfRa"), ("x", 0f)));
+                Call("gameobject_create", Args(("name", "WfRb"), ("x", 0f)));
+                Call("gameobject_set_transform", Args(("name", "WfRa"), ("posX", 1f)));
+                string first = WorkflowManager.History.tasks.Last().DisplayId;
+                Call("gameobject_set_transform", Args(("name", "WfRb"), ("posX", 2f)));
+                string second = WorkflowManager.History.tasks.Last().DisplayId;
+
+                Undo(first);
+                Call("gameobject_set_transform", Args(("name", "WfRb"), ("posY", 5f)));
+                Undo(second);
+                Assert.That(X("WfRb"), Is.EqualTo(0f).Within(0.001f), "Precondition: the second undo reverted WfRb.");
+
+                var redo = Call("workflow_redo_task", Args(("taskId", first)));
+                Assert.That(redo.Value<int>("failed"), Is.EqualTo(0), redo.ToString());
+            }
+
+            Assert.That(X("WfRa"), Is.EqualTo(1f).Within(0.001f), "The redo takes back only the undo of the first step.");
+            Assert.That(X("WfRb"), Is.EqualTo(0f).Within(0.001f), "The later undo of the second step stays.");
+        }
+
+        [Test]
+        public void UndoneList_ListsTheRestoreUntilItIsRedone()
+        {
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("gameobject_create", Args(("name", "WfL"), ("x", 0f)));
+                Call("gameobject_set_transform", Args(("name", "WfL"), ("posX", 4f)));
+                string step = WorkflowManager.History.tasks.Last().DisplayId;
+                Undo(step);
+
+                var listed = Call("workflow_undone_list", Args()).Value<JObject>("result");
+                Assert.That(listed.Value<int>("count"), Is.EqualTo(1));
+                string restoreId = listed["restores"][0].Value<string>("seq");
+
+                var redo = Call("workflow_redo_task", Args(("taskId", step)));
+                Assert.That(redo.Value<string>("error"), Is.Null, redo.ToString());
+                var after = Call("workflow_undone_list", Args()).Value<JObject>("result");
+                Assert.That(after["restores"].Select(restore => restore.Value<string>("seq")), Does.Not.Contain(restoreId),
+                    "The redone restore is no longer listed.");
+            }
+        }
+
+        [Test]
+        public void SessionUndo_RevertsOnlyThatSessionsSteps()
+        {
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("gameobject_create", Args(("name", "WfS1")));
+                WorkflowManager.History.tasks.Last().sessionId = "restore-test-session";
+                Call("gameobject_create", Args(("name", "WfS2")));
+
+                var undo = Call("workflow_session_undo", Args(("sessionId", "restore-test-session")));
+                Assert.That(undo.Value<string>("error"), Is.Null, undo.ToString());
+            }
+
+            Assert.That(GameObject.Find("WfS1"), Is.Null);
+            Assert.That(GameObject.Find("WfS2"), Is.Not.Null, "A step outside the session stays.");
+        }
+
+        // The success result of workflow_undo_task, failing the test when the call was refused.
+        private static JObject Undo(string taskId)
+        {
+            var response = Call("workflow_undo_task", Args(("taskId", taskId)));
+            Assert.That(response.Value<string>("error"), Is.Null, response.ToString());
+            Assert.That(response.Value<JObject>("result").Value<int>("failed"), Is.EqualTo(0), response.ToString());
+            return response.Value<JObject>("result");
+        }
+
         private static float Mass(string path) => GameObject.Find(path).GetComponent<Rigidbody>().mass;
 
         private static JObject Call(string skill, string json) => JObject.Parse(SkillRouter.Execute(skill, json));

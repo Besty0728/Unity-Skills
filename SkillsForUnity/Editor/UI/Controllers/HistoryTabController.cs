@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEditor;
@@ -154,7 +155,7 @@ namespace UnitySkills
             if (_autoCleanUsage == null) return;
 
             var history = WorkflowManager.History;
-            int taskCount = (history?.tasks?.Count ?? 0) + (history?.undoneStack?.Count ?? 0);
+            int taskCount = history?.tasks?.Count ?? 0;
             long logBytes = WorkflowManager.GetHistoryFileSizeBytes();
             long blobBytes = WorkflowFileStore.GetStoreSizeBytes();
 
@@ -216,10 +217,27 @@ namespace UnitySkills
                 titleFormatKey: "history_active_format",
                 emptyKey: "history_no_active");
 
-            BuildSection(_undoneContainer, _undoneTitle, history?.undoneStack,
+            BuildSection(_undoneContainer, _undoneTitle, UndoableRestoreTasks(history),
                 isActive: false,
                 titleFormatKey: "history_undone_format",
                 emptyKey: "history_no_undone");
+        }
+
+        /// <summary>
+        /// The restore steps that workflow_redo_task can still undo, as their tasks, oldest first (the list shows newest first).
+        /// A restore without a task of its own has nothing to show.
+        /// </summary>
+        private static List<WorkflowTask> UndoableRestoreTasks(WorkflowHistoryData history)
+        {
+            var tasks = new List<WorkflowTask>();
+            var restores = WorkflowManager.GetUndoableRestores();
+            for (int i = restores.Count - 1; i >= 0; i--)
+            {
+                var task = history?.tasks?.FirstOrDefault(t => t.seq == restores[i].seq);
+                if (task != null)
+                    tasks.Add(task);
+            }
+            return tasks;
         }
 
         private void BuildSection(VisualElement container, Label title,
@@ -309,7 +327,7 @@ namespace UnitySkills
             {
                 var redoBtn = new Button(() =>
                 {
-                    var result = WorkflowManager.RedoTask(task.id);
+                    var result = WorkflowManager.RedoTask("s" + task.seq);
                     ShowResult(result, SkillsLocalization.Get("btn_redo"));
                     RefreshHistory();
                 });

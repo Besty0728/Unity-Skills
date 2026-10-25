@@ -108,7 +108,6 @@ namespace UnitySkills
     public class WorkflowHistoryData
     {
         public List<WorkflowTask> tasks = new List<WorkflowTask>();
-        public List<WorkflowTask> undoneStack = new List<WorkflowTask>(); // Stack of undone tasks, for redo
         public List<WorkflowCheckpoint> checkpoints = new List<WorkflowCheckpoint>();
         public List<WorkflowRestoreRecord> restores = new List<WorkflowRestoreRecord>();
         public long nextSeq = 1; // Next short task id (s<seq>); never reused within one history
@@ -116,16 +115,14 @@ namespace UnitySkills
         public void EnsureDefaults()
         {
             if (tasks == null) tasks = new List<WorkflowTask>();
-            if (undoneStack == null) undoneStack = new List<WorkflowTask>();
             if (checkpoints == null) checkpoints = new List<WorkflowCheckpoint>();
             if (restores == null) restores = new List<WorkflowRestoreRecord>();
 
             tasks.RemoveAll(task => task == null);
-            undoneStack.RemoveAll(task => task == null);
             checkpoints.RemoveAll(checkpoint => checkpoint == null);
             restores.RemoveAll(restore => restore == null);
 
-            long max = tasks.Concat(undoneStack).Select(task => task.seq)
+            long max = tasks.Select(task => task.seq)
                 .Concat(restores.Select(restore => restore.seq)).DefaultIfEmpty(0).Max();
             if (nextSeq <= max)
                 nextSeq = max + 1;

@@ -243,7 +243,7 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void InverseAppendedToATaskFromAnotherSession_KeepsItsOwnSession()
+        public void PartialUndo_KeepsTheStepWhole_AndRecordsTheRestore()
         {
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var first = new GameObject("HotPathSplitFirst");
@@ -257,29 +257,22 @@ namespace UnitySkills.Tests.Core
             WorkflowManager.EndTask();
             var task = WorkflowManager.History.tasks.Last();
 
-            // Undo runs newest first; an unresolvable first snapshot stops it after the second, splitting the task across
-            // both stacks under one id.
+            // Undo runs newest first; an unresolvable first snapshot fails the undo after the second has been restored.
             var firstSnapshot = task.snapshots[0];
             string firstEntityId = firstSnapshot.entityId;
             int firstInstanceId = firstSnapshot.objectInstanceId;
             firstSnapshot.entityId = null;
             firstSnapshot.objectInstanceId = 0;
-            Assert.That(WorkflowManager.UndoTask(task.DisplayId).success, Is.False, "Precondition: a partial undo.");
+            var partial = WorkflowManager.UndoTask(task.DisplayId);
             firstSnapshot.entityId = firstEntityId;
             firstSnapshot.objectInstanceId = firstInstanceId;
 
-            // The redo half now reads as recorded in an earlier editor session; undoing the rest appends to it.
-            var redoHalf = WorkflowManager.GetUndoneStack().Single();
-            redoHalf.idSession = "an-earlier-editor-session";
-            Assert.That(WorkflowManager.UndoTask(task.DisplayId).success, Is.True);
-            Assert.That(first.transform.position, Is.EqualTo(Vector3.zero));
-
-            var redo = WorkflowManager.RedoTask(redoHalf.DisplayId);
-
-            Assert.That(first.transform.position, Is.EqualTo(new Vector3(1f, 0f, 0f)),
-                "The inverse captured in this session still resolves through its entity id.");
-            Assert.That(second.transform.position, Is.EqualTo(Vector3.zero), "The inverse from the earlier session must not.");
-            Assert.That(redo.success, Is.False);
+            Assert.That(partial.success, Is.False);
+            Assert.That(partial.failed, Is.EqualTo(1));
+            Assert.That(second.transform.position, Is.EqualTo(Vector3.zero));
+            Assert.That(WorkflowManager.History.tasks.Single(t => t.id == task.id).snapshots, Has.Count.EqualTo(2),
+                "The step is not split: it keeps every snapshot.");
+            Assert.That(WorkflowManager.GetUndoableRestores(), Has.Count.EqualTo(1));
         }
 
         [Test]
@@ -365,23 +358,26 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void WorkflowList_PagesInSeqOrder_AfterARedoMovesATaskToTheEnd()
+        public void WorkflowList_PagesInSeqOrder_AfterAnUndoAndRedo()
         {
             var go = new GameObject("HotPathRedoOrderProbe");
             for (int i = 0; i < 3; i++)
                 Record("AgentA", i * 1000L, go, auto: true, target: "Player");
             Assert.That(WorkflowManager.UndoTask("s2").success, Is.True);
             Assert.That(WorkflowManager.RedoTask("s2").success, Is.True);
-            Assert.That(WorkflowManager.History.tasks.Last().seq, Is.EqualTo(2), "Precondition: the redone task sits last.");
+            // Steps sort at 2 * seq + 1 and checkpoints at 2 * position, so the undo and the redo (each with its guard) lead the list.
+            var newest = WorkflowManager.History.tasks.Select(task => (Key: 2 * task.seq + 1, Id: task.DisplayId))
+                .Concat(WorkflowManager.History.checkpoints.Select(checkpoint => (Key: 2 * checkpoint.seq, Id: checkpoint.id)))
+                .OrderByDescending(entry => entry.Key).Select(entry => entry.Id).ToArray();
 
             JObject result;
             using (SkillsAuditLog.BeginRequestContext(-1, "AgentA", true))
                 result = JObject.FromObject(WorkflowSkills.WorkflowList(limit: 2));
 
             var rows = result["rows"].Values<string>().ToArray();
-            Assert.That(rows[0], Does.StartWith("s3 "));
-            Assert.That(rows[1], Does.StartWith("s2 "));
-            Assert.That(result["more"]?.ToString(), Is.EqualTo("s2"));
+            Assert.That(rows[0], Does.StartWith(newest[0] + " "));
+            Assert.That(rows[1], Does.StartWith(newest[1] + " "));
+            Assert.That(result["more"]?.ToString(), Is.EqualTo(newest[1]));
         }
 
         [Test]
@@ -543,7 +539,7 @@ namespace UnitySkills.Tests.Core
             var mark = WorkflowManager.MarkBatchStart();
             WorkflowManager.SnapshotObject(other.transform);
             WorkflowManager.SnapshotObject(material);
-            WorkflowManager.RollBackBatch(mark, restoreRedoStack: true);
+            WorkflowManager.RollBackBatch(mark);
             Assert.That(WorkflowManager.CurrentTask.snapshots.Select(s => s.objectName),
                 Is.EqualTo(new[] { go.transform.name, material.name }));
             WorkflowManager.EndTask();
@@ -551,26 +547,27 @@ namespace UnitySkills.Tests.Core
             // A step's own task that wrote a scene object and an asset keeps the asset half.
             mark = WorkflowManager.MarkBatchStart();
             RecordExplicit("mixed-step", other.transform, material);
-            WorkflowManager.RollBackBatch(mark, restoreRedoStack: true);
+            WorkflowManager.RollBackBatch(mark);
             var mixed = WorkflowManager.History.tasks.Single(task => task.tag == "mixed-step");
             Assert.That(mixed.snapshots.Select(s => s.objectName), Is.EqualTo(new[] { material.name }));
         }
 
         [Test]
-        public void RollBackBatch_GivesBackTheRedoStack_WhenNothingOfTheBatchIsLeft()
+        public void RecordedStep_KeepsAnUndoneRestoreListed()
         {
             var go = new GameObject("HotPathRedoStackProbe");
             RecordExplicit("undone-before-batch", go);
             Assert.That(WorkflowManager.UndoTask(WorkflowManager.History.tasks.Last().DisplayId).success, Is.True);
-            Assert.That(WorkflowManager.GetUndoneStack(), Has.Count.EqualTo(1));
+            Assert.That(WorkflowManager.GetUndoableRestores(), Has.Count.EqualTo(1));
 
             var mark = WorkflowManager.MarkBatchStart();
             RecordExplicit("scene-step", go);
-            Assert.That(WorkflowManager.GetUndoneStack(), Is.Empty, "Precondition: a recorded step clears the redo stack.");
-            WorkflowManager.RollBackBatch(mark, restoreRedoStack: true);
+            Assert.That(WorkflowManager.GetUndoableRestores(), Has.Count.EqualTo(1),
+                "A new step does not retire an undone restore: it stays listed until it is redone.");
+            WorkflowManager.RollBackBatch(mark);
 
             Assert.That(WorkflowManager.History.tasks.Where(task => task.tag == "scene-step"), Is.Empty);
-            Assert.That(WorkflowManager.GetUndoneStack().Select(task => task.tag), Is.EqualTo(new[] { "undone-before-batch" }));
+            Assert.That(WorkflowManager.GetUndoableRestores(), Has.Count.EqualTo(1));
         }
 
         [Test]

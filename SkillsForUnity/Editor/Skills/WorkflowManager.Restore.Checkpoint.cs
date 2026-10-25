@@ -19,6 +19,10 @@ namespace UnitySkills
         public string error;
         public SkillErrorCode errorCode;
         public List<string> recentCheckpoints;
+        // The position or the step set the restore went back to, as the caller named it.
+        public string to;
+        // How many steps the restore was asked to cover, whether or not any of them had a snapshot to restore.
+        public int matchedSteps;
         public string guard;
         public int restored;
         public int deleted;
@@ -46,12 +50,10 @@ namespace UnitySkills
         /// </summary>
         internal static RestoreOutcome RestoreTo(string to, bool allAgents, string callerAgent)
         {
-            if (EditorApplication.isPlaying)
-                return RestoreRefused(SkillErrorCode.SemanticInvalid, "Cannot restore while Play Mode is running. Exit Play Mode first.");
-            if (ServerAvailabilityHelper.IsCompilationInProgress())
-                return RestoreRefused(SkillErrorCode.Compiling, "Unity is compiling or updating assets. Retry the restore after it finishes.");
+            var refused = RestoreRefusal();
+            if (refused != null)
+                return refused;
 
-            var history = History;
             if (!TryResolveRestorePosition(to, callerAgent, out long position))
             {
                 var notFound = RestoreRefused(SkillErrorCode.NotFound,
@@ -60,11 +62,26 @@ namespace UnitySkills
                 return notFound;
             }
 
-            var steps = history.tasks
+            var steps = History.tasks
                 .Where(task => task.seq >= position && (allAgents || task.agent == callerAgent))
                 .OrderBy(task => task.seq)
                 .ToList();
-            var outcome = new RestoreOutcome();
+            return RestoreSteps(steps, to, callerAgent);
+        }
+
+        /// <summary>
+        /// Restores the targets of <paramref name="steps"/> (in seq order) to their state before the earliest of them. Each target
+        /// gets the earliest state among the steps only, so later steps on other targets stay. The caller's undo of one step and of a
+        /// position both come through here.
+        /// </summary>
+        internal static RestoreOutcome RestoreSteps(List<WorkflowTask> steps, string to, string callerAgent)
+        {
+            var refused = RestoreRefusal();
+            if (refused != null)
+                return refused;
+
+            var history = History;
+            var outcome = new RestoreOutcome { to = to, matchedSteps = steps.Count };
             if (steps.Count == 0)
                 return outcome;
 
@@ -159,11 +176,42 @@ namespace UnitySkills
                     continue;
                 pairs.Add(new[] { entry.Key, newGid });
             }
+
+            // An object of a never-saved scene has no persistent id, so it is aliased by entity id, which holds for this session only.
+            string session = CurrentIdSession();
+            foreach (var entry in scope.EntityIdEntries)
+            {
+                if (entry.Value == null || !IsUnsavedSceneGlobalObjectId(GlobalObjectId.GetGlobalObjectIdSlow(entry.Value).ToString()))
+                    continue;
+                string newEntityId = UnityObjectIdUtility.GetEntityId(entry.Value);
+                if (!string.IsNullOrEmpty(newEntityId) && newEntityId != entry.Key)
+                    pairs.Add(new[] { EntityAliasKey(session, entry.Key), EntityAliasKey(session, newEntityId) });
+            }
             return pairs;
+        }
+
+        private static string EntityAliasKey(string idSession, string entityId) => "entity:" + idSession + ":" + entityId;
+
+        /// <summary>The entity id a restore's alias table maps an entity id of this session to, or the id itself.</summary>
+        private static string ResolveEntityAlias(Dictionary<string, string> aliases, string entityId)
+        {
+            string key = EntityAliasKey(CurrentIdSession(), entityId);
+            string resolved = ResolveGidAlias(aliases, key);
+            return resolved == key ? entityId : resolved.Substring(resolved.LastIndexOf(':') + 1);
         }
 
         private static RestoreOutcome RestoreRefused(SkillErrorCode code, string message) =>
             new RestoreOutcome { error = message, errorCode = code };
+
+        /// <summary>The refusal a restore gets while Play Mode runs or Unity compiles, or null when it may run.</summary>
+        private static RestoreOutcome RestoreRefusal()
+        {
+            if (EditorApplication.isPlaying)
+                return RestoreRefused(SkillErrorCode.SemanticInvalid, "Cannot restore while Play Mode is running. Exit Play Mode first.");
+            if (ServerAvailabilityHelper.IsCompilationInProgress())
+                return RestoreRefused(SkillErrorCode.Compiling, "Unity is compiling or updating assets. Retry the restore after it finishes.");
+            return null;
+        }
 
         /// <summary>
         /// A position is "s&lt;n&gt;" (the state before step n), "last" (the newest checkpoint the caller took), or a checkpoint
@@ -212,6 +260,7 @@ namespace UnitySkills
         {
             public WorkflowTask Step;
             public ObjectSnapshot Snapshot;
+            public int Index;   // Capture order across the steps
         }
 
         private sealed class RestoreWork
@@ -236,48 +285,53 @@ namespace UnitySkills
             var chainsByKey = new Dictionary<string, List<RestoreItem>>(StringComparer.Ordinal);
             var chains = new List<List<RestoreItem>>();
             int unkeyed = 0;
+            int index = 0;
             foreach (var step in steps)
             {
                 foreach (var snapshot in step.snapshots)
                 {
                     if (snapshot == null)
                         continue;
-                    string key = RestoreChainKey(snapshot, gidAliases, pathKeys) ?? "unkeyed:" + (++unkeyed);
+                    string capturedIn = string.IsNullOrEmpty(snapshot.idSession) ? step.idSession : snapshot.idSession;
+                    string key = RestoreChainKey(snapshot, capturedIn, gidAliases, pathKeys) ?? "unkeyed:" + (++unkeyed);
                     if (!chainsByKey.TryGetValue(key, out var chain))
                     {
                         chain = new List<RestoreItem>();
                         chainsByKey.Add(key, chain);
                         chains.Add(chain);
                     }
-                    chain.Add(new RestoreItem { Step = step, Snapshot = snapshot });
+                    chain.Add(new RestoreItem { Step = step, Snapshot = snapshot, Index = index++ });
                 }
             }
             return chains;
         }
 
         /// <summary>The key of a snapshot's target, or null when it names none. Asset paths are tracked through moves in step order.</summary>
-        private static string RestoreChainKey(ObjectSnapshot snapshot, Dictionary<string, string> gidAliases,
-            Dictionary<string, string> pathKeys)
+        private static string RestoreChainKey(ObjectSnapshot snapshot, string capturedIdSession,
+            Dictionary<string, string> gidAliases, Dictionary<string, string> pathKeys)
         {
             if (snapshot.type == SnapshotType.Setting && !string.IsNullOrEmpty(snapshot.settingKey))
                 return "setting:" + snapshot.settingKey;
 
-            string gid = ResolveGidAlias(gidAliases, snapshot.globalObjectId);
-            if (!string.IsNullOrEmpty(gid))
-                return gid;
-
+            // A never-saved scene gives every object the same GlobalObjectId, so its objects are told apart by entity id.
+            string gid = !IsUnsavedSceneGlobalObjectId(snapshot.globalObjectId)
+                ? ResolveGidAlias(gidAliases, snapshot.globalObjectId)
+                : string.IsNullOrEmpty(snapshot.entityId) ? null
+                : ResolveGidAlias(gidAliases, EntityAliasKey(capturedIdSession, snapshot.entityId));
+            // Every asset snapshot is tracked by path, so one without a GlobalObjectId (a deleted asset) still joins its chain.
             bool moved = snapshot.type == SnapshotType.Moved;
             string path = moved ? snapshot.previousAssetPath : snapshot.assetPath;
-            if (string.IsNullOrEmpty(path))
-                return null;
-
-            string key = pathKeys.TryGetValue(path, out string tracked) ? tracked : "asset:" + path;
-            if (moved && !string.IsNullOrEmpty(snapshot.assetPath))
+            string pathKey = null;
+            if (!string.IsNullOrEmpty(path))
             {
-                pathKeys.Remove(path);
-                pathKeys[snapshot.assetPath] = key;
+                pathKey = pathKeys.TryGetValue(path, out string tracked) ? tracked : !string.IsNullOrEmpty(gid) ? gid : "asset:" + path;
+                if (moved && !string.IsNullOrEmpty(snapshot.assetPath))
+                {
+                    pathKeys.Remove(path);
+                    pathKeys[snapshot.assetPath] = pathKey;
+                }
             }
-            return key;
+            return !string.IsNullOrEmpty(gid) ? gid : pathKey;
         }
 
         private static Dictionary<string, string> RestoreGidAliases(List<WorkflowRestoreRecord> restores)
@@ -322,8 +376,9 @@ namespace UnitySkills
                 else
                     PlanSceneChain(chain, works);
             }
-            // OrderBy is stable, so equal phases keep their capture order.
-            return works.OrderBy(work => work.Order).ToList();
+            // Within a phase the newest capture goes first, as a step's own undo always did: a component added after another
+            // (a ParticleSystem's renderer) is removed first, and a parent deleted after its child comes back before it.
+            return works.OrderBy(work => work.Order).ThenByDescending(work => work.Item.Index).ToList();
         }
 
         private static void PlanSceneChain(List<RestoreItem> chain, List<RestoreWork> works)
@@ -368,7 +423,13 @@ namespace UnitySkills
                     currentPath = item.Snapshot.assetPath;
             }
 
-            if (!string.IsNullOrEmpty(startPath) && !string.IsNullOrEmpty(currentPath) && currentPath != startPath)
+            // A Deleted item at or after the last move means the asset is absent at its current path. Its recreate lands at the start
+            // path (PathOverride), so there is nothing to move back.
+            var representative = chain.FirstOrDefault(item => item.Snapshot.type != SnapshotType.Moved);
+            int lastMove = chain.FindLastIndex(item => item.Snapshot.type == SnapshotType.Moved);
+            bool absentAtCurrentPath = representative?.Snapshot.type == SnapshotType.Deleted ||
+                                       chain.Skip(lastMove + 1).Any(item => item.Snapshot.type == SnapshotType.Deleted);
+            if (!absentAtCurrentPath && !string.IsNullOrEmpty(startPath) && !string.IsNullOrEmpty(currentPath) && currentPath != startPath)
             {
                 var move = new ObjectSnapshot
                 {
@@ -382,12 +443,11 @@ namespace UnitySkills
                 works.Add(new RestoreWork
                 {
                     Order = 10,
-                    Item = new RestoreItem { Step = chain[0].Step, Snapshot = move },
+                    Item = new RestoreItem { Step = chain[0].Step, Snapshot = move, Index = chain[0].Index },
                     Chain = chain
                 });
             }
 
-            var representative = chain.FirstOrDefault(item => item.Snapshot.type != SnapshotType.Moved);
             if (representative == null)
                 return;
             var snapshot = representative.Snapshot;
@@ -476,7 +536,7 @@ namespace UnitySkills
                 }
 
                 // A Deleted item only applies when its target is absent: an earlier restore or an undo may have brought it back.
-                if (work.RecreateOnly && !IsAlreadyAbsent(snapshot))
+                if (work.RecreateOnly && !IsAlreadyAbsent(snapshot, work.PathOverride))
                 {
                     outcome.skipped++;
                     continue;
@@ -507,7 +567,7 @@ namespace UnitySkills
                     return;
                 }
                 copy.assetPath = work.PathOverride;
-                item = new RestoreItem { Step = item.Step, Snapshot = copy };
+                item = new RestoreItem { Step = item.Step, Snapshot = copy, Index = item.Index };
             }
 
             var result = UndoRestoreItem(item, restoreTask);
@@ -549,12 +609,16 @@ namespace UnitySkills
             return string.IsNullOrEmpty(capturedIn) || capturedIn == CurrentIdSession();
         }
 
-        /// <summary>A created target that no longer exists is already at the position's state, so there is nothing to undo.</summary>
-        private static bool IsAlreadyAbsent(ObjectSnapshot created)
+        /// <summary>
+        /// A created target that no longer exists is already at the position's state, so there is nothing to undo. An asset is
+        /// checked at <paramref name="pathOverride"/> when the work writes it there, else at the path its snapshot names.
+        /// </summary>
+        private static bool IsAlreadyAbsent(ObjectSnapshot created, string pathOverride = null)
         {
-            if (string.IsNullOrEmpty(created.assetPath))
+            string assetPath = pathOverride ?? created.assetPath;
+            if (string.IsNullOrEmpty(assetPath))
                 return TryResolveObject(created.globalObjectId, created.entityId, created.objectInstanceId) == null;
-            if (!WorkflowFileStore.TryGetSafeAssetFullPath(created.assetPath, out string fullPath))
+            if (!WorkflowFileStore.TryGetSafeAssetFullPath(assetPath, out string fullPath))
                 return false;
             return !File.Exists(fullPath) && !Directory.Exists(fullPath);
         }

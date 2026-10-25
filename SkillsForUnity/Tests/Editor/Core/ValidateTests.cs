@@ -312,14 +312,14 @@ namespace UnitySkills.Tests.Core
             var history = new WorkflowHistoryData
             {
                 tasks = null,
-                undoneStack = new List<WorkflowTask> { null, new WorkflowTask { id = "u", seq = 7 } },
+                restores = new List<WorkflowRestoreRecord> { null, new WorkflowRestoreRecord { seq = 7 } },
                 nextSeq = 3
             };
 
             history.EnsureDefaults();
 
             Assert.IsNotNull(history.tasks);
-            Assert.AreEqual(1, history.undoneStack.Count);
+            Assert.AreEqual(1, history.restores.Count);
             Assert.AreEqual(8, history.nextSeq, "A seq already in use is never handed out again.");
         }
     }
