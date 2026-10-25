@@ -573,6 +573,8 @@ namespace UnitySkills
             public string PathOverride;
             // A Deleted item that only brings its object back so an earlier Modified item can apply; skipped when it already resolves.
             public bool RecreateOnly;
+            // The keys of the components and child objects of a GameObject the work removes; a change to any of them is a change to it.
+            public HashSet<string> OwnedKeys;
         }
 
         /// <summary>

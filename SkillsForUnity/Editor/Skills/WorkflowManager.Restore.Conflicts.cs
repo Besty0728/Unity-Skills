@@ -67,6 +67,8 @@ namespace UnitySkills
         {
             public List<RestoreConflict> Conflicts = new List<RestoreConflict>();
             public string Coverage = "unknown";
+            // Targets the restore removes, and every part of them: judging their properties is moot, so they keep their target-level conflicts.
+            public HashSet<string> RemovedKeys = new HashSet<string>(StringComparer.Ordinal);
             // Targets the journal shows changed by the caller itself (or in a window it may have shared) outside its steps.
             public HashSet<string> OwnChangeKeys = new HashSet<string>(StringComparer.Ordinal);
         }
@@ -83,7 +85,7 @@ namespace UnitySkills
             _restoreScopeAliases = gidAliases;
             try
             {
-                var targets = ResolveRestoreTargets(works);
+                var targets = ResolveRestoreTargets(works, scan);
                 var stepTasks = FindConflictingSteps(steps, targets, callerAgent);
                 foreach (var conflictingStep in stepTasks)
                 {
@@ -121,8 +123,11 @@ namespace UnitySkills
             return scan;
         }
 
-        /// <summary>The live target of every work, keyed; a work whose target does not resolve gets no key and takes no part in conflicts.</summary>
-        private static Dictionary<string, string> ResolveRestoreTargets(List<RestoreWork> works)
+        /// <summary>
+        /// The live target of every work, keyed; a work whose target does not resolve gets no key and takes no part in conflicts. A GameObject
+        /// the restore removes also adds its components and child objects, so a change to any of them is a conflict on the removal.
+        /// </summary>
+        private static Dictionary<string, string> ResolveRestoreTargets(List<RestoreWork> works, RestoreConflictScan scan)
         {
             var targets = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var work in works)
@@ -132,6 +137,35 @@ namespace UnitySkills
                 work.TargetDisplay = target?.Display;
                 if (target != null)
                     targets[target.Key] = target.Display;
+            }
+
+            foreach (var work in works)
+            {
+                var snapshot = work.Item.Snapshot;
+                if (work.TargetKey == null || snapshot.type != SnapshotType.Created || !IsSceneWork(snapshot))
+                    continue;
+                scan.RemovedKeys.Add(work.TargetKey);
+                if (!string.IsNullOrEmpty(snapshot.componentTypeName))
+                    continue;
+
+                _sessionIdFallbackAllowed = IsCapturedInCurrentSession(work.Item);
+                if (!(TryResolveObject(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId) is GameObject go))
+                    continue;
+                foreach (var component in go.GetComponentsInChildren<Component>(true))
+                {
+                    // A missing script's component is null here, and has no target to conflict on.
+                    if (component == null)
+                        continue;
+                    RestoreTarget part = SceneTarget(component.gameObject, component is Transform ? null : component.GetType().Name);
+                    if (part.Key == work.TargetKey)
+                        continue;
+                    if (work.OwnedKeys == null)
+                        work.OwnedKeys = new HashSet<string>(StringComparer.Ordinal);
+                    work.OwnedKeys.Add(part.Key);
+                    scan.RemovedKeys.Add(part.Key);
+                    if (!targets.ContainsKey(part.Key))
+                        targets[part.Key] = part.Display;
+                }
             }
             return targets;
         }
@@ -483,9 +517,10 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// The works that run under a conflict choice. A work runs when every target-level conflict on its target is in the overwrite set; any
-        /// other work is skipped and reported, one entry per target, capped at <see cref="MaxListedSkippedItems"/>. A merged work always runs:
-        /// the leaves it keeps are reported instead, and a leaf in the overwrite set is not kept.
+        /// The works that run under a conflict choice. A work runs when every target-level conflict on its target, or on a part of a GameObject it
+        /// removes, is in the overwrite set; a work that removes its target (a Created item) also waits for the leaf conflicts on it, since removing
+        /// the object would discard them. Any other work is skipped and reported, one entry per target, capped at <see cref="MaxListedSkippedItems"/>.
+        /// A merged work always runs: the leaves it keeps are reported instead, and a leaf in the overwrite set is not kept.
         /// </summary>
         private static List<RestoreWork> KeepUnconflictedWorks(List<RestoreWork> works, List<RestoreConflict> conflicts,
             HashSet<string> overwrite, RestoreOutcome outcome)
@@ -495,7 +530,10 @@ namespace UnitySkills
             {
                 var blocking = work.TargetKey == null
                     ? null
-                    : conflicts.Where(conflict => conflict.TargetKey == work.TargetKey && !conflict.IsLeaf && !overwrite.Contains(conflict.id)).ToList();
+                    : conflicts.Where(conflict => (conflict.TargetKey == work.TargetKey ||
+                                                   work.OwnedKeys != null && work.OwnedKeys.Contains(conflict.TargetKey)) &&
+                                                  (!conflict.IsLeaf || work.Item.Snapshot.type == SnapshotType.Created) &&
+                                                  !overwrite.Contains(conflict.id)).ToList();
                 if (blocking == null || blocking.Count == 0)
                 {
                     foreach (var leaf in work.KeptLeaves)

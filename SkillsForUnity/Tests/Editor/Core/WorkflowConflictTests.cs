@@ -143,6 +143,154 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void KeepOnACreatedObjectChangedByAnotherAgent_KeepsTheObject()
+        {
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("workflow_checkpoint", Args(("label", "wcCreated")));
+                Call("gameobject_create", Args(("name", "WcCreated"), ("x", 0f)));
+                WorkflowManager.EndTask();
+                Call("gameobject_set_transform", Args(("name", "WcCreated"), ("posX", 5f)));
+            }
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentB, true))
+                Call("gameobject_set_transform", Args(("name", "WcCreated"), ("posX", 7f)));
+
+            JObject restored;
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+                restored = RestoreOk("wcCreated", "keep");
+
+            Assert.That(GameObject.Find("WcCreated"), Is.Not.Null, "Keeping a conflict keeps the created object. " + restored);
+            Assert.That(X("WcCreated"), Is.EqualTo(7f).Within(0.001f), "The other agent's position stays.");
+            Assert.That(restored.Value<JArray>("skippedItems").ToString(), Does.Contain("WcCreated").And.Contain("(kept: "), restored.ToString());
+        }
+
+        [Test]
+        public void OverwritingTheLeafOnACreatedObject_DeletesIt()
+        {
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("workflow_checkpoint", Args(("label", "wcCreatedOver")));
+                Call("gameobject_create", Args(("name", "WcCreatedOver"), ("x", 0f)));
+                WorkflowManager.EndTask();
+                Call("gameobject_set_transform", Args(("name", "WcCreatedOver"), ("posX", 5f)));
+            }
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentB, true))
+                Call("gameobject_set_transform", Args(("name", "WcCreatedOver"), ("posX", 7f)));
+
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                var refused = RestoreRaw("wcCreatedOver");
+                Assert.That(refused.Value<string>("errorCode"), Is.EqualTo(SkillErrorCode.WorkflowConflict.ToWireString()), refused.ToString());
+                string ids = string.Join(",", refused.Value<JArray>("conflicts").Select(conflict => conflict.Value<string>("id")));
+
+                var restored = RestoreOk("wcCreatedOver", ids);
+
+                Assert.That(restored.Value<int>("failed"), Is.EqualTo(0), restored.ToString());
+            }
+            Assert.That(GameObject.Find("WcCreatedOver"), Is.Null, "Overwriting the conflict lets the restore delete the object.");
+        }
+
+        [Test]
+        public void ComponentChangeOnACreatedObjectByAnotherAgent_IsAConflict()
+        {
+            CreateLampWithIntensityChangedByAgentB("WcLamp", "wcLamp");
+
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                var refused = RestoreRaw("wcLamp");
+                Assert.That(refused.Value<string>("errorCode"), Is.EqualTo(SkillErrorCode.WorkflowConflict.ToWireString()), refused.ToString());
+                var conflicts = refused.Value<JArray>("conflicts");
+                Assert.That(conflicts.Any(conflict => conflict.Value<string>("target").EndsWith("/Light", StringComparison.Ordinal)), Is.True,
+                    refused.ToString());
+
+                var kept = RestoreOk("wcLamp", "keep");
+                Assert.That(kept.Value<JArray>("skippedItems").ToString(), Does.Contain("/Light (kept: "), kept.ToString());
+            }
+            Assert.That(GameObject.Find("WcLamp"), Is.Not.Null, "Keeping the conflict keeps the object.");
+            Assert.That(GameObject.Find("WcLamp").GetComponent<Light>().intensity, Is.EqualTo(3f).Within(0.001f), "The other agent's intensity stays.");
+        }
+
+        [Test]
+        public void ComponentChangeOnACreatedObjectByAnotherAgent_OverwriteDeletesIt()
+        {
+            CreateLampWithIntensityChangedByAgentB("WcLampOver", "wcLampOver");
+
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                var refused = RestoreRaw("wcLampOver");
+                Assert.That(refused.Value<string>("errorCode"), Is.EqualTo(SkillErrorCode.WorkflowConflict.ToWireString()), refused.ToString());
+                string ids = string.Join(",", refused.Value<JArray>("conflicts").Select(conflict => conflict.Value<string>("id")));
+
+                var restored = RestoreOk("wcLampOver", ids);
+
+                Assert.That(restored.Value<int>("failed"), Is.EqualTo(0), restored.ToString());
+            }
+            Assert.That(GameObject.Find("WcLampOver"), Is.Null, "Overwriting the conflicts lets the restore delete the object.");
+        }
+
+        [Test]
+        public void ChildCreatedUnderACreatedObjectByAnotherAgent_IsAConflict()
+        {
+            string lampId;
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("workflow_checkpoint", Args(("label", "wcLampChild")));
+                var lamp = Call("light_create", Args(("name", "WcLampParent"), ("lightType", "Point")));
+                Assert.That(lamp.Value<string>("error"), Is.Null, lamp.ToString());
+                WorkflowManager.EndTask();
+                lampId = lamp.Value<JObject>("result").Value<string>("entityId");
+            }
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentB, true))
+            {
+                // Addressed by entity id: an object created earlier in this test is not always in the name cache.
+                var child = Call("gameobject_create", Args(("name", "WcChildOfLamp")));
+                Assert.That(child.Value<string>("error"), Is.Null, child.ToString());
+                WorkflowManager.EndTask();
+                string childId = child.Value<JObject>("result").Value<string>("entityId");
+                var parented = Call("gameobject_set_parent", Args(("childEntityId", childId), ("parentEntityId", lampId)));
+                Assert.That(parented.Value<string>("error"), Is.Null, parented.ToString());
+                WorkflowManager.EndTask();
+            }
+            Assert.That(GameObject.Find("WcLampParent").transform.Find("WcChildOfLamp"), Is.Not.Null, "The child is parented before the restore.");
+
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                var refused = RestoreRaw("wcLampChild");
+                Assert.That(refused.Value<string>("errorCode"), Is.EqualTo(SkillErrorCode.WorkflowConflict.ToWireString()),
+                    refused + "\n" + DescribeHistory());
+
+                var kept = RestoreOk("wcLampChild", "keep");
+                Assert.That(kept.Value<JArray>("skippedItems").ToString(), Does.Contain("WcChildOfLamp"), kept.ToString());
+            }
+            Assert.That(GameObject.Find("WcLampParent"), Is.Not.Null, "Keeping the conflict keeps the object.");
+            Assert.That(GameObject.Find("WcLampParent").transform.Find("WcChildOfLamp"), Is.Not.Null, "Keeping the conflict keeps the child.");
+        }
+
+        // The steps of the history, for a failure message: seq, agent, tag and the kinds of the snapshots it holds.
+        private static string DescribeHistory() =>
+            string.Join("\n", WorkflowManager.History.tasks.Select(task =>
+                $"s{task.seq} agent={task.agent} tag={task.tag} snapshots=[{string.Join(", ", task.snapshots.Where(snapshot => snapshot != null).Select(snapshot => snapshot.type + ":" + snapshot.objectName + ":" + snapshot.componentTypeName))}]"));
+
+        // A light created after a checkpoint, then given an intensity of 3 by another agent.
+        private static void CreateLampWithIntensityChangedByAgentB(string name, string checkpoint)
+        {
+            string lightId;
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))
+            {
+                Call("workflow_checkpoint", Args(("label", checkpoint)));
+                var created = Call("light_create", Args(("name", name), ("lightType", "Point")));
+                Assert.That(created.Value<string>("error"), Is.Null, created.ToString());
+                WorkflowManager.EndTask();
+                lightId = created.Value<JObject>("result").Value<string>("entityId");
+            }
+            using (SkillsAuditLog.BeginRequestContext(-1, AgentB, true))
+            {
+                var changed = Call("light_set_properties", Args(("entityId", lightId), ("intensity", 3f)));
+                Assert.That(changed.Value<string>("error"), Is.Null, changed.ToString());
+            }
+        }
+
+        [Test]
         public void NoOtherChange_RestoresInOneCallWithFullCoverage()
         {
             using (SkillsAuditLog.BeginRequestContext(-1, AgentA, true))

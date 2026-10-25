@@ -42,7 +42,8 @@ namespace UnitySkills
             {
                 foreach (var work in planning.Works)
                 {
-                    if (work.TargetKey == null)
+                    // A removed object is not judged by its properties: its conflicts stay target-level, so they block the removal.
+                    if (work.TargetKey == null || planning.Scan.RemovedKeys.Contains(work.TargetKey))
                         continue;
 
                     switch (work.Item.Snapshot.type)
