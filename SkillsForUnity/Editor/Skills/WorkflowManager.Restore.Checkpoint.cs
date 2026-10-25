@@ -41,11 +41,64 @@ namespace UnitySkills
         public int compilationStartsBefore;
     }
 
+    /// <summary>
+    /// What a restore would do, the dryRun payload of the restore skills (design section 7.4). Built without applying anything.
+    /// A refusal sets <see cref="error"/> and leaves the rest at its default.
+    /// </summary>
+    internal sealed class RestorePreview
+    {
+        public string to;
+        [JsonProperty("label", NullValueHandling = NullValueHandling.Ignore)]
+        public string label;
+        public string agent;
+        public int steps;
+        public RestorePlanCounts plan = new RestorePlanCounts();
+        public List<string> items = new List<string>();
+        [JsonProperty("moreItems", NullValueHandling = NullValueHandling.Ignore)]
+        public int? moreItems;
+        public List<RestoreConflict> conflicts = new List<RestoreConflict>();
+        public string coverage = "unknown";
+        public List<RestoreUnresolvable> unresolvable = new List<RestoreUnresolvable>();
+        public bool mayTriggerReload;
+        [JsonProperty("error", NullValueHandling = NullValueHandling.Ignore)]
+        public string error;
+        [JsonProperty("errorCode", NullValueHandling = NullValueHandling.Ignore)]
+        public string errorCode;
+        [JsonProperty("recentCheckpoints", NullValueHandling = NullValueHandling.Ignore)]
+        public List<string> recentCheckpoints;
+
+        public static RestorePreview Refused(string to, string agent, RestoreOutcome refusal) => new RestorePreview
+        {
+            to = to,
+            agent = agent,
+            error = refusal.error,
+            errorCode = refusal.errorCode.ToWireString(),
+            recentCheckpoints = refusal.recentCheckpoints
+        };
+    }
+
+    internal sealed class RestorePlanCounts
+    {
+        public int modify;
+        public int delete;
+        public int recreate;
+        public int move;
+        public int settings;
+    }
+
+    /// <summary>A planned change that cannot run: its scene is not open, or its object is gone and nothing brings it back.</summary>
+    internal sealed class RestoreUnresolvable
+    {
+        public string target;
+        public string reason;
+    }
+
     public static partial class WorkflowManager
     {
         private const int MaxListedFailedItems = 20;
         private const int MaxListedRecentCheckpoints = 5;
         private const int MaxFailureTextLength = 200;
+        private const int MaxPreviewItems = 20;
 
         /// <summary>
         /// Puts the scene and the project assets back to the state at a position: the state before the step at that seq.
@@ -53,13 +106,34 @@ namespace UnitySkills
         /// target is restored once from it, in phase order. A failing item is reported and the rest still runs. The inverse
         /// snapshots go into a restore step, which is recorded with its guard checkpoint so the restore can be undone.
         /// </summary>
+        /// <summary>The steps a restore to <paramref name="to"/> would revert, or an empty list when the position does not resolve.</summary>
+        internal static List<WorkflowTask> FindStepsForRestore(string to, bool allAgents, string callerAgent)
+        {
+            var refusal = ResolveRestoreTo(to, allAgents, callerAgent, out var steps, out _, out _);
+            return refusal == null && steps != null ? steps : new List<WorkflowTask>();
+        }
+
         internal static RestoreOutcome RestoreTo(string to, bool allAgents, string callerAgent, string conflicts = null)
         {
+            var refusal = ResolveRestoreTo(to, allAgents, callerAgent, out var steps, out long checkpointCursor, out _);
+            return refusal ?? RestoreSteps(steps, to, callerAgent, conflicts, checkpointCursor);
+        }
+
+        /// <summary>
+        /// The steps a restore to a position covers, and the journal cursor of the checkpoint it goes back to. Returns the refusal
+        /// instead when the restore cannot run (Play Mode, compiling, or a position that does not resolve).
+        /// </summary>
+        private static RestoreOutcome ResolveRestoreTo(string to, bool allAgents, string callerAgent, out List<WorkflowTask> steps,
+            out long checkpointCursor, out long position)
+        {
+            steps = null;
+            checkpointCursor = 0;
+            position = 0;
             var refused = RestoreRefusal();
             if (refused != null)
                 return refused;
 
-            if (!TryResolveRestorePosition(to, callerAgent, out long position))
+            if (!TryResolveRestorePosition(to, callerAgent, out long resolved))
             {
                 var notFound = RestoreRefused(SkillErrorCode.NotFound,
                     $"Checkpoint or step not found: {to}. Use a c<n> id, an s<n> step, 'last' or a checkpoint label from workflow_list.");
@@ -67,12 +141,129 @@ namespace UnitySkills
                 return notFound;
             }
 
-            var steps = History.tasks
-                .Where(task => task.seq >= position && (allAgents || task.agent == callerAgent))
+            position = resolved;
+            steps = History.tasks
+                .Where(task => task.seq >= resolved && (allAgents || task.agent == callerAgent))
                 .OrderBy(task => task.seq)
                 .ToList();
-            long checkpointCursor = History.checkpoints.FirstOrDefault(checkpoint => checkpoint.seq == position)?.cursor ?? 0;
-            return RestoreSteps(steps, to, callerAgent, conflicts, checkpointCursor);
+            checkpointCursor = History.checkpoints.FirstOrDefault(checkpoint => checkpoint.seq == resolved)?.cursor ?? 0;
+            return null;
+        }
+
+        /// <summary>
+        /// The preview of <see cref="RestoreTo"/>: the same position and refusals, then <see cref="PreviewSteps"/> over the steps it covers.
+        /// </summary>
+        internal static RestorePreview PreviewTo(string to, bool allAgents, string callerAgent)
+        {
+            var refusal = ResolveRestoreTo(to, allAgents, callerAgent, out var steps, out long checkpointCursor, out long position);
+            if (refusal != null)
+                return RestorePreview.Refused(to, NormalizeAgent(callerAgent), refusal);
+
+            var preview = PreviewSteps(steps, to, callerAgent, checkpointCursor);
+            string label = History.checkpoints.FirstOrDefault(checkpoint => checkpoint.seq == position)?.label;
+            preview.label = string.IsNullOrEmpty(label) ? null : label;
+            return preview;
+        }
+
+        /// <summary>
+        /// What <see cref="RestoreSteps"/> would do with <paramref name="steps"/>, applied to nothing: the same planning and conflict scan,
+        /// and each work classified the way <see cref="RunRestoreWorks"/> decides it. Writes no log, opens no undo group and takes no guard.
+        /// </summary>
+        internal static RestorePreview PreviewSteps(List<WorkflowTask> steps, string to, string callerAgent, long checkpointCursor = 0)
+        {
+            string agent = NormalizeAgent(callerAgent);
+            var refusal = RestoreRefusal();
+            if (refusal != null)
+                return RestorePreview.Refused(to, agent, refusal);
+
+            var preview = new RestorePreview { to = to, agent = agent, steps = steps.Count };
+            if (steps.Count == 0)
+                return preview;
+
+            var planning = PlanRestore(steps, callerAgent, checkpointCursor);
+            preview.coverage = planning.Scan.Coverage;
+            preview.conflicts = planning.Scan.Conflicts;
+
+            var runs = new List<RestoreWork>();
+            _restoreScopeAliases = planning.GidAliases;
+            try
+            {
+                var doomed = DoomedGameObjects(planning.Works);
+                foreach (var work in planning.Works)
+                {
+                    _sessionIdFallbackAllowed = IsCapturedInCurrentSession(work.Item);
+                    string reason = UnresolvableReason(work);
+                    if (reason != null)
+                        preview.unresolvable.Add(new RestoreUnresolvable { target = PreviewName(work), reason = reason });
+                    else if (!IsSkippedWork(work, doomed))
+                        runs.Add(work);
+                }
+            }
+            finally
+            {
+                _restoreScopeAliases = null;
+                _sessionIdFallbackAllowed = true;
+            }
+
+            foreach (var work in runs)
+            {
+                string action = CountPlannedWork(preview.plan, work);
+                if (preview.items.Count < MaxPreviewItems)
+                    preview.items.Add($"{PreviewName(work)} ({work.Item.Snapshot.typeName}) {action}");
+                preview.mayTriggerReload |= ServerAvailabilityHelper.AffectsScriptDomain(work.PathOverride ?? work.Item.Snapshot.assetPath);
+            }
+            if (runs.Count > MaxPreviewItems)
+                preview.moreItems = runs.Count - MaxPreviewItems;
+            return preview;
+        }
+
+        /// <summary>The name a preview lists a work by: its setting key, its asset path, or its object name.</summary>
+        private static string PreviewName(RestoreWork work)
+        {
+            var snapshot = work.Item.Snapshot;
+            if (snapshot.type == SnapshotType.Setting && !string.IsNullOrEmpty(snapshot.settingKey))
+                return snapshot.settingKey;
+            string assetPath = work.PathOverride ?? snapshot.assetPath;
+            if (!string.IsNullOrEmpty(assetPath))
+                return assetPath;
+            return snapshot.objectName ?? string.Empty;
+        }
+
+        /// <summary>Counts a planned work under the kind of change it makes, and returns the action word the preview shows.</summary>
+        private static string CountPlannedWork(RestorePlanCounts counts, RestoreWork work)
+        {
+            switch (work.Item.Snapshot.type)
+            {
+                case SnapshotType.Created:
+                    counts.delete++;
+                    return "delete";
+                case SnapshotType.Deleted:
+                    counts.recreate++;
+                    return "recreate";
+                case SnapshotType.Moved:
+                    counts.move++;
+                    return "move";
+                case SnapshotType.Setting:
+                    counts.settings++;
+                    return "set";
+                default:
+                    counts.modify++;
+                    return "modify";
+            }
+        }
+
+        /// <summary>The reason a work cannot run at all, or null when it can run. Mirrors the checks <see cref="RunRestoreWorks"/> makes first.</summary>
+        private static string UnresolvableReason(RestoreWork work)
+        {
+            var snapshot = work.Item.Snapshot;
+            if (IsSceneWork(snapshot) && TryGetClosedScene(snapshot.globalObjectId, out string scenePath))
+                return $"scene {scenePath} is not open";
+
+            // A Modified object whose chain deletes it later gets its Deleted item first, which brings it back, so it can run.
+            bool objectGone = snapshot.type == SnapshotType.Modified && IsSceneWork(snapshot) &&
+                              TryResolveObject(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId) == null;
+            bool chainBringsItBack = work.Chain != null && work.Chain.Any(item => item.Snapshot.type == SnapshotType.Deleted);
+            return objectGone && !chainBringsItBack ? "object no longer exists" : null;
         }
 
         /// <summary>
@@ -96,10 +287,11 @@ namespace UnitySkills
             if (steps.Count == 0)
                 return outcome;
 
-            var gidAliases = RestoreGidAliases(history.restores);
-            var works = PlanRestoreWork(BuildRestoreChains(steps, gidAliases));
+            var planning = PlanRestore(steps, callerAgent, checkpointCursor);
+            var gidAliases = planning.GidAliases;
+            var works = planning.Works;
 
-            var scan = ScanRestoreConflicts(steps, works, gidAliases, checkpointCursor, callerAgent);
+            var scan = planning.Scan;
             outcome.coverage = scan.Coverage;
             if (scan.Conflicts.Count > 0)
             {
@@ -284,11 +476,31 @@ namespace UnitySkills
 
         #region Planning
 
+        /// <summary>
+        /// The planning half of a restore, with no side effects: the works in run order and the conflicts they would overwrite.
+        /// Shared by a restore and its preview.
+        /// </summary>
+        private static RestorePlanning PlanRestore(List<WorkflowTask> steps, string callerAgent, long checkpointCursor)
+        {
+            var gidAliases = RestoreGidAliases(History.restores);
+            var works = PlanRestoreWork(BuildRestoreChains(steps, gidAliases));
+            var scan = ScanRestoreConflicts(steps, works, gidAliases, checkpointCursor, callerAgent);
+            return new RestorePlanning { GidAliases = gidAliases, Works = works, Scan = scan };
+        }
+
         private sealed class RestoreItem
         {
             public WorkflowTask Step;
             public ObjectSnapshot Snapshot;
             public int Index;   // Capture order across the steps
+        }
+
+        /// <summary>What planning a restore yields: the aliases its targets resolve through, its works in run order, and the conflicts it would overwrite.</summary>
+        private sealed class RestorePlanning
+        {
+            public Dictionary<string, string> GidAliases;
+            public List<RestoreWork> Works;
+            public RestoreConflictScan Scan;
         }
 
         private sealed class RestoreWork
@@ -541,19 +753,7 @@ namespace UnitySkills
         /// <summary>Runs the planned work in order, and returns whether any of it touched an asset.</summary>
         private static bool RunRestoreWorks(List<RestoreWork> works, WorkflowTask restoreTask, RestoreOutcome outcome)
         {
-            // A created GameObject is removed with its parent or any ancestor being removed, so it is skipped rather than failed.
-            var doomed = new HashSet<GameObject>();
-            foreach (var work in works)
-            {
-                var snapshot = work.Item.Snapshot;
-                if (snapshot.type != SnapshotType.Created || !string.IsNullOrEmpty(snapshot.componentTypeName) ||
-                    !string.IsNullOrEmpty(snapshot.assetPath))
-                    continue;
-                _sessionIdFallbackAllowed = IsCapturedInCurrentSession(work.Item);
-                if (TryResolveObject(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId) is GameObject go)
-                    doomed.Add(go);
-            }
-
+            var doomed = DoomedGameObjects(works);
             bool assetWork = false;
             foreach (var work in works)
             {
@@ -565,14 +765,7 @@ namespace UnitySkills
                     continue;
                 }
 
-                // A Deleted item only applies when its target is absent: an earlier restore or an undo may have brought it back.
-                if (work.RecreateOnly && !IsAlreadyAbsent(snapshot, work.PathOverride))
-                {
-                    outcome.skipped++;
-                    continue;
-                }
-                else if (snapshot.type == SnapshotType.Created &&
-                         (IsAlreadyAbsent(snapshot) || IsCoveredByDoomedAncestor(snapshot, doomed)))
+                if (IsSkippedWork(work, doomed))
                 {
                     outcome.skipped++;
                     continue;
@@ -583,6 +776,39 @@ namespace UnitySkills
                 RunRestoreWork(work, restoreTask, outcome);
             }
             return assetWork;
+        }
+
+        /// <summary>
+        /// The GameObjects a restore's Created items name. A created GameObject is removed with its parent or any ancestor being
+        /// removed, so the works under one are skipped rather than failed.
+        /// </summary>
+        private static HashSet<GameObject> DoomedGameObjects(List<RestoreWork> works)
+        {
+            var doomed = new HashSet<GameObject>();
+            foreach (var work in works)
+            {
+                var snapshot = work.Item.Snapshot;
+                if (snapshot.type != SnapshotType.Created || !string.IsNullOrEmpty(snapshot.componentTypeName) ||
+                    !string.IsNullOrEmpty(snapshot.assetPath))
+                    continue;
+                _sessionIdFallbackAllowed = IsCapturedInCurrentSession(work.Item);
+                if (TryResolveObject(snapshot.globalObjectId, snapshot.entityId, snapshot.objectInstanceId) is GameObject go)
+                    doomed.Add(go);
+            }
+            return doomed;
+        }
+
+        /// <summary>
+        /// Whether a work needs no run: a Deleted item whose target is back already (an earlier restore or an undo may have brought it back),
+        /// or a Created item that is already absent or inside a doomed GameObject. Caller sets the session fallback for the work's item.
+        /// </summary>
+        private static bool IsSkippedWork(RestoreWork work, HashSet<GameObject> doomed)
+        {
+            var snapshot = work.Item.Snapshot;
+            if (work.RecreateOnly && !IsAlreadyAbsent(snapshot, work.PathOverride))
+                return true;
+            return snapshot.type == SnapshotType.Created &&
+                   (IsAlreadyAbsent(snapshot) || IsCoveredByDoomedAncestor(snapshot, doomed));
         }
 
         private static void RunRestoreWork(RestoreWork work, WorkflowTask restoreTask, RestoreOutcome outcome)

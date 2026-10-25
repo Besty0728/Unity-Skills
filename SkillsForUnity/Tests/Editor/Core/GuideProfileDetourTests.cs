@@ -271,6 +271,9 @@ namespace UnitySkills.Tests.Core
             var sessionId = "guide-detour-session";
             SeedTask(new[] { SceneSnapshot(probe) }, sessionId);
             var redoTaskId = SeedRestore(SceneSnapshot(probe));
+            var restoreStep = NewTask(new[] { SceneSnapshot(probe) }, null);
+            restoreStep.seq = WorkflowManager.History.AllocateSeq();
+            WorkflowManager.History.tasks.Add(restoreStep);
 
             SkillsSurfaceProfile.Current = SurfaceProfileKind.Guide;
 
@@ -285,6 +288,9 @@ namespace UnitySkills.Tests.Core
                 SkillCategory.GameObject, "scene_object_snapshot");
             AssertCarriedWriteRefusal(
                 Envelope("workflow_redo_task", new JObject { ["taskId"] = redoTaskId }.ToString(Formatting.None)),
+                SkillCategory.GameObject, "scene_object_snapshot");
+            AssertCarriedWriteRefusal(
+                Envelope("workflow_restore", new JObject { ["to"] = "s" + restoreStep.seq, ["agents"] = "all" }.ToString(Formatting.None)),
                 SkillCategory.GameObject, "scene_object_snapshot");
 
             Assert.That(WorkflowManager.History.tasks.Any(t => t.id == undoTaskId), Is.True,

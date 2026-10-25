@@ -168,6 +168,18 @@ namespace UnitySkills
                 case "script_create":
                     AnalyzeScriptCreate(validation, plan);
                     break;
+                case "workflow_restore":
+                    AnalyzeWorkflowRestore(validation, plan);
+                    break;
+                case "workflow_undo_task":
+                    AnalyzeWorkflowUndoTask(validation, plan);
+                    break;
+                case "workflow_redo_task":
+                    AnalyzeWorkflowRedoTask(validation, plan);
+                    break;
+                case "workflow_session_undo":
+                    AnalyzeWorkflowSessionUndo(validation, plan);
+                    break;
                 case "timeline_add_audio_track":
                 case "timeline_add_animation_track":
                 case "timeline_add_activation_track":

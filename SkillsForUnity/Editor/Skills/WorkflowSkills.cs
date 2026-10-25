@@ -269,7 +269,13 @@ namespace UnitySkills
             else if (string.IsNullOrEmpty(agents) || string.Equals(agents, "self", StringComparison.OrdinalIgnoreCase)) allAgents = false;
             else return new { error = $"agents must be 'self' or 'all', got '{agents}'", errorCode = SkillErrorCode.SemanticInvalid.ToWireString() };
 
-            var outcome = WorkflowManager.RestoreTo(to, allAgents, WorkflowManager.ResolveCallerAgent(), conflicts);
+            string caller = WorkflowManager.ResolveCallerAgent();
+            var withdrawn = SurfaceRejectionForTasks("workflow_restore", "restoring these steps' snapshots",
+                WorkflowManager.FindStepsForRestore(to, allAgents, caller));
+            if (withdrawn != null)
+                return withdrawn;
+
+            var outcome = WorkflowManager.RestoreTo(to, allAgents, caller, conflicts);
             return outcome.error != null ? RestoreError(outcome) : RestoreResponse(outcome, to);
         }
 
@@ -983,7 +989,7 @@ namespace UnitySkills
         /// An empty task set doesn't count as a rejection -- that id might simply not exist, and
         /// answering "withdrawn" for a nonexistent task would hide a plain typo behind the policy wall.
         /// </summary>
-        private static object SurfaceRejectionForTasks(
+        internal static object SurfaceRejectionForTasks(
             string skillName, string subject, IEnumerable<WorkflowTask> tasks)
         {
             if (SkillsSurfaceProfile.IsFull || tasks == null)
