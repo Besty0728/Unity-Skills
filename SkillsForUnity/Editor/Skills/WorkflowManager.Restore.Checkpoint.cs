@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnitySkills.Internal;
@@ -60,7 +61,11 @@ namespace UnitySkills
         public List<RestoreConflict> conflicts = new List<RestoreConflict>();
         public string coverage = "unknown";
         public List<RestoreUnresolvable> unresolvable = new List<RestoreUnresolvable>();
+        [JsonProperty("danglingReferences", NullValueHandling = NullValueHandling.Ignore)]
+        public List<string> danglingReferences;
         public bool mayTriggerReload;
+        [JsonProperty("scope", NullValueHandling = NullValueHandling.Ignore)]
+        public string scope;
         [JsonProperty("error", NullValueHandling = NullValueHandling.Ignore)]
         public string error;
         [JsonProperty("errorCode", NullValueHandling = NullValueHandling.Ignore)]
@@ -115,10 +120,10 @@ namespace UnitySkills
             return refusal == null && steps != null ? steps : new List<WorkflowTask>();
         }
 
-        internal static RestoreOutcome RestoreTo(string to, bool allAgents, string callerAgent, string conflicts = null)
+        internal static RestoreOutcome RestoreTo(string to, bool allAgents, string callerAgent, string conflicts = null, string scope = null)
         {
             var refusal = ResolveRestoreTo(to, allAgents, callerAgent, out var steps, out long checkpointCursor, out _);
-            return refusal ?? RestoreSteps(steps, to, callerAgent, conflicts, checkpointCursor);
+            return refusal ?? RestoreSteps(steps, to, callerAgent, conflicts, checkpointCursor, scope);
         }
 
         /// <summary>
@@ -155,13 +160,13 @@ namespace UnitySkills
         /// <summary>
         /// The preview of <see cref="RestoreTo"/>: the same position and refusals, then <see cref="PreviewSteps"/> over the steps it covers.
         /// </summary>
-        internal static RestorePreview PreviewTo(string to, bool allAgents, string callerAgent)
+        internal static RestorePreview PreviewTo(string to, bool allAgents, string callerAgent, string scope = null)
         {
             var refusal = ResolveRestoreTo(to, allAgents, callerAgent, out var steps, out long checkpointCursor, out long position);
             if (refusal != null)
                 return RestorePreview.Refused(to, NormalizeAgent(callerAgent), refusal);
 
-            var preview = PreviewSteps(steps, to, callerAgent, checkpointCursor);
+            var preview = PreviewSteps(steps, to, callerAgent, checkpointCursor, scope);
             string label = History.checkpoints.FirstOrDefault(checkpoint => checkpoint.seq == position)?.label;
             preview.label = string.IsNullOrEmpty(label) ? null : label;
             return preview;
@@ -171,18 +176,23 @@ namespace UnitySkills
         /// What <see cref="RestoreSteps"/> would do with <paramref name="steps"/>, applied to nothing: the same planning and conflict scan,
         /// and each work classified the way <see cref="RunRestoreWorks"/> decides it. Writes no log, opens no undo group and takes no guard.
         /// </summary>
-        internal static RestorePreview PreviewSteps(List<WorkflowTask> steps, string to, string callerAgent, long checkpointCursor = 0)
+        internal static RestorePreview PreviewSteps(List<WorkflowTask> steps, string to, string callerAgent, long checkpointCursor = 0,
+            string scope = null)
         {
             string agent = NormalizeAgent(callerAgent);
             var refusal = RestoreRefusal();
             if (refusal != null)
                 return RestorePreview.Refused(to, agent, refusal);
+            if (!TryParseScope(scope, out var restoreScope, out string scopeError))
+                return RestorePreview.Refused(to, agent, RestoreRefused(SkillErrorCode.SemanticInvalid, scopeError));
 
-            var preview = new RestorePreview { to = to, agent = agent, steps = steps.Count };
+            var preview = new RestorePreview { to = to, agent = agent, steps = steps.Count, scope = restoreScope?.Raw };
             if (steps.Count == 0)
                 return preview;
 
-            var planning = PlanRestore(steps, callerAgent, checkpointCursor, new HashSet<string>(StringComparer.Ordinal));
+            var planning = PlanRestore(steps, callerAgent, checkpointCursor, new HashSet<string>(StringComparer.Ordinal), restoreScope);
+            if (planning.ScopeError != null)
+                return RestorePreview.Refused(to, agent, RestoreRefused(SkillErrorCode.SemanticInvalid, planning.ScopeError));
             preview.coverage = planning.Scan.Coverage;
             preview.conflicts = planning.Scan.Conflicts;
 
@@ -209,6 +219,12 @@ namespace UnitySkills
 
             foreach (var work in runs)
             {
+                if (TryGetOpenSceneFile(work, out _))
+                {
+                    if (preview.items.Count < MaxPreviewItems)
+                        preview.items.Add($"{PreviewName(work)} ({work.Item.Snapshot.typeName}) not written: scene is open, save it to apply");
+                    continue;
+                }
                 string action = CountPlannedWork(preview.plan, work);
                 if (preview.items.Count < MaxPreviewItems)
                     preview.items.Add($"{PreviewName(work)} ({work.Item.Snapshot.typeName}) {action}");
@@ -216,6 +232,7 @@ namespace UnitySkills
             }
             if (runs.Count > MaxPreviewItems)
                 preview.moreItems = runs.Count - MaxPreviewItems;
+            preview.danglingReferences = FindDanglingReferences(runs, steps, planning.GidAliases);
             return preview;
         }
 
@@ -282,13 +299,15 @@ namespace UnitySkills
         /// ids of the conflicts to overwrite. <paramref name="checkpointCursor"/> is the journal cursor of the checkpoint restored to, or 0.
         /// </summary>
         internal static RestoreOutcome RestoreSteps(List<WorkflowTask> steps, string to, string callerAgent, string conflicts = null,
-            long checkpointCursor = 0)
+            long checkpointCursor = 0, string scope = null)
         {
             var refused = RestoreRefusal();
             if (refused != null)
                 return refused;
             if (!TryParseConflictsArgument(conflicts, out var overwrite, out string conflictsError))
                 return RestoreRefused(SkillErrorCode.SemanticInvalid, conflictsError);
+            if (!TryParseScope(scope, out var restoreScope, out string scopeError))
+                return RestoreRefused(SkillErrorCode.SemanticInvalid, scopeError);
 
             var history = History;
             var outcome = new RestoreOutcome { to = to, matchedSteps = steps.Count };
@@ -296,7 +315,9 @@ namespace UnitySkills
                 return outcome;
 
             // A conflict refuses the restore unless conflicts names its ids, so the planning takes the ids the caller passed (none on a refusal).
-            var planning = PlanRestore(steps, callerAgent, checkpointCursor, overwrite ?? new HashSet<string>(StringComparer.Ordinal));
+            var planning = PlanRestore(steps, callerAgent, checkpointCursor, overwrite ?? new HashSet<string>(StringComparer.Ordinal), restoreScope);
+            if (planning.ScopeError != null)
+                return RestoreRefused(SkillErrorCode.SemanticInvalid, planning.ScopeError);
             var gidAliases = planning.GidAliases;
             var works = planning.Works;
 
@@ -320,7 +341,7 @@ namespace UnitySkills
             {
                 id = Guid.NewGuid().ToString(),
                 tag = "workflow_restore",
-                description = "Restore to " + to,
+                description = "Restore to " + to + (restoreScope == null ? "" : " (scope " + restoreScope.Raw + ")"),
                 timestamp = DateTimeOffset.Now.ToUnixTimeSeconds(),
                 agent = callerAgent,
                 target = to,
@@ -334,13 +355,13 @@ namespace UnitySkills
             outcome.compilationStartsBefore = CompilationResultService.CompilationStartCount;
             outcome.refreshStartedUtcTicks = DateTime.UtcNow.Ticks;
             restoreTask.cursorStart = EditorChangeTrackerService.CurrentCursor;
-            var scope = new RestoredObjectMap();
+            var restoredObjects = new RestoredObjectMap();
             Undo.IncrementCurrentGroup();
             Undo.SetCurrentGroupName("Workflow: restore to " + to);
             int undoGroup = Undo.GetCurrentGroup();
             // The restore's own delayed change events are attributed to its caller, so a later restore does not report them as edits.
             EditorChangeTrackerService.BeginRestExecution();
-            _restoreScopeObjects = scope;
+            _restoreScopeObjects = restoredObjects;
             _restoreScopeAliases = gidAliases;
             try
             {
@@ -352,7 +373,7 @@ namespace UnitySkills
                         AssetDatabase.Refresh();
                     outcome.scriptChanges = capture.Paths;
                 }
-                aliasPairs.AddRange(RecreatedObjectAliases(scope));
+                aliasPairs.AddRange(RecreatedObjectAliases(restoredObjects));
             }
             finally
             {
@@ -383,7 +404,8 @@ namespace UnitySkills
                 guard = outcome.guard,
                 agent = callerAgent,
                 steps = steps.Select(step => step.seq).ToList(),
-                aliases = aliasPairs
+                aliases = aliasPairs,
+                scope = restoreScope?.Raw
             };
             batch.Lines.Add(WorkflowStore.BuildRestoreLine(record));
             Commit(batch);
@@ -493,12 +515,23 @@ namespace UnitySkills
         /// The planning half of a restore, with no side effects: the works in run order and the conflicts they would overwrite.
         /// Shared by a restore and its preview.
         /// </summary>
-        private static RestorePlanning PlanRestore(List<WorkflowTask> steps, string callerAgent, long checkpointCursor, ISet<string> overwriteIds)
+        private static RestorePlanning PlanRestore(List<WorkflowTask> steps, string callerAgent, long checkpointCursor, ISet<string> overwriteIds,
+            RestoreScope scope)
         {
             var gidAliases = RestoreGidAliases(History.restores);
-            var works = PlanRestoreWork(BuildRestoreChains(steps, gidAliases));
-            var scan = ScanRestoreConflicts(steps, works, gidAliases, checkpointCursor, callerAgent);
-            var planning = new RestorePlanning { GidAliases = gidAliases, Works = works, Scan = scan };
+            var chains = BuildRestoreChains(steps, gidAliases);
+            var planning = new RestorePlanning { GidAliases = gidAliases };
+            if (scope != null)
+            {
+                chains = FilterChainsByScope(chains, scope, gidAliases, out string scopeError);
+                if (scopeError != null)
+                {
+                    planning.ScopeError = scopeError;
+                    return planning;
+                }
+            }
+            planning.Works = PlanRestoreWork(chains);
+            planning.Scan = ScanRestoreConflicts(steps, planning.Works, gidAliases, checkpointCursor, callerAgent);
             AdjudicateWorks(planning, overwriteIds);
             return planning;
         }
@@ -516,6 +549,8 @@ namespace UnitySkills
             public Dictionary<string, string> GidAliases;
             public List<RestoreWork> Works;
             public RestoreConflictScan Scan;
+            // Set when the scope matches no target of the steps; the works and the scan are then not planned.
+            public string ScopeError;
         }
 
         private sealed class RestoreWork
@@ -791,6 +826,14 @@ namespace UnitySkills
                 if (work.Mode == RestoreWorkMode.Already || IsSkippedWork(work, doomed))
                 {
                     outcome.skipped++;
+                    continue;
+                }
+
+                if (TryGetOpenSceneFile(work, out Scene openScene))
+                {
+                    EditorSceneManager.MarkSceneDirty(openScene);
+                    outcome.skipped++;
+                    AddSkippedItem(outcome, $"{PreviewName(work)} (scene is open: its objects were restored in memory; save the scene to write the file)");
                     continue;
                 }
 

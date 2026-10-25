@@ -43,20 +43,26 @@ s338 14:28:11 gameobject_create_batch x12 (12) (undone)
 
 ## Restoring
 
-`workflow_restore {to, agents?, conflicts?}`. `to` is a `c<n>` (back to that checkpoint), an `s<n>` (back to before that step), a label (the newest checkpoint with it), or `last`. `agents` is `self` (default) or `all`.
+`workflow_restore {to, agents?, conflicts?, scope?}`. `to` is a `c<n>` (back to that checkpoint), an `s<n>` (back to before that step), a label (the newest checkpoint with it), or `last`. `agents` is `self` (default) or `all`. `scope` limits it (see below).
 
-Returns `to`, `guard`, `restored`, `deleted`, `recreated`, `failed`, `skipped`, `coverage`, `undo`, and `compileTriggered` (with `jobId` / `waitUrl` when scripts recompile), plus `failedItems` and `skippedItems` when present.
+Returns `to`, `guard`, `restored`, `deleted`, `recreated`, `failed`, `skipped`, `coverage`, `undo`, and `compileTriggered` (with `jobId` / `waitUrl` when scripts recompile), plus `merged`, `failedItems` and `skippedItems` when present.
 
-Errors: `WORKFLOW_CONFLICT` (nothing changed; `conflicts` lists each id, target, who and what), `NOT_FOUND` (with `recentCheckpoints`), `SEMANTIC_INVALID` (Play Mode, a bad `agents` or `conflicts` value), `COMPILING` (retry after the compile).
+Errors: `WORKFLOW_CONFLICT` (nothing changed; `conflicts` lists each id, target, who and what), `NOT_FOUND` (with `recentCheckpoints`), `SEMANTIC_INVALID` (Play Mode, a bad `agents`, `conflicts` or `scope` value), `COMPILING` (retry after the compile).
+
+An open scene's `.unity` is not rewritten; the scene is marked dirty, and saving applies the restore.
 
 `?mode=dryRun` returns the preview in `changes`. `workflow_undo_task`, `workflow_redo_task` and `workflow_session_undo` share this engine and the same `conflicts` parameter.
+
+## Undoing One Step and Scope
+
+`workflow_undo_task {"taskId":"s342"}` reverts one step. Later steps stay, even on the same object: the undo merges property by property.
+
+`scope` keeps some targets: `entity:<id>`, object names or paths (trailing `/` adds children), `Assets/` paths (trailing `/` = folder), or setting keys (trailing `.` = prefix). Example: `{"to":"c343","scope":"Player/,Assets/Art/"}`. A scoped restore marks no steps `(undone)`. An item matching nothing returns `SEMANTIC_INVALID` with the targets. The dryRun preview lists `danglingReferences` for deleted objects still in use.
 
 ## Known Limitations
 
 - Conflict detection reads the change journal: about 22,000 entries (11 segments of 2,000). Once older entries rotate out, `coverage` is `partial` or `unknown` and the older changes are not checked.
-- Restoring a scene file (`scene_save` undo) writes the `.unity` file on disk. An open scene keeps its in-memory state until you Reload Scene.
 - Objects in a never-saved scene are tracked by session-local ids. They do not survive an Editor restart, so a restore reports them as `failed`.
-- External file edits that Unity has not imported yet are not detected as conflicts.
 - External side effects (Package Manager operations, etc.) cannot be rolled back.
 
 ## Skills

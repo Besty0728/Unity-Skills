@@ -28,10 +28,10 @@ namespace UnitySkills
             if (IsWithdrawn(validation, "to", "workflow_restore", "restoring these steps' snapshots",
                     WorkflowManager.FindStepsForRestore(to, allAgents, caller)))
                 return;
-            var preview = WorkflowManager.PreviewTo(to, allAgents, caller);
+            var preview = WorkflowManager.PreviewTo(to, allAgents, caller, GetStringArg(args, "scope"));
             if (preview.error != null)
             {
-                AddSemanticError(validation, "to", preview.error);
+                AddSemanticError(validation, preview.error.StartsWith("scope ", StringComparison.Ordinal) ? "scope" : "to", preview.error);
                 return;
             }
             SetWorkflowPreview(plan, preview, "Restore to " + to, to);

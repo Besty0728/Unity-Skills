@@ -113,6 +113,7 @@ namespace UnitySkills
             [JsonProperty("gd")] public string Guard;
             [JsonProperty("sp")] public List<long> Steps;
             [JsonProperty("al")] public List<string[]> Aliases;
+            [JsonProperty("sc")] public string Scope;
         }
 
         /// <summary>
@@ -190,7 +191,7 @@ namespace UnitySkills
         internal static string BuildRestoreLine(WorkflowRestoreRecord restore) => Serialize(new Record
         {
             Kind = "restore", Seq = restore.seq, To = restore.to, Guard = restore.guard, Agent = restore.agent,
-            Steps = restore.steps, Aliases = restore.aliases
+            Steps = restore.steps, Aliases = restore.aliases, Scope = restore.scope
         });
 
         internal static string BuildDropLine(string stack, string id) => Serialize(new Record { Kind = "drop", Stack = stack, Id = id });
@@ -261,6 +262,7 @@ namespace UnitySkills
                     case "gd": record.Guard = reader.ReadAsString(); break;
                     case "sp": record.Steps = ReadSeqs(reader); break;
                     case "al": record.Aliases = ReadAliases(reader); break;
+                    case "sc": record.Scope = reader.ReadAsString(); break;
                     default: reader.Skip(); break;
                 }
             }
@@ -1148,7 +1150,8 @@ namespace UnitySkills
             guard = record.Guard,
             agent = record.Agent,
             steps = record.Steps ?? new List<long>(),
-            aliases = record.Aliases ?? new List<string[]>()
+            aliases = record.Aliases ?? new List<string[]>(),
+            scope = record.Scope
         };
 
         private static WorkflowTask ToTask(Record record)

@@ -222,7 +222,7 @@ namespace UnitySkills.Tests.Core
             { "cinemachine", 6464 },
             { "particle", 14080 },
             // 3.0 checkpoint-first rewrite (design cap 6 KB): entry size at the rewrite plus ~4% headroom, rounded up to 64 bytes.
-            { "workflow", 5632 }
+            { "workflow", 6144 }
         };
 
         private static readonly HashSet<string> ExactSignatureOptionalModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

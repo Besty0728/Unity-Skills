@@ -175,6 +175,7 @@ namespace UnitySkills
         public string agent;
         public List<long> steps = new List<long>();
         public List<string[]> aliases = new List<string[]>(); // [oldGlobalObjectId, newGlobalObjectId]
+        public string scope;         // The scope a partial restore was limited to; null for a whole restore
     }
 
     [Serializable]

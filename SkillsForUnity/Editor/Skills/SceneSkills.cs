@@ -64,7 +64,7 @@ namespace UnitySkills
             return new { success = true, sceneName = scene.name, scenePath = scene.path };
         }
 
-        [UnitySkill("scene_save", "Save the current scene. Undo restores the on-disk .unity file; if the scene is open, reload it (Reload Scene) to see the reverted state.",
+        [UnitySkill("scene_save", "Save the current scene. Undo restores the on-disk .unity file when the scene is closed; while it is open, undo leaves the file alone and marks the scene dirty, so save it to apply.",
             Category = SkillCategory.Scene, Operation = SkillOperation.Execute,
             Tags = new[] { "save", "persist", "write" },
             Outputs = new[] { "scenePath" },
@@ -85,7 +85,7 @@ namespace UnitySkills
             // Makes the save reversible. Overwriting an existing .unity counts as Modified: the old bytes must be backed up into the
             // content-addressed store *before* SaveScene overwrites the file (written back to disk on undo). Saving to a brand-new path counts as Created: it must be
             // recorded *after* the file exists (undo moves the new file into the store, redo restores it).
-            // Undo/redo operates on the on-disk file; the currently open scene needs to be reloaded to reflect the change.
+            // Undo/redo operates on the on-disk file when the scene is closed; while it is open, undo marks the scene dirty and the next save applies it.
             bool existedBefore = File.Exists(path);
             if (existedBefore)
             {

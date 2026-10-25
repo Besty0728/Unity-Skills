@@ -255,13 +255,13 @@ namespace UnitySkills
             return new { id, label };
         }
 
-        [UnitySkill("workflow_restore", "Restore the scene and project assets to a checkpoint. to is a c<n> id, an s<n> step, 'last' (the caller's newest checkpoint) or a checkpoint label; agents is 'self' (default) or 'all'; conflicts: omit to refuse on conflicts (WORKFLOW_CONFLICT lists them), \"keep\" to skip them, or the ids to overwrite. A guard checkpoint is taken first, so the restore is undone with workflow_restore {\"to\":\"<guard>\"}.",
+        [UnitySkill("workflow_restore", "Restore the scene and project assets to a checkpoint. to is a c<n> id, an s<n> step, 'last' (the caller's newest checkpoint) or a checkpoint label; agents is 'self' (default) or 'all'; conflicts: omit to refuse on conflicts (WORKFLOW_CONFLICT lists them), \"keep\" to skip them, or the ids to overwrite. A guard checkpoint is taken first, so the restore is undone with workflow_restore {\"to\":\"<guard>\"}. scope limits the restore to some targets: comma-separated entity:<id>, object names or paths (trailing / adds children), Assets/ paths (trailing / = folder), setting keys (trailing . = prefix).",
             Category = SkillCategory.Workflow, Operation = SkillOperation.Execute,
             Tags = new[] { "workflow", "restore", "undo", "checkpoint" },
             Outputs = new[] { "to", "guard", "restored", "deleted", "recreated", "failed", "skipped", "coverage", "undo", "compileTriggered" },
             RequiresInput = new[] { "to" },
             RiskLevel = "medium", MutatesScene = true, MutatesAssets = true)]
-        public static object WorkflowRestore(string to, string agents = "self", string conflicts = null)
+        public static object WorkflowRestore(string to, string agents = "self", string conflicts = null, string scope = null)
         {
             if (Validate.Required(to, "to") is object err) return err;
             bool allAgents;
@@ -275,7 +275,7 @@ namespace UnitySkills
             if (withdrawn != null)
                 return withdrawn;
 
-            var outcome = WorkflowManager.RestoreTo(to, allAgents, caller, conflicts);
+            var outcome = WorkflowManager.RestoreTo(to, allAgents, caller, conflicts, scope);
             return outcome.error != null ? RestoreError(outcome) : RestoreResponse(outcome, to);
         }
 

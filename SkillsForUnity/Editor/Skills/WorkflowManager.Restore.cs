@@ -166,15 +166,16 @@ namespace UnitySkills
         }
 
         /// <summary>
-        /// The seqs of steps a restore undid: every step of a restore that no later restore undid itself. A restore whose own
-        /// step a later restore lists is itself reverted, so its steps are live again.
+        /// The seqs of steps a restore undid: every step of a whole restore that no later restore undid itself. A scoped restore only
+        /// partly reverts its steps, so it undoes none of them. A restore whose own step a later restore lists is itself reverted, so its
+        /// steps are live again.
         /// </summary>
         internal static HashSet<long> UndoneSteps(IList<WorkflowRestoreRecord> restores)
         {
             var undone = new HashSet<long>();
             for (int i = 0; i < restores.Count; i++)
             {
-                if (RestoreRevertedLater(restores, i))
+                if (RestoreRevertedLater(restores, i) || !string.IsNullOrEmpty(restores[i].scope))
                     continue;
                 foreach (long step in restores[i].steps)
                     undone.Add(step);
@@ -182,12 +183,12 @@ namespace UnitySkills
             return undone;
         }
 
-        /// <summary>Whether a later restore lists this restore's step, which reverts it.</summary>
+        /// <summary>Whether a later whole restore lists this restore's step, which reverts it. A later scoped restore reverts only part of it.</summary>
         internal static bool RestoreRevertedLater(IList<WorkflowRestoreRecord> restores, int index)
         {
             for (int j = index + 1; j < restores.Count; j++)
             {
-                if (restores[j].steps.Contains(restores[index].seq))
+                if (restores[j].steps.Contains(restores[index].seq) && string.IsNullOrEmpty(restores[j].scope))
                     return true;
             }
             return false;
@@ -1124,8 +1125,20 @@ namespace UnitySkills
             // Restore from the content-addressed file store
             if (!string.IsNullOrEmpty(snapshot.fileHash) && !string.IsNullOrEmpty(snapshot.assetPath))
             {
-                return WorkflowFileStore.RestoreFile(snapshot.fileHash, snapshot.metaFileHash,
-                    snapshot.assetPath, removeFromStore);
+                if (!WorkflowFileStore.RestoreFile(snapshot.fileHash, snapshot.metaFileHash, snapshot.assetPath, removeFromStore))
+                    return false;
+                // A JSON asset's live object can hold changes its file does not have yet (an unsaved material edit), and the bytes leave
+                // them in place. Its JSON is its state, so it is written onto the object and saved, as a merge does.
+                if (!string.IsNullOrEmpty(snapshot.originalJson) && !(obj is SceneAsset) && IsJsonAsset(snapshot.assetPath))
+                {
+                    Undo.RecordObject(obj, undoLabel);
+                    EditorJsonUtility.FromJsonOverwrite(snapshot.originalJson, obj);
+                    RestoreObjectReferences(obj, snapshot.objectReferencesCaptured,
+                        snapshot.objectReferences, snapshot.objectReferencesCaptured ? null : objectReferences);
+                    EditorUtility.SetDirty(obj);
+                    AssetDatabase.SaveAssetIfDirty(obj);
+                }
+                return true;
             }
 
             // A scene object/asset with no file backup falls back to a JSON overwrite
