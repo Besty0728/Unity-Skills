@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
@@ -132,7 +133,7 @@ namespace UnitySkills
         {
             try
             {
-                var report = SyncTargets(SkillInstaller.EnumerateTargets());
+                var report = SyncTargets(SkillInstaller.EnumerateTargets().Concat(SkillInstaller.EnumerateCustomTargets()));
                 LogReport(report);
 
                 // Don't write the record if any target failed — leave the retry for the next editor session

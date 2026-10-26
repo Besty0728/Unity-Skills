@@ -400,6 +400,32 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void SyncTargets_RefreshesEvalSkillBesideUnitySkills()
+        {
+            var target = Path.Combine(_tempRoot, "skills", SkillInstaller.SkillFolderName);
+            var seed = SkillInstaller.InstallSkill(target, "Test", "TestAgent");
+            Assert.That(seed.success, Is.True, "Test fixture could not seed an install: " + seed.message);
+
+            var evalSkillMd = Path.Combine(_tempRoot, "skills", SkillInstaller.EvalSkillFolderName, "SKILL.md");
+            File.WriteAllText(evalSkillMd, "stale evaluation copy from an older package version");
+
+            var report = SkillInstallSyncService.SyncTargets(new[]
+            {
+                new SkillInstaller.InstallTarget
+                {
+                    DisplayName = "Installed Tool",
+                    Path = target,
+                    IsInstalled = () => File.Exists(Path.Combine(target, "SKILL.md")),
+                    Install = () => SkillInstaller.InstallSkill(target, "Test", "TestAgent")
+                }
+            });
+
+            Assert.That(report.Failed, Is.Empty);
+            Assert.That(report.Updated, Is.EqualTo(new[] { "Installed Tool" }));
+            Assert.That(File.ReadAllText(evalSkillMd), Does.Not.Contain("stale evaluation copy"));
+        }
+
+        [Test]
         public void SyncTargets_DeduplicatesTargetsSharingOnePath()
         {
             var shared = Path.Combine(_tempRoot, "shared");

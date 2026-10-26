@@ -18,6 +18,10 @@ namespace UnitySkills
     /// </summary>
     public static class SkillInstaller
     {
+        // Every install writes these two template folders side by side into the same skills directory.
+        internal const string SkillFolderName = "unity-skills";
+        internal const string EvalSkillFolderName = "unity-skills-eval";
+
         // Claude Code path: Claude accepts any folder name
         public static string ClaudeProjectPath => Path.Combine(Application.dataPath, "..", ".claude", "skills", "unity-skills");
         public static string ClaudeGlobalPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "skills", "unity-skills");
@@ -379,20 +383,161 @@ namespace UnitySkills
             return null;
         }
 
-        public static (bool success, string message) InstallCustom(string path, string agentName = "Custom")
+        /// <param name="iconSourceFile">Optional PNG/JPG the panel picked for the new card; copied on success.</param>
+        public static (bool success, string message) InstallCustom(string path, string agentName = "Custom", string iconSourceFile = null)
         {
             try
             {
                 if (string.IsNullOrEmpty(path))
                     return (false, "Path cannot be empty");
 
-                return InstallSkill(path, "Custom Path", agentName);
+                var result = InstallSkill(path, "Custom Path", agentName, withEvalSkill: false);
+                if (result.success)
+                {
+                    RememberCustomTarget(agentName, path);
+                    if (iconSourceFile != null)
+                        SetCustomTargetIcon(path, iconSourceFile);
+                }
+                return result;
             }
             catch (Exception ex)
             {
                 return (false, ex.Message);
             }
         }
+
+        // Custom installs the panel lists and the post-upgrade sync refreshes. Global EditorPrefs, so every project on
+        // this machine sees them; a custom path is absolute and belongs to no project.
+        internal const string CustomTargetsPrefKey = "UnitySkills_CustomInstallTargets";
+
+        internal sealed class CustomTarget
+        {
+            public string name;
+            public string path;
+            public string icon;  // Absolute path of the icon copy in the icon folder; null shows the name's first letter
+        }
+
+        // Icon copies live beside the instance registry, machine-wide like the list itself, so moving or deleting the
+        // picked original never breaks a card.
+        internal static readonly string CustomIconDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".unity_skills", "custom-icons");
+        internal const long MaxIconBytes = 1024 * 1024;
+
+        /// <summary>Null when <paramref name="file"/> can be an icon (a PNG or JPG of at most 1 MB), else a localization key.</summary>
+        internal static string CheckIconFile(string file)
+        {
+            string ext = Path.GetExtension(file ?? string.Empty).ToLowerInvariant();
+            bool image = ext == ".png" || ext == ".jpg" || ext == ".jpeg";
+            return image && File.Exists(file) && new FileInfo(file).Length <= MaxIconBytes ? null : "agent_custom_icon_invalid";
+        }
+
+        /// <summary>
+        /// Sets the icon of the remembered install at <paramref name="path"/> to a copy of <paramref name="iconSourceFile"/>,
+        /// or back to the first letter when it is null. Returns null on success, else a localization key.
+        /// </summary>
+        internal static string SetCustomTargetIcon(string path, string iconSourceFile, string prefKey = CustomTargetsPrefKey, string iconDir = null)
+        {
+            iconDir ??= CustomIconDir;
+            var targets = ReadCustomTargets(prefKey);
+            var target = targets.FirstOrDefault(t => SamePath(t.path, path));
+            if (target == null)
+                return "agent_custom_icon_invalid";
+
+            string copy = null;
+            if (iconSourceFile != null)
+            {
+                if (CheckIconFile(iconSourceFile) is string error)
+                    return error;
+                byte[] bytes = File.ReadAllBytes(iconSourceFile);
+                string hash;
+                using (var sha1 = SHA1.Create())
+                    hash = BitConverter.ToString(sha1.ComputeHash(bytes)).Replace("-", string.Empty).ToLowerInvariant();
+                Directory.CreateDirectory(iconDir);
+                copy = Path.Combine(iconDir, hash + Path.GetExtension(iconSourceFile).ToLowerInvariant());
+                if (!File.Exists(copy))
+                    File.WriteAllBytes(copy, bytes);
+            }
+
+            string previous = target.icon;
+            target.icon = copy;
+            WriteCustomTargets(targets, prefKey);
+            DeleteUnusedIcon(previous, targets, iconDir);
+            return null;
+        }
+
+        /// <summary>Deletes an icon copy no remembered install uses any more; only files inside the icon folder are touched.</summary>
+        private static void DeleteUnusedIcon(string icon, List<CustomTarget> targets, string iconDir)
+        {
+            if (string.IsNullOrEmpty(icon) || targets.Any(t => t.icon != null && SamePath(t.icon, icon)))
+                return;
+            if (!SamePath(Path.GetDirectoryName(icon), iconDir))
+                return;
+            try { File.Delete(icon); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        internal static List<CustomTarget> ReadCustomTargets(string prefKey = CustomTargetsPrefKey)
+        {
+            try
+            {
+                return JsonConvert.DeserializeObject<List<CustomTarget>>(EditorPrefs.GetString(prefKey, "[]"), SkillsCommon.JsonSettings)?
+                    .Where(t => t != null && !string.IsNullOrEmpty(t.path)).ToList() ?? new List<CustomTarget>();
+            }
+            catch (JsonException)
+            {
+                return new List<CustomTarget>();
+            }
+        }
+
+        /// <summary>Adds the install at <paramref name="path"/>, or renames the existing entry for the same folder.</summary>
+        internal static void RememberCustomTarget(string name, string path, string prefKey = CustomTargetsPrefKey)
+        {
+            var full = NormalizeTargetPath(path);
+            var targets = ReadCustomTargets(prefKey);
+            var existing = targets.FirstOrDefault(t => SamePath(t.path, full));
+            if (existing != null)
+                existing.name = name;
+            else
+                targets.Add(new CustomTarget { name = name, path = full });
+            WriteCustomTargets(targets, prefKey);
+        }
+
+        /// <summary>Drops the entry for <paramref name="path"/> from the list; the installed files stay where they are.</summary>
+        internal static void ForgetCustomTarget(string path, string prefKey = CustomTargetsPrefKey, string iconDir = null)
+        {
+            var targets = ReadCustomTargets(prefKey);
+            var removed = targets.Where(t => SamePath(t.path, path)).ToList();
+            if (removed.Count == 0)
+                return;
+            targets.RemoveAll(removed.Contains);
+            WriteCustomTargets(targets, prefKey);
+            foreach (var target in removed)
+                DeleteUnusedIcon(target.icon, targets, iconDir ?? CustomIconDir);
+        }
+
+        /// <summary>One install target per remembered custom install; it installs the main skill only, like InstallCustom.</summary>
+        public static IEnumerable<InstallTarget> EnumerateCustomTargets() => EnumerateCustomTargets(CustomTargetsPrefKey);
+
+        internal static IEnumerable<InstallTarget> EnumerateCustomTargets(string prefKey)
+        {
+            foreach (var target in ReadCustomTargets(prefKey))
+            {
+                string path = target.path, name = target.name;
+                yield return MakeTarget(name, true, name, path, () => File.Exists(Path.Combine(path, "SKILL.md")),
+                    () => InstallSkill(path, "Custom Path", name, withEvalSkill: false));
+            }
+        }
+
+        private static void WriteCustomTargets(List<CustomTarget> targets, string prefKey) =>
+            EditorPrefs.SetString(prefKey, JsonConvert.SerializeObject(targets, SkillsCommon.JsonSettings));
+
+        private static string NormalizeTargetPath(string path) =>
+            Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        private static bool SamePath(string a, string b) =>
+            string.Equals(NormalizeTargetPath(a), NormalizeTargetPath(b),
+                Application.platform == RuntimePlatform.WindowsEditor ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
         // internal: the uninstall regression tests drive this against a temp target directly (tests are
         // InternalsVisibleTo this assembly), so the fixture never has to reach a real install location.
@@ -401,21 +546,29 @@ namespace UnitySkills
             if (!Directory.Exists(targetPath))
                 return (false, $"{name} skill not installed at this location");
 
-            string templateRoot = null;
-            try { templateRoot = GetSkillTemplateRoot(); }
+            UninstallFolder(targetPath, GetSkillTemplateRoot);
+            UninstallFolder(EvalSkillFolderPath(targetPath), GetEvalSkillTemplateRoot);
+            SkillsLogger.Log("Uninstalled skill from: " + targetPath);
+            return (true, targetPath);
+        }
+
+        private static void UninstallFolder(string folderPath, Func<string> resolveTemplateRoot)
+        {
+            if (!Directory.Exists(folderPath))
+                return;
+
+            string templateRoot;
+            try { templateRoot = resolveTemplateRoot(); }
             catch (DirectoryNotFoundException)
             {
                 // Exotic setup without a resolvable template: fall back to removing the whole
                 // destination directory, which may also take files the user added into it.
-                SkillsLogger.LogWarning("Uninstalling via full directory delete because the skill template root could not be resolved; user-added files under " + targetPath + " may be removed.");
-                Directory.Delete(targetPath, true);
-                SkillsLogger.Log("Uninstalled skill from: " + targetPath);
-                return (true, targetPath);
+                SkillsLogger.LogWarning("Uninstalling via full directory delete because the skill template root could not be resolved; user-added files under " + folderPath + " may be removed.");
+                Directory.Delete(folderPath, true);
+                return;
             }
 
-            DeleteInstalledTemplateTree(templateRoot, targetPath);
-            SkillsLogger.Log("Uninstalled skill from: " + targetPath);
-            return (true, targetPath);
+            DeleteInstalledTemplateTree(templateRoot, folderPath);
         }
 
         /// <summary>
@@ -493,7 +646,31 @@ namespace UnitySkills
                 .TrimEnd(Path.DirectorySeparatorChar);
         }
 
-        private static (bool success, string message) InstallSkill(string targetPath, string name, string agentId, string instructionFilePath = null)
+        /// <summary>
+        /// Installs the runtime skill into <paramref name="targetPath"/> and, when <paramref name="withEvalSkill"/> is set,
+        /// the evaluation skill into its sibling folder in the same skills directory. Both templates resolve before either folder is written.
+        /// A custom path is the skill folder the user picked, so it never gets a sibling.
+        /// </summary>
+        // internal: the installer tests seed a temp skills directory through it (tests are InternalsVisibleTo this assembly).
+        internal static (bool success, string message) InstallSkill(string targetPath, string name, string agentId, string instructionFilePath = null, bool withEvalSkill = true)
+        {
+            var skillTemplate = GetSkillTemplateRoot();
+            var evalTemplate = withEvalSkill ? GetEvalSkillTemplateRoot() : null;
+            InstallFolder(targetPath, skillTemplate, agentId);
+            if (withEvalSkill)
+                InstallFolder(EvalSkillFolderPath(targetPath), evalTemplate, agentId);
+
+            // Optional "prefer Unity Skills" guide line in the tool's root instruction file
+            // (CLAUDE.md / AGENTS.md / GEMINI.md). Gated by the feature toggle inside the service.
+            if (instructionFilePath != null)
+                AgentInstructionService.UpsertIfEnabled(instructionFilePath);
+
+            SkillsLogger.Log($"Installed skill to: {targetPath} (Agent: {agentId})");
+            return (true, targetPath);
+        }
+
+        /// <summary>Copies one template folder into <paramref name="targetPath"/>, then writes its agent config and install manifest.</summary>
+        private static void InstallFolder(string targetPath, string templateRoot, string agentId)
         {
             if (!Directory.Exists(targetPath))
                 Directory.CreateDirectory(targetPath);
@@ -501,7 +678,7 @@ namespace UnitySkills
             // Must use UTF-8 without BOM: if a BOM (EF BB BF) appears before the leading `---`, some agents refuse to parse the YAML frontmatter.
             var utf8NoBom = SkillsCommon.Utf8NoBom;
             var previousManifest = ReadInstallManifest(targetPath);
-            var installed = CopyTemplateDirectory(GetSkillTemplateRoot(), targetPath, utf8NoBom);
+            var installed = CopyTemplateDirectory(templateRoot, targetPath, utf8NoBom);
 
             // Write agent config for automatic agent identity detection
             var scriptsPath = Path.Combine(targetPath, "scripts");
@@ -517,48 +694,49 @@ namespace UnitySkills
             foreach (var pair in installed.OrderBy(p => p.Key, StringComparer.Ordinal))
                 manifest.files[pair.Key] = pair.Value;
             File.WriteAllText(InstallManifestPath(targetPath), JsonConvert.SerializeObject(manifest, Formatting.Indented), utf8NoBom);
-
-            // Optional "prefer Unity Skills" guide line in the tool's root instruction file
-            // (CLAUDE.md / AGENTS.md / GEMINI.md). Gated by the feature toggle inside the service.
-            if (instructionFilePath != null)
-                AgentInstructionService.UpsertIfEnabled(instructionFilePath);
-
-            SkillsLogger.Log($"Installed skill to: {targetPath} (Agent: {agentId})");
-            return (true, targetPath);
         }
 
-        private static string GetSkillTemplateRoot()
+        /// <summary>The evaluation skill's folder beside the runtime skill's <paramref name="targetPath"/>, in the same skills directory.</summary>
+        private static string EvalSkillFolderPath(string targetPath) =>
+            Path.Combine(Path.GetDirectoryName(targetPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)), EvalSkillFolderName);
+
+        private static string GetSkillTemplateRoot() => GetTemplateRoot(SkillFolderName);
+
+        private static string GetEvalSkillTemplateRoot() => GetTemplateRoot(EvalSkillFolderName);
+
+        /// <summary>Finds the template folder <paramref name="folderName"/> in the project root, the package, or beside/inside the package.</summary>
+        private static string GetTemplateRoot(string folderName)
         {
             string templateRoot;
 
             // 1. Project root (development / local clone)
-            templateRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "unity-skills"));
+            templateRoot = Path.GetFullPath(Path.Combine(Application.dataPath, "..", folderName));
             if (Directory.Exists(templateRoot))
                 return templateRoot;
 
-            // 2. Inside the UPM package (unity-skills~ is the tilde hidden directory shipped with the package)
+            // 2. Inside the UPM package (<folderName>~ is the tilde hidden directory shipped with the package)
             PackageRootLocator.TryGet(out var resolvedPath);
 
             if (!string.IsNullOrEmpty(resolvedPath))
             {
                 // Tilde hidden directory inside the package
-                templateRoot = Path.GetFullPath(Path.Combine(resolvedPath, "unity-skills~"));
+                templateRoot = Path.GetFullPath(Path.Combine(resolvedPath, folderName + "~"));
                 if (Directory.Exists(templateRoot))
                     return templateRoot;
 
                 // Sibling of the package root (the case of a full-repo clone via git ?path=)
-                templateRoot = Path.GetFullPath(Path.Combine(resolvedPath, "..", "unity-skills"));
+                templateRoot = Path.GetFullPath(Path.Combine(resolvedPath, "..", folderName));
                 if (Directory.Exists(templateRoot))
                     return templateRoot;
 
                 // Subdirectory of the package root
-                templateRoot = Path.GetFullPath(Path.Combine(resolvedPath, "unity-skills"));
+                templateRoot = Path.GetFullPath(Path.Combine(resolvedPath, folderName));
                 if (Directory.Exists(templateRoot))
                     return templateRoot;
             }
 
             throw new DirectoryNotFoundException(
-                $"unity-skills template folder not found. " +
+                $"{folderName} template folder not found. " +
                 $"Checked: project root, package path ({resolvedPath ?? "N/A"}). " +
                 $"Please reinstall the package.");
         }
