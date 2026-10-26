@@ -15,6 +15,25 @@ LIMITATIONS = (
     "In suite mode the agent's context accumulates across tasks, so per-task token costs are not comparable with "
     "strict mode.",
 )
+GRADE_FLOORS = ((0.90, "excellent"), (0.70, "good"), (0.50, "pass"))
+GRADE_WORDS = {
+    "excellent": {"zh-CN": "优秀", "en": "Excellent", "ru": "Отлично"},
+    "good": {"zh-CN": "良好", "en": "Good", "ru": "Хорошо"},
+    "pass": {"zh-CN": "及格", "en": "Pass", "ru": "Удовлетворительно"},
+    "needs_work": {"zh-CN": "待提升", "en": "Needs work", "ru": "Нужно улучшить"},
+}
+VERDICT_TEXT = {
+    "zh-CN": {"sep": "", "list": "；", "none": "没有可评分的任务。", "head": "%s：完全通过 %d / %d 个已评分任务。",
+              "items": "未完全通过：%s。", "more": "以及另外 %d 个", "excluded": "另有 %d 个任务无效、已污染或已取消，未计入。"},
+    "en": {"sep": " ", "list": "; ", "none": "No gradable tasks.", "head": "%s: %d of %d scored tasks fully passed.",
+           "items": "Not fully passed: %s.", "more": "and %d more", "excluded": "%d task(s) invalid, contaminated or "
+                                                                              "cancelled, not counted."},
+    "ru": {"sep": " ", "list": "; ", "none": "Нет оцениваемых заданий.", "head": "%s: полностью выполнены %d из %d "
+                                                                              "оцениваемых заданий.",
+           "items": "Не выполнены полностью: %s.", "more": "и ещё %d", "excluded": "Не учтено: %d (недействительных, "
+                                                                                 "загрязнённых или отменённых)."},
+}
+MAX_LISTED_TASKS = 5
 
 
 def report_paths(paths, sid):
@@ -75,6 +94,35 @@ def summarize(session, finals, everything):
     return summary
 
 
+def grade_for(summary):
+    """Grade key from strictPassRate; None when no task was scored (pass, partial or fail)."""
+    if not sum(summary.get(s, 0) for s in MODEL_OUTCOMES):
+        return None
+    for floor, grade in GRADE_FLOORS:
+        if summary["strictPassRate"] >= floor:
+            return grade
+    return "needs_work"
+
+
+def build_verdict(summary, tasks, lang):
+    """Template verdict in the session language (English when unknown); no generated text."""
+    lang = lang if lang in VERDICT_TEXT else "en"
+    text, grade = VERDICT_TEXT[lang], grade_for(summary)
+    scored = sum(summary.get(s, 0) for s in MODEL_OUTCOMES)
+    parts = [text["none"] if grade is None else text["head"] % (GRADE_WORDS[grade][lang], summary["pass"], scored)]
+    unfinished = sorted((row for row in tasks if row["status"] in ("partial", "fail")), key=lambda r: r["taskId"])
+    items = ["%s (%s: %s)" % (row["taskId"], row["status"], ", ".join(row["requirementsFailed"]) or "-")
+             for row in unfinished[:MAX_LISTED_TASKS]]
+    if len(unfinished) > MAX_LISTED_TASKS:
+        items.append(text["more"] % (len(unfinished) - MAX_LISTED_TASKS))
+    if items:
+        parts.append(text["items"] % text["list"].join(items))
+    excluded = summary.get("invalid", 0) + summary.get("contaminated", 0) + summary.get("cancelled", 0)
+    if excluded:
+        parts.append(text["excluded"] % excluded)
+    return text["sep"].join(parts)
+
+
 def _task_row(task_id, result):
     if not result:
         return {"taskId": task_id, "caseVersion": None, "attemptId": None, "status": None, "completion": None,
@@ -107,6 +155,8 @@ def _notices(session, everything):
 
 def generate(rt, session):
     finals, everything = _results(rt, session)
+    summary = summarize(session, finals, everything)
+    tasks = [_task_row(t, finals[t]) for t in session["order"]]
     report = {"schema": 1, "sessionId": session["sessionId"], "status": session["status"],
               "generatedAt": store.now_iso(), "runnerVersion": session.get("runnerVersion"),
               "pluginVersion": session.get("pluginVersion"), "pack": session.get("pack"),
@@ -114,9 +164,9 @@ def generate(rt, session):
               "declared": session.get("declared"), "environment": session.get("environment"),
               "integrity": session.get("integrity"),
               "official": bool(session.get("official", (session.get("pack") or {}).get("official"))),
-              "summary": summarize(session, finals, everything),
-              "tasks": [_task_row(t, finals[t]) for t in session["order"]],
-              "notices": _notices(session, everything)}
+              "summary": summary, "grade": grade_for(summary),
+              "verdict": build_verdict(summary, tasks, session.get("lang")),
+              "tasks": tasks, "notices": _notices(session, everything)}
     paths = report_paths(rt.paths, session["sessionId"])
     store.atomic_write_json(paths["json"], report)
     store.atomic_write_text(paths["md"], render_md(report))
@@ -134,7 +184,7 @@ def render_md(report):
     declared = report.get("declared") or {}
     pack = report.get("pack") or {}
     env = report.get("environment") or {}
-    lines = ["# UnitySkills evaluation report", "",
+    lines = ["# UnitySkills evaluation report", "", "- Verdict: %s" % report["verdict"],
              "- Session: %s (%s, %s mode, %s)" % (report["sessionId"], report["status"], report.get("mode"),
                                                   report.get("lang")),
              "- Pack: %s %s (%s); official: %s" % (pack.get("id"), pack.get("version"), pack.get("source"),
