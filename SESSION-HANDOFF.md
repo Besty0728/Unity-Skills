@@ -29,10 +29,19 @@
     - `merge_keys.py`：合并文案键。
     - `gatehash-before.txt`：门禁 hash 基线。
 - **skill 工程的编辑器还开着**，用户在用，没有关。
+- **用户的两处时区改动也已提交**：`51b2d7cc`，`eval/RESULTS_V1.md` 和 `eval/reports/p0-calibration.md` 的时间改为 Asia/Tokyo。工作区干净。
+- **全量 EditMode 已在后台独立运行（10-26 23:16 启动）**：
+  - 脚本在 `eval/runs/pending-20261021/full1026/`，用 `bash start.sh` 启动：setsid 开新会话，父进程是 launchd，在 `caffeinate -is` 下运行，与任何 Claude 会话无关。
+  - `run.py` 的顺序：
+    1. Built-in：skill 工程。启动时编辑器已经开着就复用，跑完也不关。
+    2. URP：UnitySkillsEval2022。由脚本打开，跑完关闭。
+  - 每条管线先等编译结束，再调 `test_run` 跑 EditMode。
+  - 结果写到 `eval/runs/pending-20261021/full1026-result.md`（两条管线的总数、通过、失败、跳过，以及失败详情），然后弹系统通知；过程日志在 `full1026/run.log`。
+  - 预计约 50 分钟。合上笔记本盖子会让 Mac 睡眠，测试也会暂停。
+  - 需要重跑时，先确认 `pgrep -f full1026/run.py` 没有输出，再执行 `bash start.sh`。
 - **下一步**：
-  1. 两条管线全量 EditMode 复跑，补上推送前没跑的那一轮：Built-in 用 `classes.py FULL`，URP 用 `classes_urp.py FULL`，两个都在旧会话 scratchpad 里。再核对门禁 hash：`python3 -B eval/cli.py selftest3 --dry-run | grep 'gate inputs' | sort` 与 `gatehash-before.txt` 比对。
-  2. 有失败就修复，另起提交。
-  3. 然后定位长会话下域重载变慢。
+  1. 看 `full1026-result.md`。全绿就跳过下面的复跑；有失败就修复，另起提交。手动复跑全量的方法：Built-in 用 `classes.py FULL`，URP 用 `classes_urp.py FULL`，两个都在旧会话 scratchpad 里。再核对门禁 hash：`python3 -B eval/cli.py selftest3 --dry-run | grep 'gate inputs' | sort` 与 `gatehash-before.txt` 比对。
+  2. 定位长会话下域重载变慢。
 
 ## 10-26 22:40 面板改版
 
