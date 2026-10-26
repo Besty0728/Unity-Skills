@@ -158,6 +158,18 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void InstallCustom_NeverAddsToTheRememberedList()
+        {
+            var before = EditorPrefs.GetString(SkillInstaller.CustomTargetsPrefKey, string.Empty);
+
+            var result = SkillInstaller.InstallCustom(Path.Combine(_tempRoot, "scripted"), "TestAgent");
+
+            Assert.That(result.success, Is.True, result.message);
+            Assert.That(EditorPrefs.GetString(SkillInstaller.CustomTargetsPrefKey, string.Empty), Is.EqualTo(before),
+                "Only the AI Config tab remembers an install; a scripted or test install into a temp folder must not.");
+        }
+
+        [Test]
         public void SyncTargets_RefreshesAnOutdatedRememberedInstall()
         {
             var path = Path.Combine(_tempRoot, "my-skill");

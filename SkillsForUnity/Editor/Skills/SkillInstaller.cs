@@ -383,22 +383,14 @@ namespace UnitySkills
             return null;
         }
 
-        /// <param name="iconSourceFile">Optional PNG/JPG the panel picked for the new card; copied on success.</param>
-        public static (bool success, string message) InstallCustom(string path, string agentName = "Custom", string iconSourceFile = null)
+        public static (bool success, string message) InstallCustom(string path, string agentName = "Custom")
         {
             try
             {
                 if (string.IsNullOrEmpty(path))
                     return (false, "Path cannot be empty");
 
-                var result = InstallSkill(path, "Custom Path", agentName, withEvalSkill: false);
-                if (result.success)
-                {
-                    RememberCustomTarget(agentName, path);
-                    if (iconSourceFile != null)
-                        SetCustomTargetIcon(path, iconSourceFile);
-                }
-                return result;
+                return InstallSkill(path, "Custom Path", agentName, withEvalSkill: false);
             }
             catch (Exception ex)
             {
@@ -407,7 +399,8 @@ namespace UnitySkills
         }
 
         // Custom installs the panel lists and the post-upgrade sync refreshes. Global EditorPrefs, so every project on
-        // this machine sees them; a custom path is absolute and belongs to no project.
+        // this machine sees them; a custom path is absolute and belongs to no project. Only the AI Config tab adds
+        // entries: InstallCustom itself never does, so tests and scripts installing into temp folders leave no trace.
         internal const string CustomTargetsPrefKey = "UnitySkills_CustomInstallTargets";
 
         internal sealed class CustomTarget

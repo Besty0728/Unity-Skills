@@ -589,9 +589,12 @@ namespace UnitySkills
             if (File.Exists(Path.Combine(_customPath, "SKILL.md")) && ShowSkipIfInstalledCopyIsCurrentOrNewer(_customPath))
                 return;
 
-            var result = SkillInstaller.InstallCustom(_customPath, _customName, _customIconSource);
+            var result = SkillInstaller.InstallCustom(_customPath, _customName);
             if (result.success)
             {
+                SkillInstaller.RememberCustomTarget(_customName, _customPath);
+                if (_customIconSource != null)
+                    SkillInstaller.SetCustomTargetIcon(_customPath, _customIconSource);
                 _customIconSource = null;
                 EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_success"), SkillsLocalization.Get("install_success"), SkillsLocalization.Get("dialog_ok"));
             }
