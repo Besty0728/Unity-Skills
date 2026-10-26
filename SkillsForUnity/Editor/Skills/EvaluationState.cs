@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using UnitySkills.Internal;
 
 namespace UnitySkills
 {
@@ -14,13 +15,17 @@ namespace UnitySkills
     /// Read side of the evaluation runner's state directory, Library/UnitySkills/eval (contract 4.1-4.9). The panel
     /// only reads these files: shared-read open, and an IOException or a parse failure is retried 3 times 50 ms apart,
     /// because the runner replaces them atomically while we read (contract 4.2). Identifiers read from one file are
-    /// validated before they become path segments of another.
+    /// validated before they become path segments of another. The one file the panel writes is its own All-tasks
+    /// group record (panel_group.json), see the group section below.
     /// </summary>
     internal static class EvaluationState
     {
         internal const int SupportedSchema = 1;
         private const int ReadRetries = 3;
         private const int ReadRetryDelayMs = 50;
+
+        internal static readonly string[] TrackIds = { "ops", "dev" };
+        internal static readonly string[] TierIds = { "basic", "standard", "challenge" };
 
         private static readonly int CurrentPid = GetCurrentPid();
         private static readonly Regex SessionIdPattern = new Regex(@"^s\d{8}T\d{6}[0-9a-f]{6}$");
@@ -313,6 +318,354 @@ namespace UnitySkills
                 Command = raw.Value?.Value<string>("cmd"),
                 ModifiedUtc = modified,
             };
+        }
+
+        // ===== Grades (the runner uses the same thresholds for report.grade) =====
+
+        /// <summary>
+        /// The overall grade of pass / (pass + partial + fail), or null when nothing was gradable. Integer comparisons
+        /// keep the 0.9, 0.7 and 0.5 boundaries exact.
+        /// </summary>
+        internal static string GradeFor(int pass, int partial, int fail)
+        {
+            int gradable = pass + partial + fail;
+            if (gradable <= 0) return null;
+            if (pass * 10 >= gradable * 9) return "excellent";
+            if (pass * 10 >= gradable * 7) return "good";
+            if (pass * 10 >= gradable * 5) return "pass";
+            return "needs_work";
+        }
+
+        /// <summary>Distinct model names the tasks recorded (usage.model.values), in first-seen order.</summary>
+        internal static List<string> ModelNames(IEnumerable<JObject> tasks)
+        {
+            var names = new List<string>();
+            if (tasks == null) return names;
+            foreach (var task in tasks)
+            {
+                if (!(task?["usage"]?["model"]?["values"] is JArray values)) continue;
+                foreach (var item in values)
+                {
+                    if (item.Type != JTokenType.String) continue;
+                    var name = item.Value<string>();
+                    if (!string.IsNullOrWhiteSpace(name) && !names.Contains(name)) names.Add(name);
+                }
+            }
+            return names;
+        }
+
+        // ===== Task pack (Evaluation~/pack/manifest.json, shipped with the package) =====
+
+        /// <summary>The pack manifest, or null when the package or the file is not there.</summary>
+        internal static JObject ReadPackManifest()
+        {
+            if (!PackageRootLocator.TryGet(out var root)) return null;
+            var raw = Read(Path.Combine(root, "Evaluation~", "pack", "manifest.json"));
+            return raw.Status == ReadStatus.Ok ? raw.Value : null;
+        }
+
+        /// <summary>The task ids a track and tier hold in the manifest, in pack order.</summary>
+        internal static List<string> ManifestTaskIds(JObject manifest, string track, string tier)
+        {
+            var ids = new List<string>();
+            if (manifest?["tracks"]?[track]?[tier] is JArray list)
+            {
+                foreach (var item in list)
+                    if (item.Type == JTokenType.String) ids.Add(item.Value<string>());
+            }
+            return ids;
+        }
+
+        // ===== All tasks: a panel group of six sessions the agent runs one after another =====
+
+        internal const string PanelGroupFileName = "panel_group.json";
+
+        /// <summary>Written by the panel for an All-tasks run; the sessions it covers are found by track, tier and id time.</summary>
+        internal sealed class GroupRecord
+        {
+            public DateTime StartedUtc;
+            public string Lang;
+            public List<GroupCombo> Combos = new List<GroupCombo>();
+        }
+
+        internal sealed class GroupCombo
+        {
+            public string Track;
+            public string Tier;
+        }
+
+        /// <summary>One task of the group. State comes from its session, Status and Row from its report once written.</summary>
+        internal sealed class GroupTask
+        {
+            public string Track;
+            public string Tier;
+            public string TaskId;
+            public string State;
+            public string Status;
+            public double? Completion;
+            public JObject Row;
+        }
+
+        internal sealed class GroupComboProgress
+        {
+            public GroupCombo Combo;
+            public SessionInfo Session;
+            public JObject Report;
+        }
+
+        internal sealed class GroupProgress
+        {
+            public readonly List<GroupComboProgress> Combos = new List<GroupComboProgress>();
+            public readonly List<GroupTask> Tasks = new List<GroupTask>();
+
+            public bool Complete => Combos.Count > 0 && Combos.TrueForAll(combo => combo.Report != null);
+
+            public int FinishedSessions
+            {
+                get
+                {
+                    int count = 0;
+                    foreach (var combo in Combos)
+                        if (combo.Report != null) count++;
+                    return count;
+                }
+            }
+
+            public int FinishedTasks
+            {
+                get
+                {
+                    int count = 0;
+                    foreach (var task in Tasks)
+                        if (IsFinished(task)) count++;
+                    return count;
+                }
+            }
+
+            private static bool IsFinished(GroupTask task) =>
+                task.Status != null || task.State == "done" || task.State == "invalid" || task.State == "cancelled";
+        }
+
+        /// <summary>Totals of a finished group, counted over its task rows; Grade follows <see cref="GradeFor"/>.</summary>
+        internal sealed class GroupResult
+        {
+            public int Tasks;
+            public int Pass;
+            public int Partial;
+            public int Fail;
+            public int Other;
+            public double? MeanCompletion;
+            public string Grade;
+            public List<string> Models = new List<string>();
+        }
+
+        /// <summary>
+        /// The All-tasks combos a render pipeline can run, in the order of the scope: a tier qualifies when every task in it
+        /// accepts the pipeline (the runner refuses a start otherwise).
+        /// </summary>
+        internal static List<GroupCombo> AllCombos(JObject manifest, string pipeline)
+        {
+            var combos = new List<GroupCombo>();
+            foreach (var track in TrackIds)
+            {
+                foreach (var tier in TierIds)
+                {
+                    var ids = ManifestTaskIds(manifest, track, tier);
+                    if (ids.Count == 0 || !ids.TrueForAll(id => PipelineAccepts(manifest, id, pipeline))) continue;
+                    combos.Add(new GroupCombo { Track = track, Tier = tier });
+                }
+            }
+            return combos;
+        }
+
+        /// <summary>
+        /// Whether a task runs on a pipeline (manifest tasks[].requires.pipeline): a name, a list of names, null for any.
+        /// An absent value takes URP, as the pack does.
+        /// </summary>
+        internal static bool PipelineAccepts(JObject manifest, string taskId, string pipeline)
+        {
+            var requires = manifest?["tasks"]?[taskId]?["requires"] as JObject;
+            if (requires == null || !requires.ContainsKey("pipeline")) return pipeline == "URP";
+            var value = requires["pipeline"];
+            if (value == null || value.Type == JTokenType.Null) return true;
+            if (value is JArray names)
+            {
+                foreach (var name in names)
+                {
+                    if (name.Type == JTokenType.String && name.Value<string>() == pipeline) return true;
+                }
+                return false;
+            }
+            return value.Type == JTokenType.String && value.Value<string>() == pipeline;
+        }
+
+        /// <summary>
+        /// Agent protocol text, not UI copy: it is English like the command lines it carries, and <c>{0}</c> takes
+        /// the command block. Keep it ASCII so the panel can show it in the bundled font.
+        /// </summary>
+        internal const string GroupPromptTemplate =
+            "UnitySkills evaluation for all tracks and tiers. Run the sessions one at a time, in the order below.\n" +
+            "For each command: 1) run it exactly as written; 2) it prints a session prompt, so follow that prompt " +
+            "until the session's report is written; 3) only then run the next command. If a command reports " +
+            "SESSION_ACTIVE, finish that session first. Do not change the commands.\n\n" +
+            "Commands:\n{0}";
+
+        /// <summary>The agent-facing prompt: one start command per combo, the same python and runner the panel uses.</summary>
+        internal static string BuildGroupPrompt(string python, string runner, string projectRoot, string lang, IList<GroupCombo> combos)
+        {
+            var lines = new List<string>();
+            foreach (var combo in combos)
+            {
+                lines.Add(string.Format(CultureInfo.InvariantCulture,
+                    "\"{0}\" -B \"{1}\" start --track {2} --tier {3} --mode suite --lang {4} --project \"{5}\"",
+                    python, runner, combo.Track, combo.Tier, lang, projectRoot));
+            }
+            return string.Format(CultureInfo.InvariantCulture, GroupPromptTemplate, string.Join("\n", lines));
+        }
+
+        internal static string PanelGroupFile(string projectRoot) => Path.Combine(StateDir(projectRoot), PanelGroupFileName);
+
+        /// <summary>The group record, or null when none exists or it cannot be read (a corrupt record is simply dropped).</summary>
+        internal static GroupRecord ReadPanelGroup(string projectRoot)
+        {
+            var raw = Read(PanelGroupFile(projectRoot));
+            if (raw.Status != ReadStatus.Ok) return null;
+            var started = ParseIso(raw.Value.Value<string>("startedUtc"));
+            if (!started.HasValue) return null;
+
+            var record = new GroupRecord { StartedUtc = started.Value, Lang = raw.Value.Value<string>("lang") };
+            if (raw.Value["combos"] is JArray combos)
+            {
+                foreach (var item in combos)
+                {
+                    var track = (item as JObject)?.Value<string>("track");
+                    var tier = (item as JObject)?.Value<string>("tier");
+                    if (track != null && tier != null) record.Combos.Add(new GroupCombo { Track = track, Tier = tier });
+                }
+            }
+            return record.Combos.Count > 0 ? record : null;
+        }
+
+        internal static void WritePanelGroup(string projectRoot, GroupRecord record)
+        {
+            var combos = new JArray();
+            foreach (var combo in record.Combos) combos.Add(new JObject { ["track"] = combo.Track, ["tier"] = combo.Tier });
+            var json = new JObject
+            {
+                ["schema"] = SupportedSchema,
+                ["startedUtc"] = FormatIso(record.StartedUtc),
+                ["lang"] = record.Lang,
+                ["combos"] = combos,
+            };
+            LibraryStateFile.WriteAllText(PanelGroupFile(projectRoot), json.ToString(Formatting.Indented));
+        }
+
+        /// <summary>Removes the group record; a file that cannot be deleted is left for the next read to ignore or replace.</summary>
+        internal static void DeletePanelGroup(string projectRoot)
+        {
+            try
+            {
+                var path = PanelGroupFile(projectRoot);
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                SkillsLogger.LogVerbose($"Could not delete the evaluation panel group record: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Maps the group onto the sessions. A combo takes the newest session of its track and tier whose id time is
+        /// not older than the group's start (to the second, the id's precision). Before a combo has a session, its
+        /// tasks come from the manifest. <paramref name="reportOf"/> returns a session's report.json, or null.
+        /// </summary>
+        internal static GroupProgress MergeGroup(GroupRecord group, IList<SessionInfo> sessions,
+            Func<SessionInfo, JObject> reportOf, JObject manifest)
+        {
+            var progress = new GroupProgress();
+            var since = new DateTime(group.StartedUtc.Ticks - group.StartedUtc.Ticks % TimeSpan.TicksPerSecond, DateTimeKind.Utc);
+            foreach (var combo in group.Combos)
+            {
+                SessionInfo session = null;
+                foreach (var candidate in sessions)
+                {
+                    if (!IsSessionId(candidate.SessionId) || candidate.Track != combo.Track || candidate.Tier != combo.Tier) continue;
+                    if (SessionStartedUtc(candidate.SessionId) < since) continue;
+                    if (session == null || string.CompareOrdinal(candidate.SessionId, session.SessionId) > 0) session = candidate;
+                }
+
+                var report = session != null ? reportOf(session) : null;
+                progress.Combos.Add(new GroupComboProgress { Combo = combo, Session = session, Report = report });
+
+                var ids = session != null && session.Order.Count > 0
+                    ? session.Order
+                    : ManifestTaskIds(manifest, combo.Track, combo.Tier);
+                var rows = new Dictionary<string, JObject>(StringComparer.Ordinal);
+                if (report?["tasks"] is JArray reportTasks)
+                {
+                    foreach (var row in reportTasks)
+                    {
+                        if (row is JObject task && task.Value<string>("taskId") is string taskId) rows[taskId] = task;
+                    }
+                }
+                foreach (var id in ids)
+                {
+                    var task = new GroupTask { Track = combo.Track, Tier = combo.Tier, TaskId = id };
+                    if (session != null && session.Tasks.TryGetValue(id, out var entry)) task.State = entry.State;
+                    if (rows.TryGetValue(id, out var row))
+                    {
+                        task.Row = row;
+                        task.Status = row.Value<string>("status");
+                        task.Completion = NumberOf(row["completion"]);
+                    }
+                    progress.Tasks.Add(task);
+                }
+            }
+            return progress;
+        }
+
+        /// <summary>Counts and grade of a finished group, over its task rows (pass, partial, fail and the rest).</summary>
+        internal static GroupResult SummarizeGroup(GroupProgress progress)
+        {
+            var result = new GroupResult();
+            double completionSum = 0;
+            int completionCount = 0;
+            var rows = new List<JObject>();
+            foreach (var task in progress.Tasks)
+            {
+                result.Tasks++;
+                switch (task.Status)
+                {
+                    case "pass": result.Pass++; break;
+                    case "partial": result.Partial++; break;
+                    case "fail": result.Fail++; break;
+                    case null: break;
+                    default: result.Other++; break;
+                }
+                if (task.Status == "pass" || task.Status == "partial" || task.Status == "fail")
+                {
+                    if (task.Completion.HasValue)
+                    {
+                        completionSum += task.Completion.Value;
+                        completionCount++;
+                    }
+                }
+                if (task.Row != null) rows.Add(task.Row);
+            }
+            result.MeanCompletion = completionCount > 0 ? completionSum / completionCount : (double?)null;
+            result.Grade = GradeFor(result.Pass, result.Partial, result.Fail);
+            result.Models = ModelNames(rows);
+            return result;
+        }
+
+        private static DateTime SessionStartedUtc(string sessionId) =>
+            DateTime.ParseExact(sessionId.Substring(1, 15), "yyyyMMdd'T'HHmmss", CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+
+        private static double? NumberOf(JToken token)
+        {
+            if (token == null || (token.Type != JTokenType.Integer && token.Type != JTokenType.Float)) return null;
+            return token.Value<double>();
         }
 
         // ===== Timestamps (contract 0: UTC, millisecond precision, Z suffix) =====

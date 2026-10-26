@@ -21,17 +21,24 @@ namespace UnitySkills.Tests.Core
 
         private static readonly string[] NamedNodes =
         {
-            "eval-scroll", "eval-title", "eval-activity", "eval-intro",
-            "eval-marker-value", "eval-marker-btn", "eval-marker-confirm", "eval-marker-confirm-ok", "eval-marker-confirm-cancel",
-            "eval-python-value", "eval-python-detect-btn", "eval-python-override", "eval-python-use-btn", "eval-python-clear-btn",
-            "eval-mode-value", "eval-mode-switch-btn", "eval-mode-restore-btn", "eval-mode-note",
-            "eval-check-btn", "eval-cleanup-btn", "eval-check-summary", "eval-env-messages",
-            "eval-track", "eval-tier", "eval-run-mode", "eval-lang", "eval-host", "eval-model", "eval-effort", "eval-usage-toggle",
-            "eval-start-btn", "eval-copy-prompt-btn", "eval-open-prompt-btn", "eval-copied", "eval-start-messages",
-            "eval-refresh-btn", "eval-session-line", "eval-task-line", "eval-task-list", "eval-submit-btn", "eval-abort-btn",
-            "eval-abort-confirm", "eval-abort-confirm-ok", "eval-progress-messages",
-            "eval-report-session", "eval-report-summary", "eval-report-metrics", "eval-report-tasks", "eval-report-btn",
-            "eval-open-report-btn", "eval-reveal-report-btn", "eval-report-messages", "eval-history-list",
+            "eval-scroll", "eval-title", "eval-state", "eval-env-line", "eval-check-btn", "eval-activity",
+            "eval-env-section", "eval-marker-value", "eval-marker-btn", "eval-marker-confirm", "eval-marker-confirm-ok",
+            "eval-marker-confirm-cancel", "eval-python-value", "eval-python-detect-btn", "eval-python-override",
+            "eval-python-use-btn", "eval-python-clear-btn", "eval-mode-value", "eval-mode-switch-btn",
+            "eval-mode-restore-btn", "eval-mode-note", "eval-cleanup-btn", "eval-check-summary", "eval-env-messages",
+            "eval-intro", "eval-intro-panel-v", "eval-intro-agent-v", "eval-intro-both",
+            "eval-result", "eval-result-score", "eval-result-grade", "eval-result-fill", "eval-result-meta",
+            "eval-result-models", "eval-result-verdict", "eval-result-tiers", "eval-report-unofficial",
+            "eval-report-tasks", "eval-report-btn", "eval-open-report-btn", "eval-reveal-report-btn", "eval-report-messages",
+            "eval-config", "eval-scope-tier", "eval-scope-all", "eval-scope-pick", "eval-track-row", "eval-tier-row",
+            "eval-track", "eval-tier", "eval-lang", "eval-all-hint", "eval-picks", "eval-generate-btn", "eval-clear-btn",
+            "eval-config-locked", "eval-start-messages",
+            "eval-prompt", "eval-prompt-text", "eval-prompt-scroll", "eval-prompt-note", "eval-copy-prompt-btn",
+            "eval-open-prompt-btn", "eval-copied",
+            "eval-progress", "eval-progress-count", "eval-progress-fill", "eval-session-line", "eval-task-line",
+            "eval-task-list", "eval-refresh-btn", "eval-submit-btn", "eval-abort-btn", "eval-abort-confirm",
+            "eval-abort-confirm-ok", "eval-progress-messages",
+            "eval-history", "eval-history-list",
         };
 
         // Contract 3.1 and 3.2, plus the codes only the panel raises.
@@ -77,6 +84,9 @@ namespace UnitySkills.Tests.Core
             var text = File.ReadAllText(TabUxmlPath);
             Assert.That(text.Where(c => c > 127).ToArray(), Is.Empty, "UXML default text must stay ASCII.");
             StringAssert.DoesNotContain("display: none", text);
+            StringAssert.DoesNotContain("eval-host", text);
+            StringAssert.DoesNotContain("eval-model", text);
+            StringAssert.DoesNotContain("eval-run-mode", text);
             StringAssert.DoesNotContain("display:none", text);
         }
 
@@ -90,10 +100,11 @@ namespace UnitySkills.Tests.Core
             {
                 Assert.That(root.Q<ScrollView>("eval-scroll"), Is.Not.Null);
                 Assert.That(root.Q<Label>("eval-title").text, Is.EqualTo(SkillsLocalization.Get("tab_eval_title")));
-                Assert.That(root.Q<Button>("eval-start-btn").text, Is.EqualTo(SkillsLocalization.Get("tab_eval_start_btn")));
+                Assert.That(root.Q<Button>("eval-generate-btn").text, Is.EqualTo(SkillsLocalization.Get("tab_eval_generate_btn")));
                 Assert.That(root.Q<DropdownField>("eval-track").choices.Count, Is.EqualTo(2));
                 Assert.That(root.Q<DropdownField>("eval-tier").choices.Count, Is.EqualTo(3));
-                Assert.That(root.Q<DropdownField>("eval-host").choices.Count, Is.EqualTo(5));
+                Assert.That(root.Q<DropdownField>("eval-lang").choices.Count, Is.EqualTo(2));
+                Assert.That(root.Q<Button>("eval-scope-all").text, Is.EqualTo(SkillsLocalization.Get("tab_eval_scope_all")));
 
                 SkillsLocalization.Current = SkillsLocalization.Language.Chinese;
                 controller.RefreshLocalization();

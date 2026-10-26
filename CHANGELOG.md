@@ -19,15 +19,17 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **属性级三方合并** — 每一步记录改后状态与状态哈希；回退时目标仍停在最后一步留下的状态就干净回退，已回到改前状态就跳过，否则逐属性合并：只改回被回退步骤改过、之后没人动过的属性，双方都改过的属性记为叶子冲突（默认保留）。贴图、脚本、预制体等文件资产按磁盘指纹判断，外部改动算冲突。
 - **`scope` 部分回退** — 逗号分隔的 `entity:<id>`、物体名或层级路径（以 `/` 结尾包含子孙）、`Assets/` 路径（以 `/` 结尾为整个文件夹）、设置键（以 `.` 结尾为前缀）；匹配不到任何目标时返回 `SEMANTIC_INVALID` 并列出可选目标，带 scope 的回退不把步骤标为 `(undone)`。
 - **回退 dryRun 预览** — `workflow_restore`、`workflow_undo_task`、`workflow_redo_task`、`workflow_session_undo` 支持 `?mode=dryRun`，返回计划计数（含 `merge`）、条目、冲突、覆盖度、无法执行的项、`danglingReferences`（会被删除却仍被引用的对象）与 `mayTriggerReload`。
-- **History 页时间线** — 检查点与步骤合并为一条虚拟化时间线，可按 agent 过滤；预览回退时逐条勾选要覆盖的冲突，"回退到此处"后可"撤销这次回退"；工具栏有自动检查点开关与空闲间隔设置，三语本地化。
-- **测评集（Evaluation 页 + v3 评测器）** — Evaluation 页提供环境检查、专用工程标记、Python 检测与覆盖、Bypass 切换与自动恢复、会话配置、提示词复制、进度、提交 / 中止、报告与历史；评测器为随包发布的纯标准库 Python（`Evaluation~`），短命令无常驻进程，状态写在 `Library/UnitySkills/eval/`；公开题包 37 题（运维线 21、开发线 16，分基础 / 标准 / 挑战三档）；新增建议模块 `unity-evaluation` 与 `scripts/unity_eval.py`，复制提示词即可在 agent 里运行。
+- **History 页检查点手风琴** — 每个检查点一组，默认收起；标题行显示检查点名、`c<n>` 与步数，下一行是"时间 · agent · 动作概括"（按快照类型或技能的 Operation 归类，如"创建 Enemy_02、Enemy_01 · 修改 Ground.mat"）；自动检查点、回退前的守护检查点各有标题，第一个检查点之前的步骤单独成组。每组按状态显示"预览回退"或"已回退到此 · 撤销回退"，撤销回退同样先预览冲突，任意一次未撤销的回退都能从它所属的组撤销；预览显示在所属组内。首屏建最新 30 组，可继续加载更早的组；可按 agent 过滤，工具栏有自动检查点开关与空闲间隔设置，三语本地化。
+- **测评集（Evaluation 页 + v3 评测器）** — Evaluation 页分四步：选择题目（当前等级、全部题目、挑选题目）→ 复制提示词交给 Agent → 进度条与每题状态 → 结果（通过数、总体评价、完全通过率、平均完成度、评语与模型名），环境检查收成一行"环境就绪"，有问题才展开；"全部题目"让 Agent 依次跑当前管线可运行的各个等级，面板把各会话合成一个进度与结论。报告新增 `grade`（按完全通过率：≥90% 优秀、≥70% 良好、≥50% 及格，其余待提升）与模板拼成的 `verdict`。新增独立技能 `/unity-skills-eval`（随 unity-skills 一起安装），AI 先问范围、题型、等级和语言再开始，进度与结果同样显示在 Evaluation 页；评测器为随包发布的纯标准库 Python（`Evaluation~`），短命令无常驻进程，状态写在 `Library/UnitySkills/eval/`；公开题包 37 题（运维线 21、开发线 16，分基础 / 标准 / 挑战三档）；新增建议模块 `unity-evaluation` 与 `scripts/unity_eval.py`，复制提示词即可在 agent 里运行。
 - **Particle 模块（31 个技能）** — 内置（Shuriken）粒子系统：`particle_get_capabilities`、`particle_find_all`、`particle_get_info`、`particle_get_module`、`particle_get_renderer`、`particle_get_bursts`、`particle_get_sub_emitters`、`particle_analyze` 只读查询；`particle_create`、`particle_add_system`、`particle_configure`、`particle_set_renderer`、`particle_set_bursts`、`particle_set_sub_emitters` 及播放控制 `particle_play` / `pause` / `stop` / `emit` / `simulate`，写技能与播放控制都有对应的 `_batch`（配置类批量为全有或全无）。字段注册表统一驱动能力描述、严格 JSON 解析、校验、读回与 dryRun；支持全部 MinMaxCurve / MinMaxGradient 模式；没有粒子系统模块的工程返回 `MISSING_PACKAGE`。
+- **自定义安装记入列表** — AI Config 页用自定义路径装过的工具会被记下来（本机所有工程共用，同一路径只记一条），作为单独的卡片排在内置工具之后，可以更新、卸载或移出列表（不删文件）；点卡片图标可选一张 PNG/JPG（1 MB 以内）作为图标，复制到 `~/.unity_skills/custom-icons/`，右键恢复默认；升级插件后的自动同步也会刷新它们。自定义路径只装主技能。
 - **按项目保存的设置** — 令牌档位、运行模式、面板审批、允许列表、确认要求、首选端口、请求超时、遥测、启动时装包、Workflow 历史上限与 Evaluation 页配置存到 `UserSettings/UnitySkills/settings.json`；工程没有自己的值时读取旧的全局值，升级后行为不变。
 - **`GET /analytics?agent=`** — 按 agent 过滤分析数据，`(unknown)` 匹配没有 agent 的记录；失败调用的遥测行带脱敏后的错误文本 `err` 与参数摘要 `target`（工程根目录写作 `<project>`，用户主目录写作 `~`）。
 - **`TARGET_NOT_FOUND` 带实例信息** — 响应带 `instance`（`<productName>@<port>`），一眼看出请求打到了哪个编辑器。
 
 ### Changed
 
+- **面板石墨配色** — 深浅两套配色换成石墨色系，控件高度与圆角统一（4 / 6 / 8 三档），横幅、提示与状态统一为淡色底加同色描边，删除类按钮改为红色描边的空心按钮；标签栏保持原样式。
 - **Workflow 历史改为只追加日志** — `Library/UnitySkills/workflow/` 下是 `log.jsonl`（满 4 MB 或 5000 行封存成段）、`head.json` 与按 SHA1 命名的 `blobs/`；每次写操作只追加一行，不再整份重写 `workflow_history.json`。按容量（`CapacityMB`，默认 512）与天数（`MaxAgeDays`，默认 30）整段清理，History 页的五项上限改为这两项。**3.0 之前的历史不迁移**：移到 `workflow_legacy/`，14 天后自动删除，History 页显示备份行并可手动删除。
 - **撤销与重做走回退引擎** — `workflow_undo_task` 接受 `s<seq>`、组 id、`c<n>` 或任务 UUID，只把这些步骤的目标恢复到之前，其他目标上的后续步骤保留；`workflow_redo_task` 改为撤销某次回退本身，不再连带撤掉之后的工作；`workflow_session_undo` 同理。撤销同一目标上的自己后续步骤不再一律冲突，改为按属性合并。
 - **`workflow_list` 返回紧凑文本行** — `s<n> 时间 技能 目标 (改动数)`，其他 agent 的步骤带 `@agent`，批量带 `xN`，被回退的步骤标 `(undone)`；检查点行 `c<n>` 穿插其中；新增 `limit`、`agent`、`before`、`format` 与 `view:"checkpoints"`。

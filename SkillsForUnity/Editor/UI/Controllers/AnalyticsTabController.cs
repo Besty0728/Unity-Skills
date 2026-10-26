@@ -87,7 +87,7 @@ namespace UnitySkills
             _recentTitle      = _root.Q<Label>("analytics-recent-title");
             _recentList       = _root.Q<VisualElement>("analytics-recent-list");
 
-            UISkillsEditorIcons.Apply(_refreshBtn, "d_Refresh", "Refresh", "TreeEditor.Refresh");
+            VectorGlyphs.SetIcon(_refreshBtn, VectorGlyph.Refresh);
             // Trash icon only — long "Clear window" text is reserved for the tooltip / dialog.
             UISkillsEditorIcons.Apply(_clearBtn,
                 "TreeEditor.Trash", "d_TreeEditor.Trash", "d_Grid.TrashTool", "Trash");

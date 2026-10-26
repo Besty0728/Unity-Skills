@@ -101,11 +101,9 @@ namespace UnitySkills
 
         /// <summary>
         /// Starts <c>python -B run_eval.py &lt;command&gt; &lt;args&gt; --project P --launcher panel --result-file F
-        /// --log-file L --cmd-id ID</c>. <paramref name="declaredJson"/> (start only) is written next to the command
-        /// file and passed as --declared.
+        /// --log-file L --cmd-id ID</c>.
         /// </summary>
-        internal static LaunchResult Launch(string projectRoot, string python, string command, IList<string> args,
-            string declaredJson = null)
+        internal static LaunchResult Launch(string projectRoot, string python, string command, IList<string> args)
         {
             var runner = ResolveRunnerPath(out var missing);
             if (runner == null)
@@ -124,8 +122,6 @@ namespace UnitySkills
             };
 
             var commandArgs = new List<string>(args ?? Array.Empty<string>());
-            if (declaredJson != null)
-                commandArgs.AddRange(new[] { "--declared", Path.Combine(panelDir, cmdId + ".declared.json") });
             record.Argv = BuildArgv(python, runner, command, commandArgs, projectRoot, record);
 
             foreach (var arg in record.Argv)
@@ -136,8 +132,6 @@ namespace UnitySkills
 
             try
             {
-                if (declaredJson != null)
-                    EvaluationState.WriteTextAtomic(Path.Combine(panelDir, cmdId + ".declared.json"), declaredJson);
                 WriteRecord(projectRoot, record);
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
@@ -231,22 +225,6 @@ namespace UnitySkills
                 if (!windows && (c == '\'' || c == '\\')) return false;
             }
             return true;
-        }
-
-        /// <summary>The declared host/model/effort file for start (contract 4.4); null when nothing was declared.</summary>
-        internal static string BuildDeclaredJson(string host, string model, string effort)
-        {
-            var declared = new JObject { ["schema"] = 1 };
-            AddDeclared(declared, "host", host);
-            AddDeclared(declared, "model", model);
-            AddDeclared(declared, "effort", effort);
-            return declared.Count > 1 ? declared.ToString(Formatting.None) : null;
-        }
-
-        private static void AddDeclared(JObject declared, string key, string value)
-        {
-            if (string.IsNullOrWhiteSpace(value)) return;
-            declared[key] = new JObject { ["value"] = value.Trim(), ["source"] = "user" };
         }
 
         // ===== Command files =====

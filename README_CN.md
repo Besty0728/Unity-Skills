@@ -160,7 +160,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 
 ### 3. 一键配置 AI Skills
 1. 打开 `Window > UnitySkills`，切到 **AI Config** 标签页。
-2. 选择对应的终端图标，点击 **"Install"** 即完成配置——安装器会把包内 `unity-skills~/` 模板复制到目标位置，无需手动拷贝。
+2. 选择对应的终端图标，点击 **"Install"** 即完成配置——安装器会把包内 `unity-skills~/` 模板复制到目标位置，并把评测技能 `unity-skills-eval~/` 装到旁边的 `unity-skills-eval/` 目录（用 `/unity-skills-eval` 调用），无需手动拷贝。Custom Path 安装只装主技能。
 
 > 🔄 **更新自动同步**：升级插件后，已安装过的 AI 工具会自动同步到新版本（不会自动安装新目标）；可在 ⚙ 设置抽屉的 **AI 工具** 区关闭。
 >
@@ -179,7 +179,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 #### ✅ 标准安装规范 B
 1. **定位 Skills 源码目录**：UPM 包内的 `SkillsForUnity/unity-skills~/` 即为可分发的 Skills 模板（根目录包含 `SKILL.md`）。
 2. **找到工具的 Skills 根目录**：不同工具路径不同，优先以该工具文档为准。
-3. **完整复制**：将整个 `unity-skills~/` 目录内容复制到工具的 Skills 根目录下（重命名为 `unity-skills/`）。
+3. **完整复制**：将整个 `unity-skills~/` 目录内容复制到工具的 Skills 根目录下（重命名为 `unity-skills/`）。如需评测技能 `/unity-skills-eval`，再把 `unity-skills-eval~/` 复制到旁边并命名为 `unity-skills-eval/`。
 4. **创建 agent_config.json**：在 `unity-skills/scripts/` 目录下创建 `agent_config.json` 文件：
    ```json
    {"agentId": "your-agent-name", "installedAt": "2026-02-11T00:00:00Z"}
@@ -287,6 +287,7 @@ https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#v1.6.0
 ├── SkillsForUnity/                 # Unity 编辑器插件 (UPM Package)
 │   ├── package.json                # com.besty.unity-skills
 │   ├── unity-skills~/              # 跨平台 AI Skill 模板 (波浪线隐藏目录, 随包分发)
+│   ├── unity-skills-eval~/         # /unity-skills-eval 评测技能，装在 unity-skills 旁边
 │   │   ├── SKILL.md                # 主 Skill 定义 (AI 读取)
 │   │   ├── scripts/
 │   │   │   └── unity_skills.py     # Python 客户端库

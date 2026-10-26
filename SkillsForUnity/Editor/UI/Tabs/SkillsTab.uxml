@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements"
          xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements"
          editor="UnityEditor.UIElements"
@@ -69,7 +69,7 @@
                 <ui:TextField name="search-field" class="search-field flex-grow"
                               tooltip="Search skills" />
                 <ui:Button name="refresh-btn" class="mini-btn" tooltip="Refresh" />
-                <ui:Button name="validate-btn" class="mini-btn" text="✓" tooltip="Validate" />
+                <ui:Button name="validate-btn" class="mini-btn" tooltip="Validate" />
             </ui:VisualElement>
 
             <ui:Label name="skills-count-bar" class="skills-count-bar" text="" />

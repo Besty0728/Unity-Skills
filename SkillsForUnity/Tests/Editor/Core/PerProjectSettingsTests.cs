@@ -276,21 +276,18 @@ namespace UnitySkills.Tests.Core
             Open("A");
             EvaluationTabController.WritePanelConfig(new EvaluationTabController.PanelConfig
             {
-                Track = "dev", Tier = "challenge", RunMode = "strict", Host = "codex",
-                Model = "model-a", Effort = "high", UsageReading = false,
+                Track = "dev", Tier = "challenge", Scope = "pick",
             });
 
             Open("B");
             var fresh = EvaluationTabController.ReadPanelConfig();
             Assert.That(fresh.Track, Is.EqualTo("ops"));
-            Assert.That(fresh.Model, Is.Empty);
-            Assert.That(fresh.UsageReading, Is.True);
+            Assert.That(fresh.Scope, Is.EqualTo("tier"));
 
             Open("A");
             var stored = EvaluationTabController.ReadPanelConfig();
-            Assert.That(new[] { stored.Track, stored.Tier, stored.RunMode, stored.Host, stored.Model, stored.Effort },
-                Is.EqualTo(new[] { "dev", "challenge", "strict", "codex", "model-a", "high" }));
-            Assert.That(stored.UsageReading, Is.False);
+            Assert.That(new[] { stored.Track, stored.Tier, stored.Scope },
+                Is.EqualTo(new[] { "dev", "challenge", "pick" }));
         }
 
         [Test]
@@ -351,7 +348,7 @@ namespace UnitySkills.Tests.Core
             WorkflowAutoCleanConfig.Enabled = !WorkflowAutoCleanConfig.Enabled;
             WorkflowAutoCleanConfig.CapacityMB = WorkflowAutoCleanConfig.CapacityMB == 513 ? 514 : 513;
             WorkflowAutoCleanConfig.MaxAgeDays = WorkflowAutoCleanConfig.MaxAgeDays == 31 ? 32 : 31;
-            EvaluationTabController.WritePanelConfig(new EvaluationTabController.PanelConfig { Model = Guid.NewGuid().ToString("N") });
+            EvaluationTabController.WritePanelConfig(new EvaluationTabController.PanelConfig { Scope = Guid.NewGuid().ToString("N") });
             _scope.Dispose();
             _scope = null;
 

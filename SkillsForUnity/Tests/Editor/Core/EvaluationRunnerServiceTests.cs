@@ -225,19 +225,6 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
-        public void BuildDeclaredJson_OnlyCarriesWhatWasDeclared()
-        {
-            Assert.That(EvaluationRunnerService.BuildDeclaredJson("", "  ", null), Is.Null);
-
-            var json = EvaluationState.ParseObject(EvaluationRunnerService.BuildDeclaredJson("claude-code", " opus ", null));
-            Assert.That(json.Value<int>("schema"), Is.EqualTo(1));
-            Assert.That(json["host"]["value"].ToString(), Is.EqualTo("claude-code"));
-            Assert.That(json["host"]["source"].ToString(), Is.EqualTo("user"));
-            Assert.That(json["model"]["value"].ToString(), Is.EqualTo("opus"));
-            Assert.That(json["effort"], Is.Null);
-        }
-
-        [Test]
         public void IsRunnerBusy_FollowsTheLockHolder()
         {
             var now = DateTime.UtcNow;

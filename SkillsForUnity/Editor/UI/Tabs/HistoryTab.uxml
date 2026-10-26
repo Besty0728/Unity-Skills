@@ -17,7 +17,6 @@
 
         <!-- Cache warning, then the result of the last action -->
         <ui:HelpBox name="cache-warning" message-type="Warning" class="history-cache-warning" />
-        <ui:Button name="undo-restore-btn" class="mini-btn history-undo-btn" />
 
         <!-- Auto Clean and checkpoint settings -->
         <ui:Foldout name="autoclean-foldout" value="false" class="history-autoclean">
@@ -41,7 +40,7 @@
         <!-- Timeline body -->
         <ui:VisualElement class="history-body">
             <ui:DropdownField name="history-agent-filter" class="history-agent-filter" />
-            <ui:ListView name="timeline-list" class="timeline-list" />
+            <ui:ScrollView name="history-groups" class="history-groups" />
 
             <!-- Restore preview, shown after a checkpoint's Preview button -->
             <ui:VisualElement name="restore-preview" class="restore-preview">

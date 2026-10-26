@@ -127,6 +127,15 @@ namespace UnitySkills
             return RestoreSteps(steps, steps[0].DisplayId, ResolveCallerAgent(), conflicts);
         }
 
+        /// <summary>The preview of <see cref="RedoRestore"/>: the same steps and planning, applied to nothing.</summary>
+        internal static RestorePreview PreviewRedo(string taskId, string caller)
+        {
+            var steps = FindStepsForRedo(taskId);
+            if (steps.Count == 0)
+                return RestorePreview.Refused(taskId, NormalizeAgent(caller), RestoreRefused(SkillErrorCode.NotFound, "No undone tasks to redo"));
+            return PreviewSteps(steps, steps[0].DisplayId, caller);
+        }
+
         /// <summary>
         /// The restore a redo takes back: with no id, the newest undoable restore of the caller; an s&lt;n&gt; or c&lt;n&gt; id names the
         /// restore with that seq or guard; any other id is a step, and the newest undoable restore that reverted it is taken.

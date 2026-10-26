@@ -43,6 +43,8 @@ namespace UnitySkills
         // Custom agent inputs (kept across rebuilds)
         private string _customPath = "";
         private string _customName = "Custom";
+        private string _customIconSource;  // Icon picked on the Custom Agent card, recorded with the next install
+        private readonly List<Texture2D> _iconTextures = new List<Texture2D>();
 
         public AIConfigTabController(VisualElement root, UnitySkillsWindow window)
         {
@@ -138,9 +140,15 @@ namespace UnitySkills
         {
             if (_agentsContainer == null) return;
             _agentsContainer.Clear();
+            foreach (var texture in _iconTextures)
+                if (texture != null) UnityEngine.Object.DestroyImmediate(texture);
+            _iconTextures.Clear();
 
             foreach (var cfg in _agentConfigs)
                 _agentsContainer.Add(BuildAgentCard(cfg));
+
+            foreach (var target in SkillInstaller.ReadCustomTargets())
+                _agentsContainer.Add(BuildRememberedCustomCard(target));
 
             _agentsContainer.Add(BuildCustomAgentCard());
         }
@@ -278,6 +286,16 @@ namespace UnitySkills
             var icon = new Label("+");
             icon.AddToClassList("agent-icon");
             icon.AddToClassList("brand-custom");
+            ShowIconImage(icon, _customIconSource);
+            MakeIconPickable(icon, picked =>
+            {
+                _customIconSource = picked;
+                RebuildAgentsList();
+            }, () =>
+            {
+                _customIconSource = null;
+                RebuildAgentsList();
+            });
             head.Add(icon);
 
             var nameLabel = new Label(SkillsLocalization.Get("agent_custom_title"));
@@ -291,6 +309,7 @@ namespace UnitySkills
             pathRow.AddToClassList("setting-row--gap-top");
             // .setting-row already declares flex-direction:row + align-items:center in USS.
 
+            pathRow.Add(FieldLabel("agent_custom_path_label"));
             var pathField = new TextField();
             pathField.value = _customPath;
             pathField.AddToClassList("flex-grow");
@@ -318,6 +337,7 @@ namespace UnitySkills
             nameRow.AddToClassList("setting-row");
             // .setting-row already declares flex-direction:row + align-items:center in USS.
 
+            nameRow.Add(FieldLabel("agent_custom_name_label"));
             var nameInput = new TextField();
             nameInput.value = _customName;
             nameInput.AddToClassList("flex-grow");
@@ -334,6 +354,158 @@ namespace UnitySkills
             card.Add(nameRow);
 
             return card;
+        }
+
+        private static Label FieldLabel(string key)
+        {
+            var label = new Label(SkillsLocalization.Get(key));
+            label.AddToClassList("agent-field-label");
+            return label;
+        }
+
+        /// <summary>A custom install remembered by SkillInstaller: update, uninstall, or drop it from the list.</summary>
+        private VisualElement BuildRememberedCustomCard(SkillInstaller.CustomTarget target)
+        {
+            bool installed = File.Exists(Path.Combine(target.path, "SKILL.md"));
+            var card = new VisualElement();
+            card.AddToClassList("agent-card");
+
+            var head = new VisualElement();
+            head.AddToClassList("agent-card-head");
+            var icon = new Label(IconLetter(target.name));
+            icon.AddToClassList("agent-icon");
+            icon.AddToClassList("brand-custom");
+            ShowIconImage(icon, target.icon);
+            MakeIconPickable(icon, picked => ApplyIcon(target, picked), () => ApplyIcon(target, null));
+            head.Add(icon);
+            var nameLabel = new Label(target.name);
+            nameLabel.AddToClassList("agent-name");
+            head.Add(nameLabel);
+            var statusBadge = new Label(SkillsLocalization.Get(installed ? "agent_status_installed" : "agent_status_not_installed"));
+            statusBadge.AddToClassList("agent-status");
+            statusBadge.AddToClassList(installed ? "installed" : "not-installed");
+            head.Add(statusBadge);
+            card.Add(head);
+
+            var pathLabel = new Label(target.path) { tooltip = target.path };
+            pathLabel.AddToClassList("agent-path");
+            card.Add(pathLabel);
+
+            var actions = new VisualElement();
+            actions.AddToClassList("agent-card-actions");
+            var installBtn = new Button(() => OnRememberedInstallClick(target, installed));
+            installBtn.AddToClassList("mini-btn");
+            installBtn.AddToClassList(installed ? "update" : "install");
+            installBtn.text = SkillsLocalization.Get(installed ? "agent_custom_update" : "agent_custom_reinstall");
+            actions.Add(installBtn);
+
+            var uninstallBtn = new Button(() => OnRememberedUninstallClick(target));
+            uninstallBtn.AddToClassList("mini-btn");
+            uninstallBtn.AddToClassList("uninstall");
+            uninstallBtn.text = SkillsLocalization.Get("uninstall");
+            uninstallBtn.SetEnabled(installed);
+            actions.Add(uninstallBtn);
+
+            var forgetBtn = new Button(() => OnForgetClick(target));
+            forgetBtn.AddToClassList("mini-btn");
+            forgetBtn.text = SkillsLocalization.Get("agent_custom_forget");
+            actions.Add(forgetBtn);
+            card.Add(actions);
+            return card;
+        }
+
+        /// <summary>Paints <paramref name="file"/> into the icon square, keeping its letter when the image cannot be read.</summary>
+        private void ShowIconImage(Label icon, string file)
+        {
+            if (string.IsNullOrEmpty(file) || !File.Exists(file))
+                return;
+            var texture = new Texture2D(2, 2) { hideFlags = HideFlags.HideAndDontSave };
+            bool loaded;
+            try { loaded = texture.LoadImage(File.ReadAllBytes(file)); }
+            catch (IOException) { loaded = false; }
+            if (!loaded)
+            {
+                UnityEngine.Object.DestroyImmediate(texture);
+                return;
+            }
+            _iconTextures.Add(texture);
+            icon.text = string.Empty;
+            icon.style.backgroundImage = new StyleBackground(texture);
+            icon.style.backgroundSize = new BackgroundSize(BackgroundSizeType.Contain);
+        }
+
+        /// <summary>Click picks a PNG/JPG for the icon square, right-click offers resetting it to the default.</summary>
+        private static void MakeIconPickable(VisualElement icon, Action<string> onPicked, Action onReset)
+        {
+            icon.AddToClassList("agent-icon--pickable");
+            icon.tooltip = SkillsLocalization.Get("agent_custom_icon_tip");
+            icon.RegisterCallback<ClickEvent>(evt =>
+            {
+                if (evt.button != 0) return;
+                string file = EditorUtility.OpenFilePanelWithFilters(SkillsLocalization.Get("agent_custom_icon_pick_title"), "",
+                    new[] { "Image", "png,jpg,jpeg" });
+                if (string.IsNullOrEmpty(file)) return;
+                if (SkillInstaller.CheckIconFile(file) is string error)
+                {
+                    EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"), SkillsLocalization.Get(error), SkillsLocalization.Get("dialog_ok"));
+                    return;
+                }
+                onPicked(file);
+            });
+            icon.AddManipulator(new ContextualMenuManipulator(evt =>
+                evt.menu.AppendAction(SkillsLocalization.Get("agent_custom_icon_reset"), _ => onReset())));
+        }
+
+        private void ApplyIcon(SkillInstaller.CustomTarget target, string file)
+        {
+            if (SkillInstaller.SetCustomTargetIcon(target.path, file) is string error)
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"), SkillsLocalization.Get(error), SkillsLocalization.Get("dialog_ok"));
+            RebuildAgentsList();
+        }
+
+        // The icon square shows the name's first ASCII letter; other scripts may lack glyphs in the bundled UI font.
+        private static string IconLetter(string name)
+        {
+            char first = string.IsNullOrEmpty(name) ? '?' : name.TrimStart()[0];
+            return first < 128 && char.IsLetterOrDigit(first) ? char.ToUpperInvariant(first).ToString() : "?";
+        }
+
+        private void OnRememberedInstallClick(SkillInstaller.CustomTarget target, bool installed)
+        {
+            if (installed && ShowSkipIfInstalledCopyIsCurrentOrNewer(target.path))
+                return;
+            var result = SkillInstaller.InstallCustom(target.path, target.name);
+            if (result.success)
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_success"), SkillsLocalization.Get("install_success"), SkillsLocalization.Get("dialog_ok"));
+            else
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"),
+                    string.Format(SkillsLocalization.Get(installed ? "update_failed" : "install_failed"), result.message), SkillsLocalization.Get("dialog_ok"));
+            RebuildAgentsList();
+        }
+
+        private void OnRememberedUninstallClick(SkillInstaller.CustomTarget target)
+        {
+            if (!EditorUtility.DisplayDialog(SkillsLocalization.Get("uninstall"),
+                    string.Format(SkillsLocalization.Get("uninstall_confirm"), target.name),
+                    SkillsLocalization.Get("dialog_ok"), SkillsLocalization.Get("dialog_cancel")))
+                return;
+            var result = SkillInstaller.UninstallSkill(target.path, target.name);
+            if (result.success)
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_success"), SkillsLocalization.Get("uninstall_success"), SkillsLocalization.Get("dialog_ok"));
+            else
+                EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"),
+                    string.Format(SkillsLocalization.Get("uninstall_failed"), result.message), SkillsLocalization.Get("dialog_ok"));
+            RebuildAgentsList();
+        }
+
+        private void OnForgetClick(SkillInstaller.CustomTarget target)
+        {
+            if (!EditorUtility.DisplayDialog(SkillsLocalization.Get("agent_custom_forget"),
+                    string.Format(SkillsLocalization.Get("agent_custom_forget_confirm"), target.name, target.path),
+                    SkillsLocalization.Get("dialog_ok"), SkillsLocalization.Get("dialog_cancel")))
+                return;
+            SkillInstaller.ForgetCustomTarget(target.path);
+            RebuildAgentsList();
         }
 
         /// <summary>
@@ -417,12 +589,16 @@ namespace UnitySkills
             if (File.Exists(Path.Combine(_customPath, "SKILL.md")) && ShowSkipIfInstalledCopyIsCurrentOrNewer(_customPath))
                 return;
 
-            var result = SkillInstaller.InstallCustom(_customPath, _customName);
+            var result = SkillInstaller.InstallCustom(_customPath, _customName, _customIconSource);
             if (result.success)
+            {
+                _customIconSource = null;
                 EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_success"), SkillsLocalization.Get("install_success"), SkillsLocalization.Get("dialog_ok"));
+            }
             else
                 EditorUtility.DisplayDialog(SkillsLocalization.Get("dialog_error"),
                     string.Format(SkillsLocalization.Get("install_failed"), result.message), SkillsLocalization.Get("dialog_ok"));
+            RebuildAgentsList();
         }
 
         public void RefreshLocalization()
