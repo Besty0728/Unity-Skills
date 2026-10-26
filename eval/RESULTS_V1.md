@@ -7,7 +7,7 @@
 | 项 | 内容 |
 |---|---|
 | 范围 | 14 题题库 × 19 个模型配置 / 5 个智能体主机；8 个批次、602 个登记槽位、635 次模型尝试 |
-| 时间 | 2026-10-11 至 2026-10-16（Asia/Shanghai） |
+| 时间 | 2026-10-11 至 2026-10-16（Asia/Tokyo） |
 | 题库 | S01 S03 S04 S06 S08 D01 T1 T2 T3 T4 T5 T7 T9 T10（6 道基础题 + 8 道综合题），caseVersion 1；题面与断言见 [case-freeze-v1.json](reports/case-freeze-v1.json)，题目说明见 TESTING_GUIDE |
 | 被测 SDK | UnitySkills v2.9.0，提交 `58d3339d`（含 §7 的已知缺陷 P1–P14） |
 | 环境 | 专用工程 UnitySkillsEval2022：Unity 2022.3.62f2、URP 14.0.12；实例 UnitySkillsEval2022_B95ADA34，端口 8091；mode=bypass、tier=maximum、surface=full、dryRunPolicy=off；冻结文档树 SHA-256 以 `5bbb9d35` 开头。每次尝试使用独立场景与资产目录，事后清理 |
