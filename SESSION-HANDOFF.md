@@ -1,8 +1,211 @@
-# 当前接力状态（2026-10-21 19:45 JST）
+# 当前接力状态（2026-10-26 23:04 JST）
 
 这是当前状态的优先说明；下方较早内容是历史会话材料，若有冲突以本节为准。本机时区是 JST（UTC+9），runner、门禁记录和会话目录名里的时间是 UTC。
 
-## 10-24 21:50 状态（最新，优先于下方所有小节）
+## 10-26 收工（最新，优先于下方所有小节）
+
+- **面板改版：用户已验收，10-26 按用户指示提交并推送到 origin/beta**。提交是 `a77a4a3c`（runner 报告的等级与评语）、`61e87d1d`（安装器加 `/unity-skills-eval`、自定义安装记录）、`3dfcd455`（面板）、`e579beae`（只有面板的安装才记入自定义列表），另有一个交接文档提交；之前 25 个本地提交也一起推送了。`eval/RESULTS_V1.md`、`eval/reports/p0-calibration.md` 是用户自己的改动，没有提交。
+- **推送前跑的检查**：4 组离线编译、门禁 hash 与基线逐题一致、`check_locales` / `check_meta_files` / `check_project_version` / `check_skill_frontmatter` 全部通过；`git diff --check` 干净。**最后一轮 UI 改动之后没有跑两条管线的全量 EditMode**，只跑过相关测试类。
+- **测试安装已清理**：安装器测试借 `InstallCustom` 往临时目录装，曾在本机自定义列表里留下 13 张 TestAgent 卡片。已用临时 MenuItem 全部移掉，列表现在为空，临时脚本也已删除；`e579beae` 修复了根因。图标目录已删除，全盘没有今天新写入的技能安装；对照实验工程留在 EditorPrefs 里的 3 个 `UnitySkills_n_A01CB171_*` 键已删除。
+- **验收后又改了这些**，这一轮只跑过相关测试类，没有跑全量：
+  - **图标和折叠三角**：新增 `Editor/UI/VectorGlyphs.cs`，用 Painter2D 画实心三角和刷新、校验图标。
+    - History、Analytics、Evaluation、Skills 四个页面的刷新按钮，以及 Skills 页的校验按钮，统一成 24×24 按钮、14px 矢量图标。
+    - 历史页检查点组和技能页分类的折叠标志改成矢量三角。Unity 自带 Foldout 的箭头不动。
+    - `UISkillsEditorIcons.Apply` 现在只有 Analytics 的清空按钮在用，图标改为 14px 居中。
+  - **自定义 Agent 卡片的布局**：输入框只占剩余宽度，按钮宽度固定；高度统一 24px；左边加了「路径」「名称」标签。
+  - **自定义安装记入列表**（用户选了：本机共用、可多个、加标签）：
+    - 记录存在 EditorPrefs 键 `UnitySkills_CustomInstallTargets`，内容是 `[{name, path, icon}]`，同一路径只记一条。
+    - 每条记录一张卡片，排在 6 个内置工具后面，可以更新、卸载、移出列表；`SkillInstallSyncService.RunSyncOnce` 也会同步它们。
+    - Custom Path 只装主技能。
+  - **自定义图标**：点卡片图标（新建时点「+」）选一张 PNG/JPG，1 MB 以内，复制到 `~/.unity_skills/custom-icons/`，文件名用内容的 SHA1；右键恢复默认；没有记录再用的副本会被删掉。
+  - **测试**：新增 `SkillInstallerCustomTargetTests`，8 个用例，在 Built-in 上全过。安装器、文案、字形、History、Evaluation、窗口等相关测试类也都全过。
+  - **文案**：三份语言文件各 1416 个键，键集一致，没有缺字。
+- **E2E 全部通过**：「全部题目」在 Built-in 工程只含 ops 和 dev 的 basic，分别是 6/6 和 5/5，合并后 11/11，等级优秀。用户已在面板上看过。
+- **已清理**：
+  - 归因实验的两个工程 `leak/`、图集备份、文案中间文件、日志、skill 工程里的 `panel_group.json`，以及旧会话 scratchpad 里当天的全量测试日志。
+  - 保留在本会话 scratchpad 的有：
+    - `e2e.py`：`<track> <tier> [tasks]`，环境变量 `E2E_NEGATIVE=<task>` 让该题用反例；工程已开时复用现有编辑器。
+    - `glyphs.py`：检查图集缺字。
+    - `merge_keys.py`：合并文案键。
+    - `gatehash-before.txt`：门禁 hash 基线。
+- **skill 工程的编辑器还开着**，用户在用，没有关。
+- **下一步**：
+  1. 两条管线全量 EditMode 复跑，补上推送前没跑的那一轮：Built-in 用 `classes.py FULL`，URP 用 `classes_urp.py FULL`，两个都在旧会话 scratchpad 里。再核对门禁 hash：`python3 -B eval/cli.py selftest3 --dry-run | grep 'gate inputs' | sort` 与 `gatehash-before.txt` 比对。
+  2. 有失败就修复，另起提交。
+  3. 然后定位长会话下域重载变慢。
+
+## 10-26 22:40 面板改版
+
+- **面板改版已实现，没有提交，等用户验收**。计划在 `~/.claude/plans/cuddly-foraging-river.md`，已获批。AgentTeam：成员全用 haiku，lead 负责审查和纠错。
+  - **视觉**：`UnitySkillsWindow.uss` 的两套 token 换成石墨配色，新增 tint 系列；标签栏的 8 个 token 钉回原值；按钮、卡片、横幅、徽标按预览改。
+  - **历史页**：
+    - `HistoryTabController` 的 `BuildTimelineGroups` 产出分组；自己画的手风琴，标题行放按钮。首屏 30 组，可以加载更早的组。
+    - 按状态显示「预览回退」或「已回退到此 · 撤销回退」。
+    - 新增 `WorkflowManager.PreviewRedo(taskId, caller)`；撤销回退走 `RedoRestore`，所以冲突列表不会丢。全局撤销按钮已删除。
+  - **评测页**：
+    - 四步结构：范围分当前等级、全部题目、挑选题目。去掉了宿主、模型、推理强度、usage 开关、RunMode 和 `--declared`。
+    - 全部题目会写 `Library/UnitySkills/eval/panel_group.json`，只包含当前管线能跑的等级（Built-in 只有 ops/dev basic）。提示词是英文协议文本，常量放在 `EvaluationState`。
+    - 单会话的提示词正文不在面板里显示（字库限制），只提供复制和打开文件。
+  - **runner**：`report.py` 新增 `grade`、`verdict`；中文等级词是 优秀 / 良好 / 及格 / 待提升。新增测试 `eval/tests/runner/test_report_grade.py`。
+  - **`/unity-skills-eval`**：新模板 `SkillsForUnity/unity-skills-eval~/SKILL.md`。
+    - 安装器的 12 个目标都会同时装 `unity-skills` 和兄弟目录 `unity-skills-eval`；Custom Path 只装主技能。
+    - `InstallSkill` 改为 internal，供测试使用。
+    - 原 `skills/evaluation/SKILL.md` 精简成指向新技能的说明。
+  - **文案和字形**：新增 History 20 个键、Evaluation 41 个键，删除 34 个废弃键，三份语言文件各 1406 个键，保持一致。图集补了 好 秀 良 种 词 跑 骤 七个字，五项检查全部通过（共 1024 个字符和字形）。
+  - **文档**：CHANGELOG 3.0.0、README 中英文已同步。
+- **验证结果**：
+  - 离线：4 组编译 0 错误；runner 测试 1490 个在 3.13 和 3.9 下都通过；`eval/tests` 全过。
+  - 门禁输入 hash：48 格与改动前逐题一致，基线在 scratchpad 的 `gatehash-before.txt`。
+  - 全量 EditMode：Built-in 2588 个，URP 2588 个。初跑各有 3 个安装器测试失败，原因是测试借 `InstallCustom` 装 eval 技能，已改用 `InstallSkill`，四个安装器测试类在两条管线重跑全过。
+  - E2E：在 skill 工程用脚本化 Agent 以面板的参数跑。ops basic 6/6 优秀；挑 S01、S03 两题、其中 S03 故意部分完成，结果为及格，评语里有「S03 (partial: R2)」。脚本在 scratchpad 的 `e2e.py`，用法见文件头。
+- **下一步**：
+  1. 用户在 skill 工程验收面板：深浅两种主题、历史页的回退和撤销回退、评测页结果卡；点一次「全部题目 → 生成题目」，然后由 lead 用 `e2e.py ops basic` 和 `e2e.py dev basic` 跑完，看合并后的进度和结论。
+  2. 验收通过后按区块分别本地提交：视觉、历史页、评测页加 runner 报告、安装器加新技能加文档。不推送。
+  3. 然后做长会话重载变慢的定位。
+
+## 10-26 晚间状态（门禁）
+
+- **3.0.0 门禁 48/48 全绿**（HEAD 仍是 `4a5cdc27`，代码没动过）。
+  - gate5 跑出 44 绿 4 红：URP 的 DB1、DB2、DB3、DB6，结果见 `eval/runs/pending-20261021/gate5-result.md`。四题失败的都是 Play Mode 场景那条断言（C6/H6/D6/F6）：场景超时，或旋转角度超出容差。
+  - gate6 在新开的编辑器 A 上补跑这 4 题，20:15–21:09 全绿，见 `gate6-result.md`。脚本在 `gate6/`，只开 A 一台，没有 console guard。
+  - 进度页已重新生成，叙述部分同步更新：门禁完成，新增「重载变慢排查」。
+- **红灯原因：长会话下域重载越跑越慢**（插件业务逻辑没问题）。
+  - URP 编辑器连跑约 10 小时，域重载从约 1 秒涨到 26 秒，约 460 次重载，越到后面涨得越快。进 Play Mode 一超过 60 秒，场景就超时。A 端场景耗时从 2 秒涨到 85 秒，这四题刚好排在队尾。
+  - 变慢的阶段：`ProcessInitializeOnLoadAttributes`（392ms → 12.3s）、`AwakeInstancesAfterBackupRestoration`（155ms → 8.5s）、`BeforeProcessingInitializeOnLoad`（70ms → 1.8s）。`Loaded Objects` 只从 5858 涨到 8017，`MarkObjects` 基本不变。这些 URP 数据记自当时的 Editor-prev.log，原日志已被 gate6 轮换掉。
+  - Built-in 那轮（skill 工程，没有 console guard）：264 次重载里从 1.03 秒涨到 1.97 秒。
+  - **对照实验**（scratchpad 的 `leak/`）：`n` 是不装插件的空工程，`p` 是同样配置、只多装插件；`ReloadLoop.cs` 负责反复进出 Play Mode。
+    - n：66 次重载，稳定在约 385ms。
+    - p：67 次重载，稳定在约 500–535ms。插件有约 120ms 的固定开销，被动加载不会累积变慢。
+  - **已证实一处插件开销**：把 skill 工程 34.5 MB、27246 行的 `console_log_history.jsonl` 拷进 p 后，重载稳定在约 1.05 秒，`ProcessInitializeOnLoadAttributes` 从 118ms 涨到 649ms。原因是 `ConsoleLogHistoryService.LoadPersistedHistory` 每次重载都用 Newtonsoft 逐行解析整个文件，上限 64 MB / 5 万条，算下来最多每次多约 1 秒。这解释了 Built-in 那轮的大部分增长。
+  - **URP 涨到 26 秒的主因还没定位**：URP 两题之间都清过控制台，历史文件不会无限增长。已排除的有：batch_state（上限 100 个 job）、editor_changes（只读尾部 500 条）、评测 sessions 目录（只有面板会读）、PrefabAssetUndo（数量有限，且主要拖慢的不是 InitializeOnLoadMethod 阶段）。
+  - 待用户决定：查到什么程度（要在 URP 里复现数小时的长会话再按子系统二分，可能是 Unity / URP 自身的问题）；控制台历史改成重载时不全量解析，属于三档，是否放进 3.0。
+- **下一步**：
+  1. 等用户定重载变慢的排查范围。
+  2. 面板改版（门禁已绿，可以动 C#）。「全部题目」用不改 runner 的做法，仍待用户确认。
+  3. 推送 beta、`/release` 都等用户决定。
+
+## 10-25 夜间状态
+
+- **HEAD `4a5cdc27`（chore: bump version to 3.0.0），全部为本地提交，未推送（beta 领先 origin 25 个）。用户 10-25：都留在本地，是否正式发布等用户进一步观察。用户 10-25 明确说暂不推送 beta。**
+  - Workflow P1 已完成：1e85066a … 6e91cb3e，共 8 个提交。
+  - **Workflow P2 已完成**：7db86a24（P2a 改后状态）、dcd8e133（P2b 逐目标裁决 + 属性级合并）、44b912a8（P2c）。至此 Workflow P0–P3 全部落地。
+  - P2 计划：`~/.claude/plans/buzzing-discovering-lovelace.md`（已获批，已全部实施）。
+  - 进度页：`eval/runs/pending-20261021/page/unityskills-3.0-progress.html`，用 `build.py` 重新生成，已同步到 P2c。
+- **P2c（44b912a8）**：
+  - `workflow_restore` 新增 `scope` 参数，逗号分隔多项：`entity:<id>`；物体名或层级路径，以 `/` 结尾时包含子孙及其组件；`Assets/`、`Packages/` 路径，以 `/` 结尾时为整个文件夹；设置键，以 `.` 结尾时按前缀匹配。
+  - 过滤发生在分链之后，其余算法不变。有一项匹配不到任何目标，就返回 `SEMANTIC_INVALID`，消息以 `scope ` 开头，并列出最多 10 个目标。代码在新文件 `WorkflowManager.Restore.Scope.cs`。
+  - 回退记录新增 `sc` 字段。带 scope 的回退不会让任何步显示 `(undone)`，也不算撤销了之前的回退（`UndoneSteps` / `RestoreRevertedLater` 都跳过它）。
+  - 预览新增 `scope` 和 `danglingReferences`，后者尽力而为：取范围外的场景快照，用改后引用（没有就用改前引用）比对回退要删除的对象。
+  - §6.3：恢复的 `.unity` 文件快照对应的场景正打开时，不写盘，只 `MarkSceneDirty`，并在 skippedItems 注明；预览条目显示 "not written"。`scene_save` 的描述同步改了。
+  - **顺带修了一个早就存在的 bug**：材质、SO 这类 JSON 资产，以前回退只写回文件字节；改动还没存盘时，内存里的对象不变，回退等于没做。现在写回文件后，再把改前 JSON 写回内存对象并 `SaveAssetIfDirty`，与 P2b 合并路径的做法一致；`.unity` 不走这条。
+  - 文档：workflow 入口加了 "Undoing One Step and Scope" 一节，删掉已解决的两条局限，入口现为 5906 B，预算 6144 B；两份 reference 补了 scope、merged、悬空引用和打开场景的说明。
+  - 新测试 `WorkflowScopeTests` 12 个，覆盖：按名字、entity、子孙、资产路径、文件夹、设置前缀匹配；不匹配时拒绝；不标 undone 且 `sc` 重载后还在；悬空引用；场景打开和关闭两种 `.unity` 情况。
+- **PR #66**：作者自己关了 PR。10-25 已按用户确认在 PR 下留言致谢，说明改动已 cherry-pick 进 beta、随 3.0 发布。
+- **PR #67**（同一作者，已自行关闭）：修 Apple Silicon + Metal 下 `ScreenCapture` 原生 SIGSEGV 的补丁，用户决定不合并。
+  - 不合并的原因：他把截图改成逐个相机手动渲染，会丢掉 Overlay UI；`Camera.allCameras` 没按深度排序；`Screen.width` 不可靠；Play 模式下会多渲染一帧；截图任务原有的 try/catch 被删掉。
+  - 待办：列入 3.0 兼容矩阵待核实项，装上 6000.4+ 后实测 `scene_screenshot` 和 play capture 在 URP + Metal 下是否崩溃。确认会崩，再由我们自己修。
+- **用户 10-25 的决定**：
+  - redo 用方案 B，只撤销那次回退本身。
+  - `conflicts` 传 id 列表时，列出的覆盖，没列出的保留。
+  - 暂不推送 beta。
+  - eval/RESULTS_V1.md 和 eval/reports/p0-calibration.md 里的时区改动是用户自己的，不要动，也不要混进提交。
+- **P2a（7db86a24）**：
+  - 每步结束时，Modified 快照记录 `afterJson`、`afterObjectReferences`（存在 payload 里）和状态哈希 `afterStateHash`（头字段 `sh`）；Setting 快照记录改后值。
+  - `WorkflowStateHash` 在比较时把会话内的 instanceID 引用置空，引用按 gid 排序比较，因此哈希跨会话稳定。回退步同样记录改后状态。
+  - 场景对象在一步中没变化的 Modified 快照会被剪掉。
+  - 写操作耗时复测：40 MB 日志下 wfMs p95 = 0。
+- **P2b（dcd8e133）**，逐目标裁决的规则：
+  - 当前状态仍是最后一步留下的：干净回退，丢弃该目标上的冲突。
+  - 当前状态已等于改前：跳过。
+  - 其他情况：用 `WorkflowJsonMerge` 做属性级三方合并。两边都改过的属性记为叶子冲突，id = `k` + SHA1(目标键 + "leaf:" + 路径)，默认保留。
+  - 调用方自己未追踪的写入（日志显示是 caller 或 mixed 窗口）：直接覆盖。日志里完全没有记录的变化：报 "unknown" 冲突。
+  - 纯文件资产（贴图、脚本、预制体，即有专用 importer 的资产）按指纹判断，磁盘被改过算冲突。材质、SO 按内存中的状态判断。
+  - 没有改后状态的旧步骤沿用 P1 的规则。
+  - `TryHydrate` 会记住第一次读取失败的原因，因此被隔离的 blob 仍报"已损坏"。
+- **验证**：462dd0b6 上 Built-in 全量 2560 个，0 失败，93 个跳过；URP 全量 2560 个，0 失败，81 个跳过。URP 工程打开后要先等编译结束再开测，`classes_urp.py` 已加上这一步。
+- **下一步**（Workflow 代码已全部落地，进入收尾）：
+  1. ~~History 页人工验收~~：用户 10-25 已点过，没有问题。
+  2. ~~URP 全量 EditMode~~：10-25 在 HEAD 44b912a8 上跑完，2555 个，0 失败，81 个跳过。
+  3. ~~REST 脚本实测~~：已完成，见上。
+  4. `/updateversion 3.0.0`：10-25 已完成并按用户指示提交为 4a5cdc27。改了 5 个版本锚点、`.github/SECURITY.md` 受支持版本表（3.0.x），并在 CHANGELOG 新增 3.0.0 条目；`check_project_version` / meta / locales / json / `git diff --check` 全部通过。用户 10-25 说"继续本地推进"，暂不推送。
+  5. **3.0.0 门禁（gate5）10-25 22:05 起在后台完全独立运行（22:07 两个 worker 开跑）**，目录是 `eval/runs/pending-20261021/gate5/`。
+     - 22:00 那一轮的进程挂在 Claude 会话的进程组里，会话退出可能被一起杀掉，所以 5 分钟后停掉重开，旧日志在 `aborted-2200/`，没有写入任何门禁记录。
+     - 现在用 `bash start.sh` 启动：setsid 开一个新会话，父进程是 launchd，在 caffeinate 下运行，和任何终端或 agent 都无关。
+     - 跑完后自动依次执行：刷新进度页（`page/build.py`）→ 写 `gate5-result.md` → 弹系统通知。需要重跑时，先停掉所有 gate5 进程和编辑器，重置 `queue` / `queue-c`，再执行 `bash start.sh`。
+     - `launch.sh` 在 `caffeinate -is` 下依次打开两台 URP 编辑器（A 原工程、B 2022b）。`editor.sh` 的 `port_of` 只认 pid 存活、且命令行里工程路径完全一致的注册表条目，并等编译结束、确认不在 Untitled 场景。
+     - A、B 两个 worker 共用 `queue`（37 题，OC8、OC4 排在最前）；`console_guard.py` 在两题之间清控制台。
+     - `chain.sh` 等两个 worker 都结束后关掉 URP 编辑器，打开 skill 工程跑 `queue-c`（Built-in 11 题），然后由 `report.py` 生成 `eval/runs/pending-20261021/gate5-result.md`，并弹系统通知。
+     - 看进度：`grep -hE '^=== ' eval/runs/pending-20261021/gate5/*.log`；进度页的门禁矩阵只统计 pluginVersion 为 3.0.0 的记录。
+     - 合上笔记本盖子会让 Mac 睡眠，门禁也会跟着暂停。
+  6. 门禁全绿后：推送 beta、正式发布（`/release`）都等用户决定。
+     - 23:44 查看：A 在跑 OC8（第 10/28 个用例），B 在跑 OC4（第 7/19 个），每个用例约 9–13 分钟。2.9.1 时 OC8 也要约 4.5 小时，速度没有退化，这两题本来就最长，所以排在最前。
+  7. **面板改版计划（10-25 晚与用户定下的设计，门禁结束后才动 Unity 里的代码，避免重编译打断门禁）**。下面的设计以 HTML 预览为准：`temp/ui-preview/index.html`（`temp/` 被 git 忽略，没有提交）。预览分「当前样式」和「新风格」两栏，打开后选「并排对比」看。
+     - **视觉（石墨 Graphite）**：用户已接受。
+       - 新配色 token 替换 `UnitySkillsWindow.uss` 的 `:root`，深色、浅色两套都要。控件高 24px，圆角分 4、6、8 三档。横幅、HelpBox 和各种状态统一成「淡色底 + 同色描边」，删除类按钮改成红色描边的空心按钮。
+       - **标签栏保持现在的下划线样式、120px 定宽和现在的颜色**，不跟着换新配色。
+       - 限制：只用 USS 能实现的属性，不用阴影、渐变，也不靠加粗，因为打包的字体子集只有 Regular。
+     - **历史页**：
+       - 每个检查点做成手风琴，默认收起。标题行显示检查点名（比如「布置敌人前」）、编号 cN 和步数；标题下一行是「时间 · agent · 动作概括」，比如「创建 Enemy_02、Enemy_01 · 修改 Ground.mat」，动词按技能的 Operation 归类。
+       - 自动检查点的标题写「自动检查点」，靠概括行说明内容。第一个检查点之前的步骤单独成一组。
+       - 回退预览显示在所属检查点的组里，不再放在列表底部。
+       - **每个检查点的按钮按状态切换**：没回退到它时显示「预览回退」；回退到它、且这次回退还没撤销时，标「已回退到此」，按钮变成「撤销回退」。撤销前也先预览冲突。去掉现在那个只能撤销最近一次回退的全局按钮。
+       - 引擎已经支持按 id 撤销任意一次还没被撤销的回退：`workflow_redo_task` 传 `s<n>` 或 `c<n>`，见 `FindRestoreForRedo` / `GetUndoableRestores`，所以只改面板。
+       - AI 调用 Workflow 本来就走 REST 技能（`workflow_checkpoint` / `workflow_list` / `workflow_restore` / `workflow_undo_task` / `workflow_redo_task`），和面板读写同一份历史，REST 实测已验证。
+     - **评测页**：从五个区块精简成四步。
+       - **顶部说明**两种开始方式：一是在面板生成提示词，复制给新的 Agent 会话；二是直接对 Agent 说「跑 UnitySkills 评测」或输入 `/unity-skills-eval`，AI 先问范围、题型、等级和语言，再自己开始。两种方式的进度和结果都显示在这一页。
+       - **① 选择题目**：范围三选一，分别是当前等级（默认）、全部题目（ops 和 dev 全部等级，共 37 题，一段提示词做完）、挑选题目（在当前等级里勾选，勾一题就是单测）。另有题型、等级、提示语言三项，选好后点「生成题目」。
+       - 会话模式固定为整套（一段提示词）。逐题模式只在命令行保留，门禁还在用。
+       - 去掉宿主、模型、推理强度和 token 读取开关；环境检查收成标题栏的一行「环境就绪」加「重新检查」，有问题时才展开列表。
+       - **② 交给你的 Agent**：显示提示词，加「复制提示词」。面板不自动启动 Agent，仍按现在的方式由用户手动粘贴。
+       - **③ 进度**：一条进度条，加每道题的状态标签。Agent 每 `submit` 一题，进度自动更新，现有机制已经满足。
+       - **④ 结果**：做完后显示在页面最上面，内容有：通过题数 / 总题数、「总体评价：良好」、完全通过率、平均完成度，以及一句自动拼出来的评语（列出部分完成和失败的题及未满足的要求，无效题注明不计入）。历史会话收进折叠区。
+     - **总体评价规则**（用户 10-25 同意按建议做）：
+       - 按完全通过率分档：≥90% 优秀，≥70% 良好，≥50% 及格，其余为待提升。完全通过率 = 通过 ÷（通过 + 部分 + 失败）。
+       - 评语用模板拼接，不调用 AI，结果可复现。
+       - 等级和评语写进 runner 的 `report.json`（新增 `grade` / `verdict` 字段）和 `report.md`，面板只负责显示。
+     - **评测程序（runner）要改的**：
+       - 新增「全部题目」选择（比如 `--tier all` 或 `--all`）。现在 `select_tasks` 只认单个题型 + 等级。
+       - 面板把勾选的题目传给已有的 `--tasks`。
+       - 新增 report 的等级和评语。
+       - 结果卡里的模型名从哪来，二选一：让 Agent 在提示词流程里上报，或干脆不显示。实施前再和用户确认。
+     - **新增独立 skill `/unity-skills-eval`**：
+       - 和 unity-skills 并列安装，由 `SkillInstaller` 同时负责安装、卸载和同步。
+       - 触发后 AI 先问范围、题型、等级、语言，再调用 `start`，并按会话提示执行。
+       - 现有的 `skills/evaluation/SKILL.md` 模块文档改为指向它，或合并进去。
+     - **实施注意**：
+       - 新文案的中文字符必须已在 `UnitySkillsCN-UI.asset` 字形图集里，缺的用 `AddMissingGlyphs` 补；en、zh-CN、ru 三份语言文件的键要一致。
+       - History 改成按组显示后，`ListView` 要换成 ScrollView 或可变高度的列表。
+       - 动完 C# 要跑两条管线的全量测试。
+       - 预估约 3.5 个工作日。**用户 10-25 定：全部随 3.0。**
+     - **对门禁的影响**（23:55 核对 `eval/selftest3.py` 的 contract 9）：
+       - 门禁记录的键 = 题号 + 用例版本 + Unity 大版本 + 插件版本号 + 管线 + gateInputsHash。
+       - gateInputsHash 只包含三类文件：runner（`Evaluation~/run_eval.py` 和 `usk_eval/**/*.py`，但**不含 `usage/` 和 `report.py`**）；每题的题包文件、private 和 solutions；`eval/cli.py`、`selftest3.py`、`solver_driver.py`。插件的 C# 不在其中，版本号也仍是 3.0.0。
+       - 按下面的做法实现，**48 格一格都不受影响，不用重跑**：
+         - 视觉、历史页、评测页、挑选题目（用已有的 `--tasks`）都只改 C#。
+         - 等级和评语放在 `report.py`。
+         - 模型名从 `usage/` 已经读到的每题 model 取，来源是 Claude Code / Codex 日志；其他宿主没有就不显示。
+         - `/unity-skills-eval` 是文档加安装器改动。
+       - **唯一会触发全量重跑的是在 runner 里做「全部题目」**：改 `session.py`、`pack.py`、`cli.py` 会让全部 48 格的 hash 一起变。
+       - 建议的替代做法：不改 runner。「全部题目」那段提示词让 Agent 依次跑 6 个等级，每个等级一次 `start`，做完再开下一个；面板把 6 份报告合成一个进度条和一个总体评价。这个做法待用户确认。
+       - 替代重跑的验证：两条管线的 EditMode 全量测试，加上用新面板端到端实跑一次 basic 等级。
+       - 硬约束：门禁跑完前，不能动 `SkillsForUnity` 下任何 `.cs`，也不能动 `usk_eval` 下的 `.py`。门禁每记一题都会检查源码是否比已加载的程序集新、输入在运行中有没有变，改了会让剩下的题全红。
+- **P2c 之后的修复（462dd0b6）**：
+  - REST 实测发现：A 创建并移动了物体，B 后来也移动了它，A 回退并选 `conflicts:"keep"`，结果物体还是被删了。原因是 Transform 链走了属性合并，目标级冲突被换成了叶子冲突，而 `KeepUnconflictedWorks` 拦不住删除。
+  - 用户 10-25 决定：回退要删除一个物体时，别人后来对它的**组件或子物体**的改动也算冲突。实测证实之前这类改动会被静默丢掉。
+  - 实现：
+    - `ResolveRestoreTargets` 把被删物体所有组件和子物体的键记进 `RestoreWork.OwnedKeys` 和 `scan.RemovedKeys`，并加入冲突目标；
+    - `AdjudicateWorks` 跳过 `RemovedKeys` 里的目标，不做属性级裁决，保留目标级冲突；
+    - `KeepUnconflictedWorks` 中，删除型工作被自身目标或 `OwnedKeys` 上任何未覆盖的冲突拦住，叶子冲突也算。
+  - 测试：`WorkflowConflictTests` 新增 4 个，共 16 个全过。`workflow_restore.md` 的 Conflicts 段补了一句说明。
+- **REST 实测**：脚本在 scratchpad 的 `restp2/rest_p2.py`，用 `--phase 1|3|4|4c|6|2` 指定项目，结果写到 `restp2/result-*.md`。第 1、3、4、4c、6 项全部 PASS（16/16/25/17/14）。第 2 项（手改冲突）10-25 由用户配合实测，8 PASS、1 FAIL：唯一的失败是脚本在拖动中途取样（-4.44），用户松手后停在 -4.91；回退后保留的正是 -4.91，响应里 x 记为保留的叶子冲突，属于脚本问题，不是插件问题。**设计稿 §11.2 的第 1–4、6 项全部实测通过。**
+- **light_set_properties 按名字找不到刚建的灯：已结案，只出现在测试环境**。测试里连续直接调用 `SkillRouter.Execute`，中间不会执行服务器每个请求后都做的 `GameObjectFinder.InvalidateCache()`。`gameobject_create` 会把新物体登记进缓存，`light_create` 不会。线上每个请求、每个批处理步骤之后都会失效缓存，所以不受影响。
+- **注意**：用 pkill 关掉编辑器后，实例注册表会留下过期记录；之后新开的编辑器如果占用同一个端口，按工程找编辑器的脚本会连错。两台编辑器不要同时启动，或者启动后核对 `/health` 里的工程名。
+- **待核实**：P2b 用 `IsJsonAsset`（importer 为基类 `AssetImporter` 或为空）区分 JSON 资产和纯文件资产，但 `.unity` 归哪一类没有核实过。场景关闭时撤销 `scene_save` 的新测试能通过，说明结果正确，只是判定路径不清楚。
+- **用户规则**：探查和改文件的成员一律用 haiku，lead 审查和纠错。
+  - 成员前台最多跑 10 分钟；全量测试由 lead 在后台跑。辅助脚本在本会话 scratchpad：`/private/tmp/claude-501/-Users-betsy-CodeSpace-Unity-Skills/40dd579c-875c-4713-95db-6cd7a749b625/scratchpad/`，`classes.py <类名…|FULL>`（会自动开、关 skill 工程）、`csc_extra.py <仓库路径>`（离线编译 4 组）、`wfbench.py`。
+  - 两个成员不能同时打开 Unity。测试脚本跑完会关掉编辑器。
+
+## 10-24 21:50 状态
 
 - HEAD `a2c56cec`。beta 上未推送的本地提交：f56e6510、5ebc2adc、2dafb3c5、c3fcf133、f05deb79（安装器修复）、a2c56cec（交接文档）。
 - **Workflow P3 已实现，未提交，等用户确认**。方案见 `~/.claude/plans/buzzing-discovering-lovelace.md`。
