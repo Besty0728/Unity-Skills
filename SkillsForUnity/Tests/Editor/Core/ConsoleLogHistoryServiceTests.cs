@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
@@ -11,6 +12,8 @@ namespace UnitySkills.Tests.Core
     [TestFixture]
     public class ConsoleLogHistoryServiceTests
     {
+        // About ten rows: files of a few dozen rows already take the tail-only reload path.
+        private const long SmallTail = 2048;
         private IDisposable _scope;
         private string _path;
 
@@ -371,13 +374,188 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, FileRows());
         }
 
+        [Test]
+        public void ReloadOfAFileLargerThanTheTail_ParsesOnlyTheTail()
+        {
+            Fill(200);
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            long before = ConsoleLogHistoryService.ParsedRowsForTests;
+            ConsoleLogHistoryService.ReloadForTests();
+            long parsed = ConsoleLogHistoryService.ParsedRowsForTests - before;
+
+            Assert.Greater(parsed, 0);
+            Assert.Less(parsed, 50, "A reload parses only the rows in the tail of the file.");
+            Assert.AreEqual(200L, ConsoleLogHistoryService.GetCurrentSeq());
+            var recent = ConsoleLogHistoryService.ReadWindow(195);
+            var coverage = JObject.FromObject(recent.coverage);
+            Assert.AreEqual(5, recent.logs.Count);
+            Assert.IsTrue(recent.complete);
+            Assert.AreEqual(1L, coverage.Value<long>("oldestSeq"), "The oldest seq is read from the file's head without loading it.");
+            Assert.AreEqual(200L, coverage.Value<long>("retained"));
+            Assert.Less(ConsoleLogHistoryService.ParsedRowsForTests - before, 50, "A window within the loaded tail does not load the head.");
+            Assert.AreEqual(200, ConsoleLogHistoryService.ReadWindow(0).totalMatched, "An older window loads the head on demand.");
+        }
+
+        [Test]
+        public void TailOnlyReload_ContinuesSeqAndAKilledEditorStillResumesAboveTheReservation()
+        {
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            Fill(100);
+            ConsoleLogHistoryService.ReloadForTests();
+            ConsoleLogHistoryService.RecordForTests("after-clean-reload");
+            Assert.AreEqual(101L, ConsoleLogHistoryService.GetCurrentSeq(), "A clean tail-only reload continues the sequence exactly.");
+
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.RecordForTests("served-but-never-flushed");
+            long lastServed = ConsoleLogHistoryService.GetCurrentSeq();
+            long before = ConsoleLogHistoryService.ParsedRowsForTests;
+            ConsoleLogHistoryService.ReloadForTests(clean: false);
+            long resumed = ConsoleLogHistoryService.GetCurrentSeq();
+            Assert.Less(ConsoleLogHistoryService.ParsedRowsForTests - before, 50, "The killed editor's file is still read from its tail only.");
+            ConsoleLogHistoryService.RecordForTests("after-kill");
+
+            Assert.Greater(resumed, lastServed, "No seq a client may have read is handed out again.");
+            var afterKill = ConsoleLogHistoryService.ReadWindow(resumed);
+            Assert.IsTrue(afterKill.complete);
+            Assert.AreEqual(resumed + 1, afterKill.logs[0].seq);
+            Assert.AreEqual("after-kill", afterKill.logs[0].message);
+            Assert.IsFalse(ConsoleLogHistoryService.ReadWindow(lastServed).complete, "Records served before the kill may be lost.");
+            var messages = ConsoleLogHistoryService.ReadWindow(0).logs.Select(log => log.message).ToList();
+            CollectionAssert.Contains(messages, "row-0");
+            CollectionAssert.Contains(messages, "after-clean-reload");
+            CollectionAssert.DoesNotContain(messages, "served-but-never-flushed");
+        }
+
+        [Test]
+        public void TailOnlyReload_QuerySpanningOldAndNewRowsReturnsEachRowOnce()
+        {
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            Fill(60, "old-");
+            ConsoleLogHistoryService.ReloadForTests();
+            // Appended after the reload, so both in memory and in the file; then two that are only in memory.
+            Fill(3, "flushed-");
+            ConsoleLogHistoryService.FlushForTests();
+            Fill(2, "pending-");
+
+            var page = ConsoleLogHistoryService.ReadPage(DebugSkills.LogModeMask, null, 1000, false, null, null, null, null, false);
+            var window = ConsoleLogHistoryService.ReadWindow(0);
+
+            var expected = Enumerable.Range(0, 60).Select(i => "old-" + i)
+                .Concat(Enumerable.Range(0, 3).Select(i => "flushed-" + i))
+                .Concat(Enumerable.Range(0, 2).Select(i => "pending-" + i)).ToList();
+            Assert.AreEqual(65, page.totalMatched);
+            Assert.IsTrue(page.complete);
+            CollectionAssert.AreEqual(expected, page.logs.Select(log => JObject.FromObject(log).Value<string>("message")).Reverse().ToList());
+            Assert.AreEqual(65, window.totalMatched);
+            CollectionAssert.AreEqual(Enumerable.Range(1, 65).Select(i => (long)i).ToList(), window.logs.Select(log => log.seq).ToList());
+
+            ConsoleLogHistoryService.ReloadForTests();
+            var reloaded = ConsoleLogHistoryService.ReadPage(DebugSkills.LogModeMask, null, 1000, false, null, null, null, null, false);
+            Assert.AreEqual(65, reloaded.totalMatched, "The next reload neither loses nor repeats a row.");
+        }
+
+        [Test]
+        public void TailOnlyReload_EvictingRowsOnlyTheFileHoldsStillCompactsTheFileToTheCap()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            ConsoleLogHistoryService.ReloadForTests();
+            long parsed = ConsoleLogHistoryService.ParsedRowsForTests;
+
+            Fill(ConsoleLogHistoryService.CompactEvictionCount - 1, "late-");
+            ConsoleLogHistoryService.FlushForTests();
+            Assert.AreEqual(parsed, ConsoleLogHistoryService.ParsedRowsForTests, "Evicting rows only the file holds does not parse them.");
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries + ConsoleLogHistoryService.CompactEvictionCount - 1, FileRows(), "Below the threshold evictions only append.");
+
+            Fill(1, "last-");
+            ConsoleLogHistoryService.FlushForTests();
+            var all = ConsoleLogHistoryService.SnapshotAll(false, out var dropped, out _);
+
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, FileRows());
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, all.Count);
+            Assert.AreEqual("row-" + ConsoleLogHistoryService.CompactEvictionCount, all[0].message, "The evicted rows are exactly the oldest ones.");
+            Assert.AreEqual("last-0", all.Last().message);
+            Assert.AreEqual((long)ConsoleLogHistoryService.CompactEvictionCount, dropped);
+        }
+
+        [Test]
+        public void StateWithoutFileCounts_FallsBackToAFullLoadAndTheNextFlushWritesThem()
+        {
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            Fill(60);
+            ConsoleLogHistoryService.FinalFlushForTests();
+            // The state file as versions before tail-only reloads wrote it.
+            var state = JObject.Parse(File.ReadAllText(StatePath));
+            foreach (var name in new[] { "fileRows", "fileBytes", "fileEvictedRows", "fileEvictedBytes" })
+                Assert.IsTrue(state.Remove(name), name);
+            File.WriteAllText(StatePath, state.ToString(Formatting.None));
+
+            long before = ConsoleLogHistoryService.ParsedRowsForTests;
+            ConsoleLogHistoryService.ReloadForTests(clean: false);
+            Assert.AreEqual(60L, ConsoleLogHistoryService.ParsedRowsForTests - before, "Without file counts every row is read, as before.");
+            Assert.AreEqual(60, ConsoleLogHistoryService.ReadWindow(0).totalMatched);
+
+            ConsoleLogHistoryService.RecordForTests("after-upgrade");
+            ConsoleLogHistoryService.FlushForTests();
+            var upgraded = JObject.Parse(File.ReadAllText(StatePath));
+            Assert.AreEqual(61L, upgraded.Value<long>("fileRows"));
+            Assert.AreEqual(new FileInfo(_path).Length, upgraded.Value<long>("fileBytes"));
+
+            before = ConsoleLogHistoryService.ParsedRowsForTests;
+            ConsoleLogHistoryService.ReloadForTests();
+            Assert.Less(ConsoleLogHistoryService.ParsedRowsForTests - before, 30, "The next reload reads only the tail again.");
+            Assert.AreEqual(61, ConsoleLogHistoryService.ReadWindow(0).totalMatched);
+        }
+
+        [Test]
+        public void NativeImport_SkipsAnEntryOnlyWhileAManagedTwinIsRetained()
+        {
+            ConsoleLogHistoryService.RecordForTests("twin", "", LogType.Error);
+            Fill(ConsoleLogHistoryService.MaxEntries - 1);
+            // Evicts the first twin; the second keeps the pair retained.
+            ConsoleLogHistoryService.RecordForTests("twin", "", LogType.Error);
+            ConsoleLogHistoryService.ImportNativeEntries(new[] { Native("Error", "twin", 1), Native("Warning", "twin", 2) });
+            CollectionAssert.AreEqual(new[] { "Warning" }, NativeRows("twin"), "Only the entry without a retained managed twin is imported.");
+
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.ImportNativeEntries(new[] { Native("Error", "twin", 1), Native("Warning", "twin", 2) });
+            CollectionAssert.AreEqual(new[] { "Error" }, NativeRows("twin"),
+                "With every managed twin evicted the entry is imported; an entry imported once is not imported again.");
+        }
+
+        [Test]
+        public void NativeImport_AfterATailOnlyReload_SeesTwinsAndKeysOnlyTheFileHeld()
+        {
+            ConsoleLogHistoryService.RecordForTests("old-twin", "", LogType.Error);
+            ConsoleLogHistoryService.ImportNativeEntries(new[] { Native("Warning", "old-native", 1) });
+            Fill(100);
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            ConsoleLogHistoryService.ReloadForTests();
+
+            ConsoleLogHistoryService.ImportNativeEntries(new[] { Native("Error", "old-twin", 2), Native("Warning", "old-native", 1), Native("Log", "new-native", 3) });
+
+            CollectionAssert.IsEmpty(NativeRows("old-twin"), "A managed twin read back from the file's head still counts.");
+            Assert.AreEqual(1, NativeRows("old-native").Count, "A native key read back from the file's head is not imported again.");
+            Assert.AreEqual(1, NativeRows("new-native").Count);
+        }
+
         private static void Fill(int count, string prefix = "row-")
         {
             for (int i = 0; i < count; i++)
                 ConsoleLogHistoryService.RecordForTests(prefix + i);
         }
 
+        private static DebugSkills.LogEntryInfo Native(string type, string message, int line) =>
+            new DebugSkills.LogEntryInfo { type = type, message = message, file = "Assets/Twin.cs", line = line };
+
+        private static List<string> NativeRows(string message) => ConsoleLogHistoryService.SnapshotAll(false, out _, out _)
+            .Where(log => log.source == "native" && log.message == message).Select(log => log.type).ToList();
+
         private int FileRows() => File.ReadLines(_path).Count(line => !string.IsNullOrWhiteSpace(line));
+
+        private string StatePath => _path + ".state";
     }
 }
 

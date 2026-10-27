@@ -27,10 +27,13 @@ namespace UnitySkills
         // is rewritten once per quarter turnover instead of on every flush (issue #65: a 50,000-row rewrite each second).
         internal const int CompactEvictionCount = MaxEntries / 4;
         internal const long CompactEvictionBytes = MaxBytes / 4;
+        // A reload parses only this much of the file's end; older rows are read when a reader first needs them.
+        private const long TailReadBytes = 1L << 20;
 
         private const string RelativeLogPath = "Library/UnitySkills/console_log_history.jsonl";
         private const string RelativeStatePath = "Library/UnitySkills/console_log_history_state.json";
         private const long FlushIntervalTicks = TimeSpan.TicksPerSecond;
+        private const int ReadChunkBytes = 1 << 16;
         // How far the persisted seq reservation runs ahead of the live counter. A kill can lose at most the records
         // since the last flush; the next load resumes above the reservation, so none of their seqs is handed out again.
         internal const long SeqReservationBlock = 10000;
@@ -41,6 +44,10 @@ namespace UnitySkills
         private static readonly List<ConsoleLogHistoryRecord> Records = new List<ConsoleLogHistoryRecord>();
         private static readonly List<ConsoleLogHistoryRecord> PendingPersistence = new List<ConsoleLogHistoryRecord>();
         private static readonly HashSet<string> NativeKeys = new HashSet<string>(StringComparer.Ordinal);
+        // Retained managed records by type + "\u001f" + message, so a native import finds a managed twin without a scan.
+        private static readonly Dictionary<string, int> ManagedCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+        // One serializer for every row a load reads, configured as JsonConvert.DeserializeObject configures its own per call.
+        private static readonly JsonSerializer RowSerializer = CreateRowSerializer();
         private static string _sessionId;
         private static string _logPath;
         private static string _statePath;
@@ -67,6 +74,14 @@ namespace UnitySkills
         private static long _evictedBytesSinceCompact;
         private static bool _persistenceFailed;
         private static long _nextFlushUtcTicks;
+        // Rows and bytes of the file exactly as this writer left it, persisted so the next load can read only its tail;
+        // -1 rows while the file may hold anything else (unreadable rows, a failed write, a clear not yet rewritten).
+        private static long _fileRows = -1;
+        private static long _fileBytes;
+        // The start of the file a tail-only load left unparsed; null once every row of the file has been read.
+        private static UnparsedHead _head;
+        private static long _tailBytes = TailReadBytes;
+        private static long _parsedRows;
 
         static ConsoleLogHistoryService()
         {
@@ -127,6 +142,77 @@ namespace UnitySkills
             public long reservedSeq;
             public long incompleteThroughSeq;
             public long corruptRows;
+            // What the file holds, so a load can read only its tail; null while it may differ, absent in older states.
+            public long? fileRows;
+            public long? fileBytes;
+            // The file's oldest rows that are already evicted; the retained history starts right after them.
+            public long? fileEvictedRows;
+            public long? fileEvictedBytes;
+        }
+
+        /// <summary>
+        /// Bytes [0, End) of the file, which a tail-only load did not parse. Its first rows are evicted ones the file keeps
+        /// until compaction; from <see cref="RetainedOffset"/> on, <see cref="RetainedRows"/> rows still belong to the history.
+        /// </summary>
+        private sealed class UnparsedHead
+        {
+            internal long End;
+            internal long RetainedOffset;
+            internal long RetainedRows;
+            // The first seq the tail load kept: every row of the head is older.
+            internal long LoadedFromSeq;
+            // Seq of the row at RetainedOffset; 0 until read.
+            internal long OldestSeq;
+            // A cached slice of the file, so evicting head rows one at a time does not reopen the file for each row.
+            internal byte[] Chunk;
+            internal long ChunkStart;
+            internal int ChunkLength;
+        }
+
+        /// <summary>The load rules for one line at a time: unreadable and out-of-order rows are counted and mark the gap they hide.</summary>
+        private sealed class RowReader
+        {
+            internal long LastSeq;
+            internal bool UnreadableRowPending;
+            // False once a line was skipped: the file then differs from anything this writer produces.
+            internal bool Clean = true;
+
+            internal ConsoleLogHistoryRecord Read(string line)
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    Clean = false;
+                    return null;
+                }
+                var record = ParseRow(line);
+                if (record == null || record.seq <= 0)
+                {
+                    // A torn line (an append a kill cut short) hides a record whose seq lies before the next
+                    // readable one. Keep every other line instead of treating the whole history as corrupt.
+                    CountCorruptRowLocked();
+                    UnreadableRowPending = true;
+                    Clean = false;
+                    return null;
+                }
+
+                if (record.seq <= LastSeq)
+                {
+                    // A repeated or backwards seq means a second writer; windows reaching back to it are
+                    // ambiguous. Keeping seqs unique and ascending is what cursors rely on.
+                    CountCorruptRowLocked();
+                    MarkIncompleteThroughLocked(LastSeq);
+                    Clean = false;
+                    return null;
+                }
+
+                if (UnreadableRowPending)
+                {
+                    MarkIncompleteThroughLocked(record.seq - 1);
+                    UnreadableRowPending = false;
+                }
+                LastSeq = record.seq;
+                return record;
+            }
         }
 
         internal sealed class ConsoleLogHistoryWindow
@@ -178,6 +264,7 @@ namespace UnitySkills
             {
                 _capturing = false;
                 SessionState.SetBool(SessionKeyCapturing, false);
+                EnsureLoadedAfterLocked(_captureStartSeq);
                 return Records.Count(record => record.seq > _captureStartSeq);
             }
         }
@@ -198,7 +285,11 @@ namespace UnitySkills
             {
                 Records.Clear();
                 NativeKeys.Clear();
+                ManagedCounts.Clear();
                 PendingPersistence.Clear();
+                _head = null;
+                // Until the rewrite below lands, the file still holds the cleared rows.
+                _fileRows = -1;
                 _bytes = 0;
                 _dropped = 0;
                 // The rewrite below holds no rows at all, so no unreadable row survives it.
@@ -220,6 +311,8 @@ namespace UnitySkills
             if (entries == null) return;
             lock (SyncRoot)
             {
+                // Native keys and managed twins of the rows only the file holds count as well.
+                EnsureCompleteLocked();
                 foreach (var entry in entries.Reverse())
                 {
                     if (entry == null) continue;
@@ -253,8 +346,9 @@ namespace UnitySkills
             limit = Math.Max(1, Math.Min(MaxReadLimit, limit));
             lock (SyncRoot)
             {
+                EnsureLoadedAfterLocked(afterSeq);
                 long snapshot = throughSeq > 0 ? Math.Min(throughSeq, _seq) : _seq;
-                long oldest = Records.Count == 0 ? _seq + 1 : Records[0].seq;
+                long oldest = OldestSeqLocked();
                 var matching = Records.Where(record => record.seq > afterSeq && record.seq <= snapshot).ToList();
                 bool hasMore = matching.Count > limit;
                 var returned = matching.Take(limit).Select(record => CopyRecord(record, includeStackTrace)).ToList();
@@ -280,7 +374,8 @@ namespace UnitySkills
             limit = Math.Max(1, Math.Min(MaxReadLimit, limit));
             lock (SyncRoot)
             {
-                long oldest = Records.Count == 0 ? _seq + 1 : Records[0].seq;
+                EnsureLoadedAfterLocked(0);
+                long oldest = OldestSeqLocked();
                 var matching = FilterByUtc(Records, from, to).ToList();
                 bool hasMore = matching.Count > limit;
                 var returned = matching.Take(limit).Select(record => CopyRecord(record, includeStackTrace)).ToList();
@@ -302,9 +397,9 @@ namespace UnitySkills
         {
             lock (SyncRoot)
             {
+                EnsureLoadedAfterLocked(afterSeq);
                 dropped = _dropped;
                 var matching = Records.Where(record => record.seq > afterSeq).ToList();
-                long oldest = Records.Count == 0 ? _seq + 1 : Records[0].seq;
                 complete = IsCompleteLocked(afterSeq, matching);
                 return matching.Select(record => CopyRecord(record, includeStackTrace)).ToList();
             }
@@ -332,7 +427,9 @@ namespace UnitySkills
                     snapshot = Math.Min(snapshot, _seq);
                 }
 
-                long oldest = Records.Count == 0 ? _seq + 1 : Records[0].seq;
+                // Coverage counts unknown-time rows over the whole history, not only the rows after afterSeq.
+                EnsureLoadedAfterLocked(0);
+                long oldest = OldestSeqLocked();
                 var matching = Records
                     .Where(record => record.seq > afterSeq && record.seq <= snapshot)
                     .Where(record => MatchesMask(record.type, targetMask))
@@ -431,17 +528,9 @@ namespace UnitySkills
             if (_seq > _reservedSeq && !_finalFlushDone)
                 ReserveSeqLocked();
             record.ApproximateBytes = ApproximateBytes(record);
-            Records.Add(record);
-            _bytes += record.ApproximateBytes;
-            while (Records.Count > MaxEntries || _bytes > MaxBytes)
-            {
-                var removed = Records[0];
-                Records.RemoveAt(0);
-                _bytes -= removed.ApproximateBytes;
-                _dropped++;
-                _evictedSinceCompact++;
-                _evictedBytesSinceCompact += removed.ApproximateBytes;
-            }
+            AppendRecordLocked(record);
+            // After a tail-only load the oldest rows are still in the file; evicting them reads their sizes from it.
+            EvictOverCapLocked();
             if (persistAppend)
             {
                 _dirty = true;
@@ -453,64 +542,14 @@ namespace UnitySkills
         {
             lock (SyncRoot)
             {
-                bool stateReadable = LoadStateLocked();
-                long lastSeq = 0;
-                bool unreadableRowPending = false;
+                bool stateReadable = LoadStateLocked(out var state);
+                var reader = new RowReader();
                 bool readComplete = true;
-                if (!string.IsNullOrEmpty(_logPath) && File.Exists(_logPath))
+                long lastSeq = 0;
+                if (!TryLoadTailLocked(state, out lastSeq))
                 {
-                    try
-                    {
-                        foreach (var line in File.ReadLines(_logPath))
-                        {
-                            if (string.IsNullOrWhiteSpace(line)) continue;
-                            ConsoleLogHistoryRecord record;
-                            try
-                            {
-                                record = JsonConvert.DeserializeObject<ConsoleLogHistoryRecord>(line, SkillsCommon.JsonSettings);
-                            }
-                            catch
-                            {
-                                record = null;
-                            }
-
-                            if (record == null || record.seq <= 0)
-                            {
-                                // A torn line (an append a kill cut short) hides a record whose seq lies before the next
-                                // readable one. Keep every other line instead of treating the whole history as corrupt.
-                                CountCorruptRowLocked();
-                                unreadableRowPending = true;
-                                continue;
-                            }
-
-                            if (record.seq <= lastSeq)
-                            {
-                                // A repeated or backwards seq means a second writer; windows reaching back to it are
-                                // ambiguous. Keeping seqs unique and ascending is what cursors rely on.
-                                CountCorruptRowLocked();
-                                MarkIncompleteThroughLocked(lastSeq);
-                                continue;
-                            }
-
-                            if (unreadableRowPending)
-                            {
-                                MarkIncompleteThroughLocked(record.seq - 1);
-                                unreadableRowPending = false;
-                            }
-
-                            record.ApproximateBytes = ApproximateBytes(record);
-                            Records.Add(record);
-                            _bytes += record.ApproximateBytes;
-                            lastSeq = record.seq;
-                            if (!string.IsNullOrEmpty(record.nativeKey)) NativeKeys.Add(record.nativeKey);
-                        }
-                    }
-                    catch
-                    {
-                        // A temporary file-system failure leaves the service live for new callbacks; the unread rest of
-                        // the file is not in memory, so nothing before this point can be proven complete.
-                        readComplete = false;
-                    }
+                    readComplete = LoadAllLocked(reader);
+                    lastSeq = reader.LastSeq;
                 }
 
                 _seq = Math.Max(_seq, lastSeq);
@@ -521,17 +560,200 @@ namespace UnitySkills
                     _seq = Math.Max(_reservedSeq, _seq + (stateReadable ? 0 : SeqReservationBlock));
                     MarkIncompleteThroughLocked(_seq);
                 }
-                if (unreadableRowPending || !readComplete)
+                if (reader.UnreadableRowPending || !readComplete)
                     MarkIncompleteThroughLocked(_seq);
 
-                // Compaction rewrites the file from memory, so it drops unreadable rows, but only after a complete read.
-                long droppedBeforeTrim = _dropped;
-                bool trimmed = TrimLocked();
-                _evictedSinceCompact = _dropped - droppedBeforeTrim;
-                _needsCompact = trimmed || (readComplete && _uncompactedCorruptRows > 0);
+                // Compaction rewrites the file from memory, so it drops unreadable rows, but only after a complete read;
+                // it also turns a file the state cannot describe back into one the next load reads only the tail of.
+                bool trimmed = EvictOverCapLocked();
+                _needsCompact = trimmed || (readComplete && (_uncompactedCorruptRows > 0 || _fileRows < 0));
                 _dirty = _needsCompact;
                 _finalFlushDone = false;
                 ReserveSeqLocked();
+            }
+        }
+
+        /// <summary>
+        /// Loads only the rows in the last <see cref="_tailBytes"/> of the file, when the state shows the file is exactly what
+        /// this writer left (same length, no unreadable rows). Older rows stay in the file until a reader needs them.
+        /// </summary>
+        private static bool TryLoadTailLocked(PersistedState state, out long lastSeq)
+        {
+            lastSeq = 0;
+            if (state == null || !state.fileRows.HasValue || !state.fileBytes.HasValue || !state.fileEvictedRows.HasValue ||
+                !state.fileEvictedBytes.HasValue || string.IsNullOrEmpty(_logPath)) return false;
+            long fileRows = state.fileRows.Value, fileBytes = state.fileBytes.Value;
+            long evictedRows = state.fileEvictedRows.Value, evictedBytes = state.fileEvictedBytes.Value;
+            // A file within the tail is read whole, as every load did before.
+            if (fileBytes <= _tailBytes || evictedRows < 0 || evictedRows > fileRows || evictedBytes < 0 || evictedBytes > fileBytes ||
+                (evictedRows == 0) != (evictedBytes == 0)) return false;
+
+            var tail = new List<ConsoleLogHistoryRecord>();
+            long tailStart = -1;
+            try
+            {
+                using (var stream = OpenLogForRead())
+                {
+                    // Another length means rows the state does not describe: a kill between an append and its state write.
+                    if (stream.Length != fileBytes) return false;
+                    if (evictedBytes > 0)
+                    {
+                        stream.Seek(evictedBytes - 1, SeekOrigin.Begin);
+                        if (stream.ReadByte() != '\n') return false;
+                    }
+                    // Starting one byte early, the first line is the rest of the row the tail begins in, or the newline
+                    // just before a tail that begins on a row boundary; either way it is not part of the tail.
+                    bool ended = ForEachLine(stream, fileBytes - _tailBytes - 1, fileBytes, (line, offset, length) =>
+                    {
+                        if (tailStart < 0)
+                        {
+                            tailStart = offset + length;
+                            return true;
+                        }
+                        var record = ParseRow(line);
+                        long previousSeq = tail.Count == 0 ? 0 : tail[tail.Count - 1].seq;
+                        // Anything unexpected falls back to the full load, which handles it as every load did before.
+                        if (record == null || record.seq <= previousSeq || length != RowBytes(line)) return false;
+                        record.ApproximateBytes = length;
+                        tail.Add(record);
+                        return true;
+                    });
+                    if (!ended) return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            long headRows = fileRows - evictedRows - tail.Count;
+            if (tail.Count == 0 || headRows < 0 || tailStart < evictedBytes || (headRows == 0) != (tailStart == evictedBytes)) return false;
+
+            foreach (var record in tail)
+            {
+                AppendRecordLocked(record);
+                if (!string.IsNullOrEmpty(record.nativeKey)) NativeKeys.Add(record.nativeKey);
+            }
+            _head = new UnparsedHead { End = tailStart, RetainedOffset = evictedBytes, RetainedRows = headRows, LoadedFromSeq = tail[0].seq };
+            _fileRows = fileRows;
+            _fileBytes = fileBytes;
+            // The previous writer's evictions still in the file: a full load would trim and count exactly these.
+            _dropped += evictedRows;
+            _evictedSinceCompact = evictedRows;
+            _evictedBytesSinceCompact = evictedBytes;
+            lastSeq = tail[tail.Count - 1].seq;
+            return true;
+        }
+
+        /// <summary>Reads every row, as every load did before tail loads. False when the file could not be read to its end.</summary>
+        private static bool LoadAllLocked(RowReader reader)
+        {
+            long rows = 0, measured = 0, length = 0;
+            bool readComplete = true;
+            if (!string.IsNullOrEmpty(_logPath) && File.Exists(_logPath))
+            {
+                try
+                {
+                    length = new FileInfo(_logPath).Length;
+                    foreach (var line in File.ReadLines(_logPath))
+                    {
+                        long bytes = RowBytes(line);
+                        measured += bytes;
+                        var record = reader.Read(line);
+                        if (record == null) continue;
+                        record.ApproximateBytes = bytes;
+                        AppendRecordLocked(record);
+                        if (!string.IsNullOrEmpty(record.nativeKey)) NativeKeys.Add(record.nativeKey);
+                        rows++;
+                    }
+                }
+                catch
+                {
+                    // A temporary file-system failure leaves the service live for new callbacks; the unread rest of
+                    // the file is not in memory, so nothing before this point can be proven complete.
+                    readComplete = false;
+                }
+            }
+
+            // Only rows this writer produced, each measured as it lies in the file, let the next load trust the counts.
+            bool exact = readComplete && reader.Clean && measured == length;
+            _fileRows = exact ? rows : -1;
+            _fileBytes = exact ? length : 0;
+            return readComplete;
+        }
+
+        /// <summary>Reads the unparsed head first when a reader needs rows after <paramref name="afterSeq"/> that only the file holds.</summary>
+        private static void EnsureLoadedAfterLocked(long afterSeq)
+        {
+            if (_head != null && _head.RetainedRows > 0 && afterSeq + 1 < _head.LoadedFromSeq)
+                EnsureCompleteLocked();
+        }
+
+        /// <summary>
+        /// Parses the head a tail-only load skipped, once. Its retained rows go in front of the records in memory, which
+        /// already hold every later row: rows appended since the load are in memory, and pending ones are not in the file.
+        /// The rest of the head (evicted rows) only contributes native keys, as a full load's trimmed rows do.
+        /// </summary>
+        private static void EnsureCompleteLocked()
+        {
+            var head = _head;
+            if (head == null) return;
+            _head = null;
+            var reader = new RowReader();
+            var retained = new List<ConsoleLogHistoryRecord>();
+            long retainedBytes = 0;
+            bool read;
+            try
+            {
+                using (var stream = OpenLogForRead())
+                    read = ForEachLine(stream, 0, head.End, (line, offset, length) =>
+                    {
+                        var record = reader.Read(line);
+                        if (record == null) return true;
+                        if (!string.IsNullOrEmpty(record.nativeKey)) NativeKeys.Add(record.nativeKey);
+                        if (offset >= head.RetainedOffset && record.seq < head.LoadedFromSeq)
+                        {
+                            record.ApproximateBytes = length;
+                            retained.Add(record);
+                            retainedBytes += length;
+                        }
+                        return true;
+                    });
+            }
+            catch
+            {
+                read = false;
+            }
+
+            if (!read)
+            {
+                // As a load that could not read the file to its end: the rows only the file held are not served, and the
+                // next load reads the whole file again instead of trusting the counts.
+                AbandonHeadRowsLocked(head);
+                _fileRows = -1;
+                return;
+            }
+
+            Records.InsertRange(0, retained);
+            foreach (var record in retained)
+            {
+                _bytes += record.ApproximateBytes;
+                CountManagedLocked(record, 1);
+            }
+            if (!reader.Clean || retained.Count != head.RetainedRows || retainedBytes != head.End - head.RetainedOffset)
+            {
+                // The file is not what the state described: serve the readable rows and rewrite the file from memory.
+                if (reader.UnreadableRowPending) MarkIncompleteThroughLocked(head.LoadedFromSeq - 1);
+                _fileRows = -1;
+                _needsCompact = true;
+                _dirty = true;
+                EvictOverCapLocked();
+            }
+            // The whole history is in memory now; like a full load, it compacts the evicted rows still in the file.
+            if (_evictedSinceCompact > 0)
+            {
+                _needsCompact = true;
+                _dirty = true;
             }
         }
 
@@ -563,18 +785,216 @@ namespace UnitySkills
             }
         }
 
-        private static bool TrimLocked()
+        private static void AppendRecordLocked(ConsoleLogHistoryRecord record)
         {
-            bool changed = false;
-            while (Records.Count > MaxEntries || _bytes > MaxBytes)
+            Records.Add(record);
+            _bytes += record.ApproximateBytes;
+            CountManagedLocked(record, 1);
+        }
+
+        private static long RetainedRowsLocked() => Records.Count + (_head?.RetainedRows ?? 0);
+
+        private static long RetainedBytesLocked() => _bytes + (_head == null || _head.RetainedRows == 0 ? 0 : _head.End - _head.RetainedOffset);
+
+        private static bool EvictOverCapLocked()
+        {
+            bool evicted = false;
+            while ((RetainedRowsLocked() > MaxEntries || RetainedBytesLocked() > MaxBytes) && EvictOldestLocked())
+                evicted = true;
+            return evicted;
+        }
+
+        /// <summary>
+        /// Evicts the oldest retained row: from the unparsed head while it has any (its size read from the file, CLR-only
+        /// I/O that is safe on the log callback thread), else from memory. Evicted rows stay in the file until compaction.
+        /// </summary>
+        private static bool EvictOldestLocked()
+        {
+            long bytes;
+            var head = _head;
+            if (head != null && head.RetainedRows > 0)
+            {
+                if (!TryReadHeadRowLocked(head, out _, out int length))
+                {
+                    AbandonHeadRowsLocked(head);
+                    return true;
+                }
+                bytes = length;
+                head.RetainedOffset += length;
+                head.RetainedRows--;
+                head.OldestSeq = 0;
+            }
+            else if (Records.Count > 0)
             {
                 var removed = Records[0];
                 Records.RemoveAt(0);
                 _bytes -= removed.ApproximateBytes;
-                _dropped++;
-                changed = true;
+                CountManagedLocked(removed, -1);
+                bytes = removed.ApproximateBytes;
             }
-            return changed;
+            else
+            {
+                return false;
+            }
+            _dropped++;
+            _evictedSinceCompact++;
+            _evictedBytesSinceCompact += bytes;
+            return true;
+        }
+
+        /// <summary>The head's retained rows cannot be read: they leave the served history as if evicted, and windows reaching back to them are incomplete.</summary>
+        private static void AbandonHeadRowsLocked(UnparsedHead head)
+        {
+            _dropped += head.RetainedRows;
+            _evictedSinceCompact += head.RetainedRows;
+            _evictedBytesSinceCompact += head.End - head.RetainedOffset;
+            MarkIncompleteThroughLocked(head.LoadedFromSeq - 1);
+            head.RetainedOffset = head.End;
+            head.RetainedRows = 0;
+            head.OldestSeq = 0;
+        }
+
+        /// <summary>The seq of the oldest retained row; after a tail-only load it is read from the head of the file.</summary>
+        private static long OldestSeqLocked()
+        {
+            var head = _head;
+            if (head != null && head.RetainedRows > 0)
+            {
+                if (head.OldestSeq > 0) return head.OldestSeq;
+                if (TryReadHeadRowLocked(head, out int start, out int length))
+                {
+                    var record = ParseRow(DecodeLine(head.Chunk, start, length));
+                    if (record != null && record.seq > 0 && record.seq < head.LoadedFromSeq)
+                        return head.OldestSeq = record.seq;
+                }
+                AbandonHeadRowsLocked(head);
+            }
+            return Records.Count == 0 ? _seq + 1 : Records[0].seq;
+        }
+
+        /// <summary>Locates the row at the head's RetainedOffset in its cached chunk; false when the file cannot supply it.</summary>
+        private static bool TryReadHeadRowLocked(UnparsedHead head, out int start, out int length)
+        {
+            start = 0;
+            length = 0;
+            try
+            {
+                int size = ReadChunkBytes;
+                while (true)
+                {
+                    long offset = head.RetainedOffset;
+                    if (head.Chunk == null || offset < head.ChunkStart || offset >= head.ChunkStart + head.ChunkLength)
+                        ReadHeadChunk(head, offset, size);
+                    int from = (int)(offset - head.ChunkStart);
+                    int newline = Array.IndexOf(head.Chunk, (byte)'\n', from, head.ChunkLength - from);
+                    if (newline >= 0)
+                    {
+                        start = from;
+                        length = newline + 1 - from;
+                        return true;
+                    }
+                    if (head.ChunkStart + head.ChunkLength >= head.End) return false;
+                    // The row runs past the chunk: read again from its start, twice as far if it already began there.
+                    if (head.ChunkStart == offset) size = (int)Math.Min(2L * Math.Max(size, head.ChunkLength), int.MaxValue);
+                    head.Chunk = null;
+                }
+            }
+            catch
+            {
+                // No logging: this can run inside a log callback.
+                return false;
+            }
+        }
+
+        private static void ReadHeadChunk(UnparsedHead head, long offset, int size)
+        {
+            int count = (int)Math.Min(size, head.End - offset);
+            var chunk = new byte[count];
+            using (var stream = OpenLogForRead())
+            {
+                stream.Seek(offset, SeekOrigin.Begin);
+                for (int read = 0; read < count;)
+                {
+                    int n = stream.Read(chunk, read, count - read);
+                    if (n <= 0) throw new EndOfStreamException();
+                    read += n;
+                }
+            }
+            head.Chunk = chunk;
+            head.ChunkStart = offset;
+            head.ChunkLength = count;
+        }
+
+        /// <summary>
+        /// Calls <paramref name="row"/> with each newline-terminated line in [<paramref name="start"/>, <paramref name="end"/>)
+        /// of the stream, with its offset and its byte length, newline included. False when <paramref name="row"/> stops the
+        /// scan or the range does not end with a newline.
+        /// </summary>
+        private static bool ForEachLine(Stream stream, long start, long end, Func<string, long, int, bool> row)
+        {
+            var buffer = new byte[ReadChunkBytes];
+            long bufferOffset = start;
+            int filled = 0;
+            stream.Seek(start, SeekOrigin.Begin);
+            while (bufferOffset + filled < end)
+            {
+                // The carried-over start of a row fills the buffer: make room for the rest of it.
+                if (filled == buffer.Length) Array.Resize(ref buffer, buffer.Length * 2);
+                int read = stream.Read(buffer, filled, (int)Math.Min(buffer.Length - filled, end - bufferOffset - filled));
+                if (read <= 0) return false;
+                int lineStart = 0;
+                int scanFrom = filled;
+                filled += read;
+                int newline;
+                while ((newline = Array.IndexOf(buffer, (byte)'\n', scanFrom, filled - scanFrom)) >= 0)
+                {
+                    int length = newline + 1 - lineStart;
+                    if (!row(DecodeLine(buffer, lineStart, length), bufferOffset + lineStart, length)) return false;
+                    lineStart = scanFrom = newline + 1;
+                }
+                if (lineStart > 0)
+                {
+                    Buffer.BlockCopy(buffer, lineStart, buffer, 0, filled - lineStart);
+                    filled -= lineStart;
+                    bufferOffset += lineStart;
+                }
+            }
+            return filled == 0;
+        }
+
+        /// <summary>The text of a line whose <paramref name="length"/> includes its newline, without that newline or a CR before it.</summary>
+        private static string DecodeLine(byte[] buffer, int start, int length)
+        {
+            int text = length - 1;
+            if (text > 0 && buffer[start + text - 1] == '\r') text--;
+            return SkillsCommon.Utf8NoBom.GetString(buffer, start, text);
+        }
+
+        private static FileStream OpenLogForRead()
+        {
+            return new FileStream(_logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        }
+
+        private static JsonSerializer CreateRowSerializer()
+        {
+            var serializer = JsonSerializer.CreateDefault(SkillsCommon.JsonSettings);
+            // JsonConvert.DeserializeObject sets this too: content after the object (two rows glued together) is unreadable.
+            serializer.CheckAdditionalContent = true;
+            return serializer;
+        }
+
+        private static ConsoleLogHistoryRecord ParseRow(string line)
+        {
+            _parsedRows++;
+            try
+            {
+                using (var reader = new JsonTextReader(new StringReader(line)))
+                    return RowSerializer.Deserialize<ConsoleLogHistoryRecord>(reader);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static void FlushWhenDue()
@@ -611,6 +1031,8 @@ namespace UnitySkills
                     {
                         if (_needsCompact || CompactionDueLocked(deferCompaction))
                         {
+                            // The rewrite is made from memory, so the rows a tail-only load left in the file are read first.
+                            EnsureCompleteLocked();
                             RewritePersistenceLocked();
                             _uncompactedCorruptRows = 0;
                             _evictedSinceCompact = 0;
@@ -646,6 +1068,7 @@ namespace UnitySkills
                     _persistenceFailed = true;
                     _needsCompact = true;
                     _dirty = true;
+                    _fileRows = -1;
                 }
             }
         }
@@ -663,18 +1086,30 @@ namespace UnitySkills
         private static void RewritePersistenceLocked()
         {
             if (string.IsNullOrEmpty(_logPath)) return;
+            var sizes = new long[Records.Count];
             // Temp file + rename: a kill or a reload mid-compaction leaves the previous file, never a truncated one.
             LibraryStateFile.Write(_logPath, stream =>
             {
                 using (var writer = new StreamWriter(stream, SkillsCommon.Utf8NoBom, 1 << 16))
                 {
-                    foreach (var record in Records)
+                    for (int i = 0; i < Records.Count; i++)
                     {
-                        writer.Write(JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings));
+                        string line = JsonConvert.SerializeObject(Records[i], Formatting.None, SkillsCommon.JsonSettings);
+                        writer.Write(line);
                         writer.Write(Environment.NewLine);
+                        sizes[i] = RowBytes(line);
                     }
                 }
             });
+            // Rows read from an older file can serialize differently; the sizes now match the file a tail load walks.
+            _bytes = 0;
+            for (int i = 0; i < Records.Count; i++)
+            {
+                Records[i].ApproximateBytes = sizes[i];
+                _bytes += sizes[i];
+            }
+            _fileRows = Records.Count;
+            _fileBytes = _bytes;
         }
 
         private static void AppendPendingPersistenceLocked()
@@ -683,16 +1118,21 @@ namespace UnitySkills
             var lines = new StringBuilder();
             foreach (var record in PendingPersistence)
                 lines.Append(JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings)).Append(Environment.NewLine);
-            LibraryStateFile.AppendLines(_logPath, SkillsCommon.Utf8NoBom.GetBytes(lines.ToString()));
+            byte[] bytes = SkillsCommon.Utf8NoBom.GetBytes(lines.ToString());
+            LibraryStateFile.AppendLines(_logPath, bytes);
+            if (_fileRows < 0) return;
+            _fileRows += PendingPersistence.Count;
+            _fileBytes += bytes.Length;
         }
 
         /// <summary>Returns false when a state file exists but cannot be read.</summary>
-        private static bool LoadStateLocked()
+        private static bool LoadStateLocked(out PersistedState state)
         {
+            state = null;
             if (string.IsNullOrEmpty(_statePath) || !File.Exists(_statePath)) return true;
             try
             {
-                var state = JsonConvert.DeserializeObject<PersistedState>(File.ReadAllText(_statePath), SkillsCommon.JsonSettings);
+                state = JsonConvert.DeserializeObject<PersistedState>(File.ReadAllText(_statePath), SkillsCommon.JsonSettings);
                 if (state == null) return false;
                 _seq = Math.Max(_seq, state.seq);
                 _dropped = Math.Max(0, state.dropped);
@@ -704,6 +1144,7 @@ namespace UnitySkills
             }
             catch
             {
+                state = null;
                 return false;
             }
         }
@@ -711,6 +1152,10 @@ namespace UnitySkills
         private static void WriteStateLocked()
         {
             if (string.IsNullOrEmpty(_statePath)) return;
+            bool exact = _fileRows >= 0;
+            // Evictions come off the front of the file, then of the pending rows behind it, so the file holds at most its
+            // own rows of them.
+            bool evictionsInFile = _evictedSinceCompact <= _fileRows;
             LibraryStateFile.WriteAllText(_statePath, JsonConvert.SerializeObject(new PersistedState
             {
                 seq = _seq,
@@ -721,13 +1166,29 @@ namespace UnitySkills
                 incompleteThroughSeq = _incompleteThroughSeq,
                 // Rows still in the file are counted again by the next load; persist only those compaction removed.
                 corruptRows = _corruptRows - _uncompactedCorruptRows,
+                fileRows = exact ? _fileRows : (long?)null,
+                fileBytes = exact ? _fileBytes : (long?)null,
+                fileEvictedRows = exact ? Math.Min(_evictedSinceCompact, _fileRows) : (long?)null,
+                fileEvictedBytes = exact ? (evictionsInFile ? _evictedBytesSinceCompact : _fileBytes) : (long?)null,
             }, Formatting.None, SkillsCommon.JsonSettings));
         }
 
         private static bool HasManagedEquivalentLocked(string type, string message)
         {
-            return Records.Any(record => record.source == "managed" && string.Equals(record.type, type, StringComparison.Ordinal) &&
-                string.Equals(record.message, message ?? string.Empty, StringComparison.Ordinal));
+            return type != null && ManagedCounts.ContainsKey(ManagedKey(type, message ?? string.Empty));
+        }
+
+        private static string ManagedKey(string type, string message) => string.Concat(type, "\u001f", message);
+
+        /// <summary>Tracks the rows <see cref="HasManagedEquivalentLocked"/> can match: managed, with a type and a message.</summary>
+        private static void CountManagedLocked(ConsoleLogHistoryRecord record, int delta)
+        {
+            if (record.source != "managed" || record.type == null || record.message == null) return;
+            string key = ManagedKey(record.type, record.message);
+            ManagedCounts.TryGetValue(key, out int count);
+            count += delta;
+            if (count > 0) ManagedCounts[key] = count;
+            else ManagedCounts.Remove(key);
         }
 
         private static ConsoleLogHistoryRecord CopyRecord(ConsoleLogHistoryRecord record, bool includeStackTrace)
@@ -779,12 +1240,18 @@ namespace UnitySkills
 
         private static long ApproximateBytes(ConsoleLogHistoryRecord record)
         {
-            return Encoding.UTF8.GetByteCount(JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings)) + Environment.NewLine.Length;
+            return RowBytes(JsonConvert.SerializeObject(record, Formatting.None, SkillsCommon.JsonSettings));
+        }
+
+        /// <summary>A row's size in the file: its UTF-8 line plus the newline this writer ends it with.</summary>
+        private static long RowBytes(string line)
+        {
+            return SkillsCommon.Utf8NoBom.GetByteCount(line) + Environment.NewLine.Length;
         }
 
         private static object CoverageLocked(long oldest, long snapshot, int unknownTimeCount)
         {
-            return new { oldestSeq = oldest, newestSeq = _seq, snapshotSeq = snapshot, retained = Records.Count, capacity = MaxEntries, maxBytes = MaxBytes, unknownTimeCount, nativeTime = "unknown", nativeMessageMayBeTruncated = true, fullTextGuaranteedFor = "managed", corruptRows = _corruptRows, incompleteThroughSeq = _incompleteThroughSeq, durabilityIssue = _persistenceFailed, editorLogPath = _editorLogPath, editorLogAvailable = !string.IsNullOrEmpty(_editorLogPath) && File.Exists(_editorLogPath), editorLogSource = "Editor.log is an external fallback; it is not imported into cursor history." };
+            return new { oldestSeq = oldest, newestSeq = _seq, snapshotSeq = snapshot, retained = RetainedRowsLocked(), capacity = MaxEntries, maxBytes = MaxBytes, unknownTimeCount, nativeTime = "unknown", nativeMessageMayBeTruncated = true, fullTextGuaranteedFor = "managed", corruptRows = _corruptRows, incompleteThroughSeq = _incompleteThroughSeq, durabilityIssue = _persistenceFailed, editorLogPath = _editorLogPath, editorLogAvailable = !string.IsNullOrEmpty(_editorLogPath) && File.Exists(_editorLogPath), editorLogSource = "Editor.log is an external fallback; it is not imported into cursor history." };
         }
 
         /// <summary>
@@ -794,7 +1261,7 @@ namespace UnitySkills
         /// </summary>
         private static bool IsCompleteLocked(long afterSeq, IEnumerable<ConsoleLogHistoryRecord> matching)
         {
-            long oldest = Records.Count == 0 ? _seq + 1 : Records[0].seq;
+            long oldest = OldestSeqLocked();
             return afterSeq + 1 >= oldest && afterSeq >= _incompleteThroughSeq && !matching.Any(record => !record.timeKnown);
         }
 
@@ -827,6 +1294,7 @@ namespace UnitySkills
                 Records.Clear(); NativeKeys.Clear(); PendingPersistence.Clear(); _seq = 0; _bytes = 0; _dropped = 0; _corruptRows = 0; _generation = 0; _captureStartSeq = 0; _capturing = false;
                 _uncompactedCorruptRows = 0; _incompleteThroughSeq = 0; _reservedSeq = 0; _finalFlushDone = false; _persistenceFailed = false;
                 _dirty = false; _needsCompact = false; _evictedSinceCompact = 0; _evictedBytesSinceCompact = 0;
+                ManagedCounts.Clear(); _head = null; _fileRows = 0; _fileBytes = 0;
                 DeleteTestFiles();
             }
         }
@@ -870,6 +1338,11 @@ namespace UnitySkills
             private readonly bool _oldPersistenceFailed;
             private readonly List<ConsoleLogHistoryRecord> _oldPendingPersistence;
             private readonly long _oldNextFlushUtcTicks;
+            private readonly Dictionary<string, int> _oldManagedCounts;
+            private readonly UnparsedHead _oldHead;
+            private readonly long _oldFileRows;
+            private readonly long _oldFileBytes;
+            private readonly long _oldTailBytes;
 
             internal TestScope(string path)
             {
@@ -878,6 +1351,8 @@ namespace UnitySkills
                     _oldPath = _logPath; _oldStatePath = _statePath;
                     _oldRecords = new List<ConsoleLogHistoryRecord>(Records);
                     _oldNativeKeys = new HashSet<string>(NativeKeys, StringComparer.Ordinal);
+                    _oldManagedCounts = new Dictionary<string, int>(ManagedCounts, StringComparer.Ordinal);
+                    _oldHead = _head; _oldFileRows = _fileRows; _oldFileBytes = _fileBytes; _oldTailBytes = _tailBytes;
                     _oldSeq = _seq; _oldBytes = _bytes; _oldDropped = _dropped; _oldCorruptRows = _corruptRows; _oldGeneration = _generation;
                     _oldUncompactedCorruptRows = _uncompactedCorruptRows; _oldIncompleteThroughSeq = _incompleteThroughSeq; _oldReservedSeq = _reservedSeq; _oldFinalFlushDone = _finalFlushDone;
                     _oldCaptureStartSeq = _captureStartSeq; _oldCapturing = _capturing; _oldDirty = _dirty; _oldNeedsCompact = _needsCompact; _oldPersistenceFailed = _persistenceFailed;
@@ -898,6 +1373,8 @@ namespace UnitySkills
                     _logPath = _oldPath; _statePath = _oldStatePath;
                     Records.Clear(); Records.AddRange(_oldRecords);
                     NativeKeys.Clear(); foreach (var key in _oldNativeKeys) NativeKeys.Add(key);
+                    ManagedCounts.Clear(); foreach (var pair in _oldManagedCounts) ManagedCounts.Add(pair.Key, pair.Value);
+                    _head = _oldHead; _fileRows = _oldFileRows; _fileBytes = _oldFileBytes; _tailBytes = _oldTailBytes;
                     _seq = _oldSeq; _bytes = _oldBytes; _dropped = _oldDropped; _corruptRows = _oldCorruptRows; _generation = _oldGeneration;
                     _uncompactedCorruptRows = _oldUncompactedCorruptRows; _incompleteThroughSeq = _oldIncompleteThroughSeq; _reservedSeq = _oldReservedSeq; _finalFlushDone = _oldFinalFlushDone;
                     PendingPersistence.Clear(); PendingPersistence.AddRange(_oldPendingPersistence);
@@ -937,8 +1414,22 @@ namespace UnitySkills
             {
                 Records.Clear(); NativeKeys.Clear(); PendingPersistence.Clear(); _seq = 0; _bytes = 0; _dropped = 0; _corruptRows = 0; _generation = 0; _dirty = false; _needsCompact = false; _persistenceFailed = false;
                 _uncompactedCorruptRows = 0; _incompleteThroughSeq = 0; _reservedSeq = 0; _finalFlushDone = false; _evictedSinceCompact = 0; _evictedBytesSinceCompact = 0;
+                ManagedCounts.Clear(); _head = null; _fileRows = -1; _fileBytes = 0;
                 LoadPersistedHistory();
             }
+        }
+
+        /// <summary>Sets how much of the file's end a reload parses, so tests reach tail-only loads with small files.</summary>
+        internal static void SetTailBytesForTests(long bytes)
+        {
+            lock (SyncRoot)
+                _tailBytes = bytes;
+        }
+
+        /// <summary>Rows parsed from the file so far, by loads, on-demand completion and oldest-seq reads.</summary>
+        internal static long ParsedRowsForTests
+        {
+            get { lock (SyncRoot) return _parsedRows; }
         }
 
         internal static void RecordForTests(string message, string stackTrace = "", LogType type = LogType.Log, DateTime? utc = null)

@@ -48,6 +48,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 - **域重载时的空 200 响应** — 重载开始时排队中的请求以前会收到空的 200，看起来像成功；现在未执行的请求返回带 `Retry-After` 和 `details.executed:false` 的 503，写入后断开的返回 504（结果未知）。Python 客户端不再重发结果未知的写请求。
 - **Console 历史满后每秒整份重写**（Issue #65）— 历史满后改为只追加，累计到上限的四分之一才压缩，Play Mode 下延后压缩。
+- **Console 历史拖慢每次域重载** — 以前每次重载都要逐行解析整个 `console_log_history.jsonl`（上限 5 万行 / 64 MB），还为计字节把每行再序列化一遍，34.5 MB 的历史让每次重载多花约 530 ms；现在重载只解析文件末尾约 1 MiB，更早的记录等查询用到时才读入，读入时按行长计字节、复用同一个反序列化器；淘汰与压缩判断不必先读全量，导入原生 Console 条目时查托管重复改用计数表，不再逐条扫描整个历史。
 - **未存盘的材质 / ScriptableObject 撤销不生效** — 以前只写回文件字节，内存里尚未保存的改动会留下，下次保存又写回去；现在同时把改前状态写回内存对象并保存。
 - **从未保存的场景里的撤销只恢复一个对象** — 这类场景的所有对象共用同一个 GlobalObjectId，快照按 id 去重时只留下第一个；现在不再对其去重。
 - **`component_invoke_method` 短类型名歧义** — 实例调用时 `Button` 这类同时匹配 UI 与 UIElements 的短名，优先取组件类型，不再报歧义。
