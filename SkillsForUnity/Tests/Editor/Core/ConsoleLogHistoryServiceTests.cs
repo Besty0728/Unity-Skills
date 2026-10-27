@@ -371,7 +371,13 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual("late-9", all.Last().message);
             Assert.AreEqual(10L, dropped);
             ConsoleLogHistoryService.FlushForTests();
-            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, FileRows());
+            // A tail-only reload leaves the ten evicted rows in the file until a quarter of the cap has piled up.
+            Assert.LessOrEqual(FileRows(), ConsoleLogHistoryService.MaxEntries + ConsoleLogHistoryService.CompactEvictionCount);
+
+            ConsoleLogHistoryService.ReloadForTests();
+            var again = ConsoleLogHistoryService.SnapshotAll(false, out var droppedAgain, out _);
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, again.Count);
+            Assert.AreEqual(10L, droppedAgain, "Rows evicted before a reload are counted once however often it reloads.");
         }
 
         [Test]
@@ -488,7 +494,7 @@ namespace UnitySkills.Tests.Core
             ConsoleLogHistoryService.FinalFlushForTests();
             // The state file as versions before tail-only reloads wrote it.
             var state = JObject.Parse(File.ReadAllText(StatePath));
-            foreach (var name in new[] { "fileRows", "fileBytes", "fileEvictedRows", "fileEvictedBytes" })
+            foreach (var name in new[] { "fileRows", "fileBytes", "fileEvictedRows", "fileEvictedBytes", "fileLastSeq" })
                 Assert.IsTrue(state.Remove(name), name);
             File.WriteAllText(StatePath, state.ToString(Formatting.None));
 
@@ -502,6 +508,7 @@ namespace UnitySkills.Tests.Core
             var upgraded = JObject.Parse(File.ReadAllText(StatePath));
             Assert.AreEqual(61L, upgraded.Value<long>("fileRows"));
             Assert.AreEqual(new FileInfo(_path).Length, upgraded.Value<long>("fileBytes"));
+            Assert.AreEqual(61L, upgraded.Value<long>("fileLastSeq"));
 
             before = ConsoleLogHistoryService.ParsedRowsForTests;
             ConsoleLogHistoryService.ReloadForTests();
@@ -541,10 +548,210 @@ namespace UnitySkills.Tests.Core
             Assert.AreEqual(1, NativeRows("new-native").Count);
         }
 
+        [Test]
+        public void TailOnlyReload_UnreadableFileDuringEvictionKeepsEveryRowAndTheNextRecordCatchesUp()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            ConsoleLogHistoryService.ReloadForTests();
+
+            ConsoleLogHistoryService.SetReadsFailForTests(true);
+            Fill(5, "over-");
+            var recent = ConsoleLogHistoryService.ReadWindow(ConsoleLogHistoryService.GetCurrentSeq() - 3);
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries + 5L, JObject.FromObject(recent.coverage).Value<long>("retained"),
+                "Rows the file cannot give up right now stay, a little over the cap.");
+            Assert.AreEqual(0L, recent.dropped);
+            Assert.IsTrue(recent.complete);
+            Assert.IsFalse(ConsoleLogHistoryService.ReadWindow(0).complete, "A window needing the unreadable rows is incomplete, not short.");
+            ConsoleLogHistoryService.FlushForTests();
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries + 5, FileRows());
+
+            ConsoleLogHistoryService.SetReadsFailForTests(false);
+            Fill(1, "next-");
+            var all = ConsoleLogHistoryService.SnapshotAll(false, out var dropped, out _);
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, all.Count);
+            Assert.AreEqual(6L, dropped);
+            Assert.AreEqual("row-6", all[0].message);
+            Assert.AreEqual("next-0", all.Last().message);
+        }
+
+        [Test]
+        public void TailOnlyReload_UnreadableFileWhenCompactionIsDueRewritesNothingAndTheNextFlushCompacts()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            ConsoleLogHistoryService.ReloadForTests();
+            Fill(ConsoleLogHistoryService.CompactEvictionCount, "late-");
+
+            ConsoleLogHistoryService.SetReadsFailForTests(true);
+            ConsoleLogHistoryService.FlushForTests();
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries + ConsoleLogHistoryService.CompactEvictionCount, FileRows(),
+                "Without the rows only the file holds, a rewrite would lose them; the new rows are appended instead.");
+
+            ConsoleLogHistoryService.SetReadsFailForTests(false);
+            Fill(1, "last-");
+            ConsoleLogHistoryService.FlushForTests();
+            var all = ConsoleLogHistoryService.SnapshotAll(false, out var dropped, out _);
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, FileRows());
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, all.Count);
+            Assert.AreEqual(ConsoleLogHistoryService.CompactEvictionCount + 1L, dropped);
+            Assert.AreEqual("row-" + (ConsoleLogHistoryService.CompactEvictionCount + 1), all[0].message);
+        }
+
+        [Test]
+        public void TailOnlyReload_ReadingTheWholeHistoryOnlyAppendsAndPlayModeStillDefersCompaction()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            ConsoleLogHistoryService.ReloadForTests();
+            Fill(100, "e-");
+            ConsoleLogHistoryService.FlushForTests();
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, ConsoleLogHistoryService.ReadWindow(0).totalMatched);
+            Fill(1, "f-");
+            ConsoleLogHistoryService.FlushForTests();
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries + 101, FileRows(), "Loading the head on demand is no reason to rewrite the file.");
+
+            ConsoleLogHistoryService.ReloadForTests();
+            long parsed = ConsoleLogHistoryService.ParsedRowsForTests;
+            Fill(ConsoleLogHistoryService.CompactEvictionCount, "play-");
+            ConsoleLogHistoryService.FlushForTests(inPlayMode: true);
+            Assert.AreEqual(parsed, ConsoleLogHistoryService.ParsedRowsForTests);
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries + 101 + ConsoleLogHistoryService.CompactEvictionCount, FileRows(),
+                "Play Mode waits for a full turnover, also when the evictions came from the file's head.");
+
+            Fill(1, "edit-");
+            ConsoleLogHistoryService.FlushForTests();
+            Assert.AreEqual(ConsoleLogHistoryService.MaxEntries, FileRows());
+        }
+
+        [Test]
+        public void TailOnlyReloadsChainedWithoutLoadingTheHead_MatchAFullLoad()
+        {
+            Fill(ConsoleLogHistoryService.MaxEntries);
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            ConsoleLogHistoryService.ReloadForTests();
+            Fill(1000, "b-");
+            ConsoleLogHistoryService.FlushForTests();
+            // This load starts the history right after the evictions the previous domain persisted.
+            ConsoleLogHistoryService.ReloadForTests();
+            long parsed = ConsoleLogHistoryService.ParsedRowsForTests;
+            ConsoleLogHistoryService.ImportNativeEntries(new DebugSkills.LogEntryInfo[0]);
+            var recent = JObject.FromObject(ConsoleLogHistoryService.ReadWindow(ConsoleLogHistoryService.GetCurrentSeq() - 3).coverage);
+            Assert.Less(ConsoleLogHistoryService.ParsedRowsForTests - parsed, 5, "Neither an empty import nor a recent window loads the head.");
+            Assert.AreEqual(1001L, recent.Value<long>("oldestSeq"));
+            Assert.AreEqual((long)ConsoleLogHistoryService.MaxEntries, recent.Value<long>("retained"));
+            Fill(1000, "c-");
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.ReloadForTests();
+            string tailOnly = Describe();
+
+            ConsoleLogHistoryService.SetTailBytesForTests(long.MaxValue);
+            ConsoleLogHistoryService.ReloadForTests();
+            Assert.AreEqual(Describe(), tailOnly);
+            StringAssert.Contains("dropped=2000 ", tailOnly);
+        }
+
+        [Test]
+        public void TailOnlyReload_ByteCapAndRowsLongerThanTheHeadChunkMatchAFullLoad()
+        {
+            ConsoleLogHistoryService.SetTailBytesForTests(128 * 1024);
+            ConsoleLogHistoryService.SetHeadChunkBytesForTests(1024);
+            FillLong(1700, "big-");
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.ReloadForTests();
+            FillLong(30, "more-");
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.ReloadForTests();
+            var recent = JObject.FromObject(ConsoleLogHistoryService.ReadWindow(ConsoleLogHistoryService.GetCurrentSeq() - 1).coverage);
+            string tailOnly = Describe();
+
+            ConsoleLogHistoryService.SetTailBytesForTests(long.MaxValue);
+            ConsoleLogHistoryService.ReloadForTests();
+            var all = ConsoleLogHistoryService.SnapshotAll(false, out var dropped, out _);
+            Assert.AreEqual(Describe(), tailOnly);
+            Assert.Greater(dropped, 30, "The byte cap, not the row cap, evicted these rows.");
+            Assert.Less(all.Count, 1730);
+            Assert.AreEqual(all[0].seq, recent.Value<long>("oldestSeq"), "The oldest seq was read from a row longer than the head's chunk.");
+        }
+
+        [Test]
+        public void ClearAfterATailOnlyReload_KeepsOnlyLaterRowsAcrossTheNextReload()
+        {
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            Fill(300);
+            ConsoleLogHistoryService.FlushForTests();
+            ConsoleLogHistoryService.ReloadForTests();
+            Fill(5, "a-");
+            ConsoleLogHistoryService.Clear();
+            Fill(4, "c-");
+            var expected = Enumerable.Range(0, 4).Select(i => "c-" + i).ToList();
+            CollectionAssert.AreEqual(expected, ConsoleLogHistoryService.ReadWindow(0).logs.Select(log => log.message).ToList());
+
+            ConsoleLogHistoryService.ReloadForTests();
+            var window = ConsoleLogHistoryService.ReadWindow(0);
+            CollectionAssert.AreEqual(expected, window.logs.Select(log => log.message).ToList());
+            Assert.AreEqual(0L, window.dropped);
+            Assert.AreEqual(4, FileRows());
+        }
+
+        [Test]
+        public void TailLoad_FallsBackToAFullLoadWhenTheFileLengthOrLastSeqDiffersFromTheState()
+        {
+            ConsoleLogHistoryService.SetTailBytesForTests(SmallTail);
+            Fill(100);
+            ConsoleLogHistoryService.FinalFlushForTests();
+            // A kill between an append and its state write: the file is longer than the state says.
+            string late = JsonConvert.SerializeObject(new
+            {
+                seq = 101L, type = "Log", message = "appended-after-the-state", stackTrace = "", utc = DateTime.UtcNow.ToString("o"),
+                timeKnown = true, sessionId = "s", source = "managed", nativeKey = (string)null,
+            });
+            ConsoleLogHistoryService.AppendRawForTests(late + Environment.NewLine);
+            long before = ConsoleLogHistoryService.ParsedRowsForTests;
+            ConsoleLogHistoryService.ReloadForTests(clean: false);
+            Assert.GreaterOrEqual(ConsoleLogHistoryService.ParsedRowsForTests - before, 101L, "The whole file is read.");
+            CollectionAssert.Contains(ConsoleLogHistoryService.ReadWindow(0).logs.Select(log => log.message).ToList(), "appended-after-the-state");
+
+            // The same length with another last row: a file the state does not describe.
+            ConsoleLogHistoryService.FinalFlushForTests();
+            File.WriteAllText(_path, File.ReadAllText(_path).Replace("\"seq\":101,", "\"seq\":109,"));
+            before = ConsoleLogHistoryService.ParsedRowsForTests;
+            ConsoleLogHistoryService.ReloadForTests(clean: false);
+            Assert.GreaterOrEqual(ConsoleLogHistoryService.ParsedRowsForTests - before, 101L, "The tail is rejected and the whole file read.");
+            Assert.AreEqual(109L, ConsoleLogHistoryService.ReadWindow(0).logs.Last().seq);
+
+            before = ConsoleLogHistoryService.ParsedRowsForTests;
+            ConsoleLogHistoryService.ReloadForTests();
+            Assert.Less(ConsoleLogHistoryService.ParsedRowsForTests - before, 30, "Once the full load has described the file again, the tail is enough.");
+        }
+
         private static void Fill(int count, string prefix = "row-")
         {
             for (int i = 0; i < count; i++)
                 ConsoleLogHistoryService.RecordForTests(prefix + i);
+        }
+
+        // Rows of 30-50 KB: 1,700 of them pass the 64 MB cap while staying far below the row cap.
+        private static void FillLong(int count, string prefix)
+        {
+            var stack = new string('s', 50000);
+            for (int i = 0; i < count; i++)
+                ConsoleLogHistoryService.RecordForTests(prefix + i, stack.Substring(0, 30000 + i * 7919 % 20000), LogType.Warning);
+        }
+
+        /// <summary>What readers see of the whole history; loads it completely.</summary>
+        private static string Describe()
+        {
+            long seq = ConsoleLogHistoryService.GetCurrentSeq();
+            var coverage = JObject.FromObject(ConsoleLogHistoryService.ReadWindow(seq - 1).coverage);
+            var all = ConsoleLogHistoryService.SnapshotAll(false, out var dropped, out var complete);
+            return string.Concat("seq=", seq, " rows=", all.Count, " dropped=", dropped, " complete=", complete,
+                " oldest=", coverage.Value<long>("oldestSeq"), " retained=", coverage.Value<long>("retained"),
+                " incomplete=", coverage.Value<long>("incompleteThroughSeq"), " seqs=", string.Join(",", all.Select(log => log.seq)));
         }
 
         private static DebugSkills.LogEntryInfo Native(string type, string message, int line) =>
