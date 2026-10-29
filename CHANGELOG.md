@@ -4,12 +4,59 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ## [3.0.0] - 2026-10-25
 
-> **Workflow 时光机重写 + 用户侧测评集 + 粒子系统模块 + 原生 entityId** —— (1) **Workflow 重写**：历史改为只追加的日志加内容寻址存储，写操作不再整份重写历史文件；新增检查点（空闲 30 秒后自动打点、`_checkpoint` 请求键、`workflow_checkpoint`）和 `workflow_restore`，可以回到任意检查点或某一步之前；撤销、重做、会话撤销统一走同一个回退引擎。回退前会先检查用户和其他 agent 在此之后的改动，有冲突就以 `WORKFLOW_CONFLICT` 停下来询问；撤销单步时按属性三方合并，保留后续改动；`scope` 可以只回退部分目标；所有回退都能 dryRun 预览，History 页改为时间线。(2) **测评集**：面板新增 Evaluation 页，并随包附带 v3 评测器与 37 道公开题；AI 自动搭建测试环境、做题，再按不随包分发的私有评分标准判分。(3) **粒子系统**：新增 Particle 模块，31 个技能覆盖内置粒子系统的创建、模块配置、爆发、子发射器、播放控制与分析。(4) **原生 entityId**：核心模块和可选包模块的技能自己声明 `entityId`，在 Unity 6000.4+ 上也能在同名物体中准确定位；查找按 Hierarchy 顺序，给定的 id 找不到时直接报错，不再退回到同名对象。(5) **按项目保存设置**：令牌档位、运行模式、端口等设置改存到工程的 `UserSettings/UnitySkills/settings.json`，不同工程互不影响。技能 839 → 872（+33），不删除任何技能。
+> **根 Skill 深度优化 + 用户侧评测集，Workflow 时光机与原生 entityId** —— 相对 `origin/main`（已发布 **v2.9.1**）这是一次跨大版本跃迁：Agent 入口文档与可复现评测第一次被当成产品主线一起抬高，而不是附属说明。(1) **根 `SKILL.md` / 模块文档**：按真实跑题结果收紧路由与硬协议，删掉不再需要的 `SKILL_FULL.md`，material / editor / cinemachine / particle / workflow 等改成「入口 + 按需 `reference/`」，入口带字节预算；description 同时覆盖 Editor 自动化与 Unity 设计问答。(2) **用户侧评测集**：面板 Evaluation 四步流程 + 随包纯标准库 Python 评测器 + `/unity-skills-eval`；公开题包 **1.2.0 / 41 题**（运维 21、开发 20；基础 / 标准 / 挑战），私有评分不随包分发；报告带 `grade` / `verdict`。(3) **Workflow 时光机**：只追加日志 + 内容寻址 blobs；空闲检查点、`workflow_restore`、冲突感知与属性三方合并、`scope` 部分回退；History 页按检查点手风琴。(4) **Particle 模块** 31 个技能。(5) **原生 `entityId`**：核心与可选包模块自声明定位参数，6000.4+ 同名物体也能精确命中；给定 id 找不到即报错，不再退回同名。(6) **按项目保存设置**。技能 **839 → 872（+33）**，不删除任何技能。
+
+### 相对 origin/main（v2.9.1 → 当前 3.0）
+
+比对基准：`origin/main` @ `af927631`（package **2.9.1**）→ 当前 `beta` / 工作区领先提交（含已纳入本段的未发布修订）。体量为 `git diff --shortstat origin/main...HEAD` 口径。
+
+| 维度 | main（v2.9.1） | 3.0.0（领先） |
+|---|---|---|
+| 包版本 | 2.9.1 | **3.0.0** |
+| 相对提交 | — | **约 99 个提交**领先 |
+| 代码体量 | — | **1028 文件**，约 **+141.5k / −6.9k** 行 |
+| 其中评测 / eval | 无随包用户侧题包 | **Evaluation~ + eval/** 约 **426 文件 / +85k** 行 |
+| 其中 Editor C# | 2.9.1 能力面 | 约 **202 文件 / +31k / −4.7k**（Workflow、Particle、Evaluation、entityId、Console…） |
+| 其中 unity-skills~ 文档 | 根 Skill 8189 B；`SKILL_FULL` 仍在 | 根 Skill **7936 B**；`SKILL_FULL` **删除**；多模块入口瘦身 + `reference/` |
+| 技能数 | 839 | **872（+33）** |
+| 用户侧公开题 | 无（仅维护者本地 v1 档案） | **41 题 / pack 1.2.0** |
+| Workflow 存储 | 整份重写 `workflow_history.json` | **只追加** `log.jsonl` + `blobs/`（旧历史**不迁移**） |
+| 定位 | 合成 / 宽松回退同名 | **原生 entityId**；找不到即 `TARGET_NOT_FOUND` |
+| 设置作用域 | 本机全局偏好为主 | **按工程** `UserSettings/UnitySkills/settings.json` |
+| 面板 | 既有标签 | **石墨配色**；History 检查点手风琴；Evaluation 四步 |
+
+提交主题粗分（`origin/main..HEAD` 约 99 条 oneline）：评测相关约 41、Workflow 约 18、Particle 约 10、entityId / finder 约 6、文档 / Skill 约 6、Console 约 3、安装器约 2，其余为设置、UI、回归与杂项。
+
+### 公开题包 1.2.0 结构（41 题）
+
+| 管线 \ 档位 | 基础 | 标准 | 挑战 | 小计 |
+|---|---:|---:|---:|---:|
+| 运维（ops） | 6（S01 S03 S04 S06 S08 D01） | 7（T3 T4 T5 T7 T10 OS1 OS2） | 8（OC1–OC8） | **21** |
+| 开发（dev） | 6（DB1–DB6） | 6（T1 T2 T9 DS1–DS3） | 8（DC1–DC8） | **20** |
+| **合计** | **12** | **13** | **16** | **41** |
+
+1.2.0 相对早期草稿新增：**DB4** 跟随相机、**DC2** 门状态机、**DC6** 金币触发计分、**DC8** ScriptableObject 难度配置。插件约束 `plugin.min = 2.9.1`。题目公开面（提示词 / task.py）随包；私有断言在 `eval/pack/private`，不随用户安装分发。
+
+v1 历史对照（14 题 × 19 配置，数据截至 2026-10-17，**不是排行榜**）：见 `eval/docs/results/RESULTS_V1.md` 与 `docs/TEST_SUMMARY.md`。v3 题库将另立批次重测。
 
 ### 本版实测
 
 - **写操作的 Workflow 开销**：2022.3 URP 上，空历史和 40 MB（约 5.8 万步）历史下每次写操作的 workflow 耗时 p95 都是 0 ms；旧格式在 15 MB 历史时每次写入中位 248 ms。6 万步历史的完整重放约 0.8 秒。
-- **文档瘦身前后的配对基线**（Claude Code 无头模式 + Sonnet，2022.3 URP，运维基础 6 题与 T4 各 3 次）：通过数 21/21 → 21/21，处理的 token 总均值 646K → 625K（0.97 倍）。
+
+| 指标 | 旧整份历史（对照） | 3.0 只追加 |
+|---|---|---|
+| 空历史下单次写的 workflow p95 | — | **0 ms** |
+| ~40 MB / 5.8 万步下单次写 p95 | — | **0 ms** |
+| ~15 MB 历史下单次写入中位 | **248 ms** | （只追加路径不再整份重写） |
+| 6 万步完整重放 | — | **≈ 0.8 s** |
+
+- **文档瘦身前后的配对基线**（Claude Code 无头模式 + Sonnet，2022.3 URP，运维基础 6 题与 T4 各 3 次）：
+
+| 指标 | 瘦身前 | 瘦身后 |
+|---|---|---|
+| 通过数 | 21/21 | **21/21** |
+| 处理 token 总均值 | 646K | **625K（约 0.97×）** |
+
 - **回归**：2022.3 Built-in 与 URP 两个工程的完整 EditMode 各 2560 个测试，0 失败；真实编辑器上按 REST 脚本实测三轮搭建后回退、用户手改冲突、脚本回退触发域重载、两个 agent 交替写入、同一 Light 撤销颜色保留强度与按范围回退，全部通过。
 
 ### Added
@@ -20,7 +67,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 - **`scope` 部分回退** — 逗号分隔的 `entity:<id>`、物体名或层级路径（以 `/` 结尾包含子孙）、`Assets/` 路径（以 `/` 结尾为整个文件夹）、设置键（以 `.` 结尾为前缀）；匹配不到任何目标时返回 `SEMANTIC_INVALID` 并列出可选目标，带 scope 的回退不把步骤标为 `(undone)`。
 - **回退 dryRun 预览** — `workflow_restore`、`workflow_undo_task`、`workflow_redo_task`、`workflow_session_undo` 支持 `?mode=dryRun`，返回计划计数（含 `merge`）、条目、冲突、覆盖度、无法执行的项、`danglingReferences`（会被删除却仍被引用的对象）与 `mayTriggerReload`。
 - **History 页检查点手风琴** — 每个检查点一组，默认收起；标题行显示检查点名、`c<n>` 与步数，下一行是"时间 · agent · 动作概括"（按快照类型或技能的 Operation 归类，如"创建 Enemy_02、Enemy_01 · 修改 Ground.mat"）；自动检查点、回退前的守护检查点各有标题，第一个检查点之前的步骤单独成组。每组按状态显示"预览回退"或"已回退到此 · 撤销回退"，撤销回退同样先预览冲突，任意一次未撤销的回退都能从它所属的组撤销；预览显示在所属组内。首屏建最新 30 组，可继续加载更早的组；可按 agent 过滤，工具栏有自动检查点开关与空闲间隔设置，三语本地化。
-- **测评集（Evaluation 页 + v3 评测器）** — Evaluation 页分四步：选择题目（当前等级、全部题目、挑选题目）→ 复制提示词交给 Agent → 进度条与每题状态 → 结果（通过数、总体评价、完全通过率、平均完成度、评语与模型名），环境检查收成一行"环境就绪"，有问题才展开；"全部题目"让 Agent 依次跑当前管线可运行的各个等级，面板把各会话合成一个进度与结论。报告新增 `grade`（按完全通过率：≥90% 优秀、≥70% 良好、≥50% 及格，其余待提升）与模板拼成的 `verdict`。新增独立技能 `/unity-skills-eval`（随 unity-skills 一起安装），AI 先问范围、题型、等级和语言再开始，进度与结果同样显示在 Evaluation 页；评测器为随包发布的纯标准库 Python（`Evaluation~`），短命令无常驻进程，状态写在 `Library/UnitySkills/eval/`；公开题包 37 题（运维线 21、开发线 16，分基础 / 标准 / 挑战三档）；新增建议模块 `unity-evaluation` 与 `scripts/unity_eval.py`，复制提示词即可在 agent 里运行。
+- **测评集（Evaluation 页 + v3 评测器）** — Evaluation 页分四步：选择题目（当前等级、全部题目、挑选题目）→ 复制提示词交给 Agent → 进度条与每题状态 → 结果（通过数、总体评价、完全通过率、平均完成度、评语与模型名），环境检查收成一行"环境就绪"，有问题才展开；"全部题目"让 Agent 依次跑当前管线可运行的各个等级，面板把各会话合成一个进度与结论。报告新增 `grade`（按完全通过率：≥90% 优秀、≥70% 良好、≥50% 及格，其余待提升）与模板拼成的 `verdict`。新增独立技能 `/unity-skills-eval`（随 unity-skills 一起安装），AI 先问范围、题型、等级和语言再开始，进度与结果同样显示在 Evaluation 页；评测器为随包发布的纯标准库 Python（`Evaluation~`），短命令无常驻进程，状态写在 `Library/UnitySkills/eval/`；公开题包 1.2.0 共 41 题（结构见上表）；新增建议模块 `unity-evaluation` 与 `scripts/unity_eval.py`，复制提示词即可在 agent 里运行。
 - **Particle 模块（31 个技能）** — 内置（Shuriken）粒子系统：`particle_get_capabilities`、`particle_find_all`、`particle_get_info`、`particle_get_module`、`particle_get_renderer`、`particle_get_bursts`、`particle_get_sub_emitters`、`particle_analyze` 只读查询；`particle_create`、`particle_add_system`、`particle_configure`、`particle_set_renderer`、`particle_set_bursts`、`particle_set_sub_emitters` 及播放控制 `particle_play` / `pause` / `stop` / `emit` / `simulate`，写技能与播放控制都有对应的 `_batch`（配置类批量为全有或全无）。字段注册表统一驱动能力描述、严格 JSON 解析、校验、读回与 dryRun；支持全部 MinMaxCurve / MinMaxGradient 模式；没有粒子系统模块的工程返回 `MISSING_PACKAGE`。
 - **自定义安装记入列表** — AI Config 页用自定义路径装过的工具会被记下来（本机所有工程共用，同一路径只记一条），作为单独的卡片排在内置工具之后，可以更新、卸载或移出列表（不删文件）；点卡片图标可选一张 PNG/JPG（1 MB 以内）作为图标，复制到 `~/.unity_skills/custom-icons/`，右键恢复默认；升级插件后的自动同步也会刷新它们。自定义路径只装主技能。
 - **按项目保存的设置** — 令牌档位、运行模式、面板审批、允许列表、确认要求、首选端口、请求超时、遥测、启动时装包、Workflow 历史上限与 Evaluation 页配置存到 `UserSettings/UnitySkills/settings.json`；工程没有自己的值时读取旧的全局值，升级后行为不变。
@@ -29,6 +76,7 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Changed
 
+- **根 `SKILL.md` 与模块文档（3.0 主线之一）** — 根入口压到 **7936** 字节（相对 v2.9.1 的 8189）：路由先分清 Automate / Guide / Advise；硬协议只留 Agent 真正会读的那一层；英文 description 同时覆盖 Editor 自动化与设计问答；撤销路由写进入口。删除 `references/SKILL_FULL.md`，独有规则迁到对应参考文档。material / editor / cinemachine / particle / workflow 改为入口 + `reference/<skill>.md`，入口有字节预算测试——Agent 先读薄入口，需要细节再按需打开参考页，而不是一上来吞整本手册。
 - **面板石墨配色** — 深浅两套配色换成石墨色系，控件高度与圆角统一（4 / 6 / 8 三档），横幅、提示与状态统一为淡色底加同色描边，删除类按钮改为红色描边的空心按钮；标签栏保持原样式。
 - **Workflow 历史改为只追加日志** — `Library/UnitySkills/workflow/` 下是 `log.jsonl`（满 4 MB 或 5000 行封存成段）、`head.json` 与按 SHA1 命名的 `blobs/`；每次写操作只追加一行，不再整份重写 `workflow_history.json`。按容量（`CapacityMB`，默认 512）与天数（`MaxAgeDays`，默认 30）整段清理，History 页的五项上限改为这两项。**3.0 之前的历史不迁移**：移到 `workflow_legacy/`，14 天后自动删除，History 页显示备份行并可手动删除。
 - **撤销与重做走回退引擎** — `workflow_undo_task` 接受 `s<seq>`、组 id、`c<n>` 或任务 UUID，只把这些步骤的目标恢复到之前，其他目标上的后续步骤保留；`workflow_redo_task` 改为撤销某次回退本身，不再连带撤掉之后的工作；`workflow_session_undo` 同理。撤销同一目标上的自己后续步骤不再一律冲突，改为按属性合并。
@@ -48,7 +96,8 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 - **域重载时的空 200 响应** — 重载开始时排队中的请求以前会收到空的 200，看起来像成功；现在未执行的请求返回带 `Retry-After` 和 `details.executed:false` 的 503，写入后断开的返回 504（结果未知）。Python 客户端不再重发结果未知的写请求。
 - **Console 历史满后每秒整份重写**（Issue #65）— 历史满后改为只追加，累计到上限的四分之一才压缩，Play Mode 下延后压缩。
-- **Console 历史拖慢每次域重载** — 以前每次重载都要逐行解析整个 `console_log_history.jsonl`（上限 5 万行 / 64 MB），还为计字节把每行再序列化一遍，34.5 MB 的历史让每次重载多花约 530 ms；现在重载只解析文件末尾约 1 MiB，更早的记录等查询用到时才读入，读入时按行长计字节、复用同一个反序列化器；淘汰与压缩判断不必先读全量，导入原生 Console 条目时查托管重复改用计数表，不再逐条扫描整个历史。
+- **Console 历史拖慢每次域重载** — 以前每次重载都要逐行解析整个 `console_log_history.jsonl`（上限 5 万行 / 64 MB），还为计字节把每行再序列化一遍，34.5 MB 的历史让每次重载多花约 530 ms；现在重载只解析文件末尾约 1 MiB，更早的记录等查询用到时才读入，读入时按行长计字节、复用同一个反序列化器；淘汰与压缩判断不必先读全量，导入原生 Console 条目时查托管重复改用计数表，不再逐条扫描整个历史。读失败时保留未解析的文件头，避免半截历史被当成空窗。
+- **用户代码日志超过 1000 条时 Play Mode 验证误判为覆盖不完整** — `editor_run_scenario` 以前把窗口被 1000 行上限截断也当作覆盖缺口；现在 Error / Exception / Assert 在整个窗口内单独检索（`resultData.failureLogWindow`），普通日志数量不再影响结果。
 - **未存盘的材质 / ScriptableObject 撤销不生效** — 以前只写回文件字节，内存里尚未保存的改动会留下，下次保存又写回去；现在同时把改前状态写回内存对象并保存。
 - **从未保存的场景里的撤销只恢复一个对象** — 这类场景的所有对象共用同一个 GlobalObjectId，快照按 id 去重时只留下第一个；现在不再对其去重。
 - **`component_invoke_method` 短类型名歧义** — 实例调用时 `Button` 这类同时匹配 UI 与 UIElements 的短名，优先取组件类型，不再报歧义。
@@ -57,9 +106,9 @@ All notable changes to **UnitySkills** will be documented in this file.
 
 ### Docs
 
-- 根 `SKILL.md` 瘦身到 7,937 字节（英文 description 同时覆盖 Unity 设计问答，去掉计数行，新增撤销路由），删除 `references/SKILL_FULL.md` 并把其独有规则迁到对应参考文档；material、editor、cinemachine、particle、workflow 改为"入口 + `reference/<skill>.md`"结构，入口有字节预算测试。
-- Workflow 模块文档按"检查点优先"重写：回退协议、`workflow_list` 行格式、检查点、回退契约、"撤销单步与 scope"、已知局限。
-- 技能计数与模块数同步到 872 个技能、57 个源文件、55 个类别、85 个模块文档（30 个 advisory）。
+- **根 Skill 与试点模块（产品主线）** — 见 Changed：入口变薄、参考按需加载、去掉 `SKILL_FULL`；Workflow 模块文档按「检查点优先」重写（回退协议、`workflow_list` 行格式、检查点、回退契约、「撤销单步与 scope」、已知局限）。
+- **评测文档与 v1 对照** — `eval/docs/` 收纳 v3 合约、已知缺陷、协议与 **RESULTS_V1**（14 题 × 19 配置 / 5 主机，602 槽位、635 次尝试；有效 552：531 pass / 21 partial）；精简用量 / 耗时表见 `docs/TEST_SUMMARY.md`。定位为历史对照基线，**不作模型排行榜**；v3 题库另测。
+- 技能计数与模块数同步到 **872** 个技能、57 个源文件、55 个类别、85 个模块文档（30 个 advisory）。
 
 ## [2.9.1] - 2026-10-17
 
