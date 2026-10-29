@@ -50,6 +50,23 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void ReadWindow_TypeFilterFindsErrorBeyondTheOrdinaryLogLimit()
+        {
+            for (int i = 0; i < 1001; i++)
+                ConsoleLogHistoryService.RecordForTests("log-" + i);
+            ConsoleLogHistoryService.RecordForTests("boom", "", LogType.Error, DateTime.UtcNow);
+
+            var all = ConsoleLogHistoryService.ReadWindow(0);
+            var failures = ConsoleLogHistoryService.ReadWindow(0, 0, types: new[] { "Error", "Exception", "Assert" });
+
+            Assert.IsTrue(all.hasMore);
+            Assert.IsFalse(failures.hasMore);
+            Assert.AreEqual(1, failures.totalMatched);
+            Assert.AreEqual(1, failures.logs.Count);
+            Assert.AreEqual("boom", JObject.FromObject(failures.logs[0]).Value<string>("message"));
+        }
+
+        [Test]
         public void FullTextAndHalfOpenCrossMidnightWindow_UseFullStackAndUtcBounds()
         {
             var start = new DateTime(2026, 10, 10, 23, 59, 59, DateTimeKind.Utc);

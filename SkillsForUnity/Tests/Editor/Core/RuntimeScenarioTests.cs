@@ -217,6 +217,29 @@ namespace UnitySkills.Tests.Core
         }
 
         [Test]
+        public void TruncatedCompleteWindowWithoutErrorsStillPasses()
+        {
+            _logs["hasMore"] = true;
+            var job = Start("[" + Assertion + "]");
+            RuntimeScenarioService.Process(job);
+            RuntimeScenarioService.Process(job);
+            Assert.That(job.status, Is.EqualTo("completed"));
+            Assert.That(job.resultData["passed"], Is.True);
+        }
+
+        [Test]
+        public void TruncatedWindowWithExceptionStillFails()
+        {
+            _logs["hasMore"] = true;
+            ((JArray)_logs["Logs"]).Add(new JObject { ["type"] = "Exception", ["message"] = "fixture" });
+            var job = Start("[" + Assertion + "]");
+            RuntimeScenarioService.Process(job);
+            RuntimeScenarioService.Process(job);
+            Assert.That(job.status, Is.EqualTo("failed"));
+            Assert.That(job.resultData["passed"], Is.False);
+        }
+
+        [Test]
         public void CancellationRestoresOwnedPlayAndBackgroundThroughSeams()
         {
             var job = Start("[" + Assertion + "]");

@@ -363,7 +363,7 @@ namespace UnitySkills
         /// this rather than refreshing the Console, so their evidence is tied to one fixed snapshot.
         /// </summary>
         internal static ConsoleLogHistoryWindow ReadWindow(long afterSeq, long throughSeq = 0,
-            int limit = MaxReadLimit, bool includeStackTrace = true)
+            int limit = MaxReadLimit, bool includeStackTrace = true, ICollection<string> types = null)
         {
             limit = Math.Max(1, Math.Min(MaxReadLimit, limit));
             lock (SyncRoot)
@@ -371,7 +371,8 @@ namespace UnitySkills
                 EnsureLoadedAfterLocked(afterSeq);
                 long snapshot = throughSeq > 0 ? Math.Min(throughSeq, _seq) : _seq;
                 long oldest = OldestSeqLocked();
-                var matching = Records.Where(record => record.seq > afterSeq && record.seq <= snapshot).ToList();
+                var matching = Records.Where(record => record.seq > afterSeq && record.seq <= snapshot
+                    && (types == null || types.Contains(record.type, StringComparer.OrdinalIgnoreCase))).ToList();
                 bool hasMore = matching.Count > limit;
                 var returned = matching.Take(limit).Select(record => CopyRecord(record, includeStackTrace)).ToList();
                 return new ConsoleLogHistoryWindow

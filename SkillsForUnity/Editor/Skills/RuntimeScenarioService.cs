@@ -15,6 +15,7 @@ namespace UnitySkills
         internal static Action<bool> SetPlayingForTests;
         internal static Func<string, string, string> ExecuteForTests;
         internal static Func<int> FrameForTests;
+        private static readonly string[] FailureLogTypes = { "Error", "Exception", "Assert" };
         internal static Func<JObject> LogWindowForTests;
         internal static Func<long> LogSeqForTests;
         internal static Func<bool> BackgroundForTests;
@@ -269,13 +270,22 @@ namespace UnitySkills
             bool passed = Convert.ToBoolean(job.resultData["passed"]);
             var compilation = JToken.Parse(CompilationResultService.GetLastCompilationJson() ?? "null");
             job.resultData["compilation"] = compilation;
-            var window = LogWindowForTests?.Invoke() ?? JObject.FromObject(ConsoleLogHistoryService.ReadWindow(Number(job, "startLogSeq")), JsonSerializer.Create(SkillsCommon.JsonSettings));
+            JObject window = LogWindowForTests?.Invoke(), failureWindow = window;
+            if (window == null)
+            {
+                long start = Number(job, "startLogSeq");
+                var all = ConsoleLogHistoryService.ReadWindow(start);
+                var serializer = JsonSerializer.Create(SkillsCommon.JsonSettings);
+                window = JObject.FromObject(all, serializer);
+                failureWindow = JObject.FromObject(ConsoleLogHistoryService.ReadWindow(start, all.snapshotSeq, types: FailureLogTypes), serializer);
+            }
             job.resultData["logWindow"] = window;
+            job.resultData["failureLogWindow"] = failureWindow;
             // Incomplete evidence is not a verified pass. Keep assertion evidence so callers can distinguish causes.
-            bool complete = (window.Value<bool?>("complete") ?? false) && !(window.Value<bool?>("hasMore") ?? false);
-            bool errors = window.Descendants().OfType<JProperty>().Any(p =>
+            bool complete = window.Value<bool?>("complete") ?? false;
+            bool errors = failureWindow.Descendants().OfType<JProperty>().Any(p =>
                 (p.Name == "type" || p.Name == "logType" || p.Name == "severity") &&
-                new[] { "Error", "Exception", "Assert" }.Contains(Convert.ToString(((JValue)p.Value).Value), StringComparer.OrdinalIgnoreCase));
+                FailureLogTypes.Contains(Convert.ToString(((JValue)p.Value).Value), StringComparer.OrdinalIgnoreCase));
             if (passed && (!complete || errors || ServerAvailabilityHelper.IsCompilationInProgress()))
             {
                 job.resultData["passed"] = false;

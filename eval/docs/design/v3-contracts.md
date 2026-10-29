@@ -59,7 +59,7 @@ SkillsForUnity/
 | `usk_eval/attempt.py` | `next/submit` 状态机、构建与冻结顺序、崩溃恢复 | WP6 |
 | `usk_eval/fixture.py` | scope 与 runId、run 场景进出、resting 场景恢复、层碰撞快照、归属校验清理（移植 v1 `fixture.py`） | WP6 |
 | `usk_eval/journal.py` | 磁盘分段读取与 seq 连续性证明（§7.1）、`flatten`（v1 `journal.py:70-104` + 新字段） | WP6 |
-| `usk_eval/scope.py` | `scope_violations`（含 `eval/design/scope-verifier-fix` 身份表补丁）、`adopted_paths`、`non_rest`、`direct_writes`、`write_records` | WP9 |
+| `usk_eval/scope.py` | `scope_violations`（含 `eval/docs/design/scope-verifier-fix.md` 身份表补丁）、`adopted_paths`、`non_rest`、`direct_writes`、`write_records` | WP9 |
 | `usk_eval/telemetry.py` | telemetry 全部轮转文件的时间窗读取（§2.8 S6） | WP6 |
 | `usk_eval/classify.py` | 状态分类（§2.9） | WP6 |
 | `usk_eval/report.py` | `report.json`/`report.md` 生成 | WP6 |
@@ -941,7 +941,7 @@ HINTS = {"A1": {"zh-CN": "…", "en": "…"}}   # optional; only shown in the fi
 
 - verify 不得写 Editor：`VerifyContext` 不提供写客户端；Probe 的 `read` 拒绝非只读技能（沿用 v1 `rest.py:114-126`，依据 `/skills/schema?wire=v2` 的 flags）。verify 抛异常 → `invalid`（`verifier_error`）。没有被评估的断言由 `card.finish()` 记为 unobservable 失败（v1 `verify.py:43-50`）。
 - `SCENARIO` 结构 `{"steps": [...], "executionMode": "play"|"edit", "timeoutSeconds": int}`，约束与插件一致（`RuntimeScenarioService.cs:49-58,81-110`）：1–100 步；kind ∈ `invoke/read/assert/wait_frames/wait_seconds/wait_condition`；至少一个 `assert` 或 `wait_condition`；`invoke` 只能用 `component_invoke_method`；`read/assert/wait_condition` 必须是只读技能；`timeoutSeconds` 1–600；同时只能有一个活动 scenario；编译中拒绝启动。runner 把 `steps` 序列化成 JSON 字符串传给 `editor_run_scenario`（参数类型是 `string steps`，`EditorSkills.cs:25`）。
-- `ctx.scenario` 取自终态作业（`GET /jobs/{id}` 在终态时附 `resultData`，`SkillsHttpServer.Jobs.cs:144-193`）：`{status, passed, error, interrupted, executionUncertain, steps: [{index, kind, skill, expected, actual, tolerance, passed}], compilation, logWindow}`（字段来源 `RuntimeScenarioService.cs:233-284`）。`passed:true` 已经包含"日志完整、没有 Error/Exception/Assert 日志、不在编译"（`:267-284`）。
+- `ctx.scenario` 取自终态作业（`GET /jobs/{id}` 在终态时附 `resultData`，`SkillsHttpServer.Jobs.cs:144-193`）：`{status, passed, error, interrupted, executionUncertain, steps: [{index, kind, skill, expected, actual, tolerance, passed}], compilation, logWindow}`（字段来源 `RuntimeScenarioService.cs:233-284`）。`passed:true` 已经包含"日志完整、没有 Error/Exception/Assert 日志、不在编译"（`:267-284`）。错误日志按 `resultData.failureLogWindow` 在整个窗口里检索，普通日志超过 1000 行被截断不算覆盖缺口。
 - 私有模块只能 import `usk_eval.verifylib` 与标准库；不得 import solutions、写文件或联网。
 
 ### 5.6 Solutions 模块 `eval/pack/solutions/<ID>.py`
@@ -982,7 +982,7 @@ ALTERNATIVES = [("root_then_move", root_then_move)]                      # >= 1;
 | `log(msg)` | ✓ | ✓（空操作，不写 runner.log：私有 verify 的推导不得落盘，§4.2） | ✓ |
 
 - `records` 每条 = v1 `flatten` 的结果（`eval/harness/journal.py:70-104`）加上 `agent`、`isPlaying`、`tsUtc`、`origin`（seq ∈ refreshWindow 为 `"refresh"`，否则 `"attempt"`）。插件包未变时，不含插件包文件的重新导入记录（§2.9 `non_rest_changes` 末尾）；A 下字节未变的文件的重新导入记录，以及编辑器对 Agent 技能写过或移动过的文件的导入记录，同样不含（§2.9 末两条）。
-- `violations()`：`scope.scope_violations(records, R, A, scene, allowed)`；先剔除 `isPlaying` 记录，以及 agent 为 runner 且 origin 为 attempt 的记录（runner 自己的 `editor_stop` 等）；包含身份表补丁（`eval/design/scope-verifier-fix`，它依赖 §7.1 新增的身份字段）。
+- `violations()`：`scope.scope_violations(records, R, A, scene, allowed)`；先剔除 `isPlaying` 记录，以及 agent 为 runner 且 origin 为 attempt 的记录（runner 自己的 `editor_stop` 等）；包含身份表补丁（`eval/docs/design/scope-verifier-fix.md`，它依赖 §7.1 新增的身份字段）。
 - `direct_writes()`：A 下的文件记录中 `origin == "refresh"` 或 `source == "editor"` 的那些，即 Agent 绕过技能直接写盘的证据（供 ops 的 G4 断言）。
 - `violations()`、`direct_writes()`、`write_records()` 返回的记录里，agent 为 runner 且 origin 为 refresh 的（S3 的 `asset_refresh` 导入的文件）是带 `importedAtSubmit: true` 的副本；照样计入，`records` 本身不变。
 - `write_records()`：除下列之外的全部记录：run 场景的 `scene_saved`、run 场景文件（`.unity`、`.unity.meta`）的导入、`isPlaying` 记录、runner 自身记录。只读题的"零写入"断言用它（草案 3.1：只读题忽略本轮场景的 scene_saved 与场景文件导入）。
@@ -1367,7 +1367,7 @@ private static void RegisterLifecycleFlush()
 | 版本校验 | check / start / next / submit：runnerVersion 必须**等于** pluginVersion，否则 `VERSION_MISMATCH`。runner 依赖插件写出的 journal 字段等格式；两个锚点由 `/updateversion` 同步 |
 | packVersion | §5.1，与插件版本独立 |
 | 插件范围 | pluginVersion 不在 [plugin.min, plugin.max] → `PACK_PLUGIN_RANGE` |
-| caseVersion | int。题目的任何改动（task.py、两份提示、私有模块中的断言/权重/容差/判定、seeds、minutes、requires）都必须加 1。v1 冻结为 caseVersion 1（`eval/reports/case-freeze-v1.json`）；所有移植题从 2 开始，新题从 1 开始。`check_eval_pack.py` 与上一个发布的 manifest 对比：public / private hash 变了而 caseVersion 没变 → 失败 |
+| caseVersion | int。题目的任何改动（task.py、两份提示、私有模块中的断言/权重/容差/判定、seeds、minutes、requires）都必须加 1。v1 冻结为 caseVersion 1（`eval/docs/results/case-freeze-v1.json`）；所有移植题从 2 开始，新题从 1 开始。`check_eval_pack.py` 与上一个发布的 manifest 对比：public / private hash 变了而 caseVersion 没变 → 失败 |
 | 可比性键 | (packId, taskId, caseVersion)；v1 与 v3 的成绩不比较（草案 3.1） |
 
 **门禁**
