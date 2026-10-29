@@ -1,3 +1,5 @@
+﻿using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 
 namespace UnitySkills.Tests.Core
@@ -9,17 +11,72 @@ namespace UnitySkills.Tests.Core
     public class SkillsLocalizationTests
     {
         private SkillsLocalization.Language _savedLanguage;
+        private SkillsLocalization.Language _savedPinnedPrimary;
+        private SkillsLocalization.Language _savedPinnedSecondary;
 
         [SetUp]
         public void SetUp()
         {
             _savedLanguage = SkillsLocalization.Current;
+            _savedPinnedPrimary = SkillsLocalization.PinnedPrimary;
+            _savedPinnedSecondary = SkillsLocalization.PinnedSecondary;
         }
 
         [TearDown]
         public void TearDown()
         {
+            // Pins first: changing a pin may move the current language, which is restored last.
+            SkillsLocalization.PinnedPrimary = _savedPinnedPrimary;
+            SkillsLocalization.PinnedSecondary = _savedPinnedSecondary;
             SkillsLocalization.Current = _savedLanguage;
+        }
+
+        private static void PinChineseEnglishWithChineseCurrent()
+        {
+            SkillsLocalization.PinnedPrimary = SkillsLocalization.Language.Chinese;
+            SkillsLocalization.PinnedSecondary = SkillsLocalization.Language.English;
+            SkillsLocalization.Current = SkillsLocalization.Language.Chinese;
+        }
+
+        [Test]
+        public void Pinning_ReplacingCurrentLanguageSlot_SwitchesToNewLanguageBeforeNotifying()
+        {
+            PinChineseEnglishWithChineseCurrent();
+            var seen = new List<SkillsLocalization.Language>();
+            Action handler = () => seen.Add(SkillsLocalization.Current);
+            SkillsLocalization.LanguageChanged += handler;
+            try
+            {
+                SkillsLocalization.PinnedPrimary = SkillsLocalization.Language.Russian;
+            }
+            finally
+            {
+                SkillsLocalization.LanguageChanged -= handler;
+            }
+
+            Assert.That(SkillsLocalization.Current, Is.EqualTo(SkillsLocalization.Language.Russian));
+            Assert.That(seen, Is.EqualTo(new[] { SkillsLocalization.Language.Russian }));
+        }
+
+        [Test]
+        public void Pinning_SwappingSlots_KeepsCurrentLanguage()
+        {
+            PinChineseEnglishWithChineseCurrent();
+
+            SkillsLocalization.PinnedPrimary = SkillsLocalization.Language.English;
+
+            Assert.That(SkillsLocalization.PinnedSecondary, Is.EqualTo(SkillsLocalization.Language.Chinese));
+            Assert.That(SkillsLocalization.Current, Is.EqualTo(SkillsLocalization.Language.Chinese));
+        }
+
+        [Test]
+        public void Pinning_ReplacingOtherSlot_KeepsCurrentLanguage()
+        {
+            PinChineseEnglishWithChineseCurrent();
+
+            SkillsLocalization.PinnedSecondary = SkillsLocalization.Language.Russian;
+
+            Assert.That(SkillsLocalization.Current, Is.EqualTo(SkillsLocalization.Language.Chinese));
         }
 
         [Test]
